@@ -144,7 +144,7 @@
     <!-- NJsonSchema projects are already SDK-style netstandard2.0 — reference as-is -->
     <ProjectReference Include="..\DataExChange\NJsonSchema\NJsonSchema.csproj" />
     <ProjectReference Include="..\DataExChange\NJsonSchema.CodeGeneration\NJsonSchema.CodeGeneration.csproj" />
-    <ProjectReference Include="..\plmevaluator\Evaluator\AppEvaluator.Core.csproj" />
+    <ProjectReference Include="..\AppEvaluator\Evaluator\AppEvaluator.Core.csproj" />
   </ItemGroup>
 
 </Project>
