@@ -12,7 +12,7 @@ using System.Reflection;
 using System.Collections.Generic;
 using System.Globalization;
 
-namespace PlmExpressionEval
+namespace ExpressionEval
 {
 	/// <summary>
 	/// Summary description for Class1.
