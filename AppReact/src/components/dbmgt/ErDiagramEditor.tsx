@@ -65,7 +65,7 @@ const ErDiagramEditor: React.FC = () => {
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartRef = useRef<{ clientX: number; width: number } | null>(null);
   const resizeBoxStartRef = useRef<{ mouseX: number; mouseY: number; posX: number; posY: number; width: number; height: number } | null>(null);
-  const [listViewMode, setListViewMode] = useState<'list' | 'grid'>('list');
+  const [tableViewNameFilter, setTableViewNameFilter] = useState('');
   const [draggedTableItem, setDraggedTableItem] = useState<{ Key: string | null; Value: string } | null>(null);
   const [editingAnnotationGuid, setEditingAnnotationGuid] = useState<string | null>(null);
   const [draggingAnnotationGuid, setDraggingAnnotationGuid] = useState<string | null>(null);
@@ -185,6 +185,20 @@ const ErDiagramEditor: React.FC = () => {
     if (dto?.DataSourceFrom != null) loadSchemaTables();
     else setSchemaTableList([]);
   }, [dto?.DataSourceFrom]);
+
+  useEffect(() => {
+    setTableViewNameFilter('');
+  }, [dto?.DataSourceFrom]);
+
+  const filteredSchemaTableList = useMemo(() => {
+    const nameFilter = tableViewNameFilter.trim().toLowerCase();
+    if (!nameFilter) return schemaTableList;
+    return schemaTableList.filter((t: any) => {
+      const displayName = (t.uiDisplayName ?? (t.SchemaOwner ? `${t.SchemaOwner}.${t.Name}` : t.Name) ?? '').toLowerCase();
+      const bareName = String(t.Name ?? t.TableName ?? '').toLowerCase();
+      return displayName.includes(nameFilter) || bareName.includes(nameFilter);
+    });
+  }, [schemaTableList, tableViewNameFilter]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -1164,22 +1178,37 @@ const ErDiagramEditor: React.FC = () => {
       <div ref={diagramContainerRef} className="w-full h-1 flex-auto flex overflow-hidden">
         {/* Left: Available Tables - shrink-0 so flex does not compress it */}
         <div className={`flex flex-col overflow-hidden border-r shrink-0 ${theme.mainContentSection}`} style={{ width: leftPanelWidth, minWidth: leftPanelWidth }}>
-          <div className={`flex items-center justify-between px-2 py-1.5 border-b ${theme.mainContentSection}`}>
+          <div className={`px-2 py-1.5 border-b ${theme.mainContentSection}`}>
             <span className={`text-xs font-semibold ${theme.title}`}>Available Tables</span>
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={() => setListViewMode('list')} className={`p-1 rounded ${listViewMode === 'list' ? 'bg-gray-300 dark:bg-gray-600' : ''}`} title="List">
-                <i className="fa-solid fa-list text-xs" aria-hidden />
-              </button>
-              <button type="button" onClick={() => setListViewMode('grid')} className={`p-1 rounded ${listViewMode === 'grid' ? 'bg-gray-300 dark:bg-gray-600' : ''}`} title="Grid">
-                <i className="fa-solid fa-grip-vertical text-xs" aria-hidden />
-              </button>
+          </div>
+          <div className={`px-2 py-1.5 border-b ${theme.mainContentSection}`}>
+            <div className="relative">
+              <input
+                type="text"
+                value={tableViewNameFilter}
+                onChange={(e) => setTableViewNameFilter(e.target.value)}
+                placeholder="Filter tables/views..."
+                className={`w-full h-7 pl-2 pr-7 text-xs border rounded-[4px] ${theme.inputBox}`}
+              />
+              {tableViewNameFilter && (
+                <button
+                  type="button"
+                  onClick={() => setTableViewNameFilter('')}
+                  className={`absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded ${theme.button_default}`}
+                  title="Clear filter"
+                >
+                  <i className="fa-solid fa-xmark text-[10px]" aria-hidden />
+                </button>
+              )}
             </div>
           </div>
           <div className="flex-auto overflow-auto p-1">
             {schemaTableList.length === 0 ? (
               <div className={`text-xs ${theme.label} p-2`}>Select datasource and refresh.</div>
-            ) : listViewMode === 'list' ? (
-              schemaTableList.map((t: any) => {
+            ) : filteredSchemaTableList.length === 0 ? (
+              <div className={`text-xs ${theme.label} p-2`}>No tables or views match filter.</div>
+            ) : (
+              filteredSchemaTableList.map((t: any) => {
                 const key = t.SchemaOwner ? `${t.SchemaOwner}.${t.Name}` : t.Name;
                 const inDiagram = dictTablesEntries.some(([, o]) => (o as any).TableName?.toLowerCase() === t.Name?.toLowerCase());
                 return (
@@ -1201,22 +1230,6 @@ const ErDiagramEditor: React.FC = () => {
                   </div>
                 );
               })
-            ) : (
-              <div className="grid grid-cols-2 gap-1 p-1">
-                {schemaTableList.map((t: any) => {
-                  const key = t.SchemaOwner ? `${t.SchemaOwner}.${t.Name}` : t.Name;
-                  const inDiagram = dictTablesEntries.some(([, o]) => (o as any).TableName?.toLowerCase() === t.Name?.toLowerCase());
-                  return (
-                    <div key={key} className={`flex items-center gap-1 px-2 py-1 rounded border ${theme.contextMenu}`}>
-                      <i className="fa-solid fa-table text-xs shrink-0" aria-hidden />
-                      <span className="flex-auto w-1 truncate text-xs">{t.uiDisplayName ?? key}</span>
-                      <button type="button" onClick={() => addTables([{ Key: t.SchemaOwner ?? null, Value: t.Name }])} disabled={inDiagram} className="shrink-0">
-                        <i className={`fa-solid fa-plus text-xs ${inDiagram ? 'opacity-40' : ''}`} aria-hidden />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
             )}
           </div>
         </div>

@@ -35,6 +35,7 @@ const DatabaseManagement: React.FC = () => {
   const [tablesAndViews, setTablesAndViews] = useState<any[]>([]);
   const [selectedTable, setSelectedTable] = useState<any | null>(null);
   const [objectTypeFilter, setObjectTypeFilter] = useState<string>('Tables'); // 'Tables' or 'Views'
+  const [tableViewNameFilter, setTableViewNameFilter] = useState<string>('');
 
   // Query editor
   const [queryText, setQueryText] = useState<string>('');
@@ -136,6 +137,7 @@ const DatabaseManagement: React.FC = () => {
     if (selectedItem) {
       setSelectedDataSourceId(selectedItem.Id);
       setSelectedTable(null);
+      setTableViewNameFilter('');
       setQueryText('');
       setQueryResults([]);
       setQueryResultsCV(null);
@@ -363,13 +365,20 @@ const DatabaseManagement: React.FC = () => {
     }
   };
 
-  // Filter tables/views by object type
+  // Filter tables/views by object type and name
   const filteredTablesAndViews = tablesAndViews.filter((item: any) => {
-    if (objectTypeFilter === 'Tables') {
-      return item.ObjectType === 'Table' || item.ObjectType === 'TABLE' || !item.ObjectType;
-    } else {
-      return item.ObjectType === 'View' || item.ObjectType === 'VIEW';
-    }
+    const matchesType =
+      objectTypeFilter === 'Tables'
+        ? item.ObjectType === 'Table' || item.ObjectType === 'TABLE' || !item.ObjectType
+        : item.ObjectType === 'View' || item.ObjectType === 'VIEW';
+
+    if (!matchesType) return false;
+
+    const nameFilter = tableViewNameFilter.trim().toLowerCase();
+    if (!nameFilter) return true;
+
+    const tableName = String(item.TableName || item.Name || '').toLowerCase();
+    return tableName.includes(nameFilter);
   });
 
   // Horizontal resize handlers (left-right)
@@ -591,6 +600,29 @@ const DatabaseManagement: React.FC = () => {
               >
                 Views
               </button>
+            </div>
+
+            {/* Name Filter */}
+            <div className={`px-3 py-2 border-b ${t('border_default')}`}>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={tableViewNameFilter}
+                  onChange={(e) => setTableViewNameFilter(e.target.value)}
+                  placeholder="Filter tables/views..."
+                  className={`w-full h-7 pl-2 pr-7 text-xs border rounded-[4px] ${theme.inputBox}`}
+                />
+                {tableViewNameFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setTableViewNameFilter('')}
+                    className={`absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded ${theme.button_default}`}
+                    title="Clear filter"
+                  >
+                    <i className="fa-solid fa-xmark text-[10px]" aria-hidden />
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Tables/Views List */}

@@ -1,6 +1,57 @@
 <!DOCTYPE html>
 <html lang="en">
   <head>
+    <script>
+      (function () {
+        var LOOP = 'ResizeObserver loop';
+
+        function isLoopMessage(message) {
+          return typeof message === 'string' && message.indexOf(LOOP) !== -1;
+        }
+
+        function dismissOverlay() {
+          var hook = window.__REACT_ERROR_OVERLAY_GLOBAL_HOOK__;
+          if (hook && typeof hook.dismissOverlay === 'function') {
+            hook.dismissOverlay();
+          }
+          var overlay = document.getElementById('webpack-dev-server-client-overlay');
+          if (overlay) overlay.remove();
+          var overlayDiv = document.getElementById('webpack-dev-server-client-overlay-div');
+          if (overlayDiv) overlayDiv.remove();
+        }
+
+        window.addEventListener(
+          'error',
+          function (event) {
+            if (!isLoopMessage(event.message) && !isLoopMessage(event.error && event.error.message)) {
+              return;
+            }
+            dismissOverlay();
+            event.stopImmediatePropagation();
+            event.preventDefault();
+          },
+          true,
+        );
+
+        if (typeof window.ResizeObserver !== 'undefined') {
+          var OriginalResizeObserver = window.ResizeObserver;
+          window.ResizeObserver = class extends OriginalResizeObserver {
+            constructor(callback) {
+              var rafId = 0;
+              super(function (entries, observer) {
+                if (rafId) cancelAnimationFrame(rafId);
+                rafId = requestAnimationFrame(function () {
+                  rafId = requestAnimationFrame(function () {
+                    rafId = 0;
+                    callback(entries, observer);
+                  });
+                });
+              });
+            }
+          };
+        }
+      })();
+    </script>
     <meta charset="utf-8" />
     <!-- Add Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
