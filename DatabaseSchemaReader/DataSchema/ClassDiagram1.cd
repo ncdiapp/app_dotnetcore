@@ -1,0 +1,134 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ClassDiagram MajorVersion="1" MinorVersion="1">
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseArgument">
+    <Position X="5.5" Y="1" Width="2.25" />
+    <TypeIdentifier>
+      <HashCode>QAAAAAACAAIAAAAEABIAAABAAAAQAAAIACAAgACAECA=</HashCode>
+      <FileName>DataSchema\DatabaseArgument.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseColumn">
+    <Position X="7.5" Y="0.75" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAACIhAACEAJIDQABgADNAAAgIAAAAgQaAELA=</HashCode>
+      <FileName>DataSchema\DatabaseColumn.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseConstraint">
+    <Position X="9.25" Y="0.5" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AkAAAQAQAAAAAAAEAAAAAAAAAAAAAEARAAAAAQwAACI=</HashCode>
+      <FileName>DataSchema\DatabaseConstraint.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseFunction">
+    <Position X="0.5" Y="10" Width="1.5" />
+    <Compartments>
+      <Compartment Name="Fields" Collapsed="true" />
+    </Compartments>
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAABAAAAAAAAAAAAAAgAAAAAAAAAAAAAEAAA=</HashCode>
+      <FileName>DataSchema\DatabaseFunction.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseIndex">
+    <Position X="3" Y="5.5" Width="1.5" />
+    <Compartments>
+      <Compartment Name="Fields" Collapsed="true" />
+    </Compartments>
+    <TypeIdentifier>
+      <HashCode>AAAAAQAAAAAIAAAEgAAAAAAAAAAAAAAAAgAAAQgAAAA=</HashCode>
+      <FileName>DataSchema\DatabaseIndex.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabasePackage">
+    <Position X="4.75" Y="7" Width="1.5" />
+    <Compartments>
+      <Compartment Name="Fields" Collapsed="true" />
+    </Compartments>
+    <TypeIdentifier>
+      <HashCode>QAAAAAAAAAAACAAEAAABAAIAAAAAAAAIAAAAAAAAAAA=</HashCode>
+      <FileName>DataSchema\DatabasePackage.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseSchema">
+    <Position X="3.5" Y="0.5" Width="1.5" />
+    <Compartments>
+      <Compartment Name="Fields" Collapsed="true" />
+    </Compartments>
+    <TypeIdentifier>
+      <HashCode>QhAAGCCQAAIEBIAEAAAARAIAAAAAAIACACAAAAEAAAA=</HashCode>
+      <FileName>DataSchema\DatabaseSchema.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseSequence">
+    <Position X="8.25" Y="5.5" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAEAEAAAAAAQAAAAAAAAAQAAAAAAAA=</HashCode>
+      <FileName>DataSchema\DatabaseSequence.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseStoredProcedure">
+    <Position X="3" Y="8.75" Width="1.5" />
+    <Compartments>
+      <Compartment Name="Fields" Collapsed="true" />
+    </Compartments>
+    <TypeIdentifier>
+      <HashCode>AAAAAAAACAAAAIAEwIAQAAAACAAAAIAIYAAAAACAAAA=</HashCode>
+      <FileName>DataSchema\DatabaseStoredProcedure.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseTable">
+    <Position X="0.5" Y="0.5" Width="2.25" />
+    <TypeIdentifier>
+      <HashCode>ABkQAyEADgEiAAAkgAEAAACACAAQAAAOAQQABArQwgA=</HashCode>
+      <FileName>DataSchema\DatabaseTable.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseTrigger">
+    <Position X="4.75" Y="8.75" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>gACAAAAAAAAAAAAEAAAAAAABAAAAAAAAAAAAAQCAAAA=</HashCode>
+      <FileName>DataSchema\DatabaseTrigger.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseUser">
+    <Position X="6.5" Y="9.25" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAEAAAAAAQAAAAAAAAAAAAAAAAAAAA=</HashCode>
+      <FileName>DataSchema\DatabaseUser.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DatabaseView">
+    <Position X="0.5" Y="8.75" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAAAAAAAAAAEQAAAAAAAAAAAAAAAAAAAAAAAAAA=</HashCode>
+      <FileName>DataSchema\DatabaseView.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="DatabaseSchemaMrg.DataSchema.DataType">
+    <Position X="8.25" Y="8.75" Width="1.5" />
+    <Compartments>
+      <Compartment Name="Fields" Collapsed="true" />
+    </Compartments>
+    <TypeIdentifier>
+      <HashCode>AADIAiAIhAAAAAANAACQAAEAAAAEIBIAAwAQIAAAAAg=</HashCode>
+      <FileName>DataSchema\DataType.cs</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Enum Name="DatabaseSchemaMrg.DataSchema.ConstraintType">
+    <Position X="3" Y="12.25" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAgAAAAAAAAAAAACIAAAAAIAAAAAAAAAAAAAgAA=</HashCode>
+      <FileName>DataSchema\ConstraintType.cs</FileName>
+    </TypeIdentifier>
+  </Enum>
+  <Enum Name="DatabaseSchemaMrg.DataSchema.SqlType">
+    <Position X="4.75" Y="12.25" Width="1.5" />
+    <TypeIdentifier>
+      <HashCode>AAAAAAIAAAAAAAAAFAAACAACAAAAAAEAAAAAAAAAAAA=</HashCode>
+      <FileName>DataSchema\SqlType.cs</FileName>
+    </TypeIdentifier>
+  </Enum>
+  <Font Name="Tahoma" Size="8.25" />
+</ClassDiagram>

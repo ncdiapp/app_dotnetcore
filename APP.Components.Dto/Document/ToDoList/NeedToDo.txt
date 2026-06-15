@@ -1,0 +1,2999 @@
+﻿To Do LIst
+
+
+SSAS:
+	To Fix or chagne:
+
+		Create App From Excel, uploading need busy loader 
+		Import Excel, Click simulate, should not auto close window.
+		Import After finalize, auto go to search view page.
+		Move Import Excel (Renmae to Import Data Model To excel) out to previous window, put it before data model design.
+
+		need to restore demo db from master.
+		Then clean master db,hide app menus
+
+		Website Design User expierence.
+		
+		Website Template Default Input auto complete style need to clean	
+
+		
+
+		Form Design: Convert (single field) to (Filed in Stack Container)
+
+		
+
+		Entity Mgt, put row related action to row context menu
+
+		Ocr, New UI, Add Ocr Column.
+		Application Setting: Ocr Service Provider, Built-in, Google, Microsoft
+						
+	Done:
+		on left menu: SaasApplicationSetup replace by ApplicationSetup
+			Move "Create My Default Dashboard" to bottom.
+			Move * Default dashboard to top
+			Click Dashboard  => to go default dashboard.
+			Click tiangle => show dashboard ddl
+
+			Same activation url parameter , need add a random id in url.
+			saas user, companyinfo, database regitration mgt. Master db need saas user comany and db management.
+			Rename company on user db, need to update master db.
+			Offical Site registration, auto fill by browser does not work.		
+
+			Excel Import Mgt, Context: View Import Setting, rename to Edit Import Setting
+			Excel, default Table Name		
+			Import first table default name: excel name + randomId		
+
+			Official Site Need to be able to design.
+
+			Registration: Your account change to Your Work Space
+			After register, Login too long, try to make the first time customer app url on registration waiting process.
+			First time after login, white screen long time after dashboard is shown.
+
+
+		Main Application --> Master DB,
+			Client Applications --> Client DBs
+		
+			1. Base on application path (main or client), mapping to the starter index page.
+
+			2. First Time Registration Master DB.
+
+			3. Extract OOTB Application From Master DB to User DB.
+
+			   Each Application, have global source and private source. 
+
+
+
+Official Site
+Example:
+https://www.reify.com/enterprise-low-code-application-platform/
+
+https://decisions.com/no-code-platform/
+
+https://www.blaze.tech/
+
+https://www.outsystems.com/
+
+
+Imported Table:
+a)RefNo: Auto Number
+b)Mapping Logic Key Link Target
+
+
+Responsive Design Rule:
+
+  1 Use a responsive framework: Use a responsive framework, such as Bootstrap or Foundation, that provides a grid system and pre-defined classes to help you create responsive layouts.
+
+   2 Use flexible and relative units: Use flexible and relative units, such as percentages, ems, or rems, instead of fixed units like pixels, to ensure that your page elements scale proportionally with the viewport size.
+
+    3 Use media queries: Use media queries to apply different styles to your page based on the viewport size. This will allow you to create a different layout or adjust the size of elements for different screen sizes.
+
+    4 Optimize images: Optimize images for the web by reducing their size and resolution. Large images can slow down your page and make it load slowly on mobile devices.
+
+    5 Test on different devices: Test your page on different devices and screen sizes to ensure that it looks good and functions properly on all devices.
+
+
+Can Do now:
+ 6. App Builder: Add folder tree management
+ 7. Database Management (Table and View Management). Need to add structure to save table owner scope type 
+   (Standard, customer, built-in) and set if a table isCustomerizable.
+ 8. Provide API for List Edit Transaction: Need a setting to disable delete rows (only allow add or update rows)
+
+To Do:
+ 
+ 11.a Import data from excel to db and erdiagram. ProductLegacy  data imports csv,Json, xml
+	ER Diagram New Table, PK allow no-identity.
+
+	b. Import Matrix Child Unit data.
+
+	c. API import data
+		c1. Simple Import: Entity import from excel with auto generate API
+				Provider API, APIType: Data Source Import.	API Coce: EntityId
+		c2. Complex: Import file Condition Import. GT 001: Dept, 010: SubDept
+
+End User uses The API to insert/update entity Data.
+
+		
+  13. API Entity Convert To Ex Key
+
+
+
+ 21. Form List Value Edit Issue.
+ 
+ 
+ 24. Excel/API Import need to implement transform/filter condition.
+	Data Model with filter codition. change the way of child unit table query: from "add temp table pk column" to "join target tables"
+
+
+ 26. Upload To Desktop, auto process Update
+ 27. need to let user Create API Later after created Upload Setting.		
+
+ 28. My Desktop: Domain Desktop + My Desktop.
+ 29. Put file mgt folder on desktop, set folder file upload post option
+
+
+ -----------------------------------------------------
+
+  18. New UI Design. Ref to New PLM
+	 Polish My Calendar, Project, .... Anable Projeet Menus, tasks, kanban
+
+
+
+ 30. From need navigation First,last, next, previous, (Result From Search View)
+
+ 9. Transaction Group (Like template/tab)
+	Use Search view linked target to group form.
+
+	   
+   Search View Filed, Save auto assign Default Sort
+
+   Application Builder: 
+	Data Model Template-> 
+		Available Data Models
+			Link Setting.
+
+  Template Header:
+	Template Main Items
+	Template Shared Items
+
+
+
+	A) Virtual Transaction Unit (no DataBaseTableName)
+
+	B) Command : For each loop data source (Grid DDL Unit)
+
+
+ 31. Header Search View Layout Design
+
+ 32. Mobile
+   1) Mobile Dashboard
+   2) Mobile Default Dashboard.
+   3) Moible Header Menus
+    4) Command button add to product bottom right popup menu   
+   5) Folder Dropbox change to click instead of drag & drop
+   6) Need to add QR Code Control Type;   
+   7) Auto Close Left Menu
+  
+   8) History as top menu icon drop down
+   9) Grid Mobile width < 800, allow popup
+   10) Availabe Select Box Issue, 
+		dont' need editor popup
+		add selected does not work.
+	11) Quick Creation
+	12) Quick Creation List Menu Editor, Data Model Selection
+	13) Search Result add pencel button
+
+	14) Eshop Tree View Mobile
+	15) File Mgt need to add Left Folder Navigation Button
+
+	16) Missing some functions on mobile navigation controller
+		navigationSvc.scope(...).openApplicationPackage is not a function
+
+    17) Eshop Tree View Mobile, navigation fix
+	18) Print View Cannot go back. no bottom right button.
+	19) Template Header Does not show
+	20) Transaction Group Url Navigation (Paste Url into Browser address bar and load form group page)
+	21) Transaction Group Tab Item Sort Order Issue: Need to default Select first order item
+
+	22) Form click to show Current Link URL Popup, with URL + QR Code
+	23) Print Form Design, use webpage design logic, save to json.
+
+33. QR Code Control Type
+
+34. PWA - Progressive Web Apps
+	A progressive web app (PWA) is a type of web application that has the capability to deliver a native app-like experience to users on their mobile devices or desktop computers. PWAs combine the benefits of both web and native apps, providing users with fast and responsive experiences while eliminating the need to download and install an app from an app store. This is made possible through the use of modern web technologies such as service workers, which allow for offline functionality and background caching. PWAs are also highly discoverable, as they can be accessed through a web browser and easily shared through URLs. Benefits of PWAs include improved user engagement, increased conversion rates, and reduced development costs compared to traditional native app development.
+
+35. Dashboard,
+	2) Reset rename to "Initial Layout", set row X col
+	5) Remove Append Buttons
+	6) Show Root Container, with padding.
+	4) Cell with child cell, only the most inner cell need to be highlighted. Button
+
+	1) Virtical Split need parameter, how may rows split to.	
+	
+	7)Undo / Redo
+	
+
+
+36. Form Design, Page Design. use json to store web page design.
+
+37. Search Dashboard View
+	2) Search view, need temp (calclaton) field.
+
+
+ 20. Version History Check, save form json data into AppMessage Table. On form page, Add "History Data" button after List Value Edit button.
+
+
+ 14.a SAAS Register and create user db.
+    b. All Demo Cases: create SAAS Demo User DB Site.
+		File Mgt, Project MGT, School MGT, Expense MGT, Fit Concierge, AxisLight, HR Mgt, Hypotech, ERP & Accounting
+
+
+
+ 10. Command (Operation task) diagram design. Composition command visualized design (Like the old workflow diagram)
+	 Multi Model Integration + Command + Backend Job 
+
+ 12. API Athentication
+ 17. API: Integration Token Generator
+
+ 15. Intergration automate for project
+
+ 16. Wijmo Update: (For Pivot View images), need a lot test after update.
+
+
+
+ 19. Official Website Intro our APP Platform
+ 
+  22. Workflow Automation (Backend Task based on data model).
+
+  23. Pivot Editor Formula.
+   25. Excel/API Import need to process Pivot
+   To Do: Aggregation Editor Grid, add calculation Logic. denormalize detail rows=> calculation => normalize to pivot
+
+
+
+
+
+
+
+
+	
+	API Setting To DO: 20221007
+	
+	authentication management 
+
+		backend job mgt
+
+
+	
+		excel export/import
+
+		batch job
+
+		json, xml, csv, xsl
+
+		run main command   at the backend
+
+		for example:   backend job :export search  view as csv 
+
+		main command  
+
+
+
+
+	Web Desgin Page Editor
+	1. Code Editor does not need dom tree ui, only need drag drop new element
+	2. Code editor needs a button to syncrhonize from code to dom tree.
+	3. Validation Code, add/change designid and other attributes.
+	4. Save code / Switch to design tab need to call synchrnozie and validation
+
+
+
+	Recap:
+	1. 以WEBSITE BUILDER 为主，尽量限制使用VSCODE。
+	2. 尝试Fit Concierge完全用工具拽出。
+	3. Page Design, Dom Property用POPUP显示。让LINK TARGET/COMMAND能编辑修改。能NAVIGATE到对象页面。
+	4. Page Design, Drill Down到对象或引用页面。
+	5. File Folder: need to have a find file by name function.
+
+	Help Factory Rule:
+	1. A help factory need to define local private variables.    
+	2. A help factory need to have a init function.
+	3. Each help factory public function need to have clear parameters, and return a private function call result.
+
+
+	Web Site Design To Do:
+	1. Ng-include
+	   a) Landing Page Ng-include target page editor (Done, need to fix live site code)
+	   b) on any page, if there is a ng-incude, need to navigate to target page editor.
+	   c) drag-drop/add ng-inlude UI control to a page.
+	   d) wizard page creator setting, auto generate main page and ng-included pages for each wizard step if needed.
+	   
+	2. Source Code Editor, try to change to Ms. VS code library. Code intelligent.
+	3. Draging Drop Form/Search, need to binding to new structure. 
+		Example {{ $scope.formData.ClientProfile.Firstname }}
+	
+	4. 
+
+
+	WebSite Project Maintainence Review.
+	1. Form Unit and Field Id need to be readable, need to be replaced by name
+	2. Big HTML views (like trainer profile update wizard), too big, need to be built with multiple partial Views
+	3. Action Commands: how to find what a command do?
+		Example: Add Child Grid Row: ng-click="addChildGridRowAndOpenRowEditPopup(8822, controllerModel.flex8822);"
+
+		List all availabe public $scope functions (Javascript handler)
+		
+		1) Master Detail Functions.					
+		
+			define public functions, filter for user
+			//$scope.public_hideGridUnitRowEditPopup = $scope.hideGridUnitRowEditPopup;
+			//$scope.public_A = $scope.hideGridUnitRowEditPopup;
+			//$scope.public_B = $scope.hideGridUnitRowEditPopup;
+			//$scope.public_C = $scope.hideGridUnitRowEditPopup;
+			  
+
+		2) Customerized functions:(User Defined Functions)
+			keep built-in code on appWebsiteGenericNavigationCtrl.js and allow user coding on userWebsiteGenericNavigationCtrl.js.
+			Wizard Page navigaiton, let user write customerized functions on userWebsiteGenericNavigationCtrl.js.
+
+		3) Search Result (View) open a form navigation, Note: !!!must be created on website design.
+			Auto create open form js function on appWebsiteGenericNavigationCtrl.js
+
+		4) Find Trainer: Form + Search
+			 Too many api calls, should be one api call to get search result.
+			
+
+	4. Tab design 
+		1) add table container to "Add UI Element" for row x column layout design
+		2) Command, Linked search, after drag to form, the button does not have enough properties to edit/change.
+		3) Only need to show public command.
+		4) Data Model Design, Navigate To search, Need to able to open search.
+
+
+
+
+
+	Page Design
+	1. Navigation Editor 
+	2. CSS File Edit Class on design time
+	3. Dashbaord wijget Need text placeholder
+	4. PreviewPartnerId Columm Structure
+
+	5. Card View Design
+	6. need to fix defice size specific style
+	7. Dashboard Drilldown search (Communication Between Widgets)
+
+	Fit:
+	1. Daily Tips, add a new search and form like BLOG.
+	2. Virtual session Trainer can confirm completed only if meeting started (need a meeting status field). Start meeting, call command to update meeting status.
+
+
+	202103
+	1. 提供给第三方API借口，让别人写UI.
+		我们需要准备API工具
+	2. Website Designer. 加个API MANAGEMENT
+
+	3. User Session Security
+		1) 每个公司建立时都要建个ANOYMS ACCESS USER和相对应的TOKEN
+			Company Anoymas User
+		2) Anoyms USER相对应的USER ROLE，设置各种SECURITY。来限制SEARCH VIEW和FORM的SECURITY
+		
+		3) On BaseWebApiController Initialize(), need to check sessionid type, if it's annoysmous session, deny access.
+
+
+	20201231
+	1. Command, allow new type call client javascript
+
+	20201221
+	1. Trainer Payment Remove Bank Account Field, keep only paypal email and trainer address.
+	2. Google address Search, populate cicy state counry from google search result.
+	3. Comission rate on Price Template.
+	4. Clean redundent payment info.
+
+	20201213:
+	1 Paypal
+	Fit: Merge Live and Dev DB
+	Use Dev Structure and Transaction Search Structure, Use Live Runtime data. merge into dev db.
+	Put into session table
+	
+	2. Remove Session Summary Chatbox
+
+	3. accepted session, Session Summary form, 
+		when user clicks confirm completed button: 
+			Confirm message
+			if yes: call paypal capture api
+				1. receive money from client.
+				2. payout api: pay money to trainer based on commision rate. for now, use a fixed rate for trainer.  
+					session form need to add instructor commision rate with a default value on transaciton field setting.
+					
+				3. Payout payment method selection: paypal account, bank-deposite, e-transfer
+
+	4. Delete Engine:
+		1. Recyclebin: Set flag on master entity
+		2. Delete SQL Script; if delete a master entity, use scirpt to delete child table records.
+		 
+
+		
+
+
+	1. svc. security 
+		Before Login, need to call these svc method
+
+		adminSvc.RetrieveAllAppSetupDtoList
+		adminSvc.retrievePassword
+		adminSvc.GetUserContextBySessionId
+		adminSvc.RetrieveNoneMgtUserTreeMenu
+		adminSvc.SendEsiteUserPasswordRetrieveEmailByLoginNameOrEmail
+		adminSvc.SendPublicMessage
+
+		externalUserRegistrationSvc.ESiteLogin
+		externalUserRegistrationSvc.LinkExistMasterDBUserToESite
+		externalUserRegistrationSvc.ESiteUserRegistration
+		externalUserRegistrationSvc.ESitePartnerUserThirdPartAccountLoginPostProcess
+		externalUserRegistrationSvc.ESiteUserQuickRegistration
+
+
+
+
+
+
+
+
+	1. Users Mgt Change.
+	2. Message Templates for Active User Account, and Password Recovery (Forgot Password)
+	3. After Active User, need to auto put email address on login screen
+	4. Upload Insurance Busy
+	
+
+	Fit change:
+	1. landing page speed
+	2. approve trainer on mgt, interview. based on skill set, certificate, payment, insurance
+		add interview status on trainer profile, add 4 status for above sections.
+	3. Trainer login, by trainer profile status, loading different pages.
+	
+
+	4. remove "edit availibility now" button from trainer wizard
+	5. 
+
+
+
+	1. New Feature: Form Iframe:
+	Design an Iframe into Form.
+
+	2. Send multiple dynamic parameters from search view to external page or url.
+		Link target setting.
+	
+	3. Session Form, add meeting info button, add zoom meeting.
+	4. cancel zoom meeting
+
+	new xd file design website steps
+	1. Import GEnerate Template
+	2. Set Master Page Layout
+	3. css looks and feel
+	4. Detail Pages Desgin
+
+	2020-10-12
+	1. Data Model Design. Child Unit Link to Parent PK, if emtpy, give warning msg.
+	2. When Rename DB Columns, need to rename all related transaction fields.
+	3. Task List Model, Search View DDL Setting  Preview
+	4. Entity Structure Edit, Set Data Edit List Model ID
+
+
+	CompanyIndex.html
+
+	2020-09-30
+	1. Online Quiz with new structure
+	2. School Mgt Class Create Order, Class Schedule, (Referece to fit)
+	3. Message By Transaction Group
+	
+
+    2020-09-29 
+	Online quiz ( testing) Wizard
+	school Mgt ( add teacher cost/ student fee / in Class level)
+	Message( need to change add user based on busienss type)
+	School go live ( student portal, teacher portal)( canlender,lession class, cost/fee )
+
+	Create Order From Class
+
+	Fit.
+	1. Ratting
+	2. Trainer Session Approval(Accept) By Trainer
+	3. Session Payment
+	4. Session Zoom Meeting
+	5. Trainer Approve
+
+	Security
+	Client:
+	Individual Sessions (Filter By Current Client)
+	My Calendar (Filter By Current Client)
+		By Type, Status, diff color, diff openned form
+
+	My New Session Request List (Draft):  Edit, Submit
+	My Approved Session List:  View Only
+
+	
+	Trainer:
+	Individual Sessions (Filter By Current Trainer)
+	My Calendar (Filter By Current Trainer)
+		By Type, Status, diff color, diff openned form
+
+
+	My New Session Request List: Approve or Reject
+	My Approved Session List: View Only
+	 
+	
+	
+	ConverSationEditor Routepage on website
+
+
+
+
+	Import FIt Sit: (done)
+	RouteState.js
+	1. MyCalendar page need to be built-in page, sould not be deleted (done)
+	2. Should not create AppEsitePages and Insert route code when save: (done)
+		pages/BuiltIn/*.html
+		pages/Employee/HomePage.html
+		pages/Customer/HomePage.html
+		pages/Supplier/HomePage.html
+		
+
+	Website Builder Todo:
+	1. Website Resource: add button and API: Import and Download (done)
+	2. Edit Css, JS, Html By File Type in folder, drop tabs html/js/css (done)
+	3. Add/Edit Page Route Code, auto insert/modify RouteState.js (done)
+	4. Auto Add Link to Page Button with auto generated script
+	5. Flex Grid
+	6. Linked Search Call Back (Grid Talbe, Card, Google map) (done)
+	7. Wizard Section Complex Pages, open other route Pages (Drag drop auto generate) (done)
+	8. WebSite Static Pages and anguar Pages.
+	   Home, About Us, AppPage(With AngularJs Controller), Contact Us
+	9. Import CSV files to generate tables.to remove dataSourceRegisterId from all UI objject
+	10. Security (Cusotmer Login, Supplier Login),need
+	11. Database Managment, DB View Editor
+		a. New Button Pages
+		b. Database Tools Button
+		c. Dabase After Import Preview Does not work, did not recycle
+		d. hide search view, entity ddl columns
+
+	12. Form To Form Navigation (Linked Target Type)
+		Search To Search Navigation (Linked Target Type)
+
+		--20200923
+	13. Defualt Value System Token, Current Partner;
+	14. Partner Notification
+		Get all user from parnerId, and send email to these user
+	15. Chat box on webpage
+
+	16. need to call Payment gateway api. get payment done.
+	17. Host Video Conference.
+	18. excel export font color
+
+
+	1. Calendar Website (done)
+	2. Calenar Mobile (done)	
+	3. Session, user book Session, Ratting system control
+	4. integrated with Zoom meeting or other 3rd part meeting app.
+	5. Mobile Device Notification, (15 min before meeting notification)
+	6. Payment
+	7. User Dashboard: Client, Trainer
+	8. Fit Game with Nagive Mobile Integration
+	9. Social Media Sharing
+	10. Offline Model: game, form (using local storage/file system? partially synchronization)
+	11. Application Functionality Integration: Comapny Official Website integrates with Mgt App
+
+
+	AppESite: need to add column SitePublishedUrl
+	AppSecurityUser: add RegisterFromEsiteId
+
+
+
+
+	周3 0805 升级，HOME PAGE
+	Should say activate 
+	Should use email as user name
+	Avoid suspicious link
+	Measurement height and weight should be imperial knch and lbs
+	Calendar for birthdate is not usable to complicated to find year of birth
+
+	What We Do
+	Fit Concierge is a health and wellness platform that connects users with live and virtual instructors. All of Fit Concierge instructors are highly vetted and experienced. We have created a space where a user can book any kind of health and wellness instructor, all in one place. Our Wellness Calendar allows users to curate their own schedule to meet all of their health and wellness needs, and to invite friends to their sessions directly from the application. 
+
+	Our Mission
+	Fit Concierge has one mission in mind: To help everyone accomplish their health and wellness goals. We specifically hand-pick vetted instructors to keep users accountable and motivated on a daily basis. We know that everyone is different, and everyone responds differently to different forms of fitness. Our Wellness Calendar allows users to see their upcoming week or month of wellness sessions and find the perfect balance of mind and body that works for them. Staying accountable during the work week, with kids, traveling, and all other distractions is now easily manageable with Fit Concierge. 
+
+
+	HomePage Change
+
+	Google Map Find My Location Button
+
+	After Login Home Page Background change to Landing Page Yoga Picture
+
+	Payment Method page, delete cc picture, 
+
+	Arrow Left and Right
+
+
+	
+
+	周日 0808 升级， TRAINER REGISTRATION
+
+	ALTER TABLE AppESitePages add column FileFullPath nvarchar(500) null
+
+
+	App Publish:
+	单独产生MGT和WEBSITE的PACKAGE
+
+	Esite File and folder:
+	AppESitePages 中的 FILEFULLPATH应该存相对路径。让用户下载ZIP包和上传ZIP包解压时，能找到配对的文件。
+
+	
+
+	Api To DataModel Layer
+	1. Instead of load/save from/to database, need to implement a Layer to let data model get/set data from API call.
+	2. All the call to save/load from database, need to implement on api-datamodel layer. 
+		Example: Cascading, Calculation
+
+	Save as:
+	1. Transaction and Form
+	2. Search and View
+
+
+	3. need to fix Form Save uploda video on sibling
+
+
+	ESITE PAGEs
+	实现ONLINE SITE BUILDER和LOCAL IDE FILE的同步：
+	1. 在ESITE BUILDER里产生PAGE，
+	2. 托拉拽产生FORM/SEARCH/VIEW CONTROL HTML。
+	3. local file NAME CONVENSION: [PageID_INTERNALCODE], save to local machine folders
+	4. Modify pages on local machine
+	5. batch upload from local machine to online site builder.
+
+
+
+
+	Fit Group Session:
+	GROUP MEMBER自动发邀请,在EMAIL中点LINK加入GROUP
+		//Global Service,  Account service 
+        [AllowAnonymous]
+        public ActionResult As(string servicename)
+
+
+	ESITE: 
+		注册USER时，需要知道COMPANY
+		登录时，需要CALL HOME controller的ESTORELOGIN
+
+
+
+	Recap:
+	1. 能把WEBSITE PAGE镶嵌到MGT的DASHBOARD上
+	2. scope vs navigationScope
+		1） Search and Form ctrl里写下这句话：
+			$scope.navigationScope = navigationSvc.scope();
+		2） 	在Search and Form WebPage,JAVASCRIPT ADD ON FUNCTION:
+			navigationScope.test123 = function() {
+				// TEST
+			}
+
+	3. WebPage as Mgt Route Page:
+		To Do:	1. Menu Management: Need to add SitePage Tab 
+				2. Linked Target / Linked Search: Link to Site Page setting
+
+	//4. DB Table Mgt (not to do now)
+		//Creating New Table, Allow to set PK Identity Specification Yes/No (Default Yes)
+
+	//5. On App User Tables: School sch_Student, Fit Fit_Client, need to add FK link to AppBusinessPartner
+	//	sch_Student and Fit_client will be Simbling Tables
+
+	6	Extend User Entity (sch_Student, fit_Client) must share the same PK as App User Entity (AppEmployee, AppBusinessPartner)
+
+
+	7. Shared Extended PK, Entity
+		Application Setting.
+		Employee->securityUser, Customer->Partner, Vendor->Partner
+
+	
+
+
+
+
+
+	May 2020
+
+	Search Data Criteria
+	Data Range, Multiple Date, Regular (Single Date Picker)
+
+	1.	QA Form link to Customer or Supplier User Profile:
+
+		If single selection Qustion, 
+
+		**** IF Multipe Selection, add a control type for multiple selection, link to child table.
+
+		
+		每个问题一个小FORM (DATA MODEL)，连到一个APPWEBSITEPAGE，回答完一个问题后，NEXT按钮 做当前问题FORM 存储，然后切换到下一个问题的FORM。
+
+	2. Google Map Integration
+
+	add control Type: 
+		1. Available Select
+		2. Google Map
+
+
+
+
+
+
+	1. Goolge sign call back with email
+	2. use email to register if not exist 
+	3. create sesson with email
+	4. 
+
+
+
+
+
+
+	Drag drop page to create $state.go function on controller js
+
+
+
+
+
+    loading site reference files
+
+	MGT
+	   1 line reference include below:
+	   baseCommon.cshtml: angular (bootstrap or not?), controllers, 
+	   ...
+	   other @Scripts.Render("~/bundles/Scripts1x/.....)
+	   ...
+
+
+	ESite
+	   if Is Ecom
+		  1 line reference include below:
+		  baseCommon.cshtml
+		   @Scripts.Render("~/bundles/Scripts1x/eshopjs")
+			@Scripts.Render("~/bundles/Scripts1x/eshopRoute")
+			@Scripts.Render("~/bundles/Scripts1x/eshopCtrl")
+			...
+	
+	   else
+		   1 line reference include below:
+		   baseCommon.cshtml
+		   .....
+		  ...
+
+
+
+AppWebsite File Mgt and css reference:
+
+0. Create WebSite: Auto create file mgt site folder
+1. Upload all file and folder as a zip file.
+2. RequestZipFile to unzip to Cusotmer Repository Folder
+3. File Request Mode: Unzip File, and create file mgt folder hiarachy to match zip file hiarachy
+4. extract folder path. each uploaded file path need to match external source path
+5. Run time loading css font or img, replace css url path from org path to file mgt path
+
+
+
+AppWebsite Loading:
+	2 file need to be injected dynamicly 
+	Navigationctrl
+	RouteState
+
+
+20200411
+Multiple HOST TEMPLATE PAGE, (Desktop, Mobile, Estore, ....)
+
+每个HOST HOST TEMPLATE PAGE 有自己的NAVIGATION CONTROL,LAYOUT, THEME
+	(Example: on MgtMobile.cshtml,  <body class="desktopBodyClass MGT" ng-app="app" ng-controller="mobileNavigationCtrl" ng-cloak)
+
+navigations SHARE NAVIGATION SERVICEs and most javascripts (引用公共的JAVASCRIPT FILES)
+1 RoutMapping for all navigations （一个MGTROUTE文件给所有HOST 页面引用）
+
+
+
+20200320
+Workflow
+
+Creating custom Zoho CRM integrations using Zoho Flow
+https://www.youtube.com/watch?v=Rvfc80ZqBWo
+
+
+20200317
+
+Estore Setting Menu:
+	New Table: AppESite
+			   AppESiteCatalogue
+
+				AppEStoreList (Catalogue List)
+
+	EStore Management Settings:
+
+
+		Catalog Setting: SearchView,   Cat 1, .... cat 3, sort, active
+		DataTransferID: DataTransferID,
+
+		Process Control: Condition/Action(command) logic
+			Estore Command, Create Save Order -> Payment -> Update Order
+			1 Transfer Form Data To Data Model, 
+			2 Validation Data Model, 
+			3 Save Data Model.
+			
+
+		Estore Partner End User Registration: Estore User Registraion To Customer Account(Student) Data Model Mapping
+
+		Estore Shipping Address to SecurityUser/Customer Account(Student) Data Model mapping
+
+		Estore Payment Setting: Paypal/Credit Cards
+
+		My Order List Setting:
+
+		My Address(es) Setting
+
+
+		SubmitCustomerInfoWorkflow:
+			Shipping page Submit (Continue button) to trigger the workflow.
+			1. Transfer Customer Info to CustomerDataModel
+			2. CustomerDataModel: Veryfiy email address   if email exsit, get customer id, if not, create customer get new id
+			3. get Eshopbag customer id from step 2, set it for order customer
+			
+		
+
+20200303 New ESHOP
+
+http://localhost/plmapp/Home/AnonymousAcess?RegisterKey=gimso.com&FormId=6447
+
+
+http://localhost/AppBuilder/home/Estore?RegisterKey=gimso.com
+
+
+sean, 11:34 PM
+Update [dbo].[AppSecurityUser] set LoginName='Anonymous' ,UserName='Anonymous' ,DomainID=7 , MyOwnCompnanyID=null,OrganizationID=null where UserID=2
+
+
+sean, 11:44 PM
+Update [dbo].[AppSecurityUser] set LoginName='Anonymous' ,UserName='Anonymous' ,DomainID=7 , MyOwnCompnanyID=null,OrganizationID=null where UserID=2
+select * from AppSetup where setupcode ='SystemAgentUser'
+need to update setupvale to Userid=2 from applcation
+-- need to add shopm applcation seeting to EmAppUserDBApplicationSettings
+
+need to insert anonymous user t all user db
+
+
+
+
+
+
+
+
+
+
+
+---- paypal
+	new pay pal api:
+	Doc:	https://developer.paypal.com/docs/checkout/integrate/
+			https://developer.paypal.com/docs/api/overview/
+
+	Test Payment: https://developer.paypal.com/docs/integration/direct/payments/test-the-api/
+
+	paypal sandbox buyer account
+	xianghaohu@gmail.com
+	Hxh$hxh19
+
+	paypal sandbox seller account
+	sb-9y43zt1190599@business.example.com
+	Hxh$hxh19
+
+
+	sandbox buyer account
+	First Name: Xianghao
+	Last Name: TestPaypalAccount
+	Email ID: xianghao@test.com
+	Password: Hxh$hxh19
+
+
+
+	Test Visa
+	4263982640269299
+	02/23
+	837
+	Success
+
+	// check out using PayPal
+	// for details see:
+	// www.paypal.com/cgi-bin/webscr?cmd=p/pdn/howto_checkout-outside
+
+	// check out using Google Wallet
+	// for details see:
+	// developers.google.com/checkout/developer/Google_Checkout_Custom_Cart_How_To_HTML
+	// developers.google.com/checkout/developer/interactive_demo
+
+
+
+---- Json Parse
+1. 取PATH
+2 .Jtoken query取JSON某节点数据
+
+https://www.newtonsoft.com/json/help/html/SelectToken.htm
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+20200222
+1. Orgnization Role, 自动把ORNIZATION USER放这个ROLE里
+   Supplier Role
+   Customer Role， EXAMPLE: ROLE STU1, ROLE STU2
+2. AppsecurityRole: ADD COLUMN: RoleUserTypeID, BusinessPartnerID
+	use ISBUILTIN COLUMN来表示建立ORGNIZATION/SUPPLIER时自动产生的ROLE
+3. TRANSACTION ，SEARCH,VIEW等等的ROLE/USER，从反向选择变成正向选择。UNIT, ACTION,FIELD保持反向选择。
+
+20200217
+1. Search Creteria Cascading. If parent ddl is empty, child should show all ddl items
+2. Search View linked to Search, default criteria values does not trigger cascading
+3. Grand Child, need to remove default blank row.
+
+
+20200214
+1. CLASS增加状态：CLASSSTATUS:
+	 Scheduling, Open To Register, Registration Closed.
+
+	需根据状态锁住：循环排课，手动排课。CALENDAR排课？
+	加ORDER时状态必须是： Open To Register
+	 
+2. CLASS LESSON SCHEDULE:
+	在CLASS EDIT里预先设置 Hours Per Lesson COUNTED, 不论具体排课没节实际多少，ORDER都按CLASS里的这个值走。
+
+	CLASS EDIT里有PLANNED TOTAL HOUR和PLANNED TOTAL LESSONS
+	当CLASS状态为 SCHEDULING时（允许注册前），每次进行完循环排课，单独排课，CALENDAR排课后，总LESSON数和总HOUR数都变了。需要更新CLASS里的值
+
+	TODO，在CLASS EDIT里放COMMAND BUTTON，重新计算拍完的课的总数和HOUR数。
+	当PUBLISH CLASS TO REGISTRATION时，也用COMMAND执行，REUSE上边的COMMAND计算，然后把CLASS STATUS改成OPEN TO REGISTER。
+
+
+
+	其它状态时不重新算（因为ORDER都已经下完了）
+
+3.
+
+
+
+
+
+
+
+
+
+20200204
+1. Form Master Deatil link target, implement "Edit on Popup" (on root and grandchild unit)
+
+
+
+
+
+TransactionUnitNavigationActionEditor
+
+Link To Other Form:
+	Edit = 1,
+    Create = 2,	
+    Delete = 3,       
+    Preview = 5,
+    CallExternalMethod = 6,       
+    EditUserLogin = 11,
+    EditOnPopup = 12,
+    CreateFromExistingItem = 13,      
+
+Link To Data Presentation:
+	AddFormGridRow = 1,
+    UpdateFormData = 2,
+    ViewSearchResult = 3,
+	UpdateFormByExternalServiceCall = 4,
+    GridRowExclusionSelector = 5,
+
+
+Structure Changes:
+	
+AppFormLinkTarget
+	ConditionTransFieldID	
+	DataTransferID	
+	OpennedFormAutoExecuteCommandID	
+	Sort	
+	IsPopup
+	PopupWidth
+	PopupHeight
+	IconName
+
+AppTransactionUnitLinkedSearch
+	ConditionTransFieldID
+	CallBackCommandID
+	Sort	
+	IsPopup
+	PopupWidth
+	PopupHeight
+	IconName
+
+
+ public enum EmAppTransactionUnitLinkTargetActionType
+    {
+        Edit = 1,
+        Create = 2,
+        Delete = 3,       
+        Preview = 5,
+        CallExternalMethod = 6,       
+        EditUserLogin = 11,
+        EditOnPopup = 12,
+        CreateFromExistingItem = 13,      
+    }
+
+public enum EmAppLinkedSearchAction
+    {
+        AddFormGridRow = 1,
+        UpdateFormData = 2,
+        ViewSearchResult = 3,
+        UpdateFormByExternalServiceCall = 4,
+        GridRowExclusionSelector = 5,
+    }
+
+
+
+
+
+
+
+
+20200111
+1. School
+Delete and change Lock Logic. Need to discuss
+	Order Finished, 
+	Class Lesson Confirmed, 
+	Student in class but want to change lesson date/time
+
+2. Menu Management UI
+
+3. Multiple Langauge
+
+4. All Date Issues
+
+5. Report (Active Report)
+
+20200107
+
+Time Zone Issues
+	
+--- Rule: ------
+	ControlType DateTime:	Store UTC datetime in DB; 
+							Save: Browser Auto Converted To UTC; 
+							Client Retrieve: Call ConvertToClient
+
+	ControlType Date:		Store Client date in DB; 
+							Save: Browser Auto Converted To UTC => Truancate Time, 							
+							Client Retrieve: Keep same as DB (Client date)
+
+	ControlType Time:		Store Client time in DB; 
+							Save: Browser Auto Converted To UTC => Convert to Client Datetime ==> Truncate Date, 							
+							Client Retrieve: Keep same as DB (Client Time)
+
+	Server端计算必须以CLIENT TIME为主（模拟成CLIENT Browser TIME）
+
+
+1. Form MasterDetail
+	Retrieve:			
+	Save:				Need to Convert UTC Time for DateTime Type
+
+3. PlugInWebApi Call TimeZone Issue		 
+
+4. Project and Task Date DateTime Issues
+
+5. Calendar Repeat and Specifict Days
+
+
+Other Issue and To Do:
+
+1. Cascading on List Edit Form
+2. Cascading on Mass Update (2 type of mass update, one will be fixed on list edit of above issue)
+3.** DateTime On Search Criteria  Start Date End Date Result Issue
+4. ** User Profile
+5. ** Student Course Hours Consumed need to add Start time Filter and View Column
+6. 需要加一些ALTER TABLE SCRIPT / ALTER VIEW/ VIEW DESIGN
+	需要RUN DATA DEFINITION SCRIPT.
+
+7. Pivot Setting with Aggregation
+8. Time Load View
+9. ** Calendar View Column Save Issue (Required Fields)
+10. Folder View Navigation, click folder load data error
+11. Create Action should not select row data
+12. Conditional Hide Show and Calculation Validation Confilict
+13. TimeSpan Date DateTime Boolean Expression Calculation
+14. Command open new Form with data transfer: need to have intial cascading source
+15. ** Test Run Refresh (Search, View, Form)
+16. ** Folder/Search Navigation Creation UI Approvement
+17. User Notification to Teachers and Students
+18. Teacher and User Login: SecurityUser <==> Business Entity
+19. Allow Cascading to use dbview as relational table
+20. Calendar View Start and End Time Range Setting
+
+--- Datasource From ID pass on front
+
+
+
+
+
+
+
+20191215
+AssetsItem table only store global imported items.
+Application Data Model, Searches... are stored in AppTransaction and AppSearch Table.
+
+
+20191211
+7. Structure Change:
+	Table Diagrams
+	--List Menu Integration Query Column
+	Transaction Menu Button HideShow
+	Formula: Highlight TransField, Highlight Class Type (Risk Level): High Middle Low
+
+
+
+20191204
+1. Link target, link search, need to close context menu after click.
+2. Form Grid add row by linked search, need to trigger cascading.
+3. Command Query
+4. Transaction, Hide/show save calculate buttons
+5. Condition Lock Setting UI
+	Lock Whole Transaction
+6. Transaction Editor, Add New Table and add unit
+7. Search View Link Target: Create/Delete Call Back refresh search result
+8. Data Model List, Import Existing Data Models
+9. Form contains Search
+10. Validation With Style
+
+20191105
+	1. New Web Common Project
+	2. Security Token:
+		5 place use security totken:		
+		1) Main Application
+		2) External API
+		3) Report Print
+		4) Internal Form
+		5) Inertal API
+
+		For each saas db, need a agent user for security token api call
+	3. 
+
+
+
+
+SAAS USER 管理
+
+用户原则
+1. 在MASTERDB里，用户的EMAIL和USERNAME是唯一的, 用来ATTHENTICATION。
+2. 同一个MASTER DB 用户可以被添加到不同的USER COMPANY DB里。ID保持不变
+3. 用户属于几个USER COMPANY DB，他LOGIN后就能在几个COMPANY之间切换
+
+
+建立新用户途径：
+	1.在主页注册新用户
+		1）在MASTER DB添加用户
+		2）自动建立新公司和公司DB
+		3）在公司DB中添加用户，并设置成ADMIN
+
+		问题：2)和3）是否是OPTIONAL的，比如购买后才给添加公司DB 
+
+	2. 在公司用户管理中邀请新用户：EMPLOYEE, SUPPLIER, CUSTOMER
+		1) 发出邀请EMAIL，包含公司ID，用户类型，用户描述等信息
+		2) 被邀请人通过EMAIL中链接，从MASTER DB这册或登录，然后在被邀请公司DB中自动添加用户。
+		
+		问题：是否被邀请人必须拿被邀请的EMAIL地址登录注册，还是他只需要邀请链接，然后自己选别的EMAIL/USERNMAE 来登录这册，然后加入公司。
+	
+
+	
+
+1. Register Partner User
+	1 EMPLOYEE LOGIN
+	2 employee go to busyptner, create invitation
+	3 bsyptner, click a link (encryped invitationID)
+	4	is user email exist, add user it to inviting masterdb
+		if not exist:........
+	5 add to new table  AppBusinessPartnerInviteUser
+
+2. Login
+	如果用户有自己的COMPANYID 和被邀请到的COMPANYID，弄成DDL
+	CURRENT COMPANYID 放USERCONTEXT 和COOKIE里
+	WEBAPI CALL时要VALIDATESESSIONIDANDCOMPANYIDREGISTERIDENTITYT(...)
+
+
+
+
+
+
+
+
+
+1. SAAS User Management
+	Create regular user by saas company admin (The first user)
+
+Application Settings - Global Setting and User Company Settings
+
+	两套SETTING
+	1. Global Settings (MASTER DB):				
+	2. UserDB Settings (User DB):					
+
+	1. 系统启动后 初次调用AppSetupBL CLASS时，先读取Global Settings (From MASTER DB) 
+			CACHE: GlobalApplicationSettings, 		
+			INCLUDE ALL	EmApplicationSettings
+
+	2. 每个用户登录后，再另外读取USER DB Settings, (From User DB):	
+			CACHE: DictCompanyIdAndApplicationSettings,
+			INCLUDE	EmAppUserDBApplicationSettings (a subset of EmApplicationSettings) 目前只包括EMAIL 和 WECHAT 配置
+			
+
+		调用某个SETTING时：
+
+		A: 一般情况下 用户登录后 Global Settings 和 USER DB Settings 都读取完毕了，
+			
+			if (SettingCode in EmAppUserDBApplicationSettings)
+			{
+				Use UserDB Settings
+			}
+			else
+			{
+				Use Global Settings
+			}
+
+		B: 用户未登录， 只有GLOBAL SETTING
+			ALWAYS Use Global Settings
+			比如 WHEN USER REGISTER，系统发送用户注册邮件一律用GLOBAL SETTING里的EMAIL SERVER SETTING
+		
+		
+SAAS用户注册
+	POST PROCESS 需要增加
+		1. 自动建USER FILE FOLDER
+		2. 刷新当前APPDatabaseRegisterID的 Cache
+
+
+
+
+1. This Week (Month), Make Saas Running
+2. Next Week (Month)  Oct 1st, Video and Tutorial
+
+
+
+
+
+
+
+
+gantt export:
+dp.exportAs("svg", {area: "viewport"}).download();
+
+
+missing function in App:
+1: data import from excel csv
+2: Data presentation (report)
+3: embed appform to  external location
+4: Table trigger action
+
+
+
+
+
+
+3 Database.
+1. Core DB: Framework Structure
+2. OOTB DB: Deployement Master DB
+3. UserDefined DB
+ 
+3 Type of Table Names:
+App: System tables
+OOTB: Built-In App Tables, Expense, ERP
+UDF: User Created Tables
+
+
+2019 09
+
+Polish UI  
+
+Quick Creation (Need Structure change)
+	1. 从上传IMAGE的产生新FORM
+	2. 直接产生新FORM
+	
+	新FORM： TransactionId, ImageFiledID, Show Management Path and Link to management page from FORM.
+
+
+Barcode format error handling, set size on grid rows.
+
+Form Import Setting page.
+
+
+
+Vendor Collobration
+
+
+
+
+
+
+
+
+
+BarCode
+Generate Barcodeon UI. Use a code type DDL to generate different types of BarCode
+
+<svg id="barcode"></svg>
+<!-- or -->
+<canvas id="barcode"></canvas>
+<!-- or -->
+<img id="barcode"/>
+Simple example:
+JsBarcode("#barcode", "Hi!");
+// or with jQuery
+$("#barcode").JsBarcode("Hi!");
+
+
+
+
+Supported barcodes:
+CODE128
+CODE128 (automatic mode switching)
+CODE128 A/B/C (force mode)
+EAN
+EAN-13
+EAN-8
+EAN-5
+EAN-2
+UPC (A)
+UPC (E)
+CODE39
+ITF
+ITF
+ITF-14
+MSI
+MSI10
+MSI11
+MSI1010
+MSI1110
+Pharmacode
+Codabar
+
+
+
+
+
+2019 07
+1. 需要特殊功能系统页面。例如SPEC FIT，特殊页面和逻辑，放到额外PROJECT里，给需要的用户提供DLL和VIEW来使用功能页面。
+2. 7月底8月月初开始做这个
+3. Workflow
+	1） Workflow 可以独立设计，不依赖FORM 和 TRANSACTION，设计出流程，CONDITION, ACTION。
+	2） Form Desgin可以绑定FIELD TRIGGER哪个WORKFLOW CONDITION。
+	3） Transaction editor可以绑定WORKFLOW CONDIATION和ACTION。
+	4)	At runtime, need to implement change trigger by Condition Triggered By Field;
+	5)  Workflow Condition Trigger By Field. Need To Detect Root Level Change Event.
+
+*** Need to bring most setting from Transaction and Subpages to Form. Make all settings visualize and easy to access.
+
+Done 4. Comapny management, need to add as SAAS application, remove from top menu.
+Done 5. GetOnetHierarchyTranscationFromCache()  _DictHierarchyTranscationExdto Bug
+Done 6. Grid Calculation Bug
+
+Done Need to clean database 12. Language Key Read MasterDB Bug
+	-- delete from AppSysLabelLanguage where MenuID is not null
+
+Done 13. Comapny Management->User Managament Grid, Show Master User name and other info.
+Done 14. Role User Management Bug
+
+Done 17. Num Decimal(4,0) issue
+Done 18. List Menu Folder Tree DDL Bug
+
+10.	DBO. Issue
+Done ALTER USER hu WITH DEFAULT_SCHEMA = dbo;
+
+Done 11.	Workflow need to be simple and clear
+Done 21. Global Application Setting
+
+22. Link target Button On Form Top Menubar,to open another form
+24. Condition Hide Show Action Button
+25. Action Button Without Workflow
+
+Doing Now:
+Done 1. Validation Box Show at Bottom Right
+2. Search Related:
+	a) SAAS Search Management(KPI Presentation Setting): Need setting on both global (company) level and Application Level. (Search AppID, Dataset AppID)
+	b) Data Presentation, Application Level, need to filter available tables
+	c) View Editor And DataSet Editor and Query Builder. Change UI,
+	
+Done 3. Formula Calcaulation flow: Aggregation formula order is always 0, need auto set order between the 2 crossed formulas
+Done 4. Transaction Graphic Editor, Link popup and link disapear. parent talbe PK list empty.
+Done 5. Query Builder Execute bug
+6. Workflow User Debug. give more message when any triggered action is failed.
+7. Existing System Built in Application Editor (Generate Editable items during installation)
+Done 8. Company Application Sort Order (Company level menu order)
+9. Application Level Dashboard (Dashboard AppId)
+Done 10. Transaction and Form, need to show unit DB name
+Done 11. Transaction Mgt (Master DB), add new transaction does not open.
+Done 12. Show DB Talbe and column name in Form Design, Transaction Editor.
+
+Other (Do later):
+21. Lable Position, Top Left 
+22. Text Alignment
+23. Application Level Application Setting: Eshop settings, 
+24. Mobile Dashboard = My Task + My Messages
+Done 25. SAAS LanguageKey Dictionary (Cache)
+26. SAAS Application Setting Dictionary (Cache)
+27. all Popup Ids need to add controllerModel.uiId
+
+Done 28. List Menu Level 4 cannot be saved
+Done 29. Group Footer Aggregation
+
+
+
+30. Need Formula Validation (Warning/Error) Popup Editor
+31. Code Auto Generation
+32. PO产生后，有两个后续动作：1 Generate Receive 入库， 2 Generate Bill 付款。是以哪个动作激活ACCOUTING UPDATE？
+33. Transaction Save as on/off option
+34. Bill Management. 有ORDER不一定有BILL，有BILL肯定有ORDER
+
+35. PO Status:
+	Draft
+	Submitted
+	Approved
+	Rejected
+	Completed
+
+	Receive Status:
+	NotReceived
+	Received
+
+	PO Type:
+	Inventory Product
+	Service (No Inventory)
+	Software
+	Consultant....
+	....
+
+36 Form Section (Collapsable)
+37. Auto Fill (Inner Relation) Need to calculate when Retrieve Data or Generate Matrix;
+38. Data Load On Grid Level
+39. BOM Item DDL Link (Example, Fabric Color on Bom GRID)
+
+41. Add "Join External" Function on Transaction Editor. 
+42. Data Load Setting Recycle. Other settiing reset transaction cache
+43. Huge Dataset, Need to add query filter parameter to entity. the parameter value is assign at run time from transaction Form
+44. Unit Row As DataSource, Select Multiple Columns, And create placeholder for entity dependent columns
+45. Grid Auto Key.
+
+46. DictForeignUnitMasterFieldlIdLookupItem
+
+47. Delete Command, Bottom To parent script, FK...
+48. Entity Filter and more description, Auto Create Entity, name conversion
+49. *Done* Transaction Editor, move path to top
+50. *Done* Unit Is Read-only, Is Matrix... Hide Show
+51. Command: Command Host: Top Bar Menu, Form Action Button
+52. Workflow 
+53. *Done* Transaction Unit Menu Buttons
+54. Dashboard
+
+55. Unit Grid Display Type
+
+	Is Readonly
+		Regular Grid
+		Tree Grid
+		Pivot View Grid
+
+	Is Not Readonly
+		Regular Grid
+		Tree Grid
+		Pivot Edit Grid
+
+
+
+Weekend Preview
+Application BUilder:
+
+Publish Validation:
+	done 1. Application Feature Description: will be saved in List Menu Description column, need to change to varchar (1000)
+	6. 用户建CREATE FROM FROM SCRATCH，一旦按PUBLISH，需要做所有的VALIDATION。TABLE和COLUMN名字
+	2. Data Model Field Auto Creation Before Save Validation: 需要强化，比如一大堆NEW FIELD. 在点PUBLISH时做VALIDATION。不PUBLISH不需要VALIDATION
+
+Publish Function with Wizzard:
+	4. Need to create folderId column if we need folder navigation
+	7. publish 需要很多逻辑，产生TABEL，产生NAVIGATION.和MENU。
+	5. After Publish, need to refresh cache
+
+Bug:
+	8. Created Folder Tree Navigation, no folder displayed.
+	done 9. Created from Scratch, transaction filed data type is not configured (all string)
+
+Other:	
+	10. List Value Editor
+
+	*** 11. LanguageKey Error: DBInteractionBase().RetriveDataTable(queryAllLanguage).AsEnumerable().ToList<DataRow> ();
+
+
+Form Flex Design
+1. Generate Data Model Function:
+    1) UD Table Structure or Json structure
+    2) Transaction Structure
+
+2. Navigation.
+	模式1. Create from sctratch. 
+		调用新的FLEX FORM DESIGNER。
+		STEPS: 产生UI，产生DATA MODEL，产生DB (reverse engineering)
+		也允许加exsiting db and columns.
+
+	模式2. Create from existing db tables.
+		调用老的TRANSACTION EDITOR
+	
+3.	Save, Finalize
+	When Save: Save Form and Transaction, don't create table.
+	When Finailze: Create Tables.
+
+4. ssas
+	Application Builder Tools
+	1. Form Builder
+	2. Data Model Editor
+	3. ...
+
+	一个页面把一个PACKAGE的FORM, DATA MODEL, SEARCH, REPORT, DB等组织在一起，类似FOLDER TREE。
+
+	
+
+2019 05
+1. Master DB API called from user app:  
+	
+	AdministrationControllerSecurity.RetrieveUserTreeMenu
+
+2. Need to update tables when confirm eamil and create company
+	AppSetup
+	AppSecurityUser
+	AppDataSourceRegister
+	AppCompany
+	AppComOrganization
+	AppComOrgLevel
+	AppDesktop
+
+	User Active and Creae New Company Steps:
+
+	1) Active User On Master DB, Assign UserDb 
+		(UserDB is from ootb, with default data from AppComOrganization,AppComOrgLevel, AppDesktop, AppSecurityGroup, AppCompany
+
+	2)	Create UserDB Company, with the same global guid of MasterDB company
+
+	3)	Update UserDB.AppComOrganization.CompanyId
+		Update UserDB.AppComOrgLevel.CompanyId
+
+	4)	Create UserDB.AppSecurityUser.OrgnazationId
+		Update UserDB.AppSecurityGroup.OrgnazationId
+		
+	5) Desktop Orgnization Security
+
+
+
+3. When User Login, 
+	Login base on MasterDB User Table.
+	After Login Success, Retrieve On UserDB: comapny, orgizations, users, securities, and etc.
+
+
+
+
+AppSecurityUserListMenu
+
+
+2019 0409 - 0412
+1. Parent Complete Percent Calculation with or without Weight 
+
+2. Gantt Columns, use new progress columns
+
+3. Checklist Validation Before Complete Task
+
+4. Time & Expense, start and end date, calendar.
+
+5. My work
+	a) List (My Task Mgt)
+	b) Kan ban (PerspectiveView)
+	c) Calendar or Gantt
+
+6.Task Budget Column.
+
+
+
+2019 0311
+1. Project Card View display gantt
+2. Project Status (Late...)
+3. MY project, My task on search view
+
+
+2019 03
+
+1. Copy paste project branch
+2. Import
+3. ERP cost/accounting on projects and tasks
+
+
+
+2019 02
+Project To Do
+
+1. Project Task Search and Management, need to add more attributes on tasks. 
+	also show Gantt Result
+
+	Use Search Engine?
+	Or Use Static Page?
+
+
+
+
+2. Big (complex) Project, extract tasks from project (Spin off), extracted part becomes a standalone project.
+
+3. Calculation (%) weight. Project complete % is calculated depend on children complete % and weight. calculate recursively.
+
+4. Cost calculation
+
+5. Project Snapshot. Does not show in search
+
+6. Model Dates and Actual dates comparation
+
+7. Project need to add Time Status: Late, On Risk, On Time....
+	
+8. Project Actual Start: Min of any of the actual start date of tasks
+		Actrual End: If all taks actual end is not null, = max actual end date.
+
+9. Child Project/Task change (Plan start plan end), need to trigger parent main task re-calculation, 
+	same for stage changes (if all child tasks are completed, the main project task will be completed).
+
+??? 10. How to trigger child project start
+
+??? 11. Resource Assignment (Child projects)
+
+
+12. Drop Project: DateModelStart, DateModelEnd,   only use: DatePlannedStart, DatePlannedEnd
+	Drop Task: DateModelStart, DateModelEnd, only use: DatePlannedStart, DatePlannedEnd
+
+13. Calculate weight and complete percentage, default: all task weight is 1, if weight=0, the task is not used to do calculation.
+
+??? 14. Auto Completed and Auto Start, how to trigger?
+
+15. Extract Task to child project, delete foreignkey problem
+
+16. Extract Task to child project, calculation.
+
+17. Child Project, is need drildown calculation when parent task is changed, default true
+
+18. Deleting a main task, need to delete all child projects
+
+
+
+Meeting Recat Feb 24 2019
+
+0.	(Done)	Stlle Polish (Top and left menu)
+1. (done) Float tab popup issue 
+2. Need to Test Project Direction Forward and Reverce Calculation
+3.	(Done)	On Project Property section, add actual start end end (ProjectTaskEditor, ProjectGanttEditor)
+4. How to start a project or start a task.
+5.	(Done)	Main task Duration days need to calculated from sub task total duration days.
+6.	(Done)	Gantt Remove Tooltip
+8.	(Done)	Project task grid, lock end date
+9.	(Done)	Top Down calculation
+10. (Will Not Do) Allow to Set a Child Task as Predecessor ???
+11. (Done)	Project Properties, add Actual Dates
+12. (Done)	Project Setting, set gantt Defulat display unit (Year, Month, Or Week)
+13. (Done)	Gantt left side columns, resise? wider?
+14. (Done)  Project Setting:
+			Allow Trickle Down Child Project
+			Allow Bubble Up Parent Project	
+15.	(Done)  Project Child Project, Planned Start and End are readonly. Direction is readonly. All from parent project.
+
+16. (Done)	Prececessor is alwasy on the same hierachy level, cannot cross hierachy
+
+17.		Planned Cost, Actual Cost, Budget Cost
+18.		Labor Cost, Other Cost (Need to link PO and etc...)
+
+2018 12 21
+1. Save as need to do workflow logic, and set selected fields as blank.
+2. Scheduler resource gets from criteria
+3. task half day on scheduler
+4. calendar, scheduler theme
+
+
+2018 12 15
+1. Configuration Debug information: When user set a formula or workflow condition action, the system show debug information at runtime, tell the value at each step of formula calculation. Like f10 f8 shortcut key
+2. List Edit Formula
+3. bug: jpeg is not considered as image on file preview.
+
+
+
+
+1. Project.
+A: Not Started: Plan date can be changed
+B: Project Started: (any task Actual date is not null):
+	save plan date to model date as backup, model date will not be changed, 
+	plan date could be changed or recalculated.
+
+	The success tasks path Plan date can be recauclated based on predecessor's actual end.
+
+C: Project ended:
+	
+
+1. Time Sheet: based on:
+	a. User entered data,
+	b. Leave days requested and actual taken.
+2. Search Calendar View:
+
+	AppSearch:	
+		IsHideAllToolsBar
+
+	AppSearchField
+		IsChangedAutoExecute
+		StartValueEntityField
+		EndValueEntityField
+		StartValueDataSetField
+		EndValueDataSetField
+
+	AppSearchView
+		CanlendarDefaultViewMode: Month, Week, Day
+		IsEnableCalendarMonthView
+		IsEnableCalendarWeekView
+		IsEnableCalendarDayView		
+		IsEnableCalendarNavigator
+		IsDisableClientTimeConvert
+		
+
+
+1 . Calendar View 每个TASK放用户名字后缀
+2. Use a new table to register page extended transaction form: User Edit page Inject EmployeeEdiot Form.
+3. Search 和 List Edit,  Master Detail Form结合。
+
+1. A specific page for temp unpaid leave (Pending Later)
+2. Need Monthly Leave Status 每月出勤表
+3. Mass Update Actual Leave Dates. Add New Icon:  Leave Days Post. Need to save RequestId to AppCalendarSpecificDay Table.
+4. Event (Calendar) View continue work.
+5. Allowed setting, add aggregation column;
+6. Add Employee Management (Transaction Form is done. Need to add application setting of transactionId, and open form from company mgt and user profile)
+7. Need to Add Search Today Token
+
+
+
+2019 09 Recap
+1. Need Add Structure to Grid Unit, => Allow Mobile Row Edit.
+2. Need to implement mass update
+3. Need to add grid column frozen setting (Change Structure)
+
+4. Use a mass update to list planned leave days and actual leave days, allow manager to update/add actual leave days.
+
+
+5.	1) All approved Leave Request Date will be copied to AppCalendarSpecificDay
+
+	2) When record user actual leave dates based on planned dates, mass update on table AppCalendarSpecificDay (change from UserRequested = 2 to UserCompleted = 3),
+	For any not planned date, need to add a new row.
+	
+	3) UDFEmployeeAnnualVacationBank: Planned Dates, update on approval,   Actual dates, update on actual leave dates mass update on step 2)
+
+6. Calendar View
+	User tasks, Leave Dates, meetings,
+
+7. Leave Date Multiple Date Picker, start from current month, add year,month filter ddl
+
+8. MassUpdate
+	UpdateTransctionID and UpdateBaseTranscationUnitID
+
+	If (UpdateTransctionID is not null)
+		Do master detail transaction update, include transaction formula and workflow.
+	If (UpdateTransctionID is null and UpdateBaseTranscationUnitID is not null)
+		Do unit level simple update, update only one table without formula and workflow
+
+
+meeting 0930
+	1. A specific page for temp unpaid leave
+	2. Need Current Month Leave Status. 
+	3. Mass Update Actual Leave Dates.
+
+
+2018 08 08 Meeting Recap
+
+1. Configuration to do this Friday
+1.1 PO configuration
+	Product Item DDL, Use Product Tables from old database, 
+	PO Report
+1.2 Fields or Gird Row Update Messages on mt, tkt.
+ 
+2. Calendar Management
+	Rename to Holyday Management
+	Change calendar control: 
+		Find good control or use day- pilot Open source control to replace user calendar display.
+
+3. Schedule Management
+	Manage Company, Role, User tasks on scheduler/calendar.
+	Need to Find a good scheduler control. or use open source day-pilot.
+		
+4. Leave Management
+	4.1 Input Leave Request Dates: Call a calendar search popup, the calendar search popup data is from a  configured ExServiceCall on search/view, which uses the AppCalendar data and UD LeaveRequest Tables data.
+	4.2 Approve Request Dates: call external Method to save the data into user's calendar (AppCalendar): Post save external method call?
+	4.3 Dashboard search/view as user start point, show total days, remain days... request list, button to create new request, 
+
+5. Project Management
+	Drop Day-pilot control for now, replace with other control later
+	
+
+
+SQL Query Timezone
+	SELECT        dbo.NCDI_Meeting.MeetingID, dbo.NCDI_Meeting.TransactionID, dbo.NCDI_Meeting.MeetingName, dbo.NCDI_Meeting.Category, 
+	DATEADD(mi, DATEDIFF(mi, GETUTCDATE(), GETDATE()), dbo.NCDI_Meeting.StartDate) as StartDate,
+	DATEADD(mi, DATEDIFF(mi, GETUTCDATE(), GETDATE()), dbo.NCDI_Meeting.EndDate) as EndDate,    
+
+
+2018 07
+	1. MATRIX FK 链接两张平级的表
+	2. (done) REPORT打印
+	3. (done) VALIDATION 
+	4. (done) WORKFLOW	
+	5. Import export to quickbook
+	6.(done) Report Watermark	
+	7. Add date source on the fly, call back refresh ddl source
+	8. (done) Delete Flow: Stored Procedure
+	9.bug: conversation new message call back refresh does not work
+
+	10 delete workflow setting, need to support 2-pk combination
+	11. Legacy Data Import
+	12. Mobile APP
+		context popup 
+	13.(done) File Attach in internal message
+	14.(done) Wijmo DDL 4 rows only	(DONE)	
+	15.(done) application setting ddl null issue	(DONE)
+	16 pivot export
+	17 (done)searvh view type (Looks like creterias)
+	18 Workflow Resubmit Count
+
+
+	19. (done) User and Role Default Desktop
+	20. (done) Search View Service URI Setting and Display
+	21. (done) Search Criteria Like View Setting and Dispay (Use new column RowNumber ColumnNumber)
+	22. (done) Is Ignoe Filter By Current User Security Setting
+	23. (done) Search View date and date time column UCT To Client convert needed
+
+	24. need to contorl service call Security on Server side
+	25. Entity Data Source Data on List Edit Form, Need to validation on delete and change.
+	26. Dynamic Matrix Grid
+	27. PO to SO data transfer.
+	28. Excel/CSV Import to FORM Grid
+
+	29. (done) Form With workflow, Condition Action Notification Message Duplicated
+
+	30. (Done) Transaction Security Cache Issue
+	31. (Done)Action Button replace DDL
+	32. (Done)Grand Child as Popup; ****
+	33. (Done)User Profile user name readonly
+	34. (Done) DDL Layout (Height)
+	35. (Done)Created By Security Setting *****
+	36. (Done)Header Label and Button Different Style
+	37. (Done)Grid Height Auto Shrink with max height setting.
+	38. (Done)Expense Type List Delete Validation.
+	39. (Done) Notification Click To Open Interal Tab instaed of browser Tab
+	40. (Done) Add List Edit shortcut To left Menu (Uner My search Main Menu)
+	41. (Done)(need workflow task form setting) My Task Workflow Task need to open form
+	42. RecycleBin, Mark as Deleted, Restore, Force Delete
+
+	43. (Done) Auto Log off when session expired
+	44. (Done) File Sharing Auto Message.
+	45. File Sharing Show who shared file (View Config)???  
+			will change to: Only file creator can share file, just need to show "created by". What happens when admin share a company file???
+	46. Meeting Task Grid Auto Message.
+	47. Remove Quick Search, File Full Text Search, Advanced search. put all searches on first level under search ddl button.
+	48. (Done) File folder show file count which should not include the files in recyclebin
+	
+	49.  File Mgt
+		All local workspace file and folder must follow cloud security.
+		Support most profession software files.
+
+		1) Delete
+			a) Delete a file in cloud, moved to recyclebin.
+			if a user uploads the same file in the same folder, auto restore the file from recyclebin and then do upload logic.
+			b) Delete a file from local workspace, when synch, cloud will move this file to recyclebin.
+
+		2) Rename 
+			a) When renaming a cloud file, all history version of a file should be renamed together.
+			Then local workspace file name will be renamed after.
+			b) local space rename => cloud do the same rename action, include history version file names.
+		
+		3) Add File
+			a) Upload to Cloud, 
+			
+				When upload a file name like FileId_4166_ABCD starting with 'FileId_', 
+					
+					case 1: upload to a target folder
+						find if the folder has a file with the same name 'ABCD'
+						if file found, update, if no, upload new with name 'ABCD'	
+
+					case 2: upload to Dropbox
+						find the files with the same Id in any folder, update this file.
+								
+				When upload a file name like 'ABCD'					
+					case 1: upload to a target folder
+						find if the folder has a file with the same name 'ABCD'
+						if file found, update, if no, upload new with name 'ABCD'	
+					case 2: upload to Dropbox
+						treat as uploading files to current user private root folder.
+
+			b) Add File to local workspace.
+				 Add file in a local workspace folder, => cloud will create a file in the same folder.
+			
+		4) Modify File
+			a) A Cloud file is updated by uploading a file with "same fileId" or "same name in same folder", a new version is created.
+			   
+			   if the old file exists on local workspace:
+					Compare the file modify date of local space and cloud, if cloud is newer, download and overright the file on local space.
+					If local space file is openned or in use, don't overwrite.
+
+			b) Modify a file at local workspace
+				After a file is changed and saved in localspace, 
+				the server will compare the file difference between server and local workspace in a time interval. 
+				If difference is found, a new file version of the file will be created.
+		
+			c) 2 users modify at the same time, how to deal with this case?
+
+
+	50.	Ticket Auto Message	 
+		Use Conversation + AppTransactionChangeNotificationSetting to send transaction C-U-D messages to followup roles and users
+
+2018 06
+
+	Structure: AppSearchViewField.Width
+	
+	1. 用一个WORLFLOW把不同的Form transaction串起来（REQUEST, REQUEST APPROVAL, VENDOR APPROVAL, PO....)
+
+	2. 当一个FORM SAVE时，根据CONDITION ACTION,把下一个FORM 产生并发出NOTIFICATION: When employee save purchase request form (PR), system will create a request approval form (RA), use the PR primary key as FK on RA form...
+
+	3. Security需要根据手动或自动填写的USERID来控制，比如MARKETING Department的员工发出Purchase Request,下一个APPROVAL FORM会自动为Marketing manager或其他指定人员打开。
+
+	4. DEV Code:
+		1) Request By User:
+			Need to auto populate current user, and auto set dept manager, corporation user.
+			Need coding loadNewFormFata() to prepare these fields, by logic of inner relation or tabloading. 
+			But the dept user and corp user should not cascading next time when user manager relation changed (Like exchange rate)
+		2) Need to Assign task user from UserID TransField (Done)
+		3) Need to assign today date on conditon action transfiled update formula
+		4) User Defined Notification (Some User Friendly Message)
+
+
+
+	1. (Done) NEED TO ADD Search view COLUMN Width setting
+	2. (Done) File Management Preview resize 
+	3. Same file name upload, need alert message.
+	4. Upload by count not correct Tina 
+	6. Dropbox ICON needs to be changed
+	8. Text SSM Message
+	9. Meeting提前10-15分钟提醒。EMAIL + TEXT 
+	10 . File checkin checkout
+
+
+	11. Inbox URL encode
+
+
+	12. Flex Grid Memo Column
+	13. GetTransFieldPrintValue()  Decmimal Bug
+	14.	Workflow Condition Actoin, Update next transaction Form
+		1) Formula Use merged dictIdTransFieldExdto and dictIdValue to do merged assignment
+		2) Multiple formula seperated by token
+	15 Workflow Condition Action UI Freindly improve
+		1) Grid show all columns as text for copy pasete rows
+		2) All formula support ; token for multile formula
+
+	16 Bug: Created By Modified By Time Error
+
+	17. workflow runtime  color flag layout
+	18. Upload File, createdById issue check
+
+	19. Remove Start and End From Task List??
+	20. Remove start and end task from user task mgt list
+
+	21. Formula Boolean Expression
+	
+	22. 
+		
+
+	999. Pivot Print
+
+
+
+
+2018 05
+A
+	1. Print PDF and attach to message, Print Engine.
+	2. List Files and select if attach to message.
+	3. Form left right area default width setting on transaction.
+	4. Task, PO Start.
+
+B
+	1. (DONE) File Folder Item count.
+
+
+
+	2. Need to know how many files are uploaded by Person, by Month, by week (Pivot: see C.2.)
+	3. Task Dashboard: everyone, every week, how many tasks assigned, completed, need to due.  (Pivot: see C.2.)
+	4. Conference Task: add column: assigner (Created By), assignee (Task Owner)
+
+	5. (DONE?) My task, does not allow reassign my task to other. (Security)
+	6. Due date, 
+					a) assignee change need to track.
+					b) Need a task management page (Admin manage tasks)
+					c) In Transaction Grid, some key fields change need to trigger notification.
+	7. (DONE) Date Issue in meeting notification; 
+
+
+C.
+	1. Langauge Refresh after change
+	2. Pivot View Type setting and runtime loading, put on dashboard
+
+
+2018 04
+
+After Training:
+	1. User List Menu Save bug, duplicated data
+	2. File Message attachment should be optional (Use a checkbox)
+	3. 
+
+
+
+
+UserType Security
+
+All Security Object need a UserType Security Setting 
+
+Desktop: Every UserType has their own security setting. Only SysAdmin Can Edit Desktop on Dashboard Management, Other UserType cannot Edit Desktop. 
+		Need to remove runtime Desktop Edit Button.
+
+
+2018 02:
+	1. File upload, same existing file name will be uploaded as a new version of existing file.
+	2. 灰色按钮容易混淆成不能点的按钮
+	3. Search View OPEN/CREATE FORM时，用左右NAVIGATION，不用NEW TAB
+	4. Need to always show version history bar
+	5. Folder Properties, change it to "Rename Folder"
+	6. Select File change to "Browse File"
+	7. 清除隐藏 旧页面和菜单。
+	8. 中文界面
+	9. File Folder, notification tool tip is wrong
+
+
+2018 01
+	1. FIle		
+		1 Property user sucurity issue, user cannot see data, only show 0 and null.
+
+	2. Contract Mgt
+		1. Contract Tracking
+		2. Accouting & Pay
+		3. Progress Tracking
+
+	3. Communication
+		1. Change name to activity
+		2. 
+
+
+2017 12
+
+	1. DataSource Register:
+		1. TransactionField, need to add Control "GUID". Auto generate during save if it's empty.
+		2. TransactionField, set last modified date on existing customer column
+		3. need to add date formula, example [Today]
+		4. Trans Field, flag IsUnique, do Validation.
+		5. Need to ignore DB table computed column during form update/create      
+		6Specific Mapping: Emplyee DDL Mapping to current login employee
+		7. Big DDL Data need auto complete feature
+		8. Stored Procedure Post Actions
+
+	2. Document Management:
+		Example
+			https://www.efilecabinet.com/ 
+				http://support.efilecabinet.com/
+				https://www.youtube.com/watch?v=QbZvILHm468
+				https://www.youtube.com/watch?v=X2d08VIr6yU
+
+			http://kass.com.cn/
+			www.ntko.com
+
+		1. File Version Control			---- Done
+		2. Security						---- Done
+		3. Client Tool:   Auto save client doc to web
+
+		4.
+		File: Collaboration				---- Done
+		Share file: ( read-only,  read/Modify)		---- Done		
+		My favorite file:				---- Done
+		Send  file to (email notification with multiple files )
+			
+
+			  1. File Folder no security: company Root and public Security 
+              2. Upload select file button cannot be clicked easily on tablet
+              3. Download latest page crash on single version file   ---- Done
+              4. After updating one file, need to remember file selection and focus on it.      ---- OK
+              5. BL to create and generate File Mgt transaction, folders, and security.
+              6. Need recycle bin	---- Done
+              7. Video Preview ---- OK
+			  8. Tablet multiple select
+
+              Security:
+              Set folder access, if folder is security, folder files will be treat as read-only, Hide some buttons. Read-only files can be sent to and preview. ---- OK
+              Mark files if current user is owner ---- OK
+
+              Same as folder owner security for the below logic category:   ---- OK
+              My Recently: same security 
+              Share To Others: same security
+
+       Favorites: (If is file owner)
+                     
+              Share to me category: Set as Read-only folder:  ---- OK
+                           
+              Company Root Folder and child Folders: Set security by folder manually for now    ---- OK
+
+
+
+			1. File Send To						---- Done
+			2. Folder Context menu z-index		---- Done
+			3. File Version Page				---- Done
+			4. Download Latest version, not org version.		---- Done
+			5. desktop drop box						---- Done
+			6. Change Enum MyDocument to 'Private'		---- Done
+			7. Share to others, add "Is Allow Write"		---- Done
+			8. Send file to others by notification message, at the same time, add file to share to others with the distination users.		---- Done
+			
+			9: remove public Category ( east to control security)(with no security)				---- Done
+			10: for recybinfolder: remove all other feature except( restore and delete)			---- Done
+			11. Busy Loading spin image.	---- Done
+			12. Notify in share settiing window. Create messages			---- Done
+			13. Folder Category re-order			---- Done
+
+			14. Add FileView to user database, so that we can create transaction with sib unit on user database			---- Done
+			15. Version File Download (Org)		
+			16. Change FileID_123_ to Reserve_123_
+
+
+		Security: 
+		1. Folder Security is not engouht to protect company files
+		2. File readonly for role and users. Example, 
+			shared to me files, allow or not allow update. 
+			Dropbox, one specific file cannot be updated.
+
+
+	Test Case:
+		////  block file url securtiy load 
+              //1: need to check if this file is delete or not ( recycle bin
+              //2: need to check if this file current onwer ( do)
+              //3: need to check folder security
+              //4: shared filed security 
+              //5: disable public folder
+              //6:  create a file--> sahre to other with wriiten permission--> other peopel modify file--> upload to drop box --version history
+
+
+
+
+
+
+	3. Project and Workflow (Later)
+
+	Other:
+		Tab switch cache memory releas issue
+
+
+2017 11
+
+	MetaDataManagement: DDLDatasource From and then DDL Schema
+
+	Save as crash
+	transaction edit bug fix
+	add data source from on pages.
+	NeedValidationAutoAssign
+
+2017 10
+
+	Visual Studio Template: auto add dll, UD external method, Generate UD Table Dto
+
+
+
+	Add ControlType:	ImageURL 	ImageBinary
+
+	NorthWind
+		Northwind DB Tables
+		--1 Identity ID
+		Categories
+		Suppliers
+		Employees
+		Orders
+		Products
+		Shippers
+
+		--2 Not Identity ID:
+		Customers
+		CustomerDemographics
+		Region
+		Territories
+
+		--3 Comb PK
+		CustomerCustomerDemo
+		EmployeeTerritories
+		Order Details
+
+
+		To Do:
+		1. Image DB Column CRUD
+
+		2. Delete Validation
+
+		3. PK Identity Validation
+
+		4. Need to edit PK Field (don't force read-only)
+
+		
+
+		
+
+
+
+
+
+2017 09
+	1. CSV and PDF download(export) on search result
+
+	2. Version History, Transaction Design add: Need track. Transaction - Unit - Filed
+		<Critical Filed Version Log System>
+		if transaction is designed to need log, save changes on transaction unit filed history. 
+
+2017 07
+	1. Security
+	2. Report
+	3. Analysis 分析
+	4. Google and other user login integration
+
+	5. Import table from excel
+		1) Identity Key
+		2) Tracking Columns (Created Modified User and Date)
+		3) Preview Data (Use List Edit?)
+		4) 
+
+	6. Search View Transaction Editor, Entity Selector, remove Em Entity, group by sys/ud
+
+	API feature qb
+	•	Manage customer and vendor data bases.
+	•	Manage sales-side transactions (invoice, sales receipt, etc.) and purchase-side (bill, expense, etc.) transactions.
+	•	Retrieve QuickBooks Online reports.
+	•	Keep track of sales and purchase taxes.
+	•	Manage inventory.
+	•	Configure company preferences.
+	Included in each resource page is pertinent information for using that resource along with sample request and response payloads for each operation. 
+	The samples are constructed such that they can be used directly in operations sent to a sandbox account (US only) without modification.
+
+
+2017 06
+1. Simulate Header Tab
+	a) Use Transaction Group
+		a Transaction Group (like a template) includes Shared Transaction (Header Tab) and Regular Transactions(Main Tab).
+
+2. Simulate Current Ref Key DCU Column
+	a) if allow save source grid:	
+		Transaction Field DDL Filtered By Current From PK (Similar to Cascading)
+	b) if 
+
+
+3. Use Query Text and Parameter On Transaction Filed DDL Setting
+	a) To Do Cascading 
+	b) To do  Current Ref Key DCU Column
+	c) To Do cross unit cascading:
+		use the same transaction field parent field id columns for cross unit and current unit
+
+
+
+
+
+20170217
+1. Data Migration Tool. Imort Legacy Data
+2. Development Tool (Compile online)
+3. Unique Combaination keys in transaction
+	Example 1(Color Size is uniqure for current style). 
+	Example 2 (Producdt, Warehouse)
+
+
+
+
+
+Calendar Source Code Modifiecation:
+
+daypilot-calendar.src.js
+daypilot-navigator.src.js
+daypilot-month.src.js
+
+
+				var oattr = attrs["id"];
+                    if (oattr) {
+                        scope[oattr] = calendar;
+                        //if (scope.$parent && scope.$parent.ngIncludeObj) {
+                        //    scope.$parent.ngIncludeObj[oattr] = calendar;
+                        //}
+
+
+						//*(**********added this line***********
+                        calendar.locale = angular.UserContext.CultureInfoCode;
+
+
+                       // calendar.update();
+                    }
+
+
+
+
+
+Show Stops For Order Status
+	Progamming Code:
+		Need to fix:
+		1. Enable/Disable the Linked target button action by Order status. (To lock the approved order).
+
+		2. Hide/Show or Enable/Disable Transaction Field by order type and order status. (For now, we created 2 similar order transactions, one has more fileds than the other).
+
+		3. Security: ReadOnly Form (disable save button)-- make some users can only view order but not save the order. (For student view order and session detail after order is locked. admin can still edit the order.)		
+		4. Cascading does not work after pass value from selected row to link target transaction	
+		
+
+		Enhencement:	
+		5. Save as: Save original order as new order for replacement. (For now, we use student DDL cascading select an original order manully, and fill in all the course, sessions again)
+		6. User should be able to only replace the Approved orginal order. (For now, it can be done by filtering the cascading by a view. the view filter only approved order)
+		7. When replacement order, need to set the original order status to be "Canceled", How to do it? (For now, we need to do it manually on order eidtor)
+		8. Generate Code. Need Id Value
+	
+	Transaction and SP Design
+		1. Stored Procedure: Calculate Session and Calenders by order status.
+						
+				Drop SP_GetTeacherAvailableTimeByTermCourseDetail
+				Modify SP_GetTeacherTermWeekdayAvailableTime
+
+			Views:
+				View_FSAllRegSessions_Group
+				View_FSAllRegSessions_Individual
+				View_FSAllRegSessions_Semigroup
+
+
+		2. Modify transaction fields on "Replacement Order Editor". fix wrong calculation
+
+		3. For Camp registration, do we need order status and replacement?
+	
+
+
+Security Design (Xianghao Try):
+
+1. Navigations:
+	1.0 RouteState Security ??? Still Need??
+
+	1.1 List Menu By Domain or User (Retrieve Available) 
+		If it's linked to FormListEdit, need to check transaction security 
+		option: a) don't load no-security-transactoin menu item
+				b) when open transaction form, give access denied.
+		
+	1.2 Desktop By User
+		1.21 Desktop Items security (depend on List menu, search Security, retrieve only available desktop items when retrieve desk top);
+	1.3 Search By Role and User (Retrieve Available)
+	1.4 SearchView By Role and User (Retrieve Available)
+		
+
+	1.5 Transaction By Role and User
+	1.6 Transaction Unit By Role and User
+	1.7 Transaction Field By Role and User
+
+2. User Entity Related Security (Student_ABC => securityUser1)
+	
+	2.1. Admin Users
+		Don't need to check security
+	
+	2.2 Internal Users
+		Need to set on obj: IsFilterDataByCurrentUser
+							Or, if there is only one FilterBy Field on Obj Structure, if it's set, then filter, if no, don't filter.	
+							If there are more than one filter
+
+		If User associated Entity Type is different than Target Obj Filter entity: Show all data?
+	
+	2.3 External Users
+		If User associated Entity Type is different than Target Obj Filter entity: Show null?
+
+	2.4 UD Users???
+
+
+
+	1. Search
+		Regular Search
+			FilterByCurrentUserMappingField =  DatasetColumns.StudentId
+			FilterByCurrentUserDomainTypeMappingField = DatasetColumns.DomainId (Implement In The Future)
+			FilterByCurrentUserRoleMappingField = DatasetColumns.RoleId(Implement In The Future)
+
+			if (FilterByCurrentUserMappingField != null)
+			{
+				Filter search result by current user
+				Filter related critercial DDL by current user
+			}
+
+
+		SP Search
+			FilterByCurrentUserMappingField =  DatasetColumns.StudentId or Parameters.StudentId
+			FilterByCurrentUserDomainTypeMappingField = DatasetColumns.DomainId or Parameters.DomainId(Implement In The Future)
+			FilterByCurrentUserRoleMappingField = DatasetColumns.RoleId or Parameters.RoleId(Implement In The Future)
+	
+			if (FilterByCurrentUserMappingField != null)
+			{
+				Filter search result by current user
+				///Filter related critercial DDL by current user ???
+			}
+		
+
+
+	2. Desktop?
+
+	3. Transaction
+	 
+	    *** Don't filter rows on transcation
+		
+
+	4. Retrieve Entity DDL List
+	    Check if the entity is Domain Associated Entity
+		On each field (from transaction, from build-in pages, or from search), need to set if we limit the DDL filted by current user. 
+		Need to add a checkbox on 
+
+		//drop--- Solution: On EntityInfoEditor, set the IsEntityFiltedByUser flag. 
+
+		TransactionFiled.IsFilterByCurrentUser checkbox
+		SearchField.IsFilterByCurrentUser
+		SearchViewField.IsFilterByCurrentUser
+
+
+	5 
+	   
+
+
+
+Fixed:
+
+		2. Form Primary Key Field need to be readonly by default (done 20151117)
+		3. Image Upload popup layout and position need to be fixed (done 20151117)
+		5. Login white box need to be changed.(done 20151117)
+		8. Form Cannot be renamed.(done 20151123)
+		10. Form Grid Group By setting: ransactionField: add IsGroupBy and GroupLevel
+		11. transaction unit link target, (On the form, select a grid row for an ID filed, and popup to edit a linked target)
+		13. Rename MasterDataManagement To Search (hardcoded) (done 20151117)
+		14. Search Need to remeber scope after switching tabs.(done 20151117)
+		15. Redo Mobile window top navigation bar (done 20151117)
+		16. Delete List Form and List Transactions. Rename ListEdit To List
+		17. Transaction Unit: Add a Field: RowDisplayField. When open a tab from current transactionUnit Grid Row, it set the row value of RowDisplayField to new tab header name, which replace the Id before.
+			on each $scope.excecuteLinkTargetAction()
+
+		23. Fix Search View Directive Calendar View, it's always on top (z-index) of other pages even when searchview is hidden.
+
+		24. Need to fix transactionFiled ORder
+		29. Save ok don't show validation result
+		42 Form Tab title should show namne instead of id
+		56. Entity Selector Layout Problem.
+		6. All popup page need to be changed for position.  (done)
+		34. (Fixed) For readonly Grid TransactonUnit, should hide "Add delete buttons" 
+
+		35. (Fixed) For readonly Grid TransactonUnit, should make the grid read-only (all columns should be read-only).
+
+		37. (Fixed) For readonly root transaction Unit, hide the save and calculation button.
+
+		38. (Fixed) Grid TransactionUnit invisible fields need to be invisible
+
+		39. (Fixed) After calculation, save does not work. 
+
+		40. (Fixed) Master Detail Form L1 DDL Field, after refresh, load the 1st item in ddl.
+
+		41. (Fixed) Search view. need to add:
+			a) (Fixed) sort order, 
+			b) (Fixed) and IsVisible
+
+		42. (Fixed) Search view. need to implement group by and group level
+
+
+		43. (Fixed) MasterDetail form, If use group by on transaction Unit Grid, the ddl cell edit event will crash. 
+
+		44. (Fixed By Sean) Cross Relation does not work (Child Unit Filed Value = Parent Unit Filed Value)
+			a) when there is no formula, neither lev2 nor lev3 works.
+			b) level 3 never worked.
+
+
+Needed New Pages:
+
+1. Dashboard  (done)
+	1). Dashboard Load (Multiple Dashbord)  (done)
+	2). Dashboard Management (done)
+	3). Dashboard Design  (done 20151122)
+	4). Icon List	(done 20151122)
+	5). List Menu IconName link to Icon List	(done 20151122)
+	6). Add Search Shortcut on Desktop (done 20151123)
+
+2. Security
+
+3. User Profile need to save what is the default loading page. (Desktop, Search, or ...)
+
+4. List Edit Form. Show a search view result.
+
+5. Grid Matrix, how to generate keys? cascading relations?
+
+
+6. Applicatoin Setting
+7. User Session Management
+8. User and Domain Menu Edit  (done)
+9. Role Management  (done)
+10. Privilege Library Management
+11. User Privilege Management
+12. Web Report Management
+13. My Report
+14. Login Image Management
+15. Company Setup
+16. System Cache Enable or Disable
+
+17. Tab control for mobile:
+	Need a setting, saved in isolated storage locally, save the number of max tabs on current device. 
+	Example: By default, 
+		max tab on pc = 15, 
+		max tab on tablet = 5, 
+		max tab on cell phone = 1
+
+
+
+Need to Fix or Enhencement:
+
+1. After Edit Transaction, Form does not refreshed until re-login (For example, Change Column Width, Change Column Order).
+
+4. MetaDataManagement, Cannot save the change for table column DataType.
+
+
+
+7. TransactionEditor, FK Field loading issue (randomly load the first field of ddl, lost original selected FK filed after save).
+
+12. Tab groups.
+	
+13. Date, Time, DateTimeDetail. Need to find a better way on UI Control
+
+14. Folder Edit Transaction, Root Unit should alwasy be folder. auto add folder transaction unit but Hidden it on UI
+
+21. Transaction Delete Validation
+
+22. Polish Datasource Selector
+
+
+
+30. ENUM Week and Month
+
+31 Need to Add EntityInfo Order By (Test DataMap order by first )
+
+32 Add refresh to each type of form. Remove Refresh from linked target, 
+
+
+
+FS Issues:
+
+
+
+
+
+45. Grand child grid ddl cascading and inner relationship does not work
+
+46. Date and Time ControlTyps need to be fnished on all type of transactions and all levels of unit.
+
+48. Need validation formula. for examle, if filed [TotalCost] < 0, give warning.
+
+49. After Use Linked Search on grandchild grid, save does not work. (Because we did not modify the grandchild or child cell).
+
+50. Copy / Paste cell does not trigger change, save does not work.
+
+51. When add new rows on Unit Grid, need to apply cross-relation and formula.
+
+52. Save Post Process: 
+	a) Post StoredProcedure 
+	b) Or Post Method.
+
+53.(FIXED but need enhencement)  Need to Keep the expanded state of Grand Child Grid after save.
+
+54. For Entity Relationship Column, we need to add a feature to enable/disable cell edit. 
+Question? when do we load the ddl dependent column value, when do we allow cell edit.
+In column setting, need a fflag to indicate if it's allow edit or it's always read only.
+
+
+55. Multiple Dashboard with Security
+	1) Each Domain has a default dashboard.
+	2) Each User login:
+		a) if no user dashboard, he can see his domian default dashbaord. and he can save the domain dashboard as his own dashboard.
+		b) if user has dashboard(s), he can save each dashboard as new dashboard.
+
+
+
+57.(FIXED)  Search View Layout height and widht Problem.
+
+
+
+New Need To Fix:
+
+ 1. (FIXED) Folder Transaction auto add first AppSeFolder Unit, make it readonly
+ 2. DDL Datasource cannot be accessed
+ 3. Master Detail cannot be accessed after creation
+ 4. (FIXED) All tabs need to save state
+ 5. Report Integration
+ 6. KPI Search View
+ 7. Data Exchange Integration
+ 8. Transaction Editor: FK Filed: Default Invisible and Read-only
+ 9. Column Memo (Wrap)
+
+ 10. Transaction Grid layout loading: use bootstrap grid layout, need to flow when screen is changed to small.
+ 11. Transaction Edit: Transaction Unit Already Exist popup warning msg.
+ 12  Transaction Name is empty error
+
+ 13. (FIXED) Image Upload Chrome Layout issue.
+ 14. Data set, show tables
+ 15. Search Editor, add data set and view on the fly.
+ 16. FS show order status and lock the order on some state.
+
+ 17 File upload show Id is confusing. better to show file name. 
+ (UI has been done, BL retrive DictDocumentIdFileCode need to be changed to retrieve only FileIds used by current form data)
+
+ 18. Condition Workflow trigger or lock.
+
+ 19.(FIXED) Tab State Save and load: 3 pages cannot use scope save and load.
+	Domain User Manu page, Cannot use scope save due to page tabs, 
+	Role Editor Page, User Editor Page,  cannot use scope save due to sub scopes.
+	Solution: Re-write directive of entity selector (Left to Right Grid selector) to use the same scope as parent pages like search.
+	Modify User Management and Role Management pages to use the new Directive.
+
+20. Need DCU Control to lock the form (Make readonly)
+21. (FIXED) Need to send more parameters to linked target. (1) Send From SearchView To MasterDetail Form, (2) Send From any form to MasterDetail Form.
+
+22. Quit Page error. Try to Give a timeout to quit.
+
+23. Delete Transaction Form (Example, delete a student)
+	AppTransactionUnitDeleteFlow
+	
+	Start delete with UnitId: 	
+		UnitDeleteFlowCheck()	
+		1. find all Delete flow by AppTransactionUnitDeleteFlow.TransactionUnitID
+			if (flow count == 1 and flow.StoredProcedureName != ''){
+				
+			}
+			else{
+				check each child unitId, if there is a DeleteFlow for this child unitid, repeat the UnitDeleteFlowCheck()
+			}
+
+24. Need to Load Form Field (On Each Transaction Unit ) Default Value
+
+25. Form Required Field
+
+26. Image if use vitual directory, must use full path url.
+
+
+27. Tab layout grid * 100% width.
+	
+
+28. Multiple Language.
+	Linked Target,
+	Linked Search
+	Search Field
+	Search View Field
+
+
+29. Transaction Save As
+
+30. Transaction Editor Cannot select DDL and Inner Relation before save.
+
+
+31.  
+In order to open muliple tabs of same routesate (For example, open multiple search tabs), the tab will share the same page. 
+We use the following work aournd, go to a fake state,and then go back to the target tab state.
+Issues: it load the same tab twice.
+
+
+if ($state.current && $state.current.name == tab.route) {
+                $state.go('main.fake');
+
+                $timeout(function () {
+                    $state.go(tab.route, { Id: tab.Id, param1: tab.param1, param2: tab.param2 });
+                }, 100);
+		}
+
+
+32. FS:
+ on FSTeam ADD column IsActive
+
+ add view View_ActiveTerms
+
+ add Entity View_ActiveTerms
+
+ save as order transactions, change term ddl fields to link to View_ActiveTerms
+
+
+
+
+8. Fixed ----- Search View linked target, add delete function.
+9. Fixed -----  Remove delete from master detail main menu, put it on form linked target.
+
+12.Fixed ----- List Menu Icon for non-admin users
+
+13. For auto populate search for forms. hide it from my search list.
+	ie. By usage type, do diffent process
+	Usage Type: Management, PopulateData, 
+
+
+
+
+
+7. Requied Filed Validation.
+
+4. Individual class, users cannot know what click next to add sessions (he needs to click the + button to expand, but he does not know to click it).
+	Example: Need to add a button, "add session", auto expand the sub grid.
+
+
+
+8. FK on FSTeacherTermAvailableCourse, remove fk to avaialbeTime, add fk to fsTeacher
+
+
+5. DDL drodown popup frozen on the screen.
+
+
+
+
+15. Need to load the needed search directly in APPSearch Directive
+
+16. Order calculation linked search. try to use casading which get result from SP.
+
+17. lock the student search creteria for student login.
+ 
+18. Email account SMTP/POP3 need to encrypt.
+
+19. Current User Editor 
+
+Service to reuse EM,  LInked target, LInked Search Functions.
+
+
+Master Editor Form.  Linked Search  / Linked Target:  Need To remove linked search from editor Fi
+
+
+
+20. phsical bautton (save, save as)should be differnet on each transaction (Forexamp, some trnasction hide save as and/or save)
+
+Done 21. Cascading DDL Issue
+Done 22. Default Blank Grand child row does not have cross relation.
+Done 23. Edit Child Row does not cross relation grand child row For Data Retrieve Button Click
+
+
+
+Done 26. User Group delete warning message.
+
+Done 27. User Group Editor Available User broken
+
+Done 28. Upload File (Teacher Editor) broken
+
+Done 30 User Profile New Page Copy from user editor
+
+Done 32. Downmain and User Menu Data Is Wrong
+
+Done 25 . On User Editor Creating new User: Create Domina Linked User On the Fly (Create Student on the fly)
+
+29. Remove Order List From student Editor (Form Design Config)
+
+24. Regroup menus (Config)
+
+31. Grand Child Data Retrieve triger child data retrieve button. (later)
+
+Done 32. Application Setting New Page
+
+33. AppEntityInfo : Lookup Item where clause  
+
+
+
+Meeting Recap 20160408
+1. Handle Student and teacher absences
+2. Camp with week, start date, end date, rate, put shortcut on desktop
+3. Half pay notification
+4. New Feature, payment management
+	pay to teacher
+	pay to student
+5. "Float to blrowser window" need to be removed
+
+
+
+
+
+E-app Client Site Setting
+
+1. Main Page Template:  1 - 5
+
+2. Main Background Color:  1 - 11
+
+4. Product Detail Template:  1 - 3
+
+5. Default Product List View:	CardView, ListView
+
+6. About Us Template:  1 - 2
+
+7. Contact us Template: 1 - 2
+
+8. Images:
+	Home Slider Image 1:
+	Home Slider Image 2:
+	Home Slider Image 3:
+	Home Slider Image 4:
+	Home Slider Image 5:
+	Logo Image 1:
+	Logo Image 2:
+
+
+
+
+
+
+Prodcut Card View Layout:
+On SearchViewFiled, add columns:
+	IsCardViewField bit null
+	CardViewOrder int null
+	IsShowCardViewLable bit null
+	CardViewControlType int null     ---- Image, Text, Sizes, Colors, DDL
+
+
+
+
+
+1. Fix Left Filter layout
+2. Fix Tree View Layout (WJ Flex Grid)
+
+
+
+
+
+
+
+
+
+---Unit 212   Cascading
+
+DDLParentLevelID: 2134
+
+RelationTable: SP_testGetGroup
+
+pararentCscading: @TermCourseDetailId
+
+ChildCascading: TotalHours:TotalHours|GroupRate:GroupRate|LineItemTotal:TotalCost
+
+DataRetrieveType 2
+
+
+
+---Unit 213   one to one
+
+RelationTable: SP_GetRegistrationOrderDetailForIndividualClassHours_callDataSet
+
+pararentCscading: StartDate:@startDate|EndDate:@endDate;222->@CourseCalendar=WeekDayId:WeekDayId|StartTime:StartTime|EndTime:EndTime;
+
+ChildCascading: Qty:TotalHours
+
+DataRetrieveType 3
+
+
+---Unit 222   one to many
+
+RelationTable: SP_GetIndividualClassSessionAvailableTeacher
+
+pararentCscading: TermCourseDetailId:@TermCourseDetailId|TermId:@TermId|StartDate:@StartDate|EndDate:@EndDate|StartTime:@StartTime|EndTime:@EndTime|WeekDayId:@WeekdayId
+
+ChildCascading: 1->TeacherName:TeacherName|TeacherAge:TeacherAge              // 1 is the teacherid
+
+MasterEntityFieldId: 2192   //(TeacherId)
+
+DataRetrieveType 2
+
+
+
+To DO:
+
+1. Menu Change (Text, Excel send to mark) Language Management
+
+2. Dashboard Rename
+
+3. Need to make course session simpler.
+
+4. Search Find Teacher (UI Show action)  
+
+5. PRINT, upload signed order contract.
+
+6. E-app site
+	1) Use App setting to config e-app pages linked to searchviews
+	2) Login 
+	3) Registration
+	4) UserAccount
+		a) Order List  and CRUD
+		b) Address List and CRUD
+		c) WishList
+		d) Personal Info
+
+	5) Shoppingcart 
+		Inheritance Special Feature: 
+			1. synchronize to a searchview result after login (get old saved shopping cart from db).    
+			2. add/remove/checkout will update shoppingcart in db.
+	
+
+7. Need to add column PrintFormId in Transaction Table. Design Print Layout;
+
+8. need to add catch on/off (langauge key change does not take affect until recycle)
+
+9. Tab close does not active last tab.
+
+10. List Form Print
+
+
+
+JULY:
+11. Form Design
+	1) need to add multiple root sections
+	2) Grid width need to set 100%. 
+	3) Grid Column Width need to be set on From Design page.
+	4) Tab design Transaction Field need to show display name instead of dbname
+	5) For Print Tab design, Use simple control (Text Label)
+
+
+1. Security
+2. BI 报表
+3. Notification System 师生互动，CHAT
+4. 时间表
+5. 打印，REPORT
+6. 多语言
+7. ORDER MANAGEMENT
+8. EXCEL EXPORT
+
+
+
+1 Need to Add Column Default Value MetaDataTGableDesign
+
+2. Bug: Switch Tab DDL Field load the first element.
+
+
+Requriement:
+Need to add a flag on TransactionField, indicate the cascading column (For examplke, Inner Relationship) is Copy value (One Time Copy Value) or Reference Value (Realtime Synchronize).
+
+
+3 Search View Chart
+
+
+
+4 Need to build Notification System
+
+
+
+
+5 Need a Job Management
+Job Name, Description, CreatedDate, KinkedToSearch, Message Format. 
+
+Job needs to link to at least one searchview column : message string format map to search view columns: email, name, text body, subject, etc.
+
+
+
+
+6 Need to add Role Menu Setting, Drop User Menu Setting.
+ Role Menu Intersection Domain Menu at run time, get final user menu. 
+
+
+
+
+ Workflow:
+
+2 set of validation
+
+1. Form Validation ()
+	Validation and formula Only used by form
+
+2. Project Validation ()
+	Validation and formula used by form and project
+
+20170519:
+1. Auto Assign User To Task
+Example:
+	ConditioN:	Empoyee Submitted,
+	ActioN:		Assign Current Employee User To this Submit Task, The Action is called "Set Current User to Task""
+

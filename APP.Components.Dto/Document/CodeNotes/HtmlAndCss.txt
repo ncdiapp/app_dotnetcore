@@ -1,0 +1,19 @@
+
+Hidden:
+	
+	display:none;	Does not render, Does not occupay space
+	visibility:hidden;	Render but hidden, occupy space
+	visibility:collapse;	In table: hidden and does not occupy space; In other element, it is the same as visibility:hidden;
+
+
+width:auto  vs width:100% :
+	
+	width:auto takes full width, count border and padding
+	width:100% takes full width, does not count border and padding. will need box-sizing: border-box;
+
+	Use following box-sizing, width 100% will looks the same as width auto
+	 {
+		-webkit-box-sizing: border-box;
+		-moz-box-sizing: border-box;
+		box-sizing: border-box;
+	}

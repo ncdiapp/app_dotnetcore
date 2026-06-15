@@ -1,0 +1,887 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+.redtext {
+  color: red !important;
+}
+
+body {
+  margin: 0;
+  font-family: 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Deault Scrollbar Styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f1f1f133;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #9ca3af55;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af88;
+}
+
+/* Dark scrollbar scrollbar */
+.scrollbar-dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-dark ::-webkit-scrollbar-track {
+  background: #1f294070;
+  border-radius: 4px;
+}
+
+.scrollbar-dark ::-webkit-scrollbar-thumb {
+  background: #2a3953;
+  border-radius: 4px;
+}
+
+.scrollbar-dark ::-webkit-scrollbar-thumb:hover {
+  background: #374868;
+}
+
+/* Hide Wijmo Evaluation Watermark */
+/* Target the specific fixed div at top-right containing the Wijmo licensing link */
+div[style*="position: fixed"][style*="z-index: 10000"][style*="background: rgba(240, 240, 240, 0.9)"] {
+  display: none !important; 
+}
+
+
+
+.CSpan_1 {
+  width: 4.17%;
+}
+
+.CSpan_2 {
+  width: 8.33%;
+}
+
+.CSpan_3 {
+  width: 12.5%;
+}
+
+.CSpan_4 {
+  width: 16.67%;
+}
+
+.CSpan_5 {
+  width: 20.83%;
+}
+
+.CSpan_6 {
+  width: 25%;
+}
+
+.CSpan_7 {
+  width: 29.17%;
+}
+
+.CSpan_8 {
+  width: 33.33%;
+}
+
+.CSpan_9 {
+  width: 37.5%;
+}
+
+.CSpan_10 {
+  width: 41.67%;
+}
+
+.CSpan_11 {
+  width: 45.83%;
+}
+
+.CSpan_12 {
+  width: 50%;
+}
+
+.CSpan_13 {
+  width: 54.17%;
+}
+
+.CSpan_14 {
+  width: 58.33%;
+}
+
+.CSpan_15 {
+  width: 62.5%;
+}
+
+.CSpan_16 {
+  width: 66.67%;
+}
+
+.CSpan_17 {
+  width: 70.83%;
+}
+
+.CSpan_18 {
+  width: 75%;
+}
+
+.CSpan_19 {
+  width: 79.17%;
+}
+
+.CSpan_20 {
+  width: 83.33%;
+}
+
+.CSpan_21 {
+  width: 87.5%;
+}
+
+.CSpan_22 {
+  width: 91.67%;
+}
+
+.CSpan_23 {
+  width: 95.83%;
+}
+
+.CSpan_24 {
+  width: 100%;
+}
+
+/* Form Layout Row - 24 column grid system */
+.FormLayoutRow {
+  width: 100%;
+  height: auto;
+  display: flex;
+  position: relative;
+  flex-wrap: wrap;
+
+}
+
+.FormLayoutRow:last-child {
+  margin-bottom: 0;
+}
+
+.Row24 {
+  /* 24-column grid system */
+  display: flex;
+  flex-wrap: wrap;
+}
+
+/* Layout Item Container */
+.LayoutItemContainer {
+  /* background-color: white; */
+  cursor: pointer;
+  min-height: 30px;
+  padding: 4px;
+  position: relative;
+  box-sizing: border-box;
+  transition: border-color 0.2s, background-color 0.2s;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.LayoutItemContainer label {
+  font-weight: 600;
+}
+
+/* Selected layout item in design mode */
+.LayoutItemContainer.border-2.border-blue-500.border-dashed {
+  border-color: #3b82f6 !important;
+  border-style: dashed !important;
+  border-width: 2px !important;
+}
+
+@media (max-width: 700px) {
+  .FormFlex .FormLayoutRow {
+      display: block;
+  }
+  
+  .FormFlex .LayoutItemContainer {
+    width: 100% !important;
+  }
+
+  .FormFlex .CSpan_1 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_2 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_3 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_4 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_5 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_6 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_7 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_8 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_9 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_10 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_11 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_12 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_13 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_14 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_15 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_16 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_17 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_18 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_19 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_20 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_21 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_22 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_23 {
+      width: 100%;
+  }
+
+  .FormFlex .CSpan_24 {
+      width: 100%;
+  }
+}
+
+
+/* Container context menu buttons - only visible when hovering over design panel (CSS-based) */
+.ContainerContextMenuButton {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s, visibility 0.2s;
+}
+
+.FormDesignPanel:hover .ContainerContextMenuButton {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+/* Also show context menu button when hovering over the layout item container or any of its children */
+.LayoutItemContainer:hover .ContainerContextMenuButton,
+.LayoutItemContainer.is-hovered .ContainerContextMenuButton {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+/* Tab button context menu button - show on hover */
+.FormTabButton:hover .TabButtonContextButton {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.TabButtonContextButton {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s, visibility 0.2s;
+}
+
+.FormFlex {
+  width: 100%;
+  position: relative;
+}
+
+.FormFlex .FormLayoutRow {
+  width: 100%;
+  height: auto;
+  display: flex;
+  position: relative;
+  flex-wrap: wrap;
+
+}
+
+.FormFlex .FormLayoutRow:last-child {
+  margin-bottom: 0;
+}
+
+.FormFlex .LayoutItemContainer {
+  /* background-color: white; */
+  cursor: pointer;
+  min-height: 30px;
+  padding: 4px;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.FormFlex .LayoutItemContainer label {
+  font-weight: 600;
+}
+
+.FormFieldConfigButton {
+  position: absolute;
+  top: 4px;
+  right: 5px;
+  cursor: pointer;
+  height: 26px;
+  width: 20px;
+  padding: 0;
+}
+
+/* Dashboard Flex Layout Styles */
+.dashboard-flex-layout {
+  width: 100%;
+  position: relative;
+}
+
+.dashboard-widget-container {
+  box-sizing: border-box;
+  position: relative;
+  flex: 1 1 auto;
+}
+
+.dashboard-responsive-container {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.dashboard-row-container {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dashboard-column-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dashboard-widget-item {
+  box-sizing: border-box;
+  min-height: 150px;
+}
+
+/* Angular Dashboard Layout Classes - Match Angular version */
+/* ResponsiveContainer - Angular: Ctn-ResponsiveContainer */
+.Ctn-ResponsiveContainer {
+  width: 100%;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;  
+  gap: 10px;
+}
+
+/* RowContainer - Angular: Ctn-HorizontalFlexDiv TotalColumnsX */
+.Ctn-HorizontalFlexDiv {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-wrap: nowrap;
+  position: relative;
+  overflow: visible;
+  gap: 10px; /* Gap between items */
+}
+
+/* ColumnContainer - Angular: CellContainerControl ColSpanX */
+.CellContainerControl {
+  height: 100%;
+  position: relative;
+  overflow: visible;
+  box-sizing: border-box;
+  /* flex is set per TotalColumns/ColSpan combination with gap adjustment */
+} 
+
+/* LayoutCellItemContainer - Angular inner container */
+.LayoutCellItemContainer {
+  width: 100%;
+  height: 100%;  
+  box-sizing: border-box;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* Dashboard CSpan classes - 24 column grid system */
+.dashboard-flex-layout .CSpan_1 {
+  width: calc(100% / 24 * 1);
+}
+
+.dashboard-flex-layout .CSpan_2 {
+  width: calc(100% / 24 * 2);
+}
+
+.dashboard-flex-layout .CSpan_3 {
+  width: calc(100% / 24 * 3);
+}
+
+.dashboard-flex-layout .CSpan_4 {
+  width: calc(100% / 24 * 4);
+}
+
+.dashboard-flex-layout .CSpan_5 {
+  width: calc(100% / 24 * 5);
+}
+
+.dashboard-flex-layout .CSpan_6 {
+  width: calc(100% / 24 * 6);
+}
+
+.dashboard-flex-layout .CSpan_7 {
+  width: calc(100% / 24 * 7);
+}
+
+.dashboard-flex-layout .CSpan_8 {
+  width: calc(100% / 24 * 8);
+}
+
+.dashboard-flex-layout .CSpan_9 {
+  width: calc(100% / 24 * 9);
+}
+
+.dashboard-flex-layout .CSpan_10 {
+  width: calc(100% / 24 * 10);
+}
+
+.dashboard-flex-layout .CSpan_11 {
+  width: calc(100% / 24 * 11);
+}
+
+.dashboard-flex-layout .CSpan_12 {
+  width: calc(100% / 24 * 12);
+}
+
+.dashboard-flex-layout .CSpan_13 {
+  width: calc(100% / 24 * 13);
+}
+
+.dashboard-flex-layout .CSpan_14 {
+  width: calc(100% / 24 * 14);
+}
+
+.dashboard-flex-layout .CSpan_15 {
+  width: calc(100% / 24 * 15);
+}
+
+.dashboard-flex-layout .CSpan_16 {
+  width: calc(100% / 24 * 16);
+}
+
+.dashboard-flex-layout .CSpan_17 {
+  width: calc(100% / 24 * 17);
+}
+
+.dashboard-flex-layout .CSpan_18 {
+  width: calc(100% / 24 * 18);
+}
+
+.dashboard-flex-layout .CSpan_19 {
+  width: calc(100% / 24 * 19);
+}
+
+.dashboard-flex-layout .CSpan_20 {
+  width: calc(100% / 24 * 20);
+}
+
+.dashboard-flex-layout .CSpan_21 {
+  width: calc(100% / 24 * 21);
+}
+
+.dashboard-flex-layout .CSpan_22 {
+  width: calc(100% / 24 * 22);
+}
+
+.dashboard-flex-layout .CSpan_23 {
+  width: calc(100% / 24 * 23);
+}
+
+.dashboard-flex-layout .CSpan_24 {
+  width: 100%;
+}
+
+/* Dashboard ColSpan classes - Angular compatibility (ColSpan1, ColSpan2, etc.) */
+.dashboard-flex-layout .ColSpan1,
+.dashboard-flex-layout .ColSpan2,
+.dashboard-flex-layout .ColSpan3,
+.dashboard-flex-layout .ColSpan4,
+.dashboard-flex-layout .ColSpan5,
+.dashboard-flex-layout .ColSpan6,
+.dashboard-flex-layout .ColSpan7,
+.dashboard-flex-layout .ColSpan8,
+.dashboard-flex-layout .ColSpan9,
+.dashboard-flex-layout .ColSpan10,
+.dashboard-flex-layout .ColSpan11,
+.dashboard-flex-layout .ColSpan12,
+.dashboard-flex-layout .ColSpan13,
+.dashboard-flex-layout .ColSpan14,
+.dashboard-flex-layout .ColSpan15,
+.dashboard-flex-layout .ColSpan16,
+.dashboard-flex-layout .ColSpan17,
+.dashboard-flex-layout .ColSpan18,
+.dashboard-flex-layout .ColSpan19,
+.dashboard-flex-layout .ColSpan20,
+.dashboard-flex-layout .ColSpan21,
+.dashboard-flex-layout .ColSpan22,
+.dashboard-flex-layout .ColSpan23,
+.dashboard-flex-layout .ColSpan24 {
+  box-sizing: border-box;
+}
+
+/* CellContainerControl ColSpan classes - Angular version */
+/* Width calculation: ColSpanX / TotalColumnsY = percentage */
+/* Example: ColSpan2 in TotalColumns3 = 2/3 = 66.6% */
+
+/* TotalColumns1 */
+.TotalColumns1.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 {
+  width: 100%;
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+/* TotalColumns2 */
+/* With gap: 10px, for 2 items: each = calc((100% - 10px) / 2) */
+.TotalColumns2.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 {
+  width: calc((100% - 10px) / 2);
+  flex: 0 0 calc((100% - 10px) / 2);
+  min-width: 0;
+}
+.TotalColumns2.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 {
+  width: 100%;
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+/* TotalColumns3 */
+/* With gap: 10px, for 3 items: 1-col = calc((100% - 20px) / 3), 2-col = calc((100% - 20px) * 2 / 3 + 10px) */
+.TotalColumns3.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 {
+  width: calc((100% - 20px) / 3);
+  flex: 0 0 calc((100% - 20px) / 3);
+  min-width: 0;
+}
+.TotalColumns3.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 {
+  width: calc((100% - 20px) * 2 / 3 + 10px);
+  flex: 0 0 calc((100% - 20px) * 2 / 3 + 10px);
+  min-width: 0;
+}
+.TotalColumns3.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan3 {
+  width: 100%;
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+/* TotalColumns4 */
+/* With gap: 10px, for 4 items: 1-col = calc((100% - 30px) / 4), 2-col = calc((100% - 30px) * 2 / 4 + 10px), etc. */
+.TotalColumns4.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 {
+  width: calc((100% - 30px) / 4);
+  flex: 0 0 calc((100% - 30px) / 4);
+  min-width: 0;
+}
+.TotalColumns4.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 {
+  width: calc((100% - 30px) * 2 / 4 + 10px);
+  flex: 0 0 calc((100% - 30px) * 2 / 4 + 10px);
+  min-width: 0;
+}
+.TotalColumns4.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan3 {
+  width: calc((100% - 30px) * 3 / 4 + 20px);
+  flex: 0 0 calc((100% - 30px) * 3 / 4 + 20px);
+  min-width: 0;
+}
+.TotalColumns4.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan4 {
+  width: 100%;
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+/* TotalColumns5 */
+.TotalColumns5.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 {
+  width: 20%;
+}
+.TotalColumns5.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 {
+  width: 40%;
+}
+.TotalColumns5.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan3 {
+  width: 60%;
+}
+.TotalColumns5.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan4 {
+  width: 80%;
+}
+.TotalColumns5.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan5 {
+  width: 100%;
+}
+
+/* TotalColumns6 */
+.TotalColumns6.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 {
+  width: 16.666%;
+}
+.TotalColumns6.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 {
+  width: 33.333%;
+}
+.TotalColumns6.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan3 {
+  width: 50%;
+}
+.TotalColumns6.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan4 {
+  width: 66.666%;
+}
+.TotalColumns6.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan5 {
+  width: 83.333%;
+}
+.TotalColumns6.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan6 {
+  width: 100%;
+}
+
+/* TotalColumns7 */
+.TotalColumns7.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 {
+  width: 14.285%;
+}
+.TotalColumns7.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 {
+  width: 28.571%;
+}
+.TotalColumns7.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan3 {
+  width: 42.857%;
+}
+.TotalColumns7.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan4 {
+  width: 57.142%;
+}
+.TotalColumns7.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan5 {
+  width: 71.428%;
+}
+.TotalColumns7.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan6 {
+  width: 85.714%;
+}
+.TotalColumns7.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan7 {
+  width: 100%;
+}
+
+/* TotalColumns8 */
+.TotalColumns8.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 {
+  width: 12.5%;
+}
+.TotalColumns8.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 {
+  width: 25%;
+}
+.TotalColumns8.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan3 {
+  width: 37.5%;
+}
+.TotalColumns8.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan4 {
+  width: 50%;
+}
+.TotalColumns8.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan5 {
+  width: 62.5%;
+}
+.TotalColumns8.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan6 {
+  width: 75%;
+}
+.TotalColumns8.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan7 {
+  width: 87.5%;
+}
+.TotalColumns8.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan8 {
+  width: 100%;
+}
+
+/* TotalColumns9 */
+.TotalColumns9.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 {
+  width: 11.111%;
+}
+.TotalColumns9.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 {
+  width: 22.222%;
+}
+.TotalColumns9.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan3 {
+  width: 33.333%;
+}
+.TotalColumns9.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan4 {
+  width: 44.444%;
+}
+.TotalColumns9.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan5 {
+  width: 55.555%;
+}
+.TotalColumns9.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan6 {
+  width: 66.666%;
+}
+.TotalColumns9.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan7 {
+  width: 77.777%;
+}
+.TotalColumns9.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan8 {
+  width: 88.888%;
+}
+.TotalColumns9.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan9 {
+  width: 100%;
+}
+
+/* TotalColumns10 */
+.TotalColumns10.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 {
+  width: 10%;
+}
+.TotalColumns10.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 {
+  width: 20%;
+}
+.TotalColumns10.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan3 {
+  width: 30%;
+}
+.TotalColumns10.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan4 {
+  width: 40%;
+}
+.TotalColumns10.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan5 {
+  width: 50%;
+}
+.TotalColumns10.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan6 {
+  width: 60%;
+}
+.TotalColumns10.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan7 {
+  width: 70%;
+}
+.TotalColumns10.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan8 {
+  width: 80%;
+}
+.TotalColumns10.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan9 {
+  width: 90%;
+}
+.TotalColumns10.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan10 {
+  width: 100%;
+}
+
+/* TotalColumns11-24 - Generate remaining combinations */
+.TotalColumns11.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 { width: 9.09%; }
+.TotalColumns11.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 { width: 18.18%; }
+.TotalColumns11.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan3 { width: 27.27%; }
+.TotalColumns11.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan4 { width: 36.36%; }
+.TotalColumns11.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan5 { width: 45.45%; }
+.TotalColumns11.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan6 { width: 54.54%; }
+.TotalColumns11.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan7 { width: 63.63%; }
+.TotalColumns11.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan8 { width: 72.72%; }
+.TotalColumns11.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan9 { width: 81.81%; }
+.TotalColumns11.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan10 { width: 90.9%; }
+.TotalColumns11.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan11 { width: 100%; }
+
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 { width: 8.333%; }
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 { width: 16.666%; }
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan3 { width: 25%; }
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan4 { width: 33.333%; }
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan5 { width: 41.666%; }
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan6 { width: 50%; }
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan7 { width: 58.333%; }
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan8 { width: 66.666%; }
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan9 { width: 75%; }
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan10 { width: 83.333%; }
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan11 { width: 91.666%; }
+.TotalColumns12.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan12 { width: 100%; }
+
+/* TotalColumns24 - full 24-column grid (e.g. new row with single ColSpan24 cell) */
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan1 { width: 4.166%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan2 { width: 8.333%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan3 { width: 12.5%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan4 { width: 16.666%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan5 { width: 20.833%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan6 { width: 25%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan7 { width: 29.166%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan8 { width: 33.333%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan9 { width: 37.5%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan10 { width: 41.666%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan11 { width: 45.833%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan12 { width: 50%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan13 { width: 54.166%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan14 { width: 58.333%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan15 { width: 62.5%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan16 { width: 66.666%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan17 { width: 70.833%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan18 { width: 75%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan19 { width: 79.166%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan20 { width: 83.333%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan21 { width: 87.5%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan22 { width: 91.666%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan23 { width: 95.833%; }
+.TotalColumns24.Ctn-HorizontalFlexDiv .CellContainerControl.ColSpan24 { width: 100%; }
+
+/* Responsive: On small screens, make all widgets full width */
+@media (max-width: 768px) {
+  .dashboard-flex-layout .CSpan_1,
+  .dashboard-flex-layout .CSpan_2,
+  .dashboard-flex-layout .CSpan_3,
+  .dashboard-flex-layout .CSpan_4,
+  .dashboard-flex-layout .CSpan_5,
+  .dashboard-flex-layout .CSpan_6,
+  .dashboard-flex-layout .CSpan_7,
+  .dashboard-flex-layout .CSpan_8,
+  .dashboard-flex-layout .CSpan_9,
+  .dashboard-flex-layout .CSpan_10,
+  .dashboard-flex-layout .CSpan_11,
+  .dashboard-flex-layout .CSpan_12,
+  .dashboard-flex-layout .CSpan_13,
+  .dashboard-flex-layout .CSpan_14,
+  .dashboard-flex-layout .CSpan_15,
+  .dashboard-flex-layout .CSpan_16,
+  .dashboard-flex-layout .CSpan_17,
+  .dashboard-flex-layout .CSpan_18,
+  .dashboard-flex-layout .CSpan_19,
+  .dashboard-flex-layout .CSpan_20,
+  .dashboard-flex-layout .CSpan_21,
+  .dashboard-flex-layout .CSpan_22,
+  .dashboard-flex-layout .CSpan_23,
+  .dashboard-flex-layout .CSpan_24 {
+    width: 100% !important;
+  }
+  
+  .dashboard-row-container {
+    flex-direction: column;
+  }
+}

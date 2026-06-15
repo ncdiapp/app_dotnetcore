@@ -1,0 +1,59 @@
+
+1 Open Start.
+
+2 Search for PowerShell, right-click the top-result and click the Run as administrator option.
+
+3 Type the following command to allow scripts to run and press Enter:
+	Set-ExecutionPolicy RemoteSigned
+
+4 Type A and press Enter.
+
+5 Type the following command to run the script and press Enter:
+
+	& "I:\Shell\CreateAppPool.ps1"
+
+    In the above command, make sure to change "PATH\TO\SCRIPT" to the location of your script.
+
+After you complete the steps, the script will run and if it was crafted correctly, you should see its output without issues.
+
+On Windows 10, PowerShell includes four execution policies, including:
+
+    Restricted ！ Stops any script from running.
+    RemoteSigned ！ Runs scripts created on the device. However, scripts created on another computer won't run unless they include a signature of a trusted publisher.
+    AllSigned ！ All the scripts will run as long as they've been signed by a trusted publisher.
+    Unrestricted ！ Runs any script without any restrictions.
+
+In the above steps, we use the command to allow local scripts to run on Windows 10. However, if you're not planning to execute scripts regularly, you can restore the default settings using the same instructions, but on step No. 4, make sure to use the Set-ExecutionPolicy Restricted command.
+
+
+
+
+
+
+
+
+
+
+
+-----------
+
+C# PowerShell
+
+RunspaceConfiguration runspaceConfiguration = RunspaceConfiguration.Create();
+
+Runspace runspace = RunspaceFactory.CreateRunspace(runspaceConfiguration);
+runspace.Open();
+
+RunspaceInvoke scriptInvoker = new RunspaceInvoke(runspace);
+
+Pipeline pipeline = runspace.CreatePipeline();
+
+//Here's how you add a new script with arguments
+Command myCommand = new Command(scriptfile);
+CommandParameter testParam = new CommandParameter("key","value");
+myCommand.Parameters.Add(testParam);
+
+pipeline.Commands.Add(myCommand);
+
+// Execute PowerShell script
+results = pipeline.Invoke();

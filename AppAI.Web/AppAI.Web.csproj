@@ -1,0 +1,69 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>AppAI.Web</AssemblyName>
+    <RootNamespace>AppAI.Web</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!--
+      Phase 4: New ASP.NET Core 10 web host.
+      Replaces PlmApplication (ASP.NET MVC4 / Web API 2 / OWIN / System.Web).
+      Old AppBuilder.csproj is NEVER modified — it remains the .NET 4.8 production fallback.
+      CI: dotnet build AppAI.Core.sln -c Release
+    -->
+  </PropertyGroup>
+
+  <!-- ASP.NET Core / JSON / SignalR (all built into SDK) -->
+  <ItemGroup>
+    <!-- Newtonsoft.Json adapter preserves legacy serialiser behaviour (NullValueHandling.Include) -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- Authentication + SAML -->
+  <ItemGroup>
+    <PackageReference Include="Sustainsys.Saml2.AspNetCore2" Version="2.10.0" />
+  </ItemGroup>
+
+  <!-- Logging -->
+  <ItemGroup>
+    <PackageReference Include="NLog.Web.AspNetCore" Version="5.3.15" />
+  </ItemGroup>
+
+  <!-- Pin to resolve NU1107: EFCore.Design pulls CSharp 4.13.0 and CSharp.Workspaces 4.8.0, both needing different Common versions -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.13.0" />
+  </ItemGroup>
+
+  <!-- EF Core (AppMasterDB — replaces Entity Framework 6) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Redis session (optional — swap AddDistributedMemoryCache for this in production) -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- Health checks -->
+  <ItemGroup>
+    <PackageReference Include="AspNetCore.HealthChecks.SqlServer" Version="8.0.2" />
+  </ItemGroup>
+
+  <!-- QR code generation (replaces QRDisplay.aspx) -->
+  <ItemGroup>
+    <PackageReference Include="QRCoder" Version="1.6.0" />
+  </ItemGroup>
+
+  <!-- Business + infrastructure layers -->
+  <ItemGroup>
+    <!-- APP.BL.Core pulls in transitive: Framework, Dto, EntityConverter, LBL, etc. -->
+    <ProjectReference Include="..\APP.BL\APP.BL.Core.csproj" />
+  </ItemGroup>
+
+</Project>

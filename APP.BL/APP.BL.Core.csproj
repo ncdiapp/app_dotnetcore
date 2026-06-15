@@ -1,0 +1,150 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>APP.BL</AssemblyName>
+    <RootNamespace>APP.BL</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!--
+      Phase 2B: Core business logic — 600+ source files auto-included by SDK glob.
+      Library swaps from .NET 4.8:
+        ActiveUp.Net.Mail    → MailKit + MimeKit
+        BouncyCastle 1.9     → BouncyCastle.Cryptography 2.x
+        Exchange.WebServices → Microsoft.Graph 5.x  (EWS code guarded #if NETFRAMEWORK)
+        MySql.Data           → MySqlConnector 2.x
+        RestSharp DLL        → RestSharp 112.x
+        ServiceStack.*       → removed (confirmed zero API calls)
+        VBIDE COM ref        → removed (dead code)
+      Still guarded with #if NETFRAMEWORK (see agent pass on source files):
+        Microsoft.Web.Administration, SpreadsheetGear, LibSassHost,
+        ReportingService2010, Microsoft.AnalysisServices.AdomdClient
+      Microsoft.Data.Schema.ScriptDom → Microsoft.SqlServer.TransactSql.ScriptDom (NuGet)
+      PHASE 0 GATE: Verify GemBox, DynamicExpresso, FirebaseAdmin versions on NuGet.
+    -->
+  </PropertyGroup>
+
+  <!-- Email: replaces ActiveUp.Net.Mail / Imap4 / Common -->
+  <ItemGroup>
+    <PackageReference Include="MailKit" Version="4.7.1" />
+    <PackageReference Include="MimeKit" Version="4.7.1" />
+  </ItemGroup>
+
+  <!-- HTML parsing -->
+  <ItemGroup>
+    <PackageReference Include="AngleSharp" Version="1.2.0" />
+  </ItemGroup>
+
+  <!-- Crypto: replaces Portable.BouncyCastle 1.9 -->
+  <ItemGroup>
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
+  </ItemGroup>
+
+  <!-- Dynamic expression evaluator -->
+  <ItemGroup>
+    <PackageReference Include="DynamicExpresso.Core" Version="2.16.0" />
+  </ItemGroup>
+
+  <!-- Firebase -->
+  <ItemGroup>
+    <PackageReference Include="FirebaseAdmin" Version="3.1.0" />
+  </ItemGroup>
+
+  <!-- GemBox Office suite (commercial, verify latest on nuget.org) -->
+  <ItemGroup>
+    <PackageReference Include="GemBox.Document" Version="2025.1.103" />
+    <PackageReference Include="GemBox.Pdf" Version="2025.1.103" />
+    <PackageReference Include="GemBox.Spreadsheet" Version="47.0.1000" />
+  </ItemGroup>
+
+  <!-- Google APIs -->
+  <ItemGroup>
+    <PackageReference Include="Google.Apis" Version="1.68.0" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
+    <PackageReference Include="Google.Apis.Core" Version="1.68.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+  </ItemGroup>
+
+  <!-- Microsoft Graph: replaces Exchange.WebServices -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Graph" Version="5.65.0" />
+  </ItemGroup>
+
+  <!-- Authentication / JWT -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Identity.Client" Version="4.65.0" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.2.0" />
+    <PackageReference Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.2.0" />
+    <PackageReference Include="Microsoft.IdentityModel.Logging" Version="8.2.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.2.0" />
+  </ItemGroup>
+
+  <!-- T-SQL parsing: replaces Microsoft.Data.Schema.ScriptDom DLLs -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SqlServer.TransactSql.ScriptDom" Version="180.18.1" />
+  </ItemGroup>
+
+  <!-- Database connectors -->
+  <ItemGroup>
+    <!-- Replaces MySql.Data 8.1 -->
+    <PackageReference Include="MySqlConnector" Version="2.4.0" />
+    <!-- Replaces System.Data.OracleClient (if any Oracle usage remains after guards) -->
+    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="23.6.0" />
+  </ItemGroup>
+
+  <!-- Logging + HTTP context -->
+  <ItemGroup>
+    <PackageReference Include="NLog" Version="5.3.4" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+  </ItemGroup>
+
+  <!-- JSON / serialisation -->
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+    <PackageReference Include="System.Text.Encodings.Web" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- HTTP client: replaces DLL RestSharp (breaking changes since 107; 110+ API) -->
+  <ItemGroup>
+    <PackageReference Include="RestSharp" Version="112.0.0" />
+  </ItemGroup>
+
+  <!-- Payment / messaging -->
+  <ItemGroup>
+    <PackageReference Include="Stripe.net" Version="46.2.0" />
+    <PackageReference Include="Twilio" Version="7.3.1" />
+  </ItemGroup>
+
+  <!-- Compression -->
+  <ItemGroup>
+    <PackageReference Include="K4os.Compression.LZ4" Version="1.3.8" />
+    <PackageReference Include="ZstdSharp.Port" Version="0.7.5" />
+  </ItemGroup>
+
+  <!-- Core system packages -->
+  <ItemGroup>
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.0" />
+    <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
+    <PackageReference Include="System.DirectoryServices" Version="9.0.0" />
+    <PackageReference Include="System.DirectoryServices.AccountManagement" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- Project references — all *.Core siblings -->
+  <ItemGroup>
+    <ProjectReference Include="..\LLBL\DatabaseGeneric\APP.LBL.csproj" />
+    <ProjectReference Include="..\LLBL\DatabaseSpecific\APP.LBLDBSpecific.csproj" />
+    <ProjectReference Include="..\APP.Components.Dto\APP.Components.Dto.Core.csproj" />
+    <ProjectReference Include="..\APP.Components.EntityConverter\APP.Components.EntityConverter.Core.csproj" />
+    <ProjectReference Include="..\APP.Framework\APP.Framework.Core.csproj" />
+    <ProjectReference Include="..\DatabaseSchemaReader\DatabaseSchemaReader.Core.csproj" />
+    <!-- NJsonSchema projects are already SDK-style netstandard2.0 — reference as-is -->
+    <ProjectReference Include="..\DataExChange\NJsonSchema\NJsonSchema.csproj" />
+    <ProjectReference Include="..\DataExChange\NJsonSchema.CodeGeneration\NJsonSchema.CodeGeneration.csproj" />
+    <ProjectReference Include="..\plmevaluator\Evaluator\AppEvaluator.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,716 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{18FAE239-DA1D-4C5A-B7A2-FF8E2B0A6893}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>APP.Components.Dto</RootNamespace>
+    <AssemblyName>APP.Components.Dto</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <SccProjectName>SAK</SccProjectName>
+    <SccLocalPath>SAK</SccLocalPath>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccProvider>SAK</SccProvider>
+    <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\</SolutionDir>
+    <RestorePackages>true</RestorePackages>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'WebSiteCopy|AnyCPU'">
+    <OutputPath>bin\WebSiteCopy\</OutputPath>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Tablet|AnyCPU'">
+    <OutputPath>bin\Tablet\</OutputPath>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Storyboard|AnyCPU'">
+    <OutputPath>bin\Storyboard\</OutputPath>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'WebMvc|AnyCPU'">
+    <OutputPath>bin\WebMvc\</OutputPath>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Newtonsoft.Json, Version=4.0.5.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\Libraries\Business\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="AllConstants.cs" />
+    <Compile Include="AppEnums.cs" />
+    <Compile Include="AsynCallPool.cs" />
+    <Compile Include="CompliCodeDto.cs" />
+    <Compile Include="ConstStringHelper.cs" />
+    <Compile Include="ControlTypeValueConverter.cs" />
+    <Compile Include="DatabaseSchema\DatabaseColumnCascadingDto.cs" />
+    <Compile Include="DatabaseSchema\DBViewDesign\ViewJoinUpdateDto.cs" />
+    <Compile Include="DatabaseSchema\DBViewDesign\ViewTableAddRemoveDto.cs" />
+    <Compile Include="DatabaseSchema\DBViewDesign\DatabaseViewUpdateDto.cs" />
+    <Compile Include="DatabaseSchema\TableDataDto.cs" />
+    <Compile Include="EntityDto\AppApplicationAssetsItemDto.cs" />
+    <Compile Include="EntityDto\AppBatchLogDto.cs" />
+    <Compile Include="EntityDto\AppBusienssAssormentNavigationDto.cs" />
+    <Compile Include="EntityDto\AppBusinessMgtScopeDto.cs" />
+    <Compile Include="EntityDto\AppBusinessPartnerDto.cs" />
+    <Compile Include="EntityDto\AppBusinessPartnerInviteUserDto.cs" />
+    <Compile Include="EntityDto\AppBusinessScopeTagDto.cs" />
+    <Compile Include="EntityDto\AppCalendarBaseDateDto.cs" />
+    <Compile Include="EntityDto\AppCalendarDto.cs" />
+    <Compile Include="EntityDto\AppCalendarRecurringDayDto.cs" />
+    <Compile Include="EntityDto\AppCalendarSpecificDayDto.cs" />
+    <Compile Include="EntityDto\AppComOrganizationDto.cs" />
+    <Compile Include="EntityDto\AppComOrgLevelDto.cs" />
+    <Compile Include="EntityDto\AppCompanyDto.cs" />
+    <Compile Include="EntityDto\AppCompanyOrderModuleDto.cs" />
+    <Compile Include="EntityDto\AppCompanyUserTypeRegisterDto.cs" />
+    <Compile Include="EntityDto\AppCountryDto.cs" />
+    <Compile Include="EntityDto\AppCurrencyDto.cs" />
+    <Compile Include="EntityDto\AppCurrentUserFavouriteFolderOrFileDto.cs" />
+    <Compile Include="EntityDto\AppDatabaseDiagramDto.cs" />
+    <Compile Include="EntityDto\AppDatabaseDiagramItemDto.cs" />
+    <Compile Include="EntityDto\AppDataSourceRegisterDto.cs" />
+    <Compile Include="EntityDto\AppDateSetDataExtractViewDto.cs" />
+    <Compile Include="EntityDto\AppEmployeeDto.cs" />
+    <Compile Include="EntityDto\AppEntitySimpleListValueDto.cs" />
+    <Compile Include="EntityDto\AppEsiteCatalogueDto.cs" />
+    <Compile Include="EntityDto\AppEsiteDto.cs" />
+    <Compile Include="EntityDto\AppEsitePagesDto.cs" />
+    <Compile Include="EntityDto\AppEstoreCatelogTreeLevelDto.cs" />
+    <Compile Include="EntityDto\AppEstoreDto.cs" />
+    <Compile Include="EntityDto\AppEstoreProductFieldDto.cs" />
+    <Compile Include="EntityDto\AppEstoreUserShoppingCartDto.cs" />
+    <Compile Include="EntityDto\AppExternalMethodRegisterDto.cs" />
+    <Compile Include="EntityDto\AppFileOrFolderShareToOtherDto.cs" />
+    <Compile Include="EntityDto\AppIntergrationSettingDto.cs" />
+    <Compile Include="EntityDto\AppIntergrationSettingParameterDto.cs" />
+    <Compile Include="EntityDto\AppItemBaseDto.cs" />
+    <Compile Include="EntityDto\AppLogTrackDto.cs" />
+    <Compile Include="EntityDto\AppMessageDeletedDto.cs" />
+    <Compile Include="EntityDto\AppMessageDto.cs" />
+    <Compile Include="EntityDto\AppmessageNotificationSettingDto.cs" />
+    <Compile Include="EntityDto\AppMessageUserReceivedDto.cs" />
+    <Compile Include="EntityDto\AppModuleLibRegisterDto.cs" />
+    <Compile Include="EntityDto\AppOrganizationLevelDto.cs" />
+    <Compile Include="EntityDto\AppPorjectWorkFlowTaskTimeSheetDto.cs" />
+    <Compile Include="EntityDto\AppProjectOrTaskTranscationDto.cs" />
+    <Compile Include="EntityDto\AppProjectOrWorkFlowDto.cs" />
+    <Compile Include="EntityDto\AppProjectPerspectiveTaskDto.cs" />
+    <Compile Include="EntityDto\AppProjectPerspectiveViewDto.cs" />
+    <Compile Include="EntityDto\AppProjectPortfolioBoardDto.cs" />
+    <Compile Include="EntityDto\AppProjectPortfolioDto.cs" />
+    <Compile Include="EntityDto\AppProjectPrivacyDto.cs" />
+    <Compile Include="EntityDto\AppProjectPrivilegeLibraryDto.cs" />
+    <Compile Include="EntityDto\AppProjectRoleDto.cs" />
+    <Compile Include="EntityDto\AppProjectRolePrivilegeDto.cs" />
+    <Compile Include="EntityDto\AppProjectSnapshotDto.cs" />
+    <Compile Include="EntityDto\AppProjectTaskCheckListDto.cs" />
+    <Compile Include="EntityDto\AppProjectTaskExpenseDto.cs" />
+    <Compile Include="EntityDto\AppProjectTaskPredecessorDto.cs" />
+    <Compile Include="EntityDto\AppProjectTaskResourceDto.cs" />
+    <Compile Include="EntityDto\AppProjectTaskResourcePlannedHoursDto.cs" />
+    <Compile Include="EntityDto\AppProjectTaskTagDto.cs" />
+    <Compile Include="EntityDto\AppProjectTaskTimeLogDto.cs" />
+    <Compile Include="EntityDto\AppProjectTeamDto.cs" />
+    <Compile Include="EntityDto\AppProjectTeamMemberDto.cs" />
+    <Compile Include="EntityDto\AppProjectTeamMemberRoleDto.cs" />
+    <Compile Include="EntityDto\AppProjectTemplateResourceDto.cs" />
+    <Compile Include="EntityDto\AppProjectWorkFlowActionDto.cs" />
+    <Compile Include="EntityDto\AppProjectWorkFlowConditionDto.cs" />
+    <Compile Include="EntityDto\AppProjectWorkFlowTaskDto.cs" />
+    <Compile Include="EntityDto\AppReportDto.cs" />
+    <Compile Include="EntityDto\AppSaasAccountUserDto.cs" />
+    <Compile Include="EntityDto\AppSaasDatabaseRegisterDto.cs" />
+    <Compile Include="EntityDto\AppSearchViewReportDto.cs" />
+    <Compile Include="EntityDto\AppSearchViewReportParamterMappingDto.cs" />
+    <Compile Include="EntityDto\AppSecurityTransactionActionDto.cs" />
+    <Compile Include="EntityDto\AppSecurityTransactionActionResourceDto.cs" />
+    <Compile Include="EntityDto\AppSecurityUserContactDto.cs" />
+    <Compile Include="EntityDto\AppSecurityUserInvitationDto.cs" />
+    <Compile Include="EntityDto\AppSecurityUserInvitedCompanyDto.cs" />
+    <Compile Include="EntityDto\AppTenantInfoDto.cs" />
+    <Compile Include="EntityDto\AppTenantProvisionRequestDto.cs" />
+    <Compile Include="EntityDto\AppTenantProvisionResultDto.cs" />
+    <Compile Include="EntityDto\AppTransactionDataLoadDto.cs" />
+    <Compile Include="EntityDto\AppTransactionDataTransferSettingDetailDto.cs" />
+    <Compile Include="EntityDto\AppTransactionDataTransferSettingDto.cs" />
+    <Compile Include="EntityDto\AppTransactionGroupSessionDto.cs" />
+    <Compile Include="EntityDto\AppTransactionItemDto.cs" />
+    <Compile Include="EntityDto\AppTransactionNavigationDto.cs" />
+    <Compile Include="EntityDto\AppTransactionUnitExtendFieldDto.cs" />
+    <Compile Include="EntityDto\AppTransactionUnitExtendFieldValueDto.cs" />
+    <Compile Include="EntityDto\AppTransAuditTrailLogDto.cs" />
+    <Compile Include="EntityDto\AppTranscationDataLoadFieldMappingDto.cs" />
+    <Compile Include="EntityDto\AppTranscationReportDto.cs" />
+    <Compile Include="EntityDto\AppTrasactionSnapShotDto.cs" />
+    <Compile Include="EntityDto\AppTrascationRecycleBinDto.cs" />
+    <Compile Include="EntityDto\AppUserMessgeFollowupDto.cs" />
+    <Compile Include="EntityDto\AppUserSkillDto.cs" />
+    <Compile Include="EntityDto\AppUserSkillListDto.cs" />
+    <Compile Include="EntityDto\AppVersionEditionModuleDto.cs" />
+    <Compile Include="EntityDto\AppViewLinkedSeaechOrUrlDto.cs" />
+    <Compile Include="EntityDto\AppWebApiConfigDto.cs" />
+    <Compile Include="EntityDto\AppWebApiParamsHeaderSettigDto.cs" />
+    <Compile Include="EntityDto\AppWebApiProviderDto.cs" />
+    <Compile Include="EntityDto\AppWorkflowDto.cs" />
+    <Compile Include="EntityDto\AppWorkflowLibActionDto.cs" />
+    <Compile Include="EntityDto\AppWorkFlowStepDto.cs" />
+    <Compile Include="EntityExdto\AppApplicationAssetsItemExDto.cs" />
+    <Compile Include="EntityExdto\AppBatchLogExDto.cs" />
+    <Compile Include="EntityExdto\AppBusienssAssormentNavigationExDto.cs" />
+    <Compile Include="EntityExdto\AppBusinessPartnerExDto.cs" />
+    <Compile Include="EntityExdto\AppBusinessPartnerInviteUserExDto.cs" />
+    <Compile Include="EntityExdto\AppBusinessScopeTagExDto.cs" />
+    <Compile Include="EntityExdto\AppCalendarBaseDateExDto.cs" />
+    <Compile Include="EntityExdto\AppCompanyExDto.cs" />
+    <Compile Include="EntityExdto\AppCompanyOrderModuleExDto.cs" />
+    <Compile Include="EntityExdto\AppCompanyUserTypeRegisterExDto.cs" />
+    <Compile Include="EntityExdto\AppCurrencyExDto.cs" />
+    <Compile Include="EntityExdto\AppCurrentUserFavouriteFolderOrFileExDto.cs" />
+    <Compile Include="EntityExdto\AppDatabaseDiagramExDto.cs" />
+    <Compile Include="EntityExdto\AppDatabaseDiagramItemExDto.cs" />
+    <Compile Include="EntityExdto\AppDataSourceRegisterExDto.cs" />
+    <Compile Include="EntityExdto\AppDateSetDataExtractViewExDto.cs" />
+    <Compile Include="EntityExdto\AppEmployeeExDto.cs" />
+    <Compile Include="EntityExdto\AppEntitySimpleListValueExDto.cs" />
+    <Compile Include="EntityExdto\AppEsiteCatalogueExDto.cs" />
+    <Compile Include="EntityExdto\AppEsiteExDto.cs" />
+    <Compile Include="EntityExdto\AppEsitePagesExDto.cs" />
+    <Compile Include="EntityExdto\AppEstoreCatelogTreeLevelExDto.cs" />
+    <Compile Include="EntityExdto\AppEstoreExDto.cs" />
+    <Compile Include="EntityExdto\AppEstoreProductFieldExDto.cs" />
+    <Compile Include="EntityExdto\AppEstoreUserShoppingCartExDto.cs" />
+    <Compile Include="EntityExdto\AppFileOrFolderShareToOtherExDto.cs" />
+    <Compile Include="EntityExdto\AppIntergrationSettingExDto.cs" />
+    <Compile Include="EntityExdto\AppIntergrationSettingParameterExDto.cs" />
+    <Compile Include="EntityExdto\AppLogTrackExDto.cs" />
+    <Compile Include="EntityExdto\AppmessageNotificationSettingExDto.cs" />
+    <Compile Include="EntityExdto\AppModuleLibRegisterExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectOrTaskTranscationExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectPerspectiveTaskExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectPerspectiveViewExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectPortfolioBoardExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectPortfolioExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectPrivacyExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectPrivilegeLibraryExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectRoleExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectRolePrivilegeExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectSnapshotExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectTaskCheckListExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectTaskExpenseExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectTaskResourcePlannedHoursExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectTaskTagExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectTaskTimeLogExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectTeamExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectTeamMemberExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectTeamMemberRoleExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectTemplateResourceExDto.cs" />
+    <Compile Include="EntityExdto\AppReportExDto.cs" />
+    <Compile Include="EntityExdto\AppSearchParameterExDto.cs" />
+    <Compile Include="EntityExdto\AppSearchViewReportExDto.cs" />
+    <Compile Include="EntityExdto\AppSearchViewReportParamterMappingExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityUserContactExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityUserInvitationExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionDataTransferSettingDetailExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionDataTransferSettingExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionGroupSessionExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionItemExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionNavigationExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionUnitExtendFieldExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionUnitExtendFieldValueExDto.cs" />
+    <Compile Include="EntityExdto\AppTransAuditTrailLogExDto.cs" />
+    <Compile Include="EntityExdto\AppTranscationReportExDto.cs" />
+    <Compile Include="EntityExdto\AppTrasactionSnapShotExDto.cs" />
+    <Compile Include="EntityExdto\AppTrascationRecycleBinExDto.cs" />
+    <Compile Include="EntityExdto\AppUserMessgeFollowupExDto.cs" />
+    <Compile Include="EntityExdto\AppUserSkillExDto.cs" />
+    <Compile Include="EntityExdto\AppUserSkillListExDto.cs" />
+    <Compile Include="EntityExdto\AppVersionEditionModuleExDto.cs" />
+    <Compile Include="EntityExdto\AppViewLinkedSeaechOrUrlExDto.cs" />
+    <Compile Include="EntityExdto\AppWebApiConfigExDto.cs" />
+    <Compile Include="EntityExdto\AppWebApiParamsHeaderSettigExDto.cs" />
+    <Compile Include="EntityExdto\AppWebApiProviderExDto.cs" />
+    <Compile Include="EntityExdto\AppWorkflowExDto.cs" />
+    <Compile Include="EntityExdto\AppWorkflowLibActionExDto.cs" />
+    <Compile Include="EntityExdto\AppWorkFlowStepExDto.cs" />
+    <Compile Include="FileSimpleDto.cs" />
+    <Compile Include="ApiTokenDto.cs" />
+    <Compile Include="ServerSettingDto.cs" />
+    <Compile Include="UserDefine\AppFormData\CalendarRepeatSettingDto.cs" />
+    <Compile Include="UserDefine\AppFormData\AppGrandChildDataDto.cs" />
+    <Compile Include="UserDefine\AppFormData\AppTransactionChangedObjectDto.cs" />
+    <Compile Include="UserDefine\AppFormData\AppListDataValidationDto.cs" />
+    <Compile Include="UserDefine\AppFormData\AppMasterDetailValidationDto.cs" />
+    <Compile Include="UserDefine\AppIntegration\APIPostResponseDto.cs" />
+    <Compile Include="UserDefine\AppIntegration\SearchApiSettingDto.cs" />
+    <Compile Include="UserDefine\AppIntegration\AppIntergrationSettingDto.cs" />
+    <Compile Include="UserDefine\AppIntegration\AppFilePathDto.cs" />
+    <Compile Include="UserDefine\AppIntegration\TransactionApiSettingDto.cs" />
+    <Compile Include="UserDefine\AppIntegration\APIConfigParameterDTO.cs" />
+    <Compile Include="UserDefine\AppIntegration\AppIntergrationSettingParameterDto.cs" />
+    <Compile Include="UserDefine\AppIntegration\EnumHttpMethod.cs" />
+    <Compile Include="UserDefine\AppMessage\AppUserMessgeFollowupDto.cs" />
+    <Compile Include="UserDefine\AppMessage\AppmessageNotificationSettingDto.cs" />
+    <Compile Include="UserDefine\AppMessage\AppMessageNotificationSettingSetDto.cs" />
+    <Compile Include="UserDefine\AppMessage\UserMessgeFollowupUpdateDto.cs" />
+    <Compile Include="UserDefine\AppMessage\ScopeMessageGroupDto.cs" />
+    <Compile Include="UserDefine\AppTrans\ApiDataStructureNodeDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppApplicationAssetsItemDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppPackageSaveAsSettingDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppDesktopItemExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppConditionalActionDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppFormLinkTargetSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppMenuSimpleDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppRoleAndUserListDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionDataTransferSettingExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppApplicationImportLogDto.cs" />
+    <Compile Include="UserDefine\AppTrans\WorkflowAutomationRuntimeDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TransactionOptionDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppBusinessPartnerDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppSecurityUserSimpleDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionGroupItemDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionNavigationExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionNavigationDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionGroupSessionExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionUnitLinkedSearchDto.cs" />
+    <Compile Include="UserDefine\AppTrans\SaasApplicationSectionItemImportDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppBusinessPartnerExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppBusienssAssormentNavigationExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppListMenuExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppCompanyDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppActionAttributeDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionSaveAsMappingDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionUnitFormulaDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionFieldCrossRelationSettingDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTranscationDto.cs" />
+    <Compile Include="UserDefine\AppTrans\HierarchyTableSetupDto.cs" />
+    <Compile Include="UserDefine\AppTrans\FormPublishSettingDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppReportDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppFormDomAttributeDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppFormLayoutItemDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppApplicationAssetsItemSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppSecuritySysObjGroupUserDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppSaasAccountUserDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppApplicationDataManipulationDto.cs" />
+    <Compile Include="UserDefine\AppTrans\UserContactSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\EntityMappingToListEditTransactionDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TransactionAvailablePrivilegeDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AssortmentNavigationDto.cs" />
+    <Compile Include="UserDefine\AppTrans\NavigationGroupDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppFileOrFolderShareToOtherDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppFileUpdateDto.cs" />
+    <Compile Include="EntityExdto\AppBusinessMgtScopeExDto.cs" />
+    <Compile Include="EntityExdto\AppCalendarExDto.cs" />
+    <Compile Include="EntityExdto\AppCalendarRecurringDayExDto.cs" />
+    <Compile Include="EntityExdto\AppCalendarSpecificDayExDto.cs" />
+    <Compile Include="EntityExdto\AppComOrganizationExDto.cs" />
+    <Compile Include="EntityExdto\AppComOrgLevelExDto.cs" />
+    <Compile Include="EntityExdto\AppConditionalActionExDto.cs" />
+    <Compile Include="EntityExdto\AppCountryExDto.cs" />
+    <Compile Include="EntityExdto\AppDataSetExDto.cs" />
+    <Compile Include="EntityExdto\AppDataSetParameterExDto.cs" />
+    <Compile Include="EntityExdto\AppDesktopExDto.cs" />
+    <Compile Include="EntityExdto\AppDesktopItemExDto.cs" />
+    <Compile Include="EntityExdto\AppEntityEnumValueExDto.cs" />
+    <Compile Include="EntityExdto\AppEntityInfoExDto.cs" />
+    <Compile Include="EntityExdto\AppExternalMethodRegisterExDto.cs" />
+    <Compile Include="EntityExdto\AppFileExDto.cs" />
+    <Compile Include="EntityExdto\AppFormExDto.cs" />
+    <Compile Include="EntityExdto\AppFormGridLayoutItemBindFieldExDto.cs" />
+    <Compile Include="EntityExdto\AppFormGroupExDto.cs" />
+    <Compile Include="EntityExdto\AppFormGroupItemExDto.cs" />
+    <Compile Include="EntityExdto\AppFormLayoutItemExDto.cs" />
+    <Compile Include="EntityExdto\AppFormLinkTargetExDto.cs" />
+    <Compile Include="EntityExdto\AppItemBaseExDto.cs" />
+    <Compile Include="EntityExdto\AppLanguageExDto.cs" />
+    <Compile Include="EntityExdto\AppLanguageKeyExDto.cs" />
+    <Compile Include="EntityExdto\AppListMenuExDto.cs" />
+    <Compile Include="EntityExdto\AppMessageDeletedExDto.cs" />
+    <Compile Include="EntityExdto\AppMessageExDto.cs" />
+    <Compile Include="EntityExdto\AppMessageUserReceivedExDto.cs" />
+    <Compile Include="EntityExdto\AppPorjectWorkFlowTaskTimeSheetExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectOrWorkFlowExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectTaskPredecessorExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectTaskResourceExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectWorkFlowActionExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectWorkFlowConditionExDto.cs" />
+    <Compile Include="EntityExdto\AppProjectWorkFlowTaskExDto.cs" />
+    <Compile Include="EntityExdto\AppRouteStateExDto.cs" />
+    <Compile Include="EntityExdto\AppSearchExDto.cs" />
+    <Compile Include="EntityExdto\AppSearchFieldExDto.cs" />
+    <Compile Include="EntityExdto\AppSearchSavedExDto.cs" />
+    <Compile Include="EntityExdto\AppSearchSavedValueExDto.cs" />
+    <Compile Include="EntityExdto\AppSearchViewExDto.cs" />
+    <Compile Include="EntityExdto\AppSearchViewFieldExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityEntityActionExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityGroupExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityGroupMemberExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityLoginAuditorExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityRegDomainExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityRegDomainListMenuExDto.cs" />
+    <Compile Include="EntityExdto\AppSecuritySysObjGroupUserExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityTransactionActionExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityTransactionActionResourceExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityUserExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityUserListMenuExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityUserRolePrevilegeExDto.cs" />
+    <Compile Include="EntityExdto\AppSecurityUserSessionExDto.cs" />
+    <Compile Include="EntityExdto\AppSefolderExDto.cs" />
+    <Compile Include="EntityExdto\AppSefolderResourceExDto.cs" />
+    <Compile Include="EntityExdto\AppSetupExDto.cs" />
+    <Compile Include="EntityExdto\AppSysLabelLanguageExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionDataLoadExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionFieldAggFunctionExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionFieldExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionGroupExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionGroupItemExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionPostProcessExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionSaveAsMappingExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionUnitDeleteFlowExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionUnitExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionUnitFormulaExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionUnitLinkedSearchExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionUnitSearchFieldMappingExDto.cs" />
+    <Compile Include="EntityExdto\AppTransactionUnitSearchViewFieldMappingExDto.cs" />
+    <Compile Include="EntityExdto\AppTranscationDataLoadFieldMappingExDto.cs" />
+    <Compile Include="EntityExdto\AppUserAppointmentExDto.cs" />
+    <Compile Include="EntityExdto\AppViewFiledSearchFiledMappingExDto.cs" />
+    <Compile Include="UserContextShopbag.cs" />
+    <Compile Include="DatabaseSchema\DatabaseColumnDto.cs" />
+    <Compile Include="DatabaseSchema\DatabaseTableDto.cs" />
+    <Compile Include="DateTimeOperator.cs" />
+    <Compile Include="EntityDto\AppConditionalActionDto.cs" />
+    <Compile Include="EntityDto\AppDataSetDto.cs" />
+    <Compile Include="EntityDto\AppDataSetParameterDto.cs" />
+    <Compile Include="EntityDto\AppDesktopDto.cs" />
+    <Compile Include="EntityDto\AppDesktopItemDto.cs" />
+    <Compile Include="EntityDto\AppEntityEnumValueDto.cs" />
+    <Compile Include="EntityDto\AppEntityInfoDto.cs" />
+    <Compile Include="EntityDto\AppFileDto.cs" />
+    <Compile Include="EntityDto\AppFormDto.cs" />
+    <Compile Include="EntityDto\AppFormGridLayoutItemBindFieldDto.cs" />
+    <Compile Include="EntityDto\AppFormLayoutItemDto.cs" />
+    <Compile Include="EntityDto\AppFormLinkTargetDto.cs" />
+    <Compile Include="EntityDto\AppLanguageDto.cs" />
+    <Compile Include="EntityDto\AppLanguageKeyDto.cs" />
+    <Compile Include="EntityDto\AppListMenuDto.cs" />
+    <Compile Include="EntityDto\AppRouteStateDto.cs" />
+    <Compile Include="EntityDto\AppSearchDto.cs" />
+    <Compile Include="EntityDto\AppSearchFieldDto.cs" />
+    <Compile Include="EntityDto\AppSearchParameterDto.cs" />
+    <Compile Include="EntityDto\AppSearchSavedDto.cs" />
+    <Compile Include="EntityDto\AppSearchSavedValueDto.cs" />
+    <Compile Include="EntityDto\AppSearchViewDto.cs" />
+    <Compile Include="EntityDto\AppSearchViewFieldDto.cs" />
+    <Compile Include="EntityDto\AppSecurityEntityActionDto.cs" />
+    <Compile Include="EntityDto\AppSecurityFormActionDto.cs" />
+    <Compile Include="EntityDto\AppSecurityFormActionResourceDto.cs" />
+    <Compile Include="EntityDto\AppSecurityGroupDto.cs" />
+    <Compile Include="EntityDto\AppSecurityGroupMemberDto.cs" />
+    <Compile Include="EntityDto\AppSecurityLoginAuditorDto.cs" />
+    <Compile Include="EntityDto\AppSecurityRegDomainDto.cs" />
+    <Compile Include="EntityDto\AppSecurityRegDomainListMenuDto.cs" />
+    <Compile Include="EntityDto\AppSecuritySysObjGroupUserDto.cs" />
+    <Compile Include="EntityDto\AppSecurityUserDto.cs" />
+    <Compile Include="EntityDto\AppSecurityUserListMenuDto.cs" />
+    <Compile Include="EntityDto\AppSecurityUserRolePrevilegeDto.cs" />
+    <Compile Include="EntityDto\AppSecurityUserSessionDto.cs" />
+    <Compile Include="EntityDto\AppSefolderDto.cs" />
+    <Compile Include="EntityDto\AppSefolderResourceDto.cs" />
+    <Compile Include="EntityDto\AppSetupDto.cs" />
+    <Compile Include="EntityDto\AppSysLabelLanguageDto.cs" />
+    <Compile Include="EntityDto\AppTransactionDto.cs" />
+    <Compile Include="EntityDto\AppTransactionFieldAggFunctionDto.cs" />
+    <Compile Include="EntityDto\AppTransactionFieldDto.cs" />
+    <Compile Include="EntityDto\AppFormGroupDto.cs" />
+    <Compile Include="EntityDto\AppFormGroupItemDto.cs" />
+    <Compile Include="EntityDto\AppTransactionGroupDto.cs" />
+    <Compile Include="EntityDto\AppTransactionGroupItemDto.cs" />
+    <Compile Include="EntityDto\AppTransactionPostProcessDto.cs" />
+    <Compile Include="EntityDto\AppTransactionSaveAsMappingDto.cs" />
+    <Compile Include="EntityDto\AppTransactionUnitDeleteFlowDto.cs" />
+    <Compile Include="EntityDto\AppTransactionUnitDto.cs" />
+    <Compile Include="EntityDto\AppTransactionUnitFormulaDto.cs" />
+    <Compile Include="EntityDto\AppTransactionUnitLinkedSearchDto.cs" />
+    <Compile Include="EntityDto\AppTransactionUnitSearchFieldMappingDto.cs" />
+    <Compile Include="EntityDto\AppTransactionUnitSearchViewFieldMappingDto.cs" />
+    <Compile Include="EntityDto\AppUserAppointmentDto.cs" />
+    <Compile Include="EntityDto\AppViewFiledSearchFiledMappingDto.cs" />
+    <Compile Include="LicenseDto.cs" />
+    <Compile Include="ListMenus.cs" />
+    <Compile Include="OperationNames.cs" />
+    <Compile Include="RowDto.cs" />
+    <Compile Include="SLStopWatch.cs" />
+    <Compile Include="UserContext.cs" />
+    <Compile Include="UserDefine\AppMessage\MessageUpdateDto.cs" />
+    <Compile Include="UserDefine\AppTrans\FolderNavigationDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TransactionNavigationSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TemplateFolderNavigationConfigDto.cs" />
+    <Compile Include="UserDefine\AppTrans\DataSourceRegisterSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\DatabaseTableInfoDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TableNamesToSchemaConverterDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TransactionDataSearchOptionDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppDesktopDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppEntityInfoDto.cs" />
+    <Compile Include="UserDefine\AISkill\AppAISkillDto.cs" />
+    <Compile Include="UserDefine\DbGenie\DbGenieDto.cs" />
+    <Compile Include="UserDefine\AppBuilderAgent\AppBuilderAgentDto.cs" />
+    <Compile Include="UserDefine\AppReportAgent\AppReportAgentDto.cs" />
+    <Compile Include="UserDefine\WorkflowAutomationAgent\WorkflowAutomationAgentDto.cs" />
+    <Compile Include="UserDefine\QueryAgent\QueryAgentDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEshopCatalogLevelOptionDto.cs" />
+    <Compile Include="UserDefine\Eshop\ExternalSignInTokenDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEshopOrderDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEsiteCatalogueExDto.cs" />
+    <Compile Include="UserDefine\Esite\AppGitHubConnectionDto.cs" />
+    <Compile Include="UserDefine\Esite\AppStripeCheckOutDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsiteDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEstoreOptionFilterSetDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEshopBagItemDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEshopCatalogCardDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEshopCatalogViewDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppListMenuDto.cs" />
+    <Compile Include="UserDefine\AppFormData\AppMasterDetailDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppFormLayoutItemExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppComOrganizationDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionFieldDto.cs" />
+    <Compile Include="UserDefine\AppTrans\MessageWhereUsedDto.cs" />
+    <Compile Include="UserDefine\AppTrans\FileWhereUsedDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TransactionFieldValueDto.cs" />
+    <Compile Include="UserDefine\AppTrans\RoleAndUserListDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TableToUnitConverterDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TransactionReportSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\LinkedSearchExServiceCallParameterDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TransactionCommandActionResultDto.cs" />
+    <Compile Include="UserDefine\AppTrans\UserTransferSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\ComOrganizationSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\FolderResourceObjectSetDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEstoreCatelogTreeLevelExDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEstoreLayoutView.cs" />
+    <Compile Include="UserDefine\Eshop\AppEstoreProductFieldExDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEstoreExDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppSearchViewFieldDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsiteTemplateConfigDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsiteTemplateRegisterDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsiteUserDefinedJsFunctionDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsitePageNavigationDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsiteComponentDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsitePagesDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsiteUtilityClassDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsiteUtilityClassUpdateDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsiteThemParameterUpdateDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsiteThemParameterDto.cs" />
+    <Compile Include="UserDefine\Esite\AppEsiteStyleSheetUpdateDto.cs" />
+    <Compile Include="UserDefine\Esite\EsitePageSetDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppCalendarEventDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectPerspectiveTaskExDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\ProjectDashboardDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectTaskResourcePlannedHoursDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectWorkloadPivotDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectRoleDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectTeamMemberDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppCalendarRecurringDayDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppCalendarSpecificDayDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppCalendarExDto.cs" />
+    <Compile Include="UserDefine\AppMessage\AppMessageDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectTeam.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectOrWorkFlowDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectOrWorkFlowExDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectTaskPredecessorDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectTeamMemberExDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectWorkFlowConditionExDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppPorjectWorkFlowTaskTimeSheetDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectWorkFlowPathDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectTaskResourceDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectWorkFlowTaskDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectWorkFlowTaskExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppSefolderDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectWorkFlowActionExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppSetupDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppSysLabelLanguageDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionFieldExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionUnitDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionUnitExDto.cs">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="UserDefine\AppTrans\AppTranscationExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppFormExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppFormDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionUnitFormulaSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionFiledAggFunctionSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionUnitFormulaExDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppSecurityUserDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppSecurityrGroupDto.cs" />
+    <Compile Include="UserDefine\AppFormData\AppListDataDto.cs" />
+    <Compile Include="UserDefine\AppFormData\AppChildDataDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionUnitSearchFieldMappingDto .cs" />
+    <Compile Include="UserDefine\AppTrans\AppTransactionUnitSearchViewFieldMappingDto .cs" />
+    <Compile Include="UserDefine\AppTrans\ConditionalActionSetDto.cs" />
+    <Compile Include="UserDefine\AppFormData\AppTransactionStructureDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppRetrieveMutipleColumnDataSourceDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppCatalogueTreeDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppViewFiledSearchFiledMappingSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\BaseAppCatalogueTreeDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEshopCatalogCardDetailDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEshopBagDto.cs" />
+    <Compile Include="UserDefine\Eshop\AppEshopShippingAdressDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppEntitySearchInfoDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\AppProjectTaskCircularCheckDto.cs" />
+    <Compile Include="UserDefine\AppTrans\LanguageKeySetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\LanguageKeyByTypeDto.cs" />
+    <Compile Include="DatabaseSchema\DBViewDesign\DatabaseViewDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TransactionUnitDeleteFlowSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TransactionPostProcessSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TransactionSaveAsMappingSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\SecurityObjSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\DomainOrUserListMenuSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\SecurityRegDomainSetDto.cs" />
+    <Compile Include="UserDefine\AppTrans\ImageLibraryDto.cs" />
+    <Compile Include="UserDefine\AppTrans\DocumentInfoDto.cs" />
+    <Compile Include="UserDefine\AppTrans\ListMenusObjDto.cs" />
+    <Compile Include="DatabaseSchema\SchemaMetaDataDto.cs" />
+    <Compile Include="UserDefine\AppTrans\TransactionDataDto.cs" />
+    <Compile Include="UserDefine\AppTrans\AppDesktopItemDto.cs" />
+    <Compile Include="UserDefine\LoginImage\LoginImageDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\UserTaskKanbanDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\TaskFilterOptionDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\ProjectTaskChangeDto.cs" />
+    <Compile Include="UserDefine\ProjectWorkFlow\ProjectRoleSetDto.cs" />
+    <Compile Include="UserDefine\Report\AppReportSetDto.cs" />
+    <Compile Include="UserDefine\Search\AppDataSetExDto.cs" />
+    <Compile Include="UserDefine\Search\AppFormLinkTargetDto.cs" />
+    <Compile Include="UserDefine\Search\AppDataSetDto.cs" />
+    <Compile Include="UserDefine\Search\AppDataSetParameterDto.cs" />
+    <Compile Include="UserDefine\Search\AppViewLinkedSeaechOrUrlDto.cs" />
+    <Compile Include="UserDefine\Search\AppSearchDto.cs" />
+    <Compile Include="UserDefine\Search\AppSearchExDto.cs" />
+    <Compile Include="UserDefine\Search\AppSearchFieldExDto.cs" />
+    <Compile Include="UserDefine\Search\AppSearchViewExDto.cs" />
+    <Compile Include="UserDefine\Search\AppSearchViewDto.cs" />
+    <Compile Include="UserDefine\Search\AppSearchViewFieldDto.cs" />
+    <Compile Include="UserDefine\Search\CriteriaOperatorDto.cs" />
+    <Compile Include="UserDefine\Search\CriteriaOperators.cs" />
+    <Compile Include="UserDefine\Search\DatabaseTableImportSettingDto.cs" />
+    <Compile Include="UserDefine\Search\EditResultRowDto.cs" />
+    <Compile Include="UserDefine\Search\CalendarBaseDateDto.cs" />
+    <Compile Include="UserDefine\Search\HeaderCountDto.cs" />
+    <Compile Include="UserDefine\Search\ReferenceViewColumnDto.cs" />
+    <Compile Include="UserDefine\Search\ReferenceViewDefinitionDto.cs" />
+    <Compile Include="UserDefine\Search\MassUpdateSaveDto.cs" />
+    <Compile Include="UserDefine\Search\ReferenceViewDto.cs" />
+    <Compile Include="UserDefine\Search\RetrieveSearchesDto.cs" />
+    <Compile Include="UserDefine\Search\SearchCriteriaDto.cs" />
+    <Compile Include="UserDefine\Search\SearchDefinitionDto.cs" />
+    <Compile Include="UserDefine\Search\SearchCascdingDto.cs" />
+    <Compile Include="UserDefine\Search\SearchDto.cs" />
+    <Compile Include="UserDefine\Search\SearchResultDto.cs" />
+    <Compile Include="UserDefine\Search\SearchResultRowJsonDto.cs" />
+    <Compile Include="UserDefine\System\AppWinSchedulerTaskDto.cs" />
+
+    <Compile Include="Validation\AppDataSetDto.cs" />
+    <Compile Include="Validation\AppEntityInfoDto.cs" />
+    <Compile Include="Validation\AppViewLinkedSeaechOrUrlDto.cs" />
+    <Compile Include="Validation\AppFormLinkTargetDto.cs" />
+    <Compile Include="Validation\AppSearchDto.cs" />
+    <Compile Include="Validation\AppSearchExDto.cs" />
+    <Compile Include="Validation\AppSearchFieldDto.cs" />
+    <Compile Include="Validation\AppSearchSavedDto.cs" />
+    <Compile Include="Validation\AppSearchViewDto.cs" />
+    <Compile Include="Validation\AppSearchViewExDto.cs" />
+    <Compile Include="Validation\AppSearchViewFieldDto.cs" />
+    <Compile Include="Validation\AppSecurityRegDomainDto.cs" />
+    <Compile Include="Validation\AppSecurityUserInvitationDto.cs" />
+    <Compile Include="Validation\AppSecurityUserDto.cs" />
+    <Compile Include="Validation\AppTransactionDto.cs" />
+    <Compile Include="Validation\AppTransactionFieldDto.cs" />
+    <Compile Include="Validation\AppTransactionUnitDeleteFlowDto.cs" />
+    <Compile Include="Validation\AppTransactionUnitDto.cs" />
+    <Compile Include="Validation\AppTransactionUnitFormulaDto.cs" />
+    <Compile Include="Validation\AppTransactionUnitLinkedSearchDto.cs" />
+    <Compile Include="Validation\AppTransactionUnitLinkedSearchExDto.cs" />
+    <Compile Include="Validation\AppTransactionUnitSearchFieldMappingDto.cs" />
+    <Compile Include="Validation\AppTransactionUnitSearchViewFieldMappingDto.cs" />
+    <Compile Include="Validation\AppTranscationExDto.cs" />
+    <Compile Include="Validation\AppTransactionUnitExDto.cs" />
+    <Compile Include="Validation\NotifyDataErrorDto.cs" />
+    <Compile Include="Validation\ValidationMessageDto.cs" />
+    <Compile Include="Validation\FirstLevelVlidationDtoFactory.cs" />
+    <Compile Include="LookupItemDto.cs" />
+    <Compile Include="ObservableCollectionEx.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\APP.Framework\APP.Framework.csproj">
+      <Project>{6a9a68a3-e5ab-4bd1-bb0a-ac1e975f4104}</Project>
+      <Name>APP.Framework</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\DatabaseSchemaReader\DatabaseSchemaReader.csproj">
+      <Project>{aa652f8e-0b96-484c-a146-c4183e4a0a25}</Project>
+      <Name>DatabaseSchemaReader</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup />
+  <ItemGroup>
+    <Content Include="Document\CaseSettings\ERPCommandScript.txt" />
+    <Content Include="Document\CodeNotes\AngularOfflineSave.txt" />
+    <Content Include="Document\CodeNotes\CodeFormat.txt" />
+    <Content Include="Document\CodeNotes\DataTimeConvert.txt" />
+    <Content Include="Document\CodeNotes\HtmlAndCss.txt" />
+    <Content Include="Document\CodeNotes\Minification.txt" />
+    <Content Include="Document\CodeNotes\NgUIElmentandModel.txt" />
+    <Content Include="Document\CodeNotes\SQLNotes.txt" />
+    <Content Include="Document\CodeNotes\Wjimo5Notes.txt" />
+    <Content Include="Document\PowerShell\Notes.txt" />
+    <Content Include="Document\ToDoList\DeploymentNote.txt" />
+    <Content Include="Document\ToDoList\NeedToDo.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+    <None Include="Document\FeatureNotes\APPMessageNotificationSetting.docx" />
+    <None Include="Document\Integration\PaypalSandboxGoLiveSteps.docx" />
+    <None Include="Document\PowerShell\CreateAppPool.ps1" />
+    <None Include="Document\PowerShell\CreateSiteAndAppPool.ps1" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

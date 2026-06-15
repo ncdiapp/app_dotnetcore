@@ -1,0 +1,93 @@
+
+
+
+
+
+1. Query String concat by XML
+
+	1)
+
+
+
+
+	2)
+	http://stackoverflow.com/questions/194852/concatenate-many-rows-into-a-single-text-string
+
+	select substring(
+	(
+		   select ','+ LoginName  AS [text()]
+		   from AppSecurityUser
+		   For XML PATH ('')
+	),
+	2,4000)
+
+
+	
+
+	/****** Object:  StoredProcedure [dbo].[SP_DeleteStudent]    Script Date: 2/25/2016 11:51:22 AM ******/
+	SET ANSI_NULLS ON
+	GO
+
+	SET QUOTED_IDENTIFIER ON
+	GO
+
+	-- =============================================
+	-- Author:           <Author,,Name>
+	-- Create date: <Create Date,,>
+	-- Description:      <Description,,>
+	-- =============================================
+	ALTER PROCEDURE [dbo].[SP_DeleteStudent] 
+		   @studentId int,
+		   @errorMsg  nvarchar(4000) =''  output 
+	AS
+	BEGIN
+
+		   DECLARE @referencedUser nvarchar(4000)
+		   select @referencedUser = substring((     select ','+ LoginName  AS [text()] from AppSecurityUser where DomainID=7 and BusinessUserID = @studentId For XML PATH ('') ),2,4000)
+		   IF @referencedUser is not null and @referencedUser <> ''
+		   BEGIN
+				  select @errorMsg = 'Cannot delete this student. Student is referenced by user: ' + @referencedUser
+				  return -1
+		   END
+       
+		   DECLARE @referencedOrder nvarchar(4000)
+		   select @referencedOrder = substring((    select ','+ OrderNumber  AS [text()]     from FSRegistrationOrder where  StudentId = @studentId For XML PATH ('') ),2,4000)
+		   IF @referencedOrder is not null and @referencedOrder <> ''
+		   BEGIN
+				  select @errorMsg ='Cannot delete this student. Student is referenced by course order: ' + @referencedOrder
+				  return -1
+		   END
+       
+		   DECLARE @referencedcampOrder nvarchar(4000)
+		   select @referencedcampOrder = substring(( select ','+ OrderNumber  AS [text()]     from FSCampRegistrationOrder where  StudentId = @studentId For XML PATH ('') ),2,4000)
+		   IF @referencedcampOrder is not null and @referencedcampOrder <> ''
+		   BEGIN
+				  select @errorMsg ='Cannot delete this student. Student is referenced by camp order: ' + @referencedcampOrder
+				  return -1
+		   END
+       
+		   IF @referencedcampOrder is null or @referencedcampOrder = '' 
+		   BEGIN         
+				  delete from FSStudent where StudentId = @studentId            
+				  return 0             
+		   END
+	END
+
+	GO
+
+
+
+
+
+
+2. Update query on view will update db table
+
+If a DB view is select from single table, then this view can be used to update table value.
+This condition works even if the view and the table are on different database.
+
+Example:
+
+View [App_FileView_UD] is on client DB, it's only linked to master database AppFile table.
+                
+       ---This query on the view will update the master db AppFile table
+       UPDATE [App_FileView_UD] SET [Description] = 'ABC123' WHERE [FileID] = 142

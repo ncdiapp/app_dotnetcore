@@ -1,0 +1,16 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>preview</LangVersion>
+    <AssemblyVersion>11.0.2.0</AssemblyVersion>
+    <FileVersion>11.0.2.0</FileVersion>
+    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Namotion.Reflection" Version="2.0.10" />
+    <PackageReference Include="Newtonsoft.Json" Version="9.0.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="NuGetIcon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+</Project>

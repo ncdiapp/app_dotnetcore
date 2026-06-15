@@ -1,0 +1,52 @@
+--- 20170818
+on web.config. set EnableDebugScript to 0 during release.
+
+
+
+
+
+
+---Old
+
+
+A Note on Minification
+
+Since Angular infers the controller's dependencies from the names of arguments to the controller's constructor function,
+ if you were to minify the JavaScript code for PhoneListCtrl controller, all of its function arguments would be minified as well,
+  and the dependency injector would not be able to identify services correctly.
+
+We can overcome this problem by annotating the function with the names of the dependencies, provided as strings, which will not get minified. 
+There are two ways to provide these injection annotations:
+
+    Create a $inject property on the controller function which holds an array of strings. Each string in the array is the name of the service to 
+	inject for the corresponding parameter. In our example we would write:
+
+    function PhoneListCtrl($scope, $http) {...}
+    PhoneListCtrl.$inject = ['$scope', '$http'];
+    phonecatApp.controller('PhoneListCtrl', PhoneListCtrl);
+
+    Use an inline annotation where, instead of just providing the function, you provide an array. This array contains a list of the service names, followed by the function itself.
+
+    function PhoneListCtrl($scope, $http) {...}
+    phonecatApp.controller('PhoneListCtrl', ['$scope', '$http', PhoneListCtrl]);
+
+Both of these methods work with any function that can be injected by Angular, so it's up to your project's style guide to decide which one you use.
+
+When using the second method, it is common to provide the constructor function inline as an anonymous function when registering the controller:
+
+phonecatApp.controller('PhoneListCtrl', ['$scope', '$http', function($scope, $http) {...}]);
+
+From this point onward, we're going to use the inline method in the tutorial. With that in mind, let's add the annotations to our PhoneListCtrl:
+
+app/js/controllers.js:
+
+var phonecatApp = angular.module('phonecatApp', []);
+
+phonecatApp.controller('PhoneListCtrl', ['$scope', '$http',
+  function ($scope, $http) {
+    $http.get('phones/phones.json').success(function(data) {
+      $scope.phones = data;
+    });
+
+    $scope.orderProp = 'age';
+  }]);

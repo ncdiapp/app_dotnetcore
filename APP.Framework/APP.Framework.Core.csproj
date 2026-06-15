@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>APP.Framework</AssemblyName>
+    <RootNamespace>APP.Framework</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+
+  <!--
+    Excluded from the .NET 10 build:
+    - CssMinifier.cs / JsMinifier.cs : React owns the build pipeline — no longer needed.
+    - ICacheProvider.cs               : Redis cache provider was dead code and has been removed;
+                                        re-add when Phase 5 introduces StackExchange.Redis session.
+    Phase 1 fixes applied to shared sources:
+    - ServerContext.cs        : IHttpContextAccessor (#if !NETFRAMEWORK), ConcurrentDictionary
+    - HttpClientIdentityProvider.cs : IHttpContextAccessor (#if !NETFRAMEWORK)
+    - CSComplierTools.cs      : CompileAssembly guarded with #if NETFRAMEWORK (TODO-PHASE3: Roslyn)
+    - DBInteractionBase.cs / SqlServerDataType.cs / StringUtil.cs : unused System.Web imports removed
+  -->
+  <ItemGroup>
+    <Compile Remove="AppDataSourceHelp.cs" />
+    <Compile Remove="CssMinifier.cs" />
+    <Compile Remove="JsMinifier.cs" />
+    <Compile Remove="ICacheProvider.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="9.0.0" />
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
+    <PackageReference Include="NLog" Version="5.3.4" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.0" />
+    <PackageReference Include="System.DirectoryServices" Version="9.0.0" />
+    <PackageReference Include="System.DirectoryServices.AccountManagement" Version="9.0.0" />
+    <!-- System.Drawing.Common is acceptable on Windows server deployments -->
+    <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>

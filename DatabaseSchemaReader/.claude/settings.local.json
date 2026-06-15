@@ -1,0 +1,40 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(cmd /c:*)",
+      "Bash(msbuild:*)",
+      "Bash(powershell:*)",
+      "Bash(git -C \"C:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\DatabaseSchemaReader\" status)",
+      "Bash(git -C \"C:\\\\app_workspace\\\\ncdiapp\\\\AppAI\" status --porcelain)",
+      "Bash(cd:*)",
+      "Bash(C:)",
+      "Bash(git --version)",
+      "Bash(git -C \"C:/app_workspace/ncdiapp/AppAI\" status)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nFix critical bugs and add documentation\n\n- Fix uninitialized _schemaReader in DatabaseFixture constructor\n- Fix DbDataReader resource leak in SchemaExtendedReader\n- Fix DbConnection/DbDataReader leaks in DatabaseFixturePart\n- Add null-coalescing defaults for app.config provider names\n- Add CLAUDE.md with project guidance for Claude Code\n- Add ARCHITECTURE.md with system architecture and data flow diagrams\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(where:*)",
+      "Bash(git commit:*)",
+      "Bash(del:*)",
+      "Bash(dotnet build:*)",
+      "Bash(dotnet restore:*)",
+      "Bash(pwsh -Command \"dotnet build DatabaseSchemaReader.csproj\":*)",
+      "Bash(dotnet:*)",
+      "Bash(echo:*)",
+      "Bash(\"C:\\\\Program Files\\\\dotnet\\\\dotnet.exe\" restore DatabaseSchemaReader.csproj)",
+      "Bash(\"C:\\\\Program Files\\\\dotnet\\\\dotnet.exe\" build DatabaseSchemaReader.csproj)",
+      "Bash(\"C:\\\\Program Files\\\\dotnet\\\\dotnet.exe\" build DatabaseSchemaReader.csproj --verbosity minimal)",
+      "Bash(Get-Item bin/Debug/DatabaseSchemaReader.dll)",
+      "Bash(Select-Object LastWriteTime)",
+      "Bash(powershell.exe:*)",
+      "Bash(Remove-Item -Recurse -Force bin, obj -ErrorAction SilentlyContinue)",
+      "Bash(\"Cleanup attempted\")",
+      "mcp__plugin_claude-mem_mcp-search__save_memory",
+      "Bash(Out-String)",
+      "Bash(Remove-Item -Recurse -Force obj, bin -ErrorAction SilentlyContinue)",
+      "Bash(Write-Host \"Cleaned\")",
+      "Bash(ForEach-Object { Write-Host $_ })",
+      "Bash(Write-Host \"Testing output\")"
+    ]
+  }
+}

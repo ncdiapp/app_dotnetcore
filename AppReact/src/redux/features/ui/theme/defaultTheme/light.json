@@ -1,0 +1,125 @@
+{
+    "scrollbar_style": "scrollbar-light",
+
+    "bg_default": "#ecf0fa",
+    "text_default": "#7987a1",
+    "border_default": "#e5e7eb",
+
+    "bg_default_hover": "#ffffff",
+    "text_default_hover": "#0162e8",
+    "border_default_hover": "",
+
+    "bg_default_active": "#ffffff",
+    "text_default_active": "#0162e8",
+    "border_default_active": "#0162e8",
+
+    "bg_header": "#ffffff",
+    "text_header": "#031b4e",
+    "border_header": "#e5e7eb",
+
+    "bg_mainContent": "",
+    "bg_mainContentSection": "#ffffff",
+    "text_mainContentSection": "#031b4e",
+    "border_mainContentSection": "#e5e7eb",
+
+    "text_title": "#3b4863",
+    "text_title_heavy": "#000000",
+
+    "bg_sidebar": "#ffffff",
+    "text_sidebar": "#031b4e",
+    "border_sidebar": "#e5e7eb",
+
+    "bg_sidebar_menu_hover": "",
+    "text_sidebar_menu_hover": "#0162e8",
+    "bg_sidebar_menu_active": "",
+    "text_sidebar_menu_active": "#0162e8",
+
+    "bg_input_box": "#ffffff",
+    "bg_input_readonly": "#f3f4f6",
+    "text_input_box": "#4b5563",
+    "border_input_box": "#d1d5db",
+    "text_button_inputBox": "",
+
+    "logo_filter": "",
+
+    "bg_tab": "",
+    "text_tab": "#7987a1",
+    "border_tab": "#e5e7eb",
+    "bg_tab_hover": "#ffffff",
+    "text_tab_hover": "#0162e8",
+    "border_tab_hover": "#ffffff",
+
+    "bg_tab_active": "#ffffff",
+    "text_tab_active": "#222222",
+    "border_tab_active": "#e5e7eb",
+
+    "bg_modalBackdrop": "",
+    "bg_modalHeader": "",
+    "text_modalHeader": "",
+    "border_modalHeader": "",
+
+    "bg_button_default": "#ffffff",
+    "bg_button_default_hover": "#ffffff",
+    "text_button_default": "#7987a1",
+    "text_button_default_hover": "#0162e8",
+    "border_button_default": "#d1d5db",
+    "border_button_default_hover": "#0162e8",
+
+    "bg_button_secondary": "",
+    "bg_button_secondary_hover": "",
+    "text_button_secondary": "",
+    "text_button_secondary_hover": "",
+    "border_button_secondary": "",
+    "border_button_secondary_hover": "",
+
+    "bg_menu_divider": "",
+
+    "bg_menu_default": "",
+    "bg_menu_default_hover": "",
+    "text_menu_default": "#6d7790",
+    "text_menu_default_hover": "#0162e8",
+    "border_menu_default": "",
+    "border_menu_default_hover": "",
+
+    "bg_menu_secondary": "",
+    "bg_menu_secondary_hover": "",
+    "text_menu_secondary": "",
+    "text_menu_secondary_hover": "",
+    "border_menu_secondary": "",
+    "border_menu_secondary_hover": "",
+
+    "bg_contextMenu": "",
+    "text_contextMenu": "#6d7790",
+    "bg_contextMenu_hover": "",
+    "text_contextMenu_hover": "#0162e8",
+
+    "border_desktop_widget": "",
+
+    "bg_label": "",
+    "text_label": "#031b4e",
+    "border_label": "",
+
+
+    "wijmo_grid_outer_border_color": "#e5e7eb",
+    "wijmo_grid_row_border_color": "#e5e7eb",
+    "wijmo_grid_column_border_color": "none",
+    "wijmo_grid_header_background_color": "#ffffff",
+    "wijmo_grid_header_border_color": "",
+    "wijmo_grid_row_background_color": "#ffffff",
+    "wijmo_grid_row_alt_background_color": "#ffffff",
+    "wijmo_grid_selected_row_background_color": "#ecf0fa",
+    "wijmo_grid_selected_row_text_color": "",
+    "wijmo_grid_selected_cell_background_color": "#ecf0fa",
+    "wijmo_grid_selected_cell_text_color": "",
+    "wijmo_grid_header_text_color": "#3b4863",
+    "wijmo_grid_default_text_color": "#7987a1",
+    "wijmo_grid_default_background_color": "",
+    "wijmo_grid_default_font_size": "",
+    "wijmo_grid_footer_background_color": "",
+    "wijmo_grid_footer_text_color": "",
+    "wijmo_grid_container_border_color": "",
+    "wijmo_grid_grouppanel_background_color": "",
+    "wijmo_grid_grouppanel_text_color": "",
+    "wijmo_grid_treeView_selectedRow_background_color": "",
+    "wijmo_grid_treeView_selectedRow_text_color": ""
+}

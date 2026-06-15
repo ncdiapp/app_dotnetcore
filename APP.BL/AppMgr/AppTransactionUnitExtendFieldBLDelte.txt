@@ -1,0 +1,264 @@
+﻿using System.Collections.Generic;
+using System.Data.SqlClient;
+using System.Linq;
+using APP.LBL;
+using APP.LBL.DatabaseSpecific;
+using APP.LBL.EntityClasses;
+using APP.LBL.HelperClasses;
+using SD.LLBLGen.Pro.ORMSupportClasses;
+using APP.Framework.Validation;
+using APP.Components.Dto;
+using APP.Components.EntityDto;
+using APP.Framework.Collections;
+using APP.Components.EntityConverter;
+using System.Data;
+using APP.Framework.Communication;
+
+namespace App.BL
+{
+
+
+    public static class AppTransactionUnitExtendFieldBL
+    {
+        public const int AppTransactionUnitExtendFieldIDSeedValue = 500000000;
+
+     
+
+        //public static List<AppTransactionUnitExtendFieldExDto> RetrieveOneAppTransactionUnitExtendFieldDtoList(int transactionUnitId)
+        //{
+        //    EntityCollection<AppTransactionUnitExtendFieldEntity> folderEntities = RetrieveOneAppTransactionUnitExtendFieldEntitytList(transactionUnitId);
+
+        //    var aDtoList = new List<AppTransactionUnitExtendFieldExDto>();
+        //    foreach (var folderEntity in folderEntities)
+        //    {
+        //        aDtoList.Add(AppTransactionUnitExtendFieldConverter.ConvertEntityToExDto(folderEntity));
+        //    }
+
+        //    return aDtoList;
+        //}
+
+      
+
+        public static OperationCallResult<object> DeleteTransactionData(int unitExtendFiledId, bool isForceDelete=true)
+        {
+            OperationCallResult<object> aOperationCallResult = new OperationCallResult<object>();
+            ValidationResult aValidationResult = new ValidationResult();
+            aOperationCallResult.ValidationResult = aValidationResult;
+            if(isForceDelete)
+            {
+                using (DataAccessAdapter adapter = new DataAccessAdapter())
+                {
+                    try
+                    {
+                        adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+                        adapter.DeleteEntitiesDirectly(typeof(AppTransactionUnitExtendFieldValueEntity), new RelationPredicateBucket(AppTransactionUnitExtendFieldValueFields.UnitExtendFiledId == unitExtendFiledId));
+                        adapter.DeleteEntitiesDirectly(typeof(AppTransactionUnitExtendFieldEntity), new RelationPredicateBucket(AppTransactionUnitExtendFieldFields.UnitExtendFiledId == unitExtendFiledId));
+                        adapter.Commit(); 
+                        aValidationResult.Items.Add(new ValidationItem(typeof(AppSefolderResourceEntity), "App_AppTransactionUnitExtendField_Delete_OK", ValidationItemType.Message, "Delete Successfully"));
+                    }
+
+                    // Entity Logical Validation Exception
+                    catch (ORMEntityValidationException ex)
+                    {
+                        adapter.Rollback();
+                        aValidationResult.Items.Add(new ValidationItem(typeof(AppSefolderResourceEntity), "App_AppTransactionUnitExtendField_Delete_Failed", ValidationItemType.Error, ex.ToString()));
+                    }
+                }
+
+
+              
+
+            }
+           else
+            {
+                using (DataAccessAdapter adapter = new DataAccessAdapter())
+                {
+                    try
+                    {
+                        adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+                        adapter.DeleteEntitiesDirectly(typeof(AppTransactionUnitExtendFieldEntity), new RelationPredicateBucket(AppTransactionUnitExtendFieldFields.UnitExtendFiledId == unitExtendFiledId));
+                        adapter.Commit();
+                        aValidationResult.Items.Add(new ValidationItem(typeof(AppSefolderResourceEntity), "App_AppTransactionUnitExtendField_Delete_OK", ValidationItemType.Message, "Delete Successfully"));
+                    }
+
+                    // Entity Logical Validation Exception
+                    catch (ORMEntityValidationException ex)
+                    {
+                        adapter.Rollback();
+                        aValidationResult.Items.Add(new ValidationItem(typeof(AppSefolderResourceEntity), "App_AppTransactionUnitExtendField_Delete_Failed", ValidationItemType.Error, ex.ToString()));
+                    }
+                }
+
+
+
+
+            }
+
+            // aValidationResult.Items.Add(new ValidationItem(null, appTransactionExDto.TransactionName, ValidationItemType.Message, " Cannot find Delete Method  "));
+
+
+
+
+            return aOperationCallResult;
+
+        }
+
+        public static OperationCallResult<AppTransactionUnitExtendFieldExDto> SaveOneAppTransactionUnitExtendFieldEntityDto(ObservableSet<AppTransactionUnitExtendFieldExDto> aSet, int transactionUnitId)
+        {
+            OperationCallResult<AppTransactionUnitExtendFieldExDto> aOperationCallResult = new OperationCallResult<AppTransactionUnitExtendFieldExDto>();
+            ValidationResult validationResult = new ValidationResult();
+            aOperationCallResult.ValidationResult = validationResult;
+
+            //  Validtion need to check if extendFiled lared exsting in transcationUnits
+
+            var unitEntity = AppTransactionBL.RetrieveOneAppTransactionUnitEntity(transactionUnitId);
+            var unitTableDBFieldNameList = unitEntity.AppTransactionField.Select(o => o.DataBaseFieldName.ToLowerInvariant ()).ToList();
+
+            var duplictedList =   aSet.Select(o => o.FieldName)
+                .GroupBy(o => o)
+                .Where(g => g.Count() > 1)
+                .Select(g => g.Key)
+                .ToList ();
+
+            if (duplictedList.Count > 0)
+            {
+                validationResult.Items.Add(new ValidationItem(typeof(AppTransactionUnitExtendFieldExDto), "App_AppTransactionUnitExtendFieldEntity_ExtendFileNameDuplcit", ValidationItemType.Error, $@"Extend FileName {duplictedList.Aggregate((i, j) => i + "," + j)} Conflict With UnitDBFiled"));
+                return aOperationCallResult;
+
+            }
+
+            List<string> conflictedFiedName = new List<string>();
+            foreach( var  exendFiledDto in aSet)
+            {
+                string extenFieldName = exendFiledDto.FieldName.ToLowerInvariant();
+                 if (unitTableDBFieldNameList .Contains (extenFieldName))
+                 {
+                    conflictedFiedName.Add(extenFieldName);
+                 }
+            }
+            if(conflictedFiedName.Count > 0)
+            {
+                validationResult.Items.Add(new ValidationItem(typeof(AppTransactionUnitExtendFieldExDto), "App_AppTransactionUnitExtendFieldEntity_ExtendFileNameConflictWithUnitFiled", ValidationItemType.Error, $@"Extend FileName {conflictedFiedName.Aggregate ( (i,j)=> i + "," +j)} Conflict With UnitDBFiled"));
+                return aOperationCallResult;
+
+            }
+
+
+
+            var allUnitExtendField = RetrieveOneAppTransactionUnitExtendFieldEntitytList(transactionUnitId);
+            Dictionary<int, AppTransactionUnitExtendFieldEntity> dictDbAppTransactionUnitExtendField = allUnitExtendField.ToDictionary(o => o.UnitExtendFiledId, o => o);
+            Dictionary<int, AppTransactionUnitExtendFieldExDto> dictDbAppTransactionUnitExtendFieldExdto = aSet.Where(o => !o.IsNew).ToDictionary(o => int.Parse(o.Id.ToString()), o => o);
+
+         
+
+            //new Entity
+            foreach (var dto in aSet)
+            {
+                if (dto.IsNew)
+                {
+
+                    AppTransactionUnitExtendFieldEntity aParentAppTransactionUnitExtendFieldEntity = new AppTransactionUnitExtendFieldEntity();
+
+                    AppTransactionUnitExtendFieldConverter.CopyDtoToEntity(aParentAppTransactionUnitExtendFieldEntity, dto);
+
+                    allUnitExtendField.Add(aParentAppTransactionUnitExtendFieldEntity);
+
+                }
+                else // update 
+                {
+                    if (dictDbAppTransactionUnitExtendField.ContainsKey((int)dto.Id))
+                    {
+                        var entity = dictDbAppTransactionUnitExtendField[(int)dto.Id];
+
+                        AppTransactionUnitExtendFieldConverter.CopyDtoToEntity(entity, dto);
+
+                    }
+
+                }
+
+
+            }
+
+
+            using (DataAccessAdapter adapter = new DataAccessAdapter())
+            {
+
+                try
+                {
+                    adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+                    adapter.SaveEntityCollection(allUnitExtendField);
+
+
+
+                    adapter.Commit();
+                    validationResult.Items.Add(new ValidationItem(typeof(AppTransactionUnitExtendFieldExDto), "App_AppTransactionUnitExtendFieldEntity_Save_OK", ValidationItemType.Message, "Saved Successfully"));
+
+                }
+
+
+                catch (ORMQueryExecutionException ex)
+                {
+
+                    adapter.Rollback();
+                    validationResult.Items.Add(new ValidationItem(typeof(AppTransactionUnitExtendFieldExDto), "App_AppTransactionUnitExtendFieldEntity_QueryExecution_Error", ValidationItemType.Error, ex.ToString()));
+
+
+                }
+
+
+            }
+
+
+
+            // if no any errors, refresh all entity from DBMS server
+            if (!validationResult.HasErrors)
+            {
+                validationResult.Items.Clear();
+                validationResult.Items.Add(new ValidationItem(typeof(AppTransactionUnitExtendFieldExDto), "App_AppTransactionUnitExtendFieldEntity_Save_OK", ValidationItemType.Message, "Saved Successfully"));
+
+                aOperationCallResult.ObjectList = RetrieveOneAppTransactionUnitExtendFieldDtoList(transactionUnitId);
+            }
+
+            return aOperationCallResult;
+        }
+
+
+
+        internal static EntityCollection<AppTransactionUnitExtendFieldEntity> RetrieveOneAppTransactionUnitExtendFieldEntitytList(int transactionUnitId)
+        {
+            var timeSheetEntities = new EntityCollection<AppTransactionUnitExtendFieldEntity>();
+
+            using (DataAccessAdapter adapater = new DataAccessAdapter())
+            {
+
+                IRelationPredicateBucket filter = new RelationPredicateBucket(AppTransactionUnitExtendFieldFields.TransactionUnitId == transactionUnitId);
+
+
+                adapater.FetchEntityCollection(timeSheetEntities, filter);
+            }
+
+            return timeSheetEntities;
+        }
+
+        internal static EntityCollection<AppTransactionUnitExtendFieldEntity> RetrieveBatchAppTransactionUnitExtendFieldEntitytList(string [] transactionUnitIds)
+        {
+            var timeSheetEntities = new EntityCollection<AppTransactionUnitExtendFieldEntity>();
+
+            using (DataAccessAdapter adapater = new DataAccessAdapter())
+            {
+
+                IRelationPredicateBucket filter = new RelationPredicateBucket(AppTransactionUnitExtendFieldFields.TransactionUnitId == transactionUnitIds);
+
+
+                adapater.FetchEntityCollection(timeSheetEntities, filter);
+            }
+
+            return timeSheetEntities;
+        }
+
+
+
+    }
+
+
+}

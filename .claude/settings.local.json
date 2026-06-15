@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(cd:*)",
+      "Bash(git -C \"C:\\\\app_workspace\\\\ncdiapp\\\\AppAI\" status)",
+      "Bash(git -C \"C:\\\\app_workspace\\\\ncdiapp\\\\AppAI\" log --oneline -5)",
+      "Bash(git -C \"C:\\\\app_workspace\\\\ncdiapp\\\\AppAI\" log --oneline -3)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(powershell -Command \"git log -1 --oneline\":*)",
+      "Bash(del:*)",
+      "Bash(git push:*)",
+      "Bash(powershell -Command \"Select-String -Path ''c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppDataSetBL.cs'' -Pattern ''public static'' | Select-Object -First 30 | ForEach-Object { $_ToString\\(\\) }\")",
+      "Bash(powershell -Command \"Select-String -Path ''c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppDataSetBL.cs'' -Pattern ''public static'' | ForEach-Object { $_LineNumber.ToString\\(\\) + '': '' + $_Line }\")",
+      "Bash(powershell -Command \"Select-String -Path ''c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppSearchViewConfigBL.cs'' -Pattern ''public static'' | ForEach-Object { $_LineNumber.ToString\\(\\) + '': '' + $_Line }\")",
+      "Bash(powershell -Command \"Select-String -Path ''c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppSearchConfigBL.cs'' -Pattern ''public static'' | ForEach-Object { $_LineNumber.ToString\\(\\) + '': '' + $_Line }\")",
+      "Bash(powershell -Command \"Get-Content ''c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppDataSetBL.cs'' | Select-String ''public static'' | Format-Table -AutoSize\")",
+      "Bash(findstr \"public static\")",
+      "Bash(wsl grep -n \"public static\" \"/mnt/c/app_workspace/ncdiapp/AppAI/APP.BL/AppMgr/AppSearchViewConfigBL.cs\")",
+      "Bash(wsl grep -n \"public static\" \"/mnt/c/app_workspace/ncdiapp/AppAI/APP.BL/AppMgr/AppSearchConfigBL.cs\")",
+      "Bash(cmd /c \"findstr /n /c:\"\"public static\"\" \"\"c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppSearchViewConfigBL.cs\"\"\")",
+      "Bash(cmd /c \"findstr /n /c:\"\"public static\"\" \"\"c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppSearchConfigBL.cs\"\"\")",
+      "Bash(cmd /c type \"c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppSearchViewConfigBL.cs\")"
+    ]
+  }
+}

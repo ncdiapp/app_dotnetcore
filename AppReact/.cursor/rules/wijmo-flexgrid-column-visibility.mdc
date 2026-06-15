@@ -1,0 +1,15 @@
+---
+description: Wijmo FlexGrid column visibility – use visible, never conditional render or key-remount
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# Wijmo FlexGrid 列可见性
+
+需要根据“显示高级列”等开关显隐列时，**只用列上的 `visible` 属性**，禁止下列做法：
+
+- **禁止**条件渲染列：`{showAdvanced && <FlexGridColumn ... />}` 或 `{showAdvanced && <><FlexGridColumn />...</>}`。
+- **禁止**给 FlexGrid 设依赖该开关的 key：`key={\`grid-${showAdvancedColumns}\`}` 会导致整表 remount，列集合错乱。
+- **正确**：所有列始终作为 FlexGrid 子组件渲染，需要随开关显隐的列写 `visible={showAdvancedColumns}`。
+
+详见 `.claude/reference/03-ui/standards/WijmoFlexGridColumnVisibility.md`。

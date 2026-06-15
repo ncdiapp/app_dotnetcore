@@ -1,0 +1,38 @@
+---
+description: Always follow Angular behavior when migrating or modifying features
+alwaysApply: true
+---
+
+# Global Angular Migration Rule – Always Follow Angular Logic
+
+- **Angular is the behavioral source of truth** for any feature that exists in the legacy AngularJS app.
+  - When working on React/TypeScript code that has an Angular counterpart, always treat the Angular implementation as the *specification* for:
+    - Which buttons/controls are visible or disabled
+    - When dialogs/popup windows open/close
+    - Which field types are allowed for a feature
+    - How data is validated, transformed, and written back
+  - Do **not** “guess” or invent new behavior just because it looks reasonable in React.
+
+- **Where to look in Angular** (for reference behavior):
+  - Controllers: `C:\DevApp\App\PlmApplication\Scripts1x\mgtCtrl\**\*.js`
+  - Views: `C:\DevApp\App\PlmApplication\Server\Views\**\*.cshtml`
+  - Helpers/logic: `C:\DevApp\App\PlmApplication\Scripts1x\Helper\**\*.js`
+  - When a React file mentions a legacy route, page name, or feature (e.g. Transaction editor, Search editor), first search these Angular folders for the same feature name and mirror that logic.
+
+- **Migration pattern for any page**:
+  1. **Identify** the Angular controller/view/helper that implements the feature you are changing.
+  2. **Read and understand** the Angular behavior (conditions, flags, enum checks, edge cases).
+  3. **Port** that behavior into React (hooks/components) without changing semantics.
+  4. Only after parity is reached, you may refactor for readability or structure, but runtime behavior must stay identical unless the user explicitly asks to change it.
+
+- **Conflict resolution**:
+  - If there is any conflict between “what seems reasonable in React” and “what Angular currently does”, default to **Angular behavior**.
+  - Only deviate from Angular when the user explicitly requests a different behavior; in that case, make the change intentional and localized.
+
+- **Concrete example – Datasource Selector (Transaction fields)**:
+  - When deciding:
+    - Which control types can open the datasource selector,
+    - Which datasource tab (Regular / ForeignUnit / Query) should be active,
+    - How dependent column mappings are stored/loaded,
+  - Reuse the Angular functions and conditions (e.g. `getTransactionFieldDatasourceType`, `applyStandaloneDatasource`, `applyForeignUnitDatasource`) instead of creating new logic from scratch.
+

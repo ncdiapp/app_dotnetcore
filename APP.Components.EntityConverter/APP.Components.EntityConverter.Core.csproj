@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>APP.Components.EntityConverter</AssemblyName>
+    <RootNamespace>APP.Components.EntityConverter</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!--
+      Phase 2A: 258 entity converters — no logic changes needed.
+      SDK glob picks up all .cs files automatically.
+      LLBLGen API unchanged since source is already v5.13.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\APP.Components.Dto\APP.Components.Dto.Core.csproj" />
+    <ProjectReference Include="..\LLBL\DatabaseGeneric\APP.LBL.csproj" />
+  </ItemGroup>
+
+</Project>

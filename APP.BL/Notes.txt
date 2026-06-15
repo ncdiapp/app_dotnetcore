@@ -1,0 +1,22 @@
+## install site:
+    https://code.claude.com/docs/en/overview
+    power shell: irm https://claude.ai/install.ps1 | iex
+    windwos CMD: curl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd
+
+ > claude ( start claude with default mode  means each create/edit action will ask user permission)   
+## command
+/login    
+/shift + tab
+> please create a to-do list managment using html implmentation 
+ > 1. Yes
+   2. Yes, allow all edits during this session (shift+Tab) ( for currnet seiion)
+   3. No
+ ⏵⏵ accept edits on (shift+Tab to cycle) ( means auto edit is on)
+  shift + tab ==>
+  ? for shortcuts --default mode
+  >> accept edits on : auto mode
+  >> plan mode on : only discusstion, never  to write /edit file only for plan
+   change mode from auto eidt to plan mode or default mode 
+  ? for shortcuts ( default mode--> means each create/edit action will ask user permission )
+
+/ !  start index.html  ( ! : external  console CMD to commandd)

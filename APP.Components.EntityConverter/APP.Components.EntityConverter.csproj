@@ -1,0 +1,276 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{5444565A-3642-46BC-80B8-399B17F9E7AF}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>APP.Components.EntityConverter</RootNamespace>
+    <AssemblyName>APP.Components.EntityConverter</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <SccProjectName>SAK</SccProjectName>
+    <SccLocalPath>SAK</SccLocalPath>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccProvider>SAK</SccProvider>
+    <SolutionDir Condition="$(SolutionDir) == '' Or $(SolutionDir) == '*Undefined*'">..\</SolutionDir>
+    <RestorePackages>true</RestorePackages>
+    <TargetFrameworkProfile />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'WebSiteCopy|AnyCPU'">
+    <OutputPath>bin\WebSiteCopy\</OutputPath>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Tablet|AnyCPU'">
+    <OutputPath>bin\Tablet\</OutputPath>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Storyboard|AnyCPU'">
+    <OutputPath>bin\Storyboard\</OutputPath>
+    <DebugType>full</DebugType>
+    <DebugSymbols>true</DebugSymbols>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'WebMvc|AnyCPU'">
+    <OutputPath>bin\WebMvc\</OutputPath>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="APP.LBL">
+      <HintPath>..\Libraries\Business\APP.LBL.dll</HintPath>
+    </Reference>
+    <Reference Include="APP.LBLDBSpecific">
+      <HintPath>..\Libraries\Business\APP.LBLDBSpecific.dll</HintPath>
+    </Reference>
+    <Reference Include="Newtonsoft.Json, Version=4.0.5.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\Libraries\Business\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="AppApplicationAssetsItemConverter.cs" />
+    <Compile Include="AppBatchLogConverter.cs" />
+    <Compile Include="AppBusienssAssormentNavigationConverter.cs" />
+    <Compile Include="AppBusinessMgtScopeConverter.cs" />
+    <Compile Include="AppBusinessPartnerConverter.cs" />
+    <Compile Include="AppBusinessPartnerInviteUserConverter.cs" />
+    <Compile Include="AppBusinessScopeTagConverter.cs" />
+    <Compile Include="AppCalendarBaseDateConverter.cs" />
+    <Compile Include="AppCalendarConverter.cs" />
+    <Compile Include="AppCalendarRecurringDayConverter.cs" />
+    <Compile Include="AppCalendarSpecificDayConverter.cs" />
+    <Compile Include="AppComOrganizationConverter.cs" />
+    <Compile Include="AppComOrgLevelConverter.cs" />
+    <Compile Include="AppCompanyConverter.cs" />
+    <Compile Include="AppCompanyOrderModuleConverter.cs" />
+    <Compile Include="AppCompanyUserTypeRegisterConverter.cs" />
+    <Compile Include="AppConditionalActionConverter.cs" />
+    <Compile Include="AppCountryConverter.cs" />
+    <Compile Include="AppCurrencyConverter.cs" />
+    <Compile Include="AppCurrentUserFavouriteFolderOrFileConverter.cs" />
+    <Compile Include="AppDatabaseDiagramConverter.cs" />
+    <Compile Include="AppDatabaseDiagramItemConverter.cs" />
+    <Compile Include="AppDataSetConverter.cs" />
+    <Compile Include="AppDataSetParameterConverter.cs" />
+    <Compile Include="AppDataSourceRegisterConverter.cs" />
+    <Compile Include="AppDateSetDataExtractViewConverter.cs" />
+    <Compile Include="AppDesktopConverter.cs" />
+    <Compile Include="AppDesktopItemConverter.cs" />
+    <Compile Include="AppEmployeeConverter.cs" />
+    <Compile Include="AppEntityEnumValueConverter.cs" />
+    <Compile Include="AppEntityInfoConverter.cs" />
+    <Compile Include="AppEntitySimpleListValueConverter.cs" />
+    <Compile Include="AppEsiteCatalogueConverter.cs" />
+    <Compile Include="AppEsiteConverter.cs" />
+    <Compile Include="AppEsitePagesConverter.cs" />
+    <Compile Include="AppExternalMethodRegisterConverter.cs" />
+    <Compile Include="AppFileConverter.cs" />
+    <Compile Include="AppFileOrFolderShareToOtherConverter.cs" />
+    <Compile Include="AppFormConverter.cs" />
+    <Compile Include="AppFormGridLayoutItemBindFieldConverter.cs" />
+    <Compile Include="AppFormLayoutItemConverter.cs" />
+    <Compile Include="AppFormLinkTargetConverter.cs" />
+    <Compile Include="AppIntergrationSettingConverter.cs" />
+    <Compile Include="AppIntergrationSettingParameterConverter.cs" />
+    <Compile Include="AppItemBaseConverter.cs" />
+    <Compile Include="AppLanguageConverter.cs" />
+    <Compile Include="AppLanguageKeyConverter.cs" />
+    <Compile Include="AppListMenuConverter.cs" />
+    <Compile Include="AppLogTrackConverter.cs" />
+    <Compile Include="AppMessageConverter.cs" />
+    <Compile Include="AppMessageDeletedConverter.cs" />
+    <Compile Include="AppmessageNotificationSettingConverter.cs" />
+    <Compile Include="AppMessageUserReceivedConverter.cs" />
+    <Compile Include="AppModuleLibRegisterConverter.cs" />
+    <Compile Include="AppPorjectWorkFlowTaskTimeSheetConverter.cs" />
+    <Compile Include="AppProjectOrTaskTranscationConverter.cs" />
+    <Compile Include="AppProjectOrWorkFlowConverter.cs" />
+    <Compile Include="AppProjectPerspectiveTaskConverter.cs" />
+    <Compile Include="AppProjectPerspectiveViewConverter.cs" />
+    <Compile Include="AppProjectPortfolioBoardConverter.cs" />
+    <Compile Include="AppProjectPortfolioConverter.cs" />
+    <Compile Include="AppProjectPrivacyConverter.cs" />
+    <Compile Include="AppProjectPrivilegeLibraryConverter.cs" />
+    <Compile Include="AppProjectRoleConverter.cs" />
+    <Compile Include="AppProjectRolePrivilegeConverter.cs" />
+    <Compile Include="AppProjectSnapshotConverter.cs" />
+    <Compile Include="AppProjectTaskCheckListConverter.cs" />
+    <Compile Include="AppProjectTaskExpenseConverter.cs" />
+    <Compile Include="AppProjectTaskPredecessorConverter.cs" />
+    <Compile Include="AppProjectTaskResourceConverter.cs" />
+    <Compile Include="AppProjectTaskResourcePlannedHoursConverter.cs" />
+    <Compile Include="AppProjectTaskTagConverter.cs" />
+    <Compile Include="AppProjectTaskTimeLogConverter.cs" />
+    <Compile Include="AppProjectTeamConverter.cs" />
+    <Compile Include="AppProjectTeamMemberConverter.cs" />
+    <Compile Include="AppProjectTeamMemberRoleConverter.cs" />
+    <Compile Include="AppProjectTemplateResourceConverter.cs" />
+    <Compile Include="AppProjectWorkFlowActionConverter.cs" />
+    <Compile Include="AppProjectWorkFlowConditionConverter.cs" />
+    <Compile Include="AppProjectWorkFlowTaskConverter.cs" />
+    <Compile Include="AppReportConverter.cs" />
+    <Compile Include="AppRouteStateConverter.cs" />
+    <Compile Include="AppSearchConverter.cs" />
+    <Compile Include="AppSearchFieldConverter.cs" />
+    <Compile Include="AppSearchParameterConverter.cs" />
+    <Compile Include="AppSearchSavedConverter.cs" />
+    <Compile Include="AppSearchSavedValueConverter.cs" />
+    <Compile Include="AppSearchViewConverter.cs" />
+    <Compile Include="AppSearchViewFieldConverter.cs" />
+    <Compile Include="AppSearchViewReportConverter.cs" />
+    <Compile Include="AppSearchViewReportParamterMappingConverter.cs" />
+    <Compile Include="AppSecurityEntityActionConverter.cs" />
+    <Compile Include="AppSecurityGroupConverter.cs" />
+    <Compile Include="AppSecurityGroupMemberConverter.cs" />
+    <Compile Include="AppSecurityLoginAuditorConverter.cs" />
+    <Compile Include="AppSecurityRegDomainConverter.cs" />
+    <Compile Include="AppSecurityRegDomainListMenuConverter.cs" />
+    <Compile Include="AppSecuritySysObjGroupUserConverter.cs" />
+    <Compile Include="AppSecurityTransactionActionConverter.cs" />
+    <Compile Include="AppSecurityTransactionActionResourceConverter.cs" />
+    <Compile Include="AppSecurityUserContactConverter.cs" />
+    <Compile Include="AppSecurityUserConverter.cs" />
+    <Compile Include="AppSecurityUserInvitationConverter.cs" />
+    <Compile Include="AppSecurityUserListMenuConverter.cs" />
+    <Compile Include="AppSecurityUserRolePrevilegeConverter.cs" />
+    <Compile Include="AppSecurityUserSessionConverter.cs" />
+    <Compile Include="AppSefolderConverter.cs" />
+    <Compile Include="AppSefolderResourceConverter.cs" />
+    <Compile Include="AppSetupConverter.cs" />
+    <Compile Include="AppSysLabelLanguageConverter.cs" />
+    <Compile Include="AppTransactionConverter.cs" />
+    <Compile Include="AppTransactionDataLoadConverter.cs" />
+    <Compile Include="AppTransactionDataTransferSettingConverter.cs" />
+    <Compile Include="AppTransactionFieldAggFunctionConverter.cs" />
+    <Compile Include="AppTransactionFieldConverter.cs" />
+    <Compile Include="AppFormGroupConverter.cs" />
+    <Compile Include="AppFormGroupItemConverter.cs" />
+    <Compile Include="AppTransactionGroupConverter.cs" />
+    <Compile Include="AppTransactionGroupItemConverter.cs" />
+    <Compile Include="AppTransactionGroupSessionConverter.cs" />
+    <Compile Include="AppTransactionItemConverter.cs" />
+    <Compile Include="AppTransactionNavigationConverter.cs" />
+    <Compile Include="AppTransactionPostProcessConverter.cs" />
+    <Compile Include="AppTransactionSaveAsMappingConverter.cs" />
+    <Compile Include="AppTransactionUnitConverter.cs" />
+    <Compile Include="AppTransactionUnitDeleteFlowConverter.cs" />
+    <Compile Include="AppTransactionUnitExtendFieldValueConverter.cs" />
+    <Compile Include="AppTransactionUnitFormulaConverter.cs" />
+    <Compile Include="AppTransactionUnitLinkedSearchConverter.cs" />
+    <Compile Include="AppTransactionUnitSearchFieldMappingConverter.cs" />
+    <Compile Include="AppTransactionUnitSearchViewFieldMappingConverter.cs" />
+    <Compile Include="AppTransAuditTrailLogConverter.cs" />
+    <Compile Include="AppTranscationDataLoadFieldMappingConverter.cs" />
+    <Compile Include="AppTranscationReportConverter.cs" />
+    <Compile Include="AppTrasactionSnapShotConverter.cs" />
+    <Compile Include="AppTrascationRecycleBinConverter.cs" />
+    <Compile Include="AppUserAppointmentConverter.cs" />
+    <Compile Include="AppUserMessgeFollowupConverter.cs" />
+    <Compile Include="AppUserSkillConverter.cs" />
+    <Compile Include="AppUserSkillListConverter.cs" />
+    <Compile Include="AppVersionEditionModuleConverter.cs" />
+    <Compile Include="AppViewFiledSearchFiledMappingConverter.cs" />
+    <Compile Include="AppViewLinkedSeaechOrUrlConverter.cs" />
+    <Compile Include="AppWebApiConfigConverter.cs" />
+    <Compile Include="AppWebApiParamsHeaderSettigConverter.cs" />
+    <Compile Include="AppWebApiProviderConverter.cs" />
+    <Compile Include="AppWorkflowConverter.cs" />
+    <Compile Include="AppWorkflowLibActionConverter.cs" />
+    <Compile Include="AppWorkFlowStepConverter.cs" />
+    <Compile Include="ExConverter\AppCalendarRecurringDayConverter.cs" />
+    <Compile Include="ExConverter\AppCalendarSpecificDayConverter.cs" />
+    <Compile Include="ExConverter\AppFormLinkTargetConverter.cs" />
+    <Compile Include="ExConverter\AppIntergrationSettingConverter.cs" />
+    <Compile Include="ExConverter\AppViewLinkedSeaechOrUrlConverter.cs" />
+    <Compile Include="ExConverter\AppSearchViewConverter.cs" />
+    <Compile Include="ExConverter\AppSefolderConverter.cs" />
+    <Compile Include="ExConverter\AppEntityInfoConverter.cs" />
+    <Compile Include="ExConverter\AppDesktopConverter.cs" />
+    <Compile Include="ExConverter\AppTransactionConverter.cs" />
+    <Compile Include="ExConverter\AppIntergrationSettingParameterConverter.cs" />
+    <Compile Include="ExConverter\AppFormConverter.cs" />
+    <Compile Include="ExConverter\AppProjectTeamConverter.cs" />
+    <Compile Include="ExConverter\AppProjectOrWorkFlowConverter.cs" />
+    <Compile Include="ExConverter\AppEsiteConverter.cs" />
+    <Compile Include="ExConverter\AppEsitePagesConverter.cs" />
+    <Compile Include="ExConverter\AppProjectWorkFlowActionConverter.cs" />
+    <Compile Include="ExConverter\AppProjectWorkFlowTaskConverter.cs" />
+    <Compile Include="ExConverter\AppFormLayoutItemConverter.cs" />
+    <Compile Include="ExConverter\AppDataSetConverter.cs" />
+    <Compile Include="ExConverter\AppSecurityUserConverter.cs" />
+    <Compile Include="ExConverter\AppSearchConverter.cs" />
+    <Compile Include="ExConverter\AppTransactionFieldConverter.cs" />
+    <Compile Include="ExConverter\AppSetupConverter..cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\APP.Components.Dto\APP.Components.Dto.csproj">
+      <Project>{18FAE239-DA1D-4C5A-B7A2-FF8E2B0A6893}</Project>
+      <Name>APP.Components.Dto</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\APP.Framework\APP.Framework.csproj">
+      <Project>{6a9a68a3-e5ab-4bd1-bb0a-ac1e975f4104}</Project>
+      <Name>APP.Framework</Name>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
+       Other similar extension points exist, see Microsoft.Common.targets.
+  <Target Name="BeforeBuild">
+  </Target>
+  <Target Name="AfterBuild">
+  </Target>
+  -->
+</Project>

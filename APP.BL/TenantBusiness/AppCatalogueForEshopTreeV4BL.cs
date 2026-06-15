@@ -1,0 +1,1670 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Data;
+using System.Linq;
+using APP.LBL.EntityClasses;
+////using APP.Persistence.Common;
+using APP.Components.Dto;
+using APP.Components.EntityDto;
+using APP.LBL.DatabaseSpecific;
+using APP.Components.EntityConverter;
+using SD.LLBLGen.Pro.ORMSupportClasses;
+using APP.LBL;
+
+using APP.Framework;
+namespace App.BL
+{
+    public static class AppCatalogueForEshopTreeV4BL
+    {
+
+        public static List<AppEsiteCatalogueExDto> RetrieveActiveStoreList(int? esiteId)
+        {
+
+            return AppEsiteConfigBL.RetrieveOneAppEsiteExDto(esiteId).AppEsiteCatalogueList.Where(o => o.IsActive.HasValue && o.IsActive.Value).OrderByDescending(o => o.IsDefault).ToList();
+
+        }
+
+
+        //public static AppEsiteCatalogueExDto RetrievDefaulyStore()
+        //{
+
+        //   return  RetrieveActiveStoreList().Where(o => o.IsDefault.Value ).FirstOrDefault();
+
+        //}
+
+
+        //public static AppEsiteCatalogueLayoutView RetrieveOneStoreLayoutView(int storeId)
+        //{
+
+        //    AppEsiteCatalogueLayoutView estoreLayoutView = new AppEsiteCatalogueLayoutView();
+
+        //    AppEsiteCatalogueExDto aAppEsiteCatalogueExDto = SetupEstoreExDto(storeId);
+
+        //    if (aAppEsiteCatalogueExDto.EmAppEstoreLayout.Value == (int)EmEstoreLayoutView.TreeCardListCardDetail || aAppEsiteCatalogueExDto.EmAppEstoreLayout.Value == (int)EmEstoreLayoutView.TreeCardList)
+        //    {
+
+        //        List<AppCatalogueTreeDto> rootFolders = ConvertTreeSearchViewToFolders(aAppEsiteCatalogueExDto);
+        //        estoreLayoutView.CatalogueTreeList = rootFolders;
+
+        //        estoreLayoutView.IsHaveTreeNavigation = true;
+
+        //    }
+
+        //    else if (aAppEsiteCatalogueExDto.EmAppEstoreLayout.Value == (int)EmEstoreLayoutView.CardList || aAppEsiteCatalogueExDto.EmAppEstoreLayout.Value == (int)EmEstoreLayoutView.CardListCardDetail)
+        //    {
+
+        //        AppEshopCatalogViewDto eshopCatalogViewDto = ProcessSimpleProductListCardView(null, false, storeId);
+        //        estoreLayoutView.CatalogCardView = eshopCatalogViewDto;
+
+        //        estoreLayoutView.IsHaveTreeNavigation = false;
+
+        //    }
+
+
+        //    if (aAppEsiteCatalogueExDto.EmAppEstoreLayout.Value == (int)EmEstoreLayoutView.TreeCardListCardDetail || aAppEsiteCatalogueExDto.EmAppEstoreLayout.Value == (int)EmEstoreLayoutView.CardListCardDetail)
+        //    {
+        //        estoreLayoutView.IsHaveProductDetail = true;
+        //    }
+        //    else
+        //    {
+        //        estoreLayoutView.IsHaveProductDetail = false;
+        //    }
+
+        //    return estoreLayoutView;
+        //}
+
+
+        public static AppEshopCatalogViewDto ProcessCardViewByTreeNode(BaseAppCatalogueTreeDto appCatalogueTreeDto, bool IsWithOptionFilter, object storeId)
+        {
+
+            AppEsiteCatalogueExDto aAppEsiteCatalogueExDto = SetupEstoreExDto(storeId);
+
+            AppEshopCatalogViewDto toReturn = new AppEshopCatalogViewDto();
+
+            SearchDto aSearchDto = SetupEshopCardListSearchDtoForCataloueBrach(appCatalogueTreeDto, aAppEsiteCatalogueExDto);
+
+            if (aSearchDto != null)
+            {
+                AppSearchViewEntity cardViewEntity = AppSearchViewConfigBL.RetrieveOneAppSearchViewEntity(aAppEsiteCatalogueExDto.CatalogCardViewId);
+                AppSearchViewExDto aAppSearchViewExDto = aAppEsiteCatalogueExDto.CatalogCardViewExDto;
+
+                DataTable dataTableResult = AppStaticDataSetSearchBL.RetriveMasterDataSetDataTable(aSearchDto, cardViewEntity);
+
+                IEnumerable<DataRow> dataTableRows = dataTableResult.AsEnumerable();
+
+                if (IsWithOptionFilter && appCatalogueTreeDto != null)
+                {
+                    Dictionary<int, List<LookupItemDto>> dictOptionCheckedLevel = appCatalogueTreeDto.DictOptionCheckedLevel;
+                    dataTableRows = FilterCardViewTableRowsWithLevelOptions(aAppSearchViewExDto, dataTableRows, dictOptionCheckedLevel);
+                }
+
+                // optionList
+                PorcessOptionList(toReturn, dataTableRows, aAppSearchViewExDto);
+                // process cardList
+                PorcesCardList(toReturn, dataTableRows, aAppSearchViewExDto);
+            }
+            else
+            {
+                return null;
+            }
+
+            return toReturn;
+        }
+
+
+        public static AppEshopCatalogViewDto ProcessSimpleProductListCardView(Dictionary<int, List<LookupItemDto>> dictOptionCheckedLevel, bool IsWithOptionFilter, object storeId)
+        {
+            AppEsiteCatalogueExDto aAppEsiteCatalogueExDto = SetupEstoreExDto(storeId);
+
+            AppEshopCatalogViewDto toReturn = new AppEshopCatalogViewDto();
+
+            SearchDto aSearchDto = SetupEshopCardListSearchDtoForCardList(aAppEsiteCatalogueExDto);
+
+            if (aSearchDto != null)
+            {
+                AppSearchViewEntity cardViewEntity = AppSearchViewConfigBL.RetrieveOneAppSearchViewEntity(aAppEsiteCatalogueExDto.CatalogCardViewId);
+                AppSearchViewExDto aAppSearchViewExDto = aAppEsiteCatalogueExDto.CatalogCardViewExDto;
+
+                DataTable dataTableResult = AppStaticDataSetSearchBL.RetriveMasterDataSetDataTable(aSearchDto, cardViewEntity);
+
+                IEnumerable<DataRow> dataTableRows = dataTableResult.AsEnumerable();
+
+                if (IsWithOptionFilter && dictOptionCheckedLevel != null)
+                {
+                    dataTableRows = FilterCardViewTableRowsWithLevelOptions(aAppSearchViewExDto, dataTableRows, dictOptionCheckedLevel);
+                }
+
+                // optionList
+                PorcessOptionList(toReturn, dataTableRows, aAppSearchViewExDto);
+                // process cardList
+                PorcesCardList(toReturn, dataTableRows, aAppSearchViewExDto);
+            }
+            else
+            {
+                return null;
+            }
+
+            return toReturn;
+        }
+
+
+        public static AppEshopCatalogCardDetailDto GetOneCardDetail(AppEshopCatalogCardDto appEshopCatalogCardDto, object storeId)
+        {
+
+            AppEsiteCatalogueExDto aAppEsiteCatalogueExDto = SetupEstoreExDto(storeId);
+
+            AppEshopCatalogCardDetailDto aAppEshopCatalogCardDetailDto = new AppEshopCatalogCardDetailDto();
+
+            SearchDto aSearchDto = SetupEshopCardDetailSearchDto(appEshopCatalogCardDto, aAppEsiteCatalogueExDto);
+
+
+
+            AppSearchViewEntity viewEntity = AppSearchViewConfigBL.RetrieveOneAppSearchViewEntity(int.Parse(aSearchDto.ReferenceViewDefinitionDto.Id.ToString()));
+            AppSearchViewExDto cardDetailSearchViewExDto = aAppEsiteCatalogueExDto.CatalogCardDetailExDto;
+
+            DataTable dataTableResult = AppStaticDataSetSearchBL.RetriveMasterDataSetDataTable(aSearchDto, viewEntity);
+
+            IEnumerable<DataRow> dataTableRows = dataTableResult.AsEnumerable();
+
+
+            var dictOptionLevelLookup = new Dictionary<int, List<LookupItemDto>>();
+            var dictOptionDisplay = new Dictionary<int, string>();
+
+            var dictOptionAndDto = new Dictionary<int, AppEshopCatalogLevelOptionDto>();
+
+            GetDictOptionLevelIdAndDisplayAndLabel(dataTableRows, cardDetailSearchViewExDto, dictOptionLevelLookup, dictOptionDisplay, dictOptionAndDto);
+
+
+
+            aAppEshopCatalogCardDetailDto.DictOptionLevelLookup = dictOptionLevelLookup;
+            aAppEshopCatalogCardDetailDto.OrgDictOptionLevelLookup = dictOptionLevelLookup.DeepCopy();
+            aAppEshopCatalogCardDetailDto.DictOptionLable = dictOptionDisplay;
+            aAppEshopCatalogCardDetailDto.DictOptionAndDto = dictOptionAndDto;
+            aAppEshopCatalogCardDetailDto.DictOptionLevelSelectedValue = new Dictionary<int, object>(); ;
+
+            var dictOptionLevelSelectedValue = aAppEshopCatalogCardDetailDto.DictOptionLevelSelectedValue;
+
+
+
+
+            // Image and Display
+            // AppSearchViewFieldExDto ImageNode = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsMapToChartX.HasValue && o.IsMapToChartX.Value).FirstOrDefault();
+            List<AppSearchViewFieldExDto> DisplayColumnList = cardDetailSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsMapToChartY.HasValue && o.IsMapToChartY.Value).OrderBy(o => o.Sort).ToList();
+
+
+
+            aAppEshopCatalogCardDetailDto.ProductDisplay = new Dictionary<string, List<string>>();
+
+            aAppEshopCatalogCardDetailDto.ImageUrl = new List<string>();
+
+
+            List<DataRow> rowList = dataTableRows.ToList();
+
+            foreach (AppSearchViewFieldExDto DisplayNode in DisplayColumnList)
+            {
+                // string dislplay = rowList.Select(o => ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(o[DisplayNode.SysTableFiledPath])).Distinct().FirstOrDefault();
+                //  aAppEshopCatalogCardDetailDto.Display.Add(  dislplay);
+                List<string> displayList = new List<string>();
+                foreach (DataRow row in rowList)
+                {
+                    displayList.Add(ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(row[DisplayNode.SysTableFiledPath]));
+                }
+
+                aAppEshopCatalogCardDetailDto.ProductDisplay.Add(DisplayNode.DisplayText, displayList.Distinct().ToList());
+            }
+
+
+
+            // matrix key and logical 
+
+            Dictionary<int, List<AppSearchViewFieldExDto>> dictOptionLevelSearchField = GetDictEshopTreeViewOrCardViewLevelNodeList(cardDetailSearchViewExDto);
+            Dictionary<int, AppSearchViewFieldExDto> dictOptionLevelTreeNodeId = new Dictionary<int, AppSearchViewFieldExDto>();
+            Dictionary<int, AppSearchViewFieldExDto> dictOptionLevelTreeNodeDisplay = new Dictionary<int, AppSearchViewFieldExDto>();
+
+            foreach (int levelKey in dictOptionLevelSearchField.Keys)
+            {
+
+                AppSearchViewFieldExDto earchViewFieldExDto = dictOptionLevelSearchField[levelKey].FirstOrDefault(o => o.IsTreeNodeId.HasValue && o.IsTreeNodeId.Value);
+                dictOptionLevelTreeNodeId.Add(levelKey, earchViewFieldExDto);
+
+                AppSearchViewFieldExDto aAppSearchViewFieldExDto = dictOptionLevelSearchField[levelKey].FirstOrDefault(o => o.IsTreeNodeDisplay.HasValue && o.IsTreeNodeDisplay.Value);
+                dictOptionLevelTreeNodeDisplay.Add(levelKey, aAppSearchViewFieldExDto);
+
+            }
+
+
+            AppSearchViewFieldExDto detailKeyField = cardDetailSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsGroupBy.HasValue && o.IsGroupBy.Value).FirstOrDefault();
+            AppSearchViewFieldExDto skuSearchFieldExDto = cardDetailSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsMapToChartX.HasValue && o.IsMapToChartX.Value).FirstOrDefault();
+            AppSearchViewFieldExDto priceSearchFieldExDto = cardDetailSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsFilterByCurrentUser.HasValue && o.IsFilterByCurrentUser.Value).FirstOrDefault();
+            AppSearchViewFieldExDto availableQtyFieldExDto = cardDetailSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsUserDefined1.HasValue && o.IsUserDefined1.Value).FirstOrDefault();
+
+            AppSearchViewFieldExDto viewFieldDto_IsSkuHaveGrandChildrenBindingKey = cardDetailSearchViewExDto.AppSearchViewFieldList.FirstOrDefault(o => o.IsUserDefined4.HasValue && o.IsUserDefined4.Value);
+            bool isHaveMultiSelectOption = dictOptionAndDto.Values.FirstOrDefault(o => o.IsMultipleSelection) != null;
+            aAppEshopCatalogCardDetailDto.IsProductHaveMultiSelectOption = isHaveMultiSelectOption;
+            AppSearchViewFieldExDto selectQtyFieldExDto = cardDetailSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsUserDefined2.HasValue && o.IsUserDefined2.Value).FirstOrDefault();
+
+
+            List<AppSearchViewFieldExDto> skuDisplayFieldList = cardDetailSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsTreeNodeDesc.HasValue && o.IsTreeNodeDesc.Value).ToList();
+
+            List<AppSearchViewFieldExDto> skuImageFiedList = cardDetailSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsTreeNodeImageUrl.HasValue && o.IsTreeNodeImageUrl.Value).ToList();
+
+
+
+
+            Dictionary<string, string> DictMatrixConbineKeySku = new Dictionary<string, string>();
+            Dictionary<string, string> DictSkuMatrixDisplay = new Dictionary<string, string>();
+
+            Dictionary<string, decimal> DictSkuPrice = new Dictionary<string, decimal>();
+            Dictionary<string, decimal> DictSkuSelectedQty = new Dictionary<string, decimal>();
+
+            Dictionary<string, string> DictSkuDetailId = new Dictionary<string, string>();
+
+            Dictionary<string, Dictionary<string, string>> DictSkuDescription = new Dictionary<string, Dictionary<string, string>>();
+            Dictionary<string, Dictionary<string, string>> DictSkuImageUrl = new Dictionary<string, Dictionary<string, string>>();
+            Dictionary<string, AppEshopBagItemDto> DictSkuAppEshopBagItem = new Dictionary<string, AppEshopBagItemDto>();
+            Dictionary<string, DataRow> DictSkuDataRow = new Dictionary<string, DataRow>();
+
+
+
+
+            if (rowList.Count > 0)
+            {
+                var defaultRow = rowList[0];
+                foreach (int levelKey in dictOptionLevelTreeNodeId.Keys)
+                {
+                    var viewFieldDto = dictOptionLevelTreeNodeId[levelKey];
+                    string systempath = viewFieldDto.SysTableFiledPath;
+                    bool isMultiSelectOption = viewFieldDto.IsUserDefined3.HasValue && viewFieldDto.IsUserDefined3.Value;
+
+                    var defaultValueString = defaultRow[systempath].ToString();
+
+                    if (isMultiSelectOption)
+                    {
+                        List<string> multiSelectOptionValue = new List<string>() { defaultValueString };
+                        dictOptionLevelSelectedValue[levelKey] = multiSelectOptionValue;
+
+                        var foundLookupItemDto = dictOptionLevelLookup[levelKey].FirstOrDefault(o => o.Id != null && o.Id.ToString() == defaultValueString);
+                        if (foundLookupItemDto != null)
+                        {
+                            foundLookupItemDto.IsChecked = true;
+                        }
+                    }
+                    else
+                    {
+                        dictOptionLevelSelectedValue[levelKey] = defaultValueString;
+                    }
+                }
+            }
+
+
+
+
+
+            foreach (DataRow dataRow in rowList)
+            {
+                string combineKey = string.Empty;
+                foreach (int levelKey in dictOptionLevelTreeNodeId.Keys)
+                {
+                    string systempath = dictOptionLevelTreeNodeId[levelKey].SysTableFiledPath;
+                    combineKey = combineKey + dataRow[systempath].ToString() + "_";
+
+
+                }
+
+                if (combineKey != string.Empty)
+                {
+                    combineKey = combineKey.Substring(0, combineKey.Length - 1);
+                }
+
+
+
+                string skuValue = dataRow[skuSearchFieldExDto.SysTableFiledPath].ToString();
+                string detailID = dataRow[detailKeyField.SysTableFiledPath].ToString();
+
+                // fro bagitem display 
+                string combineDisplay = string.Empty;
+
+                foreach (int levelKey in dictOptionLevelTreeNodeDisplay.Keys)
+                {
+                    string systempath = dictOptionLevelTreeNodeDisplay[levelKey].SysTableFiledPath;
+                    combineDisplay = combineDisplay + dataRow[systempath].ToString() + ",";
+
+
+                }
+
+                if (combineDisplay != string.Empty)
+                {
+                    combineDisplay = combineDisplay.Substring(0, combineDisplay.Length - 1);
+                    combineDisplay = "(" + combineDisplay + ")";
+
+                }
+
+                DictSkuMatrixDisplay.Add(skuValue, combineDisplay);
+
+
+
+
+                decimal price = ControlTypeValueConverter.ConvertValueToDecimalWithDefautZero(dataRow[priceSearchFieldExDto.SysTableFiledPath]);
+                decimal selectedQty = 1;
+
+                if (selectQtyFieldExDto != null)
+                {
+                    aAppEshopCatalogCardDetailDto.IsSelectedQtyReadOnly = true;
+                    decimal? qty = ControlTypeValueConverter.ConvertValueToDecimal(dataRow[selectQtyFieldExDto.SysTableFiledPath]);
+
+                    if (qty.HasValue && qty.Value > 0)
+                    {
+                        selectedQty = qty.Value;
+                    }
+                }
+
+
+                DictMatrixConbineKeySku.Add(combineKey, skuValue);
+                DictSkuPrice.Add(skuValue, price);
+                DictSkuSelectedQty.Add(skuValue, selectedQty);
+                DictSkuDetailId.Add(skuValue, detailID);
+
+                Dictionary<string, string> dictDisplay = new Dictionary<string, string>();
+                foreach (AppSearchViewFieldExDto displayFiled in skuDisplayFieldList)
+                {
+                    object displayValue = dataRow[displayFiled.SysTableFiledPath];
+                    dictDisplay.Add(displayFiled.DisplayText, ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(displayValue));
+
+                }
+
+                DictSkuDescription.Add(skuValue, dictDisplay);
+
+
+                Dictionary<string, string> dictImage = new Dictionary<string, string>();
+                foreach (AppSearchViewFieldExDto disimageFiled in skuImageFiedList)
+                {
+                    object iamgeValue = dataRow[disimageFiled.SysTableFiledPath];
+                    dictImage.Add(disimageFiled.DisplayText, ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(iamgeValue));
+
+                }
+
+
+
+                DictSkuImageUrl.Add(skuValue, dictImage);
+                DictSkuDataRow.Add(skuValue, dataRow);
+
+            }
+
+
+            aAppEshopCatalogCardDetailDto.DictMatrixKeySku = DictMatrixConbineKeySku;
+            aAppEshopCatalogCardDetailDto.DictSkuPrice = DictSkuPrice;
+            aAppEshopCatalogCardDetailDto.DictSkuSelectedQty = DictSkuSelectedQty;
+            aAppEshopCatalogCardDetailDto.DictSkuDetailId = DictSkuDetailId;
+            aAppEshopCatalogCardDetailDto.DictSkuDescription = DictSkuDescription;
+            aAppEshopCatalogCardDetailDto.DictSkuImageUrl = DictSkuImageUrl;
+            //DictSkuAppEshopBagItem
+            foreach (string sku in DictSkuDetailId.Keys)
+            {
+                AppEshopBagItemDto aAppEshopBagItemDto = new AppEshopBagItemDto();
+                aAppEshopBagItemDto.SkuNo = sku;
+                aAppEshopBagItemDto.DetailId = DictSkuDetailId[sku];
+                aAppEshopBagItemDto.ImageUrl = DictSkuImageUrl[sku].Values.FirstOrDefault();
+                aAppEshopBagItemDto.Price = DictSkuPrice[sku];
+                aAppEshopBagItemDto.SelectedQuantity = DictSkuSelectedQty[sku];
+                aAppEshopBagItemDto.IsSelectedQtyReadOnly = aAppEshopCatalogCardDetailDto.IsSelectedQtyReadOnly;
+
+                List<string> allDisplay = new List<string>();
+
+                foreach (List<string> listdisplay in aAppEshopCatalogCardDetailDto.ProductDisplay.Values)
+                {
+                    allDisplay.AddRange(listdisplay);
+                }
+
+
+
+                allDisplay = allDisplay.Select(o => o.Trim()).Distinct().ToList();
+
+                aAppEshopBagItemDto.ProductDisplay = allDisplay.Aggregate((o, next) => o + "," + next);
+
+                aAppEshopBagItemDto.DictMaxtrixDisplay = DictSkuMatrixDisplay[sku];
+
+                aAppEshopBagItemDto.DictSkuDisplay = DictSkuDescription[sku];
+
+                //  aAppEshopBagItemDto.Price = DictSkuPrice[sku];
+                //  aAppEshopBagItemDto.Quantity = 0;
+                //  aAppEshopBagItemDto.Weight = 0;
+
+                aAppEshopBagItemDto.SkuFieldName = skuSearchFieldExDto.SysTableFiledPath;
+                aAppEshopBagItemDto.PriceFieldName = priceSearchFieldExDto.SysTableFiledPath;
+                //aAppEshopBagItemDto.SelectedQtyFieldName = selectQtyFieldExDto.SysTableFiledPath;
+
+                aAppEshopBagItemDto.ProductDetaiViewMapUnitId = cardDetailSearchViewExDto.ProductDetaiViewMapUnitId;
+                aAppEshopBagItemDto.TransactionId = cardDetailSearchViewExDto.TransactionId;
+
+                aAppEshopBagItemDto.SearchViewId = ControlTypeValueConverter.ConvertValueToInt(cardDetailSearchViewExDto.Id);
+
+                //     aAppEshopBagItemDto.QtyFieldName = 
+
+                var dataRow = DictSkuDataRow[sku];
+
+                if (isHaveMultiSelectOption && viewFieldDto_IsSkuHaveGrandChildrenBindingKey != null)
+                {
+                    bool? isSkuHaveGrandChildren = ControlTypeValueConverter.ConvertValueToBoolean(dataRow[viewFieldDto_IsSkuHaveGrandChildrenBindingKey.SysTableFiledPath]);
+                    aAppEshopBagItemDto.IsSkuHaveGrandChildren = isSkuHaveGrandChildren.HasValue && isSkuHaveGrandChildren.Value;
+                }
+
+                aAppEshopBagItemDto.DictOneToOneFields = new Dictionary<string, object>();
+
+                foreach (var column in cardDetailSearchViewExDto.AppSearchViewFieldList)
+                {
+
+                    aAppEshopBagItemDto.DictOneToOneFields.Add(column.SysTableFiledPath, dataRow[column.SysTableFiledPath]);
+                }
+
+                DictSkuAppEshopBagItem.Add(sku, aAppEshopBagItemDto);
+
+            }
+
+
+            aAppEshopCatalogCardDetailDto.DictSkuAppEshopBagItem = DictSkuAppEshopBagItem;
+
+
+            aAppEshopCatalogCardDetailDto.ChangedOptionLevel = 1;
+
+            aAppEshopCatalogCardDetailDto = GetCardDetailOptionCascadingResult(aAppEshopCatalogCardDetailDto);
+
+            return aAppEshopCatalogCardDetailDto;
+
+            //throw new NotImplementedException();
+        }
+
+
+        public static AppEshopCatalogCardDetailDto GetCardDetailOptionCascadingResult(AppEshopCatalogCardDetailDto cardDetailDto)
+        {
+            if (cardDetailDto != null)
+            {
+                if (cardDetailDto.ChangedOptionLevel.HasValue && cardDetailDto.DictOptionLevelSelectedValue != null)
+                {
+                    int nbLevel = cardDetailDto.DictOptionLevelLookup.Keys.Count;
+                    int currentLevel = cardDetailDto.ChangedOptionLevel.Value;
+
+                    if (currentLevel < nbLevel)
+                    {
+                        bool isMissingCascadingParentValue = false;
+                        string matrixParentKeyPrefix = string.Empty;
+
+                        for (int level = 1; level <= currentLevel; level++)
+                        {
+                            var optionValue = cardDetailDto.DictOptionLevelSelectedValue[level];
+
+                            if (cardDetailDto.DictOptionLevelSelectedValue[level] == null)
+                            {
+                                isMissingCascadingParentValue = true;
+                            }
+                            else
+                            {
+                                matrixParentKeyPrefix += optionValue.ToString() + "_";
+                            }
+                        }
+
+
+                        if (isMissingCascadingParentValue)
+                        {
+                            for (int level = currentLevel + 1; level <= nbLevel; level++)
+                            {
+                                bool isMultipleSelection = cardDetailDto.DictOptionAndDto[level].IsMultipleSelection;
+
+                                cardDetailDto.DictOptionLevelLookup[level] = new List<LookupItemDto>();
+
+                                if (isMultipleSelection)
+                                {
+                                    cardDetailDto.DictOptionLevelSelectedValue[level] = new List<string>();
+                                }
+                                else
+                                {
+                                    cardDetailDto.DictOptionLevelSelectedValue[level] = null;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            if (!string.IsNullOrEmpty(matrixParentKeyPrefix))
+                            {
+                                List<string> filteredMatrixKeyList = cardDetailDto.DictMatrixKeySku.Keys.Where(o => o.StartsWith(matrixParentKeyPrefix)).ToList();
+
+                                for (int level = currentLevel + 1; level <= nbLevel; level++)
+                                {
+                                    ProcessCascadingChildOption(cardDetailDto, nbLevel, filteredMatrixKeyList, level, matrixParentKeyPrefix);
+                                }
+                            }
+                        }
+
+                        return cardDetailDto;
+                    }
+
+                }
+
+            }
+
+            return null;
+        }
+
+        public static AppEsiteCatalogueExDto RetrieveOneAppEsiteCatalogueExDto(object EstoreId)
+        {
+            AppEsiteCatalogueEntity aAppEsiteCatalogueEntity = RetrieveOneAppEsiteCatalogueEntity(EstoreId);
+            AppEsiteCatalogueExDto aEstoreDto = AppEsiteCatalogueConverter.ConvertEntityToExDto(aAppEsiteCatalogueEntity);
+
+
+            return aEstoreDto;
+        }
+
+        internal static AppEsiteCatalogueExDto SetupEstoreExDto(object EstoreId)
+        {
+            AppEsiteCatalogueEntity aAppEsiteCatalogueEntity = RetrieveOneAppEsiteCatalogueEntity(EstoreId);
+            AppEsiteCatalogueExDto aEstoreDto = AppEsiteCatalogueConverter.ConvertEntityToExDto(aAppEsiteCatalogueEntity);
+            SetupEstoeExdto(aEstoreDto);
+
+            return aEstoreDto;
+        }
+        private static void SetupEstoeExdto(AppEsiteCatalogueExDto aAppEsiteCatalogueExDto)
+        {
+
+            if (aAppEsiteCatalogueExDto.TreeNavigationViewId.HasValue)
+            {
+                aAppEsiteCatalogueExDto.NavigationTreeSearchViewExDto = AppSearchViewConfigBL.RetrieveOneAppSearchViewExDto(aAppEsiteCatalogueExDto.TreeNavigationViewId);
+            }
+
+            // aAppEsiteCatalogueExDto.TreeViewDataSetExDto = AppDataSetBL.RetrieveOneAppDataSetExDto(aAppEsiteCatalogueExDto.NavigationTreeSearchViewExDto.DataSetId);
+            if (aAppEsiteCatalogueExDto.CatalogCardViewId.HasValue)
+            {
+                aAppEsiteCatalogueExDto.CatalogCardViewExDto = AppSearchViewConfigBL.RetrieveOneAppSearchViewExDto(aAppEsiteCatalogueExDto.CatalogCardViewId);
+
+
+            }
+
+            if (aAppEsiteCatalogueExDto.CatalogCardDetailId.HasValue)
+            {
+                aAppEsiteCatalogueExDto.CatalogCardDetailExDto = AppSearchViewConfigBL.RetrieveOneAppSearchViewExDto(aAppEsiteCatalogueExDto.CatalogCardDetailId);
+
+
+            }
+
+
+        }
+
+        public static AppEsiteCatalogueEntity RetrieveOneAppEsiteCatalogueEntity(object EstoreId)
+        {
+            using (DataAccessAdapter adpater = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                AppEsiteCatalogueEntity EstoreEntity = new AppEsiteCatalogueEntity(int.Parse(EstoreId.ToString()));
+
+                IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppEsiteCatalogueEntity);
+
+
+                adpater.FetchEntity(EstoreEntity, rootPath);
+                return EstoreEntity;
+            }
+        }
+
+
+
+        private static void ProcessCascadingChildOption(AppEshopCatalogCardDetailDto cardDetailDto, int nbLevel, List<string> filteredMatrixKeyList, int level, string matrixParentKeyPrefix)
+        {
+            bool isMultipleSelection = cardDetailDto.DictOptionAndDto[level].IsMultipleSelection;
+
+            if (!isMultipleSelection)
+            {
+                ProcessCascadingChildOption_SingleSelection(cardDetailDto, nbLevel, ref filteredMatrixKeyList, level, matrixParentKeyPrefix);
+            }
+            else
+            {
+                ProcessCascadingChildOption_MultiSelection(cardDetailDto, nbLevel, ref filteredMatrixKeyList, level, matrixParentKeyPrefix);
+            }
+        }
+
+        private static void ProcessCascadingChildOption_SingleSelection(AppEshopCatalogCardDetailDto cardDetailDto, int nbLevel, ref List<string> filteredMatrixKeyList, int level, string matrixParentKeyPrefix)
+        {
+            var levelOrgValue = cardDetailDto.DictOptionLevelSelectedValue[level];
+            List<string> levelNewAvailableLookupIdList = new List<string>();
+
+            string levelNewValue = null;
+
+            foreach (string matrixKey in filteredMatrixKeyList)
+            {
+                string levelMatrixValue = string.Empty;
+
+                int indexStart = matrixKey.CustomIndexOf('_', level - 1);
+
+                string matrixKeySubString = matrixKey.Substring(indexStart + 1);
+
+                if (level < nbLevel)
+                {
+                    int indexNextSpliter = matrixKeySubString.IndexOf("_");
+                    levelMatrixValue = matrixKeySubString.Substring(0, indexNextSpliter);
+                }
+                else if (level == nbLevel)
+                {
+                    levelMatrixValue = matrixKeySubString;
+                }
+
+                levelNewAvailableLookupIdList.Add(levelMatrixValue);
+
+
+                if (levelOrgValue != null)
+                {
+                    if (levelOrgValue.ToString() == levelMatrixValue || string.IsNullOrEmpty(levelNewValue))
+                    {
+                        levelNewValue = levelMatrixValue;
+                    }
+                }
+                else
+                {
+                    if (string.IsNullOrEmpty(levelNewValue))
+                    {
+                        levelNewValue = levelMatrixValue;
+                    }
+                }
+            }
+
+            cardDetailDto.DictOptionLevelLookup[level] = cardDetailDto.OrgDictOptionLevelLookup[level].Where(o => levelNewAvailableLookupIdList.Contains(o.Id.ToString())).ToList();
+            cardDetailDto.DictOptionLevelSelectedValue[level] = levelNewValue;
+
+            if (!string.IsNullOrEmpty(levelNewValue))
+            {
+                string prefix = matrixParentKeyPrefix + "_" + levelNewValue;
+                filteredMatrixKeyList = filteredMatrixKeyList.Where(o => o.StartsWith(prefix)).ToList();
+            }
+        }
+
+
+        private static void ProcessCascadingChildOption_MultiSelection(AppEshopCatalogCardDetailDto cardDetailDto, int nbLevel, ref List<string> filteredMatrixKeyList, int level, string matrixParentKeyPrefix)
+        {
+            var levelOrgValue = cardDetailDto.DictOptionLevelSelectedValue[level];
+            List<string> levelNewAvailableLookupIdList = new List<string>();
+
+            List<string> levelNewMultValue = new List<string>();
+
+            foreach (string matrixKey in filteredMatrixKeyList)
+            {
+                string levelMatrixValue = string.Empty;
+
+                int indexStart = matrixKey.CustomIndexOf('_', level - 1);
+
+                string matrixKeySubString = matrixKey.Substring(indexStart + 1);
+
+                if (level < nbLevel)
+                {
+                    int indexNextSpliter = matrixKeySubString.IndexOf("_");
+                    levelMatrixValue = matrixKeySubString.Substring(0, indexNextSpliter);
+                }
+                else if (level == nbLevel)
+                {
+                    levelMatrixValue = matrixKeySubString;
+                }
+
+                levelNewAvailableLookupIdList.Add(levelMatrixValue);
+
+                List<string> orgValueList = levelOrgValue as List<string>;
+                if (!orgValueList.IsEmpty())
+                {
+                    if (orgValueList.Contains(levelMatrixValue))
+                    {
+                        levelNewMultValue.Add(levelMatrixValue);
+                    }
+                }
+                else
+                {
+                    if (levelNewMultValue.IsEmpty())
+                    {
+                        levelNewMultValue.Add(levelMatrixValue);
+                    }
+                }
+            }
+
+            cardDetailDto.DictOptionLevelLookup[level] = cardDetailDto.OrgDictOptionLevelLookup[level].Where(o => levelNewAvailableLookupIdList.Contains(o.Id.ToString())).ToList();
+            cardDetailDto.DictOptionLevelLookup[level].Where(o => levelNewMultValue.Contains(o.Id.ToString())).ForAll(o => o.IsChecked = true);
+            cardDetailDto.DictOptionLevelSelectedValue[level] = levelNewMultValue;
+
+
+        }
+
+        private static int CustomIndexOf(this string source, char toFind, int position)
+        {
+            int index = -1;
+            for (int i = 0; i < position; i++)
+            {
+                index = source.IndexOf(toFind, index + 1);
+
+                if (index == -1)
+                    break;
+            }
+
+            return index;
+        }
+
+
+
+
+
+        //<wj-flex-grid-column is-read-only="false" binding="IsGroupBy" header="Is Eshop Root Group " date-type="Boolean" width="100"  visible="{{currentSearchView.ViewType == EmAppViewType.EShopView? 'true':'false'}}"> </wj-flex-grid-column>
+        //<wj-flex-grid-column is-read-only="false" binding="IsMapToChartX" data-type="Boolean" header="Is Image Column " width="150" visible="{{currentSearchView.ViewType == EmAppViewType.EShopView? 'true':'false'}}"></wj-flex-grid-column>
+        //<wj-flex-grid-column is-read-only="false" binding="IsMapToChartY" data-type="Boolean" header="Is Display Column " width="150" visible="{{currentSearchView.ViewType == EmAppViewType.EShopView? 'true':'false'}}"></wj-flex-grid-column>
+        //<wj-flex-grid-column is-read-only="false" binding="IsFilterByCurrentUser" data-type="Boolean" header="Is Price column " width="150" visible="{{currentSearchView.ViewType == EmAppViewType.EShopView? 'true':'false'}}"></wj-flex-grid-column>
+
+
+
+        private static IEnumerable<DataRow> FilterCardViewTableRowsWithLevelOptions(AppSearchViewExDto aAppSearchViewExDto, IEnumerable<DataRow> dataTableRows, Dictionary<int, List<LookupItemDto>> dictOptionCheckedLevel)
+        {
+            if (dictOptionCheckedLevel != null)
+            {
+                Dictionary<int, List<AppSearchViewFieldExDto>> dictOptionlevelFieldExdto = GetDictEshopTreeViewOrCardViewLevelNodeList(aAppSearchViewExDto);
+
+                foreach (int checkedlevelkey in dictOptionCheckedLevel.Keys)
+                {
+                    string columnIdColumnName;
+                    string columnDislay;
+                    string columnImage;
+                    GetIdDisplayColumnName(dictOptionlevelFieldExdto, checkedlevelkey, out columnIdColumnName, out columnDislay, out columnImage);
+
+                    List<LookupItemDto> checkedLookItemList = dictOptionCheckedLevel[checkedlevelkey];
+
+                    if (!checkedLookItemList.IsEmpty())
+                    {
+                        //object[] includeIds = checkedLookItemList.Select(o => o.Id).ToArray();
+                        // dataTableRows = dataTableRows
+                        //    .Where(row => includeIds.Contains(row[columnIdColumnName]));
+
+                        string[] includeIds = checkedLookItemList.Select(o => o.Id.ToString()).ToArray();
+                        dataTableRows = dataTableRows
+                           .Where(row => includeIds.Contains(row[columnIdColumnName].ToString()));
+                    }
+                }
+            }
+
+            return dataTableRows;
+        }
+
+
+
+        //private static List<AppCatalogueTreeDto> ConvertTreeSearchViewToFolders(AppEsiteCatalogueExDto storeExDto)
+        //{
+
+        //    List<AppCatalogueTreeDto> rootFolders = new List<AppCatalogueTreeDto>();
+
+        //    AppSearchViewExDto treeSearchViewExDto = storeExDto.NavigationTreeSearchViewExDto;
+
+        //    AppCatalogueTreeDto appCatalogueTreeDto = new AppCatalogueTreeDto();
+
+        //    appCatalogueTreeDto.StoreId = ControlTypeValueConverter.ConvertValueToInt(storeExDto.Id);
+        //    appCatalogueTreeDto.Id = appCatalogueTreeDto.TreeViewEntityId = treeSearchViewExDto.Id;
+
+        //    appCatalogueTreeDto.Name = storeExDto.Name;
+        //    appCatalogueTreeDto.UiId = Guid.NewGuid().ToString();
+        //    rootFolders.Add(appCatalogueTreeDto);
+
+        //    AppDataSetExDto aAppDataSetExDto = AppDataSetBL.RetrieveOneAppDataSetExDto(treeSearchViewExDto.DataSetId);
+
+        //    DataTable dataTable = new DataTable();
+        //    using (DataAccessAdapter adpater = AppTenantAdapterBL.GetTenantAdapter())
+        //    {
+        //        dataTable = adpater.ExecuteDataTableRetrievalQuery(aAppDataSetExDto.QueryText, new List<System.Data.SqlClient.SqlParameter>());
+
+        //    }
+
+
+        //    var dictLevelTree = GetDictTreeViewLevelNodeList(treeSearchViewExDto);
+
+        //    List<string> levelNodeIdColumnName = new List<string>();
+        //    foreach (int levelKey in dictLevelTree.Keys)
+        //    {
+        //        string columnIdColumnName;
+        //        string columnDislay;
+        //        string columnImage;
+        //        GetIdDisplayColumnName(dictLevelTree, levelKey, out columnIdColumnName, out columnDislay, out columnImage);
+
+        //        levelNodeIdColumnName.Add(columnIdColumnName);
+
+        //        // root level from 1
+        //        if (levelNodeIdColumnName.Count == 1)
+        //        {
+        //            FirstlevelTree(appCatalogueTreeDto, dataTable, columnIdColumnName, columnDislay, columnImage);
+        //        }
+        //        else if (levelNodeIdColumnName.Count == 2)
+        //        {
+        //            SecondLevelTree(appCatalogueTreeDto, dataTable, levelNodeIdColumnName, columnIdColumnName, columnDislay, columnImage);
+        //        }
+        //        else if (levelNodeIdColumnName.Count == 3)
+        //        {
+        //            ThirdLevelTree(appCatalogueTreeDto, dataTable, levelNodeIdColumnName, columnIdColumnName, columnDislay, columnImage);
+        //        }
+        //        else if (levelNodeIdColumnName.Count == 4)
+        //        {
+        //            FourthLevelTree(appCatalogueTreeDto, dataTable, levelNodeIdColumnName, columnIdColumnName, columnDislay, columnImage);
+        //        }
+        //        else if (levelNodeIdColumnName.Count == 5)
+        //        {
+        //            FivelevelTree(appCatalogueTreeDto, dataTable, levelNodeIdColumnName, columnIdColumnName, columnDislay, columnImage);
+        //        }
+        //    }
+
+        //    return rootFolders;
+        //}
+
+
+
+        internal static Dictionary<int, List<AppSearchViewFieldExDto>> GetDictEshopTreeViewOrCardViewLevelNodeList(AppSearchViewExDto aAppSearchViewExDto)
+        {
+            var dictLevelTree = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.TreeLevel.HasValue)
+                 .OrderBy(o => o.TreeLevel)
+                 .GroupBy(o => o.TreeLevel)
+                 .ToDictionary(o => o.Key.Value, g => g.ToList());
+            return dictLevelTree;
+        }
+
+        private static void PorcesCardList(AppEshopCatalogViewDto toReturn, IEnumerable<DataRow> dataTableRows, AppSearchViewExDto aAppSearchViewExDto)
+        {
+            toReturn.CardList = new List<AppEshopCatalogCardDto>();
+
+            var cardGroupRootNode = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsGroupBy.HasValue && o.IsGroupBy.Value).FirstOrDefault();
+            var ImageNode = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsMapToChartX.HasValue && o.IsMapToChartX.Value).FirstOrDefault();
+            var DisplayColumnList = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsMapToChartY.HasValue && o.IsMapToChartY.Value).OrderBy(o => o.Sort).ToList();
+            var PricesNode = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsFilterByCurrentUser.HasValue && o.IsFilterByCurrentUser.Value).FirstOrDefault();
+            var SingleProductSkuNode = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsUserDefined1.HasValue && o.IsUserDefined1.Value).FirstOrDefault();
+
+            if (cardGroupRootNode != null)
+            {
+                var groupList = dataTableRows.GroupBy(o => o[cardGroupRootNode.SysTableFiledPath]);
+
+                foreach (var group in groupList)
+                {
+                    AppEshopCatalogCardDto card1 = new AppEshopCatalogCardDto();
+
+                    card1.CardDetailSearchId = aAppSearchViewExDto.CatalogueSearchId;
+                    var rootKeyMappingSearchFiled = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.MappingSearchFieldId.HasValue).FirstOrDefault();
+                    if (rootKeyMappingSearchFiled != null)
+                    {
+                        card1.GroupRootKeyMappingSearchFiled = rootKeyMappingSearchFiled.MappingSearchFieldId;
+                    }
+                    card1.Display = new List<string>();
+
+                    card1.GroupKey = group.Key;
+
+                    List<DataRow> rowList = group.ToList();
+                    if (rowList.Count > 0)
+                    {
+                        card1.IsSingleSku = rowList.Count == 1;
+                        if (ImageNode != null)
+                        {
+                            card1.ImageUrl = ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(rowList[0][ImageNode.SysTableFiledPath]);
+                        }
+
+                        card1.Price = ControlTypeValueConverter.ConvertValueToDecimal(rowList[0][PricesNode.SysTableFiledPath]);
+
+                        if (SingleProductSkuNode != null)
+                        {
+                            card1.SingleProductSkuNo = ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(rowList[0][SingleProductSkuNode.SysTableFiledPath]);
+                        }
+
+                        foreach (var DisplayNode in DisplayColumnList)
+                        {
+                            string dislplay = rowList.Select(o => ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(o[DisplayNode.SysTableFiledPath])).Distinct().FirstOrDefault();
+                            card1.Display.Add(dislplay);
+                        }
+
+                        toReturn.CardList.Add(card1);
+
+                        //Aggregate((current, next) => current + ", " + next);
+                    }
+                }
+            }
+        }
+
+
+        private static void PorcessOptionList(AppEshopCatalogViewDto toReturn, IEnumerable<DataRow> dataTableRows, AppSearchViewExDto aAppSearchViewExDto)
+        {
+            //   toReturn.DictOptionLevel = new Dictionary<int, List<LookupItemDto>>();
+            //   toReturn.DictOptionDisplay = new Dictionary<int, string>();
+
+
+            var dictOptionLevel = new Dictionary<int, List<LookupItemDto>>();
+            var dictOptionDisplay = new Dictionary<int, string>();
+
+
+            GetDictOptionLevelIdAndDisplayAndLabel(dataTableRows, aAppSearchViewExDto, dictOptionLevel, dictOptionDisplay, null);
+
+
+            toReturn.DictOptionLevel = dictOptionLevel;
+            toReturn.DictOptionDisplay = dictOptionDisplay;
+
+
+        }
+
+        private static void GetDictOptionLevelIdAndDisplayAndLabel(IEnumerable<DataRow> dataTableRows, AppSearchViewExDto aAppSearchViewExDto, Dictionary<int, List<LookupItemDto>> dictOptionLevel, Dictionary<int, string> dictOptionDisplay, Dictionary<int, AppEshopCatalogLevelOptionDto> dictOptionAndDto = null)
+        {
+            Dictionary<int, List<AppSearchViewFieldExDto>> dictOptionLevelSearchField = GetDictEshopTreeViewOrCardViewLevelNodeList(aAppSearchViewExDto);
+
+            foreach (int noOfLevel in dictOptionLevelSearchField.Keys)
+            {
+                string columnIdColumnName;
+                string columnDislay;
+                string columnImage;
+                GetIdDisplayColumnName(dictOptionLevelSearchField, noOfLevel, out columnIdColumnName, out columnDislay, out columnImage);
+
+
+
+
+                //  List<LookupItemDto> levelNodeLookup = dataTableRows.Select(row => new LookupItemDto { Id = row[columnIdColumnName], Display = row[columnDislay] as string }).Distinct().ToList();
+
+                var levelNodeLookup = dataTableRows.Select(row => new
+                {
+                    Id = row[columnIdColumnName],
+                    Display = row[columnDislay],
+                })
+                 .Distinct().Select(o => new LookupItemDto { Id = o.Id, Display = o.Display as string }).ToList();
+
+                dictOptionLevel.Add(noOfLevel, levelNodeLookup);
+
+
+                // Display label
+                var optioncolumnList = dictOptionLevelSearchField[noOfLevel];
+                var ColumnDisplayDto = optioncolumnList.FirstOrDefault(o => o.IsTreeNodeDisplay.HasValue && o.IsTreeNodeDisplay.Value);
+
+                if (ColumnDisplayDto != null)
+                {
+                    dictOptionDisplay.Add(noOfLevel, ColumnDisplayDto.DisplayText);
+                }
+                else
+                {
+                    dictOptionDisplay.Add(noOfLevel, "");
+                }
+
+
+                if (dictOptionAndDto != null)
+                {
+                    var optionDto = new AppEshopCatalogLevelOptionDto();
+
+                    optionDto.Level = noOfLevel;
+
+                    if (ColumnDisplayDto != null)
+                    {
+                        optionDto.OptionLabel = ColumnDisplayDto.DisplayText;
+                    }
+                    else
+                    {
+                        optionDto.OptionLabel = ColumnDisplayDto.DisplayText;
+                    }
+
+                    var optionIdViewFieldDto = dictOptionLevelSearchField[noOfLevel].FirstOrDefault(o => o.IsTreeNodeId.HasValue && o.IsTreeNodeId.Value);
+
+                    if (optionIdViewFieldDto != null)
+                    {
+                        optionDto.IsMultipleSelection = optionIdViewFieldDto.IsUserDefined3.HasValue && optionIdViewFieldDto.IsUserDefined3.Value;
+                    }
+
+
+                    dictOptionAndDto.Add(noOfLevel, optionDto);
+                }
+            }
+        }
+
+
+
+        private static SearchDto SetupEshopCardDetailSearchDto(AppEshopCatalogCardDto appEshopCatalogCardDto, AppEsiteCatalogueExDto aAppEsiteCatalogueExDto)
+        {
+            object searchId = aAppEsiteCatalogueExDto.CatalogCardDetailExDto.FilterSearchId;
+            object groupKey = appEshopCatalogCardDto.GroupKey;
+
+            SearchDto aSearchDto = null;
+
+            if (searchId != null)
+            {
+                aSearchDto = AppSearchBL.RetrieveOneSearchDto(int.Parse(searchId.ToString()), false, false);
+
+                ReferenceViewDefinitionDto referenceViewDefinitionDto = new ReferenceViewDefinitionDto();
+                referenceViewDefinitionDto.IsMassUpdate = false;
+                referenceViewDefinitionDto.Id = aAppEsiteCatalogueExDto.CatalogCardDetailId;
+
+                aSearchDto.ReferenceViewDefinitionDto = referenceViewDefinitionDto;
+
+                // default take frist one
+                SearchCriteriaDto aCriteriaDto = aSearchDto.Criterias.FirstOrDefault();
+
+                if (appEshopCatalogCardDto.GroupRootKeyMappingSearchFiled != null)
+                {
+                    aCriteriaDto = aSearchDto.Criterias.FirstOrDefault(o => o.SearcDCUID.ToString() == appEshopCatalogCardDto.GroupRootKeyMappingSearchFiled.ToString());
+                }
+
+                if (aCriteriaDto != null)
+                {
+                    aCriteriaDto.Values.Add(groupKey);
+
+                    if (aCriteriaDto.CriteriaOperator == null)
+                    {
+                        aCriteriaDto.CriteriaOperator = new CriteriaOperatorDto()
+                        {
+                        };
+                    }
+
+                    aCriteriaDto.CriteriaOperator.OperatorType = EmAppCriteriaOperatorType.Equals;
+                }
+            }
+            return aSearchDto;
+        }
+
+        private static SearchDto SetupEshopCardListSearchDtoForCardList(AppEsiteCatalogueExDto aAppEsiteCatalogueExDto)
+        {
+
+            AppSearchViewExDto aAppSearchViewExDto = aAppEsiteCatalogueExDto.CatalogCardViewExDto;
+
+            // need to pass appCatalogueTreeDto tree node value to  CatalogCardViewExDto
+            int? searchId = aAppEsiteCatalogueExDto.CatalogCardViewExDto.FilterSearchId;
+
+
+            var aSearchDto = AppSearchBL.RetrieveOneSearchDto(searchId.Value, false, false);
+
+
+            return aSearchDto;
+        }
+
+        private static SearchDto SetupEshopCardListSearchDtoForCataloueBrach(BaseAppCatalogueTreeDto appCatalogueTreeDto, AppEsiteCatalogueExDto aAppEsiteCatalogueExDto)
+        {
+            // object treeviewID = appCatalogueTreeDto.TreeViewEntityId;
+            string branchPath = appCatalogueTreeDto.BranchPath;
+            int treelevel = appCatalogueTreeDto.TreeLevel;
+
+            AppSearchViewExDto aAppSearchViewExDto = aAppEsiteCatalogueExDto.NavigationTreeSearchViewExDto;
+
+            // need to pass appCatalogueTreeDto tree node value to  CatalogCardViewExDto
+            int? searchId = aAppEsiteCatalogueExDto.CatalogCardViewExDto.FilterSearchId;
+
+            SearchDto aSearchDto = null;
+
+            if (searchId.HasValue && (!branchPath.IsEmpty()))
+            {
+                aSearchDto = AppSearchBL.RetrieveOneSearchDto(searchId.Value, false, false);
+
+                ReferenceViewDefinitionDto referenceViewDefinitionDto = new ReferenceViewDefinitionDto();
+                referenceViewDefinitionDto.IsMassUpdate = false;
+                referenceViewDefinitionDto.Id = aSearchDto.DefaultView.Id;
+
+                aSearchDto.ReferenceViewDefinitionDto = referenceViewDefinitionDto;
+
+                Dictionary<int, List<AppSearchViewFieldExDto>> dictLevelTree = GetDictEshopTreeViewOrCardViewLevelNodeList(aAppSearchViewExDto);
+
+                string[] levelValue = branchPath.Split("|".ToArray());
+                // need to reset all SearchCriteriaDto Dto value
+                foreach (SearchCriteriaDto aCriteriaDto in aSearchDto.Criterias)
+                {
+                    aCriteriaDto.Value = null;
+                    aCriteriaDto.Values.Clear();
+                }
+
+                for (int i = 1; i <= treelevel; i++)
+                {
+                    SetupTreeNodeValueToSearchDto(i, aSearchDto, dictLevelTree, levelValue[i - 1]);
+                }
+            }
+            return aSearchDto;
+        }
+
+        private static void SetupTreeNodeValueToSearchDto(int treelevel, SearchDto aSearchDto, Dictionary<int, List<AppSearchViewFieldExDto>> dictLevelTree, string levelValue)
+        {
+            List<AppSearchViewFieldExDto> levelViewFiedList = dictLevelTree[treelevel];
+
+            AppSearchViewFieldExDto aIdViewFieldExDto = levelViewFiedList.FirstOrDefault(o => o.IsTreeNodeId.HasValue && o.IsTreeNodeId.Value);
+            if (aIdViewFieldExDto != null)
+            {
+                if (aIdViewFieldExDto.MappingSearchFieldId.HasValue)
+                {
+                    foreach (SearchCriteriaDto aCriteriaDto in aSearchDto.Criterias)
+                    {
+                        //  aDto.SearcDCUID = searchField.SearchFielDid;
+                        if (aCriteriaDto.SearcDCUID == aIdViewFieldExDto.MappingSearchFieldId)
+                        {
+                            aCriteriaDto.Values.Add(levelValue);
+
+                            if (aCriteriaDto.CriteriaOperator == null)
+                            {
+                                aCriteriaDto.CriteriaOperator = new CriteriaOperatorDto()
+                                {
+                                };
+                            }
+
+                            aCriteriaDto.CriteriaOperator.OperatorType = EmAppCriteriaOperatorType.Equals;
+                        }
+                    }
+                }
+            }
+        }
+
+        internal static void FirstlevelTree(AppCatalogueTreeDto oneTreeRootFolder, List<StaticSearchResultRowJsonDto> rowsList, int? columnId_NodeId, int? columnId_NodeDisplay, int? columnId_NodeImage, int? columnId_NodeSort)
+        {
+
+            List<AppCatalogueTreeDto> firstlevelDtoList = ConvertDataRowToFolderDto(columnId_NodeId, columnId_NodeDisplay, columnId_NodeImage, columnId_NodeSort, rowsList);
+            oneTreeRootFolder.Children = firstlevelDtoList.ToArray();
+
+
+            foreach (var node in firstlevelDtoList)
+            {
+                node.TreeViewEntityId = oneTreeRootFolder.Id;
+                node.BranchPath = string.Format("{0}", node.Id);
+                node.TreeLevel = 1;
+                node.ParentId = oneTreeRootFolder.UiId;
+                node.UiId = Guid.NewGuid().ToString();
+                node.columnId_NodeId = columnId_NodeId;
+                node.columnId_NodeDisplay = columnId_NodeDisplay;
+                node.columnId_NodeImage = columnId_NodeImage;
+            }
+        }
+
+        internal static void SecondLevelTree(AppCatalogueTreeDto oneTreeRootFolder, List<StaticSearchResultRowJsonDto> rowsList, List<int> levelNodeIdColumnName, int? columnId_NodeId, int? columnId_NodeDisplay, int? columnId_NodeImage, int? columnId_NodeSort)
+        {
+            foreach (AppCatalogueTreeDto firstlevelDto in oneTreeRootFolder.Children)
+            {
+
+                //var secondLevelRowList = rowsList.Select(levelNodeIdColumnName[0] + "=" + firstlevelDto.Id);
+                var secondLevelRowList = rowsList.Where(o => o.DictViewColumnIDKeyValue[levelNodeIdColumnName[0]].ToString() == firstlevelDto.Id.ToString()).ToList();
+
+
+                List<AppCatalogueTreeDto> secondlevelDtoList = ConvertDataRowToFolderDto(columnId_NodeId, columnId_NodeDisplay, columnId_NodeImage, columnId_NodeSort, secondLevelRowList);
+                firstlevelDto.Children = secondlevelDtoList.ToArray();
+
+                foreach (var node in secondlevelDtoList)
+                {
+                    node.TreeViewEntityId = oneTreeRootFolder.Id;
+                    node.BranchPath = string.Format("{0}|{1}", firstlevelDto.Id, node.Id);
+                    node.TreeLevel = 2;
+                    node.ParentId = firstlevelDto.UiId;
+                    node.UiId = Guid.NewGuid().ToString();
+                    node.columnId_NodeId = columnId_NodeId;
+                    node.columnId_NodeDisplay = columnId_NodeDisplay;
+                    node.columnId_NodeImage = columnId_NodeImage;
+                }
+            }
+        }
+
+        internal static void ThirdLevelTree(AppCatalogueTreeDto oneTreeRootFolder, List<StaticSearchResultRowJsonDto> rowsList, List<int> levelNodeIdColumnName, int? columnId_NodeId, int? columnId_NodeDisplay, int? columnId_NodeImage, int? columnId_NodeSort)
+        {
+            foreach (AppCatalogueTreeDto firstlevelDto in oneTreeRootFolder.Children)
+            {
+                // Select("Size >= 230 AND Sex = 'm'"
+
+                foreach (AppCatalogueTreeDto secondlevelDto in firstlevelDto.Children)
+                {
+                    //var thirdLevelRowList = dataTable.Select(levelNodeIdColumnName[0] + "=" + firstlevelDto.Id + " and " + levelNodeIdColumnName[1] + "=" + secondlevelDto.Id);
+                    var thirdLevelRowList = rowsList.Where(o => o.DictViewColumnIDKeyValue[levelNodeIdColumnName[0]].ToString() == firstlevelDto.Id.ToString()
+                        && o.DictViewColumnIDKeyValue[levelNodeIdColumnName[1]].ToString() == secondlevelDto.Id.ToString()
+                    ).ToList();
+
+
+                    List<AppCatalogueTreeDto> thirdlevelDtoList = ConvertDataRowToFolderDto(columnId_NodeId, columnId_NodeDisplay, columnId_NodeImage, columnId_NodeSort, thirdLevelRowList);
+                    secondlevelDto.Children = thirdlevelDtoList.ToArray();
+
+                    foreach (var node in thirdlevelDtoList)
+                    {
+                        node.TreeViewEntityId = oneTreeRootFolder.Id;
+                        node.BranchPath = string.Format("{0}|{1}|{2}", firstlevelDto.Id, secondlevelDto.Id, node.Id);
+                        node.TreeLevel = 3;
+                        node.ParentId = secondlevelDto.UiId;
+                        node.UiId = Guid.NewGuid().ToString();
+                        node.columnId_NodeId = columnId_NodeId;
+                        node.columnId_NodeDisplay = columnId_NodeDisplay;
+                        node.columnId_NodeImage = columnId_NodeImage;
+                    }
+                }
+            }
+        }
+
+        internal static void FourthLevelTree(AppCatalogueTreeDto oneTreeRootFolder, List<StaticSearchResultRowJsonDto> rowsList, List<int> levelNodeIdColumnName, int? columnId_NodeId, int? columnId_NodeDisplay, int? columnId_NodeImage, int? columnId_NodeSort)
+        {
+            foreach (AppCatalogueTreeDto firstlevelDto in oneTreeRootFolder.Children)
+            {
+                // Select("Size >= 230 AND Sex = 'm'"
+
+                foreach (AppCatalogueTreeDto secondlevelDto in firstlevelDto.Children)
+                {
+                    foreach (AppCatalogueTreeDto thirdlevelDto in secondlevelDto.Children)
+                    {
+                        //var foruthLevelRowList = dataTable.Select(levelNodeIdColumnName[0] + "=" + firstlevelDto.Id + " and " + levelNodeIdColumnName[1] + "=" + secondlevelDto.Id + " and " + levelNodeIdColumnName[2] + "=" + thirdlevelDto.Id);
+
+
+                        var foruthLevelRowList = rowsList.Where(o => o.DictViewColumnIDKeyValue[levelNodeIdColumnName[0]].ToString() == firstlevelDto.Id.ToString()
+                            && o.DictViewColumnIDKeyValue[levelNodeIdColumnName[1]].ToString() == secondlevelDto.Id.ToString()
+                            && o.DictViewColumnIDKeyValue[levelNodeIdColumnName[2]].ToString() == thirdlevelDto.Id.ToString()
+                        ).ToList();
+
+
+                        List<AppCatalogueTreeDto> foruthlevelDtoList = ConvertDataRowToFolderDto(columnId_NodeId, columnId_NodeDisplay, columnId_NodeImage, columnId_NodeSort, foruthLevelRowList);
+                        thirdlevelDto.Children = foruthlevelDtoList.ToArray();
+
+                        foreach (var node in foruthlevelDtoList)
+                        {
+                            node.TreeViewEntityId = oneTreeRootFolder.Id;
+                            node.BranchPath = string.Format("{0}|{1}|{2}|{3}", firstlevelDto.Id, secondlevelDto.Id, thirdlevelDto.Id, node.Id);
+                            node.TreeLevel = 4;
+                            node.ParentId = thirdlevelDto.UiId;
+                            node.UiId = Guid.NewGuid().ToString();
+                            node.columnId_NodeId = columnId_NodeId;
+                            node.columnId_NodeDisplay = columnId_NodeDisplay;
+                            node.columnId_NodeImage = columnId_NodeImage;
+                        }
+                    }
+                }
+            }
+        }
+
+        internal static void FivelevelTree(AppCatalogueTreeDto oneTreeRootFolder, List<StaticSearchResultRowJsonDto> rowsList, List<int> levelNodeIdColumnName, int? columnId_NodeId, int? columnId_NodeDisplay, int? columnId_NodeImage, int? columnId_NodeSort)
+        {
+            foreach (AppCatalogueTreeDto firstlevelDto in oneTreeRootFolder.Children)
+            {
+                // Select("Size >= 230 AND Sex = 'm'"
+
+                foreach (AppCatalogueTreeDto secondlevelDto in firstlevelDto.Children)
+                {
+                    foreach (AppCatalogueTreeDto thirdlevelDto in secondlevelDto.Children)
+                    {
+                        foreach (AppCatalogueTreeDto forthlevelDto in thirdlevelDto.Children)
+                        {
+                            //var fiveLevelRowList = dataTable.Select(
+                            //    levelNodeIdColumnName[0] + "=" + firstlevelDto.Id
+                            //    + " and " + levelNodeIdColumnName[1] + "=" + secondlevelDto.Id
+                            //    + " and " + levelNodeIdColumnName[2] + "=" + thirdlevelDto.Id
+                            //    + " and " + levelNodeIdColumnName[3] + "=" + forthlevelDto.Id
+                            //    );
+
+                            var fiveLevelRowList = rowsList.Where(o => o.DictViewColumnIDKeyValue[levelNodeIdColumnName[0]].ToString() == firstlevelDto.Id.ToString()
+                               && o.DictViewColumnIDKeyValue[levelNodeIdColumnName[1]].ToString() == secondlevelDto.Id.ToString()
+                               && o.DictViewColumnIDKeyValue[levelNodeIdColumnName[2]].ToString() == thirdlevelDto.Id.ToString()
+                               && o.DictViewColumnIDKeyValue[levelNodeIdColumnName[3]].ToString() == forthlevelDto.Id.ToString()
+                           ).ToList();
+
+                            List<AppCatalogueTreeDto> fivelevelDtoList = ConvertDataRowToFolderDto(columnId_NodeId, columnId_NodeDisplay, columnId_NodeImage, columnId_NodeSort, fiveLevelRowList);
+                            forthlevelDto.Children = fivelevelDtoList.ToArray();
+
+                            foreach (var node in fivelevelDtoList)
+                            {
+                                node.BranchPath = string.Format("{0}|{1}|{2}|{3}|{4}", firstlevelDto.Id, secondlevelDto.Id, thirdlevelDto.Id, forthlevelDto.Id, node.Id);
+                                node.TreeViewEntityId = oneTreeRootFolder.Id;
+                                node.TreeLevel = 5;
+                                node.ParentId = forthlevelDto.UiId;
+                                node.UiId = Guid.NewGuid().ToString();
+                                node.columnId_NodeId = columnId_NodeId;
+                                node.columnId_NodeDisplay = columnId_NodeDisplay;
+                                node.columnId_NodeImage = columnId_NodeImage;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static List<AppCatalogueTreeDto> ConvertDataRowToFolderDto(int? columnId_NodeId, int? columnId_NodeDisplay, int? columnId_NodeImage, int? columnId_NodeSort, List<StaticSearchResultRowJsonDto> rowsList)
+        {
+            List<AppCatalogueTreeDto> catalogueTreeDtoList = new List<AppCatalogueTreeDto>();
+
+            foreach (var row in rowsList)
+            {
+                string nodeId = "";
+                string nodeDisplay = "";
+                string imageId = null;
+                int? sort = null;
+
+                if (columnId_NodeId.HasValue)
+                {
+                    nodeId = row.DictViewColumnIDKeyValue[columnId_NodeId.Value].ToString();
+                }
+
+                if (columnId_NodeDisplay.HasValue)
+                {
+                    nodeDisplay = row.DictViewColumnIDKeyValue[columnId_NodeDisplay.Value].ToString();
+                }
+
+                if (columnId_NodeImage.HasValue)
+                {
+                    imageId = row.DictViewColumnIDKeyValue[columnId_NodeImage.Value].ToString();
+                }
+
+                if (columnId_NodeSort.HasValue)
+                {
+                    sort = ControlTypeValueConverter.ConvertValueToInt(row.DictViewColumnIDKeyValue[columnId_NodeSort.Value]);
+                }
+
+                if (catalogueTreeDtoList.FirstOrDefault(o => o.Id.ToString() == nodeId) == null)
+                {
+                    AppCatalogueTreeDto firstlevelTreeNode = new AppCatalogueTreeDto();
+
+                    firstlevelTreeNode.Id = nodeId;
+                    firstlevelTreeNode.Name = nodeDisplay;
+                    firstlevelTreeNode.ImageId = ControlTypeValueConverter.ConvertValueToInt(imageId);
+                    firstlevelTreeNode.TreeLevel = 1;
+                    firstlevelTreeNode.BranchPath = firstlevelTreeNode.Id.ToString();
+                    firstlevelTreeNode.Sort = sort;
+                    catalogueTreeDtoList.Add(firstlevelTreeNode);
+                }
+
+            }
+
+            if (columnId_NodeSort.HasValue)
+            {
+                catalogueTreeDtoList = catalogueTreeDtoList.OrderBy(o => o.Sort).ToList();
+            }
+            else
+            {
+                catalogueTreeDtoList = catalogueTreeDtoList.OrderBy(o => o.Name).ToList();
+            }
+            
+
+            return catalogueTreeDtoList;
+        }
+
+
+
+        internal static void GetIdDisplayColumnName(Dictionary<int, List<AppSearchViewFieldExDto>> dictLevelTree, int levelKey, out string columnIdName, out string columnDisplay, out string columnImage)
+        {
+            var columnList = dictLevelTree[levelKey];
+
+            var ColumnDisplayDto = columnList.FirstOrDefault(o => o.IsTreeNodeDisplay.HasValue && o.IsTreeNodeDisplay.Value);
+            var ColumnIdDto = columnList.FirstOrDefault(o => o.IsTreeNodeId.HasValue && o.IsTreeNodeId.Value);
+            var ColumnImageIdDto = columnList.FirstOrDefault(o => o.IsTreeNodeImageUrl.HasValue && o.IsTreeNodeImageUrl.Value);
+
+            if (ColumnIdDto != null)
+            {
+                columnIdName = ColumnIdDto.SysTableFiledPath;
+            }
+            else
+            {
+                columnIdName = string.Empty;
+            }
+
+            if (ColumnDisplayDto != null)
+            {
+                columnDisplay = ColumnDisplayDto.SysTableFiledPath;
+            }
+            else
+            {
+                columnDisplay = string.Empty;
+            }
+
+            if (ColumnImageIdDto != null)
+            {
+                columnImage = ColumnImageIdDto.SysTableFiledPath;
+            }
+            else
+            {
+                columnImage = string.Empty;
+            }
+        }
+
+
+
+        internal static void GetTreeViewNodeSpecialColumnId(Dictionary<int, List<AppSearchViewFieldExDto>> dictLevelTree, int levelKey,
+            out int? columnId_NodeId, out int? columnId_NodeDisplay, out int? columnId_NodeImage, out int? columnId_NodeSort)
+        {
+            var columnList = dictLevelTree[levelKey];
+
+            var ColumnDisplayDto = columnList.FirstOrDefault(o => o.IsTreeNodeDisplay.HasValue && o.IsTreeNodeDisplay.Value);
+            var ColumnIdDto = columnList.FirstOrDefault(o => o.IsTreeNodeId.HasValue && o.IsTreeNodeId.Value);
+            var ColumnImageIdDto = columnList.FirstOrDefault(o => o.IsTreeNodeImageUrl.HasValue && o.IsTreeNodeImageUrl.Value);
+            var ColumnSortDto = columnList.FirstOrDefault(o => o.OrderByLevel.HasValue && o.OrderByLevel.Value == 1);
+
+            if (ColumnIdDto != null)
+            {
+                columnId_NodeId = (int)ColumnIdDto.Id;
+            }
+            else
+            {
+                columnId_NodeId = null;
+            }
+
+            if (ColumnDisplayDto != null)
+            {
+                columnId_NodeDisplay = (int)ColumnDisplayDto.Id;
+            }
+            else
+            {
+                columnId_NodeDisplay = null;
+            }
+
+            if (ColumnImageIdDto != null)
+            {
+                columnId_NodeImage = (int)ColumnImageIdDto.Id;
+            }
+            else
+            {
+                columnId_NodeImage = null;
+            }
+
+            if (ColumnSortDto != null)
+            {
+                columnId_NodeSort = (int)ColumnSortDto.Id;
+            }
+            else
+            {
+                columnId_NodeSort = null;
+            }
+        }
+
+
+        internal static void BulidEshopCardViewOrDetailViewOptions(SearchDto searchDto, AppSearchViewExDto aAppSearchViewExDto, SearchResultDto searchResultDto, Dictionary<int, List<LookupItemDto>> dictOptionLevel, Dictionary<int, string> dictOptionDisplay, Dictionary<int, AppEshopCatalogLevelOptionDto> dictDetailViewOptionAndDto = null)
+        {
+            List<StaticSearchResultRowJsonDto> orgResultRows = searchResultDto.SearchResultRowList.ToList();
+
+            Dictionary<int, List<AppSearchViewFieldExDto>> dictOptionLevelSearchField = AppCatalogueForEshopTreeV4BL.GetDictEshopTreeViewOrCardViewLevelNodeList(aAppSearchViewExDto);
+
+            Dictionary<int, List<LookupItemDto>> orgDictOptionLevel = null;
+
+            if (searchDto != null)
+            {
+                orgDictOptionLevel = searchDto.DictFilterOptionLevelAndLookupList;
+            }
+
+
+            foreach (int optionLevel in dictOptionLevelSearchField.Keys)
+            {
+
+                //AppCatalogueForEshopTreeV4BL.GetIdDisplayColumnName(dictOptionLevelSearchField, noOfLevel, out columnIdColumnName, out columnDislay, out columnImage);
+
+
+                //  List<LookupItemDto> levelNodeLookup = dataTableRows.Select(row => new LookupItemDto { Id = row[columnIdColumnName], Display = row[columnDislay] as string }).Distinct().ToList();
+                var columnList = dictOptionLevelSearchField[optionLevel];
+                var columnDisplayDto = columnList.FirstOrDefault(o => o.IsTreeNodeDisplay.HasValue && o.IsTreeNodeDisplay.Value);
+                var columnIdDto = columnList.FirstOrDefault(o => o.IsTreeNodeId.HasValue && o.IsTreeNodeId.Value);
+                var columnImageIdDto = columnList.FirstOrDefault(o => o.IsTreeNodeImageUrl.HasValue && o.IsTreeNodeImageUrl.Value);
+
+                if (columnIdDto != null)
+                {
+                    int? levelId_viewFieldId = null;
+                    int? levelDisplay_viewFieldId = null;
+
+                    if (columnIdDto != null)
+                    {
+                        levelId_viewFieldId = (int)columnIdDto.Id;
+                    }
+
+                    if (columnDisplayDto != null)
+                    {
+                        levelDisplay_viewFieldId = (int)columnDisplayDto.Id;
+                    }
+                    else
+                    {
+                        levelDisplay_viewFieldId = (int)columnIdDto.Id;
+                    }
+
+
+                    var levelNodeLookup = orgResultRows.Select(o => new
+                    {
+                        Id = o.DictViewColumnIDKeyValue[levelId_viewFieldId.Value],
+                        Display = o.DictViewColumnIDKeyValue[levelDisplay_viewFieldId.Value],
+                    })
+                     .Distinct().Select(o =>
+                        new LookupItemDto { Id = o.Id, Display = o.Display as string }).ToList();
+
+
+
+                    if (orgDictOptionLevel != null && orgDictOptionLevel[optionLevel] != null)
+                    {
+                        List<string> orgSelectedIds = orgDictOptionLevel[optionLevel].Where(o => o.IsChecked && o.Id != null).Select(o => o.Id.ToString()).ToList();
+
+                        foreach (var lookupItem in levelNodeLookup)
+                        {
+                            if (lookupItem.Id != null)
+                            {
+                                if (orgSelectedIds.Contains(lookupItem.Id.ToString()))
+                                {
+                                    lookupItem.IsChecked = true;
+                                }
+                            }
+                        }
+                    }
+
+                    dictOptionLevel.Add(optionLevel, levelNodeLookup);
+
+
+                    // Display label
+                    var optioncolumnList = dictOptionLevelSearchField[optionLevel];
+                    var ColumnDisplayDto = optioncolumnList.FirstOrDefault(o => o.IsTreeNodeDisplay.HasValue && o.IsTreeNodeDisplay.Value);
+
+                    if (columnDisplayDto != null)
+                    {
+                        dictOptionDisplay.Add(optionLevel, columnDisplayDto.DisplayText);
+                    }
+                    else
+                    {
+                        dictOptionDisplay.Add(optionLevel, "");
+                    }
+
+
+                    if (dictDetailViewOptionAndDto != null)
+                    {
+                        var optionDto = new AppEshopCatalogLevelOptionDto();
+
+                        optionDto.Level = optionLevel;
+
+                        if (columnDisplayDto != null)
+                        {
+                            optionDto.OptionLabel = columnDisplayDto.DisplayText;
+                        }
+                        else
+                        {
+                            optionDto.OptionLabel = columnDisplayDto.DisplayText;
+                        }
+
+                        var optionIdViewFieldDto = dictOptionLevelSearchField[optionLevel].FirstOrDefault(o => o.IsTreeNodeId.HasValue && o.IsTreeNodeId.Value);
+
+                        if (optionIdViewFieldDto != null)
+                        {
+                            optionDto.IsMultipleSelection = optionIdViewFieldDto.IsUserDefined3.HasValue && optionIdViewFieldDto.IsUserDefined3.Value;
+                        }
+
+
+                        dictDetailViewOptionAndDto.Add(optionLevel, optionDto);
+                    }
+                }
+            }
+
+
+
+
+        }
+
+        internal static void BuildEShopCardViewResultRows(AppSearchViewExDto aAppSearchViewExDto, SearchResultDto searchResultDto)
+        {
+            List<StaticSearchResultRowJsonDto> orgResultRows = searchResultDto.SearchResultRowList.ToList();
+            List<StaticSearchResultRowJsonDto> groupedRows = new List<StaticSearchResultRowJsonDto>();
+            searchResultDto.SearchResultRowList = groupedRows;
+
+            var cardGroupRootNode = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsGroupBy.HasValue && o.IsGroupBy.Value).FirstOrDefault();
+            var ImageNode = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsMapToChartX.HasValue && o.IsMapToChartX.Value).FirstOrDefault();
+            var DisplayColumnList = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsMapToChartY.HasValue && o.IsMapToChartY.Value).OrderBy(o => o.Sort).ToList();
+            var PricesNode = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsFilterByCurrentUser.HasValue && o.IsFilterByCurrentUser.Value).FirstOrDefault();
+            var SingleProductSkuNode = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.IsUserDefined1.HasValue && o.IsUserDefined1.Value).FirstOrDefault();
+
+            if (cardGroupRootNode != null)
+            {
+                var groupList = orgResultRows.GroupBy(o => o.DictViewColumnIDKeyValue[(int)cardGroupRootNode.Id]);
+
+                foreach (var group in groupList)
+                {
+                    AppEshopCatalogCardDto card1 = new AppEshopCatalogCardDto();
+
+                    card1.CardDetailSearchId = aAppSearchViewExDto.CatalogueSearchId;
+                    var rootKeyMappingSearchFiled = aAppSearchViewExDto.AppSearchViewFieldList.Where(o => o.MappingSearchFieldId.HasValue).FirstOrDefault();
+                    if (rootKeyMappingSearchFiled != null)
+                    {
+                        card1.GroupRootKeyMappingSearchFiled = rootKeyMappingSearchFiled.MappingSearchFieldId;
+                    }
+                    card1.Display = new List<string>();
+
+                    card1.GroupKey = group.Key;
+
+                    List<StaticSearchResultRowJsonDto> rowList = group.ToList();
+                    if (rowList.Count > 0)
+                    {
+                        card1.IsSingleSku = rowList.Count == 1;
+                        if (ImageNode != null)
+                        {
+                            card1.ImageUrl = ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(rowList[0].DictViewColumnIDKeyValue[(int)ImageNode.Id]);
+                        }
+
+                        if (PricesNode != null)
+                        {
+                            card1.Price = ControlTypeValueConverter.ConvertValueToDecimal(rowList[0].DictViewColumnIDKeyValue[(int)PricesNode.Id]);
+                        }
+
+                        if (SingleProductSkuNode != null)
+                        {
+                            card1.SingleProductSkuNo = ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(rowList[0].DictViewColumnIDKeyValue[(int)SingleProductSkuNode.Id]);
+                        }
+
+                        foreach (var DisplayNode in DisplayColumnList)
+                        {
+                            string dislplay = rowList.Select(o => ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(o.DictViewColumnIDKeyValue[(int)DisplayNode.Id])).Distinct().FirstOrDefault();
+                            card1.Display.Add(dislplay);
+                        }
+
+                        rowList[0].EshopCatalogCardDto = card1;
+
+                        groupedRows.Add(rowList[0]);
+
+                        //Aggregate((current, next) => current + ", " + next);
+                    }
+                }
+            }
+        }
+
+
+        internal static void FilterEshopCardViewResultRowsWithLevelOptions(AppSearchViewExDto aAppSearchViewExDto, SearchResultDto searchResultDto, Dictionary<int, List<LookupItemDto>> dictFilterOptionLevelAndLookupList)
+        {
+            if (dictFilterOptionLevelAndLookupList != null)
+            {
+                Dictionary<int, List<AppSearchViewFieldExDto>> dictOptionLevelSearchField = AppCatalogueForEshopTreeV4BL.GetDictEshopTreeViewOrCardViewLevelNodeList(aAppSearchViewExDto);
+
+                foreach (int optionLevel in dictFilterOptionLevelAndLookupList.Keys)
+                {
+
+                    var columnList = dictOptionLevelSearchField[optionLevel];
+                    var columnIdDto = columnList.FirstOrDefault(o => o.IsTreeNodeId.HasValue && o.IsTreeNodeId.Value);
+
+                    if (columnIdDto != null)
+                    {
+                        if (columnIdDto != null)
+                        {
+                            int levelId_viewFieldId = (int)columnIdDto.Id;
+
+                            List<LookupItemDto> checkedLookItemList = dictFilterOptionLevelAndLookupList[optionLevel];
+
+                            if (!checkedLookItemList.IsEmpty())
+                            {
+                                string[] includeIds = checkedLookItemList.Where(o => o.IsChecked && o.Id != null).Select(o => o.Id.ToString()).ToArray();
+                                if (includeIds.Length > 0)
+                                {
+                                    searchResultDto.SearchResultRowList = searchResultDto.SearchResultRowList
+                                        .Where(o => o.DictViewColumnIDKeyValue[levelId_viewFieldId] != null
+                                                    && !string.IsNullOrWhiteSpace(o.DictViewColumnIDKeyValue[levelId_viewFieldId].ToString())
+                                                    && includeIds.Contains(o.DictViewColumnIDKeyValue[levelId_viewFieldId].ToString())
+                                            ).ToList();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+    }
+}

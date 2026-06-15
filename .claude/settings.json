@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(powershell -Command \"Select-String -Path ''c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\APP.BL.csproj'' -Pattern ''AppBuilderAgent'' | Select-Object -First 20 | ForEach-Object { $_.ToString\\(\\) }\")",
+      "Bash(powershell -Command \"Get-Content ''c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\APP.BL.csproj'' | Select-String ''AppBuilderAgent'' | ForEach-Object { $_.LineNumber.ToString\\(\\) + '': '' + $_.Line }\")",
+      "Bash(powershell -Command \"\\(Get-Content ''c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\APP.BL.csproj'' -Raw\\) -match ''AppBuilderAgent''\")",
+      "Bash(powershell -Command \":*)",
+      "Bash(powershell \"\\($c=gc ''c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\APP.BL.csproj'' -Raw\\); Write-Host \\($c -match ''TransactionBuilder''\\)\")",
+      "Bash(powershell -Command \"Get-Content ''c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppDataSetBL.cs'' -TotalCount 900 | Select-Object -Skip 670 -First 100\")"
+    ]
+  }
+}

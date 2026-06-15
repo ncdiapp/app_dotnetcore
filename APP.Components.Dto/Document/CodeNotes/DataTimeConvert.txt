@@ -1,0 +1,106 @@
+Current System Server and Client Datetime Timezone Recap
+
+
+1. Database always save UTC Time.
+2. For SQL Table columns, we should always use type datetime, don't use date!!!! Or the timezone convert will be wrong.
+
+3. How our system converts timezone between server and client:
+	if 
+		client time zone -5
+		current utc time: 20:05
+		current local time: 15:05
+
+	when browser read datetime from server:
+		1. server read from database 20:05
+		2. server convert to 15:05 by timezone (-5)
+		3. client get 15:05 from server, browser display it as date object: 15:05 + timezone-5 
+
+	when browser save datetime to server:
+		1. client read date object: (15:05 + timezone). the acture time is 20:05 UCT on this date object.
+		2. send it to server, server get 20:05 as UTC, don't need any convert.
+		3. save UTC time to database.
+		
+
+
+
+
+4. 
+SQL Query Timezone
+	SELECT        dbo.NCDI_Meeting.MeetingID, dbo.NCDI_Meeting.TransactionID, dbo.NCDI_Meeting.MeetingName, dbo.NCDI_Meeting.Category, 
+	DATEADD(mi, DATEDIFF(mi, GETUTCDATE(), GETDATE()), dbo.NCDI_Meeting.StartDate) as StartDate,
+	DATEADD(mi, DATEDIFF(mi, GETUTCDATE(), GETDATE()), dbo.NCDI_Meeting.EndDate) as EndDate,    
+
+
+
+
+5. C# DateTime ToString()
+	DateTime dt = DateTime.Now;
+	String strDate="";
+	strDate = dt.ToString("MM/dd/yyyy");   // 07/21/2007 
+	strDate = dt.ToString("dddd, dd MMMM yyyy");   //Saturday, 21 July 2007
+	strDate = dt.ToString("dddd, dd MMMM yyyy HH:mm"); // Saturday, 21 July 2007 14:58
+	strDate = dt.ToString("dddd, dd MMMM yyyy hh:mm tt"); // Saturday, 21 July 2007 03:00 PM
+	strDate = dt.ToString("dddd, dd MMMM yyyy H:mm"); // Saturday, 21 July 2007 5:01 
+	strDate = dt.ToString("dddd, dd MMMM yyyy h:mm tt"); // Saturday, 21 July 2007 3:03 PM
+	strDate = dt.ToString("dddd, dd MMMM yyyy HH:mm:ss"); // Saturday, 21 July 2007 15:04:10
+	strDate = dt.ToString("MM/dd/yyyy HH:mm"); // 07/21/2007 15:05
+	strDate = dt.ToString("MM/dd/yyyy hh:mm tt"); // 07/21/2007 03:06 PM
+	strDate = dt.ToString("MM/dd/yyyy H:mm"); // 07/21/2007 15:07
+	strDate = dt.ToString("MM/dd/yyyy h:mm tt"); // 07/21/2007 3:07 PM
+	strDate = dt.ToString("MM/dd/yyyy HH:mm:ss"); // 07/21/2007 15:09:29
+	strDate = dt.ToString("MMMM dd"); // July 21
+	strDate = dt.ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss.fffffffK"); // 2007-07-21T15:11:19.1250000+05:30    
+	strDate = dt.ToString("ddd, dd MMM yyyy HH':'mm':'ss 'GMT'"); // Sat, 21 Jul 2007 15:12:16 GMT
+	strDate = dt.ToString("yyyy'-'MM'-'dd'T'HH':'mm':'ss"); // 2007-07-21T15:12:57
+	strDate = dt.ToString("HH:mm"); // 15:14
+	strDate = dt.ToString("hh:mm tt"); // 03:14 PM
+	strDate = dt.ToString("H:mm"); // 5:15
+	strDate = dt.ToString("h:mm tt"); // 3:16 PM
+	strDate = dt.ToString("HH:mm:ss"); // 15:16:29
+	strDate = dt.ToString("yyyy'-'MM'-'dd HH':'mm':'ss'Z'"); // 2007-07-21 15:17:20Z
+	strDate = dt.ToString("dddd, dd MMMM yyyy HH:mm:ss"); // Saturday, 21 July 2007 15:17:58
+	strDate = dt.ToString("yyyy MMMM"); // 2007 July
+
+
+
+
+
+
+
+
+
+Query Dates:
+
+	DECLARE @MinDate DATETIME = '2018-01-01 00:00:00.000',
+    @MaxDate DATETIME = '2020-12-31 00:00:00.000';
+
+SELECT  TOP (DATEDIFF(DAY, @MinDate, @MaxDate) + 1) Dates = DATEADD(DAY, ROW_NUMBER() OVER(ORDER BY a.object_id) - 1, @MinDate)
+FROM sys.all_objects a CROSS JOIN sys.all_objects b;
+
+
+
+Example:
+
+DECLARE @MinDate DATETIME = '2000-01-01 00:00:00.000',
+		@MaxDate DATETIME = '2099-12-31 00:00:00.000';
+
+INSERT INTO [dbo].[UDFCompanyDay]
+           ([DateID]
+           ,[DateValue]
+           ,YearNumber
+           ,MonthNumber
+           ,DayNumber
+           ,[Description])
+    select 
+		(DATEPART ( yyyy , Dates ) * 10000) + (DATEPART ( mm , Dates) * 100) + (DATEPART ( dd , Dates)) as DateID,
+		Dates as DateValue,
+		DATEPART ( yyyy , Dates ) as YearNumber, 
+		DATEPART ( mm , Dates) as MonthNumber, 
+		DATEPART ( dd , Dates) as DayNumber,
+		'' as Description
+		from 
+		(
+		SELECT  TOP (DATEDIFF(DAY, @MinDate, @MaxDate) + 1) Dates = DATEADD(DAY, ROW_NUMBER() OVER(ORDER BY a.object_id) - 1, @MinDate)
+		FROM sys.all_objects a CROSS JOIN sys.all_objects b
+		) as DatesTable
+GO

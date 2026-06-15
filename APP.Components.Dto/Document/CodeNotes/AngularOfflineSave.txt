@@ -1,0 +1,22 @@
+
+1.	When save offline data, need to reset the storage key
+	Without reset, the new key-data will not be recreated in storage if the key already exists in storage. The storage will use the previous saved key-data.
+ 
+            var offLineDataSave = { offline: $scope.appFormData };
+            $localStorage.$reset(offLineDataSave);  // Reset
+            $localStorage.$default(offLineDataSave);    //save to offline sotrage      
+
+
+
+2. When load offline data to local data, the loaded data is synchronized to local storage. Just like a linked reference. 
+	If the local data changes, the offline storage key-data will also be changed at the same time.
+	If we want to break the link, use angular.copy() to deep copy the loaded data to a new obj.
+
+        var formoffline = angular.copy($localStorage["offline"]);
+        if (formoffline) {          
+            initialFormData(formoffline);
+        }
+    
+
+
+    

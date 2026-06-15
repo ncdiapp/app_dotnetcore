@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm:*)",
+      "Bash(node --version:*)",
+      "Bash(dir:*)",
+      "Bash(cd:*)",
+      "Bash(npx tsc:*)",
+      "Bash(findstr:*)"
+    ]
+  }
+}

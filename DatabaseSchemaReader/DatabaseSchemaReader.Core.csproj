@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>DatabaseSchemaReader</AssemblyName>
+    <RootNamespace>DatabaseSchemaReader</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!--
+      Phase 3: Port + Optimize
+      Sub-step 1 done: System.Data.SqlClient → Microsoft.Data.SqlClient (#if NET6_0_OR_GREATER)
+                       System.Data.OracleClient → Oracle.ManagedDataAccess.Core (#if NETFRAMEWORK)
+                       using System.Web removed
+      Sub-steps 2-6 (N+1 batching, caching, DataReader streaming, IAsyncEnumerable,
+      merge sync/async partials) are deferred to separate commits.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="MySqlConnector" Version="2.4.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />
+    <PackageReference Include="Oracle.ManagedDataAccess.Core" Version="23.6.0" />
+    <PackageReference Include="Npgsql" Version="9.0.2" />
+    <PackageReference Include="System.Text.Json" Version="9.0.0" />
+    <PackageReference Include="Google.Protobuf" Version="3.29.3" />
+  </ItemGroup>
+
+</Project>

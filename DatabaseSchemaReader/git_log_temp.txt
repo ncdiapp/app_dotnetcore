@@ -1,0 +1,17 @@
+commit 861474a5c949369b1b47231e66f4cb19a759ce1d
+Author: Sean Zhang <sean.zhang@cgsinc.com>
+Date:   Sun Mar 22 00:52:59 2026 -0400
+
+    Fix critical bugs and add documentation
+    
+    - Fix uninitialized _schemaReader in DatabaseFixture constructor
+    - Fix DbDataReader resource leak in SchemaExtendedReader
+    - Fix DbConnection/DbDataReader leaks in DatabaseFixturePart
+    - Add null-coalescing defaults for app.config provider names
+    - Add CLAUDE.md with project guidance for Claude Code
+    - Add ARCHITECTURE.md with system architecture and data flow diagrams
+    
+    Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
+
+ DatabaseSchemaReader/ARCHITECTURE.md | 431 +++++++++++++++++++++++++++++++++++
+ 1 file changed, 431 insertions(+)

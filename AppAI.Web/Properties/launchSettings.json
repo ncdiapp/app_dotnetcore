@@ -1,0 +1,14 @@
+{
+  "profiles": {
+    "AppAI.Web": {
+      "commandName": "Project",
+      "launchBrowser": true,
+      "launchUrl": "appai/health",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "DOTNET_ROOT": "C:\\Program Files\\dotnet"
+      },
+      "applicationUrl": "http://localhost:52740;https://localhost:52739"
+    }
+  }
+}

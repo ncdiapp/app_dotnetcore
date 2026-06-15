@@ -1,0 +1,82 @@
+{
+  "name": "app-react",
+  "version": "0.1.0",
+  "private": true,
+  "proxy": "http://localhost:52740",
+  "dependencies": {
+    "@mescius/wijmo.grid.xlsx": "5.20252.42",
+    "@mescius/wijmo.react.all": "5.20252.42",
+    "@mescius/wijmo.react.grid": "^5.20252.42",
+    "@mescius/wijmo.react.grid.filter": "^5.20252.42",
+    "@mescius/wijmo.react.grid.grouppanel": "5.20252.42",
+    "@mescius/wijmo.react.input": "^5.20252.42",
+    "@mescius/wijmo.react.olap": "5.20252.42",
+    "@mescius/wijmo.styles": "5.20252.42",
+    "@microsoft/signalr": "^8.0.7",
+    "@monaco-editor/react": "^4.7.0",
+    "@reduxjs/toolkit": "^2.8.2",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^13.5.0",
+    "@types/jest": "^27.5.2",
+    "@types/node": "^16.18.126",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@types/redux-logger": "^3.0.13",
+    "jszip": "^3.10.1",
+    "monaco-editor": "^0.55.1",
+    "qrcode.react": "^4.2.0",
+    "quill": "^2.0.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-quill": "^2.0.0",
+    "react-redux": "^8.0.2",
+    "react-router-dom": "^6.3.0",
+    "react-scripts": "5.0.0",
+    "redux-logger": "^3.0.6",
+    "tw-elements": "^1.0.0-alpha12",
+    "typescript": "^4.9.5",
+    "uuidv4": "^6.2.13",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ],
+    "rules": {
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          "argsIgnorePattern": "^_",
+          "varsIgnorePattern": "^_"
+        }
+      ]
+    }
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@types/jquery": "^3.5.32",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^3.4.17"
+  }
+}

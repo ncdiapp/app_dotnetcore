@@ -1,0 +1,55 @@
+
+1. wj-combo-box default select the first item if selected-value is null. We can put selected-value = null in code behind to empty the selected filed.
+	If required="true" (Default is true), no matter selected-value is null or not, the first field is always selected.
+
+<wj-combo-box
+	items-source="dictCriteriaOperatorDataSource['@criteria.SearcDCUID']" 
+	display-member-path="Display" 
+	@*selected-value-path="OperatorType"*@
+	selected-value="dictDcuOperator['@criteria.SearcDCUID']"
+	required="false"
+	style="width: 100%;">
+</wj-combo-box>
+
+2. Refresh Grid
+refresh grid cell data:
+	flex.invalidate();
+
+
+3. RegExp Validation
+
+	 var reex = new RegExp("^([0-9]|0[0-9]|1[0-9]|2[0-3]):[0-5][0-9]$");
+
+                       var matches = cascadingAfterChangeValue.match(reex) ;
+                       if(matches == null)
+                       {
+                           s.rows[e.row].dataItem.DictOneToOneFields[fileName] = '';
+                           flex.invalidate();
+
+                           return;
+                       }
+
+
+
+
+
+
+
+4. If add new js file, need to modify BundleConfig.cs
+Example:
+	// javascrip file
+            bundles.Add(new ScriptBundle("~/bundles/Scripts1x/vendor").Include(
+                    "~/Scripts1x/vendor/wijmo.min.js",
+                     "~/Scripts1x/vendor/wijmo.input.min.js",
+                     "~/Scripts1x/vendor/wijmo.grid.min.js",
+                     "~/Scripts1x/vendor/wijmo.grid.detail.min.js",
+                     "~/Scripts1x/vendor/wijmo.grid.filter.min.js",
+                     "~/Scripts1x/vendor/wijmo.grid.grouppanel.min.js",
+                     "~/Scripts1x/vendor/wijmo.chart.min.js",
+                     "~/Scripts1x/vendor/wijmo.gauge.min.js",
+                    "~/Scripts1x/vendor/wijmo.odata.min.js",
+                    "~/Scripts1x/vendor/wijmo.olap.min.js",
+                    "~/Scripts1x/vendor/wijmo.nav.min.js",                    
+                    "~/Scripts1x/vendor/wijmo.angular.min.js"
+                  )
+                );

@@ -1,0 +1,149 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProductVersion>8.0.30703</ProductVersion>
+    <SchemaVersion>2.0</SchemaVersion>
+    <ProjectGuid>{6A9A68A3-E5AB-4BD1-BB0A-AC1E975F4104}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>APP.Framework</RootNamespace>
+    <AssemblyName>APP.Framework</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <SignAssembly>true</SignAssembly>
+    <AssemblyOriginatorKeyFile>
+    </AssemblyOriginatorKeyFile>
+    <SccProjectName>SAK</SccProjectName>
+    <SccLocalPath>SAK</SccLocalPath>
+    <SccAuxPath>SAK</SccAuxPath>
+    <SccProvider>SAK</SccProvider>
+    <TargetFrameworkProfile />
+    <LangVersion>8.0</LangVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;NETFRAMEWORK</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <DocumentationFile>
+    </DocumentationFile>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\</OutputPath>
+    <DefineConstants>TRACE;NETFRAMEWORK</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <DocumentationFile>
+    </DocumentationFile>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Newtonsoft.Json, Version=4.0.5.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\Libraries\Business\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include="NLog">
+      <HintPath>..\packages\NLog.4.7.5\lib\net45\NLog.dll</HintPath>
+    </Reference>
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="System" />
+    <Reference Include="System.configuration" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.DirectoryServices" />
+    <Reference Include="System.DirectoryServices.AccountManagement" />
+    <Reference Include="System.DirectoryServices.Protocols" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.Web" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Xml" />
+    <Reference Include="WindowsBase" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="ADHelp.cs" />
+    <Compile Include="AppLanguageDto.cs" />
+    <Compile Include="ApplicationHelper.cs" />
+    <Compile Include="ApplicationLog.cs" />
+    <Compile Include="AppLoger.cs" />
+    <Compile Include="ArgumentValidator.cs" />
+    <Compile Include="AppClientIdentity.cs" />
+    <Compile Include="ClientTimeZoneHelper.cs" />
+    <Compile Include="Collections\IEditableCollection.cs" />
+    <Compile Include="Collections\ItemPropertyChangedEventArgs.cs" />
+    <Compile Include="Collections\ObservableSet.cs" />
+    <Compile Include="ContractNamespaces.cs" />
+    <Compile Include="CSComplierTools.cs" />
+    <Compile Include="CssMinifier.cs" />
+    <Compile Include="DataSoureHelp.cs" />
+    <Compile Include="DBInteractionBase.cs" />
+    <Compile Include="EditableMemberAttribute.cs" />
+    <Compile Include="EditableObject.cs" />
+    <Compile Include="EnDeCrypt.cs" />
+    <Compile Include="EnumHelper.cs" />
+    <Compile Include="EnumLookup.cs" />
+    <Compile Include="EnumLookupCollection.cs" />
+    <Compile Include="ExtensionMethodHelper.cs" />
+    <Compile Include="Extensions\IEnumerableExtensions.cs" />
+    <Compile Include="Extensions\NumericExtensions.cs" />
+    <Compile Include="Extensions\StreamExtensions.cs" />
+    <Compile Include="Extensions\StringExtensions.cs" />
+    <Compile Include="Extensions\TypeExtensions.cs" />
+    <Compile Include="ExtensionToMimeTypeConverter.cs" />
+    <Compile Include="FileTools.cs" />
+    <Compile Include="FrameworkContractNamespaces.cs" />
+    <Compile Include="Globalization\LocalizeStringEventArgs.cs" />
+    <Compile Include="HttpClientIdentityProvider.cs" />
+    <Compile Include="ICacheProvider.cs" />
+    <Compile Include="IClientIdentity.cs" />
+    <Compile Include="IClientIdentityProvider.cs" />
+    <Compile Include="IEditableObject.cs" />
+    <Compile Include="IIdentifiable.cs" />
+    <Compile Include="JsMinifier.cs" />
+    <Compile Include="ObjectInfoHelper.cs" />
+    <Compile Include="ObservableObject.cs" />
+    <Compile Include="ObservablePropertyChangedEventArgs.cs" />
+    <Compile Include="OperationCallResult.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ServerContext.cs" />
+    <Compile Include="SetPropertyValueResult.cs" />
+    <Compile Include="SqlCommandGenerator.cs" />
+    <Compile Include="SqlScriptGenerator.cs" />
+    <Compile Include="SqlServerDataType.cs" />
+    <Compile Include="StringLocalizer.cs" />
+    <Compile Include="StringUtil.cs" />
+    <Compile Include="TimeZoneHelper.cs" />
+    <Compile Include="Validation\FormatValidator.cs" />
+    <Compile Include="Validation\ValidationItem.cs" />
+    <Compile Include="Validation\ValidationItemType.cs" />
+    <Compile Include="Validation\ValidationResult.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="obj\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Service Include="{508349B6-6B84-4DF5-91F0-309BEEBAD82D}" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+    <None Include="packages.config" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <ProjectExtensions>
+    <VisualStudio>
+      <UserProperties ProjectLinkReference="256d46fe-10b0-4983-a416-20fd19978d7f" ProjectLinkerExcludeFilter="\\?desktop(\\.*)?$;\\?silverlight(\\.*)?$;\.desktop;\.silverlight;\.xaml;^service references(\\.*)?$;\.clientconfig;^web references(\\.*)?$" />
+    </VisualStudio>
+  </ProjectExtensions>
+</Project>

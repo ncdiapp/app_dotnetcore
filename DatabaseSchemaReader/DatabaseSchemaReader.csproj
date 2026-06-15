@@ -1,0 +1,323 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{AA652F8E-0B96-484C-A146-C4183E4A0A25}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <AppDesignerFolder>Properties</AppDesignerFolder>
+    <RootNamespace>DatabaseSchemaMrg</RootNamespace>
+    <AssemblyName>DatabaseSchemaReader</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>1591</NoWarn>
+    <LangVersion>latest</LangVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <NuGetPackageImportStamp />
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE;NETFRAMEWORK</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <RunCodeAnalysis>true</RunCodeAnalysis>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE;NETFRAMEWORK</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <PlatformTarget>AnyCPU</PlatformTarget>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.ComponentModel.Composition" />
+    <Reference Include="System.Configuration" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Data.OracleClient" />
+    <Reference Include="System.Data.Services" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Net" />
+    <Reference Include="System.Numerics" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.Security" />
+    <Reference Include="System.ServiceProcess" />
+    <Reference Include="System.Transactions" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="System.Xml" />
+    <Reference Include="System.Web" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>ExternalDll\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf">
+      <Version>3.21.9</Version>
+    </PackageReference>
+    <PackageReference Include="K4os.Compression.LZ4">
+      <Version>1.3.5</Version>
+    </PackageReference>
+    <PackageReference Include="K4os.Compression.LZ4.Streams">
+      <Version>1.3.5</Version>
+    </PackageReference>
+    <PackageReference Include="K4os.Hash.xxHash">
+      <Version>1.0.8</Version>
+    </PackageReference>
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces">
+      <Version>7.0.0</Version>
+    </PackageReference>
+    <PackageReference Include="MySql.Data">
+      <Version>8.1.0</Version>
+    </PackageReference>
+    <PackageReference Include="Portable.BouncyCastle">
+      <Version>1.9.0</Version>
+    </PackageReference>
+    <PackageReference Include="System.Buffers">
+      <Version>4.5.1</Version>
+    </PackageReference>
+    <PackageReference Include="System.Configuration.ConfigurationManager">
+      <Version>4.7.0</Version>
+    </PackageReference>
+    <PackageReference Include="System.Diagnostics.DiagnosticSource">
+      <Version>7.0.2</Version>
+    </PackageReference>
+    <PackageReference Include="System.IO.Pipelines">
+      <Version>5.0.2</Version>
+    </PackageReference>
+    <PackageReference Include="System.Memory">
+      <Version>4.5.5</Version>
+    </PackageReference>
+    <PackageReference Include="System.Numerics.Vectors">
+      <Version>4.5.0</Version>
+    </PackageReference>
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe">
+      <Version>6.0.0</Version>
+    </PackageReference>
+    <PackageReference Include="System.Security.AccessControl">
+      <Version>4.7.0</Version>
+    </PackageReference>
+    <PackageReference Include="System.Security.Permissions">
+      <Version>4.7.0</Version>
+    </PackageReference>
+    <PackageReference Include="System.Security.Principal.Windows">
+      <Version>4.7.0</Version>
+    </PackageReference>
+    <PackageReference Include="System.Text.Encoding.CodePages">
+      <Version>4.4.0</Version>
+    </PackageReference>
+    <PackageReference Include="System.Text.Encodings.Web">
+      <Version>7.0.0</Version>
+    </PackageReference>
+    <PackageReference Include="System.Text.Json">
+      <Version>7.0.1</Version>
+    </PackageReference>
+    <PackageReference Include="System.Threading.Tasks.Extensions">
+      <Version>4.5.4</Version>
+    </PackageReference>
+    <PackageReference Include="ZstdSharp.Port">
+      <Version>0.7.1</Version>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="AppMetaDataSqlTypeConvertBL.cs" />
+    <Compile Include="Conversion\ColumnConverter.cs" />
+    <Compile Include="Conversion\ColumnDescriptionConverter.cs" />
+    <Compile Include="Conversion\DatabaseColumnExtensions.cs" />
+    <Compile Include="Conversion\ForeignKeyColumnConverter.cs" />
+    <Compile Include="Conversion\IndexConverter.cs" />
+    <Compile Include="Conversion\KeyMaps\ArgumentsKeyMap.cs" />
+    <Compile Include="Conversion\KeyMaps\ColumnsKeyMap.cs" />
+    <Compile Include="Conversion\KeyMaps\ConstraintKeyMap.cs" />
+    <Compile Include="Conversion\KeyMaps\FunctionKeyMap.cs" />
+    <Compile Include="Conversion\KeyMaps\IndexKeyMap.cs" />
+    <Compile Include="Conversion\KeyMaps\SequenceKeyMap.cs" />
+    <Compile Include="Conversion\KeyMaps\StoredProcedureKeyMap.cs" />
+    <Compile Include="Conversion\KeyMaps\TableKeyMap.cs" />
+    <Compile Include="Conversion\KeyMaps\ViewKeyMap.cs" />
+    <Compile Include="Conversion\Loaders\ColumnLoader.cs" />
+    <Compile Include="Conversion\Loaders\IndexLoader.cs" />
+    <Compile Include="Conversion\Loaders\SchemaConstraintLoader.cs" />
+    <Compile Include="Conversion\Loaders\ViewColumnLoader.cs" />
+    <Compile Include="Conversion\PrimaryKeyLogic.cs" />
+    <Compile Include="Conversion\ProviderToSqlType.cs" />
+    <Compile Include="Conversion\SchemaConstraintConverter.cs" />
+    <Compile Include="Conversion\SchemaConverter.cs" />
+    <Compile Include="Conversion\SchemaProcedureConverter.cs" />
+    <Compile Include="Conversion\SchemaSourceConverter.cs" />
+    <Compile Include="Conversion\TableDescriptionConverter.cs" />
+    <Compile Include="Conversion\TriggerConverter.cs" />
+    <Compile Include="Conversion\ViewColumnConverter.cs" />
+    <Compile Include="Data\ChangesWriter.cs" />
+    <Compile Include="Data\Converter.cs" />
+    <Compile Include="Data\DateConverter.cs" />
+    <Compile Include="Data\InsertWriter.cs" />
+    <Compile Include="Data\Reader.cs" />
+    <Compile Include="Data\ScriptWriter.cs" />
+    <Compile Include="DatabaseFixture.Async.cs" />
+    <Compile Include="DatabaseFixture.cs" />
+    <Compile Include="DatabaseFixturePart.Async.cs" />
+    <Compile Include="DatabaseFixturePart.cs" />
+    <Compile Include="DataSchema\ConstraintType.cs" />
+    <Compile Include="DataSchema\DatabaseArgument.cs" />
+    <Compile Include="DataSchema\DatabaseColumn.cs" />
+    <Compile Include="DataSchema\DatabaseColumnExtensions.cs" />
+    <Compile Include="DataSchema\DatabaseColumnIdentity.cs" />
+    <Compile Include="DataSchema\DatabaseConstraint.cs" />
+    <Compile Include="DataSchema\DatabaseFunction.cs" />
+    <Compile Include="DataSchema\DatabaseIndex.cs" />
+    <Compile Include="DataSchema\DatabasePackage.cs" />
+    <Compile Include="DataSchema\DatabaseResultSet.cs" />
+    <Compile Include="DataSchema\DatabaseSchema.cs" />
+    <Compile Include="DataSchema\DatabaseSchemaAddColumnExtensions.cs" />
+    <Compile Include="DataSchema\DatabaseSchemaConstraintExtensions.cs" />
+    <Compile Include="DataSchema\DatabaseSchemaExtensions.cs" />
+    <Compile Include="DataSchema\DatabaseSchemaFixer.cs" />
+    <Compile Include="DataSchema\DatabaseSequence.cs" />
+    <Compile Include="DataSchema\DatabaseStoredProcedure.cs" />
+    <Compile Include="DataSchema\DatabaseTable.cs" />
+    <Compile Include="DataSchema\DatabaseTrigger.cs" />
+    <Compile Include="DataSchema\DatabaseUser.cs" />
+    <Compile Include="DataSchema\DatabaseView.cs" />
+    <Compile Include="DataSchema\DataType.cs" />
+    <Compile Include="DataSchema\NamedObject.cs" />
+    <Compile Include="DataSchema\NamedSchemaObject.cs" />
+    <Compile Include="DataSchema\SqlType.cs" />
+    <Compile Include="Filters\Exclusions.cs" />
+    <Compile Include="Filters\Filter.cs" />
+    <Compile Include="Filters\IFilter.cs" />
+    <Compile Include="GlobalSuppressions.cs" />
+    <Compile Include="IDatabaseReader.cs" />
+    <Compile Include="IDatabaseReaderAsync.cs" />
+    <Compile Include="ISchemaReaderAsync.cs" />
+    <Compile Include="Procedures\ResultSetReader.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="ProviderSchemaReaders\DataTableHelp.cs" />
+    <Compile Include="ProviderSchemaReaders\Db2SchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\IngresSchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\MysqlDBHelp.cs" />
+    <Compile Include="ProviderSchemaReaders\MySqlSchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\OleDbSchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\OracleSchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\OracleSequenceTrigger.cs" />
+    <Compile Include="ProviderSchemaReaders\PostgreSqlArgumentReader.cs" />
+    <Compile Include="ProviderSchemaReaders\PostgreSqlSchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\SchemaReaderFactory.cs" />
+    <Compile Include="ProviderSchemaReaders\SqlAzureOrSqlServerSchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\SqlServerCeSchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\SqlServerSchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\SybaseAsaSchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\SybaseAseSchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\SybaseUltraLiteSchemaReader.cs" />
+    <Compile Include="ProviderSchemaReaders\VistaDbSchemaReader.cs" />
+    <Compile Include="SchemaExtendedReader.Async.cs" />
+    <Compile Include="SchemaExtendedReader.cs" />
+    <Compile Include="SchemaReader.Async.cs" />
+    <Compile Include="SchemaReader.cs" />
+    <Compile Include="SchemaRestrictions.cs" />
+    <Compile Include="SqlGen\ConstraintWriterBase.cs" />
+    <Compile Include="SqlGen\DataTypeConverter.cs" />
+    <Compile Include="SqlGen\DataTypeMapper.cs" />
+    <Compile Include="SqlGen\DataTypeMappingFactory.cs" />
+    <Compile Include="SqlGen\Db2\ConstraintWriter.cs" />
+    <Compile Include="SqlGen\Db2\DataTypeWriter.cs" />
+    <Compile Include="SqlGen\Db2\Db2DataTypeMapper.cs" />
+    <Compile Include="SqlGen\Db2\Db2MigrationGenerator.cs" />
+    <Compile Include="SqlGen\Db2\ProcedureGenerator.cs" />
+    <Compile Include="SqlGen\Db2\ProcedureWriter.cs" />
+    <Compile Include="SqlGen\Db2\SqlFormatProvider.cs" />
+    <Compile Include="SqlGen\Db2\TableGenerator.cs" />
+    <Compile Include="SqlGen\Db2\TablesGenerator.cs" />
+    <Compile Include="SqlGen\DdlGeneratorFactory.cs" />
+    <Compile Include="SqlGen\DropTables.cs" />
+    <Compile Include="SqlGen\IDataTypeWriter.cs" />
+    <Compile Include="SqlGen\IMigrationGenerator.cs" />
+    <Compile Include="SqlGen\IProcedureGenerator.cs" />
+    <Compile Include="SqlGen\IProcedureWriter.cs" />
+    <Compile Include="SqlGen\ISqlFormatProvider.cs" />
+    <Compile Include="SqlGen\ITableGenerator.cs" />
+    <Compile Include="SqlGen\ITablesGenerator.cs" />
+    <Compile Include="SqlGen\MigrationGenerator.cs" />
+    <Compile Include="SqlGen\MySql\ConstraintWriter.cs" />
+    <Compile Include="SqlGen\MySql\DataTypeWriter.cs" />
+    <Compile Include="SqlGen\MySql\MySqlDataTypeMapper.cs" />
+    <Compile Include="SqlGen\MySql\MySqlMigrationGenerator.cs" />
+    <Compile Include="SqlGen\MySql\ProcedureGenerator.cs" />
+    <Compile Include="SqlGen\MySql\ProcedureWriter.cs" />
+    <Compile Include="SqlGen\MySql\SqlFormatProvider.cs" />
+    <Compile Include="SqlGen\MySql\TableGenerator.cs" />
+    <Compile Include="SqlGen\MySql\TablesGenerator.cs" />
+    <Compile Include="SqlGen\Oracle\AutoIncrementWriter.cs" />
+    <Compile Include="SqlGen\Oracle\ConstraintWriter.cs" />
+    <Compile Include="SqlGen\Oracle\DataTypeWriter.cs" />
+    <Compile Include="SqlGen\Oracle\OracleDataTypeMapper.cs" />
+    <Compile Include="SqlGen\Oracle\OracleMigrationGenerator.cs" />
+    <Compile Include="SqlGen\Oracle\ProcedureGenerator.cs" />
+    <Compile Include="SqlGen\Oracle\ProcedureWriter.cs" />
+    <Compile Include="SqlGen\Oracle\SqlFormatProvider.cs" />
+    <Compile Include="SqlGen\Oracle\TableGenerator.cs" />
+    <Compile Include="SqlGen\Oracle\TablesGenerator.cs" />
+    <Compile Include="SqlGen\PostgreSql\AutoIncrementWriter.cs" />
+    <Compile Include="SqlGen\PostgreSql\ConstraintWriter.cs" />
+    <Compile Include="SqlGen\PostgreSql\DataTypeWriter.cs" />
+    <Compile Include="SqlGen\PostgreSql\PostgreSqlDataTypeMapper.cs" />
+    <Compile Include="SqlGen\PostgreSql\PostgreSqlMigrationGenerator.cs" />
+    <Compile Include="SqlGen\PostgreSql\SqlFormatProvider.cs" />
+    <Compile Include="SqlGen\PostgreSql\TableGenerator.cs" />
+    <Compile Include="SqlGen\PostgreSql\TablesGenerator.cs" />
+    <Compile Include="SqlGen\ProcedureGeneratorBase.cs" />
+    <Compile Include="SqlGen\SqlFormatFactory.cs" />
+    <Compile Include="SqlGen\SqLite\DataTypeWriter.cs" />
+    <Compile Include="SqlGen\SqLite\SqlFormatProvider.cs" />
+    <Compile Include="SqlGen\SqLite\SqLiteDataTypeMapper.cs" />
+    <Compile Include="SqlGen\SqLite\SQLiteMigrationGenerator.cs" />
+    <Compile Include="SqlGen\SqLite\TableGenerator.cs" />
+    <Compile Include="SqlGen\SqLite\TablesGenerator.cs" />
+    <Compile Include="SqlGen\SqlServer\ConstraintWriter.cs" />
+    <Compile Include="SqlGen\SqlServer\DataTypeWriter.cs" />
+    <Compile Include="SqlGen\SqlServer\ForeignKeyGenerator.cs" />
+    <Compile Include="SqlGen\SqlServer\ProcedureGenerator.cs" />
+    <Compile Include="SqlGen\SqlServer\ProcedureWriter.cs" />
+    <Compile Include="SqlGen\SqlServer\SqlFormatProvider.cs" />
+    <Compile Include="SqlGen\SqlServer\SqlServerDataTypeMapper.cs" />
+    <Compile Include="SqlGen\SqlServer\SqlServerMigrationGenerator.cs" />
+    <Compile Include="SqlGen\SqlServer\TableGenerator.cs" />
+    <Compile Include="SqlGen\SqlServer\TablesGenerator.cs" />
+    <Compile Include="SqlGen\SqlServerCe\ConstraintWriter.cs" />
+    <Compile Include="SqlGen\SqlServerCe\DataTypeWriter.cs" />
+    <Compile Include="SqlGen\SqlServerCe\SqlServerCeDataTypeMapper.cs" />
+    <Compile Include="SqlGen\SqlServerCe\SqlServerCeFormatProvider.cs" />
+    <Compile Include="SqlGen\SqlServerCe\SqlServerCeMigrationGenerator.cs" />
+    <Compile Include="SqlGen\SqlServerCe\TableGenerator.cs" />
+    <Compile Include="SqlGen\SqlServerCe\TablesGenerator.cs" />
+    <Compile Include="SqlGen\SqlTranslator.cs" />
+    <Compile Include="SqlGen\TableGeneratorBase.cs" />
+    <Compile Include="SqlGen\TablesGeneratorBase.cs" />
+    <Compile Include="SqlWriter.cs" />
+    <Compile Include="UserDefined\DatabaseColumn.cs" />
+    <Compile Include="UserDefined\DatabaseFkMappingDto.cs" />
+    <Compile Include="Utilities\DbProviderFactoryHelper.cs" />
+    <Compile Include="Utilities\DiscoverProviderFactory.cs" />
+    <Compile Include="Utilities\DummyDataCreator.cs" />
+    <Compile Include="Utilities\EntityFrameworkImporter.cs" />
+    <Compile Include="Utilities\FactoryTools.cs" />
+    <Compile Include="Utilities\SchemaTablesSorter.cs" />
+    <Compile Include="Utilities\ScriptTools.cs" />
+    <Compile Include="Utilities\TopologicalSorter.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="app.config" />
+    <Content Include="README.txt" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

@@ -1,0 +1,64 @@
+Most Popular Commands                                                                                                       ┌──────────┬───────────────────────────────────────────────┐                                                              
+  │ Command  │                    Purpose                    │                                                                ├──────────┼───────────────────────────────────────────────┤                                                              
+  │ /help    │ Get usage help and see all available commands │                                                                ├──────────┼───────────────────────────────────────────────┤                                                                │ /clear   │ Clear conversation history                    │                                                                ├──────────┼───────────────────────────────────────────────┤                                                                │ /compact │ Compress conversation context to save tokens  │                                                              
+  ├──────────┼───────────────────────────────────────────────┤
+  │ /config  │ Open Settings interface                       │
+  ├──────────┼───────────────────────────────────────────────┤
+  │ /model   │ Select or change the AI model                 │
+  ├──────────┼───────────────────────────────────────────────┤
+  │ /cost    │ Show token usage for current session          │
+  ├──────────┼───────────────────────────────────────────────┤
+  │ /resume  │ Resume a previous conversation                │
+  ├──────────┼───────────────────────────────────────────────┤
+  │ /plan    │ Enter plan mode                               │
+  └──────────┴───────────────────────────────────────────────┘
+  Session Management
+  ┌────────────────────┬───────────────────────────────────────┐
+  │      Command       │                Purpose                │
+  ├────────────────────┼───────────────────────────────────────┤
+  │ /rename <name>     │ Rename current session                │
+  ├────────────────────┼───────────────────────────────────────┤
+  │ /export [filename] │ Export conversation to file           │
+  ├────────────────────┼───────────────────────────────────────┤
+  │ /rewind            │ Rewind conversation to previous state │
+  ├────────────────────┼───────────────────────────────────────┤
+  │ /stats             │ Show daily usage and session history  │
+  ├────────────────────┼───────────────────────────────────────┤
+  │ /exit              │ Exit Claude Code                      │
+  └────────────────────┴───────────────────────────────────────┘
+  Configuration
+  ┌──────────────┬───────────────────────────────────┐
+  │   Command    │              Purpose              │
+  ├──────────────┼───────────────────────────────────┤
+  │ /init        │ Initialize project with CLAUDE.md │
+  ├──────────────┼───────────────────────────────────┤
+  │ /memory      │ Edit CLAUDE.md memory files       │
+  ├──────────────┼───────────────────────────────────┤
+  │ /mcp         │ Manage MCP server connections     │
+  ├──────────────┼───────────────────────────────────┤
+  │ /permissions │ View/update permission settings   │
+  ├──────────────┼───────────────────────────────────┤
+  │ /theme       │ Change color theme                │
+  ├──────────────┼───────────────────────────────────┤
+  │ /vim         │ Enable vim-style editing          │
+  └──────────────┴───────────────────────────────────┘
+  Utilities
+  ┌──────────┬─────────────────────────────────┐
+  │ Command  │             Purpose             │
+  ├──────────┼─────────────────────────────────┤
+  │ /context │ Visualize current context usage │
+  ├──────────┼─────────────────────────────────┤
+  │ /doctor  │ Check installation health       │
+  ├──────────┼─────────────────────────────────┤
+  │ /tasks   │ List background tasks           │
+  ├──────────┼─────────────────────────────────┤
+  │ /todos   │ List current TODO items         │
+  ├──────────┼─────────────────────────────────┤
+  │ /copy    │ Copy last response to clipboard │
+  └──────────┴─────────────────────────────────┘
+  Quick Tips
+
+  - Type / to see all commands with filtering
+  - Type ! to run bash commands directly (e.g., ! npm test)
+  - Type @ for file path autocomplete
+  - Type ? to see keyboard shortcuts

@@ -1,0 +1,225 @@
+UI javascript
+
+1.	UI Object uiId should use GUID, don't copy dto.Id to uiId
+
+2.	For Loop of array, use for(var index in array) instead of for(var key in array)
+
+3. Linq:
+	var sourceItem = $linq.Enumerable().From(sourceCell.CellItem.PdmTabLayoutItemList).Where("$.uiId==" + draggingItem.uiId).FirstOrDefault();
+
+
+4. remove itme from array and string.Format
+
+	ngular
+    .module('app')
+    .factory('appHelper', ['$linq', function ($linq) {
+        return {
+
+            appEmParse: function (emObject) {
+                var arrayToReturn = [];
+                angular.forEach(emObject, function (value, propertyName) {
+                    var listItem = { Id: value, Display: propertyName };
+                    arrayToReturn.push(listItem);
+                });
+                return arrayToReturn;
+            },
+
+            appEmParseToDict: function (emObject) {
+                var dict = {};
+                angular.forEach(emObject, function (value, propertyName) {
+                    dict[value] = propertyName;                    
+                });
+                return dict;
+            },
+
+            removeOneItemFromArray: function (listItem, valueId, propertyName) {
+
+                var express = String.format("$.{0}.toString() == '{1}'", propertyName, valueId);
+                var sourceItem = $linq.Enumerable().From(listItem).FirstOrDefault(-1, express);
+
+                if (sourceItem != -1) {
+
+                    var sourceIndex = listItem.indexOf(sourceItem);
+                 
+                    listItem.splice(sourceIndex, 1);
+                   
+
+                }
+               
+
+
+5. All External Non-Angular event like onDrop(), onSort need to apply or digest.
+
+			 $('#' + cellId).droppable({
+                    drop: onDrop
+                });
+
+                //angular.element(element).droppable({
+                //    drop: onDrop
+                //});
+
+
+                var updatePdmTabLayoutItemListSort = function () {
+
+                    var cell = scope.cell;
+                    var orderArray = $('#ul_' + cellId).sortable('toArray');
+                    for (var indexkey in orderArray) {
+
+                        var liId = orderArray[indexkey].toString();
+                        // need remove li_
+                        if (liId.startsWith("li_")) {
+                            var aUiId = liId.substring(3);
+                            var condition = String.format("$.uiId=='{0}'", aUiId);
+                            var tabLayoutItem = $linq.Enumerable().From(cell.CellItem.PdmTabLayoutItemList).FirstOrDefault(-1, condition);
+                            if (tabLayoutItem != -1) {
+                                tabLayoutItem.Sort = indexkey
+
+                            }
+                          
+                        }
+                    }
+                    scope.$digest();
+                };
+
+6. If use JqueryUI, must use jquery selector. don't use angular.emememnt selector.
+
+
+Wijmo Grid DDL Column Dropdown max height change.
+
+Search file: wijmo.grid.min.js
+
+Find    ,t.maxHeight=e.renderHeight*4,
+
+replace 4 by a larger number.
+
+
+
+
+
+
+7. 
+var stringABC = JSON.stringify(linkTargetValueMapping);
+
+var objABC = JSON.parse(stringABC);
+
+
+
+
+
+
+
+
+8. Don't use angular.copy()   it reduce the performance
+
+
+
+
+9. routestate Directive  and createRouteState Service
+	
+	1) id and hostid should be the same.
+
+	Example 1:
+		If outcontrol is given during routestate directive initial, then the routestate directive generates random id for hostid, and the id is bind to outcontrol.hostid (example 1)
+		<div routestate id="{{appsearchcontrol.hostid}}" 
+			state="main.MasterDataManagement" 
+			routestateid="{{targetSearchId}}" 
+			param1="{{isSavedSearch}}" 
+			outcontrol="appsearchcontrol" 
+			style="height: calc(100% - 25px);width:100%; overflow: hidden;">
+		</div>
+
+	
+
+	Example 2:
+		else, need to prepare a random id, bind it to both id and hostid (example 2)
+
+		<div routestate id=BgWVZ hostid=BgWVZ state=main.MasterDataManagement routestateid=1 param1=false param2={"isShowSearchCriteria":false}></div>
+
+		
+
+	In routestate directive:
+		if (scope.outcontrol) {
+            scope.outcontrol.hostid = scope.hostid = angular.randomId();
+        }
+        else {
+            scope.hostid = scope.hostid || angular.randomId();
+        }
+
+
+
+	2) parame2 should be string of JSON Object, it can be:
+		 param2="param2String" 
+			in js code, we define:	 parm2String = JSON.stringify(MyObject);
+		Or
+		 param2="{"isShowSearchCriteria":false}"
+
+
+
+
+
+10. ng-src   binding trust
+
+	 suspect looking at the excerpt that the function trustSrc from trustSrc(currentProject.url) is not defined in the controller. 
+
+	You need to inject the $sce service in the controller and trustAsResourceUrl the url there.
+
+	In the controller:
+	function AppCtrl($scope, $sce) {
+		// ...
+		$scope.setProject = function (id) {
+		  $scope.currentProject = $scope.projects[id];
+		  $scope.currentProjectUrl = $sce.trustAsResourceUrl($scope.currentProject.url);
+		}
+	}
+
+	In the Template:
+	<iframe ng-src="{{currentProjectUrl}}"> </iframe>
+
+
+11. 'event' is a global event on IE
+
+window.addEventListener("dragover", function (e) {
+    e = e || event;
+    e.preventDefault();
+}, false);
+window.addEventListener("drop", function (e) {
+    e = e || event;
+    e.preventDefault();
+}, false);
+
+
+
+12 Array reduce Function
+
+ //var flexRows = $scope.controllerModel.flexObject.flexTree.rows;
+
+                                        //var list = flexRows.reduce(function (p, c, index) {
+                                        //    return p.concat([{ index: c.index, TemplateId: c.dataItem.TemplateId, TabId: c.dataItem.TabId }]);
+                                        //}, []);
+
+
+                                        //var list = flexRows.reduce(function (p, c, index) {
+
+                                        //    p.concat
+
+
+                                        //    if (c.child) {
+
+
+                                        //    }
+                                        //    else{}
+                                                
+                                        //    return p.concat( c.childred   );
+                                        //}, []);
+
+                                        //list.find(
+
+                                        //    function (item) {
+
+                                        //        item.id> 10
+
+
+                                        //    }
+
+                                        //    );
+

@@ -1,0 +1,5 @@
+https://github.com/angular/angular.js/issues/1019
+
+@* wijom cannot support index property binding !!!!!
+						 <wj-flex-grid-column is-read-only="false" binding="DictViewColumnIDKeyValue['col_@filed.Id']" header="@(filed.Name)"></wj-flex-grid-column>                                   
+       *@

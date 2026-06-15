@@ -1,0 +1,318 @@
+﻿10 Invoice Command
+
+-------10.1 Approved Invoice----------
+
+declare @SOID int = [TF_9665_SOID]
+declare @SalesCost float = [TF_9718_ItemTotalCost]
+declare @AmountGST float = [TF_9690_TotalGST]
+declare @AmountPST float = [TF_9691_TotalPST]
+declare @AmountBeforeTax float = [TF_9689_ItemSubTotalBeforeTax]
+declare @AmountAfterTax float = [TF_9692_ItemSubTotalAfterTax]
+
+declare @SONumber nvarchar(500) = [TF_9668_SONumber]
+declare @RefNumber nvarchar(500) = [TF_9669_ReferenceNumber]
+declare @curUserId int = [CurrentUserId]
+declare @curDate datetime = GETUTCDATE()
+
+INSERT INTO [dbo].[AppAccountGL]
+           (TxTypeID
+		   ,[DateTx]
+           ,[IsLastPost]
+           ,[IsArchived]
+           ,[TxNumber]
+           ,[DateEntered]
+           ,[ReferenceID]
+           ,[PolicyNo]
+		   ,ReferenceNumber
+		   ,Description
+		   ,Debit
+		   ,Credit
+		   ,AppCreatedByID
+		   ,AppCreatedDate
+		   ,AppModifiedByID
+		   ,AppModifiedDate
+		   )
+     VALUES
+           (2
+		   ,@curDate
+		   ,0
+		   ,0
+		   ,''
+		   ,@curDate
+		   ,@SOID
+		   ,null
+		   ,@RefNumber
+		   ,'Invoice ' + @RefNumber
+		   ,@AmountAfterTax
+		   ,@AmountAfterTax
+		   ,@curUserId
+		   ,@curDate
+		   ,@curUserId
+		   ,@curDate
+           )
+
+
+declare @AppAccountGLID int = (select SCOPE_IDENTITY())
+
+	-- 78 Cost of Sales
+	--33 Inventory Finished Goods
+	--157 Accounts Receivable
+	--51 Output GST
+	--52 Output PST
+	
+INSERT INTO [dbo].[AppAccountGLDetail]
+           ([AppAccountGLID]
+           ,[Account]
+           ,[Debit]
+           ,[Credit]  
+           ,[TxReference]
+		   ,AppCreatedByID
+		   ,AppCreatedDate
+		   ,AppModifiedByID
+		   ,AppModifiedDate)
+     VALUES
+           (@AppAccountGLID, 78, @SalesCost, 0, 'Invoice ' + @RefNumber
+		   ,@curUserId
+		   ,@curDate
+		   ,@curUserId
+		   ,@curDate)
+
+INSERT INTO [dbo].[AppAccountGLDetail]
+           ([AppAccountGLID]
+           ,[Account]
+           ,[Debit]
+           ,[Credit]  
+           ,[TxReference]
+		   ,AppCreatedByID
+		   ,AppCreatedDate
+		   ,AppModifiedByID
+		   ,AppModifiedDate)
+     VALUES
+           (@AppAccountGLID, 33, 0, @SalesCost, 'Invoice ' + @RefNumber
+		   ,@curUserId
+		   ,@curDate
+		   ,@curUserId
+		   ,@curDate)
+
+INSERT INTO [dbo].[AppAccountGLDetail]
+           ([AppAccountGLID]
+           ,[Account]
+           ,[Debit]
+           ,[Credit]  
+           ,[TxReference]
+		   ,AppCreatedByID
+		   ,AppCreatedDate
+		   ,AppModifiedByID
+		   ,AppModifiedDate)
+     VALUES
+           (@AppAccountGLID, 157, @AmountAfterTax, 0, @RefNumber
+		   ,@curUserId
+		   ,@curDate
+		   ,@curUserId
+		   ,@curDate)
+
+INSERT INTO [dbo].[AppAccountGLDetail]
+           ([AppAccountGLID]
+           ,[Account]
+           ,[Debit]
+           ,[Credit]  
+           ,[TxReference]
+		   ,AppCreatedByID
+		   ,AppCreatedDate
+		   ,AppModifiedByID
+		   ,AppModifiedDate)
+     VALUES
+           (@AppAccountGLID, 51, 0, @AmountGST, @RefNumber
+		   ,@curUserId
+		   ,@curDate
+		   ,@curUserId
+		   ,@curDate)
+
+INSERT INTO [dbo].[AppAccountGLDetail]
+           ([AppAccountGLID]
+           ,[Account]
+           ,[Debit]
+           ,[Credit]  
+           ,[TxReference]
+		   ,AppCreatedByID
+		   ,AppCreatedDate
+		   ,AppModifiedByID
+		   ,AppModifiedDate)
+     VALUES
+           (@AppAccountGLID, 52, 0, @AmountPST, @RefNumber
+		   ,@curUserId
+		   ,@curDate
+		   ,@curUserId
+		   ,@curDate)
+
+
+UPDATE UDF_WM_SO SET InvoiceStatus = 2 WHERE SOID =@SOID
+
+
+
+----------10.2 Complete Incoming Payment--------
+
+
+declare @SOID int = [TF_9665_SOID]
+declare @SalesCost float = [TF_9718_ItemTotalCost]
+declare @AmountGST float = [TF_9690_TotalGST]
+declare @AmountPST float = [TF_9691_TotalPST]
+declare @AmountBeforeTax float = [TF_9689_ItemSubTotalBeforeTax]
+declare @AmountAfterTax float = [TF_9692_ItemSubTotalAfterTax]
+
+declare @SONumber nvarchar(500) = [TF_9668_SONumber]
+declare @RefNumber nvarchar(500) = [TF_9669_ReferenceNumber]
+declare @curUserId int = [CurrentUserId]
+declare @curDate datetime = GETUTCDATE()
+
+INSERT INTO [dbo].[AppAccountGL]
+           (TxTypeID
+		   ,[DateTx]
+           ,[IsLastPost]
+           ,[IsArchived]
+           ,[TxNumber]
+           ,[DateEntered]
+           ,[ReferenceID]
+           ,[PolicyNo]
+		   ,ReferenceNumber
+		   ,Description
+		   ,Debit
+		   ,Credit
+		   ,AppCreatedByID
+		   ,AppCreatedDate
+		   ,AppModifiedByID
+		   ,AppModifiedDate
+		   )
+     VALUES
+           (4
+		   ,@curDate
+		   ,0
+		   ,0
+		   ,''
+		   ,@curDate
+		   ,@SOID
+		   ,null
+		   ,@SONumber
+		   ,'Payment '+ @SONumber
+		   ,@AmountAfterTax
+		   ,@AmountAfterTax
+		   ,@curUserId
+		   ,@curDate
+		   ,@curUserId
+		   ,@curDate
+           )
+
+
+declare @AppAccountGLID int = (select SCOPE_IDENTITY())	
+	--157 Accounts Receivable
+	--237 Current Account
+	
+	
+INSERT INTO [dbo].[AppAccountGLDetail]
+           ([AppAccountGLID]
+           ,[Account]
+           ,[Debit]
+           ,[Credit]  
+           ,[TxReference]
+		   ,AppCreatedByID
+		   ,AppCreatedDate
+		   ,AppModifiedByID
+		   ,AppModifiedDate)
+     VALUES
+           (@AppAccountGLID, 157, 0, @AmountAfterTax, 'Payment ' + @RefNumber
+		   ,@curUserId
+		   ,@curDate
+		   ,@curUserId
+		   ,@curDate)
+
+INSERT INTO [dbo].[AppAccountGLDetail]
+           ([AppAccountGLID]
+           ,[Account]
+           ,[Debit]
+           ,[Credit]  
+           ,[TxReference]
+		   ,AppCreatedByID
+		   ,AppCreatedDate
+		   ,AppModifiedByID
+		   ,AppModifiedDate)
+     VALUES
+           (@AppAccountGLID, 237, @AmountAfterTax, 0, 'Payment ' + @RefNumber
+		   ,@curUserId
+		   ,@curDate
+		   ,@curUserId
+		   ,@curDate)
+
+
+
+
+UPDATE UDF_WM_SO SET InvoiceStatus = 3 WHERE SOID =@SOID
+
+
+
+20 Warehouse Edit Command
+
+
+
+-------20.1 Generate Warehouse Locations
+
+DECLARE @WarehouseID int = [TF_9916_WarehouseID]
+DECLARE @CountAisle int = (select count(code) from UDF_WM_WarehouseAisle WHERE UDF_WM_WarehouseAisle.WarehouseID = @WarehouseID)
+DECLARE @CountRack int = (select count(code) from UDF_WM_WarehouseRack WHERE UDF_WM_WarehouseRack.WarehouseID = @WarehouseID)
+DECLARE @CountShell int = (select count(code) from UDF_WM_WarehouseShell WHERE UDF_WM_WarehouseShell.WarehouseID = @WarehouseID)
+DECLARE @CountPallet int = (select count(code) from UDF_WM_WarehousePallet WHERE UDF_WM_WarehousePallet.WarehouseID = @WarehouseID)
+
+
+
+IF (@CountAisle = 0)
+BEGIN
+	INSERT INTO UDF_WM_WarehouseAisle(WarehouseID, CODE) Values (@WarehouseID, 'A1')
+END
+
+IF (@CountRack = 0)
+BEGIN
+	INSERT INTO UDF_WM_WarehouseRack(WarehouseID, CODE) Values (@WarehouseID, '')
+END
+
+IF (@CountShell = 0)
+BEGIN
+	INSERT INTO UDF_WM_WarehouseShell(WarehouseID, CODE) Values (@WarehouseID, '')
+END
+
+IF (@CountPallet = 0)
+BEGIN
+	INSERT INTO UDF_WM_WarehousePallet(WarehouseID, CODE) Values (@WarehouseID, '')
+END
+
+
+INSERT INTO [dbo].[AppWarehouseLocation]
+           ([CieWarehouseID]
+           ,[LocationCode]
+           ,[AisleNumber]
+           ,[RackNumber]
+           ,[ShellNumber]
+           ,[PalletNumber]
+)
+SELECT
+	@WarehouseID as CieWarehouseID,
+	UDF_WM_WarehouseAisle.Code + UDF_WM_WarehouseRack.Code + UDF_WM_WarehouseShell.Code + UDF_WM_WarehousePallet.Code as LocationCode,
+	UDF_WM_WarehouseAisle.AisleID, 
+	UDF_WM_WarehouseRack.RackID,
+	UDF_WM_WarehouseShell.ShellID,
+	UDF_WM_WarehousePallet.PalletID
+FROM            
+	(select * from UDF_WM_WarehouseAisle WHERE UDF_WM_WarehouseAisle.WarehouseID = @WarehouseID) as UDF_WM_WarehouseAisle
+	CROSS JOIN
+	(select * from UDF_WM_WarehouseRack WHERE UDF_WM_WarehouseRack.WarehouseID = @WarehouseID) as UDF_WM_WarehouseRack
+	CROSS JOIN
+	(select * from UDF_WM_WarehouseShell WHERE UDF_WM_WarehouseShell.WarehouseID = @WarehouseID) as UDF_WM_WarehouseShell
+	CROSS JOIN
+	(select * from UDF_WM_WarehousePallet WHERE UDF_WM_WarehousePallet.WarehouseID = @WarehouseID) as UDF_WM_WarehousePallet 
+--WHERE 
+ORDER BY UDF_WM_WarehouseAisle.AisleID, 
+	UDF_WM_WarehouseRack.RackID,
+	UDF_WM_WarehouseShell.ShellID,
+	UDF_WM_WarehousePallet.PalletID
+
+
+
+--DELETE FROM [AppWarehouseLocation]

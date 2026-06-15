@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>APP.Components.Dto</AssemblyName>
+    <RootNamespace>APP.Components.Dto</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <!--
+      Phase 1: Pure POCO project — zero System.Web, zero LLBLGen.
+      SDK glob picks up all .cs files automatically; no Compile entries needed.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Upgrade from the 4.0.5 DLL HintPath reference in the original .csproj -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <!-- Shim for any ConfigurationManager.AppSettings calls; mark sites with // TODO-PHASE5 -->
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="9.0.0" />
+  </ItemGroup>
+
+  <!-- UserDefine\AppTrans\DatabaseTableInfoDto.cs is a stale copy of DatabaseSchema\DatabaseTableInfoDto.cs -->
+  <ItemGroup>
+    <Compile Remove="UserDefine\AppTrans\DatabaseTableInfoDto.cs" />
+  </ItemGroup>
+
+  <!--
+    APP.Framework.Core is kept as a project reference here because APP.Components.Dto
+    references APP.Framework for base types. Remove this dependency if it causes a cycle
+    once APP.Framework.Core is cleaned up.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\APP.Framework\APP.Framework.Core.csproj" />
+    <ProjectReference Include="..\DatabaseSchemaReader\DatabaseSchemaReader.Core.csproj" />
+  </ItemGroup>
+
+</Project>

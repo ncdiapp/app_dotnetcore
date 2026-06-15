@@ -1,0 +1,180 @@
+# AngularJS Solution Reference Guide
+
+## Solution Root Path Configuration
+
+**IMPORTANT**: Set the solution root path at the beginning of your session or in your environment:
+
+**Default Solution Root**: `C:\DevApp\App\`
+
+**Note**: This path can be changed to match your local development environment. All paths below are relative to this root.
+
+**Main Solution File**: `{SolutionRoot}\PLMS  Solution 555 old.sln`
+
+**React Application Path** (separate from solution):
+- **React App Path**: `C:\DevApp\app-react` (or your React app location)
+
+---
+
+## Server-Side Projects Reference Structure
+
+When implementing or debugging React components, **ALWAYS** refer to the corresponding implementation in the original solution. All paths below are relative to `{SolutionRoot}`.
+
+### 1. Web Application (AngularJS Frontend)
+- **AngularJS Controllers**: `{SolutionRoot}\PlmApplication\Scripts1x\mgtCtrl\`
+- **AngularJS Services**: `{SolutionRoot}\PlmApplication\Scripts1x\Services\`
+- **AngularJS Routes**: `{SolutionRoot}\PlmApplication\Scripts1x\mgtRoute.js`
+- **Server Controllers (MVC)**: `{SolutionRoot}\PlmApplication\Server\Controllers\`
+- **Server Views (Razor .cshtml)**: `{SolutionRoot}\PlmApplication\Server\Views\`
+- **Server WebAPI Controllers**: `{SolutionRoot}\PlmApplication\Server\WebApi\`
+
+### 2. Business Logic Layer
+- **Business Logic Classes**: `{SolutionRoot}\APP.BL\`
+  - Transaction business logic: `AppTransactionBL`, `AppMasterDetailFormDataLoadBL`, `AppTransactionFormulaBL`, `AppTransactionCommandBL`
+  - Form business logic: `AppFormBL`, `AppFormFlexLayoutBL`
+  - Search business logic: `AppSearchBL`
+  - Security business logic: `AppSecurityBL`
+  - Integration: `{SolutionRoot}\APP.BL\Integration\`
+  - Email: `{SolutionRoot}\APP.BL\Email\`
+  - Third-party integrations: `{SolutionRoot}\APP.BL\ThirdPartIT\`
+
+### 3. DTOs and Data Transfer Objects
+- **DTO Project**: `{SolutionRoot}\APP.Components.Dto\`
+  - **Entity DTOs**: `{SolutionRoot}\APP.Components.Dto\EntityDto\` - Basic DTOs (e.g., `AppTransactionDto`, `AppFormDto`, `AppSearchDto`)
+  - **Extended DTOs**: `{SolutionRoot}\APP.Components.Dto\EntityExdto\` - Extended DTOs with additional properties (e.g., `AppTransactionExDto`, `AppFormExDto`)
+  - **User-Defined DTOs**: `{SolutionRoot}\APP.Components.Dto\UserDefine\`
+    - Form Data: `{SolutionRoot}\APP.Components.Dto\UserDefine\AppFormData\` (e.g., `AppMasterDetailDto`, `AppTransactionStructureDto`)
+    - Integration: `{SolutionRoot}\APP.Components.Dto\UserDefine\AppIntegration\`
+    - Search: `{SolutionRoot}\APP.Components.Dto\UserDefine\Search\`
+    - Workflow: `{SolutionRoot}\APP.Components.Dto\UserDefine\ProjectWorkFlow\`
+  - **Validation DTOs**: `{SolutionRoot}\APP.Components.Dto\Validation\`
+  - **Database Schema DTOs**: `{SolutionRoot}\APP.Components.Dto\DatabaseSchema\`
+  - **Enums**: `{SolutionRoot}\APP.Components.Dto\AppEnums.cs` - All application enums
+
+### 4. Framework and Utilities
+- **Framework Project**: `{SolutionRoot}\APP.Framework\`
+  - Helpers, utilities, extensions
+  - Operation call results, validation
+  - Time zone helpers, encryption
+  - Cache providers
+
+### 5. Entity Converters
+- **Entity Converter Project**: `{SolutionRoot}\APP.Components.EntityConverter\`
+  - Converts between entity classes and DTOs
+
+### 6. Database Layer
+- **Database Layer**: `{SolutionRoot}\Com.Visual2000.LBL\` (also referenced as `APP.LBL`)
+  - Database-specific implementations
+  - ORM layer (LLBLGen Pro)
+
+---
+
+## Key Business Logic Classes to Reference
+
+When implementing React features, check these business logic classes in `{SolutionRoot}\APP.BL\`:
+
+- **AppTransactionBL**: Transaction CRUD, hierarchy, structure loading
+- **AppMasterDetailFormDataLoadBL**: Form data loading and saving
+- **AppTransactionFormulaBL**: Formula validation and calculation
+- **AppTransactionCommandBL**: Transaction command execution
+- **AppFormBL**: Form structure and layout management
+- **AppSearchBL**: Search functionality
+- **AppSecurityBL**: Security and permissions
+- **DataModelDateTimeConverterBL**: DateTime conversion between UTC and client time
+
+---
+
+## Key DTOs to Reference
+
+Common DTOs used in React implementation (located in `{SolutionRoot}\APP.Components.Dto\`):
+
+- **AppTransactionExDto**: Transaction with all related data (in `EntityExdto\`)
+- **AppMasterDetailDto**: Master-detail form data (in `UserDefine\AppFormData\`)
+- **AppTransactionStructureDto**: Form structure (in `UserDefine\AppFormData\`) - returned by `GetFormStructure` API
+- **AppFormExDto**: Form configuration and layout (in `EntityExdto\`)
+- **AppSearchExDto**: Search configuration (in `EntityExdto\`)
+- **OperationCallResult<T>**: Standard API response wrapper (in `APP.Framework\`)
+
+---
+
+## How to Find Business Logic and DTOs
+
+### Finding Business Logic Classes
+
+When you see a WebAPI method calling something like `AppTransactionBL.SomeMethod()`, find that class in:
+- `{SolutionRoot}\APP.BL\`
+- Search for the class name (e.g., `AppTransactionBL.cs`)
+
+### Finding DTO Definitions
+
+When you see a type like `AppMasterDetailDto` or `AppTransactionExDto`, find it in:
+
+1. **Form Data DTOs**: `{SolutionRoot}\APP.Components.Dto\UserDefine\AppFormData\`
+   - `AppMasterDetailDto.cs`
+   - `AppTransactionStructureDto.cs`
+   - `AppFormWithStructureDto.cs`
+
+2. **Extended Entity DTOs**: `{SolutionRoot}\APP.Components.Dto\EntityExdto\`
+   - `AppTransactionExDto.cs`
+   - `AppFormExDto.cs`
+   - `AppSearchExDto.cs`
+
+3. **Basic Entity DTOs**: `{SolutionRoot}\APP.Components.Dto\EntityDto\`
+   - `AppTransactionDto.cs`
+   - `AppFormDto.cs`
+   - `AppSearchDto.cs`
+
+4. **Enums**: `{SolutionRoot}\APP.Components.Dto\AppEnums.cs`
+   - All application enums with "EmApp" prefix
+
+---
+
+## Understanding the Architecture
+
+### Server-Side Rendering vs. Client-Side SPA
+
+**AngularJS (Original)**:
+- Uses server-side rendering with Razor views (`*.cshtml`)
+- Server passes `AppTransactionExDto` model to views with properties like `TransactionOrganizedType`
+- Client-side AngularJS controllers receive pre-rendered HTML
+- Data flows: Server Model → Razor View → AngularJS Controller → API Calls
+
+**React (New)**:
+- Pure client-side SPA (Single Page Application)
+- No server-side rendering
+- All data loaded via API calls
+- Data flows: React Component → API Calls → State Management → Render
+
+### Key Differences
+
+1. **Server-Side Model Properties**: Some properties (like `TransactionOrganizedType`) are available in server-side models (Razor views) but may NOT be in API responses. React must handle this by:
+   - Requesting the property be added to API responses (preferred)
+   - Using reasonable defaults based on component context
+   - Making additional API calls if needed
+
+2. **Business Logic**: Both AngularJS and React connect to the same server-side business logic in `{SolutionRoot}\APP.BL\`. The business logic classes process data the same way for both frontends.
+
+3. **API Endpoints**: Both AngularJS and React use the same WebAPI endpoints in `{SolutionRoot}\PlmApplication\Server\WebApi\`.
+
+---
+
+## Reference Workflow
+
+When implementing a React component:
+
+1. **Find the AngularJS Controller**: Search in `{SolutionRoot}\PlmApplication\Scripts1x\mgtCtrl\`
+2. **Find the AngularJS Service**: Search in `{SolutionRoot}\PlmApplication\Scripts1x\Services\`
+3. **Find the WebAPI Endpoint**: Search in `{SolutionRoot}\PlmApplication\Server\WebApi\`
+4. **Find the Business Logic**: Trace from WebAPI to business logic class in `{SolutionRoot}\APP.BL\`
+5. **Find the DTOs**: Locate DTO definitions in `{SolutionRoot}\APP.Components.Dto\`
+6. **Understand the Data Flow**: 
+   - What data comes from server-side model (Razor view)?
+   - What data comes from API endpoints?
+   - What business logic processes the data?
+   - What DTOs are used?
+
+---
+
+## Notes
+
+- Both AngularJS and React applications connect to the same server-side logic, ensuring consistency in business rules and data processing.
+- When in doubt, check the business logic classes in `{SolutionRoot}\APP.BL\` to understand how data is processed.

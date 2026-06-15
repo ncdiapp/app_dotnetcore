@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>PlmEvaluator</AssemblyName>
+    <RootNamespace>AppExpressionEval</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- TestEvaluator is a separate .csproj in a subfolder; exclude it from this assembly's glob -->
+    <Compile Remove="TestEvaluator\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Roslyn scripting for .NET 10 runtime expression evaluation -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="4.13.0" />
+  </ItemGroup>
+</Project>
