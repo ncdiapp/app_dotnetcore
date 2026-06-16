@@ -1,14 +1,22 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
+import { useTabDataAutoCache } from '../../redux/hooks/useTabNavigation';
+import { getDataModelFromCache, getCurrentActiveTab } from '../../redux/features/ui/navigation/tabnavSlice';
 import { RootState } from '../../redux/store';
 import { isAdminUserFromContext, isMasterSysAdminFromContext } from '../../helper/adminPermissionHelper';
 import { plmMigrationSvc } from '../../webapi/plmMigrationSvc';
 import PlmImportWizard from './plmImport/PlmImportWizard';
-import type { PlmImportStepCode, PlmImportWizardState } from './plmImport/types';
+import type {
+  PlmImportEntityStepUiState,
+  PlmImportPageCache,
+  PlmImportStepCode,
+  PlmImportWizardState,
+} from './plmImport/types';
+import { createInitialEntityStepUi, PLM_IMPORT_PAGE_CACHE_SUFFIX } from './plmImport/types';
 
-const createInitialState = (): PlmImportWizardState => ({
+const createInitialWizardState = (): PlmImportWizardState => ({
   session: null,
   currentStepCode: 'Connect',
   targetCompanyId: null,
@@ -18,26 +26,62 @@ const createInitialState = (): PlmImportWizardState => ({
   systemDefineComplete: false,
 });
 
+const getPlmImportCacheKey = (): string | null => {
+  const tabKey = getCurrentActiveTab()?.tabKey ?? null;
+  return tabKey ? `${tabKey}${PLM_IMPORT_PAGE_CACHE_SUFFIX}` : null;
+};
+
+const readCachedPageState = (): { page: PlmImportPageCache; fromCache: boolean } => {
+  const cacheKey = getPlmImportCacheKey();
+  if (cacheKey) {
+    const cached = getDataModelFromCache(cacheKey) as PlmImportPageCache | null;
+    if (cached?.wizardState) {
+      return {
+        page: {
+          wizardState: cached.wizardState,
+          entityStepUi: cached.entityStepUi ?? createInitialEntityStepUi(),
+        },
+        fromCache: true,
+      };
+    }
+  }
+  return {
+    page: {
+      wizardState: createInitialWizardState(),
+      entityStepUi: createInitialEntityStepUi(),
+    },
+    fromCache: false,
+  };
+};
+
 const PlmDataImportManagement: React.FC = () => {
   const { theme } = useTheme();
-  const { showError, showInfo } = useErrorMessage();
+  const { showError } = useErrorMessage();
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
 
   const isAdmin = isAdminUserFromContext(userContext);
   const isSysAdmin = isMasterSysAdminFromContext(userContext);
 
-  const [state, setState] = useState<PlmImportWizardState>(createInitialState);
-  const [isLoading, setIsLoading] = useState(true);
-  const [resumePromptOpen, setResumePromptOpen] = useState(false);
+  const cachedInit = useRef(readCachedPageState());
+  const [state, setState] = useState<PlmImportWizardState>(() => cachedInit.current.page.wizardState);
+  const [entityStepUi, setEntityStepUi] = useState<PlmImportEntityStepUiState>(
+    () => cachedInit.current.page.entityStepUi,
+  );
+  const [isLoading, setIsLoading] = useState(() => !cachedInit.current.fromCache);
+
+  const cacheKey = useMemo(() => getPlmImportCacheKey(), []);
+
+  const pageCache = useMemo((): PlmImportPageCache => ({
+    wizardState: state,
+    entityStepUi,
+  }), [entityStepUi, state]);
+
+  useTabDataAutoCache(pageCache, cacheKey ?? undefined);
 
   const defaultCompanyId = useMemo(() => {
     const id = userContext?.CurrentWorkingCompanyId ?? userContext?.currentWorkingCompanyId;
     return typeof id === 'number' ? id : (id ? Number(id) : null);
   }, [userContext]);
-
-  const patchState = useCallback((patch: Partial<PlmImportWizardState>) => {
-    setState((prev) => ({ ...prev, ...patch }));
-  }, []);
 
   const applySession = useCallback((session: PlmImportWizardState['session']) => {
     if (!session) return;
@@ -49,24 +93,33 @@ const PlmDataImportManagement: React.FC = () => {
         stepState = {};
       }
     }
-    patchState({
+    setState((prev) => ({
+      ...prev,
       session,
       saasApplicationId: session.SaasApplicationId ?? null,
       targetCompanyId: session.CompanyId ?? null,
-      currentStepCode: (session.CurrentStepCode as PlmImportStepCode) || 'Connect',
-      plmConnectionString: session.PlmConnectionString ?? '',
+      currentStepCode: (session.CurrentStepCode as PlmImportStepCode) || prev.currentStepCode,
+      plmConnectionString: session.PlmConnectionString?.trim()
+        || (session.HasPlmConnection ? prev.plmConnectionString : ''),
       connectionTested: Boolean(stepState.connectionTested),
       systemDefineComplete: Boolean(stepState.systemDefineComplete),
-    });
-  }, [patchState]);
+    }));
+  }, []);
 
-  const loadActiveSession = useCallback(async (companyId?: number | null) => {
-    setIsLoading(true);
+  const patchState = useCallback((patch: Partial<PlmImportWizardState>) => {
+    setState((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const patchEntityStepUi = useCallback((patch: Partial<PlmImportEntityStepUiState>) => {
+    setEntityStepUi((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const loadActiveSession = useCallback(async (companyId?: number | null, options?: { silent?: boolean }) => {
+    if (!options?.silent) setIsLoading(true);
     try {
       const result = await plmMigrationSvc.getActiveImportSession(companyId ?? undefined);
       if (result.Object) {
         applySession(result.Object);
-        setResumePromptOpen(true);
       } else {
         patchState({
           session: null,
@@ -76,7 +129,7 @@ const PlmDataImportManagement: React.FC = () => {
     } catch (e: any) {
       showError(e?.message || 'Failed to load import session.');
     } finally {
-      setIsLoading(false);
+      if (!options?.silent) setIsLoading(false);
     }
   }, [applySession, defaultCompanyId, isSysAdmin, patchState, showError]);
 
@@ -85,29 +138,12 @@ const PlmDataImportManagement: React.FC = () => {
       setIsLoading(false);
       return;
     }
+    if (cachedInit.current.fromCache) {
+      setIsLoading(false);
+      return;
+    }
     loadActiveSession(isSysAdmin ? null : defaultCompanyId);
   }, [isAdmin, isSysAdmin, defaultCompanyId, loadActiveSession]);
-
-  const handleDiscardAndRestart = useCallback(async () => {
-    try {
-      await plmMigrationSvc.discardImportSession(
-        state.session?.SessionId ?? null,
-        state.targetCompanyId ?? defaultCompanyId,
-      );
-      setResumePromptOpen(false);
-      setState({
-        ...createInitialState(),
-        targetCompanyId: isSysAdmin ? state.targetCompanyId : defaultCompanyId,
-      });
-      showInfo('Previous session discarded.', true);
-    } catch (e: any) {
-      showError(e?.message || 'Failed to discard session.');
-    }
-  }, [defaultCompanyId, isSysAdmin, showError, showInfo, state.session?.SessionId, state.targetCompanyId]);
-
-  const handleContinueSession = useCallback(() => {
-    setResumePromptOpen(false);
-  }, []);
 
   if (!isAdmin) {
     return (
@@ -130,38 +166,14 @@ const PlmDataImportManagement: React.FC = () => {
 
   return (
     <div className="h-full w-full overflow-hidden flex flex-col">
-      {resumePromptOpen && state.session && (
-        <div className={`flex-none mx-4 mt-3 p-3 rounded border text-xs ${theme.inputBox}`}>
-          <div className={`font-semibold mb-1 ${theme.label}`}>Resume in-progress import?</div>
-          <p className={theme.menu_secondary}>
-            Session #{state.session.SessionId} was saved on{' '}
-            {state.session.UpdatedAt ? new Date(state.session.UpdatedAt).toLocaleString() : '—'}.
-          </p>
-          <div className="flex gap-2 mt-2">
-            <button
-              type="button"
-              className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
-              onClick={handleContinueSession}
-            >
-              Continue
-            </button>
-            <button
-              type="button"
-              className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_secondary}`}
-              onClick={handleDiscardAndRestart}
-            >
-              Discard &amp; start fresh
-            </button>
-          </div>
-        </div>
-      )}
-
       <div className="h-1 flex-auto overflow-hidden">
         <PlmImportWizard
           state={state}
+          entityStepUi={entityStepUi}
           isSysAdmin={isSysAdmin}
           onStateChange={patchState}
-          onReloadSession={() => loadActiveSession(state.targetCompanyId ?? defaultCompanyId)}
+          onEntityStepUiChange={patchEntityStepUi}
+          onReloadSession={() => loadActiveSession(state.targetCompanyId ?? defaultCompanyId, { silent: true })}
         />
       </div>
     </div>

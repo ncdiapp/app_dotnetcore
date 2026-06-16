@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { getStepByCode, getStepIndex, PLM_IMPORT_STEPS } from './plmImportStepRegistry';
-import type { PlmImportStepCode, PlmImportWizardState } from './types';
+import type { PlmImportEntityStepUiState, PlmImportStepCode, PlmImportWizardState } from './types';
 import ConnectionStep from './steps/ConnectionStep';
 import EntityStep from './steps/EntityStep';
 import TemplateStep from './steps/TemplateStep';
@@ -9,15 +9,19 @@ import OtherDataStep from './steps/OtherDataStep';
 
 export type PlmImportWizardProps = {
   state: PlmImportWizardState;
+  entityStepUi: PlmImportEntityStepUiState;
   isSysAdmin: boolean;
   onStateChange: (patch: Partial<PlmImportWizardState>) => void;
+  onEntityStepUiChange: (patch: Partial<PlmImportEntityStepUiState>) => void;
   onReloadSession: () => void;
 };
 
 const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
   state,
+  entityStepUi,
   isSysAdmin,
   onStateChange,
+  onEntityStepUiChange,
   onReloadSession,
 }) => {
   const { theme } = useTheme();
@@ -65,7 +69,15 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
           />
         );
       case 'Entity':
-        return <EntityStep state={state} />;
+        return (
+          <EntityStep
+            state={state}
+            entityStepUi={entityStepUi}
+            onStateChange={onStateChange}
+            onEntityStepUiChange={onEntityStepUiChange}
+            onSessionSaved={onReloadSession}
+          />
+        );
       case 'Template':
         return <TemplateStep />;
       case 'OtherData':

@@ -35,7 +35,7 @@
 
 | Step | What happens |
 |------|----------------|
-| **1 Connect & Discover** | Pick **Application** + PLM connection → read `pdmDataSource` → register ERP/DataWS/OtherEx (company lock) |
+| **1 Connect & Discover** | Pick **Application** + PLM connection → read `pdmDataSource` → register ERP/DataWS/OtherEx (company lock). Discovery grid: **Data source name**, **Connection string** (raw from `pdmDataSource`), **Status** (`OK` only when row has its own connection string and test passed; blank connection → blank status). |
 | **2 Entity** | **System Define first** (export PLM tables → preview → execute job) → then **User Define** (preview → execute job) |
 | **3 Template** | 1 PLM Template → 1 Transaction Group; preview → execute job |
 | **4 Other Data** | Placeholder (Color, POM, …) |
@@ -90,7 +90,9 @@ Add a **PLM Data Import** wizard to the React **Database Design** page (`Databas
 | B5–B7 | Register ERP/DataWS/OtherEx in Master DB; naming `{TenantDb}_ERP` / `_DataWS` / `_OtherEx` |
 | B5a–c | **Company lock** on connection string (same company → reuse; different company → block) |
 | B8–B9 | PLM (1): **no new register**; map to Company Master DB; discover/validate only |
-| B10 | Empty PLM connection in `pdmDataSource` → use main PLM connection |
+| B10 | Empty `ConnectionString` in `pdmDataSource` → **connection test / register** uses wizard main PLM connection |
+| B10a | Discovery grid **displays** `pdmDataSource.ConnectionString` verbatim — blank in DB stays **blank** in UI (no substitute text) |
+| B10b | Discovery **Status** column: `OK` when row has non-empty `ConnectionString` and connection test passed; **blank** when `ConnectionString` is empty (B10 fallback test is internal only) |
 
 **`EmDataSourceFrom`:**
 

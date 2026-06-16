@@ -1,0 +1,251 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Data.Common;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using App.BL;
+using APP.Components.EntityDto;
+using APP.Framework.Communication;
+using APP.Framework.Validation;
+using DatabaseSchemaMrg;
+using Newtonsoft.Json;
+
+namespace APP.BL.DataMigration.PlmMigration
+{
+    public static partial class PlmMigrationBL
+    {
+        private static readonly ConcurrentDictionary<int, CancellationTokenSource> JobCancelTokens =
+            new ConcurrentDictionary<int, CancellationTokenSource>();
+
+        internal sealed class PlmJobRuntimeContext
+        {
+            public int SessionId { get; set; }
+            public int JobId { get; set; }
+            public int TenantDataSourceId { get; set; }
+            public string PlmConnectionString { get; set; }
+            public string TenantConnectionString { get; set; }
+        }
+
+        internal static PlmJobRuntimeContext BuildJobRuntimeContext(int sessionId, int jobId)
+        {
+            var fixture = GetTenantFixture();
+            var session = LoadSessionById(fixture, sessionId, includeConnection: true);
+            if (session == null)
+                throw new InvalidOperationException("Import session not found.");
+
+            if (string.IsNullOrWhiteSpace(session.PlmConnectionString))
+                throw new InvalidOperationException("PLM connection is not available on this session.");
+
+            int tenantDataSourceId = GetTenantDataSourceId();
+            var tenantRegister = AppDataSourceRegisterBL.RetrieveOneAppDataSourceRegisterEntity(tenantDataSourceId);
+            if (tenantRegister == null || string.IsNullOrWhiteSpace(tenantRegister.ConnectionString))
+                throw new InvalidOperationException("Tenant database connection is not available.");
+
+            string tenantConn = AppConnectionStringEncryptionBL.Decrypt(tenantRegister.ConnectionString);
+
+            return new PlmJobRuntimeContext
+            {
+                SessionId = sessionId,
+                JobId = jobId,
+                TenantDataSourceId = tenantDataSourceId,
+                PlmConnectionString = session.PlmConnectionString.Trim(),
+                TenantConnectionString = tenantConn
+            };
+        }
+
+        internal static int CreateQueuedJob(DatabaseFixture fixture, int sessionId, string jobType, string progressMessage)
+        {
+            var now = DateTime.UtcNow;
+            const string sql = @"
+INSERT INTO dbo.AppPlmImportJob
+    (SessionId, JobType, Status, ProgressPercent, ProgressMessage, CreatedAt, UpdatedAt, StartedAt)
+VALUES
+    (@SessionId, @JobType, @Status, 0, @ProgressMessage, @CreatedAt, @UpdatedAt, NULL);
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
+
+            var jobIdObj = fixture.RetriveScalar(sql, new List<DbParameter>
+            {
+                CreateParam(fixture, "@SessionId", sessionId),
+                CreateParam(fixture, "@JobType", jobType),
+                CreateParam(fixture, "@Status", JobStatusQueued),
+                CreateParam(fixture, "@ProgressMessage", progressMessage),
+                CreateParam(fixture, "@CreatedAt", now),
+                CreateParam(fixture, "@UpdatedAt", now)
+            });
+            return Convert.ToInt32(jobIdObj);
+        }
+
+        internal static void UpdateJobProgress(
+            DatabaseFixture fixture, int jobId, string status, int progressPercent,
+            string progressMessage, string resultJson = null, string errorMessage = null, bool markCompleted = false)
+        {
+            var sb = new StringBuilder(@"
+UPDATE dbo.AppPlmImportJob SET
+    Status = @Status,
+    ProgressPercent = @ProgressPercent,
+    ProgressMessage = @ProgressMessage,
+    UpdatedAt = @UpdatedAt");
+            if (resultJson != null) sb.Append(", ResultJson = @ResultJson");
+            if (errorMessage != null) sb.Append(", ErrorMessage = @ErrorMessage");
+            if (status == JobStatusRunning) sb.Append(", StartedAt = COALESCE(StartedAt, @UpdatedAt)");
+            if (markCompleted) sb.Append(", CompletedAt = @UpdatedAt");
+            sb.Append(" WHERE JobId = @JobId");
+
+            var parms = new List<DbParameter>
+            {
+                CreateParam(fixture, "@Status", status),
+                CreateParam(fixture, "@ProgressPercent", progressPercent),
+                CreateParam(fixture, "@ProgressMessage", (object)progressMessage ?? DBNull.Value),
+                CreateParam(fixture, "@UpdatedAt", DateTime.UtcNow),
+                CreateParam(fixture, "@JobId", jobId)
+            };
+            if (resultJson != null)
+                parms.Add(CreateParam(fixture, "@ResultJson", resultJson));
+            if (errorMessage != null)
+                parms.Add(CreateParam(fixture, "@ErrorMessage", errorMessage));
+
+            fixture.ExecuteNonQueryResult(sb.ToString(), parms);
+        }
+
+        internal static bool IsJobCancellationRequested(int jobId)
+        {
+            return JobCancelTokens.TryGetValue(jobId, out var cts) && cts.IsCancellationRequested;
+        }
+
+        internal static void RegisterJobCancellation(int jobId)
+        {
+            JobCancelTokens[jobId] = new CancellationTokenSource();
+        }
+
+        internal static void ClearJobCancellation(int jobId)
+        {
+            if (JobCancelTokens.TryRemove(jobId, out var cts))
+                cts.Dispose();
+        }
+
+        internal static void RequestJobCancellation(int jobId)
+        {
+            if (JobCancelTokens.TryGetValue(jobId, out var cts))
+                cts.Cancel();
+        }
+
+        internal static void RunJobInBackground(Action<PlmJobRuntimeContext> work, PlmJobRuntimeContext context)
+        {
+            RegisterJobCancellation(context.JobId);
+            Task.Run(() =>
+            {
+                var fixture = AppCacheManagerBL.GetOneDatabaseFixture(context.TenantDataSourceId);
+                try
+                {
+                    UpdateJobProgress(fixture, context.JobId, JobStatusRunning, 0, "Job started.");
+                    work(context);
+                }
+                catch (Exception ex)
+                {
+                    UpdateJobProgress(
+                        fixture, context.JobId, JobStatusFailed, 100, "Job failed.",
+                        errorMessage: ex.Message, markCompleted: true);
+                    WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
+                        "RunJob", "Failed", null, null, null, null, ex.Message);
+                }
+                finally
+                {
+                    ClearJobCancellation(context.JobId);
+                }
+            });
+        }
+
+        public static OperationCallResult<PlmImportJobDto> StartPlmTableExportJob(int? sessionId)
+        {
+            var result = new OperationCallResult<PlmImportJobDto>();
+            try
+            {
+                RequirePlmMigrationAdmin();
+                if (!sessionId.HasValue || sessionId.Value <= 0)
+                    throw new ArgumentException("SessionId is required.");
+
+                var fixture = GetTenantFixture();
+                int jobId = CreateQueuedJob(fixture, sessionId.Value, JobTypePlmTableExport, "Queued PLM table export.");
+                WriteImportLog(fixture, sessionId.Value, jobId, StepEntity, "PlmTableExport", "Running", null, null, null, null, "PLM table export job queued.");
+
+                var context = BuildJobRuntimeContext(sessionId.Value, jobId);
+                RunJobInBackground(RunPlmTableExportJob, context);
+                result.Object = GetImportJob(jobId).Object;
+            }
+            catch (Exception ex)
+            {
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(PlmMigrationBL), "Plm_TableExport_Start_Error", ValidationItemType.Error, ex.Message));
+            }
+            return result;
+        }
+
+        private static void RunPlmTableExportJob(PlmJobRuntimeContext context)
+        {
+            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(context.TenantDataSourceId);
+            var exportResult = ExportPlmTablesToTenant(
+                context.PlmConnectionString,
+                context.TenantConnectionString,
+                (percent, message) =>
+                {
+                    if (IsJobCancellationRequested(context.JobId))
+                        throw new OperationCanceledException("Export cancelled.");
+                    UpdateJobProgress(fixture, context.JobId, JobStatusRunning, percent, message);
+                });
+
+            string resultJson = JsonConvert.SerializeObject(exportResult);
+            if (!exportResult.IsSuccess)
+            {
+                UpdateJobProgress(
+                    fixture, context.JobId, JobStatusFailed, 100, "Export completed with errors.",
+                    resultJson: resultJson, errorMessage: exportResult.ErrorMessage, markCompleted: true);
+                WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
+                    "PlmTableExport", "Failed", null, null, null, null, exportResult.ErrorMessage);
+                return;
+            }
+
+            int? totalRows = exportResult.Tables?.Sum(t => t.RowsCopied);
+            UpdateJobProgress(
+                fixture, context.JobId, JobStatusCompleted, 100, "Export completed successfully.",
+                resultJson: resultJson, markCompleted: true);
+            WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
+                "PlmTableExport", "Success", null, null, totalRows, null,
+                "PLM tables exported to tenant database.");
+        }
+
+        public static OperationCallResult<PlmTableExportPlanDto> PreviewPlmTableExportPlan(int? sessionId)
+        {
+            var result = new OperationCallResult<PlmTableExportPlanDto> { Object = new PlmTableExportPlanDto() };
+            try
+            {
+                RequirePlmMigrationAdmin();
+                if (!sessionId.HasValue || sessionId.Value <= 0)
+                    throw new ArgumentException("SessionId is required.");
+
+                var fixture = GetTenantFixture();
+                var session = LoadSessionById(fixture, sessionId.Value, includeConnection: true);
+                if (session == null || string.IsNullOrWhiteSpace(session.PlmConnectionString))
+                    throw new InvalidOperationException("PLM connection is not available on this session.");
+
+                result.Object = BuildPlmTableExportPlan(session.PlmConnectionString.Trim());
+                if (!result.Object.IsSuccess)
+                {
+                    result.ValidationResult.Items.Add(new ValidationItem(
+                        typeof(PlmMigrationBL), "Plm_TableExport_Preview_Error", ValidationItemType.Error,
+                        result.Object.ErrorMessage));
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Object.IsSuccess = false;
+                result.Object.ErrorMessage = ex.Message;
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(PlmMigrationBL), "Plm_TableExport_Preview_Error", ValidationItemType.Error, ex.Message));
+            }
+            return result;
+        }
+    }
+}

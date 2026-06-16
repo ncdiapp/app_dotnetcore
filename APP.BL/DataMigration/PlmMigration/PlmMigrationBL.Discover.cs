@@ -212,6 +212,10 @@ ORDER BY DataSourceFrom";
                 {
                     DataSourceFrom = row.DataSourceFrom,
                     DataSourceFromName = GetPlmDataSourceFromName(row.DataSourceFrom),
+                    DataSourceName = !string.IsNullOrWhiteSpace(row.DataSourceName)
+                        ? row.DataSourceName.Trim()
+                        : GetPlmDataSourceFromName(row.DataSourceFrom),
+                    ConnectionString = row.ConnectionString?.Trim() ?? string.Empty,
                     HasConnectionString = !string.IsNullOrWhiteSpace(row.ConnectionString)
                 };
 

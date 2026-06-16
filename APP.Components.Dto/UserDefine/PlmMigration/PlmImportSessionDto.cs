@@ -38,7 +38,7 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string CurrentStepCode { get; set; }
 
-        /// <summary>Encrypted PLM connection string (server-side only; not returned on read).</summary>
+        /// <summary>Decrypted PLM connection string (returned to wizard admin on read/save).</summary>
         [DataMember]
         public string PlmConnectionString { get; set; }
 

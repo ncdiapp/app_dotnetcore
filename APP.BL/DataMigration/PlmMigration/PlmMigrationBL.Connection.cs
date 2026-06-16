@@ -229,6 +229,7 @@ END";
                 var dt = fixture.RetriveDataTable(@"
 SELECT TOP 1 SessionId, SessionGuid, CompanyId, SaasApplicationId, CreatedByUserId,
        CreatedAt, UpdatedAt, SessionStatus, CurrentStepCode, StepStateJson, DataSourceDiscoveryJson,
+       PlmConnectionEncrypted,
        CASE WHEN PlmConnectionEncrypted IS NULL OR LEN(PlmConnectionEncrypted)=0 THEN 0 ELSE 1 END AS HasPlmConnection
 FROM dbo.AppPlmImportSession
 WHERE CompanyId = @CompanyId AND SessionStatus = @Status
@@ -308,6 +309,8 @@ UPDATE dbo.AppPlmImportSession SET
 
                     fixture.ExecuteNonQueryResult(updateSql, parms);
                     result.Object = LoadSessionById(fixture, dto.SessionId.Value, includeConnection: true);
+                    if (result.Object != null && !string.IsNullOrWhiteSpace(dto.PlmConnectionString))
+                        result.Object.PlmConnectionString = dto.PlmConnectionString.Trim();
                 }
                 else
                 {
@@ -343,6 +346,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
                     int newId = Convert.ToInt32(newIdObj);
                     WriteImportLog(fixture, newId, null, dto.CurrentStepCode ?? StepConnect, "SessionCreated", "Success", null, null, null, null, "Import session created.");
                     result.Object = LoadSessionById(fixture, newId, includeConnection: true);
+                    if (result.Object != null && !string.IsNullOrWhiteSpace(dto.PlmConnectionString))
+                        result.Object.PlmConnectionString = dto.PlmConnectionString.Trim();
                 }
             }
             catch (Exception ex)
@@ -441,6 +446,7 @@ FROM dbo.AppPlmImportJob WHERE JobId = @JobId",
             try
             {
                 RequirePlmMigrationAdmin();
+                RequestJobCancellation(jobId);
                 var fixture = GetTenantFixture();
                 fixture.ExecuteNonQueryResult(@"
 UPDATE dbo.AppPlmImportJob

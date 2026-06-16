@@ -55,6 +55,14 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string DataSourceFromName { get; set; }
 
+        /// <summary>Legacy pdmDataSource.DataSourceName (e.g. PLM, ERP).</summary>
+        [DataMember]
+        public string DataSourceName { get; set; }
+
+        /// <summary>Raw pdmDataSource.ConnectionString as stored in PLM (empty when null/blank in DB).</summary>
+        [DataMember]
+        public string ConnectionString { get; set; }
+
         [DataMember]
         public bool HasConnectionString { get; set; }
 

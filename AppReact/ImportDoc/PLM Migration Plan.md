@@ -74,7 +74,7 @@ Migration is delivered through a **PLM Data Import** wizard in the React **Datab
 
 | `DataSourceFrom` | Name | App-Builder handling |
 |------------------|------|----------------------|
-| 1 | PLM | **No new register.** Discover/validate only in Step 1. Map to **Company Master DB** register (`IsCompanyMasterDb = true`). **APP does not retain a long-term connection to the original PLM database** — PLM-sourced tables and data are imported into **Tenant DB**. Empty `ConnectionString` → main PLM connection (edge case). |
+| 1 | PLM | **No new register.** Discover/validate only in Step 1. Map to **Company Master DB** register (`IsCompanyMasterDb = true`). **APP does not retain a long-term connection to the original PLM database** — PLM-sourced tables and data are imported into **Tenant DB**. Empty `ConnectionString` in `pdmDataSource` → **display empty** in the discovery grid; **connection test / register** still uses the wizard main PLM connection (B10). |
 | 2 | ERP | Register as external `AppDataSourceRegister` in Master DB |
 | 3 | DataWS (Warehouse) | Register as external `AppDataSourceRegister` in Master DB |
 | 4 | OtherEx | Register as external `AppDataSourceRegister` in Master DB |

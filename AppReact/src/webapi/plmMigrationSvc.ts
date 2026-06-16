@@ -55,6 +55,8 @@ export interface PlmDiscoverDataSourcesRequestDto {
 export interface PlmDataSourceDiscoveryItemDto {
   DataSourceFrom: number;
   DataSourceFromName?: string | null;
+  DataSourceName?: string | null;
+  ConnectionString?: string | null;
   HasConnectionString: boolean;
   ConnectionTestSuccess: boolean;
   ConnectionTestMessage?: string | null;
@@ -82,6 +84,27 @@ export interface PlmImportJobDto {
   UpdatedAt?: string | null;
   StartedAt?: string | null;
   CompletedAt?: string | null;
+}
+
+export interface PlmTableExportPlanItemDto {
+  SchemaOwner?: string | null;
+  TableName?: string | null;
+  PlmEntityCount?: number;
+  SourceTableExists?: boolean;
+}
+
+export interface PlmTableExportPlanDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  Tables?: PlmTableExportPlanItemDto[];
+}
+
+export interface PlmTableExportResultItemDto {
+  SchemaOwner?: string | null;
+  TableName?: string | null;
+  IsSuccess?: boolean;
+  RowsCopied?: number;
+  ErrorMessage?: string | null;
 }
 
 export interface PlmImportLogDto {
@@ -180,6 +203,24 @@ class PlmMigrationService {
       headers: getHeaders(),
     });
     if (!response.ok) throw new Error('Failed to get import log');
+    return response.json();
+  }
+
+  async previewPlmTableExportPlan(sessionId: number): Promise<OperationCallResult<PlmTableExportPlanDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewPlmTableExportPlan?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to preview PLM table export plan');
+    return response.json();
+  }
+
+  async executePlmTableExport(sessionId: number): Promise<OperationCallResult<PlmImportJobDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecutePlmTableExport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to start PLM table export');
     return response.json();
   }
 }

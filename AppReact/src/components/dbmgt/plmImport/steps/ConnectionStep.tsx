@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTheme } from '../../../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../../../redux/hooks/useErrorMessage';
 import { adminSvc } from '../../../../webapi/adminsvc';
-import { plmMigrationSvc } from '../../../../webapi/plmMigrationSvc';
+import { plmMigrationSvc, PlmDataSourceDiscoveryItemDto } from '../../../../webapi/plmMigrationSvc';
 import type { PlmImportWizardState } from '../types';
 
 type AppMenuItem = {
@@ -70,6 +70,24 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
     const app = applications.find((a) => (a.Id ?? a.MenuId) === id);
     return app?.DisplayName ?? app?.Name ?? '';
   }, [applications, state.saasApplicationId]);
+
+  const discoveredDataSources = useMemo((): PlmDataSourceDiscoveryItemDto[] => {
+    const json = state.session?.DataSourceDiscoveryJson;
+    if (!json) return [];
+    try {
+      const parsed = JSON.parse(json);
+      return Array.isArray(parsed?.DataSources) ? parsed.DataSources : [];
+    } catch {
+      return [];
+    }
+  }, [state.session?.DataSourceDiscoveryJson]);
+
+  const getDiscoveryRowStatus = useCallback((ds: PlmDataSourceDiscoveryItemDto): string => {
+    const hasOwnConnection = Boolean(ds.HasConnectionString || ds.ConnectionString?.trim());
+    if (!hasOwnConnection) return '';
+    if (ds.ConnectionTestSuccess) return 'OK';
+    return ds.ConnectionTestMessage || 'Failed';
+  }, []);
 
   const handleConnect = useCallback(async () => {
     if (!state.saasApplicationId) {
@@ -145,12 +163,15 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
         return;
       }
 
+      const savedConn = state.plmConnectionString.trim();
       onStateChange({
         connectionTested: true,
-        session: saveResult.Object,
-        plmConnectionString: saveResult.Object?.PlmConnectionString?.trim() || state.plmConnectionString,
+        session: {
+          ...saveResult.Object,
+          PlmConnectionString: saveResult.Object?.PlmConnectionString?.trim() || savedConn,
+        },
+        plmConnectionString: saveResult.Object?.PlmConnectionString?.trim() || savedConn,
       });
-      onSessionSaved();
 
       const dbName = testResult.Object.DatabaseName || 'database';
       showInfo(`Connected to ${dbName} and data sources discovered.`, true);
@@ -162,7 +183,6 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
     }
   }, [
     isSysAdmin,
-    onSessionSaved,
     onStateChange,
     selectedAppName,
     showError,
@@ -242,6 +262,34 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
         )}
       </div>
 
+      {state.connectionTested && discoveredDataSources.length > 0 && (
+        <div className={`border rounded p-3 text-xs ${theme.inputBox}`}>
+          <div className={`font-semibold mb-2 ${theme.label}`}>Discovered data sources</div>
+          <div className="overflow-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className={theme.menu_secondary}>
+                  <th className="pr-3 py-1">Data source name</th>
+                  <th className="pr-3 py-1">Connection string</th>
+                  <th className="py-1">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {discoveredDataSources.map((ds) => (
+                  <tr key={ds.DataSourceFrom}>
+                    <td className="pr-3 py-1">{ds.DataSourceName || ds.DataSourceFromName || ds.DataSourceFrom}</td>
+                    <td className="pr-3 py-1 break-all">
+                      {ds.ConnectionString ?? ''}
+                    </td>
+                    <td className="py-1">{getDiscoveryRowStatus(ds)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
@@ -250,7 +298,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
           disabled={isConnecting}
         >
           <i className="fa-solid fa-plug mr-1" />
-          {isConnecting ? 'Connecting…' : 'Connect'}
+          {isConnecting ? 'Connecting…' : (state.connectionTested ? 'Reconnect' : 'Connect')}
         </button>
       </div>
     </div>

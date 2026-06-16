@@ -141,21 +141,23 @@ const DatabaseDesignManagement: React.FC = () => {
   };
 
   // Get the current section component
-  const getCurrentSectionComponent = (): React.ReactNode => {
-    const section = SECTIONS.find(s => s.code === currentSectionCode);
-    if (section) {
-      const SectionComponent = section.component;
-      return <SectionComponent />;
-    }
-    return (
-      <div className="flex items-center justify-center h-full text-gray-500">
-        <div className="text-center">
-          <i className="fa-solid fa-question-circle text-4xl mb-2"></i>
-          <div>Unknown section: {currentSectionCode}</div>
-        </div>
-      </div>
-    );
-  };
+  const renderSectionPanels = (): React.ReactNode => (
+    <>
+      {SECTIONS.filter(s => !s.hidden).map((section) => {
+        const SectionComponent = section.component;
+        const isActive = currentSectionCode === section.code;
+        return (
+          <div
+            key={section.code}
+            className={`h-full w-full overflow-hidden ${isActive ? '' : 'hidden'}`}
+            aria-hidden={!isActive}
+          >
+            <SectionComponent />
+          </div>
+        );
+      })}
+    </>
+  );
 
   return (
     <div className="w-full h-full rounded-t-md rounded-b-md overflow-hidden">    
@@ -186,7 +188,7 @@ const DatabaseDesignManagement: React.FC = () => {
 
         {/* Content Area */}
         <div className={`w-1 flex-auto h-full overflow-hidden rounded-r-md ${theme.mainContentSection}`}>
-          {getCurrentSectionComponent()}
+          {renderSectionPanels()}
         </div>
       </div>
     </div>

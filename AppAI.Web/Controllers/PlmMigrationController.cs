@@ -168,6 +168,32 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("PreviewPlmTableExportPlan")]
+    public OperationCallResult<PlmTableExportPlanDto> PreviewPlmTableExportPlan(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewPlmTableExportPlan(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmTableExportPlanDto>("Plm_TableExport_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecutePlmTableExport")]
+    public OperationCallResult<PlmImportJobDto> ExecutePlmTableExport(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.StartPlmTableExportJob(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmImportJobDto>("Plm_TableExport_Execute_Error", ex);
+        }
+    }
+
     [HttpPost("PreviewTemplateMapping")]
     public OperationCallResult<object> PreviewTemplateMapping(int? sessionId)
     {
