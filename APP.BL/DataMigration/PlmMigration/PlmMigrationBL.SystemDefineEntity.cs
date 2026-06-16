@@ -599,10 +599,11 @@ WHERE IntegrationId = @IntegrationId";
         }
 
         private static bool TableExistsInDatabase(
-            SqlConnection conn, string databaseName, string schema, string table)
+            SqlConnection conn, string databaseName, string schema, string table, SqlTransaction tran = null)
         {
             using (var cmd = conn.CreateCommand())
             {
+                cmd.Transaction = tran;
                 cmd.CommandText = $@"
 SELECT 1
 FROM [{databaseName}].sys.tables AS t

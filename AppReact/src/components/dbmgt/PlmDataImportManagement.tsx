@@ -29,6 +29,7 @@ const createInitialWizardState = (): PlmImportWizardState => ({
   connectionTested: false,
   systemDefineTablesComplete: false,
   systemDefineEntitiesComplete: false,
+  userDefineEntitiesComplete: false,
 });
 
 const getPlmImportCacheKey = (): string | null => {
@@ -101,6 +102,7 @@ const PlmDataImportManagement: React.FC = () => {
       systemDefineComplete?: boolean;
       systemDefineTablesComplete?: boolean;
       systemDefineEntitiesComplete?: boolean;
+      userDefineEntitiesComplete?: boolean;
     } = {};
     if (session.StepStateJson) {
       try {
@@ -122,6 +124,7 @@ const PlmDataImportManagement: React.FC = () => {
         stepState.systemDefineTablesComplete ?? stepState.systemDefineComplete,
       ),
       systemDefineEntitiesComplete: Boolean(stepState.systemDefineEntitiesComplete),
+      userDefineEntitiesComplete: Boolean(stepState.userDefineEntitiesComplete),
     }));
   }, []);
 

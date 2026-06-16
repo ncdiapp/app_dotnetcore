@@ -78,7 +78,7 @@ public class PlmMigrationController : SecureBaseController
     }
 
     [HttpPost("PreviewUserDefineEntityImport")]
-    public OperationCallResult<object> PreviewUserDefineEntityImport(int? sessionId)
+    public OperationCallResult<PlmUserDefineEntityPreviewDto> PreviewUserDefineEntityImport(int? sessionId)
     {
         try
         {
@@ -86,7 +86,7 @@ public class PlmMigrationController : SecureBaseController
         }
         catch (Exception ex)
         {
-            return ErrorResult<object>("Plm_UserDefine_Preview_Error", ex);
+            return ErrorResult<PlmUserDefineEntityPreviewDto>("Plm_UserDefine_Preview_Error", ex);
         }
     }
 

@@ -161,6 +161,36 @@ export interface PlmSystemDefineEntityPreviewDto {
   Blockers?: PlmSystemDefineEntityBlockerDto[];
 }
 
+export interface PlmUserDefineEntityPreviewItemDto {
+  PlmEntityId: number;
+  PlmEntityCode?: string | null;
+  TargetEntityCode?: string | null;
+  Description?: string | null;
+  TableName?: string | null;
+  AppTargetType?: string | null;
+  ColumnCount?: number;
+  PlmRowCount?: number;
+  ImportOrder?: number;
+  ImportStatus?: string | null;
+  ImportAction?: string | null;
+  SkipReason?: string | null;
+}
+
+export interface PlmUserDefineEntityPreviewDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  ReadyCount?: number;
+  SkippedCount?: number;
+  BlockerCount?: number;
+  Entities?: PlmUserDefineEntityPreviewItemDto[];
+  Blockers?: Array<{
+    PlmEntityId: number;
+    TargetEntityCode?: string | null;
+    TableName?: string | null;
+    Issue?: string | null;
+  }>;
+}
+
 export interface PlmImportLogDto {
   LogId: number;
   SessionId: number;
@@ -293,6 +323,24 @@ class PlmMigrationService {
       headers: getHeaders(),
     });
     if (!response.ok) throw new Error('Failed to start System Define entity import');
+    return response.json();
+  }
+
+  async previewUserDefineEntityImport(sessionId: number): Promise<OperationCallResult<PlmUserDefineEntityPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewUserDefineEntityImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to preview User Define entity import');
+    return response.json();
+  }
+
+  async executeUserDefineEntityImport(sessionId: number): Promise<OperationCallResult<PlmImportJobDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecuteUserDefineEntityImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to start User Define entity import');
     return response.json();
   }
 }

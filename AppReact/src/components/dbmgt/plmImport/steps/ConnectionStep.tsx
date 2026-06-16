@@ -151,6 +151,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
           connectionTested: true,
           systemDefineTablesComplete: state.systemDefineTablesComplete,
           systemDefineEntitiesComplete: state.systemDefineEntitiesComplete,
+          userDefineEntitiesComplete: state.userDefineEntitiesComplete,
         }),
         DataSourceDiscoveryJson: discoverResult.Object
           ? JSON.stringify(discoverResult.Object)

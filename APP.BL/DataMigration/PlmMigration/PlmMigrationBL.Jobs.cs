@@ -250,6 +250,79 @@ UPDATE dbo.AppPlmImportJob SET
             return result;
         }
 
+        public static OperationCallResult<PlmImportJobDto> StartUserDefineEntityImportJob(int? sessionId)
+        {
+            var result = new OperationCallResult<PlmImportJobDto>();
+            try
+            {
+                RequirePlmMigrationAdmin();
+                EnsurePlmImportSchema();
+                if (!sessionId.HasValue || sessionId.Value <= 0)
+                    throw new ArgumentException("SessionId is required.");
+
+                var fixture = GetTenantFixture();
+                int jobId = CreateQueuedJob(fixture, sessionId.Value, JobTypeUserDefineEntityImport,
+                    "Queued User Define entity import.");
+                WriteImportLog(fixture, sessionId.Value, jobId, StepEntity, PlmUserDefineActionImport, "Running",
+                    null, null, null, null, "User Define entity import job queued.");
+
+                var context = BuildJobRuntimeContext(sessionId.Value, jobId);
+                RunJobInBackground(RunUserDefineEntityImportJob, context);
+                result.Object = GetImportJob(jobId).Object;
+            }
+            catch (Exception ex)
+            {
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(PlmMigrationBL), "Plm_UserDefine_Execute_Error", ValidationItemType.Error, ex.Message));
+            }
+            return result;
+        }
+
+        private static void RunUserDefineEntityImportJob(PlmJobRuntimeContext context)
+        {
+            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(context.TenantDataSourceId);
+            var session = LoadSessionById(fixture, context.SessionId, includeConnection: false);
+
+            var importResult = ImportUserDefineEntities(
+                context.PlmConnectionString,
+                context.TenantConnectionString,
+                context.TenantDataSourceId,
+                session?.SaasApplicationId,
+                (percent, message) =>
+                {
+                    if (IsJobCancellationRequested(context.JobId))
+                        throw new OperationCanceledException("Import cancelled.");
+                    UpdateJobProgress(fixture, context.JobId, JobStatusRunning, percent, message);
+                });
+
+            string resultJson = JsonConvert.SerializeObject(importResult);
+
+            if (importResult.SkippedEntities?.Count > 0 || importResult.Blockers?.Count > 0)
+            {
+                WriteUserDefineEntityIssuesToLog(
+                    fixture, context.SessionId, context.JobId, PlmUserDefineActionImport, "Warning",
+                    importResult.SkippedEntities, importResult.Blockers);
+            }
+
+            if (!importResult.IsSuccess)
+            {
+                UpdateJobProgress(
+                    fixture, context.JobId, JobStatusFailed, 100, "User Define entity import failed.",
+                    resultJson: resultJson, errorMessage: importResult.ErrorMessage, markCompleted: true);
+                WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
+                    PlmUserDefineActionImport, "Failed", null, null, null, null, importResult.ErrorMessage);
+                return;
+            }
+
+            int? totalAffected = importResult.InsertedCount + importResult.UpdatedCount;
+            UpdateJobProgress(
+                fixture, context.JobId, JobStatusCompleted, 100, "User Define entity import completed successfully.",
+                resultJson: resultJson, markCompleted: true);
+            WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
+                PlmUserDefineActionImport, "Success", null, null, totalAffected, null,
+                $"Inserted {importResult.InsertedCount}, updated {importResult.UpdatedCount}, skipped {importResult.SkippedCount}, rows {importResult.RowsImported}.");
+        }
+
         private static void RunSystemDefineEntityImportJob(PlmJobRuntimeContext context)
         {
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(context.TenantDataSourceId);

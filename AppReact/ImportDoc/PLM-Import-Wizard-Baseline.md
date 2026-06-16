@@ -205,7 +205,7 @@ AppReact/src/components/dbmgt/
 | `PlmMigrationBL.Export.cs` | `BuildPlmTableExportPlan`, `ExportPlmTablesToTenant` |
 | `PlmMigrationBL.Jobs.cs` | Job queue/run, table export job, System Define entity import job, preview entry points |
 | `PlmMigrationBL.SystemDefineEntity.cs` | System Define entity preview & import logic |
-| `PlmMigrationBL.Entity.cs` | UserDefine preview/execute (Phase 4) |
+| `PlmMigrationBL.UserDefineEntity.cs` | User Define entity preview & import (SimpleValueList + wide tables) |
 | `PlmMigrationBL.Template.cs` | Template preview & execute, jobs |
 
 Controller → `PlmMigrationBL` only. No `DatabaseFixture` in controller.
@@ -308,7 +308,7 @@ Step 4  Other Data (placeholder)
 | **1** | Connect & Discover + pickers + company lock | 3–4 d |
 | **2** | `ExportPlmTablesToTenant` + job infrastructure | 3–5 d |
 | **3** | SystemDefine preview/execute | ~1 wk |
-| **4** | UserDefine preview/execute | 1–2 wk |
+| **4** | UserDefine preview/execute | ~1 wk | **In progress** — preview + async import implemented |
 | **5** | Template framework | 1–2 wk |
 | **6** | Other Data placeholder | 1 d |
 
@@ -364,3 +364,4 @@ Step 4  Other Data (placeholder)
 | 2026-06-16 | Tenant DDL **spec only** in `SqlReferenceSpecs/TenantMigration_*.sql` (no AppAI.Web migrations until Phase 0) |
 | 2026-06-16 | **Policy:** wizard schema via C# `EnsurePlmImportSchema()` only — **no `.sql` files** for PLM Import; removed TenantMigration `*.sql` from ImportDoc |
 | 2026-06-16 | **Implemented UI:** System Define 4 sub-steps → **2 phases** (List + Execute each); grid titles; centered wizard nav; **Discard Session** button; table export APIs; BL partial file list; re-import allowed; `StepStateJson` fields documented |
+| 2026-06-16 | **Phase 4:** User Define preview (`BuildUserDefineEntityPreview`) + async import job; User Define tab UI with List/Execute |

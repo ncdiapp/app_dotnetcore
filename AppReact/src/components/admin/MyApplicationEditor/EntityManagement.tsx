@@ -317,6 +317,7 @@ const EntityManagement: React.FC<EntityManagementProps> = ({ menuId }) => {
           isReadOnly
           allowDelete={false}
           showGroups={false}
+          className="w-full h-full"
         >
           <FlexGridFilter />
           <FlexGridColumn width={60} header="Actions" isReadOnly>

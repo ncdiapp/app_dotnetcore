@@ -3,6 +3,7 @@ import type {
   PlmImportJobDto,
   PlmTableExportPlanItemDto,
   PlmSystemDefineEntityPreviewItemDto,
+  PlmUserDefineEntityPreviewItemDto,
 } from '../../../webapi/plmMigrationSvc';
 
 export type PlmImportStepCode = 'Connect' | 'Entity' | 'Template' | 'OtherData';
@@ -16,6 +17,7 @@ export interface PlmImportWizardState {
   connectionTested: boolean;
   systemDefineTablesComplete: boolean;
   systemDefineEntitiesComplete: boolean;
+  userDefineEntitiesComplete: boolean;
 }
 
 export type PlmSystemDefineWorkflowStep = 1 | 2;
@@ -31,9 +33,11 @@ export interface PlmImportEntityStepUiState {
   viewingWorkflowStep: PlmSystemDefineWorkflowStep;
   planItems: PlmTableExportPlanItemDto[];
   entityPlanItems: PlmSystemDefineEntityPreviewItemDto[];
+  userDefinePlanItems: PlmUserDefineEntityPreviewItemDto[];
   activeJob: PlmImportJobDto | null;
   isExporting: boolean;
   isEntityImporting: boolean;
+  isUserDefineImporting: boolean;
 }
 
 export interface PlmImportPageCache {
@@ -46,18 +50,21 @@ export const createInitialEntityStepUi = (): PlmImportEntityStepUiState => ({
   viewingWorkflowStep: 1,
   planItems: [],
   entityPlanItems: [],
+  userDefinePlanItems: [],
   activeJob: null,
   isExporting: false,
   isEntityImporting: false,
+  isUserDefineImporting: false,
 });
 
 export const buildPlmImportStepStateJson = (state: Pick<
   PlmImportWizardState,
-  'connectionTested' | 'systemDefineTablesComplete' | 'systemDefineEntitiesComplete'
+  'connectionTested' | 'systemDefineTablesComplete' | 'systemDefineEntitiesComplete' | 'userDefineEntitiesComplete'
 >): string => JSON.stringify({
   connectionTested: state.connectionTested,
   systemDefineTablesComplete: state.systemDefineTablesComplete,
   systemDefineEntitiesComplete: state.systemDefineEntitiesComplete,
+  userDefineEntitiesComplete: state.userDefineEntitiesComplete,
   systemDefineComplete: state.systemDefineTablesComplete,
 });
 
