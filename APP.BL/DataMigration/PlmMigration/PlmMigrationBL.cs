@@ -20,5 +20,11 @@ namespace APP.BL.DataMigration.PlmMigration
         public const string JobTypeSystemDefineEntityImport = "SystemDefineEntityImport";
         public const string JobTypeUserDefineEntityImport = "UserDefineEntityImport";
         public const string JobTypeTemplateImport = "TemplateImport";
+
+        public const string PlmExportIssueMissingSourceTable = "MissingSourceTable";
+        public const string PlmExportIssueExportFailed = "ExportFailed";
+
+        public const string PlmExportActionPreview = "PlmTableExportPreview";
+        public const string PlmExportActionExport = "PlmTableExport";
     }
 }

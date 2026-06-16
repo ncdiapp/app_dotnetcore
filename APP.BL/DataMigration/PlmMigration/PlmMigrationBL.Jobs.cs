@@ -168,8 +168,8 @@ UPDATE dbo.AppPlmImportJob SET
                     throw new ArgumentException("SessionId is required.");
 
                 var fixture = GetTenantFixture();
-                int jobId = CreateQueuedJob(fixture, sessionId.Value, JobTypePlmTableExport, "Queued PLM table export.");
-                WriteImportLog(fixture, sessionId.Value, jobId, StepEntity, "PlmTableExport", "Running", null, null, null, null, "PLM table export job queued.");
+                int jobId = CreateQueuedJob(fixture, sessionId.Value, JobTypePlmTableExport, "Queued PLM table import.");
+                WriteImportLog(fixture, sessionId.Value, jobId, StepEntity, "PlmTableExport", "Running", null, null, null, null, "PLM table import job queued.");
 
                 var context = BuildJobRuntimeContext(sessionId.Value, jobId);
                 RunJobInBackground(RunPlmTableExportJob, context);
@@ -197,23 +197,29 @@ UPDATE dbo.AppPlmImportJob SET
                 });
 
             string resultJson = JsonConvert.SerializeObject(exportResult);
+            if (exportResult.Issues?.Count > 0)
+            {
+                WritePlmTableExportIssuesToLog(
+                    fixture, context.SessionId, context.JobId, PlmExportActionExport, "Warning", exportResult.Issues);
+            }
+
             if (!exportResult.IsSuccess)
             {
                 UpdateJobProgress(
-                    fixture, context.JobId, JobStatusFailed, 100, "Export completed with errors.",
+                    fixture, context.JobId, JobStatusFailed, 100, "Import completed with errors.",
                     resultJson: resultJson, errorMessage: exportResult.ErrorMessage, markCompleted: true);
                 WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
-                    "PlmTableExport", "Failed", null, null, null, null, exportResult.ErrorMessage);
+                    PlmExportActionExport, "Failed", null, null, null, null, exportResult.ErrorMessage);
                 return;
             }
 
             int? totalRows = exportResult.Tables?.Sum(t => t.RowsCopied);
             UpdateJobProgress(
-                fixture, context.JobId, JobStatusCompleted, 100, "Export completed successfully.",
+                fixture, context.JobId, JobStatusCompleted, 100, "Import completed successfully.",
                 resultJson: resultJson, markCompleted: true);
             WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
                 "PlmTableExport", "Success", null, null, totalRows, null,
-                "PLM tables exported to tenant database.");
+                "PLM tables imported to tenant database.");
         }
 
         public static OperationCallResult<PlmTableExportPlanDto> PreviewPlmTableExportPlan(int? sessionId)
@@ -236,6 +242,17 @@ UPDATE dbo.AppPlmImportJob SET
                     result.ValidationResult.Items.Add(new ValidationItem(
                         typeof(PlmMigrationBL), "Plm_TableExport_Preview_Error", ValidationItemType.Error,
                         result.Object.ErrorMessage));
+                }
+                else
+                {
+                    if (result.Object.Issues?.Count > 0)
+                    {
+                        WritePlmTableExportIssuesToLog(
+                            fixture, sessionId.Value, null, PlmExportActionPreview, "Warning", result.Object.Issues);
+                        result.ValidationResult.Items.Add(new ValidationItem(
+                            typeof(PlmMigrationBL), "Plm_TableExport_Preview_Warning", ValidationItemType.Warning,
+                            result.Object.ErrorMessage));
+                    }
                 }
             }
             catch (Exception ex)

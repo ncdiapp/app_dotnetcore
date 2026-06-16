@@ -1,20 +1,30 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
 using System.Text;
 using APP.Components.EntityDto;
+using DatabaseSchemaMrg;
 
 namespace APP.BL.DataMigration.PlmMigration
 {
     public static partial class PlmMigrationBL
     {
+        private sealed class PlmExportEntityRef
+        {
+            public int EntityId { get; set; }
+            public string EntityCode { get; set; }
+            public string SchemaOwner { get; set; }
+            public string TableName { get; set; }
+        }
+
         private sealed class PlmExportTableRef
         {
             public string SchemaOwner { get; set; }
             public string TableName { get; set; }
-            public int PlmEntityCount { get; set; }
+            public List<PlmExportEntityRef> Entities { get; set; } = new List<PlmExportEntityRef>();
+
+            public int PlmEntityCount => Entities.Count;
         }
 
         private sealed class SqlColumnDefinition
@@ -32,7 +42,9 @@ namespace APP.BL.DataMigration.PlmMigration
             var plan = new PlmTableExportPlanDto();
             try
             {
-                var tables = ReadPlmExportTableRefs(plmConnectionString);
+                var entityRefs = ReadPlmExportEntityRefs(plmConnectionString);
+                var tables = GroupEntityRefsByTable(entityRefs);
+
                 using (var conn = new SqlConnection(plmConnectionString))
                 {
                     conn.Open();
@@ -44,8 +56,12 @@ namespace APP.BL.DataMigration.PlmMigration
                             SchemaOwner = table.SchemaOwner,
                             TableName = table.TableName,
                             PlmEntityCount = table.PlmEntityCount,
-                            SourceTableExists = exists
+                            SourceTableExists = exists,
+                            Entities = table.Entities.Select(MapEntityRefDto).ToList()
                         });
+
+                        if (!exists)
+                            plan.Issues.AddRange(BuildMissingSourceIssues(table));
                     }
                 }
 
@@ -56,12 +72,9 @@ namespace APP.BL.DataMigration.PlmMigration
                     return plan;
                 }
 
-                if (plan.Tables.Any(t => !t.SourceTableExists))
-                {
-                    plan.IsSuccess = false;
-                    plan.ErrorMessage = "One or more referenced PLM tables do not exist in the source database.";
-                    return plan;
-                }
+                plan.MissingSourceTableCount = plan.Tables.Count(t => !t.SourceTableExists);
+                if (plan.Issues.Count > 0)
+                    plan.ErrorMessage = FormatIssuesSummary(plan.Issues, "missing in PLM source");
 
                 plan.IsSuccess = true;
             }
@@ -80,7 +93,8 @@ namespace APP.BL.DataMigration.PlmMigration
             PlmExportProgressCallback progressCallback)
         {
             var exportResult = new PlmTableExportResultDto();
-            var tables = ReadPlmExportTableRefs(plmConnectionString);
+            var entityRefs = ReadPlmExportEntityRefs(plmConnectionString);
+            var tables = GroupEntityRefsByTable(entityRefs);
             if (tables.Count == 0)
             {
                 exportResult.IsSuccess = false;
@@ -94,23 +108,38 @@ namespace APP.BL.DataMigration.PlmMigration
                 sourceConn.Open();
                 targetConn.Open();
 
-                for (int i = 0; i < tables.Count; i++)
+                var missingTables = tables.Where(t => !TableExists(sourceConn, t.SchemaOwner, t.TableName)).ToList();
+                foreach (var missing in missingTables)
+                    exportResult.Issues.AddRange(BuildMissingSourceIssues(missing));
+
+                var exportableTables = tables
+                    .Where(t => TableExists(sourceConn, t.SchemaOwner, t.TableName))
+                    .ToList();
+
+                if (exportableTables.Count == 0)
                 {
-                    var table = tables[i];
-                    int percent = (int)Math.Round((i / (double)tables.Count) * 100);
-                    progressCallback?.Invoke(percent, $"Exporting {table.SchemaOwner}.{table.TableName}...");
+                    exportResult.IsSuccess = false;
+                    exportResult.ErrorMessage = exportResult.Issues.Count > 0
+                        ? FormatIssuesSummary(exportResult.Issues, "missing in PLM source")
+                        : "No referenced PLM tables exist in the source database.";
+                    return exportResult;
+                }
+
+                for (int i = 0; i < exportableTables.Count; i++)
+                {
+                    var table = exportableTables[i];
+                    int percent = (int)Math.Round((i / (double)exportableTables.Count) * 100);
+                    progressCallback?.Invoke(percent, $"Importing {table.SchemaOwner}.{table.TableName}...");
 
                     var itemResult = new PlmTableExportResultItemDto
                     {
                         SchemaOwner = table.SchemaOwner,
-                        TableName = table.TableName
+                        TableName = table.TableName,
+                        Entities = table.Entities.Select(MapEntityRefDto).ToList()
                     };
 
                     try
                     {
-                        if (!TableExists(sourceConn, table.SchemaOwner, table.TableName))
-                            throw new InvalidOperationException("Source table does not exist.");
-
                         int rows = CopyTableWithPrimaryKey(sourceConn, targetConn, table.SchemaOwner, table.TableName);
                         itemResult.IsSuccess = true;
                         itemResult.RowsCopied = rows;
@@ -119,10 +148,11 @@ namespace APP.BL.DataMigration.PlmMigration
                     {
                         itemResult.IsSuccess = false;
                         itemResult.ErrorMessage = ex.Message;
+                        var failIssues = BuildExportFailedIssues(table, ex.Message);
+                        exportResult.Issues.AddRange(failIssues);
                         exportResult.Tables.Add(itemResult);
                         exportResult.IsSuccess = false;
-                        exportResult.ErrorMessage =
-                            $"Export failed at {table.SchemaOwner}.{table.TableName}: {ex.Message}";
+                        exportResult.ErrorMessage = FormatIssuesSummary(failIssues, "export failed");
                         return exportResult;
                     }
 
@@ -131,13 +161,102 @@ namespace APP.BL.DataMigration.PlmMigration
             }
 
             exportResult.IsSuccess = true;
-            progressCallback?.Invoke(100, "Export completed.");
+            progressCallback?.Invoke(100, "Import completed.");
             return exportResult;
         }
 
-        private static List<PlmExportTableRef> ReadPlmExportTableRefs(string plmConnectionString)
+        internal static void WritePlmTableExportIssuesToLog(
+            DatabaseFixture fixture,
+            int sessionId,
+            int? jobId,
+            string action,
+            string status,
+            IEnumerable<PlmTableExportIssueDto> issues)
         {
-            var list = new List<PlmExportTableRef>();
+            if (issues == null) return;
+            foreach (var issue in issues)
+            {
+                WriteImportLog(
+                    fixture,
+                    sessionId,
+                    jobId,
+                    StepEntity,
+                    action,
+                    status,
+                    $"{issue.SchemaOwner}.{issue.TableName}",
+                    issue.EntityId.ToString(),
+                    null,
+                    null,
+                    $"{issue.IssueType}: EntityCode={issue.EntityCode}. {issue.Message}");
+            }
+        }
+
+        private static PlmTableExportEntityRefDto MapEntityRefDto(PlmExportEntityRef entity)
+        {
+            return new PlmTableExportEntityRefDto
+            {
+                EntityId = entity.EntityId,
+                EntityCode = entity.EntityCode
+            };
+        }
+
+        private static List<PlmExportTableRef> GroupEntityRefsByTable(List<PlmExportEntityRef> entityRefs)
+        {
+            return entityRefs
+                .GroupBy(e => $"{e.SchemaOwner}\0{e.TableName}", StringComparer.OrdinalIgnoreCase)
+                .Select(g =>
+                {
+                    var first = g.First();
+                    return new PlmExportTableRef
+                    {
+                        SchemaOwner = first.SchemaOwner,
+                        TableName = first.TableName,
+                        Entities = g.OrderBy(e => e.EntityId).ToList()
+                    };
+                })
+                .OrderBy(t => t.SchemaOwner)
+                .ThenBy(t => t.TableName)
+                .ToList();
+        }
+
+        private static List<PlmTableExportIssueDto> BuildMissingSourceIssues(PlmExportTableRef table)
+        {
+            string qualified = $"{table.SchemaOwner}.{table.TableName}";
+            return table.Entities.Select(entity => new PlmTableExportIssueDto
+            {
+                EntityId = entity.EntityId,
+                EntityCode = entity.EntityCode,
+                SchemaOwner = table.SchemaOwner,
+                TableName = table.TableName,
+                IssueType = PlmExportIssueMissingSourceTable,
+                Message = $"Physical table {qualified} not found in PLM source database."
+            }).ToList();
+        }
+
+        private static List<PlmTableExportIssueDto> BuildExportFailedIssues(PlmExportTableRef table, string errorMessage)
+        {
+            string qualified = $"{table.SchemaOwner}.{table.TableName}";
+            return table.Entities.Select(entity => new PlmTableExportIssueDto
+            {
+                EntityId = entity.EntityId,
+                EntityCode = entity.EntityCode,
+                SchemaOwner = table.SchemaOwner,
+                TableName = table.TableName,
+                IssueType = PlmExportIssueExportFailed,
+                Message = $"Export failed for {qualified}: {errorMessage}"
+            }).ToList();
+        }
+
+        private static string FormatIssuesSummary(IEnumerable<PlmTableExportIssueDto> issues, string issueVerb)
+        {
+            var lines = issues.Select(issue =>
+                $"{issue.SchemaOwner}.{issue.TableName}: EntityID={issue.EntityId}, EntityCode={issue.EntityCode} — {issueVerb}");
+            return string.Join("; ", lines);
+        }
+
+        private static List<PlmExportEntityRef> ReadPlmExportEntityRefs(string plmConnectionString)
+        {
+            var list = new List<PlmExportEntityRef>();
             using (var conn = new SqlConnection(plmConnectionString))
             {
                 conn.Open();
@@ -145,28 +264,27 @@ namespace APP.BL.DataMigration.PlmMigration
                 {
                     cmd.CommandText = @"
 SELECT
+    e.EntityID,
+    LEFT(LTRIM(RTRIM(e.EntityCode)), 100) AS EntityCode,
     LEFT(ISNULL(NULLIF(LTRIM(RTRIM(e.SchemaOwner)), ''), 'dbo'), 50) AS SchemaOwner,
-    LEFT(LTRIM(RTRIM(e.SysTableName)), 100) AS TableName,
-    COUNT(*) AS PlmEntityCount
+    LEFT(LTRIM(RTRIM(e.SysTableName)), 100) AS TableName
 FROM dbo.pdmEntity e
 WHERE e.EntityType = 1
   AND ISNULL(e.IsRelationEntity, 0) = 0
   AND e.DataSourceFrom = 1
   AND e.SysTableName IS NOT NULL
   AND LTRIM(RTRIM(e.SysTableName)) <> ''
-GROUP BY
-    LEFT(ISNULL(NULLIF(LTRIM(RTRIM(e.SchemaOwner)), ''), 'dbo'), 50),
-    LEFT(LTRIM(RTRIM(e.SysTableName)), 100)
-ORDER BY SchemaOwner, TableName";
+ORDER BY SchemaOwner, TableName, e.EntityID";
                     using (var reader = cmd.ExecuteReader())
                     {
                         while (reader.Read())
                         {
-                            list.Add(new PlmExportTableRef
+                            list.Add(new PlmExportEntityRef
                             {
-                                SchemaOwner = reader.GetString(0),
-                                TableName = reader.GetString(1),
-                                PlmEntityCount = reader.GetInt32(2)
+                                EntityId = reader.GetInt32(0),
+                                EntityCode = reader.IsDBNull(1) ? null : reader.GetString(1),
+                                SchemaOwner = reader.GetString(2),
+                                TableName = reader.GetString(3)
                             });
                         }
                     }
@@ -181,8 +299,9 @@ ORDER BY SchemaOwner, TableName";
             {
                 cmd.CommandText = @"
 SELECT 1
-FROM INFORMATION_SCHEMA.TABLES
-WHERE TABLE_SCHEMA = @Schema AND TABLE_NAME = @Table AND TABLE_TYPE = 'BASE TABLE'";
+FROM sys.tables t
+INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
+WHERE s.name = @Schema AND t.name = @Table";
                 cmd.Parameters.AddWithValue("@Schema", schema);
                 cmd.Parameters.AddWithValue("@Table", table);
                 return cmd.ExecuteScalar() != null;
@@ -200,12 +319,9 @@ WHERE TABLE_SCHEMA = @Schema AND TABLE_NAME = @Table AND TABLE_TYPE = 'BASE TABL
             DropTableIfExists(target, schema, table);
             CreateTable(target, schema, table, columns, pkColumns);
 
-            string sourceQualified = Qualify(schema, table);
-            string selectSql = "SELECT * FROM " + sourceQualified;
-
             using (var cmd = source.CreateCommand())
             {
-                cmd.CommandText = "SELECT * FROM " + sourceQualified;
+                cmd.CommandText = "SELECT * FROM " + Qualify(schema, table);
                 using (var reader = cmd.ExecuteReader())
                 using (var bulk = new SqlBulkCopy(target, SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.TableLock, null))
                 {

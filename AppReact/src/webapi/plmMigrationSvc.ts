@@ -86,16 +86,33 @@ export interface PlmImportJobDto {
   CompletedAt?: string | null;
 }
 
+export interface PlmTableExportEntityRefDto {
+  EntityId: number;
+  EntityCode?: string | null;
+}
+
+export interface PlmTableExportIssueDto {
+  EntityId: number;
+  EntityCode?: string | null;
+  SchemaOwner?: string | null;
+  TableName?: string | null;
+  IssueType?: string | null;
+  Message?: string | null;
+}
+
 export interface PlmTableExportPlanItemDto {
   SchemaOwner?: string | null;
   TableName?: string | null;
   PlmEntityCount?: number;
   SourceTableExists?: boolean;
+  Entities?: PlmTableExportEntityRefDto[];
 }
 
 export interface PlmTableExportPlanDto {
   IsSuccess: boolean;
   ErrorMessage?: string | null;
+  MissingSourceTableCount?: number;
+  Issues?: PlmTableExportIssueDto[];
   Tables?: PlmTableExportPlanItemDto[];
 }
 
