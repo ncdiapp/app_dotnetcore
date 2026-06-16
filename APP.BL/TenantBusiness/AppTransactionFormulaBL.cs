@@ -11,6 +11,7 @@ using APP.Framework.Validation;
 using System.Text;
 using APP.Framework.Globalization;
 using DynamicExpresso;
+using ExpressionEval;
 #if NETFRAMEWORK
 using System.Web;
 #endif
