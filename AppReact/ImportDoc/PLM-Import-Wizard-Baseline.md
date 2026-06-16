@@ -1,317 +1,268 @@
 # PLM Data Import Wizard — Baseline Plan
 
-> **Status:** Living document — update this file whenever requirements or design decisions change.  
-> **Purpose:** Single source of truth for implementing the PLM → App-Builder migration wizard.  
-> **Related:** [PLM Migration Plan.md](./PLM%20Migration%20Plan.md) (feature scope), SQL scripts in this folder.  
-> **PLM reference solution:** `C:\Dev\PLM3\PLM`  
-> **Last updated:** 2026-06-16 (Q1–Q10 resolved)
+> **Status:** Living document — update when requirements or design change.  
+> **Purpose:** Single source of truth for **how** to build the wizard (API, BL, DB, UI).  
+> **Feature scope:** [PLM Migration Plan.md](./PLM%20Migration%20Plan.md)  
+> **SQL import specs:** [SqlReferenceSpecs/](./SqlReferenceSpecs/)  
+> **PLM reference:** `C:\Dev\PLM3\PLM`  
+> **Last updated:** 2026-06-16
+
+---
+
+## Document map
+
+| Section | Read when you need… |
+|---------|-------------------|
+| **[§0 Quick reference](#0-quick-reference)** | One-page summary of wizard flow and rules |
+| **[§1 Objective](#1-objective)** | What we are building |
+| **[§2 Scope](#2-scope-overview)** | In / out of scope |
+| **[§3 Decisions](#3-confirmed-decisions)** | All confirmed business rules (A–F) |
+| **[§4 Architecture](#4-architecture)** | React, C#, API, DB, logs |
+| **[§5 Wizard flow](#5-wizard-flow)** | Step-by-step diagram |
+| **[§6 Phases](#6-implementation-phases)** | Delivery order and estimates |
+| **[§7 Q&A](#7-questions)** | Resolved and open questions |
+| **[§8 References](#8-reference-files)** | Files and PLM solution pointers |
+
+---
+
+## 0. Quick reference
+
+**Entry:** Database Design → sidebar **PLM Data Import** → `PlmDataImportManagement.tsx`
+
+**Who can run:** `SaasCompanyAdmin` or `SysAdmin` (SysAdmin must pick **target Company** in Step 1).
+
+**Wizard steps:**
+
+| Step | What happens |
+|------|----------------|
+| **1 Connect & Discover** | Pick **Application** + PLM connection → read `pdmDataSource` → register ERP/DataWS/OtherEx (company lock) |
+| **2 Entity** | **System Define first** (export PLM tables → preview → execute job) → then **User Define** (preview → execute job) |
+| **3 Template** | 1 PLM Template → 1 Transaction Group; preview → execute job |
+| **4 Other Data** | Placeholder (Color, POM, …) |
+
+**Hard rules:**
+
+- PLM and APP may be on **different SQL Server instances** (C# only, not cross-DB SQL scripts).
+- PLM DB is **not** kept as a permanent APP datasource — data lands in **Tenant DB**.
+- Re-import matches **`IntegrationId` only** (entity = PLM `EntityID`; field = `SubItem_{id}` / `Grid_{id}`).
+- UserDefine row data: **TRUNCATE / clear list → full reload** per entity.
+- Execute: **all entities in tab**, one transaction; **any failure → full tab rollback**.
+- Long execute: **async job** + UI **polls** `GET ImportJob/{id}`.
+- After import: **prompt IIS recycle** (not automatic).
+
+**Tenant DB schema (planned — C# only at implementation):**
+
+`IntegrationId` columns + `AppPlmImportSession` / `Job` / `Log` tables are created by **`PlmMigrationBL.EnsurePlmImportSchema()`** in C# (`DatabaseFixture.ExecuteNonQueryResult`, idempotent `IF NOT EXISTS` checks). **Do not add `.sql` files** for this feature (not in `APP.BL/`, not in `AppAI.Web/Migrations/`, not in `ImportDoc/`).
 
 ---
 
 ## 1. Objective
 
-Add a **PLM Data Import** wizard to the React **Database Design** page (`DatabaseDesignManagement.tsx`). Users migrate legacy PLM data into App-Builder step by step, guided by scripts and logic in `AppReact/ImportDoc/`.
+Add a **PLM Data Import** wizard to the React **Database Design** page (`DatabaseDesignManagement.tsx`). Users migrate legacy PLM into App-Builder step by step.
 
-**UI entry:** Left sidebar button **「PLM Data Import」** → right panel loads `PLMDataImport` child component (same layout/theme as other Database Design sections).
+**UI:** Left sidebar **「PLM Data Import」** → right panel `PLMDataImport` (same theme/layout as other Database Design sections).
 
 ---
 
-## 2. Scope Overview
+## 2. Scope overview
 
-| Wizard step (initial) | Migration plan section | Status |
-|----------------------|------------------------|--------|
+| Wizard step | Migration plan | Status |
+|-------------|----------------|--------|
 | Connect & Discover | §1 Database | Specified |
 | Entity Data Source | §2 Data Source Management | Specified |
-| Template Import | §6 Reference Management (structure) | Framework only |
-| Other Data | §3–8 (Color, POM, File, Search, Security…) | Placeholder |
+| Template Import | §6 Reference (structure) | Framework |
+| Other Data | §3–5, §7–8 | Placeholder |
 
-**Out of scope (confirmed):**
-
-- PLM Enum entity import (`SqlReferenceSpecs/ImportPlmEnumEntitiesToAppEntityInfo.sql` — do not use)
-- RelationFK entities (`EntityType = 5`)
-- Excel/CSV export of preview results
+**Out of scope:** Enum entities · RelationFK · Excel export of preview · PLM RestJson/RestXML datasources
 
 ---
 
-## 3. Confirmed Decisions
+## 3. Confirmed decisions
 
-### 3.1 Environment & connections
+### 3.1 Connections & environment (A, B)
 
-| # | Decision |
-|---|----------|
-| A1 | PLM and APP **may be on different SQL Server instances** — must support cross-instance from day one |
-| A2 | PLM data sources live in **`pdmDataSource`** (`SELECT * FROM pdmDataSource`). Reference: `PdmDataSourceBL`, `EmDataSourceFrom` in PLM solution |
-| A3 | User enters **PLM connection string once** in a UI input (not persisted to `AppDataSourceRegister`) |
-| A4 | **Tenant DB**, **Master DB**, **`SaasApplicationID`**, **`CompanyId`** are resolved automatically from the logged-in session |
+| ID | Rule |
+|----|------|
+| A1 | Cross-instance from day one |
+| A2 | PLM sources in `pdmDataSource`; see `EmDataSourceFrom` in PLM `Enums.cs` |
+| A3 | PLM connection: user types once in UI; **not** stored in `AppDataSourceRegister` |
+| A4 | Tenant DB, Master DB, `CompanyId` from session; **`SaasApplicationID` from Step 1 dropdown** (E22) |
+| B5–B7 | Register ERP/DataWS/OtherEx in Master DB; naming `{TenantDb}_ERP` / `_DataWS` / `_OtherEx` |
+| B5a–c | **Company lock** on connection string (same company → reuse; different company → block) |
+| B8–B9 | PLM (1): **no new register**; map to Company Master DB; discover/validate only |
+| B10 | Empty PLM connection in `pdmDataSource` → use main PLM connection |
 
-**PLM `EmDataSourceFrom` (relevant values):**
+**`EmDataSourceFrom`:**
 
-| Value | Name | Notes |
-|-------|------|-------|
-| 1 | PLM | Empty connection in `pdmDataSource` falls back to main PDM connection (`PdmDataSourceBL.GetConnectionInfoWithCode`) |
-| 2 | ERP | Register as external `AppDataSourceRegister` |
-| 3 | DataWS | Register as external `AppDataSourceRegister` |
-| 4 | OtherEx | Register as external `AppDataSourceRegister` |
-| 5, 6 | RestJson, RestXML | Ignore in this wizard phase |
+| Value | Name | APP handling |
+|-------|------|----------------|
+| 1 | PLM | Company Master register; tables copied to Tenant |
+| 2 | ERP | External register |
+| 3 | DataWS | External register |
+| 4 | OtherEx | External register |
+| 5–6 | Rest | Ignored |
 
-### 3.2 Data source registration (Step: Connect & Discover)
+### 3.2 Entity import (C)
 
-| # | Decision |
-|---|----------|
-| B5 | External DBs (ERP, DataWS, OtherEx): **register in MasterDB** as `AppDataSourceRegister` |
-| B5a | Before insert: **validate connection string uniqueness by company** |
-| B5b | Same normalized connection + **same `CompanyId`** → reuse existing register, continue |
-| B5c | Same normalized connection + **different `CompanyId`** → **block** with warning (connection string is company-locked; prevents cross-tenant data/permission conflicts) |
-| B6 | Multiple PLM `DataSourceFrom` values **may map to the same** APP `DataSourceRegister.Id` |
-| B7 | Naming for **new** external registers: `{TenantDatabaseName}_ERP`, `{TenantDatabaseName}_DataWS`, `{TenantDatabaseName}_OtherEx` |
-| B8 | **PLM (1):** **No** new register. Map to **Company Master DB** register (`IsCompanyMasterDb = true`). APP does **not** keep a long-term link to original PLM DB — PLM-sourced data is imported into **Tenant DB** |
-| B9 | Step 1: `pdmDataSource` `DataSourceFrom=1` is used for **discover/validate only**; no new `AppDataSourceRegister` row |
-| B10 | `DataSourceFrom=1` empty `ConnectionString` → treat as main PLM connection (unlikely in practice) |
+| ID | Rule |
+|----|------|
+| C8–C9 | No enum · no RelationFK |
+| C10 | Update by `IntegrationId` = PLM `EntityID` on `AppEntityInfo` |
+| C10a | UserDefine rows: **TRUNCATE** wide table or clear SimpleList → **full reload** |
+| C10b–c | Execute **all** entities in tab; **any failure → full tab rollback** |
+| C11 | Wide table prefix default `Plm_entity_` (configurable) |
+| C12b | SystemDefine DSF=1: copy **only tables referenced by `pdmEntity`** |
+| C12c | SystemDefine DSF=2–4: reference external DB only |
+| C12a | Table copy in C# with **PK preserved** (not `SELECT * INTO`) |
+| C13 | Prompt IIS recycle after import |
 
-**Connection string comparison:** Normalize via `SqlConnectionStringBuilder` (Server, Database, auth) before compare. APP stores encrypted strings (`AppConnectionStringEncryptionBL`).
+**Step 2 order:** System Define tab **first** → User Define tab unlocked after System complete (or explicit skip when nothing to import).
 
-### 3.3 Entity import (Step: Entity Data Source)
+**Specs:** `SqlReferenceSpecs/ImportPlmSystemDefineEntitiesToAppEntityInfo.sql`, `ImportPlmUserDefineEntitiesToAppEntityInfo.sql`
 
-| # | Decision |
-|---|----------|
-| C8 | **No** enum import |
-| C9 | **No** RelationFK import |
-| C10 | Re-import: **Update** by **`IntegrationId` only** (= PLM `EntityID`) |
-| C10a | UserDefine row data: update matched by `IntegrationId` on entity header (same key scope as SQL spec) |
-| C11 | Physical table prefix for UserDefine wide tables: **configurable**, default `Plm_entity_` |
-| C12 | **Integrate** table export for SystemDefine PLM-sourced tables |
-| C12a | Fix `SqlReferenceSpecs/ExportSourceDbTablesToNewDatabase.sql` issue: **`SELECT * INTO` does not preserve PRIMARY KEY** — implement in C# with explicit PK |
-| C12b | SystemDefine entity `DataSourceFrom = PLM (1)` → copy **only tables referenced by `pdmEntity`** (SystemDefine, `DataSourceFrom=1`) into Tenant DB |
-| C12c | SystemDefine entity `DataSourceFrom = ERP / DataWS / OtherEx` → **reference external DB only** (no table/data copy) |
-| C13 | After import: **prompt user to recycle IIS** / refresh schema cache (no auto-recycle) |
-| C25 | Execute failures: **full transaction rollback** per batch |
+### 3.3 Template import (D)
 
-**Import tabs in this step:**
+| ID | Rule |
+|----|------|
+| D15 | 1 PLM Template → 1 APP Transaction Group |
+| D16 | Import special blocks as ordinary first |
+| D17 | Bind to `SaasApplicationID` from Step 1 |
 
-1. **User Define** — port `SqlReferenceSpecs/ImportPlmUserDefineEntitiesToAppEntityInfo.sql` to C#
-2. **System Define** — port `SqlReferenceSpecs/ImportPlmSystemDefineEntitiesToAppEntityInfo.sql` to C#
+| PLM | APP | `IntegrationId` |
+|-----|-----|----------------|
+| Template | Transaction Group / header | PLM `TemplateId` |
+| Tab | Transaction | PLM `TabId` |
+| Block | Unit | PLM `BlockId` |
+| SubItem column | Field | `SubItem_{columnId}` |
+| Grid column | Field | `Grid_{columnId}` |
 
-**User Define behavior (from SQL spec):**
+> **Note:** Template group may live on `AppTransaction` (TemplateHeader) rather than `AppTransactionGroup` — confirm in Phase 5.
 
-- ≤ 2 columns → `EmAppEntityType.SimpleValueList` + `AppEntitySimpleListValue`
-- \> 2 columns → `EmAppEntityType.SystemDefineTable` + `CREATE TABLE` in Tenant DB + EAV pivot data
-- `IntegrationId` = PLM `EntityID`
-- `DataSourceFrom` — **Company Master DB** register Id (same for UserDefine and SystemDefine PLM entities)
+### 3.4 Wizard product rules (E, F)
 
-**System Define behavior (from SQL spec):**
-
-- Metadata only in `AppEntityInfo` (no row copy for external DB entities)
-- `DataSourceFrom` mapped via PLM `DataSourceFrom` 1–4 → APP register IDs
-- Physical table must exist in target DB before insert
-- NULL / 5 / 6 / other `DataSourceFrom` → skip with preview warning
-
-### 3.4 Template import (Step: Template)
-
-| # | Decision |
-|---|----------|
-| D14 | Reference PLM solution for template/tab/block/grid logic; **fully customer-customized** per deployment |
-| D15 | **One PLM Template → one APP Transaction Group** |
-| D16 | Do **not** skip special blocks/grids — import as **ordinary** block/grid first; special logic later |
-| D17 | Bind imports to current **`SaasApplicationID`** |
-
-**Mapping (initial):**
-
-| PLM | APP |
-|-----|-----|
-| `pdmTemplate` | Transaction Group (`TemplateHeader`) |
-| Tab | Transaction (child) |
-| Block | Unit |
-| SubItem / Grid column | Field |
-
-**Template `IntegrationId` (re-import):**
-
-| APP object | `IntegrationId` stores |
-|------------|------------------------|
-| Transaction Group | PLM `TemplateId` |
-| Transaction | PLM `TabId` |
-| Unit | PLM `BlockId` |
-| Field | PLM `ColumnId` (grid column or subitem column id) |
-
-Re-import updates by `IntegrationId` on each level.
-
-### 3.5 Wizard product rules
-
-| # | Decision |
-|---|----------|
-| E18 | Step **「Other Data」** placeholder; architecture supports **insert / reorder / append** steps |
-| E19 | **Server-side session** in **Tenant DB** table `AppPlmImportSession` |
-| E19a | On wizard start: detect resumable session → user chooses **discard & start fresh** or **continue** |
-| E19b | Session tracks per-step completion. If **all steps fully succeeded**, session is **not** offered for resume (delete or mark completed) |
-| E19c | Only **in-progress** (partial) sessions are resumable |
-| E20 | **Tenant Admin** only: `EmAppUserType.SaasCompanyAdmin` via `ServerContext.Instance.CurrnetClientIdentity.CurrentLoginUserType` |
-| E21 | No Angular legacy UI — **new feature** |
-| E22 | One wizard run = **one tenant, one application** |
-| E23 | PLM connection string stored **encrypted in session**; on resume **pre-filled**, user may edit or keep |
-| F23 | Cross-instance required in MVP |
-| F24 | No Excel/CSV export for preview |
+| ID | Rule |
+|----|------|
+| E18 | Extensible step registry; **Other Data** placeholder |
+| E19–c | Session in Tenant DB; resume only if **in progress**; completed → no resume |
+| E20–a | `SaasCompanyAdmin` or `SysAdmin`; SysAdmin picks target Company |
+| E23 | PLM connection encrypted in session; pre-filled on resume |
+| F27 | Long execute → async job + poll |
 | F25 | Full rollback on execute failure |
-| F26 | No standard network/firewall assumption; UI shows **connection failure** details when PLM SQL is unreachable |
+| F26 | UI shows PLM connection errors (no network assumptions) |
 
 ---
 
 ## 4. Architecture
 
-### 4.1 Frontend (`AppReact/src/components/dbmgt/`)
+### 4.1 Frontend
 
 ```
-DatabaseDesignManagement.tsx     ← add section「PLM Data Import」
-PlmDataImportManagement.tsx      ← section entry (like DbToDbImportManagement)
-plmImport/
-├── PlmImportWizard.tsx          ← step state machine
-├── plmImportStepRegistry.ts     ← extensible step definitions (order, insert, reorder)
-├── steps/
-│   ├── StepConnection.tsx       ← Connect & Discover (merged step 1+2)
-│   ├── StepEntityImport.tsx     ← UserDefine + SystemDefine tabs
-│   ├── StepTemplateImport.tsx   ← framework + basic mapping
-│   └── StepOtherData.tsx        ← placeholder
-└── types.ts
+AppReact/src/components/dbmgt/
+├── DatabaseDesignManagement.tsx    ← add section
+├── PlmDataImportManagement.tsx
+└── plmImport/
+    ├── PlmImportWizard.tsx
+    ├── plmImportStepRegistry.ts
+    ├── steps/ (Connection, Entity, Template, OtherData)
+    └── types.ts
 ```
 
-**UI conventions:** Match existing Database Design sections — `theme.*`, Wijmo grids for preview, `useTabDataAutoCache` for UI state, URL `param1=PlmDataImportManagement`.
+`AppReact/src/webapi/plmMigrationSvc.ts` — API client.
 
-**Step registry pattern (extensibility):**
+### 4.2 Backend
 
-```typescript
-type PlmImportStepDef = {
-  id: string;
-  label: string;
-  order: number;
-  component: React.FC;
-  canEnter: (session) => boolean;
-  isComplete: (session) => boolean;
-};
-```
+| Layer | Path |
+|-------|------|
+| Controller | `AppAI.Web/Controllers/PlmMigrationController.cs` |
+| BL | `APP.BL/DataMigration/PlmMigration/PlmMigrationBL.*.cs` (3 partials, one class) |
+| DTOs | `APP.Components.Dto/UserDefine/PlmMigration/` |
 
-### 4.2 Backend — C# module layout (`APP.BL/DataMigration/PlmMigration/`)
+**`partial class PlmMigrationBL`:**
 
-> **Status:** Planned locations only — **files not created yet**. Create when Phase 0 starts; register each `.cs` in `APP.BL.csproj`.
+| File | Responsibility |
+|------|----------------|
+| `PlmMigrationBL.Connection.cs` | Auth, session, **`EnsurePlmImportSchema()`**, test/discover, register datasources, logging helper |
+| `PlmMigrationBL.Entity.cs` | Export tables, UserDefine/SystemDefine preview & execute, jobs |
+| `PlmMigrationBL.Template.cs` | Template preview & execute, jobs |
 
-**Layering rule (same as rest of APP):**
+Controller → `PlmMigrationBL` only. No `DatabaseFixture` in controller.
 
-| Layer | Location | Responsibility |
-|-------|----------|----------------|
-| **Controller** | `AppAI.Web/Controllers/PlmMigrationController.cs` | HTTP, auth gate, DTO in/out — **no business logic, no `DatabaseFixture`** |
-| **BL** | `APP.BL/DataMigration/PlmMigration/PlmMigrationBL.*.cs` | All logic — **one class, three partial files** |
-| **DTO** | `APP.Components.Dto/UserDefine/PlmMigration/` | Request/response/session DTOs |
+### 4.3 Tenant database schema (planned — C# only)
 
-Controller calls **`PlmMigrationBL`** only. `AppCacheManagerBL.GetOneDatabaseFixture` is **internal** to APP.BL — never call from controller.
+**Rule:** PLM Import wizard schema is applied **only from C#** in `PlmMigrationBL`. **No new `.sql` files** for this feature anywhere in the repo.
 
-**Single class, three files (`partial class PlmMigrationBL`):**
+| What | How (at implementation) |
+|------|---------------------------|
+| `IntegrationId` columns | `EnsurePlmImportSchema()` — idempotent `ALTER TABLE` via `DatabaseFixture` on tenant fixture |
+| `AppPlmImportSession` / `Job` / `Log` | Same method — idempotent `CREATE TABLE` if not exists |
+| When called | First wizard API that needs schema (e.g. `GetImportSession/active`, `TestPlmConnection`) — once per app domain / tenant fixture |
 
-All files share the same class name and namespace. Split by wizard phase, not by type name.
+**Pattern:** Same as `AppDataSourceRegisterBL.ExecuteStructureUpdateScript` — DDL as **C# string constants**, not `.sql` files on disk.
 
-```
-APP.BL/DataMigration/PlmMigration/
-├── PlmMigrationBL.Connection.cs    ← partial — Step 1: auth, session, PLM connect, pdmDataSource, register
-├── PlmMigrationBL.Entity.cs        ← partial — Step 2: table export, UserDefine, SystemDefine
-└── PlmMigrationBL.Template.cs      ← partial — Step 3: template mapping import
+**Why not runtime ALTER during Execute?** Schema is ensured at wizard **entry**, not mid-import. Import execute assumes columns/tables already exist.
 
-AppAI.Web/Controllers/
-└── PlmMigrationController.cs       ← extends SecureBaseController
+**`IntegrationId` columns (tenant DB):**
 
-APP.Components.Dto/UserDefine/PlmMigration/
-├── PlmImportSessionDto.cs
-├── PlmConnectionTestRequestDto.cs
-├── PlmDiscoverDataSourcesResultDto.cs
-├── PlmEntityImportPreviewDto.cs
-└── …
+| Table | Type | Stores |
+|-------|------|--------|
+| `AppEntityInfo` | `int NULL` | PLM `EntityID` |
+| `AppTransaction` | `nvarchar(100) NULL` | `TemplateId` / `TabId` |
+| `AppTransactionUnit` | `nvarchar(100) NULL` | `BlockId` |
+| `AppTransactionField` | `nvarchar(100) NULL` | `SubItem_{id}` / `Grid_{id}` |
 
-AppReact/src/webapi/
-└── plmMigrationSvc.ts
-```
+**Wizard tables:** see §4.4 column lists (`AppPlmImportSession`, `AppPlmImportJob`, `AppPlmImportLog`).
 
-**Namespace:** `APP.BL.DataMigration.PlmMigration`
+> `SqlReferenceSpecs/ImportPlm*.sql` are **legacy import logic references** for porting entity data only — not used to deploy schema and **do not add** companion migration `.sql` files.
 
-**Skeleton (each file):**
+### 4.4 Session, jobs, logs
 
-```csharp
-namespace APP.BL.DataMigration.PlmMigration
-{
-    public static partial class PlmMigrationBL
-    {
-        // methods for this slice only
-    }
-}
-```
+**`AppPlmImportSession`** — wizard state, encrypted PLM conn, `StepStateJson`, `SessionStatus` (`InProgress` | `Completed`)
 
-| File | Methods (planned) |
-|------|-------------------|
-| **`PlmMigrationBL.Connection.cs`** | `RequireTenantAdmin()`, session CRUD (`AppPlmImportSession`), resume vs completed, `TestPlmConnection`, `DiscoverPlmDataSources`, register ERP/DataWS/OtherEx + company lock, map PLM(1) → Company Master register |
-| **`PlmMigrationBL.Entity.cs`** | `ExportPlmTablesToTenant` (PK preserved), `PreviewUserDefineEntityImport` / `Execute…`, `PreviewSystemDefineEntityImport` / `Execute…` |
-| **`PlmMigrationBL.Template.cs`** | `PreviewTemplateMapping`, `ExecuteTemplateImport` |
+**`AppPlmImportJob`** — async execute; `JobType`, `Status`, `ProgressPercent`, `ProgressMessage`, result/error JSON
 
-**`APP.BL.csproj` entries:**
+**`AppPlmImportLog`** — audit: `StepCode`, `Action`, `Status`, `TargetKey`, `PlmIntegrationKey`, `RowsAffected`, `DurationMs`
 
-```xml
-<Compile Include="DataMigration\PlmMigration\PlmMigrationBL.Connection.cs" />
-<Compile Include="DataMigration\PlmMigration\PlmMigrationBL.Entity.cs" />
-<Compile Include="DataMigration\PlmMigration\PlmMigrationBL.Template.cs" />
-```
+Every Preview/Execute writes log rows (started + final).
 
-**Tenant DB table (new migration):** `AppPlmImportSession` — session id, company/app ids, encrypted PLM conn, step status JSON, `SessionStatus` (`InProgress` | `Completed`), timestamps.
+### 4.5 API endpoints
 
-**Controller:** `PlmMigrationController` — thin; each action: `PlmMigrationBL.RequireTenantAdmin()` then delegate to `PlmMigrationBL` method.
-
-**SQL scripts:** `ImportDoc/SqlReferenceSpecs/` — **reference spec** for C# ports; runtime is **C# only**.
-
-**Data access:** Direct `SqlConnection` / `DatabaseFixture` for PLM (arbitrary connection string); `AppCacheManagerBL.GetOneDatabaseFixture` for APP tenant/master DBs inside `PlmMigrationBL` only.
-
-### 4.3 API endpoints (planned)
-
-| Endpoint | Purpose |
-|----------|---------|
-| `POST TestPlmConnection` | Validate PLM connection string |
-| `POST DiscoverPlmDataSources` | Read `pdmDataSource` 1–4; register/reuse APP registers |
-| `GET ImportSession/active` | Get resumable session for current tenant/app (if any) |
-| `POST ImportSession` | Create or update session |
-| `POST ImportSession/discard` | User chose to clear previous session |
-| `POST PreviewUserDefineEntityImport` | Preview UserDefine |
-| `POST ExecuteUserDefineEntityImport` | Execute UserDefine |
-| `POST PreviewSystemDefineEntityImport` | Preview SystemDefine (incl. table export plan) |
-| `POST ExecuteSystemDefineEntityImport` | Execute SystemDefine |
-| `POST PreviewTemplateMapping` | Template mapping preview |
-| `POST ExecuteTemplateImport` | Template import |
+| Method | Path | Purpose |
+|--------|------|---------|
+| POST | `TestPlmConnection` | Validate PLM SQL |
+| POST | `DiscoverPlmDataSources` | Read `pdmDataSource`, register, test external conns |
+| GET | `ImportSession/active` | Resumable session |
+| POST | `ImportSession` | Save session |
+| POST | `ImportSession/discard` | Clear session |
+| POST | `PreviewUserDefineEntityImport` | Sync preview |
+| POST | `PreviewSystemDefineEntityImport` | Sync preview + export plan |
+| POST | `ExecuteUserDefineEntityImport` | Start job |
+| POST | `ExecuteSystemDefineEntityImport` | Start job |
+| GET | `ImportJob/{jobId}` | Poll progress |
+| POST | `ImportJob/{jobId}/cancel` | Cancel (best-effort) |
+| GET | `ImportLog` | Session audit log |
+| POST | `PreviewTemplateMapping` | Sync preview |
+| POST | `ExecuteTemplateImport` | Start job |
 
 ---
 
-## 5. Wizard flow (current)
+## 5. Wizard flow
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  Step 1: Connect & Discover                                      │
-│  • Input PLM connection string → test                            │
-│  • Read pdmDataSource (1–4)                                      │
-│  • Auto-resolve Tenant / Master / AppId / CompanyId              │
-│  • Register ERP/DataWS/OtherEx (company lock)                    │
-│  • Map PLM(1) → Company Master DB register                       │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Step 2: Entity Data Source                                      │
-│  Tab A: User Define  — preview → execute (update by IntegrationId)│
-│  Tab B: System Define — export PLM tables to tenant if DSF=1     │
-│                       — preview → execute                         │
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Step 3: Template Import                                         │
-│  • 1 Template → 1 Transaction Group                              │
-│  • Ordinary block/grid mapping first                             │
-│  • Preview → execute (update by IntegrationId on Group/Transaction/Unit/Field)│
-└────────────────────────────┬────────────────────────────────────┘
-                             ▼
-┌─────────────────────────────────────────────────────────────────┐
-│  Step 4: Other Data (placeholder)                                │
-│  • Future: Color, POM, File, Search, Security…                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+Step 1  Connect & Discover
+        ├─ Select Application (required)
+        ├─ SysAdmin: select Company
+        ├─ PLM connection → test
+        ├─ pdmDataSource 1–4 → test each external conn
+        └─ Register / reuse DataSource registers
 
-Each execute step: **single transaction, full rollback on error**.
+Step 2  Entity (System Define FIRST)
+        ├─ Tab B: export PLM tables (DSF=1) → preview → execute [job]
+        └─ Tab A: User Define → preview → execute [job]  (locked until B done)
+
+Step 3  Template → preview → execute [job]
+
+Step 4  Other Data (placeholder)
+```
 
 ---
 
@@ -319,57 +270,62 @@ Each execute step: **single transaction, full rollback on error**.
 
 | Phase | Deliverable | Est. |
 |-------|-------------|------|
-| **0** | Sidebar entry + Wizard shell + step registry + session table/API stub | 2–3 days |
-| **1** | Connect & Discover + DataSource register + company lock | 3–4 days |
-| **2** | `PlmTableExportBL` (PK-correct copy PLM → Tenant) | 3–5 days |
-| **3** | SystemDefine preview/execute + update | ~1 week |
-| **4** | UserDefine preview/execute (cross-instance EAV) | 1–2 weeks |
-| **5** | Template framework + basic mapping | 1–2 weeks |
-| **6** | Other Data placeholder + docs | 1 day |
+| **0** | Wizard shell + `EnsurePlmImportSchema()` (C#) + session/job API stub | 3–4 d |
+| **1** | Connect & Discover + pickers + company lock | 3–4 d |
+| **2** | `ExportPlmTablesToTenant` + job infrastructure | 3–5 d |
+| **3** | SystemDefine preview/execute | ~1 wk |
+| **4** | UserDefine preview/execute | 1–2 wk |
+| **5** | Template framework | 1–2 wk |
+| **6** | Other Data placeholder | 1 d |
 
 ---
 
-## 7. Resolved questions (2026-06-16)
+## 7. Questions
+
+### Resolved
 
 | ID | Answer |
 |----|--------|
-| **Q1** | No long-term PLM DB link. `DataSourceFrom=1` SystemDefine → `AppEntityInfo.DataSourceFrom` = Company Master register. Step 1: `pdmDataSource` DSF=1 discover/validate only, no new register |
-| **Q2** | Empty DSF=1 connection → main PLM connection (edge case) |
-| **Q3** | **(A)** Export only tables referenced by `pdmEntity` SystemDefine with `DataSourceFrom=1` |
-| **Q4** | **(A)** Update match **`IntegrationId` only** |
-| **Q5** | UserDefine `DataSourceFrom` = Company Master register Id — **yes** |
-| **Q6** | Session in **Tenant DB**. On start: offer resume or discard. Completed wizard → no resume (clean up session) |
-| **Q7** | Connection **pre-filled** from session (encrypted); user may change |
-| **Q8** | `IntegrationId` on Group / Transaction / Unit / Field = PLM TemplateId / TabId / BlockId / ColumnId |
-| **Q9** | **`EmAppUserType.SaasCompanyAdmin`** (`CurrentLoginUserType`) |
-| **Q10** | No network assumption; UI shows connection failure |
+| Q1–Q10 | See [change log](#9-change-log); summarized in §3 |
+| Q11 | `SaasApplicationID` — Step 1 dropdown |
+| Q12 | UserDefine rows: TRUNCATE + full reload |
+| Q13 | All entities per tab; full tab rollback on failure |
+| Q14 | `IntegrationId` + wizard tables via **`PlmMigrationBL.EnsurePlmImportSchema()`** (C# only, no `.sql` files) |
+| Q15 | `SaasCompanyAdmin` or `SysAdmin` (+ company picker) |
+| Q16 | Async job + UI polling |
+| Q17 | System Define before User Define |
+| Q18 | `SubItem_{columnId}` / `Grid_{columnId}` |
+| Q19 | `AppPlmImportLog` table created in **`EnsurePlmImportSchema()`** |
+| Q20 | Test each external datasource on Discover |
+
+### Open
+
+| ID | Question |
+|----|----------|
+| Q21 | Session auto-cleanup retention (e.g. 30 days)? |
+| Q22 | Mutex if two admins run wizard concurrently? |
+| Q23 | PLM `pdmDataSource` connection string plaintext when comparing to APP register? |
 
 ---
 
 ## 8. Reference files
 
-| File | Role |
+| Path | Role |
 |------|------|
-| `SqlReferenceSpecs/ImportPlmUserDefineEntitiesToAppEntityInfo.sql` | UserDefine import spec |
-| `SqlReferenceSpecs/ImportPlmSystemDefineEntitiesToAppEntityInfo.sql` | SystemDefine import spec |
-| `SqlReferenceSpecs/ExportSourceDbTablesToNewDatabase.sql` | Table list reference; **do not use as-is** (PK issue) |
-| `SqlReferenceSpecs/ImportPlmEnumEntitiesToAppEntityInfo.sql` | **Not used** |
-| `PLM Migration Plan.md` | High-level feature migration roadmap |
+| `SqlReferenceSpecs/ImportPlm*.sql` | Entity import logic reference for C# port (**pre-existing**; do not add new `.sql` for wizard schema) |
+| `PLM Migration Plan.md` | Feature roadmap |
 
-**PLM solution key files:**
-
-- `Com.Visual2000.BL\System\PdmDataSourceBL.cs`
-- `V2K.PLM.Components.Dto\Enums.cs` — `EmDataSourceFrom`
-- `Com.Visual2000.BL\TabBlock\PdmTemplateBL.cs` — template structure
+**PLM solution:** `PdmDataSourceBL.cs`, `Enums.cs` (`EmDataSourceFrom`), `PdmTemplateBL.cs`
 
 ---
 
 ## 9. Change log
 
-| Date | Author | Change |
-|------|--------|--------|
-| 2026-06-16 | — | Initial baseline from design discussion + user Q&A (sections A–F) |
-| 2026-06-16 | — | `PLM Migration Plan.md` updated with business rules + wizard mapping; cross-linked from plan |
-| 2026-06-16 | — | SQL scripts moved to `SqlReferenceSpecs/`; doc paths updated |
-| 2026-06-16 | — | Q1–Q10 resolved; C# module layout documented (not yet implemented) |
-| 2026-06-16 | — | BL layout: `DataMigration/PlmMigration/`, 3 files, `partial class PlmMigrationBL` |
+| Date | Change |
+|------|--------|
+| 2026-06-16 | Initial baseline; Q1–Q10 |
+| 2026-06-16 | Linked plan; SQL → `SqlReferenceSpecs/` |
+| 2026-06-16 | Q11–Q20; partial `PlmMigrationBL` in `DataMigration/PlmMigration/` |
+| 2026-06-16 | Doc restructure (TOC, quick reference) |
+| 2026-06-16 | Tenant DDL **spec only** in `SqlReferenceSpecs/TenantMigration_*.sql` (no AppAI.Web migrations until Phase 0) |
+| 2026-06-16 | **Policy:** wizard schema via C# `EnsurePlmImportSchema()` only — **no `.sql` files** for PLM Import; removed TenantMigration `*.sql` from ImportDoc |
