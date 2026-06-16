@@ -12,6 +12,7 @@ import ExcelDataImportManagement from './ExcelDataImportManagement';
 import JsonFileTableImportManagement from './JsonFileTableImportManagement';
 import RestApiImportManagement from './RestApiImportManagement';
 import DbToDbImportManagement from './DbToDbImportManagement';
+import PlmDataImportManagement from './PlmDataImportManagement';
 import ExtractViewManagement from './ExtractViewManagement';
 
 // Section code enum (matching AngularJS EmSectionCode)
@@ -24,6 +25,7 @@ const EmSectionCode = {
   JsonFileTableImportManagement: 'JsonFileTableImportManagement',
   RestApiImportManagement: 'RestApiImportManagement',
   DbToDbImportManagement: 'DbToDbImportManagement',
+  PlmDataImportManagement: 'PlmDataImportManagement',
 };
 
 // Section configuration
@@ -84,6 +86,12 @@ const SECTIONS: SectionConfig[] = [
     label: 'DB to DB Import',
     icon: 'fa-solid fa-arrows-left-right',
     component: DbToDbImportManagement,
+  },
+  {
+    code: EmSectionCode.PlmDataImportManagement,
+    label: 'PLM Data Import',
+    icon: 'fa-solid fa-file-import',
+    component: PlmDataImportManagement,
   },
 ];
 

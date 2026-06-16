@@ -1,0 +1,187 @@
+import { endpoints } from './endpoints';
+import { getHeaders } from '../helper/apiServiceHelper';
+
+export interface OperationCallResult<T> {
+  Object: T;
+  ObjectList?: T[];
+  ValidationResult: {
+    Items: Array<{
+      Type: string;
+      PropertyName: string;
+      Message: string;
+    }>;
+    IsValid: boolean;
+  };
+  IsSuccessful: boolean;
+  HasResult: boolean;
+}
+
+export interface PlmImportSessionDto {
+  SessionId?: number | null;
+  SessionGuid?: string | null;
+  CompanyId?: number | null;
+  SaasApplicationId?: number | null;
+  SaasApplicationName?: string | null;
+  CreatedByUserId?: number | null;
+  CreatedAt?: string | null;
+  UpdatedAt?: string | null;
+  SessionStatus?: string | null;
+  CurrentStepCode?: string | null;
+  PlmConnectionString?: string | null;
+  HasPlmConnection?: boolean;
+  StepStateJson?: string | null;
+  DataSourceDiscoveryJson?: string | null;
+}
+
+export interface PlmConnectionTestRequestDto {
+  ConnectionString: string;
+  TargetCompanyId?: number | null;
+}
+
+export interface PlmConnectionTestResultDto {
+  IsSuccess: boolean;
+  ServerVersion?: string | null;
+  DatabaseName?: string | null;
+  ErrorMessage?: string | null;
+}
+
+export interface PlmDiscoverDataSourcesRequestDto {
+  PlmConnectionString: string;
+  SaasApplicationId?: number | null;
+  TargetCompanyId?: number | null;
+  SessionId?: number | null;
+}
+
+export interface PlmDataSourceDiscoveryItemDto {
+  DataSourceFrom: number;
+  DataSourceFromName?: string | null;
+  HasConnectionString: boolean;
+  ConnectionTestSuccess: boolean;
+  ConnectionTestMessage?: string | null;
+  RegisteredDataSourceId?: number | null;
+  RegisteredDataSourceName?: string | null;
+  IsReusedRegister?: boolean;
+}
+
+export interface PlmDiscoverDataSourcesResultDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  DataSources?: PlmDataSourceDiscoveryItemDto[];
+}
+
+export interface PlmImportJobDto {
+  JobId: number;
+  SessionId: number;
+  JobType?: string | null;
+  Status?: string | null;
+  ProgressPercent: number;
+  ProgressMessage?: string | null;
+  ResultJson?: string | null;
+  ErrorMessage?: string | null;
+  CreatedAt?: string | null;
+  UpdatedAt?: string | null;
+  StartedAt?: string | null;
+  CompletedAt?: string | null;
+}
+
+export interface PlmImportLogDto {
+  LogId: number;
+  SessionId: number;
+  JobId?: number | null;
+  StepCode?: string | null;
+  Action?: string | null;
+  Status?: string | null;
+  TargetKey?: string | null;
+  PlmIntegrationKey?: string | null;
+  RowsAffected?: number | null;
+  DurationMs?: number | null;
+  Message?: string | null;
+  CreatedAt?: string | null;
+}
+
+class PlmMigrationService {
+  private baseUrl = `${endpoints.BASE_URL}/webapi/PlmMigration`;
+
+  async testPlmConnection(request: PlmConnectionTestRequestDto): Promise<OperationCallResult<PlmConnectionTestResultDto>> {
+    const response = await fetch(`${this.baseUrl}/TestPlmConnection`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to test PLM connection');
+    return response.json();
+  }
+
+  async discoverPlmDataSources(request: PlmDiscoverDataSourcesRequestDto): Promise<OperationCallResult<PlmDiscoverDataSourcesResultDto>> {
+    const response = await fetch(`${this.baseUrl}/DiscoverPlmDataSources`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to discover PLM data sources');
+    return response.json();
+  }
+
+  async getActiveImportSession(targetCompanyId?: number | null): Promise<OperationCallResult<PlmImportSessionDto>> {
+    const qs = targetCompanyId != null ? `?targetCompanyId=${targetCompanyId}` : '';
+    const response = await fetch(`${this.baseUrl}/ImportSession/active${qs}`, {
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to get active import session');
+    return response.json();
+  }
+
+  async saveImportSession(dto: PlmImportSessionDto): Promise<OperationCallResult<PlmImportSessionDto>> {
+    const response = await fetch(`${this.baseUrl}/ImportSession`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(dto),
+    });
+    if (!response.ok) throw new Error('Failed to save import session');
+    return response.json();
+  }
+
+  async discardImportSession(sessionId?: number | null, targetCompanyId?: number | null): Promise<OperationCallResult<boolean>> {
+    const params = new URLSearchParams();
+    if (sessionId != null) params.set('sessionId', String(sessionId));
+    if (targetCompanyId != null) params.set('targetCompanyId', String(targetCompanyId));
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const response = await fetch(`${this.baseUrl}/ImportSession/discard${qs}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to discard import session');
+    return response.json();
+  }
+
+  async getImportJob(jobId: number): Promise<OperationCallResult<PlmImportJobDto>> {
+    const response = await fetch(`${this.baseUrl}/ImportJob/${jobId}`, {
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to get import job');
+    return response.json();
+  }
+
+  async cancelImportJob(jobId: number): Promise<OperationCallResult<boolean>> {
+    const response = await fetch(`${this.baseUrl}/ImportJob/${jobId}/cancel`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to cancel import job');
+    return response.json();
+  }
+
+  async getImportLog(sessionId?: number | null, targetCompanyId?: number | null): Promise<OperationCallResult<PlmImportLogDto[]>> {
+    const params = new URLSearchParams();
+    if (sessionId != null) params.set('sessionId', String(sessionId));
+    if (targetCompanyId != null) params.set('targetCompanyId', String(targetCompanyId));
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    const response = await fetch(`${this.baseUrl}/ImportLog${qs}`, {
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to get import log');
+    return response.json();
+  }
+}
+
+export const plmMigrationSvc = new PlmMigrationService();
