@@ -91,7 +91,7 @@ public class PlmMigrationController : SecureBaseController
     }
 
     [HttpPost("PreviewSystemDefineEntityImport")]
-    public OperationCallResult<object> PreviewSystemDefineEntityImport(int? sessionId)
+    public OperationCallResult<PlmSystemDefineEntityPreviewDto> PreviewSystemDefineEntityImport(int? sessionId)
     {
         try
         {
@@ -99,7 +99,7 @@ public class PlmMigrationController : SecureBaseController
         }
         catch (Exception ex)
         {
-            return ErrorResult<object>("Plm_SystemDefine_Preview_Error", ex);
+            return ErrorResult<PlmSystemDefineEntityPreviewDto>("Plm_SystemDefine_Preview_Error", ex);
         }
     }
 

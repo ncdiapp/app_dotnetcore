@@ -4,6 +4,7 @@ import { useErrorMessage } from '../../../../redux/hooks/useErrorMessage';
 import { adminSvc } from '../../../../webapi/adminsvc';
 import { plmMigrationSvc, PlmDataSourceDiscoveryItemDto } from '../../../../webapi/plmMigrationSvc';
 import type { PlmImportWizardState } from '../types';
+import { buildPlmImportStepStateJson } from '../types';
 
 type AppMenuItem = {
   Id?: number;
@@ -146,9 +147,10 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
         SaasApplicationName: selectedAppName,
         CurrentStepCode: 'Connect',
         PlmConnectionString: state.plmConnectionString.trim(),
-        StepStateJson: JSON.stringify({
+        StepStateJson: buildPlmImportStepStateJson({
           connectionTested: true,
-          systemDefineComplete: state.systemDefineComplete,
+          systemDefineTablesComplete: state.systemDefineTablesComplete,
+          systemDefineEntitiesComplete: state.systemDefineEntitiesComplete,
         }),
         DataSourceDiscoveryJson: discoverResult.Object
           ? JSON.stringify(discoverResult.Object)

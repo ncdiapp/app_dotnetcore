@@ -111,7 +111,8 @@ Before creating a register, normalize the connection string and check Master DB 
 
 **Goal:** Create App-Builder entity data sources from PLM `pdmEntity` metadata and data.
 
-**Wizard step:** Entity Data Source — two tabs: **User Define** and **System Define**.
+**Wizard step:** Entity Data Source — two tabs: **System Define** (first) and **User Define** (unlocked after System Define entity metadata import).  
+**System Define sub-flow (UI):** See [PLM-Import-Wizard-Baseline.md §0 / §5](./PLM-Import-Wizard-Baseline.md) — two phases (Import PLM Entity Tables → Import PLM Entities), each with **List** + **Execute** above the grid.
 
 #### 2.1 User Define entities (`EntityType = 4`, UserDefineTable)
 
@@ -270,13 +271,15 @@ Entry: Database Design → sidebar **「PLM Data Import」** → right panel `PL
 
 ```
 Step 1  Connect & Discover     → §1
-Step 2  Entity Data Source     → §2 (User Define + System Define)
+Step 2  Entity Data Source     → §2 (System Define first, then User Define)
 Step 3  Template Import        → §6 (structure)
 Step 4  Other Data             → §3, §4, §5, §7, §8 (future)
 ```
 
-Each data step: **Preview** (read-only grid, blockers/warnings) → **Execute** (transactional).  
-No Excel/CSV export of preview.
+**Entity step — System Define (implemented):** Phase 1 copy PLM tables (DSF=1) to Tenant DB; Phase 2 import `AppEntityInfo` metadata. Each phase: **List** (preview grid) → **Execute** (async job). Full layout: [Baseline §5](./PLM-Import-Wizard-Baseline.md#5-wizard-flow).
+
+Each data step: **Preview** (read-only grid, blockers/warnings) → **Execute** (transactional or async job where noted).  
+No Excel/CSV export of preview. **Discard Session** available for in-progress wizard sessions (does not remove imported tenant data).
 
 Full API, component paths, and open questions: [PLM-Import-Wizard-Baseline.md](./PLM-Import-Wizard-Baseline.md).
 
@@ -302,3 +305,4 @@ Full API, component paths, and open questions: [PLM-Import-Wizard-Baseline.md](.
 | 2026-06-16 | Linked execution baseline; added cross-cutting rules, `pdmDataSource` / company lock, entity import conditions, table copy vs link, wizard mapping, exclusions |
 | 2026-06-16 | Moved SQL reference scripts to `SqlReferenceSpecs/` subfolder |
 | 2026-06-16 | Q1–Q10 resolved; session/resume rules, IntegrationId, C# module layout in baseline |
+| 2026-06-16 | Aligned §2 / Wizard UI with Baseline: System Define first; 2-phase List+Execute UI; Discard Session; link to Baseline §5 |

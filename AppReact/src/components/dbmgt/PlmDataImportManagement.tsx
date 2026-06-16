@@ -14,7 +14,11 @@ import type {
   PlmImportStepCode,
   PlmImportWizardState,
 } from './plmImport/types';
-import { createInitialEntityStepUi, PLM_IMPORT_PAGE_CACHE_SUFFIX } from './plmImport/types';
+import {
+  createInitialEntityStepUi,
+  normalizeViewingWorkflowStep,
+  PLM_IMPORT_PAGE_CACHE_SUFFIX,
+} from './plmImport/types';
 
 const createInitialWizardState = (): PlmImportWizardState => ({
   session: null,
@@ -23,7 +27,8 @@ const createInitialWizardState = (): PlmImportWizardState => ({
   saasApplicationId: null,
   plmConnectionString: '',
   connectionTested: false,
-  systemDefineComplete: false,
+  systemDefineTablesComplete: false,
+  systemDefineEntitiesComplete: false,
 });
 
 const getPlmImportCacheKey = (): string | null => {
@@ -39,7 +44,13 @@ const readCachedPageState = (): { page: PlmImportPageCache; fromCache: boolean }
       return {
         page: {
           wizardState: cached.wizardState,
-          entityStepUi: cached.entityStepUi ?? createInitialEntityStepUi(),
+          entityStepUi: cached.entityStepUi
+            ? {
+              ...createInitialEntityStepUi(),
+              ...cached.entityStepUi,
+              viewingWorkflowStep: normalizeViewingWorkflowStep(cached.entityStepUi.viewingWorkflowStep),
+            }
+            : createInitialEntityStepUi(),
         },
         fromCache: true,
       };
@@ -56,7 +67,7 @@ const readCachedPageState = (): { page: PlmImportPageCache; fromCache: boolean }
 
 const PlmDataImportManagement: React.FC = () => {
   const { theme } = useTheme();
-  const { showError } = useErrorMessage();
+  const { showError, showInfo } = useErrorMessage();
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
 
   const isAdmin = isAdminUserFromContext(userContext);
@@ -85,7 +96,12 @@ const PlmDataImportManagement: React.FC = () => {
 
   const applySession = useCallback((session: PlmImportWizardState['session']) => {
     if (!session) return;
-    let stepState: { connectionTested?: boolean; systemDefineComplete?: boolean } = {};
+    let stepState: {
+      connectionTested?: boolean;
+      systemDefineComplete?: boolean;
+      systemDefineTablesComplete?: boolean;
+      systemDefineEntitiesComplete?: boolean;
+    } = {};
     if (session.StepStateJson) {
       try {
         stepState = JSON.parse(session.StepStateJson);
@@ -102,7 +118,10 @@ const PlmDataImportManagement: React.FC = () => {
       plmConnectionString: session.PlmConnectionString?.trim()
         || (session.HasPlmConnection ? prev.plmConnectionString : ''),
       connectionTested: Boolean(stepState.connectionTested),
-      systemDefineComplete: Boolean(stepState.systemDefineComplete),
+      systemDefineTablesComplete: Boolean(
+        stepState.systemDefineTablesComplete ?? stepState.systemDefineComplete,
+      ),
+      systemDefineEntitiesComplete: Boolean(stepState.systemDefineEntitiesComplete),
     }));
   }, []);
 
@@ -113,6 +132,34 @@ const PlmDataImportManagement: React.FC = () => {
   const patchEntityStepUi = useCallback((patch: Partial<PlmImportEntityStepUiState>) => {
     setEntityStepUi((prev) => ({ ...prev, ...patch }));
   }, []);
+
+  const resetWizard = useCallback((companyId?: number | null) => {
+    setState({
+      ...createInitialWizardState(),
+      targetCompanyId: isSysAdmin ? (companyId ?? null) : defaultCompanyId,
+    });
+    setEntityStepUi(createInitialEntityStepUi());
+  }, [defaultCompanyId, isSysAdmin]);
+
+  const discardSession = useCallback(async () => {
+    const companyId = state.targetCompanyId ?? defaultCompanyId;
+    try {
+      const result = await plmMigrationSvc.discardImportSession(
+        state.session?.SessionId ?? undefined,
+        companyId ?? undefined,
+      );
+      if (result.Object) {
+        resetWizard(companyId);
+        showInfo('Import session discarded. You can start a new import.', true);
+      } else {
+        const msg = result.ValidationResult?.Items?.map((i) => i.Message).join('; ')
+          || 'Failed to discard import session.';
+        showError(msg);
+      }
+    } catch (e: any) {
+      showError(e?.message || 'Failed to discard import session.');
+    }
+  }, [defaultCompanyId, resetWizard, showError, showInfo, state.session?.SessionId, state.targetCompanyId]);
 
   const loadActiveSession = useCallback(async (companyId?: number | null, options?: { silent?: boolean }) => {
     if (!options?.silent) setIsLoading(true);
@@ -174,6 +221,7 @@ const PlmDataImportManagement: React.FC = () => {
           onStateChange={patchState}
           onEntityStepUiChange={patchEntityStepUi}
           onReloadSession={() => loadActiveSession(state.targetCompanyId ?? defaultCompanyId, { silent: true })}
+          onDiscardSession={discardSession}
         />
       </div>
     </div>

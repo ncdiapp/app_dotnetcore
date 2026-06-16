@@ -124,6 +124,43 @@ export interface PlmTableExportResultItemDto {
   ErrorMessage?: string | null;
 }
 
+export interface PlmSystemDefineEntityPreviewItemDto {
+  PlmEntityId: number;
+  PlmEntityCode?: string | null;
+  TargetEntityCode?: string | null;
+  Description?: string | null;
+  TableName?: string | null;
+  SchemaOwner?: string | null;
+  PlmDataSourceFrom?: number | null;
+  AppDataSourceFrom?: number | null;
+  TargetDatabaseName?: string | null;
+  IdentityField?: string | null;
+  DisplayFiled1?: string | null;
+  DisplayFiled2?: string | null;
+  DisplayFiled3?: string | null;
+  ImportStatus?: string | null;
+  ImportAction?: string | null;
+  SkipReason?: string | null;
+}
+
+export interface PlmSystemDefineEntityBlockerDto {
+  PlmEntityId: number;
+  TargetEntityCode?: string | null;
+  TableName?: string | null;
+  TargetDatabaseName?: string | null;
+  Issue?: string | null;
+}
+
+export interface PlmSystemDefineEntityPreviewDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  ReadyCount?: number;
+  SkippedCount?: number;
+  BlockerCount?: number;
+  Entities?: PlmSystemDefineEntityPreviewItemDto[];
+  Blockers?: PlmSystemDefineEntityBlockerDto[];
+}
+
 export interface PlmImportLogDto {
   LogId: number;
   SessionId: number;
@@ -238,6 +275,24 @@ class PlmMigrationService {
       headers: getHeaders(),
     });
     if (!response.ok) throw new Error('Failed to start PLM table export');
+    return response.json();
+  }
+
+  async previewSystemDefineEntityImport(sessionId: number): Promise<OperationCallResult<PlmSystemDefineEntityPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewSystemDefineEntityImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to preview System Define entity import');
+    return response.json();
+  }
+
+  async executeSystemDefineEntityImport(sessionId: number): Promise<OperationCallResult<PlmImportJobDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecuteSystemDefineEntityImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to start System Define entity import');
     return response.json();
   }
 }

@@ -222,6 +222,79 @@ UPDATE dbo.AppPlmImportJob SET
                 "PLM tables imported to tenant database.");
         }
 
+        public static OperationCallResult<PlmImportJobDto> StartSystemDefineEntityImportJob(int? sessionId)
+        {
+            var result = new OperationCallResult<PlmImportJobDto>();
+            try
+            {
+                RequirePlmMigrationAdmin();
+                EnsurePlmImportSchema();
+                if (!sessionId.HasValue || sessionId.Value <= 0)
+                    throw new ArgumentException("SessionId is required.");
+
+                var fixture = GetTenantFixture();
+                int jobId = CreateQueuedJob(fixture, sessionId.Value, JobTypeSystemDefineEntityImport,
+                    "Queued System Define entity metadata import.");
+                WriteImportLog(fixture, sessionId.Value, jobId, StepEntity, PlmSysDefineActionImport, "Running",
+                    null, null, null, null, "System Define entity metadata import job queued.");
+
+                var context = BuildJobRuntimeContext(sessionId.Value, jobId);
+                RunJobInBackground(RunSystemDefineEntityImportJob, context);
+                result.Object = GetImportJob(jobId).Object;
+            }
+            catch (Exception ex)
+            {
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(PlmMigrationBL), "Plm_SystemDefine_Execute_Error", ValidationItemType.Error, ex.Message));
+            }
+            return result;
+        }
+
+        private static void RunSystemDefineEntityImportJob(PlmJobRuntimeContext context)
+        {
+            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(context.TenantDataSourceId);
+            var session = LoadSessionById(fixture, context.SessionId, includeConnection: false);
+
+            var importResult = ImportSystemDefineEntities(
+                context.PlmConnectionString,
+                session?.DataSourceDiscoveryJson,
+                context.TenantConnectionString,
+                session?.SaasApplicationId,
+                (percent, message) =>
+                {
+                    if (IsJobCancellationRequested(context.JobId))
+                        throw new OperationCanceledException("Import cancelled.");
+                    UpdateJobProgress(fixture, context.JobId, JobStatusRunning, percent, message);
+                });
+
+            string resultJson = JsonConvert.SerializeObject(importResult);
+
+            if (importResult.SkippedEntities?.Count > 0 || importResult.Blockers?.Count > 0)
+            {
+                WriteSystemDefineEntityIssuesToLog(
+                    fixture, context.SessionId, context.JobId, PlmSysDefineActionImport, "Warning",
+                    importResult.SkippedEntities, importResult.Blockers);
+            }
+
+            if (!importResult.IsSuccess)
+            {
+                UpdateJobProgress(
+                    fixture, context.JobId, JobStatusFailed, 100, "Entity metadata import failed.",
+                    resultJson: resultJson, errorMessage: importResult.ErrorMessage, markCompleted: true);
+                WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
+                    PlmSysDefineActionImport, "Failed", null, null, null, null, importResult.ErrorMessage);
+                return;
+            }
+
+            int? totalAffected = importResult.InsertedCount + importResult.UpdatedCount;
+            UpdateJobProgress(
+                fixture, context.JobId, JobStatusCompleted, 100, "Entity metadata import completed successfully.",
+                resultJson: resultJson, markCompleted: true);
+            WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
+                PlmSysDefineActionImport, "Success", null, null, totalAffected, null,
+                $"Inserted {importResult.InsertedCount}, updated {importResult.UpdatedCount}, skipped {importResult.SkippedCount}.");
+        }
+
         public static OperationCallResult<PlmTableExportPlanDto> PreviewPlmTableExportPlan(int? sessionId)
         {
             var result = new OperationCallResult<PlmTableExportPlanDto> { Object = new PlmTableExportPlanDto() };

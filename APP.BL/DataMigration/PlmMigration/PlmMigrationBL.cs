@@ -26,5 +26,8 @@ namespace APP.BL.DataMigration.PlmMigration
 
         public const string PlmExportActionPreview = "PlmTableExportPreview";
         public const string PlmExportActionExport = "PlmTableExport";
+
+        public const string PlmSysDefineActionPreview = "SystemDefineEntityPreview";
+        public const string PlmSysDefineActionImport = "SystemDefineEntityImport";
     }
 }

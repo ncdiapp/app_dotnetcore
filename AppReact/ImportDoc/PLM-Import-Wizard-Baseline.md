@@ -5,7 +5,7 @@
 > **Feature scope:** [PLM Migration Plan.md](./PLM%20Migration%20Plan.md)  
 > **SQL import specs:** [SqlReferenceSpecs/](./SqlReferenceSpecs/)  
 > **PLM reference:** `C:\Dev\PLM3\PLM`  
-> **Last updated:** 2026-06-16
+> **Last updated:** 2026-06-16 (System Define 2-phase UI, session discard, API/BL sync)
 
 ---
 
@@ -36,9 +36,20 @@
 | Step | What happens |
 |------|----------------|
 | **1 Connect & Discover** | Pick **Application** + PLM connection → read `pdmDataSource` → register ERP/DataWS/OtherEx (company lock). Discovery grid: **Data source name**, **Connection string** (raw from `pdmDataSource`), **Status** (`OK` only when row has its own connection string and test passed; blank connection → blank status). |
-| **2 Entity** | **System Define first** (export PLM tables → preview → execute job) → then **User Define** (preview → execute job) |
+| **2 Entity** | **System Define tab first** — two phases (see below) — then **User Define** tab (preview → execute job, Phase 4) |
 | **3 Template** | 1 PLM Template → 1 Transaction Group; preview → execute job |
 | **4 Other Data** | Placeholder (Color, POM, …) |
+
+**System Define sub-flow (Entity step, Tab 1):** Two phases on one screen pattern — **List** (sync preview API) + **Execute** (async job) buttons above the grid.
+
+| Phase | Workflow step | Buttons | Grid title |
+|-------|---------------|---------|------------|
+| **1** | Import PLM Entity Tables | List PLM Importing Tables · Execute Import Tables | Need To Import PLM System Defined Entity Tables |
+| **2** | Import PLM Entities | List PLM Importing Entities · Execute Import Entities | Need To Import PLM System Defined Entities |
+
+Phase 2 unlocks after phase 1 execute completes. **Re-import** is allowed (Execute stays enabled when rows are importable). Wizard footer: **Previous / Next** centered, prominent nav between top-level steps.
+
+**Session:** Header shows `Session #id` and **Discard Session** (calls `ImportSession/discard` — marks `InProgress` session completed; resets wizard UI; does **not** delete imported physical tables or `AppEntityInfo`).
 
 **Hard rules:**
 
@@ -118,7 +129,11 @@ Add a **PLM Data Import** wizard to the React **Database Design** page (`Databas
 | C12a | Table copy in C# with **PK preserved** (not `SELECT * INTO`) |
 | C13 | Prompt IIS recycle after import |
 
-**Step 2 order:** System Define tab **first** → User Define tab unlocked after System complete (or explicit skip when nothing to import).
+**Step 2 order:** System Define tab **first** → User Define tab unlocked after System Define entity metadata import completes (or explicit skip when nothing to import).
+
+**System Define UI (implemented):** Two workflow phases per table above — not four separate preview/import sub-steps. Each phase: user runs **List** then **Execute**; grid stays on the same panel.
+
+**`StepStateJson` (Entity step):** `connectionTested`, `systemDefineTablesComplete`, `systemDefineEntitiesComplete` (legacy alias `systemDefineComplete` = tables complete).
 
 **Specs:** `SqlReferenceSpecs/ImportPlmSystemDefineEntitiesToAppEntityInfo.sql`, `ImportPlmUserDefineEntitiesToAppEntityInfo.sql`
 
@@ -146,6 +161,7 @@ Add a **PLM Data Import** wizard to the React **Database Design** page (`Databas
 |----|------|
 | E18 | Extensible step registry; **Other Data** placeholder |
 | E19–c | Session in Tenant DB; resume only if **in progress**; completed → no resume |
+| E19d | **Discard Session** button in wizard header — `POST ImportSession/discard`; clears resumable state only (not tenant data) |
 | E20–a | `SaasCompanyAdmin` or `SysAdmin`; SysAdmin picks target Company |
 | E23 | PLM connection encrypted in session; pre-filled on resume |
 | F27 | Long execute → async job + poll |
@@ -176,15 +192,20 @@ AppReact/src/components/dbmgt/
 | Layer | Path |
 |-------|------|
 | Controller | `AppAI.Web/Controllers/PlmMigrationController.cs` |
-| BL | `APP.BL/DataMigration/PlmMigration/PlmMigrationBL.*.cs` (3 partials, one class) |
+| BL | `APP.BL/DataMigration/PlmMigration/PlmMigrationBL.*.cs` (multiple partials, one class) |
 | DTOs | `APP.Components.Dto/UserDefine/PlmMigration/` |
 
 **`partial class PlmMigrationBL`:**
 
 | File | Responsibility |
 |------|----------------|
-| `PlmMigrationBL.Connection.cs` | Auth, session, **`EnsurePlmImportSchema()`**, test/discover, register datasources, logging helper |
-| `PlmMigrationBL.Entity.cs` | Export tables, UserDefine/SystemDefine preview & execute, jobs |
+| `PlmMigrationBL.cs` | Constants, shared types |
+| `PlmMigrationBL.Connection.cs` | Auth, session, **`EnsurePlmImportSchema()`**, save/discard session, logging helper |
+| `PlmMigrationBL.Discover.cs` | `TestPlmConnection`, `DiscoverPlmDataSources`, datasource register |
+| `PlmMigrationBL.Export.cs` | `BuildPlmTableExportPlan`, `ExportPlmTablesToTenant` |
+| `PlmMigrationBL.Jobs.cs` | Job queue/run, table export job, System Define entity import job, preview entry points |
+| `PlmMigrationBL.SystemDefineEntity.cs` | System Define entity preview & import logic |
+| `PlmMigrationBL.Entity.cs` | UserDefine preview/execute (Phase 4) |
 | `PlmMigrationBL.Template.cs` | Template preview & execute, jobs |
 
 Controller → `PlmMigrationBL` only. No `DatabaseFixture` in controller.
@@ -234,11 +255,13 @@ Every Preview/Execute writes log rows (started + final).
 | POST | `DiscoverPlmDataSources` | Read `pdmDataSource`, register, test external conns |
 | GET | `ImportSession/active` | Resumable session |
 | POST | `ImportSession` | Save session |
-| POST | `ImportSession/discard` | Clear session |
+| POST | `ImportSession/discard` | Mark active `InProgress` session completed; user starts fresh (UI: **Discard Session**) |
+| POST | `PreviewPlmTableExportPlan` | Sync table list for System Define phase 1 |
+| POST | `ExecutePlmTableExport` | Start `PlmTableExport` job (phase 1) |
 | POST | `PreviewUserDefineEntityImport` | Sync preview |
-| POST | `PreviewSystemDefineEntityImport` | Sync preview + export plan |
+| POST | `PreviewSystemDefineEntityImport` | Sync entity metadata preview (System Define phase 2) |
 | POST | `ExecuteUserDefineEntityImport` | Start job |
-| POST | `ExecuteSystemDefineEntityImport` | Start job |
+| POST | `ExecuteSystemDefineEntityImport` | Start `SystemDefineEntityImport` job (phase 2) |
 | GET | `ImportJob/{jobId}` | Poll progress |
 | POST | `ImportJob/{jobId}/cancel` | Cancel (best-effort) |
 | GET | `ImportLog` | Session audit log |
@@ -257,9 +280,18 @@ Step 1  Connect & Discover
         ├─ pdmDataSource 1–4 → test each external conn
         └─ Register / reuse DataSource registers
 
-Step 2  Entity (System Define FIRST)
-        ├─ Tab B: export PLM tables (DSF=1) → preview → execute [job]
-        └─ Tab A: User Define → preview → execute [job]  (locked until B done)
+Step 2  Entity
+        ├─ Tab 1: System Define (FIRST)
+        │     Phase 1 — Import PLM Entity Tables
+        │       ├─ List PLM Importing Tables  → grid (Schema, Table, Source OK, …)
+        │       └─ Execute Import Tables      → async job (PlmTableExport)
+        │     Phase 2 — Import PLM Entities (unlocked after phase 1 execute)
+        │       ├─ List PLM Importing Entities → grid (Entity code, Status, …)
+        │       └─ Execute Import Entities    → async job (SystemDefineEntityImport)
+        └─ Tab 2: User Define → List + Execute  (locked until System Define complete; Phase 4)
+
+        Footer: Previous / Next (centered) between wizard steps 1–4
+        Header: Session # · Discard Session (when session exists)
 
 Step 3  Template → preview → execute [job]
 
@@ -331,3 +363,4 @@ Step 4  Other Data (placeholder)
 | 2026-06-16 | Doc restructure (TOC, quick reference) |
 | 2026-06-16 | Tenant DDL **spec only** in `SqlReferenceSpecs/TenantMigration_*.sql` (no AppAI.Web migrations until Phase 0) |
 | 2026-06-16 | **Policy:** wizard schema via C# `EnsurePlmImportSchema()` only — **no `.sql` files** for PLM Import; removed TenantMigration `*.sql` from ImportDoc |
+| 2026-06-16 | **Implemented UI:** System Define 4 sub-steps → **2 phases** (List + Execute each); grid titles; centered wizard nav; **Discard Session** button; table export APIs; BL partial file list; re-import allowed; `StepStateJson` fields documented |
