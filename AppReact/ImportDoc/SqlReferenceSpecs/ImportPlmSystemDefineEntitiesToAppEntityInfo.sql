@@ -3,7 +3,7 @@
 
   Creates AppEntityInfo metadata only (EmAppEntityType.SystemDefineTable = 1).
   Does NOT create physical tables or copy row data — tables must already exist
-  in each APP datasource database (see ExportSourceDbTablesToNewDatabase.sql).
+  in each APP datasource database (see SqlReferenceSpecs/ExportSourceDbTablesToNewDatabase.sql).
 
   PLM source:
     pdmEntity (EntityType = 1, IsRelationEntity = 0)
