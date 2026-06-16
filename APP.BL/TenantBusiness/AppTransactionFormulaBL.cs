@@ -1,5 +1,4 @@
 
-using ExpressionEval;
 using System;
 using System.Collections.Generic;
 using System.Data;
@@ -29,7 +28,11 @@ namespace App.BL
     {
         public static readonly string FormaulPrefix = "transactionfieldid_";
         public static readonly string FormulaLineEnd = ";";
-        public static readonly Interpreter TargetInterpreter = new Interpreter();
+        public static readonly Interpreter TargetInterpreter = new Interpreter()
+            .SetFunction("IsNumericHasValue",   (Func<object, bool>)EvaluatorHelpers.IsNumericHasValue)
+            .SetFunction("IsDateHasValue",      (Func<object, bool>)EvaluatorHelpers.IsDateHasValue)
+            .SetFunction("IsDDLHasValue",       (Func<object, bool>)EvaluatorHelpers.IsDDLHasValue)
+            .SetFunction("IsChecBoxkHasValue",  (Func<object, bool>)EvaluatorHelpers.IsChecBoxkHasValue);
 
         public static readonly string GetJsonNodeValueByPathFunction = "GetJsonNodeValueByPath";
         public static readonly string FindOneItemFromJsonArrayFunction = "FindOneItemFromJsonArray";
@@ -1721,7 +1724,7 @@ namespace App.BL
 
                     try
                     {
-                        object exResult = Evaluator.EvaluateToObject(rightSideDateimEXpress);
+                        object exResult = ParseAndEvaluteExpress(rightSideDateimEXpress);
 
                         dictFiedIdValue[leftSideKey] = exResult;
 
@@ -2025,7 +2028,7 @@ namespace App.BL
                 //  aExpressionEval.Expression = rightSideEXpress;
                 //  object exResult = aExpressionEval.Evaluate();
 
-                object exResult = Evaluator.EvaluateToObject(rightSideEXpress);
+                object exResult = ParseAndEvaluteExpress(rightSideEXpress);
 
                 bool? booleanResult = ControlTypeValueConverter.ConvertValueToBoolean(exResult);
 
@@ -2061,7 +2064,7 @@ namespace App.BL
                 //  aExpressionEval.Expression = rightSideEXpress;
                 //  object exResult = aExpressionEval.Evaluate();
 
-                object exResult = Evaluator.EvaluateToObject(rightSideEXpress);
+                object exResult = ParseAndEvaluteExpress(rightSideEXpress);
 
                 bool? booleanResult = ControlTypeValueConverter.ConvertValueToBoolean(exResult);
 

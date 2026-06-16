@@ -6,6 +6,7 @@ using Microsoft.CSharp;
 #else
 using Microsoft.CodeAnalysis.CSharp.Scripting;
 using Microsoft.CodeAnalysis.Scripting;
+using System.Collections.Concurrent;
 #endif
 using System.Text;
 using System.Reflection;
@@ -322,38 +323,62 @@ namespace ExpressionEval
 #else
       if (_items == null || !_items.TryGetValue(name, out var item))
         throw new InvalidOperationException($"No expression named '{name}'.");
-      // ScriptOptions with common imports
-      var options = ScriptOptions.Default
-          .AddImports("System", "System.Data", "System.Xml", "System.Globalization");
-      // Evaluate synchronously for backward compatibility
-      return CSharpScript.EvaluateAsync(item.Expression, options).GetAwaiter().GetResult();
+      return RunCached(item.Expression);
 #endif
     }
     #endregion
 
     #region Static Members
+#if !NETFRAMEWORK
+    private static readonly ScriptOptions _scriptOptions = ScriptOptions.Default
+        .AddImports("System", "System.Data", "System.Xml", "System.Globalization");
+    private static readonly ConcurrentDictionary<string, Script<object>> _scriptCache = new();
+
+    private static object RunCached(string code)
+    {
+      var script = _scriptCache.GetOrAdd(code, c => CSharpScript.Create<object>(c, _scriptOptions));
+      return script.RunAsync().GetAwaiter().GetResult().ReturnValue;
+    }
+#endif
+
     static public int EvaluateToInteger(string code)
     {
+#if NETFRAMEWORK
       Evaluator eval = new Evaluator(typeof(int), code, staticMethodName);
       return (int) eval.Evaluate(staticMethodName);
+#else
+      return (int) RunCached(code);
+#endif
     }
 
     static public string EvaluateToString(string code)
     {
+#if NETFRAMEWORK
       Evaluator eval = new Evaluator(typeof(string), code, staticMethodName);
       return (string) eval.Evaluate(staticMethodName);
+#else
+      return (string) RunCached(code);
+#endif
     }
 
     static public bool EvaluateToBool(string code)
     {
+#if NETFRAMEWORK
       Evaluator eval = new Evaluator(typeof(bool), code, staticMethodName);
       return (bool) eval.Evaluate(staticMethodName);
+#else
+      return (bool) RunCached(code);
+#endif
     }
 
     static public object EvaluateToObject(string code)
     {
+#if NETFRAMEWORK
       Evaluator eval = new Evaluator(typeof(object), code, staticMethodName);
       return eval.Evaluate(staticMethodName);
+#else
+      return RunCached(code);
+#endif
     }
     #endregion
 
