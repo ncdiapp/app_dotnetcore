@@ -279,8 +279,6 @@ namespace APP.BL.DataMigration.PlmMigration
                     return result;
                 }
 
-                RefreshTenantTableSchemaCache(tenantDataSourceId);
-
                 var tabRows = LoadPlmTemplateTabs(plmConnectionString, tablePrefix)
                     .Where(t => t.ImportStatus != TemplateStatusSkipped)
                     .ToList();
@@ -299,12 +297,21 @@ namespace APP.BL.DataMigration.PlmMigration
                     .Select(g => g.First())
                     .ToList();
 
+                int gridTableCount = uniqueTabs
+                    .SelectMany(t => t.GridColumns.Select(g => g.TableName))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count();
+
+                progressCallback?.Invoke(8,
+                    $"Table plan: 1 root, {uniqueTabs.Count} sibling tab table(s), {gridTableCount} grid table(s).");
+
+                // Phase 1 — physical tables for every tab (DDL only).
                 int tabIndex = 0;
                 foreach (var tab in uniqueTabs)
                 {
                     tabIndex++;
-                    int pct = 10 + (int)(50.0 * tabIndex / Math.Max(1, uniqueTabs.Count));
-                    progressCallback?.Invoke(pct, $"Preparing tables for tab {tab.TabName}…");
+                    int pct = 10 + (int)(45.0 * tabIndex / Math.Max(1, uniqueTabs.Count));
+                    progressCallback?.Invoke(pct, $"Creating tables for tab {tab.TabName} ({tabIndex}/{uniqueTabs.Count})…");
 
                     using (var ddlTran = tenantConn.BeginTransaction())
                     {
@@ -321,11 +328,18 @@ namespace APP.BL.DataMigration.PlmMigration
                             return result;
                         }
                     }
+                }
 
-                    RefreshTenantTableSchemaCache(tenantDataSourceId);
+                progressCallback?.Invoke(58, "Refreshing tenant table schema cache…");
+                RefreshTenantTableSchemaCache(tenantDataSourceId);
 
-                    pct = 60 + (int)(25.0 * tabIndex / Math.Max(1, uniqueTabs.Count));
-                    progressCallback?.Invoke(pct, $"Importing transaction for tab {tab.TabName}…");
+                // Phase 2 — AppTransaction per tab (after all tables exist in cache).
+                tabIndex = 0;
+                foreach (var tab in uniqueTabs)
+                {
+                    tabIndex++;
+                    int pct = 60 + (int)(25.0 * tabIndex / Math.Max(1, uniqueTabs.Count));
+                    progressCallback?.Invoke(pct, $"Importing transaction for tab {tab.TabName} ({tabIndex}/{uniqueTabs.Count})…");
 
                     try
                     {
@@ -797,8 +811,6 @@ CREATE TABLE dbo.[{tableName}] (
                 TransactionName = tab.TabName,
                 SaasApplicationId = saasApplicationId
             };
-
-            RefreshTenantTableSchemaCache(tenantDataSourceId);
 
             OperationCallResult<AppTransactionExDto> saveResult;
             if (isUpdate)
