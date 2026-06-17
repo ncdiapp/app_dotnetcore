@@ -11,11 +11,7 @@ import {
   PlmTableExportPlanItemDto,
   PlmUserDefineEntityPreviewItemDto,
 } from '../../../../webapi/plmMigrationSvc';
-import type {
-  PlmImportEntityStepUiState,
-  PlmImportWizardState,
-  PlmSystemDefineWorkflowStep,
-} from '../types';
+import type { PlmImportEntityStepUiState, PlmImportWizardState } from '../types';
 import { buildPlmImportStepStateJson } from '../types';
 
 export type EntityStepProps = {
@@ -29,31 +25,70 @@ export type EntityStepProps = {
 const TABLE_EXPORT_JOB = 'PlmTableExport';
 const ENTITY_IMPORT_JOB = 'SystemDefineEntityImport';
 const USER_DEFINE_IMPORT_JOB = 'UserDefineEntityImport';
+const TERMINAL_JOB_STATUSES = ['Completed', 'Failed', 'Cancelled'];
 
-type WorkflowStepDef = {
-  step: PlmSystemDefineWorkflowStep;
-  title: string;
-  listLabel: string;
-  executeLabel: string;
-  hint: string;
+type PipelinePhase =
+  | 'idle'
+  | 'listTables'
+  | 'importTables'
+  | 'listSysEntities'
+  | 'importSysEntities'
+  | 'listUserEntities'
+  | 'importUserEntities'
+  | 'done';
+
+const PHASE_LABEL: Record<Exclude<PipelinePhase, 'idle' | 'done'>, string> = {
+  listTables: 'Listing PLM system tables…',
+  importTables: 'Importing PLM tables into tenant database…',
+  listSysEntities: 'Listing system define entities…',
+  importSysEntities: 'Importing system define entity metadata…',
+  listUserEntities: 'Listing user define entities…',
+  importUserEntities: 'Importing user define entities…',
 };
 
-const WORKFLOW_STEPS: WorkflowStepDef[] = [
-  {
-    step: 1,
-    title: 'Import PLM Entity Tables',
-    listLabel: 'List PLM Importing Tables',
-    executeLabel: 'Execute Import Tables',
-    hint: 'List PLM tables and review Source OK, then execute import into the tenant database.',
-  },
-  {
-    step: 2,
-    title: 'Import PLM Entities',
-    listLabel: 'List PLM Importing Entities',
-    executeLabel: 'Execute Import Entities',
-    hint: 'List entity metadata from pdmEntity. Only Status = Ready rows will be imported.',
-  },
-];
+const phaseBasePercent: Record<PipelinePhase, number> = {
+  idle: 0,
+  listTables: 3,
+  importTables: 8,
+  listSysEntities: 38,
+  importSysEntities: 43,
+  listUserEntities: 72,
+  importUserEntities: 77,
+  done: 100,
+};
+
+type CollapsibleSectionProps = {
+  title: string;
+  summary: string | null;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  theme: ReturnType<typeof useTheme>['theme'];
+};
+
+const CollapsibleSection: React.FC<CollapsibleSectionProps> = ({
+  title,
+  summary,
+  expanded,
+  onToggle,
+  children,
+  theme,
+}) => (
+  <div className={`rounded border overflow-hidden ${theme.inputBox}`}>
+    <button
+      type="button"
+      className={`w-full flex items-center gap-2 px-3 py-2 text-left border-b ${theme.mainContentSection}`}
+      onClick={onToggle}
+    >
+      <i className={`fa-solid fa-chevron-${expanded ? 'down' : 'right'} text-[10px] w-3 ${theme.menu_secondary}`} />
+      <span className={`text-xs font-semibold ${theme.label}`}>{title}</span>
+      {summary && (
+        <span className={`ml-auto text-xs truncate ${theme.menu_secondary}`}>{summary}</span>
+      )}
+    </button>
+    {expanded && <div className="flex flex-col min-h-[140px] h-64 overflow-hidden">{children}</div>}
+  </div>
+);
 
 const EntityStep: React.FC<EntityStepProps> = ({
   state,
@@ -66,8 +101,8 @@ const EntityStep: React.FC<EntityStepProps> = ({
   const { showError, showInfo, showWarning } = useErrorMessage();
 
   const {
-    activeTab,
-    viewingWorkflowStep,
+    systemSectionExpanded,
+    userSectionExpanded,
     planItems,
     entityPlanItems,
     userDefinePlanItems,
@@ -76,16 +111,19 @@ const EntityStep: React.FC<EntityStepProps> = ({
     isEntityImporting,
     isUserDefineImporting,
   } = entityStepUi;
-  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
-  const [isEntityPreviewLoading, setIsEntityPreviewLoading] = useState(false);
-  const [isUserDefinePreviewLoading, setIsUserDefinePreviewLoading] = useState(false);
+
   const [tableCv] = useState<CollectionView>(() => new CollectionView<PlmTableExportPlanItemDto>([]));
   const [entityCv] = useState<CollectionView>(() => new CollectionView<PlmSystemDefineEntityPreviewItemDto>([]));
   const [userDefineCv] = useState<CollectionView>(() => new CollectionView<PlmUserDefineEntityPreviewItemDto>([]));
 
+  const [isPipelineRunning, setIsPipelineRunning] = useState(false);
+  const [pipelinePhase, setPipelinePhase] = useState<PipelinePhase>('idle');
+  const [pipelineMessage, setPipelineMessage] = useState('');
+  const [pipelinePercent, setPipelinePercent] = useState(0);
+
   const sessionId = state.session?.SessionId ?? null;
-  const userDefineLocked = !state.systemDefineEntitiesComplete;
   const finalizedJobIdsRef = useRef<Set<number>>(new Set());
+  const pipelineRunningRef = useRef(false);
 
   useEffect(() => {
     tableCv.sourceCollection = planItems;
@@ -102,7 +140,6 @@ const EntityStep: React.FC<EntityStepProps> = ({
     userDefineCv.refresh();
   }, [userDefineCv, userDefinePlanItems]);
 
-  // Clear stale exporting flags restored from tab cache without an active job.
   useEffect(() => {
     if ((isExporting || isEntityImporting || isUserDefineImporting) && !activeJob?.JobId) {
       onEntityStepUiChange({ isExporting: false, isEntityImporting: false, isUserDefineImporting: false });
@@ -137,133 +174,84 @@ const EntityStep: React.FC<EntityStepProps> = ({
     onSessionSaved();
   }, [onSessionSaved, sessionId, state]);
 
-  const terminalJobStatuses = useMemo(() => ['Completed', 'Failed', 'Cancelled'], []);
-
-  const isTableJobRunning = useMemo(() => {
-    if (isExporting) return true;
-    if (!activeJob?.JobId || activeJob.JobType !== TABLE_EXPORT_JOB) return false;
-    return !terminalJobStatuses.includes(activeJob.Status || '');
-  }, [activeJob, isExporting, terminalJobStatuses]);
-
-  const isEntityJobRunning = useMemo(() => {
-    if (isEntityImporting) return true;
-    if (!activeJob?.JobId || activeJob.JobType !== ENTITY_IMPORT_JOB) return false;
-    return !terminalJobStatuses.includes(activeJob.Status || '');
-  }, [activeJob, isEntityImporting, terminalJobStatuses]);
-
-  const isUserDefineJobRunning = useMemo(() => {
-    if (isUserDefineImporting) return true;
-    if (!activeJob?.JobId || activeJob.JobType !== USER_DEFINE_IMPORT_JOB) return false;
-    return !terminalJobStatuses.includes(activeJob.Status || '');
-  }, [activeJob, isUserDefineImporting, terminalJobStatuses]);
-
-  const isAnyJobRunning = isTableJobRunning || isEntityJobRunning || isUserDefineJobRunning;
-
-  const importableTableCount = useMemo(
-    () => planItems.filter((t) => t.SourceTableExists).length,
-    [planItems],
-  );
-
-  const importableEntityCount = useMemo(
-    () => entityPlanItems.filter((e) => e.ImportStatus === 'Ready').length,
-    [entityPlanItems],
-  );
-
-  const importableUserDefineCount = useMemo(
-    () => userDefinePlanItems.filter((e) => e.ImportStatus === 'Ready').length,
-    [userDefinePlanItems],
-  );
-
-  const currentWorkflowStep = useMemo((): PlmSystemDefineWorkflowStep | 'done' => {
-    if (isTableJobRunning) return 1;
-    if (isEntityJobRunning) return 2;
-    if (!state.systemDefineTablesComplete) return 1;
-    if (!state.systemDefineEntitiesComplete) return 2;
-    return 'done';
-  }, [
-    isEntityJobRunning,
-    isTableJobRunning,
-    state.systemDefineEntitiesComplete,
-    state.systemDefineTablesComplete,
-  ]);
-
-  const stepCompleted = useCallback((step: PlmSystemDefineWorkflowStep): boolean => {
-    switch (step) {
-      case 1: return state.systemDefineTablesComplete;
-      case 2: return state.systemDefineEntitiesComplete;
-      default: return false;
-    }
-  }, [state.systemDefineEntitiesComplete, state.systemDefineTablesComplete]);
-
-  const stepUnlocked = useCallback((step: PlmSystemDefineWorkflowStep): boolean => {
-    switch (step) {
-      case 1: return true;
-      case 2: return state.systemDefineTablesComplete;
-      default: return false;
-    }
-  }, [state.systemDefineTablesComplete]);
-
-  const finalizeImportJob = useCallback(async (job: PlmImportJobDto, showCompletionToast: boolean) => {
-    if (finalizedJobIdsRef.current.has(job.JobId)) {
-      onEntityStepUiChange({ isExporting: false, isEntityImporting: false, isUserDefineImporting: false, activeJob: null });
-      return;
-    }
-    finalizedJobIdsRef.current.add(job.JobId);
-
-    const isTableJob = job.JobType === TABLE_EXPORT_JOB;
-    const isEntityJob = job.JobType === ENTITY_IMPORT_JOB;
-    const isUserDefineJob = job.JobType === USER_DEFINE_IMPORT_JOB;
-
-    if (job.Status === 'Completed') {
-      if (isTableJob) {
-        if (showCompletionToast && !state.systemDefineTablesComplete) {
-          showInfo('PLM table import completed.', true);
-        }
-        onStateChange({ systemDefineTablesComplete: true });
-        if (!state.systemDefineTablesComplete) {
-          await saveStepState({ systemDefineTablesComplete: true });
-        }
-        onEntityStepUiChange({ viewingWorkflowStep: 2 });
-      } else if (isEntityJob) {
-        if (showCompletionToast && !state.systemDefineEntitiesComplete) {
-          showInfo('System Define entity metadata import completed.', true);
-        }
-        onStateChange({ systemDefineEntitiesComplete: true });
-        if (!state.systemDefineEntitiesComplete) {
-          await saveStepState({ systemDefineEntitiesComplete: true });
-        }
-      } else if (isUserDefineJob) {
-        if (showCompletionToast && !state.userDefineEntitiesComplete) {
-          showInfo('User Define entity import completed.', true);
-        }
-        onStateChange({ userDefineEntitiesComplete: true });
-        if (!state.userDefineEntitiesComplete) {
-          await saveStepState({ userDefineEntitiesComplete: true });
-        }
+  const applyJobSuccess = useCallback(async (job: PlmImportJobDto) => {
+    if (job.JobType === TABLE_EXPORT_JOB) {
+      onStateChange({ systemDefineTablesComplete: true });
+      if (!state.systemDefineTablesComplete) {
+        await saveStepState({ systemDefineTablesComplete: true });
       }
-      onEntityStepUiChange({ isExporting: false, isEntityImporting: false, isUserDefineImporting: false, activeJob: null });
-      return;
+    } else if (job.JobType === ENTITY_IMPORT_JOB) {
+      onStateChange({ systemDefineEntitiesComplete: true });
+      if (!state.systemDefineEntitiesComplete) {
+        await saveStepState({ systemDefineEntitiesComplete: true });
+      }
+    } else if (job.JobType === USER_DEFINE_IMPORT_JOB) {
+      onStateChange({ userDefineEntitiesComplete: true });
+      if (!state.userDefineEntitiesComplete) {
+        await saveStepState({ userDefineEntitiesComplete: true });
+      }
     }
-
-    if (job.Status === 'Failed' || job.Status === 'Cancelled') {
-      showError(job.ErrorMessage || job.ProgressMessage || 'Import failed.');
-      onEntityStepUiChange({ isExporting: false, isEntityImporting: false, isUserDefineImporting: false, activeJob: null });
-    }
+    onEntityStepUiChange({ isExporting: false, isEntityImporting: false, isUserDefineImporting: false, activeJob: null });
   }, [
     onEntityStepUiChange,
     onStateChange,
     saveStepState,
-    showError,
-    showInfo,
     state.systemDefineEntitiesComplete,
     state.systemDefineTablesComplete,
     state.userDefineEntitiesComplete,
   ]);
 
+  const finalizeImportJob = useCallback(async (job: PlmImportJobDto, showCompletionToast: boolean) => {
+    if (finalizedJobIdsRef.current.has(job.JobId)) {
+      onEntityStepUiChange({ isExporting: false, isEntityImporting: false, isUserDefineImporting: false, activeJob: null });
+      return job.Status === 'Completed';
+    }
+    finalizedJobIdsRef.current.add(job.JobId);
+
+    if (job.Status === 'Completed') {
+      await applyJobSuccess(job);
+      if (showCompletionToast && !pipelineRunningRef.current) {
+        if (job.JobType === TABLE_EXPORT_JOB) showInfo('PLM table import completed.', true);
+        else if (job.JobType === ENTITY_IMPORT_JOB) showInfo('System Define entity metadata import completed.', true);
+        else if (job.JobType === USER_DEFINE_IMPORT_JOB) showInfo('User Define entity import completed.', true);
+      }
+      return true;
+    }
+
+    if (job.Status === 'Failed' || job.Status === 'Cancelled') {
+      if (!pipelineRunningRef.current) {
+        showError(job.ErrorMessage || job.ProgressMessage || 'Import failed.');
+      }
+      onEntityStepUiChange({ isExporting: false, isEntityImporting: false, isUserDefineImporting: false, activeJob: null });
+      return false;
+    }
+    return false;
+  }, [applyJobSuccess, onEntityStepUiChange, showError, showInfo]);
+
+  const waitForJob = useCallback(async (jobId: number, phase: PipelinePhase): Promise<PlmImportJobDto> => {
+    for (;;) {
+      const job = await pollJob(jobId);
+      if (!job) throw new Error('Import job not found.');
+      if (pipelineRunningRef.current) {
+        setPipelineMessage(job.ProgressMessage || PHASE_LABEL[phase as keyof typeof PHASE_LABEL] || '');
+        const jp = job.ProgressPercent ?? 0;
+        if (phase === 'importTables') setPipelinePercent(8 + Math.round(jp * 0.28));
+        else if (phase === 'importSysEntities') setPipelinePercent(43 + Math.round(jp * 0.26));
+        else if (phase === 'importUserEntities') setPipelinePercent(77 + Math.round(jp * 0.22));
+      }
+      if (TERMINAL_JOB_STATUSES.includes(job.Status || '')) {
+        const ok = await finalizeImportJob(job, false);
+        if (!ok) throw new Error(job.ErrorMessage || job.ProgressMessage || 'Import failed.');
+        return job;
+      }
+      await new Promise((r) => window.setTimeout(r, 2000));
+    }
+  }, [finalizeImportJob, pollJob]);
+
   useEffect(() => {
-    if (!activeJob?.JobId) return undefined;
-    if (terminalJobStatuses.includes(activeJob.Status || '')) {
-      finalizeImportJob(activeJob, false);
+    if (!activeJob?.JobId || pipelineRunningRef.current) return undefined;
+    if (TERMINAL_JOB_STATUSES.includes(activeJob.Status || '')) {
+      finalizeImportJob(activeJob, true);
       return undefined;
     }
 
@@ -271,7 +259,7 @@ const EntityStep: React.FC<EntityStepProps> = ({
       try {
         const job = await pollJob(activeJob.JobId);
         if (!job) return;
-        if (terminalJobStatuses.includes(job.Status || '')) {
+        if (TERMINAL_JOB_STATUSES.includes(job.Status || '')) {
           await finalizeImportJob(job, true);
         }
       } catch {
@@ -280,539 +268,372 @@ const EntityStep: React.FC<EntityStepProps> = ({
     }, 2000);
 
     return () => window.clearInterval(timer);
-  }, [activeJob, finalizeImportJob, pollJob, terminalJobStatuses]);
+  }, [activeJob, finalizeImportJob, pollJob]);
 
-  const handleTablePreview = useCallback(async () => {
-    if (!sessionId) {
-      showError('Save a connection session before importing tables.');
-      return;
-    }
-    setIsPreviewLoading(true);
-    try {
-      const result = await plmMigrationSvc.previewPlmTableExportPlan(sessionId);
-      const tables = result.Object?.Tables ?? [];
-      if (result.Object?.IsSuccess && tables.length > 0) {
-        onEntityStepUiChange({ planItems: tables });
-        const missingCount = result.Object.MissingSourceTableCount
-          ?? tables.filter((t) => !t.SourceTableExists).length;
-        if (missingCount > 0) {
-          const detail = result.Object.ErrorMessage
-            || result.Object.Issues?.map((issue) =>
-              `${issue.SchemaOwner}.${issue.TableName}: EntityID=${issue.EntityId}, EntityCode=${issue.EntityCode ?? ''}`,
-            ).join('; ')
-            || result.ValidationResult?.Items
-              ?.filter((i: { Type?: string }) => i.Type === 'Warning')
-              ?.map((i: { Message: string }) => i.Message)
-              .join('; ');
-          showWarning(detail || `${missingCount} table(s) not found in PLM source. See Source OK column.`);
-        } else {
-          showInfo(`Found ${tables.length} PLM table(s) ready to import.`, true);
-        }
-      } else {
-        onEntityStepUiChange({ planItems: [] });
-        const msg = result.Object?.ErrorMessage
+  const loadTablePreview = useCallback(async (): Promise<{ tables: PlmTableExportPlanItemDto[]; importable: number }> => {
+    if (!sessionId) throw new Error('Save a connection session before importing.');
+    const result = await plmMigrationSvc.previewPlmTableExportPlan(sessionId);
+    const tables = result.Object?.Tables ?? [];
+    if (!result.Object?.IsSuccess || tables.length === 0) {
+      throw new Error(
+        result.Object?.ErrorMessage
           || result.ValidationResult?.Items?.map((i: { Message: string }) => i.Message).join('; ')
-          || 'Preview failed.';
-        showError(msg);
-      }
-    } catch (e: any) {
-      showError(e?.message || 'Preview failed.');
-    } finally {
-      setIsPreviewLoading(false);
+          || 'Table preview failed.',
+      );
     }
-  }, [onEntityStepUiChange, sessionId, showError, showInfo, showWarning]);
+    onEntityStepUiChange({ planItems: tables });
+    const importable = tables.filter((t) => t.SourceTableExists).length;
+    const missingCount = result.Object.MissingSourceTableCount
+      ?? tables.filter((t) => !t.SourceTableExists).length;
+    if (missingCount > 0) {
+      const detail = result.Object.ErrorMessage
+        || result.Object.Issues?.slice(0, 3).map((issue) =>
+          `${issue.SchemaOwner}.${issue.TableName}`,
+        ).join('; ');
+      showWarning(detail || `${missingCount} table(s) missing in PLM source.`);
+    }
+    return { tables, importable };
+  }, [onEntityStepUiChange, sessionId, showWarning]);
 
-  const handleTableImport = useCallback(async () => {
-    if (!sessionId) {
-      showError('Save a connection session before importing tables.');
-      return;
-    }
+  const startTableImport = useCallback(async (): Promise<number> => {
+    if (!sessionId) throw new Error('Save a connection session before importing.');
     onEntityStepUiChange({ isExporting: true, activeJob: null });
-    try {
-      const result = await plmMigrationSvc.executePlmTableExport(sessionId);
-      if (result.Object?.JobId) {
-        onEntityStepUiChange({ activeJob: result.Object });
-      } else {
-        onEntityStepUiChange({ isExporting: false });
-        const msg = result.ValidationResult?.Items?.map((i: { Message: string }) => i.Message).join('; ')
-          || 'Failed to start import job.';
-        showError(msg);
-      }
-    } catch (e: any) {
+    const result = await plmMigrationSvc.executePlmTableExport(sessionId);
+    if (!result.Object?.JobId) {
       onEntityStepUiChange({ isExporting: false });
-      showError(e?.message || 'Failed to start import.');
+      throw new Error(
+        result.ValidationResult?.Items?.map((i: { Message: string }) => i.Message).join('; ')
+          || 'Failed to start table import.',
+      );
     }
-  }, [onEntityStepUiChange, sessionId, showError]);
+    onEntityStepUiChange({ activeJob: result.Object });
+    return result.Object.JobId;
+  }, [onEntityStepUiChange, sessionId]);
 
-  const handleEntityPreview = useCallback(async () => {
-    if (!sessionId) {
-      showError('Save a connection session before importing entity metadata.');
-      return;
-    }
-    setIsEntityPreviewLoading(true);
-    try {
-      const result = await plmMigrationSvc.previewSystemDefineEntityImport(sessionId);
-      const entities = result.Object?.Entities ?? [];
-      if (result.Object?.IsSuccess) {
-        onEntityStepUiChange({ entityPlanItems: entities });
-        const ready = result.Object.ReadyCount ?? entities.filter((e) => e.ImportStatus === 'Ready').length;
-        const skipped = result.Object.SkippedCount ?? entities.filter((e) => e.ImportStatus === 'Skipped').length;
-        const blockers = result.Object.BlockerCount ?? entities.filter((e) => e.ImportStatus === 'Blocked').length;
-        if (blockers > 0) {
-          const detail = result.Object.Blockers?.map((b) =>
-            `${b.TargetEntityCode}: ${b.Issue}`,
-          ).join('; ')
-            || result.ValidationResult?.Items
-              ?.filter((i: { Type?: string }) => i.Type === 'Warning')
-              ?.map((i: { Message: string }) => i.Message)
-              .join('; ');
-          showWarning(detail || `${blockers} entity blocker(s) found.`);
-        } else if (skipped > 0) {
-          showWarning(`${ready} ready, ${skipped} skipped. Review Status and Skip reason columns.`);
-        } else {
-          showInfo(`${ready} entity(ies) ready to import.`, true);
-        }
-      } else {
-        onEntityStepUiChange({ entityPlanItems: [] });
-        const msg = result.Object?.ErrorMessage
+  const loadSysEntityPreview = useCallback(async (): Promise<{ entities: PlmSystemDefineEntityPreviewItemDto[]; ready: number }> => {
+    if (!sessionId) throw new Error('Save a connection session before importing.');
+    const result = await plmMigrationSvc.previewSystemDefineEntityImport(sessionId);
+    const entities = result.Object?.Entities ?? [];
+    if (!result.Object?.IsSuccess) {
+      throw new Error(
+        result.Object?.ErrorMessage
           || result.ValidationResult?.Items?.map((i: { Message: string }) => i.Message).join('; ')
-          || 'Preview failed.';
-        showError(msg);
-      }
-    } catch (e: any) {
-      showError(e?.message || 'Preview failed.');
-    } finally {
-      setIsEntityPreviewLoading(false);
+          || 'System define entity preview failed.',
+      );
     }
-  }, [onEntityStepUiChange, sessionId, showError, showInfo, showWarning]);
+    onEntityStepUiChange({ entityPlanItems: entities });
+    const ready = result.Object.ReadyCount ?? entities.filter((e) => e.ImportStatus === 'Ready').length;
+    const blockers = result.Object.BlockerCount ?? 0;
+    if (blockers > 0) {
+      showWarning(`${blockers} entity blocker(s). Those rows will be skipped.`);
+    }
+    return { entities, ready };
+  }, [onEntityStepUiChange, sessionId, showWarning]);
 
-  const handleEntityImport = useCallback(async () => {
-    if (!sessionId) {
-      showError('Save a connection session before importing entity metadata.');
-      return;
-    }
+  const startSysEntityImport = useCallback(async (): Promise<number> => {
+    if (!sessionId) throw new Error('Save a connection session before importing.');
     onEntityStepUiChange({ isEntityImporting: true, activeJob: null });
-    try {
-      const result = await plmMigrationSvc.executeSystemDefineEntityImport(sessionId);
-      if (result.Object?.JobId) {
-        onEntityStepUiChange({ activeJob: result.Object });
-      } else {
-        onEntityStepUiChange({ isEntityImporting: false });
-        const msg = result.ValidationResult?.Items?.map((i: { Message: string }) => i.Message).join('; ')
-          || 'Failed to start entity import job.';
-        showError(msg);
-      }
-    } catch (e: any) {
+    const result = await plmMigrationSvc.executeSystemDefineEntityImport(sessionId);
+    if (!result.Object?.JobId) {
       onEntityStepUiChange({ isEntityImporting: false });
-      showError(e?.message || 'Failed to start entity import.');
+      throw new Error(
+        result.ValidationResult?.Items?.map((i: { Message: string }) => i.Message).join('; ')
+          || 'Failed to start system define entity import.',
+      );
     }
-  }, [onEntityStepUiChange, sessionId, showError]);
+    onEntityStepUiChange({ activeJob: result.Object });
+    return result.Object.JobId;
+  }, [onEntityStepUiChange, sessionId]);
 
-  const handleUserDefinePreview = useCallback(async () => {
-    if (!sessionId) {
-      showError('Save a connection session before importing User Define entities.');
-      return;
-    }
-    setIsUserDefinePreviewLoading(true);
-    try {
-      const result = await plmMigrationSvc.previewUserDefineEntityImport(sessionId);
-      const entities = result.Object?.Entities ?? [];
-      if (result.Object?.IsSuccess) {
-        onEntityStepUiChange({ userDefinePlanItems: entities });
-        const ready = result.Object.ReadyCount ?? entities.filter((e) => e.ImportStatus === 'Ready').length;
-        const skipped = result.Object.SkippedCount ?? entities.filter((e) => e.ImportStatus === 'Skipped').length;
-        const blockers = result.Object.BlockerCount ?? entities.filter((e) => e.ImportStatus === 'Blocked').length;
-        if (blockers > 0) {
-          const detail = result.Object.Blockers?.map((b) =>
-            `${b.TargetEntityCode}: ${b.Issue}`,
-          ).join('; ')
-            || result.ValidationResult?.Items
-              ?.filter((i: { Type?: string }) => i.Type === 'Warning')
-              ?.map((i: { Message: string }) => i.Message)
-              .join('; ');
-          showWarning(detail || `${blockers} entity blocker(s) found.`);
-        } else if (skipped > 0) {
-          showWarning(`${ready} ready, ${skipped} skipped. Review Status and Skip reason columns.`);
-        } else {
-          showInfo(`${ready} User Define entity(ies) ready to import.`, true);
-        }
-      } else {
-        onEntityStepUiChange({ userDefinePlanItems: [] });
-        const msg = result.Object?.ErrorMessage
+  const loadUserDefinePreview = useCallback(async (): Promise<{ entities: PlmUserDefineEntityPreviewItemDto[]; ready: number }> => {
+    if (!sessionId) throw new Error('Save a connection session before importing.');
+    const result = await plmMigrationSvc.previewUserDefineEntityImport(sessionId);
+    const entities = result.Object?.Entities ?? [];
+    if (!result.Object?.IsSuccess) {
+      throw new Error(
+        result.Object?.ErrorMessage
           || result.ValidationResult?.Items?.map((i: { Message: string }) => i.Message).join('; ')
-          || 'Preview failed.';
-        showError(msg);
-      }
-    } catch (e: any) {
-      showError(e?.message || 'Preview failed.');
-    } finally {
-      setIsUserDefinePreviewLoading(false);
+          || 'User define entity preview failed.',
+      );
     }
-  }, [onEntityStepUiChange, sessionId, showError, showInfo, showWarning]);
+    onEntityStepUiChange({ userDefinePlanItems: entities });
+    const ready = result.Object.ReadyCount ?? entities.filter((e) => e.ImportStatus === 'Ready').length;
+    return { entities, ready };
+  }, [onEntityStepUiChange, sessionId]);
 
-  const handleUserDefineImport = useCallback(async () => {
+  const startUserDefineImport = useCallback(async (): Promise<number> => {
+    if (!sessionId) throw new Error('Save a connection session before importing.');
+    onEntityStepUiChange({ isUserDefineImporting: true, activeJob: null });
+    const result = await plmMigrationSvc.executeUserDefineEntityImport(sessionId);
+    if (!result.Object?.JobId) {
+      onEntityStepUiChange({ isUserDefineImporting: false });
+      throw new Error(
+        result.ValidationResult?.Items?.map((i: { Message: string }) => i.Message).join('; ')
+          || 'Failed to start user define entity import.',
+      );
+    }
+    onEntityStepUiChange({ activeJob: result.Object });
+    return result.Object.JobId;
+  }, [onEntityStepUiChange, sessionId]);
+
+  const updatePipelineProgress = useCallback((
+    phase: PipelinePhase,
+    jobPercent?: number,
+    message?: string,
+  ) => {
+    setPipelinePhase(phase);
+    let percent = phaseBasePercent[phase];
+    if (phase === 'importTables' && jobPercent != null) {
+      percent = 8 + Math.round(jobPercent * 0.28);
+    } else if (phase === 'importSysEntities' && jobPercent != null) {
+      percent = 43 + Math.round(jobPercent * 0.26);
+    } else if (phase === 'importUserEntities' && jobPercent != null) {
+      percent = 77 + Math.round(jobPercent * 0.22);
+    }
+    setPipelinePercent(percent);
+    if (message) setPipelineMessage(message);
+    else if (phase !== 'idle' && phase !== 'done') {
+      setPipelineMessage(PHASE_LABEL[phase]);
+    }
+  }, []);
+
+  const runImportPipeline = useCallback(async () => {
     if (!sessionId) {
-      showError('Save a connection session before importing User Define entities.');
+      showError('Complete Step 1 Connect & Discover first.');
       return;
     }
-    onEntityStepUiChange({ isUserDefineImporting: true, activeJob: null });
+    if (isPipelineRunning) return;
+
+    pipelineRunningRef.current = true;
+    setIsPipelineRunning(true);
+    onEntityStepUiChange({ systemSectionExpanded: true });
+
     try {
-      const result = await plmMigrationSvc.executeUserDefineEntityImport(sessionId);
-      if (result.Object?.JobId) {
-        onEntityStepUiChange({ activeJob: result.Object });
+      updatePipelineProgress('listTables');
+      const { importable: tableCount } = await loadTablePreview();
+
+      if (tableCount > 0) {
+        updatePipelineProgress('importTables');
+        const tableJobId = await startTableImport();
+        await waitForJob(tableJobId, 'importTables');
       } else {
-        onEntityStepUiChange({ isUserDefineImporting: false });
-        const msg = result.ValidationResult?.Items?.map((i: { Message: string }) => i.Message).join('; ')
-          || 'Failed to start User Define import job.';
-        showError(msg);
+        showWarning('No importable PLM tables — skipping table copy.');
       }
+
+      updatePipelineProgress('listSysEntities');
+      const { ready: sysReady } = await loadSysEntityPreview();
+
+      if (sysReady > 0) {
+        updatePipelineProgress('importSysEntities');
+        const sysJobId = await startSysEntityImport();
+        await waitForJob(sysJobId, 'importSysEntities');
+      } else {
+        showWarning('No ready system define entities — skipping metadata import.');
+        await saveStepState({ systemDefineEntitiesComplete: true });
+        onStateChange({ systemDefineEntitiesComplete: true });
+      }
+
+      onEntityStepUiChange({ userSectionExpanded: true });
+      updatePipelineProgress('listUserEntities');
+      const { ready: userReady } = await loadUserDefinePreview();
+
+      if (userReady > 0) {
+        updatePipelineProgress('importUserEntities');
+        const userJobId = await startUserDefineImport();
+        await waitForJob(userJobId, 'importUserEntities');
+      } else {
+        showWarning('No ready user define entities — skipping user define import.');
+        await saveStepState({ userDefineEntitiesComplete: true });
+        onStateChange({ userDefineEntitiesComplete: true });
+      }
+
+      updatePipelineProgress('done');
+      setPipelineMessage('All entity imports completed.');
+      setPipelinePercent(100);
+      showInfo('Entity import pipeline completed.', true);
     } catch (e: any) {
-      onEntityStepUiChange({ isUserDefineImporting: false });
-      showError(e?.message || 'Failed to start User Define import.');
+      setPipelineMessage(e?.message || 'Import failed.');
+      showError(e?.message || 'Import failed.');
+    } finally {
+      pipelineRunningRef.current = false;
+      setIsPipelineRunning(false);
+      onEntityStepUiChange({ isExporting: false, isEntityImporting: false, isUserDefineImporting: false });
     }
-  }, [onEntityStepUiChange, sessionId, showError]);
+  }, [
+    isPipelineRunning,
+    loadSysEntityPreview,
+    loadTablePreview,
+    loadUserDefinePreview,
+    onEntityStepUiChange,
+    onStateChange,
+    saveStepState,
+    sessionId,
+    showError,
+    showInfo,
+    showWarning,
+    startSysEntityImport,
+    startTableImport,
+    startUserDefineImport,
+    updatePipelineProgress,
+    waitForJob,
+  ]);
 
-  const activeStepNumber = currentWorkflowStep === 'done' ? 2 : currentWorkflowStep;
-  const isWorkflowComplete = currentWorkflowStep === 'done';
+  const isAnyJobRunning = isPipelineRunning || isExporting || isEntityImporting || isUserDefineImporting
+    || (activeJob?.JobId != null && !TERMINAL_JOB_STATUSES.includes(activeJob.Status || ''));
 
-  const jobProgress = useMemo(() => {
-    if (!activeJob?.JobId || !isAnyJobRunning) return null;
-    return `${activeJob.ProgressPercent ?? 0}% — ${activeJob.ProgressMessage || activeJob.Status || ''}`;
-  }, [activeJob, isAnyJobRunning]);
-
-  const viewingStepDef = WORKFLOW_STEPS.find((s) => s.step === viewingWorkflowStep) ?? WORKFLOW_STEPS[0];
-  const showTableGrid = viewingWorkflowStep === 1;
-  const isResultLoading = showTableGrid ? isPreviewLoading : isEntityPreviewLoading;
-  const resultEmpty = showTableGrid ? planItems.length === 0 : entityPlanItems.length === 0;
-
-  const resultSummary = useMemo(() => {
-    if (showTableGrid) {
-      if (planItems.length === 0) return null;
+  const systemSummary = useMemo(() => {
+    const parts: string[] = [];
+    if (planItems.length > 0) {
       const ok = planItems.filter((t) => t.SourceTableExists).length;
-      return `${planItems.length} table(s) · ${ok} importable`;
+      parts.push(`${planItems.length} tables · ${ok} importable`);
     }
-    if (entityPlanItems.length === 0) return null;
-    const ready = entityPlanItems.filter((e) => e.ImportStatus === 'Ready').length;
-    const skipped = entityPlanItems.filter((e) => e.ImportStatus === 'Skipped').length;
-    const blocked = entityPlanItems.filter((e) => e.ImportStatus === 'Blocked').length;
-    return `${entityPlanItems.length} entity(ies) · ${ready} ready · ${skipped} skipped · ${blocked} blocked`;
-  }, [entityPlanItems, planItems, showTableGrid]);
-
-  const showJobProgress = Boolean(jobProgress) && (
-    (isTableJobRunning && viewingWorkflowStep === 1)
-    || (isEntityJobRunning && viewingWorkflowStep === 2)
-  );
-
-  const listButtonDisabled = showTableGrid
-    ? isPreviewLoading || isAnyJobRunning
-    : isEntityPreviewLoading || isAnyJobRunning;
-
-  const executeButtonDisabled = showTableGrid
-    ? isAnyJobRunning || isTableJobRunning || importableTableCount === 0
-    : isAnyJobRunning || isEntityJobRunning || importableEntityCount === 0;
-
-  const executeButtonTitle = showTableGrid
-    ? (importableTableCount === 0
-      ? 'Run List PLM Importing Tables first and ensure at least one Source OK row.'
-      : (state.systemDefineTablesComplete ? 'Re-import tables into the tenant database.' : undefined))
-    : (importableEntityCount === 0
-      ? 'Run List PLM Importing Entities first and ensure at least one Ready row.'
-      : (state.systemDefineEntitiesComplete ? 'Re-import entity metadata.' : undefined));
-
-  const executeButtonLabel = showTableGrid
-    ? (isTableJobRunning ? 'Importing…' : viewingStepDef.executeLabel)
-    : (isEntityJobRunning ? 'Importing…' : viewingStepDef.executeLabel);
-
-  const listButtonLabel = showTableGrid
-    ? (isPreviewLoading ? 'Loading…' : viewingStepDef.listLabel)
-    : (isEntityPreviewLoading ? 'Loading…' : viewingStepDef.listLabel);
-
-  const handleWorkflowStepClick = useCallback((step: PlmSystemDefineWorkflowStep) => {
-    if (!stepUnlocked(step)) return;
-    onEntityStepUiChange({ viewingWorkflowStep: step });
-  }, [onEntityStepUiChange, stepUnlocked]);
-
-  const handleListClick = showTableGrid ? handleTablePreview : handleEntityPreview;
-  const handleExecuteClick = showTableGrid ? handleTableImport : handleEntityImport;
-
-  const subTabClass = (isActive: boolean, isDisabled = false) => {
-    const base = 'inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition-colors';
-    if (isDisabled) {
-      return `${base} border-transparent opacity-40 cursor-not-allowed ${theme.tab}`;
+    if (entityPlanItems.length > 0) {
+      const ready = entityPlanItems.filter((e) => e.ImportStatus === 'Ready').length;
+      parts.push(`${entityPlanItems.length} entities · ${ready} ready`);
     }
-    if (isActive) {
-      return `${base} ${theme.tab_active}`;
-    }
-    return `${base} border-transparent hover:opacity-90 cursor-pointer ${theme.tab}`;
-  };
+    return parts.length > 0 ? parts.join(' · ') : null;
+  }, [entityPlanItems, planItems]);
 
-  const workflowStepClass = (
-    isViewing: boolean,
-    isCurrent: boolean,
-    completed: boolean,
-    unlocked: boolean,
-  ) => {
-    const base = 'inline-flex items-center gap-1.5 shrink-0 px-2 py-1 rounded-[4px] text-xs transition-colors';
-    if (!unlocked) {
-      return `${base} opacity-40 cursor-not-allowed ${theme.menu_secondary}`;
-    }
-    if (isViewing) {
-      return `${base} cursor-pointer font-semibold ${theme.tab_active}`;
-    }
-    if (isCurrent) {
-      return `${base} cursor-pointer font-semibold ${theme.label}`;
-    }
-    if (completed) {
-      return `${base} cursor-pointer hover:opacity-90 ${theme.tab}`;
-    }
-    return `${base} cursor-pointer opacity-70 ${theme.tab}`;
-  };
+  const userSummary = useMemo(() => {
+    if (userDefinePlanItems.length === 0) return null;
+    const ready = userDefinePlanItems.filter((e) => e.ImportStatus === 'Ready').length;
+    return `${userDefinePlanItems.length} entities · ${ready} ready`;
+  }, [userDefinePlanItems]);
 
-  const resultPanelTitle = showTableGrid
-    ? 'Need To Import PLM System Defined Entity Tables'
-    : 'Need To Import PLM System Defined Entities';
+  const liveJobPercent = useMemo(() => {
+    if (!isPipelineRunning || !activeJob?.JobId) return pipelinePercent;
+    const phase = pipelinePhase;
+    const jp = activeJob.ProgressPercent ?? 0;
+    if (phase === 'importTables') return 8 + Math.round(jp * 0.28);
+    if (phase === 'importSysEntities') return 43 + Math.round(jp * 0.26);
+    if (phase === 'importUserEntities') return 77 + Math.round(jp * 0.22);
+    return pipelinePercent;
+  }, [activeJob, isPipelineRunning, pipelinePercent, pipelinePhase]);
+
+  const progressLabel = useMemo(() => {
+    if (!isPipelineRunning && pipelinePhase === 'done') {
+      return pipelineMessage || 'Completed';
+    }
+    if (isPipelineRunning) {
+      const msg = pipelineMessage || (pipelinePhase !== 'idle' && pipelinePhase !== 'done'
+        ? PHASE_LABEL[pipelinePhase as keyof typeof PHASE_LABEL]
+        : 'Working…');
+      return `${liveJobPercent}% — ${msg}`;
+    }
+    if (state.userDefineEntitiesComplete) {
+      return 'Entity import completed for this session.';
+    }
+    return null;
+  }, [isPipelineRunning, liveJobPercent, pipelineMessage, pipelinePhase, state.userDefineEntitiesComplete]);
 
   return (
     <div className="flex flex-col gap-3 p-4 h-full overflow-hidden">
       <div>
         <h2 className={`text-sm font-semibold ${theme.label}`}>Step 2 — Entity Import</h2>
         <p className={`text-xs mt-1 ${theme.menu_secondary}`}>
-          Import System Define PLM tables, then AppEntityInfo metadata — follow steps 1 → 2 in order.
+          Import PLM system define tables and entity metadata, then user define entities — one click runs all steps in order.
         </p>
       </div>
 
-      <div className={`flex-none rounded-t border ${theme.inputBox}`}>
-        <div className={`flex border-b ${theme.mainContentSection}`}>
-          <button
-            type="button"
-            className={subTabClass(activeTab === 'system')}
-            onClick={() => onEntityStepUiChange({ activeTab: 'system' })}
-          >
-            <i className="fa-solid fa-table-cells" />
-            System Define
-          </button>
-          <button
-            type="button"
-            disabled={userDefineLocked}
-            className={subTabClass(activeTab === 'user', userDefineLocked)}
-            onClick={() => !userDefineLocked && onEntityStepUiChange({ activeTab: 'user' })}
-            title={userDefineLocked ? 'Complete System Define entity metadata import first.' : undefined}
-          >
-            <i className={`fa-solid ${userDefineLocked ? 'fa-lock' : 'fa-user-pen'}`} />
-            User Define
-          </button>
-        </div>
+      <div className="flex-none flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-[4px] ${theme.button_default}`}
+          onClick={runImportPipeline}
+          disabled={isAnyJobRunning || !sessionId}
+          title={!sessionId ? 'Complete Step 1 first.' : undefined}
+        >
+          <i className={`fa-solid ${isAnyJobRunning ? 'fa-spinner fa-spin' : 'fa-file-import'}`} />
+          {isAnyJobRunning ? 'Importing…' : 'Import Entities'}
+        </button>
+        {state.userDefineEntitiesComplete && !isAnyJobRunning && (
+          <span className={`text-xs ${theme.menu_secondary}`}>
+            <i className="fa-solid fa-circle-check mr-1" />
+            Session complete — safe to proceed to next step
+          </span>
+        )}
       </div>
 
-      {activeTab === 'system' && (
-        <div className="flex flex-col gap-3 h-1 flex-auto overflow-hidden">
-          <div className={`flex-none rounded border p-3 ${theme.inputBox}`}>
-            <div className={`text-xs font-semibold mb-3 ${theme.label}`}>
-              <i className="fa-solid fa-route mr-1.5" />
-              System Define workflow
-              {isWorkflowComplete && (
-                <span className={`ml-2 font-normal ${theme.menu_secondary}`}>
-                  <i className="fa-solid fa-circle-check mr-1" />
-                  All steps complete — User Define tab unlocked
-                </span>
-              )}
-            </div>
-
-            <div className="flex flex-wrap items-center gap-x-1 gap-y-2">
-              {WORKFLOW_STEPS.map((def, index) => {
-                const completed = stepCompleted(def.step);
-                const unlocked = stepUnlocked(def.step);
-                const isCurrent = activeStepNumber === def.step && !isWorkflowComplete;
-                const isViewing = viewingWorkflowStep === def.step;
-
-                return (
-                  <React.Fragment key={def.step}>
-                    {index > 0 && (
-                      <span className={`text-[10px] px-0.5 opacity-40 select-none ${theme.menu_secondary}`} aria-hidden>
-                        ›
-                      </span>
-                    )}
-                    <button
-                      type="button"
-                      className={workflowStepClass(isViewing, isCurrent, completed, unlocked)}
-                      disabled={!unlocked}
-                      onClick={() => handleWorkflowStepClick(def.step)}
-                      title={!unlocked ? 'Complete table import first.' : def.title}
-                    >
-                      <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-bold shrink-0 ${
-                        completed ? theme.button_default : `border ${theme.label}`
-                      }`}>
-                        {completed ? <i className="fa-solid fa-check text-[8px]" /> : def.step}
-                      </span>
-                      <span>{def.title}</span>
-                      {isCurrent && !isWorkflowComplete && (
-                        <span className={`text-[9px] opacity-80 ${theme.menu_secondary}`}>now</span>
-                      )}
-                    </button>
-                  </React.Fragment>
-                );
-              })}
-            </div>
-
-            <p className={`mt-3 text-xs ${theme.menu_secondary}`}>{viewingStepDef.hint}</p>
-
-            {isWorkflowComplete && viewingWorkflowStep === 2 && (
-              <div className={`mt-3 text-xs ${theme.menu_secondary}`}>
-                <i className="fa-solid fa-circle-check mr-1" />
-                System Define import finished. Switch to the User Define tab to continue.
-              </div>
+      {progressLabel && (
+        <div className={`flex-none rounded border px-3 py-2 ${theme.inputBox}`}>
+          <div className={`flex items-center gap-2 text-xs mb-1.5 ${theme.menu_secondary}`}>
+            {isAnyJobRunning && <i className="fa-solid fa-spinner fa-spin" />}
+            {!isAnyJobRunning && pipelinePhase === 'done' && (
+              <i className="fa-solid fa-circle-check" />
             )}
-
-            {showJobProgress && (
-              <div className={`mt-2 flex items-center gap-2 text-xs px-2 py-1.5 rounded border ${theme.inputBox} ${theme.menu_secondary}`}>
-                <i className="fa-solid fa-spinner fa-spin" />
-                {jobProgress}
-              </div>
-            )}
+            <span>{progressLabel}</span>
           </div>
-
-          <div className={`h-1 flex-auto flex flex-col overflow-hidden min-h-[200px] rounded border ${theme.inputBox}`}>
-            <div className={`flex-none flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b ${theme.mainContentSection}`}>
-              <div className="flex flex-wrap items-center gap-3 min-w-0">
-                <span className={`text-xs font-semibold shrink-0 ${theme.label}`}>{resultPanelTitle}</span>
-                <button
-                  type="button"
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-[4px] ${theme.button_secondary}`}
-                  onClick={handleListClick}
-                  disabled={listButtonDisabled}
-                >
-                  <i className="fa-solid fa-list" />
-                  {listButtonLabel}
-                </button>
-                <button
-                  type="button"
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
-                  onClick={handleExecuteClick}
-                  disabled={executeButtonDisabled}
-                  title={executeButtonTitle}
-                >
-                  <i className={`fa-solid ${showTableGrid ? 'fa-file-import' : 'fa-database'}`} />
-                  {executeButtonLabel}
-                </button>
-              </div>
-              {resultSummary && (
-                <span className={`text-xs truncate ${theme.menu_secondary}`}>{resultSummary}</span>
-              )}
+          {(isAnyJobRunning || pipelinePhase === 'done') && (
+            <div className={`h-1.5 w-full rounded overflow-hidden ${theme.mainContentSection}`}>
+              <div
+                className={`h-full transition-all duration-300 ${theme.button_default}`}
+                style={{ width: `${Math.min(100, Math.max(0, liveJobPercent))}%` }}
+              />
             </div>
-            <div className="h-1 flex-auto overflow-hidden relative w-full">
-              {resultEmpty && !isResultLoading && (
-                <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 pointer-events-none ${theme.mainContentSection} bg-opacity-80`}>
-                  <i className={`fa-solid ${showTableGrid ? 'fa-table' : 'fa-sitemap'} text-2xl opacity-30 ${theme.menu_secondary}`} />
-                  <p className={`text-xs text-center max-w-md px-4 ${theme.menu_secondary}`}>
-                    {showTableGrid
-                      ? `No tables listed yet. Click "${WORKFLOW_STEPS[0].listLabel}" above.`
-                      : `No entities listed yet. Click "${WORKFLOW_STEPS[1].listLabel}" above.`}
-                  </p>
-                </div>
-              )}
-              {showTableGrid ? (
-                <FlexGrid itemsSource={tableCv} headersVisibility="Column" isReadOnly className="h-full w-full">
-                  <FlexGridColumn header="Schema" binding="SchemaOwner" width={80} />
-                  <FlexGridColumn header="Source table" binding="TableName" width="*" />
-                  <FlexGridColumn header="Target table" binding="TargetTableName" width="*" />
-                  <FlexGridColumn header="Entities" binding="PlmEntityCount" width={80} />
-                  <FlexGridColumn header="Source OK" binding="SourceTableExists" width={80} />
-                  <FlexGridColumn header="" binding="" width="*" />
-                </FlexGrid>
-              ) : (
-                <FlexGrid itemsSource={entityCv} headersVisibility="Column" isReadOnly className="h-full w-full">
-                  <FlexGridColumn header="Entity code" binding="TargetEntityCode" width="*" />
-                  <FlexGridColumn header="Table" binding="TableName" width={120} />
-                  <FlexGridColumn header="DS" binding="PlmDataSourceFrom" width={40} />
-                  <FlexGridColumn header="Action" binding="ImportAction" width={70} />
-                  <FlexGridColumn header="Status" binding="ImportStatus" width={70} />
-                  <FlexGridColumn header="Skip reason" binding="SkipReason" width="*" />
-                  <FlexGridColumn header="" binding="" width="*" />
-                </FlexGrid>
-              )}
-            </div>
-          </div>
+          )}
         </div>
       )}
 
-      {activeTab === 'user' && (
-        <div className="flex flex-col gap-3 h-1 flex-auto overflow-hidden">
-          <p className={`text-xs ${theme.menu_secondary}`}>
-            Import User Define entities (SimpleValueList and wide entity tables). List first, then execute — re-import updates by IntegrationId.
-          </p>
-
-          {state.userDefineEntitiesComplete && (
-            <div className={`text-xs ${theme.menu_secondary}`}>
-              <i className="fa-solid fa-circle-check mr-1" />
-              User Define import completed for this session.
-            </div>
-          )}
-
-          {Boolean(jobProgress) && isUserDefineJobRunning && (
-            <div className={`flex items-center gap-2 text-xs px-2 py-1.5 rounded border ${theme.inputBox} ${theme.menu_secondary}`}>
-              <i className="fa-solid fa-spinner fa-spin" />
-              {jobProgress}
-            </div>
-          )}
-
-          <div className={`h-1 flex-auto flex flex-col overflow-hidden min-h-[200px] rounded border ${theme.inputBox}`}>
-            <div className={`flex-none flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b ${theme.mainContentSection}`}>
-              <div className="flex flex-wrap items-center gap-3 min-w-0">
-                <span className={`text-xs font-semibold shrink-0 ${theme.label}`}>
-                  Need To Import PLM User Defined Entities
-                </span>
-                <button
-                  type="button"
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-[4px] ${theme.button_secondary}`}
-                  onClick={handleUserDefinePreview}
-                  disabled={isUserDefinePreviewLoading || isAnyJobRunning}
-                >
-                  <i className="fa-solid fa-list" />
-                  {isUserDefinePreviewLoading ? 'Loading…' : 'List PLM Importing Entities'}
-                </button>
-                <button
-                  type="button"
-                  className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
-                  onClick={handleUserDefineImport}
-                  disabled={isAnyJobRunning || isUserDefineJobRunning || importableUserDefineCount === 0}
-                  title={importableUserDefineCount === 0
-                    ? 'Run List PLM Importing Entities first and ensure at least one Ready row.'
-                    : undefined}
-                >
-                  <i className="fa-solid fa-database" />
-                  {isUserDefineJobRunning ? 'Importing…' : 'Execute Import Entities'}
-                </button>
-              </div>
-              {userDefinePlanItems.length > 0 && (
-                <span className={`text-xs truncate ${theme.menu_secondary}`}>
-                  {userDefinePlanItems.length} entity(ies) · {importableUserDefineCount} ready
-                </span>
-              )}
-            </div>
-            <div className="h-1 flex-auto overflow-hidden relative w-full">
-              {userDefinePlanItems.length === 0 && !isUserDefinePreviewLoading && (
-                <div className={`absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 pointer-events-none ${theme.mainContentSection} bg-opacity-80`}>
-                  <i className={`fa-solid fa-user-pen text-2xl opacity-30 ${theme.menu_secondary}`} />
-                  <p className={`text-xs text-center max-w-md px-4 ${theme.menu_secondary}`}>
-                    No entities listed yet. Click &quot;List PLM Importing Entities&quot; above.
-                  </p>
-                </div>
-              )}
-              <FlexGrid itemsSource={userDefineCv} headersVisibility="Column" isReadOnly className="h-full w-full">
-                <FlexGridColumn header="Entity code" binding="TargetEntityCode" width="*" />
-                <FlexGridColumn header="Type" binding="AppTargetType" width={120} />
-                <FlexGridColumn header="Cols" binding="ColumnCount" width={50} />
-                <FlexGridColumn header="Rows" binding="PlmRowCount" width={50} />
-                <FlexGridColumn header="Order" binding="ImportOrder" width={50} visible={false} />
-                <FlexGridColumn header="Action" binding="ImportAction" width={70} />
-                <FlexGridColumn header="Status" binding="ImportStatus" width={70} />
-                <FlexGridColumn header="Skip reason" binding="SkipReason" width="*" />
+      <div className="h-1 flex-auto flex flex-col gap-2 overflow-auto min-h-0">
+        <CollapsibleSection
+          title="PLM System Defined Entity"
+          summary={systemSummary}
+          expanded={systemSectionExpanded}
+          onToggle={() => onEntityStepUiChange({ systemSectionExpanded: !systemSectionExpanded })}
+          theme={theme}
+        >
+          {planItems.length > 0 && (
+            <div className="h-1 flex-auto min-h-[80px] overflow-hidden border-b">
+              <div className={`px-2 py-1 text-[10px] font-semibold ${theme.menu_secondary}`}>Physical tables</div>
+              <FlexGrid itemsSource={tableCv} headersVisibility="Column" isReadOnly className="h-full w-full">
+                <FlexGridColumn header="Source" binding="TableName" width="*" />
+                <FlexGridColumn header="Target" binding="TargetTableName" width="*" />
+                <FlexGridColumn header="OK" binding="SourceTableExists" width={50} />
                 <FlexGridColumn header="" binding="" width="*" />
               </FlexGrid>
             </div>
+          )}
+          <div className="h-1 flex-auto min-h-[80px] overflow-hidden relative">
+            {entityPlanItems.length === 0 && !isPipelineRunning && (
+              <div className={`absolute inset-0 flex items-center justify-center text-xs px-4 text-center ${theme.menu_secondary}`}>
+                Run Import Entities to list system define entity metadata.
+              </div>
+            )}
+            <FlexGrid itemsSource={entityCv} headersVisibility="Column" isReadOnly className="h-full w-full">
+              <FlexGridColumn header="Entity code" binding="TargetEntityCode" width="*" />
+              <FlexGridColumn header="Table" binding="TableName" width={120} />
+              <FlexGridColumn header="Status" binding="ImportStatus" width={70} />
+              <FlexGridColumn header="Skip reason" binding="SkipReason" width="*" />
+              <FlexGridColumn header="" binding="" width="*" />
+            </FlexGrid>
           </div>
-        </div>
-      )}
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          title="User Defined"
+          summary={userSummary}
+          expanded={userSectionExpanded}
+          onToggle={() => onEntityStepUiChange({ userSectionExpanded: !userSectionExpanded })}
+          theme={theme}
+        >
+          <div className="h-full overflow-hidden relative">
+            {userDefinePlanItems.length === 0 && !isPipelineRunning && (
+              <div className={`absolute inset-0 flex items-center justify-center text-xs px-4 text-center ${theme.menu_secondary}`}>
+                User define entities appear here during import.
+              </div>
+            )}
+            <FlexGrid itemsSource={userDefineCv} headersVisibility="Column" isReadOnly className="h-full w-full">
+              <FlexGridColumn header="Entity code" binding="TargetEntityCode" width="*" />
+              <FlexGridColumn header="Type" binding="AppTargetType" width={120} />
+              <FlexGridColumn header="Cols" binding="ColumnCount" width={50} />
+              <FlexGridColumn header="Rows" binding="PlmRowCount" width={50} />
+              <FlexGridColumn header="Status" binding="ImportStatus" width={70} />
+              <FlexGridColumn header="Skip reason" binding="SkipReason" width="*" />
+              <FlexGridColumn header="" binding="" width="*" />
+            </FlexGrid>
+          </div>
+        </CollapsibleSection>
+      </div>
     </div>
   );
 };

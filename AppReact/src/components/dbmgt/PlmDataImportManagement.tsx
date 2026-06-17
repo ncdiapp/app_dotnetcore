@@ -17,7 +17,6 @@ import type {
 import {
   createInitialEntityStepUi,
   normalizePlmImportTablePrefix,
-  normalizeViewingWorkflowStep,
   PLM_DEFAULT_TABLE_PREFIX,
   PLM_IMPORT_PAGE_CACHE_SUFFIX,
 } from './plmImport/types';
@@ -57,7 +56,6 @@ const readCachedPageState = (): { page: PlmImportPageCache; fromCache: boolean }
             ? {
               ...createInitialEntityStepUi(),
               ...cached.entityStepUi,
-              viewingWorkflowStep: normalizeViewingWorkflowStep(cached.entityStepUi.viewingWorkflowStep),
             }
             : createInitialEntityStepUi(),
         },

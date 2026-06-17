@@ -41,15 +41,14 @@ export interface PlmImportWizardState {
 
 export type PlmSystemDefineWorkflowStep = 1 | 2;
 
-/** Map legacy 4-step cache values (3/4) to the 2-step workflow. */
+/** @deprecated Legacy cache — no longer used in UI */
 export const normalizeViewingWorkflowStep = (step: number | undefined): PlmSystemDefineWorkflowStep =>
   step === 2 ? 2 : 1;
 
 /** Entity step UI persisted across main app tab switches. */
 export interface PlmImportEntityStepUiState {
-  activeTab: 'system' | 'user';
-  /** Which workflow step result panel is shown (1 = tables, 2 = entities). */
-  viewingWorkflowStep: PlmSystemDefineWorkflowStep;
+  systemSectionExpanded: boolean;
+  userSectionExpanded: boolean;
   planItems: PlmTableExportPlanItemDto[];
   entityPlanItems: PlmSystemDefineEntityPreviewItemDto[];
   userDefinePlanItems: PlmUserDefineEntityPreviewItemDto[];
@@ -65,8 +64,8 @@ export interface PlmImportPageCache {
 }
 
 export const createInitialEntityStepUi = (): PlmImportEntityStepUiState => ({
-  activeTab: 'system',
-  viewingWorkflowStep: 1,
+  systemSectionExpanded: true,
+  userSectionExpanded: true,
   planItems: [],
   entityPlanItems: [],
   userDefinePlanItems: [],

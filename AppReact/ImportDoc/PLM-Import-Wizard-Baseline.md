@@ -38,7 +38,7 @@
 | Step | What happens |
 |------|----------------|
 | **1 Connect & Discover** | Pick **Application** + PLM connection → **`TablePrefix`** (default `Plm_`; User Define wide tables use `{TablePrefix}Entity_`) → read `pdmDataSource` → register ERP/DataWS/OtherEx (company lock). Discovery grid: **Data source name**, **Connection string** (raw from `pdmDataSource`), **Status** (`OK` only when row has its own connection string and test passed; blank connection → blank status). |
-| **2 Entity** | **System Define tab first** — two phases — then **User Define** tab (List + Execute) |
+| **2 Entity** | **One button:** **Import Entities** — runs table copy → system define metadata → user define in sequence. Two expandable sections (System Defined / User Defined) with grids and unified progress below the button. |
 | **3 Template** | 1 PLM Template → 1 **Data Model Template** (`AppSearch`); tabs → transactions; preview → execute job. Spec: [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md) |
 | **4 Other Data** | Placeholder (Color, POM, …) |
 
