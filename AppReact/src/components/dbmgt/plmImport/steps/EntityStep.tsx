@@ -130,6 +130,8 @@ const EntityStep: React.FC<EntityStepProps> = ({
         systemDefineTablesComplete: merged.systemDefineTablesComplete,
         systemDefineEntitiesComplete: merged.systemDefineEntitiesComplete,
         userDefineEntitiesComplete: merged.userDefineEntitiesComplete,
+        tablePrefix: merged.tablePrefix,
+        entityWideTablePrefix: merged.entityWideTablePrefix,
       }),
     });
     onSessionSaved();
@@ -735,7 +737,7 @@ const EntityStep: React.FC<EntityStepProps> = ({
       {activeTab === 'user' && (
         <div className="flex flex-col gap-3 h-1 flex-auto overflow-hidden">
           <p className={`text-xs ${theme.menu_secondary}`}>
-            Import User Define entities (SimpleValueList and wide Plm_entity_* tables). List first, then execute — re-import updates by IntegrationId.
+            Import User Define entities (SimpleValueList and wide entity tables). List first, then execute — re-import updates by IntegrationId.
           </p>
 
           {state.userDefineEntitiesComplete && (

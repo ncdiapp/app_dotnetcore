@@ -29,5 +29,8 @@ namespace APP.BL.DataMigration.PlmMigration
 
         public const string PlmSysDefineActionPreview = "SystemDefineEntityPreview";
         public const string PlmSysDefineActionImport = "SystemDefineEntityImport";
+
+        public const string DefaultTablePrefix = "Plm_";
+        public const string DefaultEntityWideTablePrefix = "Plm_entity_";
     }
 }

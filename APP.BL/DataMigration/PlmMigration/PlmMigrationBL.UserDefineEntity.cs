@@ -21,7 +21,6 @@ namespace APP.BL.DataMigration.PlmMigration
         private const string UdEntityActionUpdate = "Update";
         private const string UdAppTargetSimpleList = "SimpleValueList";
         private const string UdAppTargetWideTable = "SystemDefineTable";
-        private const string UdPhysicalTablePrefix = "Plm_entity_";
 
         public const string PlmUserDefineActionPreview = "UserDefineEntityPreview";
         public const string PlmUserDefineActionImport = "UserDefineEntityImport";
@@ -63,12 +62,14 @@ namespace APP.BL.DataMigration.PlmMigration
             string plmConnectionString,
             string dataSourceDiscoveryJson,
             string tenantConnectionString,
-            int tenantDataSourceRegisterId)
+            int tenantDataSourceRegisterId,
+            string entityWideTablePrefix)
         {
             var preview = new PlmUserDefineEntityPreviewDto();
             try
             {
-                var staging = BuildUserDefineStaging(plmConnectionString, tenantConnectionString, tenantDataSourceRegisterId);
+                var staging = BuildUserDefineStaging(
+                    plmConnectionString, tenantConnectionString, tenantDataSourceRegisterId, entityWideTablePrefix);
                 preview.Entities = staging.Entities.Select(MapUserDefinePreviewItem).ToList();
                 preview.ReadyCount = staging.Entities.Count(e => e.ImportStatus == UdEntityStatusReady);
                 preview.SkippedCount = staging.Entities.Count(e => e.ImportStatus == UdEntityStatusSkipped);
@@ -101,10 +102,12 @@ namespace APP.BL.DataMigration.PlmMigration
             string tenantConnectionString,
             int tenantDataSourceRegisterId,
             int? saasApplicationId,
+            string entityWideTablePrefix,
             PlmExportProgressCallback progressCallback)
         {
             var result = new PlmUserDefineEntityImportResultDto();
-            var staging = BuildUserDefineStaging(plmConnectionString, tenantConnectionString, tenantDataSourceRegisterId);
+            var staging = BuildUserDefineStaging(
+                plmConnectionString, tenantConnectionString, tenantDataSourceRegisterId, entityWideTablePrefix);
 
             result.SkippedCount = staging.Entities.Count(e => e.ImportStatus == UdEntityStatusSkipped);
             result.SkippedEntities = staging.Entities
@@ -203,9 +206,11 @@ namespace APP.BL.DataMigration.PlmMigration
         private static PlmUdStagingResult BuildUserDefineStaging(
             string plmConnectionString,
             string tenantConnectionString,
-            int tenantDataSourceRegisterId)
+            int tenantDataSourceRegisterId,
+            string entityWideTablePrefix)
         {
             var result = new PlmUdStagingResult();
+            string wideTablePrefix = SanitizeImportTablePrefix(entityWideTablePrefix, DefaultEntityWideTablePrefix);
             string tenantDbName = GetTenantDatabaseName(tenantDataSourceRegisterId);
 
             using (var plmConn = new SqlConnection(plmConnectionString))
@@ -248,7 +253,7 @@ ORDER BY e.EntityID";
                                 ColumnCount = columnCount,
                                 TargetEntityType = targetType,
                                 TargetTableName = targetType == (int)EmAppEntityType.SystemDefineTable
-                                    ? Truncate(UdPhysicalTablePrefix + sanitized, 100)
+                                    ? Truncate(wideTablePrefix + sanitized, 100)
                                     : null
                             });
                         }
@@ -331,7 +336,7 @@ GROUP BY r.EntityID";
             ApplyUserDefineEntityCodeRules(result.Entities, tenantConnectionString);
             SyncUserDefineTableNames(result.Entities);
             AssignUserDefineImportOrder(result.Entities, result.Columns);
-            ApplyUserDefineValidation(result.Entities, result.Columns, tenantConnectionString, tenantDbName);
+            ApplyUserDefineValidation(result.Entities, result.Columns, tenantConnectionString, tenantDbName, wideTablePrefix);
 
             return result;
         }
@@ -456,7 +461,8 @@ GROUP BY r.EntityID";
             List<PlmUdEntityRow> entities,
             List<PlmUdColumnRow> columns,
             string tenantConnectionString,
-            string tenantDbName)
+            string tenantDbName,
+            string entityWideTablePrefix)
         {
             foreach (var entity in entities.Where(e => e.ColumnCount == 0))
             {
@@ -486,7 +492,7 @@ GROUP BY r.EntityID";
                         && TableExistsInDatabase(conn, tenantDbName, "dbo", entity.TargetTableName))
                     {
                         entity.ImportStatus = UdEntityStatusBlocked;
-                        entity.SkipReason = "Physical table Plm_entity_* already exists";
+                        entity.SkipReason = $"Physical table {entityWideTablePrefix}* already exists";
                     }
                 }
             }

@@ -5,7 +5,7 @@
 > **Feature scope:** [PLM Migration Plan.md](./PLM%20Migration%20Plan.md)  
 > **SQL import specs:** [SqlReferenceSpecs/](./SqlReferenceSpecs/)  
 > **PLM reference:** `C:\Dev\PLM3\PLM`  
-> **Last updated:** 2026-06-16 (System Define 2-phase UI, session discard, API/BL sync)
+> **Last updated:** 2026-06-16 (System Define table copy prefix design; Template Import spec Phase 5)
 
 ---
 
@@ -16,12 +16,14 @@
 | **[§0 Quick reference](#0-quick-reference)** | One-page summary of wizard flow and rules |
 | **[§1 Objective](#1-objective)** | What we are building |
 | **[§2 Scope](#2-scope-overview)** | In / out of scope |
-| **[§3 Decisions](#3-confirmed-decisions)** | All confirmed business rules (A–F) |
+| **[§3 Decisions](#3-confirmed-decisions)** | All confirmed business rules (A–G) |
 | **[§4 Architecture](#4-architecture)** | React, C#, API, DB, logs |
 | **[§5 Wizard flow](#5-wizard-flow)** | Step-by-step diagram |
 | **[§6 Phases](#6-implementation-phases)** | Delivery order and estimates |
 | **[§7 Q&A](#7-questions)** | Resolved and open questions |
 | **[§8 References](#8-reference-files)** | Files and PLM solution pointers |
+| **Template import (Phase 5)** | [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md) — full rules |
+| **System Define table prefix** | [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md) — DSF=1 copy + `AppEntityInfo.TableName` |
 
 ---
 
@@ -35,9 +37,9 @@
 
 | Step | What happens |
 |------|----------------|
-| **1 Connect & Discover** | Pick **Application** + PLM connection → read `pdmDataSource` → register ERP/DataWS/OtherEx (company lock). Discovery grid: **Data source name**, **Connection string** (raw from `pdmDataSource`), **Status** (`OK` only when row has its own connection string and test passed; blank connection → blank status). |
-| **2 Entity** | **System Define tab first** — two phases (see below) — then **User Define** tab (preview → execute job, Phase 4) |
-| **3 Template** | 1 PLM Template → 1 Transaction Group; preview → execute job |
+| **1 Connect & Discover** | Pick **Application** + PLM connection → **`TablePrefix`** (default `Plm_`) + **`EntityWideTablePrefix`** (default `Plm_entity_`) → read `pdmDataSource` → register ERP/DataWS/OtherEx (company lock). Discovery grid: **Data source name**, **Connection string** (raw from `pdmDataSource`), **Status** (`OK` only when row has its own connection string and test passed; blank connection → blank status). |
+| **2 Entity** | **System Define tab first** — two phases — then **User Define** tab (List + Execute) |
+| **3 Template** | 1 PLM Template → 1 **Data Model Template** (`AppSearch`); tabs → transactions; preview → execute job. Spec: [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md) |
 | **4 Other Data** | Placeholder (Color, POM, …) |
 
 **System Define sub-flow (Entity step, Tab 1):** Two phases on one screen pattern — **List** (sync preview API) + **Execute** (async job) buttons above the grid.
@@ -81,7 +83,7 @@ Add a **PLM Data Import** wizard to the React **Database Design** page (`Databas
 |-------------|----------------|--------|
 | Connect & Discover | §1 Database | Specified |
 | Entity Data Source | §2 Data Source Management | Specified |
-| Template Import | §6 Reference (structure) | Framework |
+| Template Import | §6 Reference (structure) | **Specified** — [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md) |
 | Other Data | §3–5, §7–8 | Placeholder |
 
 **Out of scope:** Enum entities · RelationFK · Excel export of preview · PLM RestJson/RestXML datasources
@@ -98,6 +100,8 @@ Add a **PLM Data Import** wizard to the React **Database Design** page (`Databas
 | A2 | PLM sources in `pdmDataSource`; see `EmDataSourceFrom` in PLM `Enums.cs` |
 | A3 | PLM connection: user types once in UI; **not** stored in `AppDataSourceRegister` |
 | A4 | Tenant DB, Master DB, `CompanyId` from session; **`SaasApplicationID` from Step 1 dropdown** (E22) |
+| A5 | **`TablePrefix`** (default `Plm_`) — template tables e.g. `{prefix}ReferenceBasicInfo`, **and System Define PLM table copy (DSF=1)** into tenant. Stored in session `StepStateJson`. Spec: [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md). |
+| A5a | **`EntityWideTablePrefix`** (default `Plm_entity_`) — User Define wide entity tables (Step 2). Independent of template prefix. |
 | B5–B7 | Register ERP/DataWS/OtherEx in Master DB; naming `{TenantDb}_ERP` / `_DataWS` / `_OtherEx` |
 | B5a–c | **Company lock** on connection string (same company → reuse; different company → block) |
 | B8–B9 | PLM (1): **no new register**; map to Company Master DB; discover/validate only |
@@ -123,8 +127,9 @@ Add a **PLM Data Import** wizard to the React **Database Design** page (`Databas
 | C10 | Update by `IntegrationId` = PLM `EntityID` on `AppEntityInfo` |
 | C10a | UserDefine rows: **TRUNCATE** wide table or clear SimpleList → **full reload** |
 | C10b–c | Execute **all** entities in tab; **any failure → full tab rollback** |
-| C11 | Wide table prefix default `Plm_entity_` (configurable) |
-| C12b | SystemDefine DSF=1: copy **only tables referenced by `pdmEntity`** |
+| C11 | Wide table prefix default `Plm_entity_` (**`EntityWideTablePrefix`**, configurable in Step 1) |
+| C12b | SystemDefine DSF=1: copy **only tables referenced by `pdmEntity`**; tenant physical name = **`{TablePrefix}{SysTableName}`** (read PLM source by original name) |
+| C12b1 | DSF=1 `AppEntityInfo.TableName` = prefixed target name; DSF 2–4 unchanged. No double prefix if `SysTableName` already starts with `TablePrefix`. |
 | C12c | SystemDefine DSF=2–4: reference external DB only |
 | C12a | Table copy in C# with **PK preserved** (not `SELECT * INTO`) |
 | C13 | Prompt IIS recycle after import |
@@ -137,23 +142,39 @@ Add a **PLM Data Import** wizard to the React **Database Design** page (`Databas
 
 **Specs:** `SqlReferenceSpecs/ImportPlmSystemDefineEntitiesToAppEntityInfo.sql`, `ImportPlmUserDefineEntitiesToAppEntityInfo.sql`
 
+**User Define (implemented):** SimpleValueList empty `Code` / `Description` → `''` not NULL. Wide table physical name = `{EntityWideTablePrefix}{sanitized code}` — **not** re-derived from `Plm_`-prefixed `EntityCode`.
+
 ### 3.3 Template import (D)
+
+**Full spec:** [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md)
 
 | ID | Rule |
 |----|------|
-| D15 | 1 PLM Template → 1 APP Transaction Group |
-| D16 | Import special blocks as ordinary first |
+| D15 | 1 PLM `pdmTemplate` → 1 **Data Model Template** (`AppSearch`, `DataModelTemplate`) — UI: `TransactionGroupEditor` |
+| D16 | Import special blocks/grids as **ordinary** structure first; `EmGridType` → preview warning + log |
 | D17 | Bind to `SaasApplicationID` from Step 1 |
+| D18 | Global root table **`{TablePrefix}ReferenceBasicInfo`** — one per tenant, all templates/tabs share |
+| D19 | Each tab → `AppTransaction` (MasterDetail): **Root unit** + **Sibling unit** (`{prefix}{TabName}`) + **Child unit** per grid subitem |
+| D20 | Non-grid subitem → sibling field, column `SanitizedSubItemName_{SubItemID}`; grid subitem → child unit only |
+| D21 | `Label` / `Empty` → form layout only, no DB column |
+| D22 | Header tab → Template **Shared Item**; normal tab → **Main Item**; Copy tab / Master Ref Header → skip (v1) |
+| D23 | Auto-create **Dataset**, search view fields, filters, folder, **AppForm** (PLM `pdmTabLayout*` or auto-form fallback) |
+| D24 | Re-import: update by `IntegrationId`; **ALTER TABLE ADD** only; never drop columns — warn on orphans |
+| D25 | Prepare **Product Reference** traceability: PLM ids → APP table/column/field via `IntegrationId` |
 
 | PLM | APP | `IntegrationId` |
 |-----|-----|----------------|
-| Template | Transaction Group / header | PLM `TemplateId` |
-| Tab | Transaction | PLM `TabId` |
-| Block | Unit | PLM `BlockId` |
-| SubItem column | Field | `SubItem_{columnId}` |
-| Grid column | Field | `Grid_{columnId}` |
+| Template | `AppSearch` (Data Model Template) | `Template_{TemplateId}` |
+| Tab | `AppTransaction` | `Tab_{TabId}` |
+| Root unit | `{prefix}ReferenceBasicInfo` | `Unit_ReferenceBasicInfo` |
+| Sibling unit | `{prefix}{SanitizedTabName}` | `Unit_Sibling_{TabId}` |
+| Grid child unit | `{prefix}{SanitizedGridSubItemName}` | `Unit_Grid_{SubItemId}` |
+| SubItem field | Sibling unit field | `SubItem_{SubItemId}` |
+| Grid column field | Child unit field | `Grid_{GridColumnId}` |
 
-> **Note:** Template group may live on `AppTransaction` (TemplateHeader) rather than `AppTransactionGroup` — confirm in Phase 5.
+**Entity binding:** PLM `EntityId` → `AppEntityInfo.IntegrationId` → `AppTransactionField.EntityId`.
+
+**Tab reuse:** Same `TabId` → one `AppTransaction`; multiple templates reference it.
 
 ### 3.4 Wizard product rules (E, F)
 
@@ -229,8 +250,8 @@ Controller → `PlmMigrationBL` only. No `DatabaseFixture` in controller.
 | Table | Type | Stores |
 |-------|------|--------|
 | `AppEntityInfo` | `int NULL` | PLM `EntityID` |
-| `AppTransaction` | `nvarchar(100) NULL` | `TemplateId` / `TabId` |
-| `AppTransactionUnit` | `nvarchar(100) NULL` | `BlockId` |
+| `AppTransaction` | `nvarchar(100) NULL` | `Template_{id}` / `Tab_{id}` |
+| `AppTransactionUnit` | `nvarchar(100) NULL` | `Unit_ReferenceBasicInfo` / `Unit_Sibling_{tabId}` / `Unit_Grid_{subItemId}` |
 | `AppTransactionField` | `nvarchar(100) NULL` | `SubItem_{id}` / `Grid_{id}` |
 
 **Wizard tables:** see §4.4 column lists (`AppPlmImportSession`, `AppPlmImportJob`, `AppPlmImportLog`).
@@ -275,6 +296,7 @@ Every Preview/Execute writes log rows (started + final).
 ```
 Step 1  Connect & Discover
         ├─ Select Application (required)
+        ├─ Table prefix: TablePrefix (default Plm_) + EntityWideTablePrefix (default Plm_entity_)
         ├─ SysAdmin: select Company
         ├─ PLM connection → test
         ├─ pdmDataSource 1–4 → test each external conn
@@ -293,7 +315,11 @@ Step 2  Entity
         Footer: Previous / Next (centered) between wizard steps 1–4
         Header: Session # · Discard Session (when session exists)
 
-Step 3  Template → preview → execute [job]
+Step 3  Template Import
+        ├─ List PLM Templates → preview (tabs, units, tables, blockers, GridType warnings)
+        ├─ Execute Import Templates → async job (TemplateImport)
+        └─ Creates: AppSearch + transactions + tables + forms + dataset/search/folder
+            Spec: PLM-Template-Import-Spec.md
 
 Step 4  Other Data (placeholder)
 ```
@@ -308,8 +334,8 @@ Step 4  Other Data (placeholder)
 | **1** | Connect & Discover + pickers + company lock | 3–4 d |
 | **2** | `ExportPlmTablesToTenant` + job infrastructure | 3–5 d |
 | **3** | SystemDefine preview/execute | ~1 wk |
-| **4** | UserDefine preview/execute | ~1 wk | **In progress** — preview + async import implemented |
-| **5** | Template framework | 1–2 wk |
+| **4** | UserDefine preview/execute | ~1 wk | **Done** — preview + async import |
+| **5** | Template import (structure) | 1–2 wk | **Specified** — [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md) |
 | **6** | Other Data placeholder | 1 d |
 
 ---
@@ -331,6 +357,9 @@ Step 4  Other Data (placeholder)
 | Q18 | `SubItem_{columnId}` / `Grid_{columnId}` |
 | Q19 | `AppPlmImportLog` table created in **`EnsurePlmImportSchema()`** |
 | Q20 | Test each external datasource on Discover |
+| Q24 | Template = `AppSearch` (Data Model Template), not `AppTransactionGroup` |
+| Q25 | Table prefix in Step 1; template tables use `TablePrefix`, entity wide tables use `EntityWideTablePrefix` |
+| Q26 | Template structure: Root + Sibling + Child units per tab — see Template Import Spec |
 
 ### Open
 
@@ -348,8 +377,9 @@ Step 4  Other Data (placeholder)
 |------|------|
 | `SqlReferenceSpecs/ImportPlm*.sql` | Entity import logic reference for C# port (**pre-existing**; do not add new `.sql` for wizard schema) |
 | `PLM Migration Plan.md` | Feature roadmap |
+| [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md) | Template import detailed rules (Phase 5) |
 
-**PLM solution:** `PdmDataSourceBL.cs`, `Enums.cs` (`EmDataSourceFrom`), `PdmTemplateBL.cs`
+**PLM solution:** `PdmTemplateBL.cs`, `PdmTabBL.cs`, `ReferenceTabValueLoadBL.cs`, `Enums.cs`
 
 ---
 
@@ -364,4 +394,7 @@ Step 4  Other Data (placeholder)
 | 2026-06-16 | Tenant DDL **spec only** in `SqlReferenceSpecs/TenantMigration_*.sql` (no AppAI.Web migrations until Phase 0) |
 | 2026-06-16 | **Policy:** wizard schema via C# `EnsurePlmImportSchema()` only — **no `.sql` files** for PLM Import; removed TenantMigration `*.sql` from ImportDoc |
 | 2026-06-16 | **Implemented UI:** System Define 4 sub-steps → **2 phases** (List + Execute each); grid titles; centered wizard nav; **Discard Session** button; table export APIs; BL partial file list; re-import allowed; `StepStateJson` fields documented |
-| 2026-06-16 | **Phase 4:** User Define preview (`BuildUserDefineEntityPreview`) + async import job; User Define tab UI with List/Execute |
+| 2026-06-16 | **Phase 4:** User Define preview + async import job; User Define tab UI with List/Execute |
+| 2026-06-16 | **Phase 5 spec:** [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md) — Data Model Template mapping, Root/Sibling/Child units, table prefix (Step 1), form/dataset/folder, product-import prep |
+| 2026-06-16 | Entity import: `Plm_entity_*` naming fix; SimpleValueList `''` for empty Code/Description |
+| 2026-06-16 | **System Define table copy prefix:** [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md) — `TablePrefix` on DSF=1 export + `AppEntityInfo.TableName` |

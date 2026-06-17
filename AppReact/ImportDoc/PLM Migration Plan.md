@@ -51,7 +51,8 @@ Migration is delivered through a **PLM Data Import** wizard in the React **Datab
 |------|-------------|
 | **Cross-instance** | PLM SQL Server and App-Builder SQL Server **may be on different instances**. All reads from PLM use the user-supplied PLM connection string; all writes use App tenant/master connections. |
 | **PLM connection** | User enters PLM connection string **once** in the wizard (not stored in `AppDataSourceRegister`). Tenant DB, Master DB, `SaasApplicationID`, and `CompanyId` are taken from the logged-in session. |
-| **Traceability** | Use `AppEntityInfo.IntegrationId` (and equivalent on templates) = original PLM id for **update** on re-import. |
+| **Traceability** | Use `IntegrationId` (and equivalent on templates) = original PLM id for **update** on re-import. |
+| **Table prefixes** | Wizard Step 1 captures **`TablePrefix`** (default `Plm_`) for template/product tables **and System Define PLM table copy (DSF=1)**, and **`EntityWideTablePrefix`** (default `Plm_entity_`) for User Define wide entities. See [PLM-Template-Import-Spec.md §2](./PLM-Template-Import-Spec.md), [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md). |
 | **Transactions** | Each execute operation uses a **single transaction**; failure → **full rollback**. |
 | **After import** | Prompt user to **recycle IIS** / refresh schema cache (not automated). |
 | **Runtime** | SQL scripts in `ImportDoc/` are **reference specs**; production path is **C#** (required for cross-instance). |
@@ -100,7 +101,7 @@ Before creating a register, normalize the connection string and check Master DB 
 
 | PLM entity `DataSourceFrom` | Physical tables |
 |----------------------------|-----------------|
-| **PLM (1)** — system-defined tables | Copy **only tables referenced by `pdmEntity`** (SystemDefine, `DataSourceFrom=1`) into **Tenant DB** (PK preserved) |
+| **PLM (1)** — system-defined tables | Copy **only tables referenced by `pdmEntity`** (SystemDefine, `DataSourceFrom=1`) into **Tenant DB** (PK preserved). Physical name = **`{TablePrefix}{SysTableName}`** in tenant (source read uses original PLM name). See [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md). |
 | **ERP / DataWS / OtherEx (2–4)** | **Do not copy** — reference external DB via registered `AppDataSourceRegister` only |
 
 **Notes (original):** If PLM has logic that pushes data into an external database, extra App-Builder code may be needed later. For migration, external DBs are used as entity data sources unless the rule above requires copying PLM-hosted tables into the tenant.
@@ -146,7 +147,7 @@ Before creating a register, normalize the connection string and check Master DB 
 | Row data | **Not** copied for ERP/DataWS/OtherEx entities — table must already exist in target datasource DB |
 | PLM-hosted tables (`DataSourceFrom = 1`) | Tables must exist in **Tenant DB** after §1 copy step |
 | `DataSourceFrom` mapping | PLM 1→4 → corresponding APP `DataSourceRegister.Id` from §1 |
-| `TableName` | PLM `SysTableName` (no `Plm_entity_` prefix for system define) |
+| `TableName` | DSF=1: **`{TablePrefix}{SysTableName}`** in tenant (`AppEntityInfo.TableName`); DSF 2–4: PLM `SysTableName` unchanged. Not `EntityWideTablePrefix`. Spec: [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md). |
 | `SchemaOwner` | PLM `SchemaOwner`, default `dbo` |
 | `IdentityField` | Exactly one `IsPrimaryKey` column |
 | Display fields | `UsedByDropDownList` columns by `DataRowSort` → DisplayField1–3 |
@@ -198,33 +199,59 @@ In App-Builder, create POM, PomTemplate, PomTemplateDetail tables, import data f
 
 PLM has system-defined blocks and grids with specific logic. Three areas: Product Management, Vendor Management, Vendor Request Management.
 
-**Wizard — Template Import (structure phase):**
+**Wizard — Template Import (Phase 5 — structure):**
 
-Implements the **layout skeleton** of reference management before special block logic.
+Implements the **layout skeleton** of reference management (Data Model Template editor / `TransactionGroupEditor`) before special block logic and product data migration.
+
+**Full specification:** [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md)
+
+#### 6.0 Summary mapping
 
 | PLM | App-Builder |
 |-----|-------------|
-| `pdmTemplate` | **One** Transaction **Group** (`TemplateHeader`) |
-| Tab | Transaction (child) |
-| Block | Unit |
-| SubItem / Grid column | Field |
+| `pdmTemplate` | **One** Data Model Template (`AppSearch`, `Type = DataModelTemplate`) |
+| Normal tab | Template **Main Item** → `AppTransaction` |
+| Header tab (`IsTemplateHeaderTab`) | Template **Shared Item** → `AppTransaction` |
+| Tab (all types imported) | MasterDetail transaction: **Root unit** + **Sibling unit** + **Child unit(s)** |
+| Non-grid `pdmBlockSubItem` | Sibling unit **field** (+ DB column `SanitizedSubItemName_{SubItemID}`) |
+| Grid `pdmBlockSubItem` | **Child unit** + table `{prefix}{GridSubItemName}` |
+| `pdmGridMetaColumn` | Child unit **field** |
+| Product header | Global table **`{prefix}ReferenceBasicInfo`** (one per tenant, all templates share) |
 
-**`IntegrationId` on re-import:**
+**Tab types (v1):**
 
-| APP object | Stores |
-|------------|--------|
-| Transaction Group | PLM `TemplateId` |
-| Transaction | PLM `TabId` |
-| Unit | PLM `BlockId` |
-| Field | PLM column id (grid/subitem) |
+| PLM tab | Import |
+|---------|--------|
+| Normal tab | Yes — Main Item |
+| Template Header tab | Yes — Shared Item (own sibling table, e.g. `Plm_FabricHeader`) |
+| Master Reference Header | **Skip** (future) |
+| Copy tab | **Skip** |
+| Inner Tab Header (`IsTabHeader`) | Part of parent tab transaction |
+| Tab reused across templates | One `AppTransaction` per `TabId`; multiple templates link to it |
 
-**Conditions:**
+**Also imported with each template:** Dataset (query `{prefix}ReferenceBasicInfo`), search view fields, filters, folder navigation, **AppForm** layout (from `pdmTabLayout*` when possible; else auto-form).
 
-- Bind to current **`SaasApplicationID`**
-- **Do not skip** special blocks/grids in v1 — import as **ordinary** block/grid; special behavior (size run, BOM, color grid, etc.) is **additional coding** after structure import
-- Customer deployments are **fully customized** — mapping may vary per customer; reference PLM solution (`PdmTemplateBL`, tab/block/grid tables)
-- Re-import / update by `IntegrationId` at each level (see table above)
-- Sibling tables for fields on multiple tables: handled in template mapping logic (see original note below)
+**Product data:** Not in Phase 5. Structure import must record `IntegrationId` / table-column mapping so a future **Product Reference** step can load `pdmBlockSubItemValue` / `pdmGridProductValue` into the correct APP storage.
+
+#### 6.1 IntegrationId (re-import)
+
+| APP object | IntegrationId |
+|------------|---------------|
+| Data Model Template | `Template_{TemplateID}` |
+| Transaction (tab) | `Tab_{TabID}` |
+| Root unit | `Unit_ReferenceBasicInfo` |
+| Sibling unit | `Unit_Sibling_{TabID}` |
+| Child unit (grid) | `Unit_Grid_{SubItemID}` |
+| SubItem field | `SubItem_{SubItemID}` |
+| Grid column field | `Grid_{GridColumnID}` |
+
+#### 6.2 Re-import & DDL
+
+- **Update** metadata by `IntegrationId`; **add** new fields and **ALTER TABLE ADD** columns.
+- **Never drop** tables or columns — preview/log **warnings** for removed PLM fields.
+- `Label` / `Empty` controls: form layout only, no DB column.
+- `ReferenceStaticFiledId`: map to `{prefix}ReferenceBasicInfo` if column exists; else sibling column.
+- Special `EmGridType`: import structure only; **preview warning** + log.
 
 #### Special Notes (behavior after structure import)
 
@@ -242,9 +269,9 @@ Implements the **layout skeleton** of reference management before special block 
 
 **Vendor Request** — Special request/approval flow; may need extra coding.
 
-**Copy Tabs** — Extra coding or alternative solution.
+**Copy Tabs** — **Skipped in v1** (see [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md)).
 
-> **Note:** For PLM templates and tabs, sibling tables may place fields on many tables by logic.
+> **Note:** Sibling unit tables hold flattened non-grid subitems from all blocks on a tab. Grid subitems are child units with separate tables.
 
 ---
 
@@ -272,7 +299,7 @@ Entry: Database Design → sidebar **「PLM Data Import」** → right panel `PL
 ```
 Step 1  Connect & Discover     → §1
 Step 2  Entity Data Source     → §2 (System Define first, then User Define)
-Step 3  Template Import        → §6 (structure)
+Step 3  Template Import        → §6 (structure) — [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md)
 Step 4  Other Data             → §3, §4, §5, §7, §8 (future)
 ```
 
@@ -290,6 +317,8 @@ Full API, component paths, and open questions: [PLM-Import-Wizard-Baseline.md](.
 | File | Role |
 |------|------|
 | [PLM-Import-Wizard-Baseline.md](./PLM-Import-Wizard-Baseline.md) | Execution baseline — wizard flow, API, phases, open Q&A |
+| [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md) | **Template import detailed spec (Phase 5)** |
+| [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md) | **System Define DSF=1 table copy prefix** |
 | `SqlReferenceSpecs/ImportPlmUserDefineEntitiesToAppEntityInfo.sql` | User Define import spec |
 | `SqlReferenceSpecs/ImportPlmSystemDefineEntitiesToAppEntityInfo.sql` | System Define import spec |
 | `SqlReferenceSpecs/ExportSourceDbTablesToNewDatabase.sql` | Table list reference; PK must be fixed in C# |
@@ -306,3 +335,5 @@ Full API, component paths, and open questions: [PLM-Import-Wizard-Baseline.md](.
 | 2026-06-16 | Moved SQL reference scripts to `SqlReferenceSpecs/` subfolder |
 | 2026-06-16 | Q1–Q10 resolved; session/resume rules, IntegrationId, C# module layout in baseline |
 | 2026-06-16 | Aligned §2 / Wizard UI with Baseline: System Define first; 2-phase List+Execute UI; Discard Session; link to Baseline §5 |
+| 2026-06-16 | **§6 Template Import:** detailed rules in [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md); Data Model Template mapping; table prefix; Root/Sibling/Child units; product-import prep |
+| 2026-06-16 | **System Define table copy:** `TablePrefix` on DSF=1 physical tables — [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md) |

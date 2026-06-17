@@ -155,6 +155,7 @@ const userSessionSlice = createSlice({
       state.userMenu = null;
       state.enumDictionary = null;
       state.error = null;
+      state.loading = false;
       localStorage.removeItem('token');
       localStorage.removeItem('sessionId');
     },

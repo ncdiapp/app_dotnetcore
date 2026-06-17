@@ -16,7 +16,10 @@ import type {
 } from './plmImport/types';
 import {
   createInitialEntityStepUi,
+  normalizePlmImportTablePrefix,
   normalizeViewingWorkflowStep,
+  PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX,
+  PLM_DEFAULT_TABLE_PREFIX,
   PLM_IMPORT_PAGE_CACHE_SUFFIX,
 } from './plmImport/types';
 
@@ -26,6 +29,8 @@ const createInitialWizardState = (): PlmImportWizardState => ({
   targetCompanyId: null,
   saasApplicationId: null,
   plmConnectionString: '',
+  tablePrefix: PLM_DEFAULT_TABLE_PREFIX,
+  entityWideTablePrefix: PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX,
   connectionTested: false,
   systemDefineTablesComplete: false,
   systemDefineEntitiesComplete: false,
@@ -42,9 +47,18 @@ const readCachedPageState = (): { page: PlmImportPageCache; fromCache: boolean }
   if (cacheKey) {
     const cached = getDataModelFromCache(cacheKey) as PlmImportPageCache | null;
     if (cached?.wizardState) {
+      const ws = cached.wizardState;
       return {
         page: {
-          wizardState: cached.wizardState,
+          wizardState: {
+            ...createInitialWizardState(),
+            ...ws,
+            tablePrefix: normalizePlmImportTablePrefix(ws.tablePrefix, PLM_DEFAULT_TABLE_PREFIX),
+            entityWideTablePrefix: normalizePlmImportTablePrefix(
+              ws.entityWideTablePrefix,
+              PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX,
+            ),
+          },
           entityStepUi: cached.entityStepUi
             ? {
               ...createInitialEntityStepUi(),
@@ -103,6 +117,8 @@ const PlmDataImportManagement: React.FC = () => {
       systemDefineTablesComplete?: boolean;
       systemDefineEntitiesComplete?: boolean;
       userDefineEntitiesComplete?: boolean;
+      tablePrefix?: string;
+      entityWideTablePrefix?: string;
     } = {};
     if (session.StepStateJson) {
       try {
@@ -125,6 +141,11 @@ const PlmDataImportManagement: React.FC = () => {
       ),
       systemDefineEntitiesComplete: Boolean(stepState.systemDefineEntitiesComplete),
       userDefineEntitiesComplete: Boolean(stepState.userDefineEntitiesComplete),
+      tablePrefix: normalizePlmImportTablePrefix(stepState.tablePrefix, PLM_DEFAULT_TABLE_PREFIX),
+      entityWideTablePrefix: normalizePlmImportTablePrefix(
+        stepState.entityWideTablePrefix,
+        PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX,
+      ),
     }));
   }, []);
 

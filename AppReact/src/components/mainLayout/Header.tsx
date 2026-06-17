@@ -6,7 +6,8 @@ import { useNavigate } from 'react-router-dom';
 import { logout } from '../../redux/features/admin/userSessionSlice';
 import { setThemeById } from '../../redux/features/ui/theme/themeSlice';
 import { toggleSidebar } from '../../redux/features/ui/navigation/sidebarSlice';
-import { activateTab } from '../../redux/features/ui/navigation/tabnavSlice';
+import { activateTab, clearTabsForLogout } from '../../redux/features/ui/navigation/tabnavSlice';
+import { adminSvc } from '../../webapi/adminsvc';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import ThemeManagementPanel from '../admin/ThemeManagementPanel';
@@ -200,7 +201,16 @@ const Header: React.FC = () => {
 
     const handleLogout = () => {
         setIsUserDropdownOpen(false);
+        const sessionId = localStorage.getItem('sessionId');
+        try {
+            localStorage.removeItem('tabsState');
+        } catch {}
+        dispatch(clearTabsForLogout());
         dispatch(logout());
+        navigate('/login', { replace: true });
+        if (sessionId) {
+            adminSvc.logout(sessionId).catch(() => {});
+        }
     };
 
     return (

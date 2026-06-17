@@ -47,6 +47,7 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
 
   // Keep router URL in sync when active tab changes (tab bar click, close tab, addTab).
   useEffect(() => {
+    if (!userContext || userContext.IsLoginFailed) return;
     if (!activeTabKey) return;
     const activeTab = tabs.find((t) => t.tabKey === activeTabKey);
     if (!activeTab) return;
@@ -55,7 +56,7 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
     if (location.pathname === targetPath) return;
     if (tabRoutePathsMatch(targetPath, location.pathname)) return;
     navigate(targetPath);
-  }, [activeTabKey, tabs, navigate, location.pathname]);
+  }, [activeTabKey, tabs, navigate, location.pathname, userContext]);
 
   const value = useMemo((): TabNavigationApi => {
   const buildParamObjFromListMenu = (menuDto: any) => {

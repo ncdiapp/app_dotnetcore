@@ -298,10 +298,16 @@ const tabnavSlice = createSlice({
       state.previousActiveTabKey = null;
       state.dictDataModelKeyAndCachedData = {};
     },
+    clearTabsForLogout: (state) => {
+      state.tabs = [];
+      state.activeTabKey = null;
+      state.previousActiveTabKey = null;
+      state.dictDataModelKeyAndCachedData = {};
+    },
   }
 });
 
-export const { addTab, activateTab, closeTab, updateCurrentTabLabel, updateActiveTabPath, updateTabPath, preserveTabInitialPath, setCurrentTabDataToCache, setDataModelToCache, restoreTabs, resetTabs } = tabnavSlice.actions;
+export const { addTab, activateTab, closeTab, updateCurrentTabLabel, updateActiveTabPath, updateTabPath, preserveTabInitialPath, setCurrentTabDataToCache, setDataModelToCache, restoreTabs, resetTabs, clearTabsForLogout } = tabnavSlice.actions;
 
 // export const getDataModelFromCache = (dataModelKey: string) => {
 //   const currentState = store.getState();

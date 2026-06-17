@@ -8,12 +8,28 @@ import type {
 
 export type PlmImportStepCode = 'Connect' | 'Entity' | 'Template' | 'OtherData';
 
+export const PLM_DEFAULT_TABLE_PREFIX = 'Plm_';
+export const PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX = 'Plm_entity_';
+
+export const normalizePlmImportTablePrefix = (
+  value: string | undefined | null,
+  fallback: string,
+): string => {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) return fallback;
+  const sanitized = trimmed.replace(/[^A-Za-z0-9_]/g, '');
+  if (!sanitized) return fallback;
+  return sanitized.length <= 30 ? sanitized : sanitized.slice(0, 30);
+};
+
 export interface PlmImportWizardState {
   session: PlmImportSessionDto | null;
   currentStepCode: PlmImportStepCode;
   targetCompanyId: number | null;
   saasApplicationId: number | null;
   plmConnectionString: string;
+  tablePrefix: string;
+  entityWideTablePrefix: string;
   connectionTested: boolean;
   systemDefineTablesComplete: boolean;
   systemDefineEntitiesComplete: boolean;
@@ -59,13 +75,23 @@ export const createInitialEntityStepUi = (): PlmImportEntityStepUiState => ({
 
 export const buildPlmImportStepStateJson = (state: Pick<
   PlmImportWizardState,
-  'connectionTested' | 'systemDefineTablesComplete' | 'systemDefineEntitiesComplete' | 'userDefineEntitiesComplete'
+  | 'connectionTested'
+  | 'systemDefineTablesComplete'
+  | 'systemDefineEntitiesComplete'
+  | 'userDefineEntitiesComplete'
+  | 'tablePrefix'
+  | 'entityWideTablePrefix'
 >): string => JSON.stringify({
   connectionTested: state.connectionTested,
   systemDefineTablesComplete: state.systemDefineTablesComplete,
   systemDefineEntitiesComplete: state.systemDefineEntitiesComplete,
   userDefineEntitiesComplete: state.userDefineEntitiesComplete,
   systemDefineComplete: state.systemDefineTablesComplete,
+  tablePrefix: normalizePlmImportTablePrefix(state.tablePrefix, PLM_DEFAULT_TABLE_PREFIX),
+  entityWideTablePrefix: normalizePlmImportTablePrefix(
+    state.entityWideTablePrefix,
+    PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX,
+  ),
 });
 
 export const PLM_IMPORT_PAGE_CACHE_SUFFIX = '-PlmDataImportManagement';

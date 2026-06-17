@@ -288,6 +288,7 @@ UPDATE dbo.AppPlmImportJob SET
                 context.TenantConnectionString,
                 context.TenantDataSourceId,
                 session?.SaasApplicationId,
+                ResolveImportPrefixes(session?.StepStateJson).EntityWideTablePrefix,
                 (percent, message) =>
                 {
                     if (IsJobCancellationRequested(context.JobId))

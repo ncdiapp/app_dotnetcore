@@ -10,6 +10,7 @@ using APP.Framework;
 using APP.Framework.Communication;
 using APP.Framework.Validation;
 using DatabaseSchemaMrg;
+using Newtonsoft.Json;
 
 namespace APP.BL.DataMigration.PlmMigration
 {
@@ -560,6 +561,72 @@ VALUES
                     CreateParam(fixture, "@Message", (object)message ?? DBNull.Value),
                     CreateParam(fixture, "@CreatedAt", DateTime.UtcNow)
                 });
+        }
+
+        #endregion
+
+        #region Step state & table prefixes
+
+        internal sealed class PlmImportPrefixSettings
+        {
+            public string TablePrefix { get; set; } = DefaultTablePrefix;
+            public string EntityWideTablePrefix { get; set; } = DefaultEntityWideTablePrefix;
+        }
+
+        private sealed class PlmImportStepStateJson
+        {
+            public bool connectionTested { get; set; }
+            public bool systemDefineTablesComplete { get; set; }
+            public bool systemDefineEntitiesComplete { get; set; }
+            public bool userDefineEntitiesComplete { get; set; }
+            public string tablePrefix { get; set; }
+            public string entityWideTablePrefix { get; set; }
+        }
+
+        internal static PlmImportPrefixSettings ResolveImportPrefixes(string stepStateJson)
+        {
+            var settings = new PlmImportPrefixSettings();
+            if (string.IsNullOrWhiteSpace(stepStateJson))
+                return settings;
+
+            try
+            {
+                var state = JsonConvert.DeserializeObject<PlmImportStepStateJson>(stepStateJson);
+                if (state == null)
+                    return settings;
+
+                settings.TablePrefix = SanitizeImportTablePrefix(state.tablePrefix, DefaultTablePrefix);
+                settings.EntityWideTablePrefix = SanitizeImportTablePrefix(
+                    state.entityWideTablePrefix, DefaultEntityWideTablePrefix);
+            }
+            catch
+            {
+                // keep defaults
+            }
+
+            return settings;
+        }
+
+        internal static string SanitizeImportTablePrefix(string value, string fallback)
+        {
+            if (string.IsNullOrWhiteSpace(fallback))
+                fallback = DefaultTablePrefix;
+
+            if (string.IsNullOrWhiteSpace(value))
+                return fallback;
+
+            var sb = new System.Text.StringBuilder();
+            foreach (char ch in value.Trim())
+            {
+                if (char.IsLetterOrDigit(ch) || ch == '_')
+                    sb.Append(ch);
+            }
+
+            string result = sb.ToString();
+            if (result.Length == 0)
+                return fallback;
+
+            return result.Length <= 30 ? result : result.Substring(0, 30);
         }
 
         #endregion
