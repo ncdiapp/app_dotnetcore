@@ -65,12 +65,12 @@
     "border_button_default": "#d1d5db",
     "border_button_default_hover": "#0162e8",
 
-    "bg_button_secondary": "",
-    "bg_button_secondary_hover": "",
-    "text_button_secondary": "",
-    "text_button_secondary_hover": "",
-    "border_button_secondary": "",
-    "border_button_secondary_hover": "",
+    "bg_button_secondary": "blue-400",
+    "bg_button_secondary_hover": "blue-500",
+    "text_button_secondary": "white",
+    "text_button_secondary_hover": "white",
+    "border_button_secondary": "blue-400",
+    "border_button_secondary_hover": "blue-500",
 
     "bg_menu_divider": "",
 

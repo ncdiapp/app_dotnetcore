@@ -73,10 +73,13 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
     }
   }, [isDiscarding, onDiscardSession]);
 
-  const navButtonClass = (variant: 'secondary' | 'default', disabled: boolean) => {
-    const base = `inline-flex items-center justify-center gap-2 min-w-[132px] px-5 py-2.5 text-sm font-semibold rounded-[4px] border shadow-sm ${
-      variant === 'default' ? theme.button_default : theme.button_secondary
-    }`;
+  const getStepTabClass = (isActive: boolean, isLocked: boolean) => {
+    if (isLocked) return `${theme.tab} opacity-40 cursor-not-allowed`;
+    return isActive ? theme.tab_active : theme.tab;
+  };
+
+  const navButtonClass = (disabled: boolean) => {
+    const base = `inline-flex items-center justify-center gap-2 min-w-[132px] px-5 py-2.5 text-sm font-semibold rounded-[4px] ${theme.button_secondary}`;
     return disabled ? `${base} opacity-40 cursor-not-allowed` : base;
   };
 
@@ -114,10 +117,9 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
     <div className="flex flex-col h-full w-full overflow-hidden">
       {/* Step header */}
       <div className={`flex-none px-4 py-3 border-b ${theme.mainContentSection}`}>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-0">
           {PLM_IMPORT_STEPS.map((step, idx) => {
             const isActive = step.code === state.currentStepCode;
-            const isDone = idx < currentIndex;
             const isLocked = !canAccessStep(idx);
             return (
               <button
@@ -125,9 +127,7 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
                 type="button"
                 onClick={() => goToStep(step.code)}
                 disabled={isLocked}
-                className={`px-2 py-1 text-xs rounded-[4px] ${
-                  isActive ? theme.tab_active : isDone ? theme.button_secondary : theme.tab
-                } ${isLocked ? 'opacity-40 cursor-not-allowed' : ''}`}
+                className={`px-3 py-2 text-xs border-b-2 whitespace-nowrap ${getStepTabClass(isActive, isLocked)}`}
                 title={isLocked ? 'Connect to PLM successfully before opening this step.' : step.description}
               >
                 <i className={`${step.icon} mr-1`} />
@@ -166,7 +166,7 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
         <div className="flex items-center gap-4">
           <button
             type="button"
-            className={navButtonClass('secondary', currentIndex <= 0)}
+            className={navButtonClass(currentIndex <= 0)}
             onClick={handlePrev}
             disabled={currentIndex <= 0}
           >
@@ -175,7 +175,7 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
           </button>
           <button
             type="button"
-            className={navButtonClass('default', currentIndex >= PLM_IMPORT_STEPS.length - 1 || !canGoNext)}
+            className={navButtonClass(currentIndex >= PLM_IMPORT_STEPS.length - 1 || !canGoNext)}
             onClick={handleNext}
             disabled={currentIndex >= PLM_IMPORT_STEPS.length - 1 || !canGoNext}
           >

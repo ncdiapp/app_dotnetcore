@@ -261,15 +261,13 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
           })}
           placeholder="Plm_"
         />
-        <span className={`text-xs ${theme.menu_secondary}`}>
-          e.g. Plm_ReferenceBasicInfo · wide entities: Plm_Entity_MyCode
-        </span>
       </div>
 
       <div className="flex flex-col gap-1">
         <label className={`text-xs ${theme.label}`}>PLM connection string</label>
-        <textarea
-          className={`w-full min-h-[80px] px-2 py-1 text-xs border ${theme.inputBox}`}
+        <input
+          type="text"
+          className={`w-full h-7 px-2 text-xs border ${theme.inputBox}`}
           value={state.plmConnectionString}
           onChange={(e) => onStateChange({
             plmConnectionString: e.target.value,
@@ -277,12 +275,6 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
           })}
           placeholder="Data Source=...;Initial Catalog=...;User ID=...;Password=..."
         />
-        {state.connectionTested && (
-          <p className={`text-xs ${theme.menu_secondary}`}>
-            <i className="fa-solid fa-circle-check mr-1" />
-            PLM connected successfully.
-          </p>
-        )}
       </div>
 
       {state.connectionTested && discoveredDataSources.length > 0 && (
@@ -324,6 +316,18 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
           {isConnecting ? 'Connecting…' : (state.connectionTested ? 'Reconnect' : 'Connect')}
         </button>
       </div>
+
+      {state.connectionTested && (
+        <div className={`rounded border px-3 py-2 text-xs ${theme.inputBox}`}>
+          <p className={theme.menu_secondary}>
+            <i className="fa-solid fa-circle-check mr-1" />
+            PLM connected successfully.
+          </p>
+          <p className={`mt-1 font-semibold ${theme.label}`}>
+            Click Next to continue.
+          </p>
+        </div>
+      )}
     </div>
   );
 };
