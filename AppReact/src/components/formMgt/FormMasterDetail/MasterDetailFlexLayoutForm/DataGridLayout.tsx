@@ -27,6 +27,7 @@ import {
   shouldLinkedSearchApplyUpdateHostRow,
   type MasterDataPickerContext,
 } from '../../linkedSearchUtils';
+import PivotEditGridPanel from './PivotEditGridPanel';
 
 interface DataGridLayoutProps {
   unitExDto: any;
@@ -1210,9 +1211,23 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const gridViewDisplayType = Number.isFinite(gridViewDisplayTypeNum) ? gridViewDisplayTypeNum : 1;
   const pairDisplayVal = Number(emAppTransactionGridDisplayTypeEnum?.AvailableSelectGridPair ?? 5);
   const multiBoxDisplayVal = Number(emAppTransactionGridDisplayTypeEnum?.MultipleSelectBox ?? 6);
+  const pivotEditVal = Number(emAppTransactionGridDisplayTypeEnum?.PivotEditGrid ?? 3);
   const isAvailableSelectPair = gridViewDisplayType === pairDisplayVal;
   const isMultipleSelectBox = gridViewDisplayType === multiBoxDisplayVal;
   const isAvailableSelectLayout = isAvailableSelectPair || isMultipleSelectBox;
+  const isPivotEditGrid = gridViewDisplayType === pivotEditVal;
+
+  // Pivot edit grid data — only evaluated when EmGridViewDisplayType === 3
+  const pivotDto = isPivotEditGrid
+    ? (dataModel?.currentFormStructure?.DictUnitIdPivotGrid?.[Number(unitId)] ?? null)
+    : null;
+  const pivotRows: any[] = isPivotEditGrid
+    ? (dataModel?.currentFormData?.DictOneToManyFields?.[String(unitId)] ?? [])
+    : [];
+  // Base size comes from the parent spec header (DictOneToOneFields on master form)
+  const pivotBaseSizeId = isPivotEditGrid
+    ? (dataModel?.currentFormData?.DictOneToOneFields?.BaseSizeDetailId ?? null)
+    : null;
 
   const availableSourceUnitId = unitExDto?.AvailableSourceUnitId ?? null;
 
@@ -2767,7 +2782,25 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           </div>
         )}
 
-        {!showMultipleSelectBoxUi && (
+        {/* Pivot edit grid — EmGridViewDisplayType = 3 */}
+        {isPivotEditGrid && pivotDto && (
+          <div className="h-1 w-full min-h-0 flex-auto overflow-hidden">
+            <PivotEditGridPanel
+              pivotDto={pivotDto}
+              rows={pivotRows}
+              isReadOnly={isGridReadOnly}
+              baseSizeId={pivotBaseSizeId}
+            />
+          </div>
+        )}
+
+        {isPivotEditGrid && !pivotDto && (
+          <div className={`flex items-center justify-center h-16 text-xs ${theme.label}`}>
+            Pivot grid config not found for unit {String(unitId)}
+          </div>
+        )}
+
+        {!isPivotEditGrid && !showMultipleSelectBoxUi && (
         <div
           className={
             showAvailableSelectPairSplit

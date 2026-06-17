@@ -166,38 +166,18 @@ namespace App.BL
 
         public static OperationCallResult<AppMasterDetailDto> CallExternalMethodMasterDetail(object methodRegisterId, object[] paramter)
         {
-            List<string> toReturn = new List<string>();
-            var aAppExternalMethodRegisterExDto = RetrieveOneAppExternalMethodRegisterEntity(methodRegisterId);
-
-            string typeName = aAppExternalMethodRegisterExDto.TypeName;
-            string methodName = aAppExternalMethodRegisterExDto.MethodName;
-
-
-
-
-
-            string pathToDomain = ExternalDllRepository + aAppExternalMethodRegisterExDto.AssemblyName + ".dll";
-            Assembly domainAssembly = Assembly.LoadFrom(pathToDomain);
-            Type type = domainAssembly.GetType(typeName);
-
-
-            return type.GetMethod(methodName).Invoke(null, paramter) as OperationCallResult<AppMasterDetailDto>;
-
+            var dto = RetrieveOneAppExternalMethodRegisterEntity(methodRegisterId);
+            return AppPluginEngine.Invoke<OperationCallResult<AppMasterDetailDto>>(
+                dto.AssemblyName, dto.TypeName, dto.MethodName,
+                paramter.Length > 0 ? paramter[0] : null);
         }
 
         public static OperationCallResult<AppMasterDetailDto> GetFieldTargetExternalMethod(object Id, object[] paramter)
         {
-            List<string> toReturn = new List<string>();
-            var aAppExternalMethodRegisterExDto = RetrieveOneAppExternalMethodRegisterEntity(Id);
-
-            string typeName = aAppExternalMethodRegisterExDto.TypeName;
-            string methodName = aAppExternalMethodRegisterExDto.MethodName;
-
-            string pathToDomain = ExternalDllRepository + aAppExternalMethodRegisterExDto.AssemblyName + ".dll";
-            Assembly domainAssembly = Assembly.LoadFrom(pathToDomain);
-            Type type = domainAssembly.GetType(typeName);
-            return type.GetMethod(methodName).Invoke(null, paramter) as OperationCallResult<AppMasterDetailDto>;
-
+            var dto = RetrieveOneAppExternalMethodRegisterEntity(Id);
+            return AppPluginEngine.Invoke<OperationCallResult<AppMasterDetailDto>>(
+                dto.AssemblyName, dto.TypeName, dto.MethodName,
+                paramter.Length > 0 ? paramter[0] : null);
         }
 
 

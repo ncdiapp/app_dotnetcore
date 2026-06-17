@@ -5,58 +5,71 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 This is an enterprise low-code/no-code platform (AppAI/AppBuilder) consisting of:
-- **React Frontend** (`PlmApplication/AppReact/`) - React 18 + TypeScript SPA being migrated from AngularJS
-- **.NET Backend** (`PlmApplication/`) - ASP.NET MVC 4 + Web API 2 with Entity Framework
+- **React Frontend** (`AppReact/`) - React 18 + TypeScript SPA
+- **.NET Backend** (`AppAI.Web/`) - ASP.NET Core 10 web application
 
 ## Build & Development Commands
 
 ### React Frontend
 ```bash
-cd PlmApplication/AppReact
-npm start          # Dev server at http://localhost:3000 (proxies to http://localhost/appai)
+cd AppReact
+npm start          # Dev server at http://localhost:3000 (proxies to http://localhost:52740)
 npm test           # Jest test runner (interactive watch mode)
 npm run build      # Production build to /build folder
 ```
 
 ### .NET Backend
 ```bash
-# Open solution in Visual Studio
-# Solution file: "PLMS  Solution 555 old.sln"
-# Main project: PlmApplication/AppBuilder.csproj
-# IIS URL: http://localhost/appai/
+# Open solution in Visual Studio 2022
+# Solution file: AppAI.Core.sln
+# Main project: AppAI.Web/AppAI.Web.csproj
+# Dev URL: http://localhost:52740
+dotnet build AppAI.Core.sln
+dotnet run --project AppAI.Web/AppAI.Web.csproj
 ```
 
 ## Architecture Overview
 
 ### Solution Structure
 ```
-AppAI/
-├── PlmApplication/           # Main web application (ASP.NET MVC + React)
-│   ├── AppReact/             # React 18 + TypeScript SPA
-│   ├── Server/WebApi/        # Web API controllers
-│   └── Server/Models/        # MVC models
-├── APP.BL/                   # Business logic layer
-├── APP.Components.Dto/       # Data transfer objects
-│   ├── EntityDto/            # Entity DTOs
-│   ├── EntityExdto/          # Extended DTOs
-│   ├── UserDefine/           # Custom DTOs (AppFormData, Search, ProjectWorkFlow)
-│   └── AppEnums.cs           # Application enums
-├── APP.Framework/            # Core framework utilities
-├── APP.Components.EntityConverter/  # Entity conversion utilities
-├── DatabaseSchemaReader/     # Schema reading utilities
-└── DataExChange/             # Data exchange modules
+App-netore/
+├── AppAI.Web/                        # ASP.NET Core 10 web application
+│   ├── Controllers/                  # API controllers
+│   ├── Auth/                         # Authentication handlers (Windows + SAML)
+│   ├── Endpoints/                    # Route/endpoint mappings
+│   ├── Hubs/                         # SignalR hubs
+│   ├── Middleware/                   # Request pipeline middleware
+│   ├── Services/                     # Application service layer
+│   ├── Models/                       # Request/response models
+│   ├── wwwroot/                      # Static files (DayPilot Gantt, etc.)
+│   └── appsettings.json              # Configuration (DB, auth, LLM, logging)
+├── AppReact/                         # React 18 + TypeScript SPA
+├── APP.BL/                           # Business logic layer (600+ files)
+├── APP.Components.Dto/               # Data transfer objects
+│   ├── EntityDto/                    # Entity DTOs
+│   ├── EntityExdto/                  # Extended DTOs
+│   ├── UserDefine/                   # Custom DTOs (AppFormData, Search, ProjectWorkFlow)
+│   └── AppEnums.cs                   # Application enums
+├── APP.Framework/                    # Core framework utilities
+├── APP.Components.EntityConverter/   # Entity converters (258+ files, LLBLGen mapping)
+├── DatabaseSchemaReader/             # Multi-database schema reading
+├── DataExChange/                     # NJsonSchema + code generation
+├── LLBL/
+│   ├── DatabaseGeneric/              # LLBLGen ORM support classes
+│   └── DatabaseSpecific/             # Database-specific ORM mappings
+└── AppEvaluator/Evaluator/           # Expression evaluator (DynamicExpresso)
 ```
 
-### React App Architecture (`PlmApplication/AppReact/src/`)
+### React App Architecture (`AppReact/src/`)
 - **State**: Redux Toolkit with slices in `redux/features/`
   - `admin/userSessionSlice.ts` - Authentication and user context
   - `ui/navigation/tabnavSlice.ts` - Multi-tab navigation with localStorage persistence
   - `ui/theme/themeSlice.ts` - Light/dark theme management
 - **Routing**: `routes.tsx` (auth guard), `routes.shared.tsx` (route definitions)
-- **API Layer**: `webapi/*svc.ts` services; base URL `/appai` in `endpoints.ts`
-- **Components**: `components/` organized by feature (admin, formMgt, search, transaction, dashboard, project, integration, mainLayout, common)
+- **API Layer**: `webapi/*svc.ts` services; base URL configured in `endpoints.ts`
+- **Components**: `components/` organized by feature (admin, formMgt, search, transaction, dashboard, project, integration, mainLayout, common, aiskill, dbgenie, dbmgt, workflow)
 
-### Backend WebAPI Controllers (`PlmApplication/Server/WebApi/`)
+### Backend Controllers (`AppAI.Web/Controllers/`)
 Key controllers: `AdministrationController`, `AppTransactionController`, `AppSearchController`, `DynamicLayoutController`, `ProjectWorkFlowController`, `DashBoardController`, `IntegrationController`, `SchemaMetaDataController`
 
 ## Code Conventions
@@ -93,7 +106,7 @@ Always use `fa-solid` prefix:
 
 **Reference index**: `.claude/react-app/reference/ReactAppReferenceIndex.md` — project overview and index of all React app reference docs.
 
-**Commands** (`.claude/commands/`): `fix-ui` — fix a React component’s UI to match project standards.
+**Commands** (`.claude/commands/`): `fix-ui` — fix a React component's UI to match project standards.
 
 **Skills** (`.claude/skills/reactapp/`): See `SKILL.md` there for the full list and how to use. Use these when working on the React app:
 - **reactapp-fix-api** — Add/fix API calls, WebAPI service methods, call API from components (query params, POST, headers, errors)
@@ -105,14 +118,24 @@ Always use `fa-solid` prefix:
 
 ## Key Libraries
 
+### Frontend
 - **React**: 18.2.0 with Redux Toolkit 2.8.2
-- **Wijmo** (`@mescius/wijmo.*`): Enterprise grids, inputs, charts
+- **Wijmo** (`@mescius/wijmo.*` 5.20252.42): Enterprise grids, inputs, charts
 - **SignalR** (`@microsoft/signalr` 8.0.7): Real-time communication
 - **DayPilot**: Gantt charts (loaded from `/public/daypilot-all.min.js`)
 - **Tailwind CSS** 3.4.17 with PostCSS
-- **.NET**: Entity Framework 6.4, ASP.NET MVC 4, Web API 2
+- **Monaco Editor** 0.55.1: Code editor
+- **Quill** 2.0.3: Rich text editor
 
-## Reference Components (React app: `PlmApplication/AppReact/src/components/`)
+### Backend (.NET 10)
+- **ASP.NET Core 10**: Web framework
+- **Entity Framework Core 9.0**: ORM (SQL Server)
+- **LLBLGen Pro 5.13.0**: Advanced ORM support
+- **NLog 5.3.15**: Logging (async file rotation)
+- **Sustainsys.Saml2.AspNetCore2**: SAML authentication
+- **SignalR**: Real-time hubs
+
+## Reference Components (React app: `AppReact/src/components/`)
 
 - Form editor: `admin/UserLoginInfoEditor.tsx`
 - List/grid: `admin/UserManagement.tsx`
