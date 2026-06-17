@@ -195,7 +195,7 @@ public class PlmMigrationController : SecureBaseController
     }
 
     [HttpPost("PreviewTemplateMapping")]
-    public OperationCallResult<object> PreviewTemplateMapping(int? sessionId)
+    public OperationCallResult<PlmTemplatePreviewDto> PreviewTemplateMapping(int? sessionId)
     {
         try
         {
@@ -203,7 +203,7 @@ public class PlmMigrationController : SecureBaseController
         }
         catch (Exception ex)
         {
-            return ErrorResult<object>("Plm_Template_Preview_Error", ex);
+            return ErrorResult<PlmTemplatePreviewDto>("Plm_Template_Preview_Error", ex);
         }
     }
 

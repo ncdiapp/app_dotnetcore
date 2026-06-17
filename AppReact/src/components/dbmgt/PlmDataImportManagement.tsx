@@ -12,10 +12,12 @@ import type {
   PlmImportEntityStepUiState,
   PlmImportPageCache,
   PlmImportStepCode,
+  PlmImportTemplateStepUiState,
   PlmImportWizardState,
 } from './plmImport/types';
 import {
   createInitialEntityStepUi,
+  createInitialTemplateStepUi,
   normalizePlmImportTablePrefix,
   PLM_DEFAULT_TABLE_PREFIX,
   PLM_IMPORT_PAGE_CACHE_SUFFIX,
@@ -32,6 +34,7 @@ const createInitialWizardState = (): PlmImportWizardState => ({
   systemDefineTablesComplete: false,
   systemDefineEntitiesComplete: false,
   userDefineEntitiesComplete: false,
+  templatesComplete: false,
 });
 
 const getPlmImportCacheKey = (): string | null => {
@@ -58,6 +61,12 @@ const readCachedPageState = (): { page: PlmImportPageCache; fromCache: boolean }
               ...cached.entityStepUi,
             }
             : createInitialEntityStepUi(),
+          templateStepUi: cached.templateStepUi
+            ? {
+              ...createInitialTemplateStepUi(),
+              ...cached.templateStepUi,
+            }
+            : createInitialTemplateStepUi(),
         },
         fromCache: true,
       };
@@ -67,6 +76,7 @@ const readCachedPageState = (): { page: PlmImportPageCache; fromCache: boolean }
     page: {
       wizardState: createInitialWizardState(),
       entityStepUi: createInitialEntityStepUi(),
+      templateStepUi: createInitialTemplateStepUi(),
     },
     fromCache: false,
   };
@@ -85,6 +95,9 @@ const PlmDataImportManagement: React.FC = () => {
   const [entityStepUi, setEntityStepUi] = useState<PlmImportEntityStepUiState>(
     () => cachedInit.current.page.entityStepUi,
   );
+  const [templateStepUi, setTemplateStepUi] = useState<PlmImportTemplateStepUiState>(
+    () => cachedInit.current.page.templateStepUi,
+  );
   const [isLoading, setIsLoading] = useState(() => !cachedInit.current.fromCache);
 
   const cacheKey = useMemo(() => getPlmImportCacheKey(), []);
@@ -92,7 +105,8 @@ const PlmDataImportManagement: React.FC = () => {
   const pageCache = useMemo((): PlmImportPageCache => ({
     wizardState: state,
     entityStepUi,
-  }), [entityStepUi, state]);
+    templateStepUi,
+  }), [entityStepUi, state, templateStepUi]);
 
   useTabDataAutoCache(pageCache, cacheKey ?? undefined);
 
@@ -109,6 +123,7 @@ const PlmDataImportManagement: React.FC = () => {
       systemDefineTablesComplete?: boolean;
       systemDefineEntitiesComplete?: boolean;
       userDefineEntitiesComplete?: boolean;
+      templatesComplete?: boolean;
       tablePrefix?: string;
     } = {};
     if (session.StepStateJson) {
@@ -132,6 +147,7 @@ const PlmDataImportManagement: React.FC = () => {
       ),
       systemDefineEntitiesComplete: Boolean(stepState.systemDefineEntitiesComplete),
       userDefineEntitiesComplete: Boolean(stepState.userDefineEntitiesComplete),
+      templatesComplete: Boolean(stepState.templatesComplete),
       tablePrefix: normalizePlmImportTablePrefix(stepState.tablePrefix, PLM_DEFAULT_TABLE_PREFIX),
     }));
   }, []);
@@ -144,12 +160,17 @@ const PlmDataImportManagement: React.FC = () => {
     setEntityStepUi((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  const patchTemplateStepUi = useCallback((patch: Partial<PlmImportTemplateStepUiState>) => {
+    setTemplateStepUi((prev) => ({ ...prev, ...patch }));
+  }, []);
+
   const resetWizard = useCallback((companyId?: number | null) => {
     setState({
       ...createInitialWizardState(),
       targetCompanyId: isSysAdmin ? (companyId ?? null) : defaultCompanyId,
     });
     setEntityStepUi(createInitialEntityStepUi());
+    setTemplateStepUi(createInitialTemplateStepUi());
   }, [defaultCompanyId, isSysAdmin]);
 
   const discardSession = useCallback(async () => {
@@ -228,9 +249,11 @@ const PlmDataImportManagement: React.FC = () => {
         <PlmImportWizard
           state={state}
           entityStepUi={entityStepUi}
+          templateStepUi={templateStepUi}
           isSysAdmin={isSysAdmin}
           onStateChange={patchState}
           onEntityStepUiChange={patchEntityStepUi}
+          onTemplateStepUiChange={patchTemplateStepUi}
           onReloadSession={() => loadActiveSession(state.targetCompanyId ?? defaultCompanyId, { silent: true })}
           onDiscardSession={discardSession}
         />

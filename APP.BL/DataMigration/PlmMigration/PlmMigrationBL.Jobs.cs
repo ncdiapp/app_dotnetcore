@@ -7,7 +7,9 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using App.BL;
+using APP.Components.Dto;
 using APP.Components.EntityDto;
+using APP.Framework;
 using APP.Framework.Communication;
 using APP.Framework.Validation;
 using DatabaseSchemaMrg;
@@ -135,11 +137,32 @@ UPDATE dbo.AppPlmImportJob SET
         internal static void RunJobInBackground(Action<PlmJobRuntimeContext> work, PlmJobRuntimeContext context)
         {
             RegisterJobCancellation(context.JobId);
+
+            // Background Task.Run threads have no HttpContext; ServerContext falls back to
+            // WindowsIdentityProvider which requires RegisterIdentity (same pattern as AppBuilderAgentBL).
+            var requestIdentity = ServerContext.Instance?.CurrnetClientIdentity;
+            if (requestIdentity is not AppClientIdentity appIdentity)
+            {
+                var fixture = AppCacheManagerBL.GetOneDatabaseFixture(context.TenantDataSourceId);
+                const string msg = "PLM import job cannot start: user session identity is not available on the request thread.";
+                UpdateJobProgress(fixture, context.JobId, JobStatusFailed, 100, "Job failed.", errorMessage: msg, markCompleted: true);
+                WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity, "RunJob", "Failed", null, null, null, null, msg);
+                ClearJobCancellation(context.JobId);
+                return;
+            }
+
+            AppClientIdentity capturedIdentity = appIdentity;
+
             Task.Run(() =>
             {
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(context.TenantDataSourceId);
                 try
                 {
+                    if (ServerContext.Instance.WindowsIdentityProvider == null)
+                        throw new InvalidOperationException("WindowsIdentityProvider is not initialized.");
+
+                    ServerContext.Instance.WindowsIdentityProvider.RegisterIdentity(capturedIdentity);
+
                     UpdateJobProgress(fixture, context.JobId, JobStatusRunning, 0, "Job started.");
                     work(context);
                 }
@@ -372,6 +395,80 @@ UPDATE dbo.AppPlmImportJob SET
             WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
                 PlmSysDefineActionImport, "Success", null, null, totalAffected, null,
                 $"Inserted {importResult.InsertedCount}, updated {importResult.UpdatedCount}, skipped {importResult.SkippedCount}.");
+        }
+
+        public static OperationCallResult<PlmImportJobDto> StartTemplateImportJob(int? sessionId)
+        {
+            var result = new OperationCallResult<PlmImportJobDto>();
+            try
+            {
+                RequirePlmMigrationAdmin();
+                EnsurePlmImportSchema();
+                if (!sessionId.HasValue || sessionId.Value <= 0)
+                    throw new ArgumentException("SessionId is required.");
+
+                var fixture = GetTenantFixture();
+                int jobId = CreateQueuedJob(fixture, sessionId.Value, JobTypeTemplateImport,
+                    "Queued template structure import.");
+                WriteImportLog(fixture, sessionId.Value, jobId, StepTemplate, PlmTemplateActionImport, "Running",
+                    null, null, null, null, "Template structure import job queued.");
+
+                var context = BuildJobRuntimeContext(sessionId.Value, jobId);
+                RunJobInBackground(RunTemplateImportJob, context);
+                result.Object = GetImportJob(jobId).Object;
+            }
+            catch (Exception ex)
+            {
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(PlmMigrationBL), "Plm_Template_Execute_Error", ValidationItemType.Error, ex.Message));
+            }
+            return result;
+        }
+
+        private static void RunTemplateImportJob(PlmJobRuntimeContext context)
+        {
+            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(context.TenantDataSourceId);
+            var session = LoadSessionById(fixture, context.SessionId, includeConnection: false);
+
+            var importResult = ImportTemplateStructure(
+                context.PlmConnectionString,
+                context.TenantConnectionString,
+                context.TenantDataSourceId,
+                session?.SaasApplicationId,
+                ResolveImportPrefixes(session?.StepStateJson).TablePrefix,
+                (percent, message) =>
+                {
+                    if (IsJobCancellationRequested(context.JobId))
+                        throw new OperationCanceledException("Import cancelled.");
+                    UpdateJobProgress(fixture, context.JobId, JobStatusRunning, percent, message);
+                });
+
+            string resultJson = JsonConvert.SerializeObject(importResult);
+
+            if (importResult.SkippedTabs?.Count > 0 || importResult.Blockers?.Count > 0 || importResult.Warnings?.Count > 0)
+            {
+                WriteTemplateIssuesToLog(
+                    fixture, context.SessionId, context.JobId, PlmTemplateActionImport, "Warning",
+                    importResult.SkippedTabs, importResult.Blockers, importResult.Warnings);
+            }
+
+            if (!importResult.IsSuccess)
+            {
+                UpdateJobProgress(
+                    fixture, context.JobId, JobStatusFailed, 100, "Template import failed.",
+                    resultJson: resultJson, errorMessage: importResult.ErrorMessage, markCompleted: true);
+                WriteImportLog(fixture, context.SessionId, context.JobId, StepTemplate,
+                    PlmTemplateActionImport, "Failed", null, null, null, null, importResult.ErrorMessage);
+                return;
+            }
+
+            int? totalAffected = importResult.TabsInserted + importResult.TabsUpdated;
+            UpdateJobProgress(
+                fixture, context.JobId, JobStatusCompleted, 100, "Template import completed successfully.",
+                resultJson: resultJson, markCompleted: true);
+            WriteImportLog(fixture, context.SessionId, context.JobId, StepTemplate,
+                PlmTemplateActionImport, "Success", null, null, totalAffected, null,
+                $"Templates {importResult.TemplatesProcessed}, tabs inserted {importResult.TabsInserted}, updated {importResult.TabsUpdated}, skipped {importResult.TabsSkipped}.");
         }
 
         public static OperationCallResult<PlmTableExportPlanDto> PreviewPlmTableExportPlan(int? sessionId)

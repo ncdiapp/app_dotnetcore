@@ -4,6 +4,7 @@ import type {
   PlmTableExportPlanItemDto,
   PlmSystemDefineEntityPreviewItemDto,
   PlmUserDefineEntityPreviewItemDto,
+  PlmTemplatePreviewItemDto,
 } from '../../../webapi/plmMigrationSvc';
 
 export type PlmImportStepCode = 'Connect' | 'Entity' | 'Template' | 'OtherData';
@@ -37,6 +38,7 @@ export interface PlmImportWizardState {
   systemDefineTablesComplete: boolean;
   systemDefineEntitiesComplete: boolean;
   userDefineEntitiesComplete: boolean;
+  templatesComplete: boolean;
 }
 
 export type PlmSystemDefineWorkflowStep = 1 | 2;
@@ -58,9 +60,18 @@ export interface PlmImportEntityStepUiState {
   isUserDefineImporting: boolean;
 }
 
+/** Template step UI persisted across main app tab switches. */
+export interface PlmImportTemplateStepUiState {
+  previewItems: PlmTemplatePreviewItemDto[];
+  previewSummary: string | null;
+  activeJob: PlmImportJobDto | null;
+  isImporting: boolean;
+}
+
 export interface PlmImportPageCache {
   wizardState: PlmImportWizardState;
   entityStepUi: PlmImportEntityStepUiState;
+  templateStepUi: PlmImportTemplateStepUiState;
 }
 
 export const createInitialEntityStepUi = (): PlmImportEntityStepUiState => ({
@@ -75,18 +86,27 @@ export const createInitialEntityStepUi = (): PlmImportEntityStepUiState => ({
   isUserDefineImporting: false,
 });
 
+export const createInitialTemplateStepUi = (): PlmImportTemplateStepUiState => ({
+  previewItems: [],
+  previewSummary: null,
+  activeJob: null,
+  isImporting: false,
+});
+
 export const buildPlmImportStepStateJson = (state: Pick<
   PlmImportWizardState,
   | 'connectionTested'
   | 'systemDefineTablesComplete'
   | 'systemDefineEntitiesComplete'
   | 'userDefineEntitiesComplete'
+  | 'templatesComplete'
   | 'tablePrefix'
 >): string => JSON.stringify({
   connectionTested: state.connectionTested,
   systemDefineTablesComplete: state.systemDefineTablesComplete,
   systemDefineEntitiesComplete: state.systemDefineEntitiesComplete,
   userDefineEntitiesComplete: state.userDefineEntitiesComplete,
+  templatesComplete: state.templatesComplete,
   systemDefineComplete: state.systemDefineTablesComplete,
   tablePrefix: normalizePlmImportTablePrefix(state.tablePrefix, PLM_DEFAULT_TABLE_PREFIX),
 });

@@ -30,6 +30,9 @@ namespace APP.BL.DataMigration.PlmMigration
         public const string PlmSysDefineActionPreview = "SystemDefineEntityPreview";
         public const string PlmSysDefineActionImport = "SystemDefineEntityImport";
 
+        public const string PlmTemplateActionPreview = "TemplatePreview";
+        public const string PlmTemplateActionImport = "TemplateImport";
+
         public const string DefaultTablePrefix = "Plm_";
         public const string EntityWideTableSuffix = "Entity_";
         public const string DefaultEntityWideTablePrefix = DefaultTablePrefix + EntityWideTableSuffix;

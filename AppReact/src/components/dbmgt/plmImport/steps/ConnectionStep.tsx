@@ -152,6 +152,7 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
           systemDefineTablesComplete: state.systemDefineTablesComplete,
           systemDefineEntitiesComplete: state.systemDefineEntitiesComplete,
           userDefineEntitiesComplete: state.userDefineEntitiesComplete,
+          templatesComplete: state.templatesComplete,
           tablePrefix: state.tablePrefix,
         }),
         DataSourceDiscoveryJson: discoverResult.Object

@@ -207,6 +207,42 @@ export interface PlmImportLogDto {
   CreatedAt?: string | null;
 }
 
+export interface PlmUserDefineEntityImportResultDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  InsertedCount: number;
+  UpdatedCount: number;
+  SkippedCount: number;
+  RowsImported: number;
+}
+
+export interface PlmTemplatePreviewItemDto {
+  PlmTemplateId: number;
+  PlmTemplateName?: string | null;
+  PlmTabId: number;
+  PlmTabName?: string | null;
+  TabType?: string | null;
+  ImportStatus?: string | null;
+  ImportAction?: string | null;
+  SiblingTableName?: string | null;
+  ChildTableNames?: string | null;
+  SiblingFieldCount: number;
+  GridFieldCount: number;
+  WarningCount: number;
+  SkipReason?: string | null;
+}
+
+export interface PlmTemplatePreviewDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  TemplateCount: number;
+  ReadyCount: number;
+  SkippedCount: number;
+  BlockerCount: number;
+  WarningCount: number;
+  Tabs?: PlmTemplatePreviewItemDto[];
+}
+
 class PlmMigrationService {
   private baseUrl = `${endpoints.BASE_URL}/webapi/PlmMigration`;
 
@@ -342,6 +378,24 @@ class PlmMigrationService {
       headers: getHeaders(),
     });
     if (!response.ok) throw new Error('Failed to start User Define entity import');
+    return response.json();
+  }
+
+  async previewTemplateMapping(sessionId: number): Promise<OperationCallResult<PlmTemplatePreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewTemplateMapping?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to preview template mapping');
+    return response.json();
+  }
+
+  async executeTemplateImport(sessionId: number): Promise<OperationCallResult<PlmImportJobDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecuteTemplateImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to start template import');
     return response.json();
   }
 }

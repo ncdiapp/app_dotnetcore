@@ -29,7 +29,10 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
     ALTER TABLE dbo.AppTransactionUnit ADD IntegrationId NVARCHAR(100) NULL;
 
 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='AppTransactionField' AND COLUMN_NAME='IntegrationId')
-    ALTER TABLE dbo.AppTransactionField ADD IntegrationId NVARCHAR(100) NULL;";
+    ALTER TABLE dbo.AppTransactionField ADD IntegrationId NVARCHAR(100) NULL;
+
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='AppSearch' AND COLUMN_NAME='IntegrationId')
+    ALTER TABLE dbo.AppSearch ADD IntegrationId NVARCHAR(100) NULL;";
 
         private const string EnsureSessionTableSql = @"
 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='AppPlmImportSession')
@@ -582,6 +585,7 @@ VALUES
             public bool systemDefineTablesComplete { get; set; }
             public bool systemDefineEntitiesComplete { get; set; }
             public bool userDefineEntitiesComplete { get; set; }
+            public bool templatesComplete { get; set; }
             public string tablePrefix { get; set; }
             public string entityWideTablePrefix { get; set; }
         }

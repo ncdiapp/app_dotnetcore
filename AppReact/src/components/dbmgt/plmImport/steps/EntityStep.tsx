@@ -167,6 +167,7 @@ const EntityStep: React.FC<EntityStepProps> = ({
         systemDefineTablesComplete: merged.systemDefineTablesComplete,
         systemDefineEntitiesComplete: merged.systemDefineEntitiesComplete,
         userDefineEntitiesComplete: merged.userDefineEntitiesComplete,
+        templatesComplete: merged.templatesComplete,
         tablePrefix: merged.tablePrefix,
       }),
       DataSourceDiscoveryJson: state.session?.DataSourceDiscoveryJson ?? undefined,
