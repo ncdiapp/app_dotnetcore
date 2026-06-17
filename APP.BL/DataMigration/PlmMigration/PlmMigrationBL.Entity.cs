@@ -32,10 +32,12 @@ namespace APP.BL.DataMigration.PlmMigration
                     throw new InvalidOperationException("Tenant database connection is not available.");
 
                 string tenantConn = AppConnectionStringEncryptionBL.Decrypt(tenantRegister.ConnectionString);
+                var prefixes = ResolveImportPrefixes(session.StepStateJson);
                 result.Object = BuildSystemDefineEntityPreview(
                     session.PlmConnectionString.Trim(),
                     session.DataSourceDiscoveryJson,
-                    tenantConn);
+                    tenantConn,
+                    prefixes.TablePrefix);
 
                 if (!result.Object.IsSuccess)
                 {

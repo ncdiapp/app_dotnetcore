@@ -37,10 +37,10 @@
 
 Captured in **Step 1** (Connect & Discover) when session starts or on first open. Stored in `AppPlmImportSession.StepStateJson`.
 
-| Setting | Default | Used for |
-|---------|---------|----------|
-| **`TablePrefix`** | `Plm_` | Template physical tables (§5); **System Define PLM table copy (DSF=1)** — [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md) |
-| **`EntityWideTablePrefix`** | `Plm_entity_` | User Define wide tables (Step 2 — unchanged) |
+| Setting | Default / rule | Used for |
+|---------|----------------|----------|
+| **`TablePrefix`** | `Plm_` | Template physical tables (§5); System Define PLM table copy (DSF=1) |
+| **User Define wide** | `{TablePrefix}Entity_` | User Define wide tables (Step 2) — `Entity_` suffix fixed, not user-editable |
 
 **Naming examples** (`TablePrefix = Plm_`):
 
@@ -49,7 +49,7 @@ Captured in **Step 1** (Connect & Discover) when session starts or on first open
 | Global product root | `Plm_ReferenceBasicInfo` |
 | Tab sibling (Fabric Info) | `Plm_FabricInfo` |
 | Grid child unit | `Plm_{SanitizedGridSubItemName}` |
-| User Define wide entity | `Plm_entity_{EntityCode}` (Step 2 rule) |
+| User Define wide entity | `Plm_Entity_{EntityCode}` (Step 2: `{TablePrefix}Entity_{code}`) |
 
 Re-import trial data may be discarded; **no migration** of old names required — always apply current session prefix.
 
@@ -407,7 +407,7 @@ v1: Treat as **part of the parent tab's transaction** (same sibling unit / form)
 **BL file:** `PlmMigrationBL.Template.cs` (replace stub).  
 **Job type:** `TemplateImport`.
 
-**Session state:** `tablePrefix`, `entityWideTablePrefix` from Step 1.
+**Session state:** `tablePrefix` from Step 1 (`entityWideTablePrefix` derived as `{tablePrefix}Entity_`).
 
 ---
 

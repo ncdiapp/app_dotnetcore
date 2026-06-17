@@ -186,9 +186,13 @@ UPDATE dbo.AppPlmImportJob SET
         private static void RunPlmTableExportJob(PlmJobRuntimeContext context)
         {
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(context.TenantDataSourceId);
+            var session = LoadSessionById(fixture, context.SessionId, includeConnection: false);
+            string tablePrefix = ResolveImportPrefixes(session?.StepStateJson).TablePrefix;
+
             var exportResult = ExportPlmTablesToTenant(
                 context.PlmConnectionString,
                 context.TenantConnectionString,
+                tablePrefix,
                 (percent, message) =>
                 {
                     if (IsJobCancellationRequested(context.JobId))
@@ -334,6 +338,7 @@ UPDATE dbo.AppPlmImportJob SET
                 session?.DataSourceDiscoveryJson,
                 context.TenantConnectionString,
                 session?.SaasApplicationId,
+                ResolveImportPrefixes(session?.StepStateJson).TablePrefix,
                 (percent, message) =>
                 {
                     if (IsJobCancellationRequested(context.JobId))
@@ -383,7 +388,9 @@ UPDATE dbo.AppPlmImportJob SET
                 if (session == null || string.IsNullOrWhiteSpace(session.PlmConnectionString))
                     throw new InvalidOperationException("PLM connection is not available on this session.");
 
-                result.Object = BuildPlmTableExportPlan(session.PlmConnectionString.Trim());
+                result.Object = BuildPlmTableExportPlan(
+                    session.PlmConnectionString.Trim(),
+                    ResolveImportPrefixes(session.StepStateJson).TablePrefix);
                 if (!result.Object.IsSuccess)
                 {
                     result.ValidationResult.Items.Add(new ValidationItem(

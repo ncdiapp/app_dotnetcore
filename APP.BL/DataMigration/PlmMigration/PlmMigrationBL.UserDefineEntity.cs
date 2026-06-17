@@ -413,7 +413,7 @@ GROUP BY r.EntityID";
 
         private static void SyncUserDefineTableNames(List<PlmUdEntityRow> entities)
         {
-            // Physical table = Plm_entity_{sanitized PLM code}. Do not re-derive from TargetEntityCode
+            // Physical table = {TablePrefix}Entity_{sanitized PLM code}. Do not re-derive from TargetEntityCode
             // after Plm_ duplicate prefix — EntityCode and TableName diverge by design.
             foreach (var group in entities
                          .Where(e => !string.IsNullOrWhiteSpace(e.TargetTableName))

@@ -103,6 +103,7 @@ export interface PlmTableExportIssueDto {
 export interface PlmTableExportPlanItemDto {
   SchemaOwner?: string | null;
   TableName?: string | null;
+  TargetTableName?: string | null;
   PlmEntityCount?: number;
   SourceTableExists?: boolean;
   Entities?: PlmTableExportEntityRefDto[];

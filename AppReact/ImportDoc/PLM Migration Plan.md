@@ -52,7 +52,7 @@ Migration is delivered through a **PLM Data Import** wizard in the React **Datab
 | **Cross-instance** | PLM SQL Server and App-Builder SQL Server **may be on different instances**. All reads from PLM use the user-supplied PLM connection string; all writes use App tenant/master connections. |
 | **PLM connection** | User enters PLM connection string **once** in the wizard (not stored in `AppDataSourceRegister`). Tenant DB, Master DB, `SaasApplicationID`, and `CompanyId` are taken from the logged-in session. |
 | **Traceability** | Use `IntegrationId` (and equivalent on templates) = original PLM id for **update** on re-import. |
-| **Table prefixes** | Wizard Step 1 captures **`TablePrefix`** (default `Plm_`) for template/product tables **and System Define PLM table copy (DSF=1)**, and **`EntityWideTablePrefix`** (default `Plm_entity_`) for User Define wide entities. See [PLM-Template-Import-Spec.md §2](./PLM-Template-Import-Spec.md), [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md). |
+| **Table prefixes** | Wizard Step 1 captures **`TablePrefix`** (default `Plm_`) for template/product tables, System Define PLM table copy (DSF=1), and User Define wide tables. User Define wide prefix is **`{TablePrefix}Entity_`** (not a separate setting). See [PLM-Template-Import-Spec.md §2](./PLM-Template-Import-Spec.md), [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md). |
 | **Transactions** | Each execute operation uses a **single transaction**; failure → **full rollback**. |
 | **After import** | Prompt user to **recycle IIS** / refresh schema cache (not automated). |
 | **Runtime** | SQL scripts in `ImportDoc/` are **reference specs**; production path is **C#** (required for cross-instance). |
@@ -123,7 +123,7 @@ Before creating a register, normalize the connection string and check Master DB 
 | PLM column count | App entity type | Data location |
 |------------------|-----------------|---------------|
 | ≤ 2 | `SimpleValueList` (4) | `AppEntityInfo` + `AppEntitySimpleListValue` in **Tenant DB** |
-| > 2 | `SystemDefineTable` (1) | `CREATE TABLE` in **Tenant DB** (default prefix `Plm_entity_`, configurable) + pivot EAV row data |
+| > 2 | `SystemDefineTable` (1) | `CREATE TABLE` in **Tenant DB** with prefix **`{TablePrefix}Entity_{sanitized code}`** + pivot EAV row data |
 
 **Mapping rules:**
 

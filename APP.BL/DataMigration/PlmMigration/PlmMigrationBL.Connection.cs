@@ -289,8 +289,10 @@ UPDATE dbo.AppPlmImportSession SET
     UpdatedAt = @UpdatedAt,
     SaasApplicationId = @SaasApplicationId,
     CurrentStepCode = @CurrentStepCode,
-    StepStateJson = @StepStateJson,
-    DataSourceDiscoveryJson = @DataSourceDiscoveryJson"
+    StepStateJson = @StepStateJson"
+                        + (dto.DataSourceDiscoveryJson != null
+                            ? ", DataSourceDiscoveryJson = @DataSourceDiscoveryJson"
+                            : "")
                         + (encryptedConn != null ? ", PlmConnectionEncrypted = @PlmConnectionEncrypted" : "")
                         + " WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Status";
 
@@ -300,11 +302,12 @@ UPDATE dbo.AppPlmImportSession SET
                         CreateParam(fixture, "@SaasApplicationId", dto.SaasApplicationId),
                         CreateParam(fixture, "@CurrentStepCode", dto.CurrentStepCode ?? StepConnect),
                         CreateParam(fixture, "@StepStateJson", (object)dto.StepStateJson ?? DBNull.Value),
-                        CreateParam(fixture, "@DataSourceDiscoveryJson", (object)dto.DataSourceDiscoveryJson ?? DBNull.Value),
                         pId,
                         CreateParam(fixture, "@CompanyId", companyId),
                         CreateParam(fixture, "@Status", SessionStatusInProgress)
                     };
+                    if (dto.DataSourceDiscoveryJson != null)
+                        parms.Add(CreateParam(fixture, "@DataSourceDiscoveryJson", dto.DataSourceDiscoveryJson));
                     if (encryptedConn != null)
                         parms.Add(CreateParam(fixture, "@PlmConnectionEncrypted", encryptedConn));
 
@@ -596,8 +599,7 @@ VALUES
                     return settings;
 
                 settings.TablePrefix = SanitizeImportTablePrefix(state.tablePrefix, DefaultTablePrefix);
-                settings.EntityWideTablePrefix = SanitizeImportTablePrefix(
-                    state.entityWideTablePrefix, DefaultEntityWideTablePrefix);
+                settings.EntityWideTablePrefix = ResolveEntityWideTablePrefix(settings.TablePrefix);
             }
             catch
             {
@@ -627,6 +629,24 @@ VALUES
                 return fallback;
 
             return result.Length <= 30 ? result : result.Substring(0, 30);
+        }
+
+        internal static string ResolveEntityWideTablePrefix(string tablePrefix)
+        {
+            return SanitizeImportTablePrefix(tablePrefix, DefaultTablePrefix) + EntityWideTableSuffix;
+        }
+
+        internal static string ResolveSystemDefineTargetTableName(string sourceTableName, string tablePrefix)
+        {
+            if (string.IsNullOrWhiteSpace(sourceTableName))
+                return null;
+
+            string prefix = SanitizeImportTablePrefix(tablePrefix, DefaultTablePrefix);
+            string source = sourceTableName.Trim();
+            string target = source.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                ? source
+                : prefix + source;
+            return target.Length <= 100 ? target : target.Substring(0, 100);
         }
 
         #endregion

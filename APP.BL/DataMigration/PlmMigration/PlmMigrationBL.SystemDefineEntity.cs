@@ -65,23 +65,25 @@ namespace APP.BL.DataMigration.PlmMigration
         internal static PlmSystemDefineEntityPreviewDto BuildSystemDefineEntityPreview(
             string plmConnectionString,
             string dataSourceDiscoveryJson,
-            string tenantConnectionString)
+            string tenantConnectionString,
+            string tablePrefix)
         {
             var preview = new PlmSystemDefineEntityPreviewDto();
             try
             {
-                var registerMaps = BuildPlmSysDsRegisterMap(dataSourceDiscoveryJson);
+                var discovery = ParseDataSourceDiscovery(dataSourceDiscoveryJson);
+                var registerMaps = BuildPlmSysDsRegisterMap(discovery);
                 preview.DataSourceMaps = registerMaps.Select(MapRegisterDto).ToList();
 
-                if (registerMaps.Any(m => !m.IsRegisterResolved || string.IsNullOrWhiteSpace(m.DatabaseName)))
+                string registerError = ValidateRegisterMaps(registerMaps, discovery);
+                if (registerError != null)
                 {
                     preview.IsSuccess = false;
-                    preview.ErrorMessage =
-                        "One or more discovered data source registers could not be resolved in AppDataSourceRegister.";
+                    preview.ErrorMessage = registerError;
                     return preview;
                 }
 
-                var staging = BuildPlmSysEntityStaging(plmConnectionString, registerMaps);
+                var staging = BuildPlmSysEntityStaging(plmConnectionString, registerMaps, tablePrefix);
                 ValidatePhysicalTables(staging, registerMaps, tenantConnectionString);
                 ApplyEntityCodeBlockers(staging, tenantConnectionString);
                 AssignImportActions(staging, tenantConnectionString);
@@ -120,19 +122,21 @@ namespace APP.BL.DataMigration.PlmMigration
             string dataSourceDiscoveryJson,
             string tenantConnectionString,
             int? saasApplicationId,
+            string tablePrefix,
             PlmExportProgressCallback progressCallback)
         {
             var result = new PlmSystemDefineEntityImportResultDto();
-            var registerMaps = BuildPlmSysDsRegisterMap(dataSourceDiscoveryJson);
-            if (registerMaps.Any(m => !m.IsRegisterResolved || string.IsNullOrWhiteSpace(m.DatabaseName)))
+            var discovery = ParseDataSourceDiscovery(dataSourceDiscoveryJson);
+            var registerMaps = BuildPlmSysDsRegisterMap(discovery);
+            string registerError = ValidateRegisterMaps(registerMaps, discovery);
+            if (registerError != null)
             {
                 result.IsSuccess = false;
-                result.ErrorMessage =
-                    "One or more discovered data source registers could not be resolved in AppDataSourceRegister.";
+                result.ErrorMessage = registerError;
                 return result;
             }
 
-            var staging = BuildPlmSysEntityStaging(plmConnectionString, registerMaps);
+            var staging = BuildPlmSysEntityStaging(plmConnectionString, registerMaps, tablePrefix);
             ValidatePhysicalTables(staging, registerMaps, tenantConnectionString);
             ApplyEntityCodeBlockers(staging, tenantConnectionString);
             AssignImportActions(staging, tenantConnectionString);
@@ -212,7 +216,7 @@ namespace APP.BL.DataMigration.PlmMigration
             return result;
         }
 
-        private static List<PlmSysDsRegisterMap> BuildPlmSysDsRegisterMap(string dataSourceDiscoveryJson)
+        private static PlmDiscoverDataSourcesResultDto ParseDataSourceDiscovery(string dataSourceDiscoveryJson)
         {
             if (string.IsNullOrWhiteSpace(dataSourceDiscoveryJson))
                 throw new InvalidOperationException("Data source discovery is missing on this session. Run Connect & Discover first.");
@@ -221,6 +225,41 @@ namespace APP.BL.DataMigration.PlmMigration
             if (discovery?.DataSources == null || discovery.DataSources.Count == 0)
                 throw new InvalidOperationException("Data source discovery is empty. Run Connect & Discover first.");
 
+            return discovery;
+        }
+
+        /// <summary>
+        /// Only registers that discovery actually assigned must resolve. Skipped sources (B10: no PLM connection string) are OK.
+        /// PLM (DSF=1) must always resolve to company master.
+        /// </summary>
+        private static string ValidateRegisterMaps(
+            List<PlmSysDsRegisterMap> maps,
+            PlmDiscoverDataSourcesResultDto discovery)
+        {
+            foreach (int plmFrom in new[] { 1, 2, 3, 4 })
+            {
+                var map = maps.First(m => m.PlmDataSourceFrom == plmFrom);
+                var item = discovery.DataSources.FirstOrDefault(d => d.DataSourceFrom == plmFrom);
+                bool mustResolve = plmFrom == 1
+                    || (item?.RegisteredDataSourceId is int registerId && registerId > 0);
+
+                if (!mustResolve)
+                    continue;
+
+                if (!map.IsRegisterResolved || string.IsNullOrWhiteSpace(map.DatabaseName))
+                {
+                    string name = GetPlmDataSourceFromName(plmFrom);
+                    return plmFrom == 1
+                        ? "Company Master database register could not be resolved for PLM (DataSourceFrom = 1)."
+                        : $"Data source register for {name} could not be resolved in AppDataSourceRegister.";
+                }
+            }
+
+            return null;
+        }
+
+        private static List<PlmSysDsRegisterMap> BuildPlmSysDsRegisterMap(PlmDiscoverDataSourcesResultDto discovery)
+        {
             var maps = new List<PlmSysDsRegisterMap>();
             foreach (int plmFrom in new[] { 1, 2, 3, 4 })
             {
@@ -245,7 +284,8 @@ namespace APP.BL.DataMigration.PlmMigration
 
         private static List<PlmSysEntityRow> BuildPlmSysEntityStaging(
             string plmConnectionString,
-            List<PlmSysDsRegisterMap> registerMaps)
+            List<PlmSysDsRegisterMap> registerMaps,
+            string tablePrefix)
         {
             var registerByPlmFrom = registerMaps.ToDictionary(m => m.PlmDataSourceFrom);
             var entities = new List<PlmSysEntityRow>();
@@ -333,6 +373,7 @@ ORDER BY c.EntityID, ISNULL(c.DataRowSort, 9999), c.UserDefineEntityColumnID";
 
             MarkUnsupportedDataSources(entities);
             MarkEmptyTableNames(entities);
+            ApplySystemDefineTablePrefix(entities, tablePrefix);
             ResolveTargetDatabaseNames(entities, registerByPlmFrom);
             ApplyDuplicateEntityCodePrefix(entities);
 
@@ -364,9 +405,12 @@ ORDER BY c.EntityID, ISNULL(c.DataRowSort, 9999), c.UserDefineEntityColumnID";
                     entity.SkipReason = entity.PlmDataSourceFrom switch
                     {
                         null => "DataSourceFrom is NULL",
+                        2 => "ERP data source not registered (skipped or not configured in PLM)",
+                        3 => "DataWS data source not registered (no connection in PLM)",
+                        4 => "OtherEx data source not registered (no connection in PLM)",
                         5 => "RestJson not supported",
                         6 => "RestXML not supported",
-                        _ => "Unsupported DataSourceFrom value"
+                        _ => "Data source not registered in AppDataSourceRegister"
                     };
                 }
             }
@@ -381,6 +425,15 @@ ORDER BY c.EntityID, ISNULL(c.DataRowSort, 9999), c.UserDefineEntityColumnID";
                     entity.ImportStatus = SysEntityStatusSkipped;
                     entity.SkipReason = "SysTableName is empty";
                 }
+            }
+        }
+
+        private static void ApplySystemDefineTablePrefix(List<PlmSysEntityRow> entities, string tablePrefix)
+        {
+            foreach (var entity in entities.Where(e =>
+                         e.ImportStatus == SysEntityStatusReady && e.PlmDataSourceFrom == 1))
+            {
+                entity.TableName = ResolveSystemDefineTargetTableName(entity.TableName, tablePrefix);
             }
         }
 

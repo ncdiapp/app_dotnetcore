@@ -46,6 +46,10 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string TableName { get; set; }
 
+        /// <summary>Prefixed physical table name in tenant DB (TablePrefix + SysTableName).</summary>
+        [DataMember]
+        public string TargetTableName { get; set; }
+
         [DataMember]
         public int PlmEntityCount { get; set; }
 
@@ -84,6 +88,9 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public string TableName { get; set; }
+
+        [DataMember]
+        public string TargetTableName { get; set; }
 
         [DataMember]
         public bool IsSuccess { get; set; }

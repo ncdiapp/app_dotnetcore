@@ -153,7 +153,6 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
           systemDefineEntitiesComplete: state.systemDefineEntitiesComplete,
           userDefineEntitiesComplete: state.userDefineEntitiesComplete,
           tablePrefix: state.tablePrefix,
-          entityWideTablePrefix: state.entityWideTablePrefix,
         }),
         DataSourceDiscoveryJson: discoverResult.Object
           ? JSON.stringify(discoverResult.Object)
@@ -262,24 +261,9 @@ const ConnectionStep: React.FC<ConnectionStepProps> = ({
           })}
           placeholder="Plm_"
         />
-        <span className={`text-xs ${theme.menu_secondary}`}>e.g. Plm_ReferenceBasicInfo</span>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <label className={`w-40 text-xs ${theme.label} mr-2`} title="User Define wide entity tables">
-          Entity wide prefix
-        </label>
-        <input
-          type="text"
-          className={`flex-auto w-32 h-7 px-2 text-xs border ${theme.inputBox}`}
-          value={state.entityWideTablePrefix}
-          onChange={(e) => onStateChange({
-            entityWideTablePrefix: e.target.value,
-            connectionTested: false,
-          })}
-          placeholder="Plm_entity_"
-        />
-        <span className={`text-xs ${theme.menu_secondary}`}>e.g. Plm_entity_MyEntity</span>
+        <span className={`text-xs ${theme.menu_secondary}`}>
+          e.g. Plm_ReferenceBasicInfo · wide entities: Plm_Entity_MyCode
+        </span>
       </div>
 
       <div className="flex flex-col gap-1">

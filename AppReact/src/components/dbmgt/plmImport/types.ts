@@ -9,7 +9,8 @@ import type {
 export type PlmImportStepCode = 'Connect' | 'Entity' | 'Template' | 'OtherData';
 
 export const PLM_DEFAULT_TABLE_PREFIX = 'Plm_';
-export const PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX = 'Plm_entity_';
+/** Hardcoded suffix appended to TablePrefix for User Define wide entity tables. */
+export const PLM_ENTITY_WIDE_SUFFIX = 'Entity_';
 
 export const normalizePlmImportTablePrefix = (
   value: string | undefined | null,
@@ -22,6 +23,9 @@ export const normalizePlmImportTablePrefix = (
   return sanitized.length <= 30 ? sanitized : sanitized.slice(0, 30);
 };
 
+export const deriveEntityWideTablePrefix = (tablePrefix: string | undefined | null): string =>
+  normalizePlmImportTablePrefix(tablePrefix, PLM_DEFAULT_TABLE_PREFIX) + PLM_ENTITY_WIDE_SUFFIX;
+
 export interface PlmImportWizardState {
   session: PlmImportSessionDto | null;
   currentStepCode: PlmImportStepCode;
@@ -29,7 +33,6 @@ export interface PlmImportWizardState {
   saasApplicationId: number | null;
   plmConnectionString: string;
   tablePrefix: string;
-  entityWideTablePrefix: string;
   connectionTested: boolean;
   systemDefineTablesComplete: boolean;
   systemDefineEntitiesComplete: boolean;
@@ -80,7 +83,6 @@ export const buildPlmImportStepStateJson = (state: Pick<
   | 'systemDefineEntitiesComplete'
   | 'userDefineEntitiesComplete'
   | 'tablePrefix'
-  | 'entityWideTablePrefix'
 >): string => JSON.stringify({
   connectionTested: state.connectionTested,
   systemDefineTablesComplete: state.systemDefineTablesComplete,
@@ -88,10 +90,6 @@ export const buildPlmImportStepStateJson = (state: Pick<
   userDefineEntitiesComplete: state.userDefineEntitiesComplete,
   systemDefineComplete: state.systemDefineTablesComplete,
   tablePrefix: normalizePlmImportTablePrefix(state.tablePrefix, PLM_DEFAULT_TABLE_PREFIX),
-  entityWideTablePrefix: normalizePlmImportTablePrefix(
-    state.entityWideTablePrefix,
-    PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX,
-  ),
 });
 
 export const PLM_IMPORT_PAGE_CACHE_SUFFIX = '-PlmDataImportManagement';

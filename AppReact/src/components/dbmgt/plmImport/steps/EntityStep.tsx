@@ -131,8 +131,8 @@ const EntityStep: React.FC<EntityStepProps> = ({
         systemDefineEntitiesComplete: merged.systemDefineEntitiesComplete,
         userDefineEntitiesComplete: merged.userDefineEntitiesComplete,
         tablePrefix: merged.tablePrefix,
-        entityWideTablePrefix: merged.entityWideTablePrefix,
       }),
+      DataSourceDiscoveryJson: state.session?.DataSourceDiscoveryJson ?? undefined,
     });
     onSessionSaved();
   }, [onSessionSaved, sessionId, state]);
@@ -713,7 +713,8 @@ const EntityStep: React.FC<EntityStepProps> = ({
               {showTableGrid ? (
                 <FlexGrid itemsSource={tableCv} headersVisibility="Column" isReadOnly className="h-full w-full">
                   <FlexGridColumn header="Schema" binding="SchemaOwner" width={80} />
-                  <FlexGridColumn header="Table" binding="TableName" width="*" />
+                  <FlexGridColumn header="Source table" binding="TableName" width="*" />
+                  <FlexGridColumn header="Target table" binding="TargetTableName" width="*" />
                   <FlexGridColumn header="Entities" binding="PlmEntityCount" width={80} />
                   <FlexGridColumn header="Source OK" binding="SourceTableExists" width={80} />
                   <FlexGridColumn header="" binding="" width="*" />

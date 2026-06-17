@@ -37,7 +37,7 @@
 
 | Step | What happens |
 |------|----------------|
-| **1 Connect & Discover** | Pick **Application** + PLM connection → **`TablePrefix`** (default `Plm_`) + **`EntityWideTablePrefix`** (default `Plm_entity_`) → read `pdmDataSource` → register ERP/DataWS/OtherEx (company lock). Discovery grid: **Data source name**, **Connection string** (raw from `pdmDataSource`), **Status** (`OK` only when row has its own connection string and test passed; blank connection → blank status). |
+| **1 Connect & Discover** | Pick **Application** + PLM connection → **`TablePrefix`** (default `Plm_`; User Define wide tables use `{TablePrefix}Entity_`) → read `pdmDataSource` → register ERP/DataWS/OtherEx (company lock). Discovery grid: **Data source name**, **Connection string** (raw from `pdmDataSource`), **Status** (`OK` only when row has its own connection string and test passed; blank connection → blank status). |
 | **2 Entity** | **System Define tab first** — two phases — then **User Define** tab (List + Execute) |
 | **3 Template** | 1 PLM Template → 1 **Data Model Template** (`AppSearch`); tabs → transactions; preview → execute job. Spec: [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md) |
 | **4 Other Data** | Placeholder (Color, POM, …) |
@@ -100,13 +100,14 @@ Add a **PLM Data Import** wizard to the React **Database Design** page (`Databas
 | A2 | PLM sources in `pdmDataSource`; see `EmDataSourceFrom` in PLM `Enums.cs` |
 | A3 | PLM connection: user types once in UI; **not** stored in `AppDataSourceRegister` |
 | A4 | Tenant DB, Master DB, `CompanyId` from session; **`SaasApplicationID` from Step 1 dropdown** (E22) |
-| A5 | **`TablePrefix`** (default `Plm_`) — template tables e.g. `{prefix}ReferenceBasicInfo`, **and System Define PLM table copy (DSF=1)** into tenant. Stored in session `StepStateJson`. Spec: [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md). |
-| A5a | **`EntityWideTablePrefix`** (default `Plm_entity_`) — User Define wide entity tables (Step 2). Independent of template prefix. |
+| A5 | **`TablePrefix`** (default `Plm_`) — template tables, System Define PLM table copy (DSF=1), and base for User Define wide tables. Stored in session `StepStateJson`. |
+| A5a | User Define wide entity physical tables: **`{TablePrefix}Entity_{sanitized code}`** — `Entity_` suffix is fixed; not user-editable. |
 | B5–B7 | Register ERP/DataWS/OtherEx in Master DB; naming `{TenantDb}_ERP` / `_DataWS` / `_OtherEx` |
 | B5a–c | **Company lock** on connection string (same company → reuse; different company → block) |
 | B8–B9 | PLM (1): **no new register**; map to Company Master DB; discover/validate only |
 | B10 | Discovery uses **only** `pdmDataSource.ConnectionString` (no wizard PLM fallback). Empty or connection test failed → **skip** row (no external register). **Error** only when required: cannot read PLM, company lock, register save failure |
 | B10a | Discovery grid shows raw `pdmDataSource.ConnectionString`; Status `OK` only when non-empty and test passed |
+| B10c | Register map validation (entity import): only sources with **`RegisteredDataSourceId`** from discovery must resolve; skipped DataWS/OtherEx (no PLM connection) do **not** block preview |
 
 **`EmDataSourceFrom`:**
 
@@ -126,7 +127,7 @@ Add a **PLM Data Import** wizard to the React **Database Design** page (`Databas
 | C10 | Update by `IntegrationId` = PLM `EntityID` on `AppEntityInfo` |
 | C10a | UserDefine rows: **TRUNCATE** wide table or clear SimpleList → **full reload** |
 | C10b–c | Execute **all** entities in tab; **any failure → full tab rollback** |
-| C11 | Wide table prefix default `Plm_entity_` (**`EntityWideTablePrefix`**, configurable in Step 1) |
+| C11 | Wide table prefix **`{TablePrefix}Entity_`** (derived; `Entity_` fixed) |
 | C12b | SystemDefine DSF=1: copy **only tables referenced by `pdmEntity`**; tenant physical name = **`{TablePrefix}{SysTableName}`** (read PLM source by original name) |
 | C12b1 | DSF=1 `AppEntityInfo.TableName` = prefixed target name; DSF 2–4 unchanged. No double prefix if `SysTableName` already starts with `TablePrefix`. |
 | C12c | SystemDefine DSF=2–4: reference external DB only |
@@ -141,7 +142,7 @@ Add a **PLM Data Import** wizard to the React **Database Design** page (`Databas
 
 **Specs:** `SqlReferenceSpecs/ImportPlmSystemDefineEntitiesToAppEntityInfo.sql`, `ImportPlmUserDefineEntitiesToAppEntityInfo.sql`
 
-**User Define (implemented):** SimpleValueList empty `Code` / `Description` → `''` not NULL. Wide table physical name = `{EntityWideTablePrefix}{sanitized code}` — **not** re-derived from `Plm_`-prefixed `EntityCode`.
+**User Define (implemented):** SimpleValueList empty `Code` / `Description` → `''` not NULL. Wide table physical name = `{TablePrefix}Entity_{sanitized code}` — **not** re-derived from `Plm_`-prefixed `EntityCode`.
 
 ### 3.3 Template import (D)
 
@@ -295,7 +296,7 @@ Every Preview/Execute writes log rows (started + final).
 ```
 Step 1  Connect & Discover
         ├─ Select Application (required)
-        ├─ Table prefix: TablePrefix (default Plm_) + EntityWideTablePrefix (default Plm_entity_)
+        ├─ Table prefix: TablePrefix (default Plm_); wide entities = {TablePrefix}Entity_
         ├─ SysAdmin: select Company
         ├─ PLM connection → test
         ├─ pdmDataSource 1–4 → test each external conn
@@ -357,7 +358,7 @@ Step 4  Other Data (placeholder)
 | Q19 | `AppPlmImportLog` table created in **`EnsurePlmImportSchema()`** |
 | Q20 | Test each external datasource on Discover |
 | Q24 | Template = `AppSearch` (Data Model Template), not `AppTransactionGroup` |
-| Q25 | Table prefix in Step 1; template tables use `TablePrefix`, entity wide tables use `EntityWideTablePrefix` |
+| Q25 | Table prefix in Step 1; template + System Define use `TablePrefix`; User Define wide tables use `{TablePrefix}Entity_` |
 | Q26 | Template structure: Root + Sibling + Child units per tab — see Template Import Spec |
 
 ### Open
@@ -398,3 +399,4 @@ Step 4  Other Data (placeholder)
 | 2026-06-16 | Entity import: `Plm_entity_*` naming fix; SimpleValueList `''` for empty Code/Description |
 | 2026-06-16 | **System Define table copy prefix:** [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md) — `TablePrefix` on DSF=1 export + `AppEntityInfo.TableName` |
 | 2026-06-17 | **B10 simplified:** only `pdmDataSource.ConnectionString`; skip on empty/failed test; no PLM connection fallback |
+| 2026-06-17 | **Entity wide prefix:** derived `{TablePrefix}Entity_` — removed separate Step 1 field |

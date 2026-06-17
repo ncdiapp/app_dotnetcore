@@ -1,6 +1,6 @@
 # PLM System Define Table Copy — Prefix Design (Phase 1 / §2.2)
 
-> **Status:** Confirmed design — ready for implementation.  
+> **Status:** Implemented.  
 > **Scope:** Physical tables copied from PLM into **Tenant DB** for System Define entities with **`DataSourceFrom = 1`**.  
 > **Related:** [PLM Migration Plan.md §1 / §2.2](./PLM%20Migration%20Plan.md), [PLM-Import-Wizard-Baseline.md](./PLM-Import-Wizard-Baseline.md), [PLM-Template-Import-Spec.md §2](./PLM-Template-Import-Spec.md)  
 > **Backend today:** `PlmMigrationBL.Export.cs` (copy), `PlmMigrationBL.SystemDefineEntity.cs` (metadata + physical check)
@@ -26,9 +26,9 @@ User decision: **apply a configurable prefix** to copied System Define (DSF=1) p
 | Setting | Default | Applies to System Define table copy? |
 |---------|---------|--------------------------------------|
 | **`TablePrefix`** | `Plm_` | **Yes** |
-| **`EntityWideTablePrefix`** | `Plm_entity_` | **No** — User Define wide EAV tables only |
+| **`{TablePrefix}Entity_`** | derived | **No** — User Define wide EAV tables only |
 
-**Rationale:** DSF=1 copies are PLM-native physical tables (same class as template product tables). They share the `Plm_` namespace with `{prefix}ReferenceBasicInfo`, `{prefix}FabricInfo`, etc. User Define wide tables remain on `Plm_entity_`.
+**Rationale:** DSF=1 copies share the `TablePrefix` namespace with template tables. User Define wide tables use `{TablePrefix}Entity_`.
 
 ---
 

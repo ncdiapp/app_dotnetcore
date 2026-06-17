@@ -18,7 +18,6 @@ import {
   createInitialEntityStepUi,
   normalizePlmImportTablePrefix,
   normalizeViewingWorkflowStep,
-  PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX,
   PLM_DEFAULT_TABLE_PREFIX,
   PLM_IMPORT_PAGE_CACHE_SUFFIX,
 } from './plmImport/types';
@@ -30,7 +29,6 @@ const createInitialWizardState = (): PlmImportWizardState => ({
   saasApplicationId: null,
   plmConnectionString: '',
   tablePrefix: PLM_DEFAULT_TABLE_PREFIX,
-  entityWideTablePrefix: PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX,
   connectionTested: false,
   systemDefineTablesComplete: false,
   systemDefineEntitiesComplete: false,
@@ -54,10 +52,6 @@ const readCachedPageState = (): { page: PlmImportPageCache; fromCache: boolean }
             ...createInitialWizardState(),
             ...ws,
             tablePrefix: normalizePlmImportTablePrefix(ws.tablePrefix, PLM_DEFAULT_TABLE_PREFIX),
-            entityWideTablePrefix: normalizePlmImportTablePrefix(
-              ws.entityWideTablePrefix,
-              PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX,
-            ),
           },
           entityStepUi: cached.entityStepUi
             ? {
@@ -118,7 +112,6 @@ const PlmDataImportManagement: React.FC = () => {
       systemDefineEntitiesComplete?: boolean;
       userDefineEntitiesComplete?: boolean;
       tablePrefix?: string;
-      entityWideTablePrefix?: string;
     } = {};
     if (session.StepStateJson) {
       try {
@@ -142,10 +135,6 @@ const PlmDataImportManagement: React.FC = () => {
       systemDefineEntitiesComplete: Boolean(stepState.systemDefineEntitiesComplete),
       userDefineEntitiesComplete: Boolean(stepState.userDefineEntitiesComplete),
       tablePrefix: normalizePlmImportTablePrefix(stepState.tablePrefix, PLM_DEFAULT_TABLE_PREFIX),
-      entityWideTablePrefix: normalizePlmImportTablePrefix(
-        stepState.entityWideTablePrefix,
-        PLM_DEFAULT_ENTITY_WIDE_TABLE_PREFIX,
-      ),
     }));
   }, []);
 

@@ -37,7 +37,7 @@ namespace APP.BL.DataMigration.PlmMigration
 
         public delegate void PlmExportProgressCallback(int progressPercent, string message);
 
-        internal static PlmTableExportPlanDto BuildPlmTableExportPlan(string plmConnectionString)
+        internal static PlmTableExportPlanDto BuildPlmTableExportPlan(string plmConnectionString, string tablePrefix)
         {
             var plan = new PlmTableExportPlanDto();
             try
@@ -51,10 +51,12 @@ namespace APP.BL.DataMigration.PlmMigration
                     foreach (var table in tables)
                     {
                         bool exists = TableExists(conn, table.SchemaOwner, table.TableName);
+                        string targetTable = ResolveSystemDefineTargetTableName(table.TableName, tablePrefix);
                         plan.Tables.Add(new PlmTableExportPlanItemDto
                         {
                             SchemaOwner = table.SchemaOwner,
                             TableName = table.TableName,
+                            TargetTableName = targetTable,
                             PlmEntityCount = table.PlmEntityCount,
                             SourceTableExists = exists,
                             Entities = table.Entities.Select(MapEntityRefDto).ToList()
@@ -90,6 +92,7 @@ namespace APP.BL.DataMigration.PlmMigration
         internal static PlmTableExportResultDto ExportPlmTablesToTenant(
             string plmConnectionString,
             string tenantConnectionString,
+            string tablePrefix,
             PlmExportProgressCallback progressCallback)
         {
             var exportResult = new PlmTableExportResultDto();
@@ -128,19 +131,23 @@ namespace APP.BL.DataMigration.PlmMigration
                 for (int i = 0; i < exportableTables.Count; i++)
                 {
                     var table = exportableTables[i];
+                    string targetTable = ResolveSystemDefineTargetTableName(table.TableName, tablePrefix);
                     int percent = (int)Math.Round((i / (double)exportableTables.Count) * 100);
-                    progressCallback?.Invoke(percent, $"Importing {table.SchemaOwner}.{table.TableName}...");
+                    progressCallback?.Invoke(percent,
+                        $"Importing {table.SchemaOwner}.{table.TableName} → {table.SchemaOwner}.{targetTable}...");
 
                     var itemResult = new PlmTableExportResultItemDto
                     {
                         SchemaOwner = table.SchemaOwner,
                         TableName = table.TableName,
+                        TargetTableName = targetTable,
                         Entities = table.Entities.Select(MapEntityRefDto).ToList()
                     };
 
                     try
                     {
-                        int rows = CopyTableWithPrimaryKey(sourceConn, targetConn, table.SchemaOwner, table.TableName);
+                        int rows = CopyTableWithPrimaryKey(
+                            sourceConn, targetConn, table.SchemaOwner, table.TableName, targetTable);
                         itemResult.IsSuccess = true;
                         itemResult.RowsCopied = rows;
                     }
@@ -308,24 +315,25 @@ WHERE s.name = @Schema AND t.name = @Table";
             }
         }
 
-        private static int CopyTableWithPrimaryKey(SqlConnection source, SqlConnection target, string schema, string table)
+        private static int CopyTableWithPrimaryKey(
+            SqlConnection source, SqlConnection target, string schema, string sourceTable, string targetTable)
         {
-            var columns = ReadColumnDefinitions(source, schema, table);
+            var columns = ReadColumnDefinitions(source, schema, sourceTable);
             if (columns.Count == 0)
                 throw new InvalidOperationException("No columns found.");
 
-            var pkColumns = ReadPrimaryKeyColumns(source, schema, table);
+            var pkColumns = ReadPrimaryKeyColumns(source, schema, sourceTable);
             EnsureSchemaExists(target, schema);
-            DropTableIfExists(target, schema, table);
-            CreateTable(target, schema, table, columns, pkColumns);
+            DropTableIfExists(target, schema, targetTable);
+            CreateTable(target, schema, targetTable, columns, pkColumns);
 
             using (var cmd = source.CreateCommand())
             {
-                cmd.CommandText = "SELECT * FROM " + Qualify(schema, table);
+                cmd.CommandText = "SELECT * FROM " + Qualify(schema, sourceTable);
                 using (var reader = cmd.ExecuteReader())
                 using (var bulk = new SqlBulkCopy(target, SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.TableLock, null))
                 {
-                    bulk.DestinationTableName = $"{schema}.{table}";
+                    bulk.DestinationTableName = $"{schema}.{targetTable}";
                     bulk.BatchSize = 5000;
                     bulk.BulkCopyTimeout = 0;
                     foreach (var col in columns)
@@ -336,7 +344,7 @@ WHERE s.name = @Schema AND t.name = @Table";
 
             using (var countCmd = target.CreateCommand())
             {
-                countCmd.CommandText = "SELECT COUNT(*) FROM " + Qualify(schema, table);
+                countCmd.CommandText = "SELECT COUNT(*) FROM " + Qualify(schema, targetTable);
                 return Convert.ToInt32(countCmd.ExecuteScalar());
             }
         }
