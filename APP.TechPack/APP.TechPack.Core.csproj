@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>APP.TechPack</AssemblyName>
+    <RootNamespace>APP.TechPack</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Platform infra — no LLBLGen in either project -->
+    <ProjectReference Include="..\APP.Framework\APP.Framework.Core.csproj" />
+    <ProjectReference Include="..\APP.Components.Dto\APP.Components.Dto.Core.csproj" />
+  </ItemGroup>
+
+</Project>

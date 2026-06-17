@@ -21,7 +21,9 @@
       "Bash(wsl grep -n \"public static\" \"/mnt/c/app_workspace/ncdiapp/AppAI/APP.BL/AppMgr/AppSearchConfigBL.cs\")",
       "Bash(cmd /c \"findstr /n /c:\"\"public static\"\" \"\"c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppSearchViewConfigBL.cs\"\"\")",
       "Bash(cmd /c \"findstr /n /c:\"\"public static\"\" \"\"c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppSearchConfigBL.cs\"\"\")",
-      "Bash(cmd /c type \"c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppSearchViewConfigBL.cs\")"
+      "Bash(cmd /c type \"c:\\\\app_workspace\\\\ncdiapp\\\\AppAI\\\\APP.BL\\\\AppMgr\\\\AppSearchViewConfigBL.cs\")",
+      "Bash(dotnet new *)",
+      "Bash(xargs grep -l \"EmAppTransactionGridDisplayType\\\\|enum.*3\")"
     ]
   }
 }

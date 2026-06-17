@@ -80,6 +80,9 @@ try
     builder.Services.AddHttpClient();
     builder.Services.AddScoped<IOcrService, LLMOcrService>();
 
+    builder.Services.AddScoped<PlmUnitContext>();
+    builder.Services.AddScoped<PlmUnitConversionFilter>();
+
     // Exception filters (replaces WebApiConfig filter registration)
     // SuppressImplicitRequiredAttributeForNonNullableReferenceTypes restores old Web API 2 behaviour:
     // non-nullable reference properties in DTOs are NOT implicitly [Required].
