@@ -4,6 +4,7 @@ import { useErrorMessage } from '../../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/busyLoaderSlice';
 import { useDispatch } from 'react-redux';
 import { adminSvc } from '../../../webapi/adminsvc';
+import { refreshUserTreeMenu } from '../../../helper/userMenuHelper';
 import { InputNumber } from '@mescius/wijmo.react.input';
 import '@mescius/wijmo.styles/wijmo.css';
 
@@ -93,6 +94,7 @@ const ApplicationProperties: React.FC<ApplicationPropertiesProps> = ({ menuId, a
             Sort: menuData.Sort || 1
           });
         }
+        await refreshUserTreeMenu();
       }
       
       // Always display validation messages from server (errors, warnings, info messages)

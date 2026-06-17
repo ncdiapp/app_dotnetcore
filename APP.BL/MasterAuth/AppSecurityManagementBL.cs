@@ -95,9 +95,10 @@ namespace App.BL
             ObservableSet<AppListMenuExDto> userMenuList = new ObservableSet<AppListMenuExDto>();
 
             bool isSystemAdmin = ServerContext.Instance.CurrentUid != null && AppSecurityUserBL.CurrentUserEntity?.IsInSysAdminDomain == true;
+            // Match RetrieveUserMenu / RetrieveSelectedApplicationPackages: tenant admins see all app root menus.
+            bool isAdmin = AppSecurityUserBL.IsAdminUser();
 
-
-            if (isSystemAdmin)
+            if (isSystemAdmin || isAdmin)
             {
 
                 userMenuList = AppTreeListMenuBL.RetrieveListMenuHairarchyDto(false, null, true);

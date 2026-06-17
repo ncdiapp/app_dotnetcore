@@ -7,6 +7,7 @@ import { RootState } from '../../redux/store';
 import { adminSvc } from '../../webapi/adminsvc';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import { useAlertConfirm } from '../common/AlertConfirmProvider';
+import { refreshUserTreeMenu } from '../../helper/userMenuHelper';
 
 interface ApplicationTile {
   Id?: string | number;
@@ -329,8 +330,7 @@ const MyApplications: React.FC = () => {
       if (result.IsSuccessful && result.Object) {
         // Refresh applications list
         await loadApplications();
-        
-        // TODO: Refresh menus (similar to navigationSvc.scope().refreshMenus() in AngularJS)
+        await refreshUserTreeMenu();
         
         // Auto-open new application configuration editor (matching AngularJS autoOpenNewAppConfigurationEditor)
         const applicationId = result.Object;
@@ -381,7 +381,7 @@ const MyApplications: React.FC = () => {
         const result = await adminSvc.deleteOneApplicationPackage(application.Id.toString());
         if (result.IsSuccessful) {
           await loadApplications();
-          // TODO: Refresh menus (similar to navigationSvc.scope().refreshMenus() in AngularJS)
+          await refreshUserTreeMenu();
         } else {
           showError(result.ValidationResult?.join(', ') || 'Failed to uninstall application');
         }
@@ -390,7 +390,7 @@ const MyApplications: React.FC = () => {
         const result = await adminSvc.deleteOneApplicationPackage(application.Id.toString());
         if (result.IsSuccessful) {
           await loadApplications();
-          // TODO: Refresh menus (similar to navigationSvc.scope().refreshMenus() in AngularJS)
+          await refreshUserTreeMenu();
         } else {
           showError(result.ValidationResult?.join(', ') || 'Failed to remove application');
         }

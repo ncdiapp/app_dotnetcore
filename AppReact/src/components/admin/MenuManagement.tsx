@@ -7,6 +7,7 @@ import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLo
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { adminSvc } from '../../webapi/adminsvc';
+import { refreshUserTreeMenu } from '../../helper/userMenuHelper';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
 import type { RootState } from '../../redux/store';
 
@@ -376,6 +377,7 @@ const MenuManagement: React.FC = () => {
       if (data?.IsSuccessful) {
         showInfo('Menu saved');
         await loadData();
+        await refreshUserTreeMenu();
       }
     } catch (error: any) {
       showError(error?.message || 'Failed to save menu');

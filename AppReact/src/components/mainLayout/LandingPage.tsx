@@ -9,8 +9,8 @@ import { RootState } from '../../redux/store';
 import { store } from '../../redux/store';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { setAutoCollapseOnPageOpen, collapseSidebar } from '../../redux/features/ui/navigation/sidebarSlice';
-import { restoreTabs, Tab } from '../../redux/features/ui/navigation/tabnavSlice';
-import { isMasterSysAdminFromContext } from '../../helper/adminPermissionHelper';
+import { restoreTabs, Tab, syncHomeTabLanding } from '../../redux/features/ui/navigation/tabnavSlice';
+import { getDefaultAuthenticatedTab, isMasterSysAdminFromContext } from '../../helper/adminPermissionHelper';
 
 const LandingPage: React.FC = () => {
   const dispatch = useDispatch();
@@ -33,11 +33,18 @@ const LandingPage: React.FC = () => {
   useEffect(() => {
     if (!userContext || userContext.IsLoginFailed) return;
     if (!isMasterSysAdminFromContext(userContext)) return;
+
+    const landingTab = getDefaultAuthenticatedTab(userContext);
+    const homeTab = tabs.find((t) => t.tabKey === 'home-tab');
+    if (homeTab && homeTab.path !== landingTab.path) {
+      dispatch(syncHomeTabLanding(landingTab));
+    }
+
     const path = location.pathname;
     if (path === '/home' || path.startsWith('/home/')) {
-      navigate('/company-security', { replace: true });
+      navigate(landingTab.path, { replace: true });
     }
-  }, [userContext, location.pathname, navigate]);
+  }, [userContext, location.pathname, navigate, dispatch, tabs]);
 
   // Restore tabs from localStorage after session is restored
   useEffect(() => {

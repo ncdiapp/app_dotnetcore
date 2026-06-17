@@ -71,7 +71,13 @@ export function tabRoutePathsMatch(tabPath: string, urlPath: string): boolean {
 type TabPathInfo = { tabKey: string; path: string; initialPath?: string };
 
 function repairTabStoredPath(tab: TabPathInfo): string {
-  if (tab.tabKey === 'home-tab') return '/home';
+  if (tab.tabKey === 'home-tab') {
+    const initial = tab.initialPath || tab.path;
+    if (isTransactionFormGroupPath(tab.path) && !isTransactionFormGroupPath(initial)) {
+      return initial;
+    }
+    return tab.path || initial || '/home';
+  }
   const initial = tab.initialPath || tab.path;
   if (isTransactionFormGroupPath(tab.path) && !isTransactionFormGroupPath(initial)) {
     return initial;

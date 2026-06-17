@@ -10,9 +10,11 @@ function repairAllTabPaths(tabs: Tab[]) {
     }
     if (tab.tabKey === 'home-tab') {
       if (isTransactionFormGroupPath(tab.path)) {
-        tab.path = '/home';
+        tab.path = tab.initialPath || '/home';
       }
-      tab.initialPath = '/home';
+      if (!tab.initialPath || isTransactionFormGroupPath(tab.initialPath)) {
+        tab.initialPath = tab.path || '/home';
+      }
       return;
     }
     if (
@@ -298,6 +300,17 @@ const tabnavSlice = createSlice({
       state.previousActiveTabKey = null;
       state.dictDataModelKeyAndCachedData = {};
     },
+    /** Align home-tab landing route (e.g. SysAdmin /company-security after session restore). */
+    syncHomeTabLanding: (state, action: PayloadAction<{ path: string; label?: string }>) => {
+      const homeTab = state.tabs.find((t) => t.tabKey === 'home-tab');
+      if (!homeTab) return;
+      homeTab.path = action.payload.path;
+      homeTab.initialPath = action.payload.path;
+      if (action.payload.label) {
+        homeTab.label = action.payload.label;
+      }
+      repairAllTabPaths(state.tabs);
+    },
     clearTabsForLogout: (state) => {
       state.tabs = [];
       state.activeTabKey = null;
@@ -307,7 +320,7 @@ const tabnavSlice = createSlice({
   }
 });
 
-export const { addTab, activateTab, closeTab, updateCurrentTabLabel, updateActiveTabPath, updateTabPath, preserveTabInitialPath, setCurrentTabDataToCache, setDataModelToCache, restoreTabs, resetTabs, clearTabsForLogout } = tabnavSlice.actions;
+export const { addTab, activateTab, closeTab, updateCurrentTabLabel, updateActiveTabPath, updateTabPath, preserveTabInitialPath, setCurrentTabDataToCache, setDataModelToCache, restoreTabs, resetTabs, syncHomeTabLanding, clearTabsForLogout } = tabnavSlice.actions;
 
 // export const getDataModelFromCache = (dataModelKey: string) => {
 //   const currentState = store.getState();
