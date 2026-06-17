@@ -75,10 +75,10 @@ Migration is delivered through a **PLM Data Import** wizard in the React **Datab
 
 | `DataSourceFrom` | Name | App-Builder handling |
 |------------------|------|----------------------|
-| 1 | PLM | **No new register.** Discover/validate only in Step 1. Map to **Company Master DB** register (`IsCompanyMasterDb = true`). **APP does not retain a long-term connection to the original PLM database** — PLM-sourced tables and data are imported into **Tenant DB**. Empty `ConnectionString` in `pdmDataSource` → **display empty** in the discovery grid; **connection test / register** still uses the wizard main PLM connection (B10). |
-| 2 | ERP | Register as external `AppDataSourceRegister` in Master DB |
-| 3 | DataWS (Warehouse) | Register as external `AppDataSourceRegister` in Master DB |
-| 4 | OtherEx | Register as external `AppDataSourceRegister` in Master DB |
+| 1 | PLM | **No new register.** Map to **Company Master DB** register (`IsCompanyMasterDb = true`). PLM-sourced tables and data are imported into **Tenant DB** (B10). |
+| 2 | ERP | Register as external `AppDataSourceRegister` in Master DB when `ConnectionString` is set and test passes (B10) |
+| 3 | DataWS (Warehouse) | Same as ERP (B10) |
+| 4 | OtherEx | Same as ERP (B10) |
 | 5, 6 | RestJson, RestXML | Ignore in this phase |
 
 **Register external databases (ERP, DataWS, OtherEx):**
@@ -337,3 +337,4 @@ Full API, component paths, and open questions: [PLM-Import-Wizard-Baseline.md](.
 | 2026-06-16 | Aligned §2 / Wizard UI with Baseline: System Define first; 2-phase List+Execute UI; Discard Session; link to Baseline §5 |
 | 2026-06-16 | **§6 Template Import:** detailed rules in [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md); Data Model Template mapping; table prefix; Root/Sibling/Child units; product-import prep |
 | 2026-06-16 | **System Define table copy:** `TablePrefix` on DSF=1 physical tables — [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md) |
+| 2026-06-17 | **B10 simplified:** skip empty/failed datasource rows; no wizard PLM connection fallback |

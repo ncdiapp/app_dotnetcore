@@ -105,9 +105,8 @@ Add a **PLM Data Import** wizard to the React **Database Design** page (`Databas
 | B5–B7 | Register ERP/DataWS/OtherEx in Master DB; naming `{TenantDb}_ERP` / `_DataWS` / `_OtherEx` |
 | B5a–c | **Company lock** on connection string (same company → reuse; different company → block) |
 | B8–B9 | PLM (1): **no new register**; map to Company Master DB; discover/validate only |
-| B10 | Empty `ConnectionString` in `pdmDataSource` → **connection test / register** uses wizard main PLM connection |
-| B10a | Discovery grid **displays** `pdmDataSource.ConnectionString` verbatim — blank in DB stays **blank** in UI (no substitute text) |
-| B10b | Discovery **Status** column: `OK` when row has non-empty `ConnectionString` and connection test passed; **blank** when `ConnectionString` is empty (B10 fallback test is internal only) |
+| B10 | Discovery uses **only** `pdmDataSource.ConnectionString` (no wizard PLM fallback). Empty or connection test failed → **skip** row (no external register). **Error** only when required: cannot read PLM, company lock, register save failure |
+| B10a | Discovery grid shows raw `pdmDataSource.ConnectionString`; Status `OK` only when non-empty and test passed |
 
 **`EmDataSourceFrom`:**
 
@@ -398,3 +397,4 @@ Step 4  Other Data (placeholder)
 | 2026-06-16 | **Phase 5 spec:** [PLM-Template-Import-Spec.md](./PLM-Template-Import-Spec.md) — Data Model Template mapping, Root/Sibling/Child units, table prefix (Step 1), form/dataset/folder, product-import prep |
 | 2026-06-16 | Entity import: `Plm_entity_*` naming fix; SimpleValueList `''` for empty Code/Description |
 | 2026-06-16 | **System Define table copy prefix:** [PLM-SystemDefine-Table-Prefix-Spec.md](./PLM-SystemDefine-Table-Prefix-Spec.md) — `TablePrefix` on DSF=1 export + `AppEntityInfo.TableName` |
+| 2026-06-17 | **B10 simplified:** only `pdmDataSource.ConnectionString`; skip on empty/failed test; no PLM connection fallback |

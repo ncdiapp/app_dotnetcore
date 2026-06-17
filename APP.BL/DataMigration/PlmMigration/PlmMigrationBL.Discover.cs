@@ -64,10 +64,6 @@ namespace APP.BL.DataMigration.PlmMigration
             }
         }
 
-        private static string ResolveEffectiveConnectionString(string plmMainConnection, string rowConnection)
-        {
-            return string.IsNullOrWhiteSpace(rowConnection) ? plmMainConnection : rowConnection.Trim();
-        }
 
         private static bool TryTestSqlConnection(string connectionString, out string errorMessage)
         {
@@ -207,7 +203,7 @@ ORDER BY DataSourceFrom";
                 if (!processedFrom.Add(row.DataSourceFrom))
                     continue;
 
-                string effectiveConn = ResolveEffectiveConnectionString(plmMain, row.ConnectionString);
+                bool hasConnection = !string.IsNullOrWhiteSpace(row.ConnectionString);
                 var item = new PlmDataSourceDiscoveryItemDto
                 {
                     DataSourceFrom = row.DataSourceFrom,
@@ -216,34 +212,52 @@ ORDER BY DataSourceFrom";
                         ? row.DataSourceName.Trim()
                         : GetPlmDataSourceFromName(row.DataSourceFrom),
                     ConnectionString = row.ConnectionString?.Trim() ?? string.Empty,
-                    HasConnectionString = !string.IsNullOrWhiteSpace(row.ConnectionString)
+                    HasConnectionString = hasConnection
                 };
 
-                if (!TryTestSqlConnection(effectiveConn, out string testError))
-                {
-                    item.ConnectionTestSuccess = false;
-                    item.ConnectionTestMessage = testError;
-                    result.Object.DataSources.Add(item);
-                    result.Object.IsSuccess = false;
-                    result.Object.ErrorMessage =
-                        $"Connection test failed for {item.DataSourceFromName}: {testError}";
-                    result.ValidationResult.Items.Add(new ValidationItem(
-                        typeof(PlmDiscoverDataSourcesRequestDto), "Plm_Discover_Connection_Test_Error",
-                        ValidationItemType.Error, result.Object.ErrorMessage));
-                    return result;
-                }
-
-                item.ConnectionTestSuccess = true;
-                item.ConnectionTestMessage = "OK";
-
+                // PLM (DSF=1): no new register — always map to company master.
                 if (row.DataSourceFrom == 1)
                 {
                     item.RegisteredDataSourceId = masterRegister.DataSourceId;
                     item.RegisteredDataSourceName = masterRegister.DataSourceName;
                     item.IsReusedRegister = true;
+
+                    if (hasConnection)
+                    {
+                        if (TryTestSqlConnection(row.ConnectionString.Trim(), out string plmTestError))
+                        {
+                            item.ConnectionTestSuccess = true;
+                            item.ConnectionTestMessage = "OK";
+                        }
+                        else
+                        {
+                            item.ConnectionTestSuccess = false;
+                            item.ConnectionTestMessage = plmTestError;
+                        }
+                    }
+
                     result.Object.DataSources.Add(item);
                     continue;
                 }
+
+                // B10: external sources — only pdmDataSource.ConnectionString; empty or failed test → skip.
+                if (!hasConnection)
+                {
+                    result.Object.DataSources.Add(item);
+                    continue;
+                }
+
+                string effectiveConn = row.ConnectionString.Trim();
+                if (!TryTestSqlConnection(effectiveConn, out string externalTestError))
+                {
+                    item.ConnectionTestSuccess = false;
+                    item.ConnectionTestMessage = externalTestError;
+                    result.Object.DataSources.Add(item);
+                    continue;
+                }
+
+                item.ConnectionTestSuccess = true;
+                item.ConnectionTestMessage = "OK";
 
                 string suffix = GetExternalRegisterSuffix(row.DataSourceFrom);
                 if (suffix == null)
