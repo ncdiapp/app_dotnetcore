@@ -657,7 +657,7 @@ ORDER BY gmc.ColumnOrder, gmc.GridColumnID";
                                     EntityId = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4),
                                     ColumnOrder = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5),
                                     Nbdecimal = reader.IsDBNull(6) ? (int?)null : reader.GetInt32(6),
-                                    TableName = tablePrefix + TemplateSanitizeSqlIdentifier(subItem.SubItemName, 80, "Grid_", subItem.SubItemId)
+                                    TableName = BuildGridTableName(tablePrefix, subItem)
                                 };
                                 row.ColumnSqlName = TemplateSanitizeSqlIdentifier(colName, 90, "Col_", row.GridColumnId) + "_" + row.GridColumnId;
                                 tab.GridColumns.Add(row);
@@ -1608,6 +1608,20 @@ IF NOT EXISTS (
                 WarningCount = tab.Warnings.Count,
                 SkipReason = tab.SkipReason
             };
+        }
+
+        private static string BuildGridTableName(string tablePrefix, PlmTemplateSubItemRow subItem)
+        {
+            string prefix = tablePrefix ?? string.Empty;
+            string suffix = "_" + subItem.SubItemId;
+            const int sqlIdentifierMaxLength = 128;
+            int maxSanitizedLength = Math.Max(1, sqlIdentifierMaxLength - prefix.Length - suffix.Length);
+            string sanitized = TemplateSanitizeSqlIdentifier(
+                subItem.SubItemName,
+                maxSanitizedLength,
+                "Grid",
+                subItem.SubItemId);
+            return prefix + sanitized + suffix;
         }
 
         private static string TemplateSanitizeSqlIdentifier(string input, int maxLength, string fallbackPrefix, int fallbackId)
