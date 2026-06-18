@@ -95,6 +95,7 @@ const queryTypeDisplayNames: Record<number, string> = {
 };
 const LINK_TARGET_SOURCE_COLUMN_SEARCH_VIEW_FIELD = 1;
 const LINK_TARGET_ACTION_EDIT = 1;
+const LINK_TARGET_ACTION_CREATE = 2;
 
 function buildLinkTargetDtoFromTemplateItem(
   item: TemplateMainItemRow,
@@ -218,6 +219,7 @@ const TransactionGroupEditor: React.FC = () => {
   const [mainItems, setMainItems] = useState<TemplateMainItemRow[]>([]);
   const [sharedItems, setSharedItems] = useState<TemplateMainItemRow[]>([]);
   const [deletedLinkTargetIds, setDeletedLinkTargetIds] = useState<number[]>([]);
+  const preservedCreateLinkTargetsRef = useRef<any[]>([]);
   const [transactionList, setTransactionList] = useState<{ Id: number; TransactionName?: string }[]>([]);
   const [viewFields, setViewFields] = useState<{ Id: number | string; Display?: string }[]>([]);
   const [transactionPkFieldsByTransactionId, setTransactionPkFieldsByTransactionId] = useState<Record<number, { DataBaseFieldName: string }[]>>({});
@@ -324,6 +326,12 @@ const TransactionGroupEditor: React.FC = () => {
                 searchSvc.retrieveOneAppViewLinkedSeaechOrUrlExDto(String(searchViewId))
               ]);
               const formList = Array.isArray(linkToFormData) ? linkToFormData : [];
+              preservedCreateLinkTargetsRef.current = formList.filter(
+                (lt: any) => lt?.ActionType === LINK_TARGET_ACTION_CREATE,
+              );
+              const templateFormList = formList.filter(
+                (lt: any) => lt?.ActionType !== LINK_TARGET_ACTION_CREATE,
+              );
               let searchList: any[] = [];
               if (Array.isArray(linkToSearchRaw)) {
                 searchList = linkToSearchRaw;
@@ -331,7 +339,7 @@ const TransactionGroupEditor: React.FC = () => {
                 searchList = linkToSearchRaw.ObjectList ?? linkToSearchRaw.AppViewLinkedSeaechOrUrlDtoList ?? linkToSearchRaw.Items ?? linkToSearchRaw.AppViewLinkedSearchOrUrlDtoList ?? [];
                 if (!Array.isArray(searchList)) searchList = [];
               }
-              const mainFormRows: TemplateMainItemRow[] = formList
+              const mainFormRows: TemplateMainItemRow[] = templateFormList
                 .filter((lt: any) => (lt.OtherSettingsDto?.TemplateItemType ?? 1) === TEMPLATE_ITEM_TYPE_MAIN)
                 .map((lt: any) => ({
                   Id: lt.Id,
@@ -361,8 +369,8 @@ const TransactionGroupEditor: React.FC = () => {
               const main = [...mainFormRows, ...mainSearchRows].sort((a, b) => (a.Sort ?? 0) - (b.Sort ?? 0));
               setMainItems(main);
 
-              const sharedFormRows: TemplateMainItemRow[] = formList
-                .filter((lt: any) => (lt.OtherSettingsDto?.TemplateItemType ?? 1) === TEMPLATE_ITEM_TYPE_HEADER)
+              const sharedFormRows: TemplateMainItemRow[] = templateFormList
+                .filter((lt: any) => lt.OtherSettingsDto?.TemplateItemType === TEMPLATE_ITEM_TYPE_HEADER)
                 .map((lt: any) => ({
                   Id: lt.Id,
                   Sort: lt.Sort ?? 0,
@@ -805,12 +813,17 @@ const TransactionGroupEditor: React.FC = () => {
   const saveLinkTargets = useCallback(
     async (searchViewId: number): Promise<boolean> => {
       const { formItems, searchItems } = collectTemplateItemsForSave(mainItems, sharedItems, searchViewId);
+      const createNavItems = preservedCreateLinkTargetsRef.current.map((lt: any) => ({
+        ...lt,
+        SearchViewId: searchViewId,
+        IsModified: false,
+      }));
       const deletedIds = deletedLinkTargetIds;
 
       const linkTargetSaveObj = {
         SearchViewId: searchViewId,
         DeletedItemIds: deletedIds,
-        AppFormLinkTargetDtoSet: formItems
+        AppFormLinkTargetDtoSet: [...formItems, ...createNavItems]
       };
       const linkedSearchSaveObj = {
         SearchViewId: searchViewId,
@@ -1248,7 +1261,7 @@ const TransactionGroupEditor: React.FC = () => {
       </div>
 
       {currentSearch?.DataSetId && (
-        <div className={`w-full flex-1 flex flex-col min-h-0 overflow-hidden px-5 py-5 ${theme.mainContentSection}`}>
+        <div className={`w-full h-1 flex-auto flex flex-col min-h-0 overflow-hidden px-5 py-5 ${theme.mainContentSection}`}>
           <div className={`flex border-b-2 ${theme.mainContentSection}`}>
             <button
               type="button"
@@ -1288,10 +1301,10 @@ const TransactionGroupEditor: React.FC = () => {
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 overflow-auto flex flex-col">
+          <div className="h-1 flex-auto min-h-0 overflow-auto flex flex-col w-full">
           {activeTabIndex === TAB_ITEMS && (
             <>
-              <div className="mb-4 min-h-[200px]">
+              <section className={`w-full border-b ${theme.inputBox}`}>
                 <div className={`flex items-center justify-between py-3 ${theme.mainContentSection}`}>
                   <div className={`text-sm font-semibold ${theme.title}`}>Template Main Items</div>
                   <div className="flex items-center gap-4">
@@ -1303,7 +1316,7 @@ const TransactionGroupEditor: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                <div className="space-y-4">
+                <div className="space-y-4 min-w-max pb-4">
                   {mainItems.map((item, idx) => {
                     const isSearchType = item.linkTargetUsageType === LINK_TARGET_USAGE_SEARCH;
                     const searchFields = item.LinkTargetSearchId != null ? (searchFieldsBySearchId[item.LinkTargetSearchId] ?? []) : [];
@@ -1555,8 +1568,8 @@ const TransactionGroupEditor: React.FC = () => {
                     );
                   })}
                 </div>
-              </div>
-              <div className="min-h-[200px]">
+              </section>
+              <section className="w-full">
                 <div className={`flex items-center justify-between py-3 ${theme.mainContentSection}`}>
                   <div className={`text-sm font-semibold ${theme.title}`}>Template Shared Items</div>
                   <div className="flex items-center gap-4">
@@ -1568,7 +1581,7 @@ const TransactionGroupEditor: React.FC = () => {
                     </button>
                   </div>
                 </div>
-                <div className="space-y-4">
+                <div className="space-y-4 min-w-max pb-4">
                   {sharedItems.map((item, idx) => {
                     const isSearchType = item.linkTargetUsageType === LINK_TARGET_USAGE_SEARCH;
                     const searchFields = item.LinkTargetSearchId != null ? (searchFieldsBySearchId[item.LinkTargetSearchId] ?? []) : [];
@@ -1699,7 +1712,7 @@ const TransactionGroupEditor: React.FC = () => {
                     );
                   })}
                 </div>
-              </div>
+              </section>
             </>
           )}
 

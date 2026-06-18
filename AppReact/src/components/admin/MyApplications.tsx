@@ -88,23 +88,7 @@ const MyApplications: React.FC = () => {
       ImageUrl: 'fa-folder-open', // Font Awesome icon class
       RouteCode: '/file-management', // opens with defaultCategoryId: 3 (My Company) in handleApplicationClick
       IsSpecial: true
-    },
-    {
-      Id: 'hvac',
-      Name: 'HVAC',
-      Description: 'HVAC',
-      ImageUrl: 'fa-fan', // Font Awesome icon class
-      RouteCode: '/hvac',
-      IsSpecial: true
-    },
-    {
-      Id: 'new-application',
-      Name: 'New Application',
-      Description: 'New Application',
-      ImageUrl: 'fa-rocket', // Font Awesome icon class
-      RouteCode: '/new-application',
-      IsSpecial: true
-    }
+    }    
   ];
 
   const loadApplications = async () => {

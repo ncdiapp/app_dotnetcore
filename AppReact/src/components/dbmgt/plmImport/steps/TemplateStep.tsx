@@ -10,8 +10,12 @@ import {
   PlmTemplateImportSettingDto,
   PlmTemplateMappingGridRowDto,
 } from '../../../../webapi/plmMigrationSvc';
-import type { PlmImportTemplateStepUiState, PlmImportWizardState } from '../types';
-import { buildPlmImportStepStateJson } from '../types';
+import { refreshUserTreeMenu } from '../../../../helper/userMenuHelper';
+import {
+  buildPlmImportStepStateJson,
+  type PlmImportTemplateStepUiState,
+  type PlmImportWizardState,
+} from '../types';
 import TemplateTabWarningDialog from './TemplateTabWarningDialog';
 
 export type TemplateStepProps = {
@@ -130,6 +134,11 @@ const TemplateStep: React.FC<TemplateStepProps> = ({
       onStateChange({ templatesComplete: true });
       if (!state.templatesComplete) {
         await saveStepState({ templatesComplete: true });
+      }
+      try {
+        await refreshUserTreeMenu();
+      } catch {
+        // Menu refresh failure should not block import success toast.
       }
       showInfo('Template structure import completed.', true);
     } else if (job.Status === 'Failed') {

@@ -204,8 +204,9 @@ class SearchService {
   }
 
   // Search View Link Target Operations
-  async retrieveOneSearchViewLinkTargetList(searchViewId: string, usageType: number): Promise<any> {
-    const response = await fetch(`${endpoints.BASE_URL}/webapi/AppSearchViewConfig/RetrieveOneSearchViewLinkTargetList?searchViewId=${searchViewId}&usageType=${usageType}`, {
+  async retrieveOneSearchViewLinkTargetList(searchViewId: string, usageType?: number | null): Promise<any> {
+    const usageParam = usageType != null ? `&usageType=${usageType}` : '';
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/AppSearchViewConfig/RetrieveOneSearchViewLinkTargetList?searchViewId=${searchViewId}${usageParam}`, {
       headers: getHeaders()
     });
     if (!response.ok) throw new Error('Failed to retrieve search view link target list');

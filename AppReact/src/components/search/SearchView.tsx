@@ -1,4 +1,5 @@
 import React, { useMemo } from "react";
+import { useDispatch } from "react-redux";
 import { GridViewLayout } from "./searchViewLayout/GridViewLayout";
 import { CardViewLayout } from "./searchViewLayout/CardViewLayout";
 import { CalendarViewLayout } from "./searchViewLayout/CalendarViewLayout";
@@ -12,6 +13,14 @@ import { GoogleMapViewLayout } from "./searchViewLayout/GoogleMapViewLayout";
 import { useEnumValues } from "../../hooks/useEnumDictionary";
 import { useTheme } from "../../redux/hooks/useTheme";
 import { useTabNavigation } from "../../redux/hooks/useTabNavigation";
+import { getCurrentActiveTab, preserveTabInitialPath } from "../../redux/features/ui/navigation/tabnavSlice";
+import {
+  buildFormGroupOpenPayload,
+  cacheFormGroupSession,
+  hasDataModelTemplateFormGroup,
+} from "../../utils/transactionFormGroupHelper";
+import { isTransactionFormGroupPath } from "../../helper/navigationHelper";
+import type { AppDispatch } from "../../redux/store";
 interface SearchViewProps {
   viewDto: any;
   viewDataList: any[];
@@ -31,6 +40,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   onSelectionChanged
 }) => {
   const { theme } = useTheme();
+  const dispatch = useDispatch<AppDispatch>();
   const { addTabAndNavigate } = useTabNavigation();
   const emAppViewType = useEnumValues('EmAppViewType');
 
@@ -64,6 +74,26 @@ export const SearchView: React.FC<SearchViewProps> = ({
     if (!menu) return;
     const title = menu?.NavigationActionName || menu?.Name || 'Navigate';
     if (usageType === 1 && menu?.LinkTargetTransactionId) {
+      if (hasDataModelTemplateFormGroup(viewDto)) {
+        const emptyRow = { DictViewColumnIDKeyValue: {} as Record<string, unknown> };
+        const { tabTitle, sessionKey, param2, sessionData } = buildFormGroupOpenPayload(
+          menu,
+          emptyRow,
+          viewDto,
+          viewDataList || [],
+        );
+        cacheFormGroupSession(dispatch, sessionKey, sessionData);
+        const activeTab = getCurrentActiveTab();
+        if (activeTab?.tabKey && activeTab.path && !isTransactionFormGroupPath(activeTab.path)) {
+          dispatch(preserveTabInitialPath({ tabKey: activeTab.tabKey, path: activeTab.path }));
+        }
+        addTabAndNavigate('TransactionFormGroup', tabTitle, {
+          id: sessionKey,
+          preserveLinkTabTitle: true,
+          param2,
+        });
+        return;
+      }
       addTabAndNavigate('FormMasterDetail', title, { id: menu.LinkTargetTransactionId });
       return;
     }

@@ -147,6 +147,7 @@ export function isFormGroupOpenAction(actionType: unknown): boolean {
   return (
     action === EmAppLinkTargetActionType.Edit ||
     action === EmAppLinkTargetActionType.Preview ||
+    action === EmAppLinkTargetActionType.Create ||
     action === EmAppLinkTargetActionType.CreateFromExistingItem ||
     action === EmAppLinkTargetActionType.EditOnPopup
   );
@@ -301,10 +302,9 @@ export function buildTemplateItemLists(viewDto: any, clickedLinkTarget: any): {
     formGroupList.forEach((lt: any) => {
       const display = lt.NavigationActionName || '';
       const item = { ...lt, display };
-      const itemType = lt.OtherSettingsDto?.TemplateItemType;
-      if (itemType === EmAppTransactionTemplateItemType.TemplateHeader) {
+      if (lt.OtherSettingsDto?.TemplateItemType === EmAppTransactionTemplateItemType.TemplateHeader) {
         templateHeaderList.push({ ...item, isTemplateHeader: true });
-      } else if (itemType === EmAppTransactionTemplateItemType.MainItem) {
+      } else if (lt.OtherSettingsDto?.TemplateItemType === EmAppTransactionTemplateItemType.MainItem) {
         linkTargetList.push(item);
       }
     });
@@ -314,10 +314,9 @@ export function buildTemplateItemLists(viewDto: any, clickedLinkTarget: any): {
       linkedList.forEach((lt: any) => {
         const display = lt.DisplayText || '';
         const item = { ...lt, display };
-        const itemType = lt.OtherSettingsDto?.TemplateItemType;
-        if (itemType === EmAppTransactionTemplateItemType.TemplateHeader) {
+        if (lt.OtherSettingsDto?.TemplateItemType === EmAppTransactionTemplateItemType.TemplateHeader) {
           templateHeaderList.push({ ...item, isTemplateHeader: true });
-        } else if (itemType === EmAppTransactionTemplateItemType.MainItem) {
+        } else if (lt.OtherSettingsDto?.TemplateItemType === EmAppTransactionTemplateItemType.MainItem) {
           linkTargetList.push(item);
         }
       });

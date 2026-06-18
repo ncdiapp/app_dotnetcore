@@ -566,7 +566,9 @@ namespace APP.BL.DataMigration.PlmMigration
                 plan.SiblingColumnsByTable[tableName] = list;
             }
 
-            if (!list.Any(s => s.SubItemId == subItem.SubItemId))
+            if (!list.Any(s => s.SubItemId == subItem.SubItemId)
+                && (string.IsNullOrWhiteSpace(subItem.ColumnName)
+                    || !list.Any(s => string.Equals(s.ColumnName, subItem.ColumnName, StringComparison.OrdinalIgnoreCase))))
                 list.Add(subItem);
         }
 

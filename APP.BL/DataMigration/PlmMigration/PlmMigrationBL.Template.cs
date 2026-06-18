@@ -356,7 +356,7 @@ namespace APP.BL.DataMigration.PlmMigration
                 foreach (var plan in executionPlans)
                 {
                     tabIndex++;
-                    int pct = 60 + (int)(25.0 * tabIndex / Math.Max(1, executionPlans.Count));
+                    int pct = 60 + (int)(18.0 * tabIndex / Math.Max(1, executionPlans.Count));
                     progressCallback?.Invoke(pct, $"Importing transaction for tab {plan.Tab.TabName} ({tabIndex}/{executionPlans.Count})…");
 
                     try
@@ -380,28 +380,64 @@ namespace APP.BL.DataMigration.PlmMigration
                     }
                 }
 
-                progressCallback?.Invoke(90, "Upserting Data Model Templates…");
-                using (var searchTran = tenantConn.BeginTransaction())
+                progressCallback?.Invoke(78, "Generating default form layouts for tab transactions…");
+                try
                 {
-                    try
+                    EnsureTabTransactionForms(tenantConn, uniqueTabs, progressCallback);
+                }
+                catch (Exception ex)
+                {
+                    result.IsSuccess = false;
+                    result.ErrorMessage = ex.Message;
+                    return result;
+                }
+
+                var templates = LoadPlmTemplateHeaders(plmConnectionString);
+                var tabsByTemplate = tabRows
+                    .Where(t => t.ImportStatus != TemplateStatusSkipped)
+                    .GroupBy(t => t.TemplateId)
+                    .ToDictionary(g => g.Key, g => (IReadOnlyList<PlmTemplateTabRow>)g.OrderBy(t => t.TabSort ?? short.MaxValue).ThenBy(t => t.TabId).ToList());
+
+                progressCallback?.Invoke(88, "Building Data Model Templates (dataset, view, link targets)…");
+                try
+                {
+                    var templatesToBuild = templates
+                        .Where(t => tabsByTemplate.ContainsKey(t.TemplateId))
+                        .ToList();
+                    int templateIndex = 0;
+                    foreach (var template in templatesToBuild)
                     {
-                        var templates = LoadPlmTemplateHeaders(plmConnectionString);
-                        foreach (var template in templates)
-                        {
-                            UpsertDataModelTemplateSearch(
-                                tenantConn, searchTran, template, saasApplicationId, rootTable, tenantDataSourceId);
-                            result.TemplatesProcessed++;
-                        }
-                        searchTran.Commit();
-                        result.IsSuccess = true;
-                        progressCallback?.Invoke(100, "Template structure import completed.");
+                        templateIndex++;
+                        var templateTabs = tabsByTemplate[template.TemplateId];
+                        BuildCompleteDataModelTemplates(
+                            tenantConn, plmConnectionString, template, templateTabs,
+                            saasApplicationId, rootTable, tenantDataSourceId,
+                            progressCallback, templateIndex, templatesToBuild.Count);
+                        result.TemplatesProcessed++;
                     }
-                    catch (Exception ex)
-                    {
-                        searchTran.Rollback();
-                        result.IsSuccess = false;
-                        result.ErrorMessage = ex.Message;
-                    }
+                }
+                catch (Exception ex)
+                {
+                    result.IsSuccess = false;
+                    result.ErrorMessage = ex.Message;
+                    return result;
+                }
+
+                progressCallback?.Invoke(97, "Adding Data Model Templates to main menu…");
+                try
+                {
+                    AddTemplateSearchesToMainMenu(
+                        tenantConn,
+                        templates.Where(t => tabsByTemplate.ContainsKey(t.TemplateId)),
+                        saasApplicationId,
+                        progressCallback);
+                    result.IsSuccess = true;
+                    progressCallback?.Invoke(100, "Template structure import completed.");
+                }
+                catch (Exception ex)
+                {
+                    result.IsSuccess = false;
+                    result.ErrorMessage = ex.Message;
                 }
             }
 
@@ -464,9 +500,9 @@ ORDER BY t.TemplateID, tt.Sort, tt.TabID";
                                 TabId = reader.GetInt32(2),
                                 TabName = reader.IsDBNull(3) ? $"Tab_{reader.GetInt32(2)}" : reader.GetString(3),
                                 TabSort = reader.IsDBNull(4) ? (short?)null : reader.GetInt16(4),
-                                IsTemplateHeaderTab = !reader.IsDBNull(5) && reader.GetBoolean(5),
-                                IsMasterReferenceHeaderTab = !reader.IsDBNull(6) && reader.GetBoolean(6),
-                                IsAllowProductTabCopy = !reader.IsDBNull(7) && reader.GetBoolean(7)
+                                IsTemplateHeaderTab = ReadPlmSqlBooleanStrict(reader.GetValue(5)),
+                                IsMasterReferenceHeaderTab = ReadPlmSqlBooleanStrict(reader.GetValue(6)),
+                                IsAllowProductTabCopy = ReadPlmSqlBooleanStrict(reader.GetValue(7))
                             };
                             tab.SiblingTableName = tablePrefix + TemplateSanitizeSqlIdentifier(tab.TabName, 80, "Tab_", tab.TabId);
                             tabs.Add(tab);
@@ -519,7 +555,56 @@ ORDER BY tb.OrderId, bsi.SortOrder, bsi.SubItemID";
                     }
                 }
             }
-            return list;
+
+            return DeduplicateSubItemsBySubItemId(list);
+        }
+
+        private static List<PlmTemplateSubItemRow> DeduplicateSubItemsBySubItemId(List<PlmTemplateSubItemRow> items)
+        {
+            if (items == null || items.Count <= 1)
+                return items ?? new List<PlmTemplateSubItemRow>();
+
+            var seen = new HashSet<int>();
+            var deduped = new List<PlmTemplateSubItemRow>(items.Count);
+            foreach (var item in items)
+            {
+                if (seen.Add(item.SubItemId))
+                    deduped.Add(item);
+            }
+
+            return deduped;
+        }
+
+        private static List<PlmTemplateSubItemRow> DistinctSubItemsByColumnName(IEnumerable<PlmTemplateSubItemRow> items)
+        {
+            var dict = new Dictionary<string, PlmTemplateSubItemRow>(StringComparer.OrdinalIgnoreCase);
+            if (items == null)
+                return new List<PlmTemplateSubItemRow>();
+
+            foreach (var item in items)
+            {
+                if (string.IsNullOrWhiteSpace(item?.ColumnName))
+                    continue;
+                dict[item.ColumnName] = item;
+            }
+
+            return dict.Values.ToList();
+        }
+
+        private static List<PlmTemplateGridColumnRow> DistinctGridColumnsBySqlName(IEnumerable<PlmTemplateGridColumnRow> columns)
+        {
+            var dict = new Dictionary<string, PlmTemplateGridColumnRow>(StringComparer.OrdinalIgnoreCase);
+            if (columns == null)
+                return new List<PlmTemplateGridColumnRow>();
+
+            foreach (var col in columns)
+            {
+                if (string.IsNullOrWhiteSpace(col?.ColumnSqlName))
+                    continue;
+                dict[col.ColumnSqlName] = col;
+            }
+
+            return dict.Values.ToList();
         }
 
         private static void LoadGridColumnsForTab(string plmConnectionString, PlmTemplateTabRow tab, string tablePrefix)
@@ -603,6 +688,81 @@ ORDER BY gmc.ColumnOrder, gmc.GridColumnID";
 
             tab.TabType = tab.IsTemplateHeaderTab ? TemplateTabTypeHeader : TemplateTabTypeMain;
             tab.ImportStatus = TemplateStatusReady;
+        }
+
+        /// <summary>
+        /// Reads PLM bit/flag columns strictly: only numeric value 1 or true is treated as true.
+        /// Avoids SqlDataReader.GetBoolean() treating any non-zero int as true.
+        /// </summary>
+        private static bool ReadPlmSqlBooleanStrict(object value)
+        {
+            if (value == null || value == DBNull.Value)
+                return false;
+            if (value is bool b)
+                return b;
+            if (value is byte by)
+                return by == 1;
+            if (value is short s)
+                return s == 1;
+            if (value is int i)
+                return i == 1;
+            if (value is long l)
+                return l == 1;
+            if (value is string str)
+            {
+                str = str.Trim();
+                if (string.Equals(str, "1", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(str, "true", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(str, "yes", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                return false;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Per-tab IsTemplateHeaderTab for one PLM template (authoritative source for Template Shared Items).
+        /// </summary>
+        private static Dictionary<int, bool> LoadPlmTemplateTabHeaderFlags(string plmConnectionString, int templateId)
+        {
+            var flags = new Dictionary<int, bool>();
+            using (var conn = new SqlConnection(plmConnectionString))
+            {
+                conn.Open();
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+SELECT tt.TabID, tab.IsTemplateHeaderTab
+FROM dbo.pdmTemplateTab tt
+INNER JOIN dbo.pdmTab tab ON tab.TabID = tt.TabID
+WHERE tt.TemplateID = @TemplateId";
+                    cmd.Parameters.AddWithValue("@TemplateId", templateId);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            flags[reader.GetInt32(0)] = ReadPlmSqlBooleanStrict(reader.GetValue(1));
+                        }
+                    }
+                }
+            }
+
+            return flags;
+        }
+
+        /// <summary>
+        /// Tab ids that are template shared headers for one PLM template (same rule as PdmTemplateBL.GetAllTempalteTabHedersId).
+        /// </summary>
+        private static HashSet<int> LoadPlmTemplateHeaderTabIds(string plmConnectionString, int templateId)
+        {
+            return new HashSet<int>(
+                LoadPlmTemplateTabHeaderFlags(plmConnectionString, templateId)
+                    .Where(kv => kv.Value)
+                    .Select(kv => kv.Key));
         }
 
         private static void ResolveSubItemColumns(PlmTemplateTabRow tab, string tablePrefix)
@@ -747,9 +907,8 @@ CREATE TABLE dbo.[{tableName}] (
         private static void EnsureTabPhysicalTables(
             SqlConnection conn, SqlTransaction tran, PlmTemplateTabRow tab, string rootTable, string tablePrefix)
         {
-            var siblingColumns = tab.SubItems
-                .Where(s => s.ControlType != ControlTypeGrid && s.ControlType != ControlTypeLabel && s.ControlType != ControlTypeEmpty && !s.MapsToRoot)
-                .ToList();
+            var siblingColumns = DistinctSubItemsByColumnName(tab.SubItems
+                .Where(s => s.ControlType != ControlTypeGrid && s.ControlType != ControlTypeLabel && s.ControlType != ControlTypeEmpty && !s.MapsToRoot));
 
             if (!TemplateTableExists(conn, tran, tab.SiblingTableName))
             {
@@ -772,11 +931,12 @@ CREATE TABLE dbo.[{tableName}] (
             foreach (var gridGroup in tab.GridColumns.GroupBy(g => g.TableName))
             {
                 string gridTable = gridGroup.Key;
+                var gridCols = DistinctGridColumnsBySqlName(gridGroup);
                 if (!TemplateTableExists(conn, tran, gridTable))
                 {
                     var sb = new StringBuilder();
                     sb.Append($"CREATE TABLE dbo.[{gridTable}] (RowId int IDENTITY(1,1) NOT NULL PRIMARY KEY, ReferenceId int NOT NULL, Sort int NULL");
-                    foreach (var col in gridGroup)
+                    foreach (var col in gridCols)
                         sb.Append($", [{col.ColumnSqlName}] {MapControlTypeToSqlType(col.ColumnTypeId, col.Nbdecimal)}");
                     sb.Append(")");
                     TemplateExecuteSql(conn, tran, sb.ToString());
@@ -787,12 +947,12 @@ CREATE TABLE dbo.[{tableName}] (
                 {
                     TemplateEnsureColumn(conn, tran, gridTable, "ReferenceId", "int NOT NULL");
                     TemplateEnsureColumn(conn, tran, gridTable, "Sort", "int NULL");
-                    foreach (var col in gridGroup)
+                    foreach (var col in gridCols)
                         TemplateEnsureColumn(conn, tran, gridTable, col.ColumnSqlName, MapControlTypeToSqlType(col.ColumnTypeId, col.Nbdecimal));
                 }
             }
 
-            var rootColumns = tab.SubItems.Where(s => s.MapsToRoot).Select(s => s.ColumnName).Distinct();
+            var rootColumns = tab.SubItems.Where(s => s.MapsToRoot).Select(s => s.ColumnName).Distinct(StringComparer.OrdinalIgnoreCase);
             foreach (var rootCol in rootColumns)
                 TemplateEnsureColumn(conn, tran, rootTable, rootCol, "nvarchar(255) NULL");
         }
@@ -830,7 +990,7 @@ CREATE TABLE dbo.[{tableName}] (
 
             foreach (var pair in siblingColumnsUnion)
             {
-                EnsureSiblingTableColumns(conn, tran, pair.Key, rootTable, pair.Value.Values.ToList());
+                EnsureSiblingTableColumns(conn, tran, pair.Key, rootTable, DistinctSubItemsByColumnName(pair.Value.Values));
             }
 
             foreach (var tab in uniqueTabs)
@@ -838,11 +998,12 @@ CREATE TABLE dbo.[{tableName}] (
                 foreach (var gridGroup in tab.GridColumns.GroupBy(g => g.TableName))
                 {
                     string gridTable = gridGroup.Key;
+                    var gridCols = DistinctGridColumnsBySqlName(gridGroup);
                     if (!TemplateTableExists(conn, tran, gridTable))
                     {
                         var sb = new StringBuilder();
                         sb.Append($"CREATE TABLE dbo.[{gridTable}] (RowId int IDENTITY(1,1) NOT NULL PRIMARY KEY, ReferenceId int NOT NULL, Sort int NULL");
-                        foreach (var col in gridGroup)
+                        foreach (var col in gridCols)
                             sb.Append($", [{col.ColumnSqlName}] {MapControlTypeToSqlType(col.ColumnTypeId, col.Nbdecimal)}");
                         sb.Append(")");
                         TemplateExecuteSql(conn, tran, sb.ToString());
@@ -853,7 +1014,7 @@ CREATE TABLE dbo.[{tableName}] (
                     {
                         TemplateEnsureColumn(conn, tran, gridTable, "ReferenceId", "int NOT NULL");
                         TemplateEnsureColumn(conn, tran, gridTable, "Sort", "int NULL");
-                        foreach (var col in gridGroup)
+                        foreach (var col in gridCols)
                             TemplateEnsureColumn(conn, tran, gridTable, col.ColumnSqlName, MapControlTypeToSqlType(col.ColumnTypeId, col.Nbdecimal));
                     }
                 }
@@ -869,6 +1030,8 @@ CREATE TABLE dbo.[{tableName}] (
         {
             if (string.IsNullOrWhiteSpace(tableName))
                 return;
+
+            columns = DistinctSubItemsByColumnName(columns);
 
             if (!TemplateTableExists(conn, tran, tableName))
             {
@@ -900,24 +1063,25 @@ CREATE TABLE dbo.[{tableName}] (
             bool isUpdate)
         {
             var tab = plan.Tab;
-            var childTables = new List<HierarchyChildTableDto>();
-            foreach (string siblingTable in plan.SiblingColumnsByTable.Keys.Distinct(StringComparer.OrdinalIgnoreCase))
-                childTables.Add(new HierarchyChildTableDto { TableName = siblingTable });
+            var siblingTableNames = plan.SiblingColumnsByTable.Keys
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (siblingTableNames.Count == 0 && !string.IsNullOrWhiteSpace(plan.PrimarySiblingTable))
+                siblingTableNames.Add(plan.PrimarySiblingTable);
 
-            if (childTables.Count == 0 && !string.IsNullOrWhiteSpace(plan.PrimarySiblingTable))
-                childTables.Add(new HierarchyChildTableDto { TableName = plan.PrimarySiblingTable });
-
+            var gridChildTables = new List<HierarchyChildTableDto>();
             foreach (var gridTable in tab.GridColumns.Select(g => g.TableName).Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                if (childTables.Any(c => string.Equals(c.TableName, gridTable, StringComparison.OrdinalIgnoreCase)))
+                if (siblingTableNames.Any(s => string.Equals(s, gridTable, StringComparison.OrdinalIgnoreCase)))
                     continue;
-                childTables.Add(new HierarchyChildTableDto { TableName = gridTable });
+                gridChildTables.Add(new HierarchyChildTableDto { TableName = gridTable });
             }
 
             var setup = new HierarchyTableSetupDto
             {
                 MasterTableName = rootTable,
-                ChildTables = childTables,
+                SiblingTableNames = siblingTableNames,
+                ChildTables = gridChildTables,
                 DataSourceRegisterId = tenantDataSourceId,
                 SchemaOwner = "dbo",
                 TransactionName = tab.TabName,
@@ -925,6 +1089,7 @@ CREATE TABLE dbo.[{tableName}] (
             };
 
             OperationCallResult<AppTransactionExDto> saveResult;
+            int txId;
             if (isUpdate)
             {
                 int? existingId = GetTransactionIdByIntegrationId(conn, tran, $"Tab_{tab.TabId}");
@@ -934,14 +1099,18 @@ CREATE TABLE dbo.[{tableName}] (
 
             if (!isUpdate)
             {
-                saveResult = AppTransactionBL.CreateHierarchyTransactionFromTables(setup);
+                saveResult = AppTransactionBL.CreateHierarchyTransactionFromTables(
+                    setup, isIgnoreValidation: true, skipPostSaveCacheSync: true);
                 if (!saveResult.IsSuccessfulWithResult)
                     throw new InvalidOperationException(saveResult.ValidationResult?.Items?.FirstOrDefault()?.Message
                         ?? $"Failed to create transaction for tab {tab.TabId}.");
+
+                txId = Convert.ToInt32(saveResult.Object.Id);
+                ApplyTransactionFieldSubsetSql(conn, tran, txId, rootTable, plan, tab);
             }
             else
             {
-                int transactionId = GetTransactionIdByIntegrationId(conn, tran, $"Tab_{tab.TabId}").Value;
+                txId = GetTransactionIdByIntegrationId(conn, tran, $"Tab_{tab.TabId}").Value;
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.Transaction = tran;
@@ -954,26 +1123,223 @@ WHERE TransactionID = @TransactionId";
                     cmd.Parameters.AddWithValue("@Name", tab.TabName);
                     cmd.Parameters.AddWithValue("@Description", tab.TabName + " Data Edit");
                     cmd.Parameters.AddWithValue("@SaasApplicationId", (object)saasApplicationId ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+                    cmd.Parameters.AddWithValue("@TransactionId", txId);
                     cmd.ExecuteNonQuery();
                 }
-                saveResult = new OperationCallResult<AppTransactionExDto>
-                {
-                    Object = AppTransactionBL.RetrieveOneAppTransactionExDto(transactionId)
-                };
+
+                ApplyTransactionFieldSubsetSql(conn, tran, txId, rootTable, plan, tab);
             }
 
-            ApplyTransactionFieldSubset(saveResult.Object, plan, tab);
-            var persistResult = AppTransactionBL.SaveAppTransactionExDto(saveResult.Object);
-            if (!persistResult.IsSuccessfulWithResult)
-            {
-                throw new InvalidOperationException(persistResult.ValidationResult?.Items?.FirstOrDefault()?.Message
-                    ?? $"Failed to save transaction fields for tab {tab.TabId}.");
-            }
+            FixTabTransactionUnitStructure(
+                conn, tran, txId, rootTable,
+                siblingTableNames,
+                gridChildTables.Select(g => g.TableName).ToList());
 
-            int txId = Convert.ToInt32(persistResult.Object.Id);
             SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, $"Tab_{tab.TabId}");
             return txId;
+        }
+
+        /// <summary>
+        /// Ensures tab table units are master-siblings (not root children) and grid units are root children.
+        /// Repairs transactions created before sibling/grid split was implemented.
+        /// </summary>
+        private static void FixTabTransactionUnitStructure(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            string rootTable,
+            IReadOnlyList<string> siblingTableNames,
+            IReadOnlyList<string> gridTableNames)
+        {
+            int? rootUnitId = GetTransactionUnitIdByTableName(conn, tran, transactionId, rootTable);
+            if (!rootUnitId.HasValue)
+                return;
+
+            if (siblingTableNames != null)
+            {
+                foreach (string siblingTable in siblingTableNames.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.Transaction = tran;
+                        cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit SET
+    IsMasterSiblingUnit = 1,
+    ParentTransactionUnitID = NULL
+WHERE TransactionID = @TransactionId
+  AND DataBaseTableName = @TableName";
+                        cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+                        cmd.Parameters.AddWithValue("@TableName", siblingTable);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+
+            if (gridTableNames != null)
+            {
+                foreach (string gridTable in gridTableNames.Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.Transaction = tran;
+                        cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit SET
+    IsMasterSiblingUnit = 0,
+    ParentTransactionUnitID = @RootUnitId
+WHERE TransactionID = @TransactionId
+  AND DataBaseTableName = @TableName";
+                        cmd.Parameters.AddWithValue("@RootUnitId", rootUnitId.Value);
+                        cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+                        cmd.Parameters.AddWithValue("@TableName", gridTable);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+        }
+
+        private static int? GetTransactionUnitIdByTableName(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            string tableName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT TOP 1 TransactionUnitID
+FROM dbo.AppTransactionUnit
+WHERE TransactionID = @TransactionId
+  AND DataBaseTableName = @TableName
+  AND ISNULL(IsMasterSiblingUnit, 0) = 0";
+                cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+                cmd.Parameters.AddWithValue("@TableName", tableName);
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        private static void ApplyTransactionFieldSubsetSql(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            string rootTable,
+            TemplateTabExecutionPlan plan,
+            PlmTemplateTabRow tab)
+        {
+            var visibleColumnsByTable = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in plan.SiblingColumnsByTable)
+            {
+                visibleColumnsByTable[pair.Key] = new HashSet<string>(
+                    pair.Value.Select(v => v.ColumnName),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+
+            var rootColumns = new HashSet<string>(
+                plan.RootSubItems.Select(r => r.ColumnName),
+                StringComparer.OrdinalIgnoreCase);
+
+            var gridColumns = new HashSet<string>(
+                tab.GridColumns.Select(g => g.ColumnSqlName),
+                StringComparer.OrdinalIgnoreCase);
+
+            var units = new List<(int UnitId, string TableName)>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT TransactionUnitID, DataBaseTableName
+FROM dbo.AppTransactionUnit
+WHERE TransactionID = @TransactionId";
+                cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        units.Add((
+                            reader.GetInt32(0),
+                            reader.IsDBNull(1) ? null : reader.GetString(1)));
+                    }
+                }
+            }
+
+            foreach (var (unitId, unitTable) in units)
+            {
+                HashSet<string> allowed = null;
+                if (!string.IsNullOrWhiteSpace(unitTable))
+                {
+                    if (visibleColumnsByTable.TryGetValue(unitTable, out var siblingVisible))
+                        allowed = siblingVisible;
+                    else if (string.Equals(unitTable, rootTable, StringComparison.OrdinalIgnoreCase))
+                        allowed = rootColumns;
+                    else if (tab.GridColumns.Any(g => string.Equals(g.TableName, unitTable, StringComparison.OrdinalIgnoreCase)))
+                        allowed = gridColumns;
+                }
+
+                SqlSetUnitFieldVisibility(conn, tran, unitId, allowed);
+            }
+        }
+
+        private static void SqlSetUnitFieldVisibility(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            HashSet<string> visibleColumnsOrNull)
+        {
+            using (var hideCmd = conn.CreateCommand())
+            {
+                hideCmd.Transaction = tran;
+                hideCmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET IsVisible = 0
+WHERE TransactionUnitID = @UnitId
+  AND ISNULL(IsPrimaryKey, 0) = 0
+  AND ISNULL(IsLinkToParentPrimaryKey, 0) = 0
+  AND DataBaseFieldName NOT IN ('ReferenceId', 'Sort')";
+                hideCmd.Parameters.AddWithValue("@UnitId", unitId);
+                hideCmd.ExecuteNonQuery();
+            }
+
+            if (visibleColumnsOrNull == null)
+            {
+                using (var showCmd = conn.CreateCommand())
+                {
+                    showCmd.Transaction = tran;
+                    showCmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET IsVisible = 1
+WHERE TransactionUnitID = @UnitId
+  AND ISNULL(IsPrimaryKey, 0) = 0
+  AND ISNULL(IsLinkToParentPrimaryKey, 0) = 0
+  AND DataBaseFieldName NOT IN ('ReferenceId', 'Sort')";
+                    showCmd.Parameters.AddWithValue("@UnitId", unitId);
+                    showCmd.ExecuteNonQuery();
+                }
+                return;
+            }
+
+            if (visibleColumnsOrNull.Count == 0)
+                return;
+
+            var names = visibleColumnsOrNull.ToList();
+            using (var showCmd = conn.CreateCommand())
+            {
+                showCmd.Transaction = tran;
+                var inClause = new StringBuilder();
+                for (int i = 0; i < names.Count; i++)
+                {
+                    if (i > 0)
+                        inClause.Append(", ");
+                    string paramName = "@Col" + i;
+                    inClause.Append(paramName);
+                    showCmd.Parameters.AddWithValue(paramName, names[i]);
+                }
+
+                showCmd.CommandText = $@"
+UPDATE dbo.AppTransactionField SET IsVisible = 1
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName IN ({inClause})";
+                showCmd.Parameters.AddWithValue("@UnitId", unitId);
+                showCmd.ExecuteNonQuery();
+            }
         }
 
         private static void ApplyTransactionFieldSubset(
@@ -1056,21 +1422,19 @@ WHERE TransactionID = @TransactionId";
             // Grid tables FK to ReferenceBasicInfo (root), not the sibling tab table.
             // CreateHierarchyTransactionFromTables only links direct children to root; grandchildren
             // would be linked to the sibling PK and break DictCurrentPKOrFKLinkToParentKeyGuidMap on save.
-            var childTables = new List<HierarchyChildTableDto>
-            {
-                new HierarchyChildTableDto { TableName = tab.SiblingTableName }
-            };
+            var gridChildTables = new List<HierarchyChildTableDto>();
             foreach (var gridTable in tab.GridColumns.Select(g => g.TableName).Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 if (string.Equals(gridTable, tab.SiblingTableName, StringComparison.OrdinalIgnoreCase))
                     continue;
-                childTables.Add(new HierarchyChildTableDto { TableName = gridTable });
+                gridChildTables.Add(new HierarchyChildTableDto { TableName = gridTable });
             }
 
             var setup = new HierarchyTableSetupDto
             {
                 MasterTableName = rootTable,
-                ChildTables = childTables,
+                SiblingTableNames = new List<string> { tab.SiblingTableName },
+                ChildTables = gridChildTables,
                 DataSourceRegisterId = tenantDataSourceId,
                 SchemaOwner = "dbo",
                 TransactionName = tab.TabName,
@@ -1117,55 +1481,12 @@ WHERE TransactionID = @TransactionId";
             }
 
             int txId = Convert.ToInt32(saveResult.Object.Id);
+            FixTabTransactionUnitStructure(
+                conn, tran, txId, rootTable,
+                new List<string> { tab.SiblingTableName },
+                gridChildTables.Select(g => g.TableName).ToList());
             SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, $"Tab_{tab.TabId}");
             return txId;
-        }
-
-        private static void UpsertDataModelTemplateSearch(
-            SqlConnection conn,
-            SqlTransaction tran,
-            PlmTemplateHeaderRow template,
-            int? saasApplicationId,
-            string rootTable,
-            int tenantDataSourceId)
-        {
-            string integrationId = $"Template_{template.TemplateId}";
-            int? searchId = GetSearchIdByIntegrationId(conn, tran, integrationId);
-            if (!searchId.HasValue)
-            {
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.Transaction = tran;
-                    cmd.CommandText = @"
-INSERT INTO dbo.AppSearch (Name, Description, Type, SaasApplicationID, IntegrationId)
-VALUES (@Name, @Description, @Type, @SaasApplicationId, @IntegrationId);
-SELECT CAST(SCOPE_IDENTITY() AS INT);";
-                    cmd.Parameters.AddWithValue("@Name", template.TemplateName ?? $"Template_{template.TemplateId}");
-                    cmd.Parameters.AddWithValue("@Description", (object)template.Description ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@Type", (int)EmAppSearchUsageType.DataModelTemplate);
-                    cmd.Parameters.AddWithValue("@SaasApplicationId", (object)saasApplicationId ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@IntegrationId", integrationId);
-                    searchId = Convert.ToInt32(cmd.ExecuteScalar());
-                }
-            }
-            else
-            {
-                using (var cmd = conn.CreateCommand())
-                {
-                    cmd.Transaction = tran;
-                    cmd.CommandText = @"
-UPDATE dbo.AppSearch SET
-    Name = @Name,
-    Description = @Description,
-    SaasApplicationID = @SaasApplicationId
-WHERE SearchId = @SearchId";
-                    cmd.Parameters.AddWithValue("@Name", template.TemplateName ?? $"Template_{template.TemplateId}");
-                    cmd.Parameters.AddWithValue("@Description", (object)template.Description ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@SaasApplicationId", (object)saasApplicationId ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@SearchId", searchId.Value);
-                    cmd.ExecuteNonQuery();
-                }
-            }
         }
 
         private static int? GetTransactionIdByIntegrationId(SqlConnection conn, SqlTransaction tran, string integrationId)

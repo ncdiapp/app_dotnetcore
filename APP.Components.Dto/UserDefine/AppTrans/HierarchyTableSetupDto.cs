@@ -21,6 +21,14 @@ namespace APP.Components.EntityDto
         public string MasterTableName { get; set; }
 
         /// <summary>
+        /// Master-sibling units (same ReferenceId as root). Saved to <c>AppTransactionUnitList</c> with
+        /// <see cref="AppTransactionUnitExDto.IsMasterSiblingUnit"/> — not under <c>rootUnit.Children</c>.
+        /// PLM tab tables use this; grid tables belong in <see cref="ChildTables"/>.
+        /// </summary>
+        [DataMember]
+        public List<string> SiblingTableNames { get; set; }
+
+        /// <summary>
         /// Child units directly under the root, each optionally with their own grandchild tables.
         /// Example: Order → [OrderLineItem[OrderLineItemDetail, OrderLineItemNote], OrderNote[]]
         /// </summary>

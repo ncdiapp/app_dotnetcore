@@ -78,16 +78,47 @@ namespace App.BL
             return aAppFormExDto;
         }
 
+        public static bool FormHasLayoutItems(int formId)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                var bucket = new RelationPredicateBucket(AppFormLayoutItemFields.FormId == formId);
+                int count = adapter.GetDbCount(new EntityCollection<AppFormLayoutItemEntity>(), bucket);
+                return count > 0;
+            }
+        }
+
         public static AppFormExDto BuildAppFormDefaultLayout(int formId)
         {
             AppFormExDto aAppFormExDto = RetrieveOneAppFormFlexLayoutExDto(formId);
+            if (!aAppFormExDto.AssociatedTransactionId.HasValue)
+                return aAppFormExDto;
+
+            AppTransactionExDto transactionExDto =
+                AppTransactionBL.GetHierarchyTranscationFromDatabase(aAppFormExDto.AssociatedTransactionId.Value);
+            return BuildAppFormDefaultLayout(aAppFormExDto, transactionExDto);
+        }
+
+        /// <summary>Builds default flex layout using a preloaded transaction (bulk migration — avoids extra DB reads).</summary>
+        public static AppFormExDto BuildAppFormDefaultLayout(int formId, AppTransactionExDto transactionExDto)
+        {
+            var shell = new AppFormExDto
+            {
+                Id = formId,
+                AssociatedTransactionId = transactionExDto?.Id != null
+                    ? ControlTypeValueConverter.ConvertValueToInt(transactionExDto.Id)
+                    : (int?)null,
+                AppFormLayoutItemList = new ObservableSet<AppFormLayoutItemExDto>()
+            };
+            return BuildAppFormDefaultLayout(shell, transactionExDto);
+        }
+
+        private static AppFormExDto BuildAppFormDefaultLayout(AppFormExDto aAppFormExDto, AppTransactionExDto transactionExDto)
+        {
             aAppFormExDto.AppFormLayoutItemList = new ObservableSet<AppFormLayoutItemExDto>();
 
-            AppTransactionExDto transactionExDto = null;
-
-            if (aAppFormExDto.AssociatedTransactionId.HasValue)
+            if (transactionExDto != null && transactionExDto.RootMasterUnit != null)
             {
-                transactionExDto = AppTransactionBL.GetHierarchyTranscationFromDatabase(aAppFormExDto.AssociatedTransactionId.Value);
                 int columns = BuildAppFormDefaultLayout_SetMainLayout(aAppFormExDto, transactionExDto);
 
                 Dictionary<string, AppFormLayoutItemExDto> dictUiIdAndLayoutItem = new Dictionary<string, AppFormLayoutItemExDto>();
@@ -117,7 +148,7 @@ namespace App.BL
                     foreach (AppTransactionFieldExDto fieldDto in colFieldList)
                     {
                         AppFormLayoutItemExDto oneFiled_Row = AppendNewLayoutRow(dictUiIdAndLayoutItem, aAppFormExDto, fields_OneColumnStack);
-                        AppFormLayoutItemExDto oneFiled_Item = AppendNewTransFieldItem(dictUiIdAndLayoutItem, aAppFormExDto, oneFiled_Row, fieldDto, 24);
+                        AppendNewTransFieldItem(dictUiIdAndLayoutItem, aAppFormExDto, oneFiled_Row, fieldDto, 24);
                     }
                 }
 
@@ -137,7 +168,7 @@ namespace App.BL
                         AppFormLayoutItemExDto oneTab_MainStack = AppendNewStackContainer(dictUiIdAndLayoutItem, aAppFormExDto, oneTab_MainRow, 24, 1);
 
                         AppFormLayoutItemExDto oneGrid_Row = AppendNewLayoutRow(dictUiIdAndLayoutItem, aAppFormExDto, oneTab_MainStack);
-                        AppFormLayoutItemExDto oneGrid_Item = AppendNewTransChildUnitGridItem(dictUiIdAndLayoutItem, aAppFormExDto, oneGrid_Row, gridUnitDto, 24);
+                        AppendNewTransChildUnitGridItem(dictUiIdAndLayoutItem, aAppFormExDto, oneGrid_Row, gridUnitDto, 24);
                     }
 
                 }
@@ -147,7 +178,7 @@ namespace App.BL
                     foreach (var gridUnitDto in transactionExDto.RootMasterUnit.Children)
                     {
                         AppFormLayoutItemExDto oneGrid_Row = AppendNewLayoutRow(dictUiIdAndLayoutItem, aAppFormExDto, grids_MainStack);
-                        AppFormLayoutItemExDto oneGrid_Item = AppendNewTransChildUnitGridItem(dictUiIdAndLayoutItem, aAppFormExDto, oneGrid_Row, gridUnitDto, 24);
+                        AppendNewTransChildUnitGridItem(dictUiIdAndLayoutItem, aAppFormExDto, oneGrid_Row, gridUnitDto, 24);
                     }
                 }
 

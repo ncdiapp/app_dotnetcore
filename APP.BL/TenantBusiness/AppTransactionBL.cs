@@ -1794,7 +1794,10 @@ namespace App.BL
         }
 
 
-        public static OperationCallResult<AppTransactionExDto> SaveAppTransactionExDto(AppTransactionExDto aHierarchyAppTransactionExDto, bool isIgnoreValidation = false)
+        public static OperationCallResult<AppTransactionExDto> SaveAppTransactionExDto(
+            AppTransactionExDto aHierarchyAppTransactionExDto,
+            bool isIgnoreValidation = false,
+            bool skipPostSaveCacheSync = false)
         {
             OperationCallResult<AppTransactionExDto> aOperationCallResult = new OperationCallResult<AppTransactionExDto>();
             var aValidationResult = new ValidationResult();
@@ -1961,13 +1964,16 @@ namespace App.BL
 
 
 
-                var freshaHierarchyAppTransactionExDto = GetHierarchyTranscationFromDatabase(aHierarchyAppTransactionExDto.Id);
-
-                SynchronizeDatabaseTableAndUpdateCahce(freshaHierarchyAppTransactionExDto);
-
-
-
-                aOperationCallResult.Object = GetHierarchyTranscationFromDatabase(aHierarchyAppTransactionExDto.Id);
+                if (skipPostSaveCacheSync)
+                {
+                    aOperationCallResult.Object = aHierarchyAppTransactionExDto;
+                }
+                else
+                {
+                    var freshaHierarchyAppTransactionExDto = GetHierarchyTranscationFromDatabase(aHierarchyAppTransactionExDto.Id);
+                    SynchronizeDatabaseTableAndUpdateCahce(freshaHierarchyAppTransactionExDto);
+                    aOperationCallResult.Object = GetHierarchyTranscationFromDatabase(aHierarchyAppTransactionExDto.Id);
+                }
 
 
                 AppTransactionExDto transactionExDto = aOperationCallResult.Object;
@@ -3446,6 +3452,15 @@ namespace App.BL
         /// </summary>
         public static OperationCallResult<AppTransactionExDto> CreateHierarchyTransactionFromTables(HierarchyTableSetupDto setupDto)
         {
+            return CreateHierarchyTransactionFromTables(setupDto, isIgnoreValidation: false, skipPostSaveCacheSync: false);
+        }
+
+        /// <summary>Same as overload without flags; migration may skip validation and post-save cache reload.</summary>
+        public static OperationCallResult<AppTransactionExDto> CreateHierarchyTransactionFromTables(
+            HierarchyTableSetupDto setupDto,
+            bool isIgnoreValidation,
+            bool skipPostSaveCacheSync = false)
+        {
             OperationCallResult<AppTransactionExDto> result = new OperationCallResult<AppTransactionExDto>();
             var validation = new ValidationResult();
             result.ValidationResult = validation;
@@ -3461,8 +3476,11 @@ namespace App.BL
                 setupDto.SchemaOwner = AppCacheManagerBL.GetOneDatabaseFixture(setupDto.DataSourceRegisterId.Value).CurrentOwner;
             }
 
-            // Collect all table names (master + all children + all grandchildren) for a single schema fetch
             List<string> allTableNames = new List<string> { setupDto.MasterTableName };
+            if (setupDto.SiblingTableNames != null)
+            {
+                allTableNames.AddRange(setupDto.SiblingTableNames.Where(n => !string.IsNullOrWhiteSpace(n)));
+            }
             if (setupDto.ChildTables != null)
             {
                 foreach (var child in setupDto.ChildTables)
@@ -3475,7 +3493,6 @@ namespace App.BL
                 }
             }
 
-            // Read all schemas in one call
             List<KeyValuePair<string, string>> ownerTablePairs = allTableNames
                 .Select(n => new KeyValuePair<string, string>(setupDto.SchemaOwner, n))
                 .ToList();
@@ -3483,7 +3500,6 @@ namespace App.BL
             Dictionary<string, DatabaseTable> dictDBTables =
                 AppMetaDataBL.GetDatabaseTableSchemaDictionaryBySchemaOwnerTableNames(ownerTablePairs, setupDto.DataSourceRegisterId);
 
-            // Verify master table exists
             string masterKey = AppMetaDataBL.GetOwnerTableKey(setupDto.SchemaOwner, setupDto.MasterTableName);
             if (!dictDBTables.ContainsKey(masterKey))
             {
@@ -3491,7 +3507,6 @@ namespace App.BL
                 return result;
             }
 
-            // Create transaction shell
             AppTransactionExDto transactionDto = new AppTransactionExDto();
             transactionDto.TransactionOrganizedType = (int)EmTransactionOrganizedType.MasterDetail;
             transactionDto.TransactionName = !string.IsNullOrWhiteSpace(setupDto.TransactionName)
@@ -3505,16 +3520,31 @@ namespace App.BL
             transactionDto.IsShowSaveButton = true;
             transactionDto.IsPhysicalModelTableCreated = true;
 
-            // Create root unit
             AppTransactionUnitExDto rootUnit = BuildHierarchyUnitWithFields(dictDBTables[masterKey]);
             transactionDto.AppTransactionUnitList.Add(rootUnit);
 
-            // Get root PK GUID — needed so child FK fields can reference it (ParentPKFieldGuid)
             Guid? rootPkGuid = rootUnit.AppTransactionFieldList
                 .FirstOrDefault(f => f.IsPrimaryKey == true && f.RowIdentityGuid.HasValue)
                 ?.RowIdentityGuid;
 
-            // Create each child unit (direct children of root) + their grandchildren
+            if (setupDto.SiblingTableNames != null)
+            {
+                foreach (string siblingTableName in setupDto.SiblingTableNames
+                             .Where(n => !string.IsNullOrWhiteSpace(n))
+                             .Distinct(StringComparer.OrdinalIgnoreCase))
+                {
+                    string siblingKey = AppMetaDataBL.GetOwnerTableKey(setupDto.SchemaOwner, siblingTableName);
+                    if (!dictDBTables.ContainsKey(siblingKey))
+                        continue;
+
+                    AppTransactionUnitExDto siblingUnit = BuildHierarchyUnitWithFields(dictDBTables[siblingKey]);
+                    siblingUnit.IsMasterSiblingUnit = true;
+                    MarkFkField(siblingUnit, dictDBTables[siblingKey], setupDto.MasterTableName,
+                                rootPkGuid, transactionDto.DictCurrentPKOrFKLinkToParentKeyGuidMap);
+                    transactionDto.AppTransactionUnitList.Add(siblingUnit);
+                }
+            }
+
             if (setupDto.ChildTables != null)
             {
                 foreach (var childTableDef in setupDto.ChildTables)
@@ -3527,20 +3557,14 @@ namespace App.BL
                         continue;
 
                     AppTransactionUnitExDto childUnit = BuildHierarchyUnitWithFields(dictDBTables[childKey]);
-
-                    // Auto-detect FK column in child that references root (master)
-                    // Pass rootPkGuid so the FK field gets ParentPKFieldGuid set (required by validator)
                     MarkFkField(childUnit, dictDBTables[childKey], setupDto.MasterTableName,
                                 rootPkGuid, transactionDto.DictCurrentPKOrFKLinkToParentKeyGuidMap);
-
                     rootUnit.Children.Add(childUnit);
 
-                    // Get child PK GUID — needed for grandchild FK fields
                     Guid? childPkGuid = childUnit.AppTransactionFieldList
                         .FirstOrDefault(f => f.IsPrimaryKey == true && f.RowIdentityGuid.HasValue)
                         ?.RowIdentityGuid;
 
-                    // Create grandchild units under this child
                     if (childTableDef.GrandChildTableNames != null)
                     {
                         foreach (string grandChildTableName in childTableDef.GrandChildTableNames)
@@ -3553,18 +3577,15 @@ namespace App.BL
                                 continue;
 
                             AppTransactionUnitExDto grandChildUnit = BuildHierarchyUnitWithFields(dictDBTables[grandChildKey]);
-
-                            // Auto-detect FK column in grandchild that references the child
                             MarkFkField(grandChildUnit, dictDBTables[grandChildKey], childTableDef.TableName,
                                         childPkGuid, transactionDto.DictCurrentPKOrFKLinkToParentKeyGuidMap);
-
                             childUnit.Children.Add(grandChildUnit);
                         }
                     }
                 }
             }
 
-            return SaveAppTransactionExDto(transactionDto);
+            return SaveAppTransactionExDto(transactionDto, isIgnoreValidation, skipPostSaveCacheSync);
         }
 
         /// <summary>Builds an AppTransactionUnitExDto with fields populated from the given DatabaseTable.</summary>

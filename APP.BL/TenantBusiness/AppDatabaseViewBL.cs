@@ -1469,45 +1469,10 @@ namespace App.BL
 
 
 
-            var transactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
-
-            bool needToReBuildDefaultFormLayout = false;
-
-            if (transactionExDto.FormId.HasValue)
-            {
-                AppFormEntity formEntity = AppFormBL.RetrieveSimpleAppFormEntity(transactionExDto.FormId);
-
-                if (formEntity.LayoutType.HasValue && formEntity.LayoutType.Value == (int)EmAppFormLayoutType.Flex)
-                {
-                    var flexFormExDto = AppFormFlexLayoutBL.RetrieveOneAppFormFlexLayoutExDto(transactionExDto.FormId);
-
-                    if (!(flexFormExDto.AppFormLayoutItemList != null && flexFormExDto.AppFormLayoutItemList.Count > 0))
-                    {
-                        needToReBuildDefaultFormLayout = true;
-                    }
-                }
-            }
-            else
-            {
-                AppFormExDto formDto = AppFormBL.CreateNewTranactionForm(transactionId, (int)EmAppFormLayoutType.Flex, transactionExDto.SaasApplicationId, false);
-                transactionExDto.FormId = (int)formDto.Id;
-                needToReBuildDefaultFormLayout = true;
-
-            }
-
-            if (needToReBuildDefaultFormLayout)
-            {
-                var rebultFormDto = AppFormFlexLayoutBL.BuildAppFormDefaultLayout(transactionExDto.FormId.Value);
-
-                var saveResult = AppFormFlexLayoutBL.SaveAppFormFlexLayoutExDto(rebultFormDto);
-
-                if (saveResult.ValidationResult.HasErrors)
-                {
-                    validationResult.Merge(saveResult.ValidationResult);
-
-                    return aOperationCallResult;
-                }
-            }
+            var formResult = EnsureTransactionDefaultFlexFormLayout(transactionId);
+            validationResult.Merge(formResult.ValidationResult);
+            if (validationResult.HasErrors)
+                return aOperationCallResult;
 
             var existingNavigationDto = AppTransactionNavigationBL.RetrieveOneTransactionDefaultNavigationDto(transactionId, false);
 
@@ -1532,6 +1497,7 @@ namespace App.BL
             }
             else
             {
+                var transactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
                 OperationCallResult<DatabaseViewUpdateDto> dbviewResult = BuildAdvancedDBViewDtoFromTransaction(transactionId, true);
 
                 if (!dbviewResult.ValidationResult.HasErrors && dbviewResult.Object != null)
@@ -3408,6 +3374,112 @@ tab2.name AS [REFERENCED_TABLE],Â Â Â Â col2.name AS [REFERENCED_COLUMN]
         }
 
 
+
+        /// <summary>Creates Flex form + default layout when missing (PLM import / quick generate).</summary>
+        public static OperationCallResult<object> EnsureTransactionDefaultFlexFormLayout(int transactionId)
+        {
+            return EnsureTransactionDefaultFlexFormLayout(transactionId, migrationFastPath: false);
+        }
+
+        /// <summary>
+        /// <paramref name="migrationFastPath"/> loads the transaction once and skips redundant form/layout reads (bulk PLM import).
+        /// </summary>
+        public static OperationCallResult<object> EnsureTransactionDefaultFlexFormLayout(int transactionId, bool migrationFastPath)
+        {
+            if (migrationFastPath)
+                return EnsureTransactionDefaultFlexFormLayoutMigration(transactionId);
+
+            OperationCallResult<object> aOperationCallResult = new OperationCallResult<object>();
+            ValidationResult validationResult = new ValidationResult();
+            aOperationCallResult.ValidationResult = validationResult;
+
+            var transactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
+            if (transactionExDto == null)
+            {
+                validationResult.Items.Add(new ValidationItem(typeof(AppTransactionExDto), "App_TransactionEntity_NotFound_Error",
+                    ValidationItemType.Error, "Transaction not found: " + transactionId));
+                return aOperationCallResult;
+            }
+
+            bool needToReBuildDefaultFormLayout = false;
+
+            if (transactionExDto.FormId.HasValue)
+            {
+                AppFormEntity formEntity = AppFormBL.RetrieveSimpleAppFormEntity(transactionExDto.FormId);
+
+                if (formEntity.LayoutType.HasValue && formEntity.LayoutType.Value == (int)EmAppFormLayoutType.Flex)
+                {
+                    var flexFormExDto = AppFormFlexLayoutBL.RetrieveOneAppFormFlexLayoutExDto(transactionExDto.FormId);
+
+                    if (!(flexFormExDto.AppFormLayoutItemList != null && flexFormExDto.AppFormLayoutItemList.Count > 0))
+                        needToReBuildDefaultFormLayout = true;
+                }
+            }
+            else
+            {
+                AppFormExDto formDto = AppFormBL.CreateNewTranactionForm(transactionId, (int)EmAppFormLayoutType.Flex, transactionExDto.SaasApplicationId, false);
+                transactionExDto.FormId = (int)formDto.Id;
+                needToReBuildDefaultFormLayout = true;
+            }
+
+            if (needToReBuildDefaultFormLayout)
+            {
+                var rebultFormDto = AppFormFlexLayoutBL.BuildAppFormDefaultLayout(transactionExDto.FormId.Value);
+                var saveResult = AppFormFlexLayoutBL.SaveAppFormFlexLayoutExDto(rebultFormDto);
+                if (saveResult.ValidationResult.HasErrors)
+                    validationResult.Merge(saveResult.ValidationResult);
+            }
+
+            return aOperationCallResult;
+        }
+
+        private static OperationCallResult<object> EnsureTransactionDefaultFlexFormLayoutMigration(int transactionId)
+        {
+            OperationCallResult<object> result = new OperationCallResult<object>();
+            ValidationResult validationResult = new ValidationResult();
+            result.ValidationResult = validationResult;
+
+            var transactionExDto = AppTransactionBL.GetHierarchyTranscationFromDatabase(transactionId);
+            if (transactionExDto == null)
+            {
+                validationResult.Items.Add(new ValidationItem(typeof(AppTransactionExDto), "App_TransactionEntity_NotFound_Error",
+                    ValidationItemType.Error, "Transaction not found: " + transactionId));
+                return result;
+            }
+
+            int? formId = transactionExDto.FormId;
+            if (formId.HasValue && AppFormFlexLayoutBL.FormHasLayoutItems(formId.Value))
+                return result;
+
+            if (!formId.HasValue)
+            {
+                AppFormExDto formDto = AppFormBL.CreateNewTranactionForm(
+                    transactionId, (int)EmAppFormLayoutType.Flex, transactionExDto.SaasApplicationId, false);
+                formId = (int)formDto.Id;
+            }
+
+            var builtFormDto = AppFormFlexLayoutBL.BuildAppFormDefaultLayout(formId.Value, transactionExDto);
+            var saveResult = AppFormFlexLayoutBL.SaveAppFormFlexLayoutExDto(builtFormDto);
+            if (saveResult.ValidationResult.HasErrors)
+                validationResult.Merge(saveResult.ValidationResult);
+
+            return result;
+        }
+
+        /// <summary>Adds a search to the application main menu (MasterDataManagement route).</summary>
+        public static OperationCallResult<object> AddSearchToApplicationMainMenu(int searchId, int? saasApplicationId, string menuName, string menuDescription)
+        {
+            OperationCallResult<object> result = new OperationCallResult<object>();
+            ValidationResult validationResult = new ValidationResult();
+            result.ValidationResult = validationResult;
+            AddSearchToApplicationMainMenu(validationResult, searchId, saasApplicationId, menuName, menuDescription);
+            return result;
+        }
+
+        private static void AddSearchToApplicationMainMenu(ValidationResult validationResult, int searchId, int? applicationId, string menuName, string menuDescription)
+        {
+            QuickGenerateTransactionDefaultSeachNavigation_GenerateAppMenu(validationResult, searchId, applicationId, menuName, menuDescription);
+        }
 
         private static void QuickGenerateTransactionDefaultSeachNavigation_GenerateAppMenu(ValidationResult validationResult, int searchId, int? applicationId, string menuName, string menuDescription)
         {
