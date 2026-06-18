@@ -16,7 +16,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\APP.BL\APP.BL.Core.csproj" />
-    <ProjectReference Include="..\APP.TechPack\APP.TechPack.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>
