@@ -268,7 +268,9 @@ const TransactionFormGroup: React.FC = () => {
             if (cfg) nextMainSearches.push(cfg);
           }
         });
-      } else {
+      }
+
+      if (nextMainForms.length === 0 && nextMainSearches.length === 0) {
         const fallbackTarget = adaptTemplateItemForCreate(
           sessionData?.linkTargetDto ?? linkTargetList[0],
         );
@@ -535,7 +537,7 @@ const TransactionFormGroup: React.FC = () => {
               {createMainSearches.map(renderEmbeddedSearch)}
               {createMainForms.length === 0 && createMainSearches.length === 0 && (
                 <div className={`flex items-center justify-center h-full text-sm ${theme.label}`}>
-                  No template header to display.
+                  No create form could be loaded for this template.
                 </div>
               )}
             </>

@@ -452,13 +452,10 @@ export function buildEmbeddedFormParam2(
   }
 
   const isCreateLike = isCreateLikeLinkTarget(linkTarget);
-  const hasCreateMapping = Object.keys(linkTargetValueMapping).length > 0;
   if (!isCreateLike && !targetPkValue) {
     return null;
   }
-  if (isCreateLike && !hasCreateMapping && !targetPkValue) {
-    return null;
-  }
+  // Create-like actions may open a blank new record without source row mapping.
 
   const transGroupId = linkTarget.LinkTargetTransactionGroupId ?? null;
   const label = linkTarget.display || linkTarget.NavigationActionName || 'Template Header';
