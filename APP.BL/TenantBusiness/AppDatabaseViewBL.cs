@@ -3407,7 +3407,11 @@ tab2.name AS [REFERENCED_TABLE],Â Â Â Â col2.name AS [REFERENCED_COLUMN]
             {
                 AppFormEntity formEntity = AppFormBL.RetrieveSimpleAppFormEntity(transactionExDto.FormId);
 
-                if (formEntity.LayoutType.HasValue && formEntity.LayoutType.Value == (int)EmAppFormLayoutType.Flex)
+                if (!formEntity.LayoutType.HasValue || formEntity.LayoutType.Value != (int)EmAppFormLayoutType.Flex)
+                {
+                    needToReBuildDefaultFormLayout = true;
+                }
+                else
                 {
                     var flexFormExDto = AppFormFlexLayoutBL.RetrieveOneAppFormFlexLayoutExDto(transactionExDto.FormId);
 
@@ -3424,10 +3428,12 @@ tab2.name AS [REFERENCED_TABLE],Â Â Â Â col2.name AS [REFERENCED_COLUMN]
 
             if (needToReBuildDefaultFormLayout)
             {
-                var rebultFormDto = AppFormFlexLayoutBL.BuildAppFormDefaultLayout(transactionExDto.FormId.Value);
-                var saveResult = AppFormFlexLayoutBL.SaveAppFormFlexLayoutExDto(rebultFormDto);
-                if (saveResult.ValidationResult.HasErrors)
-                    validationResult.Merge(saveResult.ValidationResult);
+                var resetResult = AppFormBL.ResetFormLayout(
+                    transactionExDto.FormId.Value,
+                    (int)EmAppFormLayoutType.Flex,
+                    needToGenerateDefaultLayout: true);
+                if (resetResult.ValidationResult.HasErrors)
+                    validationResult.Merge(resetResult.ValidationResult);
             }
 
             return aOperationCallResult;
@@ -3448,9 +3454,6 @@ tab2.name AS [REFERENCED_TABLE],Â Â Â Â col2.name AS [REFERENCED_COLUMN]
             }
 
             int? formId = transactionExDto.FormId;
-            if (formId.HasValue && AppFormFlexLayoutBL.FormHasLayoutItems(formId.Value))
-                return result;
-
             if (!formId.HasValue)
             {
                 AppFormExDto formDto = AppFormBL.CreateNewTranactionForm(
@@ -3458,10 +3461,13 @@ tab2.name AS [REFERENCED_TABLE],Â Â Â Â col2.name AS [REFERENCED_COLUMN]
                 formId = (int)formDto.Id;
             }
 
-            var builtFormDto = AppFormFlexLayoutBL.BuildAppFormDefaultLayout(formId.Value, transactionExDto);
-            var saveResult = AppFormFlexLayoutBL.SaveAppFormFlexLayoutExDto(builtFormDto);
-            if (saveResult.ValidationResult.HasErrors)
-                validationResult.Merge(saveResult.ValidationResult);
+            // Same as UI: ResetFormLayout?formId={id}&resetToLayoutType=4&needToGenerateDefaultLayout=true
+            var resetResult = AppFormBL.ResetFormLayout(
+                formId.Value,
+                (int)EmAppFormLayoutType.Flex,
+                needToGenerateDefaultLayout: true);
+            if (resetResult.ValidationResult.HasErrors)
+                validationResult.Merge(resetResult.ValidationResult);
 
             return result;
         }

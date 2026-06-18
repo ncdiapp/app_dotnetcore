@@ -471,7 +471,13 @@ namespace App.BL
 
             aAppFormExDto.AssociatedTransactionId = aAppTransactionExDto.Id as int?;
 
-            if (aAppFormExDto.LayoutType.HasValue && aAppFormExDto.LayoutType.Value == (int)EmAppFormLayoutType.Flex)
+            // PLM import may save flex layout without LayoutType; runtime treats null as Flex (4).
+            if (!aAppFormExDto.LayoutType.HasValue)
+            {
+                aAppFormExDto.LayoutType = (int)EmAppFormLayoutType.Flex;
+            }
+
+            if (aAppFormExDto.LayoutType.Value == (int)EmAppFormLayoutType.Flex)
             {
                 AppFormFlexLayoutBL.PrepareFlexFormLayoutItemExDtoTree(aAppFormEntity, aAppFormExDto, aAppTransactionExDto);
             }

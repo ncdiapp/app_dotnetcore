@@ -65,6 +65,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
   
   // All hooks must be called before any conditional returns
   const layoutTypeEnum = useEnumValues('EmAppFormLayoutType');
+  const flexLayoutType = layoutTypeEnum?.Flex ?? 4;
   const emMessageScopeTypeTransaction = useEnumEntry('EmAppMessgaeScopeType', 'Transaction') ?? 2;
   const emDockBottom = useEnumEntry('EmAppDockPosition', 'Bottom');
   const emDockRight = useEnumEntry('EmAppDockPosition', 'Right');
@@ -93,8 +94,12 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     };
   }, []);
 
-  // Get form layout type
-  const formLayoutType = transactionExDto?.ForeignAppFormExDto?.LayoutType;
+  // Get form layout type (null => Flex, matches backend RetrieveTransactionAppFormExDto)
+  const formLayoutType =
+    transactionExDto?.ForeignAppFormExDto?.LayoutType ??
+    formStructureData?.ForeignAppFormExDto?.LayoutType ??
+    formStructureData?.LayoutType ??
+    flexLayoutType;
 
   // Get transaction data from props (transactionExDtoRef) or formStructureData
   // Note: Do not use dataModel.transactionExDto as dataModel gets reset during refresh

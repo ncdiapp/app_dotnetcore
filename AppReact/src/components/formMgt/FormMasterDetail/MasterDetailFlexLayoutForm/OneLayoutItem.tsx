@@ -4,6 +4,14 @@ import { useEnumValues } from '../../../../hooks/useEnumDictionary';
 import FormItemLayout from './FormItemLayout';
 import DataGridLayout from './DataGridLayout';
 import { useFormMasterDetailRuntimeConfig } from '../formMasterDetailRuntimeConfig';
+import {
+  getLayoutColSpan,
+  getLayoutWidgetDisplayType,
+  resolveLayoutRowType,
+  resolveSectionType,
+  resolveTabContainerType,
+  shouldRenderRuntimeLayoutItem,
+} from './flexLayoutItemHelper';
 
 interface OneLayoutItemProps {
   layoutItemExDto: any;
@@ -26,6 +34,9 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
   const { theme, t } = useTheme();
   const runtimeFieldConfig = useFormMasterDetailRuntimeConfig();
   const layoutItemTypeEnum = useEnumValues('EmAppFormLayoutItemType');
+  const layoutRowType = resolveLayoutRowType(layoutItemTypeEnum);
+  const sectionType = resolveSectionType(layoutItemTypeEnum);
+  const tabContainerType = resolveTabContainerType(layoutItemTypeEnum);
   const _gridDisplayTypeEnum = useEnumValues('EmAppTransactionGridDisplayType');
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [activeTabs, setActiveTabs] = useState<Record<string, number>>({});
@@ -34,7 +45,10 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
   // Render section rows (uses RowComponent prop to avoid circular import with OneLayoutRow)
   const renderSectionRows = (sectionRows: any[] | undefined) => {
     if (!sectionRows || sectionRows.length === 0 || !RowComponent) return null;
-    const sortedRows = [...sectionRows].sort((a: any, b: any) => (a.FlowOrGridLayoutSortOrder || 0) - (b.FlowOrGridLayoutSortOrder || 0));
+    const sortedRows = [...sectionRows]
+      .filter((row: any) => shouldRenderRuntimeLayoutItem(row))
+      .sort((a: any, b: any) => (a.FlowOrGridLayoutSortOrder || 0) - (b.FlowOrGridLayoutSortOrder || 0));
+    if (sortedRows.length === 0) return null;
     return (
       <div style={{ width: '100%', position: 'relative' }}>
         {sortedRows.map((layoutRowExDto: any) => {
@@ -245,19 +259,19 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
 
   // DomAttribute / domAttribute (API may return PascalCase or camelCase)
   const domAttribute = layoutItemExDto?.DomAttribute ?? layoutItemExDto?.domAttribute;
-  const displayType = domAttribute?.WidgetDisplayType ?? domAttribute?.widgetDisplayType;
+  const displayType = getLayoutWidgetDisplayType(layoutItemExDto);
 
   // Section collapse defaults (must be hooks at component top-level)
   const sectionId = useMemo(() => {
-    if (displayType !== layoutItemTypeEnum?.Section) return null;
+    if (displayType !== sectionType) return null;
     return `SectionBody_${layoutItemExDto.Id}_${controllerModel.uiId}`;
-  }, [controllerModel.uiId, displayType, layoutItemExDto.Id, layoutItemTypeEnum?.Section]);
+  }, [controllerModel.uiId, displayType, layoutItemExDto.Id, sectionType]);
 
   const isDefaultCollapsedSection = useMemo(() => {
-    if (displayType !== layoutItemTypeEnum?.Section) return false;
+    if (displayType !== sectionType) return false;
     const da = domAttribute ?? {};
     return Boolean((da.IsCollapsible ?? (da as any).isCollapsible) && (da.IsDefaultCollapsed ?? (da as any).isDefaultCollapsed));
-  }, [displayType, domAttribute, layoutItemTypeEnum?.Section]);
+  }, [displayType, domAttribute, sectionType]);
 
   useEffect(() => {
     if (!sectionId || !isDefaultCollapsedSection) return;
@@ -295,14 +309,37 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
     return null;
   }
 
-  const effectiveDisplayType = displayType;
+
   const da = domAttribute || {};
+  const boundFieldDto =
+    layoutItemExDto.ForeignAppTransactionFieldExDto ?? layoutItemExDto.foreignAppTransactionFieldExDto;
+  if (boundFieldDto?.IsFormLayoutVisible === false) {
+    return null;
+  }
+
+  const Row = RowComponent;
+  if (displayType === layoutRowType && Row) {
+    return (
+      <Row
+        layoutRowExDto={layoutItemExDto}
+        controllerModel={controllerModel}
+        dataModel={dataModel}
+        onDataModelChange={onDataModelChange}
+        transactionExDto={transactionExDto}
+        RowComponent={Row}
+      />
+    );
+  }
 
   // Build style from layout info (support PascalCase from API)
   let styleLayoutInfo = '';
   const heightVal = da.HeightValue ?? (da as any).heightValue;
   if (heightVal) {
-    styleLayoutInfo += `height:${heightVal}px;`;
+    if (displayType === sectionType) {
+      styleLayoutInfo += `min-height:${heightVal}px;`;
+    } else {
+      styleLayoutInfo += `height:${heightVal}px;`;
+    }
   }
   const bgColor = da.BackgroundColor ?? (da as any).backgroundColor;
   if (bgColor) {
@@ -314,7 +351,7 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
   }
 
   // Get col span (default 24)
-  const colSpan = da.ColSpanValue ?? (da as any).colSpanValue ?? 24;
+  const colSpan = getLayoutColSpan(layoutItemExDto);
 
   // Check visibility
   const transFieldExDto = layoutItemExDto.ForeignAppTransactionFieldExDto ?? layoutItemExDto.foreignAppTransactionFieldExDto;
@@ -362,7 +399,7 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
   // Render based on display type
   const renderContent = () => {
     // Section
-    if (displayType === layoutItemTypeEnum?.Section) {
+    if (displayType === sectionType) {
       const effectiveSectionId = sectionId ?? `SectionBody_${layoutItemExDto.Id}_${controllerModel.uiId}`;
       const isCollapsed = isSectionCollapsed(effectiveSectionId);
       const shouldShowBody = !isCollapsed;
@@ -396,7 +433,7 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
     }
     
     // Tab Container
-    if (displayType === layoutItemTypeEnum?.TabContainer) {
+    if (displayType === tabContainerType) {
       const tabList = layoutItemExDto.AppFormLayoutItem_List ?? layoutItemExDto.appFormLayoutItem_List;
       const tabItems = tabList
         ? [...(Array.isArray(tabList) ? tabList : [])].sort((a: any, b: any) => (a.FlowOrGridLayoutSortOrder ?? a.flowOrGridLayoutSortOrder ?? 0) - (b.FlowOrGridLayoutSortOrder ?? b.flowOrGridLayoutSortOrder ?? 0))
@@ -633,6 +670,12 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
   // Runtime mode - no design mode features
   let borderClass = 'border-2 border-transparent';
 
+  const content = renderContent();
+  const isContainerType = displayType === sectionType || displayType === tabContainerType;
+  if (content == null && !isContainerType) {
+    return null;
+  }
+
   return (
     <div
       ref={containerRef}
@@ -641,7 +684,7 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
       data-item-id={layoutItemExDto.Id || layoutItemExDto.CurrentHostId}
       data-host-id={layoutItemExDto.CurrentHostId}
     >
-      {renderContent()}
+      {content}
     </div>
   );
 };

@@ -20,7 +20,12 @@ namespace APP.BL.DataMigration.PlmMigration
             public int TransactionId { get; set; }
             public int? FormId { get; set; }
             public int LayoutItemCount { get; set; }
-            public bool HasCompleteLayout => FormId.HasValue && LayoutItemCount > 0;
+            public int? LayoutType { get; set; }
+            public bool HasCompleteLayout =>
+                FormId.HasValue
+                && LayoutItemCount > 0
+                && LayoutType.HasValue
+                && LayoutType.Value == (int)EmAppFormLayoutType.Flex;
         }
 
         private sealed class TemplateSearchViewFieldSpec
@@ -93,8 +98,10 @@ namespace APP.BL.DataMigration.PlmMigration
             {
                 cmd.CommandText = @"
 SELECT t.TransactionID, t.FormID, t.IntegrationId,
-    (SELECT COUNT(1) FROM dbo.AppFormLayoutItem li WHERE li.FormID = t.FormID) AS LayoutItemCount
+    (SELECT COUNT(1) FROM dbo.AppFormLayoutItem li WHERE li.FormID = t.FormID) AS LayoutItemCount,
+    f.LayoutType
 FROM dbo.AppTransaction t
+LEFT JOIN dbo.AppForm f ON f.FormID = t.FormID
 WHERE t.IntegrationId LIKE 'Tab[_]%'";
                 using (var reader = cmd.ExecuteReader())
                 {
@@ -111,7 +118,8 @@ WHERE t.IntegrationId LIKE 'Tab[_]%'";
                         {
                             TransactionId = reader.GetInt32(0),
                             FormId = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1),
-                            LayoutItemCount = reader.IsDBNull(3) ? 0 : reader.GetInt32(3)
+                            LayoutItemCount = reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
+                            LayoutType = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4)
                         };
                     }
                 }

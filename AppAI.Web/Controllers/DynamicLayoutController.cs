@@ -52,11 +52,11 @@ public class DynamicLayoutController : SecureBaseController
         appTransactionExDto.TransactionCrossHeader = new List<AppTransactionExDto>();
 
 
-        AppFormExDto AppFormExDto = appTransactionExDto.ForeignAppFormExDto;
-        if (AppFormExDto == null && appTransactionExDto.TransactionOrganizedType.HasValue
-            && (appTransactionExDto.TransactionOrganizedType.Value == (int)EmTransactionOrganizedType.MasterDetail))
+        AppFormExDto appFormExDto = appTransactionExDto.ForeignAppFormExDto;
+        if (appFormExDto == null && appTransactionExDto.FormId.HasValue)
         {
-            AppFormExDto = appTransactionExDto.ForeignAppFormExDto = AppFormBL.RetrieveTransactionAppFormExDto(appTransactionExDto);
+            appFormExDto = appTransactionExDto.ForeignAppFormExDto =
+                AppFormBL.RetrieveTransactionAppFormExDto(appTransactionExDto);
         }
 
 

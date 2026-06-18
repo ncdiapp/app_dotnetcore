@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { useEnumValues } from '../../../hooks/useEnumDictionary';
 import OneLayoutRow from './MasterDetailFlexLayoutForm/OneLayoutRow';
+import OneLayoutItem from './MasterDetailFlexLayoutForm/OneLayoutItem';
+import { getLayoutWidgetDisplayType, resolveSectionType, resolveTabContainerType } from './MasterDetailFlexLayoutForm/flexLayoutItemHelper';
 import WorkflowBatchLogSearch from './WorkflowBatchLogSearch';
 import { useFormMasterDetailRuntimeConfig } from './formMasterDetailRuntimeConfig';
 
@@ -22,15 +24,43 @@ const MasterDetailFlexLayoutForm: React.FC<MasterDetailFlexLayoutFormProps> = ({
 }) => {
   const { theme } = useTheme();
   const runtimeFieldConfig = useFormMasterDetailRuntimeConfig();
-  const _layoutTypeEnum = useEnumValues('EmAppFormLayoutType');
+  const layoutTypeEnum = useEnumValues('EmAppFormLayoutType');
+  const flexLayoutType = layoutTypeEnum?.Flex ?? 4;
+  const layoutItemTypeEnum = useEnumValues('EmAppFormLayoutItemType');
+  const sectionType = resolveSectionType(layoutItemTypeEnum);
+  const tabContainerType = resolveTabContainerType(layoutItemTypeEnum);
   const transactionScopeEnum = useEnumValues('EmAppTransactionScopeUsage');
   const [isLoading, setIsLoading] = useState(true);
 
   // Get form DTO from transactionExDto or formStructureData
   // Priority: transactionExDto.ForeignAppFormExDto > formStructureData.ForeignAppFormExDto > formStructureData
-  const formDto = transactionExDto?.ForeignAppFormExDto 
-    || formStructureData?.ForeignAppFormExDto 
-    || (formStructureData?.LayoutType ? formStructureData : null);
+  // Null LayoutType is treated as Flex (PLM import parity with backend)
+  const formDto = (() => {
+    const fromTransaction = transactionExDto?.ForeignAppFormExDto;
+    if (fromTransaction) {
+      return {
+        ...fromTransaction,
+        LayoutType: fromTransaction.LayoutType ?? flexLayoutType,
+      };
+    }
+    const fromStructureNested = formStructureData?.ForeignAppFormExDto;
+    if (fromStructureNested) {
+      return {
+        ...fromStructureNested,
+        LayoutType: fromStructureNested.LayoutType ?? flexLayoutType,
+      };
+    }
+    if (
+      formStructureData?.AppFormLayoutItemList?.length ||
+      formStructureData?.LayoutType != null
+    ) {
+      return {
+        ...formStructureData,
+        LayoutType: formStructureData.LayoutType ?? flexLayoutType,
+      };
+    }
+    return null;
+  })();
   
   // Check if data is still loading
   useEffect(() => {
@@ -164,15 +194,31 @@ const MasterDetailFlexLayoutForm: React.FC<MasterDetailFlexLayoutFormProps> = ({
       }}
     >
       <div className="w-1 min-w-0 flex-auto">
-        {layoutItems.map((layoutRowExDto: any, index: number) => {
+        {layoutItems.map((layoutItemExDto: any, index: number) => {
           const rowWithMode = {
-            ...layoutRowExDto,
+            ...layoutItemExDto,
             GrandChildEditMode: grandChildEditMode,
           };
+          const displayType = getLayoutWidgetDisplayType(layoutItemExDto);
+          const key = layoutItemExDto.Id || layoutItemExDto.CurrentHostId || `root-${index}`;
+
+          if (displayType === sectionType || displayType === tabContainerType) {
+            return (
+              <OneLayoutItem
+                key={key}
+                layoutItemExDto={rowWithMode}
+                controllerModel={controllerModel}
+                dataModel={dataModel}
+                onDataModelChange={onDataModelChange}
+                transactionExDto={transactionExDto}
+                RowComponent={OneLayoutRow}
+              />
+            );
+          }
 
           return (
             <OneLayoutRow
-              key={layoutRowExDto.Id || `row-${index}`}
+              key={key}
               layoutRowExDto={rowWithMode}
               controllerModel={controllerModel}
               dataModel={dataModel}
