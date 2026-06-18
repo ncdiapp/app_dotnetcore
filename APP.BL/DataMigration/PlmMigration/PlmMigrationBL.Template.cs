@@ -61,6 +61,7 @@ namespace APP.BL.DataMigration.PlmMigration
         private sealed class PlmTemplateSubItemRow
         {
             public int TabId { get; set; }
+            public int BlockId { get; set; }
             public int SubItemId { get; set; }
             public string SubItemName { get; set; }
             public int ControlType { get; set; }
@@ -219,7 +220,8 @@ namespace APP.BL.DataMigration.PlmMigration
             int tenantDataSourceId,
             int? saasApplicationId,
             string tablePrefix,
-            PlmExportProgressCallback progressCallback)
+            PlmExportProgressCallback progressCallback,
+            PlmTemplateImportSettingDto importSetting = null)
         {
             var result = new PlmTemplateImportResultDto();
             var preview = BuildTemplateMappingPreview(plmConnectionString, tenantConnectionString, tablePrefix);
@@ -289,6 +291,24 @@ namespace APP.BL.DataMigration.PlmMigration
                         continue;
                     ResolveSubItemColumns(tab, tablePrefix);
                     LoadGridColumnsForTab(plmConnectionString, tab, tablePrefix);
+                    ValidateTabEntities(tenantConn, tab);
+                }
+
+                if (importSetting == null)
+                {
+                    importSetting = new PlmTemplateImportSettingDto
+                    {
+                        Rows = preview.Tabs.Select(t => new PlmTemplateImportSettingRowDto
+                        {
+                            PlmTemplateId = t.PlmTemplateId,
+                            PlmTabId = t.PlmTabId,
+                            TransactionGroupName = t.PlmTemplateName,
+                            TransactionName = t.PlmTabName,
+                            IntegrationId = $"Tab_{t.PlmTabId}",
+                            SiblingTableName = t.SiblingTableName,
+                            ImportStatus = t.ImportStatus
+                        }).ToList()
+                    };
                 }
 
                 var uniqueTabs = tabRows
@@ -297,57 +317,55 @@ namespace APP.BL.DataMigration.PlmMigration
                     .Select(g => g.First())
                     .ToList();
 
+                var executionPlans = BuildTemplateTabExecutionPlans(uniqueTabs, importSetting, tablePrefix);
+                result.Warnings.AddRange(uniqueTabs.SelectMany(t => t.Warnings));
+
+                int siblingTableCount = executionPlans
+                    .SelectMany(p => p.SiblingColumnsByTable.Keys)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count();
                 int gridTableCount = uniqueTabs
                     .SelectMany(t => t.GridColumns.Select(g => g.TableName))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .Count();
 
                 progressCallback?.Invoke(8,
-                    $"Table plan: 1 root, {uniqueTabs.Count} sibling tab table(s), {gridTableCount} grid table(s).");
+                    $"Table plan: 1 root, {siblingTableCount} sibling table(s), {gridTableCount} grid table(s).");
 
-                // Phase 1 — physical tables for every tab (DDL only).
-                int tabIndex = 0;
-                foreach (var tab in uniqueTabs)
+                progressCallback?.Invoke(10, "Creating physical tables from import plan…");
+                using (var ddlTran = tenantConn.BeginTransaction())
                 {
-                    tabIndex++;
-                    int pct = 10 + (int)(45.0 * tabIndex / Math.Max(1, uniqueTabs.Count));
-                    progressCallback?.Invoke(pct, $"Creating tables for tab {tab.TabName} ({tabIndex}/{uniqueTabs.Count})…");
-
-                    using (var ddlTran = tenantConn.BeginTransaction())
+                    try
                     {
-                        try
-                        {
-                            EnsureTabPhysicalTables(tenantConn, ddlTran, tab, rootTable, tablePrefix);
-                            ddlTran.Commit();
-                        }
-                        catch (Exception ex)
-                        {
-                            ddlTran.Rollback();
-                            result.IsSuccess = false;
-                            result.ErrorMessage = ex.Message;
-                            return result;
-                        }
+                        EnsurePhysicalTablesFromPlans(tenantConn, ddlTran, rootTable, executionPlans, uniqueTabs);
+                        ddlTran.Commit();
+                    }
+                    catch (Exception ex)
+                    {
+                        ddlTran.Rollback();
+                        result.IsSuccess = false;
+                        result.ErrorMessage = ex.Message;
+                        return result;
                     }
                 }
 
                 progressCallback?.Invoke(58, "Refreshing tenant table schema cache…");
                 RefreshTenantTableSchemaCache(tenantDataSourceId);
 
-                // Phase 2 — AppTransaction per tab (after all tables exist in cache).
-                tabIndex = 0;
-                foreach (var tab in uniqueTabs)
+                int tabIndex = 0;
+                foreach (var plan in executionPlans)
                 {
                     tabIndex++;
-                    int pct = 60 + (int)(25.0 * tabIndex / Math.Max(1, uniqueTabs.Count));
-                    progressCallback?.Invoke(pct, $"Importing transaction for tab {tab.TabName} ({tabIndex}/{uniqueTabs.Count})…");
+                    int pct = 60 + (int)(25.0 * tabIndex / Math.Max(1, executionPlans.Count));
+                    progressCallback?.Invoke(pct, $"Importing transaction for tab {plan.Tab.TabName} ({tabIndex}/{executionPlans.Count})…");
 
                     try
                     {
-                        bool isUpdate = TabTransactionExists(tenantConn, null, tab.TabId);
-                        int? transactionId = UpsertTabTransaction(
-                            tenantConn, null, tab, rootTable, tablePrefix, tenantDataSourceId, saasApplicationId, isUpdate);
+                        bool isUpdate = TabTransactionExists(tenantConn, null, plan.Tab.TabId);
+                        int? transactionId = UpsertTabTransactionFromPlan(
+                            tenantConn, null, plan, rootTable, tablePrefix, tenantDataSourceId, saasApplicationId, isUpdate);
                         if (!transactionId.HasValue)
-                            throw new InvalidOperationException($"Failed to upsert transaction for tab {tab.TabId}.");
+                            throw new InvalidOperationException($"Failed to upsert transaction for tab {plan.Tab.TabId}.");
 
                         if (isUpdate)
                             result.TabsUpdated++;
@@ -474,7 +492,7 @@ ORDER BY t.TemplateID, tt.Sort, tt.TabID";
             using (var cmd = plmConn.CreateCommand())
             {
                 cmd.CommandText = @"
-SELECT bsi.SubItemID, bsi.SubItemName, bsi.ControlType, bsi.EntityId, bsi.SortOrder,
+SELECT tb.BlockID, bsi.SubItemID, bsi.SubItemName, bsi.ControlType, bsi.EntityId, bsi.SortOrder,
        bsi.GridId, bsi.ReferenceStaticFiledId, bsi.Nbdecimal
 FROM dbo.PdmTabBlock tb
 INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.BlockID = tb.BlockID
@@ -488,14 +506,15 @@ ORDER BY tb.OrderId, bsi.SortOrder, bsi.SubItemID";
                         list.Add(new PlmTemplateSubItemRow
                         {
                             TabId = tabId,
-                            SubItemId = reader.GetInt32(0),
-                            SubItemName = reader.IsDBNull(1) ? $"SubItem_{reader.GetInt32(0)}" : reader.GetString(1),
-                            ControlType = reader.GetInt32(2),
-                            EntityId = reader.IsDBNull(3) ? (int?)null : reader.GetInt32(3),
-                            SortOrder = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4),
-                            GridId = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5),
-                            ReferenceStaticFieldId = reader.IsDBNull(6) ? (int?)null : reader.GetInt32(6),
-                            Nbdecimal = reader.IsDBNull(7) ? (int?)null : reader.GetInt32(7)
+                            BlockId = reader.GetInt32(0),
+                            SubItemId = reader.GetInt32(1),
+                            SubItemName = reader.IsDBNull(2) ? $"SubItem_{reader.GetInt32(1)}" : reader.GetString(2),
+                            ControlType = reader.GetInt32(3),
+                            EntityId = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4),
+                            SortOrder = reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5),
+                            GridId = reader.IsDBNull(6) ? (int?)null : reader.GetInt32(6),
+                            ReferenceStaticFieldId = reader.IsDBNull(7) ? (int?)null : reader.GetInt32(7),
+                            Nbdecimal = reader.IsDBNull(8) ? (int?)null : reader.GetInt32(8)
                         });
                     }
                 }
@@ -776,6 +795,252 @@ CREATE TABLE dbo.[{tableName}] (
             var rootColumns = tab.SubItems.Where(s => s.MapsToRoot).Select(s => s.ColumnName).Distinct();
             foreach (var rootCol in rootColumns)
                 TemplateEnsureColumn(conn, tran, rootTable, rootCol, "nvarchar(255) NULL");
+        }
+
+        private static void EnsurePhysicalTablesFromPlans(
+            SqlConnection conn,
+            SqlTransaction tran,
+            string rootTable,
+            List<TemplateTabExecutionPlan> executionPlans,
+            List<PlmTemplateTabRow> uniqueTabs)
+        {
+            var siblingColumnsUnion = new Dictionary<string, Dictionary<string, PlmTemplateSubItemRow>>(StringComparer.OrdinalIgnoreCase);
+            var rootColumnNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var plan in executionPlans)
+            {
+                foreach (var rootSubItem in plan.RootSubItems)
+                    rootColumnNames.Add(rootSubItem.ColumnName);
+
+                foreach (var pair in plan.SiblingColumnsByTable)
+                {
+                    if (!siblingColumnsUnion.TryGetValue(pair.Key, out var cols))
+                    {
+                        cols = new Dictionary<string, PlmTemplateSubItemRow>(StringComparer.OrdinalIgnoreCase);
+                        siblingColumnsUnion[pair.Key] = cols;
+                    }
+
+                    foreach (var subItem in pair.Value)
+                        cols[subItem.ColumnName] = subItem;
+                }
+            }
+
+            foreach (var rootCol in rootColumnNames)
+                TemplateEnsureColumn(conn, tran, rootTable, rootCol, "nvarchar(255) NULL");
+
+            foreach (var pair in siblingColumnsUnion)
+            {
+                EnsureSiblingTableColumns(conn, tran, pair.Key, rootTable, pair.Value.Values.ToList());
+            }
+
+            foreach (var tab in uniqueTabs)
+            {
+                foreach (var gridGroup in tab.GridColumns.GroupBy(g => g.TableName))
+                {
+                    string gridTable = gridGroup.Key;
+                    if (!TemplateTableExists(conn, tran, gridTable))
+                    {
+                        var sb = new StringBuilder();
+                        sb.Append($"CREATE TABLE dbo.[{gridTable}] (RowId int IDENTITY(1,1) NOT NULL PRIMARY KEY, ReferenceId int NOT NULL, Sort int NULL");
+                        foreach (var col in gridGroup)
+                            sb.Append($", [{col.ColumnSqlName}] {MapControlTypeToSqlType(col.ColumnTypeId, col.Nbdecimal)}");
+                        sb.Append(")");
+                        TemplateExecuteSql(conn, tran, sb.ToString());
+                        TemplateExecuteSql(conn, tran,
+                            $"ALTER TABLE dbo.[{gridTable}] ADD CONSTRAINT FK_{gridTable}_Ref FOREIGN KEY (ReferenceId) REFERENCES dbo.[{rootTable}](ReferenceId)");
+                    }
+                    else
+                    {
+                        TemplateEnsureColumn(conn, tran, gridTable, "ReferenceId", "int NOT NULL");
+                        TemplateEnsureColumn(conn, tran, gridTable, "Sort", "int NULL");
+                        foreach (var col in gridGroup)
+                            TemplateEnsureColumn(conn, tran, gridTable, col.ColumnSqlName, MapControlTypeToSqlType(col.ColumnTypeId, col.Nbdecimal));
+                    }
+                }
+            }
+        }
+
+        private static void EnsureSiblingTableColumns(
+            SqlConnection conn,
+            SqlTransaction tran,
+            string tableName,
+            string rootTable,
+            List<PlmTemplateSubItemRow> columns)
+        {
+            if (string.IsNullOrWhiteSpace(tableName))
+                return;
+
+            if (!TemplateTableExists(conn, tran, tableName))
+            {
+                var sb = new StringBuilder();
+                sb.Append($"CREATE TABLE dbo.[{tableName}] (ReferenceId int NOT NULL PRIMARY KEY");
+                foreach (var col in columns)
+                    sb.Append($", [{col.ColumnName}] {MapControlTypeToSqlType(col.ControlType, col.Nbdecimal)}");
+                sb.Append(")");
+                TemplateExecuteSql(conn, tran, sb.ToString());
+                TemplateExecuteSql(conn, tran,
+                    $"ALTER TABLE dbo.[{tableName}] ADD CONSTRAINT FK_{tableName}_Ref FOREIGN KEY (ReferenceId) REFERENCES dbo.[{rootTable}](ReferenceId)");
+            }
+            else
+            {
+                TemplateEnsureColumn(conn, tran, tableName, "ReferenceId", "int NOT NULL");
+                foreach (var col in columns)
+                    TemplateEnsureColumn(conn, tran, tableName, col.ColumnName, MapControlTypeToSqlType(col.ControlType, col.Nbdecimal));
+            }
+        }
+
+        private static int? UpsertTabTransactionFromPlan(
+            SqlConnection conn,
+            SqlTransaction tran,
+            TemplateTabExecutionPlan plan,
+            string rootTable,
+            string tablePrefix,
+            int tenantDataSourceId,
+            int? saasApplicationId,
+            bool isUpdate)
+        {
+            var tab = plan.Tab;
+            var childTables = new List<HierarchyChildTableDto>();
+            foreach (string siblingTable in plan.SiblingColumnsByTable.Keys.Distinct(StringComparer.OrdinalIgnoreCase))
+                childTables.Add(new HierarchyChildTableDto { TableName = siblingTable });
+
+            if (childTables.Count == 0 && !string.IsNullOrWhiteSpace(plan.PrimarySiblingTable))
+                childTables.Add(new HierarchyChildTableDto { TableName = plan.PrimarySiblingTable });
+
+            foreach (var gridTable in tab.GridColumns.Select(g => g.TableName).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                if (childTables.Any(c => string.Equals(c.TableName, gridTable, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                childTables.Add(new HierarchyChildTableDto { TableName = gridTable });
+            }
+
+            var setup = new HierarchyTableSetupDto
+            {
+                MasterTableName = rootTable,
+                ChildTables = childTables,
+                DataSourceRegisterId = tenantDataSourceId,
+                SchemaOwner = "dbo",
+                TransactionName = tab.TabName,
+                SaasApplicationId = saasApplicationId
+            };
+
+            OperationCallResult<AppTransactionExDto> saveResult;
+            if (isUpdate)
+            {
+                int? existingId = GetTransactionIdByIntegrationId(conn, tran, $"Tab_{tab.TabId}");
+                if (!existingId.HasValue)
+                    isUpdate = false;
+            }
+
+            if (!isUpdate)
+            {
+                saveResult = AppTransactionBL.CreateHierarchyTransactionFromTables(setup);
+                if (!saveResult.IsSuccessfulWithResult)
+                    throw new InvalidOperationException(saveResult.ValidationResult?.Items?.FirstOrDefault()?.Message
+                        ?? $"Failed to create transaction for tab {tab.TabId}.");
+            }
+            else
+            {
+                int transactionId = GetTransactionIdByIntegrationId(conn, tran, $"Tab_{tab.TabId}").Value;
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransaction SET
+    TransactionName = @Name,
+    Description = @Description,
+    SaasApplicationID = @SaasApplicationId
+WHERE TransactionID = @TransactionId";
+                    cmd.Parameters.AddWithValue("@Name", tab.TabName);
+                    cmd.Parameters.AddWithValue("@Description", tab.TabName + " Data Edit");
+                    cmd.Parameters.AddWithValue("@SaasApplicationId", (object)saasApplicationId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+                    cmd.ExecuteNonQuery();
+                }
+                saveResult = new OperationCallResult<AppTransactionExDto>
+                {
+                    Object = AppTransactionBL.RetrieveOneAppTransactionExDto(transactionId)
+                };
+            }
+
+            ApplyTransactionFieldSubset(saveResult.Object, plan, tab);
+            var persistResult = AppTransactionBL.SaveAppTransactionExDto(saveResult.Object);
+            if (!persistResult.IsSuccessfulWithResult)
+            {
+                throw new InvalidOperationException(persistResult.ValidationResult?.Items?.FirstOrDefault()?.Message
+                    ?? $"Failed to save transaction fields for tab {tab.TabId}.");
+            }
+
+            int txId = Convert.ToInt32(persistResult.Object.Id);
+            SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, $"Tab_{tab.TabId}");
+            return txId;
+        }
+
+        private static void ApplyTransactionFieldSubset(
+            AppTransactionExDto transaction,
+            TemplateTabExecutionPlan plan,
+            PlmTemplateTabRow tab)
+        {
+            if (transaction?.AppTransactionUnitList == null)
+                return;
+
+            var visibleColumnsByTable = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in plan.SiblingColumnsByTable)
+            {
+                visibleColumnsByTable[pair.Key] = new HashSet<string>(
+                    pair.Value.Select(v => v.ColumnName),
+                    StringComparer.OrdinalIgnoreCase);
+            }
+
+            var rootColumns = new HashSet<string>(
+                plan.RootSubItems.Select(r => r.ColumnName),
+                StringComparer.OrdinalIgnoreCase);
+
+            var gridColumns = new HashSet<string>(
+                tab.GridColumns.Select(g => g.ColumnSqlName),
+                StringComparer.OrdinalIgnoreCase);
+
+            void ApplyToUnits(IEnumerable<AppTransactionUnitExDto> units, string tableName, HashSet<string> visible)
+            {
+                if (units == null)
+                    return;
+
+                foreach (var unit in units)
+                {
+                    string unitTable = unit.DataBaseTableName;
+                    HashSet<string> allowed = visible;
+                    if (!string.IsNullOrWhiteSpace(unitTable))
+                    {
+                        if (visibleColumnsByTable.TryGetValue(unitTable, out var siblingVisible))
+                            allowed = siblingVisible;
+                        else if (string.Equals(unitTable, transaction.AppTransactionUnitList.FirstOrDefault()?.DataBaseTableName, StringComparison.OrdinalIgnoreCase))
+                            allowed = rootColumns;
+                        else if (tab.GridColumns.Any(g => string.Equals(g.TableName, unitTable, StringComparison.OrdinalIgnoreCase)))
+                            allowed = gridColumns;
+                    }
+
+                    if (unit.AppTransactionFieldList != null)
+                    {
+                        foreach (var field in unit.AppTransactionFieldList)
+                        {
+                            if (field.IsPrimaryKey == true)
+                                continue;
+                            if (string.Equals(field.DataBaseFieldName, "ReferenceId", StringComparison.OrdinalIgnoreCase))
+                                continue;
+                            if (string.Equals(field.DataBaseFieldName, "Sort", StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            bool visibleField = allowed == null
+                                || allowed.Contains(field.DataBaseFieldName);
+                            field.IsVisible = visibleField;
+                        }
+                    }
+
+                    ApplyToUnits(unit.Children, unitTable, visible);
+                }
+            }
+
+            ApplyToUnits(transaction.AppTransactionUnitList, null, null);
         }
 
         private static int? UpsertTabTransaction(

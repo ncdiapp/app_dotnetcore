@@ -1,16 +1,18 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlexGrid, FlexGridColumn } from '@mescius/wijmo.react.grid';
-import { CollectionView } from '@mescius/wijmo';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
+import { CollectionView, PropertyGroupDescription } from '@mescius/wijmo';
 import '@mescius/wijmo.styles/wijmo.css';
 import { useTheme } from '../../../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../../../redux/hooks/useErrorMessage';
 import {
   plmMigrationSvc,
   PlmImportJobDto,
-  PlmTemplatePreviewItemDto,
+  PlmTemplateImportSettingDto,
+  PlmTemplateMappingGridRowDto,
 } from '../../../../webapi/plmMigrationSvc';
 import type { PlmImportTemplateStepUiState, PlmImportWizardState } from '../types';
 import { buildPlmImportStepStateJson } from '../types';
+import TemplateTabWarningDialog from './TemplateTabWarningDialog';
 
 export type TemplateStepProps = {
   state: PlmImportWizardState;
@@ -20,8 +22,24 @@ export type TemplateStepProps = {
   onSessionSaved: () => void;
 };
 
-const TEMPLATE_IMPORT_JOB = 'TemplateImport';
 const TERMINAL_JOB_STATUSES = ['Completed', 'Failed', 'Cancelled'];
+
+const buildSettingFromRows = (
+  rows: PlmTemplateMappingGridRowDto[],
+  base: PlmTemplateImportSettingDto | null,
+): PlmTemplateImportSettingDto => ({
+  Rows: rows.map((r) => ({
+    PlmTemplateId: r.PlmTemplateId,
+    PlmTabId: r.PlmTabId,
+    TransactionGroupName: r.TransactionGroupName,
+    TransactionName: r.TransactionName,
+    IntegrationId: r.IntegrationId,
+    SiblingTableName: r.SiblingTableName,
+    ImportStatus: r.ImportStatus,
+  })),
+  TabSharedTableGroups: base?.TabSharedTableGroups ? [...base.TabSharedTableGroups] : [],
+  BlockStorageOverrides: base?.BlockStorageOverrides ? [...base.BlockStorageOverrides] : [],
+});
 
 const TemplateStep: React.FC<TemplateStepProps> = ({
   state,
@@ -33,19 +51,41 @@ const TemplateStep: React.FC<TemplateStepProps> = ({
   const { theme } = useTheme();
   const { showError, showInfo, showWarning } = useErrorMessage();
 
-  const { previewItems, previewSummary, activeJob, isImporting } = templateStepUi;
-  const [previewCv] = useState<CollectionView>(() => new CollectionView<PlmTemplatePreviewItemDto>([]));
-  const [isPipelineRunning, setIsPipelineRunning] = useState(false);
+  const {
+    gridRows,
+    gridSummary,
+    importSetting,
+    blockAnalysis,
+    similarTabGroups,
+    validationMessage,
+    activeJob,
+    isAnalyzing,
+    isSaving,
+    isValidating,
+    isImporting,
+  } = templateStepUi;
+
+  const [gridCv] = useState<CollectionView>(() => new CollectionView<PlmTemplateMappingGridRowDto>([]));
   const [pipelineMessage, setPipelineMessage] = useState('');
   const [pipelinePercent, setPipelinePercent] = useState(0);
+  const [warningDialogRow, setWarningDialogRow] = useState<PlmTemplateMappingGridRowDto | null>(null);
 
   const sessionId = state.session?.SessionId ?? null;
   const finalizedJobIdsRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
-    previewCv.sourceCollection = previewItems;
-    previewCv.refresh();
-  }, [previewCv, previewItems]);
+    gridCv.sourceCollection = gridRows;
+    gridCv.groupDescriptions.clear();
+    if (gridRows.length > 0) {
+      gridCv.groupDescriptions.push(
+        new PropertyGroupDescription('PlmTemplateId', (item: PlmTemplateMappingGridRowDto) => {
+          const name = item.PlmTemplateName?.trim();
+          return name ? `${name} (ID ${item.PlmTemplateId})` : `Template ID ${item.PlmTemplateId}`;
+        }),
+      );
+    }
+    gridCv.refresh();
+  }, [gridCv, gridRows]);
 
   useEffect(() => {
     if (isImporting && !activeJob?.JobId) {
@@ -99,7 +139,6 @@ const TemplateStep: React.FC<TemplateStepProps> = ({
     }
 
     onTemplateStepUiChange({ isImporting: false, activeJob: null });
-    setIsPipelineRunning(false);
     setPipelinePercent(0);
     setPipelineMessage('');
   }, [
@@ -135,106 +174,197 @@ const TemplateStep: React.FC<TemplateStepProps> = ({
     return () => window.clearInterval(timer);
   }, [activeJob?.JobId, activeJob?.Status, pollJob, showError]);
 
-  const runPreview = useCallback(async () => {
+  const runAnalyze = useCallback(async () => {
     if (!sessionId) {
       showError('No active import session.');
-      return null;
+      return;
     }
-    const result = await plmMigrationSvc.previewTemplateMapping(sessionId);
-    if (!result.Object?.IsSuccess) {
-      const msg = result.Object?.ErrorMessage
-        || result.ValidationResult?.Items?.map((i) => i.Message).join('; ')
-        || 'Template preview failed.';
-      showError(msg);
-      return null;
+    onTemplateStepUiChange({ isAnalyzing: true, validationMessage: null });
+    try {
+      const result = await plmMigrationSvc.getTemplateTabMappingGrid(sessionId);
+      const grid = result.Object;
+      if (!grid?.IsSuccess) {
+        showError(grid?.ErrorMessage || 'Template analyze failed.');
+        return;
+      }
+      const rows = grid.Rows ?? [];
+      const summary = `${grid.TemplateCount} template(s) · ${grid.ReadyCount} ready · ${grid.SkippedCount} skipped · ${grid.WarningCount} warning(s)`;
+      const setting = grid.SavedSetting || buildSettingFromRows(rows, null);
+      onTemplateStepUiChange({
+        gridRows: rows,
+        gridSummary: summary,
+        importSetting: setting,
+        blockAnalysis: grid.Blocks ?? [],
+        similarTabGroups: grid.SimilarTabGroups ?? [],
+      });
+      if (grid.BlockerCount && grid.BlockerCount > 0) {
+        showWarning(`${grid.BlockerCount} blocker(s) found. Resolve before import.`);
+      }
+    } catch (e: any) {
+      showError(e?.message || 'Template analyze failed.');
+    } finally {
+      onTemplateStepUiChange({ isAnalyzing: false });
     }
-    const preview = result.Object;
-    const items = preview.Tabs ?? [];
-    const summary = `${preview.TemplateCount} template(s) · ${preview.ReadyCount} ready tab(s) · ${preview.SkippedCount} skipped · ${preview.WarningCount} warning(s)`;
-    onTemplateStepUiChange({ previewItems: items, previewSummary: summary });
-
-    if (preview.BlockerCount && preview.BlockerCount > 0) {
-      showWarning(`${preview.BlockerCount} blocker(s) found. Resolve before import.`);
-    } else if (preview.WarningCount && preview.WarningCount > 0) {
-      showWarning(`${preview.WarningCount} warning(s) — see import log after preview.`);
-    }
-    return preview;
   }, [onTemplateStepUiChange, sessionId, showError, showWarning]);
+
+  const currentSetting = useMemo(
+    () => buildSettingFromRows(gridRows, importSetting),
+    [gridRows, importSetting],
+  );
+
+  const runSave = useCallback(async () => {
+    if (!sessionId) {
+      showError('No active import session.');
+      return;
+    }
+    onTemplateStepUiChange({ isSaving: true });
+    try {
+      const result = await plmMigrationSvc.saveTemplateMapping(sessionId, currentSetting);
+      if (!result.Object) {
+        const msg = result.ValidationResult?.Items?.map((i) => i.Message).join('; ') || 'Save failed.';
+        showError(msg);
+        return;
+      }
+      onTemplateStepUiChange({ importSetting: result.Object });
+      showInfo('Template mapping saved.', true);
+    } catch (e: any) {
+      showError(e?.message || 'Save failed.');
+    } finally {
+      onTemplateStepUiChange({ isSaving: false });
+    }
+  }, [currentSetting, onTemplateStepUiChange, sessionId, showError, showInfo]);
+
+  const runValidate = useCallback(async () => {
+    if (!sessionId) {
+      showError('No active import session.');
+      return;
+    }
+    onTemplateStepUiChange({ isValidating: true });
+    try {
+      const result = await plmMigrationSvc.validateTemplateMapping(sessionId, currentSetting);
+      const validation = result.Object;
+      if (!validation) {
+        showError('Validation failed.');
+        return;
+      }
+      const parts = [
+        ...(validation.Errors || []).map((e) => `Error: ${e}`),
+        ...(validation.Warnings || []).map((w) => `Warning: ${w}`),
+      ];
+      const message = parts.length ? parts.join('\n') : 'Validation passed.';
+      onTemplateStepUiChange({ validationMessage: message });
+      if (validation.IsValid) {
+        showInfo('Validation passed.', true);
+      } else {
+        showError((validation.Errors || []).join('; ') || 'Validation failed.');
+      }
+    } catch (e: any) {
+      showError(e?.message || 'Validation failed.');
+    } finally {
+      onTemplateStepUiChange({ isValidating: false });
+    }
+  }, [currentSetting, onTemplateStepUiChange, sessionId, showError, showInfo]);
 
   const runImport = useCallback(async () => {
     if (!sessionId) {
       showError('No active import session.');
       return;
     }
-    onTemplateStepUiChange({ isImporting: true });
-    const result = await plmMigrationSvc.executeTemplateImport(sessionId);
-    if (!result.Object?.JobId) {
-      onTemplateStepUiChange({ isImporting: false });
-      const msg = result.ValidationResult?.Items?.map((i) => i.Message).join('; ')
-        || 'Failed to start template import.';
-      showError(msg);
+    const readyCount = gridRows.filter((r) => r.ImportStatus === 'Ready').length;
+    if (readyCount === 0) {
+      showWarning('No ready tabs to import. Run Analyze first.');
       return;
     }
-    onTemplateStepUiChange({ activeJob: result.Object });
-    setPipelinePercent(result.Object.ProgressPercent ?? 0);
-    setPipelineMessage(result.Object.ProgressMessage ?? 'Template import started…');
-  }, [onTemplateStepUiChange, sessionId, showError]);
-
-  const handleImportTemplates = useCallback(async () => {
-    if (!sessionId || isPipelineRunning) return;
-    setIsPipelineRunning(true);
-    setPipelineMessage('Listing PLM templates…');
+    onTemplateStepUiChange({ isImporting: true });
+    setPipelineMessage('Starting template structure import…');
     setPipelinePercent(2);
     try {
-      const preview = await runPreview();
-      if (!preview || (preview.BlockerCount ?? 0) > 0) {
-        setIsPipelineRunning(false);
-        setPipelineMessage('');
-        setPipelinePercent(0);
+      const saveResult = await plmMigrationSvc.saveTemplateMapping(sessionId, currentSetting);
+      if (!saveResult.Object) {
+        const msg = saveResult.ValidationResult?.Items?.map((i) => i.Message).join('; ')
+          || 'Save mapping before import failed.';
+        showError(msg);
+        onTemplateStepUiChange({ isImporting: false });
         return;
       }
-      if ((preview.ReadyCount ?? 0) === 0) {
-        showWarning('No ready tabs to import.');
-        setIsPipelineRunning(false);
-        setPipelineMessage('');
-        setPipelinePercent(0);
+      const result = await plmMigrationSvc.executeTemplateImport(sessionId);
+      if (!result.Object?.JobId) {
+        onTemplateStepUiChange({ isImporting: false });
+        const msg = result.ValidationResult?.Items?.map((i) => i.Message).join('; ')
+          || 'Failed to start template import.';
+        showError(msg);
         return;
       }
-      setPipelineMessage('Starting template structure import…');
-      setPipelinePercent(5);
-      await runImport();
+      onTemplateStepUiChange({ activeJob: result.Object, importSetting: saveResult.Object });
+      setPipelinePercent(result.Object.ProgressPercent ?? 0);
+      setPipelineMessage(result.Object.ProgressMessage ?? 'Template import started…');
     } catch (e: any) {
       showError(e?.message || 'Template import failed.');
-      setIsPipelineRunning(false);
       onTemplateStepUiChange({ isImporting: false });
-      setPipelineMessage('');
-      setPipelinePercent(0);
     }
-  }, [isPipelineRunning, onTemplateStepUiChange, runImport, runPreview, sessionId, showError, showWarning]);
+  }, [currentSetting, gridRows, onTemplateStepUiChange, sessionId, showError, showWarning]);
 
-  const busy = isPipelineRunning || isImporting;
+  const dialogBlocks = useMemo(() => {
+    if (!warningDialogRow) return [];
+    return blockAnalysis.filter((b) =>
+      (b.ReferencedTabLabels || []).some((l) => l.includes(warningDialogRow.PlmTabName || '')));
+  }, [blockAnalysis, warningDialogRow]);
+
+  const dialogSimilarGroups = useMemo(() => {
+    if (!warningDialogRow?.SimilarTabGroupId) return [];
+    return similarTabGroups.filter((g) => g.GroupId === warningDialogRow.SimilarTabGroupId);
+  }, [similarTabGroups, warningDialogRow]);
+
+  const busy = isAnalyzing || isSaving || isValidating || isImporting;
 
   return (
     <div className="flex flex-col h-full overflow-hidden p-4 gap-3">
       <div>
         <h2 className={`text-sm font-semibold ${theme.label}`}>Step 3 — Template Import</h2>
         <p className={`text-xs mt-1 ${theme.menu_secondary}`}>
-          Map PLM template layout to Data Model Template (AppSearch), tab transactions, units, and physical tables.
+          Analyze template × tab mapping, optionally resolve warnings, save, validate, then import structure.
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-[4px] ${theme.button_secondary} disabled:opacity-40`}
-          onClick={handleImportTemplates}
+          className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default} disabled:opacity-40`}
+          onClick={runAnalyze}
           disabled={busy || !sessionId}
         >
-          <i className={`fa-solid ${busy ? 'fa-spinner fa-spin' : 'fa-file-import'}`} />
-          Import Templates
+          <i className={`fa-solid ${isAnalyzing ? 'fa-spinner fa-spin' : 'fa-magnifying-glass'} mr-1`} />
+          Analyze
         </button>
-        {previewSummary && (
-          <span className={`text-xs ${theme.menu_secondary}`}>{previewSummary}</span>
+        <button
+          type="button"
+          className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default} disabled:opacity-40`}
+          onClick={runSave}
+          disabled={busy || !sessionId || gridRows.length === 0}
+        >
+          <i className={`fa-solid ${isSaving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'} mr-1`} />
+          Save
+        </button>
+        <button
+          type="button"
+          className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default} disabled:opacity-40`}
+          onClick={runValidate}
+          disabled={busy || !sessionId || gridRows.length === 0}
+        >
+          <i className={`fa-solid ${isValidating ? 'fa-spinner fa-spin' : 'fa-check'} mr-1`} />
+          Validate
+        </button>
+        <button
+          type="button"
+          className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_secondary} disabled:opacity-40`}
+          onClick={runImport}
+          disabled={busy || !sessionId}
+        >
+          <i className={`fa-solid ${isImporting ? 'fa-spinner fa-spin' : 'fa-file-import'} mr-1`} />
+          Run Import
+        </button>
+        {gridSummary && (
+          <span className={`text-xs ${theme.menu_secondary}`}>{gridSummary}</span>
         )}
         {state.templatesComplete && (
           <span className={`text-xs font-semibold ${theme.label}`}>
@@ -244,7 +374,11 @@ const TemplateStep: React.FC<TemplateStepProps> = ({
         )}
       </div>
 
-      {(busy || pipelineMessage) && (
+      {validationMessage && (
+        <pre className={`text-xs whitespace-pre-wrap rounded border px-3 py-2 ${theme.inputBox}`}>{validationMessage}</pre>
+      )}
+
+      {(isImporting || pipelineMessage) && (
         <div className={`rounded border px-3 py-2 text-xs ${theme.inputBox}`}>
           <div className={`mb-1 ${theme.menu_secondary}`}>{pipelineMessage || 'Working…'}</div>
           <div className={`h-2 rounded overflow-hidden ${theme.mainContentSection}`}>
@@ -258,25 +392,70 @@ const TemplateStep: React.FC<TemplateStepProps> = ({
 
       <div className={`h-1 flex-auto min-h-[200px] rounded border overflow-hidden ${theme.inputBox}`}>
         <FlexGrid
-          itemsSource={previewCv}
-          headersVisibility="Column"
+          itemsSource={gridCv}
+          headersVisibility="All"
           selectionMode="Row"
-          isReadOnly
           className="h-full"
+          cellEditEnded={(s: any, e: any) => {
+            const flex = s?.control ?? s;
+            const item = flex?.rows?.[e.row]?.dataItem as PlmTemplateMappingGridRowDto | undefined;
+            if (!item) return;
+            const next = gridRows.map((r) => (
+              r.PlmTemplateId === item.PlmTemplateId && r.PlmTabId === item.PlmTabId
+                ? { ...item }
+                : r
+            ));
+            onTemplateStepUiChange({ gridRows: next });
+          }}
         >
-          <FlexGridColumn header="Template" binding="PlmTemplateName" width={120} />
-          <FlexGridColumn header="Tab" binding="PlmTabName" width={120} />
-          <FlexGridColumn header="Type" binding="TabType" width={90} />
-          <FlexGridColumn header="Status" binding="ImportStatus" width={70} />
-          <FlexGridColumn header="Action" binding="ImportAction" width={70} />
+          <FlexGridColumn header="Tab" binding="PlmTabName" width={100} isReadOnly />
+          <FlexGridColumn header="Txn Group" binding="TransactionGroupName" width={110} isReadOnly />
+          <FlexGridColumn header="Transaction" binding="TransactionName" width={100} isReadOnly />
           <FlexGridColumn header="Sibling Table" binding="SiblingTableName" width={140} />
-          <FlexGridColumn header="Child Tables" binding="ChildTableNames" width="*" />
-          <FlexGridColumn header="Fields" binding="SiblingFieldCount" width={55} />
-          <FlexGridColumn header="Grid Cols" binding="GridFieldCount" width={65} />
-          <FlexGridColumn header="Warn" binding="WarningCount" width={50} />
-          <FlexGridColumn header="" binding="" width="*" />
+          <FlexGridColumn header="Status" binding="ImportStatus" width={70} isReadOnly />
+          <FlexGridColumn header="Action" binding="ImportAction" width={65} isReadOnly />
+          <FlexGridColumn header="Warn" binding="ShowTabWarning" width={50} isReadOnly>
+            <FlexGridCellTemplate
+              cellType="Cell"
+              template={(ctx: { item: PlmTemplateMappingGridRowDto }) => (
+                ctx.item.ShowTabWarning ? (
+                  <button
+                    type="button"
+                    className={`text-amber-500 ${theme.contextMenu}`}
+                    title="Open tab warnings"
+                    onClick={() => setWarningDialogRow(ctx.item)}
+                  >
+                    <i className="fa-solid fa-triangle-exclamation" />
+                  </button>
+                ) : null
+              )}
+            />
+          </FlexGridColumn>
+          <FlexGridColumn header="" binding="" width="*" isReadOnly />
         </FlexGrid>
       </div>
+
+      <TemplateTabWarningDialog
+        open={!!warningDialogRow}
+        tabLabel={warningDialogRow ? `${warningDialogRow.PlmTemplateName} / ${warningDialogRow.PlmTabName}` : ''}
+        blocks={dialogBlocks}
+        similarTabGroups={dialogSimilarGroups}
+        importSetting={currentSetting}
+        onClose={() => setWarningDialogRow(null)}
+        onApply={(setting) => {
+          let rows = [...gridRows];
+          for (const group of setting.TabSharedTableGroups || []) {
+            if (!group.SharedTableName) continue;
+            for (const tabId of group.TabIds || []) {
+              rows = rows.map((r) => (
+                r.PlmTabId === tabId ? { ...r, SiblingTableName: group.SharedTableName } : r
+              ));
+            }
+          }
+          onTemplateStepUiChange({ importSetting: setting, gridRows: rows });
+          showInfo('Tab warning overrides applied. Click Save to persist.', true);
+        }}
+      />
     </div>
   );
 };

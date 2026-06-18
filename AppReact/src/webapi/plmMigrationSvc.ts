@@ -243,6 +243,94 @@ export interface PlmTemplatePreviewDto {
   Tabs?: PlmTemplatePreviewItemDto[];
 }
 
+export interface PlmTemplateMappingGridRowDto {
+  PlmTemplateId: number;
+  PlmTemplateName?: string | null;
+  PlmTabId: number;
+  PlmTabName?: string | null;
+  TabType?: string | null;
+  ImportStatus?: string | null;
+  ImportAction?: string | null;
+  TransactionGroupName?: string | null;
+  TransactionName?: string | null;
+  IntegrationId?: string | null;
+  SiblingTableName?: string | null;
+  ChildTableNames?: string | null;
+  SiblingFieldCount: number;
+  GridFieldCount: number;
+  WarningCount: number;
+  SkipReason?: string | null;
+  ShowTabWarning: boolean;
+  SimilarTabGroupId?: string | null;
+  SimilarTabJaccard?: number | null;
+}
+
+export interface PlmTemplateBlockAnalysisDto {
+  BlockId: number;
+  BlockName?: string | null;
+  ReferencedTabCount: number;
+  ReferencedTabLabels?: string[];
+}
+
+export interface PlmTemplateSimilarTabGroupDto {
+  GroupId?: string | null;
+  PlmTemplateId: number;
+  SuggestedSharedTableName?: string | null;
+  JaccardScore: number;
+  TabIds?: number[];
+  TabLabels?: string[];
+}
+
+export interface PlmTemplateMappingGridDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  TemplateCount: number;
+  ReadyCount: number;
+  SkippedCount: number;
+  BlockerCount: number;
+  WarningCount: number;
+  Rows?: PlmTemplateMappingGridRowDto[];
+  Blocks?: PlmTemplateBlockAnalysisDto[];
+  SimilarTabGroups?: PlmTemplateSimilarTabGroupDto[];
+  Blockers?: Array<{ PlmTabId?: number | null; PlmTabName?: string | null; Issue?: string | null }>;
+  Warnings?: Array<{ Issue?: string | null }>;
+  SavedSetting?: PlmTemplateImportSettingDto | null;
+}
+
+export interface PlmTemplateImportSettingRowDto {
+  PlmTemplateId: number;
+  PlmTabId: number;
+  TransactionGroupName?: string | null;
+  TransactionName?: string | null;
+  IntegrationId?: string | null;
+  SiblingTableName?: string | null;
+  ImportStatus?: string | null;
+}
+
+export interface PlmTemplateTabSharedTableGroupDto {
+  GroupId?: string | null;
+  SharedTableName?: string | null;
+  TabIds?: number[];
+}
+
+export interface PlmTemplateBlockStorageOverrideDto {
+  BlockId: number;
+  StorageTarget?: string | null;
+  SharedTableName?: string | null;
+}
+
+export interface PlmTemplateImportSettingDto {
+  Rows?: PlmTemplateImportSettingRowDto[];
+  TabSharedTableGroups?: PlmTemplateTabSharedTableGroupDto[];
+  BlockStorageOverrides?: PlmTemplateBlockStorageOverrideDto[];
+}
+
+export interface PlmTemplateMappingValidationDto {
+  IsValid: boolean;
+  Errors?: string[];
+  Warnings?: string[];
+}
+
 class PlmMigrationService {
   private baseUrl = `${endpoints.BASE_URL}/webapi/PlmMigration`;
 
@@ -387,6 +475,41 @@ class PlmMigrationService {
       headers: getHeaders(),
     });
     if (!response.ok) throw new Error('Failed to preview template mapping');
+    return response.json();
+  }
+
+  async getTemplateTabMappingGrid(sessionId: number): Promise<OperationCallResult<PlmTemplateMappingGridDto>> {
+    const response = await fetch(`${this.baseUrl}/GetTemplateTabMappingGrid?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to analyze template mapping grid');
+    return response.json();
+  }
+
+  async saveTemplateMapping(
+    sessionId: number,
+    setting: PlmTemplateImportSettingDto,
+  ): Promise<OperationCallResult<PlmTemplateImportSettingDto>> {
+    const response = await fetch(`${this.baseUrl}/SaveTemplateMapping?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(setting),
+    });
+    if (!response.ok) throw new Error('Failed to save template mapping');
+    return response.json();
+  }
+
+  async validateTemplateMapping(
+    sessionId: number,
+    setting: PlmTemplateImportSettingDto,
+  ): Promise<OperationCallResult<PlmTemplateMappingValidationDto>> {
+    const response = await fetch(`${this.baseUrl}/ValidateTemplateMapping?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(setting),
+    });
+    if (!response.ok) throw new Error('Failed to validate template mapping');
     return response.json();
   }
 

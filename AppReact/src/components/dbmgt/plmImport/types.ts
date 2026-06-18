@@ -4,7 +4,10 @@ import type {
   PlmTableExportPlanItemDto,
   PlmSystemDefineEntityPreviewItemDto,
   PlmUserDefineEntityPreviewItemDto,
-  PlmTemplatePreviewItemDto,
+  PlmTemplateMappingGridRowDto,
+  PlmTemplateImportSettingDto,
+  PlmTemplateBlockAnalysisDto,
+  PlmTemplateSimilarTabGroupDto,
 } from '../../../webapi/plmMigrationSvc';
 
 export type PlmImportStepCode = 'Connect' | 'Entity' | 'Template' | 'OtherData';
@@ -62,9 +65,16 @@ export interface PlmImportEntityStepUiState {
 
 /** Template step UI persisted across main app tab switches. */
 export interface PlmImportTemplateStepUiState {
-  previewItems: PlmTemplatePreviewItemDto[];
-  previewSummary: string | null;
+  gridRows: PlmTemplateMappingGridRowDto[];
+  gridSummary: string | null;
+  importSetting: PlmTemplateImportSettingDto | null;
+  blockAnalysis: PlmTemplateBlockAnalysisDto[];
+  similarTabGroups: PlmTemplateSimilarTabGroupDto[];
+  validationMessage: string | null;
   activeJob: PlmImportJobDto | null;
+  isAnalyzing: boolean;
+  isSaving: boolean;
+  isValidating: boolean;
   isImporting: boolean;
 }
 
@@ -87,9 +97,16 @@ export const createInitialEntityStepUi = (): PlmImportEntityStepUiState => ({
 });
 
 export const createInitialTemplateStepUi = (): PlmImportTemplateStepUiState => ({
-  previewItems: [],
-  previewSummary: null,
+  gridRows: [],
+  gridSummary: null,
+  importSetting: null,
+  blockAnalysis: [],
+  similarTabGroups: [],
+  validationMessage: null,
   activeJob: null,
+  isAnalyzing: false,
+  isSaving: false,
+  isValidating: false,
   isImporting: false,
 });
 

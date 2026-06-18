@@ -588,6 +588,70 @@ VALUES
             public bool templatesComplete { get; set; }
             public string tablePrefix { get; set; }
             public string entityWideTablePrefix { get; set; }
+            public string templateImportSettingJson { get; set; }
+        }
+
+        internal static PlmTemplateImportSettingDto LoadTemplateImportSetting(string stepStateJson)
+        {
+            if (string.IsNullOrWhiteSpace(stepStateJson))
+                return null;
+
+            try
+            {
+                var state = JsonConvert.DeserializeObject<PlmImportStepStateJson>(stepStateJson);
+                if (state == null || string.IsNullOrWhiteSpace(state.templateImportSettingJson))
+                    return null;
+
+                return JsonConvert.DeserializeObject<PlmTemplateImportSettingDto>(state.templateImportSettingJson);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        internal static string MergeTemplateImportSettingIntoStepState(string stepStateJson, PlmTemplateImportSettingDto setting)
+        {
+            PlmImportStepStateJson state;
+            try
+            {
+                state = string.IsNullOrWhiteSpace(stepStateJson)
+                    ? new PlmImportStepStateJson()
+                    : JsonConvert.DeserializeObject<PlmImportStepStateJson>(stepStateJson) ?? new PlmImportStepStateJson();
+            }
+            catch
+            {
+                state = new PlmImportStepStateJson();
+            }
+
+            state.templateImportSettingJson = setting == null
+                ? null
+                : JsonConvert.SerializeObject(setting);
+            return JsonConvert.SerializeObject(state);
+        }
+
+        internal static void PersistTemplateImportSetting(DatabaseFixture fixture, int sessionId, int companyId, PlmTemplateImportSettingDto setting)
+        {
+            var session = LoadSessionById(fixture, sessionId, includeConnection: false);
+            if (session == null)
+                throw new InvalidOperationException("Import session not found.");
+
+            string merged = MergeTemplateImportSettingIntoStepState(session.StepStateJson, setting);
+            var pId = fixture.CreateParameter("@SessionId");
+            pId.Value = sessionId;
+            fixture.ExecuteNonQueryResult(@"
+UPDATE dbo.AppPlmImportSession SET
+    UpdatedAt = @UpdatedAt,
+    StepStateJson = @StepStateJson
+WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Status",
+                new List<DbParameter>
+                {
+                    CreateParam(fixture, "@UpdatedAt", DateTime.UtcNow),
+                    CreateParam(fixture, "@StepStateJson", merged),
+                    pId,
+                    CreateParam(fixture, "@CompanyId", companyId),
+                    CreateParam(fixture, "@Status", SessionStatusInProgress)
+                });
         }
 
         internal static PlmImportPrefixSettings ResolveImportPrefixes(string stepStateJson)

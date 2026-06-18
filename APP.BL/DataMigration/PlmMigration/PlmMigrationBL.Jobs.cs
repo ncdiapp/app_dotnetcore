@@ -441,7 +441,8 @@ UPDATE dbo.AppPlmImportJob SET
                     if (IsJobCancellationRequested(context.JobId))
                         throw new OperationCanceledException("Import cancelled.");
                     UpdateJobProgress(fixture, context.JobId, JobStatusRunning, percent, message);
-                });
+                },
+                LoadTemplateImportSetting(session?.StepStateJson));
 
             string resultJson = JsonConvert.SerializeObject(importResult);
 

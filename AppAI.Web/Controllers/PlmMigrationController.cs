@@ -207,6 +207,45 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("GetTemplateTabMappingGrid")]
+    public OperationCallResult<PlmTemplateMappingGridDto> GetTemplateTabMappingGrid(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.GetTemplateTabMappingGrid(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmTemplateMappingGridDto>("Plm_Template_Grid_Error", ex);
+        }
+    }
+
+    [HttpPost("SaveTemplateMapping")]
+    public OperationCallResult<PlmTemplateImportSettingDto> SaveTemplateMapping(int? sessionId, [FromBody] PlmTemplateImportSettingDto setting)
+    {
+        try
+        {
+            return PlmMigrationBL.SaveTemplateMapping(sessionId, setting);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmTemplateImportSettingDto>("Plm_Template_Save_Error", ex);
+        }
+    }
+
+    [HttpPost("ValidateTemplateMapping")]
+    public OperationCallResult<PlmTemplateMappingValidationDto> ValidateTemplateMapping(int? sessionId, [FromBody] PlmTemplateImportSettingDto setting)
+    {
+        try
+        {
+            return PlmMigrationBL.ValidateTemplateMapping(sessionId, setting);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmTemplateMappingValidationDto>("Plm_Template_Validate_Error", ex);
+        }
+    }
+
     [HttpPost("ExecuteTemplateImport")]
     public OperationCallResult<PlmImportJobDto> ExecuteTemplateImport(int? sessionId)
     {
