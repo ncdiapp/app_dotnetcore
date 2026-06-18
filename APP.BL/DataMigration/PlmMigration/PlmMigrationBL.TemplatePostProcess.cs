@@ -30,17 +30,18 @@ namespace APP.BL.DataMigration.PlmMigration
             public bool IsVisible { get; set; }
             public bool IsFolderId { get; set; }
             public bool IsTransRootId { get; set; }
+            public int? ControlType { get; set; }
         }
 
         private static readonly TemplateSearchViewFieldSpec[] ReferenceBasicInfoViewFields =
         {
-            new TemplateSearchViewFieldSpec { ColumnName = "ReferenceId", DisplayText = "Reference Id", IsVisible = false, IsTransRootId = true },
-            new TemplateSearchViewFieldSpec { ColumnName = "ReferenceCode", DisplayText = "Reference Code", IsVisible = true },
-            new TemplateSearchViewFieldSpec { ColumnName = "Description", DisplayText = "Description", IsVisible = true },
-            new TemplateSearchViewFieldSpec { ColumnName = "Description2", DisplayText = "Description 2", IsVisible = true },
-            new TemplateSearchViewFieldSpec { ColumnName = "Image", DisplayText = "Image", IsVisible = false },
-            new TemplateSearchViewFieldSpec { ColumnName = "FolderId", DisplayText = "Folder Id", IsVisible = false, IsFolderId = true },
-            new TemplateSearchViewFieldSpec { ColumnName = "MasterReferenceId", DisplayText = "Master Reference Id", IsVisible = false },
+            new TemplateSearchViewFieldSpec { ColumnName = "ReferenceId", DisplayText = "Reference Id", IsVisible = false, IsTransRootId = true, ControlType = (int)EmAppControlType.TextBox },
+            new TemplateSearchViewFieldSpec { ColumnName = "ReferenceCode", DisplayText = "Reference Code", IsVisible = true, ControlType = (int)EmAppControlType.TextBox },
+            new TemplateSearchViewFieldSpec { ColumnName = "Description", DisplayText = "Description", IsVisible = true, ControlType = (int)EmAppControlType.TextBox },
+            new TemplateSearchViewFieldSpec { ColumnName = "Description2", DisplayText = "Description 2", IsVisible = true, ControlType = (int)EmAppControlType.TextBox },
+            new TemplateSearchViewFieldSpec { ColumnName = "Image", DisplayText = "Image", IsVisible = false, ControlType = (int)EmAppControlType.Image },
+            new TemplateSearchViewFieldSpec { ColumnName = "FolderId", DisplayText = "Folder Id", IsVisible = false, IsFolderId = true, ControlType = (int)EmAppControlType.TextBox },
+            new TemplateSearchViewFieldSpec { ColumnName = "MasterReferenceId", DisplayText = "Master Reference Id", IsVisible = false, ControlType = (int)EmAppControlType.TextBox },
         };
 
         private static void EnsureTabTransactionForms(
@@ -327,7 +328,7 @@ WHERE SearchId = @SearchId";
                     IsVisible = spec.IsVisible,
                     SysTableFiledPath = spec.ColumnName,
                     DisplayText = spec.DisplayText,
-                    ControlType = (int)EmAppControlType.TextBox
+                    ControlType = spec.ControlType ?? (int)EmAppControlType.TextBox
                 };
                 if (spec.IsFolderId)
                 {

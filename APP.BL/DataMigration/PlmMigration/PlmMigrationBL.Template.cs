@@ -1130,6 +1130,8 @@ WHERE TransactionID = @TransactionId";
                 ApplyTransactionFieldSubsetSql(conn, tran, txId, rootTable, plan, tab);
             }
 
+            ApplyTransactionFieldPlmMetadataSql(conn, tran, txId, plan, tab);
+
             FixTabTransactionUnitStructure(
                 conn, tran, txId, rootTable,
                 siblingTableNames,
