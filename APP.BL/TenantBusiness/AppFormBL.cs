@@ -770,6 +770,17 @@ namespace App.BL
         }
 
 
+        /// <summary>Sets AppForm.LayoutType to Flex without regenerating layout items (fast PLM import fix).</summary>
+        public static void EnsureAppFormLayoutTypeFlex(int formId)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                var entity = new AppFormEntity { FormId = formId, LayoutType = (int)EmAppFormLayoutType.Flex };
+                adapter.UpdateEntitiesDirectly(entity, new RelationPredicateBucket(AppFormFields.FormId == formId));
+            }
+        }
+
+
         public static AppFormEntity RetrieveSimpleAppFormEntity(object FormId)
         {
             using (DataAccessAdapter adpater = AppTenantAdapterBL.GetTenantAdapter())
