@@ -5,6 +5,36 @@
  * - OR IsInSysAdminDomain
  * - OR DomainId/domainId fallback: SysAdmin=1, SaasCompanyAdmin=6
  */
+/** DictAppSetup values are strings from AppTenantSetting (e.g. "true", "1"). */
+export const readDictAppSetupBool = (
+  dictAppSetup: Record<string, unknown> | null | undefined,
+  key: string,
+  defaultValue = false
+): boolean => {
+  if (!dictAppSetup) return defaultValue;
+  const raw =
+    dictAppSetup[key] ??
+    (dictAppSetup as Record<string, unknown>)[key.toLowerCase()] ??
+    (dictAppSetup as Record<string, unknown>)[key.toUpperCase()];
+  if (raw == null || raw === '') return defaultValue;
+  if (raw === true || raw === 1 || raw === '1') return true;
+  if (raw === false || raw === 0 || raw === '0') return false;
+  const s = String(raw).trim().toLowerCase();
+  if (s === 'true' || s === 'yes') return true;
+  if (s === 'false' || s === 'no') return false;
+  return defaultValue;
+};
+
+/**
+ * Configuration menu on transaction forms: tenant setting EnableConfigurationMode.
+ * Defaults to enabled for admin users when the setting is absent (Angular parity).
+ */
+export const isEnableConfigurationModeForUser = (userContext: any): boolean => {
+  const isAdmin = isAdminUserFromContext(userContext);
+  const dict = userContext?.DictAppSetup ?? userContext?.dictAppSetup;
+  return readDictAppSetupBool(dict, 'EnableConfigurationMode', isAdmin);
+};
+
 export const isAdminUserFromContext = (userContext: any): boolean => {
   if (!userContext) return false;
 

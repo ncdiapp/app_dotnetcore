@@ -28,6 +28,10 @@ import {
   type MasterDataPickerContext,
 } from '../../linkedSearchUtils';
 import PivotEditGridPanel from './PivotEditGridPanel';
+import {
+  enrichTransactionFieldFromDict,
+  isRuntimeTransactionFieldVisible,
+} from './flexLayoutItemHelper';
 
 interface DataGridLayoutProps {
   unitExDto: any;
@@ -1189,20 +1193,19 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     if (!unitExDto?.AppTransactionFieldList) {
       return [];
     }
-    
+
+    const dictAll = transactionExDto?.DictAllTransactionField as Record<string | number, any> | undefined;
+
     // Filter visible fields and sort by SortOrder
     return unitExDto.AppTransactionFieldList
-      .filter((field: any) => {
-        // Angular parity:
-        // if (!field.IsFormLayoutVisible.HasValue || field.IsFormLayoutVisible.Value)
-        return field.IsFormLayoutVisible == null || normalizeBool(field.IsFormLayoutVisible);
-      })
+      .map((field: any) => enrichTransactionFieldFromDict(field, dictAll))
+      .filter((field: any) => isRuntimeTransactionFieldVisible(field))
       .sort((a: any, b: any) => {
         const sortA = a.SortOrder || 0;
         const sortB = b.SortOrder || 0;
         return sortA - sortB;
       });
-  }, [unitExDto]);
+  }, [unitExDto, transactionExDto?.DictAllTransactionField]);
 
   // API / JSON may use PascalCase or camelCase; missing enum dict still uses 5 / 6.
   const rawGridDisplay =
@@ -1246,10 +1249,12 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
 
   const sourceFields = useMemo(() => {
     if (!sourceUnitExDto?.AppTransactionFieldList) return [];
+    const dictAll = transactionExDto?.DictAllTransactionField as Record<string | number, any> | undefined;
     return sourceUnitExDto.AppTransactionFieldList
-      .filter((field: any) => field.IsFormLayoutVisible == null || normalizeBool(field.IsFormLayoutVisible))
+      .map((field: any) => enrichTransactionFieldFromDict(field, dictAll))
+      .filter((field: any) => isRuntimeTransactionFieldVisible(field))
       .sort((a: any, b: any) => (a.SortOrder || 0) - (b.SortOrder || 0));
-  }, [sourceUnitExDto]);
+  }, [sourceUnitExDto, transactionExDto?.DictAllTransactionField]);
 
   const mappingSubscribeField = useMemo(() => {
     if (!fields.length) return null;
@@ -1282,12 +1287,12 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     const sorted = [...sourceUnitExDto.AppTransactionFieldList].sort(
       (a: any, b: any) => (a.SortOrder || 0) - (b.SortOrder || 0)
     );
-    const visible = sorted.filter(
-      (f: any) => f.IsFormLayoutVisible == null || normalizeBool(f.IsFormLayoutVisible)
-    );
+    const visible = sorted
+      .map((f: any) => enrichTransactionFieldFromDict(f, transactionExDto?.DictAllTransactionField))
+      .filter((f: any) => isRuntimeTransactionFieldVisible(f));
     const firstText = visible.find((f: any) => Number(f.ControlType) === textBoxType);
     return firstText?.DataBaseFieldName ?? mappingSourceDb;
-  }, [sourceUnitExDto, mappingSourceDb, emAppControlTypeEnum?.TextBox]);
+  }, [sourceUnitExDto, mappingSourceDb, emAppControlTypeEnum?.TextBox, transactionExDto?.DictAllTransactionField]);
 
   const availableSelectConfigOk =
     isAvailableSelectLayout &&

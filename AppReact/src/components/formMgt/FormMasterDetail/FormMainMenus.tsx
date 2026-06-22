@@ -10,7 +10,7 @@ import { appTransactionService } from '../../../webapi/apptransactionsvc';
 import { buildRoutePathFromParamObj, getReactPathForRouteCode } from '../../../helper/navigationHelper';
 import { useErrorMessage } from '../../../redux/hooks/useErrorMessage';
 import ApplicationFormBuilder from '../../transaction/ApplicationFormBuilder';
-import { isAdminUserFromContext } from '../../../helper/adminPermissionHelper';
+import { isAdminUserFromContext, isEnableConfigurationModeForUser } from '../../../helper/adminPermissionHelper';
 import AppSearch, { type AppSearchHandle } from '../../search/AppSearch';
 import FormMasterDetail from '../FormMasterDetail';
 import FormListEdit from '../FormListEdit';
@@ -234,15 +234,8 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
 
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
   const { tabs, activeTabKey } = useSelector((state: RootState) => state.tabnav);
-  // Match Angular's enableConfigurationMode + admin checks.
-  // Server payload keys might vary in casing, so read a few common variants.
-  const enableConfigurationMode =
-    Boolean(
-      userContext?.DictAppSetup?.EnableConfigurationMode ??
-        userContext?.DictAppSetup?.enableConfigurationMode ??
-        userContext?.EnableConfigurationMode ??
-        userContext?.enableConfigurationMode
-    ) || false;
+  // Match Angular: tenant EnableConfigurationMode + admin; default on for admin when unset.
+  const enableConfigurationMode = isEnableConfigurationModeForUser(userContext);
   const isAdminUser = isAdminUserFromContext(userContext);
   
   // Get enum values

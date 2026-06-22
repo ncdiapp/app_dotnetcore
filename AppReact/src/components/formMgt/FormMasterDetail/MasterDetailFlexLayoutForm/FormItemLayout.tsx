@@ -10,6 +10,7 @@ import DateControl from './FormControls/DateControl';
 import CheckBoxControl from './FormControls/CheckBoxControl';
 import NumericControl from './FormControls/NumericControl';
 import LabelControl from './FormControls/LabelControl';
+import { isRuntimeTransactionFieldVisible } from './flexLayoutItemHelper';
 
 interface FormItemLayoutProps {
   layoutItemExDto: any;
@@ -38,7 +39,7 @@ const FormItemLayout: React.FC<FormItemLayoutProps> = ({
   }
 
   // Check visibility
-  if (fieldDto.IsFormLayoutVisible === false) {
+  if (!isRuntimeTransactionFieldVisible(fieldDto)) {
     return null;
   }
 

@@ -3,6 +3,7 @@ import { useTheme } from '../../../../redux/hooks/useTheme';
 import { useEnumValues } from '../../../../hooks/useEnumDictionary';
 import FormItemLayout from './FormItemLayout';
 import DataGridLayout from './DataGridLayout';
+import { isRuntimeTransactionFieldVisible } from './flexLayoutItemHelper';
 import { useFormMasterDetailRuntimeConfig } from '../formMasterDetailRuntimeConfig';
 import {
   getLayoutColSpan,
@@ -313,7 +314,7 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
   const da = domAttribute || {};
   const boundFieldDto =
     layoutItemExDto.ForeignAppTransactionFieldExDto ?? layoutItemExDto.foreignAppTransactionFieldExDto;
-  if (boundFieldDto?.IsFormLayoutVisible === false) {
+  if (boundFieldDto && !isRuntimeTransactionFieldVisible(boundFieldDto)) {
     return null;
   }
 

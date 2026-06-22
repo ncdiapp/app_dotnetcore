@@ -43,12 +43,56 @@ function getChildLayoutItems(layoutItem: any): any[] {
   return Array.isArray(raw) ? raw : [];
 }
 
+/** Parse nullable bool from API (bool, 0/1, "true"/"false"). Returns null when unset. */
+export function normalizeOptionalBool(value: unknown): boolean | null {
+  if (value == null || value === '') return null;
+  if (value === true || value === 1 || value === '1') return true;
+  if (value === false || value === 0 || value === '0') return false;
+  const s = String(value).trim().toLowerCase();
+  if (s === 'true' || s === 'yes') return true;
+  if (s === 'false' || s === 'no') return false;
+  return Boolean(value);
+}
+
+/**
+ * Runtime visibility for transaction fields (grid columns + form layout).
+ * Design-time IsVisible is copied to IsFormLayoutVisible during security load on DictAllTransactionField;
+ * unit.AppTransactionFieldList often only has IsVisible set.
+ */
+export function isRuntimeTransactionFieldVisible(field: any): boolean {
+  if (!field) return false;
+
+  const layoutVisible = normalizeOptionalBool(field.IsFormLayoutVisible);
+  if (layoutVisible === false) return false;
+  if (layoutVisible === true) return true;
+
+  const configVisible = normalizeOptionalBool(field.IsVisible);
+  if (configVisible === false) return false;
+  return true;
+}
+
+/** Merge security/runtime flags from DictAllTransactionField when present. */
+export function enrichTransactionFieldFromDict(field: any, dictAllTransactionField?: Record<string | number, any> | null): any {
+  if (!field || !dictAllTransactionField) return field;
+  const id = field.Id ?? field.id;
+  if (id == null) return field;
+  const fromDict = dictAllTransactionField[id] ?? dictAllTransactionField[Number(id)] ?? dictAllTransactionField[String(id)];
+  if (!fromDict) return field;
+  return {
+    ...field,
+    IsVisible: fromDict.IsVisible ?? field.IsVisible,
+    IsFormLayoutVisible: fromDict.IsFormLayoutVisible ?? field.IsFormLayoutVisible,
+    IsFormLayoutReadOnly: fromDict.IsFormLayoutReadOnly ?? field.IsFormLayoutReadOnly,
+    IsReadonly: fromDict.IsReadonly ?? fromDict.IsReadOnly ?? field.IsReadonly ?? field.IsReadOnly,
+  };
+}
+
 /** Skip hidden fields and empty LayoutRow shells so they do not reserve row space. */
 export function shouldRenderRuntimeLayoutItem(layoutItem: any): boolean {
   if (!layoutItem) return false;
 
   const fieldDto = layoutItem.ForeignAppTransactionFieldExDto ?? layoutItem.foreignAppTransactionFieldExDto;
-  if (fieldDto?.IsFormLayoutVisible === false) {
+  if (fieldDto && !isRuntimeTransactionFieldVisible(fieldDto)) {
     return false;
   }
 

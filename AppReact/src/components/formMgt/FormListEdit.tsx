@@ -27,6 +27,7 @@ import { appFileService } from '../../webapi/appfilesvc';
 import FileUploader from '../common/FileUploader';
 import { FolderNavigation } from '../folderNavigation';
 import appHelper from '../../helper/appHelper';
+import { isRuntimeTransactionFieldVisible } from './FormMasterDetail/MasterDetailFlexLayoutForm/flexLayoutItemHelper';
 import DataGridLayout from './FormMasterDetail/MasterDetailFlexLayoutForm/DataGridLayout';
 import AppSearch, { type AppSearchHandle } from '../search/AppSearch';
 import FormMasterDetail from './FormMasterDetail';
@@ -586,7 +587,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     listRootLinkTargets.length > 0 || listRootLinkedSearchesMenu.length > 0;
 
   const fieldsFromUnit = (rootUnit?.AppTransactionFieldList ?? [])
-    .filter((f: any) => f.IsFormLayoutVisible !== false)
+    .filter((f: any) => isRuntimeTransactionFieldVisible(f))
     .sort((a: any, b: any) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0));
 
   const fieldsFromStructure = ((): any[] => {
