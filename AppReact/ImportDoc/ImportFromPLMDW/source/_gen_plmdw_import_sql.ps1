@@ -387,7 +387,7 @@ BEGIN
 END
 
 SET @sql = N'DELETE FROM dbo.' + QUOTENAME(@MappingTable)
-    + N' WHERE [AppTableName] IN (' + $deleteInList + N');';
+    + N' WHERE [AppTableName] IN ($($deleteInList));';
 SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
 EXEC sp_executesql @sql;
 

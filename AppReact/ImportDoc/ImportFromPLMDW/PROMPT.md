@@ -6,7 +6,9 @@
 
 ---
 
-## User input (only two items)
+## User input (required — two items)
+
+**The user must supply both in the same message** (or in a follow-up before any DW work):
 
 ```text
 1. DW connection string
@@ -18,7 +20,22 @@
 
 Optional (defaults if omitted): `@TablePrefix` = `Plm_`, `@RootTableSuffix` = `ReferenceBasicInfo`, pilot `ReferenceId` for smoke test.
 
-**Never hardcode template or product names** (e.g. Fabric) in generated **file names**. APP table names inside SQL are derived per template from DW table names (see §2.2).
+**Never hardcode template or product names** (e.g. Fabric) in generated **file names**. APP table names inside SQL are derived per template from DW table names (see §A3).
+
+### Gate 0 — missing input → ask user, do nothing else
+
+If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** include **both** a connection string **and** TabIds in that message:
+
+1. **STOP immediately.** Do **not** run `sqlcmd`, probe SQL, Phase A analysis, or Phase B generation.
+2. **Ask the user** for the two required items (use the template under §Example session message).
+3. **Do not** treat any of the following as user input:
+   - The example connection string or TabIds in §Example session message
+   - `source/dwTabImportConfig.example.json`
+   - `source/dwTabImportConfig.json` (working file from a **previous** run — not valid until Phase B after user confirms Phase A)
+   - Values inferred from other folders (e.g. `ImportDoc/Temp/`) or from prior chat unless the user repeats them in the current request
+
+**Wrong:** user sends only `@PROMPT.md` → agent connects to `PC3B\...` and probes TabIds from the doc.  
+**Right:** user sends only `@PROMPT.md` → agent replies asking for connection string + TabIds, then waits.
 
 ---
 
@@ -26,6 +43,7 @@ Optional (defaults if omitted): `@TablePrefix` = `Plm_`, `@RootTableSuffix` = `R
 
 | Rule | Detail |
 |------|--------|
+| **Gate 0** | No connection string **and** TabIds from the user → **ask only**; no DW access, no Phase A/B (see §Gate 0). |
 | **Two phases** | **Phase A:** DW analysis + APP table proposal → **STOP for user confirmation**. **Phase B:** generate SQL **after** confirm. |
 | **plmDW is truth** | Column names, SubItem IDs, TabIds from DW — not legacy PLM exports. |
 | **1 Tab → 1 APP table** | Tab wide tables only for tabs with `PLM_DW_Tab_*_{TabId}`. Grid-only tabs → `PLM_DW_Grid_*`. |
@@ -38,9 +56,11 @@ Optional (defaults if omitted): `@TablePrefix` = `Plm_`, `@RootTableSuffix` = `R
 
 ### A1. Parse inputs
 
+**Prerequisite:** Gate 0 passed — user supplied connection string **and** TabIds in the current session.
+
 From connection string: `@SqlServer`, `@DwDatabase`. Auth: prefer `sqlcmd -E`; do not commit passwords.
 
-Build `#TabInput(TabId)` from user TabId list.
+Build `#TabInput(TabId)` from the **user-provided** TabId list only (not from example JSON or repo config files).
 
 ### A2. Resolve DW objects per TabId
 
@@ -116,7 +136,7 @@ Ask user to confirm (adapt wording to actual tab names):
 6. Mapping table schema (§Phase B3)  
 7. `@TablePrefix` default `Plm_` OK?  
 
-Record decisions in `source/dwTabImportConfig.json` (copy from `dwTabImportConfig.example.json`).
+After user confirms Phase A, record decisions in `source/dwTabImportConfig.json` (structure per `dwTabImportConfig.example.json` — **do not** copy example TabIds/server without user input).
 
 ---
 
@@ -222,7 +242,8 @@ ImportFromPLMDW/
 ## Agent checklist
 
 ```text
-[ ] Parse connection string + TabIds
+[ ] Gate 0: user provided connection string + TabIds? If not → ask and STOP
+[ ] Parse connection string + TabIds (from user message only)
 [ ] Resolve PLM_DW_Tab_* / PLM_DW_Grid_* per TabId
 [ ] SubItem overlap analysis for tab pairs in scope
 [ ] Propose APP tables (names from DW, not hardcoded template)
@@ -236,6 +257,16 @@ ImportFromPLMDW/
 ---
 
 ## Example session message
+
+**Illustration only — not defaults.** The agent must not use these values unless the user pastes them (or equivalent) in their message.
+
+**Insufficient** (agent must ask for the two required items):
+
+```text
+@AppReact/ImportDoc/ImportFromPLMDW/PROMPT.md
+```
+
+**Sufficient** (agent may start Gate 0 → Phase A):
 
 ```text
 按 AppReact/ImportDoc/ImportFromPLMDW/PROMPT.md 执行。
