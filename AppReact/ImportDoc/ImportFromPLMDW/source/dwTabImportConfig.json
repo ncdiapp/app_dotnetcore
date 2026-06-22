@@ -1,0 +1,61 @@
+{
+  "_comment": "EXAMPLE ONLY — one template snapshot. Agent copies to dwTabImportConfig.json in Phase B.",
+  "importTabIds": [4258, 4212, 4213, 4270, 4274, 4219],
+  "sqlServer": "PC3B\\MSSQLSERVER01",
+  "dwDatabase": "plmDW",
+  "tablePrefixDefault": "Plm_",
+  "rootTableSuffix": "ReferenceBasicInfo",
+  "referenceScope": {
+    "dwTable": "PLM_DW_Tab_Fabric_Header_4258",
+    "dwColumn": "Article__22",
+    "plmTabId": 4258,
+    "plmSubItemId": 22
+  },
+  "tabs": [
+    {
+      "appTable": "Fabric_Header",
+      "dwTable": "PLM_DW_Tab_Fabric_Header_4258",
+      "tabId": 4258,
+      "mode": "all"
+    },
+    {
+      "appTable": "Fabric_Info",
+      "dwTable": "PLM_DW_Tab_Fabric_Info_4212",
+      "tabId": 4212,
+      "mode": "excludeSubItemsFromDwTable",
+      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fabric_Header_4258"
+    },
+    {
+      "appTable": "Fabric_Attributes",
+      "dwTable": "PLM_DW_Tab_Attributes_4213",
+      "tabId": 4213,
+      "mode": "all"
+    },
+    {
+      "appTable": "Fabric_Cost",
+      "dwTable": "PLM_DW_Tab_Fabric_Cost_4270",
+      "tabId": 4270,
+      "mode": "all"
+    },
+    {
+      "appTable": "Fabric_Policy",
+      "dwTable": "PLM_DW_Tab_Fabric_Policy_4274",
+      "tabId": 4274,
+      "mode": "all"
+    },
+    {
+      "appTable": "Fabric_Testing",
+      "dwTable": "PLM_DW_Tab_Testing____Compliance_4219",
+      "tabId": 4219,
+      "mode": "all"
+    }
+  ],
+  "grids": [
+    {
+      "appTable": "ProductDesignColorGrid",
+      "dwTable": "PLM_DW_Grid_ProductDesignColorGrid_7",
+      "gridSubItemId": 7354,
+      "gridId": 7
+    }
+  ]
+}
