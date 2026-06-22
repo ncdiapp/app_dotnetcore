@@ -1,11 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTheme } from '../../../../redux/hooks/useTheme';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../../hooks/useClampedContextMenuPosition';
 import type {
   PlmTemplateBlockAnalysisDto,
   PlmTemplateBlockStorageOverrideDto,
   PlmTemplateImportSettingDto,
   PlmTemplateSimilarTabGroupDto,
 } from '../../../../webapi/plmMigrationSvc';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 240;
 
 export type TemplateTabWarningDialogProps = {
   open: boolean;
@@ -35,6 +39,7 @@ const TemplateTabWarningDialog: React.FC<TemplateTabWarningDialogProps> = ({
     y: number;
     block: PlmTemplateBlockAnalysisDto | null;
   }>({ visible: false, x: 0, y: 0, block: null });
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [sharedTablePrompt, setSharedTablePrompt] = useState('');
 
   useEffect(() => {
@@ -59,6 +64,8 @@ const TemplateTabWarningDialog: React.FC<TemplateTabWarningDialogProps> = ({
     window.addEventListener('click', close);
     return () => window.removeEventListener('click', close);
   }, [contextMenu.visible]);
+
+  useRefineContextMenuField(contextMenu.visible, contextMenuRef, setContextMenu);
 
   const applyBlockOverride = useCallback((blockId: number, target: 'Root' | 'SharedSibling', sharedName?: string) => {
     setBlockOverrides((prev) => {
@@ -130,7 +137,13 @@ const TemplateTabWarningDialog: React.FC<TemplateTabWarningDialogProps> = ({
                       onContextMenu={(e) => {
                         e.preventDefault();
                         setSharedTablePrompt(`${block.BlockName || `Block_${block.BlockId}`}_Shared`);
-                        setContextMenu({ visible: true, x: e.clientX, y: e.clientY, block });
+                        const { x, y } = clampContextMenuPosition(
+                          e.clientX,
+                          e.clientY,
+                          CONTEXT_MENU_ESTIMATED_WIDTH,
+                          CONTEXT_MENU_ESTIMATED_HEIGHT
+                        );
+                        setContextMenu({ visible: true, x, y, block });
                       }}
                     >
                       <div>
@@ -204,6 +217,7 @@ const TemplateTabWarningDialog: React.FC<TemplateTabWarningDialogProps> = ({
 
       {contextMenu.visible && contextMenu.block && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-[60] min-w-[200px] border rounded shadow py-1 text-xs ${theme.mainContentSection}`}
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}

@@ -11,6 +11,10 @@ import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLo
 import { searchSvc } from '../../webapi/searchSvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 200;
 
 // Query Type enum matching AngularJS EmAppDataServiceType
 const EmAppDataServiceType = {
@@ -76,6 +80,7 @@ const DatasetManagement: React.FC = () => {
   const queryTypeDataMapRef = useRef<DataMap | null>(null);
   const createDropdownRef = useRef<HTMLDivElement>(null);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Query type options for DataMap
   const queryTypeOptions = Object.entries(queryTypeDisplayNames).map(([id, display]) => ({
@@ -231,7 +236,13 @@ const DatasetManagement: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     setSelectedDataSet(dataItem);
-    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX,
+      e.clientY,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenuPosition({ x, y });
     setContextMenuVisible(true);
   };
 
@@ -254,6 +265,8 @@ const DatasetManagement: React.FC = () => {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
+
+  useRefineContextMenuPosition(contextMenuVisible, contextMenuRef, setContextMenuPosition);
 
   // Get query type display name
   const getQueryTypeDisplay = (queryType: number): string => {
@@ -499,6 +512,7 @@ const DatasetManagement: React.FC = () => {
       {/* Context menu – floating popup like RestApiImportManagement (Edit, Edit Extract View, Delete) */}
       {contextMenuVisible && selectedDataSet && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 py-1 min-w-[200px] rounded-[4px] shadow-lg border ${t('border_default')} ${theme.mainContentSection}`}
           style={{ left: contextMenuPosition.x, top: contextMenuPosition.y }}
           onClick={(e) => e.stopPropagation()}

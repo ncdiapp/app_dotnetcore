@@ -10,6 +10,10 @@ import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLo
 import { appTransactionService } from '../../webapi/apptransactionsvc';
 import { useAlertConfirm } from '../common/AlertConfirmProvider';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 140;
 
 type WorkflowAutomationItem = {
   Id: number;
@@ -36,6 +40,7 @@ const WorkflowAutomationManagement: React.FC = () => {
     y: 0,
     item: null
   });
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
 
   const loadData = useCallback(async () => {
@@ -68,6 +73,8 @@ const WorkflowAutomationManagement: React.FC = () => {
       return () => document.removeEventListener('click', handler);
     }
   }, [contextMenu.visible]);
+
+  useRefineContextMenuField(contextMenu.visible, contextMenuRef, setContextMenu);
 
   const handleEdit = useCallback(() => {
     const item = contextMenu.item;
@@ -127,7 +134,13 @@ const WorkflowAutomationManagement: React.FC = () => {
     e.stopPropagation();
     const rect = (e.target as HTMLElement).closest('button')?.getBoundingClientRect();
     if (rect) {
-      setContextMenu({ visible: true, x: rect.right, y: rect.top, item });
+      const { x, y } = clampContextMenuPosition(
+        rect.right,
+        rect.top,
+        CONTEXT_MENU_ESTIMATED_WIDTH,
+        CONTEXT_MENU_ESTIMATED_HEIGHT
+      );
+      setContextMenu({ visible: true, x, y, item });
     }
   };
 
@@ -209,6 +222,7 @@ const WorkflowAutomationManagement: React.FC = () => {
 
       {contextMenu.visible && contextMenu.item && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-max`}
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}

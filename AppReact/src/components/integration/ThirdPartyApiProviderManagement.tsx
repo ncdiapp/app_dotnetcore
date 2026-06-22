@@ -11,6 +11,10 @@ import { useAlertConfirm } from '../common/AlertConfirmProvider';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
 import { addTab } from '../../redux/features/ui/navigation/tabnavSlice';
 import { integrationService } from '../../webapi/integrationsvc';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 140;
 
 type IntegrationSettingItem = {
   Id?: number | null;
@@ -94,7 +98,13 @@ const ThirdPartyApiProviderManagement: React.FC = () => {
   const openContextMenu = useCallback((e: React.MouseEvent, dataItem: IntegrationSettingItem) => {
     e.stopPropagation();
     setSelectedRowData(dataItem);
-    setContextMenuPos({ x: e.clientX - 20, y: e.clientY - 5 });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX - 20,
+      e.clientY - 5,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenuPos({ x, y });
     setContextMenuOpen(true);
   }, []);
 
@@ -166,6 +176,8 @@ const ThirdPartyApiProviderManagement: React.FC = () => {
       return () => document.removeEventListener('click', handler);
     }
   }, [contextMenuOpen, closeContextMenu]);
+
+  useRefineContextMenuPosition(contextMenuOpen, contextMenuRef, setContextMenuPos);
 
   return (
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">

@@ -41,6 +41,10 @@ import { getWorkflowEmbeddedCommandActionTypeOptions } from '../transaction/tran
 import TableColumnSelectorDialog from '../transaction/ApplicationFormBuilder/TableColumnSelectorDialog';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 240;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 320;
 
 type RouteParams = { param?: string };
 
@@ -766,6 +770,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
     y: 0,
     item: null,
   });
+  const commandTreeContextMenuRef = useRef<HTMLDivElement | null>(null);
   const [childCommandParentAction, setChildCommandParentAction] = useState<any>(null);
   const emAppControlTypeEnum = useEnumValues('EmAppControlType');
   const emAppDataTypeEnum = useEnumValues('EmAppDataType');
@@ -2087,8 +2092,16 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
   const openCommandTreeNodeContextMenu = useCallback((e: React.MouseEvent, item: any) => {
     e.stopPropagation();
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    setCommandTreeContextMenu({ visible: true, x: rect.right, y: rect.top, item });
+    const { x, y } = clampContextMenuPosition(
+      rect.right,
+      rect.top,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setCommandTreeContextMenu({ visible: true, x, y, item });
   }, []);
+
+  useRefineContextMenuField(commandTreeContextMenu.visible, commandTreeContextMenuRef, setCommandTreeContextMenu);
 
   useEffect(() => {
     if (!commandTreeContextMenu.visible) return;
@@ -3150,6 +3163,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
       {/* Operation task tree context menu — Angular CommandTreeNodeContextMenu */}
       {commandTreeContextMenu.visible && commandTreeContextMenu.item ? (
         <div
+          ref={commandTreeContextMenuRef}
           className={`fixed z-[10050] ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[280px]`}
           style={{ left: commandTreeContextMenu.x, top: commandTreeContextMenu.y }}
           onClick={(e) => e.stopPropagation()}

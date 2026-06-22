@@ -23,6 +23,10 @@ import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import type { RootState } from '../../redux/store';
 import FileUploader from '../common/FileUploader';
 import type { DataImageUploadResult } from '../../webapi/dataImageUploadSvc';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 200;
 import { useAlertConfirm } from '../common/AlertConfirmProvider';
 
 type JsonImportSettingItem = {
@@ -85,6 +89,7 @@ const JsonFileTableImportManagement: React.FC<JsonFileTableImportManagementProps
   const [fileUploadOpen, setFileUploadOpen] = useState(false);
   const uploadIntentRef = useRef<{ kind: 'new'; dsId: number } | { kind: 'staging'; settingId: number } | null>(null);
   const flexRef = useRef<wjGrid.FlexGrid | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const openImportEditor = useCallback(
     (id: number, label?: string) => {
@@ -161,7 +166,13 @@ const JsonFileTableImportManagement: React.FC<JsonFileTableImportManagementProps
     e.preventDefault();
     e.stopPropagation();
     setSelectedRowData(item);
-    setContextMenuPos({ x: e.clientX, y: e.clientY });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX,
+      e.clientY,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenuPos({ x, y });
     setContextMenuOpen(true);
   }, []);
 
@@ -172,6 +183,8 @@ const JsonFileTableImportManagement: React.FC<JsonFileTableImportManagementProps
       return () => document.removeEventListener('click', handler);
     }
   }, [contextMenuOpen, closeContextMenu]);
+
+  useRefineContextMenuPosition(contextMenuOpen, contextMenuRef, setContextMenuPos);
 
   const handleRowDoubleClick = useCallback(
     (flex: wjGrid.FlexGrid) => {
@@ -517,6 +530,7 @@ const JsonFileTableImportManagement: React.FC<JsonFileTableImportManagementProps
 
       {contextMenuOpen && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[200px]`}
           style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
           onClick={(e) => e.stopPropagation()}

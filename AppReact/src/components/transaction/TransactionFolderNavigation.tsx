@@ -19,6 +19,7 @@ import {
   openFolderNavigationFormMasterDetail,
 } from '../../utils/folderNavigationHelper';
 import appHelper from '../../helper/appHelper';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
 
 interface FolderDto {
   Id: number;
@@ -36,6 +37,9 @@ interface FolderDto {
 interface TransactionFolderNavigationProps {
   transactionId: number | string;
 }
+
+const FOLDER_CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const FOLDER_CONTEXT_MENU_ESTIMATED_HEIGHT = 280;
 
 const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = ({ transactionId }) => {
   const { theme } = useTheme();
@@ -255,8 +259,16 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
     e.preventDefault();
     e.stopPropagation();
     if (folder.IsFolderReadonly) return;
-    setFolderContextMenu({ visible: true, x: e.clientX, y: e.clientY, folder });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX,
+      e.clientY,
+      FOLDER_CONTEXT_MENU_ESTIMATED_WIDTH,
+      FOLDER_CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setFolderContextMenu({ visible: true, x, y, folder });
   }, []);
+
+  useRefineContextMenuField(folderContextMenu.visible, folderContextMenuRef, setFolderContextMenu);
 
   const openFolderEditPopup = useCallback(
     (mode: 'create' | 'rename' | 'defaultView', folder: Partial<FolderDto> | null, parentId: number | null) => {

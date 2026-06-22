@@ -19,6 +19,7 @@ import FormMasterDetail from '../formMgt/FormMasterDetail';
 import FileUploader from '../common/FileUploader';
 import { searchSvc } from '../../webapi/searchSvc';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
 
 // Fallback when enum not yet loaded (must match backend EmAppFileFolderCategory: MyRecycleBin = 9)
 const FALLBACK_FILE_FOLDER_CATEGORIES: Record<string, number> = {
@@ -53,6 +54,11 @@ const FILE_MGT_CATEGORY_ORDER_KEYS: (keyof typeof FALLBACK_FILE_FOLDER_CATEGORIE
 
 // Search view column control type: Image = 5 (same as GridViewLayout / Angular EmAppControlType.Image)
 const EM_APP_CONTROL_TYPE_IMAGE = 5;
+
+const FOLDER_CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const FOLDER_CONTEXT_MENU_ESTIMATED_HEIGHT = 360;
+const FILE_CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const FILE_CONTEXT_MENU_ESTIMATED_HEIGHT = 400;
 
 // Preview type by file extension (matches Angular docHelper.getFilePreviewType)
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'bmp'];
@@ -932,7 +938,13 @@ const FolderNavigation: React.FC<Props> = ({
     e.preventDefault();
     e.stopPropagation();
     if (isUseAsSelector || folder.IsFolderReadonly) return;
-    setFolderContextMenu({ visible: true, x: e.clientX, y: e.clientY, folder });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX,
+      e.clientY,
+      FOLDER_CONTEXT_MENU_ESTIMATED_WIDTH,
+      FOLDER_CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setFolderContextMenu({ visible: true, x, y, folder });
   }, [isUseAsSelector]);
 
   const closeFolderContextMenu = useCallback(() => {
@@ -1222,6 +1234,9 @@ const FolderNavigation: React.FC<Props> = ({
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
   }, [fileContextMenu.visible]);
+
+  useRefineContextMenuField(folderContextMenu.visible, folderContextMenuRef, setFolderContextMenu);
+  useRefineContextMenuField(fileContextMenu.visible, fileContextMenuRef, setFileContextMenu);
 
   // Get selected file IDs from grid (Id or first numeric value from DictViewColumnIDKeyValue)
   const getSelectedFileIds = useCallback((): number[] => {
@@ -1777,10 +1792,16 @@ const FolderNavigation: React.FC<Props> = ({
                             onClick={(e) => {
                               e.stopPropagation();
                               const rect = e.currentTarget.getBoundingClientRect();
+                              const { x, y } = clampContextMenuPosition(
+                                rect.right,
+                                rect.top,
+                                FILE_CONTEXT_MENU_ESTIMATED_WIDTH,
+                                FILE_CONTEXT_MENU_ESTIMATED_HEIGHT
+                              );
                               setFileContextMenu({
                                 visible: true,
-                                x: rect.right,
-                                y: rect.top,
+                                x,
+                                y,
                                 item,
                               });
                             }}

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../hooks/useClampedContextMenuPosition';
 import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
 import { ComboBox } from '@mescius/wijmo.react.input';
 import { CollectionView } from '@mescius/wijmo';
@@ -28,6 +29,9 @@ type PartnerData = {
   PartnerType?: string | number;
   IsModified?: boolean;
 };
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 160;
 
 const PARTNER_TYPE_LABELS: Record<number, string> = {
   3: 'Client',
@@ -244,6 +248,8 @@ const BusinessPartnerEditor: React.FC<Props> = ({
     return () => document.removeEventListener('click', onDocClick, true);
   }, [userContextMenu.visible]);
 
+  useRefineContextMenuField(userContextMenu.visible, userMenuRef, setUserContextMenu);
+
   if (!partnerId) {
     return (
       <div className={`p-4 ${theme.mainContentSection}`}>
@@ -364,7 +370,13 @@ const BusinessPartnerEditor: React.FC<Props> = ({
                         onClick={(e) => {
                           e.stopPropagation();
                           const rect = e.currentTarget.getBoundingClientRect();
-                          setUserContextMenu({ visible: true, x: rect.right, y: rect.top, item: cell.item });
+                          const { x, y } = clampContextMenuPosition(
+                            rect.right,
+                            rect.top,
+                            CONTEXT_MENU_ESTIMATED_WIDTH,
+                            CONTEXT_MENU_ESTIMATED_HEIGHT
+                          );
+                          setUserContextMenu({ visible: true, x, y, item: cell.item });
                         }}
                       >
                         <i className="fa-solid fa-pencil text-xs" aria-hidden />

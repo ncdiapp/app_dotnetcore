@@ -14,6 +14,10 @@ import { appTransactionService } from '../../webapi/apptransactionsvc';
 import { searchSvc } from '../../webapi/searchSvc';
 import { schemaMetadataService } from '../../webapi/schemaMetaDataSvc';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 240;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 320;
 
 type DbToDbImportSettingRow = any;
 
@@ -46,6 +50,7 @@ const DbToDbImportManagement: React.FC<DbToDbImportManagementProps> = (props) =>
   const sourceTypeEnum = useEnumValues('EmAppDbToDbImportSourceType');
 
   const flexRef = useRef<wjGrid.FlexGrid | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [cv] = useState<CollectionView>(() => new CollectionView<DbToDbImportSettingRow>([]));
 
   const [dataSources, setDataSources] = useState<any[]>([]);
@@ -93,7 +98,13 @@ const DbToDbImportManagement: React.FC<DbToDbImportManagementProps> = (props) =>
     e.preventDefault();
     e.stopPropagation();
     setSelectedRowData(item);
-    setContextMenuPos({ x: e.clientX, y: e.clientY });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX,
+      e.clientY,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenuPos({ x, y });
     setContextMenuOpen(true);
   }, []);
 
@@ -103,6 +114,8 @@ const DbToDbImportManagement: React.FC<DbToDbImportManagementProps> = (props) =>
     document.addEventListener('click', handler);
     return () => document.removeEventListener('click', handler);
   }, [contextMenuOpen, closeContextMenu]);
+
+  useRefineContextMenuPosition(contextMenuOpen, contextMenuRef, setContextMenuPos);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -484,6 +497,7 @@ const DbToDbImportManagement: React.FC<DbToDbImportManagementProps> = (props) =>
 
       {contextMenuOpen && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[240px]`}
           style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
           onClick={(e) => e.stopPropagation()}

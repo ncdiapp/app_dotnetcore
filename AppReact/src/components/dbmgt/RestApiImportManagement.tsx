@@ -11,6 +11,10 @@ import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLo
 import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 150;
 
 type ApiOperationItem = {
   Id: number;
@@ -55,6 +59,7 @@ const RestApiImportManagement: React.FC<RestApiImportManagementProps> = (props) 
   const [createDropdownOpen, setCreateDropdownOpen] = useState(false);
   const [hoveredProviderId, setHoveredProviderId] = useState<string | number | null>(null);
   const flexRef = useRef<wjGrid.FlexGrid | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const apiOperationsFlat = useMemo(() => {
     const list: { providerName: string; operation: ApiOperationItem }[] = [];
@@ -118,7 +123,13 @@ const RestApiImportManagement: React.FC<RestApiImportManagementProps> = (props) 
       e.preventDefault();
       e.stopPropagation();
       setSelectedRowData(item);
-      setContextMenuPos({ x: e.clientX, y: e.clientY });
+      const { x, y } = clampContextMenuPosition(
+        e.clientX,
+        e.clientY,
+        CONTEXT_MENU_ESTIMATED_WIDTH,
+        CONTEXT_MENU_ESTIMATED_HEIGHT
+      );
+      setContextMenuPos({ x, y });
       setContextMenuOpen(true);
     },
     [],
@@ -131,6 +142,8 @@ const RestApiImportManagement: React.FC<RestApiImportManagementProps> = (props) 
       return () => document.removeEventListener('click', handler);
     }
   }, [contextMenuOpen, closeContextMenu]);
+
+  useRefineContextMenuPosition(contextMenuOpen, contextMenuRef, setContextMenuPos);
 
   const openImportEditor = useCallback(
     (dto: ApiImportSettingItem | null | undefined) => {
@@ -417,6 +430,7 @@ const RestApiImportManagement: React.FC<RestApiImportManagementProps> = (props) 
       {/* Context menu */}
       {contextMenuOpen && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[200px]`}
           style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
           onClick={(e) => e.stopPropagation()}

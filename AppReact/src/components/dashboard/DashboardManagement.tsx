@@ -8,6 +8,10 @@ import { adminSvc } from '../../webapi/adminsvc';
 import { BusyLoader } from '../common/BusyLoader';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import { useTheme } from '../../redux/hooks/useTheme';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 140;
 
 interface DashboardDto {
   Id: string;
@@ -45,6 +49,7 @@ const DashboardManagement: React.FC = () => {
     canEdit: false,
     canDelete: false
   });
+  const rowContextMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     loadData();
@@ -60,6 +65,8 @@ const DashboardManagement: React.FC = () => {
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
   }, [rowContextMenu.visible]);
+
+  useRefineContextMenuField(rowContextMenu.visible, rowContextMenuRef, setRowContextMenu);
 
   const loadData = async () => {
     setLoading(true);
@@ -178,10 +185,16 @@ const DashboardManagement: React.FC = () => {
     setSelectedDashboard(dashboard);
 
     const perms = resolveRowPermissions(dashboard as any);
+    const { x, y } = clampContextMenuPosition(
+      event.clientX,
+      event.clientY,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
     setRowContextMenu({
       visible: true,
-      x: event.clientX,
-      y: event.clientY,
+      x,
+      y,
       dashboard,
       ...perms
     });
@@ -311,6 +324,7 @@ const DashboardManagement: React.FC = () => {
       {/* Row Context Menu */}
       {rowContextMenu.visible && (
         <div
+          ref={rowContextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[150px]`}
           style={{
             left: rowContextMenu.x,

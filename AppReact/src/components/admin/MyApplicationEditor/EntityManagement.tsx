@@ -12,8 +12,11 @@ import { useTabNavigation } from '../../../redux/hooks/useTabNavigation';
 import { useAlertConfirm } from '../../common/AlertConfirmProvider';
 import { adminSvc } from '../../../webapi/adminsvc';
 import { appTransactionService } from '../../../webapi/apptransactionsvc';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../hooks/useClampedContextMenuPosition';
 
 const EmAppEntityType = { SystemDefineTable: 1, Enum: 2, DataSet: 3, SimpleValueList: 4 };
+const CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 240;
 
 const ENTITY_TYPE_LIST = [
   { Id: EmAppEntityType.SystemDefineTable, Display: 'System Define Table' },
@@ -66,6 +69,7 @@ const EntityManagement: React.FC<EntityManagementProps> = ({ menuId }) => {
     y: 0,
     item: null
   });
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [createFromDbDropdown, setCreateFromDbDropdown] = useState(false);
   const createFromDbRef = useRef<HTMLDivElement>(null);
 
@@ -124,6 +128,8 @@ const EntityManagement: React.FC<EntityManagementProps> = ({ menuId }) => {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [contextMenu.visible, createFromDbDropdown]);
+
+  useRefineContextMenuField(contextMenu.visible, contextMenuRef, setContextMenu);
 
   const isSystemBuildIn = (item: EntityItem | null) => item?.IsSystemDefine === true;
   const isAllowEditData = (item: EntityItem | null) => {
@@ -332,7 +338,13 @@ const EntityManagement: React.FC<EntityManagementProps> = ({ menuId }) => {
                     onClick={(e) => {
                       e.stopPropagation();
                       const rect = e.currentTarget.getBoundingClientRect();
-                      setContextMenu({ visible: true, x: rect.right, y: rect.top, item: cell.item });
+                      const { x, y } = clampContextMenuPosition(
+                        rect.right,
+                        rect.top,
+                        CONTEXT_MENU_ESTIMATED_WIDTH,
+                        CONTEXT_MENU_ESTIMATED_HEIGHT
+                      );
+                      setContextMenu({ visible: true, x, y, item: cell.item });
                     }}
                   >
                     <i className="fa-solid fa-pencil text-xs" aria-hidden />
@@ -358,6 +370,7 @@ const EntityManagement: React.FC<EntityManagementProps> = ({ menuId }) => {
 
       {contextMenu.visible && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 border rounded-[4px] shadow-lg py-1 min-w-max ${theme.mainContentSection}`}
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}

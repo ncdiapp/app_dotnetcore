@@ -14,9 +14,13 @@ import { schemaMetadataService } from '../../webapi/schemaMetaDataSvc';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
 import { useAlertConfirm } from '../common/AlertConfirmProvider';
 import appHelper from '../../helper/appHelper';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
 import MetaDataTableDesign from '../transaction/metaDataTableDesign';
 import MetaDataViewDesign from '../transaction/metaDataViewDesign';
 import TableDataPreview from '../transaction/TableDataPreview';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 320;
 
 const DatabaseManagement: React.FC = () => {
   const { theme, t } = useTheme();
@@ -209,7 +213,13 @@ const DatabaseManagement: React.FC = () => {
   const openResultItemContextMenu = (event: React.MouseEvent, item: any) => {
     event.stopPropagation();
     setContextMenuItem(item);
-    setContextMenuPosition({ x: event.clientX, y: event.clientY });
+    const { x, y } = clampContextMenuPosition(
+      event.clientX,
+      event.clientY,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenuPosition({ x, y });
     setShowContextMenu(true);
   };
 
@@ -495,6 +505,8 @@ const DatabaseManagement: React.FC = () => {
       document.removeEventListener('mousedown', closeMenu);
     };
   }, [showContextMenu]);
+
+  useRefineContextMenuPosition(showContextMenu, contextMenuRef, setContextMenuPosition);
 
   return (
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden database-management-container">

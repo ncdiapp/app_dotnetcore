@@ -10,6 +10,10 @@ import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/bus
 import { useTabNavigation } from '../../../redux/hooks/useTabNavigation';
 import { useAlertConfirm } from '../../common/AlertConfirmProvider';
 import { appTransactionService } from '../../../webapi/apptransactionsvc';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 240;
 
 interface DataModelTemplateProps {
   menuId: string | null;
@@ -41,6 +45,7 @@ const DataModelTemplate: React.FC<DataModelTemplateProps> = ({ menuId }) => {
     y: number;
     item: TransactionGroupItem | null;
   }>({ visible: false, x: 0, y: 0, item: null });
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const loadData = useCallback(async () => {
     if (applicationId == null || applicationId === '') {
@@ -75,6 +80,8 @@ const DataModelTemplate: React.FC<DataModelTemplateProps> = ({ menuId }) => {
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
   }, [contextMenu.visible]);
+
+  useRefineContextMenuField(contextMenu.visible, contextMenuRef, setContextMenu);
 
   const handleRefresh = () => loadData();
 
@@ -145,7 +152,13 @@ const DataModelTemplate: React.FC<DataModelTemplateProps> = ({ menuId }) => {
   const openContextMenu = (e: React.MouseEvent, rowItem: TransactionGroupItem) => {
     e.stopPropagation();
     const rect = e.currentTarget.getBoundingClientRect();
-    setContextMenu({ visible: true, x: rect.right, y: rect.top, item: rowItem });
+    const { x, y } = clampContextMenuPosition(
+      rect.right,
+      rect.top,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenu({ visible: true, x, y, item: rowItem });
   };
 
   return (
@@ -218,6 +231,7 @@ const DataModelTemplate: React.FC<DataModelTemplateProps> = ({ menuId }) => {
 
       {contextMenu.visible && contextMenu.item && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 border rounded-[4px] shadow-lg py-1 min-w-max ${theme.mainContentSection}`}
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}

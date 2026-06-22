@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../hooks/useClampedContextMenuPosition';
 import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
 import { CollectionView } from '@mescius/wijmo';
 import '@mescius/wijmo.styles/wijmo.css';
@@ -11,6 +12,9 @@ import UserLoginInfoEditor from './UserLoginInfoEditor';
 interface Props {
   companyId: number;
 }
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 120;
 
 const TenantAdminUsersTab: React.FC<Props> = ({ companyId }) => {
   const { theme } = useTheme();
@@ -49,8 +53,26 @@ const TenantAdminUsersTab: React.FC<Props> = ({ companyId }) => {
   }, [contextMenu]);
 
   const openContextMenu = useCallback((user: any, x: number, y: number) => {
-    setContextMenu({ x, y, user });
+    const clamped = clampContextMenuPosition(
+      x,
+      y,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenu({ x: clamped.x, y: clamped.y, user });
   }, []);
+
+  const refineContextMenu = useCallback<Dispatch<SetStateAction<{ x: number; y: number; user: any }>>>(
+    (action) => {
+      setContextMenu((prev) => {
+        if (!prev) return prev;
+        return typeof action === 'function' ? action(prev) : action;
+      });
+    },
+    []
+  );
+
+  useRefineContextMenuField(!!contextMenu, contextMenuRef, refineContextMenu);
 
   const handleEditLogin = useCallback((userId: string) => {
     setEditingUserId(userId);

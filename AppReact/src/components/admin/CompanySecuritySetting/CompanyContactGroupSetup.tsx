@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../hooks/useClampedContextMenuPosition';
 import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
 import { CollectionView } from '@mescius/wijmo';
 import '@mescius/wijmo.styles/wijmo.css';
@@ -13,6 +14,9 @@ type Props = { companyId: string | number | null; isEmbedded?: boolean };
 /** GroupUsage for Contact Group — align with Angular companyContactGroupSetupCtrl groupUsage_ContactGroup = 3 */
 const GROUP_USAGE_CONTACT_GROUP = 3;
 
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 120;
+
 const CompanyContactGroupSetup: React.FC<Props> = ({ companyId, isEmbedded: _isEmbedded }) => {
   const dispatch = useDispatch();
   const { theme } = useTheme();
@@ -21,6 +25,7 @@ const CompanyContactGroupSetup: React.FC<Props> = ({ companyId, isEmbedded: _isE
   const [roleEditorGroupId, setRoleEditorGroupId] = useState<string | null | 'new'>('');
   const [roleContextMenu, setRoleContextMenu] = useState<{ visible: boolean; x: number; y: number; item: any }>({ visible: false, x: 0, y: 0, item: null });
   const flexRef = useRef<any>(null);
+  const roleContextMenuRef = useRef<HTMLDivElement>(null);
 
   const loadData = useCallback(async () => {
     if (!companyId) return;
@@ -84,6 +89,8 @@ const CompanyContactGroupSetup: React.FC<Props> = ({ companyId, isEmbedded: _isE
     return () => document.removeEventListener('click', onDocClick);
   }, [roleContextMenu.visible]);
 
+  useRefineContextMenuField(roleContextMenu.visible, roleContextMenuRef, setRoleContextMenu);
+
   const groupMenuCellTemplate = useCallback((cell: any) => {
     if (!cell.item) return null;
     return (
@@ -95,7 +102,13 @@ const CompanyContactGroupSetup: React.FC<Props> = ({ companyId, isEmbedded: _isE
           onClick={(e) => {
             e.stopPropagation();
             const rect = e.currentTarget.getBoundingClientRect();
-            setRoleContextMenu({ visible: true, x: rect.right, y: rect.top, item: cell.item });
+            const { x, y } = clampContextMenuPosition(
+              rect.right,
+              rect.top,
+              CONTEXT_MENU_ESTIMATED_WIDTH,
+              CONTEXT_MENU_ESTIMATED_HEIGHT
+            );
+            setRoleContextMenu({ visible: true, x, y, item: cell.item });
           }}
         >
           <i className="fa-solid fa-pencil text-xs" aria-hidden />
@@ -155,6 +168,7 @@ const CompanyContactGroupSetup: React.FC<Props> = ({ companyId, isEmbedded: _isE
 
       {roleContextMenu.visible && roleContextMenu.item && (
         <div
+          ref={roleContextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-max`}
           style={{ left: roleContextMenu.x, top: roleContextMenu.y }}
           onClick={(e) => e.stopPropagation()}

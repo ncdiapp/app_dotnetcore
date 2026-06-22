@@ -16,6 +16,10 @@ import MessageDisplayPanel from './MessageDisplayPanel';
 import { MESSAGE_TEMPLATE_SCOPE_TYPE } from './messageScopeConstants';
 import MessageEditor from './MessageEditor';
 import MessageTemplateLayoutEditor from './MessageTemplateLayoutEditor';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 240;
 
 function parseParam(param: string | undefined): { transactionId: string | null } {
   if (!param) return { transactionId: null };
@@ -64,6 +68,7 @@ const MessageTemplateManagement: React.FC<MessageTemplateManagementProps> = ({
     y: 0,
     item: null,
   });
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const rebuild = useCallback((data: any[]) => {
     const cv = new CollectionView<any>(data);
@@ -165,6 +170,8 @@ const MessageTemplateManagement: React.FC<MessageTemplateManagementProps> = ({
       return () => document.removeEventListener('click', onDocClick);
     }
   }, [contextMenu.visible]);
+
+  useRefineContextMenuField(contextMenu.visible, contextMenuRef, setContextMenu);
 
   const openTemplateCodeEditor = (item: any) => {
     if (!item?.Id) return;
@@ -329,7 +336,13 @@ const MessageTemplateManagement: React.FC<MessageTemplateManagementProps> = ({
                         e.stopPropagation();
                         suppressOpenRef.current = true;
                         const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                        setContextMenu({ visible: true, x: rect.right, y: rect.top, item: cell.item });
+                        const { x, y } = clampContextMenuPosition(
+                          rect.right,
+                          rect.top,
+                          CONTEXT_MENU_ESTIMATED_WIDTH,
+                          CONTEXT_MENU_ESTIMATED_HEIGHT
+                        );
+                        setContextMenu({ visible: true, x, y, item: cell.item });
                       }}
                     >
                       <i className="fa-solid fa-pencil text-xs" aria-hidden="true" />
@@ -436,6 +449,7 @@ const MessageTemplateManagement: React.FC<MessageTemplateManagementProps> = ({
 
       {contextMenu.visible && contextMenu.item ? (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-max`}
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}

@@ -17,6 +17,12 @@ import { useAlertConfirm } from '../common/AlertConfirmProvider';
 import TableDataPreview from './TableDataPreview';
 import MetaDataTableDesign from './metaDataTableDesign';
 import MetaDataViewDesign from './metaDataViewDesign';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 320;
+const ADD_MENU_ESTIMATED_WIDTH = 170;
+const ADD_MENU_ESTIMATED_HEIGHT = 120;
 
 // Cache for table and view list data (similar to angular.dictFilterKeyAndDbTableViewList)
 const dictFilterKeyAndDbTableViewList: { [key: string]: any[] } = {};
@@ -58,6 +64,8 @@ const MetaDataManagement: React.FC = () => {
   const flexQueryResultRef = useRef<any>(null);
   const ddlDataSourceFromRef = useRef<wjInput.ComboBox | null>(null);
   const queryTextAreaRef = useRef<HTMLTextAreaElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
+  const addMenuRef = useRef<HTMLDivElement | null>(null);
 
   // State
   const [dataModel, setDataModel] = useState<{
@@ -540,7 +548,13 @@ const MetaDataManagement: React.FC = () => {
   const openResultItemContextMenu = useCallback((event: React.MouseEvent, dataItem: any) => {
     event.stopPropagation();
     setDataModel(prev => ({ ...prev, selectedDataRow: dataItem }));
-    setContextMenuPosition({ x: event.clientX, y: event.clientY });
+    const { x, y } = clampContextMenuPosition(
+      event.clientX,
+      event.clientY,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenuPosition({ x, y });
     setShowContextMenu(true);
   }, []);
 
@@ -552,7 +566,13 @@ const MetaDataManagement: React.FC = () => {
   // Open add menu
   const openAddMenu = useCallback((event: React.MouseEvent) => {
     event.stopPropagation();
-    setAddMenuPosition({ x: event.clientX, y: event.clientY });
+    const { x, y } = clampContextMenuPosition(
+      event.clientX,
+      event.clientY,
+      ADD_MENU_ESTIMATED_WIDTH,
+      ADD_MENU_ESTIMATED_HEIGHT
+    );
+    setAddMenuPosition({ x, y });
     setShowAddMenu(true);
   }, []);
 
@@ -805,6 +825,9 @@ const MetaDataManagement: React.FC = () => {
       };
     }
   }, [showAddMenu, closeAddMenu]);
+
+  useRefineContextMenuPosition(showContextMenu, contextMenuRef, setContextMenuPosition);
+  useRefineContextMenuPosition(showAddMenu, addMenuRef, setAddMenuPosition);
 
   return (
     <div className={`w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden`}>
@@ -1062,6 +1085,7 @@ const MetaDataManagement: React.FC = () => {
       {/* Add Menu */}
       {showAddMenu && (
         <div
+          ref={addMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[150px] add-menu-container`}
           style={{ left: addMenuPosition.x, top: addMenuPosition.y }}
           onMouseLeave={closeAddMenu}
@@ -1109,6 +1133,7 @@ const MetaDataManagement: React.FC = () => {
       {/* Context Menu */}
       {showContextMenu && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[150px]`}
           style={{ left: contextMenuPosition.x, top: contextMenuPosition.y }}
           onMouseLeave={closeResultItemContextMenu}

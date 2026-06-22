@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
 import { FlexGridFilter } from '@mescius/wijmo.react.grid.filter';
 import { DataMap } from '@mescius/wijmo.grid';
@@ -11,6 +11,17 @@ import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import { getDataModelFromCache, getCurrentActiveTab } from '../../redux/features/ui/navigation/tabnavSlice';
 import { useTabDataAutoCache } from '../../redux/hooks/useTabNavigation';
 import { useTheme } from '../../redux/hooks/useTheme';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 240;
+
+type UserContextMenuState = {
+  visible: boolean;
+  x: number;
+  y: number;
+  item: any;
+};
 
 // Function to prepare default data for user management (reserved)
 const _prepareDefaultData = () => ({
@@ -83,10 +94,23 @@ const UserManagement: React.FC = () => {
   });
 
   const flex = useRef<any>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   //const currentTheme = useSelector((state: RootState) => state.theme.currentTheme);
   const { theme } = useTheme();
   const dispatch = useDispatch();
   const { addTabAndNavigate } = useTabNavigation();
+
+  const setUserContextMenuField = useCallback((updater: React.SetStateAction<UserContextMenuState>) => {
+    setDataModel((prev) => ({
+      ...prev,
+      uiControl: {
+        ...prev.uiControl,
+        contextMenu: typeof updater === 'function' ? updater(prev.uiControl.contextMenu) : updater,
+      },
+    }));
+  }, []);
+
+  useRefineContextMenuField(dataModel.uiControl.contextMenu.visible, contextMenuRef, setUserContextMenuField);
 
   // Main load data from server function
   const loadDataFromServer = async () => {
@@ -163,8 +187,12 @@ const UserManagement: React.FC = () => {
         ...prev.uiControl,
         contextMenu: {
           visible: true,
-          x: event.clientX,
-          y: event.clientY,
+          ...clampContextMenuPosition(
+            event.clientX,
+            event.clientY,
+            CONTEXT_MENU_ESTIMATED_WIDTH,
+            CONTEXT_MENU_ESTIMATED_HEIGHT
+          ),
           item: item
         }
       }
@@ -308,6 +336,7 @@ const UserManagement: React.FC = () => {
       {/* Context Menu */}
       {dataModel.uiControl.contextMenu.visible && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[150px]`}
           style={{
             left: dataModel.uiControl.contextMenu.x,

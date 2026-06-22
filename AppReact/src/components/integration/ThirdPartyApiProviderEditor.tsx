@@ -18,6 +18,10 @@ import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLo
 import { addTab } from '../../redux/features/ui/navigation/tabnavSlice';
 import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 140;
 
 type IntegrationSettingDto = {
   Id?: number | null;
@@ -71,6 +75,7 @@ const ThirdPartyApiProviderEditor: React.FC = () => {
   const [cookieList, setCookieList] = useState<KeyValue[]>([]);
   const [activeTabIndex, setActiveTabIndex] = useState(0); // 0=API Operation, 1=Environment Variables, 2=Cookie Setting
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: any } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [envSystemVarDropdownOpen, setEnvSystemVarDropdownOpen] = useState(false);
   const flexRef = useRef<wjGrid.FlexGrid | null>(null);
   const envVarFlexRef = useRef<wjGrid.FlexGrid | null>(null);
@@ -243,8 +248,25 @@ const ThirdPartyApiProviderEditor: React.FC = () => {
 
   const openContextMenu = useCallback((e: React.MouseEvent, row: any) => {
     e.stopPropagation();
-    setContextMenu({ x: e.clientX - 20, y: e.clientY - 5, row });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX - 20,
+      e.clientY - 5,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenu({ x, y, row });
   }, []);
+
+  const setContextMenuPosition = useCallback((updater: React.SetStateAction<{ x: number; y: number }>) => {
+    setContextMenu((prev) => {
+      if (!prev) return prev;
+      const nextPos = typeof updater === 'function' ? updater({ x: prev.x, y: prev.y }) : updater;
+      if (nextPos.x === prev.x && nextPos.y === prev.y) return prev;
+      return { ...prev, x: nextPos.x, y: nextPos.y };
+    });
+  }, []);
+
+  useRefineContextMenuPosition(contextMenu !== null, contextMenuRef, setContextMenuPosition);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -598,6 +620,7 @@ const ThirdPartyApiProviderEditor: React.FC = () => {
 
       {contextMenu && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[150px]`}
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}

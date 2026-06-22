@@ -171,20 +171,20 @@ class ExternalUserRegistrationService {
     return response.json();
   }
 
-  async encryptString(paramString: string, token: string): Promise<any> {
+  async encryptString(paramString: string, token: string): Promise<string> {
     const response = await fetch(`${endpoints.BASE_URL}/webapi/ExternalUserRegistration/EncryptString?paramString=${paramString}&token=${token}`, {
       headers: getHeaders()
     });
     if (!response.ok) throw new Error('String encryption failed');
-    return response.json();
+    return response.text();
   }
 
-  async decryptString(paramString: string, token: string): Promise<any> {
+  async decryptString(paramString: string, token: string): Promise<string> {
     const response = await fetch(`${endpoints.BASE_URL}/webapi/ExternalUserRegistration/DecryptString?paramString=${paramString}&token=${token}`, {
       headers: getHeaders()
     });
     if (!response.ok) throw new Error('String decryption failed');
-    return response.json();
+    return response.text();
   }
 
   async registerNewSaasAccountWithUserCompanyDB(data: any): Promise<any> {

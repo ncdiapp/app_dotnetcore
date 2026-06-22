@@ -247,7 +247,7 @@ class SchemaMetadataService {
     return response.json();
   }
 
-  async getDatabaseTableBuiltInQuery(tableName: string, dataSourceRegisterId: number | null, schemaOwner: string | null, emBuiltInQueryType: number): Promise<any> {
+  async getDatabaseTableBuiltInQuery(tableName: string, dataSourceRegisterId: number | null, schemaOwner: string | null, emBuiltInQueryType: number): Promise<string> {
     const params = new URLSearchParams();
     params.append('tableName', tableName);
     params.append('dataSourceRegisterId', dataSourceRegisterId !== null ? dataSourceRegisterId.toString() : '');
@@ -258,7 +258,7 @@ class SchemaMetadataService {
       headers: getHeaders()
     });
     if (!response.ok) throw new Error('Failed to get built-in query');
-    return response.json();
+    return response.text();
   }
 
   async dropDatabaseTable(databaseTable: any): Promise<any> {
@@ -348,7 +348,7 @@ class SchemaMetadataService {
       headers: getHeaders()
     });
     if (!response.ok) throw new Error('Failed to get view query text');
-    return response.json();
+    return response.text();
   }
 
   async updateDatabaseViewDtoFromQuery(databaseViewDto: any): Promise<any> {

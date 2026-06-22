@@ -11,6 +11,10 @@ import { useErrorMessage } from '../../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/busyLoaderSlice';
 import { useDispatch } from 'react-redux';
 import { appTransactionService } from '../../../webapi/apptransactionsvc';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 140;
 import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
 import { CollectionView, SortDescription } from '@mescius/wijmo';
 import { DataMap } from '@mescius/wijmo.grid';
@@ -44,6 +48,7 @@ const TransactionDataLoadManagement: React.FC<TransactionDataLoadManagementProps
   const [unitDataMap, setUnitDataMap] = useState<DataMap | null>(null);
   const [rootUnitId, setRootUnitId] = useState<number | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; row: any } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [editorState, setEditorState] = useState<{
     isOpen: boolean;
     mode: 'create' | 'edit';
@@ -180,8 +185,25 @@ const TransactionDataLoadManagement: React.FC<TransactionDataLoadManagementProps
   const openContextMenu = useCallback((ev: React.MouseEvent, item: any) => {
     ev.preventDefault();
     ev.stopPropagation();
-    setContextMenu({ x: ev.clientX, y: ev.clientY, row: item });
+    const { x, y } = clampContextMenuPosition(
+      ev.clientX,
+      ev.clientY,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenu({ x, y, row: item });
   }, []);
+
+  const setContextMenuPosition = useCallback((updater: React.SetStateAction<{ x: number; y: number }>) => {
+    setContextMenu((prev) => {
+      if (!prev) return prev;
+      const nextPos = typeof updater === 'function' ? updater({ x: prev.x, y: prev.y }) : updater;
+      if (nextPos.x === prev.x && nextPos.y === prev.y) return prev;
+      return { ...prev, x: nextPos.x, y: nextPos.y };
+    });
+  }, []);
+
+  useRefineContextMenuPosition(contextMenu !== null, contextMenuRef, setContextMenuPosition);
 
   const closeContextMenu = useCallback(() => {
     setContextMenu(null);
@@ -317,6 +339,7 @@ const TransactionDataLoadManagement: React.FC<TransactionDataLoadManagementProps
 
       {contextMenu && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-[1000] rounded-[4px] shadow-lg py-1 min-w-[200px] ${theme.mainContentSection} border`}
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(e) => e.stopPropagation()}

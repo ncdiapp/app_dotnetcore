@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef, type Dispatch, type SetStateAction } from 'react';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../hooks/useClampedContextMenuPosition';
 import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
 import { CollectionView, PropertyGroupDescription, SortDescription } from '@mescius/wijmo';
 import '@mescius/wijmo.styles/wijmo.css';
@@ -8,6 +9,9 @@ import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/bus
 import { useDispatch } from 'react-redux';
 import UserLoginInfoEditor from './UserLoginInfoEditor';
 import UserEditor from './UserEditor';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 120;
 
 type Props = {
   companyId: string | number | null;
@@ -128,6 +132,18 @@ const CompanyOrgnizationSetup: React.FC<Props> = ({
     }
   }, [onCreateUser]);
 
+  const refineContextMenu = useCallback<Dispatch<SetStateAction<{ x: number; y: number; user: any }>>>(
+    (action) => {
+      setContextMenu((prev) => {
+        if (!prev) return prev;
+        return typeof action === 'function' ? action(prev) : action;
+      });
+    },
+    []
+  );
+
+  useRefineContextMenuField(!isControlled && !!contextMenu, contextMenuRef, refineContextMenu);
+
   if (!companyId) {
     return (
       <div className={`p-4 ${theme.mainContentSection}`}>
@@ -188,10 +204,16 @@ const CompanyOrgnizationSetup: React.FC<Props> = ({
                           onClick={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
+                            const { x, y } = clampContextMenuPosition(
+                              e.clientX,
+                              e.clientY,
+                              CONTEXT_MENU_ESTIMATED_WIDTH,
+                              CONTEXT_MENU_ESTIMATED_HEIGHT
+                            );
                             if (onOpenContextMenu) {
-                              onOpenContextMenu(item, { x: e.clientX, y: e.clientY });
+                              onOpenContextMenu(item, { x, y });
                             } else {
-                              setContextMenu({ x: e.clientX, y: e.clientY, user: item });
+                              setContextMenu({ x, y, user: item });
                             }
                           }}
                         >

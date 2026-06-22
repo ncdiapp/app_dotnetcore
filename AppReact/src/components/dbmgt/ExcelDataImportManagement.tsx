@@ -22,6 +22,10 @@ import { uploadFileToDataImage } from '../../webapi/dataImageUploadSvc';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import { useAlertConfirm } from '../common/AlertConfirmProvider';
 import TableDataPreview from '../transaction/TableDataPreview';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 240;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 280;
 
 /** Schema owner for staging table lookup / GetOneDatabaseTableSchema. */
 async function resolveStagingTableSchemaOwner(dataSourceRegisterId: number, tempTableName: string): Promise<string> {
@@ -260,6 +264,7 @@ const ExcelDataImportManagement: React.FC<ExcelDataImportManagementProps> = (pro
   const pendingNewDataSourceIdRef = useRef<number | null>(null);
   const pendingUpdateRowRef = useRef<any | null>(null);
   const flexRef = useRef<wjGrid.FlexGrid | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -325,7 +330,13 @@ const ExcelDataImportManagement: React.FC<ExcelDataImportManagementProps> = (pro
     e.preventDefault();
     e.stopPropagation();
     setSelectedRow(item);
-    setContextMenuPos({ x: e.clientX, y: e.clientY });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX,
+      e.clientY,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenuPos({ x, y });
     setContextMenuOpen(true);
   }, []);
 
@@ -336,6 +347,8 @@ const ExcelDataImportManagement: React.FC<ExcelDataImportManagementProps> = (pro
       return () => document.removeEventListener('click', handler);
     }
   }, [contextMenuOpen, closeContextMenu]);
+
+  useRefineContextMenuPosition(contextMenuOpen, contextMenuRef, setContextMenuPos);
 
   const openImportEditor = useCallback(
     (row: any) => {
@@ -828,6 +841,7 @@ const ExcelDataImportManagement: React.FC<ExcelDataImportManagementProps> = (pro
 
       {contextMenuOpen && selectedRow && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[240px]`}
           style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
           onClick={(e) => e.stopPropagation()}

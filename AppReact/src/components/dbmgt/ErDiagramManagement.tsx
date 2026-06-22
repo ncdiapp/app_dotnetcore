@@ -11,6 +11,10 @@ import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLo
 import { appTransactionService } from '../../webapi/apptransactionsvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 200;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 150;
 
 interface ErDiagramItem {
   Id: number;
@@ -42,6 +46,7 @@ const ErDiagramManagement: React.FC = () => {
 
   const flexGridRef = useRef<wjGrid.FlexGrid | null>(null);
   const dataSourceDataMapRef = useRef<DataMap | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (dataSourceRegisterList.length > 0) {
@@ -146,7 +151,13 @@ const ErDiagramManagement: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     setSelectedItem(dataItem);
-    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX,
+      e.clientY,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenuPosition({ x, y });
     setContextMenuVisible(true);
   };
 
@@ -157,6 +168,8 @@ const ErDiagramManagement: React.FC = () => {
       return () => document.removeEventListener('click', handleClickOutside);
     }
   }, [contextMenuVisible]);
+
+  useRefineContextMenuPosition(contextMenuVisible, contextMenuRef, setContextMenuPosition);
 
   return (
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
@@ -238,6 +251,7 @@ const ErDiagramManagement: React.FC = () => {
 
       {contextMenuVisible && selectedItem && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 py-1 min-w-[200px] rounded-[4px] shadow-lg border ${t('border_default')} ${theme.mainContentSection}`}
           style={{ left: contextMenuPosition.x, top: contextMenuPosition.y }}
           onClick={(e) => e.stopPropagation()}

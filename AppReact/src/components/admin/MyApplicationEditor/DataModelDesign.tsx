@@ -16,6 +16,14 @@ import ApplicationFormBuilder from '../../transaction/ApplicationFormBuilder';
 import TransactionFolderNavigationQuickBuilder from '../../transaction/TransactionFolderNavigationQuickBuilder';
 import { useAlertConfirm } from '../../common/AlertConfirmProvider';
 import { useTabNavigation } from '../../../redux/hooks/useTabNavigation';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../hooks/useClampedContextMenuPosition';
+
+const SEARCH_MENU_ESTIMATED_WIDTH = 200;
+const SEARCH_MENU_ESTIMATED_HEIGHT = 400;
+const FOLDER_MENU_ESTIMATED_WIDTH = 240;
+const FOLDER_MENU_ESTIMATED_HEIGHT = 180;
+const TRANSACTION_MENU_ESTIMATED_WIDTH = 240;
+const TRANSACTION_MENU_ESTIMATED_HEIGHT = 480;
 
 // Transaction Organized Type (matching enum)
 const TransactionOrganizedType = {
@@ -50,6 +58,9 @@ const DataModelDesign: React.FC<DataModelDesignProps> = ({ menuId }) => {
   const [showDataSourceSubmenu, setShowDataSourceSubmenu] = useState<string | null>(null);
   const [showTransactionContextMenu, setShowTransactionContextMenu] = useState<{ visible: boolean; x: number; y: number; item: any }>({ visible: false, x: 0, y: 0, item: null });
   const createMenuRef = useRef<HTMLDivElement>(null);
+  const searchMenuRef = useRef<HTMLDivElement | null>(null);
+  const folderMenuRef = useRef<HTMLDivElement | null>(null);
+  const transactionContextMenuRef = useRef<HTMLDivElement | null>(null);
   
   // ApplicationFormBuilder popup state
   const [showFormBuilder, setShowFormBuilder] = useState(false);
@@ -484,10 +495,16 @@ const DataModelDesign: React.FC<DataModelDesignProps> = ({ menuId }) => {
           onClick={(e) => {
             e.stopPropagation();
             const rect = e.currentTarget.getBoundingClientRect();
+            const { x, y } = clampContextMenuPosition(
+              rect.right,
+              rect.top,
+              TRANSACTION_MENU_ESTIMATED_WIDTH,
+              TRANSACTION_MENU_ESTIMATED_HEIGHT
+            );
             setShowTransactionContextMenu({
               visible: true,
-              x: rect.right,
-              y: rect.top,
+              x,
+              y,
               item: cell.item
             });
           }}
@@ -516,10 +533,16 @@ const DataModelDesign: React.FC<DataModelDesignProps> = ({ menuId }) => {
             onClick={(e) => {
               e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();
+              const { x, y } = clampContextMenuPosition(
+                rect.right,
+                rect.top,
+                SEARCH_MENU_ESTIMATED_WIDTH,
+                SEARCH_MENU_ESTIMATED_HEIGHT
+              );
               setShowSearchMenu({
                 visible: true,
-                x: rect.right,
-                y: rect.top,
+                x,
+                y,
                 item: item
               });
             }}
@@ -577,10 +600,16 @@ const DataModelDesign: React.FC<DataModelDesignProps> = ({ menuId }) => {
             onClick={(e) => {
               e.stopPropagation();
               const rect = e.currentTarget.getBoundingClientRect();
+              const { x, y } = clampContextMenuPosition(
+                rect.right,
+                rect.top,
+                FOLDER_MENU_ESTIMATED_WIDTH,
+                FOLDER_MENU_ESTIMATED_HEIGHT
+              );
               setShowFolderMenu({
                 visible: true,
-                x: rect.right,
-                y: rect.top,
+                x,
+                y,
                 item: item
               });
             }}
@@ -596,6 +625,10 @@ const DataModelDesign: React.FC<DataModelDesignProps> = ({ menuId }) => {
     }
     return null;
   };
+
+  useRefineContextMenuField(showSearchMenu.visible, searchMenuRef, setShowSearchMenu);
+  useRefineContextMenuField(showFolderMenu.visible, folderMenuRef, setShowFolderMenu);
+  useRefineContextMenuField(showTransactionContextMenu.visible, transactionContextMenuRef, setShowTransactionContextMenu);
 
   return (
     <div className="h-full flex flex-col gap-1">
@@ -912,6 +945,7 @@ const DataModelDesign: React.FC<DataModelDesignProps> = ({ menuId }) => {
       {/* Search Context Menu */}
       {showSearchMenu.visible && (
         <div
+          ref={searchMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[200px]`}
           style={{
             left: showSearchMenu.x,
@@ -938,6 +972,7 @@ const DataModelDesign: React.FC<DataModelDesignProps> = ({ menuId }) => {
       {/* Folder Context Menu */}
       {showFolderMenu.visible && showFolderMenu.item && (
         <div
+          ref={folderMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[240px]`}
           style={{
             left: showFolderMenu.x,
@@ -972,6 +1007,7 @@ const DataModelDesign: React.FC<DataModelDesignProps> = ({ menuId }) => {
       {/* Transaction Row Context Menu */}
       {showTransactionContextMenu.visible && showTransactionContextMenu.item && (
         <div
+          ref={transactionContextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-max`}
           style={{
             left: showTransactionContextMenu.x,

@@ -19,8 +19,11 @@ import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLo
 import { addTab } from '../../redux/features/ui/navigation/tabnavSlice';
 import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
+import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
 
 const API_BUILDER_INTEGRATION_SETTING_ID = 1;
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 140;
 
 type IntegrationSettingParameterItem = {
   Id?: number | null;
@@ -64,6 +67,7 @@ const AppApiManagement: React.FC = () => {
   const [contextMenuOpen, setContextMenuOpen] = useState(false);
   const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
   const [selectedRowData, setSelectedRowData] = useState<IntegrationSettingParameterItem | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [createDropdownOpen, setCreateDropdownOpen] = useState(false);
   const [sqlQuerySubmenuOpen, setSqlQuerySubmenuOpen] = useState(false);
   const flexRef = useRef<wjGrid.FlexGrid | null>(null);
@@ -124,7 +128,13 @@ const AppApiManagement: React.FC = () => {
   const openContextMenu = useCallback((e: React.MouseEvent, dataItem: IntegrationSettingParameterItem) => {
     e.stopPropagation();
     setSelectedRowData(dataItem);
-    setContextMenuPos({ x: e.clientX - 20, y: e.clientY - 5 });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX - 20,
+      e.clientY - 5,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenuPos({ x, y });
     setContextMenuOpen(true);
   }, []);
 
@@ -250,6 +260,8 @@ const AppApiManagement: React.FC = () => {
       return () => document.removeEventListener('click', handler);
     }
   }, [contextMenuOpen, closeContextMenu]);
+
+  useRefineContextMenuPosition(contextMenuOpen, contextMenuRef, setContextMenuPos);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -422,6 +434,7 @@ const AppApiManagement: React.FC = () => {
 
       {contextMenuOpen && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[150px]`}
           style={{ left: contextMenuPos.x, top: contextMenuPos.y }}
           onClick={(e) => e.stopPropagation()}

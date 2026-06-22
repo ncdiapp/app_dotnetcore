@@ -8,6 +8,10 @@ import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.r
 import { FlexGridFilter } from '@mescius/wijmo.react.grid.filter';
 import { CollectionView } from '@mescius/wijmo';
 import TaskPropertiesPanel from './TaskPropertiesPanel';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 140;
 
 interface ProjectTaskListProps {
   currentProject: any | null;
@@ -46,6 +50,7 @@ const ProjectTaskList: React.FC<ProjectTaskListProps> = ({ currentProject, onRef
     y: 0,
     task: null
   });
+  const contextMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Load tasks when currentProject changes
   useEffect(() => {
@@ -64,6 +69,8 @@ const ProjectTaskList: React.FC<ProjectTaskListProps> = ({ currentProject, onRef
     document.addEventListener('click', handleClick);
     return () => document.removeEventListener('click', handleClick);
   }, [contextMenu.visible]);
+
+  useRefineContextMenuField(contextMenu.visible, contextMenuRef, setContextMenu);
 
   const loadTasksFromServer = useCallback(async () => {
     if (!currentProject?.Id) return;
@@ -298,10 +305,17 @@ const ProjectTaskList: React.FC<ProjectTaskListProps> = ({ currentProject, onRef
     e.preventDefault();
     e.stopPropagation();
 
+    const { x, y } = clampContextMenuPosition(
+      e.clientX,
+      e.clientY,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+
     setContextMenu({
       visible: true,
-      x: e.clientX,
-      y: e.clientY,
+      x,
+      y,
       task: task
     });
   }, []);
@@ -509,6 +523,7 @@ const ProjectTaskList: React.FC<ProjectTaskListProps> = ({ currentProject, onRef
       {/* Context Menu */}
       {contextMenu.visible && (
         <div
+          ref={contextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded shadow-lg py-1 min-w-[150px]`}
           style={{
             left: contextMenu.x,

@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../hooks/useClampedContextMenuPosition';
 import { CollectionView, PropertyGroupDescription, SortDescription } from '@mescius/wijmo';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { useDispatch } from 'react-redux';
@@ -10,6 +11,9 @@ import UserLoginInfoEditor from './UserLoginInfoEditor';
 import UserEditor from './UserEditor';
 
 const USER_SUB_TABS = ['Employee', 'Customer', 'Supplier', 'Client Agent', 'Supplier Agent'] as const;
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 120;
 
 // Backend expects int PartnerType (EmAppUserType: Customer=3, Supplier=4, ClientAgent=5, SupplierAgent=9)
 const PARTNER_TYPE_MAP: Record<number, number> = {
@@ -85,8 +89,26 @@ const CompanyUsersTab: React.FC<Props> = ({
   }, [contextMenu]);
 
   const handleOpenContextMenu = useCallback((user: any, position: { x: number; y: number }) => {
-    setContextMenu({ x: position.x, y: position.y, user });
+    const { x, y } = clampContextMenuPosition(
+      position.x,
+      position.y,
+      CONTEXT_MENU_ESTIMATED_WIDTH,
+      CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setContextMenu({ x, y, user });
   }, []);
+
+  const refineContextMenu = useCallback<Dispatch<SetStateAction<{ x: number; y: number; user: any }>>>(
+    (action) => {
+      setContextMenu((prev) => {
+        if (!prev) return prev;
+        return typeof action === 'function' ? action(prev) : action;
+      });
+    },
+    []
+  );
+
+  useRefineContextMenuField(!!contextMenu, contextMenuRef, refineContextMenu);
 
   const handleEditUserLogin = useCallback((userId: string) => {
     setEditingUserId(userId);

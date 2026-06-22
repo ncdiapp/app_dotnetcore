@@ -10,6 +10,10 @@ import { adminSvc } from '../../webapi/adminsvc';
 import { refreshUserTreeMenu } from '../../helper/userMenuHelper';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
 import type { RootState } from '../../redux/store';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 140;
 
 type MenuDto = any;
 
@@ -89,6 +93,7 @@ const MenuManagement: React.FC = () => {
     y: 0,
     item: null
   });
+  const rowContextMenuRef = useRef<HTMLDivElement | null>(null);
 
   const [manipulationDto, setManipulationDto] = useState<any>(null);
   const [dictLogicIdAndNavigationItem, setDictLogicIdAndNavigationItem] = useState<Record<string, any>>({});
@@ -588,6 +593,8 @@ const MenuManagement: React.FC = () => {
     return () => document.removeEventListener('click', handleDocClick);
   }, [rowContextMenu.visible]);
 
+  useRefineContextMenuField(rowContextMenu.visible, rowContextMenuRef, setRowContextMenu);
+
   return (
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
@@ -659,7 +666,13 @@ const MenuManagement: React.FC = () => {
                       onClick={(e) => {
                         e.stopPropagation();
                         const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                        setRowContextMenu({ visible: true, x: rect.right, y: rect.top, item });
+                        const { x, y } = clampContextMenuPosition(
+                          rect.right,
+                          rect.top,
+                          CONTEXT_MENU_ESTIMATED_WIDTH,
+                          CONTEXT_MENU_ESTIMATED_HEIGHT
+                        );
+                        setRowContextMenu({ visible: true, x, y, item });
                       }}
                     >
                       <i className="fa-solid fa-pencil text-xs" aria-hidden />
@@ -727,6 +740,7 @@ const MenuManagement: React.FC = () => {
 
       {rowContextMenu.visible && rowContextMenu.item && (
         <div
+          ref={rowContextMenuRef}
           className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-max`}
           style={{ left: rowContextMenu.x, top: rowContextMenu.y }}
           onClick={(e) => e.stopPropagation()}
