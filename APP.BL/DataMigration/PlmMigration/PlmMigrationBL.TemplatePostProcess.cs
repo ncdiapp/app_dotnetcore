@@ -42,9 +42,6 @@ namespace APP.BL.DataMigration.PlmMigration
         {
             new TemplateSearchViewFieldSpec { ColumnName = "ReferenceId", DisplayText = "Reference Id", IsVisible = false, IsTransRootId = true, ControlType = (int)EmAppControlType.TextBox },
             new TemplateSearchViewFieldSpec { ColumnName = "ReferenceCode", DisplayText = "Reference Code", IsVisible = true, ControlType = (int)EmAppControlType.TextBox },
-            new TemplateSearchViewFieldSpec { ColumnName = "Description", DisplayText = "Description", IsVisible = true, ControlType = (int)EmAppControlType.TextBox },
-            new TemplateSearchViewFieldSpec { ColumnName = "Description2", DisplayText = "Description 2", IsVisible = true, ControlType = (int)EmAppControlType.TextBox },
-            new TemplateSearchViewFieldSpec { ColumnName = "Image", DisplayText = "Image", IsVisible = false, ControlType = (int)EmAppControlType.Image },
             new TemplateSearchViewFieldSpec { ColumnName = "FolderId", DisplayText = "Folder Id", IsVisible = false, IsFolderId = true, ControlType = (int)EmAppControlType.TextBox },
             new TemplateSearchViewFieldSpec { ColumnName = "MasterReferenceId", DisplayText = "Master Reference Id", IsVisible = false, ControlType = (int)EmAppControlType.TextBox },
         };
@@ -315,7 +312,7 @@ WHERE SearchId = @SearchId";
 
         private static string BuildReferenceBasicInfoDataSetQuery(string rootTable)
         {
-            return $"SELECT ReferenceId, ReferenceCode, Description, Description2, Image, FolderId, MasterReferenceId FROM dbo.[{rootTable}]";
+            return $"SELECT ReferenceId, ReferenceCode, FolderId, MasterReferenceId FROM dbo.[{rootTable}]";
         }
 
         private static string TruncateDataSetName(string name)

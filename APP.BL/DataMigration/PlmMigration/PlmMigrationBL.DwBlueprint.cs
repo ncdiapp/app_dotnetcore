@@ -1052,13 +1052,19 @@ WHERE SearchId = @SearchId";
                 EntityId = fieldMeta?.PlmEntityId ?? mapRow.PlmEntityId ?? TryParseEntityFromFk(mapRow.DwFkTarget),
                 SortOrder = fieldMeta?.DisplayOrder ?? sortOrder,
                 ColumnName = mapRow.AppColumnName,
-                IsVisible = fieldMeta == null || fieldMeta.IsVisible
+                IsVisible = fieldMeta?.IsVisible == true
               });
             }
           }
 
           if (blueprint.RootUnit?.ReferenceScope != null)
           {
+            string rootTableName = QualifyBlueprintTableName(blueprint.RootUnit.AppTableName, prefix);
+            string refMetaKey = $"{blueprint.RootUnit.AppTableName}|ReferenceCode";
+            if (!fieldMetaByKey.ContainsKey(refMetaKey))
+              refMetaKey = $"{rootTableName}|ReferenceCode";
+            fieldMetaByKey.TryGetValue(refMetaKey, out PlmDwBlueprintFieldDto refFieldMeta);
+
             plan.RootSubItems.Add(new PlmTemplateSubItemRow
             {
               TabId = blueprint.RootUnit.ReferenceScope.PlmTabId,
@@ -1067,7 +1073,8 @@ WHERE SearchId = @SearchId";
               ControlType = PlmControlTypeTextBox,
               ColumnName = "ReferenceCode",
               MapsToRoot = true,
-              SortOrder = 1
+              SortOrder = 1,
+              IsVisible = refFieldMeta?.IsVisible == true
             });
           }
 
@@ -1104,7 +1111,7 @@ WHERE SearchId = @SearchId";
                   ColumnOrder = fieldMeta?.DisplayOrder ?? gridColOrder,
                   TableName = gridTable,
                   ColumnSqlName = mapRow.AppColumnName,
-                  IsVisible = fieldMeta == null || fieldMeta.IsVisible
+                  IsVisible = fieldMeta?.IsVisible == true
                 });
               }
             }

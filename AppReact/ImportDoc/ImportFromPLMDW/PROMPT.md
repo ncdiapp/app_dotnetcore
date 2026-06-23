@@ -258,7 +258,7 @@ Requires `source/dwTabImportConfig.json` (not committed with secrets; example is
 Generator details:
 - Reads `INFORMATION_SCHEMA` from plmDW  
 - Reads PLM `pdmBlockSubItem` (`ControlType`, `EntityId`) and `pdmGridMetaColumn` for grid columns — `plmEntityId` matches tenant `AppEntityInfo.IntegrationId`  
-- Reads `pdmTabBlockSubItemExtraInfo` (`AliasName` → `displayLabel`; `Visible = 0` → `isVisible: false`)  
+- Reads `pdmTabBlockSubItemExtraInfo` (`AliasName` → `displayLabel`; sub-item must exist on tab with `Visible = 1` → `isVisible: true`, otherwise `false`)  
 - APP column names: strip `_SubItemId` / `_FK_*`; suffix `_SubItemId` on collisions  
 - Mapping DELETE scoped to **tables in config only** (no `LIKE Fabric_%`)  
 - INSERT values use doubled quotes inside `SET @sql = N'...'` → `N''@P@...''`  

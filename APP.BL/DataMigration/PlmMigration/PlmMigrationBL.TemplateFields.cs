@@ -16,7 +16,88 @@ namespace APP.BL.DataMigration.PlmMigration
             public int? Nbdecimal { get; set; }
             public string DisplayName { get; set; }
             public int? SortOrder { get; set; }
-            public bool IsVisible { get; set; } = true;
+            public bool IsVisible { get; set; } = false;
+        }
+
+        /// <summary>
+        /// Key: "{tabId}|{subItemId}", value: Visible from pdmTabBlockSubItemExtraInfo (null when row missing).
+        /// </summary>
+        private static Dictionary<string, int?> LoadPlmSubItemExtraInfoVisibleByKey(
+            SqlConnection plmConn,
+            IEnumerable<int> tabIds)
+        {
+            var map = new Dictionary<string, int?>(StringComparer.OrdinalIgnoreCase);
+            var ids = tabIds?.Distinct().ToList();
+            if (ids == null || ids.Count == 0)
+                return map;
+
+            var inList = string.Join(",", ids);
+            using (var cmd = plmConn.CreateCommand())
+            {
+                cmd.CommandText = $@"
+SELECT ei.TabID, ei.SubItemID, ei.Visible
+FROM dbo.pdmTabBlockSubItemExtraInfo ei
+WHERE ei.TabID IN ({inList})";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int tabId = reader.GetInt32(0);
+                        int subItemId = reader.GetInt32(1);
+                        int? visible = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2);
+                        map[$"{tabId}|{subItemId}"] = visible;
+                    }
+                }
+            }
+
+            return map;
+        }
+
+        /// <summary>
+        /// Tab field is visible only when it exists on the tab block and extra info has Visible = 1.
+        /// </summary>
+        private static bool IsPlmTabBlockSubItemVisible(
+            int tabId,
+            int subItemId,
+            HashSet<int> tabBlockSubItemIds,
+            Dictionary<string, int?> extraInfoVisibleByKey)
+        {
+            if (!tabBlockSubItemIds.Contains(subItemId))
+                return false;
+            if (!extraInfoVisibleByKey.TryGetValue($"{tabId}|{subItemId}", out int? visible))
+                return false;
+            return visible == 1;
+        }
+
+        /// <summary>
+        /// Grid column is visible only when defined in pdmGridMetaColumn and extra info has Visible = 1.
+        /// </summary>
+        private static bool IsPlmGridColumnVisible(
+            int tabId,
+            int gridColumnId,
+            Dictionary<string, int?> extraInfoVisibleByKey)
+        {
+            if (!extraInfoVisibleByKey.TryGetValue($"{tabId}|{gridColumnId}", out int? visible))
+                return false;
+            return visible == 1;
+        }
+
+        private static HashSet<string> GetVisibleColumnNames(IEnumerable<PlmTemplateSubItemRow> subItems)
+        {
+            return new HashSet<string>(
+                (subItems ?? Enumerable.Empty<PlmTemplateSubItemRow>())
+                    .Where(s => s.IsVisible && !string.IsNullOrWhiteSpace(s.ColumnName))
+                    .Select(s => s.ColumnName),
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        private static HashSet<string> GetVisibleGridColumnNames(IEnumerable<PlmTemplateGridColumnRow> columns)
+        {
+            return new HashSet<string>(
+                (columns ?? Enumerable.Empty<PlmTemplateGridColumnRow>())
+                    .Where(c => c.IsVisible && !string.IsNullOrWhiteSpace(c.ColumnSqlName))
+                    .Select(c => c.ColumnSqlName),
+                StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -59,9 +140,20 @@ WHERE u.TransactionID = @TransactionId
 
             foreach (var (fieldId, dbName) in fields)
             {
-                if (string.IsNullOrWhiteSpace(dbName)
-                    || !metadataByColumn.TryGetValue(dbName, out PlmFieldMetadata meta))
+                if (string.IsNullOrWhiteSpace(dbName))
+                    continue;
+
+                if (!metadataByColumn.TryGetValue(dbName, out PlmFieldMetadata meta))
                 {
+                    using (var hideCmd = conn.CreateCommand())
+                    {
+                        hideCmd.Transaction = tran;
+                        hideCmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET IsVisible = 0
+WHERE TransactionFieldID = @FieldId";
+                        hideCmd.Parameters.AddWithValue("@FieldId", fieldId);
+                        hideCmd.ExecuteNonQuery();
+                    }
                     continue;
                 }
 

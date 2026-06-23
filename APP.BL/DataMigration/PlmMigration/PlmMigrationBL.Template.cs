@@ -72,7 +72,7 @@ namespace APP.BL.DataMigration.PlmMigration
             public int? Nbdecimal { get; set; }
             public string ColumnName { get; set; }
             public bool MapsToRoot { get; set; }
-            public bool IsVisible { get; set; } = true;
+            public bool IsVisible { get; set; } = false;
         }
 
         private sealed class PlmTemplateGridColumnRow
@@ -90,7 +90,7 @@ namespace APP.BL.DataMigration.PlmMigration
             public int? Nbdecimal { get; set; }
             public string TableName { get; set; }
             public string ColumnSqlName { get; set; }
-            public bool IsVisible { get; set; } = true;
+            public bool IsVisible { get; set; } = false;
         }
 
         public static OperationCallResult<PlmTemplatePreviewDto> PreviewTemplateMapping(int? sessionId)
@@ -516,6 +516,25 @@ ORDER BY t.TemplateID, tt.Sort, tt.TabID";
                 {
                     tab.SubItems.AddRange(LoadSubItemsForTab(conn, tab.TabId));
                 }
+
+                var extraInfoVisibleByKey = LoadPlmSubItemExtraInfoVisibleByKey(conn, tabs.Select(t => t.TabId));
+                foreach (var tab in tabs)
+                {
+                    var blockSubItemIds = new HashSet<int>(tab.SubItems.Select(s => s.SubItemId));
+                    foreach (var subItem in tab.SubItems)
+                    {
+                        if (subItem.ControlType == ControlTypeGrid
+                            || subItem.ControlType == ControlTypeLabel
+                            || subItem.ControlType == ControlTypeEmpty)
+                        {
+                            subItem.IsVisible = false;
+                            continue;
+                        }
+
+                        subItem.IsVisible = IsPlmTabBlockSubItemVisible(
+                            tab.TabId, subItem.SubItemId, blockSubItemIds, extraInfoVisibleByKey);
+                    }
+                }
             }
 
             foreach (var tab in tabs)
@@ -667,6 +686,12 @@ ORDER BY gmc.ColumnOrder, gmc.GridColumnID";
                         }
                     }
                 }
+
+                var extraInfoVisibleByKey = LoadPlmSubItemExtraInfoVisibleByKey(conn, new[] { tab.TabId });
+                foreach (var col in tab.GridColumns.Where(c => c.TabId == tab.TabId))
+                {
+                    col.IsVisible = IsPlmGridColumnVisible(tab.TabId, col.GridColumnId, extraInfoVisibleByKey);
+                }
             }
         }
 
@@ -796,11 +821,9 @@ WHERE tt.TemplateID = @TemplateId";
             switch (staticFieldId.Value)
             {
                 case 1: columnName = "ReferenceCode"; return true;
-                case 2: columnName = "Description"; return true;
-                case 3: columnName = "Description2"; return true;
-                case 4: columnName = "Image"; return true;
                 case 5: columnName = "FolderId"; return true;
                 case 6: columnName = "MasterReferenceId"; return true;
+                // Static fields 2 (Description), 3 (Description2), 4 (Image) live on tab sibling tables, not root.
                 default: return false;
             }
         }
@@ -873,9 +896,6 @@ WHERE tt.TemplateID = @TemplateId";
             if (TemplateTableExists(conn, tran, tableName))
             {
                 TemplateEnsureColumn(conn, tran, tableName, "ReferenceCode", "nvarchar(255) NULL");
-                TemplateEnsureColumn(conn, tran, tableName, "Description", "nvarchar(255) NULL");
-                TemplateEnsureColumn(conn, tran, tableName, "Description2", "nvarchar(255) NULL");
-                TemplateEnsureColumn(conn, tran, tableName, "Image", "nvarchar(255) NULL");
                 TemplateEnsureColumn(conn, tran, tableName, "MasterReferenceId", "int NULL");
                 TemplateEnsureColumn(conn, tran, tableName, "FolderId", "int NULL");
                 TemplateEnsureColumn(conn, tran, tableName, "AppCreatedByID", "int NULL");
@@ -892,9 +912,6 @@ WHERE tt.TemplateID = @TemplateId";
 CREATE TABLE dbo.[{tableName}] (
     ReferenceId int IDENTITY(1,1) NOT NULL PRIMARY KEY,
     ReferenceCode nvarchar(255) NULL,
-    Description nvarchar(255) NULL,
-    Description2 nvarchar(255) NULL,
-    Image nvarchar(255) NULL,
     MasterReferenceId int NULL,
     FolderId int NULL,
     AppCreatedByID int NULL,
@@ -1234,18 +1251,12 @@ WHERE TransactionID = @TransactionId
             var visibleColumnsByTable = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
             foreach (var pair in plan.SiblingColumnsByTable)
             {
-                visibleColumnsByTable[pair.Key] = new HashSet<string>(
-                    pair.Value.Select(v => v.ColumnName),
-                    StringComparer.OrdinalIgnoreCase);
+                visibleColumnsByTable[pair.Key] = GetVisibleColumnNames(pair.Value);
             }
 
-            var rootColumns = new HashSet<string>(
-                plan.RootSubItems.Select(r => r.ColumnName),
-                StringComparer.OrdinalIgnoreCase);
+            var rootColumns = GetVisibleColumnNames(plan.RootSubItems);
 
-            var gridColumns = new HashSet<string>(
-                tab.GridColumns.Select(g => g.ColumnSqlName),
-                StringComparer.OrdinalIgnoreCase);
+            var gridColumns = GetVisibleGridColumnNames(tab.GridColumns);
 
             var units = new List<(int UnitId, string TableName)>();
             using (var cmd = conn.CreateCommand())
@@ -1357,18 +1368,12 @@ WHERE TransactionUnitID = @UnitId
             var visibleColumnsByTable = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
             foreach (var pair in plan.SiblingColumnsByTable)
             {
-                visibleColumnsByTable[pair.Key] = new HashSet<string>(
-                    pair.Value.Select(v => v.ColumnName),
-                    StringComparer.OrdinalIgnoreCase);
+                visibleColumnsByTable[pair.Key] = GetVisibleColumnNames(pair.Value);
             }
 
-            var rootColumns = new HashSet<string>(
-                plan.RootSubItems.Select(r => r.ColumnName),
-                StringComparer.OrdinalIgnoreCase);
+            var rootColumns = GetVisibleColumnNames(plan.RootSubItems);
 
-            var gridColumns = new HashSet<string>(
-                tab.GridColumns.Select(g => g.ColumnSqlName),
-                StringComparer.OrdinalIgnoreCase);
+            var gridColumns = GetVisibleGridColumnNames(tab.GridColumns);
 
             void ApplyToUnits(IEnumerable<AppTransactionUnitExDto> units, string tableName, HashSet<string> visible)
             {

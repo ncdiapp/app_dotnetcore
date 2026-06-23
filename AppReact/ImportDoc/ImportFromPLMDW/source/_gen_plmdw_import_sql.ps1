@@ -82,9 +82,9 @@ WHERE ei.TabID IN ($inList)
         $subItemId = [int]$parts[1].Trim()
         $alias = $parts[2].Trim()
         $visibleRaw = $parts[3].Trim()
-        $visible = $true
+        $visible = $false
         if ($visibleRaw -ne '' -and $visibleRaw -ne 'NULL') {
-            try { $visible = ([int]$visibleRaw -ne 0) } catch { $visible = $true }
+            try { $visible = ([int]$visibleRaw -eq 1) } catch { $visible = $false }
         }
         $key = "$tabId|$subItemId"
         $map[$key] = [pscustomobject]@{
@@ -179,7 +179,7 @@ function Apply-PlmFieldMetadata($fieldRow, $subItemMetaMap, $gridColMetaMap) {
     }
 }
 
-function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap) {
+function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap, $subItemMetaMap, $gridColMetaMap) {
     $tabId = if ($fieldRow.PlmTabId) { [int]$fieldRow.PlmTabId } else { $null }
     $subItemId = $null
     if ($null -ne $fieldRow.SubItemId) { $subItemId = [int]$fieldRow.SubItemId }
@@ -187,13 +187,24 @@ function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap) {
     elseif ($null -ne $fieldRow.PlmMetaColumnId) { $subItemId = [int]$fieldRow.PlmMetaColumnId }
 
     $displayLabel = $fieldRow.AppColumn
-    $isVisible = $true
-    if ($tabId -and $subItemId) {
-        $key = "$tabId|$subItemId"
-        if ($extraInfoMap.ContainsKey($key)) {
-            $ei = $extraInfoMap[$key]
+    $isVisible = $false
+    if ($fieldRow.FieldKind -eq 'GridColumn' -and $null -ne $fieldRow.PlmGridId -and $subItemId) {
+        $gridKey = "$([int]$fieldRow.PlmGridId)|$subItemId"
+        if ($gridColMetaMap.ContainsKey($gridKey) -and $tabId) {
+            $eiKey = "$tabId|$subItemId"
+            if ($extraInfoMap.ContainsKey($eiKey)) {
+                $ei = $extraInfoMap[$eiKey]
+                if ($ei.AliasName) { $displayLabel = $ei.AliasName }
+                if ($ei.Visible) { $isVisible = $true }
+            }
+        }
+    }
+    elseif ($tabId -and $subItemId) {
+        $siKey = "$tabId|$subItemId"
+        if ($subItemMetaMap.ContainsKey($siKey) -and $extraInfoMap.ContainsKey($siKey)) {
+            $ei = $extraInfoMap[$siKey]
             if ($ei.AliasName) { $displayLabel = $ei.AliasName }
-            $isVisible = [bool]$ei.Visible
+            if ($ei.Visible) { $isVisible = $true }
         }
     }
     return [pscustomobject]@{ DisplayLabel = $displayLabel; IsVisible = $isVisible }
@@ -216,7 +227,7 @@ function Format-TabDisplayName([string]$appTable) {
     return ($appTable -replace '_', ' ').Trim()
 }
 
-function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap) {
+function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subItemMetaMap, $gridColMetaMap) {
     $prefix = $config.tablePrefixDefault
     if (-not $prefix.EndsWith('_')) { $prefix += '_' }
     $rootSuffix = $config.rootTableSuffix
@@ -314,7 +325,7 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap) {
         $entityId = if ($null -ne $r.PlmEntityId) { $r.PlmEntityId } else { Infer-PlmEntityId $r.FkTarget }
         $tabIds = @()
         if ($r.PlmTabId) { $tabIds = @([int]$r.PlmTabId) }
-        $extra = Resolve-FieldExtraInfo $r $extraInfoMap
+        $extra = Resolve-FieldExtraInfo $r $extraInfoMap $subItemMetaMap $gridColMetaMap
         $fieldEntry = [ordered]@{
             appTableName   = $appTableFull
             appColumnName  = $r.AppColumn
@@ -324,12 +335,10 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap) {
             displayLabel   = $extra.DisplayLabel
             displayOrder   = $orderByTable[$appTableFull]
             includeInSearch = $false
+            isVisible      = [bool]$extra.IsVisible
         }
         if ($entityId) {
             $fieldEntry.entityIntegrationId = [string]$entityId
-        }
-        if (-not $extra.IsVisible) {
-            $fieldEntry.isVisible = $false
         }
         $blueprintFields += $fieldEntry
         $r | Add-Member -NotePropertyName PlmControlType -NotePropertyValue $plmCtrl -Force
@@ -670,6 +679,15 @@ BEGIN
     );';
     EXEC sp_executesql @sql;
 END
+ELSE
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + @RootTable) AND name = N'ReferenceCode')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@RootTable) + N' ADD [ReferenceCode] NVARCHAR(255) NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + @RootTable) AND name = N'MasterReferenceId')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@RootTable) + N' ADD [MasterReferenceId] INT NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + @RootTable) AND name = N'FolderId')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@RootTable) + N' ADD [FolderId] INT NULL;'; EXEC sp_executesql @sql; END
+END
 
 "@)
 
@@ -893,7 +911,7 @@ elseif ($config.tabs) {
 Write-Host "Loading PLM pdmTabBlockSubItemExtraInfo for $($tabIdsForExtra.Count) tab(s) from $PlmDatabase..."
 $extraInfoMap = Get-PlmSubItemExtraInfoMap $tabIdsForExtra
 Write-Host "  Extra info rows: $($extraInfoMap.Count)"
-$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap
+$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap
 $blueprintPath = Join-Path $outDir 'PlmDw_ImportBlueprint.json'
 $blueprintJson = $blueprintObj | ConvertTo-Json -Depth 20 -Compress
 $blueprintJsonPretty = $blueprintObj | ConvertTo-Json -Depth 20
