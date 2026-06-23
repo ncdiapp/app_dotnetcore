@@ -4,13 +4,21 @@ import type {
   PlmTableExportPlanItemDto,
   PlmSystemDefineEntityPreviewItemDto,
   PlmUserDefineEntityPreviewItemDto,
-  PlmTemplateMappingGridRowDto,
-  PlmTemplateImportSettingDto,
-  PlmTemplateBlockAnalysisDto,
-  PlmTemplateSimilarTabGroupDto,
+  PlmDwImportBlueprintDto,
+  PlmDwBlueprintPreviewItemDto,
+  PlmDwBlueprintExecuteResultDto,
 } from '../../../webapi/plmMigrationSvc';
 
-export type PlmImportStepCode = 'Connect' | 'Entity' | 'Template' | 'OtherData';
+export type PlmImportStepCode = 'Connect' | 'Entity' | 'DwBlueprint' | 'OtherData';
+
+/** Legacy session/cache step code from before DW Blueprint step. */
+export const normalizePlmImportStepCode = (code: string | undefined | null): PlmImportStepCode => {
+  if (code === 'Template') return 'DwBlueprint';
+  if (code === 'Connect' || code === 'Entity' || code === 'DwBlueprint' || code === 'OtherData') {
+    return code;
+  }
+  return 'Connect';
+};
 
 export const PLM_DEFAULT_TABLE_PREFIX = 'Plm_';
 /** Hardcoded suffix appended to TablePrefix for User Define wide entity tables. */
@@ -63,25 +71,29 @@ export interface PlmImportEntityStepUiState {
   isUserDefineImporting: boolean;
 }
 
-/** Template step UI persisted across main app tab switches. */
-export interface PlmImportTemplateStepUiState {
-  gridRows: PlmTemplateMappingGridRowDto[];
-  gridSummary: string | null;
-  importSetting: PlmTemplateImportSettingDto | null;
-  blockAnalysis: PlmTemplateBlockAnalysisDto[];
-  similarTabGroups: PlmTemplateSimilarTabGroupDto[];
-  validationMessage: string | null;
-  activeJob: PlmImportJobDto | null;
-  isAnalyzing: boolean;
-  isSaving: boolean;
+/** DW Blueprint step UI persisted across main app tab switches. */
+export interface PlmImportDwBlueprintStepUiState {
+  blueprint: PlmDwImportBlueprintDto | null;
+  blueprintFileName: string | null;
+  blueprintJsonText: string | null;
+  previewItems: PlmDwBlueprintPreviewItemDto[];
+  validationErrors: string[];
+  validationWarnings: string[];
+  lastExecuteResult: PlmDwBlueprintExecuteResultDto | null;
   isValidating: boolean;
-  isImporting: boolean;
+  isPreviewing: boolean;
+  isExecuting: boolean;
+  includeTransactionGroup: boolean;
+  includeSearchView: boolean;
+  includeNavigation: boolean;
 }
 
 export interface PlmImportPageCache {
   wizardState: PlmImportWizardState;
   entityStepUi: PlmImportEntityStepUiState;
-  templateStepUi: PlmImportTemplateStepUiState;
+  dwBlueprintStepUi: PlmImportDwBlueprintStepUiState;
+  /** @deprecated Legacy cache key — migrated to dwBlueprintStepUi on read */
+  templateStepUi?: PlmImportDwBlueprintStepUiState;
 }
 
 export const createInitialEntityStepUi = (): PlmImportEntityStepUiState => ({
@@ -96,18 +108,20 @@ export const createInitialEntityStepUi = (): PlmImportEntityStepUiState => ({
   isUserDefineImporting: false,
 });
 
-export const createInitialTemplateStepUi = (): PlmImportTemplateStepUiState => ({
-  gridRows: [],
-  gridSummary: null,
-  importSetting: null,
-  blockAnalysis: [],
-  similarTabGroups: [],
-  validationMessage: null,
-  activeJob: null,
-  isAnalyzing: false,
-  isSaving: false,
+export const createInitialDwBlueprintStepUi = (): PlmImportDwBlueprintStepUiState => ({
+  blueprint: null,
+  blueprintFileName: null,
+  blueprintJsonText: null,
+  previewItems: [],
+  validationErrors: [],
+  validationWarnings: [],
+  lastExecuteResult: null,
   isValidating: false,
-  isImporting: false,
+  isPreviewing: false,
+  isExecuting: false,
+  includeTransactionGroup: true,
+  includeSearchView: true,
+  includeNavigation: true,
 });
 
 export const buildPlmImportStepStateJson = (state: Pick<
@@ -133,6 +147,6 @@ export const PLM_IMPORT_PAGE_CACHE_SUFFIX = '-PlmDataImportManagement';
 export const PLM_IMPORT_STEP_ORDER: PlmImportStepCode[] = [
   'Connect',
   'Entity',
-  'Template',
+  'DwBlueprint',
   'OtherData',
 ];

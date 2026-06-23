@@ -56,5 +56,13 @@
       "gridSubItemId": 35,
       "gridId": 7
     }
-  ]
+  ],
+  "blueprint": {
+    "templateName": "Fabric",
+    "transactionGroupName": "Fabric",
+    "transactionGroupIntegrationId": "TG_Fabric",
+    "searchName": "Fabric References",
+    "searchIntegrationId": "Search_Fabric",
+    "folderName": "Fabric"
+  }
 }

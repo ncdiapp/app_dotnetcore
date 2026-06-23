@@ -21,10 +21,10 @@ export const PLM_IMPORT_STEPS: PlmImportStepDefinition[] = [
     icon: 'fa-solid fa-table',
   },
   {
-    code: 'Template',
-    label: 'Template Import',
-    description: 'Map PLM templates to transaction groups.',
-    icon: 'fa-solid fa-file-lines',
+    code: 'DwBlueprint',
+    label: 'DW Blueprint',
+    description: 'Apply PlmDw_ImportBlueprint.json to create transactions, forms, and search.',
+    icon: 'fa-solid fa-diagram-project',
   },
   {
     code: 'OtherData',

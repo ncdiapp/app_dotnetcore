@@ -1,7 +1,8 @@
 # PLM Data Warehouse → APP Template Import — Agent Prompt
 
 > **Folder:** `AppReact/ImportDoc/ImportFromPLMDW/`  
-> **Outputs (after Phase B):** `output/PlmDw_Tables.sql`, `output/PlmDw_FieldMapping.sql`, `output/PlmDw_ImportFromDW.sql`  
+> **Outputs (after Phase B):** `output/PlmDw_Tables.sql`, `output/PlmDw_FieldMapping.sql`, `output/PlmDw_ImportFromDW.sql`, `output/PlmDw_ImportBlueprint.json`  
+> **Phase D (BL TOOLS):** `PlmMigration/ExecuteDwBlueprintConfig` — consumes physical tables + FieldMapping + Blueprint to create Transaction / Form / Search / navigation.
 > **Applies to:** any PLM **Template** (not a single product type). APP table names come from DW metadata, not from fixed names in this prompt.
 
 ---
@@ -44,7 +45,7 @@ If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** i
 | Rule | Detail |
 |------|--------|
 | **Gate 0** | No connection string **and** TabIds from the user → **ask only**; no DW access, no Phase A/B (see §Gate 0). |
-| **Two phases** | **Phase A:** DW analysis + APP table proposal → **STOP for user confirmation**. **Phase B:** generate SQL **after** confirm. |
+| **Two phases** | **Phase A:** DW analysis + APP table proposal + **Blueprint draft** → **STOP for user confirmation**. **Phase B:** generate SQL + Blueprint JSON **after** confirm. **Phase D:** BL TOOLS apply Blueprint to APP config (separate step). |
 | **plmDW is truth** | Column names, SubItem IDs, TabIds from DW — not legacy PLM exports. |
 | **1 Tab → 1 APP table** | Tab wide tables only for tabs with `PLM_DW_Tab_*_{TabId}`. Grid-only tabs → `PLM_DW_Grid_*`. |
 | **Mapping drives import** | `{prefix}FieldMapping` stores `DwTableName` + `DwColumnName` per APP column. |
@@ -135,8 +136,11 @@ Ask user to confirm (adapt wording to actual tab names):
 5. Skip tabs/grids with no DW source  
 6. Mapping table schema (§Phase B3)  
 7. `@TablePrefix` default `Plm_` OK?  
+8. **Transaction Group** name and `integrationId` (Blueprint)  
+9. **Per TabId → Transaction** unit structure (Root / Sibling / Child) and `fieldPolicy`  
+10. **Blueprint field counts** per Transaction vs FieldMapping rows (shared columns must not duplicate on secondary tab)
 
-After user confirms Phase A, record decisions in `source/dwTabImportConfig.json` (structure per `dwTabImportConfig.example.json` — **do not** copy example TabIds/server without user input).
+After user confirms Phase A, record decisions in `source/dwTabImportConfig.json` (structure per `dwTabImportConfig.example.json` — include `blueprint` node — **do not** copy example TabIds/server without user input).
 
 ---
 
@@ -164,7 +168,15 @@ After user confirms Phase A, record decisions in `source/dwTabImportConfig.json`
   ],
   "grids": [
     { "appTable": "...", "dwTable": "PLM_DW_Grid_...", "gridSubItemId": 0, "gridId": 0 }
-  ]
+  ],
+  "blueprint": {
+    "templateName": "...",
+    "transactionGroupName": "...",
+    "transactionGroupIntegrationId": "TG_...",
+    "searchName": "... References",
+    "searchIntegrationId": "Search_...",
+    "folderName": "..."
+  }
 }
 ```
 
@@ -187,6 +199,8 @@ Requires `source/dwTabImportConfig.json` (not committed with secrets; example is
 | `output/PlmDw_Tables.sql` | `{prefix}ReferenceBasicInfo` + tab/grid tables from config |
 | `output/PlmDw_FieldMapping.sql` | `{prefix}FieldMapping` DDL + seed |
 | `output/PlmDw_ImportFromDW.sql` | Copied from `source/PlmDw_ImportFromDW.sql` template |
+| `output/PlmDw_ImportBlueprint.json` | Transaction / Form / Search **configuration plan** for BL TOOLS |
+| `output/PlmDw_ImportBlueprint.sql` | Optional tenant table `{prefix}ImportBlueprint` + JSON seed |
 
 Generator details:
 - Reads `INFORMATION_SCHEMA` from plmDW  
@@ -196,7 +210,11 @@ Generator details:
 
 ### B3. `{prefix}FieldMapping` schema
 
-`AppTableName`, `AppColumnName`, `DwTableName`, `DwColumnName`, `PlmTabId`, `PlmSubItemId`, `PlmGridSubItemId`, `PlmGridId`, `PlmMetaColumnId`, `PlmBlockId`, `DwFkTarget`, `FieldKind` (`TabField` | `GridColumn` | `ReferenceField`).
+`AppTableName`, `AppColumnName`, `DwTableName`, `DwColumnName`, `PlmTabId`, `PlmSubItemId`, `PlmGridSubItemId`, `PlmGridId`, `PlmMetaColumnId`, `PlmBlockId`, `DwFkTarget`, `FieldKind` (`TabField` | `GridColumn` | `ReferenceField`), `PlmControlType`, `PlmEntityId`, `DwDataType`.
+
+### B3b. `PlmDw_ImportBlueprint.json`
+
+Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMasterSibling`), `fieldPolicy` (`AllMappedColumns` | `ExclusiveSubItemsOnly`), grid bindings, field UI metadata (`blueprintFields`), and Search/View/navigation targets. Generated from `dwTabImportConfig.json` + DW column probe. BL TOOLS: `PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`.
 
 ### B4. `output/PlmDw_ImportFromDW.sql`
 
@@ -214,7 +232,18 @@ Run scripts from **`output/`**:
 1. output/PlmDw_Tables.sql
 2. output/PlmDw_FieldMapping.sql
 3. output/PlmDw_ImportFromDW.sql
+4. (optional) output/PlmDw_ImportBlueprint.sql — store Blueprint JSON in tenant DB
 ```
+
+## Phase D — APP configuration (BL TOOLS)
+
+After physical tables are populated, open **PLM Data Import → Step 3 DW Blueprint** in the app, or call the API directly:
+
+1. Upload `output/PlmDw_ImportBlueprint.json` (or **Load from tenant DB** if `PlmDw_ImportBlueprint.sql` was run)
+2. **Validate & Preview** — runs `ValidateDwImportBlueprint` + `PreviewDwBlueprintConfig`
+3. **Execute Insert** or **Execute Update** — `ExecuteDwBlueprintConfig`
+
+API equivalents: `POST webapi/PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`.
 
 ---
 

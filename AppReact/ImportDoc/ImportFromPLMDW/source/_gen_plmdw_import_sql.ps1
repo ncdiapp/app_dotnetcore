@@ -37,6 +37,168 @@ function Invoke-DwQuery([string]$Query) {
     }
 }
 
+function Infer-PlmControlType($meta, $dataType) {
+    if ($meta.FkTarget) { return 1 }
+    if ($dataType -and $dataType -match 'date') { return 7 }
+    return 2
+}
+
+function Infer-PlmEntityId($fkTarget) {
+    if ($null -eq $fkTarget) { return $null }
+    if ($fkTarget -match '^\d+$') { return [int]$fkTarget }
+    return $null
+}
+
+function Format-TabDisplayName([string]$appTable) {
+    if ([string]::IsNullOrWhiteSpace($appTable)) { return $appTable }
+    return ($appTable -replace '_', ' ').Trim()
+}
+
+function Build-BlueprintFromConfig($config, $allFieldRows) {
+    $prefix = $config.tablePrefixDefault
+    if (-not $prefix.EndsWith('_')) { $prefix += '_' }
+    $rootSuffix = $config.rootTableSuffix
+    $refScope = if ($config.referenceScope) { $config.referenceScope } else { $config.referenceCode }
+    $templateName = if ($config.blueprint.transactionGroupName) { $config.blueprint.transactionGroupName }
+        elseif ($config.blueprint.templateName) { $config.blueprint.templateName }
+        else { 'PLM Import' }
+    $tgIntegration = if ($config.blueprint.transactionGroupIntegrationId) { $config.blueprint.transactionGroupIntegrationId }
+        else { 'TG_' + ($templateName -replace '[^a-zA-Z0-9]', '') }
+
+    $tabSharedGroups = @()
+    $infoTab = $config.tabs | Where-Object { $_.mode -eq 'excludeSubItemsFromDwTable' } | Select-Object -First 1
+    $headerTab = $null
+    if ($infoTab -and $infoTab.excludeSubItemsFromDwTable) {
+        $headerTab = $config.tabs | Where-Object { $_.dwTable -eq $infoTab.excludeSubItemsFromDwTable } | Select-Object -First 1
+        if ($headerTab) {
+            $tabSharedGroups += [ordered]@{
+                groupId             = 'shared_' + ($headerTab.appTable -replace '[^a-zA-Z0-9]', '_').ToLowerInvariant()
+                sharedAppTableName  = $prefix + $headerTab.appTable
+                primaryPlmTabId     = [int]$headerTab.tabId
+                secondaryPlmTabIds  = @([int]$infoTab.tabId)
+                rule                = 'SharedSubItemsOnPrimaryOnly'
+            }
+        }
+    }
+
+    $transactions = @()
+    foreach ($tab in $config.tabs) {
+        $tabName = if ($tab.plmTabName) { $tab.plmTabName } else { Format-TabDisplayName $tab.appTable }
+        $fieldPolicy = if ($tab.mode -eq 'excludeSubItemsFromDwTable') { 'ExclusiveSubItemsOnly' } else { 'AllMappedColumns' }
+        $siblingUnit = [ordered]@{
+            appTableName               = $prefix + $tab.appTable
+            isMasterSibling            = $true
+            fieldPolicy                = $fieldPolicy
+        }
+        if ($tab.excludeSubItemsFromDwTable) {
+            $siblingUnit.excludeSubItemsFromDwTable = $tab.excludeSubItemsFromDwTable
+        }
+        $transactions += [ordered]@{
+            plmTabId         = [int]$tab.tabId
+            plmTabName       = $tabName
+            integrationId    = "Tab_$($tab.tabId)"
+            transactionName  = $tabName
+            importStatus     = 'Ready'
+            unitStructure    = [ordered]@{
+                mode          = 'RootPlusMasterSibling'
+                rootTableName = $prefix + $rootSuffix
+                siblingUnits  = @($siblingUnit)
+                childUnits    = @()
+            }
+        }
+    }
+
+    $gridBindings = @()
+    foreach ($grid in ($config.grids | ForEach-Object { $_ })) {
+        $gridBindings += [ordered]@{
+            plmGridId                  = [int]$grid.gridId
+            appTableName               = $prefix + $grid.appTable
+            parentPlmTabId             = $null
+            attachToRoot               = $true
+            integrationId              = "Grid_$($grid.gridId)"
+            transactionIntegrationId   = if ($grid.transactionIntegrationId) { $grid.transactionIntegrationId } else { "Grid_$($grid.gridId)" }
+        }
+    }
+
+    $blueprintFields = @()
+    $orderByTable = @{}
+    foreach ($r in $allFieldRows) {
+        $appTableFull = if ($r.AppTable -eq $rootSuffix) { $prefix + $rootSuffix } else { $prefix + $r.AppTable }
+        if (-not $orderByTable.ContainsKey($appTableFull)) { $orderByTable[$appTableFull] = 0 }
+        $orderByTable[$appTableFull]++
+        $plmCtrl = if ($null -ne $r.PlmControlType) { [int]$r.PlmControlType } else { Infer-PlmControlType ([pscustomobject]@{ FkTarget = $r.FkTarget }) $r.DwDataType }
+        $entityId = if ($null -ne $r.PlmEntityId) { $r.PlmEntityId } else { Infer-PlmEntityId $r.FkTarget }
+        $tabIds = @()
+        if ($r.PlmTabId) { $tabIds = @([int]$r.PlmTabId) }
+        $blueprintFields += [ordered]@{
+            appTableName   = $appTableFull
+            appColumnName  = $r.AppColumn
+            plmTabIds      = $tabIds
+            plmControlType = $plmCtrl
+            plmEntityId    = $entityId
+            displayLabel   = $r.AppColumn
+            displayOrder   = $orderByTable[$appTableFull]
+            includeInSearch = $false
+        }
+        $r | Add-Member -NotePropertyName PlmControlType -NotePropertyValue $plmCtrl -Force
+        $r | Add-Member -NotePropertyName PlmEntityId -NotePropertyValue $entityId -Force
+        if (-not $r.PSObject.Properties['DwDataType']) {
+            $r | Add-Member -NotePropertyName DwDataType -NotePropertyValue $null -Force
+        }
+    }
+
+    $searchName = if ($config.blueprint.searchName) { $config.blueprint.searchName } else { "$templateName References" }
+    $searchIntegration = if ($config.blueprint.searchIntegrationId) { $config.blueprint.searchIntegrationId }
+        else { 'Search_' + ($templateName -replace '[^a-zA-Z0-9]', '') }
+
+    return [ordered]@{
+        schemaVersion         = 1
+        generatedAt           = (Get-Date).ToUniversalTime().ToString('o')
+        source                = [ordered]@{
+            dwDatabase   = $config.dwDatabase
+            importTabIds = @($config.importTabIds | ForEach-Object { [int]$_ })
+            tablePrefix  = $prefix
+            configFile   = 'source/dwTabImportConfig.json'
+        }
+        transactionGroup      = [ordered]@{
+            name           = $templateName
+            integrationId  = $tgIntegration
+            saasApplicationId = $null
+        }
+        rootUnit              = [ordered]@{
+            appTableName   = $prefix + $rootSuffix
+            integrationId  = 'Unit_ReferenceBasicInfo'
+            referenceScope = [ordered]@{
+                dwTable      = $refScope.dwTable
+                dwColumn     = $refScope.dwColumn
+                plmTabId     = [int]$refScope.plmTabId
+                plmSubItemId = [int]$refScope.plmSubItemId
+            }
+        }
+        tabSharedTableGroups  = $tabSharedGroups
+        transactions          = $transactions
+        gridBindings          = $gridBindings
+        blueprintFields       = $blueprintFields
+        searchView            = [ordered]@{
+            search     = [ordered]@{
+                name           = $searchName
+                integrationId  = $searchIntegration
+                usageType      = 'DataModelTemplate'
+                rootTableName  = $prefix + $rootSuffix
+            }
+            searchView = [ordered]@{
+                integrationId = $searchIntegration + '_View'
+                fields        = 'DefaultReferenceBasicInfo'
+            }
+        }
+        navigation            = [ordered]@{
+            folderName               = if ($config.blueprint.folderName) { $config.blueprint.folderName } else { $templateName }
+            parentFolderIntegrationId = $null
+            menuOrder                = 100
+        }
+    }
+}
+
 function Get-DwTableColumns([string]$TableName) {
     $q = @"
 SELECT c.COLUMN_NAME, c.DATA_TYPE, c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.ORDINAL_POSITION
@@ -160,6 +322,9 @@ function Build-FieldRows($dwCols, [string]$DwTable, [int]$TabId, [string]$AppTab
             PlmGridId        = if ($FieldKind -eq 'GridColumn') { $gridId } else { $null }
             PlmMetaColumnId  = if ($FieldKind -eq 'GridColumn') { $meta.SubItemId } else { $null }
             FieldKind        = $FieldKind
+            DwDataType       = $c.DataType
+            PlmControlType   = (Infer-PlmControlType $meta $c.DataType)
+            PlmEntityId      = (Infer-PlmEntityId $meta.FkTarget)
         }
     }
     return Get-AppColumnNames $rows
@@ -318,6 +483,9 @@ foreach ($grid in $config.grids) {
     PlmGridId        = $null
     PlmMetaColumnId  = $null
     FieldKind        = 'ReferenceField'
+    DwDataType       = 'nvarchar'
+    PlmControlType   = 2
+    PlmEntityId      = $null
 })
 
 $ddlParts.Add('GO')
@@ -330,7 +498,10 @@ $valuesLines = New-Object System.Collections.Generic.List[string]
 foreach ($r in $allFieldRows) {
     $appTable = $r.AppTable
     $fkSql = if ($r.FkTarget) { SqlStrDyn $r.FkTarget } else { 'NULL' }
-    $line = "(N''@P@$appTable'', N''$($r.AppColumn -replace "'", "''")'', $(SqlStrDyn $r.DwTable), $(SqlStrDyn $r.DwColumn), $(SqlInt $r.PlmTabId), $(SqlInt $r.SubItemId), $(SqlInt $r.PlmGridSubItemId), $(SqlInt $r.PlmGridId), $(SqlInt $r.PlmMetaColumnId), NULL, $fkSql, $(SqlStrDyn $r.FieldKind))"
+    $plmCtrl = SqlInt $r.PlmControlType
+    $plmEnt = SqlInt $r.PlmEntityId
+    $dwDt = if ($r.DwDataType) { SqlStrDyn $r.DwDataType } else { 'NULL' }
+    $line = "(N''@P@$appTable'', N''$($r.AppColumn -replace "'", "''")'', $(SqlStrDyn $r.DwTable), $(SqlStrDyn $r.DwColumn), $(SqlInt $r.PlmTabId), $(SqlInt $r.SubItemId), $(SqlInt $r.PlmGridSubItemId), $(SqlInt $r.PlmGridId), $(SqlInt $r.PlmMetaColumnId), NULL, $fkSql, $(SqlStrDyn $r.FieldKind), $plmCtrl, $plmEnt, $dwDt)"
     [void]$valuesLines.Add($line)
 }
 $valuesBlock = $valuesLines -join ",`n        "
@@ -381,9 +552,30 @@ BEGIN
         [PlmBlockId]        INT NULL,
         [DwFkTarget]        NVARCHAR(256) NULL,
         [FieldKind]         NVARCHAR(16)  NOT NULL,
+        [PlmControlType]    INT NULL,
+        [PlmEntityId]       INT NULL,
+        [DwDataType]        NVARCHAR(32)  NULL,
         CONSTRAINT [PK_FieldMapping] PRIMARY KEY CLUSTERED ([AppTableName], [AppColumnName])
     );';
     EXEC sp_executesql @sql;
+END
+ELSE
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable)) AND name = N'PlmControlType')
+    BEGIN
+        SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@MappingTable) + N' ADD [PlmControlType] INT NULL;';
+        EXEC sp_executesql @sql;
+    END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable)) AND name = N'PlmEntityId')
+    BEGIN
+        SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@MappingTable) + N' ADD [PlmEntityId] INT NULL;';
+        EXEC sp_executesql @sql;
+    END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable)) AND name = N'DwDataType')
+    BEGIN
+        SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@MappingTable) + N' ADD [DwDataType] NVARCHAR(32) NULL;';
+        EXEC sp_executesql @sql;
+    END
 END
 
 SET @sql = N'DELETE FROM dbo.' + QUOTENAME(@MappingTable)
@@ -395,7 +587,7 @@ SET @sql = N'
 INSERT INTO dbo.' + QUOTENAME(@MappingTable) + N' (
     [AppTableName],[AppColumnName],[DwTableName],[DwColumnName],
     [PlmTabId],[PlmSubItemId],[PlmGridSubItemId],[PlmGridId],[PlmMetaColumnId],
-    [PlmBlockId],[DwFkTarget],[FieldKind]
+    [PlmBlockId],[DwFkTarget],[FieldKind],[PlmControlType],[PlmEntityId],[DwDataType]
 )
 VALUES
         $valuesBlock
@@ -416,9 +608,63 @@ if (-not (Test-Path $importTemplate)) {
 }
 Copy-Item -Path $importTemplate -Destination $importPath -Force
 
+if (-not $config.blueprint) {
+    $config | Add-Member -NotePropertyName blueprint -NotePropertyValue ([ordered]@{
+        templateName = 'Fabric'
+        transactionGroupName = 'Fabric'
+        folderName = 'Fabric'
+    }) -Force
+}
+$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows
+$blueprintPath = Join-Path $outDir 'PlmDw_ImportBlueprint.json'
+$blueprintJson = $blueprintObj | ConvertTo-Json -Depth 20 -Compress
+$blueprintJsonPretty = $blueprintObj | ConvertTo-Json -Depth 20
+$blueprintJsonPretty | Set-Content -Path $blueprintPath -Encoding UTF8
+
+$escapedBlueprint = $blueprintJson -replace "'", "''"
+$blueprintSql = @"
+-- =============================================================================
+-- Optional: store Import Blueprint JSON in tenant DB (Phase D helper)
+-- Run after PlmDw_FieldMapping.sql if you want DB-stored blueprint copy.
+-- =============================================================================
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+DECLARE @TablePrefix NVARCHAR(32) = N'$($config.tablePrefixDefault)';
+DECLARE @BlueprintTable NVARCHAR(128) = @TablePrefix + N'ImportBlueprint';
+DECLARE @sql NVARCHAR(MAX);
+
+IF OBJECT_ID(N'dbo.' + QUOTENAME(@BlueprintTable), N'U') IS NULL
+BEGIN
+    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@BlueprintTable) + N' (
+        [BlueprintKey]   NVARCHAR(64)  NOT NULL DEFAULT N''default'',
+        [SchemaVersion]  INT           NOT NULL,
+        [BlueprintJson]  NVARCHAR(MAX) NOT NULL,
+        [UpdatedAt]      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_ImportBlueprint] PRIMARY KEY CLUSTERED ([BlueprintKey])
+    );';
+    EXEC sp_executesql @sql;
+END
+
+SET @sql = N'
+MERGE dbo.' + QUOTENAME(@BlueprintTable) + N' AS t
+USING (SELECT N''default'' AS BlueprintKey, 1 AS SchemaVersion, N''$escapedBlueprint'' AS BlueprintJson) AS s
+ON t.BlueprintKey = s.BlueprintKey
+WHEN MATCHED THEN UPDATE SET SchemaVersion = s.SchemaVersion, BlueprintJson = s.BlueprintJson, UpdatedAt = SYSUTCDATETIME()
+WHEN NOT MATCHED THEN INSERT (BlueprintKey, SchemaVersion, BlueprintJson) VALUES (s.BlueprintKey, s.SchemaVersion, s.BlueprintJson);';
+EXEC sp_executesql @sql;
+GO
+"@
+$blueprintSqlPath = Join-Path $outDir 'PlmDw_ImportBlueprint.sql'
+Set-Content -Path $blueprintSqlPath -Value $blueprintSql -Encoding UTF8
+
 Write-Host "Output folder: $outDir"
 Write-Host "Generated: $tablesPath"
 Write-Host "Generated: $mappingPath ($($allFieldRows.Count) mappings)"
+Write-Host "Generated: $blueprintPath"
+Write-Host "Generated: $blueprintSqlPath"
 Write-Host "Copied:   $importPath"
 foreach ($t in $config.tabs) {
     $n = @($allFieldRows | Where-Object { $_.AppTable -eq $t.appTable }).Count

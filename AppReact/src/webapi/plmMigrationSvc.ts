@@ -521,6 +521,220 @@ class PlmMigrationService {
     if (!response.ok) throw new Error('Failed to start template import');
     return response.json();
   }
+
+  async loadDwImportBlueprint(blueprintJson: string, tablePrefix?: string | null): Promise<OperationCallResult<PlmDwImportBlueprintDto>> {
+    const response = await fetch(`${this.baseUrl}/LoadDwImportBlueprint`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ BlueprintJson: blueprintJson, TablePrefix: tablePrefix || '' }),
+    });
+    if (!response.ok) throw new Error('Failed to load DW import blueprint');
+    return response.json();
+  }
+
+  async loadDwImportBlueprintFromTable(
+    tablePrefix?: string | null,
+    blueprintKey = 'default',
+  ): Promise<OperationCallResult<PlmDwImportBlueprintDto>> {
+    const params = new URLSearchParams();
+    if (tablePrefix) params.set('tablePrefix', tablePrefix);
+    params.set('blueprintKey', blueprintKey);
+    const response = await fetch(`${this.baseUrl}/LoadDwImportBlueprintFromTable?${params.toString()}`, {
+      method: 'GET',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to load DW import blueprint from tenant table');
+    return response.json();
+  }
+
+  async validateDwImportBlueprint(blueprint: PlmDwImportBlueprintDto): Promise<OperationCallResult<PlmDwBlueprintValidationDto>> {
+    const response = await fetch(`${this.baseUrl}/ValidateDwImportBlueprint`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(blueprint),
+    });
+    if (!response.ok) throw new Error('Failed to validate DW import blueprint');
+    return response.json();
+  }
+
+  async previewDwBlueprintConfig(blueprint: PlmDwImportBlueprintDto): Promise<OperationCallResult<PlmDwBlueprintPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewDwBlueprintConfig`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(blueprint),
+    });
+    if (!response.ok) throw new Error('Failed to preview DW blueprint config');
+    return response.json();
+  }
+
+  async executeDwBlueprintConfig(request: PlmDwBlueprintExecuteRequestDto): Promise<OperationCallResult<PlmDwBlueprintExecuteResultDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecuteDwBlueprintConfig`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to execute DW blueprint config');
+    return response.json();
+  }
+}
+
+export interface PlmDwImportBlueprintDto {
+  SchemaVersion?: number;
+  GeneratedAt?: string | null;
+  Source?: PlmDwBlueprintSourceDto | null;
+  TransactionGroup?: PlmDwBlueprintTransactionGroupDto | null;
+  RootUnit?: PlmDwBlueprintRootUnitDto | null;
+  TabSharedTableGroups?: PlmDwBlueprintTabSharedTableGroupDto[] | null;
+  Transactions?: PlmDwBlueprintTransactionDto[] | null;
+  GridBindings?: PlmDwBlueprintGridBindingDto[] | null;
+  BlueprintFields?: PlmDwBlueprintFieldDto[] | null;
+  SearchView?: PlmDwBlueprintSearchViewDto | null;
+  Navigation?: PlmDwBlueprintNavigationDto | null;
+}
+
+export interface PlmDwBlueprintSourceDto {
+  DwDatabase?: string | null;
+  ImportTabIds?: number[] | null;
+  TablePrefix?: string | null;
+  ConfigFile?: string | null;
+}
+
+export interface PlmDwBlueprintTransactionGroupDto {
+  Name?: string | null;
+  IntegrationId?: string | null;
+  SaasApplicationId?: number | null;
+}
+
+export interface PlmDwBlueprintRootUnitDto {
+  AppTableName?: string | null;
+  IntegrationId?: string | null;
+  ReferenceScope?: PlmDwBlueprintReferenceScopeDto | null;
+}
+
+export interface PlmDwBlueprintReferenceScopeDto {
+  DwTable?: string | null;
+  DwColumn?: string | null;
+  PlmTabId?: number;
+  PlmSubItemId?: number;
+}
+
+export interface PlmDwBlueprintTabSharedTableGroupDto {
+  GroupId?: string | null;
+  SharedAppTableName?: string | null;
+  PrimaryPlmTabId?: number;
+  SecondaryPlmTabIds?: number[] | null;
+  Rule?: string | null;
+}
+
+export interface PlmDwBlueprintTransactionDto {
+  PlmTabId?: number;
+  PlmTabName?: string | null;
+  IntegrationId?: string | null;
+  TransactionName?: string | null;
+  ImportStatus?: string | null;
+  UnitStructure?: PlmDwBlueprintUnitStructureDto | null;
+}
+
+export interface PlmDwBlueprintUnitStructureDto {
+  Mode?: string | null;
+  RootTableName?: string | null;
+  SiblingUnits?: PlmDwBlueprintSiblingUnitDto[] | null;
+  ChildUnits?: PlmDwBlueprintChildUnitDto[] | null;
+}
+
+export interface PlmDwBlueprintSiblingUnitDto {
+  AppTableName?: string | null;
+  IsMasterSibling?: boolean;
+  FieldPolicy?: string | null;
+  ExcludeSubItemsFromDwTable?: string | null;
+}
+
+export interface PlmDwBlueprintChildUnitDto {
+  AppTableName?: string | null;
+  AttachToRoot?: boolean;
+}
+
+export interface PlmDwBlueprintGridBindingDto {
+  PlmGridId?: number;
+  AppTableName?: string | null;
+  ParentPlmTabId?: number | null;
+  AttachToRoot?: boolean;
+  IntegrationId?: string | null;
+  TransactionIntegrationId?: string | null;
+}
+
+export interface PlmDwBlueprintFieldDto {
+  AppTableName?: string | null;
+  AppColumnName?: string | null;
+  PlmTabIds?: number[] | null;
+  AppControlType?: number | null;
+  PlmControlType?: number | null;
+  PlmEntityId?: number | null;
+  DisplayLabel?: string | null;
+  DisplayOrder?: number | null;
+  IncludeInSearch?: boolean;
+}
+
+export interface PlmDwBlueprintSearchViewDto {
+  Search?: PlmDwBlueprintSearchDto | null;
+  SearchView?: PlmDwBlueprintSearchViewSpecDto | null;
+}
+
+export interface PlmDwBlueprintSearchDto {
+  Name?: string | null;
+  IntegrationId?: string | null;
+  UsageType?: string | null;
+  RootTableName?: string | null;
+}
+
+export interface PlmDwBlueprintSearchViewSpecDto {
+  IntegrationId?: string | null;
+  Fields?: string | null;
+}
+
+export interface PlmDwBlueprintNavigationDto {
+  FolderName?: string | null;
+  ParentFolderIntegrationId?: string | null;
+  MenuOrder?: number;
+}
+
+export interface PlmDwBlueprintValidationDto {
+  IsValid?: boolean;
+  Errors?: string[] | null;
+  Warnings?: string[] | null;
+}
+
+export interface PlmDwBlueprintPreviewDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  Items?: PlmDwBlueprintPreviewItemDto[] | null;
+}
+
+export interface PlmDwBlueprintPreviewItemDto {
+  ObjectType?: string | null;
+  Name?: string | null;
+  IntegrationId?: string | null;
+  Action?: string | null;
+  ExistingId?: number | null;
+}
+
+export interface PlmDwBlueprintExecuteRequestDto {
+  Blueprint?: PlmDwImportBlueprintDto | null;
+  SaasApplicationId?: number | null;
+  Mode?: string | null;
+  IncludeSearchView?: boolean;
+  IncludeNavigation?: boolean;
+  IncludeTransactionGroup?: boolean;
+}
+
+export interface PlmDwBlueprintExecuteResultDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  TransactionsInserted?: number;
+  TransactionsUpdated?: number;
+  TransactionGroupId?: number | null;
+  SearchId?: number | null;
+  TransactionIds?: number[] | null;
 }
 
 export const plmMigrationSvc = new PlmMigrationService();

@@ -259,6 +259,71 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("LoadDwImportBlueprint")]
+    public OperationCallResult<PlmDwImportBlueprintDto> LoadDwImportBlueprint([FromBody] PlmDwBlueprintLoadRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.LoadDwImportBlueprint(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmDwImportBlueprintDto>("Plm_DwBlueprint_Load_Error", ex);
+        }
+    }
+
+    [HttpGet("LoadDwImportBlueprintFromTable")]
+    public OperationCallResult<PlmDwImportBlueprintDto> LoadDwImportBlueprintFromTable(string tablePrefix, string blueprintKey = "default")
+    {
+        try
+        {
+            return PlmMigrationBL.LoadDwImportBlueprintFromTenantTable(tablePrefix, blueprintKey);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmDwImportBlueprintDto>("Plm_DwBlueprint_LoadTable_Error", ex);
+        }
+    }
+
+    [HttpPost("ValidateDwImportBlueprint")]
+    public OperationCallResult<PlmDwBlueprintValidationDto> ValidateDwImportBlueprint([FromBody] PlmDwImportBlueprintDto blueprint)
+    {
+        try
+        {
+            return PlmMigrationBL.ValidateDwImportBlueprint(blueprint);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmDwBlueprintValidationDto>("Plm_DwBlueprint_Validate_Error", ex);
+        }
+    }
+
+    [HttpPost("PreviewDwBlueprintConfig")]
+    public OperationCallResult<PlmDwBlueprintPreviewDto> PreviewDwBlueprintConfig([FromBody] PlmDwImportBlueprintDto blueprint)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewDwBlueprintConfig(blueprint);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmDwBlueprintPreviewDto>("Plm_DwBlueprint_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecuteDwBlueprintConfig")]
+    public OperationCallResult<PlmDwBlueprintExecuteResultDto> ExecuteDwBlueprintConfig([FromBody] PlmDwBlueprintExecuteRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecuteDwBlueprintConfig(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmDwBlueprintExecuteResultDto>("Plm_DwBlueprint_Execute_Error", ex);
+        }
+    }
+
     private static OperationCallResult<T> ErrorResult<T>(string code, Exception ex)
     {
         var result = new OperationCallResult<T>();

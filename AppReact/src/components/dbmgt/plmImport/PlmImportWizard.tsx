@@ -1,20 +1,20 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { getStepIndex, PLM_IMPORT_STEPS } from './plmImportStepRegistry';
-import type { PlmImportEntityStepUiState, PlmImportStepCode, PlmImportTemplateStepUiState, PlmImportWizardState } from './types';
+import type { PlmImportEntityStepUiState, PlmImportStepCode, PlmImportDwBlueprintStepUiState, PlmImportWizardState } from './types';
 import ConnectionStep from './steps/ConnectionStep';
 import EntityStep from './steps/EntityStep';
-import TemplateStep from './steps/TemplateStep';
+import DwBlueprintStep from './steps/DwBlueprintStep';
 import OtherDataStep from './steps/OtherDataStep';
 
 export type PlmImportWizardProps = {
   state: PlmImportWizardState;
   entityStepUi: PlmImportEntityStepUiState;
-  templateStepUi: PlmImportTemplateStepUiState;
+  dwBlueprintStepUi: PlmImportDwBlueprintStepUiState;
   isSysAdmin: boolean;
   onStateChange: (patch: Partial<PlmImportWizardState>) => void;
   onEntityStepUiChange: (patch: Partial<PlmImportEntityStepUiState>) => void;
-  onTemplateStepUiChange: (patch: Partial<PlmImportTemplateStepUiState>) => void;
+  onDwBlueprintStepUiChange: (patch: Partial<PlmImportDwBlueprintStepUiState>) => void;
   onReloadSession: () => void;
   onDiscardSession: () => Promise<void>;
 };
@@ -22,11 +22,11 @@ export type PlmImportWizardProps = {
 const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
   state,
   entityStepUi,
-  templateStepUi,
+  dwBlueprintStepUi,
   isSysAdmin,
   onStateChange,
   onEntityStepUiChange,
-  onTemplateStepUiChange,
+  onDwBlueprintStepUiChange,
   onReloadSession,
   onDiscardSession,
 }) => {
@@ -108,13 +108,13 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
             onSessionSaved={onReloadSession}
           />
         );
-      case 'Template':
+      case 'DwBlueprint':
         return (
-          <TemplateStep
+          <DwBlueprintStep
             state={state}
-            templateStepUi={templateStepUi}
+            dwBlueprintStepUi={dwBlueprintStepUi}
             onStateChange={onStateChange}
-            onTemplateStepUiChange={onTemplateStepUiChange}
+            onDwBlueprintStepUiChange={onDwBlueprintStepUiChange}
             onSessionSaved={onReloadSession}
           />
         );
