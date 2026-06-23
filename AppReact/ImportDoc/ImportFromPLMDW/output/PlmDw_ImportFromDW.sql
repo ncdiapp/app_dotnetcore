@@ -263,7 +263,10 @@ BEGIN TRY
 END TRY
 BEGIN CATCH
     IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-    RAISERROR(N'PlmDw_ImportFromDW failed (line %d): %s', 16, 1, ERROR_LINE(), ERROR_MESSAGE());
+
+    DECLARE @ErrMsg NVARCHAR(4000) = ERROR_MESSAGE();
+    DECLARE @ErrLine INT = ERROR_LINE();
+    RAISERROR(N'PlmDw_ImportFromDW failed (line %d): %s', 16, 1, @ErrLine, @ErrMsg);
     RETURN;
 END CATCH;
 
