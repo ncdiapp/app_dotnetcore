@@ -1,6 +1,6 @@
 ﻿{
     "schemaVersion":  1,
-    "generatedAt":  "2026-06-23T14:46:24.1512664Z",
+    "generatedAt":  "2026-06-23T16:45:05.4410376Z",
     "source":  {
                    "dwDatabase":  "plmDW",
                    "importTabIds":  [
@@ -74,8 +74,13 @@
                                                    "rootTableName":  "Plm_ReferenceBasicInfo",
                                                    "siblingUnits":  [
                                                                         {
-                                                                            "appTableName":  "Plm_Fabric_Info",
+                                                                            "appTableName":  "Plm_Fabric_Header",
                                                                             "isMasterSibling":  true,
+                                                                            "fieldPolicy":  "AllMappedColumns"
+                                                                        },
+                                                                        {
+                                                                            "appTableName":  "Plm_Fabric_Info",
+                                                                            "isMasterSibling":  false,
                                                                             "fieldPolicy":  "ExclusiveSubItemsOnly",
                                                                             "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Fabric_Header_4258"
                                                                         }
@@ -108,9 +113,9 @@
                          },
                          {
                              "plmTabId":  4219,
-                             "plmTabName":  "Testing    Compliance",
+                             "plmTabName":  "Testing Compliance",
                              "integrationId":  "Tab_4219",
-                             "transactionName":  "Testing    Compliance",
+                             "transactionName":  "Testing Compliance",
                              "importStatus":  "Ready",
                              "unitStructure":  {
                                                    "mode":  "RootPlusMasterSibling",
@@ -174,10 +179,10 @@
                          {
                              "plmGridId":  7,
                              "appTableName":  "Plm_ProductDesignColorGrid",
-                             "parentPlmTabId":  null,
-                             "attachToRoot":  true,
+                             "parentPlmTabId":  4214,
+                             "attachToRoot":  false,
                              "integrationId":  "Grid_7",
-                             "transactionIntegrationId":  "Grid_7"
+                             "transactionIntegrationId":  "Tab_4214"
                          }
                      ],
     "blueprintFields":  [

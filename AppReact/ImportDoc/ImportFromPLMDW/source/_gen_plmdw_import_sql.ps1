@@ -26,7 +26,15 @@ function Invoke-DwQuery([string]$Query) {
     $out = [System.IO.Path]::GetTempFileName() + '.txt'
     try {
         Set-Content -Path $tmp -Value $Query -Encoding UTF8
-        $args = @('-S', $SqlServer, '-d', $DwDatabase, '-E', '-i', $tmp, '-o', $out, '-W', '-s', '|', '-h', '-1')
+        $sqlUser = if ($config.sqlUser) { $config.sqlUser } else { $env:PLM_DW_SQL_USER }
+        $sqlPassword = if ($config.sqlPassword) { $config.sqlPassword } else { $env:PLM_DW_SQL_PASSWORD }
+        $args = @('-S', $SqlServer, '-d', $DwDatabase, '-i', $tmp, '-o', $out, '-W', '-s', '|', '-h', '-1')
+        if ($sqlUser -and $sqlPassword) {
+            $args = @('-S', $SqlServer, '-d', $DwDatabase, '-U', $sqlUser, '-P', $sqlPassword) + $args[4..($args.Length - 1)]
+        }
+        else {
+            $args = @('-S', $SqlServer, '-d', $DwDatabase, '-E') + $args[4..($args.Length - 1)]
+        }
         $p = Start-Process -FilePath 'sqlcmd' -ArgumentList $args -Wait -PassThru -NoNewWindow
         if ($p.ExitCode -ne 0) { throw "sqlcmd failed ($($p.ExitCode)): $Query" }
         $lines = Get-Content $out | Where-Object { $_ -and $_ -notmatch '^\(\d+ rows affected\)$' }
@@ -84,15 +92,30 @@ function Build-BlueprintFromConfig($config, $allFieldRows) {
     $transactions = @()
     foreach ($tab in $config.tabs) {
         $tabName = if ($tab.plmTabName) { $tab.plmTabName } else { Format-TabDisplayName $tab.appTable }
+        $siblingUnits = [System.Collections.Generic.List[object]]::new()
+
+        if ($tab.mode -eq 'excludeSubItemsFromDwTable' -and $tab.excludeSubItemsFromDwTable) {
+            $headerTab = $config.tabs | Where-Object { $_.dwTable -eq $tab.excludeSubItemsFromDwTable } | Select-Object -First 1
+            if ($headerTab) {
+                $siblingUnits.Add([ordered]@{
+                    appTableName    = $prefix + $headerTab.appTable
+                    isMasterSibling = $true
+                    fieldPolicy     = 'AllMappedColumns'
+                })
+            }
+        }
+
         $fieldPolicy = if ($tab.mode -eq 'excludeSubItemsFromDwTable') { 'ExclusiveSubItemsOnly' } else { 'AllMappedColumns' }
-        $siblingUnit = [ordered]@{
-            appTableName               = $prefix + $tab.appTable
-            isMasterSibling            = $true
-            fieldPolicy                = $fieldPolicy
+        $ownSibling = [ordered]@{
+            appTableName    = $prefix + $tab.appTable
+            isMasterSibling = ($siblingUnits.Count -eq 0)
+            fieldPolicy     = $fieldPolicy
         }
         if ($tab.excludeSubItemsFromDwTable) {
-            $siblingUnit.excludeSubItemsFromDwTable = $tab.excludeSubItemsFromDwTable
+            $ownSibling.excludeSubItemsFromDwTable = $tab.excludeSubItemsFromDwTable
         }
+        $siblingUnits.Add($ownSibling)
+
         $transactions += [ordered]@{
             plmTabId         = [int]$tab.tabId
             plmTabName       = $tabName
@@ -102,7 +125,7 @@ function Build-BlueprintFromConfig($config, $allFieldRows) {
             unitStructure    = [ordered]@{
                 mode          = 'RootPlusMasterSibling'
                 rootTableName = $prefix + $rootSuffix
-                siblingUnits  = @($siblingUnit)
+                siblingUnits  = @($siblingUnits.ToArray())
                 childUnits    = @()
             }
         }
@@ -110,11 +133,12 @@ function Build-BlueprintFromConfig($config, $allFieldRows) {
 
     $gridBindings = @()
     foreach ($grid in ($config.grids | ForEach-Object { $_ })) {
+        $parentTabId = if ($grid.parentPlmTabId) { [int]$grid.parentPlmTabId } else { $null }
         $gridBindings += [ordered]@{
             plmGridId                  = [int]$grid.gridId
             appTableName               = $prefix + $grid.appTable
-            parentPlmTabId             = $null
-            attachToRoot               = $true
+            parentPlmTabId             = $parentTabId
+            attachToRoot               = (-not $parentTabId)
             integrationId              = "Grid_$($grid.gridId)"
             transactionIntegrationId   = if ($grid.transactionIntegrationId) { $grid.transactionIntegrationId } else { "Grid_$($grid.gridId)" }
         }

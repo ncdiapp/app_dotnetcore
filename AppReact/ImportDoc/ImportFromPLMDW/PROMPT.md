@@ -45,7 +45,8 @@ If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** i
 | Rule | Detail |
 |------|--------|
 | **Gate 0** | No connection string **and** TabIds from the user → **ask only**; no DW access, no Phase A/B (see §Gate 0). |
-| **Two phases** | **Phase A:** DW analysis + APP table proposal + **Blueprint draft** → **STOP for user confirmation**. **Phase B:** generate SQL + Blueprint JSON **after** confirm. **Phase D:** BL TOOLS apply Blueprint to APP config (separate step). |
+| **No server code** | **Never** edit C# / `.csproj` / React WebAPI / BL under `APP.BL`, `AppAI.Web`, etc. **Never** run `dotnet build`, `msbuild`, or any compile step. Deliverables are **SQL + JSON + PowerShell in this folder only**. If the workflow appears to need a code change → **STOP immediately**, explain the gap, and **warn the user** — do not patch the repo. |
+| **Two phases** | **Phase A:** DW analysis + APP table proposal + **Blueprint draft** → **STOP for user confirmation**. **Phase B:** generate SQL + Blueprint JSON **after** confirm. **Phase D:** BL TOOLS apply Blueprint to APP config (separate step; user runs in app). |
 | **plmDW is truth** | Column names, SubItem IDs, TabIds from DW — not legacy PLM exports. |
 | **1 Tab → 1 APP table** | Tab wide tables only for tabs with `PLM_DW_Tab_*_{TabId}`. Grid-only tabs → `PLM_DW_Grid_*`. |
 | **Mapping drives import** | `{prefix}FieldMapping` stores `DwTableName` + `DwColumnName` per APP column. |
@@ -245,6 +246,93 @@ After physical tables are populated, open **PLM Data Import → Step 3 DW Bluepr
 
 API equivalents: `POST webapi/PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`.
 
+**Agent scope:** Phase D is executed by the **user in the running app**. The agent generates files and instructions only — no server deployment.
+
+---
+
+## Incremental import — new template / new tabs when some TabIds already exist
+
+Use this when the user imports **another template** (or more TabIds) and **some tabs already have APP physical tables and/or Transactions** from a prior DW import (same tenant, usually same `@TablePrefix` e.g. `Plm_`).
+
+### Phase A extra inputs (ask user)
+
+```text
+3. Already imported TabIds (optional but recommended)
+   e.g. 4258,4212,4213  — transactions already created in APP
+
+4. Scope of this run
+   new-tabs-only | full-template-merge
+```
+
+### Phase A — detect overlap (tenant DB probe via sqlcmd)
+
+For each TabId in the **current** list, check:
+
+| Check | SQL / rule |
+|-------|------------|
+| Transaction exists? | `AppTransaction.IntegrationId = 'Tab_{TabId}'` (grid: `Tab_{TabId}` or `Grid_{gridId}`) |
+| Physical table exists? | `OBJECT_ID('dbo.{prefix}{AppTable}')` from DW segment name |
+| Mapping rows exist? | `{prefix}FieldMapping` where `PlmTabId = @TabId` |
+| Shared root | `{prefix}ReferenceBasicInfo` — typically **one per prefix**, reuse; do not recreate |
+
+Classify each TabId:
+
+| Status | Meaning | Agent action |
+|--------|---------|----------------|
+| **New** | No `Tab_{id}` transaction | Full DDL + mapping + Blueprint transaction |
+| **Exists — unchanged** | Transaction + table present; DW column set matches | Optional: skip Blueprint Insert; no data reload |
+| **Exists — schema drift** | Table exists but DW has new columns | `PlmDw_Tables.sql` adds columns (`ALTER`); re-run scoped `FieldMapping`; Blueprint **Update** |
+| **Shared table** | APP table already created by another TabId (header/info overlap) | **Do not** duplicate DDL; only add mapping rows for **new** columns; one transaction per TabId still |
+
+Present overlap table in Phase A confirmation:
+
+| TabId | APP table | Tenant status | This run |
+|-------|-----------|---------------|----------|
+
+### Phase B — config rules for incremental runs
+
+1. **`dwTabImportConfig.json`** — include **only TabIds for this run**, or full set if user chose `full-template-merge`.
+2. **`PlmDw_Tables.sql`** — idempotent: `CREATE` if missing; `ALTER ADD` for new columns on existing tables. **Safe to re-run** for tables in config.
+3. **`PlmDw_FieldMapping.sql`** — `DELETE` is scoped to **AppTableName values in this config only**; other templates’ mappings are **not** wiped. Re-run replaces mappings for touched tables only.
+4. **`PlmDw_ImportFromDW.sql`** — for tenants that already have data:
+   - `@ImportMode = 'APPEND'` — insert rows only for `ReferenceId` not yet present in target table
+   - `@ReferenceIdList` — limit to pilot/new references when testing
+5. **`PlmDw_ImportBlueprint.json`**:
+   - **New tabs** → normal `importStatus: "Ready"`
+   - **Already imported, no layout change** → omit from blueprint **or** set `importStatus: "Skipped"` (agent must confirm with user)
+   - **Already imported, field/layout refresh** → keep in blueprint; user runs Execute **Update**
+
+### Phase D — Blueprint execute modes (existing BL behavior; no code changes)
+
+| User goal | Execute mode | Behavior |
+|-----------|--------------|----------|
+| Add **new** transactions only | **Insert** | Skips any `Tab_{id}` / grid integrationId that **already exists** |
+| Refresh forms/fields on **existing** transactions | **Update** | Upserts layout/metadata for existing integrationIds |
+| Fix **existing** only | **Repair** | Updates only transactions that already exist |
+
+**Transaction Group warning:** `ExecuteDwBlueprintConfig` with `IncludeTransactionGroup` rebuilds group membership from **transactions processed in that run**. If the blueprint contains **only new tabs**, previously linked transactions may drop out of the group. **Plans:**
+
+- **Recommended:** blueprint lists **all** TabIds in the group (old + new); run **Insert** for new + **Update** for existing in one preview pass, **or** user manually re-adds old transactions to the group in APP admin.
+- **Alternative:** separate Transaction Group per template (`transactionGroupIntegrationId` e.g. `TG_Packaging` vs `TG_Fabric`) when templates should not share one menu.
+
+### Same `@TablePrefix` across templates
+
+| Situation | Handling |
+|-----------|----------|
+| Same prefix (`Plm_`), different templates | Shared `{prefix}ReferenceBasicInfo`; APP table names from DW segments — **collision only if segment name matches** (reuse table + mapping merge) |
+| Isolate templates | User sets different `@TablePrefix` per template (e.g. `PlmFabric_`, `PlmPkg_`) — separate physical tables and transactions |
+
+### Agent checklist (incremental)
+
+```text
+[ ] User listed already-imported TabIds (or agent probed tenant DB)
+[ ] Overlap table presented; user confirmed new vs skip vs update per TabId
+[ ] FieldMapping scope understood (per-config DELETE only)
+[ ] Import APPEND vs REPLACE agreed for PlmDw_ImportFromDW.sql
+[ ] Transaction Group merge strategy confirmed (full list vs new group vs manual)
+[ ] No C# / compile — STOP and warn if gap found
+```
+
 ---
 
 ## Folder layout
@@ -272,6 +360,7 @@ ImportFromPLMDW/
 
 ```text
 [ ] Gate 0: user provided connection string + TabIds? If not → ask and STOP
+[ ] No server code: no .cs edits, no dotnet build — if needed → STOP and warn user
 [ ] Parse connection string + TabIds (from user message only)
 [ ] Resolve PLM_DW_Tab_* / PLM_DW_Grid_* per TabId
 [ ] SubItem overlap analysis for tab pairs in scope
@@ -315,5 +404,5 @@ TabIds to import:
 
 - Template Import Wizard / auto transaction builder  
 - `PlmBlockId` backfill  
-- C# import service  
+- **Any C# / WebAPI / `dotnet build` changes** (see **No server code** hard rule)  
 - Full production load without explicit user request  

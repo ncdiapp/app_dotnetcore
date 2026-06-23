@@ -15,12 +15,14 @@
       "appTable": "Fabric_Header",
       "dwTable": "PLM_DW_Tab_Fabric_Header_4258",
       "tabId": 4258,
+      "plmTabName": "Fabric Header",
       "mode": "all"
     },
     {
       "appTable": "Fabric_Info",
       "dwTable": "PLM_DW_Tab_Fabric_Info_4212",
       "tabId": 4212,
+      "plmTabName": "Fabric Info",
       "mode": "excludeSubItemsFromDwTable",
       "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fabric_Header_4258"
     },
@@ -28,24 +30,28 @@
       "appTable": "Attributes",
       "dwTable": "PLM_DW_Tab_Attributes_4213",
       "tabId": 4213,
+      "plmTabName": "Attributes",
       "mode": "all"
     },
     {
       "appTable": "Testing____Compliance",
       "dwTable": "PLM_DW_Tab_Testing____Compliance_4219",
       "tabId": 4219,
+      "plmTabName": "Testing Compliance",
       "mode": "all"
     },
     {
       "appTable": "Fabric_Cost",
       "dwTable": "PLM_DW_Tab_Fabric_Cost_4270",
       "tabId": 4270,
+      "plmTabName": "Fabric Cost",
       "mode": "all"
     },
     {
       "appTable": "Fabric_Policy",
       "dwTable": "PLM_DW_Tab_Fabric_Policy_4274",
       "tabId": 4274,
+      "plmTabName": "Fabric Policy",
       "mode": "all"
     }
   ],
@@ -53,8 +59,10 @@
     {
       "appTable": "ProductDesignColorGrid",
       "dwTable": "PLM_DW_Grid_ProductDesignColorGrid_7",
-      "gridSubItemId": 35,
-      "gridId": 7
+      "gridSubItemId": 7354,
+      "gridId": 7,
+      "parentPlmTabId": 4214,
+      "transactionIntegrationId": "Tab_4214"
     }
   ],
   "blueprint": {

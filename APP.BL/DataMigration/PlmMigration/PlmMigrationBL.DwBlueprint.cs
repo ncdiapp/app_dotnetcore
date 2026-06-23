@@ -351,20 +351,25 @@ WHERE BlueprintKey = @BlueprintKey";
           if (string.Equals(tx.ImportStatus, TemplateStatusSkipped, StringComparison.OrdinalIgnoreCase))
             continue;
 
-          var sibling = tx.UnitStructure?.SiblingUnits?.FirstOrDefault();
-          if (sibling == null || string.IsNullOrWhiteSpace(sibling.AppTableName))
+          var siblings = tx.UnitStructure?.SiblingUnits?
+            .Where(s => s != null && !string.IsNullOrWhiteSpace(s.AppTableName))
+            .ToList() ?? new List<PlmDwBlueprintSiblingUnitDto>();
+          if (siblings.Count == 0)
           {
             validation.Errors.Add($"Transaction Tab_{tx.PlmTabId} is missing sibling unit table.");
             continue;
           }
 
-          string siblingTable = QualifyBlueprintTableName(sibling.AppTableName, prefix);
-          if (!TemplateTableExists(conn, null, siblingTable))
-            validation.Errors.Add($"Sibling table dbo.[{siblingTable}] does not exist for Tab_{tx.PlmTabId}.");
+          foreach (var sibling in siblings)
+          {
+            string siblingTable = QualifyBlueprintTableName(sibling.AppTableName, prefix);
+            if (!TemplateTableExists(conn, null, siblingTable))
+              validation.Errors.Add($"Sibling table dbo.[{siblingTable}] does not exist for Tab_{tx.PlmTabId}.");
 
-          var visibleMappings = FilterMappingForTransaction(tx, sibling, mappingRows, prefix);
-          if (visibleMappings.Count == 0)
-            validation.Warnings.Add($"Transaction Tab_{tx.PlmTabId} has no field mapping rows for table {siblingTable}.");
+            var visibleMappings = FilterMappingForTransaction(tx, sibling, mappingRows, prefix);
+            if (visibleMappings.Count == 0)
+              validation.Warnings.Add($"Transaction Tab_{tx.PlmTabId} has no field mapping rows for table {siblingTable}.");
+          }
 
           int? existingTx = GetTransactionIdByIntegrationId(conn, null, tx.IntegrationId ?? $"Tab_{tx.PlmTabId}");
           if (existingTx.HasValue)
@@ -872,51 +877,57 @@ WHERE SearchId = @SearchId";
             ImportStatus = string.IsNullOrWhiteSpace(tx.ImportStatus) ? TemplateStatusReady : tx.ImportStatus
           };
 
-          var sibling = tx.UnitStructure?.SiblingUnits?.FirstOrDefault();
-          if (sibling == null)
+          var siblings = tx.UnitStructure?.SiblingUnits?
+            .Where(s => s != null && !string.IsNullOrWhiteSpace(s.AppTableName))
+            .ToList() ?? new List<PlmDwBlueprintSiblingUnitDto>();
+          if (siblings.Count == 0)
           {
             plans.Add(new TemplateTabExecutionPlan { Tab = tab });
             continue;
           }
 
-          string siblingTable = QualifyBlueprintTableName(sibling.AppTableName, prefix);
-          tab.SiblingTableName = siblingTable;
+          string primarySiblingTable = QualifyBlueprintTableName(siblings[0].AppTableName, prefix);
+          tab.SiblingTableName = primarySiblingTable;
 
           var plan = new TemplateTabExecutionPlan
           {
             Tab = tab,
-            PrimarySiblingTable = siblingTable
+            PrimarySiblingTable = primarySiblingTable
           };
 
-          var tableMappings = FilterMappingForTransaction(tx, sibling, mappingRows, prefix);
           int sortOrder = 0;
-          foreach (var mapRow in tableMappings.OrderBy(m => m.AppColumnName))
+          foreach (var sibling in siblings)
           {
-            sortOrder++;
-            string metaKey = $"{mapRow.AppTableName}|{mapRow.AppColumnName}";
-            fieldMetaByKey.TryGetValue(metaKey, out PlmDwBlueprintFieldDto fieldMeta);
-
-            int plmControlType = fieldMeta?.PlmControlType
-              ?? mapRow.PlmControlType
-              ?? InferPlmControlType(mapRow);
-
-            plan.SiblingColumnsByTable.TryGetValue(siblingTable, out var subItems);
-            if (subItems == null)
+            string siblingTable = QualifyBlueprintTableName(sibling.AppTableName, prefix);
+            var tableMappings = FilterMappingForTransaction(tx, sibling, mappingRows, prefix);
+            foreach (var mapRow in tableMappings.OrderBy(m => m.AppColumnName))
             {
-              subItems = new List<PlmTemplateSubItemRow>();
-              plan.SiblingColumnsByTable[siblingTable] = subItems;
+              sortOrder++;
+              string metaKey = $"{mapRow.AppTableName}|{mapRow.AppColumnName}";
+              fieldMetaByKey.TryGetValue(metaKey, out PlmDwBlueprintFieldDto fieldMeta);
+
+              int plmControlType = fieldMeta?.PlmControlType
+                ?? mapRow.PlmControlType
+                ?? InferPlmControlType(mapRow);
+
+              plan.SiblingColumnsByTable.TryGetValue(siblingTable, out var subItems);
+              if (subItems == null)
+              {
+                subItems = new List<PlmTemplateSubItemRow>();
+                plan.SiblingColumnsByTable[siblingTable] = subItems;
+              }
+
+              subItems.Add(new PlmTemplateSubItemRow
+              {
+                TabId = mapRow.PlmTabId ?? tx.PlmTabId,
+                SubItemId = mapRow.PlmSubItemId ?? mapRow.PlmMetaColumnId ?? 0,
+                SubItemName = fieldMeta?.DisplayLabel ?? mapRow.AppColumnName,
+                ControlType = plmControlType,
+                EntityId = fieldMeta?.PlmEntityId ?? mapRow.PlmEntityId ?? TryParseEntityFromFk(mapRow.DwFkTarget),
+                SortOrder = fieldMeta?.DisplayOrder ?? sortOrder,
+                ColumnName = mapRow.AppColumnName
+              });
             }
-
-            subItems.Add(new PlmTemplateSubItemRow
-            {
-              TabId = tx.PlmTabId,
-              SubItemId = mapRow.PlmSubItemId ?? mapRow.PlmMetaColumnId ?? 0,
-              SubItemName = fieldMeta?.DisplayLabel ?? mapRow.AppColumnName,
-              ControlType = plmControlType,
-              EntityId = fieldMeta?.PlmEntityId ?? mapRow.PlmEntityId ?? TryParseEntityFromFk(mapRow.DwFkTarget),
-              SortOrder = fieldMeta?.DisplayOrder ?? sortOrder,
-              ColumnName = mapRow.AppColumnName
-            });
           }
 
           if (blueprint.RootUnit?.ReferenceScope != null)
