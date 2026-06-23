@@ -13,8 +13,8 @@ SET NOCOUNT ON;
 DECLARE @TablePrefix       NVARCHAR(32)  = N'Plm_';               -- <<< USER SETTING
 DECLARE @RootTableSuffix   NVARCHAR(128) = N'ReferenceBasicInfo'; -- <<< USER SETTING
 DECLARE @DwDatabase        NVARCHAR(128) = N'plmDW';               -- <<< USER SETTING (plmDW)
-DECLARE @PlmDatabase       NVARCHAR(128) = N'PLM';                -- <<< USER SETTING (PLM source DB for pdmProductTemplate)
-DECLARE @PlmTemplateId     INT           = NULL;                   -- <<< USER SETTING â€” scope refs: pdmProductTemplate.TemplateID
+DECLARE @PlmDatabase       NVARCHAR(128) = N'plm_live_20260602';                -- <<< USER SETTING (PLM source DB for pdmProductTemplate)
+DECLARE @PlmTemplateId     INT           = 3351;                   -- <<< USER SETTING â€” scope refs: pdmProductTemplate.TemplateID
 DECLARE @ImportMode        NVARCHAR(16)  = N'APPEND';             -- REPLACE | APPEND (APPEND skips existing ReferenceId per table)
 DECLARE @ReferenceIdList   NVARCHAR(MAX) = NULL;                   -- optional pilot, e.g. N'1536,2001'
 DECLARE @DryRun            BIT           = 0;

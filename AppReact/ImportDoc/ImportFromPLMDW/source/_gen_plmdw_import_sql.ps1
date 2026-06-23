@@ -296,6 +296,21 @@ function Get-DwColumnMeta([string]$DwColumn) {
     }
 }
 
+function Get-DwStringLength($col) {
+    if (-not $col.CharMaxLen -or $col.CharMaxLen -eq 'NULL') { return 255 }
+    $parsed = 0
+    if (-not [int]::TryParse($col.CharMaxLen, [ref]$parsed)) { return 255 }
+    if ($parsed -lt 0) { return -1 }
+    if ($parsed -eq 0) { return 255 }
+    return $parsed
+}
+
+function Get-AppStringSqlType($col) {
+    $len = Get-DwStringLength $col
+    if ($len -lt 0 -or $len -gt 4000) { return '[nvarchar](max)' }
+    return "[nvarchar]($len)"
+}
+
 function Get-AppSqlType($col, [string]$DwColumn) {
     $dt = $col.DataType
     switch ($dt) {
@@ -316,10 +331,10 @@ function Get-AppSqlType($col, [string]$DwColumn) {
             $s = if ($col.NumScale -and $col.NumScale -ne 'NULL') { [int]$col.NumScale } else { 2 }
             return "[decimal]($p, $s)"
         }
-        'nvarchar' { return '[nvarchar](255)' }
-        'varchar' { return '[nvarchar](255)' }
-        'nchar' { return '[nchar](255)' }
-        'char' { return '[nvarchar](255)' }
+        'nvarchar' { return Get-AppStringSqlType $col }
+        'varchar' { return Get-AppStringSqlType $col }
+        'nchar' { return Get-AppStringSqlType $col }
+        'char' { return Get-AppStringSqlType $col }
         default { return '[nvarchar](255)' }
     }
 }
@@ -395,6 +410,15 @@ function Build-CreateTableBlock([string]$LogicalTable, $fieldRows, [bool]$IsGrid
     $pk = if ($IsGrid) { 'RowId' } else { 'ReferenceId' }
     [void]$colDefs.Add("CONSTRAINT [PK_$LogicalTable] PRIMARY KEY CLUSTERED ([$pk])")
     $innerCols = ($colDefs -join ', ')
+    $alterLines = New-Object System.Collections.Generic.List[string]
+    foreach ($r in $fieldRows) {
+        if ($r.SqlType -match '^\[nvarchar\]') {
+            [void]$alterLines.Add("    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [$($r.AppColumn)] $($r.SqlType) NULL;';`r`n    EXEC sp_executesql @sql;")
+        }
+    }
+    $alterBlock = if ($alterLines.Count -gt 0) {
+        "ELSE`r`nBEGIN`r`n" + ($alterLines -join "`r`n") + "`r`nEND`r`n`r`n"
+    } else { '' }
     return @"
 -- $LogicalTable
 SET @TableName = @TablePrefix + N'$LogicalTable';
@@ -406,7 +430,7 @@ BEGIN
     SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@TableName) + N' ($innerCols );';
     EXEC sp_executesql @sql;
 END
-
+$alterBlock
 IF OBJECT_ID(N'dbo.' + QUOTENAME(@RootTable), N'U') IS NOT NULL
    AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @FkName)
 BEGIN
