@@ -16,6 +16,7 @@ namespace APP.BL.DataMigration.PlmMigration
             public int? Nbdecimal { get; set; }
             public string DisplayName { get; set; }
             public int? SortOrder { get; set; }
+            public bool IsVisible { get; set; } = true;
         }
 
         /// <summary>
@@ -77,13 +78,15 @@ UPDATE dbo.AppTransactionField SET
     EntityId = @EntityId,
     Nbdecimal = @Nbdecimal,
     DisplayName = @DisplayName,
-    SortOrder = COALESCE(@SortOrder, SortOrder)
+    SortOrder = COALESCE(@SortOrder, SortOrder),
+    IsVisible = @IsVisible
 WHERE TransactionFieldID = @FieldId";
                     cmd.Parameters.AddWithValue("@ControlType", meta.ControlType);
                     cmd.Parameters.AddWithValue("@EntityId", (object)appEntityId ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Nbdecimal", meta.Nbdecimal ?? 0);
                     cmd.Parameters.AddWithValue("@DisplayName", (object)meta.DisplayName ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@SortOrder", meta.SortOrder.HasValue ? (object)(meta.SortOrder.Value * 10) : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@IsVisible", meta.IsVisible);
                     cmd.Parameters.AddWithValue("@FieldId", fieldId);
                     cmd.ExecuteNonQuery();
                 }
@@ -107,7 +110,8 @@ WHERE TransactionFieldID = @FieldId";
                     PlmEntityId = subItem.EntityId,
                     Nbdecimal = subItem.Nbdecimal,
                     DisplayName = subItem.SubItemName,
-                    SortOrder = subItem.SortOrder
+                    SortOrder = subItem.SortOrder,
+                    IsVisible = subItem.IsVisible
                 };
             }
 
@@ -131,7 +135,8 @@ WHERE TransactionFieldID = @FieldId";
                     PlmEntityId = col.EntityId,
                     Nbdecimal = col.Nbdecimal,
                     DisplayName = col.ColumnName,
-                    SortOrder = col.ColumnOrder
+                    SortOrder = col.ColumnOrder,
+                    IsVisible = col.IsVisible
                 };
             }
 

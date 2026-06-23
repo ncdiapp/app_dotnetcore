@@ -1,15 +1,28 @@
 $ErrorActionPreference = 'Stop'
 $rootDir = Split-Path $PSScriptRoot -Parent
-$outDir = Join-Path $rootDir 'output'
-if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir | Out-Null }
 $configPath = Join-Path $PSScriptRoot 'dwTabImportConfig.json'
 if (-not (Test-Path $configPath)) {
     throw "Missing $configPath - copy dwTabImportConfig.example.json and fill from Phase B (see PROMPT.md)."
 }
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
 
+$templateId = $null
+if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) {
+    $templateId = [int]$config.plmTemplateId
+}
+elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId -and [int]$config.plmTemplate.templateId -gt 0) {
+    $templateId = [int]$config.plmTemplate.templateId
+}
+if (-not $templateId) {
+    throw 'dwTabImportConfig.json must set plmTemplateId (or plmTemplate.templateId) for output folder output/{templateId}/.'
+}
+
+$outDir = Join-Path (Join-Path $rootDir 'output') ([string]$templateId)
+if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
+
 $SqlServer = $config.sqlServer
 $DwDatabase = $config.dwDatabase
+$PlmDatabase = if ($config.plmDatabase) { $config.plmDatabase } else { 'PLM' }
 $refScope = if ($config.referenceScope) { $config.referenceScope } else { $config.referenceCode }
 
 $TabSystemColumns = [System.Collections.Generic.HashSet[string]]::new(
@@ -21,28 +34,169 @@ $GridSystemColumns = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase
 )
 
-function Invoke-DwQuery([string]$Query) {
+function Invoke-SqlQuery([string]$Database, [string]$Query) {
     $tmp = [System.IO.Path]::GetTempFileName() + '.sql'
     $out = [System.IO.Path]::GetTempFileName() + '.txt'
     try {
         Set-Content -Path $tmp -Value $Query -Encoding UTF8
         $sqlUser = if ($config.sqlUser) { $config.sqlUser } else { $env:PLM_DW_SQL_USER }
         $sqlPassword = if ($config.sqlPassword) { $config.sqlPassword } else { $env:PLM_DW_SQL_PASSWORD }
-        $args = @('-S', $SqlServer, '-d', $DwDatabase, '-i', $tmp, '-o', $out, '-W', '-s', '|', '-h', '-1')
+        $args = @('-S', $SqlServer, '-d', $Database, '-i', $tmp, '-o', $out, '-W', '-s', '|', '-h', '-1')
         if ($sqlUser -and $sqlPassword) {
-            $args = @('-S', $SqlServer, '-d', $DwDatabase, '-U', $sqlUser, '-P', $sqlPassword) + $args[4..($args.Length - 1)]
+            $args = @('-S', $SqlServer, '-d', $Database, '-U', $sqlUser, '-P', $sqlPassword) + $args[4..($args.Length - 1)]
         }
         else {
-            $args = @('-S', $SqlServer, '-d', $DwDatabase, '-E') + $args[4..($args.Length - 1)]
+            $args = @('-S', $SqlServer, '-d', $Database, '-E') + $args[4..($args.Length - 1)]
         }
         $p = Start-Process -FilePath 'sqlcmd' -ArgumentList $args -Wait -PassThru -NoNewWindow
-        if ($p.ExitCode -ne 0) { throw "sqlcmd failed ($($p.ExitCode)): $Query" }
+        if ($p.ExitCode -ne 0) { throw "sqlcmd failed ($($p.ExitCode)) on $Database`: $Query" }
         $lines = Get-Content $out | Where-Object { $_ -and $_ -notmatch '^\(\d+ rows affected\)$' }
         return ,$lines
     }
     finally {
         Remove-Item $tmp, $out -ErrorAction SilentlyContinue
     }
+}
+
+function Invoke-DwQuery([string]$Query) {
+    return Invoke-SqlQuery -Database $DwDatabase -Query $Query
+}
+
+function Invoke-PlmQuery([string]$Query) {
+    return Invoke-SqlQuery -Database $PlmDatabase -Query $Query
+}
+
+function Get-PlmSubItemExtraInfoMap([int[]]$TabIds) {
+    $map = @{}
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $map }
+    $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT ei.TabID, ei.SubItemID, ei.AliasName, ei.Visible
+FROM dbo.pdmTabBlockSubItemExtraInfo ei
+WHERE ei.TabID IN ($inList)
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 4) { continue }
+        $tabId = [int]$parts[0].Trim()
+        $subItemId = [int]$parts[1].Trim()
+        $alias = $parts[2].Trim()
+        $visibleRaw = $parts[3].Trim()
+        $visible = $true
+        if ($visibleRaw -ne '' -and $visibleRaw -ne 'NULL') {
+            try { $visible = ([int]$visibleRaw -ne 0) } catch { $visible = $true }
+        }
+        $key = "$tabId|$subItemId"
+        $map[$key] = [pscustomobject]@{
+            AliasName = if ([string]::IsNullOrWhiteSpace($alias)) { $null } else { $alias }
+            Visible   = $visible
+        }
+    }
+    return $map
+}
+
+function Parse-SqlIntOrNull([string]$Raw) {
+    $t = if ($null -eq $Raw) { '' } else { $Raw.Trim() }
+    if ([string]::IsNullOrWhiteSpace($t) -or $t -eq 'NULL') { return $null }
+    return [int]$t
+}
+
+function Get-PlmSubItemMetadataMap([int[]]$TabIds) {
+    $map = @{}
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $map }
+    $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT tb.TabID, bsi.SubItemID, bsi.ControlType, bsi.EntityId, bsi.Nbdecimal
+FROM dbo.PdmTabBlock tb
+INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.BlockID = tb.BlockID
+WHERE tb.TabID IN ($inList)
+ORDER BY tb.TabID, tb.OrderId, bsi.SortOrder, bsi.SubItemID
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 5) { continue }
+        $tabId = [int]$parts[0].Trim()
+        $subItemId = [int]$parts[1].Trim()
+        $key = "$tabId|$subItemId"
+        if ($map.ContainsKey($key)) { continue }
+        $map[$key] = [pscustomobject]@{
+            ControlType = [int]$parts[2].Trim()
+            EntityId    = Parse-SqlIntOrNull $parts[3]
+            Nbdecimal   = Parse-SqlIntOrNull $parts[4]
+        }
+    }
+    return $map
+}
+
+function Get-PlmGridColumnMetadataMap([int[]]$GridIds) {
+    $map = @{}
+    if (-not $GridIds -or $GridIds.Count -eq 0) { return $map }
+    $inList = ($GridIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT gmc.GridID, gmc.GridColumnID, gmc.ColumnTypeId, gmc.EntityId, gmc.Nbdecimal
+FROM dbo.pdmGridMetaColumn gmc
+WHERE gmc.GridID IN ($inList)
+ORDER BY gmc.GridID, gmc.ColumnOrder, gmc.GridColumnID
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 5) { continue }
+        $gridId = [int]$parts[0].Trim()
+        $gridColumnId = [int]$parts[1].Trim()
+        $key = "$gridId|$gridColumnId"
+        if ($map.ContainsKey($key)) { continue }
+        $map[$key] = [pscustomobject]@{
+            ControlType = [int]$parts[2].Trim()
+            EntityId    = Parse-SqlIntOrNull $parts[3]
+            Nbdecimal   = Parse-SqlIntOrNull $parts[4]
+        }
+    }
+    return $map
+}
+
+function Apply-PlmFieldMetadata($fieldRow, $subItemMetaMap, $gridColMetaMap) {
+    if ($fieldRow.FieldKind -eq 'GridColumn' -and $null -ne $fieldRow.PlmGridId) {
+        $gridColumnId = $null
+        if ($null -ne $fieldRow.PlmMetaColumnId) { $gridColumnId = [int]$fieldRow.PlmMetaColumnId }
+        elseif ($null -ne $fieldRow.SubItemId) { $gridColumnId = [int]$fieldRow.SubItemId }
+        if ($gridColumnId) {
+            $key = "$([int]$fieldRow.PlmGridId)|$gridColumnId"
+            if ($gridColMetaMap.ContainsKey($key)) {
+                $m = $gridColMetaMap[$key]
+                $fieldRow.PlmControlType = [int]$m.ControlType
+                $fieldRow.PlmEntityId = $m.EntityId
+                return
+            }
+        }
+    }
+    elseif ($fieldRow.PlmTabId -and $null -ne $fieldRow.SubItemId) {
+        $key = "$([int]$fieldRow.PlmTabId)|$([int]$fieldRow.SubItemId)"
+        if ($subItemMetaMap.ContainsKey($key)) {
+            $m = $subItemMetaMap[$key]
+            $fieldRow.PlmControlType = [int]$m.ControlType
+            $fieldRow.PlmEntityId = $m.EntityId
+        }
+    }
+}
+
+function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap) {
+    $tabId = if ($fieldRow.PlmTabId) { [int]$fieldRow.PlmTabId } else { $null }
+    $subItemId = $null
+    if ($null -ne $fieldRow.SubItemId) { $subItemId = [int]$fieldRow.SubItemId }
+    elseif ($null -ne $fieldRow.PlmSubItemId) { $subItemId = [int]$fieldRow.PlmSubItemId }
+    elseif ($null -ne $fieldRow.PlmMetaColumnId) { $subItemId = [int]$fieldRow.PlmMetaColumnId }
+
+    $displayLabel = $fieldRow.AppColumn
+    $isVisible = $true
+    if ($tabId -and $subItemId) {
+        $key = "$tabId|$subItemId"
+        if ($extraInfoMap.ContainsKey($key)) {
+            $ei = $extraInfoMap[$key]
+            if ($ei.AliasName) { $displayLabel = $ei.AliasName }
+            $isVisible = [bool]$ei.Visible
+        }
+    }
+    return [pscustomobject]@{ DisplayLabel = $displayLabel; IsVisible = $isVisible }
 }
 
 function Infer-PlmControlType($meta, $dataType) {
@@ -62,7 +216,7 @@ function Format-TabDisplayName([string]$appTable) {
     return ($appTable -replace '_', ' ').Trim()
 }
 
-function Build-BlueprintFromConfig($config, $allFieldRows) {
+function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap) {
     $prefix = $config.tablePrefixDefault
     if (-not $prefix.EndsWith('_')) { $prefix += '_' }
     $rootSuffix = $config.rootTableSuffix
@@ -160,16 +314,24 @@ function Build-BlueprintFromConfig($config, $allFieldRows) {
         $entityId = if ($null -ne $r.PlmEntityId) { $r.PlmEntityId } else { Infer-PlmEntityId $r.FkTarget }
         $tabIds = @()
         if ($r.PlmTabId) { $tabIds = @([int]$r.PlmTabId) }
-        $blueprintFields += [ordered]@{
+        $extra = Resolve-FieldExtraInfo $r $extraInfoMap
+        $fieldEntry = [ordered]@{
             appTableName   = $appTableFull
             appColumnName  = $r.AppColumn
             plmTabIds      = $tabIds
             plmControlType = $plmCtrl
             plmEntityId    = $entityId
-            displayLabel   = $r.AppColumn
+            displayLabel   = $extra.DisplayLabel
             displayOrder   = $orderByTable[$appTableFull]
             includeInSearch = $false
         }
+        if ($entityId) {
+            $fieldEntry.entityIntegrationId = [string]$entityId
+        }
+        if (-not $extra.IsVisible) {
+            $fieldEntry.isVisible = $false
+        }
+        $blueprintFields += $fieldEntry
         $r | Add-Member -NotePropertyName PlmControlType -NotePropertyValue $plmCtrl -Force
         $r | Add-Member -NotePropertyName PlmEntityId -NotePropertyValue $entityId -Force
         if (-not $r.PSObject.Properties['DwDataType']) {
@@ -202,7 +364,8 @@ function Build-BlueprintFromConfig($config, $allFieldRows) {
             dwDatabase    = $config.dwDatabase
             importTabIds  = @($config.importTabIds | ForEach-Object { [int]$_ })
             tablePrefix   = $prefix
-            configFile    = 'source/dwTabImportConfig.json'
+            configFile    = "source/dwTabImportConfig.json"
+            outputFolder  = "output/$templateId"
         }
         plmTemplate           = if ($plmTemplateId) { [ordered]@{
             templateId           = $plmTemplateId
@@ -366,7 +529,7 @@ function Get-SubItemIdSet([string]$DwTable) {
     return $set
 }
 
-function Build-FieldRows($dwCols, [string]$DwTable, [int]$TabId, [string]$AppTable, [string]$FieldKind, $gridSubItemId, $gridId) {
+function Build-FieldRows($dwCols, [string]$DwTable, $TabId, [string]$AppTable, [string]$FieldKind, $gridSubItemId, $gridId) {
     $rows = @()
     foreach ($c in $dwCols) {
         if ($FieldKind -eq 'TabField' -and $TabSystemColumns.Contains($c.DwColumn)) { continue }
@@ -381,7 +544,7 @@ function Build-FieldRows($dwCols, [string]$DwTable, [int]$TabId, [string]$AppTab
             SubItemId        = $meta.SubItemId
             FkTarget         = $meta.FkTarget
             SqlType          = (Get-AppSqlType $c $c.DwColumn)
-            PlmTabId         = if ($FieldKind -eq 'GridColumn') { $null } else { $TabId }
+            PlmTabId         = $TabId
             PlmGridSubItemId = if ($FieldKind -eq 'GridColumn') { $gridSubItemId } else { $null }
             PlmGridId        = if ($FieldKind -eq 'GridColumn') { $gridId } else { $null }
             PlmMetaColumnId  = if ($FieldKind -eq 'GridColumn') { $meta.SubItemId } else { $null }
@@ -536,7 +699,8 @@ foreach ($tab in $config.tabs) {
 foreach ($grid in $config.grids) {
     [void]$scopeAppTables.Add($grid.appTable)
     $dwCols = Get-DwTableColumns $grid.dwTable
-    $fieldRows = Build-FieldRows $dwCols $grid.dwTable $null $grid.appTable 'GridColumn' $grid.gridSubItemId $grid.gridId
+    $parentTabId = if ($grid.parentPlmTabId) { [int]$grid.parentPlmTabId } else { $null }
+    $fieldRows = Build-FieldRows $dwCols $grid.dwTable $parentTabId $grid.appTable 'GridColumn' $grid.gridSubItemId $grid.gridId
     $ddlParts.Add((Build-CreateTableBlock $grid.appTable $fieldRows $true))
     foreach ($r in $fieldRows) { [void]$allFieldRows.Add($r) }
 }
@@ -560,6 +724,29 @@ foreach ($grid in $config.grids) {
     PlmControlType   = 2
     PlmEntityId      = $null
 })
+
+$tabIdsForPlm = @()
+if ($config.importTabIds) {
+    $tabIdsForPlm += @($config.importTabIds | ForEach-Object { [int]$_ })
+}
+elseif ($config.tabs) {
+    $tabIdsForPlm += @($config.tabs | ForEach-Object { [int]$_.tabId })
+}
+$gridIdsForPlm = @()
+if ($config.grids) {
+    $gridIdsForPlm += @($config.grids | ForEach-Object { [int]$_.gridId })
+}
+Write-Host "Loading PLM pdmBlockSubItem metadata for $($tabIdsForPlm.Count) tab(s) from $PlmDatabase..."
+$subItemMetaMap = Get-PlmSubItemMetadataMap $tabIdsForPlm
+Write-Host "  Sub-item metadata rows: $($subItemMetaMap.Count)"
+if ($gridIdsForPlm.Count -gt 0) {
+    Write-Host "Loading PLM pdmGridMetaColumn metadata for $($gridIdsForPlm.Count) grid(s)..."
+}
+$gridColMetaMap = Get-PlmGridColumnMetadataMap $gridIdsForPlm
+Write-Host "  Grid column metadata rows: $($gridColMetaMap.Count)"
+foreach ($r in $allFieldRows) {
+    Apply-PlmFieldMetadata $r $subItemMetaMap $gridColMetaMap
+}
 
 $ddlParts.Add('GO')
 $ddlParts.Add('')
@@ -696,7 +883,17 @@ if (-not $config.blueprint) {
         folderName = 'Fabric'
     }) -Force
 }
-$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows
+$tabIdsForExtra = @()
+if ($config.importTabIds) {
+    $tabIdsForExtra += @($config.importTabIds | ForEach-Object { [int]$_ })
+}
+elseif ($config.tabs) {
+    $tabIdsForExtra += @($config.tabs | ForEach-Object { [int]$_.tabId })
+}
+Write-Host "Loading PLM pdmTabBlockSubItemExtraInfo for $($tabIdsForExtra.Count) tab(s) from $PlmDatabase..."
+$extraInfoMap = Get-PlmSubItemExtraInfoMap $tabIdsForExtra
+Write-Host "  Extra info rows: $($extraInfoMap.Count)"
+$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap
 $blueprintPath = Join-Path $outDir 'PlmDw_ImportBlueprint.json'
 $blueprintJson = $blueprintObj | ConvertTo-Json -Depth 20 -Compress
 $blueprintJsonPretty = $blueprintObj | ConvertTo-Json -Depth 20

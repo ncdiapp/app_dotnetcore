@@ -1,7 +1,7 @@
 # PLM Data Warehouse → APP Template Import — Agent Prompt
 
 > **Folder:** `AppReact/ImportDoc/ImportFromPLMDW/`  
-> **Outputs (after Phase B):** `output/PlmDw_Tables.sql`, `output/PlmDw_FieldMapping.sql`, `output/PlmDw_ImportFromDW.sql`, `output/PlmDw_ImportBlueprint.json`  
+> **Outputs (after Phase B):** `output/{templateId}/PlmDw_Tables.sql`, `output/{templateId}/PlmDw_FieldMapping.sql`, `output/{templateId}/PlmDw_ImportFromDW.sql`, `output/{templateId}/PlmDw_ImportBlueprint.json` (e.g. `output/3351/` for TemplateId 3351)  
 > **Phase D (BL TOOLS):** `PlmMigration/ExecuteDwBlueprintConfig` — consumes physical tables + FieldMapping + Blueprint to create Transaction / Form / Search / navigation.
 > **Applies to:** any PLM **Template** (not a single product type). APP table names come from DW metadata, not from fixed names in this prompt.
 
@@ -245,18 +245,20 @@ powershell -File AppReact/ImportDoc/ImportFromPLMDW/source/_gen_plmdw_import_sql
 
 Requires `source/dwTabImportConfig.json` (not committed with secrets; example is `dwTabImportConfig.example.json`).
 
-**Produces in `output/`:**
+**Produces in `output/{templateId}/`** (subfolder named from `plmTemplateId` in config):
 
 | File | Content |
 |------|---------|
-| `output/PlmDw_Tables.sql` | `{prefix}ReferenceBasicInfo` + tab/grid tables from config |
-| `output/PlmDw_FieldMapping.sql` | `{prefix}FieldMapping` DDL + seed |
-| `output/PlmDw_ImportFromDW.sql` | Copied from `source/PlmDw_ImportFromDW.sql` template |
-| `output/PlmDw_ImportBlueprint.json` | Transaction / Form / Search **configuration plan** for BL TOOLS |
-| `output/PlmDw_ImportBlueprint.sql` | Optional tenant table `{prefix}ImportBlueprint` + JSON seed |
+| `output/{templateId}/PlmDw_Tables.sql` | `{prefix}ReferenceBasicInfo` + tab/grid tables from config |
+| `output/{templateId}/PlmDw_FieldMapping.sql` | `{prefix}FieldMapping` DDL + seed |
+| `output/{templateId}/PlmDw_ImportFromDW.sql` | Copied from `source/PlmDw_ImportFromDW.sql` template |
+| `output/{templateId}/PlmDw_ImportBlueprint.json` | Transaction / Form / Search **configuration plan** for BL TOOLS |
+| `output/{templateId}/PlmDw_ImportBlueprint.sql` | Optional tenant table `{prefix}ImportBlueprint` + JSON seed |
 
 Generator details:
 - Reads `INFORMATION_SCHEMA` from plmDW  
+- Reads PLM `pdmBlockSubItem` (`ControlType`, `EntityId`) and `pdmGridMetaColumn` for grid columns — `plmEntityId` matches tenant `AppEntityInfo.IntegrationId`  
+- Reads `pdmTabBlockSubItemExtraInfo` (`AliasName` → `displayLabel`; `Visible = 0` → `isVisible: false`)  
 - APP column names: strip `_SubItemId` / `_FK_*`; suffix `_SubItemId` on collisions  
 - Mapping DELETE scoped to **tables in config only** (no `LIKE Fabric_%`)  
 - INSERT values use doubled quotes inside `SET @sql = N'...'` → `N''@P@...''`  
@@ -267,9 +269,9 @@ Generator details:
 
 ### B3b. `PlmDw_ImportBlueprint.json`
 
-Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMasterSibling`), `fieldPolicy` (`AllMappedColumns` | `ExclusiveSubItemsOnly`), grid bindings, field UI metadata (`blueprintFields`), and Search/View/navigation targets. Generated from `dwTabImportConfig.json` + DW column probe. BL TOOLS: `PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`.
+Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMasterSibling`), `fieldPolicy` (`AllMappedColumns` | `ExclusiveSubItemsOnly`), grid bindings, field UI metadata (`blueprintFields`: `plmControlType`, `plmEntityId` / `entityIntegrationId`, `displayLabel`, `isVisible` from PLM), and Search/View/navigation targets. Generated from `dwTabImportConfig.json` + DW column probe + PLM sub-item/grid/extra-info metadata. BL TOOLS: `PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`. On Execute, BL maps PLM control type → `AppTransactionField.ControlType` and resolves `plmEntityId` → tenant `AppEntityInfo.EntityInfoID` via `IntegrationId`.
 
-### B4. `output/PlmDw_ImportFromDW.sql`
+### B4. `output/{templateId}/PlmDw_ImportFromDW.sql`
 
 Template: `source/PlmDw_ImportFromDW.sql`. Generator patches `@DwDatabase`, `@PlmDatabase`, `@PlmTemplateId` from config.
 
@@ -287,20 +289,20 @@ Parameters: `@TablePrefix`, `@RootTableSuffix`, `@DwDatabase`, `@PlmDatabase`, `
 
 ## Execution order (APP tenant DB)
 
-Run scripts from **`output/`**:
+Run scripts from **`output/{templateId}/`** (e.g. `output/3351/`):
 
 ```text
-1. output/PlmDw_Tables.sql
-2. output/PlmDw_FieldMapping.sql
-3. output/PlmDw_ImportFromDW.sql
-4. (optional) output/PlmDw_ImportBlueprint.sql — store Blueprint JSON in tenant DB
+1. output/{templateId}/PlmDw_Tables.sql
+2. output/{templateId}/PlmDw_FieldMapping.sql
+3. output/{templateId}/PlmDw_ImportFromDW.sql
+4. (optional) output/{templateId}/PlmDw_ImportBlueprint.sql — store Blueprint JSON in tenant DB
 ```
 
 ## Phase D — APP configuration (BL TOOLS)
 
 After physical tables are populated, open **PLM Data Import → Step 3 DW Blueprint** in the app, or call the API directly:
 
-1. Upload `output/PlmDw_ImportBlueprint.json` (or **Load from tenant DB** if `PlmDw_ImportBlueprint.sql` was run)
+1. Upload `output/{templateId}/PlmDw_ImportBlueprint.json` (or **Load from tenant DB** if `PlmDw_ImportBlueprint.sql` was run)
 2. **Validate & Preview** — runs `ValidateDwImportBlueprint` + `PreviewDwBlueprintConfig`
 3. **Execute Insert** or **Execute Update** — `ExecuteDwBlueprintConfig`
 
@@ -348,14 +350,17 @@ PLM connection + plmDW connection + **new** TemplateId only. Tab list comes from
 ```text
 ImportFromPLMDW/
   PROMPT.md
-  output/                           ← deliverables (generated each run)
-    PlmDw_Tables.sql
-    PlmDw_FieldMapping.sql
-    PlmDw_ImportFromDW.sql
+  output/                           ← deliverables root
+    {templateId}/                   ← one subfolder per plmTemplateId (e.g. 3351/)
+      PlmDw_Tables.sql
+      PlmDw_FieldMapping.sql
+      PlmDw_ImportFromDW.sql
+      PlmDw_ImportBlueprint.json
+      PlmDw_ImportBlueprint.sql
   source/
     dwTabImportConfig.example.json
     dwTabImportConfig.json          ← Phase B working config
-    _gen_plmdw_import_sql.ps1       ← writes to ../output/
+    _gen_plmdw_import_sql.ps1       ← writes to ../output/{templateId}/
     _plm_probe_template.sql         ← PLM: template + tabs + ref count
     PlmDw_ImportFromDW.sql          ← import template
     _dw_probe_by_tabids.sql         ← plmDW: tab/grid probe (fill #TabInput from PLM)
@@ -376,7 +381,7 @@ ImportFromPLMDW/
 [ ] Propose referenceScope on IsTemplateHeaderTab (or IsMasterReferenceHeaderTab) tab
 [ ] Phase A checklist → WAIT FOR USER
 [ ] Write dwTabImportConfig.json (plmTemplateId + PLM tab metadata)
-[ ] Run _gen_plmdw_import_sql.ps1 → output/PlmDw_*.sql + Blueprint
+[ ] Run _gen_plmdw_import_sql.ps1 → output/{templateId}/PlmDw_*.sql + Blueprint
 [ ] Verify PlmDw_ImportFromDW.sql has @PlmTemplateId + APPEND default
 [ ] Optional: pilot import with @ReferenceIdList
 ```

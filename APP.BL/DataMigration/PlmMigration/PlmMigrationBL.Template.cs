@@ -72,6 +72,7 @@ namespace APP.BL.DataMigration.PlmMigration
             public int? Nbdecimal { get; set; }
             public string ColumnName { get; set; }
             public bool MapsToRoot { get; set; }
+            public bool IsVisible { get; set; } = true;
         }
 
         private sealed class PlmTemplateGridColumnRow
@@ -89,6 +90,7 @@ namespace APP.BL.DataMigration.PlmMigration
             public int? Nbdecimal { get; set; }
             public string TableName { get; set; }
             public string ColumnSqlName { get; set; }
+            public bool IsVisible { get; set; } = true;
         }
 
         public static OperationCallResult<PlmTemplatePreviewDto> PreviewTemplateMapping(int? sessionId)

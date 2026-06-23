@@ -246,8 +246,20 @@ WHERE BlueprintKey = @BlueprintKey";
 
           if (request.IncludeTransactionGroup)
           {
+            var groupTransactionIds = new List<int>();
+            foreach (var plan in plans)
+            {
+              if (plan.Tab.ImportStatus == TemplateStatusSkipped)
+                continue;
+
+              string integrationId = ResolveDwTransactionIntegrationId(request.Blueprint, plan);
+              int? txId = GetTransactionIdByIntegrationId(conn, null, integrationId);
+              if (txId.HasValue)
+                groupTransactionIds.Add(txId.Value);
+            }
+
             result.Object.TransactionGroupId = EnsureDwBlueprintTransactionGroup(
-              conn, request.Blueprint, result.Object.TransactionIds);
+              conn, request.Blueprint, groupTransactionIds);
           }
 
           if (request.IncludeSearchView && request.Blueprint.SearchView != null)
@@ -581,10 +593,55 @@ WHERE object_id = OBJECT_ID(@Table) AND name = @Column";
         return null;
       using (var cmd = conn.CreateCommand())
       {
-        cmd.CommandText = "SELECT TOP 1 TransactionGroupID FROM dbo.AppTransactionGroup WHERE Name = @Name";
+        cmd.CommandText = "SELECT TOP 1 TransactionGroupID FROM dbo.AppTransactionGroup WHERE GroupName = @Name";
         cmd.Parameters.AddWithValue("@Name", name);
         var val = cmd.ExecuteScalar();
         return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+      }
+    }
+
+    /// <summary>
+    /// AppTransactionGroupItem.TransactionItemID FK references AppTransactionItem.AppTransactionItemID.
+    /// DW blueprint creates AppTransaction rows only; ensure a library item exists per transaction.
+    /// </summary>
+    private static int EnsureAppTransactionItemId(SqlConnection conn, SqlTransaction tran, int transactionId)
+    {
+      using (var cmd = conn.CreateCommand())
+      {
+        cmd.Transaction = tran;
+        cmd.CommandText = @"
+SELECT TOP 1 AppTransactionItemID
+FROM dbo.AppTransactionItem
+WHERE TransactionID = @TransactionId
+ORDER BY AppTransactionItemID";
+        cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+        var existing = cmd.ExecuteScalar();
+        if (existing != null && existing != DBNull.Value)
+          return Convert.ToInt32(existing);
+      }
+
+      string itemName = $"Transaction {transactionId}";
+      using (var cmd = conn.CreateCommand())
+      {
+        cmd.Transaction = tran;
+        cmd.CommandText = "SELECT TransactionName FROM dbo.AppTransaction WHERE TransactionID = @TransactionId";
+        cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+        var name = cmd.ExecuteScalar() as string;
+        if (!string.IsNullOrWhiteSpace(name))
+          itemName = name;
+      }
+
+      using (var cmd = conn.CreateCommand())
+      {
+        cmd.Transaction = tran;
+        cmd.CommandText = @"
+INSERT INTO dbo.AppTransactionItem (TransactionID, TransactionItemName, Description)
+VALUES (@TransactionId, @Name, @Description);
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
+        cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+        cmd.Parameters.AddWithValue("@Name", itemName);
+        cmd.Parameters.AddWithValue("@Description", itemName);
+        return Convert.ToInt32(cmd.ExecuteScalar());
       }
     }
 
@@ -606,7 +663,7 @@ WHERE object_id = OBJECT_ID(@Table) AND name = @Column";
         using (var cmd = conn.CreateCommand())
         {
           cmd.CommandText = @"
-INSERT INTO dbo.AppTransactionGroup (Name, Description, SaasApplicationID)
+INSERT INTO dbo.AppTransactionGroup (GroupName, Description, SaasApplicationID)
 VALUES (@Name, @Description, @SaasApplicationId);
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
           cmd.Parameters.AddWithValue("@Name", groupSpec.Name);
@@ -627,14 +684,16 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
       foreach (int txId in transactionIds.Distinct())
       {
         order++;
+        int transactionItemId = EnsureAppTransactionItemId(conn, null, txId);
         using (var cmd = conn.CreateCommand())
         {
           cmd.CommandText = @"
-INSERT INTO dbo.AppTransactionGroupItem (TransactionGroupID, TransactionID, TransactionLayoutOrder)
-VALUES (@GroupId, @TransactionId, @Order)";
+INSERT INTO dbo.AppTransactionGroupItem (TransactionGroupID, TransactionItemID, TransactionLayoutOrder, TransID)
+VALUES (@GroupId, @TransactionItemId, @Order, @TransactionId)";
           cmd.Parameters.AddWithValue("@GroupId", groupId.Value);
-          cmd.Parameters.AddWithValue("@TransactionId", txId);
+          cmd.Parameters.AddWithValue("@TransactionItemId", transactionItemId);
           cmd.Parameters.AddWithValue("@Order", order);
+          cmd.Parameters.AddWithValue("@TransactionId", txId);
           cmd.ExecuteNonQuery();
         }
       }
@@ -992,7 +1051,8 @@ WHERE SearchId = @SearchId";
                 ControlType = plmControlType,
                 EntityId = fieldMeta?.PlmEntityId ?? mapRow.PlmEntityId ?? TryParseEntityFromFk(mapRow.DwFkTarget),
                 SortOrder = fieldMeta?.DisplayOrder ?? sortOrder,
-                ColumnName = mapRow.AppColumnName
+                ColumnName = mapRow.AppColumnName,
+                IsVisible = fieldMeta == null || fieldMeta.IsVisible
               });
             }
           }
@@ -1043,7 +1103,8 @@ WHERE SearchId = @SearchId";
                   EntityId = fieldMeta?.PlmEntityId ?? mapRow.PlmEntityId ?? TryParseEntityFromFk(mapRow.DwFkTarget),
                   ColumnOrder = fieldMeta?.DisplayOrder ?? gridColOrder,
                   TableName = gridTable,
-                  ColumnSqlName = mapRow.AppColumnName
+                  ColumnSqlName = mapRow.AppColumnName,
+                  IsVisible = fieldMeta == null || fieldMeta.IsVisible
                 });
               }
             }
@@ -1106,7 +1167,8 @@ WHERE SearchId = @SearchId";
               ControlType = fieldMeta?.PlmControlType ?? mapRow.PlmControlType ?? InferPlmControlType(mapRow),
               EntityId = fieldMeta?.PlmEntityId ?? mapRow.PlmEntityId ?? TryParseEntityFromFk(mapRow.DwFkTarget),
               SortOrder = fieldMeta?.DisplayOrder ?? order,
-              ColumnName = mapRow.AppColumnName
+              ColumnName = mapRow.AppColumnName,
+              IsVisible = fieldMeta == null || fieldMeta.IsVisible
             });
           }
 

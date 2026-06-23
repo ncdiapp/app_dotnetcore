@@ -279,6 +279,10 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public bool IncludeInSearch { get; set; }
+
+        /// <summary>When false, transaction field IsVisible is set to 0 (from PLM pdmTabBlockSubItemExtraInfo.Visible).</summary>
+        [DataMember]
+        public bool IsVisible { get; set; } = true;
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
