@@ -1,7 +1,5 @@
--- Phase A probe: populate #TabInput (TabId INT) with user TabIds before running.
--- Example:
---   CREATE TABLE #TabInput (TabId INT PRIMARY KEY);
---   INSERT #TabInput VALUES (4258),(4212),(4213);
+-- Phase A probe: populate #TabInput (TabId INT) from PLM pdmTemplateTab (NOT user-typed TabIds).
+-- Run source/_plm_probe_template.sql first, then insert TabIDs into #TabInput.
 
 SET NOCOUNT ON;
 

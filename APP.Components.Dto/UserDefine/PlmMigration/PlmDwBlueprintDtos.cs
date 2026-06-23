@@ -45,6 +45,22 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public PlmDwBlueprintNavigationDto Navigation { get; set; }
+
+        [DataMember]
+        public PlmDwBlueprintPlmTemplateDto PlmTemplate { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmDwBlueprintPlmTemplateDto
+    {
+        [DataMember]
+        public int TemplateId { get; set; }
+
+        [DataMember]
+        public string TemplateName { get; set; }
+
+        [DataMember]
+        public List<int> TemplateHeaderTabIds { get; set; } = new List<int>();
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -61,6 +77,12 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public string ConfigFile { get; set; }
+
+        [DataMember]
+        public int? PlmTemplateId { get; set; }
+
+        [DataMember]
+        public string PlmDatabase { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -143,6 +165,12 @@ namespace APP.Components.EntityDto
         /// <summary>Ready | Skipped</summary>
         [DataMember]
         public string ImportStatus { get; set; } = "Ready";
+
+        [DataMember]
+        public int? PlmTabSort { get; set; }
+
+        [DataMember]
+        public bool? IsTemplateHeaderTab { get; set; }
 
         [DataMember]
         public PlmDwBlueprintUnitStructureDto UnitStructure { get; set; }

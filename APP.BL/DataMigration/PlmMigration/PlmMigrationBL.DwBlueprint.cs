@@ -392,6 +392,13 @@ WHERE BlueprintKey = @BlueprintKey";
         if (!inMapping)
           validation.Warnings.Add($"Blueprint field {field.AppTableName}.{field.AppColumnName} not found in FieldMapping.");
       }
+
+      var templateHeaderTabIds = GetDwBlueprintTemplateHeaderTabIds(blueprint);
+      if ((blueprint.PlmTemplate?.TemplateId ?? blueprint.Source?.PlmTemplateId) > 0 && templateHeaderTabIds.Count == 0)
+      {
+        validation.Warnings.Add(
+          "Blueprint plmTemplate has no TemplateHeaderTabIds and no transaction IsTemplateHeaderTab=true; Search links will use MainItem for all tabs.");
+      }
     }
 
     private static List<PlmDwBlueprintPreviewItemDto> BuildDwBlueprintPreviewItems(
@@ -528,26 +535,7 @@ WHERE object_id = OBJECT_ID(@Table) AND name = @Column";
 
     private static string ResolveDwTransactionIntegrationId(PlmDwImportBlueprintDto blueprint, TemplateTabExecutionPlan plan)
     {
-      var txSpec = blueprint.Transactions?
-        .FirstOrDefault(t => t.PlmTabId == plan.Tab.TabId);
-      if (!string.IsNullOrWhiteSpace(txSpec?.IntegrationId))
-        return txSpec.IntegrationId;
-
-      if (plan.Tab.TabId < 0)
-      {
-        var grid = blueprint.GridBindings?
-          .FirstOrDefault(g => g.PlmGridId == -plan.Tab.TabId || g.PlmGridId == plan.Tab.TabId);
-        if (grid != null)
-        {
-          if (!string.IsNullOrWhiteSpace(grid.TransactionIntegrationId))
-            return grid.TransactionIntegrationId;
-          if (!string.IsNullOrWhiteSpace(grid.IntegrationId))
-            return grid.IntegrationId;
-          return $"Grid_{grid.PlmGridId}";
-        }
-      }
-
-      return $"Tab_{plan.Tab.TabId}";
+      return ResolveDwTabIntegrationId(blueprint, plan?.Tab) ?? $"Tab_{plan?.Tab?.TabId}";
     }
 
     private static string QualifyBlueprintTableName(string appTableName, string prefix)
@@ -785,13 +773,75 @@ WHERE SearchId = @SearchId";
           ?? "Failed to update blueprint search.");
 
       ClearSearchViewFormLinkTargets(conn, searchViewId);
-      SaveDwBlueprintLinkTargets(searchViewDto, tabRows, conn);
+      SaveDwBlueprintLinkTargets(searchViewDto, blueprint, tabRows, conn);
 
       return searchId;
     }
 
+    private static HashSet<int> GetDwBlueprintTemplateHeaderTabIds(PlmDwImportBlueprintDto blueprint)
+    {
+      var ids = new HashSet<int>();
+      if (blueprint?.PlmTemplate?.TemplateHeaderTabIds != null)
+      {
+        foreach (int id in blueprint.PlmTemplate.TemplateHeaderTabIds)
+          ids.Add(id);
+      }
+
+      foreach (var tx in blueprint?.Transactions ?? Enumerable.Empty<PlmDwBlueprintTransactionDto>())
+      {
+        if (tx.IsTemplateHeaderTab == true)
+          ids.Add(tx.PlmTabId);
+      }
+
+      return ids;
+    }
+
+    private static bool IsDwBlueprintTemplateHeaderTab(
+      PlmDwImportBlueprintDto blueprint,
+      PlmTemplateTabRow tab,
+      HashSet<int> templateHeaderTabIds)
+    {
+      if (tab?.IsTemplateHeaderTab == true)
+        return true;
+
+      var txSpec = blueprint?.Transactions?
+        .FirstOrDefault(t => t.PlmTabId == tab.TabId);
+      if (txSpec?.IsTemplateHeaderTab == true)
+        return true;
+
+      return tab != null && templateHeaderTabIds.Contains(tab.TabId);
+    }
+
+    private static string ResolveDwTabIntegrationId(PlmDwImportBlueprintDto blueprint, PlmTemplateTabRow tab)
+    {
+      if (tab == null)
+        return null;
+
+      var txSpec = blueprint?.Transactions?
+        .FirstOrDefault(t => t.PlmTabId == tab.TabId);
+      if (!string.IsNullOrWhiteSpace(txSpec?.IntegrationId))
+        return txSpec.IntegrationId;
+
+      if (tab.TabId < 0)
+      {
+        var grid = blueprint?.GridBindings?
+          .FirstOrDefault(g => g.PlmGridId == -tab.TabId);
+        if (grid != null)
+        {
+          if (!string.IsNullOrWhiteSpace(grid.TransactionIntegrationId))
+            return grid.TransactionIntegrationId;
+          if (!string.IsNullOrWhiteSpace(grid.IntegrationId))
+            return grid.IntegrationId;
+          return $"Grid_{grid.PlmGridId}";
+        }
+      }
+
+      return $"Tab_{tab.TabId}";
+    }
+
     private static void SaveDwBlueprintLinkTargets(
       AppSearchViewExDto searchViewDto,
+      PlmDwImportBlueprintDto blueprint,
       List<PlmTemplateTabRow> tabRows,
       SqlConnection conn)
     {
@@ -802,6 +852,7 @@ WHERE SearchId = @SearchId";
         throw new InvalidOperationException("Blueprint search view is missing ReferenceId field.");
 
       int sourceViewColumnId = Convert.ToInt32(rootField.Id);
+      var templateHeaderTabIds = GetDwBlueprintTemplateHeaderTabIds(blueprint);
       var readyTabs = tabRows
         .Where(t => t.ImportStatus != TemplateStatusSkipped)
         .OrderBy(t => t.TabSort ?? short.MaxValue)
@@ -809,17 +860,19 @@ WHERE SearchId = @SearchId";
         .ToList();
 
       int sortFallback = 0;
-      PlmTemplateTabRow firstTab = null;
+      PlmTemplateTabRow firstMainTab = null;
 
       foreach (var tab in readyTabs)
       {
         sortFallback++;
-        int? transactionId = GetTransactionIdByIntegrationId(conn, null, $"Tab_{tab.TabId}");
+        string integrationId = ResolveDwTabIntegrationId(blueprint, tab);
+        int? transactionId = GetTransactionIdByIntegrationId(conn, null, integrationId);
         if (!transactionId.HasValue)
           continue;
 
-        if (firstTab == null)
-          firstTab = tab;
+        bool isTemplateHeader = IsDwBlueprintTemplateHeaderTab(blueprint, tab, templateHeaderTabIds);
+        if (!isTemplateHeader && firstMainTab == null)
+          firstMainTab = tab;
 
         string navigationName = string.IsNullOrWhiteSpace(tab.TabName) ? $"Tab_{tab.TabId}" : tab.TabName;
         InsertTemplateFormLinkTarget(
@@ -830,12 +883,13 @@ WHERE SearchId = @SearchId";
           transactionId.Value,
           sourceViewColumnId,
           tab.TabSort ?? sortFallback,
-          BuildTemplateLinkTargetOtherSettingsJson(false));
+          BuildTemplateLinkTargetOtherSettingsJson(isTemplateHeader));
       }
 
-      if (firstTab != null)
+      if (firstMainTab != null)
       {
-        int? createTransactionId = GetTransactionIdByIntegrationId(conn, null, $"Tab_{firstTab.TabId}");
+        string createIntegrationId = ResolveDwTabIntegrationId(blueprint, firstMainTab);
+        int? createTransactionId = GetTransactionIdByIntegrationId(conn, null, createIntegrationId);
         if (createTransactionId.HasValue)
         {
           InsertTemplateFormLinkTarget(
@@ -868,14 +922,27 @@ WHERE SearchId = @SearchId";
           .GroupBy(g => g.ParentPlmTabId.Value)
           .ToDictionary(g => g.Key, g => g.ToList());
 
+        var templateHeaderTabIds = GetDwBlueprintTemplateHeaderTabIds(blueprint);
+
         foreach (var tx in blueprint.Transactions ?? Enumerable.Empty<PlmDwBlueprintTransactionDto>())
         {
+          short? tabSort = null;
+          if (tx.PlmTabSort.HasValue)
+          {
+            int sortVal = tx.PlmTabSort.Value;
+            tabSort = sortVal > short.MaxValue ? short.MaxValue : (short)sortVal;
+          }
+
           var tab = new PlmTemplateTabRow
           {
+            TemplateId = blueprint.PlmTemplate?.TemplateId ?? blueprint.Source?.PlmTemplateId ?? 0,
+            TemplateName = blueprint.PlmTemplate?.TemplateName ?? blueprint.TransactionGroup?.Name,
             TabId = tx.PlmTabId,
             TabName = tx.TransactionName ?? tx.PlmTabName ?? $"Tab_{tx.PlmTabId}",
+            TabSort = tabSort,
             ImportStatus = string.IsNullOrWhiteSpace(tx.ImportStatus) ? TemplateStatusReady : tx.ImportStatus
           };
+          tab.IsTemplateHeaderTab = IsDwBlueprintTemplateHeaderTab(blueprint, tab, templateHeaderTabIds);
 
           var siblings = tx.UnitStructure?.SiblingUnits?
             .Where(s => s != null && !string.IsNullOrWhiteSpace(s.AppTableName))

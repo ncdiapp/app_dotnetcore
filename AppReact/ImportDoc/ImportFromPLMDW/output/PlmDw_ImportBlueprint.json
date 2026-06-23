@@ -1,7 +1,9 @@
 ﻿{
     "schemaVersion":  1,
-    "generatedAt":  "2026-06-23T16:45:05.4410376Z",
+    "generatedAt":  "2026-06-23T17:20:58.5915207Z",
     "source":  {
+                   "plmTemplateId":  null,
+                   "plmDatabase":  "PLM",
                    "dwDatabase":  "plmDW",
                    "importTabIds":  [
                                         4258,
@@ -15,6 +17,7 @@
                    "tablePrefix":  "Plm_",
                    "configFile":  "source/dwTabImportConfig.json"
                },
+    "plmTemplate":  null,
     "transactionGroup":  {
                              "name":  "Fabric",
                              "integrationId":  "TG_Fabric",
@@ -48,6 +51,8 @@
                              "integrationId":  "Tab_4258",
                              "transactionName":  "Fabric Header",
                              "importStatus":  "Ready",
+                             "plmTabSort":  1,
+                             "isTemplateHeaderTab":  true,
                              "unitStructure":  {
                                                    "mode":  "RootPlusMasterSibling",
                                                    "rootTableName":  "Plm_ReferenceBasicInfo",
@@ -69,6 +74,8 @@
                              "integrationId":  "Tab_4212",
                              "transactionName":  "Fabric Info",
                              "importStatus":  "Ready",
+                             "plmTabSort":  2,
+                             "isTemplateHeaderTab":  false,
                              "unitStructure":  {
                                                    "mode":  "RootPlusMasterSibling",
                                                    "rootTableName":  "Plm_ReferenceBasicInfo",
@@ -96,6 +103,8 @@
                              "integrationId":  "Tab_4213",
                              "transactionName":  "Attributes",
                              "importStatus":  "Ready",
+                             "plmTabSort":  null,
+                             "isTemplateHeaderTab":  null,
                              "unitStructure":  {
                                                    "mode":  "RootPlusMasterSibling",
                                                    "rootTableName":  "Plm_ReferenceBasicInfo",
@@ -117,6 +126,8 @@
                              "integrationId":  "Tab_4219",
                              "transactionName":  "Testing Compliance",
                              "importStatus":  "Ready",
+                             "plmTabSort":  null,
+                             "isTemplateHeaderTab":  null,
                              "unitStructure":  {
                                                    "mode":  "RootPlusMasterSibling",
                                                    "rootTableName":  "Plm_ReferenceBasicInfo",
@@ -138,6 +149,8 @@
                              "integrationId":  "Tab_4270",
                              "transactionName":  "Fabric Cost",
                              "importStatus":  "Ready",
+                             "plmTabSort":  null,
+                             "isTemplateHeaderTab":  null,
                              "unitStructure":  {
                                                    "mode":  "RootPlusMasterSibling",
                                                    "rootTableName":  "Plm_ReferenceBasicInfo",
@@ -159,6 +172,8 @@
                              "integrationId":  "Tab_4274",
                              "transactionName":  "Fabric Policy",
                              "importStatus":  "Ready",
+                             "plmTabSort":  null,
+                             "isTemplateHeaderTab":  null,
                              "unitStructure":  {
                                                    "mode":  "RootPlusMasterSibling",
                                                    "rootTableName":  "Plm_ReferenceBasicInfo",

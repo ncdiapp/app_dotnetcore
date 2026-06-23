@@ -69,6 +69,8 @@ function Build-BlueprintFromConfig($config, $allFieldRows) {
     $refScope = if ($config.referenceScope) { $config.referenceScope } else { $config.referenceCode }
     $templateName = if ($config.blueprint.transactionGroupName) { $config.blueprint.transactionGroupName }
         elseif ($config.blueprint.templateName) { $config.blueprint.templateName }
+        elseif ($config.plmTemplate.templateName) { $config.plmTemplate.templateName }
+        elseif ($config.plmTemplateName) { $config.plmTemplateName }
         else { 'PLM Import' }
     $tgIntegration = if ($config.blueprint.transactionGroupIntegrationId) { $config.blueprint.transactionGroupIntegrationId }
         else { 'TG_' + ($templateName -replace '[^a-zA-Z0-9]', '') }
@@ -90,8 +92,10 @@ function Build-BlueprintFromConfig($config, $allFieldRows) {
     }
 
     $transactions = @()
-    foreach ($tab in $config.tabs) {
+    $sortedTabs = @($config.tabs | Sort-Object { if ($null -ne $_.tabSort) { $_.tabSort } else { 9999 } }, { $_.tabId })
+    foreach ($tab in $sortedTabs) {
         $tabName = if ($tab.plmTabName) { $tab.plmTabName } else { Format-TabDisplayName $tab.appTable }
+        $importStatus = if ($tab.importStatus) { $tab.importStatus } else { 'Ready' }
         $siblingUnits = [System.Collections.Generic.List[object]]::new()
 
         if ($tab.mode -eq 'excludeSubItemsFromDwTable' -and $tab.excludeSubItemsFromDwTable) {
@@ -121,7 +125,9 @@ function Build-BlueprintFromConfig($config, $allFieldRows) {
             plmTabName       = $tabName
             integrationId    = "Tab_$($tab.tabId)"
             transactionName  = $tabName
-            importStatus     = 'Ready'
+            importStatus     = $importStatus
+            plmTabSort       = if ($null -ne $tab.tabSort) { [int]$tab.tabSort } else { $null }
+            isTemplateHeaderTab = if ($null -ne $tab.isTemplateHeaderTab) { [bool]$tab.isTemplateHeaderTab } else { $null }
             unitStructure    = [ordered]@{
                 mode          = 'RootPlusMasterSibling'
                 rootTableName = $prefix + $rootSuffix
@@ -175,15 +181,34 @@ function Build-BlueprintFromConfig($config, $allFieldRows) {
     $searchIntegration = if ($config.blueprint.searchIntegrationId) { $config.blueprint.searchIntegrationId }
         else { 'Search_' + ($templateName -replace '[^a-zA-Z0-9]', '') }
 
+    $templateHeaderTabIds = @($config.tabs | Where-Object { $_.isTemplateHeaderTab -eq $true } | ForEach-Object { [int]$_.tabId })
+    if ($config.plmTemplate -and $config.plmTemplate.templateHeaderTabIds) {
+        $templateHeaderTabIds = @($config.plmTemplate.templateHeaderTabIds | ForEach-Object { [int]$_ })
+    }
+    $plmTemplateId = $null
+    if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) {
+        $plmTemplateId = [int]$config.plmTemplateId
+    }
+    elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId -and [int]$config.plmTemplate.templateId -gt 0) {
+        $plmTemplateId = [int]$config.plmTemplate.templateId
+    }
+
     return [ordered]@{
         schemaVersion         = 1
         generatedAt           = (Get-Date).ToUniversalTime().ToString('o')
         source                = [ordered]@{
-            dwDatabase   = $config.dwDatabase
-            importTabIds = @($config.importTabIds | ForEach-Object { [int]$_ })
-            tablePrefix  = $prefix
-            configFile   = 'source/dwTabImportConfig.json'
+            plmTemplateId = $plmTemplateId
+            plmDatabase   = $config.plmDatabase
+            dwDatabase    = $config.dwDatabase
+            importTabIds  = @($config.importTabIds | ForEach-Object { [int]$_ })
+            tablePrefix   = $prefix
+            configFile    = 'source/dwTabImportConfig.json'
         }
+        plmTemplate           = if ($plmTemplateId) { [ordered]@{
+            templateId           = $plmTemplateId
+            templateName         = $templateName
+            templateHeaderTabIds = $templateHeaderTabIds
+        } } else { $null }
         transactionGroup      = [ordered]@{
             name           = $templateName
             integrationId  = $tgIntegration
@@ -630,7 +655,15 @@ $importPath = Join-Path $outDir 'PlmDw_ImportFromDW.sql'
 if (-not (Test-Path $importTemplate)) {
     throw "Missing import template: $importTemplate"
 }
-Copy-Item -Path $importTemplate -Destination $importPath -Force
+$importContent = Get-Content $importTemplate -Raw
+$importContent = $importContent -replace "DECLARE @DwDatabase\s+NVARCHAR\(128\)\s+= N'plmDW'", "DECLARE @DwDatabase        NVARCHAR(128) = N'$($config.dwDatabase)'"
+$plmDb = if ($config.plmDatabase) { $config.plmDatabase } else { 'PLM' }
+$importContent = $importContent -replace "DECLARE @PlmDatabase\s+NVARCHAR\(128\)\s+= N'PLM'", "DECLARE @PlmDatabase       NVARCHAR(128) = N'$plmDb'"
+$tplId = if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) { [int]$config.plmTemplateId }
+    elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId -and [int]$config.plmTemplate.templateId -gt 0) { [int]$config.plmTemplate.templateId }
+    else { 'NULL' }
+$importContent = $importContent -replace '(DECLARE @PlmTemplateId\s+INT\s+=\s*)NULL', "`${1}$tplId"
+Set-Content -Path $importPath -Value $importContent -Encoding UTF8
 
 if (-not $config.blueprint) {
     $config | Add-Member -NotePropertyName blueprint -NotePropertyValue ([ordered]@{
@@ -689,7 +722,7 @@ Write-Host "Generated: $tablesPath"
 Write-Host "Generated: $mappingPath ($($allFieldRows.Count) mappings)"
 Write-Host "Generated: $blueprintPath"
 Write-Host "Generated: $blueprintSqlPath"
-Write-Host "Copied:   $importPath"
+Write-Host "Generated: $importPath"
 foreach ($t in $config.tabs) {
     $n = @($allFieldRows | Where-Object { $_.AppTable -eq $t.appTable }).Count
     Write-Host "  $($t.appTable): $n columns"

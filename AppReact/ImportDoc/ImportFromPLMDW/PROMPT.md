@@ -7,36 +7,41 @@
 
 ---
 
-## User input (required — two items)
+## User input (required — three items)
 
-**The user must supply both in the same message** (or in a follow-up before any DW work):
+**The user must supply all three in the same message** (or in a follow-up before any probe work):
 
 ```text
-1. DW connection string
+1. PLM connection string (source DB — pdmTemplate, pdmTemplateTab, pdmProductTemplate)
+   Server=...\Database=PLM;...
+
+2. plmDW connection string
    Server=...\Database=plmDW;...
 
-2. TabIds to import
-   comma-separated PLM Tab IDs, e.g. 4258,4212,4213,4270,4274,4219
+3. TemplateId to import — exactly ONE integer
+   e.g. 12
 ```
 
-Optional (defaults if omitted): `@TablePrefix` = `Plm_`, `@RootTableSuffix` = `ReferenceBasicInfo`, pilot `ReferenceId` for smoke test.
+Optional (defaults if omitted): `@TablePrefix` = `Plm_`, `@RootTableSuffix` = `ReferenceBasicInfo`, pilot `@ReferenceIdList` for smoke test.
 
-**Never hardcode template or product names** (e.g. Fabric) in generated **file names**. APP table names inside SQL are derived per template from DW table names (see §A3).
+**TabIds are NOT user input.** Agent loads the tab list from PLM (`pdmTemplateTab` + `pdmTab`) for the given `TemplateId`, then probes plmDW per tab.
+
+**Never hardcode template or product names** in generated **file names**. APP table names inside SQL are derived per template from DW metadata (see §A3). Transaction Group name defaults from `pdmTemplate.TemplateName` (user confirms in Phase A).
 
 ### Gate 0 — missing input → ask user, do nothing else
 
-If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** include **both** a connection string **and** TabIds in that message:
+If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** include **all three** required items in that message:
 
 1. **STOP immediately.** Do **not** run `sqlcmd`, probe SQL, Phase A analysis, or Phase B generation.
-2. **Ask the user** for the two required items (use the template under §Example session message).
+2. **Ask the user** for PLM connection string + plmDW connection string + **one** TemplateId (see §Example session message).
 3. **Do not** treat any of the following as user input:
-   - The example connection string or TabIds in §Example session message
+   - Example connection strings or TemplateId in §Example session message
    - `source/dwTabImportConfig.example.json`
    - `source/dwTabImportConfig.json` (working file from a **previous** run — not valid until Phase B after user confirms Phase A)
-   - Values inferred from other folders (e.g. `ImportDoc/Temp/`) or from prior chat unless the user repeats them in the current request
+   - TabId lists from prior chats, example JSON, or other folders unless the user repeats TemplateId + connections in the current request
 
-**Wrong:** user sends only `@PROMPT.md` → agent connects to `PC3B\...` and probes TabIds from the doc.  
-**Right:** user sends only `@PROMPT.md` → agent replies asking for connection string + TabIds, then waits.
+**Wrong:** user sends only `@PROMPT.md` → agent connects and guesses TemplateId / TabIds from a prior Fabric run.  
+**Right:** user sends only `@PROMPT.md` → agent asks for the three required items, then waits.
 
 ---
 
@@ -44,7 +49,7 @@ If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** i
 
 | Rule | Detail |
 |------|--------|
-| **Gate 0** | No connection string **and** TabIds from the user → **ask only**; no DW access, no Phase A/B (see §Gate 0). |
+| **Gate 0** | No PLM + plmDW connection strings **and** one TemplateId from the user → **ask only**; no probe, no Phase A/B (see §Gate 0). |
 | **No server code** | **Never** edit C# / `.csproj` / React WebAPI / BL under `APP.BL`, `AppAI.Web`, etc. **Never** run `dotnet build`, `msbuild`, or any compile step. Deliverables are **SQL + JSON + PowerShell in this folder only**. If the workflow appears to need a code change → **STOP immediately**, explain the gap, and **warn the user** — do not patch the repo. |
 | **Two phases** | **Phase A:** DW analysis + APP table proposal + **Blueprint draft** → **STOP for user confirmation**. **Phase B:** generate SQL + Blueprint JSON **after** confirm. **Phase D:** BL TOOLS apply Blueprint to APP config (separate step; user runs in app). |
 | **plmDW is truth** | Column names, SubItem IDs, TabIds from DW — not legacy PLM exports. |
@@ -58,11 +63,45 @@ If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** i
 
 ### A1. Parse inputs
 
-**Prerequisite:** Gate 0 passed — user supplied connection string **and** TabIds in the current session.
+**Prerequisite:** Gate 0 passed — user supplied **PLM connection string**, **plmDW connection string**, and **one TemplateId**.
 
-From connection string: `@SqlServer`, `@DwDatabase`. Auth: prefer `sqlcmd -E`; do not commit passwords.
+From connection strings: `@PlmSqlServer`, `@PlmDatabase`, `@DwSqlServer`, `@DwDatabase`. Auth: `sqlcmd -E` or env `PLM_DW_SQL_USER` / `PLM_DW_SQL_PASSWORD`; **do not commit passwords**.
 
-Build `#TabInput(TabId)` from the **user-provided** TabId list only (not from example JSON or repo config files).
+### A1b. Load template + tab list from PLM (authoritative)
+
+Run `source/_plm_probe_template.sql` with `@TemplateId` set, against **PLM** database.
+
+Equivalent query (same rules as `PlmMigrationBL.LoadPlmTemplateTabs`):
+
+```sql
+SELECT t.TemplateID, t.TemplateName, t.Description,
+       tt.TabID, tab.TabName, tt.Sort,
+       tab.IsTemplateHeaderTab, tab.IsMasterReferenceHeaderTab
+FROM dbo.pdmTemplate t
+INNER JOIN dbo.pdmTemplateTab tt ON tt.TemplateID = t.TemplateID
+INNER JOIN dbo.pdmTab tab ON tab.TabID = tt.TabID
+WHERE t.TemplateID = @TemplateId
+ORDER BY tt.Sort, tt.TabID;
+```
+
+Record:
+
+| Field | Use |
+|-------|-----|
+| `TemplateName` | Default Transaction Group / Search / folder name (user confirms) |
+| `TabID`, `TabName`, `Sort` | Tab inventory order; Blueprint transaction order |
+| `IsTemplateHeaderTab` | Template Header tab(s); `referenceScope` candidate; Search link `TemplateItemType` (see §Phase D **Warning**) |
+| `IsMasterReferenceHeaderTab` | Prefer for `ReferenceCode` / root scope when multiple header flags |
+
+**Import data scope** (product references belonging to this template):
+
+```sql
+SELECT DISTINCT ProductReferenceID
+FROM dbo.pdmProductTemplate
+WHERE TemplateID = @TemplateId AND ProductReferenceID IS NOT NULL;
+```
+
+Build `#TabInput(TabId)` from **PLM query result only** — not from user-typed TabIds.
 
 ### A2. Resolve DW objects per TabId
 
@@ -91,10 +130,10 @@ From DW tab table name `PLM_DW_Tab_{Segment}_{TabId}`:
 - From DW grid `PLM_DW_Grid_{Segment}_{GridMetaId}`:
 - **APP grid table name** = `{Segment}` (e.g. `ProductDesignColorGrid`)
 
-Present TabId inventory to user:
+Present TabId inventory to user (merge PLM + DW):
 
-| TabId | DwTableName | APP table | Columns | Type |
-|-------|-------------|-----------|---------|------|
+| TabId | TabName (PLM) | Sort | IsTemplateHeader | DwTableName | APP table | Columns | Type |
+|-------|---------------|------|------------------|-------------|-----------|---------|------|
 
 ### A4. DW column naming
 
@@ -104,16 +143,15 @@ Present TabId inventory to user:
 
 System columns (not mapped): Tab → `TabID`, `ProductReferenceID`; Grid → `ProductReferenceID`, `BlockID`, `GridID`, `RowID`, `RowValueGUID`, `Sort`.
 
-### A5. SubItem sharing (among TabIds in user list)
+### A5. SubItem sharing (among this template's tabs)
 
-When **two tab wide tables overlap** (common: a “header” tab and a richer “info” tab):
+When **two tab wide tables overlap** (common: `IsTemplateHeaderTab` tab + a richer info tab):
 
 - Report shared / tab-A-only / tab-B-only SubItem counts
-- **Recommend:** store shared SubItems in **one** APP table only; secondary tab keeps **only exclusive** SubItems (`excludeSubItemsFromDwTable` in config)
+- **Recommend:** shared SubItems on the **Template Header** APP table; secondary tab `excludeSubItemsFromDwTable` → header DW table
+- **Fabric Info style:** if user confirms, secondary transaction = Root + (Header sibling + Info sibling) — see prior `excludeSubItemsFromDwTable` pattern
 
-When tabs are independent (no shared SubItemIds), each APP table gets **all** DW columns.
-
-Run overlap SQL ad hoc or extend `_dw_probe_by_tabids.sql` for the specific tab pair the user’s TabIds imply — **do not assume header/info names**; detect by SubItem intersection.
+Detect overlap by SubItem intersection — **do not assume** names; `IsTemplateHeaderTab` hints which tab is primary.
 
 ### A6. Normalize / denormalize proposal
 
@@ -121,27 +159,28 @@ Present scoped to **user TabIds only**:
 
 | APP object | Rule |
 |----------|------|
-| `{prefix}ReferenceBasicInfo` | `ReferenceId` = `ProductReferenceID`; `ReferenceCode` from user-chosen reference-scope column on one tab (propose default: code/article column on primary tab) |
+| `{prefix}ReferenceBasicInfo` | `ReferenceId` = `ProductReferenceID`; scope = `pdmProductTemplate` for this `TemplateId`; `ReferenceCode` from header tab (§A1b) |
 | Each tab wide table | All columns, or exclusive SubItems if overlap rule applies |
 | Each grid | Business columns + `RowId` / `ReferenceId` / `Sort` |
 | Grids without Tab wide table | No tab DDL; grid table only |
 
 ### A7. Confirmation checklist — **STOP**
 
-Ask user to confirm (adapt wording to actual tab names):
+Ask user to confirm:
 
-1. TabId → APP table mapping  
-2. Overlap / exclusive SubItem split (if any)  
-3. Grid ↔ TabId associations  
-4. Reference-scope DW table + column for `ReferenceCode`  
-5. Skip tabs/grids with no DW source  
-6. Mapping table schema (§Phase B3)  
+1. **TemplateId** + `TemplateName` → Transaction Group / Search names  
+2. TabId → APP table mapping (all tabs from PLM for this template)  
+3. **IsTemplateHeaderTab** tab(s) → `referenceScope` DW table + column  
+4. Overlap / exclusive SubItem split (if any)  
+5. Grid ↔ TabId associations (grid-only tabs: no `PLM_DW_Tab_*`)  
+6. Skip tabs/grids with no DW source  
 7. `@TablePrefix` default `Plm_` OK?  
-8. **Transaction Group** name and `integrationId` (Blueprint)  
-9. **Per TabId → Transaction** unit structure (Root / Sibling / Child) and `fieldPolicy`  
-10. **Blueprint field counts** per Transaction vs FieldMapping rows (shared columns must not duplicate on secondary tab)
+8. **`@ImportMode`** — default **`APPEND`** when tenant may already have rows from another template; `REPLACE` only for full reload of scoped refs  
+9. Per TabId → Transaction unit structure (Root / Sibling / dual-sibling for info tabs)  
+10. **Existing transactions** — optional tenant probe: `AppTransaction.IntegrationId = 'Tab_{TabId}'`; mark `importStatus: "Skipped"` in config for tabs that already exist (Phase D Insert also skips automatically)  
+11. Blueprint field counts per Transaction vs FieldMapping rows  
 
-After user confirms Phase A, record decisions in `source/dwTabImportConfig.json` (structure per `dwTabImportConfig.example.json` — include `blueprint` node — **do not** copy example TabIds/server without user input).
+After user confirms Phase A, record in `source/dwTabImportConfig.json` (see §B1) — include `plmTemplateId`, `plmDatabase`, `plmTemplate` metadata, and per-tab `tabSort`, `isTemplateHeaderTab`, `importStatus`.
 
 ---
 
@@ -151,11 +190,19 @@ After user confirms Phase A, record decisions in `source/dwTabImportConfig.json`
 
 ```json
 {
-  "importTabIds": [ ... ],
+  "plmTemplateId": 0,
+  "plmSqlServer": "...",
+  "plmDatabase": "PLM",
   "sqlServer": "...",
   "dwDatabase": "plmDW",
+  "importTabIds": [ "... from PLM pdmTemplateTab ..." ],
   "tablePrefixDefault": "Plm_",
   "rootTableSuffix": "ReferenceBasicInfo",
+  "plmTemplate": {
+    "templateId": 0,
+    "templateName": "...",
+    "templateHeaderTabIds": [ 0 ]
+  },
   "referenceScope": {
     "dwTable": "PLM_DW_Tab_...",
     "dwColumn": "...",
@@ -163,15 +210,19 @@ After user confirms Phase A, record decisions in `source/dwTabImportConfig.json`
     "plmSubItemId": 0
   },
   "tabs": [
-    { "appTable": "...", "dwTable": "...", "tabId": 0, "mode": "all" },
-    { "appTable": "...", "dwTable": "...", "tabId": 0,
-      "mode": "excludeSubItemsFromDwTable", "excludeSubItemsFromDwTable": "..." }
+    {
+      "appTable": "...",
+      "dwTable": "...",
+      "tabId": 0,
+      "plmTabName": "...",
+      "tabSort": 1,
+      "isTemplateHeaderTab": false,
+      "importStatus": "Ready",
+      "mode": "all"
+    }
   ],
-  "grids": [
-    { "appTable": "...", "dwTable": "PLM_DW_Grid_...", "gridSubItemId": 0, "gridId": 0 }
-  ],
+  "grids": [ ... ],
   "blueprint": {
-    "templateName": "...",
     "transactionGroupName": "...",
     "transactionGroupIntegrationId": "TG_...",
     "searchName": "... References",
@@ -181,9 +232,10 @@ After user confirms Phase A, record decisions in `source/dwTabImportConfig.json`
 }
 ```
 
-- `appTable` = logical name from DW segment (no template prefix in name)  
+- `importTabIds` / `tabs` — **derived from PLM** for `plmTemplateId`, not typed by user  
+- `tabSort`, `isTemplateHeaderTab` — copied from PLM probe  
+- `importStatus`: `Ready` | `Skipped` (existing `Tab_{id}` transaction — optional; Insert mode skips anyway)  
 - `mode`: `all` | `excludeSubItemsFromDwTable`  
-- `gridSubItemId` = PLM grid container SubItem on tab; `gridId` = DW grid metadata id  
 
 ### B2. Run generator
 
@@ -219,9 +271,17 @@ Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMaster
 
 ### B4. `output/PlmDw_ImportFromDW.sql`
 
-Template maintained at `source/PlmDw_ImportFromDW.sql`; copied into `output/` when the generator runs. Mapping-driven import. Parameters: `@TablePrefix`, `@RootTableSuffix`, `@DwDatabase`, `@ImportMode`, `@ReferenceIdList`, `@DryRun`.
+Template: `source/PlmDw_ImportFromDW.sql`. Generator patches `@DwDatabase`, `@PlmDatabase`, `@PlmTemplateId` from config.
 
-Reference list source = `referenceScope.dwTable` via `ReferenceField` mapping (not hardcoded).
+**Reference scope (required):** when `@PlmTemplateId` is set, `#RefFilter` = distinct `ProductReferenceID` from `pdmProductTemplate` for that template, **intersected** with rows present on the `referenceScope` DW tab table.
+
+```sql
+SELECT ProductReferenceID FROM dbo.pdmProductTemplate WHERE TemplateID = @PlmTemplateId;
+```
+
+**Incremental data import (second+ template):** default `@ImportMode = 'APPEND'`. For each target table, INSERT only where `ReferenceId` **not already** in that APP table — shared physical tables keep prior template rows; new template adds only new references. Use `REPLACE` only to delete+reload scoped refs on all mapped tables.
+
+Parameters: `@TablePrefix`, `@RootTableSuffix`, `@DwDatabase`, `@PlmDatabase`, `@PlmTemplateId`, `@ImportMode`, `@ReferenceIdList`, `@DryRun`.
 
 ---
 
@@ -246,92 +306,40 @@ After physical tables are populated, open **PLM Data Import → Step 3 DW Bluepr
 
 API equivalents: `POST webapi/PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`.
 
-**Agent scope:** Phase D is executed by the **user in the running app**. The agent generates files and instructions only — no server deployment.
+**Agent scope:** Phase D is executed by the **user in the running app**. The agent generates files and instructions only — no server deployment during PROMPT runtime.
+
+**BL (Phase D):** `SaveDwBlueprintLinkTargets` reads `plmTemplate.templateHeaderTabIds` and per-transaction `isTemplateHeaderTab` / `plmTabSort` from Blueprint JSON — same `TemplateItemType` behavior as legacy Template Import (`TemplateHeader` vs `MainItem`). **New** action targets the first non-header tab.
+
+**Warning (keep in Phase A checklist):** Search link `TemplateItemType` is **only** correct when Blueprint JSON includes header metadata from the PLM probe (`templateHeaderTabIds`, per-tab `isTemplateHeaderTab`, `plmTabSort`). If Phase B omits these fields, BL falls back to **all MainItem** and **New** may target the wrong tab. Agent must verify generated `PlmDw_ImportBlueprint.json` before user runs Execute. Re-run Execute **Update** (or rebuild Search View) after fixing Blueprint. Any further BL gap (e.g. `RepairTemplateLinkTargetItemTypes` against live PLM) → **STOP and warn user** — do not patch CS during PROMPT runtime unless user explicitly authorizes a flow rewrite (as in this session).
 
 ---
 
-## Incremental import — new template / new tabs when some TabIds already exist
+## Incremental import — second template when some TabIds / tables already exist
 
-Use this when the user imports **another template** (or more TabIds) and **some tabs already have APP physical tables and/or Transactions** from a prior DW import (same tenant, usually same `@TablePrefix` e.g. `Plm_`).
+Triggered when user imports **another `TemplateId`** after a prior DW import (same tenant, usually same `@TablePrefix`).
 
-### Phase A extra inputs (ask user)
+### What the user provides (same Gate 0)
 
-```text
-3. Already imported TabIds (optional but recommended)
-   e.g. 4258,4212,4213  — transactions already created in APP
+PLM connection + plmDW connection + **new** TemplateId only. Tab list comes from PLM again.
 
-4. Scope of this run
-   new-tabs-only | full-template-merge
-```
+### Phase A — detect overlap with tenant (optional sqlcmd on tenant DB)
 
-### Phase A — detect overlap (tenant DB probe via sqlcmd)
+| Check | Action |
+|-------|--------|
+| `Tab_{TabId}` exists | Blueprint `importStatus: "Skipped"` optional; Phase D **Insert** skips existing integrationIds |
+| APP table exists | `PlmDw_Tables.sql` — `ALTER ADD` new columns only |
+| `{prefix}FieldMapping` rows | Scoped DELETE per config tables only |
+| Same `ReferenceId` in shared table | `PlmDw_ImportFromDW.sql` with `@ImportMode='APPEND'` — **no duplicate rows per table** |
 
-For each TabId in the **current** list, check:
+### Phase D — transactions
 
-| Check | SQL / rule |
-|-------|------------|
-| Transaction exists? | `AppTransaction.IntegrationId = 'Tab_{TabId}'` (grid: `Tab_{TabId}` or `Grid_{gridId}`) |
-| Physical table exists? | `OBJECT_ID('dbo.{prefix}{AppTable}')` from DW segment name |
-| Mapping rows exist? | `{prefix}FieldMapping` where `PlmTabId = @TabId` |
-| Shared root | `{prefix}ReferenceBasicInfo` — typically **one per prefix**, reuse; do not recreate |
+| Goal | Mode |
+|------|------|
+| New tabs only | **Insert** — existing `Tab_{id}` skipped automatically |
+| Refresh existing tab layout | **Update** |
+| Same TabId across templates | **One** `Tab_{id}` transaction shared — do not create duplicate |
 
-Classify each TabId:
-
-| Status | Meaning | Agent action |
-|--------|---------|----------------|
-| **New** | No `Tab_{id}` transaction | Full DDL + mapping + Blueprint transaction |
-| **Exists — unchanged** | Transaction + table present; DW column set matches | Optional: skip Blueprint Insert; no data reload |
-| **Exists — schema drift** | Table exists but DW has new columns | `PlmDw_Tables.sql` adds columns (`ALTER`); re-run scoped `FieldMapping`; Blueprint **Update** |
-| **Shared table** | APP table already created by another TabId (header/info overlap) | **Do not** duplicate DDL; only add mapping rows for **new** columns; one transaction per TabId still |
-
-Present overlap table in Phase A confirmation:
-
-| TabId | APP table | Tenant status | This run |
-|-------|-----------|---------------|----------|
-
-### Phase B — config rules for incremental runs
-
-1. **`dwTabImportConfig.json`** — include **only TabIds for this run**, or full set if user chose `full-template-merge`.
-2. **`PlmDw_Tables.sql`** — idempotent: `CREATE` if missing; `ALTER ADD` for new columns on existing tables. **Safe to re-run** for tables in config.
-3. **`PlmDw_FieldMapping.sql`** — `DELETE` is scoped to **AppTableName values in this config only**; other templates’ mappings are **not** wiped. Re-run replaces mappings for touched tables only.
-4. **`PlmDw_ImportFromDW.sql`** — for tenants that already have data:
-   - `@ImportMode = 'APPEND'` — insert rows only for `ReferenceId` not yet present in target table
-   - `@ReferenceIdList` — limit to pilot/new references when testing
-5. **`PlmDw_ImportBlueprint.json`**:
-   - **New tabs** → normal `importStatus: "Ready"`
-   - **Already imported, no layout change** → omit from blueprint **or** set `importStatus: "Skipped"` (agent must confirm with user)
-   - **Already imported, field/layout refresh** → keep in blueprint; user runs Execute **Update**
-
-### Phase D — Blueprint execute modes (existing BL behavior; no code changes)
-
-| User goal | Execute mode | Behavior |
-|-----------|--------------|----------|
-| Add **new** transactions only | **Insert** | Skips any `Tab_{id}` / grid integrationId that **already exists** |
-| Refresh forms/fields on **existing** transactions | **Update** | Upserts layout/metadata for existing integrationIds |
-| Fix **existing** only | **Repair** | Updates only transactions that already exist |
-
-**Transaction Group warning:** `ExecuteDwBlueprintConfig` with `IncludeTransactionGroup` rebuilds group membership from **transactions processed in that run**. If the blueprint contains **only new tabs**, previously linked transactions may drop out of the group. **Plans:**
-
-- **Recommended:** blueprint lists **all** TabIds in the group (old + new); run **Insert** for new + **Update** for existing in one preview pass, **or** user manually re-adds old transactions to the group in APP admin.
-- **Alternative:** separate Transaction Group per template (`transactionGroupIntegrationId` e.g. `TG_Packaging` vs `TG_Fabric`) when templates should not share one menu.
-
-### Same `@TablePrefix` across templates
-
-| Situation | Handling |
-|-----------|----------|
-| Same prefix (`Plm_`), different templates | Shared `{prefix}ReferenceBasicInfo`; APP table names from DW segments — **collision only if segment name matches** (reuse table + mapping merge) |
-| Isolate templates | User sets different `@TablePrefix` per template (e.g. `PlmFabric_`, `PlmPkg_`) — separate physical tables and transactions |
-
-### Agent checklist (incremental)
-
-```text
-[ ] User listed already-imported TabIds (or agent probed tenant DB)
-[ ] Overlap table presented; user confirmed new vs skip vs update per TabId
-[ ] FieldMapping scope understood (per-config DELETE only)
-[ ] Import APPEND vs REPLACE agreed for PlmDw_ImportFromDW.sql
-[ ] Transaction Group merge strategy confirmed (full list vs new group vs manual)
-[ ] No C# / compile — STOP and warn if gap found
-```
+**Transaction Group:** include **all** TabIds that should stay in the menu (this template + prior), or use separate `transactionGroupIntegrationId` per template.
 
 ---
 
@@ -348,8 +356,9 @@ ImportFromPLMDW/
     dwTabImportConfig.example.json
     dwTabImportConfig.json          ← Phase B working config
     _gen_plmdw_import_sql.ps1       ← writes to ../output/
+    _plm_probe_template.sql         ← PLM: template + tabs + ref count
     PlmDw_ImportFromDW.sql          ← import template
-    _dw_probe_by_tabids.sql
+    _dw_probe_by_tabids.sql         ← plmDW: tab/grid probe (fill #TabInput from PLM)
 ```
 
 **If `source/` is deleted:** PROMPT does **not** auto-recreate it. Agent must restore from repo or rewrite tools from §Phase B.
@@ -359,17 +368,17 @@ ImportFromPLMDW/
 ## Agent checklist
 
 ```text
-[ ] Gate 0: user provided connection string + TabIds? If not → ask and STOP
+[ ] Gate 0: PLM + plmDW connections + one TemplateId? If not → ask and STOP
 [ ] No server code: no .cs edits, no dotnet build — if needed → STOP and warn user
-[ ] Parse connection string + TabIds (from user message only)
-[ ] Resolve PLM_DW_Tab_* / PLM_DW_Grid_* per TabId
-[ ] SubItem overlap analysis for tab pairs in scope
-[ ] Propose APP tables (names from DW, not hardcoded template)
+[ ] Run _plm_probe_template.sql → TemplateName, tabs, Sort, IsTemplateHeaderTab
+[ ] Build #TabInput from PLM tabs; run _dw_probe_by_tabids.sql on plmDW
+[ ] SubItem overlap analysis among template tabs
+[ ] Propose referenceScope on IsTemplateHeaderTab (or IsMasterReferenceHeaderTab) tab
 [ ] Phase A checklist → WAIT FOR USER
-[ ] Write dwTabImportConfig.json
-[ ] Run _gen_plmdw_import_sql.ps1 → output/PlmDw_*.sql (3 files)
-[ ] Verify output/PlmDw_FieldMapping.sql quoting + row counts
-[ ] Optional: pilot output/PlmDw_ImportFromDW.sql with one ReferenceId
+[ ] Write dwTabImportConfig.json (plmTemplateId + PLM tab metadata)
+[ ] Run _gen_plmdw_import_sql.ps1 → output/PlmDw_*.sql + Blueprint
+[ ] Verify PlmDw_ImportFromDW.sql has @PlmTemplateId + APPEND default
+[ ] Optional: pilot import with @ReferenceIdList
 ```
 
 ---
@@ -378,7 +387,7 @@ ImportFromPLMDW/
 
 **Illustration only — not defaults.** The agent must not use these values unless the user pastes them (or equivalent) in their message.
 
-**Insufficient** (agent must ask for the two required items):
+**Insufficient** (agent must ask for the three required items):
 
 ```text
 @AppReact/ImportDoc/ImportFromPLMDW/PROMPT.md
@@ -389,14 +398,17 @@ ImportFromPLMDW/
 ```text
 按 AppReact/ImportDoc/ImportFromPLMDW/PROMPT.md 执行。
 
-DW connection string:
-  Server=PC3B\MSSQLSERVER01;Database=plmDW;Trusted_Connection=True;
+PLM connection string:
+  Data Source=PC3B\MSSQLSERVER01;Initial Catalog=PLM;User ID=sa;Password=...
 
-TabIds to import:
-  4258,4212,4213,4270,4274,4219
+plmDW connection string:
+  Data Source=PC3B\MSSQLSERVER01;Initial Catalog=plmDW;User ID=sa;Password=...
+
+TemplateId to import:
+  42
 ```
 
-(Example TabIds happen to be one fabric template; another template will have different TabIds, DW segments, and APP table names.)
+Agent loads TabIds from `pdmTemplateTab` for TemplateId 42 — user does **not** list TabIds.
 
 ---
 

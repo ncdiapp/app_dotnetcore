@@ -1,9 +1,17 @@
 {
-  "importTabIds": [4258, 4212, 4213, 4214, 4219, 4270, 4274],
+  "plmTemplateId": 0,
+  "plmSqlServer": "PC3B\\MSSQLSERVER01",
+  "plmDatabase": "PLM",
   "sqlServer": "PC3B\\MSSQLSERVER01",
   "dwDatabase": "plmDW",
   "tablePrefixDefault": "Plm_",
   "rootTableSuffix": "ReferenceBasicInfo",
+  "importTabIds": [4258, 4212, 4213, 4214, 4219, 4270, 4274],
+  "plmTemplate": {
+    "templateId": 0,
+    "templateName": "Fabric",
+    "templateHeaderTabIds": [4258]
+  },
   "referenceScope": {
     "dwTable": "PLM_DW_Tab_Fabric_Header_4258",
     "dwColumn": "Article__22",
@@ -16,6 +24,9 @@
       "dwTable": "PLM_DW_Tab_Fabric_Header_4258",
       "tabId": 4258,
       "plmTabName": "Fabric Header",
+      "tabSort": 1,
+      "isTemplateHeaderTab": true,
+      "importStatus": "Ready",
       "mode": "all"
     },
     {
@@ -23,6 +34,9 @@
       "dwTable": "PLM_DW_Tab_Fabric_Info_4212",
       "tabId": 4212,
       "plmTabName": "Fabric Info",
+      "tabSort": 2,
+      "isTemplateHeaderTab": false,
+      "importStatus": "Ready",
       "mode": "excludeSubItemsFromDwTable",
       "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fabric_Header_4258"
     },

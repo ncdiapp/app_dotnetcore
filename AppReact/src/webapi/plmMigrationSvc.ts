@@ -590,6 +590,13 @@ export interface PlmDwImportBlueprintDto {
   BlueprintFields?: PlmDwBlueprintFieldDto[] | null;
   SearchView?: PlmDwBlueprintSearchViewDto | null;
   Navigation?: PlmDwBlueprintNavigationDto | null;
+  PlmTemplate?: PlmDwBlueprintPlmTemplateDto | null;
+}
+
+export interface PlmDwBlueprintPlmTemplateDto {
+  TemplateId?: number;
+  TemplateName?: string | null;
+  TemplateHeaderTabIds?: number[] | null;
 }
 
 export interface PlmDwBlueprintSourceDto {
@@ -597,6 +604,8 @@ export interface PlmDwBlueprintSourceDto {
   ImportTabIds?: number[] | null;
   TablePrefix?: string | null;
   ConfigFile?: string | null;
+  PlmTemplateId?: number | null;
+  PlmDatabase?: string | null;
 }
 
 export interface PlmDwBlueprintTransactionGroupDto {
@@ -632,6 +641,8 @@ export interface PlmDwBlueprintTransactionDto {
   IntegrationId?: string | null;
   TransactionName?: string | null;
   ImportStatus?: string | null;
+  PlmTabSort?: number | null;
+  IsTemplateHeaderTab?: boolean | null;
   UnitStructure?: PlmDwBlueprintUnitStructureDto | null;
 }
 

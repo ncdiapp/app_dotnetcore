@@ -12,9 +12,11 @@ SET NOCOUNT ON;
 
 DECLARE @TablePrefix       NVARCHAR(32)  = N'Plm_';               -- <<< USER SETTING
 DECLARE @RootTableSuffix   NVARCHAR(128) = N'ReferenceBasicInfo'; -- <<< USER SETTING
-DECLARE @DwDatabase        NVARCHAR(128) = N'plmDW';               -- <<< USER SETTING
-DECLARE @ImportMode        NVARCHAR(16)  = N'REPLACE';            -- REPLACE | APPEND
-DECLARE @ReferenceIdList   NVARCHAR(MAX) = NULL;                   -- e.g. N'1536,2001' or NULL = all
+DECLARE @DwDatabase        NVARCHAR(128) = N'plmDW';               -- <<< USER SETTING (plmDW)
+DECLARE @PlmDatabase       NVARCHAR(128) = N'PLM';                -- <<< USER SETTING (PLM source DB for pdmProductTemplate)
+DECLARE @PlmTemplateId     INT           = NULL;                   -- <<< USER SETTING — scope refs: pdmProductTemplate.TemplateID
+DECLARE @ImportMode        NVARCHAR(16)  = N'APPEND';             -- REPLACE | APPEND (APPEND skips existing ReferenceId per table)
+DECLARE @ReferenceIdList   NVARCHAR(MAX) = NULL;                   -- optional pilot, e.g. N'1536,2001'
 DECLARE @DryRun            BIT           = 0;
 
 DECLARE @MappingTable      NVARCHAR(128);
@@ -91,6 +93,35 @@ BEGIN
     SELECT DISTINCT TRY_CAST(LTRIM(RTRIM([value])) AS INT)
     FROM STRING_SPLIT(@ReferenceIdList, N',')
     WHERE TRY_CAST(LTRIM(RTRIM([value])) AS INT) IS NOT NULL;
+
+    IF @PlmTemplateId IS NOT NULL AND @PlmTemplateId > 0 AND DB_ID(@PlmDatabase) IS NOT NULL
+    BEGIN
+        SET @sql = N'
+        DELETE rf
+        FROM #RefFilter rf
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM ' + QUOTENAME(@PlmDatabase) + N'.dbo.[pdmProductTemplate] pt
+            WHERE pt.[TemplateID] = @tid
+              AND pt.[ProductReferenceID] = rf.[ReferenceId]
+        );';
+        EXEC sp_executesql @sql, N'@tid int', @tid = @PlmTemplateId;
+    END
+END
+ELSE IF @PlmTemplateId IS NOT NULL AND @PlmTemplateId > 0 AND DB_ID(@PlmDatabase) IS NOT NULL
+BEGIN
+    SET @sql = N'
+    INSERT INTO #RefFilter ([ReferenceId])
+    SELECT DISTINCT pt.[ProductReferenceID]
+    FROM ' + QUOTENAME(@PlmDatabase) + N'.dbo.[pdmProductTemplate] AS pt
+    WHERE pt.[TemplateID] = @tid
+      AND pt.[ProductReferenceID] IS NOT NULL
+      AND EXISTS (
+          SELECT 1
+          FROM ' + QUOTENAME(@DwDatabase) + N'.dbo.' + QUOTENAME(@RefSourceDwTable) + N' AS dw
+          WHERE dw.[ProductReferenceID] = pt.[ProductReferenceID]
+      );';
+    EXEC sp_executesql @sql, N'@tid int', @tid = @PlmTemplateId;
 END
 ELSE
 BEGIN

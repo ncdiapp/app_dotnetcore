@@ -1,10 +1,18 @@
 {
-  "_comment": "EXAMPLE ONLY — one template snapshot. Agent copies to dwTabImportConfig.json in Phase B.",
-  "importTabIds": [4258, 4212, 4213, 4270, 4274, 4219],
+  "_comment": "EXAMPLE ONLY — Phase B snapshot. TabIds/tabs come from PLM probe (pdmTemplateTab), not user input.",
+  "plmTemplateId": 0,
+  "plmSqlServer": "PC3B\\MSSQLSERVER01",
+  "plmDatabase": "PLM",
   "sqlServer": "PC3B\\MSSQLSERVER01",
   "dwDatabase": "plmDW",
+  "importTabIds": [4258, 4212, 4213, 4214, 4219, 4270, 4274],
   "tablePrefixDefault": "Plm_",
   "rootTableSuffix": "ReferenceBasicInfo",
+  "plmTemplate": {
+    "templateId": 0,
+    "templateName": "Fabric",
+    "templateHeaderTabIds": [4258]
+  },
   "referenceScope": {
     "dwTable": "PLM_DW_Tab_Fabric_Header_4258",
     "dwColumn": "Article__22",
@@ -16,38 +24,22 @@
       "appTable": "Fabric_Header",
       "dwTable": "PLM_DW_Tab_Fabric_Header_4258",
       "tabId": 4258,
+      "plmTabName": "Fabric Header",
+      "tabSort": 1,
+      "isTemplateHeaderTab": true,
+      "importStatus": "Ready",
       "mode": "all"
     },
     {
       "appTable": "Fabric_Info",
       "dwTable": "PLM_DW_Tab_Fabric_Info_4212",
       "tabId": 4212,
+      "plmTabName": "Fabric Info",
+      "tabSort": 2,
+      "isTemplateHeaderTab": false,
+      "importStatus": "Ready",
       "mode": "excludeSubItemsFromDwTable",
       "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fabric_Header_4258"
-    },
-    {
-      "appTable": "Fabric_Attributes",
-      "dwTable": "PLM_DW_Tab_Attributes_4213",
-      "tabId": 4213,
-      "mode": "all"
-    },
-    {
-      "appTable": "Fabric_Cost",
-      "dwTable": "PLM_DW_Tab_Fabric_Cost_4270",
-      "tabId": 4270,
-      "mode": "all"
-    },
-    {
-      "appTable": "Fabric_Policy",
-      "dwTable": "PLM_DW_Tab_Fabric_Policy_4274",
-      "tabId": 4274,
-      "mode": "all"
-    },
-    {
-      "appTable": "Fabric_Testing",
-      "dwTable": "PLM_DW_Tab_Testing____Compliance_4219",
-      "tabId": 4219,
-      "mode": "all"
     }
   ],
   "grids": [
@@ -55,11 +47,12 @@
       "appTable": "ProductDesignColorGrid",
       "dwTable": "PLM_DW_Grid_ProductDesignColorGrid_7",
       "gridSubItemId": 7354,
-      "gridId": 7
+      "gridId": 7,
+      "parentPlmTabId": 4214,
+      "transactionIntegrationId": "Tab_4214"
     }
   ],
   "blueprint": {
-    "templateName": "Fabric",
     "transactionGroupName": "Fabric",
     "transactionGroupIntegrationId": "TG_Fabric",
     "searchName": "Fabric References",
