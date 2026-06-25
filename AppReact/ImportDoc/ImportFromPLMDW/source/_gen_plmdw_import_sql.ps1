@@ -133,7 +133,7 @@ function Get-PlmGridColumnMetadataMap([int[]]$GridIds) {
     if (-not $GridIds -or $GridIds.Count -eq 0) { return $map }
     $inList = ($GridIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
     $q = @"
-SELECT gmc.GridID, gmc.GridColumnID, gmc.ColumnTypeId, gmc.EntityId, gmc.Nbdecimal
+SELECT gmc.GridID, gmc.GridColumnID, gmc.ColumnTypeId, gmc.EntityId, gmc.Nbdecimal, gmc.ColumnOrder
 FROM dbo.pdmGridMetaColumn gmc
 WHERE gmc.GridID IN ($inList)
 ORDER BY gmc.GridID, gmc.ColumnOrder, gmc.GridColumnID
@@ -149,9 +149,62 @@ ORDER BY gmc.GridID, gmc.ColumnOrder, gmc.GridColumnID
             ControlType = [int]$parts[2].Trim()
             EntityId    = Parse-SqlIntOrNull $parts[3]
             Nbdecimal   = Parse-SqlIntOrNull $parts[4]
+            ColumnOrder = if ($parts.Count -ge 6) { Parse-SqlIntOrNull $parts[5] } else { $null }
         }
     }
     return $map
+}
+
+function Get-PlmTabGridColumnVisibleMap([int[]]$TabIds) {
+    # Layer for GRID columns: pdmTabGridMetaColumn (TabID + GridColumnID + Visible). Key: "tabId|gridColumnId".
+    $map = @{}
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $map }
+    $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT tgc.TabID, tgc.GridColumnID, tgc.Visible, tgc.AliasName
+FROM dbo.pdmTabGridMetaColumn tgc
+WHERE tgc.TabID IN ($inList)
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 3) { continue }
+        $tabId = [int]$parts[0].Trim()
+        $gridColumnId = [int]$parts[1].Trim()
+        $visibleRaw = $parts[2].Trim()
+        $alias = if ($parts.Count -ge 4) { $parts[3].Trim() } else { '' }
+        $visible = $false
+        if ($visibleRaw -ne '' -and $visibleRaw -ne 'NULL') {
+            try { $visible = ([int]$visibleRaw -eq 1) } catch { $visible = $false }
+        }
+        $map["$tabId|$gridColumnId"] = [pscustomobject]@{
+            Visible   = $visible
+            AliasName = if ([string]::IsNullOrWhiteSpace($alias)) { $null } else { $alias }
+        }
+    }
+    return $map
+}
+
+function Get-PlmTabLayoutSubItemSet([int[]]$TabIds) {
+    # Layer 2 (Tab Design): sub-items actually placed on the tab layout. Set of "tabId|subItemId".
+    $set = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $set }
+    $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT DISTINCT l.TabID, ls.SubItemID
+FROM dbo.pdmTabLayout l
+INNER JOIN dbo.pdmTabLayoutItem li ON li.LayoutID = l.LayoutID
+INNER JOIN dbo.pdmTabLayoutSubitem ls ON ls.LayoutItemID = li.LayoutItemID
+WHERE l.TabID IN ($inList)
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 2) { continue }
+        $tabId = $parts[0].Trim()
+        $subItemId = $parts[1].Trim()
+        if ($tabId -eq '' -or $subItemId -eq '' -or $tabId -eq 'NULL' -or $subItemId -eq 'NULL') { continue }
+        [void]$set.Add("$tabId|$subItemId")
+    }
+    return $set
 }
 
 function Apply-PlmFieldMetadata($fieldRow, $subItemMetaMap, $gridColMetaMap) {
@@ -179,7 +232,7 @@ function Apply-PlmFieldMetadata($fieldRow, $subItemMetaMap, $gridColMetaMap) {
     }
 }
 
-function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap, $subItemMetaMap, $gridColMetaMap) {
+function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap, $subItemMetaMap, $gridColMetaMap, $tabGridVisibleMap, $layoutSubItemSet) {
     $tabId = if ($fieldRow.PlmTabId) { [int]$fieldRow.PlmTabId } else { $null }
     $subItemId = $null
     if ($null -ne $fieldRow.SubItemId) { $subItemId = [int]$fieldRow.SubItemId }
@@ -189,22 +242,24 @@ function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap, $subItemMetaMap, $grid
     $displayLabel = $fieldRow.AppColumn
     $isVisible = $false
     if ($fieldRow.FieldKind -eq 'GridColumn' -and $null -ne $fieldRow.PlmGridId -and $subItemId) {
+        # GRID column visibility: pdmTabGridMetaColumn.Visible (TabID + GridColumnID). NOT pdmTabBlockSubItemExtraInfo.
         $gridKey = "$([int]$fieldRow.PlmGridId)|$subItemId"
         if ($gridColMetaMap.ContainsKey($gridKey) -and $tabId) {
-            $eiKey = "$tabId|$subItemId"
-            if ($extraInfoMap.ContainsKey($eiKey)) {
-                $ei = $extraInfoMap[$eiKey]
-                if ($ei.AliasName) { $displayLabel = $ei.AliasName }
-                if ($ei.Visible) { $isVisible = $true }
+            $tgKey = "$tabId|$subItemId"
+            if ($tabGridVisibleMap.ContainsKey($tgKey)) {
+                $tg = $tabGridVisibleMap[$tgKey]
+                if ($tg.AliasName) { $displayLabel = $tg.AliasName }
+                if ($tg.Visible) { $isVisible = $true }
             }
         }
     }
     elseif ($tabId -and $subItemId) {
+        # TAB field visibility: Layer 1 = pdmTabBlockSubItemExtraInfo.Visible=1; Layer 2 = placed in Tab Design (pdmTabLayoutSubitem).
         $siKey = "$tabId|$subItemId"
         if ($subItemMetaMap.ContainsKey($siKey) -and $extraInfoMap.ContainsKey($siKey)) {
             $ei = $extraInfoMap[$siKey]
             if ($ei.AliasName) { $displayLabel = $ei.AliasName }
-            if ($ei.Visible) { $isVisible = $true }
+            if ($ei.Visible -and $layoutSubItemSet.Contains($siKey)) { $isVisible = $true }
         }
     }
     return [pscustomobject]@{ DisplayLabel = $displayLabel; IsVisible = $isVisible }
@@ -227,7 +282,7 @@ function Format-TabDisplayName([string]$appTable) {
     return ($appTable -replace '_', ' ').Trim()
 }
 
-function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subItemMetaMap, $gridColMetaMap) {
+function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subItemMetaMap, $gridColMetaMap, $tabGridVisibleMap, $layoutSubItemSet) {
     $prefix = $config.tablePrefixDefault
     if (-not $prefix.EndsWith('_')) { $prefix += '_' }
     $rootSuffix = $config.rootTableSuffix
@@ -325,7 +380,7 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
         $entityId = if ($null -ne $r.PlmEntityId) { $r.PlmEntityId } else { Infer-PlmEntityId $r.FkTarget }
         $tabIds = @()
         if ($r.PlmTabId) { $tabIds = @([int]$r.PlmTabId) }
-        $extra = Resolve-FieldExtraInfo $r $extraInfoMap $subItemMetaMap $gridColMetaMap
+        $extra = Resolve-FieldExtraInfo $r $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet
         $fieldEntry = [ordered]@{
             appTableName   = $appTableFull
             appColumnName  = $r.AppColumn
@@ -762,6 +817,43 @@ if ($gridIdsForPlm.Count -gt 0) {
 }
 $gridColMetaMap = Get-PlmGridColumnMetadataMap $gridIdsForPlm
 Write-Host "  Grid column metadata rows: $($gridColMetaMap.Count)"
+
+# Re-order GRID columns by PLM pdmGridMetaColumn.ColumnOrder so the imported child-unit transaction
+# fields follow the PLM grid design order — NOT the plmDW physical column (ORDINAL_POSITION) order.
+# displayOrder is later assigned sequentially per table from $allFieldRows iteration order.
+$gridAppTableToId = @{}
+foreach ($g in $config.grids) { $gridAppTableToId[$g.appTable] = [int]$g.gridId }
+if ($gridAppTableToId.Count -gt 0) {
+    $tableGroups = [ordered]@{}
+    foreach ($r in $allFieldRows) {
+        if (-not $tableGroups.Contains($r.AppTable)) {
+            $tableGroups[$r.AppTable] = New-Object System.Collections.Generic.List[object]
+        }
+        [void]$tableGroups[$r.AppTable].Add($r)
+    }
+    $reordered = New-Object System.Collections.Generic.List[object]
+    foreach ($tblKey in $tableGroups.Keys) {
+        $group = $tableGroups[$tblKey]
+        if ($gridAppTableToId.ContainsKey($tblKey)) {
+            $gid = $gridAppTableToId[$tblKey]
+            $sorted = $group | Sort-Object `
+                @{ Expression = {
+                    $cid = if ($null -ne $_.PlmMetaColumnId) { [int]$_.PlmMetaColumnId } else { -1 }
+                    $mk = "$gid|$cid"
+                    if ($gridColMetaMap.ContainsKey($mk) -and $null -ne $gridColMetaMap[$mk].ColumnOrder) {
+                        $gridColMetaMap[$mk].ColumnOrder
+                    } else { [int]::MaxValue }
+                } }, `
+                @{ Expression = { if ($null -ne $_.PlmMetaColumnId) { [int]$_.PlmMetaColumnId } else { [int]::MaxValue } } }
+            foreach ($x in $sorted) { [void]$reordered.Add($x) }
+        }
+        else {
+            foreach ($x in $group) { [void]$reordered.Add($x) }
+        }
+    }
+    $allFieldRows = $reordered
+}
+
 foreach ($r in $allFieldRows) {
     Apply-PlmFieldMetadata $r $subItemMetaMap $gridColMetaMap
 }
@@ -911,7 +1003,13 @@ elseif ($config.tabs) {
 Write-Host "Loading PLM pdmTabBlockSubItemExtraInfo for $($tabIdsForExtra.Count) tab(s) from $PlmDatabase..."
 $extraInfoMap = Get-PlmSubItemExtraInfoMap $tabIdsForExtra
 Write-Host "  Extra info rows: $($extraInfoMap.Count)"
-$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap
+Write-Host "Loading PLM pdmTabGridMetaColumn (grid column visibility)..."
+$tabGridVisibleMap = Get-PlmTabGridColumnVisibleMap $tabIdsForExtra
+Write-Host "  Tab grid column rows: $($tabGridVisibleMap.Count)"
+Write-Host "Loading PLM pdmTabLayoutSubitem (Tab Design layer)..."
+$layoutSubItemSet = Get-PlmTabLayoutSubItemSet $tabIdsForExtra
+Write-Host "  Tab layout sub-item placements: $($layoutSubItemSet.Count)"
+$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet
 $blueprintPath = Join-Path $outDir 'PlmDw_ImportBlueprint.json'
 $blueprintJson = $blueprintObj | ConvertTo-Json -Depth 20 -Compress
 $blueprintJsonPretty = $blueprintObj | ConvertTo-Json -Depth 20

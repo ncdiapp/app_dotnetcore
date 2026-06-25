@@ -24,10 +24,10 @@ import type { RootState } from '../../redux/store';
 import FileUploader from '../common/FileUploader';
 import type { DataImageUploadResult } from '../../webapi/dataImageUploadSvc';
 import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+import { useAlertConfirm } from '../common/AlertConfirmProvider';
 
 const CONTEXT_MENU_ESTIMATED_WIDTH = 200;
 const CONTEXT_MENU_ESTIMATED_HEIGHT = 200;
-import { useAlertConfirm } from '../common/AlertConfirmProvider';
 
 type JsonImportSettingItem = {
   Id: number;

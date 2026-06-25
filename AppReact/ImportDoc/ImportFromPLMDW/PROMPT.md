@@ -258,7 +258,12 @@ Requires `source/dwTabImportConfig.json` (not committed with secrets; example is
 Generator details:
 - Reads `INFORMATION_SCHEMA` from plmDW  
 - Reads PLM `pdmBlockSubItem` (`ControlType`, `EntityId`) and `pdmGridMetaColumn` for grid columns — `plmEntityId` matches tenant `AppEntityInfo.IntegrationId`  
-- Reads `pdmTabBlockSubItemExtraInfo` (`AliasName` → `displayLabel`; sub-item must exist on tab with `Visible = 1` → `isVisible: true`, otherwise `false`)  
+- Visibility (`isVisible`) is resolved differently for tab fields vs grid columns:
+  - **Tab fields (block sub-items)** — visible only when **both** layers pass:
+    1. Layer 1 `pdmTabBlockSubItemExtraInfo.Visible = 1` (keyed `TabID + SubItemID`; `AliasName` → `displayLabel`), AND
+    2. Layer 2 placed on the **Tab Design** layout (`pdmTabLayout` → `pdmTabLayoutItem` → `pdmTabLayoutSubitem`, keyed `TabID + SubItemID`).
+  - **Grid columns** — visibility is **not** in `pdmTabBlockSubItemExtraInfo`. It is controlled at tab level by `pdmTabGridMetaColumn.Visible = 1` (keyed `TabID + GridColumnID`; `pdmTabGridMetaColumn.AliasName` → `displayLabel`). `pdmGridMetaColumn.Hidden` is only the grid-wide default and is overridden by the tab-level row.
+  - Anything not matching the rule above → `isVisible: false`.
 - APP column names: strip `_SubItemId` / `_FK_*`; suffix `_SubItemId` on collisions  
 - Mapping DELETE scoped to **tables in config only** (no `LIKE Fabric_%`)  
 - INSERT values use doubled quotes inside `SET @sql = N'...'` → `N''@P@...''`  

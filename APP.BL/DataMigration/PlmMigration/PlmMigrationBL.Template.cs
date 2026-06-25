@@ -517,7 +517,9 @@ ORDER BY t.TemplateID, tt.Sort, tt.TabID";
                     tab.SubItems.AddRange(LoadSubItemsForTab(conn, tab.TabId));
                 }
 
-                var extraInfoVisibleByKey = LoadPlmSubItemExtraInfoVisibleByKey(conn, tabs.Select(t => t.TabId));
+                var tabIds = tabs.Select(t => t.TabId).ToList();
+                var extraInfoVisibleByKey = LoadPlmSubItemExtraInfoVisibleByKey(conn, tabIds);
+                var tabLayoutSubItemSet = LoadPlmTabLayoutSubItemSet(conn, tabIds);
                 foreach (var tab in tabs)
                 {
                     var blockSubItemIds = new HashSet<int>(tab.SubItems.Select(s => s.SubItemId));
@@ -532,7 +534,7 @@ ORDER BY t.TemplateID, tt.Sort, tt.TabID";
                         }
 
                         subItem.IsVisible = IsPlmTabBlockSubItemVisible(
-                            tab.TabId, subItem.SubItemId, blockSubItemIds, extraInfoVisibleByKey);
+                            tab.TabId, subItem.SubItemId, blockSubItemIds, extraInfoVisibleByKey, tabLayoutSubItemSet);
                     }
                 }
             }
@@ -687,10 +689,10 @@ ORDER BY gmc.ColumnOrder, gmc.GridColumnID";
                     }
                 }
 
-                var extraInfoVisibleByKey = LoadPlmSubItemExtraInfoVisibleByKey(conn, new[] { tab.TabId });
+                var tabGridColumnVisibleByKey = LoadPlmTabGridColumnVisibleByKey(conn, new[] { tab.TabId });
                 foreach (var col in tab.GridColumns.Where(c => c.TabId == tab.TabId))
                 {
-                    col.IsVisible = IsPlmGridColumnVisible(tab.TabId, col.GridColumnId, extraInfoVisibleByKey);
+                    col.IsVisible = IsPlmGridColumnVisible(tab.TabId, col.GridColumnId, tabGridColumnVisibleByKey);
                 }
             }
         }

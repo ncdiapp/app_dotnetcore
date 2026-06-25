@@ -12,15 +12,15 @@ import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/bus
 import { useDispatch } from 'react-redux';
 import { appTransactionService } from '../../../webapi/apptransactionsvc';
 import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../../hooks/useClampedContextMenuPosition';
-
-const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
-const CONTEXT_MENU_ESTIMATED_HEIGHT = 140;
 import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
 import { CollectionView, SortDescription } from '@mescius/wijmo';
 import { DataMap } from '@mescius/wijmo.grid';
 import '@mescius/wijmo.styles/wijmo.css';
 import { useAlertConfirm } from '../../common/AlertConfirmProvider';
 import TransactionDataLoadEditor from './TransactionDataLoadEditor';
+
+const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
+const CONTEXT_MENU_ESTIMATED_HEIGHT = 140;
 
 export interface TransactionDataLoadManagementProps {
   transactionId: number | null;

@@ -54,30 +54,106 @@ WHERE ei.TabID IN ({inList})";
         }
 
         /// <summary>
-        /// Tab field is visible only when it exists on the tab block and extra info has Visible = 1.
+        /// Layer 2 (Tab Design layout): set of "{tabId}|{subItemId}" actually placed on the tab layout
+        /// (pdmTabLayout -> pdmTabLayoutItem -> pdmTabLayoutSubitem). A sub-item not placed in the design
+        /// is never shown even when pdmTabBlockSubItemExtraInfo.Visible = 1.
+        /// </summary>
+        private static HashSet<string> LoadPlmTabLayoutSubItemSet(
+            SqlConnection plmConn,
+            IEnumerable<int> tabIds)
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var ids = tabIds?.Distinct().ToList();
+            if (ids == null || ids.Count == 0)
+                return set;
+
+            var inList = string.Join(",", ids);
+            using (var cmd = plmConn.CreateCommand())
+            {
+                cmd.CommandText = $@"
+SELECT DISTINCT l.TabID, ls.SubItemID
+FROM dbo.pdmTabLayout l
+INNER JOIN dbo.pdmTabLayoutItem li ON li.LayoutID = l.LayoutID
+INNER JOIN dbo.pdmTabLayoutSubitem ls ON ls.LayoutItemID = li.LayoutItemID
+WHERE l.TabID IN ({inList})";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (reader.IsDBNull(0) || reader.IsDBNull(1))
+                            continue;
+                        set.Add($"{reader.GetInt32(0)}|{reader.GetInt32(1)}");
+                    }
+                }
+            }
+
+            return set;
+        }
+
+        /// <summary>
+        /// Grid column visibility is controlled at tab level by pdmTabGridMetaColumn.Visible (TabID + GridColumnID),
+        /// NOT by pdmTabBlockSubItemExtraInfo. Key: "{tabId}|{gridColumnId}", value: Visible (null when row missing).
+        /// </summary>
+        private static Dictionary<string, int?> LoadPlmTabGridColumnVisibleByKey(
+            SqlConnection plmConn,
+            IEnumerable<int> tabIds)
+        {
+            var map = new Dictionary<string, int?>(StringComparer.OrdinalIgnoreCase);
+            var ids = tabIds?.Distinct().ToList();
+            if (ids == null || ids.Count == 0)
+                return map;
+
+            var inList = string.Join(",", ids);
+            using (var cmd = plmConn.CreateCommand())
+            {
+                cmd.CommandText = $@"
+SELECT tgc.TabID, tgc.GridColumnID, tgc.Visible
+FROM dbo.pdmTabGridMetaColumn tgc
+WHERE tgc.TabID IN ({inList})";
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        int tabId = reader.GetInt32(0);
+                        int gridColumnId = reader.GetInt32(1);
+                        int? visible = reader.IsDBNull(2) ? (int?)null : Convert.ToInt32(reader.GetValue(2));
+                        map[$"{tabId}|{gridColumnId}"] = visible;
+                    }
+                }
+            }
+
+            return map;
+        }
+
+        /// <summary>
+        /// Tab field is visible only when it (1) exists on the tab block, (2) pdmTabBlockSubItemExtraInfo.Visible = 1,
+        /// and (3) is placed on the Tab Design layout (pdmTabLayoutSubitem).
         /// </summary>
         private static bool IsPlmTabBlockSubItemVisible(
             int tabId,
             int subItemId,
             HashSet<int> tabBlockSubItemIds,
-            Dictionary<string, int?> extraInfoVisibleByKey)
+            Dictionary<string, int?> extraInfoVisibleByKey,
+            HashSet<string> tabLayoutSubItemSet)
         {
             if (!tabBlockSubItemIds.Contains(subItemId))
                 return false;
-            if (!extraInfoVisibleByKey.TryGetValue($"{tabId}|{subItemId}", out int? visible))
+            if (!extraInfoVisibleByKey.TryGetValue($"{tabId}|{subItemId}", out int? visible) || visible != 1)
                 return false;
-            return visible == 1;
+            if (!tabLayoutSubItemSet.Contains($"{tabId}|{subItemId}"))
+                return false;
+            return true;
         }
 
         /// <summary>
-        /// Grid column is visible only when defined in pdmGridMetaColumn and extra info has Visible = 1.
+        /// Grid column is visible only when pdmTabGridMetaColumn.Visible = 1 for that TabID + GridColumnID.
         /// </summary>
         private static bool IsPlmGridColumnVisible(
             int tabId,
             int gridColumnId,
-            Dictionary<string, int?> extraInfoVisibleByKey)
+            Dictionary<string, int?> tabGridColumnVisibleByKey)
         {
-            if (!extraInfoVisibleByKey.TryGetValue($"{tabId}|{gridColumnId}", out int? visible))
+            if (!tabGridColumnVisibleByKey.TryGetValue($"{tabId}|{gridColumnId}", out int? visible))
                 return false;
             return visible == 1;
         }
