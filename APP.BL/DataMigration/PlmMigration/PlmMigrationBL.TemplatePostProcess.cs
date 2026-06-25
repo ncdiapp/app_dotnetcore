@@ -78,7 +78,7 @@ namespace APP.BL.DataMigration.PlmMigration
                 if (!transactionId.HasValue)
                     throw new InvalidOperationException($"Transaction not found for tab {tab.TabId} ({tab.TabName}).");
 
-                var formResult = AppDatabaseViewBL.EnsureTransactionDefaultFlexFormLayout(transactionId.Value, migrationFastPath: true);
+                var formResult = AppDatabaseViewBL.EnsureTransactionDefaultFlexFormLayout(transactionId.Value, migrationFastPath: true, numberOfLayoutColumns: 4);
                 if (!formResult.IsSuccessful)
                 {
                     string msg = formResult.ValidationResult?.Items?.FirstOrDefault()?.Message

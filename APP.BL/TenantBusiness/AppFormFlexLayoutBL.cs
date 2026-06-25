@@ -88,7 +88,7 @@ namespace App.BL
             }
         }
 
-        public static AppFormExDto BuildAppFormDefaultLayout(int formId)
+        public static AppFormExDto BuildAppFormDefaultLayout(int formId, int? numberOfLayoutColumns = null)
         {
             AppFormExDto aAppFormExDto = RetrieveOneAppFormFlexLayoutExDto(formId);
             if (!aAppFormExDto.AssociatedTransactionId.HasValue)
@@ -96,11 +96,15 @@ namespace App.BL
 
             AppTransactionExDto transactionExDto =
                 AppTransactionBL.GetHierarchyTranscationFromDatabase(aAppFormExDto.AssociatedTransactionId.Value);
-            return BuildAppFormDefaultLayout(aAppFormExDto, transactionExDto);
+            return BuildAppFormDefaultLayout(aAppFormExDto, transactionExDto, numberOfLayoutColumns);
         }
 
-        /// <summary>Builds default flex layout using a preloaded transaction (bulk migration — avoids extra DB reads).</summary>
-        public static AppFormExDto BuildAppFormDefaultLayout(int formId, AppTransactionExDto transactionExDto)
+        /// <summary>
+        /// Builds default flex layout using a preloaded transaction (bulk migration — avoids extra DB reads).
+        /// When <paramref name="numberOfLayoutColumns"/> is provided, the layout always uses that exact column count;
+        /// otherwise the column count is auto-determined from the number of root fields.
+        /// </summary>
+        public static AppFormExDto BuildAppFormDefaultLayout(int formId, AppTransactionExDto transactionExDto, int? numberOfLayoutColumns = null)
         {
             var shell = new AppFormExDto
             {
@@ -110,16 +114,16 @@ namespace App.BL
                     : (int?)null,
                 AppFormLayoutItemList = new ObservableSet<AppFormLayoutItemExDto>()
             };
-            return BuildAppFormDefaultLayout(shell, transactionExDto);
+            return BuildAppFormDefaultLayout(shell, transactionExDto, numberOfLayoutColumns);
         }
 
-        private static AppFormExDto BuildAppFormDefaultLayout(AppFormExDto aAppFormExDto, AppTransactionExDto transactionExDto)
+        private static AppFormExDto BuildAppFormDefaultLayout(AppFormExDto aAppFormExDto, AppTransactionExDto transactionExDto, int? numberOfLayoutColumns = null)
         {
             aAppFormExDto.AppFormLayoutItemList = new ObservableSet<AppFormLayoutItemExDto>();
 
             if (transactionExDto != null && transactionExDto.RootMasterUnit != null)
             {
-                int columns = BuildAppFormDefaultLayout_SetMainLayout(aAppFormExDto, transactionExDto);
+                int columns = BuildAppFormDefaultLayout_SetMainLayout(aAppFormExDto, transactionExDto, numberOfLayoutColumns);
 
                 Dictionary<string, AppFormLayoutItemExDto> dictUiIdAndLayoutItem = new Dictionary<string, AppFormLayoutItemExDto>();
 
@@ -1791,7 +1795,7 @@ namespace App.BL
             return maxSort;
         }
 
-        private static int BuildAppFormDefaultLayout_SetMainLayout(AppFormExDto aAppFormExDto, AppTransactionExDto transactionExDto)
+        private static int BuildAppFormDefaultLayout_SetMainLayout(AppFormExDto aAppFormExDto, AppTransactionExDto transactionExDto, int? numberOfLayoutColumns = null)
         {
             var rootFieldList = transactionExDto.DictRootLevelUnitTransactionField.Values.Where(o => o.IsVisible.HasValue && o.IsVisible.Value).ToList();
             int nbRootField = rootFieldList.Count;
@@ -1801,7 +1805,12 @@ namespace App.BL
 
             int nbFiledPerCol = 6;
 
-            if (nbRootField <= nbFiledPerCol)
+            if (numberOfLayoutColumns.HasValue && numberOfLayoutColumns.Value >= 1)
+            {
+                // Caller-specified fixed column count (e.g. PLM import always uses 4 columns).
+                columns = numberOfLayoutColumns.Value;
+            }
+            else if (nbRootField <= nbFiledPerCol)
             {
                 columns = 1;
             }

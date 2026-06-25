@@ -3376,18 +3376,19 @@ tab2.name AS [REFERENCED_TABLE],Â Â Â Â col2.name AS [REFERENCED_COLUMN]
 
 
         /// <summary>Creates Flex form + default layout when missing (PLM import / quick generate).</summary>
-        public static OperationCallResult<object> EnsureTransactionDefaultFlexFormLayout(int transactionId)
+        public static OperationCallResult<object> EnsureTransactionDefaultFlexFormLayout(int transactionId, int? numberOfLayoutColumns = null)
         {
-            return EnsureTransactionDefaultFlexFormLayout(transactionId, migrationFastPath: false);
+            return EnsureTransactionDefaultFlexFormLayout(transactionId, migrationFastPath: false, numberOfLayoutColumns);
         }
 
         /// <summary>
         /// <paramref name="migrationFastPath"/> loads the transaction once and skips redundant form/layout reads (bulk PLM import).
+        /// When <paramref name="numberOfLayoutColumns"/> is provided, the generated form layout always uses that exact column count.
         /// </summary>
-        public static OperationCallResult<object> EnsureTransactionDefaultFlexFormLayout(int transactionId, bool migrationFastPath)
+        public static OperationCallResult<object> EnsureTransactionDefaultFlexFormLayout(int transactionId, bool migrationFastPath, int? numberOfLayoutColumns = null)
         {
             if (migrationFastPath)
-                return EnsureTransactionDefaultFlexFormLayoutMigration(transactionId);
+                return EnsureTransactionDefaultFlexFormLayoutMigration(transactionId, numberOfLayoutColumns);
 
             OperationCallResult<object> aOperationCallResult = new OperationCallResult<object>();
             ValidationResult validationResult = new ValidationResult();
@@ -3434,7 +3435,7 @@ tab2.name AS [REFERENCED_TABLE],Â Â Â Â col2.name AS [REFERENCED_COLUMN]
                 }
                 else
                 {
-                    var rebuiltFormDto = AppFormFlexLayoutBL.BuildAppFormDefaultLayout(transactionExDto.FormId.Value);
+                    var rebuiltFormDto = AppFormFlexLayoutBL.BuildAppFormDefaultLayout(transactionExDto.FormId.Value, numberOfLayoutColumns);
                     rebuiltFormDto.LayoutType = (int)EmAppFormLayoutType.Flex;
                     var saveResult = AppFormFlexLayoutBL.SaveAppFormFlexLayoutExDto(rebuiltFormDto);
                     if (saveResult.ValidationResult.HasErrors)
@@ -3445,7 +3446,7 @@ tab2.name AS [REFERENCED_TABLE],Â Â Â Â col2.name AS [REFERENCED_COLUMN]
             return aOperationCallResult;
         }
 
-        private static OperationCallResult<object> EnsureTransactionDefaultFlexFormLayoutMigration(int transactionId)
+        private static OperationCallResult<object> EnsureTransactionDefaultFlexFormLayoutMigration(int transactionId, int? numberOfLayoutColumns = null)
         {
             OperationCallResult<object> result = new OperationCallResult<object>();
             ValidationResult validationResult = new ValidationResult();
@@ -3473,7 +3474,7 @@ tab2.name AS [REFERENCED_TABLE],Â Â Â Â col2.name AS [REFERENCED_COLUMN]
                 return result;
             }
 
-            var builtFormDto = AppFormFlexLayoutBL.BuildAppFormDefaultLayout(formId.Value, transactionExDto);
+            var builtFormDto = AppFormFlexLayoutBL.BuildAppFormDefaultLayout(formId.Value, transactionExDto, numberOfLayoutColumns);
             builtFormDto.LayoutType = (int)EmAppFormLayoutType.Flex;
             var saveResult = AppFormFlexLayoutBL.SaveAppFormFlexLayoutExDto(builtFormDto);
             if (saveResult.ValidationResult.HasErrors)
