@@ -1,6 +1,6 @@
 ﻿{
     "schemaVersion":  1,
-    "generatedAt":  "2026-06-23T19:47:34.1628192Z",
+    "generatedAt":  "2026-06-23T20:19:10.2090062Z",
     "source":  {
                    "plmTemplateId":  3351,
                    "plmDatabase":  "plm_live_20260602",
@@ -396,6 +396,14 @@
                              "attachToRoot":  false,
                              "integrationId":  "Grid_7",
                              "transactionIntegrationId":  "Tab_4225"
+                         },
+                         {
+                             "plmGridId":  3167,
+                             "appTableName":  "Plm_Artwork_BOM_prod",
+                             "parentPlmTabId":  4246,
+                             "attachToRoot":  false,
+                             "integrationId":  "Grid_3167",
+                             "transactionIntegrationId":  "Tab_4246"
                          }
                      ],
     "blueprintFields":  [
@@ -11489,6 +11497,477 @@
                                 "includeInSearch":  false,
                                 "isVisible":  false,
                                 "entityIntegrationId":  "3667"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Print",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Print",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Description",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Description",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "ProductReferenceID",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ProductReferenceID",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Comments",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comments",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Placement",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Placement",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Product_Type",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4,
+                                "displayLabel":  "Product_Type",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image1",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image1",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image2",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image2",
+                                "displayOrder":  8,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image3",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image3",
+                                "displayOrder":  9,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image4",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image4",
+                                "displayOrder":  10,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Sketch",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Sketch",
+                                "displayOrder":  11,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image5",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image5",
+                                "displayOrder":  12,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image6",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image6",
+                                "displayOrder":  13,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image7",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image7",
+                                "displayOrder":  14,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image8",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image8",
+                                "displayOrder":  15,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image9",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image9",
+                                "displayOrder":  16,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image10",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image10",
+                                "displayOrder":  17,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image11",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image11",
+                                "displayOrder":  18,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Image12",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image12",
+                                "displayOrder":  19,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_7",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_7",
+                                "displayOrder":  20,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_8",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_8",
+                                "displayOrder":  21,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_9",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_9",
+                                "displayOrder":  22,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_10",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_10",
+                                "displayOrder":  23,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_11",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_11",
+                                "displayOrder":  24,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_12",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_12",
+                                "displayOrder":  25,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_5",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_5",
+                                "displayOrder":  26,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_6",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_6",
+                                "displayOrder":  27,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_1",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_1",
+                                "displayOrder":  28,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_2",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_2",
+                                "displayOrder":  29,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_3",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_3",
+                                "displayOrder":  30,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Colorway_4",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Colorway_4",
+                                "displayOrder":  31,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Process_1",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4728,
+                                "displayLabel":  "Process_1",
+                                "displayOrder":  32,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4728"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Process_2",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4728,
+                                "displayLabel":  "Process_2",
+                                "displayOrder":  33,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4728"
+                            },
+                            {
+                                "appTableName":  "Plm_Artwork_BOM_prod",
+                                "appColumnName":  "Comments_By",
+                                "plmTabIds":  [
+                                                  4246
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4772,
+                                "displayLabel":  "Comments_By",
+                                "displayOrder":  34,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4772"
                             },
                             {
                                 "appTableName":  "Plm_ReferenceBasicInfo",

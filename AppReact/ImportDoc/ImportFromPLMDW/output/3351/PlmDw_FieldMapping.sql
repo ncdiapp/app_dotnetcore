@@ -68,7 +68,7 @@ BEGIN
 END
 
 SET @sql = N'DELETE FROM dbo.' + QUOTENAME(@MappingTable)
-    + N' WHERE [AppTableName] IN (N''@P@ReferenceBasicInfo'', N''@P@Style_Summary'', N''@P@Colorways'', N''@P@Denim_Details'', N''@P@Artworks'', N''@P@Technical_Details'', N''@P@Fabrics___Trims_10'', N''@P@Labels___Packaging_10'', N''@P@Style_Reference'', N''@P@Care_Label'', N''@P@Costing'', N''@P@Style_Header'', N''@P@Publish_to_ERP'', N''@P@Approvals'', N''@P@AJ'', N''@P@ProductDesignColorGrid'');';
+    + N' WHERE [AppTableName] IN (N''@P@ReferenceBasicInfo'', N''@P@Style_Summary'', N''@P@Colorways'', N''@P@Denim_Details'', N''@P@Artworks'', N''@P@Technical_Details'', N''@P@Fabrics___Trims_10'', N''@P@Labels___Packaging_10'', N''@P@Style_Reference'', N''@P@Care_Label'', N''@P@Costing'', N''@P@Style_Header'', N''@P@Publish_to_ERP'', N''@P@Approvals'', N''@P@AJ'', N''@P@ProductDesignColorGrid'', N''@P@Artwork_BOM_prod'');';
 SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
 EXEC sp_executesql @sql;
 
@@ -916,6 +916,40 @@ VALUES
         (N''@P@ProductDesignColorGrid'', N''Bulk_2_Status'', N''PLM_DW_Grid_ProductDesignColorGrid_7'', N''Bulk_2_Status_7759_FK_PLM_DW_UD_Rallye_Status_3667'', 4225, 7759, 7354, 7, 7759, NULL, N''PLM_DW_UD_Rallye_Status_3667'', N''GridColumn'', 1, 3667, N''int''),
         (N''@P@ProductDesignColorGrid'', N''Bulk_3_Status'', N''PLM_DW_Grid_ProductDesignColorGrid_7'', N''Bulk_3_Status_7760_FK_PLM_DW_UD_Rallye_Status_3667'', 4225, 7760, 7354, 7, 7760, NULL, N''PLM_DW_UD_Rallye_Status_3667'', N''GridColumn'', 1, 3667, N''int''),
         (N''@P@ProductDesignColorGrid'', N''SMS'', N''PLM_DW_Grid_ProductDesignColorGrid_7'', N''SMS_7717_FK_PLM_DW_UD_Rallye_Status_3667'', 4225, 7717, 7354, 7, 7717, NULL, N''PLM_DW_UD_Rallye_Status_3667'', N''GridColumn'', 13, 3667, N''nvarchar''),
+        (N''@P@Artwork_BOM_prod'', N''Print'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Print__7188'', 4246, 7188, 6678, 3167, 7188, NULL, NULL, N''GridColumn'', 2, NULL, N''nvarchar''),
+        (N''@P@Artwork_BOM_prod'', N''Description'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Description_7189'', 4246, 7189, 6678, 3167, 7189, NULL, NULL, N''GridColumn'', 4, NULL, N''nvarchar''),
+        (N''@P@Artwork_BOM_prod'', N''ProductReferenceID'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''ProductReferenceID_7186'', 4246, 7186, 6678, 3167, 7186, NULL, NULL, N''GridColumn'', 20, NULL, N''float''),
+        (N''@P@Artwork_BOM_prod'', N''Comments'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Comments_7813'', 4246, 7813, 6678, 3167, 7813, NULL, NULL, N''GridColumn'', 2, NULL, N''nvarchar''),
+        (N''@P@Artwork_BOM_prod'', N''Placement'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Placement_8056'', 4246, 8056, 6678, 3167, 8056, NULL, NULL, N''GridColumn'', 2, NULL, N''nvarchar''),
+        (N''@P@Artwork_BOM_prod'', N''Product_Type'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Product_Type_7190_FK_tblProductType'', 4246, 7190, 6678, 3167, 7190, NULL, N''tblProductType'', N''GridColumn'', 1, 4, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image1'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image1_7809_FK_tblSketch'', 4246, 7809, 6678, 3167, 7809, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image2'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image2_7810_FK_tblSketch'', 4246, 7810, 6678, 3167, 7810, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image3'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image3_7811_FK_tblSketch'', 4246, 7811, 6678, 3167, 7811, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image4'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image4_7812_FK_tblSketch'', 4246, 7812, 6678, 3167, 7812, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Sketch'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Sketch_7187_FK_tblSketch'', 4246, 7187, 6678, 3167, 7187, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image5'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image5_7973_FK_tblSketch'', 4246, 7973, 6678, 3167, 7973, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image6'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image6_7975_FK_tblSketch'', 4246, 7975, 6678, 3167, 7975, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image7'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image7_8014_FK_tblSketch'', 4246, 8014, 6678, 3167, 8014, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image8'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image8_8015_FK_tblSketch'', 4246, 8015, 6678, 3167, 8015, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image9'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image9_8016_FK_tblSketch'', 4246, 8016, 6678, 3167, 8016, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image10'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image10_8017_FK_tblSketch'', 4246, 8017, 6678, 3167, 8017, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image11'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image11_8018_FK_tblSketch'', 4246, 8018, 6678, 3167, 8018, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Image12'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Image12_8019_FK_tblSketch'', 4246, 8019, 6678, 3167, 8019, NULL, N''tblSketch'', N''GridColumn'', 5, 11, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_7'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_7_7995_FK_pdmRGBColor'', 4246, 7995, 6678, 3167, 7995, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_8'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_8_7996_FK_pdmRGBColor'', 4246, 7996, 6678, 3167, 7996, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_9'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_9_7997_FK_pdmRGBColor'', 4246, 7997, 6678, 3167, 7997, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_10'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_10_7998_FK_pdmRGBColor'', 4246, 7998, 6678, 3167, 7998, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_11'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_11_7999_FK_pdmRGBColor'', 4246, 7999, 6678, 3167, 7999, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_12'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_12_8000_FK_pdmRGBColor'', 4246, 8000, 6678, 3167, 8000, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_5'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_5_7972_FK_pdmRGBColor'', 4246, 7972, 6678, 3167, 7972, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_6'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_6_7974_FK_pdmRGBColor'', 4246, 7974, 6678, 3167, 7974, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_1'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_1_7805_FK_pdmRGBColor'', 4246, 7805, 6678, 3167, 7805, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_2'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_2_7806_FK_pdmRGBColor'', 4246, 7806, 6678, 3167, 7806, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_3'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_3_7807_FK_pdmRGBColor'', 4246, 7807, 6678, 3167, 7807, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Colorway_4'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Colorway_4_7808_FK_pdmRGBColor'', 4246, 7808, 6678, 3167, 7808, NULL, N''pdmRGBColor'', N''GridColumn'', 1, 79, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Process_1'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Process_1_7817_FK_PLM_DW_UD_Trim_print_type_4728'', 4246, 7817, 6678, 3167, 7817, NULL, N''PLM_DW_UD_Trim_print_type_4728'', N''GridColumn'', 1, 4728, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Process_2'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Process_2_7818_FK_PLM_DW_UD_Trim_print_type_4728'', 4246, 7818, 6678, 3167, 7818, NULL, N''PLM_DW_UD_Trim_print_type_4728'', N''GridColumn'', 1, 4728, N''int''),
+        (N''@P@Artwork_BOM_prod'', N''Comments_By'', N''PLM_DW_Grid_Artwork_BOM_prod_3167'', N''Comments_By_7814_FK_PLM_DW_UD_DesignerUsers_4772'', 4246, 7814, 6678, 3167, 7814, NULL, N''PLM_DW_UD_DesignerUsers_4772'', N''GridColumn'', 1, 4772, N''int''),
         (N''@P@ReferenceBasicInfo'', N''ReferenceCode'', N''PLM_DW_Tab_Style_Header_4251'', N''Article__22'', 4251, 22, NULL, NULL, NULL, NULL, NULL, N''ReferenceField'', 2, NULL, N''nvarchar'')
 ';
 SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);

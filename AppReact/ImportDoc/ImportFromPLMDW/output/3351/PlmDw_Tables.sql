@@ -1298,5 +1298,41 @@ BEGIN
     PRINT N'Skipped FK ' + @FkName + N': root table dbo.' + @RootTable + N' does not exist.';
 END
 
+-- Artwork_BOM_prod
+SET @TableName = @TablePrefix + N'Artwork_BOM_prod';
+SET @RootTable = @TablePrefix + @RootTableSuffix;
+SET @FkName = N'FK_' + @TableName + N'_Reference';
+
+IF OBJECT_ID(N'dbo.' + QUOTENAME(@TableName), N'U') IS NULL
+BEGIN
+    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@TableName) + N' ([RowId] INT IDENTITY(1,1) NOT NULL, [ReferenceId] INT NOT NULL, [Sort] INT NULL, [Print] [nvarchar](4000) NULL, [Description] [nvarchar](4000) NULL, [ProductReferenceID] [decimal](18, 2) NULL, [Comments] [nvarchar](4000) NULL, [Placement] [nvarchar](4000) NULL, [Product_Type] [int] NULL, [Image1] [int] NULL, [Image2] [int] NULL, [Image3] [int] NULL, [Image4] [int] NULL, [Sketch] [int] NULL, [Image5] [int] NULL, [Image6] [int] NULL, [Image7] [int] NULL, [Image8] [int] NULL, [Image9] [int] NULL, [Image10] [int] NULL, [Image11] [int] NULL, [Image12] [int] NULL, [Colorway_7] [int] NULL, [Colorway_8] [int] NULL, [Colorway_9] [int] NULL, [Colorway_10] [int] NULL, [Colorway_11] [int] NULL, [Colorway_12] [int] NULL, [Colorway_5] [int] NULL, [Colorway_6] [int] NULL, [Colorway_1] [int] NULL, [Colorway_2] [int] NULL, [Colorway_3] [int] NULL, [Colorway_4] [int] NULL, [Process_1] [int] NULL, [Process_2] [int] NULL, [Comments_By] [int] NULL, CONSTRAINT [PK_Artwork_BOM_prod] PRIMARY KEY CLUSTERED ([RowId]) );';
+    EXEC sp_executesql @sql;
+END
+ELSE
+BEGIN
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [Print] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [Description] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [Comments] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [Placement] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+END
+
+
+IF OBJECT_ID(N'dbo.' + QUOTENAME(@RootTable), N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @FkName)
+BEGIN
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName)
+        + N' WITH CHECK ADD CONSTRAINT ' + QUOTENAME(@FkName)
+        + N' FOREIGN KEY ([ReferenceId]) REFERENCES dbo.' + QUOTENAME(@RootTable) + N' ([ReferenceId]);';
+    EXEC sp_executesql @sql;
+END
+ELSE IF OBJECT_ID(N'dbo.' + QUOTENAME(@RootTable), N'U') IS NULL
+BEGIN
+    PRINT N'Skipped FK ' + @FkName + N': root table dbo.' + @RootTable + N' does not exist.';
+END
+
 GO
 

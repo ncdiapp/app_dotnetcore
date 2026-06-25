@@ -169,6 +169,14 @@
       "gridId": 7,
       "parentPlmTabId": 4225,
       "transactionIntegrationId": "Tab_4225"
+    },
+    {
+      "appTable": "Artwork_BOM_prod",
+      "dwTable": "PLM_DW_Grid_Artwork_BOM_prod_3167",
+      "gridSubItemId": 6678,
+      "gridId": 3167,
+      "parentPlmTabId": 4246,
+      "transactionIntegrationId": "Tab_4246"
     }
   ],
   "blueprint": {
