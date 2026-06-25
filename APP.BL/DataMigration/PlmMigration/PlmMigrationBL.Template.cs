@@ -1087,22 +1087,32 @@ CREATE TABLE dbo.[{tableName}] (
             var siblingTableNames = plan.SiblingColumnsByTable.Keys
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            if (siblingTableNames.Count == 0 && !string.IsNullOrWhiteSpace(plan.PrimarySiblingTable))
+            if (siblingTableNames.Count == 0
+                && plan.ChildColumnsByTable.Count == 0
+                && !string.IsNullOrWhiteSpace(plan.PrimarySiblingTable))
                 siblingTableNames.Add(plan.PrimarySiblingTable);
 
-            var gridChildTables = new List<HierarchyChildTableDto>();
-            foreach (var gridTable in tab.GridColumns.Select(g => g.TableName).Distinct(StringComparer.OrdinalIgnoreCase))
+            // Root children = grid tables + child-unit tab tables (unitType "child").
+            // Both are 1:many under root with their own identity PK and a [ReferenceId] FK.
+            var childTableNames = new List<string>();
+            childTableNames.AddRange(tab.GridColumns.Select(g => g.TableName));
+            childTableNames.AddRange(plan.ChildColumnsByTable.Keys);
+
+            var rootChildTables = new List<HierarchyChildTableDto>();
+            foreach (var childTable in childTableNames.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                if (siblingTableNames.Any(s => string.Equals(s, gridTable, StringComparison.OrdinalIgnoreCase)))
+                if (string.IsNullOrWhiteSpace(childTable))
                     continue;
-                gridChildTables.Add(new HierarchyChildTableDto { TableName = gridTable });
+                if (siblingTableNames.Any(s => string.Equals(s, childTable, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                rootChildTables.Add(new HierarchyChildTableDto { TableName = childTable });
             }
 
             var setup = new HierarchyTableSetupDto
             {
                 MasterTableName = rootTable,
                 SiblingTableNames = siblingTableNames,
-                ChildTables = gridChildTables,
+                ChildTables = rootChildTables,
                 DataSourceRegisterId = tenantDataSourceId,
                 SchemaOwner = "dbo",
                 TransactionName = tab.TabName,
@@ -1156,7 +1166,7 @@ WHERE TransactionID = @TransactionId";
             FixTabTransactionUnitStructure(
                 conn, tran, txId, rootTable,
                 siblingTableNames,
-                gridChildTables.Select(g => g.TableName).ToList());
+                rootChildTables.Select(g => g.TableName).ToList());
 
             SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, $"Tab_{tab.TabId}");
             return txId;
@@ -1252,6 +1262,10 @@ WHERE TransactionID = @TransactionId
         {
             var visibleColumnsByTable = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
             foreach (var pair in plan.SiblingColumnsByTable)
+            {
+                visibleColumnsByTable[pair.Key] = GetVisibleColumnNames(pair.Value);
+            }
+            foreach (var pair in plan.ChildColumnsByTable)
             {
                 visibleColumnsByTable[pair.Key] = GetVisibleColumnNames(pair.Value);
             }

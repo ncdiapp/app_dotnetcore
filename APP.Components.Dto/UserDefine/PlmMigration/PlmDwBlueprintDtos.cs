@@ -179,7 +179,7 @@ namespace APP.Components.EntityDto
     [DataContract(Namespace = ContractNamespaces.Dto)]
     public class PlmDwBlueprintUnitStructureDto
     {
-        /// <summary>RootPlusMasterSibling</summary>
+        /// <summary>RootPlusMasterSibling (sibling tab tables, 1:1) | RootPlusChild (child tab table, 1:many own identity PK). Descriptive only; execution reads SiblingUnits / ChildUnits.</summary>
         [DataMember]
         public string Mode { get; set; }
 

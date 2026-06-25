@@ -27,8 +27,7 @@
       "tabSort": 1,
       "isTemplateHeaderTab": false,
       "importStatus": "Ready",
-      "mode": "excludeSubItemsFromDwTable",
-      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Style_Header_4251"
+      "mode": "all"
     },
     {
       "appTable": "Colorways",

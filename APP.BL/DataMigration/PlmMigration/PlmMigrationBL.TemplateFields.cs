@@ -292,6 +292,12 @@ WHERE TransactionFieldID = @FieldId";
                     AddSubItem(subItem);
             }
 
+            foreach (var pair in plan.ChildColumnsByTable)
+            {
+                foreach (var subItem in pair.Value)
+                    AddSubItem(subItem);
+            }
+
             foreach (var col in tab.GridColumns)
             {
                 if (string.IsNullOrWhiteSpace(col.ColumnSqlName))

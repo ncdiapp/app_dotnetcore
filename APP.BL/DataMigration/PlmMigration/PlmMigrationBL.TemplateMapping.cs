@@ -23,6 +23,13 @@ namespace APP.BL.DataMigration.PlmMigration
             public string PrimarySiblingTable { get; set; }
             public Dictionary<string, List<PlmTemplateSubItemRow>> SiblingColumnsByTable { get; } =
                 new Dictionary<string, List<PlmTemplateSubItemRow>>(StringComparer.OrdinalIgnoreCase);
+            /// <summary>
+            /// Tab tables flagged as child units (unitType "child" / blueprint unitStructure.childUnits):
+            /// 1:many under root, own identity PK, [ReferenceId] is a plain FK. Built as root children
+            /// (like grids), not master-sibling units.
+            /// </summary>
+            public Dictionary<string, List<PlmTemplateSubItemRow>> ChildColumnsByTable { get; } =
+                new Dictionary<string, List<PlmTemplateSubItemRow>>(StringComparer.OrdinalIgnoreCase);
             public List<PlmTemplateSubItemRow> RootSubItems { get; } = new List<PlmTemplateSubItemRow>();
         }
 

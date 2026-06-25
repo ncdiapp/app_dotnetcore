@@ -40,6 +40,17 @@
       "importStatus": "Ready",
       "mode": "excludeSubItemsFromDwTable",
       "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fabric_Header_4258"
+    },
+    {
+      "_comment_unitType": "Child unit is AUTO-DETECTED: only a tab that hosts a Grid sub-item (PLM block sub-item with ControlType=6) gets its own identity PK [{appTable}Id] with ReferenceId as a plain FK (1:many). A tab merely bound to a grid via parentPlmTabId is NOT enough. 'unitType' is an OPTIONAL override: set 'child'/'sibling' to force; omit to let detection decide.",
+      "appTable": "Artworks",
+      "dwTable": "PLM_DW_Tab_Artworks_4246",
+      "tabId": 4246,
+      "plmTabName": "Artworks",
+      "tabSort": 3,
+      "isTemplateHeaderTab": false,
+      "importStatus": "Ready",
+      "mode": "all"
     }
   ],
   "grids": [

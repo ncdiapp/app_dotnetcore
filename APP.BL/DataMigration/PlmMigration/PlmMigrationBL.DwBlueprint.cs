@@ -366,9 +366,12 @@ WHERE BlueprintKey = @BlueprintKey";
           var siblings = tx.UnitStructure?.SiblingUnits?
             .Where(s => s != null && !string.IsNullOrWhiteSpace(s.AppTableName))
             .ToList() ?? new List<PlmDwBlueprintSiblingUnitDto>();
-          if (siblings.Count == 0)
+          var childUnits = tx.UnitStructure?.ChildUnits?
+            .Where(c => c != null && !string.IsNullOrWhiteSpace(c.AppTableName))
+            .ToList() ?? new List<PlmDwBlueprintChildUnitDto>();
+          if (siblings.Count == 0 && childUnits.Count == 0)
           {
-            validation.Errors.Add($"Transaction Tab_{tx.PlmTabId} is missing sibling unit table.");
+            validation.Errors.Add($"Transaction Tab_{tx.PlmTabId} is missing a sibling or child unit table.");
             continue;
           }
 
@@ -381,6 +384,13 @@ WHERE BlueprintKey = @BlueprintKey";
             var visibleMappings = FilterMappingForTransaction(tx, sibling, mappingRows, prefix);
             if (visibleMappings.Count == 0)
               validation.Warnings.Add($"Transaction Tab_{tx.PlmTabId} has no field mapping rows for table {siblingTable}.");
+          }
+
+          foreach (var child in childUnits)
+          {
+            string childTable = QualifyBlueprintTableName(child.AppTableName, prefix);
+            if (!TemplateTableExists(conn, null, childTable))
+              validation.Errors.Add($"Child unit table dbo.[{childTable}] does not exist for Tab_{tx.PlmTabId}.");
           }
 
           int? existingTx = GetTransactionIdByIntegrationId(conn, null, tx.IntegrationId ?? $"Tab_{tx.PlmTabId}");
@@ -1006,14 +1016,20 @@ WHERE SearchId = @SearchId";
           var siblings = tx.UnitStructure?.SiblingUnits?
             .Where(s => s != null && !string.IsNullOrWhiteSpace(s.AppTableName))
             .ToList() ?? new List<PlmDwBlueprintSiblingUnitDto>();
-          if (siblings.Count == 0)
+          var childUnits = tx.UnitStructure?.ChildUnits?
+            .Where(c => c != null && !string.IsNullOrWhiteSpace(c.AppTableName))
+            .ToList() ?? new List<PlmDwBlueprintChildUnitDto>();
+          if (siblings.Count == 0 && childUnits.Count == 0)
           {
             plans.Add(new TemplateTabExecutionPlan { Tab = tab });
             continue;
           }
 
-          string primarySiblingTable = QualifyBlueprintTableName(siblings[0].AppTableName, prefix);
-          tab.SiblingTableName = primarySiblingTable;
+          string primarySiblingTable = siblings.Count > 0
+            ? QualifyBlueprintTableName(siblings[0].AppTableName, prefix)
+            : null;
+          if (!string.IsNullOrWhiteSpace(primarySiblingTable))
+            tab.SiblingTableName = primarySiblingTable;
 
           var plan = new TemplateTabExecutionPlan
           {
@@ -1044,6 +1060,48 @@ WHERE SearchId = @SearchId";
               }
 
               subItems.Add(new PlmTemplateSubItemRow
+              {
+                TabId = mapRow.PlmTabId ?? tx.PlmTabId,
+                SubItemId = mapRow.PlmSubItemId ?? mapRow.PlmMetaColumnId ?? 0,
+                SubItemName = fieldMeta?.DisplayLabel ?? mapRow.AppColumnName,
+                ControlType = plmControlType,
+                EntityId = fieldMeta?.PlmEntityId ?? mapRow.PlmEntityId ?? TryParseEntityFromFk(mapRow.DwFkTarget),
+                SortOrder = fieldMeta?.DisplayOrder ?? sortOrder,
+                ColumnName = mapRow.AppColumnName,
+                IsVisible = fieldMeta?.IsVisible == true
+              });
+            }
+          }
+
+          // Child-unit tab tables (unitType "child"): 1:many under root, own identity PK,
+          // [ReferenceId] is a plain FK. Columns come from the tab wide table (FieldKind TabField).
+          foreach (var child in childUnits)
+          {
+            string childTable = QualifyBlueprintTableName(child.AppTableName, prefix);
+            var childMappings = mappingRows
+              .Where(m => (string.Equals(QualifyBlueprintTableName(m.AppTableName, prefix), childTable, StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(m.AppTableName, child.AppTableName, StringComparison.OrdinalIgnoreCase))
+                          && !string.Equals(m.FieldKind, "GridColumn", StringComparison.OrdinalIgnoreCase))
+              .ToList();
+
+            foreach (var mapRow in childMappings.OrderBy(m => m.AppColumnName))
+            {
+              sortOrder++;
+              string metaKey = $"{mapRow.AppTableName}|{mapRow.AppColumnName}";
+              fieldMetaByKey.TryGetValue(metaKey, out PlmDwBlueprintFieldDto fieldMeta);
+
+              int plmControlType = fieldMeta?.PlmControlType
+                ?? mapRow.PlmControlType
+                ?? InferPlmControlType(mapRow);
+
+              plan.ChildColumnsByTable.TryGetValue(childTable, out var childCols);
+              if (childCols == null)
+              {
+                childCols = new List<PlmTemplateSubItemRow>();
+                plan.ChildColumnsByTable[childTable] = childCols;
+              }
+
+              childCols.Add(new PlmTemplateSubItemRow
               {
                 TabId = mapRow.PlmTabId ?? tx.PlmTabId,
                 SubItemId = mapRow.PlmSubItemId ?? mapRow.PlmMetaColumnId ?? 0,

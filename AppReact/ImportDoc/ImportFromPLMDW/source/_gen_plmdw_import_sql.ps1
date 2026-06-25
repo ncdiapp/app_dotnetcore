@@ -184,6 +184,37 @@ WHERE tgc.TabID IN ($inList)
     return $map
 }
 
+function Get-PlmTabsWithGridSubItem([int[]]$TabIds) {
+    # CHILD UNIT detection: a tab whose blocks contain a sub-item with ControlType = 6 (Grid)
+    # is a 1:many detail unit. Its APP tab table is generated as a child unit (own identity PK).
+    $set = [System.Collections.Generic.HashSet[int]]::new()
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $set }
+    $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT DISTINCT tb.TabID
+FROM dbo.PdmTabBlock tb
+INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.BlockID = tb.BlockID
+WHERE tb.TabID IN ($inList) AND bsi.ControlType = 6
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $t = if ($null -eq $line) { '' } else { $line.Trim() }
+        if ($t -eq '' -or $t -eq 'NULL') { continue }
+        $parsed = 0
+        if ([int]::TryParse($t, [ref]$parsed)) { [void]$set.Add($parsed) }
+    }
+    return $set
+}
+
+# Resolve a tab's unit kind. RULE: a tab's WIDE table (regular sub-items) is ALWAYS a 'sibling'
+# (PK = [ReferenceId], 1:1 with root). Grid sub-items become their own grid tables (RowId identity
+# PK) via $config.grids - hosting a Grid sub-item does NOT make the tab wide table a child.
+# 'unitType' in config is an OPTIONAL override: set 'child' to force an identity-PK child tab table.
+function Resolve-TabUnitKind($tab, $childTabIds) {
+    $ut = if ($tab.unitType) { ([string]$tab.unitType).Trim().ToLowerInvariant() } else { '' }
+    if ($ut -eq 'child') { return 'child' }
+    return 'sibling'
+}
+
 function Get-PlmTabLayoutSubItemSet([int[]]$TabIds) {
     # Layer 2 (Tab Design): sub-items actually placed on the tab layout. Set of "tabId|subItemId".
     $set = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -282,7 +313,7 @@ function Format-TabDisplayName([string]$appTable) {
     return ($appTable -replace '_', ' ').Trim()
 }
 
-function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subItemMetaMap, $gridColMetaMap, $tabGridVisibleMap, $layoutSubItemSet) {
+function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subItemMetaMap, $gridColMetaMap, $tabGridVisibleMap, $layoutSubItemSet, $childTabIds) {
     $prefix = $config.tablePrefixDefault
     if (-not $prefix.EndsWith('_')) { $prefix += '_' }
     $rootSuffix = $config.rootTableSuffix
@@ -317,28 +348,39 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
         $tabName = if ($tab.plmTabName) { $tab.plmTabName } else { Format-TabDisplayName $tab.appTable }
         $importStatus = if ($tab.importStatus) { $tab.importStatus } else { 'Ready' }
         $siblingUnits = [System.Collections.Generic.List[object]]::new()
+        $childUnits = [System.Collections.Generic.List[object]]::new()
+        $isChildTab = ((Resolve-TabUnitKind $tab $childTabIds) -eq 'child')
 
-        if ($tab.mode -eq 'excludeSubItemsFromDwTable' -and $tab.excludeSubItemsFromDwTable) {
-            $headerTab = $config.tabs | Where-Object { $_.dwTable -eq $tab.excludeSubItemsFromDwTable } | Select-Object -First 1
-            if ($headerTab) {
-                $siblingUnits.Add([ordered]@{
-                    appTableName    = $prefix + $headerTab.appTable
-                    isMasterSibling = $true
-                    fieldPolicy     = 'AllMappedColumns'
-                })
+        if ($isChildTab) {
+            # Child unit: 1:many under root. Own table has its own identity PK; it is NOT a sibling.
+            $childUnits.Add([ordered]@{
+                appTableName = $prefix + $tab.appTable
+                attachToRoot = $true
+            })
+        }
+        else {
+            if ($tab.mode -eq 'excludeSubItemsFromDwTable' -and $tab.excludeSubItemsFromDwTable) {
+                $headerTab = $config.tabs | Where-Object { $_.dwTable -eq $tab.excludeSubItemsFromDwTable } | Select-Object -First 1
+                if ($headerTab) {
+                    $siblingUnits.Add([ordered]@{
+                        appTableName    = $prefix + $headerTab.appTable
+                        isMasterSibling = $true
+                        fieldPolicy     = 'AllMappedColumns'
+                    })
+                }
             }
-        }
 
-        $fieldPolicy = if ($tab.mode -eq 'excludeSubItemsFromDwTable') { 'ExclusiveSubItemsOnly' } else { 'AllMappedColumns' }
-        $ownSibling = [ordered]@{
-            appTableName    = $prefix + $tab.appTable
-            isMasterSibling = ($siblingUnits.Count -eq 0)
-            fieldPolicy     = $fieldPolicy
+            $fieldPolicy = if ($tab.mode -eq 'excludeSubItemsFromDwTable') { 'ExclusiveSubItemsOnly' } else { 'AllMappedColumns' }
+            $ownSibling = [ordered]@{
+                appTableName    = $prefix + $tab.appTable
+                isMasterSibling = ($siblingUnits.Count -eq 0)
+                fieldPolicy     = $fieldPolicy
+            }
+            if ($tab.excludeSubItemsFromDwTable) {
+                $ownSibling.excludeSubItemsFromDwTable = $tab.excludeSubItemsFromDwTable
+            }
+            $siblingUnits.Add($ownSibling)
         }
-        if ($tab.excludeSubItemsFromDwTable) {
-            $ownSibling.excludeSubItemsFromDwTable = $tab.excludeSubItemsFromDwTable
-        }
-        $siblingUnits.Add($ownSibling)
 
         $transactions += [ordered]@{
             plmTabId         = [int]$tab.tabId
@@ -349,10 +391,10 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
             plmTabSort       = if ($null -ne $tab.tabSort) { [int]$tab.tabSort } else { $null }
             isTemplateHeaderTab = if ($null -ne $tab.isTemplateHeaderTab) { [bool]$tab.isTemplateHeaderTab } else { $null }
             unitStructure    = [ordered]@{
-                mode          = 'RootPlusMasterSibling'
+                mode          = if ($isChildTab) { 'RootPlusChild' } else { 'RootPlusMasterSibling' }
                 rootTableName = $prefix + $rootSuffix
                 siblingUnits  = @($siblingUnits.ToArray())
-                childUnits    = @()
+                childUnits    = @($childUnits.ToArray())
             }
         }
     }
@@ -621,20 +663,34 @@ function Build-FieldRows($dwCols, [string]$DwTable, $TabId, [string]$AppTable, [
     return Get-AppColumnNames $rows
 }
 
-function Build-CreateTableBlock([string]$LogicalTable, $fieldRows, [bool]$IsGrid) {
+function Build-CreateTableBlock([string]$LogicalTable, $fieldRows, [string]$UnitKind = 'sibling') {
+    # $UnitKind:
+    #   'sibling' -> 1:1 with root; PK = [ReferenceId] (NOT an identity, value comes from import).
+    #   'child'   -> 1:many under root; PK = [{LogicalTable}Id] INT IDENTITY (DB-filled),
+    #                [ReferenceId] is a plain FK column (value imported, links to parent).
+    #   'grid'    -> 1:many under root; PK = [RowId] INT IDENTITY, plus [ReferenceId] FK + [Sort].
     $colDefs = New-Object System.Collections.Generic.List[string]
-    if ($IsGrid) {
-        [void]$colDefs.Add('[RowId] INT IDENTITY(1,1) NOT NULL')
-        [void]$colDefs.Add('[ReferenceId] INT NOT NULL')
-        [void]$colDefs.Add('[Sort] INT NULL')
-    }
-    else {
-        [void]$colDefs.Add('[ReferenceId] INT NOT NULL')
+    $pk = $null
+    switch ($UnitKind) {
+        'grid' {
+            [void]$colDefs.Add('[RowId] INT IDENTITY(1,1) NOT NULL')
+            [void]$colDefs.Add('[ReferenceId] INT NOT NULL')
+            [void]$colDefs.Add('[Sort] INT NULL')
+            $pk = 'RowId'
+        }
+        'child' {
+            $pk = "${LogicalTable}Id"
+            [void]$colDefs.Add("[$pk] INT IDENTITY(1,1) NOT NULL")
+            [void]$colDefs.Add('[ReferenceId] INT NOT NULL')
+        }
+        default {
+            [void]$colDefs.Add('[ReferenceId] INT NOT NULL')
+            $pk = 'ReferenceId'
+        }
     }
     foreach ($r in $fieldRows) {
         [void]$colDefs.Add("[$($r.AppColumn)] $($r.SqlType) NULL")
     }
-    $pk = if ($IsGrid) { 'RowId' } else { 'ReferenceId' }
     [void]$colDefs.Add("CONSTRAINT [PK_$LogicalTable] PRIMARY KEY CLUSTERED ([$pk])")
     $innerCols = ($colDefs -join ', ')
     $alterLines = New-Object System.Collections.Generic.List[string]
@@ -746,6 +802,15 @@ END
 
 "@)
 
+# Tab wide tables are ALWAYS siblings (regular sub-items). Grid sub-items become separate grid
+# tables (RowId identity PK) via $config.grids. The grid-sub-item probe below is INFORMATIONAL only
+# (reports which tabs host grids); it no longer forces the tab table to a child unit. Use an explicit
+# config "unitType": "child" override if you ever want an identity-PK child tab table.
+$tabIdListForChild = @($config.tabs | ForEach-Object { [int]$_.tabId })
+Write-Host "Probing tabs that host Grid sub-items (informational; tab tables stay sibling) from $PlmDatabase..."
+$childTabIds = Get-PlmTabsWithGridSubItem $tabIdListForChild
+Write-Host "  Tabs hosting grid sub-item(s): $((@($childTabIds) | Sort-Object) -join ', ')"
+
 foreach ($tab in $config.tabs) {
     [void]$scopeAppTables.Add($tab.appTable)
     $dwCols = Get-DwTableColumns $tab.dwTable
@@ -765,7 +830,8 @@ foreach ($tab in $config.tabs) {
     }
     else { throw "Unknown tab mode: $($tab.mode)" }
 
-    $ddlParts.Add((Build-CreateTableBlock $tab.appTable $fieldRows $false))
+    $tabUnitKind = Resolve-TabUnitKind $tab $childTabIds
+    $ddlParts.Add((Build-CreateTableBlock $tab.appTable $fieldRows $tabUnitKind))
     foreach ($r in $fieldRows) { [void]$allFieldRows.Add($r) }
 }
 
@@ -774,7 +840,7 @@ foreach ($grid in $config.grids) {
     $dwCols = Get-DwTableColumns $grid.dwTable
     $parentTabId = if ($grid.parentPlmTabId) { [int]$grid.parentPlmTabId } else { $null }
     $fieldRows = Build-FieldRows $dwCols $grid.dwTable $parentTabId $grid.appTable 'GridColumn' $grid.gridSubItemId $grid.gridId
-    $ddlParts.Add((Build-CreateTableBlock $grid.appTable $fieldRows $true))
+    $ddlParts.Add((Build-CreateTableBlock $grid.appTable $fieldRows 'grid'))
     foreach ($r in $fieldRows) { [void]$allFieldRows.Add($r) }
 }
 
@@ -1009,7 +1075,7 @@ Write-Host "  Tab grid column rows: $($tabGridVisibleMap.Count)"
 Write-Host "Loading PLM pdmTabLayoutSubitem (Tab Design layer)..."
 $layoutSubItemSet = Get-PlmTabLayoutSubItemSet $tabIdsForExtra
 Write-Host "  Tab layout sub-item placements: $($layoutSubItemSet.Count)"
-$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet
+$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet $childTabIds
 $blueprintPath = Join-Path $outDir 'PlmDw_ImportBlueprint.json'
 $blueprintJson = $blueprintObj | ConvertTo-Json -Depth 20 -Compress
 $blueprintJsonPretty = $blueprintObj | ConvertTo-Json -Depth 20

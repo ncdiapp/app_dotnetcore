@@ -53,7 +53,7 @@ If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** i
 | **No server code** | **Never** edit C# / `.csproj` / React WebAPI / BL under `APP.BL`, `AppAI.Web`, etc. **Never** run `dotnet build`, `msbuild`, or any compile step. Deliverables are **SQL + JSON + PowerShell in this folder only**. If the workflow appears to need a code change → **STOP immediately**, explain the gap, and **warn the user** — do not patch the repo. |
 | **Two phases** | **Phase A:** DW analysis + APP table proposal + **Blueprint draft** → **STOP for user confirmation**. **Phase B:** generate SQL + Blueprint JSON **after** confirm. **Phase D:** BL TOOLS apply Blueprint to APP config (separate step; user runs in app). |
 | **plmDW is truth** | Column names, SubItem IDs, TabIds from DW — not legacy PLM exports. |
-| **1 Tab → 1 APP table** | Tab wide tables only for tabs with `PLM_DW_Tab_*_{TabId}`. Grid-only tabs → `PLM_DW_Grid_*`. |
+| **1 Tab → 1 sibling table + N grid tables** | Tab wide table (`PLM_DW_Tab_*_{TabId}`) = the tab's regular sub-items → **sibling** (PK `ReferenceId`). Each materialized grid sub-item (`PLM_DW_Grid_*`) = a **grid table** (PK `RowId` identity). A tab with both yields 1 sibling + 1 grid table per grid; the tab table is never a child. |
 | **Mapping drives import** | `{prefix}FieldMapping` stores `DwTableName` + `DwColumnName` per APP column. |
 | **Prefix is parameter** | `@TablePrefix` in all three SQL scripts (default `Plm_`). |
 
@@ -160,9 +160,26 @@ Present scoped to **user TabIds only**:
 | APP object | Rule |
 |----------|------|
 | `{prefix}ReferenceBasicInfo` | `ReferenceId` = `ProductReferenceID`; scope = `pdmProductTemplate` for this `TemplateId`; `ReferenceCode` from header tab (§A1b) |
-| Each tab wide table | All columns, or exclusive SubItems if overlap rule applies |
-| Each grid | Business columns + `RowId` / `ReferenceId` / `Sort` |
+| Each tab wide table (**sibling** — default) | 1:1 with root. PK = `[ReferenceId]` (NOT identity — value comes from import). Holds the tab's **regular sub-items**. All columns, or exclusive SubItems if overlap rule applies |
+| Each grid (**child**) | 1:many under root. PK = `[RowId] INT IDENTITY` + `[ReferenceId]` FK + `[Sort]`. One grid table per materialized `PLM_DW_Grid_*` |
 | Grids without Tab wide table | No tab DDL; grid table only |
+| Tab wide table (**child** — override only) | Optional `unitType: "child"`: PK = `[{appTable}Id] INT IDENTITY`; `[ReferenceId]` plain FK. Not the default |
+
+#### Tab wide table → sibling; grid sub-items → separate grid tables (PK rule)
+
+A PLM tab can contain **regular sub-items** and/or **grid sub-items** (`ControlType = 6`). They map to **different** APP tables:
+
+- **Regular sub-items** → the tab's **wide DW table** (`PLM_DW_Tab_*_{TabId}`) → **always one `sibling` unit**:
+  - PK = `[ReferenceId]` (1:1 with root; value comes from import, **not** an identity);
+  - placed in `unitStructure.siblingUnits`.
+- **Each grid sub-item** → its **own grid DW table** (`PLM_DW_Grid_{Segment}_{GridMetaId}`) → a separate **grid table**:
+  - PK = `[RowId] INT IDENTITY(1,1)` (DB-filled, **not** imported) + `[ReferenceId] INT NOT NULL` FK to root + `[Sort]` (1:many under root);
+  - placed in `unitStructure.childUnits` / `gridBindings`.
+  - **Only grids that exist as `PLM_DW_Grid_*` tables are imported.** A tab may host many grid sub-items but only those materialized in plmDW become tables.
+- **Therefore:** a tab that hosts **both** regular and grid sub-items produces **1 sibling table** (regular sub-items) **plus 1 grid table per materialized grid** (each with `RowId` identity PK). **The tab wide table itself is NEVER a child** — hosting a Grid sub-item does **not** turn the tab table into a child unit.
+- **Override (optional):** set `unitType: "child"` or `unitType: "sibling"` on a tab in the config to force the kind. Omit `unitType` → tab wide table defaults to **`sibling`**.
+
+**Re-import note:** tab wide tables keep `[ReferenceId]` as PK — re-running `PlmDw_Tables.sql` does **not** rewrite the PK. Drop the existing table (or `ALTER` PK manually) before re-running only if you set an explicit `unitType: "child"` override.
 
 ### A7. Confirmation checklist — **STOP**
 
@@ -176,7 +193,7 @@ Ask user to confirm:
 6. Skip tabs/grids with no DW source  
 7. `@TablePrefix` default `Plm_` OK?  
 8. **`@ImportMode`** — default **`APPEND`** when tenant may already have rows from another template; `REPLACE` only for full reload of scoped refs  
-9. Per TabId → Transaction unit structure (Root / Sibling / dual-sibling for info tabs)  
+9. Per TabId → Transaction unit structure: tab wide table = **sibling** (regular sub-items); each materialized grid = a **grid/child table** (PK `RowId` identity). Tab table is child only with explicit `unitType: "child"` override  
 10. **Existing transactions** — optional tenant probe: `AppTransaction.IntegrationId = 'Tab_{TabId}'`; mark `importStatus: "Skipped"` in config for tabs that already exist (Phase D Insert also skips automatically)  
 11. Blueprint field counts per Transaction vs FieldMapping rows  
 
@@ -236,6 +253,7 @@ After user confirms Phase A, record in `source/dwTabImportConfig.json` (see §B1
 - `tabSort`, `isTemplateHeaderTab` — copied from PLM probe  
 - `importStatus`: `Ready` | `Skipped` (existing `Tab_{id}` transaction — optional; Insert mode skips anyway)  
 - `mode`: `all` | `excludeSubItemsFromDwTable`  
+- `unitType`: **optional override only.** Tab wide tables default to **`sibling`** (regular sub-items, 1:1); grids are always separate grid tables (`RowId` identity PK). Set `child` / `sibling` to force a tab table's kind. See §A6 *Tab wide table → sibling; grid sub-items → separate grid tables*.  
 
 ### B2. Run generator
 
@@ -274,7 +292,7 @@ Generator details:
 
 ### B3b. `PlmDw_ImportBlueprint.json`
 
-Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMasterSibling`), `fieldPolicy` (`AllMappedColumns` | `ExclusiveSubItemsOnly`), grid bindings, field UI metadata (`blueprintFields`: `plmControlType`, `plmEntityId` / `entityIntegrationId`, `displayLabel`, `isVisible` from PLM), and Search/View/navigation targets. Generated from `dwTabImportConfig.json` + DW column probe + PLM sub-item/grid/extra-info metadata. BL TOOLS: `PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`. On Execute, BL maps PLM control type → `AppTransactionField.ControlType` and resolves `plmEntityId` → tenant `AppEntityInfo.EntityInfoID` via `IntegrationId`.
+Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMasterSibling` for tab wide tables — the default; `RootPlusChild` only for `unitType: "child"` override tabs — child tab table goes in `unitStructure.childUnits`; grids always land in `gridBindings` / `childUnits`), `fieldPolicy` (`AllMappedColumns` | `ExclusiveSubItemsOnly`), grid bindings, field UI metadata (`blueprintFields`: `plmControlType`, `plmEntityId` / `entityIntegrationId`, `displayLabel`, `isVisible` from PLM), and Search/View/navigation targets. Generated from `dwTabImportConfig.json` + DW column probe + PLM sub-item/grid/extra-info metadata. BL TOOLS: `PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`. On Execute, BL maps PLM control type → `AppTransactionField.ControlType` and resolves `plmEntityId` → tenant `AppEntityInfo.EntityInfoID` via `IntegrationId`.
 
 ### B4. `output/{templateId}/PlmDw_ImportFromDW.sql`
 
