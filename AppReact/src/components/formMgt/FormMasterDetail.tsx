@@ -49,6 +49,8 @@ type FormMasterDetailProps = {
     onFormActionApiReady?: (api: FormMasterDetailActionApi) => void;
     /** Notify parent when dirty/new state changes (template header forms report to main toolbar). */
     onFormSaveStateChange?: (state: FormMasterDetailSaveState) => void;
+    /** When set, overrides field-setting buttons visibility (template header forms follow the main toolbar toggle). */
+    forceEnableFormConfigButtons?: boolean;
 };
 
 type TemplateHeaderEmbeddedFormProps = {
@@ -56,6 +58,7 @@ type TemplateHeaderEmbeddedFormProps = {
     onApiReady: (key: string, api: FormMasterDetailActionApi) => void;
     onApiUnmount: (key: string) => void;
     onSaveStateChange: (key: string, state: FormMasterDetailSaveState) => void;
+    forceEnableFormConfigButtons?: boolean;
 };
 
 const TemplateHeaderEmbeddedForm: React.FC<TemplateHeaderEmbeddedFormProps> = ({
@@ -63,6 +66,7 @@ const TemplateHeaderEmbeddedForm: React.FC<TemplateHeaderEmbeddedFormProps> = ({
     onApiReady,
     onApiUnmount,
     onSaveStateChange,
+    forceEnableFormConfigButtons,
 }) => {
     const handleFormActionApiReady = useCallback(
         (api: FormMasterDetailActionApi) => {
@@ -89,6 +93,7 @@ const TemplateHeaderEmbeddedForm: React.FC<TemplateHeaderEmbeddedFormProps> = ({
             }}
             onFormActionApiReady={handleFormActionApiReady}
             onFormSaveStateChange={handleFormSaveStateChange}
+            forceEnableFormConfigButtons={forceEnableFormConfigButtons}
         />
     );
 };
@@ -98,6 +103,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
     templateHeaderForms = [],
     onFormActionApiReady,
     onFormSaveStateChange,
+    forceEnableFormConfigButtons,
 }) => {
     const { theme } = useTheme();
     const dispatch = useDispatch();
@@ -195,6 +201,37 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
             isEnableFormConfigButtons: !(prev?.isEnableFormConfigButtons ?? false),
         }));
     }, []);
+
+    // Keep controllerModel identity in sync with the live transaction so toolbar actions
+    // (Configuration, Edit Workflow, Print, URL Link) target the CURRENTLY selected transaction,
+    // not the first one. In a transaction form group the embedded <FormMasterDetail> instance is
+    // reused (no key) when switching sidebar items, so transactionId/rootPrimaryKeyValue change via
+    // props without a remount and controllerModel would otherwise stay pinned to the first one.
+    useEffect(() => {
+        setControllerModel((prev: any) => {
+            if (
+                prev?.transactionId === transactionId &&
+                prev?.rootPrimaryKeyValue === rootPrimaryKeyValue
+            ) {
+                return prev;
+            }
+            return {
+                ...prev,
+                transactionId,
+                rootPrimaryKeyValue,
+                formRequestMode: rootPrimaryKeyValue ? 'Edit' : 'New',
+            };
+        });
+    }, [transactionId, rootPrimaryKeyValue]);
+
+    // Template header forms follow the main form's "Enable Field Setting Buttons" toggle.
+    useEffect(() => {
+        if (forceEnableFormConfigButtons === undefined) return;
+        setControllerModel((prev: any) => {
+            if (prev?.isEnableFormConfigButtons === forceEnableFormConfigButtons) return prev;
+            return { ...prev, isEnableFormConfigButtons: forceEnableFormConfigButtons };
+        });
+    }, [forceEnableFormConfigButtons]);
 
     // Data model state
     const [dataModel, setDataModel] = useState<any>({
@@ -947,6 +984,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                             onApiReady={registerHeaderFormApi}
                             onApiUnmount={unregisterHeaderFormApi}
                             onSaveStateChange={handleHeaderSaveStateChange}
+                            forceEnableFormConfigButtons={controllerModel.isEnableFormConfigButtons}
                         />,
                         templateHeaderContainerEl,
                         hdr.key,

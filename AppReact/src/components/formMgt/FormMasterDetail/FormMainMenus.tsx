@@ -1878,7 +1878,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
       {/* Configuration Menu */}
       {renderConfigurationMenu()}
 
-      {configBuilderOpen && configBuilderProps && (
+      {configBuilderOpen && configBuilderProps && typeof document !== 'undefined' && createPortal(
         <ApplicationFormBuilder
           key={`afb-${builderMountKey}`}
           isOpen={configBuilderOpen}
@@ -1908,7 +1908,8 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
           modelName={configBuilderProps.modelName}
           initialNeedToEditUnitId={configBuilderProps.initialNeedToEditUnitId ?? null}
           initialFormDesignFieldFocus={configBuilderProps.initialFormDesignFieldFocus ?? null}
-        />
+        />,
+        document.body
       )}
 
       {unitContextMenu && typeof document !== 'undefined'

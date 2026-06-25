@@ -324,6 +324,11 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     ? `${parseInt(transactionDto.ForeignAppFormExDto.DefaultWidth.trim()) || 1000}px`
     : '1000px';
 
+  // Template header collapse state: when this form is a group template header ("Style Header"),
+  // clicking the header band collapses/expands its body.
+  const templateHeaderSectionId = `MasterDetailEditLayoutForm${controllerModel.uiId}`;
+  const isTemplateHeaderCollapsed = controllerModel.isTemplateHeader && isSectionCollapsed(templateHeaderSectionId);
+
   // Desktop layout
   if (!isMobile) {
     // Show menu: not in preview; for file property show minimal menu (Refresh, Save); for other embedded (isHideHeaderAndFooter) hide
@@ -386,7 +391,8 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
         {/* Template Header */}
         {renderTemplateHeader()}
 
-        {/* Main Container - full height when menu hidden */}
+        {/* Main Container - full height when menu hidden; hidden when template header collapsed */}
+        {!isTemplateHeaderCollapsed && (
         <div
           ref={mainContainerRef}
           id={`MasterDetailEditLayoutForm${controllerModel.uiId}`}
@@ -539,6 +545,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
             ) : null}
           </div>
         </div>
+        )}
       </div>
       </FormMasterDetailRuntimeConfigProvider>
     );
@@ -557,7 +564,8 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
       {/* Template Header */}
       {renderTemplateHeader()}
 
-      {/* Main Content */}
+      {/* Main Content - hidden when template header collapsed */}
+      {!isTemplateHeaderCollapsed && (
       <div className="w-full h-full p-1 pb-52 overflow-auto overflow-x-hidden">
         {/* Template Header Container */}
         <div
@@ -598,6 +606,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Bottom Menu Button - Mobile - hidden when embedded (file property, isHideHeaderAndFooter) */}
       {!controllerModel.isFilePropertyEdit && !controllerModel.param2Obj?.isHideHeaderAndFooter && (
