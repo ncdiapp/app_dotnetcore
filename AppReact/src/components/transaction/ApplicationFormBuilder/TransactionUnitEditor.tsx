@@ -2093,7 +2093,9 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     </label>
                                 )}
 
-                                {hasParent && (unitData.EmGridViewDisplayType ?? 1) === 1 && !unitData.IsVirtualUnit && (
+                                {/* Is Matrix Grid: available for RegularGrid (1) and PivotEditGrid (3) so a grid can be both
+                                    a Cartesian matrix (server GenerateMatrix) and a pivot-edit view at the same time. */}
+                                {hasParent && ((unitData.EmGridViewDisplayType ?? 1) === 1 || unitData.EmGridViewDisplayType === 3) && !unitData.IsVirtualUnit && (
                                     <label className="flex items-center gap-2">
                                         <input
                                             type="checkbox"
@@ -2102,18 +2104,6 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                             className="w-4 h-4"
                                         />
                                         <span className={`text-xs ${theme.label}`}>Is Matrix Grid</span>
-                                    </label>
-                                )}
-
-                                {hasParent && (unitData.EmGridViewDisplayType ?? 1) === 1 && !unitData.IsVirtualUnit && (
-                                    <label className="flex items-center gap-2">
-                                        <input
-                                            type="checkbox"
-                                            checked={unitData.IsMatrixPivotUnit || false}
-                                            onChange={(e) => handleUnitPropertyChange('IsMatrixPivotUnit', e.target.checked)}
-                                            className="w-4 h-4"
-                                        />
-                                        <span className={`text-xs ${theme.label}`}>Is Matrix Pivot</span>
                                     </label>
                                 )}
 
@@ -2667,7 +2657,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     isReadOnly={true}
                                     width={180}
                                     isContentHtml={true}
-                                    visible={Boolean(unitData.IsMatrixUnit || unitData.IsMatrixPivotUnit || unitData.EmGridViewDisplayType === 3)}
+                                    visible={Boolean(unitData.IsMatrixUnit || unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4)}
                                 >
                                     <FlexGridCellTemplate
                                         cellType="Cell"
@@ -2710,21 +2700,21 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     header="Is Pivot Row"
                                     isReadOnly={false}
                                     dataType="Boolean"
-                                    visible={Boolean(unitData.IsMatrixPivotUnit || unitData.EmGridViewDisplayType === 3)}
+                                    visible={Boolean(unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4)}
                                 />
                                 <FlexGridColumn
                                     binding="IsPivotColumn"
                                     header="Is Pivot Column"
                                     isReadOnly={false}
                                     dataType="Boolean"
-                                    visible={Boolean(unitData.IsMatrixPivotUnit || unitData.EmGridViewDisplayType === 3)}
+                                    visible={Boolean(unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4)}
                                 />
                                 <FlexGridColumn
                                     binding="IsPivotValue"
                                     header="Is Pivot Value"
                                     isReadOnly={false}
                                     dataType="Boolean"
-                                    visible={Boolean(unitData.IsMatrixPivotUnit || unitData.EmGridViewDisplayType === 3)}
+                                    visible={Boolean(unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4)}
                                 />
                                 <FlexGridColumn
                                     binding="PivotAggregationType"
@@ -2734,7 +2724,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     dataType="Number"
                                     dataMap={aggregationTypeDataMap}
                                     width={180}
-                                    visible={Boolean(unitData.IsMatrixPivotUnit || unitData.EmGridViewDisplayType === 3)}
+                                    visible={Boolean(unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4)}
                                 />
                                 {/* System token / trigger actions / Google address mapping */}
                                 <FlexGridColumn
