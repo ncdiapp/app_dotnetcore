@@ -7,6 +7,7 @@ import { FlexGridFilter } from '@mescius/wijmo.react.grid.filter';
 import { CollectionView } from '@mescius/wijmo';
 import { DataMap, GroupRow } from '@mescius/wijmo.grid';
 import { useTheme } from '../../../../redux/hooks/useTheme';
+import FlexGridAddOn from '../../../common/FlexGridAddOn';
 import { useEnumValues } from '../../../../hooks/useEnumDictionary';
 import { endpoints } from '../../../../webapi/endpoints';
 import { appTransactionService } from '../../../../webapi/apptransactionsvc';
@@ -2638,7 +2639,14 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             : `flex items-center justify-between border-b px-3 py-2 ${t('border_mainContentSection')} ${theme.mainContentSection}`
         }
       >
-        <div className={`font-semibold ${theme.title}`}>{unitExDto?.UnitDisplayName || 'Data Grid'}</div>
+        <div className="flex items-center gap-2">
+          <div className={`font-semibold ${theme.title}`}>{unitExDto?.UnitDisplayName || 'Data Grid'}</div>
+          <FlexGridAddOn
+            gridRef={flexGridRef}
+            storageKey={`mdGrid:${unitId}`}
+            title="Freeze / Show / Hide columns"
+          />
+        </div>
 
         {( !isGridReadOnly || hasUnitNavigation) && (
           <div className="flex items-center gap-2 flex-wrap">

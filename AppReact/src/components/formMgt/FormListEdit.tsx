@@ -15,6 +15,7 @@ import ApplicationFormBuilder from '../transaction/ApplicationFormBuilder';
 import { updateCurrentTabLabel } from '../../redux/features/ui/navigation/tabnavSlice';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { useTheme } from '../../redux/hooks/useTheme';
+import FlexGridAddOn from '../common/FlexGridAddOn';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
 import { endpoints } from '../../webapi/endpoints';
 import { DataMap } from '@mescius/wijmo.grid';
@@ -1186,6 +1187,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
           {dataModel.transactionExDto?.TransactionName ?? dataModel.currentFormStructure?.TransactionName ?? 'List Edit'}
         </div>
         <div className="flex items-center gap-2">
+          <FlexGridAddOn gridRef={flexGridRef} title="Freeze / Show / Hide columns" />
           {controllerModel.isEnableFormConfigButtons && (
             <button
               type="button"

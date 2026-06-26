@@ -1,6 +1,7 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useDispatch } from "react-redux";
 import { GridViewLayout } from "./searchViewLayout/GridViewLayout";
+import FlexGridAddOn from "../common/FlexGridAddOn";
 import { CardViewLayout } from "./searchViewLayout/CardViewLayout";
 import { CalendarViewLayout } from "./searchViewLayout/CalendarViewLayout";
 import { GanttViewLayout } from "./searchViewLayout/GanttViewLayout";
@@ -43,6 +44,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const dispatch = useDispatch<AppDispatch>();
   const { addTabAndNavigate } = useTabNavigation();
   const emAppViewType = useEnumValues('EmAppViewType');
+  const [gridControl, setGridControl] = useState<any>(null);
 
   const gridViewType = emAppViewType?.GridView ?? 1;
   const cardViewType = emAppViewType?.CardView ?? 2;
@@ -124,6 +126,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             dataModel={dataModel}
             onExecuteSearch={onExecuteSearch}
             onSelectionChanged={onSelectionChanged}
+            onGridControlReady={setGridControl}
           />
         );
       case cardViewType:
@@ -229,6 +232,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             dataModel={dataModel}
             onExecuteSearch={onExecuteSearch}
             onSelectionChanged={onSelectionChanged}
+            onGridControlReady={setGridControl}
           />
         );
     }
@@ -237,7 +241,16 @@ export const SearchView: React.FC<SearchViewProps> = ({
   return (
     <div className={`w-full h-full flex flex-col overflow-hidden ${theme.mainContentSection}`}>
       <div className={`px-3 py-1 text-xs border-b flex items-center justify-between gap-2 ${theme.label}`}>
-        <div className="truncate">{headerTitle}</div>
+        <div className="flex items-center gap-1 min-w-0">
+          <span className="truncate">{headerTitle}</span>
+          {gridControl && (
+            <FlexGridAddOn
+              grid={gridControl}
+              buttonClassName={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
+              title="Freeze / Show / Hide columns"
+            />
+          )}
+        </div>
         <div className="flex items-center gap-1 shrink-0">
           {topMenuData.toDataModel.map((m: any, idx: number) => (
             <button

@@ -25,6 +25,7 @@ import AppEntityInfoEdit from '../../admin/EntityListOfValue/AppEntityInfoEdit';
 import SimpleValueListEntityEdit from '../../admin/EntityListOfValue/SimpleValueListEntityEdit';
 import MetaDataViewDesign from '../metaDataViewDesign';
 import SystemObjectSecurityEditorPopup from '../../admin/CompanySecuritySetting/SystemObjectSecurityEditorPopup';
+import FlexGridAddOn from '../../common/FlexGridAddOn';
 
 interface TransactionUnitEditorProps {
     isOpen: boolean;
@@ -58,6 +59,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     const isModifiedRef = React.useRef(false);
     const originalUnitDataRef = React.useRef<any>(null);
     const flexGridRef = React.useRef<any>(null);
+    const [fieldGridControl, setFieldGridControl] = useState<any>(null);
     const [tableColumnSelectorDialog, setTableColumnSelectorDialog] = useState<{ isOpen: boolean }>({ isOpen: false });
     const [isDataLoadDialogOpen, setIsDataLoadDialogOpen] = useState(false);
     const [linkTargetEditor, setLinkTargetEditor] = useState<{ usageType: number; title: string } | null>(null);
@@ -2177,7 +2179,16 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                 {/* Fields Grid */}
                 <div className="flex-1 overflow-hidden flex flex-col">
                     <div className={`px-4 py-2 border-b ${theme.mainContentSection} flex items-center justify-between`}>
-                        <div className={`text-sm font-semibold ${theme.title}`}>Unit Fields</div>
+                        <div className="flex items-center gap-2">
+                            <div className={`text-sm font-semibold ${theme.title}`}>Unit Fields</div>
+                            <FlexGridAddOn
+                                grid={fieldGridControl}
+                                gridRef={flexGridRef}
+                                defaultFrozenColumns={3}
+                                storageKey="txnUnitFieldGrid"
+                                title="Freeze / Show / Hide columns"
+                            />
+                        </div>
                         <div className="flex items-center gap-2 flex-wrap">
                             {/* Alter Table / Edit Query Button */}
                             {isPhysicalModelTableCreated && unitData?.DataBaseTableName && !isReadOnly && onEditTable && (
@@ -2279,6 +2290,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 selectionMode="Row"
                                 style={{ height: '100%', border: 'none' }}
                                 cellEditEnded={handleCellEditEnded}
+                                initialized={(g: any) => setFieldGridControl(g)}
                             >
                                 <FlexGridFilter />
                                 <FlexGridCellTemplate

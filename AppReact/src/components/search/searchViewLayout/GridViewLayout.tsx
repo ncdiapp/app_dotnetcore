@@ -40,6 +40,8 @@ interface GridViewLayoutProps {
   dataModel?: any;
   onExecuteSearch?: () => Promise<void>;
   onSelectionChanged?: (selectedItems: any[]) => void;
+  /** Exposes the underlying Wijmo FlexGrid control to the parent (e.g. for FlexGridAddOn). */
+  onGridControlReady?: (grid: any) => void;
 }
 
 // Aggregation function types enum
@@ -104,7 +106,8 @@ export const GridViewLayout: React.FC<GridViewLayoutProps> = ({
   viewDataList,
   dataModel,
   onExecuteSearch,
-  onSelectionChanged
+  onSelectionChanged,
+  onGridControlReady
 }) => {
   const dispatch = useDispatch();
   const { addTabAndNavigate } = useTabNavigation();
@@ -116,6 +119,10 @@ export const GridViewLayout: React.FC<GridViewLayoutProps> = ({
     y: number;
     rowItem: any | null;
   }>({ visible: false, x: 0, y: 0, rowItem: null });
+
+  useEffect(() => {
+    return () => { onGridControlReady?.(null); };
+  }, [onGridControlReady]);
 
   const filterableBindings = useMemo(() => {
     if (!Array.isArray(viewDto?.Columns)) {
@@ -531,6 +538,7 @@ export const GridViewLayout: React.FC<GridViewLayoutProps> = ({
       <div className={`h-1 flex-auto ${theme.mainContentSection} overflow-hidden`}>
         <FlexGrid
           ref={flex}
+          initialized={(g: any) => onGridControlReady?.(g)}
           itemsSource={gridDataCV}
           isReadOnly={false}
           selectionMode={isLinkedSearchMode && !isSingleSelection ? "ListBox" : "CellRange"}
