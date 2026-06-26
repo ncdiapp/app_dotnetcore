@@ -535,8 +535,8 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
         Number.isFinite(gridViewDisplayType) && (gridViewDisplayType === 5 || gridViewDisplayType === 6);
       
       return (
-          <div className="w-full flex flex-row items-start gap-1">
-              <div className={`w-1 flex-auto min-w-0 overflow-hidden ${isAvailableSelectRuntime ? 'flex h-full min-h-[420px] flex-col' : ''}`}
+          <div className="w-full h-full flex flex-row items-start gap-1">
+              <div className={`w-1 flex-auto h-full overflow-hidden ${isAvailableSelectRuntime ? 'flex flex-col' : ''}`}
                   style={{ position: 'relative' }}>
                    <DataGridLayout
                      unitExDto={unitExDto}

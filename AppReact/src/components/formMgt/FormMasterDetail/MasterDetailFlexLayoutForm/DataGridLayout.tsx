@@ -31,6 +31,7 @@ import {
   type MasterDataPickerContext,
 } from '../../linkedSearchUtils';
 import PivotEditGridPanel from './PivotEditGridPanel';
+import MatrixPivotEditGrid from './MatrixPivotEditGrid';
 import {
   enrichTransactionFieldFromDict,
   isRuntimeTransactionFieldVisible,
@@ -1237,6 +1238,17 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const pivotBaseSizeId = isPivotEditGrid
     ? (dataModel?.currentFormData?.DictOneToOneFields?.BaseSizeDetailId ?? null)
     : null;
+  // POM grading uses the specialized PivotEditGridPanel (amber base-size column, delta lock).
+  // Every other pivot-edit unit uses the generic AppPivotDto-driven MatrixPivotEditGrid.
+  const isPomGradingPivot = Boolean(
+    pivotDto &&
+      (((pivotDto.PivotColumnFields ?? []) as any[]).some(
+        (f: any) => f?.DataBaseFieldName === 'SizeRunSizeId'
+      ) ||
+        ((pivotDto.PivotValueFields ?? []) as any[]).some(
+          (f: any) => f?.DataBaseFieldName === 'GradingDelta'
+        ))
+  );
 
   const availableSourceUnitId = unitExDto?.AvailableSourceUnitId ?? null;
 
@@ -1847,6 +1859,40 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       restoreStandaloneColumnDataMap(s, e.col);
     }
   };
+
+  // Persist edits made in the generic pivot-edit grid. The child hands back the rebuilt
+  // flat AppChildDataDto rows (incl. hidden PK / link fields), mirroring Angular convertPivotToFlat.
+  const handlePivotRowsChange = useCallback(
+    (flatRows: any[]) => {
+      const currentDataModel = dataModelRef.current;
+      const unitIdStrLocal = String(unitId);
+      if (dictOneToManyHostRow) {
+        tryMutateInPlace(() => {
+          dictOneToManyHostRow.IsDirty = true;
+          dictOneToManyHostRow.DictOneToManyFields = {
+            ...(dictOneToManyHostRow.DictOneToManyFields ?? {}),
+            [unitIdStrLocal]: flatRows,
+          };
+        });
+        queueNestedGridRecompute();
+      }
+      commitOptimisticUnitRows(flatRows);
+      deferDataModelChange({
+        ...currentDataModel,
+        currentFormData: {
+          ...nextFormDataForUnitRowUpdate(currentDataModel, unitIdStrLocal, flatRows),
+          IsDirty: true,
+        },
+      });
+    },
+    [
+      commitOptimisticUnitRows,
+      deferDataModelChange,
+      dictOneToManyHostRow,
+      queueNestedGridRecompute,
+      unitId,
+    ]
+  );
 
   // Handle add row - always add at the bottom
   const [isGeneratingMatrix, setIsGeneratingMatrix] = useState(false);
@@ -2620,8 +2666,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
 
   return (
     <div
-      className={`w-full border rounded ${theme.mainContentSection} ${
-        showAvailableSelectRuntime ? 'flex min-h-[360px] flex-col' : ''
+      className={`w-full h-full border flex flex-col rounded ${theme.mainContentSection} ${
+        showAvailableSelectRuntime ? 'min-h-[100px]' : ''
       }`}
       style={
         gridContentMaxHeight
@@ -2708,29 +2754,15 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
 
       {/* Grid Content — Available/Selected pair (EmGridViewDisplayType 5 / 6) or single grid */}
       <div
-        className={
+        className={`h-1 flex-auto ${
           showAvailableSelectPairSplit
-            ? 'flex flex-row flex-auto min-h-0 items-stretch gap-6 overflow-hidden px-4 py-2'
+            ? 'flex flex-row h-1 flex-auto min-h-0 items-stretch gap-6 overflow-hidden px-4 py-2'
             : showMultipleSelectBoxUi
-              ? 'flex min-h-0 flex-auto flex-col overflow-hidden px-4 py-2'
+              ? 'flex h-1 flex-auto flex-col overflow-hidden px-4 py-2'
               : showAvailableSelectConfigWarning
-                ? 'flex min-h-0 flex-auto flex-col gap-1 overflow-auto'
-                : 'overflow-auto'
-        }
-        style={
-          showAvailableSelectPairSplit || showMultipleSelectBoxUi
-            ? {
-                flex: '1 1 auto',
-                minHeight: 0,
-                height: '100%',
-                maxHeight: gridContentMaxHeight ?? undefined,
-              }
-            : {
-                maxHeight: gridContentMaxHeight ?? '400px',
-                flex: '1 1 auto',
-                minHeight: 0,
-              }
-        }
+                ? 'flex h-1 flex-auto flex-col gap-1 overflow-auto'
+                : ''
+        }`}        
       >
         {showAvailableSelectConfigWarning && (
           <div className={`shrink-0 border-b px-2 py-1 text-xs ${t('border_mainContentSection')} ${theme.mainContentSection} ${theme.label}`}>
@@ -2752,7 +2784,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                   AvailableSelectGridPair
                 </span>
               </div>
-              <div className="h-1 w-full min-h-0 flex-auto overflow-hidden">
+              <div className="h-1 w-full flex-auto">
                 <FlexGrid
                   ref={availableFlexGridRef}
                   className="h-full w-full"
@@ -2875,13 +2907,27 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
         )}
 
         {/* Pivot edit grid — EmGridViewDisplayType = 3 */}
-        {isPivotEditGrid && pivotDto && (
-          <div className="h-1 w-full min-h-0 flex-auto overflow-hidden">
+        {isPivotEditGrid && pivotDto && isPomGradingPivot && (
+          <div className="h-full w-full">
             <PivotEditGridPanel
               pivotDto={pivotDto}
               rows={pivotRows}
               isReadOnly={isGridReadOnly}
               baseSizeId={pivotBaseSizeId}
+            />
+          </div>
+        )}
+
+        {isPivotEditGrid && pivotDto && !isPomGradingPivot && (
+          <div className="h-full w-full">
+            <MatrixPivotEditGrid
+              pivotDto={pivotDto}
+              rows={pivotRows}
+              isReadOnly={isGridReadOnly}
+              resolveDataMap={(fieldId: any) =>
+                buildStandaloneDataMapFromFormStructure(dataModelRef.current, String(fieldId))
+              }
+              onRowsChange={handlePivotRowsChange}
             />
           </div>
         )}
@@ -2915,10 +2961,10 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           <div
             className={
               showAvailableSelectPairSplit
-                ? 'h-1 flex-auto min-h-0 overflow-auto w-full'
+                ? 'h-1 flex-auto overflow-auto w-full'
                 : showAvailableSelectConfigWarning
-                  ? 'w-full flex-auto min-h-0 overflow-auto'
-                  : 'contents'
+                  ? 'h-1 flex-auto w-full overflow-auto'
+                  : 'h-1 flex-auto w-full contents'
             }
           >
             <FlexGrid
@@ -2930,7 +2976,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             allowSorting={false}
             headersVisibility="All"
             className="w-full h-full"
-            style={{ height: '100%', width: '100%', border: 'none' }}
+            style={{ width: '100%', border: 'none' }}
             beginningEdit={handleCellEditBeginning}
             cellEditEnding={handleCellEditEnding}
             cellEditEnded={handleCellEditEnded}
