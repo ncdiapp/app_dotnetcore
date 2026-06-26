@@ -575,6 +575,22 @@ class AppTransactionService {
     return response.json();
   }
 
+  /**
+   * Master-detail runtime: regenerate matrix unit rows (Cartesian product of the matrix
+   * foreign-key field values). Posts the full AppMasterDetailDto and returns the rebuilt one.
+   * Angular: appTransactionSvc.generateMatrix(currentFormData)
+   * WebAPI: POST /webapi/AppTransaction/GenerateMatrix
+   */
+  async generateMatrix(appformDataDto: any): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/AppTransaction/GenerateMatrix`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(appformDataDto ?? null),
+    });
+    if (!response.ok) throw new Error('Failed to generate matrix');
+    return response.json();
+  }
+
   /** Master-detail runtime: run validation + calculation without saving. */
   async validateAndCalculateTransactionData(rootAppformDataDto: any): Promise<any> {
     const response = await fetch(`${endpoints.BASE_URL}/webapi/AppTransaction/ValidateAndCalculateTransactionData`, {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/busyLoaderSlice';
@@ -127,6 +127,25 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         relationTableColumnOptions: []
     });
     const [linkTargetDropdownOpen, setLinkTargetDropdownOpen] = useState(false);
+
+    // Matrix Grid Foreignkey popup (Angular: MatrixFkPopup / OpenMatrixFkPopup / assignMatrixFkMapping)
+    const [matrixFkPopupState, setMatrixFkPopupState] = useState<{
+        isOpen: boolean;
+        field: any | null;
+        currentFieldName: string;
+        sourceUnitId: number | null;
+        matrixForeignKeyFieldId: number | null;
+        sourceUnitOptions: Array<{ Id: number; Display: string }>;
+        sourceFieldOptions: Array<{ Id: number; Display: string }>;
+    }>({
+        isOpen: false,
+        field: null,
+        currentFieldName: '',
+        sourceUnitId: null,
+        matrixForeignKeyFieldId: null,
+        sourceUnitOptions: [],
+        sourceFieldOptions: []
+    });
 
     // Enum values
     const emAppDataType = useEnumValues('EmAppDataType');
@@ -1345,7 +1364,137 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         setParentDataSourceMappingState((prev) => ({ ...prev, isOpen: false }));
     };
 
-    // (old lightweight datasource selector handlers removed in favor of full implementation above)
+    // ── Matrix Grid Foreignkey popup ─────────────────────────────────────────
+    // Build a lookup of every transaction field in the form by Id (Angular: dictTransactionFieldIdAndObj).
+    const collectAllUnits = useCallback((list: any[]): any[] => {
+        const out: any[] = [];
+        const visit = (arr: any[]) => {
+            (arr || []).forEach((u: any) => {
+                out.push(u);
+                if (u?.Children?.length) visit(u.Children);
+            });
+        };
+        visit(list || []);
+        return out;
+    }, []);
+
+    const allFieldsById = useMemo(() => {
+        const dict: Record<string, any> = {};
+        const units = collectAllUnits(transactionData?.AppTransactionUnitList ?? []);
+        units.forEach((u: any) => {
+            (u?.AppTransactionFieldList ?? []).forEach((f: any) => {
+                if (f?.Id != null) dict[String(f.Id)] = f;
+            });
+        });
+        // include the currently edited unit's (possibly unsaved) fields
+        (unitData?.AppTransactionFieldList ?? []).forEach((f: any) => {
+            if (f?.Id != null) dict[String(f.Id)] = f;
+        });
+        return dict;
+    }, [transactionData, unitData, collectAllUnits]);
+
+    // Angular getDdlColumnNameById: resolve a field id to its display column name.
+    const getDdlColumnNameById = useCallback((fieldId: any): string => {
+        if (fieldId == null) return '';
+        const f = allFieldsById[String(fieldId)];
+        if (!f) return String(fieldId);
+        return f.DisplayName || f.DataBaseFieldName || String(fieldId);
+    }, [allFieldsById]);
+
+    // Source-unit options = root unit's direct children (Angular: AppTransactionUnitList[0].Children).
+    const matrixFkSourceUnitOptions = useMemo(() => {
+        const root = transactionData?.AppTransactionUnitList?.[0] ?? null;
+        const children: any[] = root?.Children ?? [];
+        return children
+            .filter((u: any) => u?.Id != null)
+            .map((u: any) => ({
+                Id: Number(u.Id),
+                Display: u.UnitDisplayName || u.DataBaseTableName || `Unit ${u.Id}`
+            }));
+    }, [transactionData]);
+
+    const buildMatrixFkSourceFieldOptions = useCallback((sourceUnitId: number | null): Array<{ Id: number; Display: string }> => {
+        if (sourceUnitId == null) return [];
+        const units = collectAllUnits(transactionData?.AppTransactionUnitList ?? []);
+        const unit = units.find((u: any) => Number(u?.Id) === Number(sourceUnitId));
+        return (unit?.AppTransactionFieldList ?? [])
+            .filter((f: any) => f?.Id != null)
+            .map((f: any) => ({
+                Id: Number(f.Id),
+                Display: f.DisplayName || f.DataBaseFieldName || String(f.Id)
+            }));
+    }, [transactionData, collectAllUnits]);
+
+    const handleOpenMatrixFkPopup = useCallback((field: any) => {
+        if (!field || !field.Id) return;
+        // Angular: only DDL / AutoComplete / SearchAbleDDL fields with a unit can map a matrix FK.
+        const ctl = Number(field.ControlType);
+        const allowed: number[] = [
+            controlTypeIdsForDatasource.DDL,
+            controlTypeIdsForDatasource.AutoComplete!,
+            controlTypeIdsForDatasource.SearchAbleDDL!
+        ].filter((v) => typeof v === 'number') as number[];
+        if (!allowed.includes(ctl)) return;
+
+        // Pre-select the source unit from the existing FK field mapping, if any.
+        let sourceUnitId: number | null = null;
+        if (field.MatrixForeignKeyFieldId) {
+            const fkField = allFieldsById[String(field.MatrixForeignKeyFieldId)];
+            if (fkField?.TransactionUnitId != null) sourceUnitId = Number(fkField.TransactionUnitId);
+        }
+
+        setMatrixFkPopupState({
+            isOpen: true,
+            field,
+            currentFieldName: field.DisplayName || field.DataBaseFieldName || '',
+            sourceUnitId,
+            matrixForeignKeyFieldId: field.MatrixForeignKeyFieldId ?? null,
+            sourceUnitOptions: matrixFkSourceUnitOptions,
+            sourceFieldOptions: buildMatrixFkSourceFieldOptions(sourceUnitId)
+        });
+    }, [controlTypeIdsForDatasource, allFieldsById, matrixFkSourceUnitOptions, buildMatrixFkSourceFieldOptions]);
+
+    const handleMatrixFkSourceUnitChange = useCallback((sourceUnitId: number | null) => {
+        setMatrixFkPopupState((prev) => ({
+            ...prev,
+            sourceUnitId,
+            // changing the source unit resets the field choice (Angular matrixFkPopupSourceUnitChangeChanged)
+            matrixForeignKeyFieldId: null,
+            sourceFieldOptions: buildMatrixFkSourceFieldOptions(sourceUnitId)
+        }));
+    }, [buildMatrixFkSourceFieldOptions]);
+
+    const handleApplyMatrixFkMapping = useCallback(() => {
+        const { field, matrixForeignKeyFieldId } = matrixFkPopupState;
+        if (field) {
+            field.MatrixForeignKeyFieldId = matrixForeignKeyFieldId ?? null;
+            field.IsModified = true;
+            field.MatrixForeignKeyFieldIdSelector = matrixForeignKeyFieldId
+                ? getDdlColumnNameById(matrixForeignKeyFieldId)
+                : '';
+            if (fieldCollectionView) fieldCollectionView.refresh();
+            setIsModified(true);
+            isModifiedRef.current = true;
+        }
+        setMatrixFkPopupState((prev) => ({ ...prev, isOpen: false, field: null }));
+    }, [matrixFkPopupState, getDdlColumnNameById, fieldCollectionView]);
+
+    const handleClearMatrixFkMapping = useCallback(() => {
+        const { field } = matrixFkPopupState;
+        if (field) {
+            field.MatrixForeignKeyFieldId = null;
+            field.IsModified = true;
+            field.MatrixForeignKeyFieldIdSelector = '';
+            if (fieldCollectionView) fieldCollectionView.refresh();
+            setIsModified(true);
+            isModifiedRef.current = true;
+        }
+        setMatrixFkPopupState((prev) => ({ ...prev, isOpen: false, field: null }));
+    }, [matrixFkPopupState, fieldCollectionView]);
+
+    const handleCloseMatrixFkPopup = useCallback(() => {
+        setMatrixFkPopupState((prev) => ({ ...prev, isOpen: false, field: null }));
+    }, []);
 
     const handleCellEditEnded = (sender: any, e: any) => {
         // Mark unit as modified when any cell is edited
@@ -1906,7 +2055,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     <div className={`w-32 text-xs ${theme.label} mr-2`}>Grid Display Type</div>
                                     <select
                                         value={unitData.EmGridViewDisplayType || 1}
-                                        onChange={(e) => handleUnitPropertyChange('EmGridViewDisplayType', parseInt(e.target.value))}
+                                        onChange={(e) => handleUnitPropertyChange('EmGridViewDisplayType', parseInt(e.target.value) || 1)}
                                         className={`h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none w-[260px]`}
                                     >
                                         {gridDisplayTypeOptions.map((item: any) => (
@@ -1918,7 +2067,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 </div>
                             )}
 
-                            {hasParent && unitData.EmGridViewDisplayType === 1 && (
+                            {hasParent && (unitData.EmGridViewDisplayType ?? 1) === 1 && (
                                 <div className="flex items-center">
                                     <div className={`text-xs ${theme.label} w-[250px] mr-2`}>Edit Row On Popup When Width Less Than</div>
                                     <input
@@ -1944,7 +2093,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     </label>
                                 )}
 
-                                {hasParent && unitData.EmGridViewDisplayType === 1 && !unitData.IsVirtualUnit && (
+                                {hasParent && (unitData.EmGridViewDisplayType ?? 1) === 1 && !unitData.IsVirtualUnit && (
                                     <label className="flex items-center gap-2">
                                         <input
                                             type="checkbox"
@@ -1956,7 +2105,19 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     </label>
                                 )}
 
-                                {hasParent && unitData.EmGridViewDisplayType === 1 && (
+                                {hasParent && (unitData.EmGridViewDisplayType ?? 1) === 1 && !unitData.IsVirtualUnit && (
+                                    <label className="flex items-center gap-2">
+                                        <input
+                                            type="checkbox"
+                                            checked={unitData.IsMatrixPivotUnit || false}
+                                            onChange={(e) => handleUnitPropertyChange('IsMatrixPivotUnit', e.target.checked)}
+                                            className="w-4 h-4"
+                                        />
+                                        <span className={`text-xs ${theme.label}`}>Is Matrix Pivot</span>
+                                    </label>
+                                )}
+
+                                {hasParent && (unitData.EmGridViewDisplayType ?? 1) === 1 && (
                                     <label className="flex items-center gap-2">
                                         <input
                                             type="checkbox"
@@ -2499,36 +2660,71 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                         }}
                                     />
                                 </FlexGridColumn>
-                                {/* Matrix FK */}
+                                {/* Matrix FK — click to assign the matrix foreign-key field (Angular OpenMatrixFkPopup) */}
                                 <FlexGridColumn
                                     binding="MatrixForeignKeyFieldIdSelector"
                                     header="Matrix ForeignKey Field"
                                     isReadOnly={true}
-                                    width={150}
+                                    width={180}
                                     isContentHtml={true}
-                                    visible={Boolean(unitData.IsMatrixUnit || unitData.EmGridViewDisplayType === 3)}
-                                />
+                                    visible={Boolean(unitData.IsMatrixUnit || unitData.IsMatrixPivotUnit || unitData.EmGridViewDisplayType === 3)}
+                                >
+                                    <FlexGridCellTemplate
+                                        cellType="Cell"
+                                        template={(cell: any) => {
+                                            const item = cell.item;
+                                            if (!item) return null;
+                                            const ctl = Number(item.ControlType);
+                                            const allowed: number[] = [
+                                                controlTypeIdsForDatasource.DDL,
+                                                controlTypeIdsForDatasource.AutoComplete!,
+                                                controlTypeIdsForDatasource.SearchAbleDDL!,
+                                            ].filter((v) => typeof v === 'number') as number[];
+                                            if (!allowed.includes(ctl)) {
+                                                return <span className="text-xs text-gray-500"> </span>;
+                                            }
+                                            const fkName = item.MatrixForeignKeyFieldId
+                                                ? getDdlColumnNameById(item.MatrixForeignKeyFieldId)
+                                                : '';
+                                            return (
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className={`px-1 py-0.5 text-[10px] rounded ${theme.button_default}`}
+                                                        onClick={() => handleOpenMatrixFkPopup(item)}
+                                                        title="Matrix Grid Foreignkey"
+                                                    >
+                                                        <i className="fa-solid fa-link" />
+                                                    </button>
+                                                    <span className="text-xs truncate" title={fkName}>
+                                                        {fkName}
+                                                    </span>
+                                                </div>
+                                            );
+                                        }}
+                                    />
+                                </FlexGridColumn>
                                 {/* Pivot columns */}
                                 <FlexGridColumn
                                     binding="IsPivotRow"
                                     header="Is Pivot Row"
                                     isReadOnly={false}
                                     dataType="Boolean"
-                                    visible={Boolean(unitData.IsMatrixUnit || unitData.EmGridViewDisplayType === 3)}
+                                    visible={Boolean(unitData.IsMatrixPivotUnit || unitData.EmGridViewDisplayType === 3)}
                                 />
                                 <FlexGridColumn
                                     binding="IsPivotColumn"
                                     header="Is Pivot Column"
                                     isReadOnly={false}
                                     dataType="Boolean"
-                                    visible={Boolean(unitData.IsMatrixUnit || unitData.EmGridViewDisplayType === 3)}
+                                    visible={Boolean(unitData.IsMatrixPivotUnit || unitData.EmGridViewDisplayType === 3)}
                                 />
                                 <FlexGridColumn
                                     binding="IsPivotValue"
                                     header="Is Pivot Value"
                                     isReadOnly={false}
                                     dataType="Boolean"
-                                    visible={Boolean(unitData.IsMatrixUnit || unitData.EmGridViewDisplayType === 3)}
+                                    visible={Boolean(unitData.IsMatrixPivotUnit || unitData.EmGridViewDisplayType === 3)}
                                 />
                                 <FlexGridColumn
                                     binding="PivotAggregationType"
@@ -2538,7 +2734,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     dataType="Number"
                                     dataMap={aggregationTypeDataMap}
                                     width={180}
-                                    visible={Boolean(unitData.IsMatrixUnit || unitData.EmGridViewDisplayType === 3)}
+                                    visible={Boolean(unitData.IsMatrixPivotUnit || unitData.EmGridViewDisplayType === 3)}
                                 />
                                 {/* System token / trigger actions / Google address mapping */}
                                 <FlexGridColumn
@@ -3417,6 +3613,89 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 type="button"
                                 className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
                                 onClick={handleApplyParentDataSourceMapping}
+                            >
+                                Ok
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Matrix Grid Foreignkey popup (Angular: MatrixFkPopup) */}
+            {matrixFkPopupState.isOpen && (
+                <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/50">
+                    <div
+                        className={`${theme.mainContentSection} rounded-md shadow-lg border flex flex-col overflow-hidden`}
+                        style={{ width: '420px', maxWidth: '95vw' }}
+                    >
+                        <div className={`flex items-center justify-between px-3 py-2 border-b ${theme.mainContentSection}`}>
+                            <div className={`text-sm font-semibold ${theme.title}`}>Matrix Grid Foreignkey</div>
+                            <button
+                                type="button"
+                                onClick={handleCloseMatrixFkPopup}
+                                className={`p-1 rounded ${theme.button_default}`}
+                                aria-label="Close"
+                            >
+                                <i className="fa-solid fa-times" aria-hidden />
+                            </button>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-auto p-3 text-xs space-y-2">
+                            <div className="flex items-center">
+                                <span className="w-32">Current Field</span>
+                                <div className="flex-1 truncate" title={matrixFkPopupState.currentFieldName}>
+                                    {matrixFkPopupState.currentFieldName}
+                                </div>
+                            </div>
+                            <div className="flex items-center">
+                                <span className="w-32">Foreign Unit</span>
+                                <select
+                                    className={`flex-1 px-2 py-1 border rounded ${theme.inputBox}`}
+                                    value={matrixFkPopupState.sourceUnitId ?? ''}
+                                    onChange={(e) =>
+                                        handleMatrixFkSourceUnitChange(e.target.value ? Number(e.target.value) : null)
+                                    }
+                                >
+                                    <option value="">(None)</option>
+                                    {matrixFkPopupState.sourceUnitOptions.map((u) => (
+                                        <option key={u.Id} value={u.Id}>
+                                            {u.Display}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex items-center">
+                                <span className="w-32">Foreignkey Field</span>
+                                <select
+                                    className={`flex-1 px-2 py-1 border rounded ${theme.inputBox}`}
+                                    value={matrixFkPopupState.matrixForeignKeyFieldId ?? ''}
+                                    onChange={(e) =>
+                                        setMatrixFkPopupState((prev) => ({
+                                            ...prev,
+                                            matrixForeignKeyFieldId: e.target.value ? Number(e.target.value) : null
+                                        }))
+                                    }
+                                >
+                                    <option value="">(None)</option>
+                                    {matrixFkPopupState.sourceFieldOptions.map((f) => (
+                                        <option key={f.Id} value={f.Id}>
+                                            {f.Display}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                        <div className={`flex justify-end gap-2 px-3 py-2 border-t ${theme.mainContentSection}`}>
+                            <button
+                                type="button"
+                                className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
+                                onClick={handleClearMatrixFkMapping}
+                            >
+                                Clear
+                            </button>
+                            <button
+                                type="button"
+                                className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
+                                onClick={handleApplyMatrixFkMapping}
                             >
                                 Ok
                             </button>

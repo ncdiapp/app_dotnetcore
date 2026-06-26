@@ -11,6 +11,8 @@ import { useEnumValues } from '../../../../hooks/useEnumDictionary';
 import { endpoints } from '../../../../webapi/endpoints';
 import { appTransactionService } from '../../../../webapi/apptransactionsvc';
 import { store, type RootState } from '../../../../redux/store';
+import { setIsBusy, setIsNotBusy } from '../../../../redux/features/ui/feedback/busyLoaderSlice';
+import { addErrorMessage, MessageType } from '../../../../redux/features/ui/feedback/errorMessageSlice';
 import { appFileService } from '../../../../webapi/appfilesvc';
 import FileUploader from '../../../common/FileUploader';
 import { FolderNavigation } from '../../../folderNavigation';
@@ -1219,6 +1221,9 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const isMultipleSelectBox = gridViewDisplayType === multiBoxDisplayVal;
   const isAvailableSelectLayout = isAvailableSelectPair || isMultipleSelectBox;
   const isPivotEditGrid = gridViewDisplayType === pivotEditVal;
+  // Matrix unit: rows are (re)generated server-side as the Cartesian product of the
+  // matrix foreign-key field values (Angular generateMatrix / GenerateMatrix endpoint).
+  const isMatrixUnit = Boolean(unitExDto?.IsMatrixUnit ?? (unitExDto as any)?.isMatrixUnit);
 
   // Pivot edit grid data — only evaluated when EmGridViewDisplayType === 3
   const pivotDto = isPivotEditGrid
@@ -1843,6 +1848,64 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   };
 
   // Handle add row - always add at the bottom
+  const [isGeneratingMatrix, setIsGeneratingMatrix] = useState(false);
+
+  // Blank clone row template for this unit (used as the matrix generation seed; mirrors handleAddRow).
+  const buildBlankCloneRow = useCallback(() => {
+    const newRow: any = { DictOneToOneFields: {}, DictOneToManyFields: {} };
+    grandChildUnitList.forEach((childUnit: any) => {
+      const childUnitId = childUnit?.Id ?? childUnit?.unitId;
+      if (childUnitId != null) {
+        newRow.DictOneToManyFields[String(childUnitId)] = [];
+      }
+    });
+    (unitExDto?.AppTransactionFieldList ?? []).forEach((field: any) => {
+      if (field?.DataBaseFieldName) {
+        newRow.DictOneToOneFields[field.DataBaseFieldName] = null;
+      }
+    });
+    return newRow;
+  }, [grandChildUnitList, unitExDto]);
+
+  // Matrix grid: regenerate this unit's rows from the foreign-key field values (Angular generateMatrix).
+  const handleGenerateMatrix = useCallback(async () => {
+    const unitIdStr = unitId.toString();
+    const currentDataModel = dataModelRef.current;
+    const formData = currentDataModel?.currentFormData;
+    if (!formData) return;
+    setIsGeneratingMatrix(true);
+    store.dispatch(setIsBusy());
+    try {
+      // Deep clone to build the POST payload without mutating the live data model.
+      const payload = JSON.parse(JSON.stringify(formData));
+      // EditCloneDictOneToManyFields is the per-unit blank-row clone template the server uses to
+      // seed new combinations. Angular fallback: EditCloneDictOneToManyFields || copy(DictOneToManyFields).
+      const editClone = payload.EditCloneDictOneToManyFields
+        ? { ...payload.EditCloneDictOneToManyFields }
+        : (payload.DictOneToManyFields ? JSON.parse(JSON.stringify(payload.DictOneToManyFields)) : {});
+      if (!Array.isArray(editClone[unitIdStr]) || editClone[unitIdStr].length === 0) {
+        editClone[unitIdStr] = [buildBlankCloneRow()];
+      }
+      payload.EditCloneDictOneToManyFields = editClone;
+
+      const result = await appTransactionService.generateMatrix(payload);
+      if (result) {
+        onDataModelChangeRef.current({
+          ...currentDataModel,
+          currentFormData: { ...result, IsDirty: true },
+        });
+      }
+    } catch (e) {
+      appHelper.debugLog('handleGenerateMatrix failed', e);
+      store.dispatch(
+        addErrorMessage({ message: 'Failed to generate matrix grid data.', type: MessageType.Error }),
+      );
+    } finally {
+      store.dispatch(setIsNotBusy());
+      setIsGeneratingMatrix(false);
+    }
+  }, [unitId, buildBlankCloneRow]);
+
   const handleAddRow = () => {
     const unitIdStr = unitId.toString();
     const currentDataModel = dataModelRef.current;
@@ -2609,6 +2672,22 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                 >
                   <i className="fa fa-minus mr-1" />
                   Delete Row
+                </button>
+                )}
+                {isMatrixUnit && (
+                <button
+                  type="button"
+                  disabled={isGeneratingMatrix}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleGenerateMatrix();
+                  }}
+                  className={`px-2 py-1 ${theme.button_default} rounded text-xs hover:shadow-sm disabled:opacity-50`}
+                  title="Generate matrix rows from the foreign-key field values"
+                >
+                  <i className={`fa ${isGeneratingMatrix ? 'fa-spinner fa-spin' : 'fa-table-cells'} mr-1`} />
+                  Generate Matrix
                 </button>
                 )}
               </>
