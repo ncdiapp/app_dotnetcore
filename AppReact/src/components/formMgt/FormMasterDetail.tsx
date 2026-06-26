@@ -41,6 +41,14 @@ export type FormMasterDetailSaveState = {
     isNewForm: boolean;
 };
 
+/**
+ * Stable empty default for `templateHeaderForms`. A `= []` default parameter creates a NEW array
+ * on every render; effects/memos that depend on it then re-run every render. The template-header
+ * embedded <FormMasterDetail> (rendered without this prop) used to get a fresh [] each render,
+ * which made the header-API reset effect loop infinitely (sustained CPU in the form group).
+ */
+const EMPTY_TEMPLATE_HEADER_FORMS: TemplateHeaderEmbeddedForm[] = [];
+
 type FormMasterDetailProps = {
     embedded?: FormMasterDetailEmbeddedProps | null;
     /** Template form-group header transactions rendered inside TemplateHeaderContainer (menu stays on main). */
@@ -100,7 +108,7 @@ const TemplateHeaderEmbeddedForm: React.FC<TemplateHeaderEmbeddedFormProps> = ({
 
 const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
     embedded = null,
-    templateHeaderForms = [],
+    templateHeaderForms = EMPTY_TEMPLATE_HEADER_FORMS,
     onFormActionApiReady,
     onFormSaveStateChange,
     forceEnableFormConfigButtons,
@@ -300,6 +308,10 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
     }, []);
 
     useEffect(() => {
+        // Only reset (and bump versions) when there is actually cached header state to clear.
+        // Bumping versions unconditionally here would re-render the whole form subtree on every
+        // change of `templateHeaderForms`, and combined with an unstable [] default it loops.
+        if (headerFormApisRef.current.size === 0 && headerSaveStateRef.current.size === 0) return;
         headerFormApisRef.current.clear();
         headerSaveStateRef.current.clear();
         setHeaderApiVersion((v) => v + 1);
@@ -395,12 +407,10 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
         const layoutCacheKey = `${transactionId}-${rootPrimaryKeyValue ?? ''}`;
         if (dynamicLayoutCacheRef.current.has(layoutCacheKey)) {
             const cachedData = dynamicLayoutCacheRef.current.get(layoutCacheKey);
-            appHelper.debugLog(`Using cached DynamicLayout for ${layoutCacheKey}`);
             return cachedData;
         }
 
         try {
-            appHelper.debugLog(`Loading DynamicLayout from API for ${layoutCacheKey}`);
             const transGroupId = controllerModel.param2Obj?.transGroupId ?? controllerModel.param2Obj?.LinkTargetTransactionGroupId;
             const transactionExDto = await dynamicLayoutService.getTransactionForm(
                 transactionId,

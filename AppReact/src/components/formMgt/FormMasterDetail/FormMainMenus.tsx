@@ -427,8 +427,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
       dispatch(setIsBusy());
       // TODO: Implement delete API call
       // await appTransactionService.deleteFormData(...);
-      console.log('Record deleted successfully');
-      
+
       if (onDelete) onDelete();
     } catch (error) {
       console.error('Error deleting form:', error);
@@ -1038,9 +1037,8 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
   };
   
   // Handle Report
-  const handleReport = (reportId: number) => {
+  const handleReport = (_reportId: number) => {
     // TODO: Implement report opening
-    console.log('Report clicked:', reportId);
   };
   
   // Render Configuration Menu (Admin only)
@@ -1579,7 +1577,6 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
         title="Import & Close"
         onClick={() => {
           // TODO: Implement import and close
-          console.log('Import & Close clicked');
         }}
       >
         <i className="fa fa-arrow-circle-down"></i>
@@ -1631,7 +1628,6 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
           title="Search"
           onClick={() => {
             // TODO: Open default search
-            console.log('Default search clicked');
           }}
         >
           <i className="fa fa-search"></i>

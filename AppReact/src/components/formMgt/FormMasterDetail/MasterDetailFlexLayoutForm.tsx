@@ -120,27 +120,6 @@ const MasterDetailFlexLayoutForm: React.FC<MasterDetailFlexLayoutFormProps> = ({
   // Get grand child edit mode
   const grandChildEditMode = transactionExDto?.EmGrandChildEditMode || 1; // Default to SubGrid
 
-  // Debug logging
-  if (process.env.NODE_ENV === 'development') {
-    console.log('MasterDetailFlexLayoutForm Debug:', {
-      hasTransactionExDto: !!transactionExDto,
-      hasFormStructureData: !!formStructureData,
-      hasFormDto: !!formDto,
-      formDtoKeys: formDto ? Object.keys(formDto) : [],
-      layoutItemsCount: layoutItems.length,
-      formDtoAppFormLayoutItemList: formDto?.AppFormLayoutItemList ? `Array(${formDto.AppFormLayoutItemList.length})` : 'not found',
-      formStructureDataAppFormLayoutItemList: formStructureData?.AppFormLayoutItemList ? `Array(${formStructureData.AppFormLayoutItemList.length})` : 'not found',
-      transactionExDtoForeignAppFormExDto: transactionExDto?.ForeignAppFormExDto ? 'exists' : 'not found',
-      transactionExDtoKeys: transactionExDto ? Object.keys(transactionExDto) : [],
-      formStructureDataKeys: formStructureData ? Object.keys(formStructureData) : []
-    });
-    
-    // Log full formDto structure if no layout items found
-    if (layoutItems.length === 0 && formDto) {
-      console.log('FormDto full structure:', JSON.stringify(formDto, null, 2));
-    }
-  }
-
   // Show loading state
   if (isLoading) {
     return (
