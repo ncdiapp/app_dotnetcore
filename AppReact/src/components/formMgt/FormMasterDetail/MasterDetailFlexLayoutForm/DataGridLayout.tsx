@@ -1525,6 +1525,25 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   // Server-built projection model (columns + wide rows). All CONVERT logic lives in C#
   // (AppChildPivotProjectionBL); the UI only renders the model and folds edits back.
   const [projectionModel, setProjectionModel] = useState<ChildPivotProjectionModel | null>(null);
+
+  // Rebuild the grid ONLY on STRUCTURAL changes — i.e. the source-grid column domain changes, or
+  // host rows are added/removed. Plain cell edits must NOT rebuild: a per-edit rebuild would replace
+  // WideRows, reset the CollectionView (selection jumps to row 1) and overwrite the value being typed
+  // with the server round-trip result ("回档"). Cell values are intentionally excluded from this key.
+  const projectionRebuildKey = useMemo(() => {
+    if (!isChildPivotProjectionHost) return '';
+    const fd = dataModel?.currentFormData;
+    const desc: any = childPivotProjection?.descriptor;
+    const srcUnitId = desc?.ColumnSourceUnitId;
+    const srcField = desc?.ColumnSourceFieldName;
+    const srcRows: any[] = srcUnitId != null ? fd?.DictOneToManyFields?.[String(srcUnitId)] ?? [] : [];
+    const srcSig = srcField
+      ? srcRows.map((r: any) => r?.DictOneToOneFields?.[srcField] ?? '').join('|')
+      : String(srcRows.length);
+    const hostRows: any[] = fd?.DictOneToManyFields?.[String(unitId)] ?? [];
+    return `${srcSig}#${hostRows.length}`;
+  }, [isChildPivotProjectionHost, dataModel?.currentFormData, childPivotProjection, unitId]);
+
   useEffect(() => {
     if (!isChildPivotProjectionHost) {
       setProjectionModel(null);
@@ -1544,18 +1563,24 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     return () => {
       cancelled = true;
     };
-    // Rebuild whenever this unit's host rows or the source rows change (server is the source of truth).
-  }, [isChildPivotProjectionHost, unitId, dataModel?.currentFormData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isChildPivotProjectionHost, unitId, projectionRebuildKey]);
 
   // Fold edited wide rows back into the nested grandchild structure (server), then persist.
+  // Folds run per edit and are async; a sequence guard drops stale (out-of-order) responses so a
+  // slower earlier fold can't overwrite a newer one. We do NOT call setProjectionModel here, so the
+  // grid is never rebuilt by an edit (selection + the value just typed are preserved).
+  const projectionFoldSeqRef = useRef(0);
   const handleProjectionWideRowsChange = useCallback(
     async (wideRows: any[]) => {
       const currentDataModel = dataModelRef.current;
       const fd = currentDataModel?.currentFormData;
       if (!fd) return;
+      const seq = ++projectionFoldSeqRef.current;
       try {
         const updated = await appTransactionService.convertBackPivotColumnsToGrandChildData(fd, Number(unitId), wideRows);
         if (!updated) return;
+        if (seq !== projectionFoldSeqRef.current) return; // superseded by a newer edit
         const unitIdStrLocal = String(unitId);
         const updatedRows = updated?.DictOneToManyFields?.[unitIdStrLocal] ?? getGridRowsForThisUnit();
         commitOptimisticUnitRows(updatedRows);
@@ -1611,6 +1636,17 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     if (!Array.isArray(items)) return null;
     return new DataMap(items, 'Id', 'Display');
   }, []);
+
+  // Stable callbacks for the projection grid so a fold-driven parent re-render (async) does NOT
+  // re-render the (memoized) grid and disrupt the cell the user is currently editing.
+  const resolveProjectionDataMap = useCallback(
+    (fieldId: any) => buildStandaloneDataMapFromFormStructure(dataModelRef.current, String(fieldId)),
+    [buildStandaloneDataMapFromFormStructure]
+  );
+  const resolveProjectionWidth = useCallback(
+    (fieldId: any) => projectionWidthByFieldId.get(String(fieldId)),
+    [projectionWidthByFieldId]
+  );
 
   const isDdLikeControlType = useCallback(
     (controlType: any): boolean => {
@@ -3067,10 +3103,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             <ChildPivotProjectionGrid
               model={projectionModel}
               isReadOnly={isGridReadOnly}
-              resolveDataMap={(fieldId: any) =>
-                buildStandaloneDataMapFromFormStructure(dataModelRef.current, String(fieldId))
-              }
-              resolveWidth={(fieldId: any) => projectionWidthByFieldId.get(String(fieldId))}
+              resolveDataMap={resolveProjectionDataMap}
+              resolveWidth={resolveProjectionWidth}
               onWideRowsChange={handleProjectionWideRowsChange}
             />
           </div>

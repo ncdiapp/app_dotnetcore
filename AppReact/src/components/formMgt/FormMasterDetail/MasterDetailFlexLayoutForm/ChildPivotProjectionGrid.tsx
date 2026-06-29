@@ -163,6 +163,7 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
             header={hc.Header}
             width={resolveWidth?.(hc.FieldId) ?? 150}
             isReadOnly={isReadOnly || hc.IsReadOnly}
+            isRequired={false}
             dataType={dataTypeFor(hc.ControlType)}
             format={formatFor(hc.ControlType)}
             dataMap={resolveDataMap ? resolveDataMap(hc.FieldId) ?? undefined : undefined}
@@ -183,6 +184,7 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
                 header={header}
                 width={resolveWidth?.(leaf.FieldId) ?? 110}
                 isReadOnly={isReadOnly}
+                isRequired={false}
                 dataType={dataTypeFor(leaf.ControlType)}
                 format={formatFor(leaf.ControlType)}
                 dataMap={resolveDataMap ? resolveDataMap(leaf.FieldId) ?? undefined : undefined}
@@ -198,4 +200,7 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
   );
 };
 
-export default ChildPivotProjectionGrid;
+// Memoized so an async fold (which re-renders the parent DataGridLayout) does not re-render this grid
+// and disrupt an in-progress cell edit. All props from the parent are stabilized (useCallback / stable
+// model identity), so the grid only re-renders on a real structural rebuild (new model).
+export default React.memo(ChildPivotProjectionGrid);

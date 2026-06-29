@@ -46,8 +46,15 @@ function isEmptyRequiredValue(v: any): boolean {
   return false;
 }
 
-function needValidateField(_fieldDto: any): boolean {
-  // Reserved for future rules; required validation currently uses IsAllowEmpty only.
+function needValidateField(fieldDto: any): boolean {
+  // Skip fields the save pipeline auto-populates, so a brand-new row doesn't fail "required"
+  // validation for a value the user can never enter:
+  //   - IsPrimaryKey: identity / generated on first save (root PK comes from RootPrimaryKeyValue).
+  //   - IsLinkToParentPrimaryKey: child/grandchild FK set during the parent→child save cascade.
+  const truthy = (v: any) =>
+    v === true || v === 1 || v === '1' || (typeof v === 'string' && v.toLowerCase() === 'true');
+  if (truthy(fieldDto?.IsPrimaryKey)) return false;
+  if (truthy(fieldDto?.IsLinkToParentPrimaryKey)) return false;
   return true;
 }
 
