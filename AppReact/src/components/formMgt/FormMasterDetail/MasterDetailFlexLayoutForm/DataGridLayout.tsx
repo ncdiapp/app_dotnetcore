@@ -2724,7 +2724,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           <div className="flex items-center gap-2 flex-wrap">
             {!isGridReadOnly && (
               <>
-                {!showAvailableSelectRuntime && (
+                {/* Matrix grid rows are (re)generated via Generate Matrix, not added/deleted manually. */}
+                {!showAvailableSelectRuntime && !isMatrixUnit && (
                 <button
                   type="button"
                   onMouseDown={(e) => e.stopPropagation()}
@@ -2739,7 +2740,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                   Add Row
                 </button>
                 )}
-                {!showMultipleSelectBoxUi && (
+                {!showMultipleSelectBoxUi && !isMatrixUnit && (
                 <button
                   type="button"
                   onMouseDown={(e) => e.stopPropagation()}
