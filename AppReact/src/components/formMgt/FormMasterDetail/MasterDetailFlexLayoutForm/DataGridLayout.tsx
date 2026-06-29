@@ -2000,9 +2000,13 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       }
     });
 
-    // Initialize all fields to null; only use DefaultValue if it is a real non-empty value.
-    // PK fields must be null (not "") so the backend treats this row as a new insert.
-    fields.forEach((field: any) => {
+    // Initialize EVERY DB field (not just the visible ones) to null; only use DefaultValue if it is
+    // a real non-empty value. Hidden fields — especially a hidden primary key like RowId — must still
+    // get a key, otherwise the backend save (ClassifyGrandChildUnitDataSet → dictOneToOneFields[pk])
+    // throws KeyNotFoundException: "The given key 'RowId' was not present in the dictionary".
+    // PK fields stay null (not "") so the backend treats this row as a new insert. Mirrors buildBlankCloneRow.
+    (unitExDto?.AppTransactionFieldList ?? []).forEach((field: any) => {
+      if (!field?.DataBaseFieldName) return;
       const hasDefault = field.DefaultValue !== undefined && field.DefaultValue !== null && field.DefaultValue !== '';
       newRow.DictOneToOneFields[field.DataBaseFieldName] = hasDefault ? field.DefaultValue : null;
     });
