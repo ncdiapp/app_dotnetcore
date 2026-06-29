@@ -666,7 +666,24 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
     // Prepare one unit's save data (matching AngularJS prepareOneUnitSaveData)
     const prepareOneUnitSaveData = (aUnit: any, appTransactionData: any) => {
         if (!aUnit) return;
-        
+
+        // Propagate fields removed in the Unit Editor into DictDeletedItemsIds so the backend
+        // (AppTransactionController → AppTransactionFieldList.DeletedItemIds) actually deletes them.
+        if (aUnit.Id && Array.isArray(aUnit.DeletedFieldIdList) && aUnit.DeletedFieldIdList.length > 0) {
+            if (!appTransactionData.DictDeletedItemsIds) {
+                appTransactionData.DictDeletedItemsIds = {};
+            }
+            const key = `AppTransactionFieldList_${aUnit.Id}`;
+            const existing = appTransactionData.DictDeletedItemsIds[key] || [];
+            appTransactionData.DictDeletedItemsIds[key] = Array.from(
+                new Set([...existing, ...aUnit.DeletedFieldIdList])
+            );
+        }
+        // Strip the temp tracking prop so it isn't sent as an unknown field to the backend.
+        if ('DeletedFieldIdList' in aUnit) {
+            delete aUnit.DeletedFieldIdList;
+        }
+
         if (aUnit.AppTransactionFieldList && Array.isArray(aUnit.AppTransactionFieldList)) {
             aUnit.AppTransactionFieldList.forEach((transField: any) => {
                 if (transField) {

@@ -91,6 +91,8 @@ class SchemaMetadataService {
       body: JSON.stringify(tableMetadata)
     });
     if (!response.ok) throw new Error('Failed to create table');
+    // Invalidate cached table list so the newly created table appears immediately.
+    tableListCache.clear();
   }
 
   async updateTable(schemaName: string, tableName: string, tableMetadata: any): Promise<void> {
@@ -317,6 +319,8 @@ class SchemaMetadataService {
       body: JSON.stringify(databaseTable)
     });
     if (!response.ok) throw new Error('Failed to create new table');
+    // Invalidate cached table list so the newly created table appears immediately.
+    tableListCache.clear();
     return response.json();
   }
 

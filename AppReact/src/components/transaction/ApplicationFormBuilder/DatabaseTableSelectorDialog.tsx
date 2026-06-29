@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { schemaMetadataService } from '../../../webapi/schemaMetaDataSvc';
 import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/busyLoaderSlice';
@@ -46,34 +46,48 @@ const DatabaseTableSelectorDialog: React.FC<DatabaseTableSelectorDialogProps> = 
         }
     }, [isOpen, dataSourceRegisterId]);
 
+    // Load tables. `forceRefresh` bypasses both the client cache and the HTTP cache so a
+    // table just created in the DB shows up immediately (instead of stale cached list).
+    const loadTables = useCallback(
+        async (forceRefresh: boolean) => {
+            if (dataSourceRegisterId === null) return;
+            setLoading(true);
+            dispatch(setIsBusy());
+            try {
+                const filterByApplicationId = applicationId ? parseInt(applicationId) : null;
+                const tableList = forceRefresh
+                    ? await schemaMetadataService.getDataSourceTableAndViewList(
+                          dataSourceRegisterId,
+                          null,
+                          filterByApplicationId,
+                          { bypassHttpCache: true }
+                      )
+                    : await schemaMetadataService.getDataSourceTableAndViewListFromCache(
+                          dataSourceRegisterId,
+                          null,
+                          filterByApplicationId
+                      );
+                setAllTables(tableList || []);
+            } catch (error: any) {
+                console.error('Failed to load tables:', error);
+                setAllTables([]);
+            } finally {
+                setLoading(false);
+                dispatch(setIsNotBusy());
+            }
+        },
+        [dataSourceRegisterId, applicationId, dispatch]
+    );
+
     // Load all tables when dialog opens or dataSourceRegisterId changes (cached)
     useEffect(() => {
         if (isOpen && dataSourceRegisterId !== null) {
-            const loadTables = async () => {
-                setLoading(true);
-                dispatch(setIsBusy());
-                try {
-                    // Load all tables from cache first, fetch if not cached
-                    const tableList = await schemaMetadataService.getDataSourceTableAndViewListFromCache(
-                        dataSourceRegisterId,
-                        null,
-                        applicationId ? parseInt(applicationId) : null
-                    );
-                    setAllTables(tableList || []);
-                } catch (error: any) {
-                    console.error('Failed to load tables:', error);
-                    setAllTables([]);
-                } finally {
-                    setLoading(false);
-                    dispatch(setIsNotBusy());
-                }
-            };
-            loadTables();
+            loadTables(false);
         } else {
             setAllTables([]);
             setTables([]);
         }
-    }, [isOpen, dataSourceRegisterId, applicationId, dispatch]);
+    }, [isOpen, dataSourceRegisterId, applicationId, loadTables]);
 
     // Filter tables client-side when schema owner or search text changes
     useEffect(() => {
@@ -161,6 +175,16 @@ const DatabaseTableSelectorDialog: React.FC<DatabaseTableSelectorDialogProps> = 
                             placeholder="Search table name..."
                             className={`flex-1 px-2 py-1 text-xs border rounded ${theme.inputBox}`}
                         />
+                        <button
+                            type="button"
+                            onClick={() => loadTables(true)}
+                            disabled={loading}
+                            title="Reload the table list from the database (bypass cache)"
+                            className={`shrink-0 px-2 py-1 text-xs ${theme.button_default} rounded-[4px] border hover:shadow-sm active:scale-95 disabled:opacity-50`}
+                        >
+                            <i className={`fa-solid fa-rotate mr-1 ${loading ? 'fa-spin' : ''}`}></i>
+                            Refresh
+                        </button>
                     </div>
                 </div>
 

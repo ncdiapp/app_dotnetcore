@@ -1620,7 +1620,14 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             )
         );
 
-        setUnitData({ ...unitData, AppTransactionFieldList: updatedFields });
+        // Track DB-persisted fields (with an Id) so the save can delete them server-side
+        // (DictDeletedItemsIds["AppTransactionFieldList_<unitId>"]). Without this, the backend
+        // upserts the remaining list and the removed rows come back on reload.
+        const removedIds = selectedFields.map((f: any) => f.Id).filter((id: any) => id != null);
+        const existingDeleted = Array.isArray(unitData.DeletedFieldIdList) ? unitData.DeletedFieldIdList : [];
+        const nextDeleted = Array.from(new Set([...existingDeleted, ...removedIds]));
+
+        setUnitData({ ...unitData, AppTransactionFieldList: updatedFields, DeletedFieldIdList: nextDeleted });
         setIsModified(true);
         isModifiedRef.current = true;
     }, [unitData, showInfo]);
@@ -1642,14 +1649,23 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
 
                 if (tableData && tableData.Columns) {
                     const tableColumnNames = tableData.Columns.map((col: any) => col.Name);
-                    const updatedFields = (unitData.AppTransactionFieldList || []).filter((field: any) => {
+                    const keepField = (field: any) => {
                         // Keep temp variables and fields that exist in table
                         if (field.IsTempVariable) return true;
                         if (!field.DataBaseFieldName) return true;
                         return tableColumnNames.includes(field.DataBaseFieldName);
-                    });
+                    };
+                    const updatedFields = (unitData.AppTransactionFieldList || []).filter(keepField);
 
-                    setUnitData({ ...unitData, AppTransactionFieldList: updatedFields });
+                    // Track DB-persisted removed fields so the save deletes them server-side.
+                    const removedIds = (unitData.AppTransactionFieldList || [])
+                        .filter((f: any) => !keepField(f))
+                        .map((f: any) => f.Id)
+                        .filter((id: any) => id != null);
+                    const existingDeleted = Array.isArray(unitData.DeletedFieldIdList) ? unitData.DeletedFieldIdList : [];
+                    const nextDeleted = Array.from(new Set([...existingDeleted, ...removedIds]));
+
+                    setUnitData({ ...unitData, AppTransactionFieldList: updatedFields, DeletedFieldIdList: nextDeleted });
                     setIsModified(true);
                     isModifiedRef.current = true;
                 }
@@ -2287,7 +2303,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 ref={flexGridRef}
                                 itemsSource={fieldCollectionView}
                                 isReadOnly={false}
-                                selectionMode="Row"
+                                selectionMode="ListBox"
                                 style={{ height: '100%', border: 'none' }}
                                 cellEditEnded={handleCellEditEnded}
                                 initialized={(g: any) => setFieldGridControl(g)}
