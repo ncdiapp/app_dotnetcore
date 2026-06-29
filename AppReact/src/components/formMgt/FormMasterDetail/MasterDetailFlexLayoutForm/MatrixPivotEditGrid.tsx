@@ -19,8 +19,16 @@ interface MatrixPivotEditGridProps {
   isReadOnly?: boolean;
   /** Resolve a DDL/lookup DataMap for a field id (DataGridLayout standalone data source). */
   resolveDataMap?: (fieldId: any) => DataMap | null;
+  /** Resolve the configured column width (DisplayWidth) for a field id. */
+  resolveWidth?: (fieldId: any) => number | undefined;
   /** Called with the rebuilt flat rows after an edit so the parent can persist them. */
   onRowsChange?: (flatRows: any[]) => void;
+  /**
+   * Primary-key field DataBaseFieldNames for this unit. They are excluded from pivot ROW
+   * grouping (a unique PK would otherwise split every source row into its own row), but
+   * still round-trip as hidden value leaves so the PK is preserved on save.
+   */
+  primaryKeyFieldNames?: string[];
 }
 
 /**
@@ -37,11 +45,23 @@ const MatrixPivotEditGrid: React.FC<MatrixPivotEditGridProps> = ({
   rows,
   isReadOnly = false,
   resolveDataMap,
+  resolveWidth,
   onRowsChange,
+  primaryKeyFieldNames,
 }) => {
   const { theme } = useTheme();
   const emAppControlType = useEnumValues('EmAppControlType');
   const flexGridRef = useRef<any>(null);
+
+  // Exclude primary-key fields from row grouping (kept as hidden value leaves for round-trip).
+  const effectivePivotDto = useMemo<PivotDtoLike>(() => {
+    if (!primaryKeyFieldNames?.length || !pivotDto?.PivotRowFields?.length) return pivotDto;
+    const pkSet = new Set(primaryKeyFieldNames);
+    return {
+      ...pivotDto,
+      PivotRowFields: pivotDto.PivotRowFields.filter((f) => !pkSet.has(f.DataBaseFieldName)),
+    };
+  }, [pivotDto, primaryKeyFieldNames]);
 
   const getDisplay = useCallback(
     (field: PivotFieldDef, value: any): string => {
@@ -61,8 +81,8 @@ const MatrixPivotEditGrid: React.FC<MatrixPivotEditGridProps> = ({
   );
 
   const { rowColumns, columnGroups, valueFields, wideRows } = useMemo(
-    () => buildPivotModel(pivotDto, rows, getDisplay),
-    [pivotDto, rows, getDisplay],
+    () => buildPivotModel(effectivePivotDto, rows, getDisplay),
+    [effectivePivotDto, rows, getDisplay],
   );
 
   // Field def lookups (by DataBaseFieldName) for control type / data map resolution.
@@ -126,9 +146,9 @@ const MatrixPivotEditGrid: React.FC<MatrixPivotEditGridProps> = ({
   }
 
   // Diagnostic empty-state: distinguish "no rows" from "pivot not configured / nothing visible".
-  const rowFieldDefs = pivotDto.PivotRowFields ?? [];
-  const columnFieldDefs = pivotDto.PivotColumnFields ?? [];
-  const valueFieldDefs = pivotDto.PivotValueFields ?? [];
+  const rowFieldDefs = effectivePivotDto.PivotRowFields ?? [];
+  const columnFieldDefs = effectivePivotDto.PivotColumnFields ?? [];
+  const valueFieldDefs = effectivePivotDto.PivotValueFields ?? [];
   const noRows = !wideRows.length;
   const noPivotConfig = columnFieldDefs.length === 0 || valueFieldDefs.length === 0;
   const nothingVisible = !noRows && !noPivotConfig && visibleValueColumnCount === 0;
@@ -176,13 +196,14 @@ const MatrixPivotEditGrid: React.FC<MatrixPivotEditGridProps> = ({
         style={{ height: '100%', width: '100%', border: 'none' }}
         cellEditEnded={handleCellEditEnded}
       >
-        {/* Fixed left descriptor columns (read-only) */}
-        {rowColumns.map((rc) => (
+        {/* Fixed left descriptor columns (read-only). Hidden row fields (IsVisible=false)
+            still group and round-trip, but are not rendered as columns. */}
+        {rowColumns.filter((rc) => rc.visible).map((rc) => (
           <FlexGridColumn
             key={`row_${rc.binding}`}
             binding={rc.binding}
             header={rc.header}
-            width={130}
+            width={resolveWidth?.(rc.fieldId) ?? 130}
             isReadOnly={true}
             dataType={dataTypeFor(rc.controlType)}
             format={formatFor(rc.controlType)}
@@ -202,7 +223,7 @@ const MatrixPivotEditGrid: React.FC<MatrixPivotEditGridProps> = ({
                 key={`val_${leaf.binding}`}
                 binding={leaf.binding}
                 header={header}
-                width={110}
+                width={resolveWidth?.(leaf.fieldId) ?? 110}
                 isReadOnly={isReadOnly}
                 dataType={dataTypeFor(leaf.controlType)}
                 format={formatFor(leaf.controlType)}

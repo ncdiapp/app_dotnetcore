@@ -35,6 +35,7 @@ export interface PivotRowColumn {
   binding: string; // DataBaseFieldName
   fieldId?: any;
   controlType?: number;
+  visible: boolean; // display only; hidden row fields still group and round-trip
 }
 
 export interface PivotLeafColumn {
@@ -121,6 +122,7 @@ export function buildPivotModel(
     binding: f.DataBaseFieldName,
     fieldId: f.Id,
     controlType: f.ControlType,
+    visible: f.IsVisible !== false,
   }));
 
   // One column group per distinct column-key combination present in the data.

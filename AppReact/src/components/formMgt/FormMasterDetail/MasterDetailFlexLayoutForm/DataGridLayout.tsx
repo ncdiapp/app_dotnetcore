@@ -1234,6 +1234,32 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const pivotRows: any[] = isPivotEditGrid
     ? (dataModel?.currentFormData?.DictOneToManyFields?.[String(unitId)] ?? [])
     : [];
+  // Primary-key field names for this unit — excluded from pivot row grouping so a unique
+  // PK marked as "Is Pivot Row" doesn't split every generated row into its own pivot row.
+  const pivotPrimaryKeyFieldNames: string[] = useMemo(() => {
+    if (!isPivotEditGrid) return [];
+    const list = (unitExDto?.AppTransactionFieldList ?? []) as any[];
+    return list
+      .filter((f: any) => normalizeBool(f?.IsPrimaryKey))
+      .map((f: any) => f?.DataBaseFieldName)
+      .filter(Boolean);
+  }, [isPivotEditGrid, unitExDto]);
+  // Per-field configured column width (DisplayWidth), keyed by field Id — pivot fields from the
+  // server don't carry DisplayWidth, so resolve it from the full unit field list.
+  const pivotColumnWidthByFieldId = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!isPivotEditGrid) return m;
+    const dictAll = transactionExDto?.DictAllTransactionField as Record<string | number, any> | undefined;
+    const list = (unitExDto?.AppTransactionFieldList ?? []) as any[];
+    for (const f0 of list) {
+      const f = enrichTransactionFieldFromDict(f0, dictAll);
+      if (f?.Id == null) continue;
+      const raw = (f as any).DisplayWidth;
+      const w = typeof raw === 'number' ? raw : raw ? parseInt(String(raw), 10) : NaN;
+      if (Number.isFinite(w)) m.set(String(f.Id), Number(w));
+    }
+    return m;
+  }, [isPivotEditGrid, unitExDto, transactionExDto?.DictAllTransactionField]);
   // Base size comes from the parent spec header (DictOneToOneFields on master form)
   const pivotBaseSizeId = isPivotEditGrid
     ? (dataModel?.currentFormData?.DictOneToOneFields?.BaseSizeDetailId ?? null)
@@ -2924,9 +2950,11 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
               pivotDto={pivotDto}
               rows={pivotRows}
               isReadOnly={isGridReadOnly}
+              primaryKeyFieldNames={pivotPrimaryKeyFieldNames}
               resolveDataMap={(fieldId: any) =>
                 buildStandaloneDataMapFromFormStructure(dataModelRef.current, String(fieldId))
               }
+              resolveWidth={(fieldId: any) => pivotColumnWidthByFieldId.get(String(fieldId))}
               onRowsChange={handlePivotRowsChange}
             />
           </div>
