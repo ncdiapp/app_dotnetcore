@@ -194,7 +194,7 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
         })}
 
         {/* Spacer */}
-        <FlexGridColumn header="" binding="" width="*" isReadOnly={true} />
+        <FlexGridColumn header="" binding="" width="*" isReadOnly={true} isRequired={false} />
       </FlexGrid>
     </div>
   );
