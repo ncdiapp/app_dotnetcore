@@ -32,6 +32,8 @@ import {
 } from '../../linkedSearchUtils';
 import PivotEditGridPanel from './PivotEditGridPanel';
 import MatrixPivotEditGrid from './MatrixPivotEditGrid';
+import ChildPivotProjectionGrid from './ChildPivotProjectionGrid';
+import { ChildPivotProjectionModel } from './childPivotProjectionHelper';
 import {
   enrichTransactionFieldFromDict,
   isRuntimeTransactionFieldVisible,
@@ -1480,6 +1482,93 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   /** Keep grandchild detail template callback stable (List Edit parity) — avoids FlexGridDetail collapse on grandchild edit/add/delete. */
   const grandChildUnitListRef = useRef<any[]>([]);
   grandChildUnitListRef.current = grandChildUnitList;
+
+  // ----- Child-unit pivot projection (EmGridViewDisplayType.ChildUnitPivotColumns) -----
+  // When a grandchild of THIS unit is configured to project onto the parent (child) grid,
+  // we render its rows as dynamic pivot columns here instead of a nested grandchild grid.
+  const childUnitPivotColumnsVal = Number(emAppTransactionGridDisplayTypeEnum?.ChildUnitPivotColumns ?? 7);
+  const childPivotProjection = useMemo(() => {
+    const dict = dataModel?.currentFormStructure?.DictUnitIdPivotGrid;
+    if (!dict) return null;
+    for (const gc of grandChildUnitList) {
+      const gcId = gc?.Id ?? gc?.unitId;
+      if (gcId == null) continue;
+      const desc = dict[Number(gcId)] ?? dict[String(gcId)];
+      if (desc?.IsChildUnitPivotColumns && Number(desc.HostParentUnitId) === Number(unitId)) {
+        return { grandchildUnitId: Number(gcId), grandchildUnit: gc, descriptor: desc };
+      }
+    }
+    return null;
+  }, [dataModel?.currentFormStructure?.DictUnitIdPivotGrid, grandChildUnitList, unitId]);
+  const isChildPivotProjectionHost = Boolean(childPivotProjection);
+
+  // Per-field configured width (DisplayWidth) for host + grandchild fields, keyed by field Id.
+  // (Pure presentation; all data transform happens server-side.)
+  const projectionWidthByFieldId = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!isChildPivotProjectionHost) return m;
+    const dictAll = transactionExDto?.DictAllTransactionField as Record<string | number, any> | undefined;
+    const collect = (list: any[]) => {
+      for (const f0 of list ?? []) {
+        const f = enrichTransactionFieldFromDict(f0, dictAll);
+        if (f?.Id == null) continue;
+        const raw = (f as any).DisplayWidth;
+        const w = typeof raw === 'number' ? raw : raw ? parseInt(String(raw), 10) : NaN;
+        if (Number.isFinite(w)) m.set(String(f.Id), Number(w));
+      }
+    };
+    collect(unitExDto?.AppTransactionFieldList ?? []);
+    collect(childPivotProjection?.grandchildUnit?.AppTransactionFieldList ?? []);
+    return m;
+  }, [isChildPivotProjectionHost, transactionExDto?.DictAllTransactionField, unitExDto, childPivotProjection]);
+
+  // Server-built projection model (columns + wide rows). All CONVERT logic lives in C#
+  // (AppChildPivotProjectionBL); the UI only renders the model and folds edits back.
+  const [projectionModel, setProjectionModel] = useState<ChildPivotProjectionModel | null>(null);
+  useEffect(() => {
+    if (!isChildPivotProjectionHost) {
+      setProjectionModel(null);
+      return;
+    }
+    let cancelled = false;
+    const fd = dataModelRef.current?.currentFormData;
+    appTransactionService
+      .convertGrandChildDataToPivotColumns(fd, Number(unitId))
+      .then((m) => {
+        if (!cancelled) setProjectionModel(m ?? null);
+      })
+      .catch((e) => {
+        if (!cancelled) setProjectionModel(null);
+        appHelper.debugLog('buildChildPivotProjection failed', e);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Rebuild whenever this unit's host rows or the source rows change (server is the source of truth).
+  }, [isChildPivotProjectionHost, unitId, dataModel?.currentFormData]);
+
+  // Fold edited wide rows back into the nested grandchild structure (server), then persist.
+  const handleProjectionWideRowsChange = useCallback(
+    async (wideRows: any[]) => {
+      const currentDataModel = dataModelRef.current;
+      const fd = currentDataModel?.currentFormData;
+      if (!fd) return;
+      try {
+        const updated = await appTransactionService.convertBackPivotColumnsToGrandChildData(fd, Number(unitId), wideRows);
+        if (!updated) return;
+        const unitIdStrLocal = String(unitId);
+        const updatedRows = updated?.DictOneToManyFields?.[unitIdStrLocal] ?? getGridRowsForThisUnit();
+        commitOptimisticUnitRows(updatedRows);
+        deferDataModelChange({
+          ...currentDataModel,
+          currentFormData: { ...updated, IsDirty: true },
+        });
+      } catch (e) {
+        appHelper.debugLog('foldChildPivotProjection failed', e);
+      }
+    },
+    [unitId, commitOptimisticUnitRows, deferDataModelChange, getGridRowsForThisUnit]
+  );
 
   const transactionExDtoRef = useRef(transactionExDto);
   transactionExDtoRef.current = transactionExDto;
@@ -2971,7 +3060,23 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           </div>
         )}
 
-        {!isPivotEditGrid && !showMultipleSelectBoxUi && (
+        {/* Child-unit pivot projection: a grandchild rendered as dynamic columns on this (child) grid.
+            The server (AppChildPivotProjectionBL) builds the model and folds edits — UI only renders. */}
+        {!isPivotEditGrid && isChildPivotProjectionHost && (
+          <div className="h-full w-full">
+            <ChildPivotProjectionGrid
+              model={projectionModel}
+              isReadOnly={isGridReadOnly}
+              resolveDataMap={(fieldId: any) =>
+                buildStandaloneDataMapFromFormStructure(dataModelRef.current, String(fieldId))
+              }
+              resolveWidth={(fieldId: any) => projectionWidthByFieldId.get(String(fieldId))}
+              onWideRowsChange={handleProjectionWideRowsChange}
+            />
+          </div>
+        )}
+
+        {!isPivotEditGrid && !isChildPivotProjectionHost && !showMultipleSelectBoxUi && (
         <div
           className={
             showAvailableSelectPairSplit

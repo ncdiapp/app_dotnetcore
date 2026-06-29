@@ -2355,7 +2355,8 @@ namespace APP.Components.Dto
         PivotEditGrid = 3,
         PivotViewGrid = 4,
         AvailableSelectGridPair = 5,
-        MultipleSelectBox = 6,
+        MultipleSelectBox = 6,       
+        ChildUnitPivotColumns = 7,
     }
 
 

@@ -1832,6 +1832,29 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     const isRootMasterUnit = !isSiblingUnit && !parentUnit;
     const isTopLevelUnit = isSiblingUnit || isRootMasterUnit;
 
+    // Grandchild detection: the unit's parent itself has a parent (i.e. unit is at depth >= 3).
+    // ChildUnitPivotColumns mode is only meaningful on a grandchild (it projects its rows onto the child grid).
+    const findParentOfUnitInTree = (units: any[], target: any): any | null => {
+        for (const u of units || []) {
+            const children = u?.Children || [];
+            const hit = children.some(
+                (c: any) =>
+                    (target?.Id != null && c?.Id != null && Number(c.Id) === Number(target.Id)) ||
+                    (target?.uiId != null && c?.uiId != null && String(c.uiId) === String(target.uiId))
+            );
+            if (hit) return u;
+            const inner = findParentOfUnitInTree(children, target);
+            if (inner) return inner;
+        }
+        return null;
+    };
+    const grandParentUnit = parentUnit
+        ? findParentOfUnitInTree(transactionData?.AppTransactionUnitList || [], parentUnit)
+        : null;
+    const isGrandChildUnit = hasParent && Boolean(grandParentUnit);
+    const childUnitPivotColumnsVal = Number(emAppTransactionGridDisplayType?.ChildUnitPivotColumns ?? 7);
+    const isChildUnitPivotColumns = Number(unitData.EmGridViewDisplayType) === childUnitPivotColumnsVal;
+
     const canOpenDataLoad =
         isMasterDetail &&
         !isSiblingUnit &&
@@ -2076,11 +2099,14 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                         onChange={(e) => handleUnitPropertyChange('EmGridViewDisplayType', parseInt(e.target.value) || 1)}
                                         className={`h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none w-[260px]`}
                                     >
-                                        {gridDisplayTypeOptions.map((item: any) => (
-                                            <option key={item.Value} value={item.Value}>
-                                                {item.Display}
-                                            </option>
-                                        ))}
+                                        {gridDisplayTypeOptions
+                                            // ChildUnitPivotColumns is only valid on grandchild units.
+                                            .filter((item: any) => item.Value !== childUnitPivotColumnsVal || isGrandChildUnit)
+                                            .map((item: any) => (
+                                                <option key={item.Value} value={item.Value}>
+                                                    {item.Display}
+                                                </option>
+                                            ))}
                                     </select>
                                 </div>
                             )}
@@ -2685,7 +2711,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     isReadOnly={true}
                                     width={180}
                                     isContentHtml={true}
-                                    visible={Boolean(unitData.IsMatrixUnit || unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4)}
+                                    visible={Boolean(unitData.IsMatrixUnit || unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4 || isChildUnitPivotColumns)}
                                 >
                                     <FlexGridCellTemplate
                                         cellType="Cell"
@@ -2735,14 +2761,14 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     header="Is Pivot Column"
                                     isReadOnly={false}
                                     dataType="Boolean"
-                                    visible={Boolean(unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4)}
+                                    visible={Boolean(unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4 || isChildUnitPivotColumns)}
                                 />
                                 <FlexGridColumn
                                     binding="IsPivotValue"
                                     header="Is Pivot Value"
                                     isReadOnly={false}
                                     dataType="Boolean"
-                                    visible={Boolean(unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4)}
+                                    visible={Boolean(unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4 || isChildUnitPivotColumns)}
                                 />
                                 <FlexGridColumn
                                     binding="PivotAggregationType"

@@ -476,6 +476,41 @@ namespace APP.Components.EntityDto
             set;
         }
 
+        // ----- ChildUnitPivotColumns (grandchild-projected-onto-parent) only -----
+        // True when this descriptor is for a grandchild unit whose rows are projected onto the
+        // parent (child) grid as dynamic pivot column groups. Pure UI projection; data stays nested.
+        [DataMember(EmitDefaultValue = false)]
+        public bool IsChildUnitPivotColumns
+        {
+            get;
+            set;
+        }
+
+        // The unit (e.g. Product Color grid) that supplies the column domain (matrix-like).
+        [DataMember(EmitDefaultValue = false)]
+        public int? ColumnSourceUnitId
+        {
+            get;
+            set;
+        }
+
+        // The DB field name in the source unit whose row values become the column groups
+        // (resolved from the pivot-column field's MatrixForeignKeyFieldId).
+        [DataMember(EmitDefaultValue = false)]
+        public string ColumnSourceFieldName
+        {
+            get;
+            set;
+        }
+
+        // The parent (child) unit that hosts the projected columns (= this grandchild's ParentTransactionUnitId).
+        [DataMember(EmitDefaultValue = false)]
+        public int? HostParentUnitId
+        {
+            get;
+            set;
+        }
+
 
 
 

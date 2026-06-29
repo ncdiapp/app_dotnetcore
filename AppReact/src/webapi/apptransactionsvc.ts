@@ -591,6 +591,35 @@ class AppTransactionService {
     return response.json();
   }
 
+  /**
+   * Child Unit Pivot Columns projection (EmAppTransactionGridDisplayType.ChildUnitPivotColumns):
+   * server builds the column model + wide rows for the host (child) grid from nested grandchild data.
+   * WebAPI: POST /webapi/AppTransaction/ConvertGrandChildDataToPivotColumns
+   */
+  async convertGrandChildDataToPivotColumns(formData: any, hostUnitId: number): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/AppTransaction/ConvertGrandChildDataToPivotColumns`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ FormData: formData ?? null, HostUnitId: hostUnitId }),
+    });
+    if (!response.ok) throw new Error('Failed to convert grandchild data to pivot columns');
+    return response.json();
+  }
+
+  /**
+   * Fold edited wide rows back into the nested grandchild structure; returns the updated form data.
+   * WebAPI: POST /webapi/AppTransaction/ConvertBackPivotColumnsToGrandChildData
+   */
+  async convertBackPivotColumnsToGrandChildData(formData: any, hostUnitId: number, wideRows: any[]): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/AppTransaction/ConvertBackPivotColumnsToGrandChildData`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ FormData: formData ?? null, HostUnitId: hostUnitId, WideRows: wideRows ?? [] }),
+    });
+    if (!response.ok) throw new Error('Failed to convert pivot columns back to grandchild data');
+    return response.json();
+  }
+
   /** Master-detail runtime: run validation + calculation without saving. */
   async validateAndCalculateTransactionData(rootAppformDataDto: any): Promise<any> {
     const response = await fetch(`${endpoints.BASE_URL}/webapi/AppTransaction/ValidateAndCalculateTransactionData`, {

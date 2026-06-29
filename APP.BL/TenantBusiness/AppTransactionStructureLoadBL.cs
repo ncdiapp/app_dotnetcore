@@ -404,17 +404,46 @@ namespace App.BL
 
 
 
+            bool isChildUnitPivotColumns = aTransactionUnit.EmGridViewDisplayType.HasValue
+                && aTransactionUnit.EmGridViewDisplayType.Value == (int)EmAppTransactionGridDisplayType.ChildUnitPivotColumns;
+
             if (aTransactionUnit.EmGridViewDisplayType.HasValue &&
                 (aTransactionUnit.EmGridViewDisplayType.Value == (int)EmAppTransactionGridDisplayType.PivotEditGrid
-                    || aTransactionUnit.EmGridViewDisplayType.Value == (int)EmAppTransactionGridDisplayType.PivotViewGrid))
+                    || aTransactionUnit.EmGridViewDisplayType.Value == (int)EmAppTransactionGridDisplayType.PivotViewGrid
+                    || isChildUnitPivotColumns))
             {
 
                 AppPivotDto appPivotDto = new AppPivotDto();
-                appPivotDto.IsPivotEdit = (aTransactionUnit.EmGridViewDisplayType.HasValue && aTransactionUnit.EmGridViewDisplayType.Value == (int)EmAppTransactionGridDisplayType.PivotEditGrid);
+                appPivotDto.IsPivotEdit = (aTransactionUnit.EmGridViewDisplayType.HasValue && aTransactionUnit.EmGridViewDisplayType.Value == (int)EmAppTransactionGridDisplayType.PivotEditGrid) || isChildUnitPivotColumns;
                 appPivotDto.PivotRowFields = aTransactionUnit.AppTransactionFieldList.Where(o => o.IsPivotRow.HasValue && o.IsPivotRow.Value).Select(o => new AppTransactionFieldDto() { Id = o.Id, DataBaseFieldName = o.DataBaseFieldName, DisplayName = o.DisplayName, EntityId = o.EntityId, ControlType = o.ControlType, IsVisible = o.IsVisible }).ToList();
                 appPivotDto.PivotColumnFields = aTransactionUnit.AppTransactionFieldList.Where(o => o.IsPivotColumn.HasValue && o.IsPivotColumn.Value).Select(o => new AppTransactionFieldDto() { Id = o.Id, DataBaseFieldName = o.DataBaseFieldName, DisplayName = o.DisplayName, EntityId = o.EntityId, ControlType = o.ControlType, IsVisible = o.IsVisible }).ToList();
                 appPivotDto.PivotValueFields = aTransactionUnit.AppTransactionFieldList.Where(o => o.IsPivotValue.HasValue && o.IsPivotValue.Value || o.IsPrimaryKey || o.IsLinkToParentPrimaryKey).Select(o => new AppTransactionFieldDto() { Id = o.Id, DataBaseFieldName = o.DataBaseFieldName, DisplayName = o.DisplayName, EntityId = o.EntityId, ControlType = o.ControlType, IsVisible = o.IsVisible }).ToList();
                 appPivotDto.AllFields = aTransactionUnit.AppTransactionFieldList.Select(o => new AppTransactionFieldDto() { Id = o.Id, DataBaseFieldName = o.DataBaseFieldName, DisplayName = o.DisplayName, EntityId = o.EntityId, ControlType = o.ControlType, IsVisible = o.IsVisible }).ToList();
+
+                if (isChildUnitPivotColumns)
+                {
+                    // Grandchild projected onto the parent (child) grid as pivot columns. The column domain
+                    // comes from a source grid (matrix-like): resolve it from the pivot-column field's
+                    // MatrixForeignKeyFieldId. HostParentUnitId is the child grid that hosts the columns.
+                    appPivotDto.IsChildUnitPivotColumns = true;
+                    appPivotDto.HostParentUnitId = aTransactionUnit.ParentTransactionUnitId;
+
+                    var columnKeyField = aTransactionUnit.AppTransactionFieldList
+                        .FirstOrDefault(o => o.IsPivotColumn.HasValue && o.IsPivotColumn.Value && o.MatrixForeignKeyFieldId.HasValue);
+                    if (columnKeyField != null && columnKeyField.MatrixForeignKeyFieldId.HasValue)
+                    {
+                        int sourceFieldId = columnKeyField.MatrixForeignKeyFieldId.Value;
+                        if (dictAllFiledIdDataBaseFileName.TryGetValue(sourceFieldId, out string sourceFieldName))
+                        {
+                            appPivotDto.ColumnSourceFieldName = sourceFieldName;
+                        }
+                        if (transactionStructureDto.DictFieldIdUnitId.TryGetValue(sourceFieldId.ToString(), out string sourceUnitId)
+                            && int.TryParse(sourceUnitId, out int parsedSourceUnitId))
+                        {
+                            appPivotDto.ColumnSourceUnitId = parsedSourceUnitId;
+                        }
+                    }
+                }
 
                 transactionStructureDto.DictUnitIdPivotGrid.Add((int)aTransactionUnit.Id, appPivotDto);
             }

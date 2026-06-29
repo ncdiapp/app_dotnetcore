@@ -943,6 +943,26 @@ public class AppTransactionController : SecureBaseController
     }
 
 
+    // Child Unit Pivot Columns projection (EmAppTransactionGridDisplayType.ChildUnitPivotColumns):
+    // build the column model + wide rows for the host (child) grid from the nested grandchild rows.
+    [HttpPost]
+    public ChildPivotProjectionModelDto ConvertGrandChildDataToPivotColumns(object request)
+    {
+        var req = JsonConvert.DeserializeObject<ChildPivotProjectionBuildRequestDto>(request.ToString());
+        if (req == null || req.FormData == null) return null;
+        return AppChildPivotProjectionBL.ConvertGrandChildDataToPivotColumns(req.FormData, req.HostUnitId);
+    }
+
+    // Fold edited wide rows back into the nested grandchild structure (returns updated form data).
+    [HttpPost]
+    public AppMasterDetailDto ConvertBackPivotColumnsToGrandChildData(object request)
+    {
+        var req = JsonConvert.DeserializeObject<ChildPivotProjectionFoldRequestDto>(request.ToString());
+        if (req == null || req.FormData == null) return null;
+        return AppChildPivotProjectionBL.ConvertBackPivotColumnsToGrandChildData(req.FormData, req.HostUnitId, req.WideRows);
+    }
+
+
     [HttpGet]
     public OperationCallResult<AppMasterDetailDto> CreateDefaultMasterDetailTransactionData(int? transactionId)
     {
