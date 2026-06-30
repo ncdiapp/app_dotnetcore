@@ -80,6 +80,13 @@ namespace APP.Components.EntityDto
         [DataMember(EmitDefaultValue = false)]
         public int? TemplateItemType { get; set; }
 
+        /// <summary>
+        /// For Main Items: controls how associated template header transactions render at runtime
+        /// (see EmAppTemplateHeaderVisibility: 1=Show, 2=Hide, 3=Collapsed).
+        /// </summary>
+        [DataMember(EmitDefaultValue = false)]
+        public int? HeaderVisibility { get; set; }
+
 
         [DataMember(EmitDefaultValue = false)]
         public bool IsLinkToComsumeApiTransaction { get; set; }

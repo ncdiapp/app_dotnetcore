@@ -13,6 +13,7 @@ import {
   buildLinkedSearchCriteriaDict,
   buildTemplateItemLists,
   EmAppLinkTargetActionType,
+  EmAppTemplateHeaderVisibility,
   findLinkTargetInList,
   isCreateLikeLinkTarget,
   parseRouteParam2,
@@ -122,6 +123,7 @@ const TransactionFormGroup: React.FC = () => {
   const [navigationObj, setNavigationObj] = useState<NavigationObj | null>(null);
   const [isHideLeftMenu, setIsHideLeftMenu] = useState(false);
   const [headerForms, setHeaderForms] = useState<EmbeddedFormConfig[]>([]);
+  const [headerVisibility, setHeaderVisibility] = useState<number>(EmAppTemplateHeaderVisibility.Show);
   const [headerSearches, setHeaderSearches] = useState<EmbeddedSearchConfig[]>([]);
   const [mainForm, setMainForm] = useState<EmbeddedFormConfig | null>(null);
   const [mainSearch, setMainSearch] = useState<EmbeddedSearchConfig | null>(null);
@@ -186,10 +188,11 @@ const TransactionFormGroup: React.FC = () => {
   }, []);
 
   const buildFormEmbedded = useCallback(
-    (linkTarget: any, row: any, isHeader: boolean): EmbeddedFormConfig | null => {
+    (linkTarget: any, row: any, isHeader: boolean, headerVisibility?: number | null): EmbeddedFormConfig | null => {
       const built = buildEmbeddedFormParam2(linkTarget, row, {
         isHeader,
         openFrom: param2Obj.openFrom ?? null,
+        headerVisibility,
       });
       if (!built) return null;
 
@@ -322,10 +325,22 @@ const TransactionFormGroup: React.FC = () => {
       const nextHeaderForms: EmbeddedFormConfig[] = [];
       const nextHeaderSearches: EmbeddedSearchConfig[] = [];
 
-      if (!effectiveLinkTarget.isTemplateHeader && templateHeaderList.length > 0) {
+      // Header Visibility is configured on the Main Item and applies to all its template headers.
+      const visibility = Number(
+        effectiveLinkTarget.OtherSettingsDto?.HeaderVisibility ?? EmAppTemplateHeaderVisibility.Show,
+      );
+      setHeaderVisibility(visibility);
+
+      // Hide: do not render/load/save the header transactions at all (no band, no form).
+      const buildHeaders =
+        visibility !== EmAppTemplateHeaderVisibility.Hide &&
+        !effectiveLinkTarget.isTemplateHeader &&
+        templateHeaderList.length > 0;
+
+      if (buildHeaders) {
         templateHeaderList.forEach((hdr: any) => {
           if (hdr.LinkTargetTransactionId) {
-            const cfg = buildFormEmbedded(hdr, row, true);
+            const cfg = buildFormEmbedded(hdr, row, true, visibility);
             if (cfg) nextHeaderForms.push(cfg);
           } else if (hdr.LinkTargetSearchId) {
             const cfg = buildSearchEmbedded(hdr, row, true);
@@ -543,7 +558,7 @@ const TransactionFormGroup: React.FC = () => {
             </>
           ) : (
             <>
-              {mainSearch && headerForms.length > 0 && (
+              {mainSearch && headerForms.length > 0 && headerVisibility !== EmAppTemplateHeaderVisibility.Hide && (
                 <div className="w-full shrink-0 overflow-y-auto max-h-[40%]">
                   {headerForms.map((cfg) => renderEmbeddedForm(cfg))}
                 </div>

@@ -74,6 +74,8 @@ interface TemplateMainItemRow {
   TargetSearchFieldId1?: number | null;
   TargetSearchFieldId2?: number | null;
   TargetSearchFieldId3?: number | null;
+  /** Main Items only: how associated template headers render at runtime (1=Show, 2=Hide, 3=Collapsed). */
+  HeaderVisibility?: number | null;
 }
 
 const PAGE_TITLE = 'Data Model Template Editor';
@@ -96,6 +98,14 @@ const queryTypeDisplayNames: Record<number, string> = {
 const LINK_TARGET_SOURCE_COLUMN_SEARCH_VIEW_FIELD = 1;
 const LINK_TARGET_ACTION_EDIT = 1;
 const LINK_TARGET_ACTION_CREATE = 2;
+const HEADER_VISIBILITY_SHOW = 1;
+const HEADER_VISIBILITY_HIDE = 2;
+const HEADER_VISIBILITY_COLLAPSED = 3;
+const HEADER_VISIBILITY_OPTIONS: { value: number; label: string }[] = [
+  { value: HEADER_VISIBILITY_SHOW, label: 'Show' },
+  { value: HEADER_VISIBILITY_HIDE, label: 'Hide' },
+  { value: HEADER_VISIBILITY_COLLAPSED, label: 'Collapsed' }
+];
 
 function buildLinkTargetDtoFromTemplateItem(
   item: TemplateMainItemRow,
@@ -131,7 +141,10 @@ function buildLinkTargetDtoFromTemplateItem(
     IsPopup: isSearch,
     PopupWidth: 1200,
     PopupHeight: 700,
-    OtherSettingsDto: { TemplateItemType: templateItemType }
+    OtherSettingsDto: {
+      TemplateItemType: templateItemType,
+      HeaderVisibility: item.HeaderVisibility ?? null
+    }
   };
 }
 
@@ -348,7 +361,8 @@ const TransactionGroupEditor: React.FC = () => {
                   TransactionId: lt.LinkTargetTransactionId ?? null,
                   NavigationActionName: lt.NavigationActionName ?? '',
                   SourceViewColumnId1: lt.SourceViewColumnId1 != null ? String(lt.SourceViewColumnId1) : null,
-                  TargetColumn1: lt.TargetColumn1 != null ? String(lt.TargetColumn1) : null
+                  TargetColumn1: lt.TargetColumn1 != null ? String(lt.TargetColumn1) : null,
+                  HeaderVisibility: lt.OtherSettingsDto?.HeaderVisibility ?? null
                 }));
               const mainSearchRows: TemplateMainItemRow[] = searchList
                 .filter((lt: any) => lt != null && (lt.LinkTargetSearchId != null || lt.LinkTargetSearchId === 0))
@@ -364,7 +378,8 @@ const TransactionGroupEditor: React.FC = () => {
                   SourceViewColumnId3: lt.SourceViewColumnId3 != null ? String(lt.SourceViewColumnId3) : null,
                   TargetSearchFieldId1: lt.TargetSearchFieldId1 ?? null,
                   TargetSearchFieldId2: lt.TargetSearchFieldId2 ?? null,
-                  TargetSearchFieldId3: lt.TargetSearchFieldId3 ?? null
+                  TargetSearchFieldId3: lt.TargetSearchFieldId3 ?? null,
+                  HeaderVisibility: lt.OtherSettingsDto?.HeaderVisibility ?? null
                 }));
               const main = [...mainFormRows, ...mainSearchRows].sort((a, b) => (a.Sort ?? 0) - (b.Sort ?? 0));
               setMainItems(main);
@@ -1559,6 +1574,18 @@ const TransactionGroupEditor: React.FC = () => {
                                 <option value="">—</option>
                                 {(item.TransactionId != null ? (transactionPkFieldsByTransactionId[item.TransactionId] ?? []) : []).map((f) => (
                                   <option key={f.DataBaseFieldName} value={f.DataBaseFieldName}>{f.DataBaseFieldName}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div className="flex flex-col w-[160px] shrink-0 ml-[40px]">
+                              <label className={`text-xs ${theme.label} mb-1`}>Header Visibility</label>
+                              <select
+                                value={item.HeaderVisibility ?? HEADER_VISIBILITY_SHOW}
+                                onChange={(e) => updateMainItem(idx, { HeaderVisibility: Number(e.target.value) })}
+                                className={`h-7 px-2 text-xs border rounded w-full ${theme.inputBox} focus:outline-none`}
+                              >
+                                {HEADER_VISIBILITY_OPTIONS.map((o) => (
+                                  <option key={o.value} value={o.value}>{o.label}</option>
                                 ))}
                               </select>
                             </div>

@@ -57,6 +57,7 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
   const [isMobileMenuVisible, setIsMobileMenuVisible] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const mainContainerRef = useRef<HTMLDivElement>(null);
+  const collapseSeededRef = useRef(false);
 
   const [runtimeFieldConfigApi, setRuntimeFieldConfigApi] = useState<FormMasterDetailRuntimeConfigApi | null>(null);
   const handleRuntimeConfigApiReady = useCallback((api: FormMasterDetailRuntimeConfigApi) => {
@@ -76,6 +77,22 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
     onTemplateHeaderContainerReady(templateHeaderContainerRef.current);
     return () => onTemplateHeaderContainerReady(null);
   }, [onTemplateHeaderContainerReady, formStructureData, transactionExDto]);
+
+  // Template header "Collapsed" visibility (EmAppTemplateHeaderVisibility.Collapsed = 3):
+  // start collapsed once, then let the user toggle freely.
+  useEffect(() => {
+    if (collapseSeededRef.current) return;
+    if (!controllerModel.isTemplateHeader) return;
+    if (Number(controllerModel.param2Obj?.templateHeaderVisibility) !== 3) return;
+    collapseSeededRef.current = true;
+    const sectionId = `MasterDetailEditLayoutForm${controllerModel.uiId}`;
+    setCollapsedSections((prev) => {
+      if (prev.has(sectionId)) return prev;
+      const next = new Set(prev);
+      next.add(sectionId);
+      return next;
+    });
+  }, [controllerModel.isTemplateHeader, controllerModel.param2Obj, controllerModel.uiId]);
 
   // Detect mobile on mount and window resize
   useEffect(() => {

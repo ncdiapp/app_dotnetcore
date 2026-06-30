@@ -2896,6 +2896,17 @@ namespace APP.Components.Dto
         TemplateHeader = 2,
     }
 
+    /// <summary>
+    /// Controls how a Main Item's template header transactions are rendered at runtime.
+    /// Show: load and expand; Hide: do not load until the user manually expands; Collapsed: load but start collapsed.
+    /// </summary>
+    public enum EmAppTemplateHeaderVisibility
+    {
+        Show = 1,
+        Hide = 2,
+        Collapsed = 3,
+    }
+
     public enum EmAppWijmoOperator
     {
         Equals = 0,

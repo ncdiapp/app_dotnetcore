@@ -31,6 +31,17 @@ export const EmAppTransactionTemplateItemType = {
   TemplateHeader: 2,
 };
 
+/**
+ * How a Main Item's template header transactions render at runtime.
+ * Show: load and expand. Hide: do not load until the user manually expands. Collapsed: load but start collapsed.
+ * Matches APP.Components.Dto EmAppTemplateHeaderVisibility (AppEnums.cs).
+ */
+export const EmAppTemplateHeaderVisibility = {
+  Show: 1,
+  Hide: 2,
+  Collapsed: 3,
+};
+
 /** Template header items render inside TransactionFormGroup, not on search row context menu. */
 export function isTemplateHeaderLinkTarget(linkTarget: any): boolean {
   return linkTarget?.OtherSettingsDto?.TemplateItemType === EmAppTransactionTemplateItemType.TemplateHeader;
@@ -436,7 +447,7 @@ export function buildFormGroupOpenPayload(
 export function buildEmbeddedFormParam2(
   linkTarget: any,
   row: any,
-  options: { isHeader: boolean; openFrom?: string | null },
+  options: { isHeader: boolean; openFrom?: string | null; headerVisibility?: number | null },
 ): {
   transactionId: number | null;
   rootPrimaryKeyValue: string | null;
@@ -474,6 +485,8 @@ export function buildEmbeddedFormParam2(
 
   if (options.isHeader) {
     param2.isHideHeaderAndFooter = true;
+    // Controls runtime header rendering (1=Show, 2=Hide/lazy, 3=Collapsed). Set on the Main Item.
+    param2.templateHeaderVisibility = options.headerVisibility ?? EmAppTemplateHeaderVisibility.Show;
   }
 
   if (linkTarget.ActionType === EmAppLinkTargetActionType.Preview) {
