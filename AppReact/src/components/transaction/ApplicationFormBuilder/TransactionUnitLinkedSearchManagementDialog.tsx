@@ -67,6 +67,42 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
     return key.length > 0 ? key : null;
   }, []);
 
+  const normalizeLookupRows = useCallback(
+    (rows: any[]): { Id: number; Display: string }[] =>
+      (Array.isArray(rows) ? rows : [])
+        .map((item: any) => {
+          const id = item?.Id ?? item?.SearchId ?? null;
+          const display =
+            item?.Display ??
+            item?.Name ??
+            item?.Description ??
+            item?.TransactionName ??
+            (id != null ? String(id) : '');
+          return id != null ? { Id: Number(id), Display: String(display) } : null;
+        })
+        .filter((x): x is { Id: number; Display: string } => x != null),
+    []
+  );
+
+  const getMassLookupRows = useCallback(
+    (massEntity: any, key: string): { Id: number; Display: string }[] => {
+      if (!massEntity) return [];
+      if (Array.isArray(massEntity)) return normalizeLookupRows(massEntity);
+      const raw = massEntity[key] ?? massEntity[key.toLowerCase()] ?? null;
+      return normalizeLookupRows(Array.isArray(raw) ? raw : []);
+    },
+    [normalizeLookupRows]
+  );
+
+  const dedupeLookupRows = useCallback((rows: { Id: number; Display: string }[]) => {
+    const seen = new Set<number>();
+    return rows.filter((row) => {
+      if (seen.has(row.Id)) return false;
+      seen.add(row.Id);
+      return true;
+    });
+  }, []);
+
   const selectedSearchKey = toKey(selectedDto?.SearchId);
   const getSearchKeyFromView = useCallback((view: any): string | null => {
     if (!view) return null;
@@ -202,23 +238,31 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
     dispatch(setIsBusy());
     setLoading(true);
     try {
-      const [data, massEntity, unitDto, searchFields] = await Promise.all([
+      const [data, allSearchRows, massEntity, unitDto, searchFields] = await Promise.all([
         appTransactionService.retrieveOneAppTransactionUnitLinkedSearchList(String(transactionUnitId)),
-        adminSvc.getMassEntitiesLookupItem('AppSearch|AppSearchSaved|AppSearchView'),
+        searchSvc.retrieveAllAppSearchDto(null),
+        adminSvc.getMassEntitiesLookupItem('AppSearchSaved|AppSearchView'),
         appTransactionService.retrieveOneAppTransactionUnitExDto(String(transactionUnitId)),
         searchSvc.retrieveAllAppSearchFieldDtoList(),
       ]);
       setList(Array.isArray(data) ? data : []);
-      if (massEntity) {
-        const appSearch = Array.isArray(massEntity['AppSearch']) ? massEntity['AppSearch'] : [];
-        const appSearchSaved = Array.isArray(massEntity['AppSearchSaved']) ? massEntity['AppSearchSaved'] : [];
-        const appSearchView = Array.isArray(massEntity['AppSearchView']) ? massEntity['AppSearchView'] : [];
-        setSearchLookupList(appSearch);
-        setSearchViewLookupList(appSearchView);
-        setSearchDataMap(appSearch.length ? new DataMap(appSearch, 'Id', 'Display') : null);
-        setSearchSavedDataMap(appSearchSaved.length ? new DataMap(appSearchSaved, 'Id', 'Display') : null);
-        setSearchViewDataMap(appSearchView.length ? new DataMap(appSearchView, 'Id', 'Display') : null);
+
+      let appSearch = dedupeLookupRows(normalizeLookupRows(Array.isArray(allSearchRows) ? allSearchRows : []));
+      if (appSearch.length === 0) {
+        try {
+          const searchMass = await adminSvc.getMassEntitiesLookupItem('AppSearch');
+          appSearch = dedupeLookupRows(getMassLookupRows(searchMass, 'AppSearch'));
+        } catch {
+          /* ignore */
+        }
       }
+      const appSearchSaved = getMassLookupRows(massEntity, 'AppSearchSaved');
+      const appSearchView = getMassLookupRows(massEntity, 'AppSearchView');
+      setSearchLookupList(appSearch);
+      setSearchViewLookupList(appSearchView);
+      setSearchDataMap(appSearch.length ? new DataMap(appSearch, 'Id', 'Display') : null);
+      setSearchSavedDataMap(appSearchSaved.length ? new DataMap(appSearchSaved, 'Id', 'Display') : null);
+      setSearchViewDataMap(appSearchView.length ? new DataMap(appSearchView, 'Id', 'Display') : null);
       const fields = unitDto?.AppTransactionFieldList ?? [];
       const unitFieldOptions = (Array.isArray(fields) ? fields : [])
         .map((f: any) => ({
@@ -255,7 +299,7 @@ const TransactionUnitLinkedSearchManagementDialog: React.FC<TransactionUnitLinke
       dispatch(setIsNotBusy());
       setLoading(false);
     }
-  }, [isOpen, transactionUnitId, dispatch, showError]);
+  }, [isOpen, transactionUnitId, dispatch, showError, dedupeLookupRows, normalizeLookupRows, getMassLookupRows]);
 
   useEffect(() => {
     loadData();

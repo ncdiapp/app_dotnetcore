@@ -9,6 +9,7 @@ import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/bus
 import { useDispatch } from 'react-redux';
 import { appTransactionService } from '../../../webapi/apptransactionsvc';
 import { adminSvc } from '../../../webapi/adminsvc';
+import { searchSvc } from '../../../webapi/searchSvc';
 
 export interface TransactionUnitLinkedSearchEditorProps {
   isOpen: boolean;
@@ -54,20 +55,56 @@ const TransactionUnitLinkedSearchEditor: React.FC<TransactionUnitLinkedSearchEdi
   const [searchSavedList, setSearchSavedList] = useState<any[]>([]);
   const [searchViewList, setSearchViewList] = useState<any[]>([]);
 
+  const normalizeLookupRows = useCallback(
+    (rows: any[]): { Id: number; Display: string }[] =>
+      (Array.isArray(rows) ? rows : [])
+        .map((item: any) => {
+          const id = item?.Id ?? item?.SearchId ?? null;
+          const display =
+            item?.Display ??
+            item?.Name ??
+            item?.Description ??
+            (id != null ? String(id) : '');
+          return id != null ? { Id: Number(id), Display: String(display) } : null;
+        })
+        .filter((x): x is { Id: number; Display: string } => x != null),
+    []
+  );
+
+  const getMassLookupRows = useCallback(
+    (massEntity: any, key: string): { Id: number; Display: string }[] => {
+      if (!massEntity) return [];
+      if (Array.isArray(massEntity)) return normalizeLookupRows(massEntity);
+      const raw = massEntity[key] ?? massEntity[key.toLowerCase()] ?? null;
+      return normalizeLookupRows(Array.isArray(raw) ? raw : []);
+    },
+    [normalizeLookupRows]
+  );
+
   const loadLookups = useCallback(async () => {
     try {
-      const mass = await adminSvc.getMassEntitiesLookupItem('AppSearch|AppSearchSaved|AppSearchView');
-      if (mass) {
-        setSearchList(Array.isArray(mass['AppSearch']) ? mass['AppSearch'] : []);
-        setSearchSavedList(Array.isArray(mass['AppSearchSaved']) ? mass['AppSearchSaved'] : []);
-        setSearchViewList(Array.isArray(mass['AppSearchView']) ? mass['AppSearchView'] : []);
+      const [allSearchRows, massEntity] = await Promise.all([
+        searchSvc.retrieveAllAppSearchDto(null),
+        adminSvc.getMassEntitiesLookupItem('AppSearchSaved|AppSearchView'),
+      ]);
+      let appSearch = normalizeLookupRows(Array.isArray(allSearchRows) ? allSearchRows : []);
+      if (appSearch.length === 0) {
+        try {
+          const searchMass = await adminSvc.getMassEntitiesLookupItem('AppSearch');
+          appSearch = getMassLookupRows(searchMass, 'AppSearch');
+        } catch {
+          /* ignore */
+        }
       }
+      setSearchList(appSearch);
+      setSearchSavedList(getMassLookupRows(massEntity, 'AppSearchSaved'));
+      setSearchViewList(getMassLookupRows(massEntity, 'AppSearchView'));
     } catch (_) {
       setSearchList([]);
       setSearchSavedList([]);
       setSearchViewList([]);
     }
-  }, []);
+  }, [normalizeLookupRows, getMassLookupRows]);
 
   const loadData = useCallback(async () => {
     if (!isOpen) return;
