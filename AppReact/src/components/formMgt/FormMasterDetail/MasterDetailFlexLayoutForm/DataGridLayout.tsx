@@ -1601,6 +1601,17 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   // slower earlier fold can't overwrite a newer one. We do NOT call setProjectionModel here, so the
   // grid is never rebuilt by an edit (selection + the value just typed are preserved).
   const projectionFoldSeqRef = useRef(0);
+
+  /** Wide rows live on the pivot FlexGrid's CollectionView — not this layout's flat child-grid CV. */
+  const getProjectionWideRowsFromGrid = (grid: any): any[] => {
+    const cv = grid?.itemsSource;
+    if (cv?.sourceCollection && Array.isArray(cv.sourceCollection)) {
+      return [...cv.sourceCollection];
+    }
+    if (Array.isArray(cv)) return [...cv];
+    return [];
+  };
+
   const handleProjectionWideRowsChange = useCallback(
     async (wideRows: any[]) => {
       const currentDataModel = dataModelRef.current;
@@ -1617,16 +1628,38 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
         if (seq !== projectionFoldSeqRef.current) return; // superseded by a newer edit
         const unitIdStrLocal = String(unitId);
         const updatedRows = updated?.DictOneToManyFields?.[unitIdStrLocal] ?? getGridRowsForThisUnit();
+        const hostRow = dictOneToManyHostRowRef.current;
+        if (hostRow) {
+          tryMutateInPlace(() => {
+            hostRow.IsDirty = true;
+            hostRow.DictOneToManyFields = {
+              ...(hostRow.DictOneToManyFields ?? {}),
+              [unitIdStrLocal]: updatedRows,
+            };
+          });
+          queueNestedGridRecompute();
+        }
         commitOptimisticUnitRows(updatedRows);
         deferDataModelChange({
           ...currentDataModel,
-          currentFormData: { ...updated, IsDirty: true },
+          currentFormData: {
+            ...nextFormDataForUnitRowUpdate(currentDataModel, unitIdStrLocal, updatedRows),
+            IsDirty: true,
+          },
         });
       } catch (e) {
         appHelper.debugLog('foldChildPivotProjection failed', e);
       }
     },
-    [unitId, unitIdStr, commitOptimisticUnitRows, deferDataModelChange, getGridRowsForThisUnit]
+    [
+      unitId,
+      unitIdStr,
+      commitOptimisticUnitRows,
+      deferDataModelChange,
+      getGridRowsForThisUnit,
+      queueNestedGridRecompute,
+      tryMutateInPlace,
+    ]
   );
 
   const projectionCascadingInitRef = useRef<any>(null);
@@ -1984,12 +2017,16 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       if (!col || !wideItem) return;
 
       const fieldId = String(col?.name ?? '');
+      const binding = col?.binding;
       const rowIndex =
         typeof wideItem.__rowIndex === 'number' && wideItem.__rowIndex >= 0 ? wideItem.__rowIndex : e.row;
       const newValue = s.getCellData(e.row, e.col, false);
       const valueChanged = newValue !== projectionCascadingInitRef.current;
 
-      const wideRows = [...((collectionView as any).sourceCollection ?? [])];
+      const wideRows = getProjectionWideRowsFromGrid(s);
+      if (binding && rowIndex >= 0 && rowIndex < wideRows.length) {
+        wideRows[rowIndex] = { ...wideRows[rowIndex], [binding]: newValue };
+      }
 
       try {
         await handleProjectionWideRowsChange(wideRows);
@@ -2012,7 +2049,6 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       }
     },
     [
-      collectionView,
       getGridRowsForThisUnit,
       handleProjectionWideRowsChange,
       isGridReadOnly,
