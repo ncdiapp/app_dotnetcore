@@ -1,160 +1,30 @@
 {
-  "plmTemplateId": 3351,
+  "plmTemplateId": 3353,
   "plmSqlServer": "PC3B\\MSSQLSERVER01",
   "plmDatabase": "plm_live_20260602",
   "sqlServer": "PC3B\\MSSQLSERVER01",
   "dwDatabase": "plmDW",
-  "importTabIds": [4224, 4225, 4265, 4246, 4226, 4229, 4230, 4266, 4231, 4232, 4251, 4272, 4271, 4273],
+  "importTabIds": [4228],
   "tablePrefixDefault": "Plm_",
   "rootTableSuffix": "ReferenceBasicInfo",
   "plmTemplate": {
-    "templateId": 3351,
-    "templateName": "01 - Apparel - 10 Colorways",
-    "templateHeaderTabIds": [4251]
+    "templateId": 3353,
+    "templateName": "04 - Artwork",
+    "templateHeaderTabIds": []
   },
   "referenceScope": {
-    "dwTable": "PLM_DW_Tab_Style_Header_4251",
+    "dwTable": "PLM_DW_Tab_Artwork_Details_4228",
     "dwColumn": "Article__22",
-    "plmTabId": 4251,
+    "plmTabId": 4228,
     "plmSubItemId": 22
   },
   "tabs": [
     {
-      "appTable": "Style_Summary",
-      "dwTable": "PLM_DW_Tab_Style_Summary_4224",
-      "tabId": 4224,
-      "plmTabName": "Style Summary",
+      "appTable": "Artwork_Details",
+      "dwTable": "PLM_DW_Tab_Artwork_Details_4228",
+      "tabId": 4228,
+      "plmTabName": "Artwork Details",
       "tabSort": 1,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Colorways",
-      "dwTable": "PLM_DW_Tab_Colorways_4225",
-      "tabId": 4225,
-      "plmTabName": "Colorways",
-      "tabSort": 2,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Denim_Details",
-      "dwTable": "PLM_DW_Tab_Denim_Details_4265",
-      "tabId": 4265,
-      "plmTabName": "Denim Details",
-      "tabSort": 3,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Artworks",
-      "dwTable": "PLM_DW_Tab_Artworks_4246",
-      "tabId": 4246,
-      "plmTabName": "Artworks",
-      "tabSort": 4,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Technical_Details",
-      "dwTable": "PLM_DW_Tab_Technical_Details_4226",
-      "tabId": 4226,
-      "plmTabName": "Technical Details",
-      "tabSort": 5,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Fabrics___Trims_10",
-      "dwTable": "PLM_DW_Tab_Fabrics___Trims_10_4229",
-      "tabId": 4229,
-      "plmTabName": "Fabrics & Trims-10",
-      "tabSort": 6,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Labels___Packaging_10",
-      "dwTable": "PLM_DW_Tab_Labels___Packaging_10_4230",
-      "tabId": 4230,
-      "plmTabName": "Labels & Packaging-10",
-      "tabSort": 7,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Style_Reference",
-      "dwTable": "PLM_DW_Tab_Style_Reference_4266",
-      "tabId": 4266,
-      "plmTabName": "Style Reference",
-      "tabSort": 8,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Care_Label",
-      "dwTable": "PLM_DW_Tab_Care_Label_4231",
-      "tabId": 4231,
-      "plmTabName": "Care Label",
-      "tabSort": 9,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Costing",
-      "dwTable": "PLM_DW_Tab_Costing_4232",
-      "tabId": 4232,
-      "plmTabName": "Costing",
-      "tabSort": 10,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Style_Header",
-      "dwTable": "PLM_DW_Tab_Style_Header_4251",
-      "tabId": 4251,
-      "plmTabName": "Style Header",
-      "tabSort": 11,
-      "isTemplateHeaderTab": true,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Publish_to_ERP",
-      "dwTable": "PLM_DW_Tab_Publish_to_ERP_4272",
-      "tabId": 4272,
-      "plmTabName": "Publish to ERP",
-      "tabSort": 13,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Approvals",
-      "dwTable": "PLM_DW_Tab_Approvals_4271",
-      "tabId": 4271,
-      "plmTabName": "Approvals",
-      "tabSort": 14,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "AJ",
-      "dwTable": "PLM_DW_Tab_AJ_4273",
-      "tabId": 4273,
-      "plmTabName": "AJ",
-      "tabSort": 15,
       "isTemplateHeaderTab": false,
       "importStatus": "Ready",
       "mode": "all"
@@ -164,25 +34,17 @@
     {
       "appTable": "ProductDesignColorGrid",
       "dwTable": "PLM_DW_Grid_ProductDesignColorGrid_7",
-      "gridSubItemId": 7354,
+      "gridSubItemId": 35,
       "gridId": 7,
-      "parentPlmTabId": 4225,
-      "transactionIntegrationId": "Tab_4225"
-    },
-    {
-      "appTable": "Artwork_BOM_prod",
-      "dwTable": "PLM_DW_Grid_Artwork_BOM_prod_3167",
-      "gridSubItemId": 6678,
-      "gridId": 3167,
-      "parentPlmTabId": 4246,
-      "transactionIntegrationId": "Tab_4246"
+      "parentPlmTabId": 4228,
+      "transactionIntegrationId": "Tab_4228"
     }
   ],
   "blueprint": {
-    "transactionGroupName": "01 - Apparel - 10 Colorways",
-    "transactionGroupIntegrationId": "TG_01Apparel10Colorways",
-    "searchName": "01 - Apparel - 10 Colorways References",
-    "searchIntegrationId": "Search_01Apparel10Colorways",
-    "folderName": "01 - Apparel - 10 Colorways"
+    "transactionGroupName": "04 - Artwork",
+    "transactionGroupIntegrationId": "TG_04Artwork",
+    "searchName": "04 - Artwork References",
+    "searchIntegrationId": "Search_04Artwork",
+    "folderName": "04 - Artwork"
   }
 }
