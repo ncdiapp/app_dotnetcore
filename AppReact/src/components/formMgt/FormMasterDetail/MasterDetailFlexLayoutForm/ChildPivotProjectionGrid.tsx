@@ -14,7 +14,13 @@ interface ChildPivotProjectionGridProps {
   resolveDataMap?: (fieldId: any) => DataMap | null;
   /** Resolve the configured column width (DisplayWidth) for a field id. */
   resolveWidth?: (fieldId: any) => number | undefined;
-  /** Called with the edited wide rows so the host can fold them back (server) and persist. */
+  /** Angular childCellEditBeginning parity — swap column dataMap to row-level cascading lookup. */
+  onCellEditBeginning?: (grid: any, e: any) => void;
+  /** Restore standalone dataMap after edit (Angular cellEditEnding). */
+  onCellEditEnding?: (grid: any, e: any) => void;
+  /** Called after edit; host folds wide rows and may refresh cascading data sources. */
+  onCellEditEnded?: (grid: any, e: any) => void;
+  /** @deprecated use onCellEditEnded */
   onWideRowsChange?: (wideRows: any[]) => void;
 }
 
@@ -27,6 +33,9 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
   isReadOnly = false,
   resolveDataMap,
   resolveWidth,
+  onCellEditBeginning,
+  onCellEditEnding,
+  onCellEditEnded,
   onWideRowsChange,
 }) => {
   const { theme } = useTheme();
@@ -45,11 +54,34 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
     collectionView.refresh();
   }, [wideRows, collectionView]);
 
-  const handleCellEditEnded = useCallback(() => {
-    if (isReadOnly || !onWideRowsChange) return;
-    const source = (collectionView as any).sourceCollection ?? wideRows;
-    onWideRowsChange(source);
-  }, [isReadOnly, onWideRowsChange, collectionView, wideRows]);
+  const handleCellEditEnded = useCallback(
+    (s: any, e: any) => {
+      if (isReadOnly) return;
+      if (onCellEditEnded) {
+        onCellEditEnded(s, e);
+        return;
+      }
+      if (!onWideRowsChange) return;
+      const source = (collectionView as any).sourceCollection ?? wideRows;
+      onWideRowsChange(source);
+    },
+    [isReadOnly, onCellEditEnded, onWideRowsChange, collectionView, wideRows],
+  );
+
+  const handleCellEditBeginning = useCallback(
+    (s: any, e: any) => {
+      if (isReadOnly) return;
+      onCellEditBeginning?.(s, e);
+    },
+    [isReadOnly, onCellEditBeginning],
+  );
+
+  const handleCellEditEnding = useCallback(
+    (s: any, e: any) => {
+      onCellEditEnding?.(s, e);
+    },
+    [onCellEditEnding],
+  );
 
   const dataTypeFor = useCallback(
     (controlType?: number | null): string | undefined => {
@@ -138,12 +170,15 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
         selectionMode="Cell"
         className="w-full h-full"
         style={{ height: '100%', width: '100%', border: 'none' }}
+        beginningEdit={handleCellEditBeginning}
+        cellEditEnding={handleCellEditEnding}
         cellEditEnded={handleCellEditEnded}
       >
         {/* Host (child) descriptor columns */}
         {hostColumns.map((hc) => (
           <FlexGridColumn
             key={`host_${hc.Binding}`}
+            name={hc.FieldId != null ? String(hc.FieldId) : ''}
             binding={hc.Binding}
             header={hc.Header}
             width={resolveWidth?.(hc.FieldId) ?? 150}
@@ -165,6 +200,7 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
             return (
               <FlexGridColumn
                 key={`val_${leaf.Binding}`}
+                name={leaf.FieldId != null ? String(leaf.FieldId) : ''}
                 binding={leaf.Binding}
                 header={header}
                 width={resolveWidth?.(leaf.FieldId) ?? 110}

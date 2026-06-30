@@ -1629,6 +1629,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     [unitId, unitIdStr, commitOptimisticUnitRows, deferDataModelChange, getGridRowsForThisUnit]
   );
 
+  const projectionCascadingInitRef = useRef<any>(null);
+
   const transactionExDtoRef = useRef(transactionExDto);
   transactionExDtoRef.current = transactionExDto;
 
@@ -1824,6 +1826,200 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     if (Array.isArray(rootItems) && rootItems.length > 0) return rootItems;
     return null;
   };
+
+  /** Resolve DB field name for a pivot-projection column (host or grandchild pivot leaf). */
+  const getProjectionFieldDbName = useCallback(
+    (col: any): string | null => {
+      const binding = col?.binding;
+      if (!binding) return null;
+      const host = projectionModel?.HostColumns?.find((h) => h.Binding === binding);
+      if (host) return host.Binding;
+      for (const g of projectionModel?.ColumnGroups ?? []) {
+        for (const leaf of g.Columns ?? []) {
+          if (leaf.Binding === binding) return leaf.DataBaseFieldName;
+        }
+      }
+      return String(binding);
+    },
+    [projectionModel]
+  );
+
+  const restoreProjectionColumnDataMap = useCallback(
+    (gridSender: any, colIndex: number) => {
+      const flex = gridSender?.control ?? gridSender;
+      const col = flex?.columns?.[colIndex];
+      if (!col) return;
+      const fieldIdStr = String(col.name ?? '');
+      if (!fieldIdStr) return;
+      const dm = buildStandaloneDataMapFromFormStructure(dataModelRef.current, fieldIdStr);
+      if (dm) {
+        col.dataMap = dm;
+        flex.invalidate?.();
+      }
+    },
+    [buildStandaloneDataMapFromFormStructure]
+  );
+
+  /** Refresh cascading lookup buckets on the child row (Angular grandchild: childRow.DictCascadingFiledDataSource). */
+  const refreshProjectionRowCascading = useCallback(
+    async (childRow: any, triggerFieldId: string | number): Promise<any | null> => {
+      if (!childRow || triggerFieldId == null || triggerFieldId === '') return null;
+      const currentDataModel = dataModelRef.current;
+      const rows = getGridRowsForThisUnit();
+      const rowIndex = rows.indexOf(childRow);
+      const rowsPatch = rowIndex >= 0 ? rows.map((r, i) => (i === rowIndex ? childRow : r)) : rows;
+      const nextCurrentFormData = buildMasterDetailDataDtoForCascading(currentDataModel, unitIdStr, rowsPatch);
+      try {
+        const cascadingResp = await appTransactionService.GetChildOrGrandChildUnitFieldTriggerCascadingDataSource({
+          AppChildDataDto: {
+            ...childRow,
+            CascadingUnitId: unitId,
+            CascadingFieldId: Number(triggerFieldId),
+          },
+          MasterDetailDataDto: nextCurrentFormData,
+        });
+        if (!cascadingResp) return null;
+        const mergedRow = {
+          ...childRow,
+          DictOneToOneFields: cascadingResp.DictOneToOneFields ?? childRow.DictOneToOneFields,
+          DictCascadingFiledDataSource:
+            cascadingResp.DictCascadingFiledDataSource ?? childRow.DictCascadingFiledDataSource,
+          CascadingNeedToBeLockedFields:
+            cascadingResp.CascadingNeedToBeLockedFields ?? childRow.CascadingNeedToBeLockedFields,
+        };
+        if (rowIndex >= 0) {
+          const nextRows = rows.map((r, i) => (i === rowIndex ? mergedRow : r));
+          commitOptimisticUnitRows(nextRows);
+          deferDataModelChange({
+            ...currentDataModel,
+            currentFormData: {
+              ...nextFormDataForUnitRowUpdate(currentDataModel, unitIdStr, nextRows),
+              IsDirty: true,
+            },
+          });
+        }
+        return mergedRow;
+      } catch {
+        return null;
+      }
+    },
+    [unitId, unitIdStr, commitOptimisticUnitRows, deferDataModelChange, getGridRowsForThisUnit]
+  );
+
+  const handleProjectionCellEditBeginning = useCallback(
+    async (s: any, e: any) => {
+      if (isGridReadOnly) return;
+      if (e.row < 0 || e.col < 0) return;
+
+      const col = s.columns?.[e.col];
+      const wideItem = s.rows?.[e.row]?.dataItem;
+      if (!col || !wideItem) return;
+
+      const fieldId = String(col?.name ?? '');
+      const dbFieldName = getProjectionFieldDbName(col);
+      if (!fieldId || !dbFieldName) return;
+
+      const rowIndex =
+        typeof wideItem.__rowIndex === 'number' && wideItem.__rowIndex >= 0 ? wideItem.__rowIndex : e.row;
+      const childRows = getGridRowsForThisUnit();
+      let childRow = rowIndex >= 0 && rowIndex < childRows.length ? childRows[rowIndex] : null;
+      if (!childRow) return;
+
+      if (
+        Array.isArray(childRow.CascadingNeedToBeLockedFields) &&
+        childRow.CascadingNeedToBeLockedFields.indexOf(dbFieldName) >= 0
+      ) {
+        e.cancel = true;
+        return;
+      }
+
+      projectionCascadingInitRef.current = wideItem[col.binding];
+
+      const currentDataModel = dataModelRef.current;
+      const metaFormForCascading =
+        masterDetailFormDataRef.current ?? currentDataModel?.currentFormData;
+      const usedCascadingFieldIds = metaFormForCascading?.IsUsedCascadingDataSourceFiedIds ?? [];
+      if (!Array.isArray(usedCascadingFieldIds) || !usedCascadingFieldIds.map(String).includes(fieldId)) {
+        return;
+      }
+
+      let lookupItems = resolveCascadingLookupItemsForCellEdit(currentDataModel, childRow, fieldId);
+
+      if (!lookupItems || lookupItems.length === 0) {
+        const structure = currentDataModel?.currentFormStructure ?? {};
+        const parentFieldIdRaw = structure.DictCascadedIdParentField?.[fieldId];
+        const parentFieldIdStr =
+          parentFieldIdRaw != null && parentFieldIdRaw !== '' ? String(parentFieldIdRaw) : '';
+        if (parentFieldIdStr) {
+          const refreshed = await refreshProjectionRowCascading(childRow, parentFieldIdStr);
+          if (refreshed) {
+            childRow = refreshed;
+            lookupItems = resolveCascadingLookupItemsForCellEdit(currentDataModel, childRow, fieldId);
+          }
+        }
+      }
+
+      if (lookupItems && lookupItems.length > 0) {
+        col.dataMap = new DataMap(lookupItems, 'Id', 'Display');
+      }
+    },
+    [getProjectionFieldDbName, getGridRowsForThisUnit, isGridReadOnly, refreshProjectionRowCascading]
+  );
+
+  const handleProjectionCellEditEnding = useCallback(
+    (s: any, e: any) => {
+      if (e.col < 0) return;
+      restoreProjectionColumnDataMap(s, e.col);
+    },
+    [restoreProjectionColumnDataMap]
+  );
+
+  const handleProjectionCellEditEnded = useCallback(
+    async (s: any, e: any) => {
+      if (isGridReadOnly) return;
+      if (e.row < 0 || e.col < 0) return;
+
+      const col = s.columns?.[e.col];
+      const wideItem = s.rows?.[e.row]?.dataItem;
+      if (!col || !wideItem) return;
+
+      const fieldId = String(col?.name ?? '');
+      const rowIndex =
+        typeof wideItem.__rowIndex === 'number' && wideItem.__rowIndex >= 0 ? wideItem.__rowIndex : e.row;
+      const newValue = s.getCellData(e.row, e.col, false);
+      const valueChanged = newValue !== projectionCascadingInitRef.current;
+
+      const wideRows = [...((collectionView as any).sourceCollection ?? [])];
+
+      try {
+        await handleProjectionWideRowsChange(wideRows);
+
+        const metaFormForCascadeEnd =
+          masterDetailFormDataRef.current ?? dataModelRef.current?.currentFormData;
+        const changedNeedCascade = metaFormForCascadeEnd?.IsChangedNeedToCascadingFiedIds ?? [];
+        if (fieldId && valueChanged && Array.isArray(changedNeedCascade)) {
+          const changedSet = new Set(changedNeedCascade.map((x: any) => String(x)));
+          if (changedSet.has(fieldId)) {
+            const childRows = getGridRowsForThisUnit();
+            const childRow = rowIndex >= 0 && rowIndex < childRows.length ? childRows[rowIndex] : null;
+            if (childRow) {
+              await refreshProjectionRowCascading(childRow, fieldId);
+            }
+          }
+        }
+      } finally {
+        restoreProjectionColumnDataMap(s, e.col);
+      }
+    },
+    [
+      collectionView,
+      getGridRowsForThisUnit,
+      handleProjectionWideRowsChange,
+      isGridReadOnly,
+      refreshProjectionRowCascading,
+      restoreProjectionColumnDataMap,
+    ]
+  );
 
   const handleCellEditBeginning = (s: any, e: any) => {
     if (isGridReadOnly) return;
@@ -3139,7 +3335,9 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
               isReadOnly={isGridReadOnly}
               resolveDataMap={resolveProjectionDataMap}
               resolveWidth={resolveProjectionWidth}
-              onWideRowsChange={handleProjectionWideRowsChange}
+              onCellEditBeginning={handleProjectionCellEditBeginning}
+              onCellEditEnding={handleProjectionCellEditEnding}
+              onCellEditEnded={handleProjectionCellEditEnded}
             />
           </div>
         )}
