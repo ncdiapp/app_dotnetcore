@@ -103,7 +103,11 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
     [sourceDataMap],
   );
 
-  if (!model || model.IsConfigured === false) {
+  if (!model) {
+    return null;
+  }
+
+  if (model.IsConfigured === false) {
     return (
       <div className={`flex flex-col gap-1 p-3 text-xs ${theme.label}`}>
         <div className="font-semibold text-amber-600">
@@ -115,35 +119,16 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
     );
   }
 
-  const noSourceRows = columnGroups.length === 0;
-  const nothingVisible = !noSourceRows && visibleValueColumnCount === 0;
-
-  if (noSourceRows || nothingVisible) {
-    return (
-      <div className={`flex flex-col gap-1 p-3 text-xs ${theme.label}`}>
-        {noSourceRows && (
-          <div>
-            No source rows to build columns. Add rows to the source grid
-            {model.ColumnSourceUnitId != null ? ` (unit ${model.ColumnSourceUnitId})` : ''} first.
-          </div>
-        )}
-        {nothingVisible && (
-          <div className="font-semibold text-amber-600">
-            All Pivot Value fields are hidden (IsVisible = false). Mark at least one as visible.
-          </div>
-        )}
-        <div className="mt-1 opacity-80">
-          <div>Child rows: {model.ChildRowCount ?? 0}</div>
-          <div>Source rows: {model.SourceRowCount ?? 0}</div>
-          <div>Column key field: {model.ColumnKeyFieldName ?? '(none)'}</div>
-          <div>Source field: {model.ColumnSourceFieldName ?? '(none)'}</div>
-        </div>
-      </div>
-    );
-  }
+  const nothingVisible = columnGroups.length > 0 && visibleValueColumnCount === 0;
 
   return (
-    <div className="w-full h-full overflow-hidden">
+    <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
+      {nothingVisible && (
+        <div className={`shrink-0 px-3 py-1 text-xs font-semibold text-amber-600`}>
+          All Pivot Value fields are hidden (IsVisible = false). Mark at least one as visible.
+        </div>
+      )}
+      <div className="h-full w-full">
       <FlexGrid
         ref={flexGridRef}
         itemsSource={collectionView}
@@ -196,6 +181,7 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
         {/* Spacer */}
         <FlexGridColumn header="" binding="" width="*" isReadOnly={true} isRequired={false} />
       </FlexGrid>
+      </div>
     </div>
   );
 };

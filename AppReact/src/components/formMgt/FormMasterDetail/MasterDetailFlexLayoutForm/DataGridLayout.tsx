@@ -1482,6 +1482,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   /** Keep grandchild detail template callback stable (List Edit parity) — avoids FlexGridDetail collapse on grandchild edit/add/delete. */
   const grandChildUnitListRef = useRef<any[]>([]);
   grandChildUnitListRef.current = grandChildUnitList;
+  const grandChildUnitsForDetailRef = useRef<any[]>([]);
 
   // ----- Child-unit pivot projection (EmGridViewDisplayType.ChildUnitPivotColumns) -----
   // When a grandchild of THIS unit is configured to project onto the parent (child) grid,
@@ -1501,6 +1502,20 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     return null;
   }, [dataModel?.currentFormStructure?.DictUnitIdPivotGrid, grandChildUnitList, unitId]);
   const isChildPivotProjectionHost = Boolean(childPivotProjection);
+
+  // Pivot grandchild is edited via projected columns on this grid — never as a nested row-detail unit.
+  const grandChildUnitsForDetail = useMemo(() => {
+    if (!isChildPivotProjectionHost || childPivotProjection?.grandchildUnitId == null) {
+      return grandChildUnitList;
+    }
+    const pivotGcId = childPivotProjection.grandchildUnitId;
+    return grandChildUnitList.filter((u: any) => {
+      const id = u?.Id ?? u?.unitId;
+      return Number(id) !== Number(pivotGcId);
+    });
+  }, [grandChildUnitList, isChildPivotProjectionHost, childPivotProjection?.grandchildUnitId]);
+
+  grandChildUnitsForDetailRef.current = grandChildUnitsForDetail;
 
   // Per-field configured width (DisplayWidth) for host + grandchild fields, keyed by field Id.
   // (Pure presentation; all data transform happens server-side.)
@@ -1526,23 +1541,34 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   // (AppChildPivotProjectionBL); the UI only renders the model and folds edits back.
   const [projectionModel, setProjectionModel] = useState<ChildPivotProjectionModel | null>(null);
 
+  // Pivot grid is ready once the server model is loaded. While loading (or on failure), fall back to the
+  // normal child-unit FlexGrid so the page is never blank. When loaded, ColumnGroups may be empty (no source
+  // rows) — host columns still render; pivot columns appear when the source grid has data.
+  const pivotProjectionModelReady = useMemo(
+    () =>
+      isChildPivotProjectionHost &&
+      projectionModel != null &&
+      projectionModel.IsConfigured !== false,
+    [isChildPivotProjectionHost, projectionModel],
+  );
+
   // Rebuild the grid ONLY on STRUCTURAL changes — i.e. the source-grid column domain changes, or
   // host rows are added/removed. Plain cell edits must NOT rebuild: a per-edit rebuild would replace
   // WideRows, reset the CollectionView (selection jumps to row 1) and overwrite the value being typed
   // with the server round-trip result ("回档"). Cell values are intentionally excluded from this key.
   const projectionRebuildKey = useMemo(() => {
     if (!isChildPivotProjectionHost) return '';
-    const fd = dataModel?.currentFormData;
+    const fd = masterDetailFormData ?? dataModel?.currentFormData;
     const desc: any = childPivotProjection?.descriptor;
     const srcUnitId = desc?.ColumnSourceUnitId;
     const srcField = desc?.ColumnSourceFieldName;
     const srcRows: any[] = srcUnitId != null ? fd?.DictOneToManyFields?.[String(srcUnitId)] ?? [] : [];
     const srcSig = srcField
-      ? srcRows.map((r: any) => r?.DictOneToOneFields?.[srcField] ?? '').join('|')
+      ? srcRows.map((r: any) => readTransactionRowField(r, srcField) ?? '').join('|')
       : String(srcRows.length);
     const hostRows: any[] = fd?.DictOneToManyFields?.[String(unitId)] ?? [];
     return `${srcSig}#${hostRows.length}`;
-  }, [isChildPivotProjectionHost, dataModel?.currentFormData, childPivotProjection, unitId]);
+  }, [isChildPivotProjectionHost, masterDetailFormData, dataModel?.currentFormData, childPivotProjection, unitId]);
 
   useEffect(() => {
     if (!isChildPivotProjectionHost) {
@@ -1550,7 +1576,11 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       return;
     }
     let cancelled = false;
-    const fd = dataModelRef.current?.currentFormData;
+    const fd = buildMasterDetailDataDtoForCascading(
+      dataModelRef.current,
+      unitIdStr,
+      getGridRowsForThisUnit()
+    );
     appTransactionService
       .convertGrandChildDataToPivotColumns(fd, Number(unitId))
       .then((m) => {
@@ -1574,7 +1604,11 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const handleProjectionWideRowsChange = useCallback(
     async (wideRows: any[]) => {
       const currentDataModel = dataModelRef.current;
-      const fd = currentDataModel?.currentFormData;
+      const fd = buildMasterDetailDataDtoForCascading(
+        currentDataModel,
+        unitIdStr,
+        getGridRowsForThisUnit()
+      );
       if (!fd) return;
       const seq = ++projectionFoldSeqRef.current;
       try {
@@ -1592,7 +1626,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
         appHelper.debugLog('foldChildPivotProjection failed', e);
       }
     },
-    [unitId, commitOptimisticUnitRows, deferDataModelChange, getGridRowsForThisUnit]
+    [unitId, unitIdStr, commitOptimisticUnitRows, deferDataModelChange, getGridRowsForThisUnit]
   );
 
   const transactionExDtoRef = useRef(transactionExDto);
@@ -2642,7 +2676,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       });
 
       // Re-expand after defer/layout (same delay band as scroll/selection in nested grids; avoids null.selectionMode races).
-      if ((grandChildUnitListRef.current?.length ?? 0) > 0 && parentRowIndex >= 0) {
+      if ((grandChildUnitsForDetailRef.current?.length ?? 0) > 0 && parentRowIndex >= 0) {
         const reopenId = window.setTimeout(() => {
           try {
             if (!isMountedRef.current) return;
@@ -2689,7 +2723,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       const rowItem = ctx?.item?._originalData ?? ctx?.item ?? ctx?.row?.dataItem?._originalData ?? ctx?.row?.dataItem;
       if (!rowItem) return null;
       const parentRowIndex = Number(ctx?.row?.dataIndex ?? ctx?.row?.index ?? -1);
-      const list = grandChildUnitListRef.current;
+      const list = grandChildUnitsForDetailRef.current;
       if (!list || list.length === 0) {
         // No placeholder text: keep detail area blank if unit definitions are missing.
         return (
@@ -3098,8 +3132,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
 
         {/* Child-unit pivot projection: a grandchild rendered as dynamic columns on this (child) grid.
             The server (AppChildPivotProjectionBL) builds the model and folds edits — UI only renders. */}
-        {!isPivotEditGrid && isChildPivotProjectionHost && (
-          <div className="h-full w-full">
+        {!isPivotEditGrid && pivotProjectionModelReady && (
+          <div className="h-full w-full overflow-hidden">
             <ChildPivotProjectionGrid
               model={projectionModel}
               isReadOnly={isGridReadOnly}
@@ -3110,7 +3144,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           </div>
         )}
 
-        {!isPivotEditGrid && !isChildPivotProjectionHost && !showMultipleSelectBoxUi && (
+        {!isPivotEditGrid && !pivotProjectionModelReady && !showMultipleSelectBoxUi && (
         <div
           className={
             showAvailableSelectPairSplit
@@ -3154,7 +3188,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             cellEditEnded={handleCellEditEnded}
           >
           <FlexGridFilter />
-          {!isGrandChildPopupMode && grandChildUnitList.length > 0 && (
+          {!isGrandChildPopupMode && grandChildUnitsForDetail.length > 0 && (
             <FlexGridDetail
               ref={flexGridDetailRef}
               detailVisibilityMode="ExpandSingle"
@@ -3162,7 +3196,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             />
           )}
           {isGrandChildPopupMode &&
-            grandChildUnitList.map((gc: any) => {
+            grandChildUnitsForDetail.map((gc: any) => {
               const gcUnitId = gc.Id ?? gc.unitId;
               const gcUnitIsReadOnly = normalizeBool(gc?.IsReadOnly);
               if (gcUnitId == null) return null;
