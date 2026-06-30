@@ -33,7 +33,7 @@ import {
 import PivotEditGridPanel from './PivotEditGridPanel';
 import MatrixPivotEditGrid from './MatrixPivotEditGrid';
 import ChildPivotProjectionGrid from './ChildPivotProjectionGrid';
-import { ChildPivotProjectionModel } from './childPivotProjectionHelper';
+import { ChildPivotProjectionModel, foldWideRowsIntoChildRows } from './childPivotProjectionHelper';
 import {
   enrichTransactionFieldFromDict,
   isRuntimeTransactionFieldVisible,
@@ -1537,9 +1537,12 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     return m;
   }, [isChildPivotProjectionHost, transactionExDto?.DictAllTransactionField, unitExDto, childPivotProjection]);
 
-  // Server-built projection model (columns + wide rows). All CONVERT logic lives in C#
-  // (AppChildPivotProjectionBL); the UI only renders the model and folds edits back.
+  // Server-built projection model (columns + wide rows). Build runs on server; fold-back on edit is client-side.
   const [projectionModel, setProjectionModel] = useState<ChildPivotProjectionModel | null>(null);
+  const projectionModelRef = useRef<ChildPivotProjectionModel | null>(null);
+  projectionModelRef.current = projectionModel;
+  const childPivotProjectionRef = useRef(childPivotProjection);
+  childPivotProjectionRef.current = childPivotProjection;
 
   // Pivot grid is ready once the server model is loaded. While loading (or on failure), fall back to the
   // normal child-unit FlexGrid so the page is never blank. When loaded, ColumnGroups may be empty (no source
@@ -1596,13 +1599,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isChildPivotProjectionHost, unitId, projectionRebuildKey]);
 
-  // Fold edited wide rows back into the nested grandchild structure (server), then persist.
-  // Folds run per edit and are async; a sequence guard drops stale (out-of-order) responses so a
-  // slower earlier fold can't overwrite a newer one. We do NOT call setProjectionModel here, so the
-  // grid is never rebuilt by an edit (selection + the value just typed are preserved).
-  const projectionFoldSeqRef = useRef(0);
-
-  /** Wide rows live on the pivot FlexGrid's CollectionView — not this layout's flat child-grid CV. */
+  // Fold edited wide rows back into nested grandchild structure (client-side, mirrors server BL).
+  // No API per cell edit — only BuildChildPivotProjection runs on load / structural rebuild.
   const getProjectionWideRowsFromGrid = (grid: any): any[] => {
     const cv = grid?.itemsSource;
     if (cv?.sourceCollection && Array.isArray(cv.sourceCollection)) {
@@ -1613,52 +1611,42 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   };
 
   const handleProjectionWideRowsChange = useCallback(
-    async (wideRows: any[]) => {
+    (wideRows: any[]) => {
       const currentDataModel = dataModelRef.current;
-      const fd = buildMasterDetailDataDtoForCascading(
-        currentDataModel,
-        unitIdStr,
-        getGridRowsForThisUnit()
-      );
-      if (!fd) return;
-      const seq = ++projectionFoldSeqRef.current;
-      try {
-        const updated = await appTransactionService.convertBackPivotColumnsToGrandChildData(fd, Number(unitId), wideRows);
-        if (!updated) return;
-        if (seq !== projectionFoldSeqRef.current) return; // superseded by a newer edit
-        const unitIdStrLocal = String(unitId);
-        const updatedRows = updated?.DictOneToManyFields?.[unitIdStrLocal] ?? getGridRowsForThisUnit();
-        const hostRow = dictOneToManyHostRowRef.current;
-        if (hostRow) {
-          tryMutateInPlace(() => {
-            hostRow.IsDirty = true;
-            hostRow.DictOneToManyFields = {
-              ...(hostRow.DictOneToManyFields ?? {}),
-              [unitIdStrLocal]: updatedRows,
-            };
-          });
-          queueNestedGridRecompute();
-        }
-        commitOptimisticUnitRows(updatedRows);
-        deferDataModelChange({
-          ...currentDataModel,
-          currentFormData: {
-            ...nextFormDataForUnitRowUpdate(currentDataModel, unitIdStrLocal, updatedRows),
-            IsDirty: true,
-          },
+      const model = projectionModelRef.current;
+      if (!model?.IsConfigured) return;
+
+      const currentRows = getGridRowsForThisUnit();
+      const fieldDefs = childPivotProjectionRef.current?.grandchildUnit?.AppTransactionFieldList ?? [];
+      const updatedRows = foldWideRowsIntoChildRows(currentRows, wideRows, model, fieldDefs);
+
+      const unitIdStrLocal = String(unitId);
+      const hostRow = dictOneToManyHostRowRef.current;
+      if (hostRow) {
+        tryMutateInPlace(() => {
+          hostRow.IsDirty = true;
+          hostRow.DictOneToManyFields = {
+            ...(hostRow.DictOneToManyFields ?? {}),
+            [unitIdStrLocal]: updatedRows,
+          };
         });
-      } catch (e) {
-        appHelper.debugLog('foldChildPivotProjection failed', e);
+        queueNestedGridRecompute();
       }
+      commitOptimisticUnitRows(updatedRows);
+      deferDataModelChange({
+        ...currentDataModel,
+        currentFormData: {
+          ...nextFormDataForUnitRowUpdate(currentDataModel, unitIdStrLocal, updatedRows),
+          IsDirty: true,
+        },
+      });
     },
     [
       unitId,
-      unitIdStr,
       commitOptimisticUnitRows,
       deferDataModelChange,
       getGridRowsForThisUnit,
       queueNestedGridRecompute,
-      tryMutateInPlace,
     ]
   );
 
@@ -2029,7 +2017,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       }
 
       try {
-        await handleProjectionWideRowsChange(wideRows);
+        handleProjectionWideRowsChange(wideRows);
 
         const metaFormForCascadeEnd =
           masterDetailFormDataRef.current ?? dataModelRef.current?.currentFormData;
