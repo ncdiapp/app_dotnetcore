@@ -411,9 +411,14 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
         return;
       }
 
-      // After save, do not rebind to response; use response only to update root PK / URL, then refresh/reopen.
-      if (onSave && result?.Object) onSave(result.Object);
-      (onReloadCurrentForm ?? onRefresh)?.();
+      // After save, use the response only to update root PK / URL and trigger a SINGLE reload.
+      // handleAfterSave (onSave) clears caches and reloads the form exactly once; also calling
+      // onReloadCurrentForm here would load the form twice (duplicate TransactionForm/GetFormData).
+      if (onSave && result?.Object) {
+        onSave(result.Object);
+      } else {
+        (onReloadCurrentForm ?? onRefresh)?.();
+      }
     } catch (error) {
       console.error('Error saving form:', error);
       showError('Failed to save form: ' + (error as Error).message);

@@ -688,6 +688,22 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                 return;
             }
 
+            const pkChanged = String(rootPrimaryKeyValue ?? '') !== String(rootPk);
+
+            // Clear cached layout/structure so the post-save reload fetches fresh data
+            // (mirrors handleReloadCurrentForm, which we no longer call separately after save).
+            try {
+                dynamicLayoutCacheRef.current.delete(`${transactionId}-${rootPrimaryKeyValue ?? ''}`);
+                dynamicLayoutCacheRef.current.delete(`${transactionId}-${rootPk}`);
+            } catch {
+                // ignore
+            }
+            transactionExDtoRef.current = null;
+            formStructureDataRef.current = null;
+            // pkChanged -> let the data-loading effect perform the single reload with the new PK.
+            // pkChanged === false -> the effect won't re-run, so we reload explicitly below.
+            lastLoadedKeyRef.current = pkChanged ? null : `${transactionId}-${rootPk}`;
+
             setControllerModel((prev: any) => ({
                 ...prev,
                 rootPrimaryKeyValue: rootPk,
@@ -711,8 +727,16 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                 }
                 return next;
             });
+
+            // Edit save (PK unchanged): changing paramObj does not re-run the data-loading
+            // effect, so reload once here. New form first save (PK changed) is handled by the
+            // effect, which now loads exactly once thanks to the dedup guard above.
+            if (!pkChanged) {
+                loadDataFromServer();
+            }
         },
-        [isEmbedded, dispatch, navigate]
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [isEmbedded, dispatch, navigate, transactionId, rootPrimaryKeyValue]
     );
 
     /** Workflow Start Run: Angular executeServerCommandCallBack initLoadData — update form in place, no route reload. */
@@ -834,13 +858,18 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                 } 
             }
 
-            const loadKey = `${transactionId}-${rootPrimaryKeyValue}`;
-            // Avoid re-loading when we already have data for this key (e.g. effect re-run after field change)
-            if (lastLoadedKeyRef.current === loadKey) {
-                return;
-            }
-            lastLoadedKeyRef.current = loadKey;
         }
+
+        // Dedup guard (ALWAYS active): if this effect re-runs for the same form key
+        // (e.g. handleAfterSave updated the route/paramObj after a save), do not load
+        // again. Explicit reload paths reset lastLoadedKeyRef (to null or a new key)
+        // when they intentionally want a fresh load.
+        const loadKey = `${transactionId}-${rootPrimaryKeyValue}`;
+        if (lastLoadedKeyRef.current === loadKey) {
+            return;
+        }
+        lastLoadedKeyRef.current = loadKey;
+
         // Load from server (will use transactionExDtoRef if already loaded)
         loadDataFromServer();
         // eslint-disable-next-line react-hooks/exhaustive-deps
