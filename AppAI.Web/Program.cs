@@ -9,6 +9,21 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using NLog;
 using NLog.Web;
 using SD.LLBLGen.Pro.ORMSupportClasses;
+// McpGateway plugin
+using McpGateway.Models;
+using McpGateway.Services;
+using McpGateway.Services.LlmProviders;
+using McpGateway.Services.EmbeddingProviders;
+using McpGateway.MCP.Tools;
+using McpGateway.Middleware;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Http.Resilience;
+using Microsoft.OpenApi.Models;
+using Polly;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading.RateLimiting;
 
 // Early NLog init for startup logging
 var logger = LogManager.Setup().LoadConfigurationFromAppSettings().GetCurrentClassLogger();
@@ -115,6 +130,169 @@ try
         });
     }
 
+    // ── McpGateway Plugin ─────────────────────────────────────────────────────
+
+    // Config bindings
+    builder.Services.Configure<MultiSourceApiSettings>(
+        builder.Configuration.GetSection(MultiSourceApiSettings.SectionName));
+    builder.Services.Configure<LlmEnrichmentSettings>(
+        builder.Configuration.GetSection(LlmEnrichmentSettings.SectionName));
+    builder.Services.Configure<SemanticSearchSettings>(
+        builder.Configuration.GetSection(SemanticSearchSettings.SectionName));
+    builder.Services.Configure<DataAnalysisSettings>(
+        builder.Configuration.GetSection(DataAnalysisSettings.SectionName));
+
+    // LLM provider for endpoint enrichment
+    var mcpLlmProvider = builder.Configuration["LlmEnrichment:Provider"] ?? "Anthropic";
+    switch (mcpLlmProvider)
+    {
+        case "OpenAI":
+            builder.Services.AddSingleton<ILlmProvider, OpenAiProvider>();
+            break;
+        case "AzureOpenAI":
+            builder.Services.AddSingleton<ILlmProvider, AzureOpenAiProvider>();
+            break;
+        case "Gemini":
+            builder.Services.AddSingleton<ILlmProvider, GeminiProvider>();
+            break;
+        default: // "Anthropic"
+            builder.Services.AddSingleton<ILlmProvider, AnthropicProvider>();
+            break;
+    }
+
+    // Embedding provider for RAG semantic search
+    var mcpEmbeddingProvider = builder.Configuration["SemanticSearch:Provider"] ?? "None";
+    switch (mcpEmbeddingProvider)
+    {
+        case "LocalOnnx":
+            builder.Services.AddSingleton<IEmbeddingProvider, LocalOnnxEmbeddingProvider>();
+            break;
+        case "AzureOpenAI":
+            builder.Services.AddSingleton<IEmbeddingProvider, AzureOpenAiEmbeddingProvider>();
+            break;
+        case "OpenAI":
+            builder.Services.AddSingleton<IEmbeddingProvider, OpenAiEmbeddingProvider>();
+            break;
+        default: // "None"
+            builder.Services.AddSingleton<IEmbeddingProvider, NoOpEmbeddingProvider>();
+            break;
+    }
+
+    builder.Services.AddSingleton<ISemanticSearchService, SemanticSearchService>();
+    builder.Services.AddSingleton<IRuntimeConfigService, RuntimeConfigService>();
+    builder.Services.AddSingleton<ILlmEnrichmentService, LlmEnrichmentService>();
+    builder.Services.AddSingleton<ISwaggerService, SwaggerService>();
+
+    // TokenStore: singleton registered under both interface and as IHostedService
+    builder.Services.AddSingleton<TokenStore>();
+    builder.Services.AddSingleton<ITokenStore>(sp => sp.GetRequiredService<TokenStore>());
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<TokenStore>());
+
+    // Named HttpClients per ApiSource with Polly resilience
+    var mcpSources = builder.Configuration
+        .GetSection(MultiSourceApiSettings.SectionName)
+        .Get<MultiSourceApiSettings>()?.Sources ?? [];
+    foreach (var src in mcpSources)
+    {
+        var timeoutSeconds = src.TimeoutSeconds > 0 ? src.TimeoutSeconds : 30;
+        builder.Services.AddHttpClient(src.Name)
+            .AddResilienceHandler($"{src.Name}-pipeline", pipeline =>
+            {
+                pipeline.AddTimeout(TimeSpan.FromSeconds(timeoutSeconds));
+                pipeline.AddRetry(new HttpRetryStrategyOptions
+                {
+                    MaxRetryAttempts = 2,
+                    Delay             = TimeSpan.FromMilliseconds(300),
+                    BackoffType       = DelayBackoffType.Exponential,
+                    UseJitter         = true,
+                    ShouldHandle      = new PredicateBuilder<HttpResponseMessage>()
+                        .Handle<HttpRequestException>()
+                        .HandleResult(r => r.StatusCode >= HttpStatusCode.InternalServerError)
+                });
+                pipeline.AddCircuitBreaker(new HttpCircuitBreakerStrategyOptions
+                {
+                    SamplingDuration  = TimeSpan.FromSeconds(30),
+                    MinimumThroughput = 5,
+                    FailureRatio      = 0.5,
+                    BreakDuration     = TimeSpan.FromSeconds(30)
+                });
+            });
+    }
+
+    builder.Services.AddSingleton<IApiClient, ApiClient>();
+
+    // Audit: real service only when AuditDb connection string is provided
+    var auditConnStr = builder.Configuration.GetConnectionString("AuditDb");
+    if (!string.IsNullOrWhiteSpace(auditConnStr))
+        builder.Services.AddSingleton<IAuditService, AuditService>();
+    else
+        builder.Services.AddSingleton<IAuditService, McpNullAuditService>();
+
+    builder.Services.AddSingleton<IDataAnalysisCacheService, DataAnalysisCacheService>();
+    builder.Services.AddSingleton<IAnalysisService, AnalysisService>();
+    builder.Services.AddHostedService<DataAnalysisStartupService>();
+
+    builder.Services.AddAntiforgery();
+
+    // Rate limiter — scoped to /mcp* and /auth* paths only (never affects /webapi/* routes)
+    builder.Services.AddRateLimiter(options =>
+    {
+        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+        options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+        {
+            var path = ctx.Request.Path.Value ?? "";
+            if (!path.StartsWith("/mcp", StringComparison.OrdinalIgnoreCase) &&
+                !path.StartsWith("/auth", StringComparison.OrdinalIgnoreCase))
+                return RateLimitPartition.GetNoLimiter("bypass");
+
+            var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            return RateLimitPartition.GetSlidingWindowLimiter(ip, _ => new SlidingWindowRateLimiterOptions
+            {
+                PermitLimit          = 120,
+                Window               = TimeSpan.FromMinutes(1),
+                SegmentsPerWindow    = 6,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0
+            });
+        });
+        options.AddPolicy("auth", ctx =>
+        {
+            var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            return RateLimitPartition.GetFixedWindowLimiter(ip, _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit          = 10,
+                Window               = TimeSpan.FromMinutes(1),
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+                QueueLimit           = 0
+            });
+        });
+    });
+
+    // Swagger UI for McpGateway management endpoints (dev only)
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(options =>
+    {
+        options.SwaggerDoc("v1", new OpenApiInfo
+        {
+            Title       = "AppAI MCP Gateway API",
+            Version     = "v1",
+            Description = "MCP Gateway exposing multi-source API endpoints as MCP tools. Connect at /appai/mcp."
+        });
+    });
+
+    // MCP Server — scan McpGateway's assembly for [McpServerToolType] classes
+    var mcpStateless = builder.Configuration.GetValue<bool>("ApiSources:StatelessMode", false);
+    builder.Services.AddMcpServer(options =>
+    {
+        options.ServerInfo = new() { Name = "AppAI MCP Gateway", Version = "1.0.0" };
+    })
+    .WithHttpTransport(options =>
+    {
+        options.Stateless = mcpStateless;
+        options.IdleTimeout = TimeSpan.FromHours(2);
+    })
+    .WithToolsFromAssembly(typeof(SwaggerTools).Assembly);
+
     // ── Build ─────────────────────────────────────────────────────────────────
     var app = builder.Build();
 
@@ -126,6 +304,10 @@ try
     // before UsePathBase, so the router sees "/appai/health" instead of "/health".
     app.UsePathBase("/appai");
     app.UseRouting();
+
+    // Correlation ID propagation (populates NLog MDLC for every request)
+    app.UseMiddleware<CorrelationIdMiddleware>();
+    app.UseRateLimiter();
 
     // ── One-time startup calls (replacing Global.asax Application_Start) ──────
     // Wire IHttpContextAccessor into the legacy static ServerContext, then initialise
@@ -180,6 +362,44 @@ try
     app.UseStaticFiles();
     app.UseAuthentication();
     app.UseAuthorization();
+
+    // ── McpGateway routes ─────────────────────────────────────────────────────
+
+    // Optional API Key guard for /mcp* and /auth* paths
+    var mcpApiKey = builder.Configuration["Auth:ApiKey"];
+    if (!string.IsNullOrEmpty(mcpApiKey))
+    {
+        app.Use(async (ctx, next) =>
+        {
+            var path = ctx.Request.Path.Value ?? "";
+            bool guarded = path.StartsWith("/mcp", StringComparison.OrdinalIgnoreCase)
+                        || path.StartsWith("/auth", StringComparison.OrdinalIgnoreCase);
+            if (!guarded) { await next(); return; }
+
+            var provided = ctx.Request.Headers.TryGetValue("X-Api-Key", out var k)
+                ? Encoding.UTF8.GetBytes(k.ToString()) : Array.Empty<byte>();
+            var configured = Encoding.UTF8.GetBytes(mcpApiKey);
+
+            if (!CryptographicOperations.FixedTimeEquals(provided, configured))
+            {
+                ctx.Response.StatusCode = 401;
+                ctx.Response.ContentType = "application/json";
+                await ctx.Response.WriteAsync("{\"error\":\"X-Api-Key required\"}");
+                return;
+            }
+            await next();
+        });
+    }
+
+    // Swagger UI (dev only)
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseSwagger();
+        app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "AppAI MCP Gateway v1"));
+    }
+
+    // MCP endpoints — accessible at http://localhost:52740/appai/mcp
+    app.MapMcp("/mcp");
 
     // ── Route registration ────────────────────────────────────────────────────
     app.MapControllers();
