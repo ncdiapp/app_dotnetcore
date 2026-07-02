@@ -8,6 +8,7 @@ import { CollectionView } from '@mescius/wijmo';
 import { DataMap, GroupRow } from '@mescius/wijmo.grid';
 import { useTheme } from '../../../../redux/hooks/useTheme';
 import FlexGridAddOn from '../../../common/FlexGridAddOn';
+import RgbColorSwatch from '../../../common/RgbColorSwatch';
 import { useEnumValues } from '../../../../hooks/useEnumDictionary';
 import { endpoints } from '../../../../webapi/endpoints';
 import { appTransactionService } from '../../../../webapi/apptransactionsvc';
@@ -3482,6 +3483,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
               field.ControlType === emAppControlTypeEnum?.ExternalImageUrl ||
               field.ControlType === emAppControlTypeEnum?.ImageBinary;
             const isFileColumn = field.ControlType === emAppControlTypeEnum?.File;
+            const isRgbColorColumn = field.ControlType === emAppControlTypeEnum?.RGBColorDisplay;
 
             const fieldIsReadOnly =
               normalizeBool(field?.IsFormLayoutReadOnly) ||
@@ -3585,6 +3587,28 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                           )}
                         </div>
                       );
+                    }}
+                  />
+                </FlexGridColumn>
+              );
+            }
+
+            // RGB color swatch column (e.g. "64|255|255")
+            if (isRgbColorColumn) {
+              return (
+                <FlexGridColumn
+                  key={field.Id || field.DataBaseFieldName}
+                  header={field.DisplayName || field.DataBaseFieldName}
+                  binding={field.DataBaseFieldName}
+                  width={finalWidth}
+                  isReadOnly={true}
+                >
+                  <FlexGridCellTemplate
+                    cellType="Cell"
+                    template={(cell: any) => {
+                      const item = cell.item as any;
+                      const raw = item?.[field.DataBaseFieldName];
+                      return <RgbColorSwatch value={raw} />;
                     }}
                   />
                 </FlexGridColumn>

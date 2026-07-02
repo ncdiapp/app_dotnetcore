@@ -16,6 +16,7 @@ import { updateCurrentTabLabel } from '../../redux/features/ui/navigation/tabnav
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { useTheme } from '../../redux/hooks/useTheme';
 import FlexGridAddOn from '../common/FlexGridAddOn';
+import RgbColorSwatch from '../common/RgbColorSwatch';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
 import { endpoints } from '../../webapi/endpoints';
 import { DataMap } from '@mescius/wijmo.grid';
@@ -1377,6 +1378,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
                   field.ControlType === emAppControlTypeEnum?.ExternalImageUrl ||
                   field.ControlType === emAppControlTypeEnum?.ImageBinary;
                 const isFileColumn = field.ControlType === emAppControlTypeEnum?.File;
+                const isRgbColorColumn = field.ControlType === emAppControlTypeEnum?.RGBColorDisplay;
                 const isNumericColumn = field.ControlType === emAppControlTypeEnum?.Numeric;
 
                 const fieldIsReadOnly =
@@ -1477,6 +1479,27 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
                               )}
                             </div>
                           );
+                        }}
+                      />
+                    </FlexGridColumn>
+                  );
+                }
+
+                if (isRgbColorColumn) {
+                  return (
+                    <FlexGridColumn
+                      key={field.Id ?? field.DataBaseFieldName}
+                      binding={binding}
+                      header={header}
+                      width={typeof colWidth === 'number' ? colWidth : 100}
+                      isReadOnly={true}
+                    >
+                      <FlexGridCellTemplate
+                        cellType="Cell"
+                        template={(cell: any) => {
+                          const rowItem = cell.item as any;
+                          const raw = rowItem?.DictOneToOneFields?.[field.DataBaseFieldName];
+                          return <RgbColorSwatch value={raw} />;
                         }}
                       />
                     </FlexGridColumn>

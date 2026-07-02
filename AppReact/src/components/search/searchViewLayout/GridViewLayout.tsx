@@ -19,6 +19,7 @@ import {
   shouldOpenAsFormGroup,
 } from '../../../utils/transactionFormGroupHelper';
 import { buildLinkTargetTabTitle, getDictViewColumnValue } from '../../../utils/linkTargetTabTitle';
+import RgbColorSwatch from '../../common/RgbColorSwatch';
 
 interface ViewDto {
   Id: string;
@@ -718,6 +719,29 @@ export const GridViewLayout: React.FC<GridViewLayoutProps> = ({
                       />
                     )} />
                     <FlexGridCellTemplate cellType="Group" template={() => <div></div>} /> */}
+                  </FlexGridColumn>
+                );
+              }
+
+              else if (column.ControlType === EmAppControlType.RGBColorDisplay) {
+                return (
+                  <FlexGridColumn
+                    key={column.Id}
+                    header={column.Name || column.Display}
+                    binding={binding}
+                    width={width}
+                    aggregate={aggregate}
+                    isReadOnly={true}
+                    visible={column.IsVisible !== false}
+                  >
+                    <FlexGridCellTemplate
+                      cellType="Cell"
+                      template={(ctx: any) => {
+                        const raw = ctx.item.DictViewColumnIDKeyValue?.[column.Id];
+                        return <RgbColorSwatch value={raw} />;
+                      }}
+                    />
+                    <FlexGridCellTemplate cellType="Group" template={() => <div></div>} />
                   </FlexGridColumn>
                 );
               }
