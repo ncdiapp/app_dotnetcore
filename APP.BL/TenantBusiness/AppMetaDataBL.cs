@@ -2363,7 +2363,7 @@ namespace App.BL
                     "AppESitePages",
                     "AppEStore",
                     "AppExternalMethodRegister",
-                    "AppFile",
+                    //"AppFile",
                     "AppFileOrFolderShareToOther",
                     "AppFileTypeView",
                     "AppForm",

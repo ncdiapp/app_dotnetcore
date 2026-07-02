@@ -119,7 +119,7 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
           />
         );
       case 'OtherData':
-        return <OtherDataStep />;
+        return <OtherDataStep state={state} />;
       default:
         return null;
     }

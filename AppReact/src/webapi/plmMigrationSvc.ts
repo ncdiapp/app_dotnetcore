@@ -125,6 +125,32 @@ export interface PlmTableExportResultItemDto {
   ErrorMessage?: string | null;
 }
 
+export interface PlmSketchImportPreviewDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  SourceSketchCount: number;
+  SourceWithBinaryCount: number;
+  ImageCount: number;
+  FileCount: number;
+  ExistingAppFileCount: number;
+  ReadyToImportCount: number;
+  MissingBinaryCount: number;
+  Warnings?: string[];
+}
+
+export interface PlmSketchImportResultDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  SourceSketchCount: number;
+  InsertedCount: number;
+  SkippedExistingCount: number;
+  SkippedMissingBinaryCount: number;
+  ImageInsertedCount: number;
+  FileInsertedCount: number;
+  FailedCount: number;
+  Errors?: string[];
+}
+
 export interface PlmSystemDefineEntityPreviewItemDto {
   PlmEntityId: number;
   PlmEntityCode?: string | null;
@@ -430,6 +456,24 @@ class PlmMigrationService {
       headers: getHeaders(),
     });
     if (!response.ok) throw new Error('Failed to start PLM table export');
+    return response.json();
+  }
+
+  async previewPlmSketchImport(sessionId: number): Promise<OperationCallResult<PlmSketchImportPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewPlmSketchImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to preview PLM sketch import');
+    return response.json();
+  }
+
+  async executePlmSketchImport(sessionId: number): Promise<OperationCallResult<PlmImportJobDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecutePlmSketchImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to start PLM sketch import');
     return response.json();
   }
 

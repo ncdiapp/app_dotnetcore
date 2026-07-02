@@ -194,6 +194,32 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("PreviewPlmSketchImport")]
+    public OperationCallResult<PlmSketchImportPreviewDto> PreviewPlmSketchImport(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewPlmSketchImport(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSketchImportPreviewDto>("Plm_Sketch_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecutePlmSketchImport")]
+    public OperationCallResult<PlmImportJobDto> ExecutePlmSketchImport(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecutePlmSketchImport(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmImportJobDto>("Plm_Sketch_Execute_Error", ex);
+        }
+    }
+
     [HttpPost("PreviewTemplateMapping")]
     public OperationCallResult<PlmTemplatePreviewDto> PreviewTemplateMapping(int? sessionId)
     {
