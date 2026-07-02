@@ -66,6 +66,20 @@
     <ProjectReference Include="..\APP.BL\APP.BL.Core.csproj" />
   </ItemGroup>
 
+  <!-- McpGateway plugin — exposes enterprise backend APIs as MCP tools via /appai/mcp -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\..\Swager-Mcp-Server-netcore\src\McpGateway\McpGateway.csproj" />
+  </ItemGroup>
+
+  <!-- Copy ONNX embedding models from McpGateway source so LocalOnnx provider can find them at runtime -->
+  <ItemGroup>
+    <Content Include="..\..\..\..\Swager-Mcp-Server-netcore\src\McpGateway\EmbedModels\**">
+      <Link>EmbedModels\%(RecursiveDir)%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
   <!-- Tenant schema migrations — copied to output so AppTenantMigrationRunnerBL can apply them -->
   <ItemGroup>
     <Content Include="Migrations\*.sql">
