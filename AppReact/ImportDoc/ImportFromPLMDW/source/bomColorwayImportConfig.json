@@ -1,0 +1,27 @@
+{
+  "plmTemplateId": 3351,
+  "plmDatabase": "plm_live_20260602",
+  "dwDatabase": "PLMDW",
+  "tenantDatabase": "TenantDB_PLM23",
+  "tablePrefix": "Plm_",
+  "plmTabId": 4246,
+  "plmGridId": 3167,
+  "productGridBlockId": 5052,
+  "dwGridTable": "PLM_DW_Grid_Artwork_BOM_prod_3167",
+  "hostAppTable": "Artwork_BOM_prod",
+  "grandchildAppTable": "ArtworkGrandColorway",
+  "grandchildColumns": {
+    "parentLink": "ParentRowId",
+    "colorwayKey": "Colorway",
+    "artworkColor": "ArtworkColor",
+    "artworkPhoto": "ArtworkPhoto"
+  },
+  "appPivotTransaction": {
+    "transactionId": 15,
+    "transactionName": "Artwork Pivot - GrandChild",
+    "hostUnitId": 34,
+    "grandchildUnitId": 36,
+    "sourceUnitId": 37
+  },
+  "importModeDefault": "APPEND"
+}
