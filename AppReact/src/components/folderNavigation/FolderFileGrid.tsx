@@ -1,5 +1,6 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
+import { DataMap } from '@mescius/wijmo.grid';
 import { CollectionView } from '@mescius/wijmo';
 import { clampContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
 import { fileThumbnailUrl } from '../../webapi/fileEndpoints';
@@ -31,15 +32,22 @@ type ViewField = {
 };
 
 /** Stable thumbnail cell — avoids img reload when only grid selection changes elsewhere. */
-const FileThumbnailCell = React.memo(({ fileId }: { fileId: number }) => (
-  <div className="flex items-center justify-center w-[60px] h-[60px]">
-    <img
-      src={fileThumbnailUrl(fileId)}
-      alt=""
-      className="max-h-[60px] max-w-[60px] object-contain"
-    />
-  </div>
-));
+const FileThumbnailCell = React.memo(({ fileId }: { fileId: number }) => {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <div className="w-[60px] h-[60px] bg-black/5 rounded-sm" aria-hidden />;
+  }
+  return (
+    <div className="flex items-center justify-center w-[60px] h-[60px]">
+      <img
+        src={fileThumbnailUrl(fileId)}
+        alt=""
+        className="max-h-[60px] max-w-[60px] object-contain"
+        onError={() => setFailed(true)}
+      />
+    </div>
+  );
+});
 FileThumbnailCell.displayName = 'FileThumbnailCell';
 
 export type FolderFileGridProps = {

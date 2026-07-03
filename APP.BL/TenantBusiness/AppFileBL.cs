@@ -119,7 +119,13 @@ namespace App.BL
             using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
             {
                 AppFileEntity aAppFileEntity = new AppFileEntity(int.Parse(Id.ToString()));
-                adapter.FetchEntity(aAppFileEntity);
+                // FetchEntity returns false when the row does not exist. Returning the unfetched
+                // (out-of-sync) entity would make any property access throw ORMEntityOutOfSyncException
+                // (surfacing as a 500). Return null so callers can respond with NotFound instead.
+                if (!adapter.FetchEntity(aAppFileEntity))
+                {
+                    return null;
+                }
                 return aAppFileEntity;
             }
         }
@@ -177,6 +183,10 @@ namespace App.BL
         public static AppFileExDto RetrieveOneOrgAppFileExDto(object Id)
         {
             AppFileEntity aOrgAppFileEntity = RetrieveOneAppFileEntity(Id);
+            if (aOrgAppFileEntity == null)
+            {
+                return null;
+            }
 
 
             // it has  initalefileID
@@ -187,7 +197,7 @@ namespace App.BL
             {
                 AppFileEntity aInitAppFileEntity = RetrieveOneAppFileEntity(initialFileId.Value);
 
-                if (!CheckDownloadFilePermission(aInitAppFileEntity))
+                if (aInitAppFileEntity == null || !CheckDownloadFilePermission(aInitAppFileEntity))
                 {
                     return null;
                     //throw new Exception("Invalid Request");
@@ -230,7 +240,7 @@ namespace App.BL
 
 
             AppFileEntity aAppFileEntity = RetrieveOneAppFileEntity(Id);
-            if (!CheckDownloadFilePermission(aAppFileEntity))
+            if (aAppFileEntity == null || !CheckDownloadFilePermission(aAppFileEntity))
             {
                 return null;
                 //throw new Exception("Invalid Request");
@@ -262,7 +272,11 @@ namespace App.BL
                 }
                 if (latesFiedId.HasValue)
                 {
-                    aAppFileEntity = RetrieveOneAppFileEntity(latesFiedId);
+                    var latestEntity = RetrieveOneAppFileEntity(latesFiedId);
+                    if (latestEntity != null)
+                    {
+                        aAppFileEntity = latestEntity;
+                    }
                 }
 
             }

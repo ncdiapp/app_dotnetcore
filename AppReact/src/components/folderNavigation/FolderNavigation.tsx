@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
+import { DataMap } from '@mescius/wijmo.grid';
 import { CollectionView, PropertyGroupDescription } from '@mescius/wijmo';
 import '@mescius/wijmo.styles/wijmo.css';
 import { appFolderNavigationService } from '../../webapi/appfoldernavigationsvc';
@@ -452,7 +453,7 @@ const FolderNavigation: React.FC<Props> = ({
       try {
         const massData = await adminSvc.getMassEntitiesLookupItem('AppSecurityUser');
         const users = massData['AppSecurityUser'] || [];
-        setUserDataMap(new (window as any).wijmo.grid.DataMap(users, 'Id', 'Display'));
+        setUserDataMap(new DataMap(users, 'Id', 'Display'));
       } catch (e) {
         appHelper.debugLog('FolderNavigation loadUserDataMap error:', e);
       }

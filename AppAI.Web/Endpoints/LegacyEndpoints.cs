@@ -6,6 +6,7 @@ using APP.Components.EntityDto;
 using APP.Framework;
 using ExchangeBL;
 using Microsoft.AspNetCore.Mvc;
+using NLog;
 using QRCoder;
 
 namespace AppAI.Web.Endpoints;
@@ -435,37 +436,14 @@ public static class LegacyEndpoints
 
         // ── Image serving ─────────────────────────────────────────────────────
         app.MapGet("/api/files/image/{id:int}", (HttpContext ctx, int id) =>
-        {
-            if (!ValidateSession(ctx)) return Results.Unauthorized();
-            var dto = AppFileBL.RetrieveOneOrgAppFileExDto(id);
-            if (dto == null) return Results.NotFound();
-            string path = AppCompanyBL.GetMyCompanyImagePath() + dto.OriginalFilePath;
-            if (!File.Exists(path)) return Results.NotFound();
-            return Results.File(File.ReadAllBytes(path), GetMimeType(dto.Extension ?? ""), Path.GetFileName(path));
-        }).WithName("FileImage");
+            TryServeFileImage(ctx, id, FileImageVariant.Original)).WithName("FileImage");
 
+        // Thumbnail uses latest file version (legacy GetThumbnailImage.aspx parity).
         app.MapGet("/api/files/thumbnail/{id:int}", (HttpContext ctx, int id) =>
-        {
-            if (!ValidateSession(ctx)) return Results.Unauthorized();
-            var dto = AppFileBL.RetrieveOneOrgAppFileExDto(id);
-            if (dto == null) return Results.NotFound();
-            string path = AppCompanyBL.GetMyCompanyImagePath()
-                        + (dto.ThumbnailFilePath ?? dto.OriginalFilePath ?? "");
-            if (!File.Exists(path)) return Results.NotFound();
-            return Results.File(File.ReadAllBytes(path), GetMimeType(dto.Extension ?? ""), Path.GetFileName(path));
-        }).WithName("FileThumbnail");
+            TryServeFileImage(ctx, id, FileImageVariant.Thumbnail)).WithName("FileThumbnail");
 
-        // Regular (medium) size image; falls back to original when no regular render exists.
         app.MapGet("/api/files/regular/{id:int}", (HttpContext ctx, int id) =>
-        {
-            if (!ValidateSession(ctx)) return Results.Unauthorized();
-            var dto = AppFileBL.RetrieveOneOrgAppFileExDto(id);
-            if (dto == null) return Results.NotFound();
-            string path = AppCompanyBL.GetMyCompanyImagePath()
-                        + (dto.RegularImageFilepath ?? dto.OriginalFilePath ?? dto.ThumbnailFilePath ?? "");
-            if (!File.Exists(path)) return Results.NotFound();
-            return Results.File(File.ReadAllBytes(path), GetMimeType(dto.Extension ?? ""), Path.GetFileName(path));
-        }).WithName("FileRegular");
+            TryServeFileImage(ctx, id, FileImageVariant.Regular)).WithName("FileRegular");
 
         app.MapGet("/api/files/latest/{id:int}", (HttpContext ctx, int id) =>
         {
@@ -557,15 +535,64 @@ public static class LegacyEndpoints
 
     private static bool ValidateSession(HttpContext ctx)
     {
-        var sessionId = ctx.Request.Headers[ServerContext.CurrentUserSessionIdToken].FirstOrDefault()
-                     ?? ctx.Request.Cookies[ServerContext.CurrentUserSessionIdToken]
-                     ?? ctx.Request.Query[ServerContext.CurrentUserSessionIdToken].FirstOrDefault()
-                     ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(sessionId)) return false;
-        var anonymous = AppCacheManagerBL.GetAllCompnayAnoymouToken();
-        if (anonymous.Contains(sessionId)) return false;
-        AppSaasUserSessionMgtBL.ViladateSessionIdAndCompanyIdRegisterIdentity(sessionId);
-        return true;
+        try
+        {
+            var sessionId = ctx.Request.Headers[ServerContext.CurrentUserSessionIdToken].FirstOrDefault()
+                         ?? ctx.Request.Cookies[ServerContext.CurrentUserSessionIdToken]
+                         ?? ctx.Request.Query[ServerContext.CurrentUserSessionIdToken].FirstOrDefault()
+                         ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(sessionId)) return false;
+            var anonymous = AppCacheManagerBL.GetAllCompnayAnoymouToken();
+            if (anonymous.Contains(sessionId)) return false;
+            AppSaasUserSessionMgtBL.ViladateSessionIdAndCompanyIdRegisterIdentity(sessionId);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private enum FileImageVariant { Original, Thumbnail, Regular }
+
+    private static IResult TryServeFileImage(HttpContext ctx, int id, FileImageVariant variant)
+    {
+        if (!ValidateSession(ctx)) return Results.Unauthorized();
+        try
+        {
+            var dto = variant == FileImageVariant.Original
+                ? AppFileBL.RetrieveOneOrgAppFileExDto(id)
+                : AppFileBL.RetrieveOneLatestAppFileExDto(id);
+            if (dto == null) return Results.NotFound();
+
+            string? relativePath = variant switch
+            {
+                FileImageVariant.Thumbnail => dto.ThumbnailFilePath ?? dto.RegularImageFilepath ?? dto.OriginalFilePath,
+                FileImageVariant.Regular => dto.RegularImageFilepath ?? dto.OriginalFilePath ?? dto.ThumbnailFilePath,
+                _ => dto.OriginalFilePath,
+            };
+
+            if (!string.IsNullOrWhiteSpace(relativePath))
+            {
+                string diskPath = AppCompanyBL.GetMyCompanyImagePath() + relativePath;
+                if (File.Exists(diskPath))
+                {
+                    return Results.File(File.ReadAllBytes(diskPath), GetMimeType(dto.Extension ?? ""), Path.GetFileName(diskPath));
+                }
+            }
+
+            if (dto.FileContent is { Length: > 0 })
+            {
+                return Results.File(dto.FileContent, GetMimeType(dto.Extension ?? ""), dto.FileCode ?? "file");
+            }
+
+            return Results.NotFound();
+        }
+        catch (Exception ex)
+        {
+            LogManager.GetCurrentClassLogger().Debug(ex, "File image serve failed for id {FileId} ({Variant})", id, variant);
+            return Results.NotFound();
+        }
     }
 
     private static IResult ServeFileDto(AppFileExDto dto, bool forceDownload = false)

@@ -103,24 +103,35 @@ const EmAppControlType = {
 };
 
 /** Stable grid thumbnail — avoids img reload when unrelated parent state changes. */
-const SearchGridThumbnailCell = React.memo(({ fileId }: { fileId: number | string }) => (
-  <div style={{ position: 'absolute', top: 0, left: 0, width: '60px', height: '60px' }}>
-    <img
-      src={fileThumbnailUrl(fileId)}
-      style={{
-        maxHeight: '60px',
-        maxWidth: '60px',
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        bottom: 0,
-        right: 0,
-        margin: 'auto',
-      }}
-      alt=""
-    />
-  </div>
-));
+const SearchGridThumbnailCell = React.memo(({ fileId }: { fileId: number | string }) => {
+  const numericId = Number(fileId);
+  const [failed, setFailed] = useState(false);
+  if (!Number.isFinite(numericId) || numericId <= 0) {
+    return <div style={{ width: '60px', height: '60px' }} />;
+  }
+  if (failed) {
+    return <div style={{ width: '60px', height: '60px', background: 'rgba(0,0,0,0.04)' }} />;
+  }
+  return (
+    <div style={{ position: 'absolute', top: 0, left: 0, width: '60px', height: '60px' }}>
+      <img
+        src={fileThumbnailUrl(numericId)}
+        style={{
+          maxHeight: '60px',
+          maxWidth: '60px',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          right: 0,
+          margin: 'auto',
+        }}
+        alt=""
+        onError={() => setFailed(true)}
+      />
+    </div>
+  );
+});
 SearchGridThumbnailCell.displayName = 'SearchGridThumbnailCell';
 
 const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
