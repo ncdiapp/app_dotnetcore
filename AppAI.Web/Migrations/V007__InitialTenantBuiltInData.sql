@@ -437,3 +437,283 @@ INSERT [dbo].[AppEntityEnumValue] ([EnumValueID], [EntityInfoID], [EnumKey], [En
 GO
 SET IDENTITY_INSERT [dbo].[AppEntityEnumValue] OFF
 GO
+
+-- ============================================================
+-- Seed default AppTenantSetting rows.
+--
+-- SetupCode uses the EmTenantSettings enum member NAME
+-- (e.g. "SystemDefinedFileTransactionId"), matching AppTenantSettingBL.
+-- SetupValue defaults to empty string; tenant admins configure values later.
+--
+-- Idempotent: only inserts missing SetupCode rows.
+-- ============================================================
+IF OBJECT_ID('dbo.AppTenantSetting', 'U') IS NULL
+BEGIN
+    PRINT 'V007: AppTenantSetting table not found — skipped.';
+END
+ELSE
+BEGIN
+    INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description)
+    SELECT val.SetupCode, val.SetupValue, val.Description
+    FROM (VALUES
+        ('EnableConfigurationMode', '', 'EnableConfigurationMode'),
+        ('SystemEmailFromAddress', '', 'SystemEmailFromAddress'),
+        ('SystemAgentUser', '', 'SystemAgentUser'),
+
+        ('SmtpIntegrationActivation', '', 'SmtpIntegrationActivation'),
+        ('SmtpServer', '', 'SmtpServer'),
+        ('SmtpPort', '', 'SmtpPort'),
+        ('SmtpEnableSSL', '', 'SmtpEnableSSL'),
+        ('SmtpUserName', '', 'SmtpUserName'),
+        ('SmtpPassword', '', 'SmtpPassword'),
+
+        ('EshopMyAddressesSearch', '', 'EshopMyAddressesSearch'),
+        ('EshopMyOrdersSearch', '', 'EshopMyOrdersSearch'),
+        ('EshopMyWishListSearch', '', 'EshopMyWishListSearch'),
+        ('EshopUserInfoTransaction', '', 'EshopUserInfoTransaction'),
+        ('EshopNewProductTreeView', '', 'EshopNewProductTreeView'),
+        ('EshopTreeView', '', 'EshopTreeView'),
+        ('EshopTopProductsSearchView', '', 'EshopTopProductsSearchView'),
+        ('EshopOrderDetailTransaction', '', 'EshopOrderDetailTransaction'),
+        ('EshopMyAccountDesktop', '', 'EshopMyAccountDesktop'),
+        ('EshopMyAccountExUrl', '', 'EshopMyAccountExUrl'),
+        ('EshopTopNewProductsSearchView', '', 'EshopTopNewProductsSearchView'),
+        ('EshopDefaultStoreId', '', 'EshopDefaultStoreId'),
+
+        ('StripeGateWaySecretkey', '', 'StripeGateWaySecretkey'),
+
+        ('WebPageTemplatePath', '', 'WebPageTemplatePath'),
+
+        ('PublicFileFolderId', '', 'PublicFileFolderId'),
+        ('TempFileFolderId', '', 'TempFileFolderId'),
+        ('UsersFolderId', '', 'UsersFolderId'),
+        ('SystemDefinedFileTransactionId', '', 'SystemDefinedFileTransactionId'),
+        ('TransactionFileStorageRootFolderId', '', 'TransactionFileStorageRootFolderId'),
+
+        ('AdminTheme', '', 'AdminTheme'),
+        ('ClientTheme', '', 'ClientTheme'),
+        ('ApplicationLayoutMode', '', 'ApplicationLayoutMode'),
+        ('WorkflowBatchLogSearchId', '', 'WorkflowBatchLogSearchId'),
+        ('WorkflowLogTrackDetailSearchId', '', 'WorkflowLogTrackDetailSearchId'),
+
+        ('DefaultCollapseLeftMenuForAdminUsers', '', 'DefaultCollapseLeftMenuForAdminUsers'),
+        ('DefaultCollapseLeftMenuForEmployeeUsers', '', 'DefaultCollapseLeftMenuForEmployeeUsers'),
+        ('DefaultCollapseLeftMenuForCustomerUsers', '', 'DefaultCollapseLeftMenuForCustomerUsers'),
+        ('DefaultCollapseLeftMenuForSupplierUsers', '', 'DefaultCollapseLeftMenuForSupplierUsers'),
+        ('DefaultCollapseLeftMenuForClientAgentUsers', '', 'DefaultCollapseLeftMenuForClientAgentUsers'),
+        ('DefaultCollapseLeftMenuForSupplierAgentUsers', '', 'DefaultCollapseLeftMenuForSupplierAgentUsers'),
+
+        ('EmployeeEntity', '', 'EmployeeEntity'),
+        ('CustomerEntity', '', 'CustomerEntity'),
+        ('CustomerAgentEntity', '', 'CustomerAgentEntity'),
+        ('SupplierEntity', '', 'SupplierEntity'),
+        ('SupplierAgentEntity', '', 'SupplierAgentEntity'),
+
+        ('GoogleApiKey', '', 'GoogleApiKey'),
+
+        ('AdminCalenarSearch', '', 'AdminCalenarSearch'),
+        ('EmployeeCalendarSearch', '', 'EmployeeCalendarSearch'),
+        ('CustomerCalendarSearch', '', 'CustomerCalendarSearch'),
+        ('SupplierCalendarSearch', '', 'SupplierCalendarSearch'),
+        ('ClientAgentCalendarSearch', '', 'ClientAgentCalendarSearch'),
+        ('SupplierAgentCalendarSearch', '', 'SupplierAgentCalendarSearch'),
+
+        ('AdminUserTransaction', '', 'AdminUserTransaction'),
+        ('EmployeeUserTransaction', '', 'EmployeeUserTransaction'),
+        ('CustomerUserTransaction', '', 'CustomerUserTransaction'),
+        ('SupplierUserTransaction', '', 'SupplierUserTransaction'),
+        ('ClientAgentUserTransaction', '', 'ClientAgentUserTransaction'),
+        ('SupplierAgentUserTransaction', '', 'SupplierAgentUserTransaction'),
+
+        ('IsCustomerUserToPartnerOneToOneMapping', '', 'IsCustomerUserToPartnerOneToOneMapping'),
+        ('IsSupplierUserToPartnerOneToOneMapping', '', 'IsSupplierUserToPartnerOneToOneMapping'),
+
+        ('CustomerPartnerTransaction', '', 'CustomerPartnerTransaction'),
+        ('CustomerPartnerDbtableName', '', 'CustomerPartnerDbtableName'),
+        ('CustomerPartnerIdDbfieldName', '', 'CustomerPartnerIdDbfieldName'),
+        ('CustomerPartnerEmailDbfieldName', '', 'CustomerPartnerEmailDbfieldName'),
+        ('CustomerPartnerDataTransferId', '', 'CustomerPartnerDataTransferId'),
+
+        ('SupplierPartnerTransaction', '', 'SupplierPartnerTransaction'),
+        ('SupplierPartnerDbtableName', '', 'SupplierPartnerDbtableName'),
+        ('SupplierPartnerIdDbfieldName', '', 'SupplierPartnerIdDbfieldName'),
+        ('SupplierPartnerEmailDbfieldName', '', 'SupplierPartnerEmailDbfieldName'),
+        ('SupplierPartnerDataTransferId', '', 'SupplierPartnerDataTransferId'),
+
+        ('FigmaPersonalAccessToken', '', 'FigmaPersonalAccessToken')
+    ) AS val(SetupCode, SetupValue, Description)
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dbo.AppTenantSetting t WHERE t.SetupCode = val.SetupCode
+    );
+
+    PRINT 'V007: AppTenantSetting defaults seeded.';
+END
+GO
+
+-- =====================================================================
+-- File Management framework seed (folders, transaction, file view,
+-- search views + fields, navigation, left-menu group, tenant settings).
+-- Values sourced from a fully configured tenant; self-contained (no
+-- external DB dependency). Configuration IDs are preserved so cross-references
+-- stay intact; AppSEFolder uses tenant-local identity values. Cross-table FK columns pointing at non-seeded config
+-- (FormID / SaaS app / dataset linkage) are set NULL on purpose.
+-- =====================================================================
+
+-- File list data-source view used by the File View search view / DataSet 2057.
+IF OBJECT_ID('dbo.App_FileView') IS NULL
+    EXEC('CREATE VIEW [dbo].[App_FileView] AS SELECT FileID, FileCode, Description, FolderID, FileType, Extension, InitialFileID, CheckoutByID, CheckoutDate, AppCreatedByID, AppCreatedDate, AppModifiedDate, AppModifiedByID FROM dbo.AppFile WHERE InitialFileID IS NULL');
+GO
+
+-- ============ AppTransaction (File Navigation Edit) ============
+SET IDENTITY_INSERT [dbo].[AppTransaction] ON;
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppTransaction] WHERE [TransactionID] = 2245)
+    INSERT [dbo].[AppTransaction] ([TransactionID], [TransactionName], [Description], [NeedToCheckRowVersion], [TransactionOrganizedType], [PostProcessStoreProcedure], [ListFilterWhereClause], [IsReadOnly], [FormID], [BusinessScopeID], [PrintFormID], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsEnableFolderSecurity], [IsSystemBuitIn], [IsNeedToSetCriticalPathTrackFlow], [IsNeedToSetComunication], [FolderTransactionID], [FolderUsageType], [DataSourceFrom], [EmAppTransBusinessType], [MgtRootFolderID], [LogicalDisplayEntityID], [TransactionFileStorageRootFolderID], [AppCreatedByCompanyID], [IsExclusiveForOwner], [MasterWorkflowID], [MasterTransactionID], [EmGrandChildEditMode], [ConversationBoxDockPosition], [PreSaveValidationMethod], [IsPhysicalModelTableCreated], [IsAllowSaveAs], [FormTitleDisplayFieldID], [IsShowSaveButton], [IsShowCalculateButton], [IsShowPrintButton], [SaasApplicationID], [IsForPublicAcesss], [EmNotificaionMethod], [NotificationSetting], [WebApiConfigID], [GlobalGuid]) VALUES (2245, N'File Navigation Edit', N'', NULL, 1, NULL, N'', NULL, NULL, 1, NULL, 1, CAST(N'2017-12-30T03:01:04.450' AS DateTime), CAST(N'2022-11-24T23:21:53.573' AS DateTime), 13702, 1, 0, 0, 1, NULL, NULL, 51, 2, NULL, NULL, NULL, 1, NULL, NULL, NULL, 1, 2, N'', 1, NULL, NULL, 1, 1, NULL, NULL, NULL, NULL, N'', NULL, NULL);
+SET IDENTITY_INSERT [dbo].[AppTransaction] OFF;
+GO
+
+-- ============ AppDataSet (App_FileView) ============
+SET IDENTITY_INSERT [dbo].[AppDataSet] ON;
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppDataSet] WHERE [DataSetID] = 2057)
+    INSERT [dbo].[AppDataSet] ([DataSetID], [Name], [Description], [QueryText], [QueryType], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [DataSourceFrom], [AppCreatedByCompanyID], [BaseDataSetID], [SaasApplicationID], [UsageTypeID], [BaseTableName], [WebApiConfigID], [RestApiHeaderKeyValue], [RestApiQueryParameterKeyValue], [HttpMethod], [OtherSettings], [GlobalGuid]) VALUES (2057, N'App_FileView', NULL, N'SELECT [dbo].[App_FileView].[FileID], [dbo].[App_FileView].[FileCode], [dbo].[App_FileView].[Description], [dbo].[App_FileView].[FolderID], [dbo].[App_FileView].[FileType], [dbo].[App_FileView].[Extension], [dbo].[App_FileView].[InitialFileID], [dbo].[App_FileView].[CheckoutByID], [dbo].[App_FileView].[CheckoutDate], [dbo].[App_FileView].[AppCreatedByID], [dbo].[App_FileView].[AppCreatedDate], [dbo].[App_FileView].[AppModifiedDate], [dbo].[App_FileView].[AppModifiedByID] FROM [dbo].[App_FileView]', 1, 1, CAST(N'2017-12-30T03:02:47.887' AS DateTime), CAST(N'2017-12-30T03:02:47.887' AS DateTime), 1, 51, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+SET IDENTITY_INSERT [dbo].[AppDataSet] OFF;
+GO
+
+-- ============ AppSEFolder (My Company / Users / Form Files) ============
+DECLARE @FileMgtTransactionID int = 2245;
+DECLARE @CompanyFolderID int;
+DECLARE @UsersFolderID int;
+DECLARE @FormFilesFolderID int;
+
+SELECT @CompanyFolderID = FolderID
+FROM [dbo].[AppSEFolder]
+WHERE [FolderType] = 2 AND [ParentID] IS NULL AND [Name] = N'My Company';
+
+IF @CompanyFolderID IS NULL
+BEGIN
+    INSERT [dbo].[AppSEFolder] ([FolderType], [Name], [Description], [ParentID], [IsSystemFolder], [DefaultViewID], [TransactionID], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [AppCreatedByCompanyID], [OtherSettings])
+    VALUES (2, N'My Company', N'', NULL, 1, NULL, NULL, 1, CAST(N'2017-12-30T03:01:20.977' AS DateTime), CAST(N'2018-01-28T22:03:41.933' AS DateTime), 140, 1, NULL);
+
+    SET @CompanyFolderID = SCOPE_IDENTITY();
+END
+
+SELECT @UsersFolderID = FolderID
+FROM [dbo].[AppSEFolder]
+WHERE [FolderType] = 2 AND [ParentID] = @CompanyFolderID AND [Name] = N'Users';
+
+IF @UsersFolderID IS NULL
+BEGIN
+    INSERT [dbo].[AppSEFolder] ([FolderType], [Name], [Description], [ParentID], [IsSystemFolder], [DefaultViewID], [TransactionID], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [AppCreatedByCompanyID], [OtherSettings])
+    VALUES (2, N'Users', NULL, @CompanyFolderID, 1, NULL, @FileMgtTransactionID, 1, CAST(N'2017-12-30T03:19:39.697' AS DateTime), CAST(N'2017-12-30T03:19:39.697' AS DateTime), 1, 1, NULL);
+
+    SET @UsersFolderID = SCOPE_IDENTITY();
+END
+
+SELECT @FormFilesFolderID = FolderID
+FROM [dbo].[AppSEFolder]
+WHERE [FolderType] = 2 AND [ParentID] = @CompanyFolderID AND [Name] = N'Form Files';
+
+IF @FormFilesFolderID IS NULL
+BEGIN
+    INSERT [dbo].[AppSEFolder] ([FolderType], [Name], [Description], [ParentID], [IsSystemFolder], [DefaultViewID], [TransactionID], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [AppCreatedByCompanyID], [OtherSettings])
+    VALUES (2, N'Form Files', NULL, @CompanyFolderID, 1, NULL, @FileMgtTransactionID, 1, CAST(N'2018-01-13T07:23:40.833' AS DateTime), CAST(N'2018-01-13T07:23:40.833' AS DateTime), 1, 1, NULL);
+
+    SET @FormFilesFolderID = SCOPE_IDENTITY();
+END
+
+UPDATE [dbo].[AppTransaction]
+SET [MgtRootFolderID] = @CompanyFolderID,
+    [TransactionFileStorageRootFolderID] = @FormFilesFolderID
+WHERE [TransactionID] = @FileMgtTransactionID
+  AND ([MgtRootFolderID] IS NULL OR [TransactionFileStorageRootFolderID] IS NULL);
+GO
+
+-- ============ AppSearchView (File View / File View Simple) ============
+SET IDENTITY_INSERT [dbo].[AppSearchView] ON;
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchView] WHERE [SearchViewID] = 2066)
+    INSERT [dbo].[AppSearchView] ([SearchViewID], [Name], [Description], [NoSecurity], [GridOutputMode], [Options], [ViewType], [WhereUsedDefaultViewId], [PivotOrChartSetting], [ColumnCount], [RowPerPage], [IsFilterByCurrentUser], [DataSetID], [ChartInnerRadius], [ChartType], [CatalogueSearchID], [EntityInternalCode], [TransactionID], [ProductDetaiViewMapUnitID], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [AppCreatedByCompanyID], [IsMasterEditInSamePage], [AppRestResourceUri], [AppRestResourceUriDisplay], [NbFrozenColumn], [UpdateTransctionID], [UpdateTransctionRootFieldName], [UpdateChildParentFKFieldName], [UpdateBaseTranscationUnitID], [IsMassUpdateView], [IsAllowAddRow], [IsAllowDeleteRow], [IsAllowUpdateRow], [CanlendarDefaultViewMode], [IsEnableCalendarMonthView], [IsEnableCalendarWeekView], [IsEnableCalendarDayView], [IsEnableCalendarNavigator], [IsDisableClientTimeConvert], [SaasApplicationID], [IsForPublicAcesss], [IsFilterByUserTypeEntity], [CalendarStartHour], [CalendarEndHour], [FilterSearchID], [HierachyParentViewID], [GlobalGuid]) VALUES (2066, N'File View', N'', 0, 1, 0, 1, NULL, N'', 0, 0, NULL, 2057, NULL, 1, NULL, N'', NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.570' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 1, N'          ', N'', N'', NULL, NULL, N'', N'', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchView] WHERE [SearchViewID] = 2067)
+    INSERT [dbo].[AppSearchView] ([SearchViewID], [Name], [Description], [NoSecurity], [GridOutputMode], [Options], [ViewType], [WhereUsedDefaultViewId], [PivotOrChartSetting], [ColumnCount], [RowPerPage], [IsFilterByCurrentUser], [DataSetID], [ChartInnerRadius], [ChartType], [CatalogueSearchID], [EntityInternalCode], [TransactionID], [ProductDetaiViewMapUnitID], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [AppCreatedByCompanyID], [IsMasterEditInSamePage], [AppRestResourceUri], [AppRestResourceUriDisplay], [NbFrozenColumn], [UpdateTransctionID], [UpdateTransctionRootFieldName], [UpdateChildParentFKFieldName], [UpdateBaseTranscationUnitID], [IsMassUpdateView], [IsAllowAddRow], [IsAllowDeleteRow], [IsAllowUpdateRow], [CanlendarDefaultViewMode], [IsEnableCalendarMonthView], [IsEnableCalendarWeekView], [IsEnableCalendarDayView], [IsEnableCalendarNavigator], [IsDisableClientTimeConvert], [SaasApplicationID], [IsForPublicAcesss], [IsFilterByUserTypeEntity], [CalendarStartHour], [CalendarEndHour], [FilterSearchID], [HierachyParentViewID], [GlobalGuid]) VALUES (2067, N'File View Simple', NULL, 0, 1, 0, 1, NULL, NULL, 0, 0, NULL, 2057, NULL, 1, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:05:49.523' AS DateTime), CAST(N'2017-12-30T03:05:49.523' AS DateTime), 1, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+SET IDENTITY_INSERT [dbo].[AppSearchView] OFF;
+GO
+
+-- ============ AppSearchViewField (File View columns) ============
+SET IDENTITY_INSERT [dbo].[AppSearchViewField] ON;
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2750)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2750, 2066, 1, N'Thumbnail', 1, N'FileID', 5, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.570' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 0, 1, 1, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2751)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2751, 2066, 1, N'FileCode', 2, N'FileCode', 2, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.570' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 0, 0, 1, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2752)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2752, 2066, 0, N'Description', 3, N'Description', 2, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.570' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 0, 0, 1, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2753)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2753, 2066, 0, N'FolderID', 4, N'FolderID', 2, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.570' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 1, 0, 1, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2754)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2754, 2066, 0, N'FileType', 5, N'FileType', 2, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.587' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 0, 0, 1, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2755)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2755, 2066, 0, N'Extension', 6, N'Extension', 2, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.587' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 0, 0, 1, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2756)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2756, 2066, 0, N'InitialFileID', 7, N'InitialFileID', 2, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.587' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 0, 0, 1, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2757)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2757, 2066, 0, N'Created By', 8, N'AppCreatedByID', 1, 54, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.587' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 0, 0, 1, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2758)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2758, 2066, 0, N'Date Created', 9, N'AppCreatedDate', 7, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.587' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 0, 0, 1, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2759)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2759, 2066, 1, N'Modified By', 10, N'AppModifiedByID', 1, 54, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.587' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 0, 0, 1, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2760)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2760, 2066, 1, N'Date Modified', 11, N'AppModifiedDate', 7, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:04:48.587' AS DateTime), CAST(N'2019-02-05T18:26:15.423' AS DateTime), 1, 0, 0, 1, NULL, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2761)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2761, 2067, 1, N'FileID', 1, N'FileID', 2, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:05:49.523' AS DateTime), CAST(N'2017-12-30T03:05:49.523' AS DateTime), 1, 0, 1, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2762)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2762, 2067, 1, N'FileCode', 2, N'FileCode', 2, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:05:49.523' AS DateTime), CAST(N'2017-12-30T03:05:49.523' AS DateTime), 1, 0, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppSearchViewField] WHERE [SearchViewFieldID] = 2763)
+    INSERT [dbo].[AppSearchViewField] ([SearchViewFieldID], [SearchViewID], [IsVisible], [DisplayText], [Sort], [SysTableFiledPath], [ControlType], [EntityID], [DataType], [IsGroupBy], [GroupByLevel], [AggregationFunctionType], [IsFilterByCurrentUser], [IsMapToChartX], [IsMapToChartY], [ChartYMappingOrder], [TreeLevel], [IsTreeNodeID], [IsTreeNodeDisplay], [MappingSearchFieldID], [IsTreeNodeDesc], [IsTreeNodeImageUrl], [ProductDetaiMapTransFiledID], [IsUserDefined1], [IsUserDefined2], [IsUserDefined3], [IsUserDefined4], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [IsFileFoderID], [IsTransRootID], [AppCreatedByCompanyID], [Width], [RowNumber], [ColumnNumber], [OrderByLevel], [IsDescOrder], [MassUpdateTransactionFieldID], [IsReadOnly], [PullCriteriaAsDefaultValueSearchFieldID], [EmInternalCodeRegistration], [IsPartnerFilterFiled], [JoinToParentViewFieldID], [IsCalulationField], [OtherSettings]) VALUES (2763, 2067, 1, N'FolderID', 3, N'FolderID', 2, NULL, NULL, 0, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, CAST(N'2017-12-30T03:05:49.523' AS DateTime), CAST(N'2017-12-30T03:05:49.523' AS DateTime), 1, 1, 0, 1, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL);
+SET IDENTITY_INSERT [dbo].[AppSearchViewField] OFF;
+GO
+
+-- ============ AppTransactionNavigation (transaction -> file views) ============
+SET IDENTITY_INSERT [dbo].[AppTransactionNavigation] ON;
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppTransactionNavigation] WHERE [TransNavigationID] = 1)
+    INSERT [dbo].[AppTransactionNavigation] ([TransNavigationID], [TransactionID], [QuickSearchID], [FolderViewID], [IsDefaultView], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [AppCreatedByCompanyID]) VALUES (1, 2245, NULL, 2066, 1, 1, CAST(N'2017-12-30T03:09:50.453' AS DateTime), CAST(N'2018-01-13T07:30:38.233' AS DateTime), 1, 1);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppTransactionNavigation] WHERE [TransNavigationID] = 2)
+    INSERT [dbo].[AppTransactionNavigation] ([TransNavigationID], [TransactionID], [QuickSearchID], [FolderViewID], [IsDefaultView], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [AppCreatedByCompanyID]) VALUES (2, 2245, NULL, 2067, 0, 1, CAST(N'2017-12-30T03:09:50.453' AS DateTime), CAST(N'2018-01-13T07:30:38.250' AS DateTime), 1, 1);
+SET IDENTITY_INSERT [dbo].[AppTransactionNavigation] OFF;
+GO
+
+-- ============ AppListMenu (left-menu "File Management" group) ============
+SET IDENTITY_INSERT [dbo].[AppListMenu] ON;
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppListMenu] WHERE [MenuID] = 5596)
+    INSERT [dbo].[AppListMenu] ([MenuID], [ParentID], [Name], [Description], [IconName], [RouteCode], [Link], [Sort], [LinkType], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [AppCreatedByCompanyID], [IsSharedbyMutipleCompany], [EmDeviceMenuShowMode], [GlobalGuid], [DisplayModeMenuOrTab], [TransactionID], [SearchID], [ReportID], [ProjectID], [DesktopID], [LinkParam1], [LinkParam2], [IconName2], [ModuleRegisterID], [EsiteID], [EmAppMenuItemCategory]) VALUES (5596, NULL, N'File Management', N'Store and share files online with security', N'Open Folder-64.png', N'', N'', 300, 10, 5014, CAST(N'2019-12-31T20:20:26.460' AS DateTime), CAST(N'2026-05-29T17:36:54.720' AS DateTime), 13775, NULL, NULL, 3, N'3c27da30-0861-4677-9b28-80c722bd3199', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, N'', NULL, NULL, 1);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppListMenu] WHERE [MenuID] = 5597)
+    INSERT [dbo].[AppListMenu] ([MenuID], [ParentID], [Name], [Description], [IconName], [RouteCode], [Link], [Sort], [LinkType], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [AppCreatedByCompanyID], [IsSharedbyMutipleCompany], [EmDeviceMenuShowMode], [GlobalGuid], [DisplayModeMenuOrTab], [TransactionID], [SearchID], [ReportID], [ProjectID], [DesktopID], [LinkParam1], [LinkParam2], [IconName2], [ModuleRegisterID], [EsiteID], [EmAppMenuItemCategory]) VALUES (5597, 5596, N'File Upload Status', N'File Upload Status', N'Pie Chart-64.png', N'MasterDataManagement', N'2066', 320, 1, 5014, CAST(N'2019-12-31T20:20:26.460' AS DateTime), CAST(N'2026-05-29T17:36:54.723' AS DateTime), 13775, NULL, NULL, 1, N'9211c0b4-a59a-42af-a5a7-4af5d251806c', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, N'', NULL, NULL, 1);
+IF NOT EXISTS (SELECT 1 FROM [dbo].[AppListMenu] WHERE [MenuID] = 5601)
+    INSERT [dbo].[AppListMenu] ([MenuID], [ParentID], [Name], [Description], [IconName], [RouteCode], [Link], [Sort], [LinkType], [AppCreatedByID], [AppCreatedDate], [AppModifiedDate], [AppModifiedByID], [AppCreatedByCompanyID], [IsSharedbyMutipleCompany], [EmDeviceMenuShowMode], [GlobalGuid], [DisplayModeMenuOrTab], [TransactionID], [SearchID], [ReportID], [ProjectID], [DesktopID], [LinkParam1], [LinkParam2], [IconName2], [ModuleRegisterID], [EsiteID], [EmAppMenuItemCategory]) VALUES (5601, 5596, N'My Recently Files', N'My Recently Files', N'Open Folder-64.png', N'FolderNavigation', N'2245_1', 10, 1, 5014, CAST(N'2019-12-31T20:20:26.460' AS DateTime), CAST(N'2026-05-29T17:36:54.720' AS DateTime), 13775, NULL, NULL, 1, N'fbd2b04c-dc7d-441d-99bc-72d68472ea4c', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, N'', NULL, NULL, 1);
+SET IDENTITY_INSERT [dbo].[AppListMenu] OFF;
+GO
+
+-- ============ AppTenantSetting pointers (plain integer values) ============
+UPDATE dbo.AppTenantSetting SET SetupValue = N'2245' WHERE SetupCode = 'SystemDefinedFileTransactionId'    AND (SetupValue IS NULL OR LTRIM(RTRIM(SetupValue)) = '');
+DECLARE @SeededCompanyFolderID int = (
+    SELECT TOP (1) [FolderID]
+    FROM [dbo].[AppSEFolder]
+    WHERE [FolderType] = 2 AND [ParentID] IS NULL AND [Name] = N'My Company'
+    ORDER BY [FolderID]
+);
+DECLARE @SeededUsersFolderID int = (
+    SELECT TOP (1) [FolderID]
+    FROM [dbo].[AppSEFolder]
+    WHERE [FolderType] = 2 AND [ParentID] = @SeededCompanyFolderID AND [Name] = N'Users'
+    ORDER BY [FolderID]
+);
+DECLARE @SeededFormFilesFolderID int = (
+    SELECT TOP (1) [FolderID]
+    FROM [dbo].[AppSEFolder]
+    WHERE [FolderType] = 2 AND [ParentID] = @SeededCompanyFolderID AND [Name] = N'Form Files'
+    ORDER BY [FolderID]
+);
+
+UPDATE dbo.AppTenantSetting SET SetupValue = CONVERT(nvarchar(50), @SeededCompanyFolderID)   WHERE SetupCode = 'PublicFileFolderId'                AND (SetupValue IS NULL OR LTRIM(RTRIM(SetupValue)) = '');
+UPDATE dbo.AppTenantSetting SET SetupValue = CONVERT(nvarchar(50), @SeededUsersFolderID)     WHERE SetupCode = 'UsersFolderId'                     AND (SetupValue IS NULL OR LTRIM(RTRIM(SetupValue)) = '');
+UPDATE dbo.AppTenantSetting SET SetupValue = CONVERT(nvarchar(50), @SeededFormFilesFolderID) WHERE SetupCode = 'TransactionFileStorageRootFolderId' AND (SetupValue IS NULL OR LTRIM(RTRIM(SetupValue)) = '');
+GO
+
+PRINT 'V007: File Management framework seeded.';
+GO
