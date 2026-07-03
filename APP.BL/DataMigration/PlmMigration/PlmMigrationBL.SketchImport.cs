@@ -384,7 +384,9 @@ VALUES
                 cmd.Parameters.AddWithValue("@ThumbnailFilePath", (object)thumbnailPath ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@RegularImageFilepath", (object)regularPath ?? DBNull.Value);
                 cmd.Parameters.Add("@FileContent", SqlDbType.VarBinary, -1).Value = (object)fileContent ?? DBNull.Value;
-                cmd.Parameters.AddWithValue("@InitialFileID", row.SketchId);
+                // Original files must have InitialFileID NULL so App_FileView (WHERE InitialFileID IS NULL) shows them.
+                // A non-null InitialFileID marks a row as a version of another file and hides it from the file list.
+                cmd.Parameters.AddWithValue("@InitialFileID", DBNull.Value);
                 cmd.Parameters.AddWithValue("@UserId", (object)AppSecurityUserBL.CurrentUserId ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@CreatedDate", (object)row.CreatedDate ?? DateTime.UtcNow);
                 cmd.Parameters.AddWithValue("@ModifiedDate", (object)row.ModifyDate ?? DateTime.UtcNow);
