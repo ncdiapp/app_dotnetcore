@@ -6,7 +6,7 @@ import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { appTransactionService } from '../../webapi/apptransactionsvc';
 import { dynamicLayoutService } from '../../webapi/dynamiclayoutsvc';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
-import { buildEndpointUrl } from '../../webapi/endpoints';
+import { fileRegularUrl } from '../../webapi/fileEndpoints';
 
 function toDisplayText(v: any): string {
   if (v == null) return '';
@@ -166,11 +166,9 @@ function getSessionIdForPrint(): string | null {
   }
 }
 
-function buildFileImageUrl(fileId: number, sessionId: string | null): string {
-  // Keep consistent with runtime ImageControl (Angular pattern).
-  // For print, uiId is optional; auth is usually via cookie, but sessionId param helps when needed.
-  const sid = sessionId ? `&CurrentUserSessionId=${encodeURIComponent(String(sessionId))}` : '';
-  return buildEndpointUrl(`/GetRegularImage.aspx?FileId=${encodeURIComponent(String(fileId))}${sid}`);
+function buildFileImageUrl(fileId: number, _sessionId: string | null): string {
+  // Regular-size image served by the Core app (session appended by the helper).
+  return fileRegularUrl(fileId);
 }
 
 function resolveDecimalDigits(fieldDto: any): number {

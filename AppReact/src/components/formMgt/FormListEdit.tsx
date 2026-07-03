@@ -18,7 +18,7 @@ import { useTheme } from '../../redux/hooks/useTheme';
 import FlexGridAddOn from '../common/FlexGridAddOn';
 import RgbColorSwatch from '../common/RgbColorSwatch';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
-import { endpoints } from '../../webapi/endpoints';
+import { fileThumbnailUrl, fileLatestUrl, downloadFileById } from '../../webapi/fileEndpoints';
 import { DataMap } from '@mescius/wijmo.grid';
 import { useSelector, Provider } from 'react-redux';
 import type { RootState } from '../../redux/store';
@@ -323,19 +323,11 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [cellMenu?.open]);
 
-  const sessionId =
-    userContext?.SessionId ?? (typeof window !== 'undefined' ? localStorage.getItem('sessionId') : null);
-
-  const buildFileUrl = useCallback(
-    (fileId: number | string | null | undefined, isDownload?: boolean) => {
-      const id = fileId != null ? Number(fileId) : null;
-      if (!id) return null;
-      const sid = sessionId ? `&CurrentUserSessionId=${encodeURIComponent(String(sessionId))}` : '';
-      const dl = isDownload ? '&IsDownload=true' : '';
-      return endpoints.buildEndpointUrl(`/GetLatestFile.aspx?FileId=${id}${sid}${dl}`);
-    },
-    [sessionId]
-  );
+  const buildFileUrl = useCallback((fileId: number | string | null | undefined) => {
+    const id = fileId != null ? Number(fileId) : null;
+    if (!id) return null;
+    return fileLatestUrl(id);
+  }, []);
 
   const fileStorageRootFolderId =
     dataModel?.currentFormStructure?.FileStorageRootFolderId ?? dataModel?.currentFormData?.FileStorageRootFolderId;
@@ -1431,9 +1423,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
                           const fileIdResolved = raw != null ? Number(raw) : null;
                           const fileId = fileIdResolved != null && Number.isFinite(fileIdResolved) ? fileIdResolved : null;
 
-                          const thumbUrl = fileIdResolved
-                            ? endpoints.buildEndpointUrl(`/GetThumbnailImage.aspx?FileId=${fileIdResolved}`)
-                            : null;
+                          const thumbUrl = fileIdResolved ? fileThumbnailUrl(fileIdResolved) : null;
 
                           return (
                             <div className="flex items-center justify-between w-full h-full gap-1 min-w-0">
@@ -1536,8 +1526,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
                                   e.stopPropagation();
                                   if (fieldIsReadOnly) return;
                                   if (!fileIdResolved) return;
-                                  const url = buildFileUrl(fileIdResolved, true);
-                                  if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                                  void downloadFileById(fileIdResolved);
                                 }}
                               >
                                 <span className={`truncate block flex-auto text-xs ${display ? '' : theme.label}`}>{display || ''}</span>
@@ -1605,7 +1594,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
             onClick={(e) => e.stopPropagation()}
           >
             {(() => {
-              const url = buildFileUrl(imagePreviewState.fileId, false);
+              const url = buildFileUrl(imagePreviewState.fileId);
               return url ? (
                 <img src={url} alt="" className="max-w-full max-h-full object-contain" />
               ) : (
@@ -1672,8 +1661,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
               type="button"
               className={`w-full text-left px-2 py-1.5 text-xs ${theme.contextMenu} flex items-center gap-2`}
               onClick={() => {
-                const url = buildFileUrl(cellMenu.fileId, true);
-                if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                if (cellMenu.fileId) void downloadFileById(cellMenu.fileId);
                 closeCellMenu();
               }}
             >

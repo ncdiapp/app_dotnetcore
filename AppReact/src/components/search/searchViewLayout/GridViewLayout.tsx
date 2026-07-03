@@ -6,7 +6,7 @@ import { CollectionView } from '@mescius/wijmo';
 import { GroupRow } from '@mescius/wijmo.grid';
 import '@mescius/wijmo.styles/wijmo.css';
 import { useTheme } from '../../../redux/hooks/useTheme';
-import { buildEndpointUrl } from "../../../webapi/endpoints";
+import { fileThumbnailUrl } from "../../../webapi/fileEndpoints";
 import { useTabNavigation } from '../../../redux/hooks/useTabNavigation';
 import { preserveTabInitialPath, getCurrentActiveTab } from '../../../redux/features/ui/navigation/tabnavSlice';
 import { isTransactionFormGroupPath } from '../../../helper/navigationHelper';
@@ -102,7 +102,28 @@ const EmAppControlType = {
   InvalidControlType: 99
 };
 
-export const GridViewLayout: React.FC<GridViewLayoutProps> = ({
+/** Stable grid thumbnail — avoids img reload when unrelated parent state changes. */
+const SearchGridThumbnailCell = React.memo(({ fileId }: { fileId: number | string }) => (
+  <div style={{ position: 'absolute', top: 0, left: 0, width: '60px', height: '60px' }}>
+    <img
+      src={fileThumbnailUrl(fileId)}
+      style={{
+        maxHeight: '60px',
+        maxWidth: '60px',
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        bottom: 0,
+        right: 0,
+        margin: 'auto',
+      }}
+      alt=""
+    />
+  </div>
+));
+SearchGridThumbnailCell.displayName = 'SearchGridThumbnailCell';
+
+const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
   viewDto,
   viewDataList,
   dataModel,
@@ -666,27 +687,7 @@ export const GridViewLayout: React.FC<GridViewLayoutProps> = ({
                         if (!fileId) {
                           return <div style={{ width: '60px', height: '60px' }} />;
                         }
-
-                        const imageSrc = buildEndpointUrl(`/GetThumbnailImage.aspx?FileId=${fileId}`);
-
-                        return (
-                          <div style={{ position: 'absolute', top: 0, left: 0, width: '60px', height: '60px' }}>
-                            <img
-                              src={imageSrc}
-                              style={{
-                                maxHeight: '60px',
-                                maxWidth: '60px',
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                bottom: 0,
-                                right: 0,
-                                margin: 'auto'
-                              }}
-                              alt=""
-                            />
-                          </div>
-                        );
+                        return <SearchGridThumbnailCell fileId={fileId} />;
                       }}
                     />
                     <FlexGridCellTemplate cellType="Group" template={() => <div></div>} />
@@ -850,4 +851,6 @@ export const GridViewLayout: React.FC<GridViewLayoutProps> = ({
       )}
     </div>
   );
-}; 
+};
+
+export const GridViewLayout = React.memo(GridViewLayoutInner);

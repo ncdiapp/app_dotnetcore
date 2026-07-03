@@ -10,7 +10,7 @@ import { useTheme } from '../../../../redux/hooks/useTheme';
 import FlexGridAddOn from '../../../common/FlexGridAddOn';
 import RgbColorSwatch from '../../../common/RgbColorSwatch';
 import { useEnumValues } from '../../../../hooks/useEnumDictionary';
-import { endpoints } from '../../../../webapi/endpoints';
+import { fileThumbnailUrl, fileLatestUrl, downloadFileById } from '../../../../webapi/fileEndpoints';
 import { appTransactionService } from '../../../../webapi/apptransactionsvc';
 import { store, type RootState } from '../../../../redux/store';
 import { setIsBusy, setIsNotBusy } from '../../../../redux/features/ui/feedback/busyLoaderSlice';
@@ -386,9 +386,6 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     });
   }, []);
 
-  const sessionId =
-    userContext?.SessionId ?? (typeof window !== 'undefined' ? localStorage.getItem('sessionId') : null);
-
   const unitIdStr = String(unitId);
 
   /** Row array for this unit: prefer last committed rows until parent props catch up (fixes multi Add/Edit before re-render). */
@@ -462,16 +459,11 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     };
   }, [unitId]);
 
-  const buildFileUrl = useCallback(
-    (fileId: number | string | null | undefined, isDownload?: boolean) => {
-      const id = fileId != null ? Number(fileId) : null;
-      if (!id) return null;
-      const sid = sessionId ? `&CurrentUserSessionId=${encodeURIComponent(String(sessionId))}` : '';
-      const dl = isDownload ? '&IsDownload=true' : '';
-      return endpoints.buildEndpointUrl(`/GetLatestFile.aspx?FileId=${id}${sid}${dl}`);
-    },
-    [sessionId]
-  );
+  const buildFileUrl = useCallback((fileId: number | string | null | undefined) => {
+    const id = fileId != null ? Number(fileId) : null;
+    if (!id) return null;
+    return fileLatestUrl(id);
+  }, []);
 
   type CellMenuKind = 'image' | 'file';
   const [cellMenu, setCellMenu] = useState<{
@@ -546,7 +538,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const fileStorageRootFolderId = dataModel?.currentFormStructure?.FileStorageRootFolderId ?? dataModel?.FileStorageRootFolderId;
   const sysFileTransactionId = userContext?.DictAppSetup?.SystemDefinedFileTransactionId ?? null;
   const defaultCategoryId_company = 3;
-  const imagePreviewUrl = imagePreviewState.fileId ? buildFileUrl(imagePreviewState.fileId, false) : null;
+  const imagePreviewUrl = imagePreviewState.fileId ? buildFileUrl(imagePreviewState.fileId) : null;
 
   const normalizeMainPrefixRouteCode = (rc: string) => (rc || '').replace(/^main\./, '');
 
@@ -3542,7 +3534,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                       const isLockedByCascade =
                         Array.isArray(lockedFields) && lockedFields.indexOf(field.DataBaseFieldName) >= 0;
                       const rowIndex = (item?._rowIndex ?? cell?.row?.index) as number;
-                      const thumbUrl = fileId ? endpoints.buildEndpointUrl(`/GetThumbnailImage.aspx?FileId=${fileId}`) : null;
+                      const thumbUrl = fileId ? fileThumbnailUrl(fileId) : null;
                       return (
                         <div className="flex items-center justify-between w-full h-full gap-1">
                           <div className="flex items-center gap-2 min-w-0 flex-auto">
@@ -3647,8 +3639,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                               e.stopPropagation();
                               if (isColumnReadOnly || isLockedByCascade) return;
                               if (!fileId) return;
-                            const url = buildFileUrl(fileId, true);
-                              if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                              void downloadFileById(fileId);
                             }}
                           >
                             <span className={`truncate block flex-auto text-xs ${display ? '' : theme.label}`}>
@@ -3838,8 +3829,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
               type="button"
               className={`w-full text-left px-3 py-2 text-xs ${theme.contextMenu}`}
               onClick={() => {
-                const url = buildFileUrl(cellMenu.fileId, true);
-                if (url) window.open(url, '_blank', 'noopener,noreferrer');
+                if (cellMenu.fileId) void downloadFileById(cellMenu.fileId);
                 closeCellMenu();
               }}
             >

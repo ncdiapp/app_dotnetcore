@@ -5,7 +5,6 @@ import '@mescius/wijmo.styles/wijmo.css';
 import { appFolderNavigationService } from '../../webapi/appfoldernavigationsvc';
 import { appTransactionService } from '../../webapi/apptransactionsvc';
 import { adminSvc } from '../../webapi/adminsvc';
-import { endpoints } from '../../webapi/endpoints';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import type { Theme } from '../../redux/features/ui/theme/types';
@@ -20,6 +19,8 @@ import FileUploader from '../common/FileUploader';
 import { searchSvc } from '../../webapi/searchSvc';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
 import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
+import { fileLatestUrl as buildLatestFileUrl, downloadFileById } from '../../webapi/fileEndpoints';
+import { FolderFileGrid, type FileViewItem } from './FolderFileGrid';
 
 // Fallback when enum not yet loaded (must match backend EmAppFileFolderCategory: MyRecycleBin = 9)
 const FALLBACK_FILE_FOLDER_CATEGORIES: Record<string, number> = {
@@ -53,7 +54,6 @@ const FILE_MGT_CATEGORY_ORDER_KEYS: (keyof typeof FALLBACK_FILE_FOLDER_CATEGORIE
 ];
 
 // Search view column control type: Image = 5 (same as GridViewLayout / Angular EmAppControlType.Image)
-const EM_APP_CONTROL_TYPE_IMAGE = 5;
 
 const FOLDER_CONTEXT_MENU_ESTIMATED_WIDTH = 200;
 const FOLDER_CONTEXT_MENU_ESTIMATED_HEIGHT = 360;
@@ -95,6 +95,18 @@ function inferFileCodeColumnId(fields: { Id?: number; SearchViewFieldID?: number
   return null;
 }
 
+/** Infer the Extension column id (FileCode has no extension, so preview type comes from here) */
+function inferExtensionColumnId(fields: { Id?: number; SearchViewFieldID?: number; Name?: string; DisplayText?: string; SysTableFiledPath?: string }[]): number | null {
+  for (const f of fields) {
+    const name = (f.SysTableFiledPath ?? f.Name ?? f.DisplayText ?? '').toLowerCase();
+    if (name === 'extension' || name.endsWith('.extension')) {
+      const id = f.Id ?? f.SearchViewFieldID;
+      if (id != null) return Number(id);
+    }
+  }
+  return null;
+}
+
 function getFilePreviewType(fileName: string): 'imagePreView' | 'googleGview' | 'videoPreView' | 'audioPreView' | null {
   if (!fileName) return null;
   const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
@@ -106,21 +118,29 @@ function getFilePreviewType(fileName: string): 'imagePreView' | 'googleGview' | 
 }
 
 /** Preview panel: images via img, documents via Google Docs viewer iframe (Angular pattern) */
-function FilePreviewPanel({
+const FilePreviewPanel = React.memo(function FilePreviewPanel({
   selectedFile,
   getFileIdFromItem,
   getFileDisplayFromItem,
+  getFileExtensionFromItem,
   theme,
 }: {
   selectedFile: FileViewItem | null;
   getFileIdFromItem: (item: FileViewItem | null) => number | null;
   getFileDisplayFromItem: (item: FileViewItem | null) => string;
+  getFileExtensionFromItem: (item: FileViewItem | null) => string;
   theme: Theme;
 }) {
   const fileId = selectedFile ? getFileIdFromItem(selectedFile) : null;
   const fileName = selectedFile ? getFileDisplayFromItem(selectedFile) : '';
-  const previewType = fileName ? getFilePreviewType(fileName) : null;
-  const getFileUrl = (id: number) => endpoints.buildEndpointUrl(`/GetLatestFile.aspx?FileId=${id}`);
+  // FileCode has no extension; the view exposes it in a separate Extension column.
+  // Combine so preview type can be resolved (e.g. "151380_TECHNI" + ".png").
+  const extension = selectedFile ? getFileExtensionFromItem(selectedFile) : '';
+  const effectiveName = /\.[a-z0-9]+$/i.test(fileName)
+    ? fileName
+    : fileName + (extension ? (extension.startsWith('.') ? extension : `.${extension}`) : '');
+  const previewType = effectiveName ? getFilePreviewType(effectiveName) : null;
+  const getFileUrl = (id: number) => buildLatestFileUrl(id);
 
   if (!selectedFile) {
     return <p className={`text-xs ${theme.label}`}>Select a file to preview.</p>;
@@ -133,15 +153,14 @@ function FilePreviewPanel({
     return (
       <div className="relative flex items-center justify-center w-full min-h-[200px]">
         <img src={imgUrl} alt="" className="max-h-full max-w-full object-contain" />
-        <a
-          href={imgUrl}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={() => downloadFileById(fileId, effectiveName)}
           className={`absolute top-2 right-2 px-2 py-1 text-xs rounded ${theme.button_default}`}
         >
           <i className="fa-solid fa-download mr-1" />
           Download
-        </a>
+        </button>
       </div>
     );
   }
@@ -151,15 +170,14 @@ function FilePreviewPanel({
     return (
       <div className="relative w-full h-full min-h-[300px]">
         <iframe src={iframeUrl} title="Document preview" className="w-full h-full min-h-[300px] border-0" />
-        <a
-          href={getFileUrl(fileId)}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          type="button"
+          onClick={() => downloadFileById(fileId, effectiveName)}
           className={`absolute top-2 right-2 px-2 py-1 text-xs rounded ${theme.button_default}`}
         >
           <i className="fa-solid fa-download mr-1" />
           Download
-        </a>
+        </button>
       </div>
     );
   }
@@ -172,15 +190,15 @@ function FilePreviewPanel({
         ) : (
           <audio src={mediaUrl} controls className="w-full" />
         )}
-        <a href={mediaUrl} target="_blank" rel="noopener noreferrer" className={`mt-2 inline-block px-2 py-1 text-xs rounded ${theme.button_default}`}>
+        <button type="button" onClick={() => downloadFileById(fileId, effectiveName)} className={`mt-2 inline-block px-2 py-1 text-xs rounded ${theme.button_default}`}>
           <i className="fa-solid fa-download mr-1" />
           Download
-        </a>
+        </button>
       </div>
     );
   }
   return <p className={`text-xs ${theme.label}`}>Preview Not Available</p>;
-}
+});
 
 /** Properties panel: embeds FormMasterDetail (file transaction form) like Angular's openFilePropertyPage */
 function FilePropertiesFormPanel({
@@ -245,20 +263,6 @@ type FolderDto = {
   FolderType?: number;
   TransactionId?: number;
   CountContent?: number;
-};
-
-type FileViewItem = {
-  Id?: number;
-  Display?: string;
-  FileName?: string;
-  FileSize?: number;
-  CreatedDate?: string;
-  ModifiedDate?: string;
-  CreatedByUserId?: number;
-  ModifiedByUserId?: number;
-  DictViewColumnIDKeyValue?: Record<number | string, unknown>;
-  DictSketchOrFileDisplayCode?: Record<number | string, string>;
-  [key: string]: any;
 };
 
 const FolderNavigation: React.FC<Props> = ({
@@ -349,6 +353,8 @@ const FolderNavigation: React.FC<Props> = ({
   const [transRootIdColumnId, setTransRootIdColumnId] = useState<number | null>(null);
   /** FileCodeColumnId from view DTO - for file name resolution (Angular: CurrentViewDto.FileCodeColumnId) */
   const [fileCodeColumnId, setFileCodeColumnId] = useState<number | null>(null);
+  /** Extension column id - FileCode has no extension; preview type is resolved from this column. */
+  const [extensionColumnId, setExtensionColumnId] = useState<number | null>(null);
 
   const [loading, setLoading] = useState(true);
 
@@ -561,6 +567,7 @@ const FolderNavigation: React.FC<Props> = ({
       setViewFields([]);
       setTransRootIdColumnId(null);
       setFileCodeColumnId(null);
+      setExtensionColumnId(null);
       return;
     }
     let cancelled = false;
@@ -575,6 +582,7 @@ const FolderNavigation: React.FC<Props> = ({
         const fileCodeId = dto?.FileCodeColumnId ?? dto?.fileCodeColumnId;
         setTransRootIdColumnId(transId != null ? Number(transId) : inferTransRootIdColumnId(fields));
         setFileCodeColumnId(fileCodeId != null ? Number(fileCodeId) : inferFileCodeColumnId(fields));
+        setExtensionColumnId(inferExtensionColumnId(fields));
       })
       .catch((e) => {
         if (!cancelled) {
@@ -727,6 +735,32 @@ const FolderNavigation: React.FC<Props> = ({
     const id = getFileIdFromItem(item);
     return id != null ? `File ${id}` : 'File';
   }, [getFileIdFromItem, fileCodeColumnId]);
+
+  const getFileExtensionFromItem = useCallback((item: FileViewItem | null): string => {
+    if (!item) return '';
+    if ((item as any).Extension) return String((item as any).Extension);
+    const dict = item.DictViewColumnIDKeyValue ?? (item as any).dictViewColumnIDKeyValue;
+    if (extensionColumnId != null && dict) {
+      const val = dict[extensionColumnId] ?? dict[String(extensionColumnId)];
+      if (val != null && val !== '') return String(val);
+    }
+    return '';
+  }, [extensionColumnId]);
+
+  const handleFileGridSelectionChanged = useCallback(
+    (item: FileViewItem | null) => {
+      setSelectedFileForPreview(item);
+      if (isUseAsSelector && onFileSelected && item) {
+        const id = getFileIdFromItem(item);
+        if (id != null) onFileSelected(id);
+      }
+    },
+    [isUseAsSelector, onFileSelected, getFileIdFromItem]
+  );
+
+  const handleOpenFileContextMenu = useCallback((item: FileViewItem, x: number, y: number) => {
+    setFileContextMenu({ visible: true, x, y, item });
+  }, []);
 
   const isFolderReadonly = currentFolderData?.IsFolderReadonly === true;
   // Header toolbar visibility per category (matches Angular folderNavigationFileHelper is*ButtonVisible)
@@ -1154,9 +1188,12 @@ const FolderNavigation: React.FC<Props> = ({
   }, []);
 
   const downloadFile = useCallback((fileId: number) => {
-    const url = endpoints.buildEndpointUrl(`/GetLatestFile.aspx?FileId=${fileId}`);
-    window.open(url, '_blank');
-  }, []);
+    // Fetch bytes and save (window.open of a relative API path hits the SPA fallback in dev).
+    downloadFileById(fileId).catch((e) => {
+      appHelper.debugLog('FolderNavigation download error:', e);
+      showInfo('Download failed.', true);
+    });
+  }, [showInfo]);
 
   // Resize handlers
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -1741,131 +1778,16 @@ const FolderNavigation: React.FC<Props> = ({
           <div className="h-1 flex-auto flex overflow-hidden min-w-0">
           {/* File Grid - mr-1 separator (no border), relative for resize handle */}
           <div className={`h-full flex-auto overflow-hidden min-w-0 mr-1 relative ${theme.mainContentSection}`} style={{ minWidth: 200 }}>
-            {loading ? (
-              <p className={`text-xs ${theme.label} p-4`}>Loading...</p>
-            ) : filesCV ? (
-              <FlexGrid
-                ref={fileGridRef}
-                itemsSource={filesCV}
-                selectionMode="ListBox"
-                headersVisibility="Column"
-                isReadOnly={true}
-                style={{ height: '100%' }}
-                selectionChanged={(s: any) => {
-                  const flex = s?.control ?? s;
-                  const row = flex?.selection?.row;
-                  const item =
-                    row != null && flex?.rows?.[row] != null ? (flex.rows[row] as any).dataItem : null;
-                  setSelectedFileForPreview(item ?? null);
-
-                  // Selector mode: also notify parent of current selected file (Angular: File Selector row selection)
-                  if (isUseAsSelector && onFileSelected && item) {
-                    const id = getFileIdFromItem(item);
-                    if (id != null) onFileSelected(id);
-                  }
-
-                  if (!isFileMgt) return;
-                }}
-                itemFormatter={(panel: any, r: number, c: number, cell: HTMLElement) => {
-                  // if (panel.cellType === 1 && r >= 0) {
-                  //   cell.ondblclick = () => {
-                  //     const item = panel.rows[r].dataItem;
-                  //     if (item) handleFileDoubleClick(item);
-                  //   };
-                  // }
-                }}
-              >
-                <FlexGridColumn header="Actions" width={60} isReadOnly>
-                  <FlexGridCellTemplate
-                    cellType="Cell"
-                    template={(cell: any) => {
-                      const item = cell.item as FileViewItem;
-                      return (
-                        <div className="flex items-center justify-center w-full">
-                          <button
-                            type="button"
-                            className={`${theme.menu_default} w-8 h-6 flex items-center justify-center`}
-                            title="More Options"
-                            onMouseDown={(e) => {
-                              e.stopPropagation();
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const rect = e.currentTarget.getBoundingClientRect();
-                              const { x, y } = clampContextMenuPosition(
-                                rect.right,
-                                rect.top,
-                                FILE_CONTEXT_MENU_ESTIMATED_WIDTH,
-                                FILE_CONTEXT_MENU_ESTIMATED_HEIGHT
-                              );
-                              setFileContextMenu({
-                                visible: true,
-                                x,
-                                y,
-                                item,
-                              });
-                            }}
-                          >
-                            <i className="fa-solid fa-pencil text-xs" aria-hidden />
-                            <i className="fa-solid fa-bars text-[9px] relative -left-1 top-0.5" aria-hidden />
-                          </button>
-                        </div>
-                      );
-                    }}
-                  />
-                </FlexGridColumn>
-                {viewFields.length > 0
-                  ? viewFields.map((field, idx) => {
-                      const fieldId = field.Id ?? field.SearchViewFieldID;
-                      const header = field.DisplayText ?? field.Name ?? `Column ${fieldId}`;
-                      const isImageColumn = field.ControlType === EM_APP_CONTROL_TYPE_IMAGE;
-                      const width = isImageColumn ? 70 : (idx === 0 ? 200 : 120);
-                      return (
-                        <FlexGridColumn key={fieldId ?? header} header={header} width={width}>
-                          <FlexGridCellTemplate
-                            cellType="Cell"
-                            template={(cell: any) => {
-                              const item = cell.item as FileViewItem;
-                              const dict = item?.DictViewColumnIDKeyValue ?? (item as any)?.dictViewColumnIDKeyValue;
-                              const sketchDict = item?.DictSketchOrFileDisplayCode ?? (item as any)?.dictSketchOrFileDisplayCode;
-                              const raw = dict && fieldId != null ? (dict[fieldId] ?? dict[String(fieldId)]) : null;
-                              if (isImageColumn) {
-                                const fileId = raw != null ? Number(raw) : null;
-                                if (fileId == null) return <div className="w-[60px] h-[60px]" />;
-                                const imageSrc = endpoints.buildEndpointUrl(`/GetThumbnailImage.aspx?FileId=${fileId}`);
-                                return (
-                                  <div className="flex items-center justify-center w-[60px] h-[60px]">
-                                    <img
-                                      src={imageSrc}
-                                      alt=""
-                                      className="max-h-[60px] max-w-[60px] object-contain"
-                                    />
-                                  </div>
-                                );
-                              }
-                              const display = sketchDict && fieldId != null ? (sketchDict[fieldId] ?? sketchDict[String(fieldId)]) : null;
-                              const value = display ?? raw;
-                              return <span className="truncate block">{value != null ? String(value) : ''}</span>;
-                            }}
-                          />
-                        </FlexGridColumn>
-                      );
-                    })
-                  : (
-                    <>
-                      <FlexGridColumn binding="Display" header="File Name" width="*" />
-                      <FlexGridColumn binding="FileName" header="Name" width={120} />
-                      <FlexGridColumn binding="FileSize" header="Size" width={80} />
-                      <FlexGridColumn binding="CreatedDate" header="Created" width={120} />
-                      <FlexGridColumn binding="ModifiedDate" header="Modified" width={120} />
-                      <FlexGridColumn binding="CreatedByUserId" header="Created By" width={120} dataMap={userDataMap} />
-                    </>
-                  )}
-                <FlexGridColumn header="" binding="" width="*" allowSorting={false} isReadOnly={true} />
-              </FlexGrid>
-            ) : (
-              <p className={`text-xs ${theme.label} p-4`}>No files found.</p>
-            )}
+            <FolderFileGrid
+              loading={loading}
+              filesCV={filesCV}
+              viewFields={viewFields}
+              userDataMap={userDataMap}
+              menuButtonClass={theme.menu_default}
+              fileGridRef={fileGridRef}
+              onSelectionChanged={handleFileGridSelectionChanged}
+              onOpenFileContextMenu={handleOpenFileContextMenu}
+            />
             {/* Resize handle on right edge (drag to resize file list vs preview) */}
             <div
               className="absolute top-0 right-0 bottom-0 w-1 cursor-ew-resize hover:bg-blue-400 z-10"
@@ -1904,6 +1826,7 @@ const FolderNavigation: React.FC<Props> = ({
                     selectedFile={selectedFileForPreview}
                     getFileIdFromItem={getFileIdFromItem}
                     getFileDisplayFromItem={getFileDisplayFromItem}
+                    getFileExtensionFromItem={getFileExtensionFromItem}
                     theme={theme}
                   />
                 )}

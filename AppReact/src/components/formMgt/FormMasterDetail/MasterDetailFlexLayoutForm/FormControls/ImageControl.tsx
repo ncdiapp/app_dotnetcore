@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../../../../redux/hooks/useTheme';
-import { buildEndpointUrl } from '../../../../../webapi/endpoints';
+import { fileImageUrl, downloadFileById } from '../../../../../webapi/fileEndpoints';
 import { getOneToOneFieldValue } from './formDataBindingHelper';
 import FileUploader from '../../../../common/FileUploader';
 import { FolderNavigation } from '../../../../folderNavigation';
@@ -35,6 +35,9 @@ const ImageControl: React.FC<ImageControlProps> = ({
 
   const fieldName = fieldDto.DataBaseFieldName;
   const fileId = getOneToOneFieldValue(dataModel.currentFormData, fieldDto, fieldName, undefined, layoutItemExDto);
+  // getOneToOneFieldValue can return true (boolean); narrow to an id usable by the file endpoints.
+  const fileIdValue: string | number | null =
+    typeof fileId === 'number' || typeof fileId === 'string' ? fileId : null;
   const [pendingLibraryFileId, setPendingLibraryFileId] = useState<number | null>(() => {
     if (typeof fileId === 'number') return fileId;
     if (typeof fileId === 'string' && fileId) {
@@ -66,15 +69,7 @@ const ImageControl: React.FC<ImageControlProps> = ({
       : String(fieldName);
   const errorText = dataModel?.uiValidationErrors?.[errorKey] as string | undefined;
 
-  const sessionId = userContext?.SessionId ?? (typeof window !== 'undefined' ? localStorage.getItem('sessionId') : null);
-  const sessionParam = sessionId ? `?CurrentUserSessionId=${encodeURIComponent(String(sessionId))}` : '';
-
-  const imageUrl = fileId ? buildEndpointUrl(`/api/files/image/${fileId}${sessionParam}`) : null;
-
-  const downloadUrl = useMemo(() => {
-    if (!fileId) return null;
-    return buildEndpointUrl(`/api/files/stream/${fileId}${sessionParam}`);
-  }, [fileId, sessionParam]);
+  const imageUrl = fileIdValue != null ? fileImageUrl(fileIdValue) : null;
 
   // Parse style string to object
   const styleObject: React.CSSProperties = {};
@@ -198,10 +193,10 @@ const ImageControl: React.FC<ImageControlProps> = ({
   }, [pendingLibraryFileId, handleLibraryFileSelected]);
 
   const handleDownload = useCallback(() => {
-    if (!downloadUrl) return;
-    window.open(downloadUrl, '_blank', 'noopener,noreferrer');
+    if (fileIdValue == null) return;
+    void downloadFileById(fileIdValue, selectedFileName || undefined);
     closeAllOverlays();
-  }, [downloadUrl, closeAllOverlays]);
+  }, [fileIdValue, selectedFileName, closeAllOverlays]);
 
   const handlePreview = useCallback(() => {
     if (!fileId) return;
@@ -422,11 +417,11 @@ const ImageControl: React.FC<ImageControlProps> = ({
             <div className={`flex items-center justify-between px-3 py-2 border-b ${theme.mainContentSection}`}>
               <div className={`text-sm font-semibold ${theme.title}`}>Preview</div>
               <div className="flex items-center gap-2">
-                {downloadUrl && (
-                  <a className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`} href={downloadUrl} target="_blank" rel="noopener noreferrer">
+                {fileId && (
+                  <button type="button" className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`} onClick={handleDownload}>
                     <i className="fa-solid fa-download mr-1" aria-hidden="true" />
                     Download
-                  </a>
+                  </button>
                 )}
                 <button type="button" className={`p-1 ${theme.button_default} rounded-[4px] text-xs`} onClick={() => setIsPreviewOpen(false)} title="Close">
                   <i className="fa-solid fa-xmark" aria-hidden="true" />
@@ -434,9 +429,9 @@ const ImageControl: React.FC<ImageControlProps> = ({
               </div>
             </div>
             <div className="w-full h-1 flex-auto overflow-hidden flex items-center justify-center p-3">
-              {downloadUrl ? (
+              {imageUrl ? (
                 <img
-                  src={downloadUrl}
+                  src={imageUrl}
                   alt={selectedFileName || label}
                   className="max-w-full max-h-full object-contain"
                   onError={(e) => {

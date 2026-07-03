@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch } from "react-redux";
 import { useTheme } from "../../../redux/hooks/useTheme";
-import { buildEndpointUrl } from "../../../webapi/endpoints";
+import { fileRegularUrl } from "../../../webapi/fileEndpoints";
 import { searchSvc } from "../../../webapi/searchSvc";
 import { useTabNavigation } from "../../../redux/hooks/useTabNavigation";
 import { preserveTabInitialPath, getCurrentActiveTab } from "../../../redux/features/ui/navigation/tabnavSlice";
@@ -40,6 +40,21 @@ const EmAppControlType = {
   YoutubeVideo: 49,
   ExternalImageUrl: 50,
 };
+
+/** Stable card image — avoids img reload when another card's checkbox selection changes. */
+const SearchCardImage = React.memo(
+  ({ src, alt }: { src: string; alt: string }) => (
+    <img
+      src={src}
+      alt={alt}
+      className="absolute left-0 right-0 top-0 bottom-0 m-auto max-h-[200px] max-w-[280px] object-contain"
+      onError={(e) => {
+        (e.currentTarget as HTMLImageElement).style.display = "none";
+      }}
+    />
+  )
+);
+SearchCardImage.displayName = 'SearchCardImage';
 
 const EmAppWebPageUiControlDisplayType = {
   TextDisplay: 1,
@@ -321,18 +336,11 @@ export const CardViewLayout: React.FC<CardViewLayoutProps> = ({ viewDto, viewDat
      
         const imageUrl = controlType === EmAppControlType.ExternalImageUrl
           ? String(value ?? "")
-          : (value ? buildEndpointUrl(`/GetRegularImage.aspx?FileId=${value}&uiId=${viewUiId}`) : "");
+          : (value ? fileRegularUrl(value) : "");
         return (
           <div className="w-full h-[202px] relative">
             {imageUrl ? (
-              <img
-                src={imageUrl}
-                alt={String(getColumnName(column) || "image")}
-                className="absolute left-0 right-0 top-0 bottom-0 m-auto max-h-[200px] max-w-[280px] object-contain"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
-              />
+              <SearchCardImage src={imageUrl} alt={String(getColumnName(column) || "image")} />
             ) : <div className="w-full h-full" />}
           </div>
         );

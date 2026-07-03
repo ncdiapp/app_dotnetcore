@@ -1,6 +1,7 @@
 import { CollectionView } from '@mescius/wijmo';
 import { PivotEngine, ShowTotals } from '@mescius/wijmo.olap';
 import { buildEndpointUrl } from '../../../webapi/endpoints';
+import { fileThumbnailUrl } from '../../../webapi/fileEndpoints';
 
 /** Matches Angular `EmAppControlType` values used in search pivot (searchViewHelper.js). */
 const EmAppControlType = {
@@ -98,10 +99,9 @@ export function preparePivotSearchData(
       const ct = column.ControlType;
 
       if (ct === EmAppControlType.Image) {
-        const imageUrl = buildEndpointUrl(`/GetThumbnailImage.aspx?FileId=${value ?? ''}`);
         const noImageUrl = buildEndpointUrl('/Images/noImage.jpeg');
         const imgValue = value
-          ? `<img id="pivot-view-image" name="${String(value)}" src="${imageUrl}"/>`
+          ? `<img id="pivot-view-image" name="${String(value)}" src="${fileThumbnailUrl(value)}"/>`
           : `<img id="pivot-view-image" name="" src="${noImageUrl}"/>`;
         rawData[binding] = imgValue;
       } else if (ct === EmAppControlType.DDL) {

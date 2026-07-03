@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../../../../redux/hooks/useTheme';
-import { endpoints } from '../../../../../webapi/endpoints';
+import { fileLatestUrl, downloadFileById } from '../../../../../webapi/fileEndpoints';
 import type { RootState } from '../../../../../redux/store';
 import { appFileService } from '../../../../../webapi/appfilesvc';
 import FileUploader from '../../../../common/FileUploader';
@@ -66,21 +66,12 @@ const FileControl: React.FC<FileControlProps> = ({
 
   const fieldName = fieldDto.DataBaseFieldName;
   const fileId = getOneToOneFieldValue(dataModel.currentFormData, fieldDto, fieldName, undefined, layoutItemExDto);
+  // getOneToOneFieldValue can return true (boolean); narrow to an id usable by the file endpoints.
+  const fileIdValue: string | number | null =
+    typeof fileId === 'number' || typeof fileId === 'string' ? fileId : null;
 
   const uiId = controllerModel?.uiId || '';
-  const fileUrl = useMemo(() => {
-    if (!fileId) return null;
-    const sessionId = userContext?.SessionId ?? (typeof window !== 'undefined' ? localStorage.getItem('sessionId') : null);
-    const sid = sessionId ? `&CurrentUserSessionId=${encodeURIComponent(String(sessionId))}` : '';
-    return endpoints.buildEndpointUrl(`/GetLatestFile.aspx?FileId=${fileId}${sid}`);
-  }, [fileId, userContext?.SessionId]);
-
-  const downloadUrl = useMemo(() => {
-    if (!fileId) return null;
-    const sessionId = userContext?.SessionId ?? (typeof window !== 'undefined' ? localStorage.getItem('sessionId') : null);
-    const sid = sessionId ? `&CurrentUserSessionId=${encodeURIComponent(String(sessionId))}` : '';
-    return endpoints.buildEndpointUrl(`/GetLatestFile.aspx?FileId=${fileId}${sid}&IsDownload=true`);
-  }, [fileId, userContext?.SessionId]);
+  const fileUrl = useMemo(() => (fileIdValue != null ? fileLatestUrl(fileIdValue) : null), [fileIdValue]);
 
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
@@ -196,11 +187,6 @@ const FileControl: React.FC<FileControlProps> = ({
     [assignFileIdToModel]
   );
 
-  const handleDownload = useCallback(() => {
-    if (!downloadUrl) return;
-    window.open(downloadUrl, '_blank', 'noopener,noreferrer');
-  }, [downloadUrl]);
-
   const handlePreview = useCallback(() => {
     if (!fileId) return;
     setIsPreviewOpen(true);
@@ -218,6 +204,11 @@ const FileControl: React.FC<FileControlProps> = ({
     const key = String(fileId);
     return dict[key] ?? '';
   }, [dataModel.currentFormData?.DictDocumentIdFileCode, fileId]);
+
+  const handleDownload = useCallback(() => {
+    if (fileIdValue == null) return;
+    void downloadFileById(fileIdValue, selectedFileName || fileNameFromDict || undefined);
+  }, [fileIdValue, selectedFileName, fileNameFromDict]);
 
   useEffect(() => {
     if (fileNameFromDict && !selectedFileName) setSelectedFileName(fileNameFromDict);
@@ -458,11 +449,11 @@ const FileControl: React.FC<FileControlProps> = ({
             <div className={`flex items-center justify-between px-3 py-2 border-b ${theme.mainContentSection}`}>
               <div className={`text-sm font-semibold ${theme.title}`}>Preview</div>
               <div className="flex items-center gap-2">
-                {downloadUrl && (
-                  <a className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`} href={downloadUrl} target="_blank" rel="noopener noreferrer">
+                {fileId && (
+                  <button type="button" className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`} onClick={handleDownload}>
                     <i className="fa-solid fa-download mr-1" aria-hidden="true" />
                     Download
-                  </a>
+                  </button>
                 )}
                 <button type="button" className={`p-1 ${theme.button_default} rounded-[4px] text-xs`} onClick={() => setIsPreviewOpen(false)} title="Close">
                   <i className="fa-solid fa-xmark" aria-hidden="true" />

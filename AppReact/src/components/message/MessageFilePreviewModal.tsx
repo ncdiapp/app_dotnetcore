@@ -1,8 +1,6 @@
 import React, { useMemo } from 'react';
-import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
-import { endpoints } from '../../webapi/endpoints';
-import type { RootState } from '../../redux/store';
+import { fileLatestUrl, downloadFileById } from '../../webapi/fileEndpoints';
 
 type MessageFilePreviewModalProps = {
   fileId: number | string;
@@ -12,15 +10,7 @@ type MessageFilePreviewModalProps = {
 
 const MessageFilePreviewModal: React.FC<MessageFilePreviewModalProps> = ({ fileId, fileName, onClose }) => {
   const { theme } = useTheme();
-  const sessionId = useSelector((s: RootState) => s.userSession.userContext?.SessionId ?? '');
-  const previewUrl = useMemo(() => {
-    const sid = sessionId ? `&CurrentUserSessionId=${encodeURIComponent(String(sessionId))}` : '';
-    return endpoints.buildEndpointUrl(`/GetLatestFile.aspx?FileId=${fileId}${sid}`);
-  }, [fileId, sessionId]);
-  const downloadUrl = useMemo(() => {
-    const sid = sessionId ? `&CurrentUserSessionId=${encodeURIComponent(String(sessionId))}` : '';
-    return endpoints.buildEndpointUrl(`/GetLatestFile.aspx?FileId=${fileId}${sid}&IsDownload=true`);
-  }, [fileId, sessionId]);
+  const previewUrl = useMemo(() => fileLatestUrl(fileId), [fileId]);
 
   return (
     <div
@@ -38,16 +28,17 @@ const MessageFilePreviewModal: React.FC<MessageFilePreviewModalProps> = ({ fileI
         <div className={`flex items-center justify-between px-3 py-2 border-b ${theme.mainContentSection}`}>
           <div className={`text-sm font-semibold truncate ${theme.title}`}>{fileName || `File ${fileId}`}</div>
           <div className="flex items-center gap-2 shrink-0">
-            <a
+            <button
+              type="button"
               className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
-              href={downloadUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                void downloadFileById(fileId, fileName);
+              }}
             >
               <i className="fa-solid fa-download mr-1" aria-hidden="true" />
               Download
-            </a>
+            </button>
             <button type="button" className={`p-1 ${theme.button_default} rounded-[4px] text-xs`} onClick={onClose} title="Close">
               <i className="fa-solid fa-xmark" aria-hidden="true" />
             </button>

@@ -455,6 +455,18 @@ public static class LegacyEndpoints
             return Results.File(File.ReadAllBytes(path), GetMimeType(dto.Extension ?? ""), Path.GetFileName(path));
         }).WithName("FileThumbnail");
 
+        // Regular (medium) size image; falls back to original when no regular render exists.
+        app.MapGet("/api/files/regular/{id:int}", (HttpContext ctx, int id) =>
+        {
+            if (!ValidateSession(ctx)) return Results.Unauthorized();
+            var dto = AppFileBL.RetrieveOneOrgAppFileExDto(id);
+            if (dto == null) return Results.NotFound();
+            string path = AppCompanyBL.GetMyCompanyImagePath()
+                        + (dto.RegularImageFilepath ?? dto.OriginalFilePath ?? dto.ThumbnailFilePath ?? "");
+            if (!File.Exists(path)) return Results.NotFound();
+            return Results.File(File.ReadAllBytes(path), GetMimeType(dto.Extension ?? ""), Path.GetFileName(path));
+        }).WithName("FileRegular");
+
         app.MapGet("/api/files/latest/{id:int}", (HttpContext ctx, int id) =>
         {
             if (!ValidateSession(ctx)) return Results.Unauthorized();
