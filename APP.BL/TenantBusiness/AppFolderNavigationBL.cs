@@ -2,6 +2,7 @@
 using APP.Components.EntityDto;
 using APP.Framework.Communication;
 using APP.LBL.EntityClasses;
+using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -12,26 +13,24 @@ namespace App.BL
 	{
 		public static FolderNavigationDto GetFormDefaultTransctionFolderNivigation(int? transactionId)
 		{
-			FolderNavigationDto toReturn = new FolderNavigationDto();
-
-			var searchViewList = AppTransactionNavigationBL.RetrieveFolderSearchViewList(transactionId);
-
-			toReturn.HairarchyFolderRootList = AppSeFolderBL.RetrieveCurrentUserTranscationFolderHairarchyDto(transactionId.Value);
+			if (!transactionId.HasValue)
+			{
+				return new FolderNavigationDto();
+			}
 
 			AppTransactionExDto appTransactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
-			int rootFoderId = appTransactionExDto.MgtRootFolderId.Value;
-			var defaultView = searchViewList.Where(o => o.IsDefaultView).First();
+			if (appTransactionExDto?.MgtRootFolderId.HasValue == true)
+			{
+				return GeFolderTransctionNivigation(appTransactionExDto.MgtRootFolderId.Value, transactionId);
+			}
 
-			toReturn.ViewList = searchViewList;
-
-			toReturn.TransBusinessType = appTransactionExDto.EmAppTransBusinessType;
-			toReturn.TransMgtRootFolderId = rootFoderId;
-
-			toReturn.SearchResultList = AppStaticDataSetSearchBL.GetTransctionFolderViewList(rootFoderId, defaultView.Id as int?, transactionId);
-
-			return toReturn;
-
-			//throw new NotImplementedException();
+			var searchViewList = AppTransactionNavigationBL.RetrieveFolderSearchViewList(transactionId);
+			return new FolderNavigationDto
+			{
+				ViewList = searchViewList ?? new List<AppSearchViewDto>(),
+				TransBusinessType = appTransactionExDto?.EmAppTransBusinessType,
+				HairarchyFolderRootList = Array.Empty<AppSefolderDto>(),
+			};
 		}
 
 
@@ -278,14 +277,17 @@ namespace App.BL
 			AppTransactionExDto appTransactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
 
 			int rootFoderId = folderId;
-			var defaultView = searchViewList.Where(o => o.IsDefaultView).First();
+			var defaultView = searchViewList?.FirstOrDefault(o => o.IsDefaultView) ?? searchViewList?.FirstOrDefault();
 
 			toReturn.ViewList = searchViewList;
 
-			toReturn.TransBusinessType = appTransactionExDto.EmAppTransBusinessType;
+			toReturn.TransBusinessType = appTransactionExDto?.EmAppTransBusinessType;
 			toReturn.TransMgtRootFolderId = rootFoderId;
 
-			toReturn.SearchResultList = AppStaticDataSetSearchBL.GetTransctionFolderViewList(rootFoderId, defaultView.Id as int?, transactionId);
+			if (defaultView != null)
+			{
+				toReturn.SearchResultList = AppStaticDataSetSearchBL.GetTransctionFolderViewList(rootFoderId, defaultView.Id as int?, transactionId);
+			}
 
 			return toReturn;
 

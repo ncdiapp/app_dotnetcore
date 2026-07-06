@@ -95,13 +95,7 @@ namespace App.BL
 
 		public static AppSefolderDto[] RetrieveCurrentUserAllSubFolderHairarchyDto(int folderID, int transactionId)
         {
-            AppTransactionExDto appTransactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
-
-            EmAppTransBusinessType transBusinessType = (EmAppTransBusinessType)appTransactionExDto.EmAppTransBusinessType.Value;
-            AppSefolderDto[] rootFolders = GetAllSubFolderWithBusienssType(folderID, transactionId);
-
-            return rootFolders;
-
+            return GetAllSubFolderWithBusienssType(folderID, transactionId);
         }
 
 
@@ -156,7 +150,10 @@ namespace App.BL
         public static AppSefolderDto[] RetrieveCurrentUserTranscationFolderHairarchyDto(int transactionId)
         {
             AppTransactionExDto appTransactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
-            EmAppTransBusinessType transBusinessType = (EmAppTransBusinessType)appTransactionExDto.EmAppTransBusinessType.Value;
+            if (appTransactionExDto?.MgtRootFolderId == null || !appTransactionExDto.EmAppTransBusinessType.HasValue)
+            {
+                return Array.Empty<AppSefolderDto>();
+            }
 
             int rootFoderId = appTransactionExDto.MgtRootFolderId.Value;
 

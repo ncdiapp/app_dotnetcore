@@ -43,7 +43,14 @@ namespace App.BL
 				using (DataAccessAdapter adapater = AppTenantAdapterBL.GetTenantAdapter())
 				{
 					IRelationPredicateBucket adminFilter;
-					adminFilter = new RelationPredicateBucket(AppSefolderFields.FolderType == tranExdto.EmAppTransBusinessType);
+					if (tranExdto?.EmAppTransBusinessType.HasValue == true)
+					{
+						adminFilter = new RelationPredicateBucket(AppSefolderFields.FolderType == tranExdto.EmAppTransBusinessType);
+					}
+					else
+					{
+						adminFilter = new RelationPredicateBucket();
+					}
 					adapater.FetchEntityCollection(toReturnCollection, adminFilter);
 				}
 
@@ -124,8 +131,6 @@ namespace App.BL
 			EntityCollection<AppSefolderEntity> toReturnCollection = new EntityCollection<AppSefolderEntity>();
 
 			AppTransactionExDto appTransactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
-			EmAppTransBusinessType transBusinessType = (EmAppTransBusinessType)appTransactionExDto.EmAppTransBusinessType.Value;
-
 
 			IRelationPredicateBucket userfilter;
 			if (isFolderEnableSEcurity)
@@ -142,9 +147,14 @@ namespace App.BL
 
 				userfilter.Relations.Add(AppSefolderEntity.Relations.AppSefolderResourceEntityUsingFolderId);
 			}
+			else if (appTransactionExDto?.EmAppTransBusinessType.HasValue == true)
+			{
+				EmAppTransBusinessType transBusinessType = (EmAppTransBusinessType)appTransactionExDto.EmAppTransBusinessType.Value;
+				userfilter = new RelationPredicateBucket(AppSefolderFields.FolderType == transBusinessType);
+			}
 			else
 			{
-				userfilter = new RelationPredicateBucket(AppSefolderFields.FolderType == transBusinessType);
+				userfilter = new RelationPredicateBucket();
 			}
 
 			EntityCollection<AppSefolderEntity> aCreaterCollection;
@@ -179,6 +189,11 @@ namespace App.BL
 			EntityCollection<AppSefolderEntity> aCreaterCollection = new EntityCollection<AppSefolderEntity>();
 
 			AppTransactionExDto appTransactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
+			if (appTransactionExDto?.EmAppTransBusinessType.HasValue != true)
+			{
+				return aCreaterCollection;
+			}
+
 			EmAppTransBusinessType transBusinessType = (EmAppTransBusinessType)appTransactionExDto.EmAppTransBusinessType.Value;
 
 
@@ -203,7 +218,7 @@ namespace App.BL
 				//}
 
 				var trans = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
-				if (trans.MgtRootFolderId.HasValue && (trans.IsEnableFolderSecurity.HasValue && trans.IsEnableFolderSecurity.Value))
+				if (trans?.MgtRootFolderId.HasValue == true && trans.IsEnableFolderSecurity.HasValue && trans.IsEnableFolderSecurity.Value)
 				{
 					isFolderEnableSEcurity = true;
 

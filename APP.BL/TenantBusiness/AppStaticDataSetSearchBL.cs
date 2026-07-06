@@ -986,13 +986,12 @@ namespace App.BL
             var aAppDataSetExDto = AppDataSetBL.RetrieveOneAppDataSetExDto(dataSetId);
             var databaseFixture = AppCacheManagerBL.GetOneDatabaseFixture(aAppDataSetExDto.DataSourceFrom.Value);
 
-            string qulifiedTableFiledName = AppMetaDataBL.GetQulifiedTableFiledName(fielIdFied.SysTableFiledPath, databaseFixture.SqlServerType.Value);
-
-            var paramterList = new List<System.Data.Common.DbParameter>();
-
             if (aAppDataSetExDto.QueryType.HasValue && aAppDataSetExDto.QueryType == (int)EmAppDataServiceType.QueryText)
             {
                 string query = viewEntity.AppDataSet.QueryText;
+                string qulifiedTableFiledName = ResolveQueryQualifiedFieldName(query, fielIdFied.SysTableFiledPath, databaseFixture.SqlServerType.Value);
+
+                var paramterList = new List<System.Data.Common.DbParameter>();
 
                 // No where clause
                 if (query.IndexOf("WHERE", StringComparison.InvariantCultureIgnoreCase) == -1)
@@ -1015,6 +1014,35 @@ namespace App.BL
             return new DataTable();
         }
 
+        private static string ResolveQueryQualifiedFieldName(string queryText, string sysTableFieldPath, EmSqlType sqlServerType)
+        {
+            if (string.IsNullOrWhiteSpace(sysTableFieldPath))
+            {
+                return AppMetaDataBL.GetQulifiedTableFiledName(sysTableFieldPath, sqlServerType);
+            }
+
+            int dotIndex = sysTableFieldPath.IndexOf('.');
+            if (dotIndex > 0 && dotIndex < sysTableFieldPath.Length - 1)
+            {
+                string tablePart = sysTableFieldPath.Substring(0, dotIndex);
+                string columnPart = sysTableFieldPath.Substring(dotIndex + 1);
+                return AppMetaDataBL.GetQulifiedTableFiledName(tablePart, sqlServerType)
+                    + "." + AppMetaDataBL.GetQulifiedTableFiledName(columnPart, sqlServerType);
+            }
+
+            if (!string.IsNullOrWhiteSpace(queryText))
+            {
+                string pattern = $@"(?:\[[^\]]+\]|[^\s\.,\[\]]+)\.{Regex.Escape(sysTableFieldPath)}\b";
+                Match match = Regex.Match(queryText, pattern, RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    return match.Value;
+                }
+            }
+
+            return AppMetaDataBL.GetQulifiedTableFiledName(sysTableFieldPath, sqlServerType);
+        }
+
         internal static DataTable RetriveFolderSearchViewDataTable(int? folderId, AppSearchViewEntity viewEntity, int? transactionId)
         {
 
@@ -1027,20 +1055,24 @@ namespace App.BL
             if (folderIdFied != null)
             {
 
+                if (!viewEntity.DataSetId.HasValue)
+                {
+                    return new DataTable();
+                }
+
                 int dataSetId = viewEntity.DataSetId.Value;
 
                 var aAppDataSetExDto = AppDataSetBL.RetrieveOneAppDataSetExDto(dataSetId);
+                if (aAppDataSetExDto?.DataSourceFrom == null)
+                {
+                    return new DataTable();
+                }
+
                 var databaseFixture = AppCacheManagerBL.GetOneDatabaseFixture(aAppDataSetExDto.DataSourceFrom.Value);
-
-                string quliFolderIdFieldName = AppMetaDataBL.GetQulifiedTableFiledName(folderIdFied.SysTableFiledPath, databaseFixture.SqlServerType.Value);
-
-                var paramterList = new List<System.Data.Common.DbParameter>();
-
-                //DbParameter parameter = databaseFixture.CreateParameter("folderId");
-                //parameter.Value = folderId;
-
-                //paramterList.Add(parameter);
-
+                if (databaseFixture?.SqlServerType == null)
+                {
+                    return new DataTable();
+                }
 
                 List<SqlParameter> sqlparamterList = new List<SqlParameter>();
                 var parameterFolderId = new SqlParameter("@folderId", folderId);
@@ -1050,6 +1082,7 @@ namespace App.BL
                 if (aAppDataSetExDto.QueryType.HasValue && aAppDataSetExDto.QueryType == (int)EmAppDataServiceType.QueryText)
                 {
                     string query = viewEntity.AppDataSet.QueryText;
+                    string quliFolderIdFieldName = ResolveQueryQualifiedFieldName(query, folderIdFied.SysTableFiledPath, databaseFixture.SqlServerType.Value);
 
                     // No where clause
                     if (query.IndexOf("WHERE", StringComparison.InvariantCultureIgnoreCase) == -1)
@@ -1064,7 +1097,7 @@ namespace App.BL
 
                     if (transactionId.HasValue && IsTransRootIdFied != null)
                     {
-                        string qulFielIdFieldName = AppMetaDataBL.GetQulifiedTableFiledName(IsTransRootIdFied.SysTableFiledPath, databaseFixture.SqlServerType.Value);
+                        string qulFielIdFieldName = ResolveQueryQualifiedFieldName(query, IsTransRootIdFied.SysTableFiledPath, databaseFixture.SqlServerType.Value);
 
                         string notInREcycle = " SELECT RootKeyValueID FROM AppTrascationRecycleBin WHERE  TranscationID=" + transactionId;
 
@@ -1117,8 +1150,6 @@ namespace App.BL
                 var aAppDataSetExDto = AppDataSetBL.RetrieveOneAppDataSetExDto(dataSetId);
                 var databaseFixture = AppCacheManagerBL.GetOneDatabaseFixture(aAppDataSetExDto.DataSourceFrom.Value);
 
-                string qulifiedTableFiledName = AppMetaDataBL.GetQulifiedTableFiledName(folderIdFied.SysTableFiledPath, databaseFixture.SqlServerType.Value);
-
                 var paramterList = new List<System.Data.Common.DbParameter>();
 
                 DbParameter parameter = databaseFixture.CreateParameter("folderId");
@@ -1130,6 +1161,7 @@ namespace App.BL
                 if (aAppDataSetExDto.QueryType.HasValue && aAppDataSetExDto.QueryType == (int)EmAppDataServiceType.QueryText)
                 {
                     string query = viewEntity.AppDataSet.QueryText;
+                    string qulifiedTableFiledName = ResolveQueryQualifiedFieldName(query, folderIdFied.SysTableFiledPath, databaseFixture.SqlServerType.Value);
 
                     // No where clause
                     if (query.IndexOf("WHERE", StringComparison.InvariantCultureIgnoreCase) == -1)
