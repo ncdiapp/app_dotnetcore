@@ -20,6 +20,15 @@ import {
 } from '../../utils/folderNavigationHelper';
 import appHelper from '../../helper/appHelper';
 import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
+import {
+  bindFolderTreeExpandOnlyBehavior,
+  buildFolderCountMap,
+  createFolderTreeItemFormatter,
+  findFolderRowIndex,
+  folderExistsInTree,
+  initializeFolderTreeGrid,
+  shouldIgnoreFolderTreeSelectionChange,
+} from '../folderNavigation/folderTreeGridHelper';
 
 interface FolderDto {
   Id: number;
@@ -32,6 +41,7 @@ interface FolderDto {
   FolderType?: number;
   DefaultViewId?: number | null;
   IsFolderReadonly?: boolean;
+  CountContent?: number;
 }
 
 interface TransactionFolderNavigationProps {
@@ -52,6 +62,9 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
   const suppressFolderSelectionRef = useRef(false);
   const currentFolderIdRef = useRef<number | null>(null);
   const currentViewIdRef = useRef<number | null>(null);
+  const openFolderContextMenuRef = useRef<(e: React.MouseEvent, folder: FolderDto) => void>(() => {});
+  const folderCountMapRef = useRef<Record<number, number>>({});
+  const expandToggleClickRef = useRef(false);
 
   const [folders, setFolders] = useState<FolderDto[]>([]);
   const [foldersCV, setFoldersCV] = useState<CollectionView | null>(null);
@@ -79,16 +92,14 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
 
   const isTemplateMode = Boolean(runtimeContext?.IsTemplateMode);
 
-  const flattenFolders = useCallback((list: FolderDto[], level = 0, parentId: number | null = null): FolderDto[] => {
-    const out: FolderDto[] = [];
-    (list || []).forEach((f) => {
-      out.push({ ...f, Level: level, ParentId: f.ParentId ?? parentId ?? undefined });
-      if (f.Children?.length) {
-        out.push(...flattenFolders(f.Children, level + 1, f.Id));
-      }
-    });
-    return out;
-  }, []);
+  const folderTreeItemFormatter = useMemo(
+    () =>
+      createFolderTreeItemFormatter(
+        () => currentFolderIdRef.current,
+        () => folderCountMapRef.current,
+      ),
+    [],
+  );
 
   const loadViewDefinition = useCallback(async (viewId: number) => {
     const [referenceView, linkTargets, linkedSearches, viewEx] = await Promise.all([
@@ -184,15 +195,16 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
         ]);
         setRuntimeContext(ctx);
         const roots = navDto?.HairarchyFolderRootList ?? navDto?.hairarchyFolderRootList ?? [];
+        folderCountMapRef.current = buildFolderCountMap(roots);
         setFolders(roots);
-        setFoldersCV(new CollectionView(flattenFolders(roots)));
+        setFoldersCV(new CollectionView(roots));
         const views = navDto?.ViewList ?? navDto?.viewList ?? [];
         setViewList(views);
 
         const preservedFolderId = preserveSelection ? currentFolderIdRef.current : null;
         const firstFolder = roots[0];
         const folderId =
-          preservedFolderId != null && flattenFolders(roots).some((f) => f.Id === preservedFolderId)
+          preservedFolderId != null && folderExistsInTree(roots, preservedFolderId)
             ? preservedFolderId
             : firstFolder?.Id ?? navDto?.TransMgtRootFolderId ?? null;
 
@@ -215,7 +227,7 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
         dispatch(setIsNotBusy());
       }
     },
-    [transactionId, dispatch, flattenFolders, applyView],
+    [transactionId, dispatch, applyView],
   );
 
   useEffect(() => {
@@ -231,15 +243,19 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
   }, [transactionId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const flex = folderGridRef.current?.control;
+    const flex = folderGridRef.current?.control ?? folderGridRef.current;
     if (!flex || !foldersCV || currentFolderId == null) return;
-    const items = foldersCV.items as FolderDto[];
-    const rowIndex = items.findIndex((f) => f.Id === currentFolderId);
+    const rowIndex = findFolderRowIndex(flex, currentFolderId);
     if (rowIndex < 0 || flex.selection?.row === rowIndex) return;
     suppressFolderSelectionRef.current = true;
     flex.select(rowIndex, 0);
     suppressFolderSelectionRef.current = false;
   }, [foldersCV, currentFolderId]);
+
+  useEffect(() => {
+    const flex = folderGridRef.current?.control ?? folderGridRef.current;
+    flex?.invalidate?.();
+  }, [currentFolderId]);
 
   useEffect(() => {
     if (!folderContextMenu.visible) return;
@@ -267,6 +283,10 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
     );
     setFolderContextMenu({ visible: true, x, y, folder });
   }, []);
+
+  useEffect(() => {
+    openFolderContextMenuRef.current = openFolderContextMenu;
+  }, [openFolderContextMenu]);
 
   useRefineContextMenuField(folderContextMenu.visible, folderContextMenuRef, setFolderContextMenu);
 
@@ -464,15 +484,50 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
           {foldersCV && (
             <FlexGrid
               ref={folderGridRef}
+              className="w-full h-full"
               itemsSource={foldersCV}
               selectionMode="Row"
-              headersVisibility="Column"
+              headersVisibility="None"
               autoGenerateColumns={false}
               isReadOnly
+              childItemsPath="Children"
+              treeIndent={16}
+              itemFormatter={folderTreeItemFormatter}
+              initialized={(s: any) => {
+                const flex = s?.control ?? s;
+                initializeFolderTreeGrid(flex, 1);
+                bindFolderTreeExpandOnlyBehavior(
+                  flex,
+                  () => currentFolderIdRef.current,
+                  suppressFolderSelectionRef,
+                  expandToggleClickRef,
+                );
+                const host = flex?.hostElement as HTMLElement | undefined;
+                if (!host || host.dataset.folderContextMenuBound) return;
+                host.dataset.folderContextMenuBound = '1';
+                host.addEventListener('contextmenu', (e: MouseEvent) => {
+                  const ht = flex?.hitTest?.(e);
+                  if (ht?.cellType !== 1 || ht.row < 0) return;
+                  const item = flex?.rows?.[ht.row]?.dataItem as FolderDto | undefined;
+                  if (!item || item.IsFolderReadonly) return;
+                  e.preventDefault();
+                  openFolderContextMenuRef.current(e as unknown as React.MouseEvent, item);
+                });
+              }}
               style={{ height: '100%' }}
               selectionChanged={(s: any) => {
                 if (suppressFolderSelectionRef.current) return;
                 const flex = s?.control ?? s;
+                if (
+                  shouldIgnoreFolderTreeSelectionChange(
+                    expandToggleClickRef,
+                    flex,
+                    () => currentFolderIdRef.current,
+                    suppressFolderSelectionRef,
+                  )
+                ) {
+                  return;
+                }
                 const row = flex?.selection?.row;
                 const item = row != null ? flex?.rows?.[row]?.dataItem : null;
                 if (item?.Id && item.Id !== currentFolderIdRef.current) {
@@ -480,33 +535,24 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
                 }
               }}
             >
-              <FlexGridColumn binding="Name" header="Folder" width="*">
+              <FlexGridColumn binding="Name" header="Folder" width="*" />
+              <FlexGridColumn header="" binding="" width={32} isReadOnly allowSorting={false}>
                 <FlexGridCellTemplate
                   cellType="Cell"
                   template={(cell: any) => {
                     const item = cell.item as FolderDto;
-                    const isSelected = item.Id === currentFolderId;
                     const showContextBtn = !item.IsFolderReadonly;
+                    if (!showContextBtn) return null;
                     return (
-                      <div
-                        className={`flex items-center justify-between py-1 group ${isSelected ? 'font-semibold' : ''}`}
-                        style={{ paddingLeft: (item.Level || 0) * 16 }}
-                        onContextMenu={showContextBtn ? (e) => openFolderContextMenu(e, item) : undefined}
-                      >
-                        <div className="flex items-center min-w-0 w-1 flex-auto">
-                          <i className="fa-solid fa-folder mr-2 text-yellow-500 flex-none" />
-                          <span className="truncate text-xs">{item.Name}</span>
-                        </div>
-                        {showContextBtn && (
-                          <button
-                            type="button"
-                            className={`flex-none w-6 h-6 opacity-0 group-hover:opacity-100 ${theme.button_default} rounded px-1`}
-                            onClick={(e) => openFolderContextMenu(e, item)}
-                            title="More Options"
-                          >
-                            <i className="fa-solid fa-ellipsis-vertical text-xs" aria-hidden />
-                          </button>
-                        )}
+                      <div className="flex items-center justify-center h-full group">
+                        <button
+                          type="button"
+                          className={`w-6 h-6 opacity-0 group-hover:opacity-100 ${theme.button_default} rounded px-1`}
+                          onClick={(e) => openFolderContextMenu(e, item)}
+                          title="More Options"
+                        >
+                          <i className="fa-solid fa-ellipsis-vertical text-xs" aria-hidden />
+                        </button>
                       </div>
                     );
                   }}

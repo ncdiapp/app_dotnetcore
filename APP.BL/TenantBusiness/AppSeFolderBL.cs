@@ -917,56 +917,67 @@ namespace App.BL
 
             Dictionary<int, int> dictFolderIdAndContentCount = new Dictionary<int, int>();
 
-            var transactionDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
-
-            if (transactionDto != null && transactionDto.RootMasterUnit != null)
+            if (!transactionId.HasValue)
             {
-                string tableName = transactionDto.RootMasterUnit.DataBaseTableName;
-                string rootPkColumnName = transactionDto.RootMasterUnit.PrimaryKeyDbfieldList.FirstOrDefault();
+                return dictFolderIdAndContentCount;
+            }
 
-                if (!string.IsNullOrWhiteSpace(tableName) && !string.IsNullOrWhiteSpace(rootPkColumnName))
+            string query = null;
+            int? fileTransactionId = AppTenantSettingBL.GetIntValue(EmTenantSettings.SystemDefinedFileTransactionId);
+
+            if (fileTransactionId.HasValue && transactionId.Value == fileTransactionId.Value)
+            {
+                query = @" select FolderID, count(*) as ContentCount from AppFile "
+                        + " where FolderID is not null and InitialFileID is null "
+                        + " and FileID not in (select RootKeyValueID from AppTrascationRecycleBin where TranscationID = " + transactionId.Value.ToString() + ")"
+                        + " group by FolderID";
+            }
+            else
+            {
+                var transactionDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
+
+                if (transactionDto != null && transactionDto.RootMasterUnit != null)
                 {
-                    using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+                    string tableName = transactionDto.RootMasterUnit.DataBaseTableName;
+                    string rootPkColumnName = transactionDto.RootMasterUnit.PrimaryKeyDbfieldList.FirstOrDefault();
+
+                    if (!string.IsNullOrWhiteSpace(tableName) && !string.IsNullOrWhiteSpace(rootPkColumnName))
                     {
-                        try
+                        query = @" select FolderID, count(*) as ContentCount from "
+                                + tableName
+                                + " where FolderID is not null "
+                                + " and " + rootPkColumnName
+                                + " not in (select RootKeyValueID from AppTrascationRecycleBin where TranscationID = " + transactionId.Value.ToString() + ")"
+                                + " group by FolderID";
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return dictFolderIdAndContentCount;
+            }
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                try
+                {
+                    List<SqlParameter> lsitparamter = new List<SqlParameter>();
+                    DataTable dt = adapter.ExecuteDataTableRetrievalQuery(query, lsitparamter);
+
+                    foreach (DataRow dataRow in dt.Rows)
+                    {
+                        int? folderId = ControlTypeValueConverter.ConvertValueToInt(dataRow["FolderID"].ToString());
+                        int? contentCount = ControlTypeValueConverter.ConvertValueToInt(dataRow["ContentCount"].ToString());
+
+                        if (folderId.HasValue && contentCount.HasValue)
                         {
-                            List<SqlParameter> lsitparamter = new List<SqlParameter>();
-
-                            string query = @" select FolderID, count(*) as ContentCount from "
-                                            + tableName 
-                                            + " where FolderID is not null "
-                                            + " and " + rootPkColumnName 
-                                            + " not in (select RootKeyValueID from AppTrascationRecycleBin where TranscationID = " + transactionId.Value.ToString() + ")"
-                                            + " group by FolderID";
-
-                            //int? fileTransactionId = AppTenantSettingBL.GetIntValue(EmTenantSettings.SystemDefinedFileTransactionId);
-
-                            //if (fileTransactionId.HasValue && transactionId.Value == fileTransactionId.Value)
-                            //{
-                            //    query = @" select FolderID, count(*) as ContentCount from AppFile "                                           
-                            //               + " where FolderID is not null and InitialFileID is null "
-                            //               + " and FileID not in (select RootKeyValueID from AppTrascationRecycleBin where TranscationID = " + transactionId.Value.ToString() + ")"
-                            //               + " group by FolderID";
-                            //}
-
-
-                            DataTable dt = adapter.ExecuteDataTableRetrievalQuery(query, lsitparamter);
-
-                            foreach (DataRow dataRow in dt.Rows)
-                            {
-                                int? folderId = ControlTypeValueConverter.ConvertValueToInt(dataRow["FolderID"].ToString());
-                                int? contentCount = ControlTypeValueConverter.ConvertValueToInt(dataRow["ContentCount"].ToString());
-
-                                if (folderId.HasValue && contentCount.HasValue)
-                                {
-                                    dictFolderIdAndContentCount.Add(folderId.Value, contentCount.Value);
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
+                            dictFolderIdAndContentCount.Add(folderId.Value, contentCount.Value);
                         }
                     }
+                }
+                catch (Exception ex)
+                {
                 }
             }
 

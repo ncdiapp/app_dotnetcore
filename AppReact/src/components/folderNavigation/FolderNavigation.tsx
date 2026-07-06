@@ -22,6 +22,13 @@ import { useEnumValues } from '../../hooks/useEnumDictionary';
 import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
 import { fileLatestUrl as buildLatestFileUrl, downloadFileById } from '../../webapi/fileEndpoints';
 import { FolderFileGrid, type FileViewItem } from './FolderFileGrid';
+import {
+  bindFolderTreeExpandOnlyBehavior,
+  buildFolderCountMap,
+  createFolderTreeItemFormatter,
+  initializeFolderTreeGrid,
+  shouldIgnoreFolderTreeSelectionChange,
+} from './folderTreeGridHelper';
 
 // Fallback when enum not yet loaded (must match backend EmAppFileFolderCategory: MyRecycleBin = 9)
 const FALLBACK_FILE_FOLDER_CATEGORIES: Record<string, number> = {
@@ -416,6 +423,20 @@ const FolderNavigation: React.FC<Props> = ({
   // Grid refs
   const folderGridRef = useRef<any>(null);
   const fileGridRef = useRef<any>(null);
+  const currentFolderIdRef = useRef<number | null>(null);
+  const openFolderContextMenuRef = useRef<(e: React.MouseEvent, folder: FolderDto) => void>(() => {});
+  const folderCountMapRef = useRef<Record<number, number>>({});
+  const expandToggleClickRef = useRef(false);
+  const suppressFolderSelectionRef = useRef(false);
+
+  const folderTreeItemFormatter = useMemo(
+    () =>
+      createFolderTreeItemFormatter(
+        () => currentFolderIdRef.current,
+        () => folderCountMapRef.current,
+      ),
+    [],
+  );
 
   // Close Views dropdown on outside click
   useEffect(() => {
@@ -439,8 +460,15 @@ const FolderNavigation: React.FC<Props> = ({
 
   // Initialize folders CV
   useEffect(() => {
+    folderCountMapRef.current = buildFolderCountMap(folders);
     setFoldersCV(new CollectionView<FolderDto>(folders));
   }, [folders]);
+
+  useEffect(() => {
+    currentFolderIdRef.current = currentFolderId;
+    const flex = folderGridRef.current?.control ?? folderGridRef.current;
+    flex?.invalidate?.();
+  }, [currentFolderId]);
 
   // Initialize files CV
   useEffect(() => {
@@ -982,6 +1010,10 @@ const FolderNavigation: React.FC<Props> = ({
     setFolderContextMenu({ visible: true, x, y, folder });
   }, [isUseAsSelector]);
 
+  useEffect(() => {
+    openFolderContextMenuRef.current = openFolderContextMenu;
+  }, [openFolderContextMenu]);
+
   const closeFolderContextMenu = useCallback(() => {
     setFolderContextMenu({ visible: false, x: 0, y: 0, folder: null });
   }, []);
@@ -1398,14 +1430,51 @@ const FolderNavigation: React.FC<Props> = ({
               {foldersCV && (
                 <FlexGrid
                   ref={folderGridRef}
+                  className="w-full h-full"
                   itemsSource={foldersCV}
                   selectionMode="Row"
                   headersVisibility="None"
+                  autoGenerateColumns={false}
                   isReadOnly={true}
                   childItemsPath="Children"
+                  treeIndent={16}
+                  itemFormatter={folderTreeItemFormatter}
+                  initialized={(s: any) => {
+                    const flex = s?.control ?? s;
+                    initializeFolderTreeGrid(flex, 1);
+                    bindFolderTreeExpandOnlyBehavior(
+                      flex,
+                      () => currentFolderIdRef.current,
+                      suppressFolderSelectionRef,
+                      expandToggleClickRef,
+                    );
+                    const host = flex?.hostElement as HTMLElement | undefined;
+                    if (!host || host.dataset.folderContextMenuBound) return;
+                    host.dataset.folderContextMenuBound = '1';
+                    host.addEventListener('contextmenu', (e: MouseEvent) => {
+                      if (isUseAsSelector) return;
+                      const ht = flex?.hitTest?.(e);
+                      if (ht?.cellType !== 1 || ht.row < 0) return;
+                      const item = flex?.rows?.[ht.row]?.dataItem as FolderDto | undefined;
+                      if (!item || item.IsFolderReadonly) return;
+                      e.preventDefault();
+                      openFolderContextMenuRef.current(e as unknown as React.MouseEvent, item);
+                    });
+                  }}
                   style={{ height: '100%' }}
                   selectionChanged={(s: any) => {
+                    if (suppressFolderSelectionRef.current) return;
                     const flex = s?.control ?? s;
+                    if (
+                      shouldIgnoreFolderTreeSelectionChange(
+                        expandToggleClickRef,
+                        flex,
+                        () => currentFolderIdRef.current,
+                        suppressFolderSelectionRef,
+                      )
+                    ) {
+                      return;
+                    }
                     const rowIndex = flex?.selection?.row;
                     const item =
                       rowIndex != null && flex?.rows?.[rowIndex] != null
@@ -1414,41 +1483,30 @@ const FolderNavigation: React.FC<Props> = ({
                     if (item?.Id) handleFolderSelect(item.Id);
                   }}
                 >
-                  <FlexGridColumn binding="Name" header="Folder" width="*">
-                    <FlexGridCellTemplate
-                      cellType="Cell"
-                      template={(cell: any) => {
-                        const item = cell.item as FolderDto;
-                        const isSelected = item.Id === currentFolderId;
-                        const showContextBtn = !isUseAsSelector && !item.IsFolderReadonly;
-                        return (
-                          <div
-                            className={`flex items-center justify-between py-1 group ${isSelected ? 'font-semibold' : ''}`}
-                            style={{ paddingLeft: (item.Level || 0) * 16 }}
-                            onContextMenu={showContextBtn ? (e) => openFolderContextMenu(e, item) : undefined}
-                          >
-                            <div className="flex items-center min-w-0 flex-auto">
-                              <i className={`fa-solid fa-folder mr-2 text-yellow-500 flex-shrink-0`} />
-                              <span className="truncate">{item.Name}</span>
-                              {item.CountContent != null && (
-                                <span className="text-gray-400 ml-1 text-xs">({item.CountContent})</span>
-                              )}
-                            </div>
-                            {showContextBtn && (
+                  <FlexGridColumn binding="Name" header="Folder" width="*" />
+                  {!isUseAsSelector && (
+                    <FlexGridColumn header="" binding="" width={32} isReadOnly allowSorting={false}>
+                      <FlexGridCellTemplate
+                        cellType="Cell"
+                        template={(cell: any) => {
+                          const item = cell.item as FolderDto;
+                          if (item.IsFolderReadonly) return null;
+                          return (
+                            <div className="flex items-center justify-center h-full group">
                               <button
                                 type="button"
-                                className={`flex-shrink-0 w-6 h-6 opacity-0 group-hover:opacity-100 ${theme.button_default} rounded px-1`}
+                                className={`w-6 h-6 opacity-0 group-hover:opacity-100 ${theme.button_default} rounded px-1`}
                                 onClick={(e) => openFolderContextMenu(e, item)}
                                 title="More Options"
                               >
                                 <i className="fa-solid fa-ellipsis-vertical text-xs" aria-hidden />
                               </button>
-                            )}
-                          </div>
-                        );
-                      }}
-                    />
-                  </FlexGridColumn>
+                            </div>
+                          );
+                        }}
+                      />
+                    </FlexGridColumn>
+                  )}
                 </FlexGrid>
               )}
             </div>
