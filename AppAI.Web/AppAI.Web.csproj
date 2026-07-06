@@ -6,6 +6,10 @@
     <RootNamespace>AppAI.Web</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- McpGateway plugin is disabled by default. Set to true only when the external
+         Swager-Mcp-Server-netcore repo is present and is the intended target project. -->
+    <EnableMcpGateway>false</EnableMcpGateway>
+    <DefineConstants Condition="'$(EnableMcpGateway)' == 'true'">$(DefineConstants);MCP_GATEWAY</DefineConstants>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <!--
       Phase 4: New ASP.NET Core 10 web host.
@@ -67,12 +71,12 @@
   </ItemGroup>
 
   <!-- McpGateway plugin — exposes enterprise backend APIs as MCP tools via /appai/mcp -->
-  <ItemGroup>
+  <ItemGroup Condition="'$(EnableMcpGateway)' == 'true'">
     <ProjectReference Include="..\..\..\..\Swager-Mcp-Server-netcore\src\McpGateway\McpGateway.csproj" />
   </ItemGroup>
 
   <!-- Copy ONNX embedding models from McpGateway source so LocalOnnx provider can find them at runtime -->
-  <ItemGroup>
+  <ItemGroup Condition="'$(EnableMcpGateway)' == 'true'">
     <Content Include="..\..\..\..\Swager-Mcp-Server-netcore\src\McpGateway\EmbedModels\**">
       <Link>EmbedModels\%(RecursiveDir)%(Filename)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

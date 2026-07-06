@@ -9,6 +9,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 using NLog;
 using NLog.Web;
 using SD.LLBLGen.Pro.ORMSupportClasses;
+#if MCP_GATEWAY
 // McpGateway plugin
 using McpGateway.Models;
 using McpGateway.Services;
@@ -24,6 +25,7 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.RateLimiting;
+#endif
 
 // Early NLog init for startup logging
 var logger = LogManager.Setup().LoadConfigurationFromAppSettings().GetCurrentClassLogger();
@@ -131,6 +133,7 @@ try
     }
 
     // ── McpGateway Plugin ─────────────────────────────────────────────────────
+#if MCP_GATEWAY
 
     // Config bindings
     builder.Services.Configure<MultiSourceApiSettings>(
@@ -292,6 +295,7 @@ try
         options.IdleTimeout = TimeSpan.FromHours(2);
     })
     .WithToolsFromAssembly(typeof(SwaggerTools).Assembly);
+#endif
 
     // ── Build ─────────────────────────────────────────────────────────────────
     var app = builder.Build();
@@ -306,8 +310,10 @@ try
     app.UseRouting();
 
     // Correlation ID propagation (populates NLog MDLC for every request)
+#if MCP_GATEWAY
     app.UseMiddleware<CorrelationIdMiddleware>();
     app.UseRateLimiter();
+#endif
 
     // ── One-time startup calls (replacing Global.asax Application_Start) ──────
     // Wire IHttpContextAccessor into the legacy static ServerContext, then initialise
@@ -364,6 +370,7 @@ try
     app.UseAuthorization();
 
     // ── McpGateway routes ─────────────────────────────────────────────────────
+#if MCP_GATEWAY
 
     // Optional API Key guard for /mcp* and /auth* paths
     var mcpApiKey = builder.Configuration["Auth:ApiKey"];
@@ -400,6 +407,7 @@ try
 
     // MCP endpoints — accessible at http://localhost:52740/appai/mcp
     app.MapMcp("/mcp");
+#endif
 
     // ── Route registration ────────────────────────────────────────────────────
     app.MapControllers();
