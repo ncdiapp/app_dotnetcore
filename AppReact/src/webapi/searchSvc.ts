@@ -20,6 +20,21 @@ class SearchService {
     return response.json();
   }
 
+  async generateQueryFromDataModel(dataSetId: string): Promise<string> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/AppSearchViewConfig/GenerateQueryFromDataModel?dataSetId=${dataSetId}`, {
+      headers: getHeaders()
+    });
+    if (!response.ok) throw new Error('Failed to generate query from data model');
+    const text = await response.text();
+    if (!text) return '';
+    try {
+      const parsed = JSON.parse(text);
+      return typeof parsed === 'string' ? parsed : text;
+    } catch {
+      return text;
+    }
+  }
+
   async retrieveDataSetQueryColumnList(aAppDataSetExDto: any): Promise<any> {
     const response = await fetch(`${endpoints.BASE_URL}/webapi/AppSearchViewConfig/RetrieveDataSetQueryColumnList`, {
       method: 'POST',

@@ -725,30 +725,11 @@ const DataSetEditor: React.FC<DataSetEditorProps> = (props) => {
     setShowDataModelSelector(false);
     dispatch(setIsBusy());
     try {
-      const [dto, columns] = await Promise.all([
-        searchSvc.retrieveOneAppDataSetExDto(String(dataSetId), false),
-        searchSvc.retrieveQueryColumnList(String(dataSetId))
-      ]);
-      const colList = Array.isArray(columns) ? columns : [];
-      // RetrieveQueryColumnList returns LookupItemDto: Id = column name (object), Display = data type
-      const columnName = (c: any) => (c?.Id != null ? String(c.Id) : c?.Display != null ? String(c.Display) : '');
-      const selectCols = colList.length > 0
-        ? colList.map((c: any) => {
-            const name = columnName(c);
-            return name ? `[${name}]` : null;
-          }).filter(Boolean).join(',\n') || '*'
-        : '*';
-      // Full table: prefer FROM clause from QueryText ([dbo].[HvacService] or [HvacService]), else BaseTableName
-      let fromClause = '';
-      if (dto?.QueryText) {
-        const fromMatch = /FROM\s+(\[[^\]]+\](?:\.\[[^\]]+\])?|\S+)/i.exec(dto.QueryText);
-        if (fromMatch) fromClause = fromMatch[1].trim();
+      const generatedQuery = await searchSvc.generateQueryFromDataModel(String(dataSetId));
+      if (!generatedQuery?.trim()) {
+        showWarning('Could not generate query from the selected data model');
+        return;
       }
-      if (!fromClause && dto?.BaseTableName) {
-        fromClause = dto.BaseTableName.includes('[') ? dto.BaseTableName : `[${dto.BaseTableName}]`;
-      }
-      if (!fromClause) fromClause = '[Table]';
-      const generatedQuery = `SELECT\n${selectCols}\nFROM ${fromClause}`;
       handleFieldChange('QueryText', generatedQuery);
     } catch (error) {
       showError('Failed to generate query: ' + (error instanceof Error ? error.message : String(error)));

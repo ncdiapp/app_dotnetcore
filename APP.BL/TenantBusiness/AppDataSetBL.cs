@@ -18,6 +18,7 @@ using APP.Components.EntityConverter;
 using APP.Components.EntityDto;
 using System.Text.RegularExpressions;
 using System.Data.Common;
+using System.Text;
 #if NETFRAMEWORK
 using System.Xml.Serialization.Configuration;
 using Microsoft.SqlServer.ReportingServices2010;
@@ -159,6 +160,428 @@ namespace App.BL
 
             return toRetrun;
            
+        }
+
+        public static string GenerateQueryFromDataModel(int dataSetId)
+        {
+            AppDataSetExDto dataSetExDto = RetrieveOneAppDataSetExDto(dataSetId);
+            if (dataSetExDto == null)
+            {
+                return string.Empty;
+            }
+
+            int? transactionId = ResolveTransactionIdFromDataSet(dataSetExDto);
+            if (transactionId.HasValue)
+            {
+                AppTransactionExDto transactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
+                if (transactionExDto?.RootMasterUnit != null
+                    && transactionExDto.TransactionOrganizedType.HasValue
+                    && transactionExDto.TransactionOrganizedType.Value == (int)EmTransactionOrganizedType.MasterDetail)
+                {
+                    return BuildTransactionMasterSiblingQuery(transactionExDto);
+                }
+            }
+
+            return GenerateQueryFromDataSetRootTableOnly(dataSetExDto);
+        }
+
+        private static int? ResolveTransactionIdFromDataSet(AppDataSetExDto dataSetExDto)
+        {
+            if (dataSetExDto?.Id == null)
+            {
+                return null;
+            }
+
+            int dataSetId = (int)dataSetExDto.Id;
+
+            int? transactionIdFromDataLoad = ResolveTransactionIdFromDataLoad(dataSetId);
+            if (transactionIdFromDataLoad.HasValue)
+            {
+                return transactionIdFromDataLoad;
+            }
+
+            int? transactionIdFromFolderNav = ResolveTransactionIdFromFolderNavigation(dataSetId);
+            if (transactionIdFromFolderNav.HasValue)
+            {
+                return transactionIdFromFolderNav;
+            }
+
+            HashSet<string> tableNames = ExtractTableNamesFromDataSet(dataSetExDto);
+            if (tableNames.Count == 0)
+            {
+                return ResolveTransactionIdByNameHint(dataSetExDto.Name, null);
+            }
+
+            List<AppTransactionDto> masterDetailTransactions = AppTransactionBL.RetrieveAllAppTransactionDto(null, (int)EmTransactionOrganizedType.MasterDetail);
+            List<int> matchedTransactionIds = new List<int>();
+
+            foreach (AppTransactionDto transactionDto in masterDetailTransactions)
+            {
+                if (transactionDto.Id == null)
+                {
+                    continue;
+                }
+
+                AppTransactionExDto transactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionDto.Id);
+                if (transactionExDto?.RootMasterUnit == null)
+                {
+                    continue;
+                }
+
+                if (tableNames.Contains(transactionExDto.RootMasterUnit.DataBaseTableName))
+                {
+                    matchedTransactionIds.Add((int)transactionDto.Id);
+                    continue;
+                }
+
+                bool siblingMatched = transactionExDto.AppTransactionUnitList != null
+                    && transactionExDto.AppTransactionUnitList.Any(unit =>
+                        unit.IsMasterSiblingUnit.HasValue
+                        && unit.IsMasterSiblingUnit.Value
+                        && tableNames.Contains(unit.DataBaseTableName));
+
+                if (siblingMatched)
+                {
+                    matchedTransactionIds.Add((int)transactionDto.Id);
+                }
+            }
+
+            matchedTransactionIds = matchedTransactionIds.Distinct().ToList();
+            if (matchedTransactionIds.Count == 1)
+            {
+                return matchedTransactionIds[0];
+            }
+
+            int? transactionIdByName = ResolveTransactionIdByNameHint(dataSetExDto.Name, matchedTransactionIds);
+            if (transactionIdByName.HasValue)
+            {
+                return transactionIdByName;
+            }
+
+            int siblingTableMatchId = matchedTransactionIds.FirstOrDefault(candidateTransactionId =>
+            {
+                AppTransactionExDto transactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(candidateTransactionId);
+                return transactionExDto?.AppTransactionUnitList?.Any(unit =>
+                    unit.IsMasterSiblingUnit.HasValue
+                    && unit.IsMasterSiblingUnit.Value
+                    && tableNames.Contains(unit.DataBaseTableName)) == true;
+            });
+
+            if (siblingTableMatchId > 0)
+            {
+                return siblingTableMatchId;
+            }
+
+            return null;
+        }
+
+        private static int? ResolveTransactionIdFromDataLoad(int dataSetId)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                EntityCollection<AppTransactionDataLoadEntity> loadEntities = new EntityCollection<AppTransactionDataLoadEntity>();
+                adapter.FetchEntityCollection(loadEntities, new RelationPredicateBucket(AppTransactionDataLoadFields.DataSetId == dataSetId));
+                if (loadEntities.Count >= 1)
+                {
+                    return loadEntities[0].TransactionId;
+                }
+            }
+
+            return null;
+        }
+
+        private static int? ResolveTransactionIdFromFolderNavigation(int dataSetId)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                EntityCollection<AppSearchViewEntity> searchViewEntities = new EntityCollection<AppSearchViewEntity>();
+                adapter.FetchEntityCollection(searchViewEntities, new RelationPredicateBucket(AppSearchViewFields.DataSetId == dataSetId));
+                if (searchViewEntities.Count == 0)
+                {
+                    return null;
+                }
+
+                HashSet<int> transactionIds = new HashSet<int>();
+                foreach (AppSearchViewEntity searchViewEntity in searchViewEntities)
+                {
+                    EntityCollection<AppTransactionNavigationEntity> navigationEntities = new EntityCollection<AppTransactionNavigationEntity>();
+                    IRelationPredicateBucket filter = new RelationPredicateBucket(AppTransactionNavigationFields.FolderViewId == searchViewEntity.SearchViewId);
+                    filter.PredicateExpression.AddWithAnd(AppTransactionNavigationFields.QuickSearchId == DBNull.Value);
+                    adapter.FetchEntityCollection(navigationEntities, filter);
+
+                    foreach (AppTransactionNavigationEntity navigationEntity in navigationEntities)
+                    {
+                        if (navigationEntity.TransactionId.HasValue)
+                        {
+                            transactionIds.Add(navigationEntity.TransactionId.Value);
+                        }
+                    }
+                }
+
+                if (transactionIds.Count == 1)
+                {
+                    return transactionIds.First();
+                }
+            }
+
+            return null;
+        }
+
+        private static int? ResolveTransactionIdByNameHint(string nameHint, List<int> candidateTransactionIds)
+        {
+            if (string.IsNullOrWhiteSpace(nameHint))
+            {
+                return null;
+            }
+
+            string normalizedHint = NormalizeModelName(nameHint);
+            if (string.IsNullOrWhiteSpace(normalizedHint))
+            {
+                return null;
+            }
+
+            List<AppTransactionDto> masterDetailTransactions = AppTransactionBL.RetrieveAllAppTransactionDto(null, (int)EmTransactionOrganizedType.MasterDetail);
+            IEnumerable<AppTransactionDto> transactionsToScore = masterDetailTransactions;
+            if (candidateTransactionIds != null && candidateTransactionIds.Count > 0)
+            {
+                HashSet<int> candidateSet = new HashSet<int>(candidateTransactionIds);
+                transactionsToScore = masterDetailTransactions.Where(transactionDto =>
+                    transactionDto.Id != null && candidateSet.Contains((int)transactionDto.Id));
+            }
+
+            int? bestTransactionId = null;
+            int bestScore = 0;
+            foreach (AppTransactionDto transactionDto in transactionsToScore)
+            {
+                if (transactionDto.Id == null)
+                {
+                    continue;
+                }
+
+                string normalizedTransactionName = NormalizeModelName(transactionDto.TransactionName);
+                if (string.IsNullOrWhiteSpace(normalizedTransactionName))
+                {
+                    continue;
+                }
+
+                int score = 0;
+                if (string.Equals(normalizedHint, normalizedTransactionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    score = 100;
+                }
+                else if (normalizedHint.IndexOf(normalizedTransactionName, StringComparison.OrdinalIgnoreCase) >= 0
+                    || normalizedTransactionName.IndexOf(normalizedHint, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    score = 50;
+                }
+                else if (string.Equals(
+                    normalizedHint.TrimEnd('s'),
+                    normalizedTransactionName.TrimEnd('s'),
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    score = 80;
+                }
+
+                if (score > bestScore)
+                {
+                    bestScore = score;
+                    bestTransactionId = (int)transactionDto.Id;
+                }
+            }
+
+            return bestScore > 0 ? bestTransactionId : null;
+        }
+
+        private static string NormalizeModelName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return string.Empty;
+            }
+
+            string normalized = Regex.Replace(name, @"^\d+\s*-\s*", string.Empty);
+            normalized = Regex.Replace(normalized, @"\s+references?\s*$", string.Empty, RegexOptions.IgnoreCase);
+            normalized = Regex.Replace(normalized, @"[\s_\-]+", string.Empty, RegexOptions.IgnoreCase);
+            return normalized.ToLowerInvariant();
+        }
+
+        private static string GenerateQueryFromDataSetRootTableOnly(AppDataSetExDto dataSetExDto)
+        {
+            List<LookupItemDto> colList = RetrieveDataSetQueryColumnList(dataSetExDto);
+            string selectCols = colList.Count > 0
+                ? string.Join(",\n", colList
+                    .Select(o => o?.Id?.ToString())
+                    .Where(name => !string.IsNullOrWhiteSpace(name))
+                    .Select(name => $"[{name}]"))
+                : "*";
+
+            string fromClause = ResolveDataSetFromClause(dataSetExDto);
+            return $"SELECT\n{selectCols}\nFROM {fromClause}";
+        }
+
+        private static string ResolveDataSetFromClause(AppDataSetExDto dataSetExDto)
+        {
+            if (!string.IsNullOrWhiteSpace(dataSetExDto.QueryText))
+            {
+                Match fromMatch = Regex.Match(dataSetExDto.QueryText, @"FROM\s+(\[[^\]]+\](?:\.\[[^\]]+\])?|\S+)", RegexOptions.IgnoreCase);
+                if (fromMatch.Success)
+                {
+                    return fromMatch.Groups[1].Value.Trim();
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(dataSetExDto.BaseTableName))
+            {
+                return dataSetExDto.BaseTableName.Contains("[")
+                    ? dataSetExDto.BaseTableName
+                    : $"[{dataSetExDto.BaseTableName}]";
+            }
+
+            return "[Table]";
+        }
+
+        private static HashSet<string> ExtractTableNamesFromDataSet(AppDataSetExDto dataSetExDto)
+        {
+            HashSet<string> tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrWhiteSpace(dataSetExDto.BaseTableName))
+            {
+                tableNames.Add(StripSqlIdentifierBrackets(dataSetExDto.BaseTableName));
+            }
+
+            if (!string.IsNullOrWhiteSpace(dataSetExDto.QueryText))
+            {
+                foreach (Match match in Regex.Matches(dataSetExDto.QueryText, @"(?:FROM|JOIN)\s+((?:\[[^\]]+\]\.?)?(?:\[[^\]]+\]|\w+))", RegexOptions.IgnoreCase))
+                {
+                    tableNames.Add(StripSqlIdentifierBrackets(match.Groups[1].Value));
+                }
+            }
+
+            if (dataSetExDto.UsageTypeId.HasValue
+                && dataSetExDto.UsageTypeId.Value == (int)EmAppDataSetUsageType.DatabaseTable
+                && !string.IsNullOrWhiteSpace(dataSetExDto.Name))
+            {
+                tableNames.Add(dataSetExDto.Name.Trim());
+            }
+
+            return tableNames;
+        }
+
+        private static string StripSqlIdentifierBrackets(string identifier)
+        {
+            if (string.IsNullOrWhiteSpace(identifier))
+            {
+                return identifier;
+            }
+
+            string value = identifier.Trim();
+            if (value.StartsWith("[") && value.EndsWith("]"))
+            {
+                value = value.Substring(1, value.Length - 2);
+            }
+
+            int dotIndex = value.LastIndexOf('.');
+            if (dotIndex >= 0 && dotIndex < value.Length - 1)
+            {
+                value = value.Substring(dotIndex + 1).Trim();
+                if (value.StartsWith("[") && value.EndsWith("]"))
+                {
+                    value = value.Substring(1, value.Length - 2);
+                }
+            }
+
+            return value;
+        }
+
+        private static string BuildTransactionMasterSiblingQuery(AppTransactionExDto transactionExDto)
+        {
+            AppTransactionUnitExDto rootUnit = transactionExDto.RootMasterUnit;
+            AppTransactionFieldExDto rootPrimaryKeyField = rootUnit.AppTransactionFieldList.FirstOrDefault(field => field.IsPrimaryKey);
+            if (rootPrimaryKeyField == null || string.IsNullOrWhiteSpace(rootPrimaryKeyField.DataBaseFieldName))
+            {
+                return string.Empty;
+            }
+
+            DatabaseFixture databaseFixture = AppCacheManagerBL.GetOneDatabaseFixture(transactionExDto.DataSourceFrom.Value);
+            EmSqlType sqlType = databaseFixture.SqlServerType.Value;
+            string rootTableName = rootUnit.DataBaseTableName;
+
+            List<string> selectColumns = new List<string>();
+            foreach (AppTransactionFieldExDto field in rootUnit.AppTransactionFieldList.OrderBy(field => field.SortOrder))
+            {
+                if (IsPersistedTransactionField(field))
+                {
+                    selectColumns.Add(FormatSelectColumn(rootTableName, field.DataBaseFieldName));
+                }
+            }
+
+            List<string> joinClauses = new List<string>();
+            IEnumerable<AppTransactionUnitExDto> siblingUnits = transactionExDto.AppTransactionUnitList
+                ?.Where(unit => unit.IsMasterSiblingUnit.HasValue && unit.IsMasterSiblingUnit.Value)
+                ?? Enumerable.Empty<AppTransactionUnitExDto>();
+
+            foreach (AppTransactionUnitExDto siblingUnit in siblingUnits)
+            {
+                AppTransactionFieldExDto linkField = siblingUnit.AppTransactionFieldList
+                    .FirstOrDefault(field => field.IsLinkToParentPrimaryKey && !string.IsNullOrWhiteSpace(field.DataBaseFieldName));
+
+                if (linkField == null)
+                {
+                    continue;
+                }
+
+                string siblingTableName = siblingUnit.DataBaseTableName;
+                foreach (AppTransactionFieldExDto field in siblingUnit.AppTransactionFieldList.OrderBy(field => field.SortOrder))
+                {
+                    if (!IsPersistedTransactionField(field))
+                    {
+                        continue;
+                    }
+
+                    if (field.IsLinkToParentPrimaryKey
+                        || string.Equals(field.DataBaseFieldName, linkField.DataBaseFieldName, StringComparison.OrdinalIgnoreCase)
+                        || string.Equals(field.DataBaseFieldName, rootPrimaryKeyField.DataBaseFieldName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    selectColumns.Add(FormatSelectColumn(siblingTableName, field.DataBaseFieldName));
+                }
+
+                string siblingTableQualified = AppMetaDataBL.GetQulifiedTableName(siblingUnit.SchemaOwner, siblingTableName, sqlType);
+                joinClauses.Add(string.Format(
+                    "inner join {0} on [{1}].{2} = [{3}].{4}",
+                    siblingTableQualified,
+                    rootTableName,
+                    rootPrimaryKeyField.DataBaseFieldName,
+                    siblingTableName,
+                    linkField.DataBaseFieldName));
+            }
+
+            StringBuilder queryBuilder = new StringBuilder();
+            queryBuilder.AppendLine("SELECT");
+            queryBuilder.AppendLine(string.Join(",\n", selectColumns));
+            queryBuilder.Append("FROM ");
+            queryBuilder.AppendLine(AppMetaDataBL.GetQulifiedTableName(rootUnit.SchemaOwner, rootTableName, sqlType));
+            foreach (string joinClause in joinClauses)
+            {
+                queryBuilder.AppendLine(joinClause);
+            }
+
+            return queryBuilder.ToString().TrimEnd();
+        }
+
+        private static bool IsPersistedTransactionField(AppTransactionFieldExDto field)
+        {
+            return field != null
+                && !string.IsNullOrWhiteSpace(field.DataBaseFieldName)
+                && !(field.IsTempVariable.HasValue && field.IsTempVariable.Value)
+                && !(field.IsStoreToExtendTable.HasValue && field.IsStoreToExtendTable.Value);
+        }
+
+        private static string FormatSelectColumn(string tableName, string columnName)
+        {
+            return $"[{tableName}].{columnName}";
         }
 
         public static List<LookupItemDto> RetrieveQueryColumnList(int dataSetId)

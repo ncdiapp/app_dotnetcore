@@ -33,6 +33,17 @@ public class AppSearchViewConfigController : SecureBaseController
         }
     }
 
+    [HttpGet]
+    public string GenerateQueryFromDataModel(int? dataSetId)
+    {
+        if (dataSetId.HasValue)
+        {
+            return AppDataSetBL.GenerateQueryFromDataModel(dataSetId.Value);
+        }
+
+        return string.Empty;
+    }
+
     [HttpPost]
     public List<LookupItemDto> RetrieveDataSetQueryColumnList(AppDataSetExDto aAppDataSetExDto)
     {
