@@ -1,4 +1,5 @@
 import type { PlmImportStepCode } from './types';
+import { normalizePlmImportStepCode } from './types';
 
 export interface PlmImportStepDefinition {
   code: PlmImportStepCode;
@@ -22,20 +23,26 @@ export const PLM_IMPORT_STEPS: PlmImportStepDefinition[] = [
   },
   {
     code: 'DwBlueprint',
-    label: 'DW Blueprint',
+    label: 'Transaction From DW Blueprint',
     description: 'Apply PlmDw_ImportBlueprint.json to create transactions, forms, and search.',
     icon: 'fa-solid fa-diagram-project',
   },
   {
-    code: 'OtherData',
-    label: 'Other Data',
-    description: 'Additional PLM data (placeholder).',
-    icon: 'fa-solid fa-box-archive',
+    code: 'FolderImport',
+    label: 'Folder Import',
+    description: 'Import PLM folder structures into APP folders.',
+    icon: 'fa-solid fa-folder-tree',
+  },
+  {
+    code: 'ImageImport',
+    label: 'Image Import',
+    description: 'Import PLM tblSketch binary data into AppFile (original/regular/thumbnail).',
+    icon: 'fa-solid fa-images',
   },
 ];
 
 export const getStepIndex = (code: PlmImportStepCode): number =>
-  PLM_IMPORT_STEPS.findIndex((s) => s.code === code);
+  PLM_IMPORT_STEPS.findIndex((s) => s.code === normalizePlmImportStepCode(code));
 
 export const getStepByCode = (code: PlmImportStepCode): PlmImportStepDefinition | undefined =>
   PLM_IMPORT_STEPS.find((s) => s.code === code);

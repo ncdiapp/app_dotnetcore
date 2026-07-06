@@ -279,7 +279,7 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
   return (
     <div className={`flex flex-col h-full overflow-hidden p-4 gap-3 ${theme.mainContentSection}`}>
       <div>
-        <h2 className={`text-sm font-semibold ${theme.label}`}>Step 3 — DW Blueprint</h2>
+        <h2 className={`text-sm font-semibold ${theme.label}`}>Step 3 — Transaction From DW Blueprint</h2>
         <p className={`text-xs mt-1 ${theme.menu_secondary}`}>
           Phase D: apply
           {' '}

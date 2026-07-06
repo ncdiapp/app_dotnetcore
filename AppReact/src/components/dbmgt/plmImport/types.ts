@@ -9,12 +9,24 @@ import type {
   PlmDwBlueprintExecuteResultDto,
 } from '../../../webapi/plmMigrationSvc';
 
-export type PlmImportStepCode = 'Connect' | 'Entity' | 'DwBlueprint' | 'OtherData';
+export type PlmImportStepCode =
+  | 'Connect'
+  | 'Entity'
+  | 'DwBlueprint'
+  | 'FolderImport'
+  | 'ImageImport'
+  /** @deprecated legacy step code (replaced by ImageImport) */
+  | 'OtherData';
 
 /** Legacy session/cache step code from before DW Blueprint step. */
 export const normalizePlmImportStepCode = (code: string | undefined | null): PlmImportStepCode => {
   if (code === 'Template') return 'DwBlueprint';
-  if (code === 'Connect' || code === 'Entity' || code === 'DwBlueprint' || code === 'OtherData') {
+  // Backward-compat: "OtherData" previously held image import.
+  // Forward: "ImageImport" (UI-only) is used as the new step code.
+  if (code === 'ImageImport') return 'ImageImport';
+  if (code === 'OtherData') return 'ImageImport';
+  if (code === 'FolderImport') return 'FolderImport';
+  if (code === 'Connect' || code === 'Entity' || code === 'DwBlueprint') {
     return code;
   }
   return 'Connect';
@@ -148,5 +160,6 @@ export const PLM_IMPORT_STEP_ORDER: PlmImportStepCode[] = [
   'Connect',
   'Entity',
   'DwBlueprint',
-  'OtherData',
+  'FolderImport',
+  'ImageImport',
 ];

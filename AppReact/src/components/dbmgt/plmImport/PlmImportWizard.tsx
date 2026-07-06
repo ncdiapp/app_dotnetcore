@@ -2,10 +2,12 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { getStepIndex, PLM_IMPORT_STEPS } from './plmImportStepRegistry';
 import type { PlmImportEntityStepUiState, PlmImportStepCode, PlmImportDwBlueprintStepUiState, PlmImportWizardState } from './types';
+import { normalizePlmImportStepCode } from './types';
 import ConnectionStep from './steps/ConnectionStep';
 import EntityStep from './steps/EntityStep';
 import DwBlueprintStep from './steps/DwBlueprintStep';
-import OtherDataStep from './steps/OtherDataStep';
+import FolderImportStep from './steps/FolderImportStep';
+import ImageImportStep from './steps/ImageImportStep';
 
 export type PlmImportWizardProps = {
   state: PlmImportWizardState;
@@ -33,7 +35,8 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
   const { theme } = useTheme();
   const [isDiscarding, setIsDiscarding] = useState(false);
 
-  const currentIndex = getStepIndex(state.currentStepCode);
+  const activeStepCode = normalizePlmImportStepCode(state.currentStepCode);
+  const currentIndex = getStepIndex(activeStepCode);
 
   const isPlmConnected = state.connectionTested;
 
@@ -88,7 +91,7 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
   };
 
   const renderStep = () => {
-    switch (state.currentStepCode) {
+    switch (activeStepCode) {
       case 'Connect':
         return (
           <ConnectionStep
@@ -118,8 +121,10 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
             onSessionSaved={onReloadSession}
           />
         );
-      case 'OtherData':
-        return <OtherDataStep state={state} />;
+      case 'FolderImport':
+        return <FolderImportStep state={state} />;
+      case 'ImageImport':
+        return <ImageImportStep state={state} />;
       default:
         return null;
     }
@@ -131,7 +136,7 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
       <div className={`flex-none px-4 py-3 border-b ${theme.mainContentSection}`}>
         <div className="flex flex-wrap gap-0">
           {PLM_IMPORT_STEPS.map((step, idx) => {
-            const isActive = step.code === state.currentStepCode;
+            const isActive = step.code === activeStepCode;
             const isLocked = !canAccessStep(idx);
             return (
               <button
