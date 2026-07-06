@@ -212,7 +212,7 @@ const ImageControl: React.FC<ImageControlProps> = ({
 
   return (
     <div 
-      className="w-full h-full flex flex-col gap-1"
+      className="w-full h-full min-h-0 flex flex-col gap-1"
       style={styleObject}
       title={tooltip}
       ref={rootRef}
@@ -259,12 +259,15 @@ const ImageControl: React.FC<ImageControlProps> = ({
         )}
       </div>
       )}
-      <div className={`w-full h-full border rounded p-2 ${theme.mainContentSection} ${t('border_mainContentSection')} ${errorText ? 'border-red-500' : ''}`} style={{ minHeight: '150px' }}>
+      <div
+        className={`w-full h-1 flex-auto min-h-0 overflow-hidden border rounded p-2 flex items-center justify-center ${theme.mainContentSection} ${t('border_mainContentSection')} ${errorText ? 'border-red-500' : ''}`}
+        style={{ minHeight: '150px' }}
+      >
         {imageUrl ? (
           <img 
             src={imageUrl} 
             alt={label}
-            className="max-w-full max-h-64 object-contain"
+            className="max-w-full max-h-full w-auto h-auto object-contain cursor-pointer"
             onClick={() => {
               if (fileId) setIsPreviewOpen(true);
             }}
@@ -274,7 +277,7 @@ const ImageControl: React.FC<ImageControlProps> = ({
             }}
           />
         ) : (
-          <div className={`flex items-center justify-center h-32 text-sm ${t('text_default')}`}>
+          <div className={`flex items-center justify-center h-full min-h-[8rem] text-sm ${t('text_default')}`}>
             No image
           </div>
         )}
