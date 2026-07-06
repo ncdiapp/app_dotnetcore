@@ -77,6 +77,44 @@ BEGIN
     CREATE INDEX IX_AppPlmImportJob_SessionId ON dbo.AppPlmImportJob (SessionId);
 END";
 
+        private const string EnsureFolderMapTableSql = @"
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='AppPlmFolderMap')
+BEGIN
+    CREATE TABLE dbo.AppPlmFolderMap (
+        MapId             INT IDENTITY(1,1) NOT NULL,
+        SessionId         INT               NOT NULL,
+        CompanyId         INT               NOT NULL,
+        PlmFolderId       INT               NOT NULL,
+        AppFolderId       INT               NOT NULL,
+        PlmFolderType     INT               NOT NULL,
+        AppTransactionId  INT               NULL,
+        AppFolderType     INT               NOT NULL,
+        PlmParentId       INT               NULL,
+        PlmName           NVARCHAR(200)     NULL,
+        AppName           NVARCHAR(200)     NULL,
+        LastSyncAt        DATETIME          NOT NULL,
+        CONSTRAINT PK_AppPlmFolderMap PRIMARY KEY (MapId),
+        CONSTRAINT UQ_AppPlmFolderMap_Scope UNIQUE (SessionId, PlmFolderId)
+    );
+    CREATE INDEX IX_AppPlmFolderMap_App ON dbo.AppPlmFolderMap (AppFolderId);
+    CREATE INDEX IX_AppPlmFolderMap_Plm ON dbo.AppPlmFolderMap (PlmFolderId, PlmFolderType);
+END";
+
+        private const string EnsureColorGroupDetailTableSql = @"
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='Plm_pdmColorGroupDetail')
+BEGIN
+    CREATE TABLE dbo.Plm_pdmColorGroupDetail (
+        ColorGroupDetailID INT           NOT NULL,
+        ColorGroupID       INT           NULL,
+        RGBColorID         INT           NOT NULL,
+        PlmFolderId        INT           NOT NULL,
+        AppFolderId        INT           NULL,
+        CONSTRAINT PK_Plm_pdmColorGroupDetail PRIMARY KEY (ColorGroupDetailID)
+    );
+    CREATE INDEX IX_Plm_pdmColorGroupDetail_RGBColorID ON dbo.Plm_pdmColorGroupDetail (RGBColorID);
+    CREATE INDEX IX_Plm_pdmColorGroupDetail_AppFolderId ON dbo.Plm_pdmColorGroupDetail (AppFolderId);
+END";
+
         private const string EnsureLogTableSql = @"
 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='AppPlmImportLog')
 BEGIN
@@ -149,6 +187,8 @@ END";
             fixture.ExecuteNonQueryResult(EnsureSessionTableSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(EnsureJobTableSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(EnsureLogTableSql, new List<DbParameter>());
+            fixture.ExecuteNonQueryResult(EnsureFolderMapTableSql, new List<DbParameter>());
+            fixture.ExecuteNonQueryResult(EnsureColorGroupDetailTableSql, new List<DbParameter>());
         }
 
         #endregion

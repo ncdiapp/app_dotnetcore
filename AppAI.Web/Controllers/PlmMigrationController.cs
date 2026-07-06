@@ -220,6 +220,58 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("PreviewPlmFolderImport")]
+    public OperationCallResult<PlmFolderImportPreviewDto> PreviewPlmFolderImport(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewPlmFolderImport(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmFolderImportPreviewDto>("Plm_Folder_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecutePlmFolderImport")]
+    public OperationCallResult<PlmImportJobDto> ExecutePlmFolderImport(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecutePlmFolderImport(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmImportJobDto>("Plm_Folder_Execute_Error", ex);
+        }
+    }
+
+    [HttpPost("PreviewPlmFolderPlacement")]
+    public OperationCallResult<PlmFolderPlacementPreviewDto> PreviewPlmFolderPlacement(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewPlmFolderPlacement(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmFolderPlacementPreviewDto>("Plm_FolderPlacement_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecutePlmFolderPlacement")]
+    public OperationCallResult<PlmImportJobDto> ExecutePlmFolderPlacement(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecutePlmFolderPlacement(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmImportJobDto>("Plm_FolderPlacement_Execute_Error", ex);
+        }
+    }
+
     [HttpPost("PreviewTemplateMapping")]
     public OperationCallResult<PlmTemplatePreviewDto> PreviewTemplateMapping(int? sessionId)
     {

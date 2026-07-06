@@ -151,6 +151,60 @@ export interface PlmSketchImportResultDto {
   Errors?: string[];
 }
 
+export interface PlmFolderImportScopePreviewDto {
+  PlmFolderType: number;
+  PlmFolderTypeName?: string | null;
+  AppTransactionId?: number | null;
+  AppAnchorFolderId?: number | null;
+  TotalPlmFolders: number;
+  ExistingMappedFolders: number;
+  ToCreateCount: number;
+  MissingParentCount: number;
+}
+
+export interface PlmFolderImportPreviewDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  Scopes?: PlmFolderImportScopePreviewDto[];
+  ColorDetailSourceCount: number;
+  ColorDetailReadyToImport: number;
+  ColorDetailExistingCount: number;
+  Warnings?: string[];
+}
+
+export interface PlmFolderImportResultDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  FoldersCreated: number;
+  FoldersSkippedExisting: number;
+  MappingsWritten: number;
+  ColorDetailsInserted: number;
+  ColorDetailsSkipped: number;
+  Errors?: string[];
+}
+
+export interface PlmFolderPlacementPreviewDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  ProductReadyCount: number;
+  ProductMissingFolderMapCount: number;
+  ColorDetailReadyCount: number;
+  ColorDetailMissingFolderMapCount: number;
+  ImageReadyCount: number;
+  ImageMissingFolderMapCount: number;
+  Warnings?: string[];
+}
+
+export interface PlmFolderPlacementResultDto {
+  IsSuccess: boolean;
+  ErrorMessage?: string | null;
+  ProductsUpdated: number;
+  ColorDetailsUpdated: number;
+  AppFilesUpdated: number;
+  SkippedNoMapping: number;
+  Errors?: string[];
+}
+
 export interface PlmSystemDefineEntityPreviewItemDto {
   PlmEntityId: number;
   PlmEntityCode?: string | null;
@@ -474,6 +528,42 @@ class PlmMigrationService {
       headers: getHeaders(),
     });
     if (!response.ok) throw new Error('Failed to start PLM sketch import');
+    return response.json();
+  }
+
+  async previewPlmFolderImport(sessionId: number): Promise<OperationCallResult<PlmFolderImportPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewPlmFolderImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to preview PLM folder import');
+    return response.json();
+  }
+
+  async executePlmFolderImport(sessionId: number): Promise<OperationCallResult<PlmImportJobDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecutePlmFolderImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to start PLM folder import');
+    return response.json();
+  }
+
+  async previewPlmFolderPlacement(sessionId: number): Promise<OperationCallResult<PlmFolderPlacementPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewPlmFolderPlacement?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to preview PLM folder placement');
+    return response.json();
+  }
+
+  async executePlmFolderPlacement(sessionId: number): Promise<OperationCallResult<PlmImportJobDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecutePlmFolderPlacement?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to start PLM folder placement');
     return response.json();
   }
 

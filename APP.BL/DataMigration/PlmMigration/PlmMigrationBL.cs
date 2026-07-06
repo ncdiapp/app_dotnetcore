@@ -15,8 +15,11 @@ namespace APP.BL.DataMigration.PlmMigration
         public const string StepEntity = "Entity";
         public const string StepTemplate = "Template";
         public const string StepOtherData = "OtherData";
+        public const string StepFolderImport = "FolderImport";
 
         public const string JobTypePlmTableExport = "PlmTableExport";
+        public const string JobTypePlmFolderImport = "PlmFolderImport";
+        public const string JobTypePlmFolderPlacement = "PlmFolderPlacement";
         public const string JobTypeSystemDefineEntityImport = "SystemDefineEntityImport";
         public const string JobTypeUserDefineEntityImport = "UserDefineEntityImport";
         public const string JobTypeTemplateImport = "TemplateImport";
