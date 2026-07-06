@@ -14,6 +14,8 @@ The following features need to be rebuilt on App-Builder:
 6. Reference Management
 7. Search View & Mass Update
 8. User, Domain, Role Security
+9. Print 
+10. Notification
 
 ## Migration Steps
 
