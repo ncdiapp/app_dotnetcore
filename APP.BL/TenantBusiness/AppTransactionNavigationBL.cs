@@ -483,6 +483,55 @@ namespace App.BL
             return menuFound;
         }
 
+        private static AppListMenuExDto FindFolderNavigationMenuByName(AppListMenuExDto rootMenu, string menuName)
+        {
+            if (rootMenu?.AppListMenu_List == null || string.IsNullOrWhiteSpace(menuName))
+            {
+                return null;
+            }
+
+            foreach (var aMenu in rootMenu.AppListMenu_List)
+            {
+                if (aMenu.RouteCode == "FolderNavigation" && string.Equals(aMenu.Name, menuName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return aMenu;
+                }
+
+                var found = FindFolderNavigationMenuByName(aMenu, menuName);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// A template search view may only be bound to one host transaction for folder navigation.
+        /// Remove stale bindings left on a previous host when the user changes Host Transaction.
+        /// </summary>
+        private static ValidationResult RemoveTemplateFolderNavigationFromOtherHosts(int searchViewId, int hostTransactionId)
+        {
+            ValidationResult validationResult = new ValidationResult();
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                EntityCollection<AppTransactionNavigationEntity> entityList = new EntityCollection<AppTransactionNavigationEntity>();
+                IRelationPredicateBucket filter = new RelationPredicateBucket(AppTransactionNavigationFields.FolderViewId == searchViewId);
+                filter.PredicateExpression.AddWithAnd(AppTransactionNavigationFields.QuickSearchId == DBNull.Value);
+                filter.PredicateExpression.AddWithAnd(AppTransactionNavigationFields.TransactionId != hostTransactionId);
+                adapter.FetchEntityCollection(entityList, filter);
+
+                foreach (var navEntity in entityList)
+                {
+                    validationResult.Merge(ProcessDeleteDto(navEntity.TransNavigationId));
+                }
+            }
+
+            return validationResult;
+        }
+
 
         public static TemplateFolderNavigationConfigResultDto RetrieveTemplateFolderNavigationConfig(int? templateSearchId)
         {
@@ -520,7 +569,11 @@ namespace App.BL
 
                 if (entityList.Count > 0)
                 {
-                    var navEntity = entityList.FirstOrDefault(o => o.IsDefaultView.HasValue && o.IsDefaultView.Value) ?? entityList.FirstOrDefault();
+                    var navEntity = entityList
+                        .Where(o => o.IsDefaultView.HasValue && o.IsDefaultView.Value)
+                        .OrderByDescending(o => o.TransNavigationId)
+                        .FirstOrDefault()
+                        ?? entityList.OrderByDescending(o => o.TransNavigationId).FirstOrDefault();
                     if (navEntity != null)
                     {
                         result.IsConfigured = true;
@@ -630,6 +683,12 @@ namespace App.BL
                 return operationCallResult;
             }
 
+            validationResult.Merge(RemoveTemplateFolderNavigationFromOtherHosts(searchViewId.Value, configDto.HostTransactionId.Value));
+            if (validationResult.HasErrors)
+            {
+                return operationCallResult;
+            }
+
             ObservableSet<AppTransactionNavigationExDto> navSet = RetrieveFolderViewListBytransactionId(new List<int>() { configDto.HostTransactionId.Value });
             bool foundExisting = false;
             foreach (var nav in navSet)
@@ -728,9 +787,14 @@ namespace App.BL
             var rootMenu = menuData[0];
             string link = hostTransactionId.ToString();
             AppListMenuExDto existingMenu = FindMenuInChildLevel(rootMenu, "FolderNavigation", link);
+            if (existingMenu == null && !string.IsNullOrWhiteSpace(menuName))
+            {
+                existingMenu = FindFolderNavigationMenuByName(rootMenu, menuName);
+            }
 
             if (existingMenu != null)
             {
+                existingMenu.Link = link;
                 existingMenu.Name = menuName;
                 existingMenu.Description = menuDescription;
                 existingMenu.IsModified = true;
