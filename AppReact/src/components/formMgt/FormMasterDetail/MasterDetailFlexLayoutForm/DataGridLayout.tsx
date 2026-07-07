@@ -33,7 +33,7 @@ import {
 } from '../../linkedSearchUtils';
 import PivotEditGridPanel from './PivotEditGridPanel';
 import MatrixPivotEditGrid from './MatrixPivotEditGrid';
-import ChildPivotProjectionGrid from './ChildPivotProjectionGrid';
+import ChildPivotProjectionGrid, { ProjectionImageCellContext } from './ChildPivotProjectionGrid';
 import { ChildPivotProjectionModel, foldWideRowsIntoChildRows } from './childPivotProjectionHelper';
 import {
   enrichTransactionFieldFromDict,
@@ -474,6 +474,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     rowIndex: number;
     fieldName: string;
     fileId: number | null;
+    /** Pivot projection wide-row binding (pv_*); when set, updates fold through grandchild. */
+    projectionBinding?: string;
   } | null>(null);
 
   const closeCellMenu = useCallback(() => setCellMenu(null), []);
@@ -492,8 +494,20 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     return () => document.removeEventListener('mousedown', onDocMouseDown);
   }, [cellMenu?.open]);
 
-  const [uploadState, setUploadState] = useState<{ open: boolean; kind: CellMenuKind; rowIndex: number; fieldName: string } | null>(null);
-  const [libraryState, setLibraryState] = useState<{ open: boolean; kind: CellMenuKind; rowIndex: number; fieldName: string } | null>(null);
+  const [uploadState, setUploadState] = useState<{
+    open: boolean;
+    kind: CellMenuKind;
+    rowIndex: number;
+    fieldName: string;
+    projectionBinding?: string;
+  } | null>(null);
+  const [libraryState, setLibraryState] = useState<{
+    open: boolean;
+    kind: CellMenuKind;
+    rowIndex: number;
+    fieldName: string;
+    projectionBinding?: string;
+  } | null>(null);
   const [pendingLibraryFileId, setPendingLibraryFileId] = useState<number | null>(null);
   const [imagePreviewState, setImagePreviewState] = useState<{ open: boolean; fileId: number | null }>({
     open: false,
@@ -1173,20 +1187,6 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     [commitOptimisticUnitRows, deferDataModelChange, dictOneToManyHostRow, getGridRowsForThisUnit, queueNestedGridRecompute, unitId]
   );
 
-  const assignUploadedFileToCell = useCallback(
-    async (kind: CellMenuKind, rowIndex: number, fieldName: string, fileId: number, fallbackName?: string) => {
-      try {
-        const dto = await appFileService.retrieveOneOrgAppFileExDto(String(fileId));
-        const fileCode = dto?.FileCode ?? dto?.Display ?? dto?.FileName ?? fallbackName ?? '';
-        updateRowFileValue(rowIndex, fieldName, fileId, fileCode ? String(fileCode) : undefined);
-      } catch {
-        updateRowFileValue(rowIndex, fieldName, fileId, fallbackName);
-      }
-      void kind; // reserved for future kind-specific behavior
-    },
-    [updateRowFileValue]
-  );
-
   // Get field definitions from unit
   const fields = useMemo(() => {
     if (!unitExDto?.AppTransactionFieldList) {
@@ -1534,6 +1534,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const [projectionModel, setProjectionModel] = useState<ChildPivotProjectionModel | null>(null);
   const projectionModelRef = useRef<ChildPivotProjectionModel | null>(null);
   projectionModelRef.current = projectionModel;
+  const projectionFlexGridRef = useRef<any>(null);
   const childPivotProjectionRef = useRef(childPivotProjection);
   childPivotProjectionRef.current = childPivotProjection;
 
@@ -1642,6 +1643,93 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       queueNestedGridRecompute,
     ]
   );
+
+  const updateProjectionFileValue = useCallback(
+    (rowIndex: number, binding: string, newFileId: number | null, fileName?: string) => {
+      const flex = projectionFlexGridRef.current?.control ?? projectionFlexGridRef.current;
+      const baseWideRows = flex
+        ? getProjectionWideRowsFromGrid(flex)
+        : [...(projectionModelRef.current?.WideRows ?? [])];
+      if (rowIndex < 0 || rowIndex >= baseWideRows.length) return;
+
+      const nextWideRows = baseWideRows.map((wr: any, i: number) =>
+        i === rowIndex ? { ...wr, [binding]: newFileId } : wr,
+      );
+
+      const currentDataModel = dataModelRef.current;
+      const host =
+        dictOneToManyHostRowRef.current ??
+        currentDataModel?.currentFormData;
+      const docBase =
+        currentDataModel?.currentFormData?.DictDocumentIdFileCode ?? host?.DictDocumentIdFileCode ?? {};
+      const nextDictDoc = { ...docBase };
+      if (newFileId && fileName) {
+        nextDictDoc[String(newFileId)] = fileName;
+      }
+
+      if (currentDataModel?.currentFormData) {
+        tryMutateInPlace(() => {
+          currentDataModel.currentFormData.DictDocumentIdFileCode = nextDictDoc;
+          currentDataModel.currentFormData.IsDirty = true;
+        });
+      }
+
+      handleProjectionWideRowsChange(nextWideRows);
+      setProjectionModel((prev) => (prev ? { ...prev, WideRows: nextWideRows } : prev));
+
+      try {
+        const cv = flex?.itemsSource;
+        if (cv) {
+          (cv as any).sourceCollection = nextWideRows;
+          cv.refresh?.();
+        }
+        flex?.invalidate?.();
+      } catch {
+        // ignore
+      }
+    },
+    [handleProjectionWideRowsChange],
+  );
+
+  const assignUploadedFileToCell = useCallback(
+    async (
+      kind: CellMenuKind,
+      rowIndex: number,
+      fieldName: string,
+      fileId: number,
+      fallbackName?: string,
+      projectionBinding?: string,
+    ) => {
+      let fileCode = fallbackName ?? '';
+      try {
+        const dto = await appFileService.retrieveOneOrgAppFileExDto(String(fileId));
+        fileCode = String(dto?.FileCode ?? dto?.Display ?? dto?.FileName ?? fallbackName ?? '');
+      } catch {
+        // keep fallback
+      }
+
+      if (projectionBinding) {
+        updateProjectionFileValue(rowIndex, projectionBinding, fileId, fileCode || undefined);
+      } else {
+        updateRowFileValue(rowIndex, fieldName, fileId, fileCode || undefined);
+      }
+      void kind;
+    },
+    [updateProjectionFileValue, updateRowFileValue],
+  );
+
+  const handleProjectionImageCellMenu = useCallback((ctx: ProjectionImageCellContext) => {
+    setCellMenu({
+      open: true,
+      x: ctx.clientX,
+      y: ctx.clientY,
+      kind: 'image',
+      rowIndex: ctx.rowIndex,
+      fieldName: ctx.dbFieldName,
+      fileId: ctx.fileId,
+      projectionBinding: ctx.binding,
+    });
+  }, []);
 
   const projectionCascadingInitRef = useRef<any>(null);
 
@@ -3350,8 +3438,11 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             <ChildPivotProjectionGrid
               model={projectionModel}
               isReadOnly={isGridReadOnly}
+              gridRef={projectionFlexGridRef}
               resolveDataMap={resolveProjectionDataMap}
               resolveWidth={resolveProjectionWidth}
+              onImageCellMenu={handleProjectionImageCellMenu}
+              onImagePreview={(fileId) => setImagePreviewState({ open: true, fileId })}
               onCellEditBeginning={handleProjectionCellEditBeginning}
               onCellEditEnding={handleProjectionCellEditEnding}
               onCellEditEnded={handleProjectionCellEditEnded}
@@ -3805,7 +3896,13 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             className={`w-full text-left px-3 py-2 text-xs ${theme.contextMenu}`}
             onClick={() => {
               setPendingLibraryFileId(null);
-              setLibraryState({ open: true, kind: cellMenu.kind, rowIndex: cellMenu.rowIndex, fieldName: cellMenu.fieldName });
+              setLibraryState({
+                open: true,
+                kind: cellMenu.kind,
+                rowIndex: cellMenu.rowIndex,
+                fieldName: cellMenu.fieldName,
+                projectionBinding: cellMenu.projectionBinding,
+              });
               closeCellMenu();
             }}
           >
@@ -3815,7 +3912,13 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             type="button"
             className={`w-full text-left px-3 py-2 text-xs ${theme.contextMenu}`}
             onClick={() => {
-              setUploadState({ open: true, kind: cellMenu.kind, rowIndex: cellMenu.rowIndex, fieldName: cellMenu.fieldName });
+              setUploadState({
+                open: true,
+                kind: cellMenu.kind,
+                rowIndex: cellMenu.rowIndex,
+                fieldName: cellMenu.fieldName,
+                projectionBinding: cellMenu.projectionBinding,
+              });
               closeCellMenu();
             }}
           >
@@ -3857,7 +3960,11 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
               type="button"
               className={`w-full text-left px-3 py-2 text-xs text-red-600 hover:opacity-90`}
               onClick={() => {
-                updateRowFileValue(cellMenu.rowIndex, cellMenu.fieldName, null);
+                if (cellMenu.projectionBinding) {
+                  updateProjectionFileValue(cellMenu.rowIndex, cellMenu.projectionBinding, null);
+                } else {
+                  updateRowFileValue(cellMenu.rowIndex, cellMenu.fieldName, null);
+                }
                 closeCellMenu();
               }}
             >
@@ -3881,7 +3988,14 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           onUploaded={async (result: any) => {
             const newId = result?.FileId != null ? Number(result.FileId) : null;
             if (!newId) return;
-            await assignUploadedFileToCell(uploadState.kind, uploadState.rowIndex, uploadState.fieldName, newId);
+            await assignUploadedFileToCell(
+              uploadState.kind,
+              uploadState.rowIndex,
+              uploadState.fieldName,
+              newId,
+              undefined,
+              uploadState.projectionBinding,
+            );
             setUploadState(null);
           }}
         />
@@ -3903,7 +4017,14 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                   className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default} disabled:opacity-50 disabled:cursor-not-allowed`}
                   onClick={async () => {
                     if (!pendingLibraryFileId) return;
-                    await assignUploadedFileToCell(libraryState.kind, libraryState.rowIndex, libraryState.fieldName, pendingLibraryFileId);
+                    await assignUploadedFileToCell(
+                      libraryState.kind,
+                      libraryState.rowIndex,
+                      libraryState.fieldName,
+                      pendingLibraryFileId,
+                      undefined,
+                      libraryState.projectionBinding,
+                    );
                     setLibraryState(null);
                   }}
                   disabled={!pendingLibraryFileId}

@@ -1,19 +1,35 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlexGrid, FlexGridColumn } from '@mescius/wijmo.react.grid';
+import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
 import { CollectionView } from '@mescius/wijmo';
 import { DataMap } from '@mescius/wijmo.grid';
 import { useTheme } from '../../../../redux/hooks/useTheme';
 import { useEnumValues } from '../../../../hooks/useEnumDictionary';
+import { fileThumbnailUrl } from '../../../../webapi/fileEndpoints';
 import { ChildPivotProjectionModel } from './childPivotProjectionHelper';
+
+export type ProjectionImageCellContext = {
+  rowIndex: number;
+  binding: string;
+  dbFieldName: string;
+  fileId: number | null;
+  clientX: number;
+  clientY: number;
+};
 
 interface ChildPivotProjectionGridProps {
   /** Server-built model (columns + wide rows) from BuildChildPivotProjection. */
   model: ChildPivotProjectionModel | null;
   isReadOnly?: boolean;
+  /** Optional ref to the underlying FlexGrid (host uses this to read edited wide rows). */
+  gridRef?: React.Ref<any>;
   /** Resolve a DDL/lookup DataMap for a field id. */
   resolveDataMap?: (fieldId: any) => DataMap | null;
   /** Resolve the configured column width (DisplayWidth) for a field id. */
   resolveWidth?: (fieldId: any) => number | undefined;
+  /** Open image cell actions menu (upload / library / preview). */
+  onImageCellMenu?: (ctx: ProjectionImageCellContext) => void;
+  /** Open full-size image preview. */
+  onImagePreview?: (fileId: number) => void;
   /** Angular childCellEditBeginning parity — swap column dataMap to row-level cascading lookup. */
   onCellEditBeginning?: (grid: any, e: any) => void;
   /** Restore standalone dataMap after edit (Angular cellEditEnding). */
@@ -31,8 +47,11 @@ interface ChildPivotProjectionGridProps {
 const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
   model,
   isReadOnly = false,
+  gridRef,
   resolveDataMap,
   resolveWidth,
+  onImageCellMenu,
+  onImagePreview,
   onCellEditBeginning,
   onCellEditEnding,
   onCellEditEnded,
@@ -41,6 +60,33 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
   const { theme } = useTheme();
   const emAppControlType = useEnumValues('EmAppControlType');
   const flexGridRef = useRef<any>(null);
+
+  const setGridRef = useCallback(
+    (instance: any) => {
+      flexGridRef.current = instance;
+      if (typeof gridRef === 'function') gridRef(instance);
+      else if (gridRef && typeof gridRef === 'object') (gridRef as React.MutableRefObject<any>).current = instance;
+    },
+    [gridRef],
+  );
+
+  const parseFileId = useCallback((raw: any): number | null => {
+    if (raw == null || raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  }, []);
+
+  const isImageControlType = useCallback(
+    (controlType?: number | null): boolean => {
+      const ctl = controlType != null ? Number(controlType) : NaN;
+      return (
+        ctl === Number(emAppControlType?.Image) ||
+        ctl === Number(emAppControlType?.ExternalImageUrl) ||
+        ctl === Number(emAppControlType?.ImageBinary)
+      );
+    },
+    [emAppControlType?.ExternalImageUrl, emAppControlType?.Image, emAppControlType?.ImageBinary],
+  );
 
   const hostColumns = useMemo(() => model?.HostColumns ?? [], [model]);
   const columnGroups = useMemo(() => model?.ColumnGroups ?? [], [model]);
@@ -110,29 +156,25 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
     [columnGroups],
   );
 
-  // The column-group header should show the source field's DISPLAY text (e.g. color name),
-  // not the raw stored id. Reuse the same DDL/lookup map the cells use, keyed by the source field id.
-  const sourceDataMap = useMemo(
-    () => (model?.ColumnSourceFieldId != null ? resolveDataMap?.(model.ColumnSourceFieldId) ?? null : null),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [model?.ColumnSourceFieldId, model],
-  );
-
+  // Resolve display text on each render so headers update when formStructure entity data loads.
   const groupHeaderLabel = useCallback(
     (group: { Header: string; ColValue?: any }): string => {
-      if (sourceDataMap && group.ColValue != null) {
-        for (const key of [group.ColValue, String(group.ColValue), Number(group.ColValue)]) {
-          try {
-            const text = sourceDataMap.getDisplayValue(key);
-            if (text != null && String(text).length > 0) return String(text);
-          } catch {
-            /* fall through to raw header */
+      if (model?.ColumnSourceFieldId != null && group.ColValue != null) {
+        const sourceDataMap = resolveDataMap?.(model.ColumnSourceFieldId) ?? null;
+        if (sourceDataMap) {
+          for (const key of [group.ColValue, String(group.ColValue), Number(group.ColValue)]) {
+            try {
+              const text = sourceDataMap.getDisplayValue(key);
+              if (text != null && String(text).length > 0) return String(text);
+            } catch {
+              /* fall through */
+            }
           }
         }
       }
       return group.Header;
     },
-    [sourceDataMap],
+    [model?.ColumnSourceFieldId, resolveDataMap],
   );
 
   if (!model) {
@@ -162,7 +204,7 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
       )}
       <div className="h-full w-full">
       <FlexGrid
-        ref={flexGridRef}
+        ref={setGridRef}
         itemsSource={collectionView}
         isReadOnly={isReadOnly}
         allowSorting={false}
@@ -197,14 +239,90 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
           return visibleLeaves.map((leaf) => {
             const header =
               visibleLeaves.length > 1 ? `${groupLabel} · ${leaf.Header}` : groupLabel;
+            const isImageColumn = isImageControlType(leaf.ControlType);
+            const colWidth = resolveWidth?.(leaf.FieldId) ?? (isImageColumn ? 130 : 110);
+            const colReadOnly = isReadOnly || isImageColumn;
+
+            if (isImageColumn) {
+              const binding = leaf.Binding;
+              const dbFieldName = leaf.DataBaseFieldName ?? '';
+              return (
+                <FlexGridColumn
+                  key={`val_${leaf.Binding}`}
+                  name={leaf.FieldId != null ? String(leaf.FieldId) : ''}
+                  binding={binding}
+                  header={header}
+                  width={colWidth}
+                  isReadOnly={colReadOnly}
+                  isRequired={false}
+                >
+                  <FlexGridCellTemplate
+                    cellType="Cell"
+                    template={(cell: any) => {
+                      const item = cell?.item as Record<string, any> | undefined;
+                      const raw = item?.[binding];
+                      const fileId = parseFileId(raw);
+                      const rowIndex =
+                        typeof item?.__rowIndex === 'number' && item.__rowIndex >= 0
+                          ? item.__rowIndex
+                          : Number(cell?.row?.index ?? -1);
+                      const thumbUrl = fileId ? fileThumbnailUrl(fileId) : null;
+                      return (
+                        <div className="flex items-center justify-between w-full h-full gap-1">
+                          <div className="flex items-center gap-2 min-w-0 flex-auto">
+                            {thumbUrl ? (
+                              <img
+                                src={thumbUrl}
+                                alt=""
+                                className="max-h-[30px] max-w-[30px] object-contain cursor-pointer flex-shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (isReadOnly || !fileId) return;
+                                  onImagePreview?.(fileId);
+                                }}
+                              />
+                            ) : (
+                              <div className="w-[30px] h-[30px]" />
+                            )}
+                          </div>
+                          {!isReadOnly && onImageCellMenu && (
+                            <button
+                              type="button"
+                              className={`${theme.button_default} w-7 h-6 rounded-[4px] text-xs flex items-center justify-center flex-shrink-0`}
+                              title="Actions"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                                onImageCellMenu({
+                                  rowIndex,
+                                  binding,
+                                  dbFieldName,
+                                  fileId,
+                                  clientX: rect.right,
+                                  clientY: rect.top,
+                                });
+                              }}
+                            >
+                              <i className="fa-solid fa-bars" aria-hidden="true" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    }}
+                  />
+                </FlexGridColumn>
+              );
+            }
+
             return (
               <FlexGridColumn
                 key={`val_${leaf.Binding}`}
                 name={leaf.FieldId != null ? String(leaf.FieldId) : ''}
                 binding={leaf.Binding}
                 header={header}
-                width={resolveWidth?.(leaf.FieldId) ?? 110}
-                isReadOnly={isReadOnly}
+                width={colWidth}
+                isReadOnly={colReadOnly}
                 isRequired={false}
                 dataType={dataTypeFor(leaf.ControlType)}
                 format={formatFor(leaf.ControlType)}

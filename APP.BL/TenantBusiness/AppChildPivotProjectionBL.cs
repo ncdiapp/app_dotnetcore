@@ -29,6 +29,7 @@ namespace App.BL
             public string ColumnKeyFieldName;     // grandchild field storing the column value
             public string ColumnSourceFieldName;  // source-grid field whose values are the columns
             public int? ColumnSourceFieldId;      // source-grid field id (for UI display-text lookup)
+            public int? ColumnSourceEntityId;     // entity on source field (e.g. pdmRGBColor) for display text
             public int? ColumnSourceUnitId;
             public List<AppTransactionFieldExDto> ValueFields;
         }
@@ -105,14 +106,20 @@ namespace App.BL
 
             string sourceFieldName = null;
             int? sourceUnitId = null;
+            int? sourceEntityId = null;
+            AppTransactionFieldExDto sourceField = null;
             if (columnKeyField != null && columnKeyField.MatrixForeignKeyFieldId.HasValue
                 && tx.DictAllTransactionField != null
-                && tx.DictAllTransactionField.TryGetValue(columnKeyField.MatrixForeignKeyFieldId.Value, out AppTransactionFieldExDto sourceField)
+                && tx.DictAllTransactionField.TryGetValue(columnKeyField.MatrixForeignKeyFieldId.Value, out sourceField)
                 && sourceField != null)
             {
                 sourceFieldName = sourceField.DataBaseFieldName;
                 sourceUnitId = sourceField.TransactionUnitId;
+                sourceEntityId = sourceField.EntityId;
             }
+
+            if (!sourceEntityId.HasValue && columnKeyField?.EntityId != null)
+                sourceEntityId = columnKeyField.EntityId;
 
             List<AppTransactionFieldExDto> valueFields = grandchild.AppTransactionFieldList
                 .Where(f => (f.IsPivotValue.HasValue && f.IsPivotValue.Value) || f.IsPrimaryKey || f.IsLinkToParentPrimaryKey)
@@ -126,6 +133,7 @@ namespace App.BL
                 ColumnKeyFieldName = columnKeyField?.DataBaseFieldName,
                 ColumnSourceFieldName = sourceFieldName,
                 ColumnSourceFieldId = columnKeyField?.MatrixForeignKeyFieldId,
+                ColumnSourceEntityId = sourceEntityId,
                 ColumnSourceUnitId = sourceUnitId,
                 ValueFields = valueFields,
             };
@@ -153,6 +161,8 @@ namespace App.BL
             var groups = new List<ProjColumnGroupDto>();
             if (string.IsNullOrWhiteSpace(ctx.ColumnSourceFieldName)) return groups;
 
+            Dictionary<string, string> displayByKey = BuildEntityDisplayLookup(ctx.ColumnSourceEntityId);
+
             var seen = new HashSet<string>();
             foreach (var sr in sourceRows)
             {
@@ -176,13 +186,44 @@ namespace App.BL
 
                 groups.Add(new ProjColumnGroupDto
                 {
-                    Header = comboId,
+                    Header = ResolvePivotColumnHeader(displayByKey, comboId),
                     ComboId = comboId,
                     ColValue = colValue,
                     Columns = columns,
                 });
             }
             return groups;
+        }
+
+        /// <summary>
+        /// Resolve stored FK ids (e.g. RGBColorID) to entity display text (e.g. Color Code).
+        /// UI also resolves via ColumnSourceFieldId + DictStandAloneEntityDataSource; server resolution
+        /// ensures headers are correct even when the client lookup map is missing or stale.
+        /// </summary>
+        private static Dictionary<string, string> BuildEntityDisplayLookup(int? entityId)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (!entityId.HasValue) return map;
+
+            List<LookupItemDto> items = AppEntityInfoBL.GetLookupItemList(entityId.Value, string.Empty);
+            foreach (LookupItemDto item in items ?? Enumerable.Empty<LookupItemDto>())
+            {
+                if (item?.Id == null || string.IsNullOrWhiteSpace(item.Display)) continue;
+                string key = item.Id.ToString();
+                if (!map.ContainsKey(key))
+                    map[key] = item.Display;
+            }
+
+            return map;
+        }
+
+        private static string ResolvePivotColumnHeader(Dictionary<string, string> displayByKey, string comboId)
+        {
+            if (displayByKey != null
+                && displayByKey.TryGetValue(comboId, out string display)
+                && !string.IsNullOrWhiteSpace(display))
+                return display;
+            return comboId;
         }
 
         private static List<Dictionary<string, object>> BuildWideRows(
