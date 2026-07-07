@@ -156,6 +156,7 @@ ORDER BY tu.TransactionUnitID, tf.SortOrder
 $fields = Invoke-Query $fieldsSql
 
 $selectCols = New-Object System.Collections.Generic.List[string]
+$fallbackCols = New-Object System.Collections.Generic.List[string]
 $joins = New-Object System.Collections.Generic.List[string]
 $usedTokenAliases = @{}
 $aliasCounter = 0
@@ -202,9 +203,13 @@ foreach ($row in $fields.Rows) {
     else {
         $selectCols.Add("$baseTableAlias.[$col] AS [$tokenAlias]")
     }
+
+    # Token-discovery fallback: GetAvailableTokens calls SP with @MainReferenceId = 0
+    $fallbackCols.Add("CAST(NULL AS NVARCHAR(MAX)) AS [$tokenAlias]")
 }
 
 $selectBlock = ($selectCols -join ",`n        ")
+$fallbackBlock = ($fallbackCols -join ",`n        ")
 $fromBlock = ($fromParts -join "`n    ")
 $joinBlock = if ($joins.Count -gt 0) { "`n    " + ($joins -join "`n    ") } else { "" }
 
@@ -219,6 +224,8 @@ $sp = @"
 -- ============================================================
 -- Report Engine contract: RS0 = header (1 row), tokens {{header.ColumnAlias}}
 -- Parameters must match AppReportTemplateService.FetchData
+-- When no row matches @MainReferenceId, returns one NULL row so the designer
+-- can discover column tokens (GetAvailableTokens uses @MainReferenceId = 0).
 -- ============================================================
 IF OBJECT_ID('dbo.$spName', 'P') IS NOT NULL
     DROP PROCEDURE dbo.$spName;
@@ -230,6 +237,18 @@ CREATE PROCEDURE dbo.$spName
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM $fromBlock$joinBlock
+        WHERE [$firstAlias].[$whereField] = @MainReferenceId
+    )
+    BEGIN
+        -- Token-discovery fallback for Report Template Designer (Ref ID = 0)
+        SELECT
+            $fallbackBlock;
+        RETURN;
+    END
 
     -- Result set 1: header (exactly 1 row for {{header.*}} tokens)
     SELECT

@@ -8,6 +8,8 @@
 -- ============================================================
 -- Report Engine contract: RS0 = header (1 row), tokens {{header.ColumnAlias}}
 -- Parameters must match AppReportTemplateService.FetchData
+-- When no row matches @MainReferenceId, returns one NULL row so the designer
+-- can discover column tokens (GetAvailableTokens uses @MainReferenceId = 0).
 -- ============================================================
 IF OBJECT_ID('dbo.SP_StyleHeader', 'P') IS NOT NULL
     DROP PROCEDURE dbo.SP_StyleHeader;
@@ -19,6 +21,240 @@ CREATE PROCEDURE dbo.SP_StyleHeader
 AS
 BEGIN
     SET NOCOUNT ON;
+
+    IF NOT EXISTS (
+        SELECT 1
+        FROM dbo.[Plm_ReferenceBasicInfo] AS [u1]
+    INNER JOIN dbo.[Plm_Style_Header] AS [u2] ON [u2].[ReferenceId] = [u1].[ReferenceId]
+    LEFT JOIN [SourceERP].dbo.[tblProductClass] AS [Classification_1] ON [Classification_1].[ProductClassID] = u2.[Classification]
+    LEFT JOIN [SourceERP].dbo.[tblProductType] AS [Product_Type_2_2] ON [Product_Type_2_2].[ProductType_Id] = u2.[Product_Type_2]
+    LEFT JOIN [SourceERP].dbo.[tblSellingPeriod] AS [Season_3_3] ON [Season_3_3].[SellingPeriod_Id] = u2.[Season_3]
+    LEFT JOIN [SourceERP].dbo.[tblCollection] AS [Collection_4_4] ON [Collection_4_4].[Collection_Id] = u2.[Collection_4]
+    LEFT JOIN [SourceERP].dbo.[tblGroup] AS [Group_5] ON [Group_5].[Group_Id] = u2.[Group]
+    LEFT JOIN [SourceERP].dbo.[tblCompanyDivision] AS [Division_8_6] ON [Division_8_6].[CieDivisionID] = u2.[Division_8]
+    LEFT JOIN [SourceERP].dbo.[tblSizeRun] AS [Size_Range_10_7] ON [Size_Range_10_7].[SizeRunId] = u2.[Size_Range_10]
+    LEFT JOIN [SourceERP].dbo.[tblDimension] AS [Dimension_11_8] ON [Dimension_11_8].[DimensionID] = u2.[Dimension_11]
+    LEFT JOIN [TenantDB_PLM26].dbo.[Plm_pdmsecuritywebuser] AS [Product_Manager_9] ON [Product_Manager_9].[UserID] = u2.[Product_Manager]
+    LEFT JOIN [SourceERP].dbo.[tblSizeRunRotate] AS [Sample_Size_Detail_10] ON [Sample_Size_Detail_10].[SizeRunRotateID] = u2.[Sample_Size_Detail]
+    LEFT JOIN [SourceERP].dbo.[tblProductClassGroup] AS [ProductTypeGroup_11] ON [ProductTypeGroup_11].[ProductClassGroupID] = u2.[ProductTypeGroup]
+    LEFT JOIN [SourceERP].dbo.[tblCompanyDivision] AS [Division_186_12] ON [Division_186_12].[CieDivisionID] = u2.[Division_186]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Style_Status_13] ON [Style_Status_13].EntityInfoID = 4649 AND [Style_Status_13].InternalKey = u2.[Style_Status]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_Fit_1_Status_14] ON [CB_Fit_1_Status_14].EntityInfoID = 4756 AND [CB_Fit_1_Status_14].InternalKey = u2.[CB_Fit_1_Status]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_Fit_2_Status_15] ON [CB_Fit_2_Status_15].EntityInfoID = 4756 AND [CB_Fit_2_Status_15].InternalKey = u2.[CB_Fit_2_Status]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_Fit_3_Status_16] ON [CB_Fit_3_Status_16].EntityInfoID = 4756 AND [CB_Fit_3_Status_16].InternalKey = u2.[CB_Fit_3_Status]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_Fit_4_Status_17] ON [CB_Fit_4_Status_17].EntityInfoID = 4756 AND [CB_Fit_4_Status_17].InternalKey = u2.[CB_Fit_4_Status]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_PP_1_Status_18] ON [CB_PP_1_Status_18].EntityInfoID = 4756 AND [CB_PP_1_Status_18].InternalKey = u2.[CB_PP_1_Status]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_PP_2_Status_19] ON [CB_PP_2_Status_19].EntityInfoID = 4756 AND [CB_PP_2_Status_19].InternalKey = u2.[CB_PP_2_Status]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_PP_3_Status_20] ON [CB_PP_3_Status_20].EntityInfoID = 4756 AND [CB_PP_3_Status_20].InternalKey = u2.[CB_PP_3_Status]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_TOP_1_Status_21] ON [CB_TOP_1_Status_21].EntityInfoID = 4756 AND [CB_TOP_1_Status_21].InternalKey = u2.[CB_TOP_1_Status]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_TOP_2_Status_22] ON [CB_TOP_2_Status_22].EntityInfoID = 4756 AND [CB_TOP_2_Status_22].InternalKey = u2.[CB_TOP_2_Status]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_Fit_1_Type_23] ON [CB_Fit_1_Type_23].EntityInfoID = 4757 AND [CB_Fit_1_Type_23].InternalKey = u2.[CB_Fit_1_Type]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_Fit_2_Type_24] ON [CB_Fit_2_Type_24].EntityInfoID = 4757 AND [CB_Fit_2_Type_24].InternalKey = u2.[CB_Fit_2_Type]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_Fit_3_Type_25] ON [CB_Fit_3_Type_25].EntityInfoID = 4757 AND [CB_Fit_3_Type_25].InternalKey = u2.[CB_Fit_3_Type]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_Fit_4_Type_26] ON [CB_Fit_4_Type_26].EntityInfoID = 4757 AND [CB_Fit_4_Type_26].InternalKey = u2.[CB_Fit_4_Type]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_PP_1_Type_27] ON [CB_PP_1_Type_27].EntityInfoID = 4757 AND [CB_PP_1_Type_27].InternalKey = u2.[CB_PP_1_Type]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_PP_2_Type_28] ON [CB_PP_2_Type_28].EntityInfoID = 4757 AND [CB_PP_2_Type_28].InternalKey = u2.[CB_PP_2_Type]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_PP_3_Type_29] ON [CB_PP_3_Type_29].EntityInfoID = 4757 AND [CB_PP_3_Type_29].InternalKey = u2.[CB_PP_3_Type]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_TOP_1_Type_30] ON [CB_TOP_1_Type_30].EntityInfoID = 4757 AND [CB_TOP_1_Type_30].InternalKey = u2.[CB_TOP_1_Type]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [CB_TOP_2_Type_31] ON [CB_TOP_2_Type_31].EntityInfoID = 4757 AND [CB_TOP_2_Type_31].InternalKey = u2.[CB_TOP_2_Type]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Print_Solid_32] ON [Print_Solid_32].EntityInfoID = 4734 AND [Print_Solid_32].InternalKey = u2.[Print_Solid]
+    LEFT JOIN [SourceERP].dbo.[tblCurrency] AS [Currency_33] ON [Currency_33].[CurrencyID] = u2.[Currency]
+    LEFT JOIN [TenantDB_PLM26].dbo.[Plm_pdmTechPackType] AS [Item_Type_34] ON [Item_Type_34].[TechPackTypeID] = u2.[Item_Type]
+    LEFT JOIN [SourceERP].dbo.[tblSizeRun] AS [Size_Range_5022_35] ON [Size_Range_5022_35].[SizeRunId] = u2.[Size_Range_5022]
+    LEFT JOIN [SourceERP].dbo.[tblCompanyDivision] AS [DivisionBlock_36] ON [DivisionBlock_36].[CieDivisionID] = u2.[DivisionBlock]
+    LEFT JOIN [SourceERP].dbo.[tblProductClass] AS [Product_Class_5024_37] ON [Product_Class_5024_37].[ProductClassID] = u2.[Product_Class_5024]
+    LEFT JOIN [SourceERP].dbo.[tblDimension] AS [Dimension_5025_38] ON [Dimension_5025_38].[DimensionID] = u2.[Dimension_5025]
+    LEFT JOIN [SourceERP].dbo.[tblSellingPeriod] AS [Season_5026_39] ON [Season_5026_39].[SellingPeriod_Id] = u2.[Season_5026]
+    LEFT JOIN [SourceERP].dbo.[tblCurrency] AS [First_Cost_Currency_40] ON [First_Cost_Currency_40].[CurrencyID] = u2.[First_Cost_Currency]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [New_Carryover_41] ON [New_Carryover_41].EntityInfoID = 4700 AND [New_Carryover_41].InternalKey = u2.[New_Carryover]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Parent__Child_42] ON [Parent__Child_42].EntityInfoID = 4713 AND [Parent__Child_42].InternalKey = u2.[Parent__Child]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Fit_Type_5239_43] ON [Fit_Type_5239_43].EntityInfoID = 4650 AND [Fit_Type_5239_43].InternalKey = u2.[Fit_Type_5239]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Directional_Fabric_44] ON [Directional_Fabric_44].EntityInfoID = 4629 AND [Directional_Fabric_44].InternalKey = u2.[Directional_Fabric]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Treatment_1_45] ON [Treatment_1_45].EntityInfoID = 4789 AND [Treatment_1_45].InternalKey = u2.[Treatment_1]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Treatment_2_46] ON [Treatment_2_46].EntityInfoID = 4789 AND [Treatment_2_46].InternalKey = u2.[Treatment_2]
+    LEFT JOIN [SourceERP].dbo.[tblProductClass] AS [Product_Class_5262_47] ON [Product_Class_5262_47].[ProductClassID] = u2.[Product_Class_5262]
+    LEFT JOIN [SourceERP].dbo.[tblProductClassGroup] AS [Class_Group_48] ON [Class_Group_48].[ProductClassGroupID] = u2.[Class_Group]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Inseam_49] ON [Inseam_49].EntityInfoID = 4675 AND [Inseam_49].InternalKey = u2.[Inseam]
+    LEFT JOIN [SourceERP].dbo.[tblCountry] AS [Manufacturer_COO_50] ON [Manufacturer_COO_50].[Country_Id] = u2.[Manufacturer_COO]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Garment_Factory_51] ON [Garment_Factory_51].EntityInfoID = 4655 AND [Garment_Factory_51].InternalKey = u2.[Garment_Factory]
+    LEFT JOIN [TenantDB_PLM26].dbo.[Plm_tblSketch] AS [ddl_52] ON [ddl_52].[SketchID] = u2.[ddl]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Special_Customer_53] ON [Special_Customer_53].EntityInfoID = 4768 AND [Special_Customer_53].InternalKey = u2.[Special_Customer]
+    LEFT JOIN [SourceERP].dbo.[tblSellingPeriod] AS [Selling_Period_54] ON [Selling_Period_54].[SellingPeriod_Id] = u2.[Selling_Period]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Private_Label_55] ON [Private_Label_55].EntityInfoID = 4736 AND [Private_Label_55].InternalKey = u2.[Private_Label]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Vendor_56] ON [Vendor_56].EntityInfoID = 4722 AND [Vendor_56].InternalKey = u2.[Vendor]
+    LEFT JOIN [SourceERP].dbo.[View_tblGender] AS [Gender_7171_57] ON [Gender_7171_57].[KeyValue] = u2.[Gender_7171]
+    LEFT JOIN dbo.AppEntitySimpleListValue AS [Subcategory_58] ON [Subcategory_58].EntityInfoID = 4738 AND [Subcategory_58].InternalKey = u2.[Subcategory]
+    LEFT JOIN [SourceERP].dbo.[tblSellingPeriod] AS [ERP_Season_59] ON [ERP_Season_59].[SellingPeriod_Id] = u2.[ERP_Season]
+        WHERE [u1].[ReferenceId] = @MainReferenceId
+    )
+    BEGIN
+        -- Token-discovery fallback for Report Template Designer (Ref ID = 0)
+        SELECT
+            CAST(NULL AS NVARCHAR(MAX)) AS [ReferenceId],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ReferenceCode],
+        CAST(NULL AS NVARCHAR(MAX)) AS [MasterReferenceId],
+        CAST(NULL AS NVARCHAR(MAX)) AS [FolderId],
+        CAST(NULL AS NVARCHAR(MAX)) AS [PlmStyleHeader_ReferenceId],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ProductClass],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ProductType],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Season3],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Collection4],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Group],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Sketch],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Division8],
+        CAST(NULL AS NVARCHAR(MAX)) AS [SizeRange10],
+        CAST(NULL AS NVARCHAR(MAX)) AS [DimensionInseam],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Style],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Details],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ProductManager],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Description],
+        CAST(NULL AS NVARCHAR(MAX)) AS [SampleSizeNeeded],
+        CAST(NULL AS NVARCHAR(MAX)) AS [TypeGroup],
+        CAST(NULL AS NVARCHAR(MAX)) AS [SizeDetailDispaly],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Division186],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CreatedBy],
+        CAST(NULL AS NVARCHAR(MAX)) AS [LastRevisedBy],
+        CAST(NULL AS NVARCHAR(MAX)) AS [StyleStatus],
+        CAST(NULL AS NVARCHAR(MAX)) AS [State],
+        CAST(NULL AS NVARCHAR(MAX)) AS [SampleStatus],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBFit1Status],
+        CAST(NULL AS NVARCHAR(MAX)) AS [INFit1State],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBFit2Status],
+        CAST(NULL AS NVARCHAR(MAX)) AS [INFit2State],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBFit3Status],
+        CAST(NULL AS NVARCHAR(MAX)) AS [INFit3State],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBFit4Status],
+        CAST(NULL AS NVARCHAR(MAX)) AS [INFit4State],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBPP1Status],
+        CAST(NULL AS NVARCHAR(MAX)) AS [INPP1State],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBPP2Status],
+        CAST(NULL AS NVARCHAR(MAX)) AS [INPP2State],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBPP3Status],
+        CAST(NULL AS NVARCHAR(MAX)) AS [INPP3State],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBTOP1Status],
+        CAST(NULL AS NVARCHAR(MAX)) AS [INTOP1State],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBTOP2Status],
+        CAST(NULL AS NVARCHAR(MAX)) AS [INTOP2State],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CHKFit1Latest],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CHKFit2Latest],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CHKFit3Latest],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CHKFit4Latest],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CHKPP1Latest],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CHKPP2Latest],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CHKPP3Latest],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CHKTOP1Latest],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CHKTOP2Latest],
+        CAST(NULL AS NVARCHAR(MAX)) AS [fit1statusIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [fit2statusIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [fit3statusIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [fit4statusIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [pp1statusIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [pp2statusIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [pp3statusIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [top1statusIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [top2statusIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBFit1Type],
+        CAST(NULL AS NVARCHAR(MAX)) AS [fit1typeIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBFit2Type],
+        CAST(NULL AS NVARCHAR(MAX)) AS [fit2typeIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBFit3Type],
+        CAST(NULL AS NVARCHAR(MAX)) AS [fit3typeIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBFit4Type],
+        CAST(NULL AS NVARCHAR(MAX)) AS [fit4typeIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBPP1Type],
+        CAST(NULL AS NVARCHAR(MAX)) AS [pp1typeIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBPP2Type],
+        CAST(NULL AS NVARCHAR(MAX)) AS [pp2typeIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBPP3Type],
+        CAST(NULL AS NVARCHAR(MAX)) AS [pp3typeIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBTOP1Type],
+        CAST(NULL AS NVARCHAR(MAX)) AS [top1typeIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CBTOP2Type],
+        CAST(NULL AS NVARCHAR(MAX)) AS [top2typeIB],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CalcFitStatus],
+        CAST(NULL AS NVARCHAR(MAX)) AS [PrintSolid],
+        CAST(NULL AS NVARCHAR(MAX)) AS [SupplierCost],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Currency],
+        CAST(NULL AS NVARCHAR(MAX)) AS [NeededforCalc],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ItemType],
+        CAST(NULL AS NVARCHAR(MAX)) AS [PublishtoERP],
+        CAST(NULL AS NVARCHAR(MAX)) AS [PublishedtoERP],
+        CAST(NULL AS NVARCHAR(MAX)) AS [PublishFailedtoERP],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ProductCode],
+        CAST(NULL AS NVARCHAR(MAX)) AS [SizeRange5022],
+        CAST(NULL AS NVARCHAR(MAX)) AS [DivisionBlock],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ProductClass5024],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Dimension5025],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Season5026],
+        CAST(NULL AS NVARCHAR(MAX)) AS [PriceType],
+        CAST(NULL AS NVARCHAR(MAX)) AS [FirstCostCurrency],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ValidSizeSelection],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ValidProductCodeSelection],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ValidDivisionBlockSelection],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ValidProductClassSelection],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ValidDimensionSelection],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ValidSeasonSelection],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ValidPriceTypeSelection],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ValidFirstCostCurrencySelection],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Color],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ValidColorSelection],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ActiveCount],
+        CAST(NULL AS NVARCHAR(MAX)) AS [DimensionColorSizeActiveBooleanSum],
+        CAST(NULL AS NVARCHAR(MAX)) AS [OriginalReference],
+        CAST(NULL AS NVARCHAR(MAX)) AS [NewCarryover],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ParentChild],
+        CAST(NULL AS NVARCHAR(MAX)) AS [RefStylefromPastSS],
+        CAST(NULL AS NVARCHAR(MAX)) AS [VersionCode],
+        CAST(NULL AS NVARCHAR(MAX)) AS [FitType5239],
+        CAST(NULL AS NVARCHAR(MAX)) AS [DirectionalFabric],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Treatment1],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Treatment2],
+        CAST(NULL AS NVARCHAR(MAX)) AS [TreatmentComments],
+        CAST(NULL AS NVARCHAR(MAX)) AS [File],
+        CAST(NULL AS NVARCHAR(MAX)) AS [OriginalImage],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ProductClass5262],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ClassGroup],
+        CAST(NULL AS NVARCHAR(MAX)) AS [French],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Length],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ManufacturerCOO],
+        CAST(NULL AS NVARCHAR(MAX)) AS [GarmentFactory],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Name],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Gendertxt7029],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ProductTypetxt7030],
+        CAST(NULL AS NVARCHAR(MAX)) AS [FitTypetxt],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CC7032],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Gender7033],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ProductType7034],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Details7035],
+        CAST(NULL AS NVARCHAR(MAX)) AS [FitType7036],
+        CAST(NULL AS NVARCHAR(MAX)) AS [sketchid],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ddl],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Freetext],
+        CAST(NULL AS NVARCHAR(MAX)) AS [SpecialCustomer],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Inseamtxt],
+        CAST(NULL AS NVARCHAR(MAX)) AS [PlmStyleHeader_Length],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Collection7124],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Collectiontxt],
+        CAST(NULL AS NVARCHAR(MAX)) AS [SellingPeriod],
+        CAST(NULL AS NVARCHAR(MAX)) AS [PrivateLabel],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Vendor],
+        CAST(NULL AS NVARCHAR(MAX)) AS [FabricCode],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ofCharacters],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Description7162],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CharCountCheck],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Gender7171],
+        CAST(NULL AS NVARCHAR(MAX)) AS [CC7192],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Gendertxt7193],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ProductTypetxt7194],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Lengthtxt],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Details7198],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ProductTypeGrouptxt],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Subcategory],
+        CAST(NULL AS NVARCHAR(MAX)) AS [ERPSeason],
+        CAST(NULL AS NVARCHAR(MAX)) AS [FrenchName],
+        CAST(NULL AS NVARCHAR(MAX)) AS [Setsdetailsfabric];
+        RETURN;
+    END
 
     -- Result set 1: header (exactly 1 row for {{header.*}} tokens)
     SELECT
