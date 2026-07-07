@@ -105,14 +105,21 @@ namespace App.BL
             return list.FirstOrDefault();
         }
 
-        public static EntityCollection<AppDataSourceRegisterEntity> RetrieveAllAppDataSourceRegisterEntity()
+        public static EntityCollection<AppDataSourceRegisterEntity> RetrieveAllAppDataSourceRegisterEntity(int? ownerCompanyId = null)
         {
             using (DataAccessAdapter adapter = new DataAccessAdapter(AppCompanyBL.AppMasterDBConnectionString))
             {
                 EntityCollection<AppDataSourceRegisterEntity> list = new EntityCollection<AppDataSourceRegisterEntity>();
                 SortClause aSortClause = AppDataSourceRegisterFields.DataSourceName | SortOperator.Ascending;
 
-                adapter.FetchEntityCollection(list, null, 0, new SortExpression(aSortClause), null);
+                IRelationPredicateBucket filter = null;
+                if (ownerCompanyId.HasValue)
+                {
+                    filter = new RelationPredicateBucket(
+                        AppDataSourceRegisterFields.DataSourceOwnerCompanyId == ownerCompanyId.Value);
+                }
+
+                adapter.FetchEntityCollection(list, filter, 0, new SortExpression(aSortClause), null);
 
                 return list;
             }
@@ -187,17 +194,18 @@ namespace App.BL
             return toReturn;
         }
 
+        private static int? GetTenantScopeCompanyId()
+        {
+            return IsSysAdminUser() ? null : GetCurrentUserCompanyId();
+        }
+
         public static ObservableSet<AppDataSourceRegisterExDto> RetrieveAllAppDataSourceRegisterExDto()
         {
             ObservableSet<AppDataSourceRegisterExDto> aSet = new ObservableSet<AppDataSourceRegisterExDto>();
-            EntityCollection<AppDataSourceRegisterEntity> list = RetrieveAllAppDataSourceRegisterEntity();
-            int? tenantCompanyId = IsSysAdminUser() ? null : GetCurrentUserCompanyId();
+            EntityCollection<AppDataSourceRegisterEntity> list = RetrieveAllAppDataSourceRegisterEntity(GetTenantScopeCompanyId());
 
             foreach (var o in list)
             {
-                if (tenantCompanyId.HasValue && o.DataSourceOwnerCompanyId != tenantCompanyId.Value)
-                    continue;
-
                 AppDataSourceRegisterExDto aDto = AppDataSourceRegisterConverter.ConvertEntityToExDto(o);
                 aSet.Add(aDto);
             }
@@ -215,6 +223,36 @@ namespace App.BL
             return aAppDataSourceRegisterExDto;
         }
 
+        private static void ScopeDataSourceRegisterSetForCurrentTenant(ObservableSet<AppDataSourceRegisterExDto> aSet)
+        {
+            if (IsSysAdminUser() || aSet == null)
+                return;
+
+            int? companyId = GetCurrentUserCompanyId();
+            if (!companyId.HasValue)
+                return;
+
+            foreach (var foreignItem in aSet.Where(o => o.DataSourceOwnerCompanyId.HasValue && o.DataSourceOwnerCompanyId != companyId).ToList())
+            {
+                aSet.Remove(foreignItem);
+            }
+
+            foreach (var item in aSet)
+            {
+                item.DataSourceOwnerCompanyId = companyId;
+            }
+
+            var scopedDeleteIds = aSet.FindDeletedItemIds()
+                .Where(id =>
+                {
+                    var existingEntity = RetrieveOneAppDataSourceRegisterEntity(id);
+                    return existingEntity.DataSourceOwnerCompanyId == companyId;
+                })
+                .ToList();
+
+            aSet.DeletedItemIds = scopedDeleteIds;
+        }
+
         public static OperationCallResult<AppDataSourceRegisterExDto> SaveAllAppDataSourceRegisterExDto(ObservableSet<AppDataSourceRegisterExDto> aSet)
         {
             OperationCallResult<AppDataSourceRegisterExDto> aOperationCallResult = new OperationCallResult<AppDataSourceRegisterExDto>();
@@ -229,24 +267,9 @@ namespace App.BL
                     validationResult.Items.Add(new ValidationItem(typeof(AppDataSourceRegisterExDto), "App_AppDataSourceRegisterEntity_Forbidden", ValidationItemType.Error, "Company context is required."));
                     return aOperationCallResult;
                 }
-
-                foreach (var item in aSet)
-                {
-                    validationResult.Merge(ValidateTenantDataSourceAccess(item.DataSourceOwnerCompanyId, item.DataSourceName));
-                    if (validationResult.HasErrors)
-                        return aOperationCallResult;
-
-                    item.DataSourceOwnerCompanyId = companyId;
-                }
-
-                foreach (var deletedId in aSet.FindDeletedItemIds())
-                {
-                    var existingEntity = RetrieveOneAppDataSourceRegisterEntity(deletedId);
-                    validationResult.Merge(ValidateTenantDataSourceAccess(existingEntity.DataSourceOwnerCompanyId, existingEntity.DataSourceName));
-                    if (validationResult.HasErrors)
-                        return aOperationCallResult;
-                }
             }
+
+            ScopeDataSourceRegisterSetForCurrentTenant(aSet);
 
             List<AppDataSourceRegisterExDto> needToValidateDatabaseRegisterDto = aSet.Where(o => o.DataSourceType.HasValue && o.DataSourceType.Value == (int)EmAppDataServerType.SqlServer).ToList();
 
