@@ -4,12 +4,14 @@ import * as wjGrid from '@mescius/wijmo.grid';
 import { DataMap } from '@mescius/wijmo.grid';
 import { CollectionView } from '@mescius/wijmo';
 import '@mescius/wijmo.styles/wijmo.css';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { adminSvc } from '../../webapi/adminsvc';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
+import { RootState } from '../../redux/store';
+import { isMasterSysAdminFromContext } from '../../helper/adminPermissionHelper';
 
 type DataSourceRegisterItem = any;
 type ValidationResult = any;
@@ -41,6 +43,8 @@ const DataSourceRegister: React.FC = () => {
     const { theme } = useTheme();
     const errorMessage = useErrorMessage();
     const enumMap = useEnumValues('EmAppDataServerType');
+    const userContext = useSelector((state: RootState) => state.userSession.userContext);
+    const isSysAdmin = isMasterSysAdminFromContext(userContext);
 
     const [isLoading, setIsLoading] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -89,14 +93,26 @@ const DataSourceRegister: React.FC = () => {
         setIsLoading(true);
         dispatch(setIsBusy());
         try {
-            const [dataSourceList, companyList] = await Promise.all([
-                adminSvc.retrieveAllAppDataSourceRegisterExDto(),
-                adminSvc.retrieveAllSaasCompanyDtoList(),
-            ]);
+            const dataSourceList = await adminSvc.retrieveAllAppDataSourceRegisterExDto();
             const normalizedList = Array.isArray(dataSourceList) ? [...dataSourceList] : [];
-            const normalizedCompanies = Array.isArray(companyList) ? companyList : [];
+
+            if (isSysAdmin) {
+                const companyList = await adminSvc.retrieveAllSaasCompanyDtoList();
+                const normalizedCompanies = Array.isArray(companyList) ? companyList : [];
+                setCompanies(normalizedCompanies);
+            } else {
+                const company = await adminSvc.retrieveCurrentUserCompanyExDto();
+                const normalizedCompanies =
+                    company?.Id != null
+                        ? [{ Id: company.Id, Code: company.Code, ShortName: company.ShortName }]
+                        : [];
+                setCompanies(normalizedCompanies);
+                if (company?.Id != null) {
+                    setSelectedCompanyId(company.Id);
+                }
+            }
+
             setAllDatasources(normalizedList);
-            setCompanies(normalizedCompanies);
             setDeletedItemIds([]);
             setValidationMessages([]);
         } catch (error) {
@@ -105,7 +121,7 @@ const DataSourceRegister: React.FC = () => {
             setIsLoading(false);
             dispatch(setIsNotBusy());
         }
-    }, [dispatch, errorMessage]);
+    }, [dispatch, errorMessage, isSysAdmin]);
 
     useEffect(() => {
         loadData();
@@ -113,6 +129,9 @@ const DataSourceRegister: React.FC = () => {
 
     const handleAddRow = () => {
         const enumDefault = dataSourceTypeOptions[0]?.id;
+        const ownerCompanyId = isSysAdmin
+            ? (selectedCompanyId !== ALL_COMPANIES_ID ? selectedCompanyId : null)
+            : (selectedCompanyId !== ALL_COMPANIES_ID ? selectedCompanyId : companies[0]?.Id ?? null);
         const newRow: DataSourceRegisterItem = {
             Id: null,
             DataSourceName: '',
@@ -121,7 +140,7 @@ const DataSourceRegister: React.FC = () => {
             ConnectionString: '',
             DatabaseName: '',
             IsCompanyMasterDb: false,
-            DataSourceOwnerCompanyId: selectedCompanyId !== ALL_COMPANIES_ID ? selectedCompanyId : null,
+            DataSourceOwnerCompanyId: ownerCompanyId,
         };
 
         const updated = [...allDatasources, newRow];
@@ -206,6 +225,10 @@ const DataSourceRegister: React.FC = () => {
     const dsCountForCompany = (companyId: number) =>
         allDatasources.filter((ds) => Number(ds.DataSourceOwnerCompanyId) === companyId).length;
 
+    const selectedCompanyLabel = companies.find((c) => c.Id === selectedCompanyId)?.ShortName
+        ?? companies.find((c) => c.Id === selectedCompanyId)?.Code
+        ?? '';
+
     return (
         <div className="w-full h-full flex flex-col gap-2 rounded-t-md rounded-b-md overflow-hidden">
             {/* Header */}
@@ -234,7 +257,8 @@ const DataSourceRegister: React.FC = () => {
             {/* Body: company panel + grid */}
             <div className="h-1 flex-auto flex flex-row gap-2 overflow-hidden">
 
-                {/* Left company panel */}
+                {/* Left company panel (SysAdmin only) */}
+                {isSysAdmin && (
                 <div className={`w-52 flex-none flex flex-col overflow-hidden ${theme.mainContentSection}`}>
                     <div className="py-2 px-3 text-sm font-semibold">Companies</div>
                     <div className="h-1 flex-auto overflow-y-auto">
@@ -268,14 +292,15 @@ const DataSourceRegister: React.FC = () => {
                         ))}
                     </div>
                 </div>
+                )}
 
                 {/* Right datasource grid */}
                 <section className={`flex-auto flex flex-col overflow-hidden ${theme.mainContentSection}`}>
                     <div className="flex items-center py-2 px-3 text-sm font-semibold gap-2">
                         <span>Datasource</span>
-                        {selectedCompanyId !== ALL_COMPANIES_ID && (
+                        {(isSysAdmin ? selectedCompanyId !== ALL_COMPANIES_ID : selectedCompanyLabel) && (
                             <span className={`text-xs font-normal ${theme.label}`}>
-                                — {companies.find((c) => c.Id === selectedCompanyId)?.ShortName ?? ''}
+                                — {selectedCompanyLabel}
                             </span>
                         )}
                     </div>
@@ -294,6 +319,7 @@ const DataSourceRegister: React.FC = () => {
                                 header="Company"
                                 width={140}
                                 dataMap={companyMap}
+                                isReadOnly={!isSysAdmin}
                             />
                             <FlexGridColumn binding="DataSourceName" header="Datasource Name" width={160} />
                             <FlexGridColumn binding="Description" header="Description" width={180} />

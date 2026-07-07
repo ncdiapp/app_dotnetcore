@@ -135,6 +135,38 @@ namespace App.BL
             }
         }
 
+        private static bool IsSysAdminUser()
+        {
+            return ServerContext.Instance?.CurrentLoginUserType == (int)EmAppUserType.SysAdmin;
+        }
+
+        private static int? GetCurrentUserCompanyId()
+        {
+            return ControlTypeValueConverter.ConvertValueToInt(ServerContext.Instance?.CurrentCompanyId);
+        }
+
+        private static ValidationResult ValidateTenantDataSourceAccess(int? dataSourceOwnerCompanyId, string dataSourceName = null)
+        {
+            var result = new ValidationResult();
+            if (IsSysAdminUser())
+                return result;
+
+            int? companyId = GetCurrentUserCompanyId();
+            if (!companyId.HasValue)
+            {
+                result.Items.Add(new ValidationItem(typeof(AppDataSourceRegisterExDto), "App_AppDataSourceRegisterEntity_Forbidden", ValidationItemType.Error, "Company context is required."));
+                return result;
+            }
+
+            if (dataSourceOwnerCompanyId.HasValue && dataSourceOwnerCompanyId != companyId)
+            {
+                var label = string.IsNullOrWhiteSpace(dataSourceName) ? "Data source" : dataSourceName;
+                result.Items.Add(new ValidationItem(typeof(AppDataSourceRegisterExDto), "App_AppDataSourceRegisterEntity_Forbidden", ValidationItemType.Error, label + " does not belong to the current company."));
+            }
+
+            return result;
+        }
+
         // need to use lookup item to show DLL list value
         // each customer only can acess his own database
         public static List<AppDataSourceRegisterExDto> GetDataSourceRegisterList()
@@ -147,14 +179,10 @@ namespace App.BL
                 o.DatabaseName = "";
             }
 
-
-            if (ServerContext.Instance.CurrentLoginUserType != (int)EmAppUserType.SysAdmin)
+            if (!IsSysAdminUser())
             {
-                int? companyId = ControlTypeValueConverter.ConvertValueToInt(
-                   ServerContext.Instance.CurrentCompanyId);
-                toReturn = toReturn.Where(o => o.DataSourceOwnerCompanyId == companyId).OrderBy(o => o.Id).ToList();
+                toReturn = toReturn.OrderBy(o => o.Id).ToList();
             }
-           
 
             return toReturn;
         }
@@ -163,8 +191,13 @@ namespace App.BL
         {
             ObservableSet<AppDataSourceRegisterExDto> aSet = new ObservableSet<AppDataSourceRegisterExDto>();
             EntityCollection<AppDataSourceRegisterEntity> list = RetrieveAllAppDataSourceRegisterEntity();
+            int? tenantCompanyId = IsSysAdminUser() ? null : GetCurrentUserCompanyId();
+
             foreach (var o in list)
             {
+                if (tenantCompanyId.HasValue && o.DataSourceOwnerCompanyId != tenantCompanyId.Value)
+                    continue;
+
                 AppDataSourceRegisterExDto aDto = AppDataSourceRegisterConverter.ConvertEntityToExDto(o);
                 aSet.Add(aDto);
             }
@@ -187,6 +220,33 @@ namespace App.BL
             OperationCallResult<AppDataSourceRegisterExDto> aOperationCallResult = new OperationCallResult<AppDataSourceRegisterExDto>();
             ValidationResult validationResult = new ValidationResult();
             aOperationCallResult.ValidationResult = validationResult;
+
+            if (!IsSysAdminUser())
+            {
+                int? companyId = GetCurrentUserCompanyId();
+                if (!companyId.HasValue)
+                {
+                    validationResult.Items.Add(new ValidationItem(typeof(AppDataSourceRegisterExDto), "App_AppDataSourceRegisterEntity_Forbidden", ValidationItemType.Error, "Company context is required."));
+                    return aOperationCallResult;
+                }
+
+                foreach (var item in aSet)
+                {
+                    validationResult.Merge(ValidateTenantDataSourceAccess(item.DataSourceOwnerCompanyId, item.DataSourceName));
+                    if (validationResult.HasErrors)
+                        return aOperationCallResult;
+
+                    item.DataSourceOwnerCompanyId = companyId;
+                }
+
+                foreach (var deletedId in aSet.FindDeletedItemIds())
+                {
+                    var existingEntity = RetrieveOneAppDataSourceRegisterEntity(deletedId);
+                    validationResult.Merge(ValidateTenantDataSourceAccess(existingEntity.DataSourceOwnerCompanyId, existingEntity.DataSourceName));
+                    if (validationResult.HasErrors)
+                        return aOperationCallResult;
+                }
+            }
 
             List<AppDataSourceRegisterExDto> needToValidateDatabaseRegisterDto = aSet.Where(o => o.DataSourceType.HasValue && o.DataSourceType.Value == (int)EmAppDataServerType.SqlServer).ToList();
 
@@ -286,6 +346,11 @@ namespace App.BL
             var aValidationResult = new ValidationResult();
             aOperationCallResult.ValidationResult = aValidationResult;
 
+            var existingEntity = RetrieveOneAppDataSourceRegisterEntity(Id);
+            aValidationResult.Merge(ValidateTenantDataSourceAccess(existingEntity.DataSourceOwnerCompanyId, existingEntity.DataSourceName));
+            if (aValidationResult.HasErrors)
+                return aOperationCallResult;
+
             using (DataAccessAdapter adapter = new DataAccessAdapter(AppCompanyBL.AppMasterDBConnectionString))
             {
                 try
@@ -318,7 +383,16 @@ namespace App.BL
         {
             ValidationResult aValidationResult = new ValidationResult();
 
-            if (!aDto.DataSourceOwnerCompanyId.HasValue)
+            if (!IsSysAdminUser())
+            {
+                int? companyId = GetCurrentUserCompanyId();
+                aValidationResult.Merge(ValidateTenantDataSourceAccess(aDto.DataSourceOwnerCompanyId, aDto.DataSourceName));
+                if (aValidationResult.HasErrors)
+                    return aValidationResult;
+
+                aDto.DataSourceOwnerCompanyId = companyId;
+            }
+            else if (!aDto.DataSourceOwnerCompanyId.HasValue)
             {
                 aDto.DataSourceOwnerCompanyId = (int)ServerContext.Instance.CurrentCompanyId;
             }
@@ -367,6 +441,16 @@ namespace App.BL
             ValidationResult aValidationResult = new ValidationResult();
 
             AppDataSourceRegisterEntity aAppDataSourceRegisterEntity = RetrieveOneAppDataSourceRegisterEntity(aDto.Id);
+
+            if (!IsSysAdminUser())
+            {
+                int? companyId = GetCurrentUserCompanyId();
+                aValidationResult.Merge(ValidateTenantDataSourceAccess(aAppDataSourceRegisterEntity.DataSourceOwnerCompanyId, aDto.DataSourceName));
+                if (aValidationResult.HasErrors)
+                    return aValidationResult;
+
+                aDto.DataSourceOwnerCompanyId = companyId;
+            }
 
             // Encrypt the connection string before persisting
             if (!string.IsNullOrEmpty(aDto.ConnectionString))
