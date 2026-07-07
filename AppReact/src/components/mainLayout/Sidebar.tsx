@@ -156,6 +156,13 @@ const Sidebar: React.FC = () => {
       AppListMenu_List: []
     },
     {
+      Id: 'report-management',
+      Sort: 2.8,
+      Name: 'Report Management',
+      RouteCode: '/report-management',
+      AppListMenu_List: []
+    },
+    {
       Id:'api-management',
       Sort: 3,
       Name: 'API Management',

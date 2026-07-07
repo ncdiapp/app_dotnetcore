@@ -46,6 +46,20 @@ namespace APP.Components.EntityDto
    		}
 		 partial void OnInitialized();
    
+        #region  Report Template (AppReportTemplate table — not a LLBLGen entity)
+
+        public static readonly string ReportTemplateProperty =
+            ObjectInfoHelper.GetName<AppReportExDto, AppReportTemplateDto>(o => o.ReportTemplate);
+
+        [DataMember(EmitDefaultValue = false)]
+        public AppReportTemplateDto ReportTemplate
+        {
+            get { return GetValue<AppReportTemplateDto>(ReportTemplateProperty); }
+            set { SetValue(ReportTemplateProperty, value); }
+        }
+
+        #endregion
+
         #region  Ex Relation Entity Dto Properties
 
 

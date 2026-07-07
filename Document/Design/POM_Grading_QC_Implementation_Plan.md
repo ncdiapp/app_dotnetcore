@@ -1,6 +1,6 @@
 # POM / Grading / QC — Implementation Plan
 
-**Version:** 1.1 | **Date:** 2026-06-16 | **Author:** Sean Zhang  
+**Version:** 1.2 | **Date:** 2026-07-06 | **Author:** Sean Zhang  
 **Platform:** AppAI/AppBuilder (App-netore)  
 **Source Reference:** `C:\Users\sean.zhang\dev-space\PLM\docs\pom-grading-qc-architecture.md`
 
@@ -82,7 +82,7 @@ SQL script: `Document/Design/POM_Grading_QC_NewSchema.sql`
 | New table | Replaces | Purpose |
 |---|---|---|
 | `TchpSizeRun` | `tblSizeRun` | Named size range (e.g. SCHOOL GIRLS TOPS) |
-| `TchpSizeRunSize` | `tblSizeRunRotate` | Individual size within a run (PK: SizeRunSizeId) |
+| `TchpSizeRunSize` | `tblSizeRunRotate` | Individual size within a run (PK: SizeRunSizeId). `SizeLabel` stores the **internal/canonical label** (e.g. "M", "30", "260") — this is the fallback display label used in POM specs, grading tables, and QC when no regional context is set. |
 | `TchpBodyPart` | `PdmV2kBodyPart` | POM body part library (Code, Name, Tolerance, GradingPlusValue, GradingMinuValue) |
 | `TchpPomTemplate` | `PdmV2kBodyType` | POM template — named collection of body parts |
 | `TchpPomTemplatePart` | `PdmV2kBodyTypeDetail` | Junction: template ↔ body part with sort order |
@@ -106,7 +106,9 @@ TchpQcOrder               QC order (linked to LOCKED StyleSpec)
         └── TchpQcResult  Measurement: 4 wash stages + computed Shrinkage/Recovery/FinalDiff
 
 TchpSizeRunDimension      Global mapping: TchpSizeRunSize → DimensionCode (one size : one dimension)
-TchpSizeSystemMapping     US/EU/UK/JP size equivalence
+TchpSizeSystemMapping     Regional size equivalence per size. SystemCode values: US | EU | UK | JP | CN | INTL
+                          SizeLabel here is the regional label (e.g. EU "38", JP "9", CN "165/88A").
+                          UI shows TchpSizeRunSize.SizeLabel by default; queries this table only when a regional buyer context is set.
 ```
 
 ### Dimension Design
@@ -289,13 +291,16 @@ See Section 7.2 for spec.
 ---
 
 ### Phase 5 — Multi-Region Size Mapping (3 days)
-**Goal:** US/EU/UK/JP size equivalence.
+**Goal:** US/EU/UK/JP/CN/INTL size equivalence; region toggle on spec grid header.
+
+**Design rule:** `TchpSizeRunSize.SizeLabel` is always the fallback. The region toggle calls `ISizeMappingService.GetLabel(sizeRunSizeId, systemCode)` which returns `TchpSizeRunSize.SizeLabel` when no mapping row exists for that `SystemCode`.
 
 | Task | Type | Effort |
 |---|---|---|
-| Configure SizeSystemMapping CRUD form | Config | 0.5d |
-| Implement `ISizeMappingService` in BL | Code | 1d |
-| Add region toggle to spec grid header | Code | 0.5d |
+| Configure SizeSystemMapping CRUD form (child grid under Size Runs) | Config | 0.5d |
+| Populate SystemCode dropdown: `US \| EU \| UK \| JP \| CN \| INTL` | Config | 0.25d |
+| Implement `ISizeMappingService.GetLabel(sizeRunSizeId, systemCode)` — fallback to `TchpSizeRunSize.SizeLabel` if no mapping row | Code | 1d |
+| Add region toggle to spec grid header; pass SystemCode to column headers | Code | 0.5d |
 
 ---
 
@@ -431,6 +436,9 @@ HTTP action filter reads `X-PLM-Unit` request header.
 | Grade rules on template | No — completely separate; applied on demand to spec only |
 | Dimension-to-size mapping | `TchpSizeRunDimension` — global per size run; UQ on `SizeRunSizeId` (one size = one dimension) |
 | `SizeRunRotateId` renamed | `SizeRunSizeId` — PK on `TchpSizeRunSize`; updated in all FK columns |
+| `TchpSizeRunSize.SizeLabel` role | Stores the **internal/canonical label** (e.g. "M", "30", "260") — used as the fallback display label in POM spec, grading grid, and QC when no regional context is known. Not tied to any regional standard. |
+| `TchpSizeSystemMapping.SystemCode` values | `US \| EU \| UK \| JP \| CN \| INTL` — discriminator for regional sizing standard. `SizeLabel` in that row is the buyer-facing label for that region. INTL row is optional if `TchpSizeRunSize.SizeLabel` already serves as the neutral label. |
+| `SystemCode = INTL` guidance | Do NOT add an INTL row that duplicates `TchpSizeRunSize.SizeLabel` — it is redundant. Only add INTL if the internal label differs from what buyers expect to see. |
 
 ---
 

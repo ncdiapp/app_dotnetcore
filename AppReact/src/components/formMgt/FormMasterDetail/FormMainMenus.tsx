@@ -29,6 +29,7 @@ import RuntimeFieldSettingDrawer from './RuntimeFieldSettingDrawer';
 import { QRCodeCanvas } from 'qrcode.react';
 import { addTab, closeTab } from '../../../redux/features/ui/navigation/tabnavSlice';
 import { store } from '../../../redux/store';
+import TabPrintDialog from '../TabPrintDialog';
 
 function buildFieldErrorKey(rootUnitId: any, fieldDto: any): string {
   const unitId = fieldDto?.TransactionUnitId ?? null;
@@ -233,6 +234,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
   const [refreshConfirmMessage, setRefreshConfirmMessage] = useState(
     'Settings have been updated. Do you want to reload the current form to make the changes take effect?'
   );
+  const [tabPrintOpen, setTabPrintOpen] = useState(false);
   const [shareLinkOpen, setShareLinkOpen] = useState(false);
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
@@ -1050,7 +1052,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
   
   // Handle Report
   const handleReport = (_reportId: number) => {
-    // TODO: Implement report opening
+    setTabPrintOpen(true);
   };
   
   // Render Configuration Menu (Admin only)
@@ -2336,6 +2338,13 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
             />
           </div>
         </EmbeddedLinkedPopupFrame>
+      )}
+      {tabPrintOpen && controllerModel?.transactionId && (
+        <TabPrintDialog
+          transactionId={Number(controllerModel.transactionId)}
+          mainReferenceId={Number(controllerModel.rootPrimaryKeyValue ?? 0)}
+          onClose={() => setTabPrintOpen(false)}
+        />
       )}
     </>
   );
