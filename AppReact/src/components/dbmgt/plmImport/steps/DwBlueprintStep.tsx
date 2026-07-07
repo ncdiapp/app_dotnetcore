@@ -42,16 +42,16 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
     isValidating,
     isPreviewing,
     isExecuting,
-    includeTransactionGroup,
-    includeSearchView,
-    includeNavigation,
   } = dwBlueprintStepUi;
 
   const [previewCv] = useState(() => new CollectionView<PlmDwBlueprintPreviewItemDto>([]));
+  const [progressPercent, setProgressPercent] = useState(0);
+  const [progressMessage, setProgressMessage] = useState<string | null>(null);
+  const [isRefreshingCaches, setIsRefreshingCaches] = useState(false);
 
   const sessionId = state.session?.SessionId ?? null;
   const tablePrefix = state.tablePrefix;
-  const isBusy = isValidating || isPreviewing || isExecuting;
+  const isBusy = isValidating || isPreviewing || isExecuting || isRefreshingCaches;
 
   const blueprintSummary = useMemo(() => {
     if (!blueprint) return null;
@@ -105,6 +105,8 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
       validationWarnings: [],
       lastExecuteResult: null,
     });
+    setProgressPercent(0);
+    setProgressMessage(null);
     showInfo(`Loaded blueprint: ${sourceLabel}`, true);
   }, [onDwBlueprintStepUiChange, showInfo]);
 
@@ -128,27 +130,9 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
     }
   }, [applyLoadedBlueprint, showError, tablePrefix]);
 
-  const handleLoadFromTenant = useCallback(async () => {
-    try {
-      const loadResult = await plmMigrationSvc.loadDwImportBlueprintFromTable(tablePrefix);
-      if (!loadResult.IsSuccessful || !loadResult.Object) {
-        const msg = loadResult.ValidationResult?.Items?.map((i) => i.Message).join('; ')
-          || 'Blueprint not found in tenant table. Run PlmDw_ImportBlueprint.sql first.';
-        showError(msg);
-        return;
-      }
-      applyLoadedBlueprint(
-        loadResult.Object,
-        `${tablePrefix}ImportBlueprint (default)`,
-      );
-    } catch (err: any) {
-      showError(err?.message || 'Failed to load blueprint from tenant database.');
-    }
-  }, [applyLoadedBlueprint, showError, tablePrefix]);
-
   const requireBlueprint = useCallback((): PlmDwImportBlueprintDto | null => {
     if (!blueprint) {
-      showError('Upload or load PlmDw_ImportBlueprint.json first.');
+      showError('Upload PlmDw_ImportBlueprint.json first.');
       return null;
     }
     return blueprint;
@@ -165,6 +149,8 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
       previewItems: [],
       lastExecuteResult: null,
     });
+    setProgressPercent(10);
+    setProgressMessage('Validating blueprint…');
 
     try {
       const validateResult = await plmMigrationSvc.validateDwImportBlueprint(bp);
@@ -174,6 +160,8 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
       onDwBlueprintStepUiChange({ validationErrors: errors, validationWarnings: warnings });
 
       if (errors.length > 0) {
+        setProgressPercent(0);
+        setProgressMessage(null);
         showError(errors.join('; '));
         return;
       }
@@ -182,24 +170,32 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
       }
 
       onDwBlueprintStepUiChange({ isPreviewing: true });
+      setProgressPercent(45);
+      setProgressMessage('Building preview…');
       const previewResult = await plmMigrationSvc.previewDwBlueprintConfig(bp);
       const preview = previewResult.Object;
       if (!preview?.IsSuccess) {
+        setProgressPercent(0);
+        setProgressMessage(null);
         showError(preview?.ErrorMessage || 'Preview failed.');
         return;
       }
       onDwBlueprintStepUiChange({ previewItems: preview.Items ?? [] });
+      setProgressPercent(100);
+      setProgressMessage('Validate & preview complete.');
       if (!warnings.length) {
         showInfo('Blueprint validated. Preview list updated.', true);
       }
     } catch (err: any) {
+      setProgressPercent(0);
+      setProgressMessage(null);
       showError(err?.message || 'Validate failed.');
     } finally {
       onDwBlueprintStepUiChange({ isValidating: false, isPreviewing: false });
     }
   }, [onDwBlueprintStepUiChange, requireBlueprint, showError, showInfo, showWarning]);
 
-  const runExecute = useCallback(async (mode: 'Insert' | 'Update') => {
+  const runExecute = useCallback(async () => {
     const bp = requireBlueprint();
     if (!bp) return;
 
@@ -209,14 +205,16 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
     }
 
     onDwBlueprintStepUiChange({ isExecuting: true, lastExecuteResult: null });
+    setProgressPercent(15);
+    setProgressMessage('Executing blueprint…');
     try {
       const result = await plmMigrationSvc.executeDwBlueprintConfig({
         Blueprint: bp,
         SaasApplicationId: state.saasApplicationId,
-        Mode: mode,
-        IncludeTransactionGroup: includeTransactionGroup,
-        IncludeSearchView: includeSearchView,
-        IncludeNavigation: includeNavigation,
+        Mode: 'Insert',
+        IncludeTransactionGroup: true,
+        IncludeSearchView: true,
+        IncludeNavigation: true,
       });
 
       const exec = result.Object;
@@ -226,6 +224,8 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
         const msg = exec?.ErrorMessage
           || result.ValidationResult?.Items?.map((i) => i.Message).join('; ')
           || 'Execute failed.';
+        setProgressPercent(0);
+        setProgressMessage(null);
         showError(msg);
         return;
       }
@@ -242,19 +242,20 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
 
       const inserted = exec.TransactionsInserted ?? 0;
       const updated = exec.TransactionsUpdated ?? 0;
+      setProgressPercent(100);
+      setProgressMessage(`Complete — inserted ${inserted}, updated ${updated}.`);
       showInfo(
-        `DW Blueprint execute (${mode}) completed. Inserted: ${inserted}, Updated: ${updated}.`,
+        `DW Blueprint execute completed. Inserted: ${inserted}, Updated: ${updated}.`,
         true,
       );
     } catch (err: any) {
+      setProgressPercent(0);
+      setProgressMessage(null);
       showError(err?.message || 'Execute failed.');
     } finally {
       onDwBlueprintStepUiChange({ isExecuting: false });
     }
   }, [
-    includeNavigation,
-    includeSearchView,
-    includeTransactionGroup,
     onDwBlueprintStepUiChange,
     onStateChange,
     requireBlueprint,
@@ -266,58 +267,93 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
     validationErrors.length,
   ]);
 
+  const runRefreshCaches = useCallback(async () => {
+    const transactionIds = (previewItems ?? [])
+      .filter((item) => item.ObjectType === 'Transaction' && (item.ExistingId ?? 0) > 0)
+      .map((item) => item.ExistingId as number);
+    setIsRefreshingCaches(true);
+    setProgressPercent(20);
+    setProgressMessage('Refreshing tenant schema and transaction caches…');
+    try {
+      const result = await plmMigrationSvc.refreshDwImportTenantCaches({
+        TransactionIds: transactionIds,
+        TableNames: ['Plm_Artwork_BOM_prod', 'Plm_Artwork_BOM_prodGrandColorway'],
+      });
+      if (!result.IsSuccessful || !result.Object) {
+        const msg = result.ValidationResult?.Items?.map((i) => i.Message).join('; ')
+          || 'Cache refresh failed.';
+        setProgressPercent(0);
+        setProgressMessage(null);
+        showError(msg);
+        return;
+      }
+      setProgressPercent(100);
+      setProgressMessage('Caches refreshed.');
+      showInfo('Tenant schema and transaction caches refreshed. Retry opening the BOM form.', true);
+    } catch (err: any) {
+      setProgressPercent(0);
+      setProgressMessage(null);
+      showError(err?.message || 'Cache refresh failed.');
+    } finally {
+      setIsRefreshingCaches(false);
+    }
+  }, [previewItems, showError, showInfo]);
+
   const actionBtnClass = (disabled: boolean) => {
     const base = `px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`;
     return disabled ? `${base} opacity-40 cursor-not-allowed` : base;
   };
 
-  const secondaryBtnClass = (disabled: boolean) => {
-    const base = `px-3 py-1.5 text-sm rounded-[4px] ${theme.button_secondary}`;
-    return disabled ? `${base} opacity-40 cursor-not-allowed` : base;
-  };
+  const showProgress = isBusy || (progressMessage != null && progressPercent > 0);
 
   return (
     <div className={`flex flex-col h-full overflow-hidden p-4 gap-3 ${theme.mainContentSection}`}>
-      <div>
-        <h2 className={`text-sm font-semibold ${theme.label}`}>Step 3 — Transaction From DW Blueprint</h2>
-        <p className={`text-xs mt-1 ${theme.menu_secondary}`}>
-          Phase D: apply
-          {' '}
-          <span className="font-mono">PlmDw_ImportBlueprint.json</span>
-          {' '}
-          after tenant tables, field mapping, and data import (Phase C) are in place.
-        </p>
-      </div>
+      <h2 className={`text-sm font-semibold ${theme.label}`}>Step 3 — Transaction From DW Blueprint</h2>
 
-      <div className={`rounded border p-3 flex flex-wrap items-end gap-3 ${theme.inputBox}`}>
-        <div className="flex flex-col gap-1">
-          <span className={`text-xs ${theme.label}`}>Blueprint JSON file</span>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            className="hidden"
-            onChange={handleFileChange}
-          />
-          <button
-            type="button"
-            className={secondaryBtnClass(isBusy)}
-            disabled={isBusy}
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <i className="fa-solid fa-upload mr-1" />
-            Upload JSON
-          </button>
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,application/json"
+          className="hidden"
+          onChange={handleFileChange}
+        />
         <button
           type="button"
-          className={secondaryBtnClass(isBusy)}
+          className={actionBtnClass(isBusy)}
           disabled={isBusy}
-          onClick={handleLoadFromTenant}
-          title={`Load from dbo.${tablePrefix}ImportBlueprint`}
+          onClick={() => fileInputRef.current?.click()}
         >
-          <i className="fa-solid fa-database mr-1" />
-          Load from tenant DB
+          <i className="fa-solid fa-upload mr-1" />
+          Upload JSON
+        </button>
+        <button
+          type="button"
+          className={actionBtnClass(isBusy || !blueprint)}
+          disabled={isBusy || !blueprint}
+          onClick={runValidateAndPreview}
+        >
+          <i className={`fa-solid ${isValidating || isPreviewing ? 'fa-spinner fa-spin' : 'fa-check'} mr-1`} />
+          Validate Preview
+        </button>
+        <button
+          type="button"
+          className={actionBtnClass(isBusy || !blueprint)}
+          disabled={isBusy || !blueprint}
+          onClick={runExecute}
+        >
+          <i className={`fa-solid ${isExecuting ? 'fa-spinner fa-spin' : 'fa-play'} mr-1`} />
+          Execute
+        </button>
+        <button
+          type="button"
+          className={actionBtnClass(isBusy)}
+          disabled={isBusy}
+          onClick={runRefreshCaches}
+          title="After running SQL step 6, refresh schema cache so dropped staging columns are not selected"
+        >
+          <i className={`fa-solid ${isRefreshingCaches ? 'fa-spinner fa-spin' : 'fa-rotate'} mr-1`} />
+          Refresh Caches
         </button>
         {blueprintFileName && (
           <span className={`text-xs ${theme.menu_secondary}`}>
@@ -326,75 +362,36 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
           </span>
         )}
         {blueprintSummary && (
-          <span className={`text-xs ml-auto ${theme.label}`}>{blueprintSummary}</span>
+          <span className={`text-xs ml-auto ${theme.menu_secondary}`}>{blueprintSummary}</span>
         )}
-      </div>
-
-      <div className={`flex flex-wrap items-center gap-4 text-xs ${theme.label}`}>
-        <label className="inline-flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={includeTransactionGroup}
-            disabled={isBusy}
-            onChange={(e) => onDwBlueprintStepUiChange({ includeTransactionGroup: e.target.checked })}
-          />
-          Transaction Group
-        </label>
-        <label className="inline-flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={includeSearchView}
-            disabled={isBusy}
-            onChange={(e) => onDwBlueprintStepUiChange({ includeSearchView: e.target.checked })}
-          />
-          Search / View
-        </label>
-        <label className="inline-flex items-center gap-1.5 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={includeNavigation}
-            disabled={isBusy}
-            onChange={(e) => onDwBlueprintStepUiChange({ includeNavigation: e.target.checked })}
-          />
-          Main menu navigation
-        </label>
         {state.templatesComplete && (
-          <span className={`ml-auto text-xs ${theme.label}`}>
+          <span className={`text-xs ${blueprintSummary ? '' : 'ml-auto'} ${theme.label}`}>
             <i className="fa-solid fa-circle-check mr-1" />
-            Blueprint config applied
+            Applied
           </span>
         )}
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          className={actionBtnClass(isBusy || !blueprint)}
-          disabled={isBusy || !blueprint}
-          onClick={runValidateAndPreview}
-        >
-          <i className={`fa-solid ${isValidating || isPreviewing ? 'fa-spinner fa-spin' : 'fa-check'} mr-1`} />
-          Validate &amp; Preview
-        </button>
-        <button
-          type="button"
-          className={actionBtnClass(isBusy || !blueprint)}
-          disabled={isBusy || !blueprint}
-          onClick={() => runExecute('Insert')}
-        >
-          <i className={`fa-solid ${isExecuting ? 'fa-spinner fa-spin' : 'fa-plus'} mr-1`} />
-          Execute Insert
-        </button>
-        <button
-          type="button"
-          className={secondaryBtnClass(isBusy || !blueprint)}
-          disabled={isBusy || !blueprint}
-          onClick={() => runExecute('Update')}
-        >
-          <i className={`fa-solid ${isExecuting ? 'fa-spinner fa-spin' : 'fa-rotate'} mr-1`} />
-          Execute Update
-        </button>
-      </div>
+      {showProgress && (
+        <div className={`flex-none rounded border px-3 py-2 ${theme.inputBox}`}>
+          <div className={`flex items-center justify-between gap-2 text-xs mb-1.5 ${theme.menu_secondary}`}>
+            <div className="flex items-center gap-2 min-w-0">
+              {isBusy && <i className="fa-solid fa-spinner fa-spin" />}
+              {!isBusy && progressPercent >= 100 && (
+                <i className="fa-solid fa-circle-check" />
+              )}
+              <span className="truncate">{progressMessage}</span>
+            </div>
+            <span className="flex-none">{progressPercent}%</span>
+          </div>
+          <div className={`h-1.5 w-full rounded overflow-hidden ${theme.mainContentSection}`}>
+            <div
+              className={`h-full transition-all duration-300 ${theme.button_default}`}
+              style={{ width: `${Math.min(100, Math.max(0, progressPercent))}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       {(validationErrors.length > 0 || validationWarnings.length > 0) && (
         <div className="flex flex-col gap-2 max-h-28 overflow-auto">
@@ -413,7 +410,7 @@ const DwBlueprintStep: React.FC<DwBlueprintStepProps> = ({
         </div>
       )}
 
-      {lastExecuteResult?.IsSuccess && (
+      {lastExecuteResult?.IsSuccess && !showProgress && (
         <div className={`text-xs px-2 py-1 rounded border ${theme.inputBox} ${theme.label}`}>
           Last run: inserted {lastExecuteResult.TransactionsInserted ?? 0},
           {' '}

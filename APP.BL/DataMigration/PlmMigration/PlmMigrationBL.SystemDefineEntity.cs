@@ -462,10 +462,18 @@ ORDER BY c.EntityID, ISNULL(c.DataRowSort, 9999), c.UserDefineEntityColumnID";
             }
         }
 
+        private static List<PlmSysColumnRow> GetEligibleDisplayColumns(List<PlmSysColumnRow> entityCols)
+        {
+            return entityCols
+                .Where(c => c.UsedByDropDownList && !c.IsPrimaryKey)
+                .OrderBy(c => c.ColOrdinal)
+                .ToList();
+        }
+
         private static void AssignDisplayOrdinals(List<PlmSysColumnRow> entityCols)
         {
             int disp = 0;
-            foreach (var col in entityCols.Where(c => c.UsedByDropDownList).OrderBy(c => c.ColOrdinal))
+            foreach (var col in GetEligibleDisplayColumns(entityCols))
             {
                 disp++;
                 if (disp <= 3)
@@ -476,14 +484,14 @@ ORDER BY c.EntityID, ISNULL(c.DataRowSort, 9999), c.UserDefineEntityColumnID";
         private static void ApplyColumnValidation(PlmSysEntityRow entity, List<PlmSysColumnRow> entityCols)
         {
             var pkCols = entityCols.Where(c => c.IsPrimaryKey).ToList();
-            var displayCols = entityCols.Where(c => c.UsedByDropDownList).OrderBy(c => c.ColOrdinal).ToList();
+            var displayCols = GetEligibleDisplayColumns(entityCols);
 
             entity.PkColumnCount = pkCols.Count;
             entity.DisplayColumnCount = displayCols.Count;
             entity.IdentityField = pkCols.Count == 1 ? pkCols[0].SystemTableColumnName : null;
-            entity.DisplayFiled1 = displayCols.FirstOrDefault(c => c.DisplayOrdinal == 1)?.SystemTableColumnName;
-            entity.DisplayFiled2 = displayCols.FirstOrDefault(c => c.DisplayOrdinal == 2)?.SystemTableColumnName;
-            entity.DisplayFiled3 = displayCols.FirstOrDefault(c => c.DisplayOrdinal == 3)?.SystemTableColumnName;
+            entity.DisplayFiled1 = displayCols.ElementAtOrDefault(0)?.SystemTableColumnName;
+            entity.DisplayFiled2 = displayCols.ElementAtOrDefault(1)?.SystemTableColumnName;
+            entity.DisplayFiled3 = displayCols.ElementAtOrDefault(2)?.SystemTableColumnName;
 
             if (entity.PkColumnCount != 1
                 || entity.DisplayColumnCount < 1

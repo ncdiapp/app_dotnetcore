@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { getStepIndex, PLM_IMPORT_STEPS } from './plmImportStepRegistry';
 import type { PlmImportEntityStepUiState, PlmImportStepCode, PlmImportDwBlueprintStepUiState, PlmImportWizardState } from './types';
@@ -8,6 +8,7 @@ import EntityStep from './steps/EntityStep';
 import DwBlueprintStep from './steps/DwBlueprintStep';
 import FolderImportStep from './steps/FolderImportStep';
 import ImageImportStep from './steps/ImageImportStep';
+import PlmImportSessionGear from './PlmImportSessionGear';
 
 export type PlmImportWizardProps = {
   state: PlmImportWizardState;
@@ -33,7 +34,6 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
   onDiscardSession,
 }) => {
   const { theme } = useTheme();
-  const [isDiscarding, setIsDiscarding] = useState(false);
 
   const activeStepCode = normalizePlmImportStepCode(state.currentStepCode);
   const currentIndex = getStepIndex(activeStepCode);
@@ -66,19 +66,6 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
       goToStep(PLM_IMPORT_STEPS[currentIndex + 1].code);
     }
   }, [currentIndex, goToStep]);
-
-  const handleDiscardClick = useCallback(async () => {
-    if (isDiscarding) return;
-    if (!window.confirm(
-      'Discard this import session and start fresh?\n\nSaved progress (connection, table/entity import state) will no longer be resumed.',
-    )) return;
-    setIsDiscarding(true);
-    try {
-      await onDiscardSession();
-    } finally {
-      setIsDiscarding(false);
-    }
-  }, [isDiscarding, onDiscardSession]);
 
   const getStepTabClass = (isActive: boolean, isLocked: boolean) => {
     if (isLocked) return `${theme.tab} opacity-40 cursor-not-allowed`;
@@ -134,43 +121,28 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
     <div className="flex flex-col h-full w-full overflow-hidden">
       {/* Step header */}
       <div className={`flex-none px-4 py-3 border-b ${theme.mainContentSection}`}>
-        <div className="flex flex-wrap gap-0">
-          {PLM_IMPORT_STEPS.map((step, idx) => {
-            const isActive = step.code === activeStepCode;
-            const isLocked = !canAccessStep(idx);
-            return (
-              <button
-                key={step.code}
-                type="button"
-                onClick={() => goToStep(step.code)}
-                disabled={isLocked}
-                className={`px-3 py-2 text-xs border-b-2 whitespace-nowrap ${getStepTabClass(isActive, isLocked)}`}
-                title={isLocked ? 'Connect to PLM successfully before opening this step.' : step.description}
-              >
-                <i className={`${step.icon} mr-1`} />
-                {idx + 1}. {step.label}
-              </button>
-            );
-          })}
-        </div>
-        {state.session?.SessionId && (
-          <div className={`flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] mt-2 ${theme.menu_secondary}`}>
-            <span>
-              Session #{state.session.SessionId}
-              {state.session.SessionStatus ? ` · ${state.session.SessionStatus}` : ''}
-            </span>
-            <button
-              type="button"
-              className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-semibold rounded-[4px] border ${theme.button_secondary}`}
-              onClick={handleDiscardClick}
-              disabled={isDiscarding}
-              title="Mark this in-progress session as completed and start a new import"
-            >
-              <i className={`fa-solid ${isDiscarding ? 'fa-spinner fa-spin' : 'fa-trash'}`} />
-              Discard Session
-            </button>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap gap-0 min-w-0 flex-auto">
+            {PLM_IMPORT_STEPS.map((step, idx) => {
+              const isActive = step.code === activeStepCode;
+              const isLocked = !canAccessStep(idx);
+              return (
+                <button
+                  key={step.code}
+                  type="button"
+                  onClick={() => goToStep(step.code)}
+                  disabled={isLocked}
+                  className={`px-3 py-2 text-xs border-b-2 whitespace-nowrap ${getStepTabClass(isActive, isLocked)}`}
+                  title={isLocked ? 'Connect to PLM successfully before opening this step.' : step.description}
+                >
+                  <i className={`${step.icon} mr-1`} />
+                  {idx + 1}. {step.label}
+                </button>
+              );
+            })}
           </div>
-        )}
+          <PlmImportSessionGear state={state} onDiscardSession={onDiscardSession} />
+        </div>
       </div>
 
       {/* Step body */}

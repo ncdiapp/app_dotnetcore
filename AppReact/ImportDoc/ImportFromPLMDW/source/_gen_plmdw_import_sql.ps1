@@ -6,6 +6,8 @@ if (-not (Test-Path $configPath)) {
 }
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
 
+. (Join-Path $PSScriptRoot '_gen_plmdw_bom_colorway.ps1')
+
 $templateId = $null
 if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) {
     $templateId = [int]$config.plmTemplateId
@@ -239,7 +241,8 @@ WHERE l.TabID IN ($inList)
 }
 
 function Apply-PlmFieldMetadata($fieldRow, $subItemMetaMap, $gridColMetaMap) {
-    if ($fieldRow.FieldKind -eq 'GridColumn' -and $null -ne $fieldRow.PlmGridId) {
+    $gridBackedKind = $fieldRow.FieldKind -eq 'GridColumn' -or $fieldRow.FieldKind -eq 'GrandchildPivot' -or $fieldRow.FieldKind -eq 'BomColorwayDwSlot'
+    if ($gridBackedKind -and $null -ne $fieldRow.PlmGridId) {
         $gridColumnId = $null
         if ($null -ne $fieldRow.PlmMetaColumnId) { $gridColumnId = [int]$fieldRow.PlmMetaColumnId }
         elseif ($null -ne $fieldRow.SubItemId) { $gridColumnId = [int]$fieldRow.SubItemId }
@@ -313,7 +316,41 @@ function Format-TabDisplayName([string]$appTable) {
     return ($appTable -replace '_', ' ').Trim()
 }
 
-function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subItemMetaMap, $gridColMetaMap, $tabGridVisibleMap, $layoutSubItemSet, $childTabIds) {
+# PS 5.1 ConvertTo-Json unwraps single-element arrays; unary comma preserves JSON array.
+function Get-JsonArrayForSerialize([array]$Items) {
+    if (-not $Items -or $Items.Count -eq 0) { return @() }
+    if ($Items.Count -eq 1) { return ,$Items[0] }
+    return @($Items)
+}
+
+function Fix-BomColorwayBindingsJsonArray([string]$json) {
+    $marker = '"bomColorwayPivotBindings"'
+    $idx = $json.IndexOf($marker)
+    if ($idx -lt 0) { return $json }
+    $colonIdx = $json.IndexOf(':', $idx + $marker.Length)
+    if ($colonIdx -lt 0) { return $json }
+    $pos = $colonIdx + 1
+    while ($pos -lt $json.Length -and [char]::IsWhiteSpace($json[$pos])) { $pos++ }
+    if ($pos -ge $json.Length) { return $json }
+    if ($json[$pos] -eq '[') { return $json }
+    if ($json[$pos] -ne '{') { return $json }
+
+    $json = $json.Insert($pos, '[')
+    $depth = 0
+    for ($i = $pos + 1; $i -lt $json.Length; $i++) {
+        $ch = $json[$i]
+        if ($ch -eq '{') { $depth++ }
+        elseif ($ch -eq '}') {
+            $depth--
+            if ($depth -eq 0) {
+                return $json.Insert($i + 1, ']')
+            }
+        }
+    }
+    return $json
+}
+
+function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subItemMetaMap, $gridColMetaMap, $tabGridVisibleMap, $layoutSubItemSet, $childTabIds, $bomColorwayPivotBindings) {
     $prefix = $config.tablePrefixDefault
     if (-not $prefix.EndsWith('_')) { $prefix += '_' }
     $rootSuffix = $config.rootTableSuffix
@@ -415,6 +452,9 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
     $blueprintFields = @()
     $orderByTable = @{}
     foreach ($r in $allFieldRows) {
+        if ($r.FieldKind -eq 'BomColorwaySlot') { continue }
+        if ($r.FieldKind -eq 'BomColorwayDwSlot') { continue }
+        if ($r.FieldKind -eq 'GrandchildPivot') { continue }
         $appTableFull = if ($r.AppTable -eq $rootSuffix) { $prefix + $rootSuffix } else { $prefix + $r.AppTable }
         if (-not $orderByTable.ContainsKey($appTableFull)) { $orderByTable[$appTableFull] = 0 }
         $orderByTable[$appTableFull]++
@@ -496,6 +536,7 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
         tabSharedTableGroups  = $tabSharedGroups
         transactions          = $transactions
         gridBindings          = $gridBindings
+        bomColorwayPivotBindings = Get-JsonArrayForSerialize @(if ($bomColorwayPivotBindings) { $bomColorwayPivotBindings } else { @() })
         blueprintFields       = $blueprintFields
         searchView            = [ordered]@{
             search     = [ordered]@{
@@ -750,8 +791,12 @@ $ddlParts.Add(@"
 -- =============================================================================
 -- PLM DW → APP physical tables (generated — see ImportFromPLMDW/PROMPT.md)
 -- EXECUTION ORDER:
---   1. PlmDw_Tables.sql          (this file)
---   2. PlmDw_FieldMapping.sql
+--   1. 1_PlmDw_Tables.sql          (this file)
+--   2. 2_PlmDw_FieldMapping.sql
+--   3. 3_PlmDw_ImportFromDW.sql
+--   4. 4_PlmDw_ImportBlueprint.json + Phase D Execute
+--   5. 5_PlmDw_ImportBomColorwayGrandchild.sql  (when BOM colorway grids detected)
+--   6. 6_PlmDw_CleanupBomColorwayStaging.sql
 -- USER SETTINGS (single batch - do not split with GO):
 --   @TablePrefix     table prefix, include trailing underscore (default Plm_)
 --   @RootTableSuffix root table name after prefix (default ReferenceBasicInfo)
@@ -767,6 +812,9 @@ DECLARE @RootTableSuffix NVARCHAR(128) = N'$($config.rootTableSuffix)';     -- <
 DECLARE @TableName       NVARCHAR(128);
 DECLARE @RootTable       NVARCHAR(128);
 DECLARE @FkName          NVARCHAR(128);
+DECLARE @HostTable       NVARCHAR(128);
+DECLARE @ParentFkName    NVARCHAR(128);
+DECLARE @OldRefFkName    NVARCHAR(128);
 DECLARE @sql             NVARCHAR(MAX);
 
 "@)
@@ -835,14 +883,69 @@ foreach ($tab in $config.tabs) {
     foreach ($r in $fieldRows) { [void]$allFieldRows.Add($r) }
 }
 
+Write-Host "Probing PLM for BOM ProductDesignColor colorway grids..."
+$bomColorwayGrids = @(Get-BomColorwayGridsFromPlm $config.grids $config.tablePrefixDefault)
+Write-Host "  BOM colorway grid(s): $($bomColorwayGrids.Count)"
+$bomHostByAppTable = @{}
+foreach ($bg in $bomColorwayGrids) {
+    Write-Host "    Grid $($bg.plmGridId) tab $($bg.plmTabId) block $($bg.productGridBlockId) -> $($bg.grandchildAppTable)"
+    $bomHostByAppTable[$bg.hostAppTable] = $bg
+}
+
 foreach ($grid in $config.grids) {
     [void]$scopeAppTables.Add($grid.appTable)
     $dwCols = Get-DwTableColumns $grid.dwTable
     $parentTabId = if ($grid.parentPlmTabId) { [int]$grid.parentPlmTabId } else { $null }
     $fieldRows = Build-FieldRows $dwCols $grid.dwTable $parentTabId $grid.appTable 'GridColumn' $grid.gridSubItemId $grid.gridId
-    $ddlParts.Add((Build-CreateTableBlock $grid.appTable $fieldRows 'grid'))
-    foreach ($r in $fieldRows) { [void]$allFieldRows.Add($r) }
+    $ddlRows = $fieldRows
+    if ($bomHostByAppTable.ContainsKey($grid.appTable)) {
+        $bomBg = $bomHostByAppTable[$grid.appTable]
+        $rgbEntityId = $bomBg.rgbColorPlmEntityId
+        if (-not $rgbEntityId) { $rgbEntityId = Get-PlmEntityIdBySysTableName 'pdmRGBColor' }
+        Complete-BomColorwayGridPivotSchema $bomBg $fieldRows $bomBg.gridMetaList $rgbEntityId $config
+
+        $stagingMetaIds = [System.Collections.Generic.HashSet[int]]::new()
+        foreach ($slot in @($bomBg.slots)) {
+            foreach ($sv in @($slot.slotValues)) {
+                if ($sv.plmMetaColumnId) { [void]$stagingMetaIds.Add([int]$sv.plmMetaColumnId) }
+            }
+        }
+        $slotRows = @($fieldRows | Where-Object { $_.PlmMetaColumnId -and $stagingMetaIds.Contains([int]$_.PlmMetaColumnId) })
+        $ddlRows = @($fieldRows | Where-Object { -not $_.PlmMetaColumnId -or -not $stagingMetaIds.Contains([int]$_.PlmMetaColumnId) })
+        foreach ($sr in $slotRows) {
+            $sr.FieldKind = 'BomColorwayDwSlot'
+            [void]$allFieldRows.Add($sr)
+        }
+    }
+    $ddlParts.Add((Build-CreateTableBlock $grid.appTable $ddlRows 'grid'))
+    foreach ($r in $ddlRows) { [void]$allFieldRows.Add($r) }
 }
+
+foreach ($bg in $bomColorwayGrids) {
+    [void]$scopeAppTables.Add($bg.grandchildAppTable)
+    if (-not $bg.pivotValueColumns -or $bg.pivotValueColumns.Count -eq 0) {
+        Write-Host "  WARN: BOM grid $($bg.plmGridId) has no pivot value columns - skipping grandchild DDL/fields."
+        continue
+    }
+    $ddlParts.Add((Build-GrandchildColorwayTableBlock $bg.grandchildAppTable $bg.hostAppTable $bg.pivotValueColumns))
+    $pivotCol = if ($bg.sourcePivotKeyColumn) { $bg.sourcePivotKeyColumn } else { 'Color' }
+    $srcRow = $allFieldRows | Where-Object {
+        $_.AppTable -eq $bg.sourceAppTable -and $_.AppColumn -eq $pivotCol -and $_.FieldKind -eq 'GridColumn'
+    } | Select-Object -First 1
+    if ($srcRow) {
+        $bg | Add-Member -NotePropertyName pivotKeyPlmMetaColumnId -NotePropertyValue $srcRow.PlmMetaColumnId -Force
+        if (-not $bg.rgbColorPlmEntityId -and $srcRow.PlmEntityId) {
+            $bg | Add-Member -NotePropertyName rgbColorPlmEntityId -NotePropertyValue $srcRow.PlmEntityId -Force
+        }
+    }
+    if (-not $bg.rgbColorPlmEntityId) {
+        $bg | Add-Member -NotePropertyName rgbColorPlmEntityId -NotePropertyValue (Get-PlmEntityIdBySysTableName 'pdmRGBColor') -Force
+    }
+    Add-GrandchildColorwayFieldRows $allFieldRows $bg
+    Write-BomColorwayPivotColumnNameReport $bg
+}
+
+$bomColorwayPivotBindings = Build-BomColorwayPivotBindings $bomColorwayGrids $config.tablePrefixDefault
 
 [void]$allFieldRows.Add([pscustomobject]@{
     AppTable         = $config.rootTableSuffix
@@ -927,7 +1030,7 @@ foreach ($r in $allFieldRows) {
 $ddlParts.Add('GO')
 $ddlParts.Add('')
 
-$tablesPath = Join-Path $outDir 'PlmDw_Tables.sql'
+$tablesPath = Join-Path $outDir '1_PlmDw_Tables.sql'
 Set-Content -Path $tablesPath -Value ($ddlParts -join "`n") -Encoding UTF8
 
 $valuesLines = New-Object System.Collections.Generic.List[string]
@@ -948,8 +1051,8 @@ $mappingSql = @"
 -- =============================================================================
 -- PLM DW → APP field mapping (generated — see ImportFromPLMDW/PROMPT.md)
 -- EXECUTION ORDER:
---   1. PlmDw_Tables.sql
---   2. PlmDw_FieldMapping.sql    (this file)
+--   1. 1_PlmDw_Tables.sql
+--   2. 2_PlmDw_FieldMapping.sql    (this file)
 -- USER SETTING: @TablePrefix (must match PlmDw_Tables.sql). Default: Plm_
 -- Table: {prefix}FieldMapping
 -- =============================================================================
@@ -987,7 +1090,7 @@ BEGIN
         [PlmMetaColumnId]   INT NULL,
         [PlmBlockId]        INT NULL,
         [DwFkTarget]        NVARCHAR(256) NULL,
-        [FieldKind]         NVARCHAR(16)  NOT NULL,
+        [FieldKind]         NVARCHAR(32)  NOT NULL,
         [PlmControlType]    INT NULL,
         [PlmEntityId]       INT NULL,
         [DwDataType]        NVARCHAR(32)  NULL,
@@ -1012,6 +1115,16 @@ BEGIN
         SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@MappingTable) + N' ADD [DwDataType] NVARCHAR(32) NULL;';
         EXEC sp_executesql @sql;
     END
+    IF EXISTS (
+        SELECT 1 FROM sys.columns AS c
+        WHERE c.object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable))
+          AND c.name = N'FieldKind'
+          AND c.max_length < 64
+    )
+    BEGIN
+        SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@MappingTable) + N' ALTER COLUMN [FieldKind] NVARCHAR(32) NOT NULL;';
+        EXEC sp_executesql @sql;
+    END
 END
 
 SET @sql = N'DELETE FROM dbo.' + QUOTENAME(@MappingTable)
@@ -1034,11 +1147,11 @@ GO
 
 "@
 
-$mappingPath = Join-Path $outDir 'PlmDw_FieldMapping.sql'
+$mappingPath = Join-Path $outDir '2_PlmDw_FieldMapping.sql'
 Set-Content -Path $mappingPath -Value $mappingSql -Encoding UTF8
 
 $importTemplate = Join-Path $PSScriptRoot 'PlmDw_ImportFromDW.sql'
-$importPath = Join-Path $outDir 'PlmDw_ImportFromDW.sql'
+$importPath = Join-Path $outDir '3_PlmDw_ImportFromDW.sql'
 if (-not (Test-Path $importTemplate)) {
     throw "Missing import template: $importTemplate"
 }
@@ -1050,6 +1163,11 @@ $tplId = if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt
     elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId -and [int]$config.plmTemplate.templateId -gt 0) { [int]$config.plmTemplate.templateId }
     else { 'NULL' }
 $importContent = $importContent -replace '(DECLARE @PlmTemplateId\s+INT\s+=\s*)NULL', "`${1}$tplId"
+$importContent = $importContent -replace '(?m)^--   1\. PlmDw_Tables\.sql', '--   1. 1_PlmDw_Tables.sql'
+$importContent = $importContent -replace '(?m)^--   2\. PlmDw_FieldMapping\.sql', '--   2. 2_PlmDw_FieldMapping.sql'
+$importContent = $importContent -replace '(?m)^--   3\. PlmDw_ImportFromDW\.sql', '--   3. 3_PlmDw_ImportFromDW.sql'
+$importContent = $importContent -replace 'PlmDw_FieldMapping\.sql', '2_PlmDw_FieldMapping.sql'
+$importContent = $importContent -replace 'PlmDw_Tables\.sql', '1_PlmDw_Tables.sql'
 Set-Content -Path $importPath -Value $importContent -Encoding UTF8
 
 if (-not $config.blueprint) {
@@ -1075,57 +1193,33 @@ Write-Host "  Tab grid column rows: $($tabGridVisibleMap.Count)"
 Write-Host "Loading PLM pdmTabLayoutSubitem (Tab Design layer)..."
 $layoutSubItemSet = Get-PlmTabLayoutSubItemSet $tabIdsForExtra
 Write-Host "  Tab layout sub-item placements: $($layoutSubItemSet.Count)"
-$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet $childTabIds
-$blueprintPath = Join-Path $outDir 'PlmDw_ImportBlueprint.json'
-$blueprintJson = $blueprintObj | ConvertTo-Json -Depth 20 -Compress
-$blueprintJsonPretty = $blueprintObj | ConvertTo-Json -Depth 20
+$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet $childTabIds $bomColorwayPivotBindings
+$blueprintPath = Join-Path $outDir '4_PlmDw_ImportBlueprint.json'
+$blueprintJsonPretty = Fix-BomColorwayBindingsJsonArray ($blueprintObj | ConvertTo-Json -Depth 20)
 $blueprintJsonPretty | Set-Content -Path $blueprintPath -Encoding UTF8
 
-$escapedBlueprint = $blueprintJson -replace "'", "''"
-$blueprintSql = @"
--- =============================================================================
--- Optional: store Import Blueprint JSON in tenant DB (Phase D helper)
--- Run after PlmDw_FieldMapping.sql if you want DB-stored blueprint copy.
--- =============================================================================
-SET ANSI_NULLS ON
-GO
-SET QUOTED_IDENTIFIER ON
-GO
+Generate-BomColorwaySqlFiles $bomColorwayGrids $config $templateId $outDir
 
-DECLARE @TablePrefix NVARCHAR(32) = N'$($config.tablePrefixDefault)';
-DECLARE @BlueprintTable NVARCHAR(128) = @TablePrefix + N'ImportBlueprint';
-DECLARE @sql NVARCHAR(MAX);
-
-IF OBJECT_ID(N'dbo.' + QUOTENAME(@BlueprintTable), N'U') IS NULL
-BEGIN
-    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@BlueprintTable) + N' (
-        [BlueprintKey]   NVARCHAR(64)  NOT NULL DEFAULT N''default'',
-        [SchemaVersion]  INT           NOT NULL,
-        [BlueprintJson]  NVARCHAR(MAX) NOT NULL,
-        [UpdatedAt]      DATETIME2     NOT NULL DEFAULT SYSUTCDATETIME(),
-        CONSTRAINT [PK_ImportBlueprint] PRIMARY KEY CLUSTERED ([BlueprintKey])
-    );';
-    EXEC sp_executesql @sql;
-END
-
-SET @sql = N'
-MERGE dbo.' + QUOTENAME(@BlueprintTable) + N' AS t
-USING (SELECT N''default'' AS BlueprintKey, 1 AS SchemaVersion, N''$escapedBlueprint'' AS BlueprintJson) AS s
-ON t.BlueprintKey = s.BlueprintKey
-WHEN MATCHED THEN UPDATE SET SchemaVersion = s.SchemaVersion, BlueprintJson = s.BlueprintJson, UpdatedAt = SYSUTCDATETIME()
-WHEN NOT MATCHED THEN INSERT (BlueprintKey, SchemaVersion, BlueprintJson) VALUES (s.BlueprintKey, s.SchemaVersion, s.BlueprintJson);';
-EXEC sp_executesql @sql;
-GO
-"@
-$blueprintSqlPath = Join-Path $outDir 'PlmDw_ImportBlueprint.sql'
-Set-Content -Path $blueprintSqlPath -Value $blueprintSql -Encoding UTF8
+# Remove legacy unnumbered deliverables from prior generator runs
+@(
+    'PlmDw_Tables.sql', 'PlmDw_FieldMapping.sql', 'PlmDw_ImportFromDW.sql',
+    'PlmDw_ImportBlueprint.json', 'PlmDw_ImportBlueprint.sql',
+    'PlmDw_ImportBomColorwayGrandchild.sql', 'PlmDw_CleanupBomColorwayStaging.sql',
+    '4_PlmDw_ImportBomColorwayGrandchild.sql', '5_PlmDw_CleanupBomColorwayStaging.sql', '6_PlmDw_ImportBlueprint.json'
+) | ForEach-Object {
+    $legacy = Join-Path $outDir $_
+    if (Test-Path $legacy) { Remove-Item $legacy -Force }
+}
 
 Write-Host "Output folder: $outDir"
 Write-Host "Generated: $tablesPath"
 Write-Host "Generated: $mappingPath ($($allFieldRows.Count) mappings)"
 Write-Host "Generated: $blueprintPath"
-Write-Host "Generated: $blueprintSqlPath"
 Write-Host "Generated: $importPath"
+if ($bomColorwayGrids.Count -gt 0) {
+    Write-Host "Generated: $(Join-Path $outDir '5_PlmDw_ImportBomColorwayGrandchild.sql')"
+    Write-Host "Generated: $(Join-Path $outDir '6_PlmDw_CleanupBomColorwayStaging.sql')"
+}
 foreach ($t in $config.tabs) {
     $n = @($allFieldRows | Where-Object { $_.AppTable -eq $t.appTable }).Count
     Write-Host "  $($t.appTable): $n columns"

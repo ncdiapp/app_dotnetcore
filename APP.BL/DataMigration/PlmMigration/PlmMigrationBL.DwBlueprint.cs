@@ -213,7 +213,16 @@ WHERE BlueprintKey = @BlueprintKey";
             string integrationId = ResolveDwTransactionIntegrationId(request.Blueprint, plan);
             bool isUpdate = GetTransactionIdByIntegrationId(conn, null, integrationId).HasValue;
             if (string.Equals(mode, DwBlueprintModeInsert, StringComparison.OrdinalIgnoreCase) && isUpdate)
+            {
+              // Insert skips full upsert, but still apply BOM colorway pivot (removes staging AppTransactionField rows).
+              int? existingTxId = GetTransactionIdByIntegrationId(conn, null, integrationId);
+              if (existingTxId.HasValue && plan.BomColorwayPivotBindings?.Count > 0)
+              {
+                ApplyBomColorwayPivotBindingsSql(
+                  conn, null, existingTxId.Value, plan.Tab.TabId, plan.BomColorwayPivotBindings);
+              }
               continue;
+            }
 
             bool applyUpsert = string.Equals(mode, DwBlueprintModeRepair, StringComparison.OrdinalIgnoreCase)
               ? isUpdate
@@ -285,6 +294,20 @@ WHERE BlueprintKey = @BlueprintKey";
             }
           }
 
+          var transactionIdsToRefresh = new List<int>();
+          foreach (var plan in plans)
+          {
+            if (plan.Tab.ImportStatus == TemplateStatusSkipped)
+              continue;
+
+            string integrationId = ResolveDwTransactionIntegrationId(request.Blueprint, plan);
+            int? txId = GetTransactionIdByIntegrationId(conn, null, integrationId);
+            if (txId.HasValue)
+              transactionIdsToRefresh.Add(txId.Value);
+          }
+
+          RefreshDwImportRuntimeCaches(request.Blueprint, transactionIdsToRefresh, tenantDataSourceId);
+
           result.Object.IsSuccess = true;
         }
       }
@@ -297,6 +320,69 @@ WHERE BlueprintKey = @BlueprintKey";
       }
 
       return result;
+    }
+
+    /// <summary>
+    /// Refreshes tenant table schema cache and optional transaction hierarchy caches after DW SQL scripts
+    /// (e.g. step 6 drops host staging columns — stale schema cache still lists them in SELECT).
+    /// </summary>
+    public static OperationCallResult<bool> RefreshDwImportTenantCaches(PlmDwRefreshCachesRequestDto request)
+    {
+      var result = new OperationCallResult<bool>();
+      try
+      {
+        RequirePlmMigrationAdmin();
+        int tenantDataSourceId = GetTenantDataSourceId();
+        RefreshDwImportRuntimeCaches(
+          null,
+          request?.TransactionIds ?? new List<int>(),
+          tenantDataSourceId,
+          request?.TableNames);
+        result.Object = true;
+      }
+      catch (Exception ex)
+      {
+        result.ValidationResult.Items.Add(new ValidationItem(
+          typeof(PlmMigrationBL), "Plm_DwBlueprint_RefreshCaches_Error", ValidationItemType.Error, ex.Message));
+      }
+
+      return result;
+    }
+
+    private static void RefreshDwImportRuntimeCaches(
+      PlmDwImportBlueprintDto blueprint,
+      IReadOnlyList<int> transactionIds,
+      int tenantDataSourceId,
+      IReadOnlyList<string> extraTableNames = null)
+    {
+      RefreshTenantTableSchemaCache(tenantDataSourceId);
+
+      var tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+      if (extraTableNames != null)
+      {
+        foreach (string table in extraTableNames.Where(t => !string.IsNullOrWhiteSpace(t)))
+          tableNames.Add(table.Trim());
+      }
+
+      if (blueprint?.BomColorwayPivotBindings != null)
+      {
+        foreach (var binding in blueprint.BomColorwayPivotBindings.Where(b => b != null))
+        {
+          if (!string.IsNullOrWhiteSpace(binding.HostAppTableName))
+            tableNames.Add(binding.HostAppTableName.Trim());
+          if (!string.IsNullOrWhiteSpace(binding.GrandchildAppTableName))
+            tableNames.Add(binding.GrandchildAppTableName.Trim());
+        }
+      }
+
+      foreach (string tableName in tableNames)
+        AppCacheManagerBL.RefreshOneTableCache(tableName, tenantDataSourceId, "dbo");
+
+      if (transactionIds != null)
+      {
+        foreach (int txId in transactionIds.Distinct())
+          AppCacheManagerBL.RefreshOneHierarchyTransaction(txId);
+      }
     }
 
     private static string GetTenantConnectionString()
@@ -396,6 +482,27 @@ WHERE BlueprintKey = @BlueprintKey";
           int? existingTx = GetTransactionIdByIntegrationId(conn, null, tx.IntegrationId ?? $"Tab_{tx.PlmTabId}");
           if (existingTx.HasValue)
             validation.Warnings.Add($"Transaction {tx.IntegrationId ?? $"Tab_{tx.PlmTabId}"} already exists (ID {existingTx}).");
+        }
+
+        foreach (var binding in blueprint.BomColorwayPivotBindings ?? Enumerable.Empty<PlmDwBlueprintBomColorwayPivotBindingDto>())
+        {
+          if (string.IsNullOrWhiteSpace(binding.HostAppTableName)
+              || string.IsNullOrWhiteSpace(binding.GrandchildAppTableName)
+              || string.IsNullOrWhiteSpace(binding.SourceAppTableName))
+          {
+            validation.Errors.Add($"BOM colorway pivot binding for grid {binding.PlmGridId} is missing host/grandchild/source table names.");
+            continue;
+          }
+
+          string hostTable = QualifyBlueprintTableName(binding.HostAppTableName, prefix);
+          string gcTable = QualifyBlueprintTableName(binding.GrandchildAppTableName, prefix);
+          string srcTable = QualifyBlueprintTableName(binding.SourceAppTableName, prefix);
+          if (!TemplateTableExists(conn, null, hostTable))
+            validation.Errors.Add($"BOM colorway host table dbo.[{hostTable}] does not exist.");
+          if (!TemplateTableExists(conn, null, gcTable))
+            validation.Errors.Add($"BOM colorway grandchild table dbo.[{gcTable}] does not exist.");
+          if (!TemplateTableExists(conn, null, srcTable))
+            validation.Errors.Add($"BOM colorway source table dbo.[{srcTable}] does not exist.");
         }
 
         foreach (var grid in blueprint.GridBindings ?? Enumerable.Empty<PlmDwBlueprintGridBindingDto>())
@@ -1175,11 +1282,61 @@ WHERE SearchId = @SearchId";
             }
           }
 
+          AttachBomColorwayPivotBindingsToPlan(plan, blueprint, prefix, mappingRows, fieldMetaByKey);
+
           plans.Add(plan);
         }
 
         AttachOrphanGridTransactions(blueprint, prefix, mappingRows, fieldMetaByKey, plans);
         return plans;
+      }
+
+      private static void AttachBomColorwayPivotBindingsToPlan(
+        TemplateTabExecutionPlan plan,
+        PlmDwImportBlueprintDto blueprint,
+        string prefix,
+        List<DwFieldMappingRow> mappingRows,
+        Dictionary<string, PlmDwBlueprintFieldDto> fieldMetaByKey)
+      {
+        if (blueprint?.BomColorwayPivotBindings == null || blueprint.BomColorwayPivotBindings.Count == 0)
+          return;
+
+        foreach (var binding in blueprint.BomColorwayPivotBindings.Where(b => b != null && b.PlmTabId == plan.Tab.TabId))
+        {
+          plan.BomColorwayPivotBindings.Add(binding);
+
+          string gcTable = QualifyBlueprintTableName(binding.GrandchildAppTableName, prefix);
+          var gcMappings = mappingRows
+            .Where(m => string.Equals(QualifyBlueprintTableName(m.AppTableName, prefix), gcTable, StringComparison.OrdinalIgnoreCase)
+              || string.Equals(m.AppTableName, binding.GrandchildAppTableName, StringComparison.OrdinalIgnoreCase))
+            .Where(m => string.Equals(m.FieldKind, "GrandchildPivot", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+          int order = 0;
+          foreach (var mapRow in gcMappings.OrderBy(m => m.AppColumnName))
+          {
+            order++;
+            string metaKey = $"{mapRow.AppTableName}|{mapRow.AppColumnName}";
+            fieldMetaByKey.TryGetValue(metaKey, out PlmDwBlueprintFieldDto fieldMeta);
+            if (!plan.GrandchildColumnsByTable.TryGetValue(gcTable, out var gcCols))
+            {
+              gcCols = new List<PlmTemplateSubItemRow>();
+              plan.GrandchildColumnsByTable[gcTable] = gcCols;
+            }
+
+            gcCols.Add(new PlmTemplateSubItemRow
+            {
+              TabId = binding.PlmTabId,
+              SubItemId = mapRow.PlmMetaColumnId ?? 0,
+              SubItemName = fieldMeta?.DisplayLabel ?? mapRow.AppColumnName,
+              ControlType = fieldMeta?.PlmControlType ?? mapRow.PlmControlType ?? InferPlmControlType(mapRow),
+              EntityId = fieldMeta?.PlmEntityId ?? mapRow.PlmEntityId ?? TryParseEntityFromFk(mapRow.DwFkTarget),
+              SortOrder = fieldMeta?.DisplayOrder ?? order,
+              ColumnName = mapRow.AppColumnName,
+              IsVisible = mapRow.AppColumnName != (binding.GrandchildColumns?.ParentLink ?? "ParentRowId")
+            });
+          }
+        }
       }
 
       private static void AttachOrphanGridTransactions(

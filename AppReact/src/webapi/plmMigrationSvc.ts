@@ -710,6 +710,16 @@ class PlmMigrationService {
     if (!response.ok) throw new Error('Failed to execute DW blueprint config');
     return response.json();
   }
+
+  async refreshDwImportTenantCaches(request: PlmDwRefreshCachesRequestDto): Promise<OperationCallResult<boolean>> {
+    const response = await fetch(`${this.baseUrl}/RefreshDwImportTenantCaches`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to refresh DW import tenant caches');
+    return response.json();
+  }
 }
 
 export interface PlmDwImportBlueprintDto {
@@ -880,6 +890,11 @@ export interface PlmDwBlueprintExecuteResultDto {
   TransactionGroupId?: number | null;
   SearchId?: number | null;
   TransactionIds?: number[] | null;
+}
+
+export interface PlmDwRefreshCachesRequestDto {
+  TransactionIds?: number[] | null;
+  TableNames?: string[] | null;
 }
 
 export const plmMigrationSvc = new PlmMigrationService();

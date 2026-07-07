@@ -40,6 +40,11 @@ namespace APP.Components.EntityDto
         public List<PlmDwBlueprintFieldDto> BlueprintFields { get; set; } =
             new List<PlmDwBlueprintFieldDto>();
 
+        /// <summary>BOM grids with ProductDesignColor DCU colorway columns → host + grandchild pivot bindings.</summary>
+        [DataMember]
+        public List<PlmDwBlueprintBomColorwayPivotBindingDto> BomColorwayPivotBindings { get; set; } =
+            new List<PlmDwBlueprintBomColorwayPivotBindingDto>();
+
         [DataMember]
         public PlmDwBlueprintSearchViewDto SearchView { get; set; }
 
@@ -220,6 +225,62 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public bool AttachToRoot { get; set; } = true;
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmDwBlueprintBomColorwayPivotBindingDto
+    {
+        [DataMember]
+        public int PlmTabId { get; set; }
+
+        [DataMember]
+        public int PlmGridId { get; set; }
+
+        [DataMember]
+        public int ProductGridBlockId { get; set; }
+
+        [DataMember]
+        public string HostAppTableName { get; set; }
+
+        [DataMember]
+        public string GrandchildAppTableName { get; set; }
+
+        [DataMember]
+        public string SourceAppTableName { get; set; }
+
+        /// <summary>Source grid field used as pivot column domain (typically Color → pdmRGBColor).</summary>
+        [DataMember]
+        public string SourcePivotKeyColumn { get; set; } = "Color";
+
+        [DataMember]
+        public PlmDwBlueprintGrandchildPivotColumnsDto GrandchildColumns { get; set; }
+
+        [DataMember]
+        public List<string> StagingHostColumnPatterns { get; set; } = new List<string>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmDwBlueprintGrandchildPivotColumnsDto
+    {
+        [DataMember]
+        public string ParentLink { get; set; } = "ParentRowId";
+
+        [DataMember]
+        public string ColorwayKey { get; set; } = "Colorway";
+
+        [DataMember]
+        public List<PlmDwBlueprintGrandchildPivotValueFieldDto> ValueFields { get; set; } =
+            new List<PlmDwBlueprintGrandchildPivotValueFieldDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmDwBlueprintGrandchildPivotValueFieldDto
+    {
+        [DataMember]
+        public string Column { get; set; }
+
+        [DataMember]
+        public bool IsPivotValue { get; set; } = true;
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -413,6 +474,18 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public int? ExistingId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmDwRefreshCachesRequestDto
+    {
+        /// <summary>Transaction IDs to reload hierarchy metadata (e.g. after manual AppTransactionField cleanup).</summary>
+        [DataMember]
+        public List<int> TransactionIds { get; set; } = new List<int>();
+
+        /// <summary>Optional physical table names to refresh individually (e.g. Plm_Artwork_BOM_prod).</summary>
+        [DataMember]
+        public List<string> TableNames { get; set; } = new List<string>();
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

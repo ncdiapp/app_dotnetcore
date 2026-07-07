@@ -1108,6 +1108,8 @@ CREATE TABLE dbo.[{tableName}] (
                 rootChildTables.Add(new HierarchyChildTableDto { TableName = childTable });
             }
 
+            AttachBomColorwayHierarchyChildren(rootChildTables, plan.BomColorwayPivotBindings);
+
             var setup = new HierarchyTableSetupDto
             {
                 MasterTableName = rootTable,
@@ -1162,6 +1164,8 @@ WHERE TransactionID = @TransactionId";
             }
 
             ApplyTransactionFieldPlmMetadataSql(conn, tran, txId, plan, tab);
+
+            ApplyBomColorwayPivotBindingsSql(conn, tran, txId, tab.TabId, plan.BomColorwayPivotBindings);
 
             FixTabTransactionUnitStructure(
                 conn, tran, txId, rootTable,
@@ -1274,6 +1278,11 @@ WHERE TransactionID = @TransactionId
 
             var gridColumns = GetVisibleGridColumnNames(tab.GridColumns);
 
+            foreach (var pair in plan.GrandchildColumnsByTable)
+            {
+                visibleColumnsByTable[pair.Key] = GetVisibleColumnNames(pair.Value);
+            }
+
             var units = new List<(int UnitId, string TableName)>();
             using (var cmd = conn.CreateCommand())
             {
@@ -1305,6 +1314,8 @@ WHERE TransactionID = @TransactionId";
                         allowed = rootColumns;
                     else if (tab.GridColumns.Any(g => string.Equals(g.TableName, unitTable, StringComparison.OrdinalIgnoreCase)))
                         allowed = gridColumns;
+                    else if (plan.GrandchildColumnsByTable.TryGetValue(unitTable, out var gcCols))
+                        allowed = GetVisibleColumnNames(gcCols);
                 }
 
                 SqlSetUnitFieldVisibility(conn, tran, unitId, allowed);

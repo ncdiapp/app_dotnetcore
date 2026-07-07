@@ -186,5 +186,8 @@
     "searchName": "01 - Apparel - 10 Colorways References",
     "searchIntegrationId": "Search_01Apparel10Colorways",
     "folderName": "01 - Apparel - 10 Colorways"
+  },
+  "bomColorwayPivotColumnNames": {
+    "3167": ["ArtworkColor", "ArtworkPhoto"]
   }
 }

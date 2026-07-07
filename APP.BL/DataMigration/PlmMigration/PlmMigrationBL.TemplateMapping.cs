@@ -31,6 +31,11 @@ namespace APP.BL.DataMigration.PlmMigration
             public Dictionary<string, List<PlmTemplateSubItemRow>> ChildColumnsByTable { get; } =
                 new Dictionary<string, List<PlmTemplateSubItemRow>>(StringComparer.OrdinalIgnoreCase);
             public List<PlmTemplateSubItemRow> RootSubItems { get; } = new List<PlmTemplateSubItemRow>();
+            public List<PlmDwBlueprintBomColorwayPivotBindingDto> BomColorwayPivotBindings { get; } =
+                new List<PlmDwBlueprintBomColorwayPivotBindingDto>();
+            /// <summary>Grandchild pivot unit fields (visibility after transaction create).</summary>
+            public Dictionary<string, List<PlmTemplateSubItemRow>> GrandchildColumnsByTable { get; } =
+                new Dictionary<string, List<PlmTemplateSubItemRow>>(StringComparer.OrdinalIgnoreCase);
         }
 
         public static OperationCallResult<PlmTemplateMappingGridDto> GetTemplateTabMappingGrid(int? sessionId)

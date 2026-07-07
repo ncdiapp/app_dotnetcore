@@ -1,7 +1,7 @@
 # PLM Data Warehouse → APP Template Import — Agent Prompt
 
 > **Folder:** `AppReact/ImportDoc/ImportFromPLMDW/`  
-> **Outputs (after Phase B):** `output/{templateId}/PlmDw_Tables.sql`, `output/{templateId}/PlmDw_FieldMapping.sql`, `output/{templateId}/PlmDw_ImportFromDW.sql`, `output/{templateId}/PlmDw_ImportBlueprint.json` (e.g. `output/3351/` for TemplateId 3351)  
+> **Outputs (after Phase B):** `output/{templateId}/1_PlmDw_Tables.sql` … `4_PlmDw_ImportBlueprint.json` (e.g. `output/3351/` for TemplateId 3351). Steps 5–6 are emitted only when BOM ProductDesignColor colorway grids are detected.  
 > **Phase D (BL TOOLS):** `PlmMigration/ExecuteDwBlueprintConfig` — consumes physical tables + FieldMapping + Blueprint to create Transaction / Form / Search / navigation.
 > **Applies to:** any PLM **Template** (not a single product type). APP table names come from DW metadata, not from fixed names in this prompt.
 
@@ -50,7 +50,7 @@ If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** i
 | Rule | Detail |
 |------|--------|
 | **Gate 0** | No PLM + plmDW connection strings **and** one TemplateId from the user → **ask only**; no probe, no Phase A/B (see §Gate 0). |
-| **No server code** | **Never** edit C# / `.csproj` / React WebAPI / BL under `APP.BL`, `AppAI.Web`, etc. **Never** run `dotnet build`, `msbuild`, or any compile step. Deliverables are **SQL + JSON + PowerShell in this folder only**. If the workflow appears to need a code change → **STOP immediately**, explain the gap, and **warn the user** — do not patch the repo. |
+| **No server code** | **Default:** deliverables are **SQL + JSON + PowerShell in this folder only** — no C# / WebAPI edits, no `dotnet build`. **Exception (BOM colorway pivot):** `PlmMigrationBL` pivot/hierarchy support in `APP.BL` is required for Phase D; already in repo. Any *other* BL gap → **STOP**, explain, warn user. |
 | **Two phases** | **Phase A:** DW analysis + APP table proposal + **Blueprint draft** → **STOP for user confirmation**. **Phase B:** generate SQL + Blueprint JSON **after** confirm. **Phase D:** BL TOOLS apply Blueprint to APP config (separate step; user runs in app). |
 | **plmDW is truth** | Column names, SubItem IDs, TabIds from DW — not legacy PLM exports. |
 | **1 Tab → 1 sibling table + N grid tables** | Tab wide table (`PLM_DW_Tab_*_{TabId}`) = the tab's regular sub-items → **sibling** (PK `ReferenceId`). Each materialized grid sub-item (`PLM_DW_Grid_*`) = a **grid table** (PK `RowId` identity). A tab with both yields 1 sibling + 1 grid table per grid; the tab table is never a child. |
@@ -179,7 +179,7 @@ A PLM tab can contain **regular sub-items** and/or **grid sub-items** (`ControlT
 - **Therefore:** a tab that hosts **both** regular and grid sub-items produces **1 sibling table** (regular sub-items) **plus 1 grid table per materialized grid** (each with `RowId` identity PK). **The tab wide table itself is NEVER a child** — hosting a Grid sub-item does **not** turn the tab table into a child unit.
 - **Override (optional):** set `unitType: "child"` or `unitType: "sibling"` on a tab in the config to force the kind. Omit `unitType` → tab wide table defaults to **`sibling`**.
 
-**Re-import note:** tab wide tables keep `[ReferenceId]` as PK — re-running `PlmDw_Tables.sql` does **not** rewrite the PK. Drop the existing table (or `ALTER` PK manually) before re-running only if you set an explicit `unitType: "child"` override.
+**Re-import note:** tab wide tables keep `[ReferenceId]` as PK — re-running `1_PlmDw_Tables.sql` does **not** rewrite the PK. Drop the existing table (or `ALTER` PK manually) before re-running only if you set an explicit `unitType: "child"` override.
 
 ### A7. Confirmation checklist — **STOP**
 
@@ -196,8 +196,48 @@ Ask user to confirm:
 9. Per TabId → Transaction unit structure: tab wide table = **sibling** (regular sub-items); each materialized grid = a **grid/child table** (PK `RowId` identity). Tab table is child only with explicit `unitType: "child"` override  
 10. **Existing transactions** — optional tenant probe: `AppTransaction.IntegrationId = 'Tab_{TabId}'`; mark `importStatus: "Skipped"` in config for tabs that already exist (Phase D Insert also skips automatically)  
 11. Blueprint field counts per Transaction vs FieldMapping rows  
+12. **BOM colorway grids** (if any): auto-detected `ProductDesignColor` DCU columns → grandchild `{HostAppTable}GrandColorway`; **no** `Colorway_N`/`ImageN` on host APP table (DW slot mapping only)  
 
 After user confirms Phase A, record in `source/dwTabImportConfig.json` (see §B1) — include `plmTemplateId`, `plmDatabase`, `plmTemplate` metadata, and per-tab `tabSort`, `isTemplateHeaderTab`, `importStatus`.
+
+### A8. BOM ProductDesignColor colorway grids (auto-detect)
+
+Some BOM grids expose **wide** colorway slots in **DW only** (`Colorway_1` … `Colorway_N`, paired `Image1` … `ImageN`). These are **not** materialized as columns on the host APP table (`Plm_{HostAppTable}`). Step 5 UNPIVOTs directly from the DW grid table into grandchild rows.
+
+| Signal | Source |
+|--------|--------|
+| DCU colorway key columns | `pdmGridMetaColumn.IsDCUForProductGridRef = 1` AND `DCUColumnBlockID` → `pdmBlock.InternalCode = 'ProductDesignColor'` |
+| Host grid / tab / block | `pdmBlockSubItem.ControlType = 6` AND `GridID` → `PdmTabBlock` |
+| Pivot source grid | `ProductDesignColorGrid` (pivot key column `Color`) |
+| Image columns | Paired by slot index (`Colorway_N` + `ImageN`); no `DCUColumnBlockID` on Image cols |
+
+**Transaction layout:** grandchild pivot table `{HostAppTable}GrandColorway` under the **same Tab Transaction** as the host BOM grid (host child → grandchild pivot). Physical columns: `RowId`, `ParentRowId` (FK → host `RowId`), `Colorway`, pivot value columns — **no `ReferenceId`**. Host APP table has **only** normal BOM columns (no `Colorway_N` / `ImageN`). Grandchild `AppTransactionField` control types come from PLM `pdmGridMetaColumn` (DDL + `EntityId`, Image, etc.) via Blueprint Execute.
+
+**FieldKind values:** `BomColorwayDwSlot` (DW wide-slot mapping only — **not** APP columns) | `GrandchildPivot` (normalized pivot storage). `FieldKind` column is `NVARCHAR(32)`.
+
+**Grandchild pivot value column names (Phase A — user confirms before generate):**
+
+PLM BOM grids use **wide slot columns** (`Colorway1`…`Colorway20`, `Image1`…`Image20` in PLM; `Colorway_1` / `Image1` in DW). After UNPIVOT, each slot maps into **one normalized column per business role** — slot numbers are **not** kept in grandchild column names.
+
+| Business role | PLM wide columns | Meaning | Default grandchild name |
+|---------------|------------------|---------|-------------------------|
+| `SlotColorValue` | `ColorwayN` (DCU key column) | Artwork color selected for that colorway cell (FK `pdmRGBColor`) | `ArtworkColor` |
+| `SlotChildImage` | `ImageN` (`MasterDcucolumnId` → ColorwayN) | Artwork sketch/image for that colorway | `ArtworkPhoto` |
+
+The pivot-key column **`Colorway`** (FK `pdmRGBColor`, from `pdmStyleColorWayMapping.StyleColorID`) is separate — do not reuse the name `Colorway` for pivot value columns.
+
+**Phase A checklist — ask user:**
+
+1. Report detected BOM colorway grid(s) and the role mapping above (generator prints this when run).
+2. Confirm grandchild pivot value names, or provide overrides in `dwTabImportConfig.json`:
+
+```json
+"bomColorwayPivotColumnNames": {
+  "3167": ["ArtworkColor", "ArtworkPhoto"]
+}
+```
+
+Array order matches pivot value roles per slot (slot-1 template: color value, then image, then any additional child columns).
 
 ---
 
@@ -267,11 +307,12 @@ Requires `source/dwTabImportConfig.json` (not committed with secrets; example is
 
 | File | Content |
 |------|---------|
-| `output/{templateId}/PlmDw_Tables.sql` | `{prefix}ReferenceBasicInfo` + tab/grid tables from config |
-| `output/{templateId}/PlmDw_FieldMapping.sql` | `{prefix}FieldMapping` DDL + seed |
-| `output/{templateId}/PlmDw_ImportFromDW.sql` | Copied from `source/PlmDw_ImportFromDW.sql` template |
-| `output/{templateId}/PlmDw_ImportBlueprint.json` | Transaction / Form / Search **configuration plan** for BL TOOLS |
-| `output/{templateId}/PlmDw_ImportBlueprint.sql` | Optional tenant table `{prefix}ImportBlueprint` + JSON seed |
+| `1_PlmDw_Tables.sql` | `{prefix}ReferenceBasicInfo` + tab/grid tables + grandchild colorway tables (when detected) |
+| `2_PlmDw_FieldMapping.sql` | `{prefix}FieldMapping` DDL + seed |
+| `3_PlmDw_ImportFromDW.sql` | DW → APP flat import (host/grid/tab tables; **excludes** `BomColorwayDwSlot`) |
+| `4_PlmDw_ImportBlueprint.json` | Transaction / Form / Search plan + `bomColorwayPivotBindings` for Phase D |
+| `5_PlmDw_ImportBomColorwayGrandchild.sql` | **When BOM colorway grids detected:** UNPIVOT DW slots → grandchild rows |
+| `6_PlmDw_CleanupBomColorwayStaging.sql` | **Optional legacy:** drop host `Colorway_N`/`ImageN` if an older import created them |
 
 Generator details:
 - Reads `INFORMATION_SCHEMA` from plmDW  
@@ -285,16 +326,17 @@ Generator details:
 - APP column names: strip `_SubItemId` / `_FK_*`; suffix `_SubItemId` on collisions  
 - Mapping DELETE scoped to **tables in config only** (no `LIKE Fabric_%`)  
 - INSERT values use doubled quotes inside `SET @sql = N'...'` → `N''@P@...''`  
+- **BOM colorway:** `_gen_plmdw_bom_colorway.ps1` (dot-sourced) probes PLM, appends grandchild DDL/field rows, emits steps 5–6, and adds `bomColorwayPivotBindings` to step-4 Blueprint JSON  
 
 ### B3. `{prefix}FieldMapping` schema
 
-`AppTableName`, `AppColumnName`, `DwTableName`, `DwColumnName`, `PlmTabId`, `PlmSubItemId`, `PlmGridSubItemId`, `PlmGridId`, `PlmMetaColumnId`, `PlmBlockId`, `DwFkTarget`, `FieldKind` (`TabField` | `GridColumn` | `ReferenceField`), `PlmControlType`, `PlmEntityId`, `DwDataType`.
+`AppTableName`, `AppColumnName`, `DwTableName`, `DwColumnName`, `PlmTabId`, `PlmSubItemId`, `PlmGridSubItemId`, `PlmGridId`, `PlmMetaColumnId`, `PlmBlockId`, `DwFkTarget`, `FieldKind` (`TabField` | `GridColumn` | `ReferenceField` | `BomColorwayDwSlot` | `GrandchildPivot`) — **`FieldKind` is `NVARCHAR(32)`** (auto-widened on existing tables), `PlmControlType`, `PlmEntityId`, `DwDataType`.
 
-### B3b. `PlmDw_ImportBlueprint.json`
+### B3b. `4_PlmDw_ImportBlueprint.json`
 
-Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMasterSibling` for tab wide tables — the default; `RootPlusChild` only for `unitType: "child"` override tabs — child tab table goes in `unitStructure.childUnits`; grids always land in `gridBindings` / `childUnits`), `fieldPolicy` (`AllMappedColumns` | `ExclusiveSubItemsOnly`), grid bindings, field UI metadata (`blueprintFields`: `plmControlType`, `plmEntityId` / `entityIntegrationId`, `displayLabel`, `isVisible` from PLM), and Search/View/navigation targets. Generated from `dwTabImportConfig.json` + DW column probe + PLM sub-item/grid/extra-info metadata. BL TOOLS: `PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`. On Execute, BL maps PLM control type → `AppTransactionField.ControlType` and resolves `plmEntityId` → tenant `AppEntityInfo.EntityInfoID` via `IntegrationId`.
+Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMasterSibling` for tab wide tables — the default; `RootPlusChild` only for `unitType: "child"` override tabs — child tab table goes in `unitStructure.childUnits`; grids always land in `gridBindings` / `childUnits`), `fieldPolicy` (`AllMappedColumns` | `ExclusiveSubItemsOnly`), grid bindings, field UI metadata (`blueprintFields`: `plmControlType`, `plmEntityId` / `entityIntegrationId`, `displayLabel`, `isVisible` from PLM), Search/View/navigation targets, and **`bomColorwayPivotBindings`** (host/grandchild/source table names, pivot column keys, staging column patterns). Generated from `dwTabImportConfig.json` + DW column probe + PLM sub-item/grid/extra-info metadata + BOM colorway probe. BL TOOLS: `PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`. On Execute, BL maps PLM control type → `AppTransactionField.ControlType`, resolves `plmEntityId` → tenant `AppEntityInfo.EntityInfoID` via `IntegrationId`, and applies pivot bindings (`ApplyBomColorwayPivotBindingsSql` — hides/deletes host staging fields, configures grandchild `EmGridViewDisplayType=7`).
 
-### B4. `output/{templateId}/PlmDw_ImportFromDW.sql`
+### B4. `3_PlmDw_ImportFromDW.sql`
 
 Template: `source/PlmDw_ImportFromDW.sql`. Generator patches `@DwDatabase`, `@PlmDatabase`, `@PlmTemplateId` from config.
 
@@ -308,6 +350,14 @@ SELECT ProductReferenceID FROM dbo.pdmProductTemplate WHERE TemplateID = @PlmTem
 
 Parameters: `@TablePrefix`, `@RootTableSuffix`, `@DwDatabase`, `@PlmDatabase`, `@PlmTemplateId`, `@ImportMode`, `@ReferenceIdList`, `@DryRun`.
 
+### B5. `5_PlmDw_ImportBomColorwayGrandchild.sql` (when detected)
+
+Template: `source/PlmDw_ImportBomColorwayGrandchild.sql`. UNPIVOTs **DW** `Colorway_N` / `ImageN` via `pdmStyleColorWayMapping` into `{HostAppTable}GrandColorway` rows. **Prerequisite:** steps 1–3 completed; step 4 Execute completed; `ProductDesignColorGrid` imported for pivot headers. **FieldMapping:** slot lookup reads `FieldKind = BomColorwayDwSlot` rows from step 2 (legacy `BomColorwaySlot` still supported).
+
+### B6. `6_PlmDw_CleanupBomColorwayStaging.sql` (optional — legacy DBs only)
+
+Template: `source/PlmDw_CleanupBomColorwayStaging.sql`. For databases that **already** have host `Colorway_N`/`ImageN` columns from an older pipeline. **Fresh imports do not need step 6.**
+
 ---
 
 ## Execution order (APP tenant DB)
@@ -315,17 +365,21 @@ Parameters: `@TablePrefix`, `@RootTableSuffix`, `@DwDatabase`, `@PlmDatabase`, `
 Run scripts from **`output/{templateId}/`** (e.g. `output/3351/`):
 
 ```text
-1. output/{templateId}/PlmDw_Tables.sql
-2. output/{templateId}/PlmDw_FieldMapping.sql
-3. output/{templateId}/PlmDw_ImportFromDW.sql
-4. (optional) output/{templateId}/PlmDw_ImportBlueprint.sql — store Blueprint JSON in tenant DB
+1. output/{templateId}/1_PlmDw_Tables.sql
+2. output/{templateId}/2_PlmDw_FieldMapping.sql
+3. output/{templateId}/3_PlmDw_ImportFromDW.sql
+4. output/{templateId}/4_PlmDw_ImportBlueprint.json — Phase D Validate & Execute
+5. output/{templateId}/5_PlmDw_ImportBomColorwayGrandchild.sql   (when BOM colorway grids detected)
+6. output/{templateId}/6_PlmDw_CleanupBomColorwayStaging.sql   (optional — legacy host staging columns only)
 ```
+
+**Order when BOM colorway is present:** steps 1–3 → **step 4 Execute** (or Execute + **Refresh Caches**) → step 5 (grandchild data). Step 6 only if upgrading an old tenant DB that still has host staging columns.
 
 ## Phase D — APP configuration (BL TOOLS)
 
-After physical tables are populated, open **PLM Data Import → Step 3 DW Blueprint** in the app, or call the API directly:
+After physical tables are populated (steps 1–3), open **PLM Data Import → Step 3 DW Blueprint** in the app, or call the API directly:
 
-1. Upload `output/{templateId}/PlmDw_ImportBlueprint.json` (or **Load from tenant DB** if `PlmDw_ImportBlueprint.sql` was run)
+1. Upload `output/{templateId}/4_PlmDw_ImportBlueprint.json`
 2. **Validate & Preview** — runs `ValidateDwImportBlueprint` + `PreviewDwBlueprintConfig`
 3. **Execute Insert** or **Execute Update** — `ExecuteDwBlueprintConfig`
 
@@ -335,7 +389,7 @@ API equivalents: `POST webapi/PlmMigration/ValidateDwImportBlueprint`, `PreviewD
 
 **BL (Phase D):** `SaveDwBlueprintLinkTargets` reads `plmTemplate.templateHeaderTabIds` and per-transaction `isTemplateHeaderTab` / `plmTabSort` from Blueprint JSON — same `TemplateItemType` behavior as legacy Template Import (`TemplateHeader` vs `MainItem`). **New** action targets the first non-header tab.
 
-**Warning (keep in Phase A checklist):** Search link `TemplateItemType` is **only** correct when Blueprint JSON includes header metadata from the PLM probe (`templateHeaderTabIds`, per-tab `isTemplateHeaderTab`, `plmTabSort`). If Phase B omits these fields, BL falls back to **all MainItem** and **New** may target the wrong tab. Agent must verify generated `PlmDw_ImportBlueprint.json` before user runs Execute. Re-run Execute **Update** (or rebuild Search View) after fixing Blueprint. Any further BL gap (e.g. `RepairTemplateLinkTargetItemTypes` against live PLM) → **STOP and warn user** — do not patch CS during PROMPT runtime unless user explicitly authorizes a flow rewrite (as in this session).
+**Warning (keep in Phase A checklist):** Search link `TemplateItemType` is **only** correct when Blueprint JSON includes header metadata from the PLM probe (`templateHeaderTabIds`, per-tab `isTemplateHeaderTab`, `plmTabSort`). If Phase B omits these fields, BL falls back to **all MainItem** and **New** may target the wrong tab. Agent must verify generated `4_PlmDw_ImportBlueprint.json` before user runs Execute. Re-run Execute **Update** (or rebuild Search View) after fixing Blueprint. Any further BL gap (e.g. `RepairTemplateLinkTargetItemTypes` against live PLM) → **STOP and warn user** — do not patch CS during PROMPT runtime unless user explicitly authorizes a flow rewrite (as in this session).
 
 ---
 
@@ -352,9 +406,9 @@ PLM connection + plmDW connection + **new** TemplateId only. Tab list comes from
 | Check | Action |
 |-------|--------|
 | `Tab_{TabId}` exists | Blueprint `importStatus: "Skipped"` optional; Phase D **Insert** skips existing integrationIds |
-| APP table exists | `PlmDw_Tables.sql` — `ALTER ADD` new columns only |
+| APP table exists | `1_PlmDw_Tables.sql` — `ALTER ADD` new columns only |
 | `{prefix}FieldMapping` rows | Scoped DELETE per config tables only |
-| Same `ReferenceId` in shared table | `PlmDw_ImportFromDW.sql` with `@ImportMode='APPEND'` — **no duplicate rows per table** |
+| Same `ReferenceId` in shared table | `3_PlmDw_ImportFromDW.sql` with `@ImportMode='APPEND'` — **no duplicate rows per table** |
 
 ### Phase D — transactions
 
@@ -373,19 +427,24 @@ PLM connection + plmDW connection + **new** TemplateId only. Tab list comes from
 ```text
 ImportFromPLMDW/
   PROMPT.md
+  BOMColorwayPrompt.md              ← stub; see PROMPT.md §A8
   output/                           ← deliverables root
     {templateId}/                   ← one subfolder per plmTemplateId (e.g. 3351/)
-      PlmDw_Tables.sql
-      PlmDw_FieldMapping.sql
-      PlmDw_ImportFromDW.sql
-      PlmDw_ImportBlueprint.json
-      PlmDw_ImportBlueprint.sql
+      1_PlmDw_Tables.sql
+      2_PlmDw_FieldMapping.sql
+      3_PlmDw_ImportFromDW.sql
+      4_PlmDw_ImportBlueprint.json
+      5_PlmDw_ImportBomColorwayGrandchild.sql   (when BOM colorway detected)
+      6_PlmDw_CleanupBomColorwayStaging.sql     (when BOM colorway detected)
   source/
     dwTabImportConfig.example.json
     dwTabImportConfig.json          ← Phase B working config
     _gen_plmdw_import_sql.ps1       ← writes to ../output/{templateId}/
+    _gen_plmdw_bom_colorway.ps1     ← BOM colorway probe + steps 5–6
     _plm_probe_template.sql         ← PLM: template + tabs + ref count
-    PlmDw_ImportFromDW.sql          ← import template
+    PlmDw_ImportFromDW.sql          ← import template (step 3)
+    PlmDw_ImportBomColorwayGrandchild.sql
+    PlmDw_CleanupBomColorwayStaging.sql
     _dw_probe_by_tabids.sql         ← plmDW: tab/grid probe (fill #TabInput from PLM)
 ```
 
@@ -397,15 +456,16 @@ ImportFromPLMDW/
 
 ```text
 [ ] Gate 0: PLM + plmDW connections + one TemplateId? If not → ask and STOP
-[ ] No server code: no .cs edits, no dotnet build — if needed → STOP and warn user
+[ ] BOM colorway: report auto-detected grids (§A8) in Phase A checklist
 [ ] Run _plm_probe_template.sql → TemplateName, tabs, Sort, IsTemplateHeaderTab
 [ ] Build #TabInput from PLM tabs; run _dw_probe_by_tabids.sql on plmDW
 [ ] SubItem overlap analysis among template tabs
 [ ] Propose referenceScope on IsTemplateHeaderTab (or IsMasterReferenceHeaderTab) tab
 [ ] Phase A checklist → WAIT FOR USER
 [ ] Write dwTabImportConfig.json (plmTemplateId + PLM tab metadata)
-[ ] Run _gen_plmdw_import_sql.ps1 → output/{templateId}/PlmDw_*.sql + Blueprint
-[ ] Verify PlmDw_ImportFromDW.sql has @PlmTemplateId + APPEND default
+[ ] Run _gen_plmdw_import_sql.ps1 → output/{templateId}/1_…6_ files
+[ ] Verify 3_PlmDw_ImportFromDW.sql has @PlmTemplateId + APPEND default
+[ ] Verify 4_PlmDw_ImportBlueprint.json includes bomColorwayPivotBindings when steps 5–6 exist
 [ ] Optional: pilot import with @ReferenceIdList
 ```
 
@@ -444,5 +504,5 @@ Agent loads TabIds from `pdmTemplateTab` for TemplateId 42 — user does **not**
 
 - Template Import Wizard / auto transaction builder  
 - `PlmBlockId` backfill  
-- **Any C# / WebAPI / `dotnet build` changes** (see **No server code** hard rule)  
+- **Unrelated C# / WebAPI changes** during PROMPT runs (BOM pivot BL is already in repo)  
 - Full production load without explicit user request  

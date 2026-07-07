@@ -2,9 +2,12 @@
 -- PLM DW → APP product data import (template: source/PlmDw_ImportFromDW.sql)
 -- Deliverable copy: output/PlmDw_ImportFromDW.sql (see ImportFromPLMDW/PROMPT.md)
 -- EXECUTION ORDER:
---   1. PlmDw_Tables.sql
---   2. PlmDw_FieldMapping.sql
---   3. PlmDw_ImportFromDW.sql    (this file)
+--   1. 1_PlmDw_Tables.sql
+--   2. 2_PlmDw_FieldMapping.sql
+--   3. 3_PlmDw_ImportFromDW.sql    (this file)
+--   4. 4_PlmDw_ImportBlueprint.json + Phase D Execute
+--   5. 5_PlmDw_ImportBomColorwayGrandchild.sql  (when BOM colorway grids detected)
+--   6. 6_PlmDw_CleanupBomColorwayStaging.sql
 -- =============================================================================
 SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;

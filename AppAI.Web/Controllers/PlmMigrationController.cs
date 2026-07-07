@@ -402,6 +402,19 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("RefreshDwImportTenantCaches")]
+    public OperationCallResult<bool> RefreshDwImportTenantCaches([FromBody] PlmDwRefreshCachesRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.RefreshDwImportTenantCaches(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<bool>("Plm_DwBlueprint_RefreshCaches_Error", ex);
+        }
+    }
+
     private static OperationCallResult<T> ErrorResult<T>(string code, Exception ex)
     {
         var result = new OperationCallResult<T>();

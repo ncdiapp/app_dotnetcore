@@ -1,7 +1,7 @@
 -- =============================================================================
 -- PLM BOM Grid Colorway cells -> APP Grandchild (ChildUnitPivotColumns storage)
 -- Template: source/PlmDw_ImportBomColorwayGrandchild.sql
--- Deliverable: output/{templateId}/PlmDw_ImportBomColorwayGrandchild.sql
+-- Deliverable: output/{templateId}/5_PlmDw_ImportBomColorwayGrandchild.sql
 --
 -- UNPIVOTs PLM DW wide Colorway_N / Image_N slots into normalized grandchild rows.
 -- Column key (Colorway) = pdmStyleColorWayMapping.StyleColorID (explicit popup mapping).
@@ -9,11 +9,13 @@
 --
 -- EXECUTION (on TENANT database -- host + grandchild physical tables):
 --   Prerequisites:
---     1. PlmDw_Tables.sql
---     2. PlmDw_FieldMapping.sql
---     3. PlmDw_ImportFromDW.sql  (host BOM rows must exist)
---     4. Source colorway grid imported (e.g. Plm_ProductDesignColorGrid) for pivot column headers
---   Then run this script.
+--     1. 1_PlmDw_Tables.sql
+--     2. 2_PlmDw_FieldMapping.sql
+--     3. 3_PlmDw_ImportFromDW.sql  (host BOM rows must exist)
+--     4. 4_PlmDw_ImportBlueprint.json + Phase D Execute
+--     Source colorway grid imported (e.g. Plm_ProductDesignColorGrid) for pivot column headers
+--   Then run this script (step 5 in pipeline).
+--   Step 6 (legacy cleanup) only needed for databases created before BomColorwayDwSlot change.
 -- =============================================================================
 SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;
@@ -140,7 +142,8 @@ END
 
 PRINT N'BOM Colorway grandchild import scope: ' + CAST(@RowCnt AS NVARCHAR(20)) + N' reference(s). Mode=' + @ImportMode;
 
--- Slot map from tenant FieldMapping (Colorway_N <-> ImageN <-> PlmMetaColumnId)
+-- Slot map from tenant FieldMapping (DW Colorway_N / ImageN columns — not APP host table columns).
+-- FieldKind: BomColorwayDwSlot (current) or legacy BomColorwaySlot / GridColumn.
 SET @sql = N'
 INSERT INTO #SlotMap ([SlotNo], [ColorWayGridColumnId], [ColorwayDwColumn], [ImageDwColumn])
 SELECT
@@ -156,7 +159,7 @@ LEFT JOIN dbo.' + QUOTENAME(@MappingTable) + N' AS img
         + TRY_CAST(REPLACE(cw.[AppColumnName], N''Colorway_'', N'''') AS NVARCHAR(10))
 WHERE cw.[AppTableName] = @hostApp
   AND cw.[PlmGridId] = @gridId
-  AND cw.[FieldKind] = N''GridColumn''
+  AND cw.[FieldKind] IN (N''BomColorwayDwSlot'', N''BomColorwaySlot'', N''GridColumn'')
   AND cw.[AppColumnName] LIKE N''Colorway[_]%''
   AND cw.[PlmMetaColumnId] IS NOT NULL
   AND TRY_CAST(REPLACE(cw.[AppColumnName], N''Colorway_'', N'''') AS INT) IS NOT NULL;';
