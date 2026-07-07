@@ -384,9 +384,6 @@ namespace App.BL
         {
             var entities = new EntityCollection<AppCompanyEntity>();
 
-
-
-
             using (DataAccessAdapter adapater = new DataAccessAdapter(AppCompanyBL.AppMasterDBConnectionString))
             {
                 IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppCompanyEntity);
@@ -394,6 +391,19 @@ namespace App.BL
 
                 IRelationPredicateBucket filter = new RelationPredicateBucket(AppCompanyFields.ParentCompayId == DBNull.Value
                     & AppCompanyFields.AppCompanyId != AppCacheManagerBL.HostCompanyReserveId);
+
+                if (ServerContext.Instance?.CurrentLoginUserType != (int)EmAppUserType.SysAdmin)
+                {
+                    int? companyId = ControlTypeValueConverter.ConvertValueToInt(ServerContext.Instance?.CurrentCompanyId);
+                    if (companyId.HasValue)
+                    {
+                        filter.PredicateExpression.Add(AppCompanyFields.AppCompanyId == companyId.Value);
+                    }
+                    else
+                    {
+                        return new List<AppCompanyDto>();
+                    }
+                }
 
                 adapater.FetchEntityCollection(entities, filter, rootPath);
             }

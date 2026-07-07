@@ -65,14 +65,19 @@ const DataSourceRegister: React.FC = () => {
         cv.sourceCollection = allDatasources;
     }, [cv, allDatasources]);
 
-    // Apply Wijmo's own filter whenever the selected company changes.
+    // SysAdmin only: filter grid by selected company in the left panel.
+    // Tenant users receive tenant-scoped data from the server — no client-side data filter.
     useEffect(() => {
-        cv.filter =
-            selectedCompanyId === ALL_COMPANIES_ID
-                ? null
-                : (item: any) => Number(item.DataSourceOwnerCompanyId) === selectedCompanyId;
+        if (!isSysAdmin) {
+            cv.filter = null;
+        } else {
+            cv.filter =
+                selectedCompanyId === ALL_COMPANIES_ID
+                    ? null
+                    : (item: any) => Number(item.DataSourceOwnerCompanyId) === selectedCompanyId;
+        }
         cv.refresh();
-    }, [cv, selectedCompanyId]);
+    }, [cv, selectedCompanyId, isSysAdmin]);
 
     const dataSourceTypeOptions = useMemo(() => {
         if (!enumMap) return [];
@@ -93,26 +98,24 @@ const DataSourceRegister: React.FC = () => {
         setIsLoading(true);
         dispatch(setIsBusy());
         try {
-            const dataSourceList = await adminSvc.retrieveAllAppDataSourceRegisterExDto();
-            const normalizedList = Array.isArray(dataSourceList) ? [...dataSourceList] : [];
+            const [dataSourceList, companyList] = await Promise.all([
+                adminSvc.retrieveAllAppDataSourceRegisterExDto(),
+                isSysAdmin
+                    ? adminSvc.retrieveAllSaasCompanyDtoList()
+                    : adminSvc.retrieveCurrentUserCompanyExDto().then((company) =>
+                        company?.Id != null ? [company] : []),
+            ]);
 
-            if (isSysAdmin) {
-                const companyList = await adminSvc.retrieveAllSaasCompanyDtoList();
-                const normalizedCompanies = Array.isArray(companyList) ? companyList : [];
-                setCompanies(normalizedCompanies);
-            } else {
-                const company = await adminSvc.retrieveCurrentUserCompanyExDto();
-                const normalizedCompanies =
-                    company?.Id != null
-                        ? [{ Id: company.Id, Code: company.Code, ShortName: company.ShortName }]
-                        : [];
-                setCompanies(normalizedCompanies);
-                if (company?.Id != null) {
-                    setSelectedCompanyId(company.Id);
-                }
-            }
+            const normalizedList = Array.isArray(dataSourceList) ? [...dataSourceList] : [];
+            const normalizedCompanies = Array.isArray(companyList) ? companyList : [];
 
             setAllDatasources(normalizedList);
+            setCompanies(normalizedCompanies);
+
+            if (!isSysAdmin && normalizedCompanies[0]?.Id != null) {
+                setSelectedCompanyId(normalizedCompanies[0].Id);
+            }
+
             setDeletedItemIds([]);
             setValidationMessages([]);
         } catch (error) {
