@@ -64,6 +64,11 @@
     <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 
+  <!-- Print engine — headless Chromium PDF generation -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Playwright" Version="1.49.0" />
+  </ItemGroup>
+
   <!-- Business + infrastructure layers -->
   <ItemGroup>
     <!-- APP.BL.Core pulls in transitive: Framework, Dto, EntityConverter, LBL, etc. -->

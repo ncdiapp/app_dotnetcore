@@ -8,7 +8,6 @@ using APP.Components.EntityDto;
 using APP.Framework;
 using APP.Framework.Communication;
 using APP.Framework.Validation;
-using AppWebPluin.Models;
 using AppAI.Web.Controllers.Base;
 
 namespace AppAI.Web.Controllers;
@@ -32,15 +31,6 @@ public class QueryAgentController : SecureBaseController
         var currentIdentity = ServerContext.Instance.CurrnetClientIdentity;
         if (currentIdentity is AppClientIdentity)
             agentIdentity = (AppClientIdentity)currentIdentity;
-
-        HttpBasicAuthenticator.RegisterSysTemAgentWebUserIdentity();
-
-        if (!agentIdentity.HasValue)
-        {
-            currentIdentity = ServerContext.Instance.CurrnetClientIdentity;
-            if (currentIdentity is AppClientIdentity)
-                agentIdentity = (AppClientIdentity)currentIdentity;
-        }
 
         var result = new OperationCallResult<AppBuilderAgentStartResultDto>();
 

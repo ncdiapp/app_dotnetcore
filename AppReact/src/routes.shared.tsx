@@ -60,6 +60,7 @@ import { DbaGenie } from './components/dbgenie';
 import AISkillManagement from './components/aiskill/AISkillManagement';
 import AppBuilderAgent from './components/integration/AppBuilderAgent';
 import AppReportAgent from './components/search/AppReportAgent';
+import ReportManagement from './components/admin/ReportManagement';
 import MessageManagement from './components/message/MessageManagement';
 import MessageEditor from './components/message/MessageEditor';
 import MessageTemplateManagement from './components/message/MessageTemplateManagement';
@@ -160,6 +161,10 @@ export const AUTHENTICATED_ROUTES: SharedRouteDef[] = [
   // AppReport AI Agent
   { path: 'app-report-agent/:param', element: <AppReportAgent /> },
   { path: 'app-report-agent', element: <AppReportAgent /> },
+
+  // Report Management (print engine template designer)
+  { path: 'report-management/:param', element: <ReportManagement /> },
+  { path: 'report-management', element: <ReportManagement /> },
 
   { path: 'FormMasterDetail/:param', element: <FormMasterDetail /> },
   { path: 'FormMasterDetail', element: <FormMasterDetail /> },

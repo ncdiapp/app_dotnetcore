@@ -69,8 +69,8 @@ namespace App.BL
             AppReportEntity aAppReportEntity = RetrieveOneAppReportEntity(Id);
             AppReportExDto aAppReportExDto = AppReportConverter.ConvertEntityToExDto(aAppReportEntity);
 
-          
-
+            if (aAppReportExDto?.Id != null)
+                aAppReportExDto.ReportTemplate = AppReportTemplateBL.GetByReportId((int)aAppReportExDto.Id);
 
             return aAppReportExDto;
         }
@@ -145,6 +145,12 @@ namespace App.BL
                 var entity = AppReportBL.RetrieveOneAppReportEntity(aAppReportExDto.Id);
                 aOperationCallResult.Object = AppReportConverter.ConvertEntityToExDto(entity);
 
+                if (aAppReportExDto.ReportTemplate != null)
+                {
+                    aAppReportExDto.ReportTemplate.ReportId = (int)aAppReportExDto.Id;
+                    AppReportTemplateBL.Save(aAppReportExDto.ReportTemplate);
+                    aOperationCallResult.Object.ReportTemplate = AppReportTemplateBL.GetByReportId((int)aAppReportExDto.Id);
+                }
             }
 
             return aOperationCallResult;

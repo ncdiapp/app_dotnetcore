@@ -69,6 +69,10 @@ try
         });
     }
 
+    // ── Print engine ─────────────────────────────────────────────────────────
+    builder.Services.AddMemoryCache();
+    builder.Services.AddSingleton<AppAI.Web.Services.PrintTokenService>();
+
     // ── Session ───────────────────────────────────────────────────────────────
     // Production: swap AddDistributedMemoryCache → AddStackExchangeRedisCache
     builder.Services.AddDistributedMemoryCache();
