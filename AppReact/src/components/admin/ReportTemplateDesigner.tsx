@@ -221,8 +221,12 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   const [leftTab, setLeftTab]               = useState<'blocks' | 'tokens'>('blocks');
   const [dsExpanded, setDsExpanded]         = useState(false);
   const [pdfPreviewing, setPdfPreviewing]   = useState(false);
+  const [viewMode, setViewMode]             = useState<'split' | 'visual'>('split');
+  const [draggingToken, setDraggingToken]   = useState<string | null>(null);
+  const [dropIndicatorY, setDropIndicatorY] = useState<number | null>(null);
 
   const editorRef    = useRef<any>(null);
+  const iframeRef    = useRef<HTMLIFrameElement>(null);
   const previewTimer = useRef<number | null>(null);
 
   // Load report on mount
@@ -293,6 +297,66 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
     setTemplateHtml(html);
     schedulePreview(html);
   };
+
+  const handleHtmlPreview = () => {
+    if (!previewHtml) return;
+    const blob = new Blob([previewHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+  };
+
+  // Drop a dragged token/block onto the visual preview iframe.
+  // Uses elementFromPoint on the iframe document (sandbox=allow-same-origin) to find
+  // the rendered element at the drop position, then matches it by tag+index back to
+  // the source HTML and inserts the text after that element's closing tag.
+  const insertTokenAtDropPosition = useCallback((token: string, clientX: number, clientY: number) => {
+    const iframe = iframeRef.current;
+    const iframeDoc = iframe?.contentDocument;
+
+    const fallback = (html: string) => {
+      const next = html + '\n' + token;
+      setTemplateHtml(next);
+      schedulePreview(next);
+    };
+
+    if (!iframeDoc || !templateHtml) { fallback(templateHtml); return; }
+
+    const iframeRect = iframe!.getBoundingClientRect();
+    const x = clientX - iframeRect.left;
+    const y = clientY - iframeRect.top;
+
+    const el = iframeDoc.elementFromPoint(x, y);
+    if (!el) { fallback(templateHtml); return; }
+
+    // Walk up to a meaningful block-level ancestor
+    const BLOCKS = new Set(['H1','H2','H3','H4','H5','H6','P','TABLE','UL','OL','SECTION','ARTICLE','DIV']);
+    let target: Element = el;
+    while (target.parentElement && !BLOCKS.has(target.tagName) && target.tagName !== 'BODY') {
+      target = target.parentElement;
+    }
+    if (target.tagName === 'BODY' || target.tagName === 'HTML') { fallback(templateHtml); return; }
+
+    const tagName = target.tagName.toLowerCase();
+    const siblings = Array.from(iframeDoc.querySelectorAll(tagName));
+    const elIdx = siblings.indexOf(target as HTMLElement);
+
+    const html = templateHtml;
+    const re = new RegExp(`<${tagName}[\\s>/]`, 'gi');
+    const htmlMatches = Array.from(html.matchAll(re));
+
+    const safeIdx = Math.max(0, Math.min(elIdx, htmlMatches.length - 1));
+    if (htmlMatches.length === 0) { fallback(html); return; }
+
+    const openPos = htmlMatches[safeIdx].index!;
+    const closeTag = `</${tagName}>`;
+    const closePos = html.indexOf(closeTag, openPos);
+    const insertPos = closePos !== -1 ? closePos + closeTag.length : openPos + htmlMatches[safeIdx][0].length;
+
+    const next = html.slice(0, insertPos) + '\n' + token + html.slice(insertPos);
+    setTemplateHtml(next);
+    schedulePreview(next);
+  }, [templateHtml, schedulePreview]);
 
   const handlePdfPreview = async () => {
     setPdfPreviewing(true);
@@ -374,6 +438,15 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
         <input type="number" className={`h-7 w-14 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} value={marginMm} onChange={e => setMarginMm(Number(e.target.value))} />
         <div className="flex-auto" />
         {error && <span className="text-xs text-red-500 shrink-0">{error}</span>}
+        <button
+          onClick={handleHtmlPreview}
+          disabled={!previewHtml}
+          title="Open rendered HTML in new tab"
+          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 border border-blue-300 text-blue-500
+            hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
+        >
+          <i className="fa-solid fa-globe mr-1" />HTML Preview
+        </button>
         <button
           onClick={handlePdfPreview}
           disabled={pdfPreviewing || !templateHtml}
@@ -468,8 +541,16 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                     {REPORT_BLOCKS.map(block => (
                       <button
                         key={block.label}
+                        draggable
+                        onDragStart={e => {
+                          e.dataTransfer.setData('text/plain', block.html);
+                          e.dataTransfer.effectAllowed = 'copy';
+                          setDraggingToken(block.html);
+                        }}
+                        onDragEnd={() => { setDraggingToken(null); setDropIndicatorY(null); }}
                         onClick={() => insertAtCursor(block.html)}
-                        className={`w-full text-left px-2 py-1.5 text-xs rounded-[4px] border ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 transition-colors`}
+                        title="Click to insert at cursor · Drag onto preview"
+                        className={`w-full text-left px-2 py-1.5 text-xs rounded-[4px] border ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 transition-colors cursor-grab active:cursor-grabbing`}
                       >
                         <i className={`${block.icon} ${block.color} mr-1.5 w-3`} />
                         {block.label}
@@ -494,11 +575,27 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                     {dataSources.some(s => s.value.trim()) ? 'Click ↻ to load' : 'Configure a source first'}
                   </p>
                 ) : (
+                  <>
+                  {draggingToken === null && (
+                    <p className={`text-[10px] px-2 pb-1 opacity-50 ${theme.label}`}>
+                      Click to insert · Drag onto preview
+                    </p>
+                  )}
                   <div className="space-y-0.5">
                     {tokens.map((tok, i) => (
-                      <button key={i} onClick={() => insertAtCursor(tok.Token)}
-                        title={`${tok.ResultSet}.${tok.Field}`}
-                        className={`w-full text-left px-2 py-1 text-xs rounded truncate ${theme.contextMenu}`}>
+                      <button
+                        key={i}
+                        draggable
+                        onDragStart={e => {
+                          e.dataTransfer.setData('text/plain', tok.Token);
+                          e.dataTransfer.effectAllowed = 'copy';
+                          setDraggingToken(tok.Token);
+                        }}
+                        onDragEnd={() => { setDraggingToken(null); setDropIndicatorY(null); }}
+                        onClick={() => insertAtCursor(tok.Token)}
+                        title={`Click to insert · Drag onto preview\n${tok.Token}`}
+                        className={`w-full text-left px-2 py-1 text-xs rounded truncate cursor-grab active:cursor-grabbing ${theme.contextMenu}`}
+                      >
                         {tok.InsideEach ? <span className="opacity-50 mr-1">↳</span>
                           : tok.IsList ? <i className="fa-solid fa-list mr-1 text-blue-400" />
                           : <i className="fa-solid fa-tag mr-1 text-green-400" />}
@@ -506,23 +603,26 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                       </button>
                     ))}
                   </div>
+                  </>
                 )}
               </div>
             )}
           </div>
         </div>
 
-        {/* ── Right side: Preview (top 55%) + Code editor (bottom 45%) ── */}
+        {/* ── Right side: Code mode OR Visual mode (never both) ── */}
         <div className="flex-auto flex flex-col overflow-hidden">
 
-          {/* Preview area */}
-          <div className="flex flex-col" style={{ height: '55%' }}>
-            <div className={`flex items-center gap-2 px-3 py-1 text-xs shrink-0 border-b ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
-              <span className={`font-medium ${theme.label}`}>
-                <i className="fa-solid fa-eye mr-1 text-blue-400" />Preview — {pageSize} {orientation}
-              </span>
-              <div className="flex items-center gap-1 ml-2">
-                <span className={`${theme.label} opacity-70`}>Ref ID:</span>
+          {/* Shared mode toggle strip */}
+          <div className={`flex items-center gap-2 px-3 py-1 shrink-0 border-b ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
+            {viewMode === 'visual' ? (
+              /* Visual bar — Ref ID + Refresh on left, toggle on right */
+              <>
+                <i className="fa-solid fa-eye text-blue-400 text-xs shrink-0" />
+                <span className={`text-xs font-medium ${theme.label} shrink-0`}>
+                  Preview — {pageSize} {orientation}
+                </span>
+                <span className={`text-xs ${theme.label} opacity-70`}>Ref ID:</span>
                 <input
                   type="number"
                   className={`h-6 w-20 px-1.5 text-xs border rounded-[4px] ${theme.inputBox}`}
@@ -536,30 +636,48 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                 >
                   <i className="fa-solid fa-rotate mr-1" />Refresh
                 </button>
-              </div>
-            </div>
-            <div className="h-1 flex-auto overflow-auto bg-white">
-              <iframe
-                title="report-preview"
-                srcDoc={previewHtml || `<div style="padding:32px;text-align:center;font-family:Arial,sans-serif;color:#9ca3af">
-                  <div style="font-size:48px;margin-bottom:12px">📄</div>
-                  <p style="font-size:14px;margin:0 0 8px">Select a template from the left panel, or insert blocks to start designing</p>
-                  <p style="font-size:12px">Preview updates automatically as you type</p>
-                </div>`}
-                style={{ width: '100%', height: '100%', border: 'none' }}
-                sandbox="allow-same-origin"
-              />
+              </>
+            ) : (
+              /* Code bar — label on left */
+              <>
+                <i className="fa-solid fa-code text-gray-400 text-xs shrink-0" />
+                <span className={`text-xs font-medium ${theme.label}`}>HTML / CSS</span>
+                <span className={`text-xs opacity-40 ${theme.label}`}>— click or drag blocks/tokens to insert</span>
+              </>
+            )}
+            <div className="flex-auto" />
+            {/* Toggle pill */}
+            <div className="flex shrink-0 rounded-[4px] overflow-hidden border border-gray-300">
+              <button
+                onClick={() => setViewMode('split')}
+                title="Full-screen HTML/CSS editor"
+                className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'split' ? 'bg-blue-500 text-white' : theme.button_default}`}
+              >
+                <i className="fa-solid fa-code mr-1" />Code
+              </button>
+              <button
+                onClick={() => setViewMode('visual')}
+                title="Visual preview — drag tokens onto the layout"
+                className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'visual' ? 'bg-blue-500 text-white' : theme.button_default}`}
+              >
+                <i className="fa-solid fa-paintbrush mr-1" />Visual
+              </button>
             </div>
           </div>
 
-          {/* Code editor area */}
-          <div className="flex flex-col" style={{ height: '45%' }}>
-            <div className={`flex items-center px-3 py-1 text-xs shrink-0 border-t border-b ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
-              <i className="fa-solid fa-code mr-1.5 text-gray-400" />
-              <span className={`font-medium ${theme.label}`}>HTML / CSS</span>
-              <span className={`ml-2 opacity-50 ${theme.label}`}>— click blocks above to insert, or type directly</span>
-            </div>
-            <div className="h-1 flex-auto overflow-hidden">
+          {/* ── CODE mode: full-height Monaco editor ── */}
+          {viewMode === 'split' && (
+            <div
+              className={`h-1 flex-auto overflow-hidden ${draggingToken !== null ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
+              onDragOver={e => { if (draggingToken !== null) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }}
+              onDrop={e => {
+                if (draggingToken === null) return;
+                e.preventDefault();
+                insertAtCursor(draggingToken);
+                setDraggingToken(null);
+                setDropIndicatorY(null);
+              }}
+            >
               <JsonCodeEditor
                 language="html"
                 value={templateHtml}
@@ -568,7 +686,66 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                 onMount={(editor) => { editorRef.current = editor; }}
               />
             </div>
-          </div>
+          )}
+
+          {/* ── VISUAL mode: full-height preview iframe + drag-drop overlay ── */}
+          {viewMode === 'visual' && (
+            <div className="relative h-1 flex-auto overflow-hidden bg-white">
+              <iframe
+                ref={iframeRef}
+                title="report-preview"
+                srcDoc={previewHtml || `<div style="padding:32px;text-align:center;font-family:Arial,sans-serif;color:#9ca3af">
+                  <div style="font-size:48px;margin-bottom:12px">📄</div>
+                  <p style="font-size:14px;margin:0 0 8px">Select a template from the left panel, or insert blocks to start designing</p>
+                  <p style="font-size:12px">Switch to Visual mode and drag tokens onto the layout</p>
+                </div>`}
+                style={{ width: '100%', height: '100%', border: 'none' }}
+                sandbox="allow-same-origin"
+              />
+
+              {/* Transparent overlay — captures drag events over the iframe */}
+              {draggingToken !== null && (
+                <div
+                  className="absolute inset-0"
+                  style={{ cursor: 'crosshair', zIndex: 20, background: 'rgba(59,130,246,0.04)' }}
+                  onDragOver={e => {
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setDropIndicatorY(e.clientY - rect.top);
+                  }}
+                  onDragLeave={() => setDropIndicatorY(null)}
+                  onDrop={e => {
+                    e.preventDefault();
+                    insertTokenAtDropPosition(draggingToken, e.clientX, e.clientY);
+                    setDraggingToken(null);
+                    setDropIndicatorY(null);
+                  }}
+                />
+              )}
+
+              {/* Blue drop-position line */}
+              {draggingToken !== null && dropIndicatorY !== null && (
+                <div
+                  className="absolute left-0 right-0 pointer-events-none"
+                  style={{ top: dropIndicatorY, height: 2, background: '#3b82f6', boxShadow: '0 0 6px rgba(59,130,246,0.5)', zIndex: 21 }}
+                >
+                  <span className="absolute right-2 -top-5 text-[10px] font-medium text-white bg-blue-500 px-1.5 py-0.5 rounded shadow">
+                    Drop to insert
+                  </span>
+                </div>
+              )}
+
+              {/* Idle hint */}
+              {draggingToken === null && (
+                <div className="absolute bottom-3 right-3 pointer-events-none">
+                  <span className="text-[10px] px-2 py-1 rounded border border-blue-200 bg-white/90 text-blue-500 shadow-sm">
+                    <i className="fa-solid fa-hand mr-1" />Drag tokens or blocks from the left panel
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
 
         </div>
       </div>
