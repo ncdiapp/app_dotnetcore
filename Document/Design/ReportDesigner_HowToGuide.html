@@ -1,0 +1,851 @@
+<title>Report Designer — How-To Guide</title>
+<style>
+  :root {
+    --bg:        #f8fafc;
+    --surface:   #ffffff;
+    --surface2:  #f1f5f9;
+    --border:    #e2e8f0;
+    --text:      #0f172a;
+    --muted:     #64748b;
+    --blue:      #2563eb;
+    --blue-bg:   #eff6ff;
+    --blue-border:#bfdbfe;
+    --purple:    #7c3aed;
+    --purple-bg: #f5f3ff;
+    --purple-border:#ddd6fe;
+    --green:     #16a34a;
+    --green-bg:  #f0fdf4;
+    --green-border:#bbf7d0;
+    --amber:     #d97706;
+    --amber-bg:  #fffbeb;
+    --amber-border:#fde68a;
+    --code-bg:   #1e293b;
+    --code-text: #e2e8f0;
+    --step-num-size: 28px;
+    --radius: 8px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d2e;
+      --surface2:  #1e2235;
+      --border:    #2d3250;
+      --text:      #e2e8f0;
+      --muted:     #94a3b8;
+      --blue-bg:   #1e2d4f;
+      --blue-border:#3b5bdb;
+      --purple-bg: #231f3d;
+      --purple-border:#6d4ed8;
+      --green-bg:  #14291e;
+      --green-border:#166534;
+      --amber-bg:  #291f0a;
+      --amber-border:#92400e;
+      --code-bg:   #0f172a;
+      --code-text: #e2e8f0;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:        #0f1117;
+    --surface:   #1a1d2e;
+    --surface2:  #1e2235;
+    --border:    #2d3250;
+    --text:      #e2e8f0;
+    --muted:     #94a3b8;
+    --blue-bg:   #1e2d4f;
+    --blue-border:#3b5bdb;
+    --purple-bg: #231f3d;
+    --purple-border:#6d4ed8;
+    --green-bg:  #14291e;
+    --green-border:#166534;
+    --amber-bg:  #291f0a;
+    --amber-border:#92400e;
+    --code-bg:   #0f172a;
+    --code-text: #e2e8f0;
+  }
+  :root[data-theme="light"] {
+    --bg:        #f8fafc;
+    --surface:   #ffffff;
+    --surface2:  #f1f5f9;
+    --border:    #e2e8f0;
+    --text:      #0f172a;
+    --muted:     #64748b;
+    --blue-bg:   #eff6ff;
+    --blue-border:#bfdbfe;
+    --purple-bg: #f5f3ff;
+    --purple-border:#ddd6fe;
+    --green-bg:  #f0fdf4;
+    --green-border:#bbf7d0;
+    --amber-bg:  #fffbeb;
+    --amber-border:#fde68a;
+    --code-bg:   #1e293b;
+    --code-text: #e2e8f0;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 32px 16px 64px;
+  }
+
+  .page { max-width: 760px; margin: 0 auto; }
+
+  /* ── Header ── */
+  .guide-header {
+    margin-bottom: 36px;
+    padding-bottom: 24px;
+    border-bottom: 2px solid var(--blue);
+  }
+  .guide-header .eyebrow {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--blue);
+    margin-bottom: 6px;
+  }
+  .guide-header h1 {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+  .guide-header .subtitle {
+    margin-top: 8px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  /* ── Section headings ── */
+  .section-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 40px 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Mode pills ── */
+  .mode-bar {
+    display: flex;
+    gap: 4px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px;
+    margin-bottom: 20px;
+  }
+  .mode-pill {
+    flex: 1;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: center;
+    border: 1px solid transparent;
+  }
+  .mode-pill .mode-label { display: block; font-size: 13px; margin-bottom: 3px; }
+  .mode-pill .mode-desc  { display: block; font-size: 11px; font-weight: 400; line-height: 1.4; }
+  .mode-code   { background: var(--blue-bg);   border-color: var(--blue-border);   color: var(--blue);   }
+  .mode-visual { background: var(--surface2);  border-color: var(--border);        color: var(--muted);  }
+  .mode-design { background: var(--purple-bg); border-color: var(--purple-border); color: var(--purple); }
+
+  /* ── Step cards ── */
+  .steps { display: flex; flex-direction: column; gap: 0; }
+  .step {
+    display: flex;
+    gap: 20px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .step:last-child { border-bottom: none; }
+  .step-num {
+    flex-shrink: 0;
+    width: var(--step-num-size);
+    height: var(--step-num-size);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 700;
+    margin-top: 2px;
+    background: var(--blue);
+    color: #fff;
+  }
+  .step-num.purple { background: var(--purple); }
+  .step-body { flex: 1; min-width: 0; }
+  .step-body h3 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+    line-height: 1.3;
+  }
+  .step-body p { color: var(--muted); margin-bottom: 8px; font-size: 13px; }
+  .step-body p:last-child { margin-bottom: 0; }
+
+  /* ── Code / token chips ── */
+  code {
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 12px;
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-text);
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    overflow-x: auto;
+    margin: 10px 0;
+  }
+  .token-green  { color: #4ade80; }
+  .token-yellow { color: #fbbf24; }
+  .token-blue   { color: #60a5fa; }
+  .token-gray   { color: #94a3b8; }
+
+  /* ── Callout boxes ── */
+  .callout {
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    margin: 10px 0;
+    font-size: 13px;
+    border-left: 3px solid;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .callout-icon { flex-shrink: 0; font-size: 14px; margin-top: 1px; }
+  .callout-body { flex: 1; min-width: 0; }
+  .callout-body strong { display: block; font-weight: 700; margin-bottom: 2px; }
+  .callout.tip    { background: var(--blue-bg);   border-color: var(--blue);   color: var(--blue);   }
+  .callout.tip    .callout-body { color: var(--text); }
+  .callout.note   { background: var(--amber-bg);  border-color: var(--amber);  color: var(--amber);  }
+  .callout.note   .callout-body { color: var(--text); }
+  .callout.result { background: var(--green-bg);  border-color: var(--green);  color: var(--green);  }
+  .callout.result .callout-body { color: var(--text); }
+
+  /* ── UI mockup elements ── */
+  .ui-mock {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px;
+    margin: 10px 0;
+    font-size: 12px;
+  }
+  .ui-mock .mock-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--muted);
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .mock-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
+  .mock-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .mock-btn.blue   { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .mock-btn.purple { background: #7c3aed; color: #fff; border-color: #7c3aed; }
+  .mock-btn.outline-blue { border-color: #93c5fd; color: #2563eb; background: transparent; }
+  .mock-input {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--muted);
+    background: var(--surface);
+    min-width: 80px;
+  }
+  .mock-token {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 6px;
+    background: var(--green-bg);
+    border: 1px solid var(--green-border);
+    border-radius: 4px;
+    font-family: monospace;
+    font-size: 11px;
+    color: var(--green);
+  }
+
+  /* ── Token reference table ── */
+  .token-table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12px; }
+  .token-table th {
+    text-align: left;
+    padding: 7px 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--muted);
+  }
+  .token-table td {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    vertical-align: top;
+    color: var(--text);
+  }
+  .token-table tr:nth-child(even) td { background: var(--surface2); }
+  .token-table td code { font-size: 11px; }
+
+  /* ── Workflow overview ── */
+  .workflow {
+    display: flex;
+    gap: 0;
+    margin: 12px 0;
+    overflow-x: auto;
+  }
+  .wf-step {
+    flex: 1;
+    min-width: 100px;
+    text-align: center;
+    padding: 10px 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    position: relative;
+    border-top: 3px solid var(--border);
+  }
+  .wf-step.active { color: var(--blue); border-top-color: var(--blue); }
+  .wf-step .wf-num {
+    display: block;
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .wf-step.active .wf-num { color: var(--blue); }
+
+  /* ── Tips list ── */
+  .tips { display: flex; flex-direction: column; gap: 12px; margin: 12px 0; }
+  .tip-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 13px;
+  }
+  .tip-item .tip-icon {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    background: var(--blue-bg);
+    color: var(--blue);
+    font-weight: 700;
+  }
+  .tip-item .tip-icon.purple { background: var(--purple-bg); color: var(--purple); }
+  .tip-item .tip-icon.green  { background: var(--green-bg);  color: var(--green);  }
+  .tip-item .tip-icon.amber  { background: var(--amber-bg);  color: var(--amber);  }
+  .tip-item .tip-text strong { display: block; font-weight: 700; margin-bottom: 2px; color: var(--text); }
+  .tip-item .tip-text { color: var(--muted); }
+</style>
+
+<div class="page">
+
+  <!-- Header -->
+  <div class="guide-header">
+    <div class="eyebrow">AppAI Report Designer</div>
+    <h1>How to Build a Report — Order &amp; Order Detail</h1>
+    <div class="subtitle">A step-by-step walkthrough covering all three design modes, token insertion, table generation, and live preview.</div>
+  </div>
+
+  <!-- Three modes -->
+  <div class="section-title">Three Modes at a Glance</div>
+  <div class="mode-bar">
+    <div class="mode-pill mode-code">
+      <span class="mode-label">&lt;/&gt; Code</span>
+      <span class="mode-desc">Write HTML + CSS directly. Full control. Type <code style="background:rgba(255,255,255,.15);color:inherit">{{</code> for token autocomplete.</span>
+    </div>
+    <div class="mode-pill mode-visual">
+      <span class="mode-label">&#9651; Visual</span>
+      <span class="mode-desc">Read-only preview of rendered output with real data. Drag tokens to insert into the layout.</span>
+    </div>
+    <div class="mode-pill mode-design">
+      <span class="mode-label">&#9998; Design</span>
+      <span class="mode-desc">Drag-and-drop WYSIWYG editor. Arrange blocks visually, then switch to Code to add tokens.</span>
+    </div>
+  </div>
+  <div class="callout tip">
+    <div class="callout-icon">&#9432;</div>
+    <div class="callout-body">
+      <strong>Recommended workflow for new reports</strong>
+      Design mode to build the layout &rarr; Code mode to insert tokens &rarr; Visual mode to verify with real data &rarr; Save.
+    </div>
+  </div>
+
+  <!-- Before you start -->
+  <div class="section-title">Before You Start</div>
+  <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">
+    The designer needs a stored procedure that returns order data. Your DBA creates it once; you reference it by name.
+  </p>
+  <pre><span class="token-gray">-- Minimal SP contract for an Order Detail report</span>
+<span class="token-yellow">CREATE PROCEDURE</span> <span class="token-green">sp_OrderDetailReport</span>
+    <span class="token-blue">@MainReferenceId    INT</span>,
+    <span class="token-blue">@MasterReferenceId  INT = NULL</span>,
+    <span class="token-blue">@ExtraParams        NVARCHAR(MAX) = NULL</span>
+<span class="token-yellow">AS BEGIN</span>
+    <span class="token-gray">-- RS0: order header scalars (one row)</span>
+    <span class="token-yellow">SELECT</span> o.OrderNumber, c.CustomerName, o.OrderDate,
+           o.Status, o.Currency, o.OrderTotal
+    <span class="token-yellow">FROM</span> Orders o <span class="token-yellow">JOIN</span> Customers c <span class="token-yellow">ON</span> c.CustomerId = o.CustomerId
+    <span class="token-yellow">WHERE</span> o.OrderId = @MainReferenceId
+
+    <span class="token-gray">-- RS1: order line items (repeating rows)</span>
+    <span class="token-yellow">SELECT</span> ol.Sku, ol.Description, ol.Quantity, ol.UnitPrice, ol.Total
+    <span class="token-yellow">FROM</span> OrderLines ol
+    <span class="token-yellow">WHERE</span> ol.OrderId = @MainReferenceId
+    <span class="token-yellow">ORDER BY</span> ol.LineNumber
+<span class="token-yellow">END</span></pre>
+
+  <!-- Step-by-step -->
+  <div class="section-title">Step-by-Step Walkthrough</div>
+  <div class="steps">
+
+    <!-- Step 1 -->
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-body">
+        <h3>Open the Report Designer</h3>
+        <p>Go to <strong>Administration &rarr; Report Management</strong>. Find your report and click the designer icon, or create a new report and open it.</p>
+        <p>The designer opens full-screen. You'll see the <strong>toolbar</strong> (page size, margins, preview, save), a <strong>left panel</strong> (Blocks / Tokens tabs), and the <strong>editor area</strong> with the Code / Visual / Design toggle.</p>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-body">
+        <h3>Configure the Data Source</h3>
+        <p>Click the <strong>Sources</strong> button in the toolbar to open the Data Sources modal.</p>
+        <div class="ui-mock">
+          <div class="mock-label">Toolbar</div>
+          <div class="mock-row">
+            <span class="mock-btn outline-blue">&#x1F5C4; 1 Source &#9998;</span>
+            <span style="color:var(--muted);font-size:11px">Size:</span>
+            <span class="mock-input">A4 &#9660;</span>
+            <span class="mock-input">portrait &#9660;</span>
+            <span style="color:var(--muted);font-size:11px">Margin:</span>
+            <span class="mock-input">15</span>
+          </div>
+        </div>
+        <p>In the modal, set the source <strong>Name</strong> to <code>order</code> and the <strong>SP Name</strong> to <code>sp_OrderDetailReport</code>. Click <strong>Apply &amp; Load Tokens</strong>.</p>
+        <div class="callout note">
+          <div class="callout-icon">&#9888;</div>
+          <div class="callout-body">
+            <strong>Source name matters</strong>
+            The name you give the source becomes the token prefix. Source named <code>order</code> produces tokens like <code>{{order.OrderNumber}}</code>. Choose a short, memorable name with no spaces.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-body">
+        <h3>Verify Your Tokens</h3>
+        <p>Click the <strong>Tokens</strong> tab in the left panel. The designer automatically refreshes token discovery when you switch to this tab.</p>
+        <p>You should see two groups:</p>
+        <div class="ui-mock">
+          <div class="mock-label">Tokens panel — expected result</div>
+          <div style="font-size:11px;font-family:monospace;line-height:2;">
+            <div style="color:var(--blue);font-weight:700;font-size:10px;letter-spacing:.05em;">&#x1F5C4; ORDER</div>
+            <div style="padding-left:8px;display:flex;flex-direction:column;gap:2px;">
+              <span class="mock-token">{{order.OrderNumber}}</span>
+              <span class="mock-token">{{order.CustomerName}}</span>
+              <span class="mock-token">{{order.OrderDate}}</span>
+              <span class="mock-token">{{order.Status}}</span>
+              <span class="mock-token">{{order.Currency}}</span>
+              <span class="mock-token">{{order.OrderTotal}}</span>
+              <span style="color:var(--amber);font-family:monospace;font-size:11px;padding:2px 6px;background:var(--amber-bg);border:1px solid var(--amber-border);border-radius:4px;">&#9776; #each order_rs1</span>
+              <span class="mock-token" style="opacity:.7;">&nbsp;&nbsp;&#8627; Sku</span>
+              <span class="mock-token" style="opacity:.7;">&nbsp;&nbsp;&#8627; Description</span>
+              <span class="mock-token" style="opacity:.7;">&nbsp;&nbsp;&#8627; Quantity</span>
+              <span class="mock-token" style="opacity:.7;">&nbsp;&nbsp;&#8627; UnitPrice</span>
+              <span class="mock-token" style="opacity:.7;">&nbsp;&nbsp;&#8627; Total</span>
+            </div>
+          </div>
+        </div>
+        <p>The <strong>orange <code>#each</code> token</strong> marks the repeating section (RS1 lines). Indented tokens below it are the fields inside each row.</p>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-body">
+        <h3>Start from a Template (optional)</h3>
+        <p>Click the <strong>Blocks</strong> tab &rarr; <strong>Browse templates…</strong> button. The gallery shows HTML thumbnail previews of each starter.</p>
+        <p>For an order report, choose <strong>Order Detail</strong>. This loads a complete starter layout — you'll replace the placeholder tokens with your actual <code>order.</code> tokens in the next steps.</p>
+        <div class="callout tip">
+          <div class="callout-icon">&#9432;</div>
+          <div class="callout-body">If none of the starters match your layout, choose <strong>Start blank</strong> and build it from scratch using blocks in Step 5.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step">
+      <div class="step-num purple">5</div>
+      <div class="step-body">
+        <h3>Build the Layout in Design Mode</h3>
+        <p>Click <strong>Design</strong> in the mode toggle (purple button). The GrapeJS visual editor loads.</p>
+        <div class="ui-mock">
+          <div class="mock-label">Mode toggle — click Design</div>
+          <div class="mock-row">
+            <span class="mock-btn">&lt;/&gt; Code</span>
+            <span class="mock-btn">&#9651; Visual</span>
+            <span class="mock-btn purple">&#9998; Design</span>
+          </div>
+        </div>
+        <p>The right panel shows <strong>Report Blocks</strong> — drag these onto the canvas:</p>
+        <table class="token-table" style="margin:8px 0;">
+          <tr><th>Block</th><th>Use it for</th></tr>
+          <tr><td><code>Report Header</code></td><td>Order number + customer name at the top</td></tr>
+          <tr><td><code>Info Grid (key-value)</code></td><td>Order date, status, currency in two columns</td></tr>
+          <tr><td><code>Section Title</code></td><td>"Order Lines" heading above the table</td></tr>
+          <tr><td><code>Data Table</code></td><td>The repeating line-items table (placeholder — you'll add tokens in Code mode)</td></tr>
+          <tr><td><code>Page Styles</code></td><td>Global CSS reset — drag this in once as the first element</td></tr>
+        </table>
+        <p>Use the <strong>1 Section / 1/2 Section</strong> layout blocks from the GrapeJS panel to create multi-column areas.</p>
+        <div class="callout note">
+          <div class="callout-icon">&#9888;</div>
+          <div class="callout-body">
+            <strong>Tokens in Design mode</strong>
+            GrapeJS shows token placeholders as plain text (e.g. <code>{{header.Title}}</code>). This is correct — they are replaced with real data at preview/PDF time. Do not delete them.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step">
+      <div class="step-num">6</div>
+      <div class="step-body">
+        <h3>Insert Tokens in Code Mode</h3>
+        <p>Switch to <strong>Code</strong> mode. The HTML from your Design layout appears in the Monaco editor. Now replace the placeholder text with your actual tokens.</p>
+        <p><strong>Method A — autocomplete:</strong> Place cursor where you want a token, type <code>{{</code>, and pick from the dropdown.</p>
+        <p><strong>Method B — click to insert:</strong> Click any token in the Tokens tab — it inserts at the cursor position.</p>
+        <p><strong>Method C — drag &amp; drop:</strong> Drag a token from the left panel and drop it onto any line in the editor.</p>
+        <p>Example — replace the Report Header block's placeholder fields:</p>
+        <pre><span class="token-gray">&lt;!-- Before --&gt;</span>
+&lt;h1 style="..."&gt;<span class="token-yellow">{{header.Title}}</span>&lt;/h1&gt;
+&lt;div style="..."&gt;<span class="token-yellow">{{header.Field1}}</span> | <span class="token-yellow">{{header.Field2}}</span>&lt;/div&gt;
+
+<span class="token-gray">&lt;!-- After --&gt;</span>
+&lt;h1 style="..."&gt;<span class="token-green">{{order.OrderNumber}}</span>&lt;/h1&gt;
+&lt;div style="..."&gt;
+  <span class="token-green">{{order.CustomerName}}</span> &nbsp;|&nbsp;
+  <span class="token-green">{{order.OrderDate}}</span> &nbsp;|&nbsp;
+  <span class="token-green">{{order.Status}}</span>
+&lt;/div&gt;</pre>
+      </div>
+    </div>
+
+    <!-- Step 7 -->
+    <div class="step">
+      <div class="step-num">7</div>
+      <div class="step-body">
+        <h3>Generate the Order Lines Table with the Table Wizard</h3>
+        <p>In the <strong>Blocks</strong> tab, click <strong>Insert Table from data…</strong> above the block list. The Table Wizard opens.</p>
+        <div class="ui-mock">
+          <div class="mock-label">Table Wizard — 3 steps</div>
+          <div style="display:flex;flex-direction:column;gap:10px;font-size:12px;">
+            <div>
+              <div style="font-weight:700;color:var(--text);margin-bottom:4px;">1. Select data source</div>
+              <span class="mock-input" style="min-width:200px;">order &nbsp;({{#each order_rs1}}) &#9660;</span>
+            </div>
+            <div>
+              <div style="font-weight:700;color:var(--text);margin-bottom:4px;">2. Choose columns &amp; rename headers</div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input type="checkbox" checked disabled> <span style="width:80px;color:var(--muted);">Sku</span> <span class="mock-input" style="flex:1;">SKU</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input type="checkbox" checked disabled> <span style="width:80px;color:var(--muted);">Description</span> <span class="mock-input" style="flex:1;">Description</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input type="checkbox" checked disabled> <span style="width:80px;color:var(--muted);">Quantity</span> <span class="mock-input" style="flex:1;">Qty</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input type="checkbox" checked disabled> <span style="width:80px;color:var(--muted);">UnitPrice</span> <span class="mock-input" style="flex:1;">Unit Price</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <input type="checkbox" checked disabled> <span style="width:80px;color:var(--muted);">Total</span> <span class="mock-input" style="flex:1;">Total</span>
+                </div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:flex-end;">
+              <span class="mock-btn blue">&#10003; Insert Table</span>
+            </div>
+          </div>
+        </div>
+        <p>Click <strong>Insert Table</strong>. The wizard generates and inserts this at the cursor:</p>
+        <pre>&lt;table style="width:100%;border-collapse:collapse;font-size:12px;"&gt;
+  &lt;thead&gt;
+    &lt;tr&gt;
+      &lt;th style="..."&gt;SKU&lt;/th&gt;
+      &lt;th style="..."&gt;Description&lt;/th&gt;
+      &lt;th style="..."&gt;Qty&lt;/th&gt;
+      &lt;th style="..."&gt;Unit Price&lt;/th&gt;
+      &lt;th style="..."&gt;Total&lt;/th&gt;
+    &lt;/tr&gt;
+  &lt;/thead&gt;
+  &lt;tbody&gt;
+    <span class="token-yellow">{{#each order_rs1}}</span>
+    &lt;tr&gt;
+      &lt;td&gt;<span class="token-green">{{Sku}}</span>&lt;/td&gt;
+      &lt;td&gt;<span class="token-green">{{Description}}</span>&lt;/td&gt;
+      &lt;td&gt;<span class="token-green">{{Quantity}}</span>&lt;/td&gt;
+      &lt;td&gt;<span class="token-green">{{UnitPrice}}</span>&lt;/td&gt;
+      &lt;td&gt;<span class="token-green">{{Total}}</span>&lt;/td&gt;
+    &lt;/tr&gt;
+    <span class="token-yellow">{{/each}}</span>
+  &lt;/tbody&gt;
+&lt;/table&gt;</pre>
+        <div class="callout result">
+          <div class="callout-icon">&#10003;</div>
+          <div class="callout-body">
+            <strong>Important: field names inside #each</strong>
+            Inside a <code>{{#each order_rs1}}</code> block, token fields are written <strong>without</strong> the source prefix — use <code>{{Sku}}</code>, not <code>{{order.Sku}}</code>.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 8 -->
+    <div class="step">
+      <div class="step-num">8</div>
+      <div class="step-body">
+        <h3>Preview with a Live Record</h3>
+        <p>Switch to <strong>Visual</strong> mode. In the toolbar bar, find the <strong>Preview record #</strong> field — enter a real Order ID from your database.</p>
+        <div class="ui-mock">
+          <div class="mock-label">Visual mode bar</div>
+          <div class="mock-row">
+            <span style="color:var(--blue);font-size:11px;">&#9651; Preview — A4 portrait</span>
+            <span style="color:var(--muted);font-size:11px;">Preview record #</span>
+            <span class="mock-input">1042</span>
+            <span class="mock-btn">&#8635; Refresh</span>
+          </div>
+        </div>
+        <p>Click <strong>Refresh</strong> (or wait for the auto-refresh). The iframe shows your template populated with real order data from the SP.</p>
+        <p>If fields show as <code>{{order.OrderNumber}}</code> instead of a value, check: (1) the SP name is correct, (2) the record ID exists, (3) the token prefix matches the source name.</p>
+        <p>Use <strong>PDF Preview</strong> in the toolbar to see the final print output — this runs Playwright and shows the exact PDF that will be generated.</p>
+      </div>
+    </div>
+
+    <!-- Step 9 -->
+    <div class="step">
+      <div class="step-num">9</div>
+      <div class="step-body">
+        <h3>Fine-tune Styling in Code Mode</h3>
+        <p>Switch back to <strong>Code</strong> mode for precise styling adjustments. Common tweaks:</p>
+        <pre><span class="token-gray">/* Add a totals row after the #each block */</span>
+    <span class="token-yellow">{{/each}}</span>
+    &lt;tr style="font-weight:bold;background:#f0f4ff;"&gt;
+      &lt;td colspan="4" style="text-align:right;padding:6px 10px"&gt;
+        Order Total:
+      &lt;/td&gt;
+      &lt;td style="padding:6px 10px"&gt;<span class="token-green">{{order.OrderTotal}}</span>&lt;/td&gt;
+    &lt;/tr&gt;
+
+<span class="token-gray">/* Conditional display — only show when field has a value */</span>
+<span class="token-yellow">{{#if order.Notes}}</span>
+  &lt;p style="font-size:11px;color:#666;"&gt;Notes: <span class="token-green">{{order.Notes}}</span>&lt;/p&gt;
+<span class="token-yellow">{{/if}}</span></pre>
+      </div>
+    </div>
+
+    <!-- Step 10 -->
+    <div class="step">
+      <div class="step-num">10</div>
+      <div class="step-body">
+        <h3>Save</h3>
+        <p>Click <strong>Save</strong> in the toolbar. The template is stored to the database — page size, orientation, margin, data source config, and HTML are all saved together.</p>
+        <div class="callout result">
+          <div class="callout-icon">&#10003;</div>
+          <div class="callout-body">
+            <strong>Done.</strong> The report is now available for printing from any Order form. Users click the Report button &rarr; select this report &rarr; Save as PDF.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /steps -->
+
+  <!-- Token reference -->
+  <div class="section-title">Order Report — Token Quick Reference</div>
+  <div style="overflow-x:auto;">
+  <table class="token-table">
+    <tr>
+      <th>Token</th>
+      <th>Type</th>
+      <th>Example output</th>
+      <th>Where to use</th>
+    </tr>
+    <tr>
+      <td><code>{{order.OrderNumber}}</code></td>
+      <td>Scalar</td>
+      <td>ORD-2024-00142</td>
+      <td>Anywhere outside <code>#each</code></td>
+    </tr>
+    <tr>
+      <td><code>{{order.CustomerName}}</code></td>
+      <td>Scalar</td>
+      <td>Acme Corp</td>
+      <td>Header, info grid</td>
+    </tr>
+    <tr>
+      <td><code>{{order.OrderDate}}</code></td>
+      <td>Scalar</td>
+      <td>2025-03-15</td>
+      <td>Header, info grid</td>
+    </tr>
+    <tr>
+      <td><code>{{order.OrderTotal}}</code></td>
+      <td>Scalar</td>
+      <td>$1,842.50</td>
+      <td>Footer totals row</td>
+    </tr>
+    <tr>
+      <td><code>{{#each order_rs1}}</code></td>
+      <td>Loop start</td>
+      <td><em>repeats for each line</em></td>
+      <td>Before table <code>&lt;tr&gt;</code> rows</td>
+    </tr>
+    <tr>
+      <td><code>{{Sku}}</code></td>
+      <td>Row field</td>
+      <td>TAS27764BT</td>
+      <td>Inside <code>#each</code> block only</td>
+    </tr>
+    <tr>
+      <td><code>{{Description}}</code></td>
+      <td>Row field</td>
+      <td>Mens Knit SS</td>
+      <td>Inside <code>#each</code> block only</td>
+    </tr>
+    <tr>
+      <td><code>{{Quantity}}</code></td>
+      <td>Row field</td>
+      <td>24</td>
+      <td>Inside <code>#each</code> block only</td>
+    </tr>
+    <tr>
+      <td><code>{{UnitPrice}}</code></td>
+      <td>Row field</td>
+      <td>$29.99</td>
+      <td>Inside <code>#each</code> block only</td>
+    </tr>
+    <tr>
+      <td><code>{{Total}}</code></td>
+      <td>Row field</td>
+      <td>$719.76</td>
+      <td>Inside <code>#each</code> block only</td>
+    </tr>
+    <tr>
+      <td><code>{{/each}}</code></td>
+      <td>Loop end</td>
+      <td><em>—</em></td>
+      <td>After the last <code>&lt;/tr&gt;</code> in the loop</td>
+    </tr>
+    <tr>
+      <td><code>{{#if order.Notes}}</code> … <code>{{/if}}</code></td>
+      <td>Conditional</td>
+      <td><em>shows content only if Notes has a value</em></td>
+      <td>Optional sections</td>
+    </tr>
+  </table>
+  </div>
+
+  <!-- Tips -->
+  <div class="section-title">Tips &amp; Common Mistakes</div>
+  <div class="tips">
+    <div class="tip-item">
+      <div class="tip-icon">{{</div>
+      <div class="tip-text">
+        <strong>Token autocomplete: type {{ in Code mode</strong>
+        The editor shows a dropdown of all available tokens the moment you type <code>{{</code>. No need to type the full name — arrow keys to navigate, Enter to insert.
+      </div>
+    </div>
+    <div class="tip-item">
+      <div class="tip-icon purple">&#9998;</div>
+      <div class="tip-text">
+        <strong>Design mode is for layout, Code mode is for tokens</strong>
+        GrapeJS is great for dragging blocks into position. But token placeholders (<code>{{order.X}}</code>) are easiest to edit in Code mode where you have full text control.
+      </div>
+    </div>
+    <div class="tip-item">
+      <div class="tip-icon green">&#10003;</div>
+      <div class="tip-text">
+        <strong>Field names inside #each have no prefix</strong>
+        Outside a loop: <code>{{order.OrderNumber}}</code>. Inside <code>{{#each order_rs1}}</code>: just <code>{{Sku}}</code>, <code>{{Quantity}}</code>. The prefix is implied by the loop context.
+      </div>
+    </div>
+    <div class="tip-item">
+      <div class="tip-icon amber">!</div>
+      <div class="tip-text">
+        <strong>SP not returning tokens? Check the source name</strong>
+        The source <strong>Name</strong> in the Data Sources modal (e.g. <code>order</code>) must match what you reference in templates. The SP Name (e.g. <code>sp_OrderDetailReport</code>) is what the backend calls — these are two separate fields.
+      </div>
+    </div>
+    <div class="tip-item">
+      <div class="tip-icon">A4</div>
+      <div class="tip-text">
+        <strong>Set page size before designing</strong>
+        The canvas preview in Visual mode respects the page size setting. Set Size + Orientation in the toolbar before you start so you know exactly what space you have available.
+      </div>
+    </div>
+    <div class="tip-item">
+      <div class="tip-icon green">&#8635;</div>
+      <div class="tip-text">
+        <strong>Always verify with PDF Preview before saving</strong>
+        HTML Preview is fast but doesn't paginate. PDF Preview runs the full Playwright renderer — use this to catch content that overflows the page before sending to users.
+      </div>
+    </div>
+  </div>
+
+</div>
