@@ -136,16 +136,16 @@
                       "dwTable":  "PLM_DW_Grid_Fabric_Approvals_Tracker_3171",
                       "gridSubItemId":  6792,
                       "gridId":  3171,
-                      "parentPlmTabId":  null,
-                      "transactionIntegrationId":  "Grid_3171"
+                      "parentPlmTabId":  4258,
+                      "transactionIntegrationId":  "Tab_4258"
                   },
                   {
                       "appTable":  "Denim___Non_Denim_Approvals",
                       "dwTable":  "PLM_DW_Grid_Denim___Non_Denim_Approvals_3181",
                       "gridSubItemId":  5151,
                       "gridId":  3181,
-                      "parentPlmTabId":  null,
-                      "transactionIntegrationId":  "Grid_3181"
+                      "parentPlmTabId":  4258,
+                      "transactionIntegrationId":  "Tab_4258"
                   },
                   {
                       "appTable":  "Testing_reg",

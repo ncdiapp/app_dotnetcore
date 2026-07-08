@@ -1,4 +1,4 @@
-﻿-- =============================================================================
+-- =============================================================================
 -- PLM DW â†’ APP product data import (template: source/PlmDw_ImportFromDW.sql)
 -- Deliverable copy: output/PlmDw_ImportFromDW.sql (see ImportFromPLMDW/PROMPT.md)
 -- EXECUTION ORDER:
@@ -156,6 +156,8 @@ CREATE TABLE #Targets (
     [GridIdFilter] INT NULL
 );
 
+-- Only this config's sibling/grid tables (generator injects list). Ignores residual
+-- FieldMapping rows left by a prior template's 2_*.sql scoped DELETE.
 SET @sql = N'
 INSERT INTO #Targets ([AppTableName], [FieldKind], [DwTableName], [GridIdFilter])
 SELECT
@@ -166,8 +168,18 @@ SELECT
     MAX(m.[PlmGridId])
 FROM dbo.' + QUOTENAME(@MappingTable) + N' AS m
 WHERE m.[FieldKind] IN (N''TabField'', N''GridColumn'')
+  AND m.[AppTableName] IN (N''@P@Style_Summary'', N''@P@Colorways'', N''@P@Denim_Details'', N''@P@Artworks'', N''@P@Technical_Details'', N''@P@Fabrics___Trims'', N''@P@Labels___Packaging'', N''@P@Style_Reference'', N''@P@Care_Label'', N''@P@Costing'', N''@P@Style_Header'', N''@P@Publish_to_ERP'', N''@P@AJ'', N''@P@Approvals'', N''@P@ProductDesignColorGrid'', N''@P@Artwork_BOM_prod'', N''@P@Fabric_BOM_prod'', N''@P@Trim_BOM_prod'', N''@P@Label_BOM_prod'', N''@P@Packaging_BOM_prod'', N''@P@WashDetailStyle'', N''@P@Miscellaneous_Factors'', N''@P@SizeRunDetailGrid'', N''@P@DimensionDetailGrid'', N''@P@Trims_Approval'', N''@P@ProductCatagoryGrid'', N''@P@ProductWarehouseGrid'', N''@P@Selected_Category_Colour_Dimension_Size'', N''@P@Price_by_Style'', N''@P@Selling_and_Retail_by_Style_Currency'', N''@P@Price_by_Colour_Dimension_Size_Warehouse'', N''@P@Price_by_Color'', N''@P@Artwork_BOM_prodGrandColorway'', N''@P@Trim_BOM_prodGrandColorway'', N''@P@Label_BOM_prodGrandColorway'', N''@P@Trims_ApprovalGrandColorway'', N''@P@Fabric_BOM_prodGrandColorway'')
 GROUP BY m.[AppTableName];';
+SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
 EXEC sp_executesql @sql;
+
+SELECT @RowCnt = COUNT(*) FROM #Targets;
+PRINT N'Target tables in scope: ' + CAST(@RowCnt AS NVARCHAR(20));
+IF @RowCnt = 0
+BEGIN
+    RAISERROR(N'No TabField/GridColumn targets in FieldMapping for this config scope. Re-run 2_PlmDw_FieldMapping.sql for the same template.', 16, 1);
+    RETURN;
+END
 
 BEGIN TRY
     BEGIN TRANSACTION;

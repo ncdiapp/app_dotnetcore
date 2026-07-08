@@ -72,9 +72,17 @@ namespace APP.BL.DataMigration.PlmMigration
                 int pct = 78 + (int)(10.0 * workIndex / Math.Max(1, workTotal));
                 progressCallback?.Invoke(pct, $"Generating form layout for tab {tab.TabName} ({workIndex}/{workTotal})…");
 
-                int? transactionId = status != null
-                    ? status.TransactionId
-                    : GetTransactionIdByIntegrationId(conn, null, $"Tab_{tab.TabId}");
+                int? transactionId = status?.TransactionId;
+                if (!transactionId.HasValue)
+                {
+                    // DW Blueprint orphan grids use IntegrationId Grid_{gridId} with TabId = -gridId.
+                    string integrationId = tab.TabId < 0
+                        ? (string.IsNullOrWhiteSpace(tab.TabName) ? $"Grid_{-tab.TabId}" : tab.TabName)
+                        : $"Tab_{tab.TabId}";
+                    transactionId = GetTransactionIdByIntegrationId(conn, null, integrationId);
+                    if (!transactionId.HasValue && tab.TabId < 0)
+                        transactionId = GetTransactionIdByIntegrationId(conn, null, $"Grid_{-tab.TabId}");
+                }
                 if (!transactionId.HasValue)
                     throw new InvalidOperationException($"Transaction not found for tab {tab.TabId} ({tab.TabName}).");
 
@@ -99,17 +107,33 @@ SELECT t.TransactionID, t.FormID, t.IntegrationId,
     f.LayoutType
 FROM dbo.AppTransaction t
 LEFT JOIN dbo.AppForm f ON f.FormID = t.FormID
-WHERE t.IntegrationId LIKE 'Tab[_]%'";
+WHERE t.IntegrationId LIKE 'Tab[_]%'
+   OR t.IntegrationId LIKE 'Grid[_]%';";
                 using (var reader = cmd.ExecuteReader())
                 {
                     while (reader.Read())
                     {
                         string integrationId = reader.IsDBNull(2) ? null : reader.GetString(2);
-                        if (string.IsNullOrWhiteSpace(integrationId) || !integrationId.StartsWith("Tab_", StringComparison.OrdinalIgnoreCase))
+                        if (string.IsNullOrWhiteSpace(integrationId))
                             continue;
 
-                        if (!int.TryParse(integrationId.Substring(4), out int tabId))
+                        int tabId;
+                        if (integrationId.StartsWith("Tab_", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!int.TryParse(integrationId.Substring(4), out tabId))
+                                continue;
+                        }
+                        else if (integrationId.StartsWith("Grid_", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Orphan DW grids are planned with TabId = -PlmGridId.
+                            if (!int.TryParse(integrationId.Substring(5), out int gridId) || gridId <= 0)
+                                continue;
+                            tabId = -gridId;
+                        }
+                        else
+                        {
                             continue;
+                        }
 
                         dict[tabId] = new TabTransactionFormStatus
                         {

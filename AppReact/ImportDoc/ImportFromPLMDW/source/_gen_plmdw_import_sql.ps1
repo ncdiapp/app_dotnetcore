@@ -1201,6 +1201,19 @@ $tplId = if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt
     elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId -and [int]$config.plmTemplate.templateId -gt 0) { [int]$config.plmTemplate.templateId }
     else { 'NULL' }
 $importContent = $importContent -replace '(DECLARE @PlmTemplateId\s+INT\s+=\s*)NULL', "`${1}$tplId"
+# Restrict #Targets to this config's AppTables (same set as FieldMapping scoped DELETE).
+# Uses @P@ placeholder resolved at runtime via REPLACE(... @TablePrefix) in the SQL template.
+$scopeImportTables = @($scopeAppTables | Select-Object -Unique | Where-Object {
+    $_ -and $_ -ne $config.rootTableSuffix
+})
+if ($scopeImportTables.Count -eq 0) {
+    throw "No tab/grid AppTables in config scope for Step 3 import filter."
+}
+$scopeInList = ($scopeImportTables | ForEach-Object { "N''@P@$_''" }) -join ', '
+if ($importContent -notmatch '/\*<<SCOPE_APP_TABLES>>\*/') {
+    throw "Import template missing /*<<SCOPE_APP_TABLES>>*/ placeholder in #Targets filter."
+}
+$importContent = $importContent.Replace('/*<<SCOPE_APP_TABLES>>*/', $scopeInList)
 # Annotate execution-order comments once (do not replace bare PlmDw_*.sql — that doubles prefixes).
 $importContent = $importContent -replace '(?m)^--   1\. PlmDw_Tables\.sql', '--   1. 1_PlmDw_Tables.sql'
 $importContent = $importContent -replace '(?m)^--   2\. PlmDw_FieldMapping\.sql', '--   2. 2_PlmDw_FieldMapping.sql'

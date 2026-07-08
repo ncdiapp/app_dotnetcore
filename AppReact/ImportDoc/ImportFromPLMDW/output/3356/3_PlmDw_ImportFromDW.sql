@@ -1,4 +1,4 @@
-﻿-- =============================================================================
+-- =============================================================================
 -- PLM DW â†’ APP product data import (template: source/PlmDw_ImportFromDW.sql)
 -- Deliverable copy: output/PlmDw_ImportFromDW.sql (see ImportFromPLMDW/PROMPT.md)
 -- EXECUTION ORDER:
@@ -156,6 +156,8 @@ CREATE TABLE #Targets (
     [GridIdFilter] INT NULL
 );
 
+-- Only this config's sibling/grid tables (generator injects list). Ignores residual
+-- FieldMapping rows left by a prior template's 2_*.sql scoped DELETE.
 SET @sql = N'
 INSERT INTO #Targets ([AppTableName], [FieldKind], [DwTableName], [GridIdFilter])
 SELECT
@@ -166,8 +168,18 @@ SELECT
     MAX(m.[PlmGridId])
 FROM dbo.' + QUOTENAME(@MappingTable) + N' AS m
 WHERE m.[FieldKind] IN (N''TabField'', N''GridColumn'')
+  AND m.[AppTableName] IN (N''@P@Trim_Header'', N''@P@Trim_Info'', N''@P@SizeRunDetailGrid'', N''@P@DimensionDetailGrid'', N''@P@ProductDesignColorGrid'', N''@P@MaterialCosting_reg'', N''@P@Trims_Tracking'')
 GROUP BY m.[AppTableName];';
+SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
 EXEC sp_executesql @sql;
+
+SELECT @RowCnt = COUNT(*) FROM #Targets;
+PRINT N'Target tables in scope: ' + CAST(@RowCnt AS NVARCHAR(20));
+IF @RowCnt = 0
+BEGIN
+    RAISERROR(N'No TabField/GridColumn targets in FieldMapping for this config scope. Re-run 2_PlmDw_FieldMapping.sql for the same template.', 16, 1);
+    RETURN;
+END
 
 BEGIN TRY
     BEGIN TRANSACTION;

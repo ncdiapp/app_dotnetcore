@@ -338,7 +338,7 @@ Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMaster
 
 ### B4. `3_PlmDw_ImportFromDW.sql`
 
-Template: `source/PlmDw_ImportFromDW.sql`. Generator patches `@DwDatabase`, `@PlmDatabase`, `@PlmTemplateId` from config.
+Template: `source/PlmDw_ImportFromDW.sql`. Generator patches `@DwDatabase`, `@PlmDatabase`, `@PlmTemplateId` from config, and injects `#Targets` filter = **this config's tab/grid AppTables only** (same set as step 2 scoped DELETE, excluding root). That prevents residual `{prefix}FieldMapping` rows from a prior template from being imported under the wrong `@PlmTemplateId`.
 
 **Reference scope (required):** when `@PlmTemplateId` is set, `#RefFilter` = distinct `ProductReferenceID` from `pdmProductTemplate` for that template, **intersected** with rows present on the `referenceScope` DW tab table.
 
@@ -409,6 +409,7 @@ PLM connection + plmDW connection + **new** TemplateId only. Tab list comes from
 | APP table exists | `1_PlmDw_Tables.sql` — `ALTER ADD` new columns only |
 | `{prefix}FieldMapping` rows | Scoped DELETE per config tables only |
 | Same `ReferenceId` in shared table | `3_PlmDw_ImportFromDW.sql` with `@ImportMode='APPEND'` — **no duplicate rows per table** |
+| Residual FieldMapping from prior template | Step 3 `#Targets` is filtered to **this config's** AppTables only — does not import leftover tables |
 
 ### Phase D — transactions
 
