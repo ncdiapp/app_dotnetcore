@@ -1043,6 +1043,100 @@ namespace App.BL
             return AppMetaDataBL.GetQulifiedTableFiledName(sysTableFieldPath, sqlServerType);
         }
 
+        internal static Dictionary<int, int> CountFolderContentByFolderView(int transactionId)
+        {
+            var dict = new Dictionary<int, int>();
+
+            var defaultNav = AppTransactionNavigationBL.RetrieveOneTransactionDefaultNavigationDto(transactionId, true);
+            if (defaultNav?.FolderViewId.HasValue != true)
+            {
+                return dict;
+            }
+
+            AppSearchViewEntity viewEntity = AppSearchViewConfigBL.RetrieveOneAppSearchViewEntity(defaultNav.FolderViewId);
+            if (viewEntity?.AppDataSet == null || string.IsNullOrWhiteSpace(viewEntity.AppDataSet.QueryText))
+            {
+                return dict;
+            }
+
+            var folderIdField = viewEntity.AppSearchViewField?
+                .FirstOrDefault(o => o.IsFileFoderId.HasValue && o.IsFileFoderId.Value);
+            if (folderIdField == null || string.IsNullOrWhiteSpace(folderIdField.SysTableFiledPath))
+            {
+                return dict;
+            }
+
+            if (!viewEntity.DataSetId.HasValue)
+            {
+                return dict;
+            }
+
+            var dataSetDto = AppDataSetBL.RetrieveOneAppDataSetExDto(viewEntity.DataSetId.Value);
+            if (dataSetDto?.DataSourceFrom == null)
+            {
+                return dict;
+            }
+
+            var databaseFixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSetDto.DataSourceFrom.Value);
+            if (databaseFixture?.SqlServerType == null)
+            {
+                return dict;
+            }
+
+            string baseQuery = viewEntity.AppDataSet.QueryText.Trim().TrimEnd(';');
+            string folderColumnName = GetFolderViewColumnName(folderIdField.SysTableFiledPath);
+
+            var transRootField = viewEntity.AppSearchViewField?
+                .FirstOrDefault(o => o.IsTransRootId.HasValue && o.IsTransRootId.Value);
+            string rootColumnName = transRootField != null
+                ? GetFolderViewColumnName(transRootField.SysTableFiledPath)
+                : "ReferenceId";
+
+            string query = $@"
+SELECT Src.[{folderColumnName}] AS FolderID, COUNT(*) AS ContentCount
+FROM (
+{baseQuery}
+) AS Src
+WHERE Src.[{folderColumnName}] IS NOT NULL
+  AND Src.[{rootColumnName}] NOT IN (
+      SELECT RootKeyValueID FROM AppTrascationRecycleBin WHERE TranscationID = {transactionId}
+  )
+GROUP BY Src.[{folderColumnName}]";
+
+            try
+            {
+                DataTable dt = databaseFixture.RetriveDataTable(query, new List<System.Data.Common.DbParameter>());
+                foreach (DataRow dataRow in dt.Rows)
+                {
+                    int? folderId = ControlTypeValueConverter.ConvertValueToInt(dataRow["FolderID"].ToString());
+                    int? contentCount = ControlTypeValueConverter.ConvertValueToInt(dataRow["ContentCount"].ToString());
+                    if (folderId.HasValue && contentCount.HasValue)
+                    {
+                        dict[folderId.Value] = contentCount.Value;
+                    }
+                }
+            }
+            catch (Exception)
+            {
+                dict.Clear();
+            }
+
+            return dict;
+        }
+
+        private static string GetFolderViewColumnName(string sysTableFieldPath)
+        {
+            if (string.IsNullOrWhiteSpace(sysTableFieldPath))
+            {
+                return sysTableFieldPath;
+            }
+
+            int dotIndex = sysTableFieldPath.LastIndexOf('.');
+            return dotIndex >= 0 && dotIndex < sysTableFieldPath.Length - 1
+                ? sysTableFieldPath.Substring(dotIndex + 1)
+                : sysTableFieldPath;
+        }
+
         internal static DataTable RetriveFolderSearchViewDataTable(int? folderId, AppSearchViewEntity viewEntity, int? transactionId)
         {
 

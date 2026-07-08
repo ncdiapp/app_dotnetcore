@@ -91,6 +91,7 @@ export function resolveTabNavigationPath(tab: TabPathInfo): string {
 }
 
 const TRANSACTION_FORM_GROUP_BASE = '/TransactionFormGroup';
+const TRANSACTION_FOLDER_NAVIGATION_BASE = '/transaction-folder-navigation';
 
 export function isTransactionFormGroupPath(path: string): boolean {
   if (!path) return false;
@@ -98,6 +99,16 @@ export function isTransactionFormGroupPath(path: string): boolean {
   return (
     normalized === TRANSACTION_FORM_GROUP_BASE ||
     normalized.startsWith(`${TRANSACTION_FORM_GROUP_BASE}/`)
+  );
+}
+
+/** Each host transaction (Style vs Fabric, etc.) needs its own tab — do not reuse by base path only. */
+export function isTransactionFolderNavigationPath(path: string): boolean {
+  if (!path) return false;
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  return (
+    normalized === TRANSACTION_FOLDER_NAVIGATION_BASE ||
+    normalized.startsWith(`${TRANSACTION_FOLDER_NAVIGATION_BASE}/`)
   );
 }
 

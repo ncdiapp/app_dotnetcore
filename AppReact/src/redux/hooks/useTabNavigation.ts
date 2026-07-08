@@ -7,6 +7,7 @@ import {
   buildRoutePathFromParamObj,
   getReactPathForRouteCode,
   isTransactionFormGroupPath,
+  isTransactionFolderNavigationPath,
   resolveTabNavigationPath,
   tabRoutePathsMatch,
 } from '../../helper/navigationHelper';
@@ -155,9 +156,9 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
 
     const targetBasePath = extractBaseRoutePath(routePath);
 
-    // TransactionFormGroup: each search open gets its own tab (Angular logicId per instance).
-    // Reusing by base route corrupts Search/Home tab paths when isActive is briefly out of sync.
-    const allowBaseReuse = !isTransactionFormGroupPath(routePath);
+    // TransactionFormGroup / transaction-folder-navigation: each instance gets its own tab.
+    const allowBaseReuse =
+      !isTransactionFormGroupPath(routePath) && !isTransactionFolderNavigationPath(routePath);
 
     // Reuse tab with same base route (e.g. /company-security vs /company-security/%7B...%7D)
     const existingByBase = allowBaseReuse

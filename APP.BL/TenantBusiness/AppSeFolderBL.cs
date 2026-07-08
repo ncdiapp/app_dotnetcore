@@ -931,22 +931,31 @@ namespace App.BL
             }
             else
             {
-                var transactionDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
+                dictFolderIdAndContentCount = AppStaticDataSetSearchBL.CountFolderContentByFolderView(transactionId.Value);
 
-                if (transactionDto != null && transactionDto.RootMasterUnit != null)
+                if (dictFolderIdAndContentCount.Count == 0)
                 {
-                    string tableName = transactionDto.RootMasterUnit.DataBaseTableName;
-                    string rootPkColumnName = transactionDto.RootMasterUnit.PrimaryKeyDbfieldList.FirstOrDefault();
+                    var transactionDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId);
 
-                    if (!string.IsNullOrWhiteSpace(tableName) && !string.IsNullOrWhiteSpace(rootPkColumnName))
+                    if (transactionDto != null && transactionDto.RootMasterUnit != null)
                     {
-                        query = @" select FolderID, count(*) as ContentCount from "
-                                + tableName
-                                + " where FolderID is not null "
-                                + " and " + rootPkColumnName
-                                + " not in (select RootKeyValueID from AppTrascationRecycleBin where TranscationID = " + transactionId.Value.ToString() + ")"
-                                + " group by FolderID";
+                        string tableName = transactionDto.RootMasterUnit.DataBaseTableName;
+                        string rootPkColumnName = transactionDto.RootMasterUnit.PrimaryKeyDbfieldList.FirstOrDefault();
+
+                        if (!string.IsNullOrWhiteSpace(tableName) && !string.IsNullOrWhiteSpace(rootPkColumnName))
+                        {
+                            query = @" select FolderID, count(*) as ContentCount from "
+                                    + tableName
+                                    + " where FolderID is not null "
+                                    + " and " + rootPkColumnName
+                                    + " not in (select RootKeyValueID from AppTrascationRecycleBin where TranscationID = " + transactionId.Value.ToString() + ")"
+                                    + " group by FolderID";
+                        }
                     }
+                }
+                else
+                {
+                    query = null;
                 }
             }
 
