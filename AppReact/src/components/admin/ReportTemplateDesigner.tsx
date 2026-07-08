@@ -654,7 +654,10 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
             {/* Toggle pill */}
             <div className="flex shrink-0 rounded-[4px] overflow-hidden border border-gray-300">
               <button
-                onClick={() => setViewMode('split')}
+                onClick={() => {
+                  setViewMode('split');
+                  requestAnimationFrame(() => editorRef.current?.layout());
+                }}
                 title="Full-screen HTML/CSS editor"
                 className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'split' ? 'bg-blue-500 text-white' : theme.button_default}`}
               >
@@ -670,32 +673,31 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
             </div>
           </div>
 
-          {/* ── CODE mode: full-height Monaco editor ── */}
-          {viewMode === 'split' && (
-            <div
-              className={`h-1 flex-auto overflow-hidden ${draggingToken !== null ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
-              onDragOver={e => { if (draggingToken !== null) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }}
-              onDrop={e => {
-                if (draggingToken === null) return;
-                e.preventDefault();
-                insertAtCursor(draggingToken);
-                setDraggingToken(null);
-                setDropIndicatorY(null);
-              }}
-            >
-              <JsonCodeEditor
-                language="html"
-                value={templateHtml}
-                onChange={handleHtmlChange}
-                debounceMs={300}
-                onMount={(editor) => { editorRef.current = editor; }}
-              />
-            </div>
-          )}
+          {/* ── CODE mode: full-height Monaco editor — always mounted, hidden in visual mode ── */}
+          <div
+            className={`h-1 flex-auto overflow-hidden ${draggingToken !== null ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
+            style={{ display: viewMode === 'split' ? 'flex' : 'none' }}
+            onDragOver={e => { if (draggingToken !== null) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }}
+            onDrop={e => {
+              if (draggingToken === null) return;
+              e.preventDefault();
+              insertAtCursor(draggingToken);
+              setDraggingToken(null);
+              setDropIndicatorY(null);
+            }}
+          >
+            <JsonCodeEditor
+              language="html"
+              value={templateHtml}
+              onChange={handleHtmlChange}
+              debounceMs={300}
+              onMount={(editor) => { editorRef.current = editor; }}
+            />
+          </div>
 
-          {/* ── VISUAL mode: full-height preview iframe + drag-drop overlay ── */}
-          {viewMode === 'visual' && (
-            <div className="relative h-1 flex-auto overflow-hidden bg-white">
+          {/* ── VISUAL mode: full-height preview iframe + drag-drop overlay — always mounted, hidden in code mode ── */}
+          <div className="relative h-1 flex-auto overflow-hidden bg-white"
+               style={{ display: viewMode === 'visual' ? 'flex' : 'none' }}>
               <iframe
                 ref={iframeRef}
                 title="report-preview"
@@ -750,7 +752,6 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                 </div>
               )}
             </div>
-          )}
 
         </div>
       </div>
