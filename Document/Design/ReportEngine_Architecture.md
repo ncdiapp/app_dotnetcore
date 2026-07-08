@@ -195,8 +195,8 @@ END
 ```json
 {
   "dataSources": [
-    { "alias": "main", "type": "sp", "value": "sp_StyleSummary" },
-    { "alias": "bom",  "type": "sp", "value": "sp_StyleBomDetail" }
+    { "name": "header", "type": "sp", "value": "sp_StyleSummary" },
+    { "name": "bom",    "type": "sp", "value": "sp_StyleBomDetail" }
   ],
   "extraParams": [
     { "Name": "ShowCost", "Label": "Show Cost", "DefaultValue": "false" }

@@ -272,7 +272,7 @@ Ask your DBA to add the parameter to the SP, then in the designer:
 ```json
 {
   "dataSources": [
-    { "alias": "main", "type": "sp", "value": "sp_StyleSummaryReport" }
+    { "name": "header", "type": "sp", "value": "sp_StyleSummaryReport" }
   ],
   "extraParams": [
     { "Name": "ShowCostPrice", "Label": "Show Cost Price", "DefaultValue": "0" }

@@ -72,7 +72,7 @@ const REPORT_BLOCKS = [
     </tr>
   </thead>
   <tbody>
-    {{#each rs1}}
+    {{#each header_rs1}}
     <tr>
       <td style="padding:5px 10px;border-bottom:1px solid #e5e7eb">{{Field1}}</td>
       <td style="padding:5px 10px;border-bottom:1px solid #e5e7eb">{{Field2}}</td>
@@ -145,7 +145,7 @@ const STARTER_TEMPLATES: { label: string; icon: string; html: string }[] = [
 <h3>Fabric Composition</h3>
 <table>
   <tr><th>Pos</th><th>Code</th><th>Description</th><th>Colour</th></tr>
-  {{#each rs1}}<tr><td>{{Position}}</td><td>{{Code}}</td><td>{{Description}}</td><td>{{Colour}}</td></tr>{{/each}}
+  {{#each header_rs1}}<tr><td>{{Position}}</td><td>{{Code}}</td><td>{{Description}}</td><td>{{Colour}}</td></tr>{{/each}}
 </table>`,
   },
   {
@@ -173,7 +173,7 @@ const STARTER_TEMPLATES: { label: string; icon: string; html: string }[] = [
 <h3>Order Lines</h3>
 <table>
   <tr><th>SKU</th><th>Description</th><th>Qty</th><th>Unit Price</th><th>Total</th></tr>
-  {{#each rs1}}<tr><td>{{Sku}}</td><td>{{Description}}</td><td>{{Quantity}}</td><td>{{UnitPrice}}</td><td>{{Total}}</td></tr>{{/each}}
+  {{#each header_rs1}}<tr><td>{{Sku}}</td><td>{{Description}}</td><td>{{Quantity}}</td><td>{{UnitPrice}}</td><td>{{Total}}</td></tr>{{/each}}
   <tr class="total"><td colspan="4" style="text-align:right;padding:6px 10px">Order Total:</td><td>{{header.OrderTotal}}</td></tr>
 </table>`,
   },
@@ -193,7 +193,7 @@ const STARTER_TEMPLATES: { label: string; icon: string; html: string }[] = [
 <div class="meta">Generated: {{header.PrintedAt}}</div>
 <table>
   <tr><th>Field 1</th><th>Field 2</th><th>Field 3</th></tr>
-  {{#each rs1}}<tr><td>{{Field1}}</td><td>{{Field2}}</td><td>{{Field3}}</td></tr>{{/each}}
+  {{#each header_rs1}}<tr><td>{{Field1}}</td><td>{{Field2}}</td><td>{{Field3}}</td></tr>{{/each}}
 </table>`,
   },
 ];
@@ -205,7 +205,7 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
 
   const [report, setReport]                 = useState<any>(null);
   const [templateHtml, setTemplateHtml]     = useState('');
-  const [dataSources, setDataSources]       = useState<DataSourceDef[]>([{ alias: 'main', type: 'sp', value: '' }]);
+  const [dataSources, setDataSources]       = useState<DataSourceDef[]>([{ name: 'header', type: 'sp', value: '' }]);
   const [pageSize, setPageSize]             = useState('A4');
   const [orientation, setOrientation]       = useState('portrait');
   const [marginMm, setMarginMm]             = useState(15);
@@ -272,14 +272,19 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   };
 
   const refreshTokens = useCallback(() => {
-    const hasSp = dataSources.some(s => s.type === 'sp' && s.value.trim());
-    if (!hasSp) return;
+    const hasSource = dataSources.some(s =>
+      (s.type === 'sp' && s.value.trim()) ||
+      (s.type === 'api' && (s.value.trim() || s.sampleJson?.trim()))
+    );
+    if (!hasSource) return;
     setTokenLoading(true);
-    appReportSvc.getTokens(reportId)
+    // Pass current (unsaved) config so sampleJson for API sources is included
+    const liveConfig = JSON.stringify({ dataSources });
+    appReportSvc.getTokensFromConfig(liveConfig)
       .then(setTokens)
       .catch(() => setTokens([]))
       .finally(() => setTokenLoading(false));
-  }, [reportId, dataSources]);
+  }, [dataSources]);
 
   const insertAtCursor = (text: string) => {
     if (editorRef.current) {
@@ -474,7 +479,7 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
           <div className={`text-xs font-medium mb-2 ${theme.title}`}>
             <i className="fa-solid fa-database mr-1.5 text-blue-400" />Data Sources
             <span className={`ml-2 font-normal opacity-60 ${theme.label}`}>
-              Primary → {'{{header.…}}'}, {'{{rs1}}'} &nbsp;·&nbsp; Additional → {'{{alias.…}}'}, {'{{#each alias_rs1}}'}</span>
+              Every source: RS0 → {'{{alias.…}}'}  &nbsp;·&nbsp;  RS1 → {'{{#each alias_rs1}}'}</span>
           </div>
           <DataSourceEditor
             sources={dataSources}

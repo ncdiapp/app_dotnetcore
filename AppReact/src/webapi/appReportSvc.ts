@@ -39,6 +39,16 @@ class AppReportService {
     return response.json();
   }
 
+  /** Discover tokens from the designer's current (unsaved) config — includes sampleJson for API sources. */
+  async getTokensFromConfig(extraParamConfig: string, dataSpName?: string): Promise<any[]> {
+    const response = await fetch(
+      `${endpoints.BASE_URL}/webapi/AppReport/GetTokensFromConfig`,
+      { method: 'POST', headers: getHeaders(), body: JSON.stringify({ extraParamConfig, dataSpName }) }
+    );
+    if (!response.ok) return [];
+    return response.json();
+  }
+
   async previewHtml(payload: {
     reportId: number;
     mainReferenceId: number;
