@@ -6,12 +6,14 @@ type JsonCodeViewerProps = {
   text: string;
   placeholder?: string;
   className?: string;
+  monacoTheme?: string;
 };
 
 export const JsonCodeViewer: React.FC<JsonCodeViewerProps> = ({
   text,
   placeholder,
   className,
+  monacoTheme = 'vs',
 }) => {
   const raw = text ?? '';
 
@@ -26,7 +28,7 @@ export const JsonCodeViewer: React.FC<JsonCodeViewerProps> = ({
           <MonacoEditor
             language="json"
             value={displayed || placeholder || ''}
-            theme="vs"
+            theme={monacoTheme}
             options={{
               readOnly: true,
               minimap: { enabled: false },

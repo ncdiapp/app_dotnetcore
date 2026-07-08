@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
 import { appReportSvc } from '../../webapi/appReportSvc';
@@ -7,6 +8,9 @@ import DataSourceEditor, {
   parseSourcesFromConfig,
   serializeConfig,
 } from './DataSourceEditor';
+import { RootState } from '../../redux/store';
+
+const GrapeJsEditor = React.lazy(() => import('./GrapeJsEditor'));
 
 interface Props {
   reportId: number;
@@ -221,13 +225,25 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   const [leftTab, setLeftTab]               = useState<'blocks' | 'tokens'>('blocks');
   const [dsModalOpen, setDsModalOpen]       = useState(false);
   const [pdfPreviewing, setPdfPreviewing]   = useState(false);
-  const [viewMode, setViewMode]             = useState<'split' | 'visual'>('split');
+  const [viewMode, setViewMode]             = useState<'split' | 'visual' | 'design'>('split');
   const [draggingToken, setDraggingToken]   = useState<string | null>(null);
   const [dropIndicatorY, setDropIndicatorY] = useState<number | null>(null);
+  const [galleryOpen, setGalleryOpen]       = useState(false);
+  const [tableWizardOpen, setTableWizardOpen] = useState(false);
+  const [wizardSrcIdx, setWizardSrcIdx]     = useState(0);
+  const [wizardCols, setWizardCols]         = useState<{ field: string; header: string; selected: boolean }[]>([]);
 
-  const editorRef    = useRef<any>(null);
-  const iframeRef    = useRef<HTMLIFrameElement>(null);
-  const previewTimer = useRef<number | null>(null);
+  const currentThemeId = useSelector((state: RootState) => state.theme.currentThemeId);
+  const monacoTheme = currentThemeId === 'dark' ? 'vs-dark' : 'vs';
+
+  const editorRef              = useRef<any>(null);
+  const gjsEditorRef           = useRef<any>(null);
+  const iframeRef              = useRef<HTMLIFrameElement>(null);
+  const previewTimer           = useRef<number | null>(null);
+  const tokensRef              = useRef<TokenDescriptor[]>([]);
+  const completionDisposable   = useRef<any>(null);
+
+  useEffect(() => { tokensRef.current = tokens; }, [tokens]);
 
   // Load report on mount
   useEffect(() => {
@@ -251,13 +267,15 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   const triggerPreview = useCallback((html: string, refId: number) => {
     if (!html) return;
     const primarySp = dataSources.find(s => s.type === 'sp')?.value;
+    const liveConfig = serializeConfig(dataSources, extraParamConfig);
     appReportSvc.previewHtml({
       reportId,
       mainReferenceId: refId,
       templateHtmlOverride: html,
       dataSpNameOverride: primarySp || undefined,
+      extraParamConfigOverride: liveConfig || undefined,
     }).then(setPreviewHtml).catch(() => setPreviewHtml(html));
-  }, [reportId, dataSources]);
+  }, [reportId, dataSources, extraParamConfig]);
 
   const schedulePreview = useCallback((html: string) => {
     if (previewTimer.current) window.clearTimeout(previewTimer.current);
@@ -287,6 +305,19 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   }, [dataSources]);
 
   const insertAtCursor = (text: string) => {
+    if (viewMode === 'design' && gjsEditorRef.current) {
+      // In GrapeJS mode: try to insert into the selected component, otherwise copy to clipboard
+      const gjsEditor = gjsEditorRef.current;
+      const sel = gjsEditor.getSelected();
+      if (sel) {
+        const current = sel.get('content') ?? '';
+        sel.set('content', current + text);
+      } else {
+        navigator.clipboard?.writeText(text).catch(() => {});
+        // Toast is not available here; the token hint badge already explains the workflow
+      }
+      return;
+    }
     if (editorRef.current) {
       const editor = editorRef.current;
       const sel = editor.getSelection();
@@ -368,11 +399,13 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
     setError(null);
     try {
       const primarySp = dataSources.find(s => s.type === 'sp')?.value;
+      const liveConfig = serializeConfig(dataSources, extraParamConfig);
       const blobUrl = await appReportSvc.previewPdf({
         reportId,
         mainReferenceId: Number(previewRefId) || 0,
         templateHtmlOverride: templateHtml,
         dataSpNameOverride: primarySp || undefined,
+        extraParamConfigOverride: liveConfig || undefined,
         pageSize,
         orientation,
         marginMm,
@@ -551,6 +584,196 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
         </div>
       )}
 
+      {/* ── Template Gallery Modal ── */}
+      {galleryOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+             onClick={() => setGalleryOpen(false)}>
+          <div
+            className={`w-[680px] max-h-[80vh] flex flex-col rounded-lg shadow-2xl border ${t('border_mainContentSection')} ${theme.mainContentSection}`}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className={`flex-shrink-0 flex items-center justify-between px-4 py-3 border-b ${t('border_mainContentSection')}`}>
+              <span className={`text-sm font-semibold ${theme.title}`}>
+                <i className="fa-solid fa-layer-group mr-2 text-blue-500" />Choose a Starter Template
+              </span>
+              <button onClick={() => setGalleryOpen(false)} className={`px-2 py-1 text-xs rounded ${theme.button_default}`}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            {/* Card grid */}
+            <div className="flex-auto overflow-y-auto p-4 grid grid-cols-2 gap-4">
+              {STARTER_TEMPLATES.map(tmpl => (
+                <button
+                  key={tmpl.label}
+                  onClick={() => { applyStarterTemplate(tmpl.html); setGalleryOpen(false); }}
+                  className={`flex flex-col rounded-lg border-2 overflow-hidden text-left transition-colors hover:border-blue-400 ${t('border_mainContentSection')}`}
+                >
+                  {/* Scaled HTML thumbnail */}
+                  <div className="relative w-full overflow-hidden bg-white" style={{ height: '160px' }}>
+                    <iframe
+                      srcDoc={tmpl.html}
+                      title={tmpl.label}
+                      className="absolute top-0 left-0 border-none origin-top-left"
+                      style={{ width: '600px', height: '500px', transform: 'scale(0.48)', pointerEvents: 'none' }}
+                      sandbox=""
+                    />
+                  </div>
+                  {/* Label */}
+                  <div className={`px-3 py-2 text-xs font-medium flex items-center gap-1.5 ${theme.label}`}>
+                    <span>{tmpl.icon}</span>{tmpl.label}
+                  </div>
+                </button>
+              ))}
+              {/* Blank option */}
+              <button
+                onClick={() => { applyStarterTemplate(''); setGalleryOpen(false); }}
+                className={`flex flex-col rounded-lg border-2 overflow-hidden text-left transition-colors hover:border-blue-400 ${t('border_mainContentSection')}`}
+              >
+                <div className={`relative w-full flex items-center justify-center ${theme.mainContentSection}`} style={{ height: '160px' }}>
+                  <div className="flex flex-col items-center gap-2 opacity-40">
+                    <i className="fa-solid fa-file text-4xl" />
+                    <span className="text-xs">Blank canvas</span>
+                  </div>
+                </div>
+                <div className={`px-3 py-2 text-xs font-medium flex items-center gap-1.5 ${theme.label}`}>
+                  <span>📄</span>Start blank
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Table Wizard Modal ── */}
+      {tableWizardOpen && (() => {
+        const listGroups = groupedTokens.filter(g => g.toks.some(tok => tok.IsList && !tok.InsideEach));
+        const safeIdx = Math.min(wizardSrcIdx, Math.max(0, listGroups.length - 1));
+        const selectedGrp = listGroups[safeIdx];
+        const eachToken = selectedGrp?.toks.find(t => t.IsList && !t.InsideEach);
+        const selectedCols = wizardCols.filter(c => c.selected);
+
+        const generateHtml = () => {
+          if (!eachToken || selectedCols.length === 0) return '';
+          const headers = selectedCols.map(c => `      <th style="background:#1d4ed8;color:white;padding:6px 10px;text-align:left">${c.header}</th>`).join('\n');
+          const cells = selectedCols.map(c => `      <td style="padding:5px 10px;border-bottom:1px solid #e5e7eb">{{${c.field}}}</td>`).join('\n');
+          return `<table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:12px;margin-bottom:16px">
+  <thead>
+    <tr>
+${headers}
+    </tr>
+  </thead>
+  <tbody>
+    ${eachToken.Token}
+    <tr>
+${cells}
+    </tr>
+    {{/each}}
+  </tbody>
+</table>`;
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+               onClick={() => setTableWizardOpen(false)}>
+            <div
+              className={`w-[520px] max-h-[80vh] flex flex-col rounded-lg shadow-2xl border ${t('border_mainContentSection')} ${theme.mainContentSection}`}
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className={`flex-shrink-0 flex items-center justify-between px-4 py-3 border-b ${t('border_mainContentSection')}`}>
+                <span className={`text-sm font-semibold ${theme.title}`}>
+                  <i className="fa-solid fa-table mr-2 text-purple-500" />Table Wizard
+                </span>
+                <button onClick={() => setTableWizardOpen(false)} className={`px-2 py-1 text-xs rounded ${theme.button_default}`}>
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+              {/* Body */}
+              <div className="flex-auto overflow-y-auto px-4 py-4 space-y-4">
+                {listGroups.length === 0 ? (
+                  <p className={`text-xs ${theme.label} opacity-70`}>
+                    No list tokens found. Add a data source with repeating rows and click "Apply &amp; Load Tokens" first.
+                  </p>
+                ) : (
+                  <>
+                    {/* Step 1: data source */}
+                    <div>
+                      <p className={`text-xs font-semibold mb-1 ${theme.label}`}>1. Select data source</p>
+                      <select
+                        className={`h-7 w-full px-2 text-xs border rounded-[4px] ${theme.inputBox}`}
+                        value={safeIdx}
+                        onChange={e => {
+                          const idx = Number(e.target.value);
+                          setWizardSrcIdx(idx);
+                          const grp = listGroups[idx];
+                          setWizardCols(grp ? grp.toks.filter(tok => !tok.IsList || tok.InsideEach).map(tok => ({ field: tok.Field, header: tok.Field, selected: true })) : []);
+                        }}
+                      >
+                        {listGroups.map((g, i) => {
+                          const each = g.toks.find(t => t.IsList && !t.InsideEach);
+                          return <option key={g.name} value={i}>{g.name} ({each?.Token ?? ''})</option>;
+                        })}
+                      </select>
+                    </div>
+
+                    {/* Step 2: columns */}
+                    {wizardCols.length > 0 && (
+                      <div>
+                        <p className={`text-xs font-semibold mb-1 ${theme.label}`}>2. Choose columns</p>
+                        <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
+                          {wizardCols.map((col, i) => (
+                            <div key={col.field} className={`flex items-center gap-2 px-2 py-1 rounded border ${t('border_mainContentSection')}`}>
+                              <input
+                                type="checkbox"
+                                checked={col.selected}
+                                onChange={e => setWizardCols(prev => prev.map((c, j) => j === i ? { ...c, selected: e.target.checked } : c))}
+                                className="shrink-0"
+                              />
+                              <span className={`text-xs w-24 shrink-0 ${theme.label}`}>{col.field}</span>
+                              <input
+                                type="text"
+                                value={col.header}
+                                onChange={e => setWizardCols(prev => prev.map((c, j) => j === i ? { ...c, header: e.target.value } : c))}
+                                className={`h-6 flex-auto px-1.5 text-xs border rounded-[4px] ${theme.inputBox}`}
+                                placeholder="Column header"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Preview */}
+                    {selectedCols.length > 0 && eachToken && (
+                      <div>
+                        <p className={`text-xs font-semibold mb-1 ${theme.label}`}>3. Preview</p>
+                        <pre className={`text-[10px] p-2 rounded border overflow-x-auto ${t('border_mainContentSection')} ${theme.mainContentSection}`} style={{ maxHeight: 120 }}>
+                          {generateHtml()}
+                        </pre>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              {/* Footer */}
+              <div className={`flex-shrink-0 flex justify-end gap-2 px-4 py-3 border-t ${t('border_mainContentSection')}`}>
+                <button onClick={() => setTableWizardOpen(false)} className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}>
+                  Cancel
+                </button>
+                <button
+                  disabled={selectedCols.length === 0 || !eachToken}
+                  className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_secondary} disabled:opacity-40 disabled:cursor-not-allowed`}
+                  onClick={() => { insertAtCursor(generateHtml()); setTableWizardOpen(false); }}
+                >
+                  <i className="fa-solid fa-check mr-1" />Insert Table
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Main body ── */}
       <div className="flex h-1 flex-auto overflow-hidden">
 
@@ -579,25 +802,37 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
             {leftTab === 'blocks' && (
               <div className="p-2 space-y-3">
 
-                {/* Starter templates */}
+                {/* Starter templates — gallery trigger */}
                 <div>
                   <p className={`text-[10px] font-semibold uppercase tracking-wider mb-1.5 ${theme.label} opacity-60`}>Start from template</p>
-                  <div className="space-y-1">
-                    {STARTER_TEMPLATES.map(tmpl => (
-                      <button
-                        key={tmpl.label}
-                        onClick={() => applyStarterTemplate(tmpl.html)}
-                        className={`w-full text-left px-2 py-1.5 text-xs rounded-[4px] border ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 transition-colors`}
-                      >
-                        <span className="mr-1.5">{tmpl.icon}</span>{tmpl.label}
-                      </button>
-                    ))}
-                  </div>
+                  <button
+                    onClick={() => setGalleryOpen(true)}
+                    className={`w-full text-left px-2 py-1.5 text-xs rounded-[4px] border ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 transition-colors flex items-center gap-1.5`}
+                  >
+                    <i className="fa-solid fa-layer-group text-blue-400" />
+                    Browse templates…
+                  </button>
                 </div>
 
                 {/* Insert blocks */}
                 <div>
                   <p className={`text-[10px] font-semibold uppercase tracking-wider mb-1.5 ${theme.label} opacity-60`}>Insert block</p>
+                  {/* Table wizard shortcut */}
+                  <button
+                    onClick={() => {
+                      const listGroups = groupedTokens.filter(g => g.toks.some(tok => tok.IsList && !tok.InsideEach));
+                      const idx = Math.min(wizardSrcIdx, Math.max(0, listGroups.length - 1));
+                      const grp = listGroups[idx];
+                      setWizardSrcIdx(idx);
+                      setWizardCols(grp ? grp.toks.filter(tok => !tok.IsList || tok.InsideEach).map(tok => ({ field: tok.Field, header: tok.Field, selected: true })) : []);
+                      setTableWizardOpen(true);
+                    }}
+                    className={`w-full mb-1 text-left px-2 py-1.5 text-xs rounded-[4px] border ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 transition-colors flex items-center gap-1.5`}
+                    title="Generate a data table from a token list"
+                  >
+                    <i className="fa-solid fa-table text-purple-400" />
+                    Insert Table from data…
+                  </button>
                   <div className="space-y-1">
                     {REPORT_BLOCKS.map(block => (
                       <button
@@ -720,13 +955,14 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                 <span className={`text-xs font-medium ${theme.label} shrink-0`}>
                   Preview — {pageSize} {orientation}
                 </span>
-                <span className={`text-xs ${theme.label} opacity-70`}>Ref ID:</span>
+                <span className={`text-xs ${theme.label} opacity-70`}>Preview record #</span>
                 <input
                   type="number"
                   className={`h-6 w-20 px-1.5 text-xs border rounded-[4px] ${theme.inputBox}`}
                   value={previewRefId}
                   onChange={e => setPreviewRefId(e.target.value)}
-                  placeholder="42"
+                  placeholder="e.g. 42"
+                  title="Enter any record ID — the preview will fetch live data from your data sources using that record"
                 />
                 <button
                   onClick={() => triggerPreview(templateHtml, Number(previewRefId) || 0)}
@@ -734,6 +970,15 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                 >
                   <i className="fa-solid fa-rotate mr-1" />Refresh
                 </button>
+              </>
+            ) : viewMode === 'design' ? (
+              /* Design bar */
+              <>
+                <i className="fa-solid fa-pen-ruler text-purple-400 text-xs shrink-0" />
+                <span className={`text-xs font-medium ${theme.label}`}>Visual Designer</span>
+                <span className={`text-xs opacity-40 ${theme.label}`}>
+                  — drag blocks from left panel · click a text element then use Tokens tab to insert
+                </span>
               </>
             ) : (
               /* Code bar — label on left */
@@ -744,6 +989,8 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                   — <i className="fa-solid fa-hand-pointer mr-0.5" />click token to insert at cursor
                   &nbsp;·&nbsp;
                   <i className="fa-solid fa-up-down-left-right mr-0.5" />drag token onto editor
+                  &nbsp;·&nbsp;
+                  type <kbd className="px-0.5 py-px text-[9px] border rounded">{'{{' }</kbd> for autocomplete
                 </span>
               </>
             )}
@@ -766,6 +1013,13 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                 className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'visual' ? 'bg-blue-500 text-white' : theme.button_default}`}
               >
                 <i className="fa-solid fa-paintbrush mr-1" />Visual
+              </button>
+              <button
+                onClick={() => setViewMode('design')}
+                title="GrapeJS WYSIWYG visual editor"
+                className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'design' ? 'bg-purple-500 text-white' : theme.button_default}`}
+              >
+                <i className="fa-solid fa-pen-ruler mr-1" />Design
               </button>
             </div>
           </div>
@@ -806,8 +1060,36 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
               value={templateHtml}
               onChange={handleHtmlChange}
               debounceMs={300}
+              monacoTheme={monacoTheme}
               onMount={(editor, monacoInstance) => {
                 editorRef.current = editor;
+
+                // Register {{token}} autocomplete — reads latest tokens via ref on each invocation
+                completionDisposable.current?.dispose();
+                completionDisposable.current = monacoInstance.languages.registerCompletionItemProvider('html', {
+                  triggerCharacters: ['{'],
+                  provideCompletionItems: (model: any, position: any) => {
+                    const textBefore = model.getValueInRange({
+                      startLineNumber: position.lineNumber, startColumn: 1,
+                      endLineNumber: position.lineNumber, endColumn: position.column,
+                    });
+                    if (!textBefore.endsWith('{{')) return { suggestions: [] };
+                    return {
+                      suggestions: tokensRef.current.map((tok: TokenDescriptor) => ({
+                        label: tok.Token,
+                        kind: monacoInstance.languages.CompletionItemKind.Variable,
+                        insertText: tok.Token.slice(2), // '{{' already typed
+                        detail: `${tok.ResultSet} · ${tok.Field}`,
+                        documentation: tok.IsList ? 'List token — wrap in #each' : 'Scalar field token',
+                        range: {
+                          startLineNumber: position.lineNumber, startColumn: position.column,
+                          endLineNumber: position.lineNumber, endColumn: position.column,
+                        },
+                      })),
+                    };
+                  },
+                });
+
                 // Wire native drag-drop so tokens can be dropped directly onto the Monaco editor
                 const domNode = editor.getDomNode();
                 if (domNode) {
@@ -901,6 +1183,23 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                 </div>
               )}
             </div>
+
+          {/* ── DESIGN mode: GrapeJS WYSIWYG — always mounted, hidden when not in design mode ── */}
+          <div
+            className="h-1 flex-auto overflow-hidden"
+            style={{ display: viewMode === 'design' ? 'flex' : 'none' }}
+          >
+            <Suspense fallback={<div className={`w-full h-full flex items-center justify-center text-xs ${theme.label} opacity-60`}><i className="fa-solid fa-spinner fa-spin mr-2" />Loading visual editor…</div>}>
+              <GrapeJsEditor
+                html={templateHtml}
+                tokens={tokens}
+                blocks={REPORT_BLOCKS}
+                isDark={currentThemeId === 'dark'}
+                onChange={html => { setTemplateHtml(html); schedulePreview(html); }}
+                onEditorReady={ed => { gjsEditorRef.current = ed; }}
+              />
+            </Suspense>
+          </div>
 
         </div>
       </div>

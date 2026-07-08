@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #222; padding: 20px; background: #fff; }
+
+  /* ── Page title ── */
+  .page-title {
+    text-align: center;
+    font-size: 14px;
+    font-weight: bold;
+    margin-bottom: 10px;
+    letter-spacing: 1px;
+  }
+
+  /* ── Section wrapper ── */
+  .section { margin-bottom: 0; border: 1px solid #ccc; }
+  .section + .section { border-top: none; }
+
+  /* ── Section header bar ── */
+  .section-header {
+    background: #d9d9d9;
+    font-weight: bold;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-bottom: 1px solid #bbb;
+  }
+
+  /* ── Section body ── */
+  .section-body { padding: 0; }
+
+  /* ── Key-value field ── */
+  .kv-table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .kv-table td {
+    padding: 3px 6px;
+    vertical-align: top;
+    font-size: 11px;
+    border-bottom: 1px solid #eee;
+  }
+  .kv-label {
+    font-weight: bold;
+    color: #444;
+    white-space: nowrap;
+    width: 110px;
+  }
+  .kv-value {
+    color: #222;
+  }
+
+  /* ── Style section top grid ── */
+  .style-grid {
+    display: grid;
+    grid-template-columns: 220px 200px 200px auto;
+    border-collapse: collapse;
+  }
+  .style-col {
+    border-right: 1px solid #ccc;
+    padding: 4px 0;
+  }
+  .style-col:last-child { border-right: none; }
+
+  /* ── Image cell ── */
+  .img-cell {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 8px;
+  }
+  .img-cell img {
+    max-width: 90px;
+    max-height: 90px;
+    border: 1px solid #ddd;
+    object-fit: contain;
+  }
+  .img-placeholder {
+    width: 90px;
+    height: 90px;
+    border: 1px solid #ccc;
+    background: #f0f0f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #999;
+    text-align: center;
+  }
+
+  /* ── Style Information 3-column grid ── */
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  .info-col {
+    border-right: 1px solid #ccc;
+    padding: 0;
+  }
+  .info-col:last-child { border-right: none; }
+  .info-col-header {
+    font-weight: bold;
+    font-size: 11px;
+    padding: 4px 8px 3px;
+    border-bottom: 1px solid #ddd;
+    background: #f7f7f7;
+  }
+  .info-col-body { padding: 4px 0; }
+
+  @media print {
+    body { padding: 10px; }
+    @page { size: A4 landscape; margin: 10mm; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Page Title -->
+<div class="page-title">PROJEK RAW</div>
+
+<!-- ══════════ STYLE SECTION ══════════ -->
+<div class="section">
+  <div class="section-header">Style</div>
+  <div class="section-body">
+    <div class="style-grid">
+
+      <!-- Column 1: Style # / Name / Long Description / Original Ref -->
+      <div class="style-col">
+        <table class="kv-table">
+          <tr>
+            <td class="kv-label">Style #</td>
+            <td class="kv-value">TAS27764BT</td>
+          </tr>
+          <tr>
+            <td class="kv-label">Style Name</td>
+            <td class="kv-value">&nbsp;</td>
+          </tr>
+          <tr>
+            <td class="kv-label" colspan="2" style="padding-bottom:2px;">Long Description</td>
+          </tr>
+          <tr>
+            <td colspan="2" class="kv-value" style="padding-top:0;padding-bottom:8px;">Mens Knit Ss test</td>
+          </tr>
+          <tr>
+            <td class="kv-label">Original Ref.</td>
+            <td class="kv-value">012-S26</td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- Column 2: Division … Style Status -->
+      <div class="style-col">
+        <table class="kv-table">
+          <tr><td class="kv-label">Division</td>       <td class="kv-value">Importations Rallye</td></tr>
+          <tr><td class="kv-label">Product Class</td>  <td class="kv-value">Pjk Tech Apparel</td></tr>
+          <tr><td class="kv-label">Type Group</td>     <td class="kv-value">Tops</td></tr>
+          <tr><td class="kv-label">Product Type</td>   <td class="kv-value">Knit Ss</td></tr>
+          <tr><td class="kv-label">Season</td>         <td class="kv-value">2027 Spring</td></tr>
+          <tr><td class="kv-label">Collection</td>     <td class="kv-value">Tech Mesh</td></tr>
+          <tr><td class="kv-label">Group</td>          <td class="kv-value">Polyester Blend</td></tr>
+          <tr><td class="kv-label">Style Status</td>   <td class="kv-value">Development</td></tr>
+        </table>
+      </div>
+
+      <!-- Column 3: Fit Type … Gender -->
+      <div class="style-col">
+        <table class="kv-table">
+          <tr><td class="kv-label">Fit Type</td>     <td class="kv-value">Classic Fit</td></tr>
+          <tr><td class="kv-label">Print/Solid</td>  <td class="kv-value">&nbsp;</td></tr>
+          <tr><td class="kv-label">Size Range</td>   <td class="kv-value">LT - 6X BIG &amp; TALL</td></tr>
+          <tr><td class="kv-label">Sample Size</td>  <td class="kv-value">2X</td></tr>
+          <tr><td class="kv-label">Dimension</td>    <td class="kv-value">REG</td></tr>
+          <tr><td class="kv-label">Gender</td>       <td class="kv-value">Mens</td></tr>
+        </table>
+      </div>
+
+      <!-- Column 4: Thumbnail image -->
+      <div class="style-col">
+        <div class="img-cell">
+          <div class="img-placeholder">
+            [Image]
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ STYLE INFORMATION SECTION ══════════ -->
+<div class="section">
+  <div class="section-header">Style Information</div>
+  <div class="section-body">
+    <div class="info-grid">
+
+      <!-- Col 1: Content % & Fibers -->
+      <div class="info-col">
+        <div class="info-col-header">Content % &amp; Fibers</div>
+        <div class="info-col-body">
+          <table class="kv-table">
+            <tr>
+              <td class="kv-label" colspan="2" style="padding-bottom:2px;">Total Composition</td>
+            </tr>
+            <tr>
+              <td colspan="2" class="kv-value" style="padding-top:0;">90% Polyester, 10% Spandex</td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Col 2: Vendor / Factory -->
+      <div class="info-col">
+        <div class="info-col-header">Vendor/Factory</div>
+        <div class="info-col-body">
+          <table class="kv-table">
+            <tr><td class="kv-label">Tech Pack Send to Vendor</td> <td class="kv-value">&nbsp;</td></tr>
+            <tr><td class="kv-label">Tech Pack Sent Date</td>      <td class="kv-value">&nbsp;</td></tr>
+            <tr><td class="kv-label">Garment Factory</td>          <td class="kv-value">&nbsp;</td></tr>
+            <tr><td class="kv-label">Manufacturer COO</td>         <td class="kv-value">&nbsp;</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <!-- Col 3: Launch & Delivery -->
+      <div class="info-col">
+        <div class="info-col-header">Launch &amp; Delivery</div>
+        <div class="info-col-body">
+          <table class="kv-table">
+            <tr><td class="kv-label">Drop</td>              <td class="kv-value">&nbsp;</td></tr>
+            <tr><td class="kv-label">Launch Month</td>      <td class="kv-value">&nbsp;</td></tr>
+            <tr><td class="kv-label">Order Month</td>       <td class="kv-value">&nbsp;</td></tr>
+            <tr><td class="kv-label">Ship Window Start</td> <td class="kv-value">&nbsp;</td></tr>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

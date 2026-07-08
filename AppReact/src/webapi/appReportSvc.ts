@@ -55,6 +55,7 @@ class AppReportService {
     masterReferenceId?: number;
     templateHtmlOverride?: string;
     dataSpNameOverride?: string;
+    extraParamConfigOverride?: string;
     extraParams?: Record<string, string>;
   }): Promise<string> {
     const response = await fetch(
@@ -71,6 +72,7 @@ class AppReportService {
     masterReferenceId?: number;
     templateHtmlOverride?: string;
     dataSpNameOverride?: string;
+    extraParamConfigOverride?: string;
     pageSize?: string;
     orientation?: string;
     marginMm?: number;

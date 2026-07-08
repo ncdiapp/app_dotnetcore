@@ -12,6 +12,8 @@ type JsonCodeEditorProps = {
   /** Debounce parent onChange for typing responsiveness */
   debounceMs?: number;
   onMount?: (editor: any, monaco: any) => void;
+  /** Monaco editor theme — 'vs' (light) or 'vs-dark'. Defaults to 'vs'. */
+  monacoTheme?: string;
 };
 
 export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
@@ -23,6 +25,7 @@ export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
   readOnly = false,
   debounceMs = 150,
   onMount,
+  monacoTheme = 'vs',
 }) => {
   const [localValue, setLocalValue] = useState<string>(value ?? '');
   const latestOnChangeRef = useRef(onChange);
@@ -85,7 +88,7 @@ export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
         <MonacoEditor
           language={language}
           value={localValue || placeholder || ''}
-          theme="vs"
+          theme={monacoTheme}
           onMount={(editor, monaco) => {
             editor.onDidBlurEditorText(() => {
               flush(editor.getValue());
