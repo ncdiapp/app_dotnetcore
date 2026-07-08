@@ -261,8 +261,9 @@ namespace App.BL
 
         /// <summary>
         /// Discovers tokens from a sample JSON string pasted by the designer for an API source.
-        /// JObject  → RS0 scalar keys; each JArray property → RS1, RS2 … list keys.
-        /// JArray   → RS0 as a list.
+        /// JObject  → scalar keys for primitives; each JArray property → "{name}_{propName}" list.
+        ///            e.g. { "Brand":"CGS", "Lines":[...] } → {{src.Brand}}, {{#each src_Lines}}
+        /// JArray   → "{name}" list, e.g. [{"Code":"A"}] → {{#each src}} {{Code}} {{/each}}
         /// </summary>
         private static void MergeApiSampleJson(Dictionary<string, object> context, string sampleJson, string name)
         {
@@ -273,13 +274,13 @@ namespace App.BL
                 if (token is JObject obj)
                 {
                     var scalarRow = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-                    int arrayIdx  = 1;
                     foreach (var prop in obj.Properties())
                     {
                         if (prop.Value is JArray arr)
                         {
+                            // Use the property name as the key: "Lines" → "{name}_Lines"
                             var rows = BuildRowsFromJArray(arr);
-                            if (rows.Count > 0) context[$"{name}_rs{arrayIdx++}"] = rows;
+                            if (rows.Count > 0) context[$"{name}_{prop.Name}"] = rows;
                         }
                         else
                         {

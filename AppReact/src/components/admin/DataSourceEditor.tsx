@@ -89,21 +89,16 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
         {sources.map((src, idx) => (
           <div key={idx} className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1">
-              {/* Primary badge or name input */}
-              {idx === 0 ? (
-                <span className={`h-7 px-1.5 text-[10px] rounded-[4px] border flex items-center font-medium text-blue-500 shrink-0 ${t('border_mainContentSection')}`}
-                  title={`Name for this source (RS0 → {{${src.name}.…}}, RS1 → {{#each ${src.name}_rs1}})`}>
-                  PRIMARY
-                </span>
-              ) : (
-                <input
-                  className={`h-7 w-20 px-1.5 text-xs border rounded-[4px] font-mono ${theme.inputBox}`}
-                  value={src.name}
-                  onChange={e => update(idx, 'name', e.target.value.replace(/\s/g, '_').toLowerCase())}
-                  placeholder="name"
-                  title="Name prefix for tokens: {{name.Field}}, {{#each name_rs1}}"
-                />
-              )}
+              {/* Editable name — same for every source */}
+              <input
+                className={`h-7 w-20 px-1.5 text-xs border rounded-[4px] font-mono ${theme.inputBox}`}
+                value={src.name}
+                onChange={e => update(idx, 'name', e.target.value.replace(/\s/g, '_').toLowerCase())}
+                placeholder="name"
+                title={src.type === 'sp'
+                  ? `SP tokens — scalar: {{${src.name}.Field}}  list RS1: {{#each ${src.name}_rs1}}  RS2: {{#each ${src.name}_rs2}}`
+                  : `API tokens — primitive: {{${src.name}.Field}}  array "Lines": {{#each ${src.name}_Lines}}`}
+              />
 
               {/* Type toggle */}
               <button
@@ -124,7 +119,7 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
                 placeholder={src.type === 'sp' ? SP_HINT : API_HINT}
               />
 
-              {/* Remove (not for primary) */}
+              {/* Remove — not for the first source */}
               {idx > 0 && (
                 <button
                   className="h-7 px-1.5 text-xs text-red-400 hover:text-red-600"
@@ -142,7 +137,7 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
                 className={`w-full h-16 px-2 py-1 text-xs border rounded-[4px] font-mono resize-none ${theme.inputBox}`}
                 value={src.sampleJson || ''}
                 onChange={e => update(idx, 'sampleJson', e.target.value)}
-                placeholder={`Paste sample API response for token discovery:\n{"Field1":"value","rows":[{"Col":"val"}]}`}
+                placeholder={`Paste sample API response:\n{"Brand":"CGS","Lines":[{"Sku":"A","Qty":1}]}`}
               />
             )}
           </div>
@@ -160,20 +155,39 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
       {sources.map((src, idx) => (
         <div key={idx} className={`rounded-[4px] border p-3 ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-bold uppercase text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">
-              {src.name || `src${idx}`}
-            </span>
-            <span className={`text-xs flex-auto ${theme.label}`}>
-              {`RS0 → {{${src.name || `src${idx}`}.…}}   RS1 → {{#each ${src.name || `src${idx}`}_rs1}}`}
-            </span>
+            <span className={`text-xs shrink-0 ${theme.label}`}>Source Name:</span>
+            <input
+              className={`h-6 w-24 px-2 text-xs border rounded-[4px] font-mono ${theme.inputBox}`}
+              value={src.name}
+              onChange={e => update(idx, 'name', e.target.value.replace(/\s/g, '_').toLowerCase())}
+              placeholder="header"
+              title="Used as the token prefix in your report template"
+            />
             {idx > 0 && (
-              <button className="text-xs text-red-400 hover:text-red-600" onClick={() => remove(idx)}>
+              <button className="ml-auto text-xs text-red-400 hover:text-red-600" onClick={() => remove(idx)}>
                 <i className="fa-solid fa-trash" />
               </button>
             )}
           </div>
+          {/* Token hint — SP uses RS0/RS1/RS2 numbering; API uses JSON property paths */}
+          <div className={`text-[10px] mb-2 ${theme.label} opacity-60`}>
+            {src.type === 'sp' ? (
+              <>
+                <i className="fa-solid fa-database mr-1 text-blue-400" />
+                <code>{`{{${src.name || `src${idx}`}.Field}}`}</code> (RS0 scalar) &nbsp;·&nbsp;
+                <code>{`{{#each ${src.name || `src${idx}`}_rs1}}`}</code> (RS1 list) &nbsp;·&nbsp;
+                <code>{`{{#each ${src.name || `src${idx}`}_rs2}}`}</code> (RS2 list) …
+              </>
+            ) : (
+              <>
+                <i className="fa-solid fa-network-wired mr-1 text-purple-400" />
+                <code>{`{{${src.name || `src${idx}`}.Field}}`}</code> (JSON primitive) &nbsp;·&nbsp;
+                array property <code>"Lines"</code> → <code>{`{{#each ${src.name || `src${idx}`}_Lines}}`}</code>
+              </>
+            )}
+          </div>
           <div className="flex items-center gap-3">
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0">
               <label className={`flex items-center gap-1 text-xs cursor-pointer ${theme.label}`}>
                 <input type="radio" checked={src.type === 'sp'} onChange={() => update(idx, 'type', 'sp')} />
                 <i className="fa-solid fa-database text-blue-500 mr-0.5" />SP
@@ -183,17 +197,6 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
                 <i className="fa-solid fa-network-wired text-purple-500 mr-0.5" />API
               </label>
             </div>
-            {idx > 0 && (
-              <div className="flex items-center gap-1">
-                <span className={`text-xs ${theme.label}`}>Name:</span>
-                <input
-                  className={`h-7 w-24 px-2 text-xs border rounded-[4px] font-mono ${theme.inputBox}`}
-                  value={src.name}
-                  onChange={e => update(idx, 'name', e.target.value.replace(/\s/g, '_').toLowerCase())}
-                  placeholder="bom"
-                />
-              </div>
-            )}
             <input
               className={`h-7 flex-auto px-2 text-xs border rounded-[4px] font-mono ${theme.inputBox}`}
               value={src.value}
@@ -201,7 +204,7 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
               placeholder={src.type === 'sp' ? SP_HINT : API_HINT}
             />
           </div>
-          {src.type === 'sp' && idx === 0 && (
+          {src.type === 'sp' && (
             <p className={`text-[10px] mt-1 ${theme.label} opacity-60`}>
               SP must accept <code>@MainReferenceId INT, @MasterReferenceId INT = NULL, @ExtraParams NVARCHAR(MAX) = NULL</code>
             </p>
@@ -219,8 +222,8 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
                 placeholder={`{\n  "ProductCode": "P001",\n  "Description": "Shirt",\n  "Lines": [{"Sku":"A","Qty":1}]\n}`}
               />
               <p className={`text-[10px] mt-0.5 ${theme.label} opacity-60`}>
-                Primitive fields → <code>{'{{' + src.name + '.Field}}'}</code> &nbsp;·&nbsp;
-                Array properties → <code>{'{{#each ' + src.name + '_rs1}}'}</code>
+                Root array → <code>{'{{#each ' + src.name + '}}'}</code> &nbsp;·&nbsp;
+                Nested array <code>"Lines"</code> → <code>{'{{#each ' + src.name + '_Lines}}'}</code>
               </p>
             </div>
           )}

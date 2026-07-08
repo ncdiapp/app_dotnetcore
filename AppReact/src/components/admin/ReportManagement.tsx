@@ -265,11 +265,11 @@ const ReportManagement: React.FC = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
              onClick={() => setCreateOpen(false)}>
           <div
-            className={`w-[480px] rounded-lg shadow-2xl overflow-hidden border ${t('border_mainContentSection')} ${theme.mainContentSection}`}
+            className={`w-[480px] max-h-[90vh] flex flex-col rounded-lg shadow-2xl overflow-hidden border ${t('border_mainContentSection')} ${theme.mainContentSection}`}
             onClick={e => e.stopPropagation()}
           >
             {/* Modal header */}
-            <div className={`flex items-center justify-between px-4 py-3 border-b ${t('border_mainContentSection')}`}>
+            <div className={`flex-shrink-0 flex items-center justify-between px-4 py-3 border-b ${t('border_mainContentSection')}`}>
               <span className={`text-sm font-semibold ${theme.title}`}>
                 <i className="fa-solid fa-plus mr-2 text-blue-500" />Create New Report
               </span>
@@ -279,7 +279,7 @@ const ReportManagement: React.FC = () => {
             </div>
 
             {/* Form body */}
-            <div className="px-4 py-4 space-y-3">
+            <div className="flex-auto overflow-y-auto px-4 py-4 space-y-3">
 
               {/* Report Name */}
               <div className="flex items-center">
@@ -310,7 +310,7 @@ const ReportManagement: React.FC = () => {
               <div>
                 <label className={`block text-xs font-medium mb-2 ${theme.label}`}>
                   Data Sources
-                  <span className={`ml-2 font-normal opacity-60`}>— add SP or API endpoints (first is primary)</span>
+                  <span className={`ml-2 font-normal opacity-60`}>— add SP or API endpoints</span>
                 </label>
                 <DataSourceEditor
                   sources={formSources}
@@ -337,7 +337,7 @@ const ReportManagement: React.FC = () => {
             </div>
 
             {/* Modal footer */}
-            <div className={`flex justify-end gap-2 px-4 py-3 border-t ${t('border_mainContentSection')}`}>
+            <div className={`flex-shrink-0 flex justify-end gap-2 px-4 py-3 border-t ${t('border_mainContentSection')}`}>
               <button onClick={() => setCreateOpen(false)} className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}>
                 Cancel
               </button>
