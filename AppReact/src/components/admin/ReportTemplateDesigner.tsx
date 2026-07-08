@@ -219,7 +219,7 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   const [tokenLoading, setTokenLoading]     = useState(false);
   const [error, setError]                   = useState<string | null>(null);
   const [leftTab, setLeftTab]               = useState<'blocks' | 'tokens'>('blocks');
-  const [dsExpanded, setDsExpanded]         = useState(false);
+  const [dsModalOpen, setDsModalOpen]       = useState(false);
   const [pdfPreviewing, setPdfPreviewing]   = useState(false);
   const [viewMode, setViewMode]             = useState<'split' | 'visual'>('split');
   const [draggingToken, setDraggingToken]   = useState<string | null>(null);
@@ -412,6 +412,28 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
     }
   };
 
+  // Group tokens by their data source name
+  const groupedTokens = React.useMemo(() => {
+    const groups: { name: string; type: string; toks: TokenDescriptor[] }[] = [];
+    const sortedSrcs = [...dataSources].sort((a, b) => b.name.length - a.name.length);
+    for (const tok of tokens) {
+      let srcName = tok.ResultSet;
+      for (const src of sortedSrcs) {
+        if (tok.ResultSet === src.name || tok.ResultSet.startsWith(src.name + '_')) {
+          srcName = src.name; break;
+        }
+      }
+      let grp = groups.find(g => g.name === srcName);
+      if (!grp) {
+        const srcType = dataSources.find(s => s.name === srcName)?.type ?? 'sp';
+        grp = { name: srcName, type: srcType, toks: [] };
+        groups.push(grp);
+      }
+      grp.toks.push(tok);
+    }
+    return groups;
+  }, [tokens, dataSources]);
+
   if (loading) return <div className={`p-4 text-sm ${theme.label}`}>Loading…</div>;
 
   return (
@@ -422,15 +444,15 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
         <span className={`text-sm font-semibold ${theme.title} mr-1 shrink-0`}>
           {report?.ReportName ?? 'Report Designer'}
         </span>
-        {/* Data Sources toggle */}
+        {/* Data Sources popup trigger */}
         <button
-          onClick={() => setDsExpanded(v => !v)}
+          onClick={() => setDsModalOpen(true)}
           className={`h-7 px-2 text-xs border rounded-[4px] shrink-0 flex items-center gap-1 ${theme.inputBox}`}
           title="Configure data sources"
         >
           <i className="fa-solid fa-database text-blue-400 mr-1" />
           {dataSources.filter(s => s.value).length} Source{dataSources.filter(s => s.value).length !== 1 ? 's' : ''}
-          <i className={`fa-solid fa-chevron-${dsExpanded ? 'up' : 'down'} text-[9px] ml-0.5`} />
+          <i className="fa-solid fa-pen-to-square text-[9px] ml-0.5 text-blue-400" />
         </button>
         <label className={`text-xs ${theme.label} shrink-0`}>Size:</label>
         <select className={`h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} value={pageSize} onChange={e => setPageSize(e.target.value)}>
@@ -473,25 +495,47 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
         )}
       </div>
 
-      {/* ── Data Sources Panel (expandable) ── */}
-      {dsExpanded && (
-        <div className={`px-3 py-3 border-b flex-shrink-0 ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
-          <div className={`text-xs font-medium mb-2 ${theme.title}`}>
-            <i className="fa-solid fa-database mr-1.5 text-blue-400" />Data Sources
-            <span className={`ml-2 font-normal opacity-60 ${theme.label}`}>
-              Every source: RS0 → {'{{alias.…}}'}  &nbsp;·&nbsp;  RS1 → {'{{#each alias_rs1}}'}</span>
-          </div>
-          <DataSourceEditor
-            sources={dataSources}
-            onChange={srcs => { setDataSources(srcs); }}
-            compact
-          />
-          <button
-            className={`mt-2 px-3 py-1 text-xs rounded-[4px] ${theme.button_default}`}
-            onClick={() => { refreshTokens(); setDsExpanded(false); }}
+      {/* ── Data Sources Modal ── */}
+      {dsModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+             onClick={() => setDsModalOpen(false)}>
+          <div
+            className={`w-[560px] max-h-[80vh] flex flex-col rounded-lg shadow-2xl border ${t('border_mainContentSection')} ${theme.mainContentSection}`}
+            onClick={e => e.stopPropagation()}
           >
-            <i className="fa-solid fa-check mr-1" />Apply & Load Tokens
-          </button>
+            {/* Header */}
+            <div className={`flex-shrink-0 flex items-center justify-between px-4 py-3 border-b ${t('border_mainContentSection')}`}>
+              <span className={`text-sm font-semibold ${theme.title}`}>
+                <i className="fa-solid fa-database mr-2 text-blue-500" />Data Sources
+              </span>
+              <button onClick={() => setDsModalOpen(false)} className={`px-2 py-1 text-xs rounded ${theme.button_default}`}>
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            {/* Body */}
+            <div className="flex-auto overflow-y-auto px-4 py-4">
+              <p className={`text-xs mb-3 opacity-60 ${theme.label}`}>
+                SP: RS0 → <code>{'{{name.Field}}'}</code> · RS1 → <code>{'{{#each name_rs1}}'}</code>&nbsp;&nbsp;
+                API: primitives → <code>{'{{name.Field}}'}</code> · array "Lines" → <code>{'{{#each name_Lines}}'}</code>
+              </p>
+              <DataSourceEditor
+                sources={dataSources}
+                onChange={setDataSources}
+              />
+            </div>
+            {/* Footer */}
+            <div className={`flex-shrink-0 flex justify-end gap-2 px-4 py-3 border-t ${t('border_mainContentSection')}`}>
+              <button onClick={() => setDsModalOpen(false)} className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}>
+                Cancel
+              </button>
+              <button
+                className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_secondary}`}
+                onClick={() => { refreshTokens(); setLeftTab('tokens'); setDsModalOpen(false); }}
+              >
+                <i className="fa-solid fa-check mr-1" />Apply &amp; Load Tokens
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -568,46 +612,76 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
 
             {/* ── Tokens tab ── */}
             {leftTab === 'tokens' && (
-              <div className="p-1">
-                <div className="flex items-center justify-between px-1 py-1 mb-1">
-                  <span className={`text-xs ${theme.label}`}>SP tokens</span>
-                  <button onClick={refreshTokens} disabled={tokenLoading} className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default}`} title="Load from SP">
-                    <i className={`fa-solid fa-rotate ${tokenLoading ? 'fa-spin' : ''}`} />
-                  </button>
+              <div>
+                {/* Header */}
+                <div className={`flex items-center justify-between px-2 py-1.5 sticky top-0 z-10 border-b ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
+                  <span className={`text-[10px] font-semibold uppercase tracking-wider opacity-60 ${theme.label}`}>
+                    Tokens
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setDsModalOpen(true)}
+                      className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default}`}
+                      title="Edit data sources"
+                    >
+                      <i className="fa-solid fa-database" />
+                    </button>
+                    <button onClick={refreshTokens} disabled={tokenLoading} className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default}`} title="Reload tokens">
+                      <i className={`fa-solid fa-rotate ${tokenLoading ? 'fa-spin' : ''}`} />
+                    </button>
+                  </div>
                 </div>
+
                 {tokens.length === 0 ? (
-                  <p className={`text-xs ${theme.label} px-2 py-1 opacity-70`}>
-                    {dataSources.some(s => s.value.trim()) ? 'Click ↻ to load' : 'Configure a source first'}
-                  </p>
+                  <div className={`px-3 py-4 text-xs text-center ${theme.label} opacity-70`}>
+                    <i className="fa-solid fa-database block text-2xl mb-2 opacity-30" />
+                    {dataSources.some(s => s.value.trim())
+                      ? <>Click <i className="fa-solid fa-rotate" /> to load tokens</>
+                      : <>Click <i className="fa-solid fa-database" /> to add a data source</>}
+                  </div>
                 ) : (
                   <>
-                  {draggingToken === null && (
-                    <p className={`text-[10px] px-2 pb-1 opacity-50 ${theme.label}`}>
-                      Click to insert · Drag onto preview
+                  {!draggingToken && (
+                    <p className={`text-[10px] px-2 pt-1 pb-0.5 opacity-40 ${theme.label}`}>
+                      Click to insert · Drag to code editor
                     </p>
                   )}
-                  <div className="space-y-0.5">
-                    {tokens.map((tok, i) => (
-                      <button
-                        key={i}
-                        draggable
-                        onDragStart={e => {
-                          e.dataTransfer.setData('text/plain', tok.Token);
-                          e.dataTransfer.effectAllowed = 'copy';
-                          setDraggingToken(tok.Token);
-                        }}
-                        onDragEnd={() => { setDraggingToken(null); setDropIndicatorY(null); }}
-                        onClick={() => insertAtCursor(tok.Token)}
-                        title={`Click to insert · Drag onto preview\n${tok.Token}`}
-                        className={`w-full text-left px-2 py-1 text-xs rounded truncate cursor-grab active:cursor-grabbing ${theme.contextMenu}`}
-                      >
-                        {tok.InsideEach ? <span className="opacity-50 mr-1">↳</span>
-                          : tok.IsList ? <i className="fa-solid fa-list mr-1 text-blue-400" />
-                          : <i className="fa-solid fa-tag mr-1 text-green-400" />}
-                        {tok.Field === '*' ? `#each ${tok.ResultSet}` : tok.Field}
-                      </button>
-                    ))}
-                  </div>
+                  {groupedTokens.map(grp => (
+                    <div key={grp.name}>
+                      {/* Source group header */}
+                      <div className={`flex items-center gap-1 px-2 py-1 text-[10px] font-bold uppercase tracking-wider sticky top-[33px] z-10 ${theme.mainContentSection} border-b ${t('border_mainContentSection')}`}>
+                        <i className={`fa-solid ${grp.type === 'api' ? 'fa-network-wired text-purple-500' : 'fa-database text-blue-500'} text-[9px]`} />
+                        <span className={grp.type === 'api' ? 'text-purple-500' : 'text-blue-500'}>{grp.name}</span>
+                      </div>
+                      {/* Tokens in this source */}
+                      <div className="space-y-0">
+                        {grp.toks.map((tok, i) => (
+                          <button
+                            key={i}
+                            draggable
+                            onDragStart={e => {
+                              e.dataTransfer.setData('text/plain', tok.Token);
+                              e.dataTransfer.effectAllowed = 'copy';
+                              setDraggingToken(tok.Token);
+                            }}
+                            onDragEnd={() => { setDraggingToken(null); setDropIndicatorY(null); }}
+                            onClick={() => insertAtCursor(tok.Token)}
+                            title={`${tok.Token}\nClick to insert · Drag to code editor`}
+                            className={`w-full text-left px-2 py-1 text-xs truncate cursor-grab active:cursor-grabbing border-b ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400`}
+                          >
+                            {tok.InsideEach
+                              ? <span className="text-gray-400 mr-1 text-[10px]">↳</span>
+                              : tok.IsList
+                                ? <i className="fa-solid fa-list mr-1.5 text-orange-400 text-[9px]" />
+                                : <i className="fa-solid fa-tag mr-1.5 text-green-400 text-[9px]" />}
+                            <span className={tok.InsideEach ? 'opacity-70' : ''}>
+                              {tok.Field === '*' ? `#each ${tok.ResultSet}` : tok.Field}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                   </>
                 )}
               </div>
@@ -691,7 +765,41 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
               value={templateHtml}
               onChange={handleHtmlChange}
               debounceMs={300}
-              onMount={(editor) => { editorRef.current = editor; }}
+              onMount={(editor, monacoInstance) => {
+                editorRef.current = editor;
+                // Wire native drag-drop so tokens can be dropped directly onto the Monaco editor
+                const domNode = editor.getDomNode();
+                if (domNode) {
+                  domNode.addEventListener('dragover', (e: Event) => {
+                    const de = e as DragEvent;
+                    de.preventDefault();
+                    de.stopPropagation();
+                    if (de.dataTransfer) de.dataTransfer.dropEffect = 'copy';
+                  }, false);
+                  domNode.addEventListener('drop', (e: Event) => {
+                    const de = e as DragEvent;
+                    de.preventDefault();
+                    de.stopPropagation();
+                    const text = de.dataTransfer?.getData('text/plain');
+                    if (!text) return;
+                    const target = editor.getTargetAtClientPoint(de.clientX, de.clientY);
+                    if (target?.position) {
+                      const { lineNumber, column } = target.position;
+                      const range = new monacoInstance.Range(lineNumber, column, lineNumber, column);
+                      editor.executeEdits('drag-drop', [{ range, text: text + '\n', forceMoveMarkers: true }]);
+                    } else {
+                      // Fallback: append at end
+                      const model = editor.getModel();
+                      const lastLine = model?.getLineCount() ?? 1;
+                      const lastCol = model?.getLineMaxColumn(lastLine) ?? 1;
+                      const range = new monacoInstance.Range(lastLine, lastCol, lastLine, lastCol);
+                      editor.executeEdits('drag-drop', [{ range, text: '\n' + text, forceMoveMarkers: true }]);
+                    }
+                    editor.focus();
+                    setDraggingToken(null);
+                  }, false);
+                }
+              }}
             />
           </div>
 
