@@ -1,0 +1,190 @@
+﻿{
+    "plmTemplateId":  3348,
+    "plmSqlServer":  "PC3B\\MSSQLSERVER01",
+    "plmDatabase":  "plm_live_20260602",
+    "sqlServer":  "PC3B\\MSSQLSERVER01",
+    "dwDatabase":  "plmDW",
+    "importTabIds":  [
+                         4212,
+                         4213,
+                         4270,
+                         4219,
+                         4258,
+                         4274
+                     ],
+    "tablePrefixDefault":  "Plm_",
+    "rootTableSuffix":  "ReferenceBasicInfo",
+    "plmTemplate":  {
+                        "templateId":  3348,
+                        "templateName":  "02 - Fabrics",
+                        "templateHeaderTabIds":  [
+                                                     4258
+                                                 ]
+                    },
+    "referenceScope":  {
+                           "dwTable":  "PLM_DW_Tab_Fabric_Header_4258",
+                           "dwColumn":  "Article__22",
+                           "plmTabId":  4258,
+                           "plmSubItemId":  22
+                       },
+    "tabs":  [
+                 {
+                     "appTable":  "Fabric_Info",
+                     "dwTable":  "PLM_DW_Tab_Fabric_Info_4212",
+                     "tabId":  4212,
+                     "plmTabName":  "Fabric Info",
+                     "tabSort":  1,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Fabric_Header_4258"
+                 },
+                 {
+                     "appTable":  "Attributes",
+                     "dwTable":  "PLM_DW_Tab_Attributes_4213",
+                     "tabId":  4213,
+                     "plmTabName":  "Attributes",
+                     "tabSort":  2,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Fabric_Cost",
+                     "dwTable":  "PLM_DW_Tab_Fabric_Cost_4270",
+                     "tabId":  4270,
+                     "plmTabName":  "Fabric Cost",
+                     "tabSort":  3,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Testing____Compliance",
+                     "dwTable":  "PLM_DW_Tab_Testing____Compliance_4219",
+                     "tabId":  4219,
+                     "plmTabName":  "Testing  \u0026 Compliance",
+                     "tabSort":  7,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Fabric_Header",
+                     "dwTable":  "PLM_DW_Tab_Fabric_Header_4258",
+                     "tabId":  4258,
+                     "plmTabName":  "Fabric Header",
+                     "tabSort":  8,
+                     "isTemplateHeaderTab":  true,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Fabric_Policy",
+                     "dwTable":  "PLM_DW_Tab_Fabric_Policy_4274",
+                     "tabId":  4274,
+                     "plmTabName":  "Fabric Policy",
+                     "tabSort":  9,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 }
+             ],
+    "grids":  [
+                  {
+                      "appTable":  "SizeRunDetailGrid",
+                      "dwTable":  "PLM_DW_Grid_SizeRunDetailGrid_26",
+                      "gridSubItemId":  191,
+                      "gridId":  26,
+                      "parentPlmTabId":  4212,
+                      "transactionIntegrationId":  "Tab_4212"
+                  },
+                  {
+                      "appTable":  "DimensionDetailGrid",
+                      "dwTable":  "PLM_DW_Grid_DimensionDetailGrid_27",
+                      "gridSubItemId":  192,
+                      "gridId":  27,
+                      "parentPlmTabId":  4212,
+                      "transactionIntegrationId":  "Tab_4212"
+                  },
+                  {
+                      "appTable":  "functional_properties_reg",
+                      "dwTable":  "PLM_DW_Grid_functional_properties_reg_3155",
+                      "gridSubItemId":  5228,
+                      "gridId":  3155,
+                      "parentPlmTabId":  4213,
+                      "transactionIntegrationId":  "Tab_4213"
+                  },
+                  {
+                      "appTable":  "ProductDesignColorGrid",
+                      "dwTable":  "PLM_DW_Grid_ProductDesignColorGrid_7",
+                      "gridSubItemId":  35,
+                      "gridId":  7,
+                      "parentPlmTabId":  4270,
+                      "transactionIntegrationId":  "Tab_4270"
+                  },
+                  {
+                      "appTable":  "Material_MOQ_reg",
+                      "dwTable":  "PLM_DW_Grid_Material_MOQ_reg_3145",
+                      "gridSubItemId":  5194,
+                      "gridId":  3145,
+                      "parentPlmTabId":  4270,
+                      "transactionIntegrationId":  "Tab_4270"
+                  },
+                  {
+                      "appTable":  "Fabric_Approvals_Tracker",
+                      "dwTable":  "PLM_DW_Grid_Fabric_Approvals_Tracker_3171",
+                      "gridSubItemId":  6792,
+                      "gridId":  3171,
+                      "parentPlmTabId":  null,
+                      "transactionIntegrationId":  "Grid_3171"
+                  },
+                  {
+                      "appTable":  "Denim___Non_Denim_Approvals",
+                      "dwTable":  "PLM_DW_Grid_Denim___Non_Denim_Approvals_3181",
+                      "gridSubItemId":  5151,
+                      "gridId":  3181,
+                      "parentPlmTabId":  null,
+                      "transactionIntegrationId":  "Grid_3181"
+                  },
+                  {
+                      "appTable":  "Testing_reg",
+                      "dwTable":  "PLM_DW_Grid_Testing_reg_3148",
+                      "gridSubItemId":  5211,
+                      "gridId":  3148,
+                      "parentPlmTabId":  4219,
+                      "transactionIntegrationId":  "Tab_4219"
+                  },
+                  {
+                      "appTable":  "Compliance_Standards___Claims_reg",
+                      "dwTable":  "PLM_DW_Grid_Compliance_Standards___Claims_reg_3149",
+                      "gridSubItemId":  5212,
+                      "gridId":  3149,
+                      "parentPlmTabId":  4219,
+                      "transactionIntegrationId":  "Tab_4219"
+                  },
+                  {
+                      "appTable":  "Wash_Test_Standards",
+                      "dwTable":  "PLM_DW_Grid_Wash_Test_Standards_3150",
+                      "gridSubItemId":  5213,
+                      "gridId":  3150,
+                      "parentPlmTabId":  4219,
+                      "transactionIntegrationId":  "Tab_4219"
+                  },
+                  {
+                      "appTable":  "Traceability_prod",
+                      "dwTable":  "PLM_DW_Grid_Traceability_prod_3151",
+                      "gridSubItemId":  5224,
+                      "gridId":  3151,
+                      "parentPlmTabId":  4219,
+                      "transactionIntegrationId":  "Tab_4219"
+                  }
+              ],
+    "blueprint":  {
+                      "transactionGroupName":  "02 - Fabrics",
+                      "transactionGroupIntegrationId":  "TG_02Fabrics",
+                      "searchName":  "02 - Fabrics References",
+                      "searchIntegrationId":  "Search_02Fabrics",
+                      "folderName":  "02 - Fabrics"
+                  }
+}

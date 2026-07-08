@@ -1,0 +1,98 @@
+﻿{
+    "plmTemplateId":  3354,
+    "plmSqlServer":  "PC3B\\MSSQLSERVER01",
+    "plmDatabase":  "plm_live_20260602",
+    "sqlServer":  "PC3B\\MSSQLSERVER01",
+    "dwDatabase":  "plmDW",
+    "importTabIds":  [
+                         4247,
+                         4248
+                     ],
+    "tablePrefixDefault":  "Plm_",
+    "rootTableSuffix":  "ReferenceBasicInfo",
+    "plmTemplate":  {
+                        "templateId":  3354,
+                        "templateName":  "03 - Labels \u0026 Hangtags",
+                        "templateHeaderTabIds":  [
+                                                     4247
+                                                 ]
+                    },
+    "referenceScope":  {
+                           "dwTable":  "PLM_DW_Tab_Label_Header_4247",
+                           "dwColumn":  "Article__22",
+                           "plmTabId":  4247,
+                           "plmSubItemId":  22
+                       },
+    "tabs":  [
+                 {
+                     "appTable":  "Label_Header",
+                     "dwTable":  "PLM_DW_Tab_Label_Header_4247",
+                     "tabId":  4247,
+                     "plmTabName":  "Label Header",
+                     "tabSort":  1,
+                     "isTemplateHeaderTab":  true,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Label_Info",
+                     "dwTable":  "PLM_DW_Tab_Label_Info_4248",
+                     "tabId":  4248,
+                     "plmTabName":  "Label Info",
+                     "tabSort":  2,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Label_Header_4247"
+                 }
+             ],
+    "grids":  [
+                  {
+                      "appTable":  "SizeRunDetailGrid",
+                      "dwTable":  "PLM_DW_Grid_SizeRunDetailGrid_26",
+                      "gridSubItemId":  191,
+                      "gridId":  26,
+                      "parentPlmTabId":  4247,
+                      "transactionIntegrationId":  "Tab_4247"
+                  },
+                  {
+                      "appTable":  "DimensionDetailGrid",
+                      "dwTable":  "PLM_DW_Grid_DimensionDetailGrid_27",
+                      "gridSubItemId":  192,
+                      "gridId":  27,
+                      "parentPlmTabId":  4247,
+                      "transactionIntegrationId":  "Tab_4247"
+                  },
+                  {
+                      "appTable":  "ProductDesignColorGrid",
+                      "dwTable":  "PLM_DW_Grid_ProductDesignColorGrid_7",
+                      "gridSubItemId":  35,
+                      "gridId":  7,
+                      "parentPlmTabId":  4248,
+                      "transactionIntegrationId":  "Tab_4248"
+                  },
+                  {
+                      "appTable":  "MaterialCosting_reg",
+                      "dwTable":  "PLM_DW_Grid_MaterialCosting_reg_3144",
+                      "gridSubItemId":  5193,
+                      "gridId":  3144,
+                      "parentPlmTabId":  4248,
+                      "transactionIntegrationId":  "Tab_4248"
+                  },
+                  {
+                      "appTable":  "Trims_Tracking",
+                      "dwTable":  "PLM_DW_Grid_Trims_Tracking_3179",
+                      "gridSubItemId":  7027,
+                      "gridId":  3179,
+                      "parentPlmTabId":  null,
+                      "transactionIntegrationId":  "Grid_3179"
+                  }
+              ],
+    "blueprint":  {
+                      "transactionGroupName":  "03 - Labels \u0026 Hangtags",
+                      "transactionGroupIntegrationId":  "TG_03LabelsHangtags",
+                      "searchName":  "03 - Labels \u0026 Hangtags References",
+                      "searchIntegrationId":  "Search_03LabelsHangtags",
+                      "folderName":  "03 - Labels \u0026 Hangtags"
+                  }
+}

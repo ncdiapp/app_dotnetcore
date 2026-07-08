@@ -29,8 +29,9 @@ function Get-PlmGridMetaColumnsForGrids([int[]]$GridIds) {
     if (-not $GridIds -or $GridIds.Count -eq 0) { return $map }
     $inList = ($GridIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
     $q = @"
-SELECT g.GridID, g.GridColumnID, LEFT(LTRIM(RTRIM(g.ColumnName)), 200) AS ColumnName,
-       ISNULL(g.ColumnOrder, 9999) AS ColumnOrder, g.ColumnTypeId, g.EntityId,
+SELECT g.GridID, g.GridColumnID,
+       REPLACE(REPLACE(LEFT(LTRIM(RTRIM(ISNULL(g.ColumnName, N''))), 200), N'|', N'/'), CHAR(13), N'') AS ColumnName,
+       ISNULL(g.ColumnOrder, 9999) AS ColumnOrder, ISNULL(g.ColumnTypeId, 0) AS ColumnTypeId, g.EntityId,
        ISNULL(g.IsDCUForProductGridRef, 0) AS IsDCUForProductGridRef, g.DCUColumnBlockID,
        g.DcucolumnId, g.MasterDcucolumnId
 FROM dbo.pdmGridMetaColumn g
@@ -40,14 +41,20 @@ ORDER BY g.GridID, ISNULL(g.ColumnOrder, 9999), g.GridColumnID
     foreach ($line in (Invoke-PlmQuery $q)) {
         $parts = $line -split '\|'
         if ($parts.Count -lt 9) { continue }
-        $gid = [int]$parts[0].Trim()
+        $gidRaw = $parts[0].Trim()
+        $colIdRaw = $parts[1].Trim()
+        $ordRaw = $parts[3].Trim()
+        $typeRaw = $parts[4].Trim()
+        # Skip wrapped/noisy sqlcmd lines (e.g. ColumnName leaked into GridID field)
+        if ($gidRaw -notmatch '^\d+$' -or $colIdRaw -notmatch '^\d+$' -or $ordRaw -notmatch '^-?\d+$' -or $typeRaw -notmatch '^-?\d+$') { continue }
+        $gid = [int]$gidRaw
         if (-not $map.ContainsKey($gid)) { $map[$gid] = [System.Collections.Generic.List[object]]::new() }
         $map[$gid].Add([pscustomobject]@{
             GridId                   = $gid
-            GridColumnId             = [int]$parts[1].Trim()
+            GridColumnId             = [int]$colIdRaw
             ColumnName               = $parts[2].Trim()
-            ColumnOrder              = [int]$parts[3].Trim()
-            ColumnTypeId             = [int]$parts[4].Trim()
+            ColumnOrder              = [int]$ordRaw
+            ColumnTypeId             = [int]$typeRaw
             EntityId                 = (Parse-SqlIntOrNull $parts[5].Trim())
             IsDCUForProductGridRef   = ([int]$parts[6].Trim() -eq 1)
             DCUColumnBlockId         = (Parse-SqlIntOrNull $parts[7].Trim())

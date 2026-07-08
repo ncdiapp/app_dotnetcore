@@ -1,0 +1,177 @@
+﻿{
+    "plmTemplateId":  3361,
+    "plmSqlServer":  "PC3B\\MSSQLSERVER01",
+    "plmDatabase":  "plm_live_20260602",
+    "sqlServer":  "PC3B\\MSSQLSERVER01",
+    "dwDatabase":  "plmDW",
+    "importTabIds":  [
+                         4276,
+                         4225,
+                         4275,
+                         4272
+                     ],
+    "tablePrefixDefault":  "Plm_",
+    "rootTableSuffix":  "ReferenceBasicInfo",
+    "plmTemplate":  {
+                        "templateId":  3361,
+                        "templateName":  "07 - Sets",
+                        "templateHeaderTabIds":  [4276]
+                    },
+    "referenceScope":  {
+                           "dwTable":  "PLM_DW_Tab_Style_Header___Sets_4276",
+                           "dwColumn":  "Article__22",
+                           "plmTabId":  4276,
+                           "plmSubItemId":  22
+                       },
+    "tabs":  [
+                 {
+                     "appTable":  "Style_Header___Sets",
+                     "dwTable":  "PLM_DW_Tab_Style_Header___Sets_4276",
+                     "tabId":  4276,
+                     "plmTabName":  "Style Header - Sets",
+                     "tabSort":  1,
+                     "isTemplateHeaderTab":  true,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Colorways",
+                     "dwTable":  "PLM_DW_Tab_Colorways_4225",
+                     "tabId":  4225,
+                     "plmTabName":  "Colorways",
+                     "tabSort":  2,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Set_Styles",
+                     "dwTable":  "PLM_DW_Tab_Set_Styles_4275",
+                     "tabId":  4275,
+                     "plmTabName":  "Set Styles",
+                     "tabSort":  3,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Publish_to_ERP",
+                     "dwTable":  "PLM_DW_Tab_Publish_to_ERP_4272",
+                     "tabId":  4272,
+                     "plmTabName":  "Publish to ERP",
+                     "tabSort":  4,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Style_Header___Sets_4276"
+                 }
+             ],
+    "grids":  [
+                  {
+                      "appTable":  "SizeRunDetailGrid",
+                      "dwTable":  "PLM_DW_Grid_SizeRunDetailGrid_26",
+                      "gridSubItemId":  191,
+                      "gridId":  26,
+                      "parentPlmTabId":  4276,
+                      "transactionIntegrationId":  "Tab_4276"
+                  },
+                  {
+                      "appTable":  "DimensionDetailGrid",
+                      "dwTable":  "PLM_DW_Grid_DimensionDetailGrid_27",
+                      "gridSubItemId":  192,
+                      "gridId":  27,
+                      "parentPlmTabId":  4276,
+                      "transactionIntegrationId":  "Tab_4276"
+                  },
+                  {
+                      "appTable":  "Fabric_BOM_prod",
+                      "dwTable":  "PLM_DW_Grid_Fabric_BOM_prod_10_Colorways_3161",
+                      "gridSubItemId":  5345,
+                      "gridId":  3161,
+                      "parentPlmTabId":  4276,
+                      "transactionIntegrationId":  "Tab_4276"
+                  },
+                  {
+                      "appTable":  "ProductDesignColorGrid",
+                      "dwTable":  "PLM_DW_Grid_ProductDesignColorGrid_7",
+                      "gridSubItemId":  35,
+                      "gridId":  7,
+                      "parentPlmTabId":  4225,
+                      "transactionIntegrationId":  "Tab_4225"
+                  },
+                  {
+                      "appTable":  "Set_Styles_Grid",
+                      "dwTable":  "PLM_DW_Grid_Set_Styles_3185",
+                      "gridSubItemId":  7369,
+                      "gridId":  3185,
+                      "parentPlmTabId":  4275,
+                      "transactionIntegrationId":  "Tab_4275"
+                  },
+                  {
+                      "appTable":  "ProductWarehouseGrid",
+                      "dwTable":  "PLM_DW_Grid_ProductWarehouseGrid_17",
+                      "gridSubItemId":  110,
+                      "gridId":  17,
+                      "parentPlmTabId":  4272,
+                      "transactionIntegrationId":  "Tab_4272"
+                  },
+                  {
+                      "appTable":  "ProductCatagoryGrid",
+                      "dwTable":  "PLM_DW_Grid_ProductCatagoryGrid_18",
+                      "gridSubItemId":  24,
+                      "gridId":  18,
+                      "parentPlmTabId":  4272,
+                      "transactionIntegrationId":  "Tab_4272"
+                  },
+                  {
+                      "appTable":  "Selected_Category_Colour_Dimension_Size",
+                      "dwTable":  "PLM_DW_Grid_Selected_Category_Colour_Dimension_Size_3046",
+                      "gridSubItemId":  3934,
+                      "gridId":  3046,
+                      "parentPlmTabId":  4272,
+                      "transactionIntegrationId":  "Tab_4272"
+                  },
+                  {
+                      "appTable":  "Price_by_Style",
+                      "dwTable":  "PLM_DW_Grid_Price_by_Style_3083",
+                      "gridSubItemId":  4496,
+                      "gridId":  3083,
+                      "parentPlmTabId":  4272,
+                      "transactionIntegrationId":  "Tab_4272"
+                  },
+                  {
+                      "appTable":  "Selling_and_Retail_by_Style_Currency",
+                      "dwTable":  "PLM_DW_Grid_Selling_and_Retail_by_Style_Currency_3084",
+                      "gridSubItemId":  4497,
+                      "gridId":  3084,
+                      "parentPlmTabId":  4272,
+                      "transactionIntegrationId":  "Tab_4272"
+                  },
+                  {
+                      "appTable":  "Price_by_Colour_Dimension_Size_Warehouse",
+                      "dwTable":  "PLM_DW_Grid_Price_by_Colour_Dimension_Size_Warehouse_3085",
+                      "gridSubItemId":  4498,
+                      "gridId":  3085,
+                      "parentPlmTabId":  4272,
+                      "transactionIntegrationId":  "Tab_4272"
+                  },
+                  {
+                      "appTable":  "Price_by_Color",
+                      "dwTable":  "PLM_DW_Grid_Price_by_Color_3184",
+                      "gridSubItemId":  7307,
+                      "gridId":  3184,
+                      "parentPlmTabId":  4272,
+                      "transactionIntegrationId":  "Tab_4272"
+                  }
+              ],
+    "blueprint":  {
+                      "transactionGroupName":  "07 - Sets",
+                      "transactionGroupIntegrationId":  "TG_07Sets",
+                      "searchName":  "07 - Sets References",
+                      "searchIntegrationId":  "Search_07Sets",
+                      "folderName":  "07 - Sets"
+                  },
+    "bomColorwayPivotColumnNames":  {
+                                         "3161":  ["FabricColorway", "FabricColorwayStatus"]
+                                     }
+}

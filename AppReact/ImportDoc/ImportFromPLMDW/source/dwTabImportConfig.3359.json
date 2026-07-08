@@ -1,0 +1,47 @@
+﻿{
+    "plmTemplateId":  3359,
+    "plmSqlServer":  "PC3B\\MSSQLSERVER01",
+    "plmDatabase":  "plm_live_20260602",
+    "sqlServer":  "PC3B\\MSSQLSERVER01",
+    "dwDatabase":  "plmDW",
+    "importTabIds":  [
+                         4259
+                     ],
+    "tablePrefixDefault":  "Plm_",
+    "rootTableSuffix":  "ReferenceBasicInfo",
+    "plmTemplate":  {
+                        "templateId":  3359,
+                        "templateName":  "09 - Graphic Requests",
+                        "templateHeaderTabIds":  [
+
+                                                 ]
+                    },
+    "referenceScope":  {
+                           "dwTable":  "PLM_DW_Tab_Graphic_Requests_4259",
+                           "dwColumn":  "Request_Name_7154",
+                           "plmTabId":  4259,
+                           "plmSubItemId":  7154
+                       },
+    "tabs":  [
+                 {
+                     "appTable":  "Graphic_Requests",
+                     "dwTable":  "PLM_DW_Tab_Graphic_Requests_4259",
+                     "tabId":  4259,
+                     "plmTabName":  "Graphic Requests",
+                     "tabSort":  1,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 }
+             ],
+    "grids":  [
+
+              ],
+    "blueprint":  {
+                      "transactionGroupName":  "09 - Graphic Requests",
+                      "transactionGroupIntegrationId":  "TG_09GraphicRequests",
+                      "searchName":  "09 - Graphic Requests References",
+                      "searchIntegrationId":  "Search_09GraphicRequests",
+                      "folderName":  "09 - Graphic Requests"
+                  }
+}

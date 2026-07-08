@@ -1,0 +1,588 @@
+﻿{
+    "schemaVersion":  1,
+    "generatedAt":  "2026-07-08T14:31:41.1883922Z",
+    "source":  {
+                   "plmTemplateId":  3359,
+                   "plmDatabase":  "plm_live_20260602",
+                   "dwDatabase":  "plmDW",
+                   "importTabIds":  [
+                                        4259
+                                    ],
+                   "tablePrefix":  "Plm_",
+                   "configFile":  "source/dwTabImportConfig.json",
+                   "outputFolder":  "output/3359"
+               },
+    "plmTemplate":  {
+                        "templateId":  3359,
+                        "templateName":  "09 - Graphic Requests",
+                        "templateHeaderTabIds":  [
+
+                                                 ]
+                    },
+    "transactionGroup":  {
+                             "name":  "09 - Graphic Requests",
+                             "integrationId":  "TG_09GraphicRequests",
+                             "saasApplicationId":  null
+                         },
+    "rootUnit":  {
+                     "appTableName":  "Plm_ReferenceBasicInfo",
+                     "integrationId":  "Unit_ReferenceBasicInfo",
+                     "referenceScope":  {
+                                            "dwTable":  "PLM_DW_Tab_Graphic_Requests_4259",
+                                            "dwColumn":  "Request_Name_7154",
+                                            "plmTabId":  4259,
+                                            "plmSubItemId":  7154
+                                        }
+                 },
+    "tabSharedTableGroups":  [
+
+                             ],
+    "transactions":  [
+                         {
+                             "plmTabId":  4259,
+                             "plmTabName":  "Graphic Requests",
+                             "integrationId":  "Tab_4259",
+                             "transactionName":  "Graphic Requests",
+                             "importStatus":  "Ready",
+                             "plmTabSort":  1,
+                             "isTemplateHeaderTab":  false,
+                             "unitStructure":  {
+                                                   "mode":  "RootPlusMasterSibling",
+                                                   "rootTableName":  "Plm_ReferenceBasicInfo",
+                                                   "siblingUnits":  [
+                                                                        {
+                                                                            "appTableName":  "Plm_Graphic_Requests",
+                                                                            "isMasterSibling":  true,
+                                                                            "fieldPolicy":  "AllMappedColumns"
+                                                                        }
+                                                                    ],
+                                                   "childUnits":  [
+
+                                                                  ]
+                                               }
+                         }
+                     ],
+    "gridBindings":  [
+
+                     ],
+    "bomColorwayPivotBindings":  [{
+
+                                 }],
+    "blueprintFields":  [
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Created_By",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Created By",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Last_Revised_By",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Last_Revised_By",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Other_Image",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Other_Image",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Request_Type",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4735,
+                                "displayLabel":  "Request_Type",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4735"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Request_Date",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Request_Date",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Request_By",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  80,
+                                "displayLabel":  "Request_By",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "80"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Deliver_By",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Deliver_By",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Additional_Info",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Additional_Info",
+                                "displayOrder":  8,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Requestor_Role",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  96,
+                                "displayLabel":  "Requestor_Role",
+                                "displayOrder":  9,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "96"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Graphic_Req",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  23,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Graphic_Req",
+                                "displayOrder":  10,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Handled_By",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4780,
+                                "displayLabel":  "Handled_By",
+                                "displayOrder":  11,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4780"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Performed_By",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4780,
+                                "displayLabel":  "Performed_By",
+                                "displayOrder":  12,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4780"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Can_Complete_By",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Can_Complete_By",
+                                "displayOrder":  13,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Extra_Time_Needed",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Extra_Time_Needed",
+                                "displayOrder":  14,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Status",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4736,
+                                "displayLabel":  "Status",
+                                "displayOrder":  15,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4736"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Completed_Date",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Completed_Date",
+                                "displayOrder":  16,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Days_Needed",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Days_Needed",
+                                "displayOrder":  17,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Revised_Complete_By",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Revised_Complete_By",
+                                "displayOrder":  18,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Attachment_6841",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  9,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Attachment_6841",
+                                "displayOrder":  19,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Item_Type",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  123,
+                                "displayLabel":  "Item_Type",
+                                "displayOrder":  20,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "123"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Path",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Path",
+                                "displayOrder":  21,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Attachment_6859",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  9,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Attachment_6859",
+                                "displayOrder":  22,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Attachment_6860",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  9,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Attachment_6860",
+                                "displayOrder":  23,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "References",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "References",
+                                "displayOrder":  24,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Attachment_6862",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  9,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Attachment_6862",
+                                "displayOrder":  25,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Attachment_6863",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  9,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Attachment_6863",
+                                "displayOrder":  26,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Attachment_6864",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  9,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Attachment_6864",
+                                "displayOrder":  27,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "dateisblank_calc",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "dateisblank_calc",
+                                "displayOrder":  28,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "setdate_calc",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "setdate_calc",
+                                "displayOrder":  29,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "blankdate_calc",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "blankdate_calc",
+                                "displayOrder":  30,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "isCompleted",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "isCompleted",
+                                "displayOrder":  31,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Request_Name",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Request_Name",
+                                "displayOrder":  32,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "isArchived",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Archived",
+                                "displayOrder":  33,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Notify_GA",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  96,
+                                "displayLabel":  "Notify_GA",
+                                "displayOrder":  34,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "96"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Active_7364",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3637,
+                                "displayLabel":  "Active_7364",
+                                "displayOrder":  35,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3637"
+                            },
+                            {
+                                "appTableName":  "Plm_Graphic_Requests",
+                                "appColumnName":  "Active_7365",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3637,
+                                "displayLabel":  "Active_7365",
+                                "displayOrder":  36,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3637"
+                            },
+                            {
+                                "appTableName":  "Plm_ReferenceBasicInfo",
+                                "appColumnName":  "ReferenceCode",
+                                "plmTabIds":  [
+                                                  4259
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ReferenceCode",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            }
+                        ],
+    "searchView":  {
+                       "search":  {
+                                      "name":  "09 - Graphic Requests References",
+                                      "integrationId":  "Search_09GraphicRequests",
+                                      "usageType":  "DataModelTemplate",
+                                      "rootTableName":  "Plm_ReferenceBasicInfo"
+                                  },
+                       "searchView":  {
+                                          "integrationId":  "Search_09GraphicRequests_View",
+                                          "fields":  "DefaultReferenceBasicInfo"
+                                      }
+                   },
+    "navigation":  {
+                       "folderName":  "09 - Graphic Requests",
+                       "parentFolderIntegrationId":  null,
+                       "menuOrder":  100
+                   }
+}

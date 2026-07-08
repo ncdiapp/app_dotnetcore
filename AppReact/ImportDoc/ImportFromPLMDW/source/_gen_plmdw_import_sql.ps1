@@ -560,7 +560,11 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
 
 function Get-DwTableColumns([string]$TableName) {
     $q = @"
-SELECT c.COLUMN_NAME, c.DATA_TYPE, c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE, c.ORDINAL_POSITION
+SELECT c.COLUMN_NAME, c.DATA_TYPE,
+       ISNULL(CAST(c.CHARACTER_MAXIMUM_LENGTH AS NVARCHAR(20)), N''),
+       ISNULL(CAST(c.NUMERIC_PRECISION AS NVARCHAR(20)), N''),
+       ISNULL(CAST(c.NUMERIC_SCALE AS NVARCHAR(20)), N''),
+       CAST(c.ORDINAL_POSITION AS NVARCHAR(20))
 FROM INFORMATION_SCHEMA.COLUMNS c
 WHERE c.TABLE_NAME = N'$TableName'
 ORDER BY c.ORDINAL_POSITION;
@@ -570,13 +574,15 @@ ORDER BY c.ORDINAL_POSITION;
     foreach ($line in $rows) {
         $parts = $line -split '\|'
         if ($parts.Count -lt 6) { continue }
+        $ordRaw = $parts[5].Trim()
+        if ($ordRaw -notmatch '^\d+$') { continue }
         $cols += [pscustomobject]@{
             DwColumn     = $parts[0].Trim()
             DataType     = $parts[1].Trim().ToLowerInvariant()
             CharMaxLen   = $parts[2].Trim()
             NumPrecision = $parts[3].Trim()
             NumScale     = $parts[4].Trim()
-            Ordinal      = [int]$parts[5].Trim()
+            Ordinal      = [int]$ordRaw
         }
     }
     if (-not $cols.Count) { throw "No columns found for DW table: $TableName" }

@@ -1,0 +1,54 @@
+﻿{
+    "plmTemplateId":  3353,
+    "plmSqlServer":  "PC3B\\MSSQLSERVER01",
+    "plmDatabase":  "plm_live_20260602",
+    "sqlServer":  "PC3B\\MSSQLSERVER01",
+    "dwDatabase":  "plmDW",
+    "importTabIds":  [
+                         4228
+                     ],
+    "tablePrefixDefault":  "Plm_",
+    "rootTableSuffix":  "ReferenceBasicInfo",
+    "plmTemplate":  {
+                        "templateId":  3353,
+                        "templateName":  "04 - Artwork",
+                        "templateHeaderTabIds":  [
+
+                                                 ]
+                    },
+    "referenceScope":  {
+                           "dwTable":  "PLM_DW_Tab_Artwork_Details_4228",
+                           "dwColumn":  "Article__22",
+                           "plmTabId":  4228,
+                           "plmSubItemId":  22
+                       },
+    "tabs":  [
+                 {
+                     "appTable":  "Artwork_Details",
+                     "dwTable":  "PLM_DW_Tab_Artwork_Details_4228",
+                     "tabId":  4228,
+                     "plmTabName":  "Artwork Details",
+                     "tabSort":  1,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 }
+             ],
+    "grids":  [
+                  {
+                      "appTable":  "ProductDesignColorGrid",
+                      "dwTable":  "PLM_DW_Grid_ProductDesignColorGrid_7",
+                      "gridSubItemId":  35,
+                      "gridId":  7,
+                      "parentPlmTabId":  4228,
+                      "transactionIntegrationId":  "Tab_4228"
+                  }
+              ],
+    "blueprint":  {
+                      "transactionGroupName":  "04 - Artwork",
+                      "transactionGroupIntegrationId":  "TG_04Artwork",
+                      "searchName":  "04 - Artwork References",
+                      "searchIntegrationId":  "Search_04Artwork",
+                      "folderName":  "04 - Artwork"
+                  }
+}

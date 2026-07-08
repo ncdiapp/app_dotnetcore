@@ -1,0 +1,54 @@
+﻿{
+    "plmTemplateId":  3357,
+    "plmSqlServer":  "PC3B\\MSSQLSERVER01",
+    "plmDatabase":  "plm_live_20260602",
+    "sqlServer":  "PC3B\\MSSQLSERVER01",
+    "dwDatabase":  "plmDW",
+    "importTabIds":  [
+                         4254
+                     ],
+    "tablePrefixDefault":  "Plm_",
+    "rootTableSuffix":  "ReferenceBasicInfo",
+    "plmTemplate":  {
+                        "templateId":  3357,
+                        "templateName":  "08 - Color Palette",
+                        "templateHeaderTabIds":  [
+                                                     4254
+                                                 ]
+                    },
+    "referenceScope":  {
+                           "dwTable":  "PLM_DW_Tab_Color_Patette_Header_4254",
+                           "dwColumn":  "Article__22",
+                           "plmTabId":  4254,
+                           "plmSubItemId":  22
+                       },
+    "tabs":  [
+                 {
+                     "appTable":  "Color_Patette_Header",
+                     "dwTable":  "PLM_DW_Tab_Color_Patette_Header_4254",
+                     "tabId":  4254,
+                     "plmTabName":  "Color Patette Header",
+                     "tabSort":  1,
+                     "isTemplateHeaderTab":  true,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 }
+             ],
+    "grids":  [
+                  {
+                      "appTable":  "ProductDesignColorGrid",
+                      "dwTable":  "PLM_DW_Grid_ProductDesignColorGrid_7",
+                      "gridSubItemId":  35,
+                      "gridId":  7,
+                      "parentPlmTabId":  null,
+                      "transactionIntegrationId":  "Grid_7"
+                  }
+              ],
+    "blueprint":  {
+                      "transactionGroupName":  "08 - Color Palette",
+                      "transactionGroupIntegrationId":  "TG_08ColorPalette",
+                      "searchName":  "08 - Color Palette References",
+                      "searchIntegrationId":  "Search_08ColorPalette",
+                      "folderName":  "08 - Color Palette"
+                  }
+}

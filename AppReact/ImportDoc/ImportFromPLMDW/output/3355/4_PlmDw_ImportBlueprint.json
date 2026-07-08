@@ -1,0 +1,2696 @@
+﻿{
+    "schemaVersion":  1,
+    "generatedAt":  "2026-07-08T14:30:36.0590960Z",
+    "source":  {
+                   "plmTemplateId":  3355,
+                   "plmDatabase":  "plm_live_20260602",
+                   "dwDatabase":  "plmDW",
+                   "importTabIds":  [
+                                        4249,
+                                        4250
+                                    ],
+                   "tablePrefix":  "Plm_",
+                   "configFile":  "source/dwTabImportConfig.json",
+                   "outputFolder":  "output/3355"
+               },
+    "plmTemplate":  {
+                        "templateId":  3355,
+                        "templateName":  "05 - Packaging",
+                        "templateHeaderTabIds":  [
+                                                     4249
+                                                 ]
+                    },
+    "transactionGroup":  {
+                             "name":  "05 - Packaging",
+                             "integrationId":  "TG_05Packaging",
+                             "saasApplicationId":  null
+                         },
+    "rootUnit":  {
+                     "appTableName":  "Plm_ReferenceBasicInfo",
+                     "integrationId":  "Unit_ReferenceBasicInfo",
+                     "referenceScope":  {
+                                            "dwTable":  "PLM_DW_Tab_Packaging_Header_4249",
+                                            "dwColumn":  "Article__22",
+                                            "plmTabId":  4249,
+                                            "plmSubItemId":  22
+                                        }
+                 },
+    "tabSharedTableGroups":  [
+                                 {
+                                     "groupId":  "shared_packaging_header",
+                                     "sharedAppTableName":  "Plm_Packaging_Header",
+                                     "primaryPlmTabId":  4249,
+                                     "secondaryPlmTabIds":  [
+                                                                4250
+                                                            ],
+                                     "rule":  "SharedSubItemsOnPrimaryOnly"
+                                 }
+                             ],
+    "transactions":  [
+                         {
+                             "plmTabId":  4249,
+                             "plmTabName":  "Packaging Header",
+                             "integrationId":  "Tab_4249",
+                             "transactionName":  "Packaging Header",
+                             "importStatus":  "Ready",
+                             "plmTabSort":  1,
+                             "isTemplateHeaderTab":  true,
+                             "unitStructure":  {
+                                                   "mode":  "RootPlusMasterSibling",
+                                                   "rootTableName":  "Plm_ReferenceBasicInfo",
+                                                   "siblingUnits":  [
+                                                                        {
+                                                                            "appTableName":  "Plm_Packaging_Header",
+                                                                            "isMasterSibling":  true,
+                                                                            "fieldPolicy":  "AllMappedColumns"
+                                                                        }
+                                                                    ],
+                                                   "childUnits":  [
+
+                                                                  ]
+                                               }
+                         },
+                         {
+                             "plmTabId":  4250,
+                             "plmTabName":  "Packaging Info",
+                             "integrationId":  "Tab_4250",
+                             "transactionName":  "Packaging Info",
+                             "importStatus":  "Ready",
+                             "plmTabSort":  2,
+                             "isTemplateHeaderTab":  false,
+                             "unitStructure":  {
+                                                   "mode":  "RootPlusMasterSibling",
+                                                   "rootTableName":  "Plm_ReferenceBasicInfo",
+                                                   "siblingUnits":  [
+                                                                        {
+                                                                            "appTableName":  "Plm_Packaging_Header",
+                                                                            "isMasterSibling":  true,
+                                                                            "fieldPolicy":  "AllMappedColumns"
+                                                                        },
+                                                                        {
+                                                                            "appTableName":  "Plm_Packaging_Info",
+                                                                            "isMasterSibling":  false,
+                                                                            "fieldPolicy":  "ExclusiveSubItemsOnly",
+                                                                            "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Packaging_Header_4249"
+                                                                        }
+                                                                    ],
+                                                   "childUnits":  [
+
+                                                                  ]
+                                               }
+                         }
+                     ],
+    "gridBindings":  [
+                         {
+                             "plmGridId":  26,
+                             "appTableName":  "Plm_SizeRunDetailGrid",
+                             "parentPlmTabId":  4249,
+                             "attachToRoot":  false,
+                             "integrationId":  "Grid_26",
+                             "transactionIntegrationId":  "Tab_4249"
+                         },
+                         {
+                             "plmGridId":  27,
+                             "appTableName":  "Plm_DimensionDetailGrid",
+                             "parentPlmTabId":  4249,
+                             "attachToRoot":  false,
+                             "integrationId":  "Grid_27",
+                             "transactionIntegrationId":  "Tab_4249"
+                         },
+                         {
+                             "plmGridId":  7,
+                             "appTableName":  "Plm_ProductDesignColorGrid",
+                             "parentPlmTabId":  4250,
+                             "attachToRoot":  false,
+                             "integrationId":  "Grid_7",
+                             "transactionIntegrationId":  "Tab_4250"
+                         },
+                         {
+                             "plmGridId":  3179,
+                             "appTableName":  "Plm_Trims_Tracking",
+                             "parentPlmTabId":  null,
+                             "attachToRoot":  true,
+                             "integrationId":  "Grid_3179",
+                             "transactionIntegrationId":  "Grid_3179"
+                         }
+                     ],
+    "bomColorwayPivotBindings":  [{
+
+                                 }],
+    "blueprintFields":  [
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Classification",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  1,
+                                "displayLabel":  "Product Class",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "1"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Product_Type",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4,
+                                "displayLabel":  "Product Type",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Season",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  8,
+                                "displayLabel":  "Season",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "8"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Collection",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  6,
+                                "displayLabel":  "Collection",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "6"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Group",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  7,
+                                "displayLabel":  "Group",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "7"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Sketch",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Sketch",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Division_8",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  5,
+                                "displayLabel":  "Division_8",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "5"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Size_Range",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  10,
+                                "displayLabel":  "Size_Range",
+                                "displayOrder":  8,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "10"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Dimension",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  9,
+                                "displayLabel":  "Dimension",
+                                "displayOrder":  9,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "9"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Article",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Packaging #",
+                                "displayOrder":  10,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Description",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Description",
+                                "displayOrder":  11,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Country_Of_Origin",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  59,
+                                "displayLabel":  "Supplier COO",
+                                "displayOrder":  12,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "59"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Product_Manager",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  80,
+                                "displayLabel":  "Product_Manager",
+                                "displayOrder":  13,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "80"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Long_Description",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Long_Description",
+                                "displayOrder":  14,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Sample_Size_Detail",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  63,
+                                "displayLabel":  "Sample Size",
+                                "displayOrder":  15,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "63"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Brand",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  93,
+                                "displayLabel":  "Brand",
+                                "displayOrder":  16,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "93"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "ProductTypeGroup",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  95,
+                                "displayLabel":  "Type Group",
+                                "displayOrder":  17,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "95"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Size_Detail_Dispaly",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  63,
+                                "displayLabel":  "Size_Detail_Dispaly",
+                                "displayOrder":  18,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "63"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Division_186",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  5,
+                                "displayLabel":  "Division_186",
+                                "displayOrder":  19,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "5"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Created_By",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Created_By",
+                                "displayOrder":  20,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Last_Revised_By",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Product Last Rev By",
+                                "displayOrder":  21,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "ProductReferenceId",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ProductReferenceId",
+                                "displayOrder":  22,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Raw_Material_Status",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3461,
+                                "displayLabel":  "Packaging Status",
+                                "displayOrder":  23,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "3461"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "State",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "State",
+                                "displayOrder":  24,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Item_Type",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  123,
+                                "displayLabel":  "Item_Type",
+                                "displayOrder":  25,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "123"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Material",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3522,
+                                "displayLabel":  "Material",
+                                "displayOrder":  26,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "3522"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Supplier_Article_Number",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Packaging Ref",
+                                "displayOrder":  27,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Release_to_Manufacturer",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3494,
+                                "displayLabel":  "Release_to_Manufacturer",
+                                "displayOrder":  28,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "3494"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Old_Code",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Old Packaging #",
+                                "displayOrder":  29,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Label_Reference",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Label_Reference",
+                                "displayOrder":  30,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Cost_1",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Cost_1",
+                                "displayOrder":  31,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "French",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "French",
+                                "displayOrder":  32,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Process_Type_1",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4727,
+                                "displayLabel":  "Process_Type_1",
+                                "displayOrder":  33,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4727"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Process_Type_2",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4727,
+                                "displayLabel":  "Process_Type_2",
+                                "displayOrder":  34,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4727"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Process_Type_3",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4727,
+                                "displayLabel":  "Process_Type_3",
+                                "displayOrder":  35,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4727"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Supplier_1",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4757,
+                                "displayLabel":  "Supplier_1",
+                                "displayOrder":  36,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4757"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Release_Day",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Release_Day",
+                                "displayOrder":  37,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Name",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Name",
+                                "displayOrder":  38,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Product_Type_txt",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Product_Type_txt",
+                                "displayOrder":  39,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "sketch_id",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "sketch_id",
+                                "displayOrder":  40,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "ddl",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  11,
+                                "displayLabel":  "ddl",
+                                "displayOrder":  41,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Collection_txt",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Collection_txt",
+                                "displayOrder":  42,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Supplier_2",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4757,
+                                "displayLabel":  "Supplier_2",
+                                "displayOrder":  43,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4757"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "USD_for",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USD_for",
+                                "displayOrder":  44,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "ProductTypeGroup_txt",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ProductTypeGroup_txt",
+                                "displayOrder":  45,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "Subcategory",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4798,
+                                "displayLabel":  "Subcategory",
+                                "displayOrder":  46,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4798"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "ERP_Season",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  8,
+                                "displayLabel":  "ERP_Season",
+                                "displayOrder":  47,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "8"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Header",
+                                "appColumnName":  "French_Name",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "French_Name",
+                                "displayOrder":  48,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Construction",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4724,
+                                "displayLabel":  "Construction",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4724"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Width",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Width",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Width_Unit",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  67,
+                                "displayLabel":  "UOM",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "67"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Weight",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Weight",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Weight_Unit",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  67,
+                                "displayLabel":  "UOM",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "67"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Length",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Depth",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Length_Unit",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  67,
+                                "displayLabel":  "UOM",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "67"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Height",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Height",
+                                "displayOrder":  8,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Height_Unit",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  67,
+                                "displayLabel":  "UOM",
+                                "displayOrder":  9,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "67"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Lead_Time",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Lead_Time",
+                                "displayOrder":  10,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Lead_Time_UOM",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3678,
+                                "displayLabel":  "Lead_Time_UOM",
+                                "displayOrder":  11,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "3678"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Bulk_MOQ",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Bulk_MOQ",
+                                "displayOrder":  12,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Sample_MOQ",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Sample_MOQ",
+                                "displayOrder":  13,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "MOQ_UOM",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  67,
+                                "displayLabel":  "MOQ_UOM",
+                                "displayOrder":  14,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "67"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "File_Attachment_1",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  9,
+                                "plmEntityId":  11,
+                                "displayLabel":  "File_Attachment_1",
+                                "displayOrder":  15,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "File_Attachment_2",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  9,
+                                "plmEntityId":  11,
+                                "displayLabel":  "File_Attachment_2",
+                                "displayOrder":  16,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "File_Attachment_3",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  9,
+                                "plmEntityId":  11,
+                                "displayLabel":  "File_Attachment_3",
+                                "displayOrder":  17,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "File_Attachment_4",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  9,
+                                "plmEntityId":  11,
+                                "displayLabel":  "File_Attachment_4",
+                                "displayOrder":  18,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Final_View",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Final_View",
+                                "displayOrder":  19,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Measurements",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Measurements",
+                                "displayOrder":  20,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Position",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Position",
+                                "displayOrder":  21,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Quality_Reference",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Quality_Reference",
+                                "displayOrder":  22,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Security_Group_6702",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  96,
+                                "displayLabel":  "Security_Group_6702",
+                                "displayOrder":  23,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "96"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Testing_Technician",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  80,
+                                "displayLabel":  "Testing_Technician",
+                                "displayOrder":  24,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "80"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Security_Group_6704",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  96,
+                                "displayLabel":  "Security_Group_6704",
+                                "displayOrder":  25,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "96"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Buyer",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  80,
+                                "displayLabel":  "Buyer",
+                                "displayOrder":  26,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "80"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Image_Content_6734",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4717,
+                                "displayLabel":  "Image_Content_6734",
+                                "displayOrder":  27,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4717"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Image_Content_6735",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4717,
+                                "displayLabel":  "Image_Content_6735",
+                                "displayOrder":  28,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4717"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Image_Content_6736",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4717,
+                                "displayLabel":  "Image_Content_6736",
+                                "displayOrder":  29,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4717"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Image_Content_6737",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4717,
+                                "displayLabel":  "Image_Content_6737",
+                                "displayOrder":  30,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4717"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Image_6951",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image_6951",
+                                "displayOrder":  31,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Description_6952",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4717,
+                                "displayLabel":  "Description_6952",
+                                "displayOrder":  32,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4717"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Description_6953",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4717,
+                                "displayLabel":  "Description_6953",
+                                "displayOrder":  33,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4717"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Image_6954",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image_6954",
+                                "displayOrder":  34,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Description_6955",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4717,
+                                "displayLabel":  "Description_6955",
+                                "displayOrder":  35,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4717"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Image_6956",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image_6956",
+                                "displayOrder":  36,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Description_6957",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4717,
+                                "displayLabel":  "Description_6957",
+                                "displayOrder":  37,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4717"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Image_6958",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image_6958",
+                                "displayOrder":  38,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Created_by",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4778,
+                                "displayLabel":  "Created_by",
+                                "displayOrder":  39,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4778"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Per_7135",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  67,
+                                "displayLabel":  "Per_7135",
+                                "displayOrder":  40,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "67"
+                            },
+                            {
+                                "appTableName":  "Plm_Packaging_Info",
+                                "appColumnName":  "Per_7136",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  67,
+                                "displayLabel":  "Per_7136",
+                                "displayOrder":  41,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "67"
+                            },
+                            {
+                                "appTableName":  "Plm_SizeRunDetailGrid",
+                                "appColumnName":  "SizeRunDetail",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  63,
+                                "displayLabel":  "Sizes",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "63"
+                            },
+                            {
+                                "appTableName":  "Plm_DimensionDetailGrid",
+                                "appColumnName":  "DimensionDetail",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  73,
+                                "displayLabel":  "Dimensions",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "73"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Active",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Active",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "SketchId",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "SketchId",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ExternalImageLink",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  38,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ExternalImageLink",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "SS",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3662,
+                                "displayLabel":  "SS",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3662"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Swatch",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  24,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Swatch",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Name",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Name",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ColorFamilyID",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  122,
+                                "displayLabel":  "ColorFamilyID",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "122"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Color",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Color",
+                                "displayOrder":  8,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Color_Code",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Color",
+                                "displayOrder":  9,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Color_Combo",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Color_Combo",
+                                "displayOrder":  10,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "SMS",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  3667,
+                                "displayLabel":  "SMS",
+                                "displayOrder":  11,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3667"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Reference",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  12,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Comments",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  13,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Description",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Description",
+                                "displayOrder":  14,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "RGB",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "RGB",
+                                "displayOrder":  15,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ColorReferenceTypeID",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  121,
+                                "displayLabel":  "Reference Color",
+                                "displayOrder":  16,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "121"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ColorFolderPath",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  187,
+                                "displayLabel":  "ColorFolderPath",
+                                "displayOrder":  17,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "187"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ReferenceCode",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ReferenceCode",
+                                "displayOrder":  18,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ReferenceName",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ReferenceName",
+                                "displayOrder":  19,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "NRF",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  175,
+                                "displayLabel":  "NRF",
+                                "displayOrder":  20,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "175"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ProductColorNRF",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  175,
+                                "displayLabel":  "ProductColorNRF",
+                                "displayOrder":  21,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "175"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Approved",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Approved",
+                                "displayOrder":  22,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Approv_Date",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Approv_Date",
+                                "displayOrder":  23,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Image",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image",
+                                "displayOrder":  24,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine1",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3525,
+                                "displayLabel":  "Userdefine1",
+                                "displayOrder":  25,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3525"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine2",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3526,
+                                "displayLabel":  "Userdefine2",
+                                "displayOrder":  26,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3526"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine3",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine3",
+                                "displayOrder":  27,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine4",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine4",
+                                "displayOrder":  28,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine5",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine5",
+                                "displayOrder":  29,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine6",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine6",
+                                "displayOrder":  30,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine7",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine7",
+                                "displayOrder":  31,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine8",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine8",
+                                "displayOrder":  32,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine9",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine9",
+                                "displayOrder":  33,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine10",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine10",
+                                "displayOrder":  34,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine11",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine11",
+                                "displayOrder":  35,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine12",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine12",
+                                "displayOrder":  36,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine13",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine13",
+                                "displayOrder":  37,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine14",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine14",
+                                "displayOrder":  38,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine15",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine15",
+                                "displayOrder":  39,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "First_Cost",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "First_Cost",
+                                "displayOrder":  40,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "FirstCostCurrency",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  68,
+                                "displayLabel":  "FirstCostCurrency",
+                                "displayOrder":  41,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "68"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Standard_Cost",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Standard_Cost",
+                                "displayOrder":  42,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Selling_Price",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Selling_Price",
+                                "displayOrder":  43,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Selling_Currency",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  68,
+                                "displayLabel":  "Selling_Currency",
+                                "displayOrder":  44,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "68"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Retail",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Retail",
+                                "displayOrder":  45,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Effective_Date",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Effective_Date",
+                                "displayOrder":  46,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "SupplierColor",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "SupplierColor",
+                                "displayOrder":  47,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ERPID",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  15,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ERPID",
+                                "displayOrder":  48,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Colour_Risk",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3494,
+                                "displayLabel":  "Colour_Risk",
+                                "displayOrder":  49,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3494"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Colour_Risk_Comment",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3663,
+                                "displayLabel":  "Colour_Risk_Comment",
+                                "displayOrder":  50,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3663"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Date_SMS",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Date_SMS",
+                                "displayOrder":  51,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Bulk_1_Status",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3667,
+                                "displayLabel":  "Bulk_1_Status",
+                                "displayOrder":  52,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3667"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "DateBulk1",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "DateBulk1",
+                                "displayOrder":  53,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Bulk_2_Status",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3667,
+                                "displayLabel":  "Bulk_2_Status",
+                                "displayOrder":  54,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3667"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "DateBulk2",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "DateBulk2",
+                                "displayOrder":  55,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Bulk_3_Status",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3667,
+                                "displayLabel":  "Bulk_3_Status",
+                                "displayOrder":  56,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3667"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "DateBulk3",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "DateBulk3",
+                                "displayOrder":  57,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAN_Qty_Color",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  58,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAN_Qty_Total",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  59,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USA_Qty_Color",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  60,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USA_Qty_Total",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  61,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "FOB_Price",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  62,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAD",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  68,
+                                "displayLabel":  "CAD",
+                                "displayOrder":  63,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "68"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAD_WS_Price",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CAD_WS_Price",
+                                "displayOrder":  64,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAD_RET_Price",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CAD_RET_Price",
+                                "displayOrder":  65,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAD_VIP_Price",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CAD_VIP_Price",
+                                "displayOrder":  66,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USD",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  68,
+                                "displayLabel":  "USD",
+                                "displayOrder":  67,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "68"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USD_WS_Price",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USD_WS_Price",
+                                "displayOrder":  68,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USD_RET_Price",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USD_RET_Price",
+                                "displayOrder":  69,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USD_VIP_Price",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USD_VIP_Price",
+                                "displayOrder":  70,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAN_PO_s",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  71,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAN_PO_Created_Date",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  72,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAN_ETA",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  73,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USA_PO_s",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  74,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USA_PO_Created_Date",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  75,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USA_ETA",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NULL",
+                                "displayOrder":  76,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Fabric_Price_p_m",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Fabric_Price_p_m",
+                                "displayOrder":  77,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Fabric_Price_p_y",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Fabric_Price_p_y",
+                                "displayOrder":  78,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Color_Price_p_m",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Color_Price_p_m",
+                                "displayOrder":  79,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Color_Price_p_y",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Color_Price_p_y",
+                                "displayOrder":  80,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "GS1_Color_Group",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  190,
+                                "displayLabel":  "GS1_Color_Group",
+                                "displayOrder":  81,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "190"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "GS1_Shade_Group",
+                                "plmTabIds":  [
+                                                  4250
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  192,
+                                "displayLabel":  "GS1_Shade_Group",
+                                "displayOrder":  82,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "192"
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Trim",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Trim",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Description",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Description",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Combo_Color",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Combo_Color",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Season",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3662,
+                                "displayLabel":  "Season",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3662"
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Type",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4788,
+                                "displayLabel":  "Type",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4788"
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Status",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4771,
+                                "displayLabel":  "Status",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4771"
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Date",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Date",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Designer",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4772,
+                                "displayLabel":  "Designer",
+                                "displayOrder":  8,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4772"
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Comment",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comment",
+                                "displayOrder":  9,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Creation",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Creation",
+                                "displayOrder":  10,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "ID",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3482,
+                                "displayLabel":  "ID",
+                                "displayOrder":  11,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3482"
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "ColorCode_txt",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ColorCode_txt",
+                                "displayOrder":  12,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Season_txt",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Season_txt",
+                                "displayOrder":  13,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Trims_Tracking",
+                                "appColumnName":  "Status_txt",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Status_txt",
+                                "displayOrder":  14,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ReferenceBasicInfo",
+                                "appColumnName":  "ReferenceCode",
+                                "plmTabIds":  [
+                                                  4249
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Packaging #",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            }
+                        ],
+    "searchView":  {
+                       "search":  {
+                                      "name":  "05 - Packaging References",
+                                      "integrationId":  "Search_05Packaging",
+                                      "usageType":  "DataModelTemplate",
+                                      "rootTableName":  "Plm_ReferenceBasicInfo"
+                                  },
+                       "searchView":  {
+                                          "integrationId":  "Search_05Packaging_View",
+                                          "fields":  "DefaultReferenceBasicInfo"
+                                      }
+                   },
+    "navigation":  {
+                       "folderName":  "05 - Packaging",
+                       "parentFolderIntegrationId":  null,
+                       "menuOrder":  100
+                   }
+}

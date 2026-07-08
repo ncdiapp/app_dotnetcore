@@ -1,0 +1,139 @@
+﻿{
+    "plmTemplateId":  3352,
+    "plmSqlServer":  "PC3B\\MSSQLSERVER01",
+    "plmDatabase":  "plm_live_20260602",
+    "sqlServer":  "PC3B\\MSSQLSERVER01",
+    "dwDatabase":  "plmDW",
+    "importTabIds":  [
+                         4006,
+                         4238,
+                         4239,
+                         4241,
+                         4242,
+                         4243,
+                         4244,
+                         4245
+                     ],
+    "tablePrefixDefault":  "Plm_",
+    "rootTableSuffix":  "ReferenceBasicInfo",
+    "plmTemplate":  {
+                        "templateId":  3352,
+                        "templateName":  "10 - Grading, Proto, SS and Fit",
+                        "templateHeaderTabIds":  [
+
+                                                 ]
+                    },
+    "referenceScope":  {
+                           "dwTable":  "PLM_DW_Tab_Grading_4006",
+                           "dwColumn":  "Size_Run_43_FK_tblSizeRun",
+                           "plmTabId":  4006,
+                           "plmSubItemId":  43
+                       },
+    "tabs":  [
+                 {
+                     "appTable":  "Grading",
+                     "dwTable":  "PLM_DW_Tab_Grading_4006",
+                     "tabId":  4006,
+                     "plmTabName":  "Grading",
+                     "tabSort":  1,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Proto_Summary",
+                     "dwTable":  "PLM_DW_Tab_Proto_Summary_4238",
+                     "tabId":  4238,
+                     "plmTabName":  "Proto Summary",
+                     "tabSort":  2,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Proto_1",
+                     "dwTable":  "PLM_DW_Tab_Proto_1_4239",
+                     "tabId":  4239,
+                     "plmTabName":  "Proto 1",
+                     "tabSort":  3,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Proto_2",
+                     "dwTable":  "PLM_DW_Tab_Proto_2_4241",
+                     "tabId":  4241,
+                     "plmTabName":  "Proto 2",
+                     "tabSort":  4,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Proto_3",
+                     "dwTable":  "PLM_DW_Tab_Proto_3_4242",
+                     "tabId":  4242,
+                     "plmTabName":  "Proto 3",
+                     "tabSort":  5,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Sale_Sample",
+                     "dwTable":  "PLM_DW_Tab_Sale_Sample_4243",
+                     "tabId":  4243,
+                     "plmTabName":  "Sale Sample",
+                     "tabSort":  6,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Fit_1",
+                     "dwTable":  "PLM_DW_Tab_Fit_1_4244",
+                     "tabId":  4244,
+                     "plmTabName":  "Fit 1",
+                     "tabSort":  7,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Fit_2",
+                     "dwTable":  "PLM_DW_Tab_Fit_2_4245",
+                     "tabId":  4245,
+                     "plmTabName":  "Fit 2",
+                     "tabSort":  8,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 }
+             ],
+    "grids":  [
+                  {
+                      "appTable":  "SpecGradingGrid",
+                      "dwTable":  "PLM_DW_Grid_SpecGradingGrid_10",
+                      "gridSubItemId":  46,
+                      "gridId":  10,
+                      "parentPlmTabId":  4006,
+                      "transactionIntegrationId":  "Tab_4006"
+                  },
+                  {
+                      "appTable":  "SpecFitGrid",
+                      "dwTable":  "PLM_DW_Grid_SpecFitGrid_5",
+                      "gridSubItemId":  32,
+                      "gridId":  5,
+                      "parentPlmTabId":  4238,
+                      "transactionIntegrationId":  "Tab_4238"
+                  }
+              ],
+    "blueprint":  {
+                      "transactionGroupName":  "10 - Grading, Proto, SS and Fit",
+                      "transactionGroupIntegrationId":  "TG_10GradingProtoSSandFit",
+                      "searchName":  "10 - Grading, Proto, SS and Fit References",
+                      "searchIntegrationId":  "Search_10GradingProtoSSandFit",
+                      "folderName":  "10 - Grading, Proto, SS and Fit"
+                  }
+}

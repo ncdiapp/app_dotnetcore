@@ -1,0 +1,90 @@
+﻿{
+    "plmTemplateId":  3355,
+    "plmSqlServer":  "PC3B\\MSSQLSERVER01",
+    "plmDatabase":  "plm_live_20260602",
+    "sqlServer":  "PC3B\\MSSQLSERVER01",
+    "dwDatabase":  "plmDW",
+    "importTabIds":  [
+                         4249,
+                         4250
+                     ],
+    "tablePrefixDefault":  "Plm_",
+    "rootTableSuffix":  "ReferenceBasicInfo",
+    "plmTemplate":  {
+                        "templateId":  3355,
+                        "templateName":  "05 - Packaging",
+                        "templateHeaderTabIds":  [
+                                                     4249
+                                                 ]
+                    },
+    "referenceScope":  {
+                           "dwTable":  "PLM_DW_Tab_Packaging_Header_4249",
+                           "dwColumn":  "Article__22",
+                           "plmTabId":  4249,
+                           "plmSubItemId":  22
+                       },
+    "tabs":  [
+                 {
+                     "appTable":  "Packaging_Header",
+                     "dwTable":  "PLM_DW_Tab_Packaging_Header_4249",
+                     "tabId":  4249,
+                     "plmTabName":  "Packaging Header",
+                     "tabSort":  1,
+                     "isTemplateHeaderTab":  true,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Packaging_Info",
+                     "dwTable":  "PLM_DW_Tab_Packaging_Info_4250",
+                     "tabId":  4250,
+                     "plmTabName":  "Packaging Info",
+                     "tabSort":  2,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Packaging_Header_4249"
+                 }
+             ],
+    "grids":  [
+                  {
+                      "appTable":  "SizeRunDetailGrid",
+                      "dwTable":  "PLM_DW_Grid_SizeRunDetailGrid_26",
+                      "gridSubItemId":  191,
+                      "gridId":  26,
+                      "parentPlmTabId":  4249,
+                      "transactionIntegrationId":  "Tab_4249"
+                  },
+                  {
+                      "appTable":  "DimensionDetailGrid",
+                      "dwTable":  "PLM_DW_Grid_DimensionDetailGrid_27",
+                      "gridSubItemId":  192,
+                      "gridId":  27,
+                      "parentPlmTabId":  4249,
+                      "transactionIntegrationId":  "Tab_4249"
+                  },
+                  {
+                      "appTable":  "ProductDesignColorGrid",
+                      "dwTable":  "PLM_DW_Grid_ProductDesignColorGrid_7",
+                      "gridSubItemId":  35,
+                      "gridId":  7,
+                      "parentPlmTabId":  4250,
+                      "transactionIntegrationId":  "Tab_4250"
+                  },
+                  {
+                      "appTable":  "Trims_Tracking",
+                      "dwTable":  "PLM_DW_Grid_Trims_Tracking_3179",
+                      "gridSubItemId":  7027,
+                      "gridId":  3179,
+                      "parentPlmTabId":  null,
+                      "transactionIntegrationId":  "Grid_3179"
+                  }
+              ],
+    "blueprint":  {
+                      "transactionGroupName":  "05 - Packaging",
+                      "transactionGroupIntegrationId":  "TG_05Packaging",
+                      "searchName":  "05 - Packaging References",
+                      "searchIntegrationId":  "Search_05Packaging",
+                      "folderName":  "05 - Packaging"
+                  }
+}

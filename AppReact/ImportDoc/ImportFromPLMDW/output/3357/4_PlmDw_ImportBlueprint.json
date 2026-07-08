@@ -1,0 +1,1414 @@
+﻿{
+    "schemaVersion":  1,
+    "generatedAt":  "2026-07-08T14:31:28.4392422Z",
+    "source":  {
+                   "plmTemplateId":  3357,
+                   "plmDatabase":  "plm_live_20260602",
+                   "dwDatabase":  "plmDW",
+                   "importTabIds":  [
+                                        4254
+                                    ],
+                   "tablePrefix":  "Plm_",
+                   "configFile":  "source/dwTabImportConfig.json",
+                   "outputFolder":  "output/3357"
+               },
+    "plmTemplate":  {
+                        "templateId":  3357,
+                        "templateName":  "08 - Color Palette",
+                        "templateHeaderTabIds":  [
+                                                     4254
+                                                 ]
+                    },
+    "transactionGroup":  {
+                             "name":  "08 - Color Palette",
+                             "integrationId":  "TG_08ColorPalette",
+                             "saasApplicationId":  null
+                         },
+    "rootUnit":  {
+                     "appTableName":  "Plm_ReferenceBasicInfo",
+                     "integrationId":  "Unit_ReferenceBasicInfo",
+                     "referenceScope":  {
+                                            "dwTable":  "PLM_DW_Tab_Color_Patette_Header_4254",
+                                            "dwColumn":  "Article__22",
+                                            "plmTabId":  4254,
+                                            "plmSubItemId":  22
+                                        }
+                 },
+    "tabSharedTableGroups":  [
+
+                             ],
+    "transactions":  [
+                         {
+                             "plmTabId":  4254,
+                             "plmTabName":  "Color Patette Header",
+                             "integrationId":  "Tab_4254",
+                             "transactionName":  "Color Patette Header",
+                             "importStatus":  "Ready",
+                             "plmTabSort":  1,
+                             "isTemplateHeaderTab":  true,
+                             "unitStructure":  {
+                                                   "mode":  "RootPlusMasterSibling",
+                                                   "rootTableName":  "Plm_ReferenceBasicInfo",
+                                                   "siblingUnits":  [
+                                                                        {
+                                                                            "appTableName":  "Plm_Color_Patette_Header",
+                                                                            "isMasterSibling":  true,
+                                                                            "fieldPolicy":  "AllMappedColumns"
+                                                                        }
+                                                                    ],
+                                                   "childUnits":  [
+
+                                                                  ]
+                                               }
+                         }
+                     ],
+    "gridBindings":  [
+                         {
+                             "plmGridId":  7,
+                             "appTableName":  "Plm_ProductDesignColorGrid",
+                             "parentPlmTabId":  null,
+                             "attachToRoot":  true,
+                             "integrationId":  "Grid_7",
+                             "transactionIntegrationId":  "Grid_7"
+                         }
+                     ],
+    "bomColorwayPivotBindings":  [{
+
+                                 }],
+    "blueprintFields":  [
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Season",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  8,
+                                "displayLabel":  "Selling-Period",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "8"
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Collection",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  6,
+                                "displayLabel":  "Collection",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "6"
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Group",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  7,
+                                "displayLabel":  "Group",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "7"
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Article",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Color Palette Name",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Description",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Description",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Long_Description",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Long_Description",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Brand",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  93,
+                                "displayLabel":  "Bard Label",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "93"
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Created_By",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Created_By",
+                                "displayOrder":  8,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Last_Revised_By",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Last_Revised_By",
+                                "displayOrder":  9,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Product_Class",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  1,
+                                "displayLabel":  "Product_Class",
+                                "displayOrder":  10,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "1"
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Tech_Pack_Type",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  123,
+                                "displayLabel":  "Tech_Pack_Type",
+                                "displayOrder":  11,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "123"
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "French",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "French",
+                                "displayOrder":  12,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Name",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Name",
+                                "displayOrder":  13,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "Collection_txt",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Collection_txt",
+                                "displayOrder":  14,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "ERP_Season",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  8,
+                                "displayLabel":  "ERP_Season",
+                                "displayOrder":  15,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "8"
+                            },
+                            {
+                                "appTableName":  "Plm_Color_Patette_Header",
+                                "appColumnName":  "French_Name",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "French_Name",
+                                "displayOrder":  16,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Active",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Active",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "SketchId",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "SketchId",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ExternalImageLink",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  38,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ExternalImageLink",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "SS",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3662,
+                                "displayLabel":  "SS",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3662"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Swatch",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  24,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Swatch",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Name",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Name",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ColorFamilyID",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  122,
+                                "displayLabel":  "ColorFamilyID",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "122"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Color",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  79,
+                                "displayLabel":  "Color",
+                                "displayOrder":  8,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "79"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Color_Code",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Color_Code",
+                                "displayOrder":  9,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Color_Combo",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Color_Combo",
+                                "displayOrder":  10,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "SMS",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  3667,
+                                "displayLabel":  "SMS",
+                                "displayOrder":  11,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3667"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Reference",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Reference",
+                                "displayOrder":  12,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Comments",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comments",
+                                "displayOrder":  13,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Description",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Description",
+                                "displayOrder":  14,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "RGB",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "RGB",
+                                "displayOrder":  15,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ColorReferenceTypeID",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  121,
+                                "displayLabel":  "ColorReferenceTypeID",
+                                "displayOrder":  16,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "121"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ColorFolderPath",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  187,
+                                "displayLabel":  "ColorFolderPath",
+                                "displayOrder":  17,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "187"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ReferenceCode",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ReferenceCode",
+                                "displayOrder":  18,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ReferenceName",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ReferenceName",
+                                "displayOrder":  19,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "NRF",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  175,
+                                "displayLabel":  "NRF",
+                                "displayOrder":  20,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "175"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ProductColorNRF",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  175,
+                                "displayLabel":  "ProductColorNRF",
+                                "displayOrder":  21,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "175"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Approved",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Approved",
+                                "displayOrder":  22,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Approv_Date",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Approv_Date",
+                                "displayOrder":  23,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Image",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image",
+                                "displayOrder":  24,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine1",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3525,
+                                "displayLabel":  "Userdefine1",
+                                "displayOrder":  25,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3525"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine2",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3526,
+                                "displayLabel":  "Userdefine2",
+                                "displayOrder":  26,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3526"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine3",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine3",
+                                "displayOrder":  27,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine4",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine4",
+                                "displayOrder":  28,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine5",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine5",
+                                "displayOrder":  29,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine6",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine6",
+                                "displayOrder":  30,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine7",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine7",
+                                "displayOrder":  31,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine8",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine8",
+                                "displayOrder":  32,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine9",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine9",
+                                "displayOrder":  33,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine10",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine10",
+                                "displayOrder":  34,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine11",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine11",
+                                "displayOrder":  35,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine12",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine12",
+                                "displayOrder":  36,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine13",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine13",
+                                "displayOrder":  37,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine14",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine14",
+                                "displayOrder":  38,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Userdefine15",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Userdefine15",
+                                "displayOrder":  39,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "First_Cost",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "First_Cost",
+                                "displayOrder":  40,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "FirstCostCurrency",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  68,
+                                "displayLabel":  "FirstCostCurrency",
+                                "displayOrder":  41,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "68"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Standard_Cost",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Standard_Cost",
+                                "displayOrder":  42,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Selling_Price",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Selling_Price",
+                                "displayOrder":  43,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Selling_Currency",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  68,
+                                "displayLabel":  "Selling_Currency",
+                                "displayOrder":  44,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "68"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Retail",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Retail",
+                                "displayOrder":  45,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Effective_Date",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Effective_Date",
+                                "displayOrder":  46,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "SupplierColor",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "SupplierColor",
+                                "displayOrder":  47,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "ERPID",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  15,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ERPID",
+                                "displayOrder":  48,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Colour_Risk",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3494,
+                                "displayLabel":  "Colour_Risk",
+                                "displayOrder":  49,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3494"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Colour_Risk_Comment",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3663,
+                                "displayLabel":  "Colour_Risk_Comment",
+                                "displayOrder":  50,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3663"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Date_SMS",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Date_SMS",
+                                "displayOrder":  51,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Bulk_1_Status",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3667,
+                                "displayLabel":  "Bulk_1_Status",
+                                "displayOrder":  52,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3667"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "DateBulk1",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "DateBulk1",
+                                "displayOrder":  53,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Bulk_2_Status",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3667,
+                                "displayLabel":  "Bulk_2_Status",
+                                "displayOrder":  54,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3667"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "DateBulk2",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "DateBulk2",
+                                "displayOrder":  55,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Bulk_3_Status",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3667,
+                                "displayLabel":  "Bulk_3_Status",
+                                "displayOrder":  56,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3667"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "DateBulk3",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "DateBulk3",
+                                "displayOrder":  57,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAN_Qty_Color",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CAN_Qty_Color",
+                                "displayOrder":  58,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAN_Qty_Total",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CAN_Qty_Total",
+                                "displayOrder":  59,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USA_Qty_Color",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USA_Qty_Color",
+                                "displayOrder":  60,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USA_Qty_Total",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USA_Qty_Total",
+                                "displayOrder":  61,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "FOB_Price",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "FOB_Price",
+                                "displayOrder":  62,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAD",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  68,
+                                "displayLabel":  "CAD",
+                                "displayOrder":  63,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "68"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAD_WS_Price",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CAD_WS_Price",
+                                "displayOrder":  64,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAD_RET_Price",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CAD_RET_Price",
+                                "displayOrder":  65,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAD_VIP_Price",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CAD_VIP_Price",
+                                "displayOrder":  66,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USD",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  68,
+                                "displayLabel":  "USD",
+                                "displayOrder":  67,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "68"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USD_WS_Price",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USD_WS_Price",
+                                "displayOrder":  68,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USD_RET_Price",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USD_RET_Price",
+                                "displayOrder":  69,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USD_VIP_Price",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USD_VIP_Price",
+                                "displayOrder":  70,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAN_PO_s",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CAN_PO_s",
+                                "displayOrder":  71,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAN_PO_Created_Date",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CAN_PO_Created_Date",
+                                "displayOrder":  72,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "CAN_ETA",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CAN_ETA",
+                                "displayOrder":  73,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USA_PO_s",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USA_PO_s",
+                                "displayOrder":  74,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USA_PO_Created_Date",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USA_PO_Created_Date",
+                                "displayOrder":  75,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "USA_ETA",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "USA_ETA",
+                                "displayOrder":  76,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Fabric_Price_p_m",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Fabric_Price_p_m",
+                                "displayOrder":  77,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Fabric_Price_p_y",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Fabric_Price_p_y",
+                                "displayOrder":  78,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Color_Price_p_m",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Color_Price_p_m",
+                                "displayOrder":  79,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "Color_Price_p_y",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Color_Price_p_y",
+                                "displayOrder":  80,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "GS1_Color_Group",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  190,
+                                "displayLabel":  "GS1_Color_Group",
+                                "displayOrder":  81,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "190"
+                            },
+                            {
+                                "appTableName":  "Plm_ProductDesignColorGrid",
+                                "appColumnName":  "GS1_Shade_Group",
+                                "plmTabIds":  [
+
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  192,
+                                "displayLabel":  "GS1_Shade_Group",
+                                "displayOrder":  82,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "192"
+                            },
+                            {
+                                "appTableName":  "Plm_ReferenceBasicInfo",
+                                "appColumnName":  "ReferenceCode",
+                                "plmTabIds":  [
+                                                  4254
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Color Palette Name",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            }
+                        ],
+    "searchView":  {
+                       "search":  {
+                                      "name":  "08 - Color Palette References",
+                                      "integrationId":  "Search_08ColorPalette",
+                                      "usageType":  "DataModelTemplate",
+                                      "rootTableName":  "Plm_ReferenceBasicInfo"
+                                  },
+                       "searchView":  {
+                                          "integrationId":  "Search_08ColorPalette_View",
+                                          "fields":  "DefaultReferenceBasicInfo"
+                                      }
+                   },
+    "navigation":  {
+                       "folderName":  "08 - Color Palette",
+                       "parentFolderIntegrationId":  null,
+                       "menuOrder":  100
+                   }
+}
