@@ -89,21 +89,14 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
         {sources.map((src, idx) => (
           <div key={idx} className="flex flex-col gap-0.5">
             <div className="flex items-center gap-1">
-              {/* Primary badge or name input */}
-              {idx === 0 ? (
-                <span className={`h-7 px-1.5 text-[10px] rounded-[4px] border flex items-center font-medium text-blue-500 shrink-0 ${t('border_mainContentSection')}`}
-                  title={`Name for this source (RS0 → {{${src.name}.…}}, RS1 → {{#each ${src.name}_rs1}})`}>
-                  PRIMARY
-                </span>
-              ) : (
-                <input
-                  className={`h-7 w-20 px-1.5 text-xs border rounded-[4px] font-mono ${theme.inputBox}`}
-                  value={src.name}
-                  onChange={e => update(idx, 'name', e.target.value.replace(/\s/g, '_').toLowerCase())}
-                  placeholder="name"
-                  title="Name prefix for tokens: {{name.Field}}, {{#each name_rs1}}"
-                />
-              )}
+              {/* Editable name — same for every source */}
+              <input
+                className={`h-7 w-20 px-1.5 text-xs border rounded-[4px] font-mono ${theme.inputBox}`}
+                value={src.name}
+                onChange={e => update(idx, 'name', e.target.value.replace(/\s/g, '_').toLowerCase())}
+                placeholder="name"
+                title={`Token prefix: {{${src.name}.Field}}, {{#each ${src.name}_rs1}}`}
+              />
 
               {/* Type toggle */}
               <button
@@ -124,7 +117,7 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
                 placeholder={src.type === 'sp' ? SP_HINT : API_HINT}
               />
 
-              {/* Remove (not for primary) */}
+              {/* Remove — not for the first source */}
               {idx > 0 && (
                 <button
                   className="h-7 px-1.5 text-xs text-red-400 hover:text-red-600"
@@ -160,10 +153,14 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
       {sources.map((src, idx) => (
         <div key={idx} className={`rounded-[4px] border p-3 ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-[10px] font-bold uppercase text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded">
-              {src.name || `src${idx}`}
-            </span>
-            <span className={`text-xs flex-auto ${theme.label}`}>
+            <input
+              className={`h-6 w-24 px-2 text-xs border rounded-[4px] font-mono ${theme.inputBox}`}
+              value={src.name}
+              onChange={e => update(idx, 'name', e.target.value.replace(/\s/g, '_').toLowerCase())}
+              placeholder="name"
+              title={`Token prefix: {{${src.name}.Field}}, {{#each ${src.name}_rs1}}`}
+            />
+            <span className={`text-xs flex-auto ${theme.label} opacity-70`}>
               {`RS0 → {{${src.name || `src${idx}`}.…}}   RS1 → {{#each ${src.name || `src${idx}`}_rs1}}`}
             </span>
             {idx > 0 && (
@@ -173,7 +170,7 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
             )}
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0">
               <label className={`flex items-center gap-1 text-xs cursor-pointer ${theme.label}`}>
                 <input type="radio" checked={src.type === 'sp'} onChange={() => update(idx, 'type', 'sp')} />
                 <i className="fa-solid fa-database text-blue-500 mr-0.5" />SP
@@ -183,17 +180,6 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
                 <i className="fa-solid fa-network-wired text-purple-500 mr-0.5" />API
               </label>
             </div>
-            {idx > 0 && (
-              <div className="flex items-center gap-1">
-                <span className={`text-xs ${theme.label}`}>Name:</span>
-                <input
-                  className={`h-7 w-24 px-2 text-xs border rounded-[4px] font-mono ${theme.inputBox}`}
-                  value={src.name}
-                  onChange={e => update(idx, 'name', e.target.value.replace(/\s/g, '_').toLowerCase())}
-                  placeholder="bom"
-                />
-              </div>
-            )}
             <input
               className={`h-7 flex-auto px-2 text-xs border rounded-[4px] font-mono ${theme.inputBox}`}
               value={src.value}
@@ -201,7 +187,7 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
               placeholder={src.type === 'sp' ? SP_HINT : API_HINT}
             />
           </div>
-          {src.type === 'sp' && idx === 0 && (
+          {src.type === 'sp' && (
             <p className={`text-[10px] mt-1 ${theme.label} opacity-60`}>
               SP must accept <code>@MainReferenceId INT, @MasterReferenceId INT = NULL, @ExtraParams NVARCHAR(MAX) = NULL</code>
             </p>
