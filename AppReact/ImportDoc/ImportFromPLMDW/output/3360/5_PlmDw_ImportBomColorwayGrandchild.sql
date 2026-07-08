@@ -40,9 +40,10 @@ IF OBJECT_ID(N'tempdb..#DwBom') IS NOT NULL DROP TABLE #DwBom;
 IF OBJECT_ID(N'tempdb..#HostRanked') IS NOT NULL DROP TABLE #HostRanked;
 IF OBJECT_ID(N'tempdb..#DwCells') IS NOT NULL DROP TABLE #DwCells;
 
+-- Column name [TableName] must match PlmDw_ImportFromDW.sql #ImportLog (same SSMS session).
 CREATE TABLE #ImportLog (
     [Step]      NVARCHAR(128) NOT NULL,
-    [Detail]    NVARCHAR(256) NULL,
+    [TableName] NVARCHAR(256) NULL,
     [RowCount]  INT NOT NULL
 );
 
@@ -178,8 +179,8 @@ BEGIN TRY
 
     SET @sql = N'
     INSERT INTO dbo.' + QUOTENAME(@GrandchildTable) + N' (
-        ' + (SqlBracketName ParentRowId) + N',
-        ' + (SqlBracketName Colorway) + N',
+        [ParentRowId],
+        [Colorway],
         [ArtworkColor], [ArtworkPhoto]
     )
     SELECT hr.[RowId], m.[StyleColorID], c.[ArtworkColor], c.[ArtworkPhoto]
@@ -237,7 +238,7 @@ INSERT INTO #ImportLog VALUES (N'INSERT_GRANDCHILD', @GrandchildTable, @CntInser
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_MAPPING', N'cells with value but no pdmStyleColorWayMapping', @CntSkipMap);
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_HOST', N'DW BOM rows without host match', @CntSkipHost);
 
-EXEC (N'SELECT [Step], [Detail], [RowCount] FROM #ImportLog ORDER BY [Step], [Detail];');
+EXEC (N'SELECT [Step], [TableName], [RowCount] FROM #ImportLog ORDER BY [Step], [TableName];');
 PRINT N'PlmDw_ImportBomColorwayGrandchild completed.';
 GO
 
@@ -277,9 +278,10 @@ IF OBJECT_ID(N'tempdb..#DwBom') IS NOT NULL DROP TABLE #DwBom;
 IF OBJECT_ID(N'tempdb..#HostRanked') IS NOT NULL DROP TABLE #HostRanked;
 IF OBJECT_ID(N'tempdb..#DwCells') IS NOT NULL DROP TABLE #DwCells;
 
+-- Column name [TableName] must match PlmDw_ImportFromDW.sql #ImportLog (same SSMS session).
 CREATE TABLE #ImportLog (
     [Step]      NVARCHAR(128) NOT NULL,
-    [Detail]    NVARCHAR(256) NULL,
+    [TableName] NVARCHAR(256) NULL,
     [RowCount]  INT NOT NULL
 );
 
@@ -422,8 +424,8 @@ BEGIN TRY
 
     SET @sql = N'
     INSERT INTO dbo.' + QUOTENAME(@GrandchildTable) + N' (
-        ' + (SqlBracketName ParentRowId) + N',
-        ' + (SqlBracketName Colorway) + N',
+        [ParentRowId],
+        [Colorway],
         [TrimColorway]
     )
     SELECT hr.[RowId], m.[StyleColorID], c.[TrimColorway]
@@ -481,7 +483,7 @@ INSERT INTO #ImportLog VALUES (N'INSERT_GRANDCHILD', @GrandchildTable, @CntInser
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_MAPPING', N'cells with value but no pdmStyleColorWayMapping', @CntSkipMap);
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_HOST', N'DW BOM rows without host match', @CntSkipHost);
 
-EXEC (N'SELECT [Step], [Detail], [RowCount] FROM #ImportLog ORDER BY [Step], [Detail];');
+EXEC (N'SELECT [Step], [TableName], [RowCount] FROM #ImportLog ORDER BY [Step], [TableName];');
 PRINT N'PlmDw_ImportBomColorwayGrandchild completed.';
 GO
 
@@ -521,9 +523,10 @@ IF OBJECT_ID(N'tempdb..#DwBom') IS NOT NULL DROP TABLE #DwBom;
 IF OBJECT_ID(N'tempdb..#HostRanked') IS NOT NULL DROP TABLE #HostRanked;
 IF OBJECT_ID(N'tempdb..#DwCells') IS NOT NULL DROP TABLE #DwCells;
 
+-- Column name [TableName] must match PlmDw_ImportFromDW.sql #ImportLog (same SSMS session).
 CREATE TABLE #ImportLog (
     [Step]      NVARCHAR(128) NOT NULL,
-    [Detail]    NVARCHAR(256) NULL,
+    [TableName] NVARCHAR(256) NULL,
     [RowCount]  INT NOT NULL
 );
 
@@ -667,8 +670,8 @@ BEGIN TRY
 
     SET @sql = N'
     INSERT INTO dbo.' + QUOTENAME(@GrandchildTable) + N' (
-        ' + (SqlBracketName ParentRowId) + N',
-        ' + (SqlBracketName Colorway) + N',
+        [ParentRowId],
+        [Colorway],
         [LabelColorway], [LabelPhoto]
     )
     SELECT hr.[RowId], m.[StyleColorID], c.[LabelColorway], c.[LabelPhoto]
@@ -726,7 +729,7 @@ INSERT INTO #ImportLog VALUES (N'INSERT_GRANDCHILD', @GrandchildTable, @CntInser
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_MAPPING', N'cells with value but no pdmStyleColorWayMapping', @CntSkipMap);
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_HOST', N'DW BOM rows without host match', @CntSkipHost);
 
-EXEC (N'SELECT [Step], [Detail], [RowCount] FROM #ImportLog ORDER BY [Step], [Detail];');
+EXEC (N'SELECT [Step], [TableName], [RowCount] FROM #ImportLog ORDER BY [Step], [TableName];');
 PRINT N'PlmDw_ImportBomColorwayGrandchild completed.';
 GO
 
@@ -766,9 +769,10 @@ IF OBJECT_ID(N'tempdb..#DwBom') IS NOT NULL DROP TABLE #DwBom;
 IF OBJECT_ID(N'tempdb..#HostRanked') IS NOT NULL DROP TABLE #HostRanked;
 IF OBJECT_ID(N'tempdb..#DwCells') IS NOT NULL DROP TABLE #DwCells;
 
+-- Column name [TableName] must match PlmDw_ImportFromDW.sql #ImportLog (same SSMS session).
 CREATE TABLE #ImportLog (
     [Step]      NVARCHAR(128) NOT NULL,
-    [Detail]    NVARCHAR(256) NULL,
+    [TableName] NVARCHAR(256) NULL,
     [RowCount]  INT NOT NULL
 );
 
@@ -893,8 +897,8 @@ BEGIN TRY
 
     SET @sql = N'
     INSERT INTO dbo.' + QUOTENAME(@GrandchildTable) + N' (
-        ' + (SqlBracketName ParentRowId) + N',
-        ' + (SqlBracketName Colorway) + N',
+        [ParentRowId],
+        [Colorway],
         [ApprovalColor]
     )
     SELECT hr.[RowId], m.[StyleColorID], c.[ApprovalColor]
@@ -952,7 +956,7 @@ INSERT INTO #ImportLog VALUES (N'INSERT_GRANDCHILD', @GrandchildTable, @CntInser
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_MAPPING', N'cells with value but no pdmStyleColorWayMapping', @CntSkipMap);
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_HOST', N'DW BOM rows without host match', @CntSkipHost);
 
-EXEC (N'SELECT [Step], [Detail], [RowCount] FROM #ImportLog ORDER BY [Step], [Detail];');
+EXEC (N'SELECT [Step], [TableName], [RowCount] FROM #ImportLog ORDER BY [Step], [TableName];');
 PRINT N'PlmDw_ImportBomColorwayGrandchild completed.';
 GO
 
@@ -992,9 +996,10 @@ IF OBJECT_ID(N'tempdb..#DwBom') IS NOT NULL DROP TABLE #DwBom;
 IF OBJECT_ID(N'tempdb..#HostRanked') IS NOT NULL DROP TABLE #HostRanked;
 IF OBJECT_ID(N'tempdb..#DwCells') IS NOT NULL DROP TABLE #DwCells;
 
+-- Column name [TableName] must match PlmDw_ImportFromDW.sql #ImportLog (same SSMS session).
 CREATE TABLE #ImportLog (
     [Step]      NVARCHAR(128) NOT NULL,
-    [Detail]    NVARCHAR(256) NULL,
+    [TableName] NVARCHAR(256) NULL,
     [RowCount]  INT NOT NULL
 );
 
@@ -1138,8 +1143,8 @@ BEGIN TRY
 
     SET @sql = N'
     INSERT INTO dbo.' + QUOTENAME(@GrandchildTable) + N' (
-        ' + (SqlBracketName ParentRowId) + N',
-        ' + (SqlBracketName Colorway) + N',
+        [ParentRowId],
+        [Colorway],
         [FabricColorway], [FabricColorwayStatus]
     )
     SELECT hr.[RowId], m.[StyleColorID], c.[FabricColorway], c.[FabricColorwayStatus]
@@ -1197,5 +1202,5 @@ INSERT INTO #ImportLog VALUES (N'INSERT_GRANDCHILD', @GrandchildTable, @CntInser
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_MAPPING', N'cells with value but no pdmStyleColorWayMapping', @CntSkipMap);
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_HOST', N'DW BOM rows without host match', @CntSkipHost);
 
-EXEC (N'SELECT [Step], [Detail], [RowCount] FROM #ImportLog ORDER BY [Step], [Detail];');
+EXEC (N'SELECT [Step], [TableName], [RowCount] FROM #ImportLog ORDER BY [Step], [TableName];');
 PRINT N'PlmDw_ImportBomColorwayGrandchild completed.';

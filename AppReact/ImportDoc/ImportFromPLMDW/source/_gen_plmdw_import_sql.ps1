@@ -1038,6 +1038,8 @@ $ddlParts.Add('')
 $tablesPath = Join-Path $outDir '1_PlmDw_Tables.sql'
 Set-Content -Path $tablesPath -Value ($ddlParts -join "`n") -Encoding UTF8
 
+# SQL Server allows at most 1000 row-value expressions per INSERT … VALUES
+$insertBatchSize = 500
 $valuesLines = New-Object System.Collections.Generic.List[string]
 foreach ($r in $allFieldRows) {
     $appTable = $r.AppTable
@@ -1048,7 +1050,29 @@ foreach ($r in $allFieldRows) {
     $line = "(N''@P@$appTable'', N''$($r.AppColumn -replace "'", "''")'', $(SqlStrDyn $r.DwTable), $(SqlStrDyn $r.DwColumn), $(SqlInt $r.PlmTabId), $(SqlInt $r.SubItemId), $(SqlInt $r.PlmGridSubItemId), $(SqlInt $r.PlmGridId), $(SqlInt $r.PlmMetaColumnId), NULL, $fkSql, $(SqlStrDyn $r.FieldKind), $plmCtrl, $plmEnt, $dwDt)"
     [void]$valuesLines.Add($line)
 }
-$valuesBlock = $valuesLines -join ",`n        "
+
+$insertBatches = New-Object System.Collections.Generic.List[string]
+for ($i = 0; $i -lt $valuesLines.Count; $i += $insertBatchSize) {
+    $take = [Math]::Min($insertBatchSize, $valuesLines.Count - $i)
+    $chunk = $valuesLines.GetRange($i, $take)
+    $valuesBlock = ($chunk -join ",`n        ")
+    $batchNo = [int]($i / $insertBatchSize) + 1
+    [void]$insertBatches.Add(@"
+-- FieldMapping INSERT batch $batchNo ($take row(s))
+SET @sql = N'
+INSERT INTO dbo.' + QUOTENAME(@MappingTable) + N' (
+    [AppTableName],[AppColumnName],[DwTableName],[DwColumnName],
+    [PlmTabId],[PlmSubItemId],[PlmGridSubItemId],[PlmGridId],[PlmMetaColumnId],
+    [PlmBlockId],[DwFkTarget],[FieldKind],[PlmControlType],[PlmEntityId],[DwDataType]
+)
+VALUES
+        $valuesBlock
+';
+SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
+EXEC sp_executesql @sql;
+"@)
+}
+$insertBatchesSql = $insertBatches -join "`n`n"
 
 $deleteInList = ($scopeAppTables | Select-Object -Unique | ForEach-Object { "N''@P@$_''" }) -join ', '
 
@@ -1137,17 +1161,7 @@ SET @sql = N'DELETE FROM dbo.' + QUOTENAME(@MappingTable)
 SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
 EXEC sp_executesql @sql;
 
-SET @sql = N'
-INSERT INTO dbo.' + QUOTENAME(@MappingTable) + N' (
-    [AppTableName],[AppColumnName],[DwTableName],[DwColumnName],
-    [PlmTabId],[PlmSubItemId],[PlmGridSubItemId],[PlmGridId],[PlmMetaColumnId],
-    [PlmBlockId],[DwFkTarget],[FieldKind],[PlmControlType],[PlmEntityId],[DwDataType]
-)
-VALUES
-        $valuesBlock
-';
-SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
-EXEC sp_executesql @sql;
+$insertBatchesSql
 GO
 
 "@
@@ -1168,11 +1182,10 @@ $tplId = if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt
     elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId -and [int]$config.plmTemplate.templateId -gt 0) { [int]$config.plmTemplate.templateId }
     else { 'NULL' }
 $importContent = $importContent -replace '(DECLARE @PlmTemplateId\s+INT\s+=\s*)NULL', "`${1}$tplId"
+# Annotate execution-order comments once (do not replace bare PlmDw_*.sql — that doubles prefixes).
 $importContent = $importContent -replace '(?m)^--   1\. PlmDw_Tables\.sql', '--   1. 1_PlmDw_Tables.sql'
 $importContent = $importContent -replace '(?m)^--   2\. PlmDw_FieldMapping\.sql', '--   2. 2_PlmDw_FieldMapping.sql'
 $importContent = $importContent -replace '(?m)^--   3\. PlmDw_ImportFromDW\.sql', '--   3. 3_PlmDw_ImportFromDW.sql'
-$importContent = $importContent -replace 'PlmDw_FieldMapping\.sql', '2_PlmDw_FieldMapping.sql'
-$importContent = $importContent -replace 'PlmDw_Tables\.sql', '1_PlmDw_Tables.sql'
 Set-Content -Path $importPath -Value $importContent -Encoding UTF8
 
 if (-not $config.blueprint) {

@@ -82,6 +82,7 @@ SET @sql = N'DELETE FROM dbo.' + QUOTENAME(@MappingTable)
 SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
 EXEC sp_executesql @sql;
 
+-- FieldMapping INSERT batch 1 (500 row(s))
 SET @sql = N'
 INSERT INTO dbo.' + QUOTENAME(@MappingTable) + N' (
     [AppTableName],[AppColumnName],[DwTableName],[DwColumnName],
@@ -588,7 +589,19 @@ VALUES
         (N''@P@Costing'', N''Duty_Rate_NoPrefCert_6613'', N''PLM_DW_Tab_Costing_4232'', N''Duty_Rate_NoPrefCert_6613'', 4232, 6613, NULL, NULL, NULL, NULL, NULL, N''TabField'', 20, NULL, N''float''),
         (N''@P@Costing'', N''Duty_Rate___6614'', N''PLM_DW_Tab_Costing_4232'', N''Duty_Rate___6614'', 4232, 6614, NULL, NULL, NULL, NULL, NULL, N''TabField'', 20, NULL, N''float''),
         (N''@P@Costing'', N''Duty_Total_Num_6615'', N''PLM_DW_Tab_Costing_4232'', N''Duty_Total_Num_6615'', 4232, 6615, NULL, NULL, NULL, NULL, NULL, N''TabField'', 20, NULL, N''float''),
-        (N''@P@Costing'', N''Freight_Type_6616'', N''PLM_DW_Tab_Costing_4232'', N''Freight_Type_6616_FK_PLM_DW_UD_Freight_Terms_3542'', 4232, 6616, NULL, NULL, NULL, NULL, N''PLM_DW_UD_Freight_Terms_3542'', N''TabField'', 1, 3542, N''int''),
+        (N''@P@Costing'', N''Freight_Type_6616'', N''PLM_DW_Tab_Costing_4232'', N''Freight_Type_6616_FK_PLM_DW_UD_Freight_Terms_3542'', 4232, 6616, NULL, NULL, NULL, NULL, N''PLM_DW_UD_Freight_Terms_3542'', N''TabField'', 1, 3542, N''int'')
+';
+SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
+EXEC sp_executesql @sql;
+
+-- FieldMapping INSERT batch 2 (500 row(s))
+SET @sql = N'
+INSERT INTO dbo.' + QUOTENAME(@MappingTable) + N' (
+    [AppTableName],[AppColumnName],[DwTableName],[DwColumnName],
+    [PlmTabId],[PlmSubItemId],[PlmGridSubItemId],[PlmGridId],[PlmMetaColumnId],
+    [PlmBlockId],[DwFkTarget],[FieldKind],[PlmControlType],[PlmEntityId],[DwDataType]
+)
+VALUES
         (N''@P@Costing'', N''Freight_Eff_Date_6617'', N''PLM_DW_Tab_Costing_4232'', N''Freight_Eff_Date_6617_FK_PLM_DW_UD_Freight_Rate_Effective_Date_3529'', 4232, 6617, NULL, NULL, NULL, NULL, N''PLM_DW_UD_Freight_Rate_Effective_Date_3529'', N''TabField'', 1, 3529, N''int''),
         (N''@P@Costing'', N''Freight_Rate___6618'', N''PLM_DW_Tab_Costing_4232'', N''Freight_Rate___6618'', 4232, 6618, NULL, NULL, NULL, NULL, NULL, N''TabField'', 20, NULL, N''float''),
         (N''@P@Costing'', N''Freight_Num_6619'', N''PLM_DW_Tab_Costing_4232'', N''Freight_Num_6619'', 4232, 6619, NULL, NULL, NULL, NULL, NULL, N''TabField'', 20, NULL, N''float''),
@@ -1088,7 +1101,19 @@ VALUES
         (N''@P@Trim_BOM_prod'', N''Colorway_13'', N''PLM_DW_Grid_Trim_BOM_prod_20_Colorways_3169'', N''Colorway_13_7280_FK_pdmRGBColor'', 4256, 7280, 6788, 3169, 7280, NULL, N''pdmRGBColor'', N''BomColorwayDwSlot'', 1, 79, N''int''),
         (N''@P@Trim_BOM_prod'', N''Remarks_8103'', N''PLM_DW_Grid_Trim_BOM_prod_20_Colorways_3169'', N''Remarks_8103'', 4256, 8103, 6788, 3169, 8103, NULL, NULL, N''GridColumn'', 2, NULL, N''nvarchar''),
         (N''@P@Trim_BOM_prod'', N''Colorway_14'', N''PLM_DW_Grid_Trim_BOM_prod_20_Colorways_3169'', N''Colorway_14_7281_FK_pdmRGBColor'', 4256, 7281, 6788, 3169, 7281, NULL, N''pdmRGBColor'', N''BomColorwayDwSlot'', 1, 79, N''int''),
-        (N''@P@Trim_BOM_prod'', N''Remarks_8104'', N''PLM_DW_Grid_Trim_BOM_prod_20_Colorways_3169'', N''Remarks_8104'', 4256, 8104, 6788, 3169, 8104, NULL, NULL, N''GridColumn'', 2, NULL, N''nvarchar''),
+        (N''@P@Trim_BOM_prod'', N''Remarks_8104'', N''PLM_DW_Grid_Trim_BOM_prod_20_Colorways_3169'', N''Remarks_8104'', 4256, 8104, 6788, 3169, 8104, NULL, NULL, N''GridColumn'', 2, NULL, N''nvarchar'')
+';
+SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
+EXEC sp_executesql @sql;
+
+-- FieldMapping INSERT batch 3 (208 row(s))
+SET @sql = N'
+INSERT INTO dbo.' + QUOTENAME(@MappingTable) + N' (
+    [AppTableName],[AppColumnName],[DwTableName],[DwColumnName],
+    [PlmTabId],[PlmSubItemId],[PlmGridSubItemId],[PlmGridId],[PlmMetaColumnId],
+    [PlmBlockId],[DwFkTarget],[FieldKind],[PlmControlType],[PlmEntityId],[DwDataType]
+)
+VALUES
         (N''@P@Trim_BOM_prod'', N''Colorway_15'', N''PLM_DW_Grid_Trim_BOM_prod_20_Colorways_3169'', N''Colorway_15_7282_FK_pdmRGBColor'', 4256, 7282, 6788, 3169, 7282, NULL, N''pdmRGBColor'', N''BomColorwayDwSlot'', 1, 79, N''int''),
         (N''@P@Trim_BOM_prod'', N''Remarks_8105'', N''PLM_DW_Grid_Trim_BOM_prod_20_Colorways_3169'', N''Remarks_8105'', 4256, 8105, 6788, 3169, 8105, NULL, NULL, N''GridColumn'', 2, NULL, N''nvarchar''),
         (N''@P@Trim_BOM_prod'', N''Colorway_16'', N''PLM_DW_Grid_Trim_BOM_prod_20_Colorways_3169'', N''Colorway_16_7283_FK_pdmRGBColor'', 4256, 7283, 6788, 3169, 7283, NULL, N''pdmRGBColor'', N''BomColorwayDwSlot'', 1, 79, N''int''),

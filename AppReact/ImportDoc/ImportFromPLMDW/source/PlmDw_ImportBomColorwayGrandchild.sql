@@ -57,7 +57,7 @@ IF OBJECT_ID(N'tempdb..#DwCells') IS NOT NULL DROP TABLE #DwCells;
 
 CREATE TABLE #ImportLog (
     [Step]      NVARCHAR(128) NOT NULL,
-    [Detail]    NVARCHAR(256) NULL,
+    [TableName] NVARCHAR(256) NULL,
     [RowCount]  INT NOT NULL
 );
 
@@ -406,5 +406,5 @@ INSERT INTO #ImportLog VALUES (N'SKIP_NO_HOST', N'DW BOM rows without host match
 
 -- Dynamic SELECT: compiled at EXEC time (after DROP+CREATE), so a leftover
 -- old-schema #ImportLog in the same session cannot break compile-time binding.
-EXEC (N'SELECT [Step], [Detail], [RowCount] FROM #ImportLog ORDER BY [Step], [Detail];');
+EXEC (N'SELECT [Step], [TableName], [RowCount] FROM #ImportLog ORDER BY [Step], [TableName];');
 PRINT N'PlmDw_ImportBomColorwayGrandchild completed.';

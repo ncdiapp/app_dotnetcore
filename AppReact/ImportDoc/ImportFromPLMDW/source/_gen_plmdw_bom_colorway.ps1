@@ -545,6 +545,9 @@ function Build-BomColorwayGrandchildImportSql($bomGrid, $config, $templateId) {
     $dwDb = $config.dwDatabase
     $gcParent = $bomGrid.gcParentLink
     $gcColorway = $bomGrid.gcColorwayKey
+    # Precompute — cannot call SqlBracketName() inside @" "@ (only $var expands; call becomes literal T-SQL)
+    $gcParentBracket = SqlBracketName $gcParent
+    $gcColorwayBracket = SqlBracketName $gcColorway
 
     $pivotCols = @($bomGrid.pivotValueColumns)
     $dwCellsColDefs = ($pivotCols | ForEach-Object { "        [$($_.appColumn)] INT NULL" }) -join ",`r`n"
@@ -613,9 +616,10 @@ IF OBJECT_ID(N'tempdb..#DwBom') IS NOT NULL DROP TABLE #DwBom;
 IF OBJECT_ID(N'tempdb..#HostRanked') IS NOT NULL DROP TABLE #HostRanked;
 IF OBJECT_ID(N'tempdb..#DwCells') IS NOT NULL DROP TABLE #DwCells;
 
+-- Column name [TableName] must match PlmDw_ImportFromDW.sql #ImportLog (same SSMS session).
 CREATE TABLE #ImportLog (
     [Step]      NVARCHAR(128) NOT NULL,
-    [Detail]    NVARCHAR(256) NULL,
+    [TableName] NVARCHAR(256) NULL,
     [RowCount]  INT NOT NULL
 );
 
@@ -739,8 +743,8 @@ $dwCellsColDefs
 
     SET @sql = N'
     INSERT INTO dbo.' + QUOTENAME(@GrandchildTable) + N' (
-        ' + (SqlBracketName $gcParent) + N',
-        ' + (SqlBracketName $gcColorway) + N',
+        $gcParentBracket,
+        $gcColorwayBracket,
         $gcInsertCols
     )
     SELECT hr.[RowId], m.[StyleColorID], $gcSelectCols
@@ -798,7 +802,7 @@ INSERT INTO #ImportLog VALUES (N'INSERT_GRANDCHILD', @GrandchildTable, @CntInser
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_MAPPING', N'cells with value but no pdmStyleColorWayMapping', @CntSkipMap);
 INSERT INTO #ImportLog VALUES (N'SKIP_NO_HOST', N'DW BOM rows without host match', @CntSkipHost);
 
-EXEC (N'SELECT [Step], [Detail], [RowCount] FROM #ImportLog ORDER BY [Step], [Detail];');
+EXEC (N'SELECT [Step], [TableName], [RowCount] FROM #ImportLog ORDER BY [Step], [TableName];');
 PRINT N'PlmDw_ImportBomColorwayGrandchild completed.';
 "@
 }

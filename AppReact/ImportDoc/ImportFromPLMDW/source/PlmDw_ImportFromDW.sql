@@ -309,5 +309,6 @@ BEGIN CATCH
     RETURN;
 END CATCH;
 
-SELECT [Step],[TableName],[RowCount] FROM #ImportLog ORDER BY [Step],[TableName];
+-- EXEC avoids compile-time bind to a prior #ImportLog shape (e.g. after step 5 in same SSMS session).
+EXEC (N'SELECT [Step],[TableName],[RowCount] FROM #ImportLog ORDER BY [Step],[TableName];');
 PRINT N'PlmDw_ImportFromDW completed.';

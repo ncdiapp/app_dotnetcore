@@ -2,8 +2,8 @@
 -- PLM DW â†’ APP product data import (template: source/PlmDw_ImportFromDW.sql)
 -- Deliverable copy: output/PlmDw_ImportFromDW.sql (see ImportFromPLMDW/PROMPT.md)
 -- EXECUTION ORDER:
---   1. 1_1_PlmDw_Tables.sql
---   2. 2_2_PlmDw_FieldMapping.sql
+--   1. 1_PlmDw_Tables.sql
+--   2. 2_PlmDw_FieldMapping.sql
 --   3. 3_PlmDw_ImportFromDW.sql    (this file)
 --   4. 4_PlmDw_ImportBlueprint.json + Phase D Execute
 --   5. 5_PlmDw_ImportBomColorwayGrandchild.sql  (when BOM colorway grids detected)
@@ -59,13 +59,13 @@ END
 
 IF OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable), N'U') IS NULL
 BEGIN
-    RAISERROR(N'Mapping table dbo.%s missing. Run 2_PlmDw_FieldMapping.sql first.', 16, 1, @MappingTable);
+    RAISERROR(N'Mapping table dbo.%s missing. Run PlmDw_FieldMapping.sql first.', 16, 1, @MappingTable);
     RETURN;
 END
 
 IF OBJECT_ID(N'dbo.' + QUOTENAME(@RootTable), N'U') IS NULL
 BEGIN
-    RAISERROR(N'Root table dbo.%s missing. Run 1_PlmDw_Tables.sql first.', 16, 1, @RootTable);
+    RAISERROR(N'Root table dbo.%s missing. Run PlmDw_Tables.sql first.', 16, 1, @RootTable);
     RETURN;
 END
 
@@ -309,6 +309,7 @@ BEGIN CATCH
     RETURN;
 END CATCH;
 
-SELECT [Step],[TableName],[RowCount] FROM #ImportLog ORDER BY [Step],[TableName];
+-- EXEC avoids compile-time bind to a prior #ImportLog shape (e.g. after step 5 in same SSMS session).
+EXEC (N'SELECT [Step],[TableName],[RowCount] FROM #ImportLog ORDER BY [Step],[TableName];');
 PRINT N'PlmDw_ImportFromDW completed.';
 

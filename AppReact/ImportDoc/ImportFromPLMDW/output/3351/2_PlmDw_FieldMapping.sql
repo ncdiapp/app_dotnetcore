@@ -82,6 +82,7 @@ SET @sql = N'DELETE FROM dbo.' + QUOTENAME(@MappingTable)
 SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
 EXEC sp_executesql @sql;
 
+-- FieldMapping INSERT batch 1 (500 row(s))
 SET @sql = N'
 INSERT INTO dbo.' + QUOTENAME(@MappingTable) + N' (
     [AppTableName],[AppColumnName],[DwTableName],[DwColumnName],
@@ -588,7 +589,19 @@ VALUES
         (N''@P@Costing'', N''Yes_Pref_6608'', N''PLM_DW_Tab_Costing_4232'', N''Yes_Pref_6608'', 4232, 6608, NULL, NULL, NULL, NULL, NULL, N''TabField'', 13, NULL, N''nvarchar''),
         (N''@P@Costing'', N''No_Pref_6609'', N''PLM_DW_Tab_Costing_4232'', N''No_Pref_6609'', 4232, 6609, NULL, NULL, NULL, NULL, NULL, N''TabField'', 13, NULL, N''nvarchar''),
         (N''@P@Costing'', N''Yes_No_Num_6610'', N''PLM_DW_Tab_Costing_4232'', N''Yes_No_Num_6610'', 4232, 6610, NULL, NULL, NULL, NULL, NULL, N''TabField'', 20, NULL, N''float''),
-        (N''@P@Costing'', N''HTS_Code_6611'', N''PLM_DW_Tab_Costing_4232'', N''HTS_Code_6611'', 4232, 6611, NULL, NULL, NULL, NULL, NULL, N''TabField'', 2, NULL, N''nvarchar''),
+        (N''@P@Costing'', N''HTS_Code_6611'', N''PLM_DW_Tab_Costing_4232'', N''HTS_Code_6611'', 4232, 6611, NULL, NULL, NULL, NULL, NULL, N''TabField'', 2, NULL, N''nvarchar'')
+';
+SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
+EXEC sp_executesql @sql;
+
+-- FieldMapping INSERT batch 2 (500 row(s))
+SET @sql = N'
+INSERT INTO dbo.' + QUOTENAME(@MappingTable) + N' (
+    [AppTableName],[AppColumnName],[DwTableName],[DwColumnName],
+    [PlmTabId],[PlmSubItemId],[PlmGridSubItemId],[PlmGridId],[PlmMetaColumnId],
+    [PlmBlockId],[DwFkTarget],[FieldKind],[PlmControlType],[PlmEntityId],[DwDataType]
+)
+VALUES
         (N''@P@Costing'', N''Duty_Rate_PrefCert_6612'', N''PLM_DW_Tab_Costing_4232'', N''Duty_Rate_PrefCert_6612'', 4232, 6612, NULL, NULL, NULL, NULL, NULL, N''TabField'', 20, NULL, N''float''),
         (N''@P@Costing'', N''Duty_Rate_NoPrefCert_6613'', N''PLM_DW_Tab_Costing_4232'', N''Duty_Rate_NoPrefCert_6613'', 4232, 6613, NULL, NULL, NULL, NULL, NULL, N''TabField'', 20, NULL, N''float''),
         (N''@P@Costing'', N''Duty_Rate___6614'', N''PLM_DW_Tab_Costing_4232'', N''Duty_Rate___6614'', 4232, 6614, NULL, NULL, NULL, NULL, NULL, N''TabField'', 20, NULL, N''float''),
@@ -1088,7 +1101,19 @@ VALUES
         (N''@P@Label_BOM_prod'', N''Width'', N''PLM_DW_Grid_Label_BOM_prod_10_Colorways_3163'', N''Width_7114'', 4230, 7114, 5488, 3163, 7114, NULL, NULL, N''GridColumn'', 20, NULL, N''float''),
         (N''@P@Label_BOM_prod'', N''Width_UOM'', N''PLM_DW_Grid_Label_BOM_prod_10_Colorways_3163'', N''Width_UOM_7115_FK_tblUnitOfMeasure'', 4230, 7115, 5488, 3163, 7115, NULL, N''tblUnitOfMeasure'', N''GridColumn'', 1, 67, N''int''),
         (N''@P@Label_BOM_prod'', N''Height'', N''PLM_DW_Grid_Label_BOM_prod_10_Colorways_3163'', N''Height_7118'', 4230, 7118, 5488, 3163, 7118, NULL, NULL, N''GridColumn'', 20, NULL, N''float''),
-        (N''@P@Label_BOM_prod'', N''Height_UOM'', N''PLM_DW_Grid_Label_BOM_prod_10_Colorways_3163'', N''Height_UOM_7119_FK_tblUnitOfMeasure'', 4230, 7119, 5488, 3163, 7119, NULL, N''tblUnitOfMeasure'', N''GridColumn'', 1, 67, N''int''),
+        (N''@P@Label_BOM_prod'', N''Height_UOM'', N''PLM_DW_Grid_Label_BOM_prod_10_Colorways_3163'', N''Height_UOM_7119_FK_tblUnitOfMeasure'', 4230, 7119, 5488, 3163, 7119, NULL, N''tblUnitOfMeasure'', N''GridColumn'', 1, 67, N''int'')
+';
+SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
+EXEC sp_executesql @sql;
+
+-- FieldMapping INSERT batch 3 (161 row(s))
+SET @sql = N'
+INSERT INTO dbo.' + QUOTENAME(@MappingTable) + N' (
+    [AppTableName],[AppColumnName],[DwTableName],[DwColumnName],
+    [PlmTabId],[PlmSubItemId],[PlmGridSubItemId],[PlmGridId],[PlmMetaColumnId],
+    [PlmBlockId],[DwFkTarget],[FieldKind],[PlmControlType],[PlmEntityId],[DwDataType]
+)
+VALUES
         (N''@P@Label_BOM_prod'', N''Old_Label'', N''PLM_DW_Grid_Label_BOM_prod_10_Colorways_3163'', N''Old_Label__7125'', 4230, 7125, 5488, 3163, 7125, NULL, NULL, N''GridColumn'', 2, NULL, N''nvarchar''),
         (N''@P@Label_BOM_prod'', N''Season_Cost'', N''PLM_DW_Grid_Label_BOM_prod_10_Colorways_3163'', N''Season_Cost_7120_FK_PLM_DW_UD_ID_3460'', 4230, 7120, 5488, 3163, 7120, NULL, N''PLM_DW_UD_ID_3460'', N''GridColumn'', 1, 3460, N''int''),
         (N''@P@Label_BOM_prod'', N''Cost'', N''PLM_DW_Grid_Label_BOM_prod_10_Colorways_3163'', N''Cost_7121'', 4230, 7121, 5488, 3163, 7121, NULL, NULL, N''GridColumn'', 20, NULL, N''float''),
