@@ -342,6 +342,37 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
     setTimeout(() => URL.revokeObjectURL(url), 15000);
   };
 
+  // Export a self-contained HTML artifact — wraps the rendered preview in a full
+  // <!DOCTYPE html> document so it opens standalone in any browser (same approach
+  // Claude uses for artifacts: pure HTML blob downloaded directly from the browser).
+  const handleHtmlExport = () => {
+    if (!previewHtml) return;
+    const reportName = report?.ReportName ?? 'report';
+    const fullHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${reportName}</title>
+<style>
+  * { box-sizing: border-box; }
+  @page { size: ${pageSize} ${orientation}; margin: ${marginMm}mm; }
+  body { margin: 0; padding: ${marginMm}mm; font-family: Arial, sans-serif; }
+</style>
+</head>
+<body>
+${previewHtml}
+</body>
+</html>`;
+    const blob = new Blob([fullHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${reportName.replace(/[^a-z0-9_-]/gi, '_')}.html`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Drop a dragged token/block onto the visual preview iframe.
   // Uses elementFromPoint on the iframe document (sandbox=allow-same-origin) to find
   // the rendered element at the drop position, then matches it by tag+index back to
@@ -518,6 +549,15 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
             hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
         >
           <i className="fa-solid fa-globe mr-1" />HTML Preview
+        </button>
+        <button
+          onClick={handleHtmlExport}
+          disabled={!previewHtml}
+          title="Download as standalone HTML file — opens in any browser, no server needed"
+          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 border border-blue-300 text-blue-500
+            hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
+        >
+          <i className="fa-solid fa-file-arrow-down mr-1" />Export HTML
         </button>
         <button
           onClick={handlePdfPreview}

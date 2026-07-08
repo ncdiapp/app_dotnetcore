@@ -78,10 +78,18 @@ public class AppReportController : SecureBaseController
                 MarginMm     = 15,
             };
         }
-        else if (!string.IsNullOrEmpty(request.TemplateHtmlOverride))
+        else
         {
-            template.TemplateHtml = request.TemplateHtmlOverride;
+            if (!string.IsNullOrEmpty(request.TemplateHtmlOverride))
+                template.TemplateHtml = request.TemplateHtmlOverride;
         }
+
+        // Apply live (unsaved) data source config from the designer
+        if (!string.IsNullOrEmpty(request.ExtraParamConfigOverride))
+            template.ExtraParamConfig = request.ExtraParamConfigOverride;
+
+        if (!string.IsNullOrEmpty(request.DataSpNameOverride))
+            template.DataSpName = request.DataSpNameOverride;
 
         var context = AppReportTemplateService.FetchData(
             template,
@@ -160,6 +168,13 @@ public class AppReportController : SecureBaseController
                 template.MarginMm = request.MarginMm.Value;
         }
 
+        // Apply live (unsaved) data source config from the designer
+        if (!string.IsNullOrEmpty(request.ExtraParamConfigOverride))
+            template.ExtraParamConfig = request.ExtraParamConfigOverride;
+
+        if (!string.IsNullOrEmpty(request.DataSpNameOverride))
+            template.DataSpName = request.DataSpNameOverride;
+
         var context = AppReportTemplateService.FetchData(
             template,
             request.MainReferenceId,
@@ -215,11 +230,13 @@ public class AppReportController : SecureBaseController
 
 public class PreviewHtmlRequest
 {
-    public int    ReportId              { get; set; }
-    public int    MainReferenceId       { get; set; }
-    public int?   MasterReferenceId     { get; set; }
-    public string TemplateHtmlOverride  { get; set; }
-    public string DataSpNameOverride    { get; set; }
+    public int    ReportId                  { get; set; }
+    public int    MainReferenceId           { get; set; }
+    public int?   MasterReferenceId         { get; set; }
+    public string TemplateHtmlOverride      { get; set; }
+    public string DataSpNameOverride        { get; set; }
+    /// <summary>Live (unsaved) ExtraParamConfig JSON from the designer — overrides the saved DB value.</summary>
+    public string ExtraParamConfigOverride  { get; set; }
     public Dictionary<string, string> ExtraParams { get; set; }
 }
 
