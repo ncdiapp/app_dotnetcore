@@ -95,7 +95,9 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
                 value={src.name}
                 onChange={e => update(idx, 'name', e.target.value.replace(/\s/g, '_').toLowerCase())}
                 placeholder="name"
-                title={`Token prefix: {{${src.name}.Field}}, {{#each ${src.name}_rs1}}`}
+                title={src.type === 'sp'
+                  ? `SP tokens — scalar: {{${src.name}.Field}}  list RS1: {{#each ${src.name}_rs1}}  RS2: {{#each ${src.name}_rs2}}`
+                  : `API tokens — primitive: {{${src.name}.Field}}  array "Lines": {{#each ${src.name}_Lines}}`}
               />
 
               {/* Type toggle */}
@@ -135,7 +137,7 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
                 className={`w-full h-16 px-2 py-1 text-xs border rounded-[4px] font-mono resize-none ${theme.inputBox}`}
                 value={src.sampleJson || ''}
                 onChange={e => update(idx, 'sampleJson', e.target.value)}
-                placeholder={`Paste sample API response for token discovery:\n{"Field1":"value","rows":[{"Col":"val"}]}`}
+                placeholder={`Paste sample API response:\n{"Brand":"CGS","Lines":[{"Sku":"A","Qty":1}]}`}
               />
             )}
           </div>
@@ -153,20 +155,35 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
       {sources.map((src, idx) => (
         <div key={idx} className={`rounded-[4px] border p-3 ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
           <div className="flex items-center gap-2 mb-2">
+            <span className={`text-xs shrink-0 ${theme.label}`}>Source Name:</span>
             <input
               className={`h-6 w-24 px-2 text-xs border rounded-[4px] font-mono ${theme.inputBox}`}
               value={src.name}
               onChange={e => update(idx, 'name', e.target.value.replace(/\s/g, '_').toLowerCase())}
-              placeholder="name"
-              title={`Token prefix: {{${src.name}.Field}}, {{#each ${src.name}_rs1}}`}
+              placeholder="header"
+              title="Used as the token prefix in your report template"
             />
-            <span className={`text-xs flex-auto ${theme.label} opacity-70`}>
-              {`RS0 → {{${src.name || `src${idx}`}.…}}   RS1 → {{#each ${src.name || `src${idx}`}_rs1}}`}
-            </span>
             {idx > 0 && (
-              <button className="text-xs text-red-400 hover:text-red-600" onClick={() => remove(idx)}>
+              <button className="ml-auto text-xs text-red-400 hover:text-red-600" onClick={() => remove(idx)}>
                 <i className="fa-solid fa-trash" />
               </button>
+            )}
+          </div>
+          {/* Token hint — SP uses RS0/RS1/RS2 numbering; API uses JSON property paths */}
+          <div className={`text-[10px] mb-2 ${theme.label} opacity-60`}>
+            {src.type === 'sp' ? (
+              <>
+                <i className="fa-solid fa-database mr-1 text-blue-400" />
+                <code>{`{{${src.name || `src${idx}`}.Field}}`}</code> (RS0 scalar) &nbsp;·&nbsp;
+                <code>{`{{#each ${src.name || `src${idx}`}_rs1}}`}</code> (RS1 list) &nbsp;·&nbsp;
+                <code>{`{{#each ${src.name || `src${idx}`}_rs2}}`}</code> (RS2 list) …
+              </>
+            ) : (
+              <>
+                <i className="fa-solid fa-network-wired mr-1 text-purple-400" />
+                <code>{`{{${src.name || `src${idx}`}.Field}}`}</code> (JSON primitive) &nbsp;·&nbsp;
+                array property <code>"Lines"</code> → <code>{`{{#each ${src.name || `src${idx}`}_Lines}}`}</code>
+              </>
             )}
           </div>
           <div className="flex items-center gap-3">
@@ -205,8 +222,8 @@ const DataSourceEditor: React.FC<Props> = ({ sources, onChange, compact = false 
                 placeholder={`{\n  "ProductCode": "P001",\n  "Description": "Shirt",\n  "Lines": [{"Sku":"A","Qty":1}]\n}`}
               />
               <p className={`text-[10px] mt-0.5 ${theme.label} opacity-60`}>
-                Primitive fields → <code>{'{{' + src.name + '.Field}}'}</code> &nbsp;·&nbsp;
-                Array properties → <code>{'{{#each ' + src.name + '_rs1}}'}</code>
+                Root array → <code>{'{{#each ' + src.name + '}}'}</code> &nbsp;·&nbsp;
+                Nested array <code>"Lines"</code> → <code>{'{{#each ' + src.name + '_Lines}}'}</code>
               </p>
             </div>
           )}

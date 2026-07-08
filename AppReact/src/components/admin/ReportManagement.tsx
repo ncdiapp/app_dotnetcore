@@ -310,7 +310,7 @@ const ReportManagement: React.FC = () => {
               <div>
                 <label className={`block text-xs font-medium mb-2 ${theme.label}`}>
                   Data Sources
-                  <span className={`ml-2 font-normal opacity-60`}>— add SP or API endpoints (first is primary)</span>
+                  <span className={`ml-2 font-normal opacity-60`}>— add SP or API endpoints</span>
                 </label>
                 <DataSourceEditor
                   sources={formSources}

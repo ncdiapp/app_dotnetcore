@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Report Engine — Token Mapping Guide</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+/* ── Tokens ──────────────────────────────────────────────── */
+:root {
+  --bg:        #10121a;
+  --surface:   #1a1d2e;
+  --surface2:  #222537;
+  --border:    #2d3150;
+  --text:      #dde1f0;
+  --muted:     #6b7299;
+  --sp:        #3b82f6;
+  --sp-dim:    #1e3a6e;
+  --sp-glow:   rgba(59,130,246,.15);
+  --api:       #9333ea;
+  --api-dim:   #3b1464;
+  --api-glow:  rgba(147,51,234,.15);
+  --token:     #10b981;
+  --token-dim: #063d28;
+  --each:      #f59e0b;
+  --each-dim:  #3d2600;
+  --arrow:     #4b5280;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg:        #f0f2fa;
+    --surface:   #ffffff;
+    --surface2:  #f4f6ff;
+    --border:    #d0d5ee;
+    --text:      #1a1d2e;
+    --muted:     #6b7299;
+    --sp:        #2563eb;
+    --sp-dim:    #dbeafe;
+    --sp-glow:   rgba(37,99,235,.08);
+    --api:       #7c3aed;
+    --api-dim:   #ede9fe;
+    --api-glow:  rgba(124,58,237,.08);
+    --token:     #059669;
+    --token-dim: #d1fae5;
+    --each:      #d97706;
+    --each-dim:  #fef3c7;
+    --arrow:     #c4cadf;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:#10121a;--surface:#1a1d2e;--surface2:#222537;--border:#2d3150;
+  --text:#dde1f0;--muted:#6b7299;--sp:#3b82f6;--sp-dim:#1e3a6e;--sp-glow:rgba(59,130,246,.15);
+  --api:#9333ea;--api-dim:#3b1464;--api-glow:rgba(147,51,234,.15);
+  --token:#10b981;--token-dim:#063d28;--each:#f59e0b;--each-dim:#3d2600;--arrow:#4b5280;
+}
+:root[data-theme="light"] {
+  --bg:#f0f2fa;--surface:#ffffff;--surface2:#f4f6ff;--border:#d0d5ee;
+  --text:#1a1d2e;--muted:#6b7299;--sp:#2563eb;--sp-dim:#dbeafe;--sp-glow:rgba(37,99,235,.08);
+  --api:#7c3aed;--api-dim:#ede9fe;--api-glow:rgba(124,58,237,.08);
+  --token:#059669;--token-dim:#d1fae5;--each:#d97706;--each-dim:#fef3c7;--arrow:#c4cadf;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+  line-height: 1.6;
+  min-height: 100vh;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.page-header { max-width: 980px; margin: 0 auto 2.5rem; }
+.eyebrow { font-size: .7rem; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: .5rem; }
+h1 { font-size: 1.75rem; font-weight: 700; letter-spacing: -.02em; text-wrap: balance; color: var(--text); margin-bottom: .5rem; }
+.subtitle { color: var(--muted); font-size: .9rem; max-width: 56ch; }
+
+.grid { max-width: 980px; margin: 0 auto; display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; align-items: start; }
+@media (max-width: 680px) { .grid { grid-template-columns: 1fr; } }
+
+.panel { border-radius: 10px; border: 1px solid var(--border); background: var(--surface); overflow: hidden; }
+.panel-head { display: flex; align-items: center; gap: .6rem; padding: .85rem 1.1rem; border-bottom: 1px solid var(--border); }
+.panel-head.sp { background: var(--sp-glow); }
+.panel-head.api { background: var(--api-glow); }
+.panel-icon { width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: .8rem; flex-shrink: 0; }
+.panel-icon.sp { background: var(--sp-dim); color: var(--sp); }
+.panel-icon.api { background: var(--api-dim); color: var(--api); }
+.panel-title { font-weight: 600; font-size: .9rem; }
+.panel-tag { margin-left: auto; font-size: .65rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; padding: .2rem .5rem; border-radius: 4px; }
+.panel-tag.sp { background: var(--sp-dim); color: var(--sp); }
+.panel-tag.api { background: var(--api-dim); color: var(--api); }
+
+.section { padding: .85rem 1.1rem; border-bottom: 1px solid var(--border); opacity: 0; transform: translateY(6px); transition: opacity .35s ease, transform .35s ease; }
+.section.visible { opacity: 1; transform: none; }
+.section:last-child { border-bottom: none; }
+.section-label { font-size: .65rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: .55rem; display: flex; align-items: center; gap: .4rem; }
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+.code-block { background: var(--surface2); border-radius: 6px; border: 1px solid var(--border); overflow-x: auto; padding: .7rem .85rem; font-family: ui-monospace, 'Cascadia Code', Consolas, monospace; font-size: .75rem; line-height: 1.65; tab-size: 2; }
+.kw  { color: var(--sp); }
+.cmt { color: var(--muted); font-style: italic; }
+.str { color: var(--token); }
+.num { color: var(--each); }
+.key { color: #e879f9; }
+.url { color: var(--api); }
+
+.rs-list { display: flex; flex-direction: column; gap: .45rem; }
+.rs-row { display: flex; align-items: flex-start; gap: .55rem; }
+.rs-badge { font-family: ui-monospace, monospace; font-size: .68rem; font-weight: 700; padding: .15rem .4rem; border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: .05rem; }
+.rs-badge.rs0-sp { background: var(--sp-dim); color: var(--sp); }
+.rs-badge.rs1-sp { background: var(--sp-dim); color: var(--sp); opacity: .75; }
+.rs-badge.rs2-sp { background: var(--sp-dim); color: var(--sp); opacity: .55; }
+.rs-badge.prim   { background: var(--token-dim); color: var(--token); }
+.rs-badge.arr    { background: var(--each-dim); color: var(--each); }
+.rs-desc { font-size: .78rem; color: var(--muted); line-height: 1.4; }
+.rs-desc strong { color: var(--text); font-weight: 500; }
+
+.token-grid { display: flex; flex-wrap: wrap; gap: .4rem; }
+.chip { font-family: ui-monospace, monospace; font-size: .72rem; padding: .22rem .55rem; border-radius: 5px; white-space: nowrap; border: 1px solid transparent; cursor: default; transition: filter .15s; }
+.chip:hover { filter: brightness(1.15); }
+.chip.scalar { background: var(--token-dim); color: var(--token); border-color: color-mix(in srgb, var(--token) 30%, transparent); }
+.chip.each   { background: var(--each-dim); color: var(--each); border-color: color-mix(in srgb, var(--each) 30%, transparent); }
+.chip.inner  { background: var(--surface2); color: var(--muted); border-color: var(--border); }
+
+.tmpl .code-block { font-size: .72rem; }
+.t-scalar { color: var(--token); }
+.t-each   { color: var(--each); font-weight: 600; }
+.t-inner  { color: var(--muted); }
+.t-tag    { color: var(--sp); }
+.t-tagapi { color: var(--api); }
+
+.full-row { max-width: 980px; margin: 1.25rem auto 0; }
+
+.cheat { width: 100%; border-collapse: collapse; font-size: .78rem; }
+.cheat th { font-size: .65rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); text-align: left; padding: .5rem .75rem; border-bottom: 1px solid var(--border); }
+.cheat td { padding: .55rem .75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.cheat tr:last-child td { border-bottom: none; }
+.cheat tr:nth-child(even) td { background: var(--surface2); }
+.cheat code { font-family: ui-monospace, monospace; font-size: .75rem; }
+.source-col { color: var(--muted); font-size: .72rem; }
+
+.legend { display: flex; gap: 1.25rem; flex-wrap: wrap; margin-bottom: 1rem; font-size: .75rem; color: var(--muted); align-items: center; }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: .3rem; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <div class="eyebrow">Report Engine Reference</div>
+  <h1>Token Mapping Guide</h1>
+  <p class="subtitle">How data from stored procedures and REST APIs maps to <code style="font-family:monospace;font-size:.85em;color:var(--token)">{{tokens}}</code> in your report template.</p>
+</div>
+
+<div class="grid">
+
+  <!-- SP PANEL -->
+  <div class="panel">
+    <div class="panel-head sp">
+      <div class="panel-icon sp"><i class="fa-solid fa-database"></i></div>
+      <span class="panel-title">Stored Procedure</span>
+      <span class="panel-tag sp">SP</span>
+    </div>
+
+    <div class="section">
+      <div class="section-label">① Stored procedure</div>
+      <div class="code-block"><span class="kw">CREATE PROCEDURE</span> sp_StyleReport
+  @MainReferenceId  <span class="kw">INT</span>,
+  @MasterReferenceId <span class="kw">INT</span> = <span class="kw">NULL</span>
+<span class="kw">AS BEGIN</span>
+  <span class="cmt">-- Result set 0 (1 row → scalar)</span>
+  <span class="kw">SELECT</span> StyleNumber, Brand, Season
+  <span class="kw">FROM</span>   Style <span class="kw">WHERE</span> StyleId = @MainReferenceId
+
+  <span class="cmt">-- Result set 1 (rows → list)</span>
+  <span class="kw">SELECT</span> Code, Description, Colour
+  <span class="kw">FROM</span>   StyleFabric <span class="kw">WHERE</span> StyleId = @MainReferenceId
+
+  <span class="cmt">-- Result set 2 (rows → list)</span>
+  <span class="kw">SELECT</span> ColourCode, ColourName
+  <span class="kw">FROM</span>   StyleColour <span class="kw">WHERE</span> StyleId = @MainReferenceId
+<span class="kw">END</span></div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">② Result sets → context keys</div>
+      <div class="rs-list">
+        <div class="rs-row">
+          <span class="rs-badge rs0-sp">RS0</span>
+          <span class="rs-desc"><strong>header</strong> — 1 row → scalar fields<br><em>StyleNumber, Brand, Season</em></span>
+        </div>
+        <div class="rs-row">
+          <span class="rs-badge rs1-sp">RS1</span>
+          <span class="rs-desc"><strong>header_rs1</strong> — multiple rows → loop<br><em>Code, Description, Colour</em></span>
+        </div>
+        <div class="rs-row">
+          <span class="rs-badge rs2-sp">RS2</span>
+          <span class="rs-desc"><strong>header_rs2</strong> — multiple rows → loop<br><em>ColourCode, ColourName</em></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">③ Available tokens</div>
+      <div class="token-grid">
+        <span class="chip scalar">{{header.StyleNumber}}</span>
+        <span class="chip scalar">{{header.Brand}}</span>
+        <span class="chip scalar">{{header.Season}}</span>
+        <span class="chip each">{{#each header_rs1}}</span>
+        <span class="chip inner">{{Code}}</span>
+        <span class="chip inner">{{Description}}</span>
+        <span class="chip inner">{{Colour}}</span>
+        <span class="chip each">{{#each header_rs2}}</span>
+        <span class="chip inner">{{ColourCode}}</span>
+        <span class="chip inner">{{ColourName}}</span>
+      </div>
+    </div>
+
+    <div class="section tmpl">
+      <div class="section-label">④ Template HTML</div>
+      <div class="code-block"><span class="t-tag">&lt;h1&gt;</span><span class="t-scalar">{{header.StyleNumber}}</span><span class="t-tag">&lt;/h1&gt;</span>
+<span class="t-tag">&lt;p&gt;</span><span class="t-scalar">{{header.Brand}}</span> — <span class="t-scalar">{{header.Season}}</span><span class="t-tag">&lt;/p&gt;</span>
+
+<span class="t-tag">&lt;table&gt;</span>
+  <span class="t-each">{{#each header_rs1}}</span>
+  <span class="t-tag">&lt;tr&gt;</span>
+    <span class="t-tag">&lt;td&gt;</span><span class="t-inner">{{Code}}</span><span class="t-tag">&lt;/td&gt;</span>
+    <span class="t-tag">&lt;td&gt;</span><span class="t-inner">{{Description}}</span><span class="t-tag">&lt;/td&gt;</span>
+    <span class="t-tag">&lt;td&gt;</span><span class="t-inner">{{Colour}}</span><span class="t-tag">&lt;/td&gt;</span>
+  <span class="t-tag">&lt;/tr&gt;</span>
+  <span class="t-each">{{/each}}</span>
+<span class="t-tag">&lt;/table&gt;</span>
+
+<span class="t-tag">&lt;h3&gt;</span>Colours<span class="t-tag">&lt;/h3&gt;</span>
+<span class="t-each">{{#each header_rs2}}</span>
+  <span class="t-inner">{{ColourCode}}</span> — <span class="t-inner">{{ColourName}}</span>
+<span class="t-each">{{/each}}</span></div>
+    </div>
+  </div>
+
+  <!-- API PANEL -->
+  <div class="panel">
+    <div class="panel-head api">
+      <div class="panel-icon api"><i class="fa-solid fa-network-wired"></i></div>
+      <span class="panel-title">REST API</span>
+      <span class="panel-tag api">API</span>
+    </div>
+
+    <div class="section">
+      <div class="section-label">① API endpoint + sample JSON</div>
+      <div style="font-size:.72rem;color:var(--muted);margin-bottom:.45rem;">
+        Path: <code style="font-family:monospace;color:var(--api)">/webapi/Product/GetDetail</code> &nbsp;·&nbsp; Source name: <code style="font-family:monospace;color:var(--api)">product</code>
+      </div>
+      <div class="code-block">{
+  <span class="key">"ProductCode"</span>: <span class="str">"P001"</span>,    <span class="cmt">← primitive → scalar</span>
+  <span class="key">"Description"</span>: <span class="str">"Cotton Shirt"</span>,
+  <span class="key">"Brand"</span>:       <span class="str">"CGS"</span>,
+
+  <span class="key">"Fabrics"</span>: [               <span class="cmt">← array → loop</span>
+    { <span class="key">"Code"</span>: <span class="str">"F001"</span>, <span class="key">"Name"</span>: <span class="str">"Cotton"</span>, <span class="key">"Pct"</span>: <span class="num">100</span> }
+  ],
+
+  <span class="key">"Colours"</span>: [               <span class="cmt">← array → loop</span>
+    { <span class="key">"Code"</span>: <span class="str">"BLK"</span>, <span class="key">"Name"</span>: <span class="str">"Black"</span> },
+    { <span class="key">"Code"</span>: <span class="str">"WHT"</span>, <span class="key">"Name"</span>: <span class="str">"White"</span> }
+  ]
+}</div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">② JSON properties → context keys</div>
+      <div class="rs-list">
+        <div class="rs-row">
+          <span class="rs-badge prim">primitive</span>
+          <span class="rs-desc"><strong>product</strong> — scalar fields<br><em>ProductCode, Description, Brand</em></span>
+        </div>
+        <div class="rs-row">
+          <span class="rs-badge arr">"Fabrics": […]</span>
+          <span class="rs-desc"><strong>product_Fabrics</strong> — loop<br><em>Code, Name, Pct</em></span>
+        </div>
+        <div class="rs-row">
+          <span class="rs-badge arr">"Colours": […]</span>
+          <span class="rs-desc"><strong>product_Colours</strong> — loop<br><em>Code, Name</em></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-label">③ Available tokens</div>
+      <div class="token-grid">
+        <span class="chip scalar">{{product.ProductCode}}</span>
+        <span class="chip scalar">{{product.Description}}</span>
+        <span class="chip scalar">{{product.Brand}}</span>
+        <span class="chip each">{{#each product_Fabrics}}</span>
+        <span class="chip inner">{{Code}}</span>
+        <span class="chip inner">{{Name}}</span>
+        <span class="chip inner">{{Pct}}</span>
+        <span class="chip each">{{#each product_Colours}}</span>
+        <span class="chip inner">{{Code}}</span>
+        <span class="chip inner">{{Name}}</span>
+      </div>
+    </div>
+
+    <div class="section tmpl">
+      <div class="section-label">④ Template HTML</div>
+      <div class="code-block"><span class="t-tagapi">&lt;h1&gt;</span><span class="t-scalar">{{product.ProductCode}}</span><span class="t-tagapi">&lt;/h1&gt;</span>
+<span class="t-tagapi">&lt;p&gt;</span><span class="t-scalar">{{product.Description}}</span>
+   — <span class="t-scalar">{{product.Brand}}</span><span class="t-tagapi">&lt;/p&gt;</span>
+
+<span class="t-tagapi">&lt;table&gt;</span>
+  <span class="t-each">{{#each product_Fabrics}}</span>
+  <span class="t-tagapi">&lt;tr&gt;</span>
+    <span class="t-tagapi">&lt;td&gt;</span><span class="t-inner">{{Code}}</span><span class="t-tagapi">&lt;/td&gt;</span>
+    <span class="t-tagapi">&lt;td&gt;</span><span class="t-inner">{{Name}}</span><span class="t-tagapi">&lt;/td&gt;</span>
+    <span class="t-tagapi">&lt;td&gt;</span><span class="t-inner">{{Pct}}</span>%<span class="t-tagapi">&lt;/td&gt;</span>
+  <span class="t-tagapi">&lt;/tr&gt;</span>
+  <span class="t-each">{{/each}}</span>
+<span class="t-tagapi">&lt;/table&gt;</span>
+
+<span class="t-each">{{#each product_Colours}}</span>
+  <span class="t-inner">{{Code}}</span> — <span class="t-inner">{{Name}}</span>
+<span class="t-each">{{/each}}</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- CHEAT SHEET -->
+<div class="full-row">
+  <div class="panel">
+    <div class="panel-head" style="background: var(--surface2);">
+      <span class="panel-title" style="font-size:.8rem;">Quick Reference — All Token Syntax</span>
+    </div>
+    <div class="section" style="opacity:1;transform:none;">
+      <div class="legend">
+        <span><span class="legend-dot" style="background:var(--token)"></span>Scalar token</span>
+        <span><span class="legend-dot" style="background:var(--each)"></span>Loop token</span>
+        <span><span class="legend-dot" style="background:var(--muted)"></span>Field inside loop</span>
+      </div>
+      <div style="overflow-x:auto;">
+        <table class="cheat">
+          <thead>
+            <tr>
+              <th>Token</th>
+              <th>What it outputs</th>
+              <th>SP source</th>
+              <th>API source</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code class="chip scalar" style="display:inline">{{header.StyleNumber}}</code></td>
+              <td>Single field from a scalar row</td>
+              <td class="source-col">RS0 with 1 row</td>
+              <td class="source-col">Primitive property in JSON</td>
+            </tr>
+            <tr>
+              <td><code class="chip each" style="display:inline">{{#each header_rs1}}</code></td>
+              <td>Loop — repeats inner HTML for every row</td>
+              <td class="source-col">RS1 (2nd result set)</td>
+              <td class="source-col">— not used for API</td>
+            </tr>
+            <tr>
+              <td><code class="chip each" style="display:inline">{{#each product_Fabrics}}</code></td>
+              <td>Loop — array property "Fabrics"</td>
+              <td class="source-col">— not used for SP</td>
+              <td class="source-col">Array property named "Fabrics"</td>
+            </tr>
+            <tr>
+              <td><code class="chip inner" style="display:inline">{{Code}}</code></td>
+              <td>Field — only valid inside {{#each}}</td>
+              <td class="source-col">Column name in result set</td>
+              <td class="source-col">Key in each array item</td>
+            </tr>
+            <tr>
+              <td><code class="chip each" style="display:inline">{{/each}}</code></td>
+              <td>Closes the loop block</td>
+              <td class="source-col" colspan="2">Same for both SP and API</td>
+            </tr>
+            <tr>
+              <td><code class="chip scalar" style="display:inline">{{#if header.Notes}}</code></td>
+              <td>Shows inner HTML only when field is not empty/0/false</td>
+              <td class="source-col" colspan="2">Same for both SP and API</td>
+            </tr>
+            <tr>
+              <td><code class="chip each" style="display:inline">{{#each header}}</code></td>
+              <td>Loop over RS0 when it returns multiple rows</td>
+              <td class="source-col">RS0 with many rows</td>
+              <td class="source-col">Root-level JSON array</td>
+            </tr>
+            <tr>
+              <td><code class="chip each" style="display:inline">{{#each header_rs2}}</code></td>
+              <td>Loop over the 3rd result set</td>
+              <td class="source-col">RS2 (3rd result set)</td>
+              <td class="source-col">— not used for API</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const sections = document.querySelectorAll('.section');
+const io = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const siblings = [...e.target.closest('.panel').querySelectorAll('.section')];
+      const idx = siblings.indexOf(e.target);
+      setTimeout(() => e.target.classList.add('visible'), idx * 80);
+      io.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.05 });
+sections.forEach(s => io.observe(s));
+</script>
+
+</body>
+</html>
