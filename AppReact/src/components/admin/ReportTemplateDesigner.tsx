@@ -387,6 +387,9 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   };
 
   const handleSave = async () => {
+    // Read directly from Monaco model — bypasses debounce so Save always
+    // captures the latest keystrokes, not a potentially-stale React state copy.
+    const currentHtml = editorRef.current?.getValue() ?? templateHtml;
     setSaving(true);
     setError(null);
     try {
@@ -396,7 +399,7 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
         ...report,
         ReportTemplate: {
           ReportId:         reportId,
-          TemplateHtml:     templateHtml,
+          TemplateHtml:     currentHtml,
           DataSpName:       primarySpName,  // primary SP for legacy display
           PageSize:         pageSize,
           Orientation:      orientation,
@@ -404,6 +407,7 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
           ExtraParamConfig: newConfig || null,
         },
       });
+      setTemplateHtml(currentHtml);  // sync state to what was actually saved
       onSaved?.();
     } catch {
       setError('Save failed.');
@@ -430,6 +434,14 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
         groups.push(grp);
       }
       grp.toks.push(tok);
+    }
+    // Sort tokens alphabetically within each group (loop headers stay at top)
+    for (const grp of groups) {
+      grp.toks.sort((a, b) => {
+        const labelA = a.Field === '*' ? `#each ${a.ResultSet}` : a.Field;
+        const labelB = b.Field === '*' ? `#each ${b.ResultSet}` : b.Field;
+        return labelA.localeCompare(labelB);
+      });
     }
     return groups;
   }, [tokens, dataSources]);
