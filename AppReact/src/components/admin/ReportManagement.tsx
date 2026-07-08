@@ -388,8 +388,8 @@ const ReportManagement: React.FC = () => {
 
       {/* Template designer overlay */}
       {designerOpen && selectedReport && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">
-          <div className={`w-[92vw] h-[90vh] rounded-lg shadow-2xl overflow-hidden flex flex-col border ${t('border_mainContentSection')}`}>
+        <div className="fixed inset-0 z-40 flex">
+          <div className={`w-full h-full overflow-hidden flex flex-col border-0`}>
             <ReportTemplateDesigner
               reportId={selectedReport.Id}
               mainReferenceId={0}
