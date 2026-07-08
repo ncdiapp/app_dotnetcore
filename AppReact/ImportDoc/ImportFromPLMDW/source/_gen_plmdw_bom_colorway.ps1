@@ -72,6 +72,18 @@ function Get-PivotValueMetaColumnsForDcuKey($gridMetaList, [int]$dcuKeyColumnId)
         )
     } | Sort-Object ColumnOrder, GridColumnId)
 
+    # Fallback: PLM sometimes wires MasterDcucolumnId to another template's ColorwayN
+    # (e.g. Fabric 20 Status1 -> 10-colorway Colorway1). Pair ImageN/StatusN by slot number.
+    if ($children.Count -eq 0 -and $keyCol.ColumnName -match '(?<slot>\d+)\s*$') {
+        $slot = $Matches['slot']
+        $children = @($gridMetaList | Where-Object {
+            $_.GridColumnId -ne $dcuKeyColumnId -and (
+                ($_.ColumnName -match "^(Image|Status)\s*_?\s*$slot\s*$") -or
+                ($_.ColumnName -match "^(Image|Status)$slot\s*$")
+            )
+        } | Sort-Object ColumnOrder, GridColumnId)
+    }
+
     foreach ($c in $children) { [void]$values.Add($c) }
     return @($values)
 }
@@ -96,10 +108,13 @@ function Get-PivotValueBusinessRole($vm, [int]$dcuKeyColumnId) {
 function Get-BomColorwayPivotColumnNameOverrides($config, [int]$gridId) {
     if (-not $config -or -not $config.bomColorwayPivotColumnNames) { return $null }
     $gridKey = [string]$gridId
-    if ($config.bomColorwayPivotColumnNames.PSObject.Properties.Name -contains $gridKey) {
-        return @($config.bomColorwayPivotColumnNames.$gridKey)
-    }
-    return $null
+    if ($config.bomColorwayPivotColumnNames.PSObject.Properties.Name -notcontains $gridKey) { return $null }
+    # ConvertFrom-Json unwraps single-element arrays to a scalar string; force a real Object[]
+    # so indexers return whole names (not chars). Unary comma prevents return unwrap.
+    $raw = $config.bomColorwayPivotColumnNames.$gridKey
+    if ($null -eq $raw) { return $null }
+    if ($raw -is [string]) { return , @([string]$raw) }
+    return , @($raw)
 }
 
 function Get-DefaultPivotValueColumnName([string]$businessRole, [string]$plmColumnName, [hashtable]$usedNames) {

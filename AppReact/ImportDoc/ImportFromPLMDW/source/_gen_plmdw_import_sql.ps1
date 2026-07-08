@@ -736,6 +736,11 @@ function Build-CreateTableBlock([string]$LogicalTable, $fieldRows, [string]$Unit
     $innerCols = ($colDefs -join ', ')
     $alterLines = New-Object System.Collections.Generic.List[string]
     foreach ($r in $fieldRows) {
+        # Shared physical tables (e.g. 3351 + 3360 APPEND): add missing columns, then widen nvarchar if needed.
+        [void]$alterLines.Add(@"
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'$($r.AppColumn)')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [$($r.AppColumn)] $($r.SqlType) NULL;'; EXEC sp_executesql @sql; END
+"@.TrimEnd())
         if ($r.SqlType -match '^\[nvarchar\]') {
             [void]$alterLines.Add("    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [$($r.AppColumn)] $($r.SqlType) NULL;';`r`n    EXEC sp_executesql @sql;")
         }
