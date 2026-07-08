@@ -106,6 +106,23 @@ public class AppReportController : SecureBaseController
         return Ok(tokens);
     }
 
+    /// <summary>
+    /// Token discovery from the designer's current (unsaved) config.
+    /// Accepts the raw ExtraParamConfig JSON so sampleJson for API sources
+    /// is included even before the template is saved.
+    /// </summary>
+    [HttpPost]
+    public IActionResult GetTokensFromConfig([FromBody] GetTokensFromConfigRequest request)
+    {
+        var template = new APP.Components.EntityDto.AppReportTemplateDto
+        {
+            DataSpName       = request.DataSpName,
+            ExtraParamConfig = request.ExtraParamConfig,
+        };
+        var tokens = AppReportTemplateService.GetAvailableTokens(template);
+        return Ok(tokens);
+    }
+
     // ── PDF preview (for template designer — opens inline in browser) ────────
 
     [HttpPost]
@@ -220,4 +237,10 @@ public class CreatePrintRequestDto
     public int?   MasterReferenceId     { get; set; }
     public string MultipleReferenceIds  { get; set; }
     public string ParameterMapping      { get; set; }
+}
+
+public class GetTokensFromConfigRequest
+{
+    public string ExtraParamConfig { get; set; }
+    public string DataSpName       { get; set; }
 }

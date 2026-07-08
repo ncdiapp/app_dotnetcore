@@ -8,6 +8,7 @@ using APP.Components.EntityDto;
 using APP.Framework;
 using APP.LBL.DatabaseSpecific;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace App.BL
 {
@@ -70,7 +71,7 @@ namespace App.BL
                     var ds = new DataSet();
                     using (var da = new SqlDataAdapter(cmd)) da.Fill(ds);
 
-                    MergeResultSets(context, ds, isPrimary, src.Alias);
+                    MergeResultSets(context, ds, src.Name);
                 }
                 catch { /* individual source errors don't kill the whole render */ }
             }
@@ -105,10 +106,18 @@ namespace App.BL
             for (int si = 0; si < sources.Count; si++)
             {
                 var src = sources[si];
+
+                if (src.Type == "api")
+                {
+                    // API: discover tokens from sampleJson pasted by the designer
+                    if (!string.IsNullOrWhiteSpace(src.SampleJson))
+                        MergeApiSampleJson(context, src.SampleJson, src.Name);
+                    continue;
+                }
+
                 if (src.Type != "sp" || string.IsNullOrEmpty(src.Value)) continue;
                 try
                 {
-                    var tmp = new AppReportTemplateDto { DataSpName = src.Value };
                     using var conn = new SqlConnection(GetConnectionString());
                     conn.Open();
                     using var cmd = new SqlCommand(src.Value, conn);
@@ -118,7 +127,7 @@ namespace App.BL
                     cmd.Parameters.AddWithValue("@MasterReferenceId", DBNull.Value);
                     var ds = new DataSet();
                     using (var da = new SqlDataAdapter(cmd)) da.Fill(ds);
-                    MergeResultSets(context, ds, si == 0, src.Alias);
+                    MergeResultSets(context, ds, src.Name);
                 }
                 catch { }
             }
@@ -188,7 +197,7 @@ namespace App.BL
             if (!string.IsNullOrWhiteSpace(template?.DataSpName))
                 return new List<DataSourceConfig>
                 {
-                    new DataSourceConfig { Alias = "main", Type = "sp", Value = template.DataSpName }
+                    new DataSourceConfig { Name = "header", Type = "sp", Value = template.DataSpName }
                 };
 
             return new List<DataSourceConfig>();
@@ -220,17 +229,13 @@ namespace App.BL
         /// </summary>
         private static void MergeResultSets(
             Dictionary<string, object> context,
-            DataSet ds, bool isPrimary, string alias)
+            DataSet ds, string alias)
         {
             for (int i = 0; i < ds.Tables.Count; i++)
             {
                 var dt = ds.Tables[i];
-                string key;
-
-                if (isPrimary)
-                    key = i == 0 ? "header" : $"rs{i}";
-                else
-                    key = i == 0 ? alias : $"{alias}_rs{i}";
+                // Every source uses its alias: RS0 → alias, RS1 → alias_rs1, RS2 → alias_rs2 …
+                string key = i == 0 ? alias : $"{alias}_rs{i}";
 
                 if (i == 0 && dt.Rows.Count == 1)
                 {
@@ -252,6 +257,60 @@ namespace App.BL
                     context[key] = rows;
                 }
             }
+        }
+
+        /// <summary>
+        /// Discovers tokens from a sample JSON string pasted by the designer for an API source.
+        /// JObject  → RS0 scalar keys; each JArray property → RS1, RS2 … list keys.
+        /// JArray   → RS0 as a list.
+        /// </summary>
+        private static void MergeApiSampleJson(Dictionary<string, object> context, string sampleJson, string name)
+        {
+            if (string.IsNullOrWhiteSpace(sampleJson)) return;
+            try
+            {
+                var token = JToken.Parse(sampleJson);
+                if (token is JObject obj)
+                {
+                    var scalarRow = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                    int arrayIdx  = 1;
+                    foreach (var prop in obj.Properties())
+                    {
+                        if (prop.Value is JArray arr)
+                        {
+                            var rows = BuildRowsFromJArray(arr);
+                            if (rows.Count > 0) context[$"{name}_rs{arrayIdx++}"] = rows;
+                        }
+                        else
+                        {
+                            scalarRow[prop.Name] = prop.Value?.ToObject<object>();
+                        }
+                    }
+                    if (scalarRow.Count > 0) context[name] = scalarRow;
+                }
+                else if (token is JArray arr)
+                {
+                    var rows = BuildRowsFromJArray(arr);
+                    if (rows.Count > 0) context[name] = rows;
+                }
+            }
+            catch { }
+        }
+
+        private static List<Dictionary<string, object>> BuildRowsFromJArray(JArray arr)
+        {
+            var rows = new List<Dictionary<string, object>>();
+            foreach (var item in arr)
+            {
+                if (item is JObject itemObj)
+                {
+                    var row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var p in itemObj.Properties())
+                        row[p.Name] = p.Value?.ToObject<object>();
+                    rows.Add(row);
+                }
+            }
+            return rows;
         }
 
         private static string InjectPageCss(string html, AppReportTemplateDto t)
@@ -330,9 +389,10 @@ namespace App.BL
 
     public class DataSourceConfig
     {
-        [JsonProperty("alias")] public string Alias { get; set; } = "main";
-        [JsonProperty("type")]  public string Type  { get; set; } = "sp";   // "sp" | "api"
-        [JsonProperty("value")] public string Value { get; set; }
+        [JsonProperty("name")]       public string Name       { get; set; } = "header";
+        [JsonProperty("type")]       public string Type       { get; set; } = "sp";   // "sp" | "api"
+        [JsonProperty("value")]      public string Value      { get; set; }
+        [JsonProperty("sampleJson")] public string SampleJson { get; set; }
     }
 
     /// <summary>

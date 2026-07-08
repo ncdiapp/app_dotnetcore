@@ -48,7 +48,7 @@ const ReportManagement: React.FC = () => {
   // Create modal state
   const [createOpen, setCreateOpen]   = useState(false);
   const [form, setForm]               = useState<CreateForm>(emptyForm());
-  const [formSources, setFormSources] = useState<DataSourceDef[]>([{ alias: 'main', type: 'sp', value: '' }]);
+  const [formSources, setFormSources] = useState<DataSourceDef[]>([{ name: 'header', type: 'sp', value: '' }]);
   const [formBusy, setFormBusy]       = useState(false);
   const [formError, setFormError]     = useState<string | null>(null);
 
@@ -88,7 +88,7 @@ const ReportManagement: React.FC = () => {
 
   const openCreate = () => {
     setForm(emptyForm());
-    setFormSources([{ alias: 'main', type: 'sp', value: '' }]);
+    setFormSources([{ name: 'header', type: 'sp', value: '' }]);
     setFormError(null);
     setCreateOpen(true);
   };
