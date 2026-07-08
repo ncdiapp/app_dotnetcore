@@ -32,6 +32,35 @@ export function fileThumbnailUrl(fileId: number | string): string {
   return `${endpoints.BASE_URL}/api/files/thumbnail/${fileId}${sessionQuery()}`;
 }
 
+/**
+ * Resolve a static resource path from search results (e.g. /api/resources/Company_1/Image/thumbnail/guid).
+ */
+export function fileResourceUrl(apiResourcePath: string): string {
+  if (!apiResourcePath) return apiResourcePath;
+  if (apiResourcePath.startsWith('http://') || apiResourcePath.startsWith('https://')) {
+    return apiResourcePath;
+  }
+  const path = apiResourcePath.startsWith('/') ? apiResourcePath : `/${apiResourcePath}`;
+  return `${endpoints.BASE_URL}${path}`;
+}
+
+/**
+ * Resolve search thumbnail src. When the search row includes DictThumbnailUrl (new API),
+ * only use server-provided resource URLs — never fall back to /api/files/thumbnail (avoids hang on missing files).
+ * Legacy rows without DictThumbnailUrl still use the FileId thumbnail API.
+ */
+export function resolveSearchThumbnailUrl(
+  fileId: number | string | null | undefined,
+  resourceUrl?: string | null,
+  searchUsesThumbnailUrls = false,
+): string | null {
+  if (resourceUrl) return fileResourceUrl(resourceUrl);
+  if (searchUsesThumbnailUrls) return null;
+  const numericId = Number(fileId);
+  if (!Number.isFinite(numericId) || numericId <= 0) return null;
+  return fileThumbnailUrl(numericId);
+}
+
 /** Original full-size image. Replaces GetImage.aspx / original image use. */
 export function fileImageUrl(fileId: number | string): string {
   return `${endpoints.BASE_URL}/api/files/image/${fileId}${sessionQuery()}`;

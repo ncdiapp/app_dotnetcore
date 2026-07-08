@@ -463,7 +463,7 @@ public static class LegacyEndpoints
 
         // ── Resource handler (replaces AppResourceHandler.ashx) ──────────────
         // Serves files from {AppBaseDir}/FileRepository/{*path} — used for logo/background images.
-        app.MapGet("/api/resources/{*path}", (string path) =>
+        app.MapGet("/api/resources/{*path}", (HttpContext ctx, string path) =>
         {
             if (string.IsNullOrWhiteSpace(path)) return Results.BadRequest();
             string safePath = Path.GetFullPath(Path.Combine(
@@ -475,6 +475,10 @@ public static class LegacyEndpoints
                 return Results.BadRequest();
             if (!File.Exists(safePath)) return Results.NotFound();
             string ext = Path.GetExtension(safePath);
+            if (IsImageExtension(ext))
+            {
+                ctx.Response.Headers.CacheControl = "public, max-age=86400, immutable";
+            }
             return Results.File(File.ReadAllBytes(safePath), GetMimeType(ext));
         }).WithName("ResourceHandler").AllowAnonymous();
 
@@ -618,6 +622,15 @@ public static class LegacyEndpoints
         => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
             ? path[prefix.Length..]
             : path;
+
+    private static bool IsImageExtension(string extension)
+    {
+        return extension.TrimStart('.').ToLowerInvariant() switch
+        {
+            "jpg" or "jpeg" or "png" or "gif" or "bmp" or "tif" or "tiff" or "svg" or "webp" => true,
+            _ => false,
+        };
+    }
 
     private static string GetMimeType(string extension) => extension.TrimStart('.').ToLowerInvariant() switch
     {

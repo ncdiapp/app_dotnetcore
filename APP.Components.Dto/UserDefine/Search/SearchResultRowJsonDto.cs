@@ -21,6 +21,7 @@ namespace APP.Components.EntityDto
             ChangedColumnIds = new List<int>();
             DictLinkTargetParameterValue = new Dictionary<int, object>();
             DictSketchOrFileDisplayCode = new Dictionary<int, string>();
+            DictThumbnailUrl = new Dictionary<int, string>();
 
             DictViewColumnIDKeyValue = new Dictionary<int, object>();
         }
@@ -120,6 +121,14 @@ namespace APP.Components.EntityDto
         public Dictionary<int, string> DictSketchOrFileDisplayCode
         {
           get;set;
+        }
+
+        /// <summary> Key: ViewColumnID — static resource URL for Image column thumbnails (e.g. /api/resources/Company_1/Image/thumbnail/guid). </summary>
+        [DataMember(EmitDefaultValue = false)]
+        public Dictionary<int, string> DictThumbnailUrl
+        {
+            get;
+            set;
         }
 
 

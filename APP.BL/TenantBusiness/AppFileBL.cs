@@ -73,6 +73,51 @@ namespace App.BL
                 return list;
             }
         }
+
+        /// <summary>
+        /// Batch-resolve thumbnail static resource URLs for search grid image columns.
+        /// Returns map of FileId → /api/resources/Company_{id}/Image/thumbnail/{guid}.
+        /// </summary>
+        public static Dictionary<int, string> RetrieveThumbnailResourceUrlsByFileIds(IEnumerable<int> fileIds)
+        {
+            var result = new Dictionary<int, string>();
+            var idList = fileIds?.Where(id => id > 0).Distinct().ToList();
+            if (idList == null || idList.Count == 0)
+                return result;
+
+            int? companyId = ControlTypeValueConverter.ConvertValueToInt(ServerContext.Instance.CurrentCompanyId);
+            if (!companyId.HasValue)
+                return result;
+
+            string companySegment = $"Company_{companyId.Value}";
+
+            EntityCollection<AppFileEntity> entities = RetrieveMultipleFileEntityByIds(idList, true);
+            foreach (AppFileEntity entity in entities)
+            {
+                string? resourcePath = BuildCompanyImageResourcePath(companySegment, entity.ThumbnailFilePath)
+                    ?? BuildCompanyImageResourcePath(companySegment, entity.RegularImageFilepath)
+                    ?? BuildCompanyImageResourcePath(companySegment, entity.OriginalFilePath);
+                if (resourcePath == null)
+                    continue;
+
+                result[entity.FileId] = $"/api/resources/{resourcePath}";
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Maps AppFile image path (e.g. /thumbnail/guid) to FileRepository-relative resource path.
+        /// </summary>
+        internal static string? BuildCompanyImageResourcePath(string companySegment, string? imageRelativePath)
+        {
+            if (string.IsNullOrWhiteSpace(imageRelativePath))
+                return null;
+
+            string normalized = imageRelativePath.TrimStart('/', '\\').Replace('\\', '/');
+            return $"{companySegment}/Image/{normalized}";
+        }
+
         //	select FileID from AppFile where FolderID in (1232,121)
 
         public static EntityCollection<AppFileEntity> RetrieveMultipleFileEntityByIds(List<int> fileIdList, bool isRetrieveSimpleData = true)

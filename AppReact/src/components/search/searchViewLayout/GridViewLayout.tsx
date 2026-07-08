@@ -6,7 +6,7 @@ import { CollectionView } from '@mescius/wijmo';
 import { GroupRow } from '@mescius/wijmo.grid';
 import '@mescius/wijmo.styles/wijmo.css';
 import { useTheme } from '../../../redux/hooks/useTheme';
-import { fileThumbnailUrl } from "../../../webapi/fileEndpoints";
+import { resolveSearchThumbnailUrl } from "../../../webapi/fileEndpoints";
 import { useTabNavigation } from '../../../redux/hooks/useTabNavigation';
 import { preserveTabInitialPath, getCurrentActiveTab } from '../../../redux/features/ui/navigation/tabnavSlice';
 import { isTransactionFormGroupPath } from '../../../helper/navigationHelper';
@@ -103,19 +103,24 @@ const EmAppControlType = {
 };
 
 /** Stable grid thumbnail — avoids img reload when unrelated parent state changes. */
-const SearchGridThumbnailCell = React.memo(({ fileId }: { fileId: number | string }) => {
+const SearchGridThumbnailCell = React.memo(({
+  fileId,
+  thumbUrl,
+  searchUsesThumbnailUrls,
+}: {
+  fileId: number | string;
+  thumbUrl?: string | null;
+  searchUsesThumbnailUrls?: boolean;
+}) => {
   const numericId = Number(fileId);
-  const [failed, setFailed] = useState(false);
-  if (!Number.isFinite(numericId) || numericId <= 0) {
-    return <div style={{ width: '60px', height: '60px' }} />;
-  }
-  if (failed) {
+  const src = resolveSearchThumbnailUrl(numericId, thumbUrl, Boolean(searchUsesThumbnailUrls));
+  if (!src) {
     return <div style={{ width: '60px', height: '60px', background: 'rgba(0,0,0,0.04)' }} />;
   }
   return (
-    <div style={{ position: 'absolute', top: 0, left: 0, width: '60px', height: '60px' }}>
+    <div style={{ position: 'absolute', top: 0, left: 0, width: '60px', height: '60px', background: 'rgba(0,0,0,0.04)' }}>
       <img
-        src={fileThumbnailUrl(numericId)}
+        src={src}
         style={{
           maxHeight: '60px',
           maxWidth: '60px',
@@ -127,7 +132,9 @@ const SearchGridThumbnailCell = React.memo(({ fileId }: { fileId: number | strin
           margin: 'auto',
         }}
         alt=""
-        onError={() => setFailed(true)}
+        onError={(e) => {
+          e.currentTarget.style.display = 'none';
+        }}
       />
     </div>
   );
@@ -698,7 +705,15 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
                         if (!fileId) {
                           return <div style={{ width: '60px', height: '60px' }} />;
                         }
-                        return <SearchGridThumbnailCell fileId={fileId} />;
+                        const thumbUrl = ctx.item.DictThumbnailUrl?.[column.Id];
+                        const searchUsesThumbnailUrls = ctx.item.DictThumbnailUrl != null;
+                        return (
+                          <SearchGridThumbnailCell
+                            fileId={fileId}
+                            thumbUrl={thumbUrl}
+                            searchUsesThumbnailUrls={searchUsesThumbnailUrls}
+                          />
+                        );
                       }}
                     />
                     <FlexGridCellTemplate cellType="Group" template={() => <div></div>} />

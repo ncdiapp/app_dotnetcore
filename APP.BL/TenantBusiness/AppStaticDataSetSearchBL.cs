@@ -1455,7 +1455,59 @@ GROUP BY Src.[{folderColumnName}]";
 
 
 
+            PopulateSearchResultThumbnailUrls(viewEntity, rows);
+
             return rows;
+        }
+
+        /// <summary>
+        /// Fills DictThumbnailUrl for Image columns using one batch AppFile lookup per search result.
+        /// </summary>
+        internal static void PopulateSearchResultThumbnailUrls(AppSearchViewEntity viewEntity, List<StaticSearchResultRowJsonDto> rows)
+        {
+            if (viewEntity?.AppSearchViewField == null || rows == null || rows.Count == 0)
+                return;
+
+            var imageColumns = viewEntity.AppSearchViewField
+                .Where(f => f.ControlType.HasValue && f.ControlType.Value == (int)EmAppControlType.Image)
+                .ToList();
+            if (imageColumns.Count == 0)
+                return;
+
+            var fileIds = new HashSet<int>();
+            foreach (StaticSearchResultRowJsonDto row in rows)
+            {
+                foreach (var column in imageColumns)
+                {
+                    if (!row.DictViewColumnIDKeyValue.TryGetValue(column.SearchViewFieldId, out object? raw) || raw == null)
+                        continue;
+
+                    if (int.TryParse(raw.ToString(), out int fileId) && fileId > 0)
+                        fileIds.Add(fileId);
+                }
+            }
+
+            if (fileIds.Count == 0)
+                return;
+
+            Dictionary<int, string> urlByFileId = AppFileBL.RetrieveThumbnailResourceUrlsByFileIds(fileIds);
+            if (urlByFileId.Count == 0)
+                return;
+
+            foreach (StaticSearchResultRowJsonDto row in rows)
+            {
+                foreach (var column in imageColumns)
+                {
+                    if (!row.DictViewColumnIDKeyValue.TryGetValue(column.SearchViewFieldId, out object? raw) || raw == null)
+                        continue;
+
+                    if (!int.TryParse(raw.ToString(), out int fileId) || fileId <= 0)
+                        continue;
+
+                    if (urlByFileId.TryGetValue(fileId, out string? url) && !string.IsNullOrWhiteSpace(url))
+                        row.DictThumbnailUrl[column.SearchViewFieldId] = url;
+                }
+            }
         }
 
         internal static object PrepareOneSearchResultRowCellValue(AppSearchViewEntity viewEntity,
