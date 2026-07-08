@@ -72,9 +72,7 @@
                              "transactionIntegrationId":  "Tab_4228"
                          }
                      ],
-    "bomColorwayPivotBindings":  [{
-
-                                 }],
+    "bomColorwayPivotBindings":  [],
     "blueprintFields":  [
                             {
                                 "appTableName":  "Plm_Artwork_Details",
@@ -2242,3 +2240,4 @@
                        "menuOrder":  100
                    }
 }
+

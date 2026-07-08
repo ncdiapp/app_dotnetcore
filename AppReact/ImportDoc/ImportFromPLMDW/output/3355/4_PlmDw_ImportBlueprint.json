@@ -134,9 +134,7 @@
                              "transactionIntegrationId":  "Grid_3179"
                          }
                      ],
-    "bomColorwayPivotBindings":  [{
-
-                                 }],
+    "bomColorwayPivotBindings":  [],
     "blueprintFields":  [
                             {
                                 "appTableName":  "Plm_Packaging_Header",
@@ -2694,3 +2692,4 @@
                        "menuOrder":  100
                    }
 }
+

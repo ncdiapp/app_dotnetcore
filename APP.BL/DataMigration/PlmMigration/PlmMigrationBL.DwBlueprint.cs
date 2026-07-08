@@ -486,6 +486,15 @@ WHERE BlueprintKey = @BlueprintKey";
 
         foreach (var binding in blueprint.BomColorwayPivotBindings ?? Enumerable.Empty<PlmDwBlueprintBomColorwayPivotBindingDto>())
         {
+          // Ignore empty placeholder objects (e.g. PowerShell ConvertTo-Json emitted [{ }] for zero bindings).
+          if (binding.PlmGridId <= 0
+              && string.IsNullOrWhiteSpace(binding.HostAppTableName)
+              && string.IsNullOrWhiteSpace(binding.GrandchildAppTableName)
+              && string.IsNullOrWhiteSpace(binding.SourceAppTableName))
+          {
+            continue;
+          }
+
           if (string.IsNullOrWhiteSpace(binding.HostAppTableName)
               || string.IsNullOrWhiteSpace(binding.GrandchildAppTableName)
               || string.IsNullOrWhiteSpace(binding.SourceAppTableName))

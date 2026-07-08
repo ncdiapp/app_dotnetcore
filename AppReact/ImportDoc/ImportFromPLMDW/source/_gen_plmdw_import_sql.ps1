@@ -318,9 +318,12 @@ function Format-TabDisplayName([string]$appTable) {
 
 # PS 5.1 ConvertTo-Json unwraps single-element arrays; unary comma preserves JSON array.
 function Get-JsonArrayForSerialize([array]$Items) {
-    if (-not $Items -or $Items.Count -eq 0) { return @() }
-    if ($Items.Count -eq 1) { return ,$Items[0] }
-    return @($Items)
+    # Always return a true Object[] so ConvertTo-Json emits a JSON array (never a bare object).
+    # Empty → zero-length array (caller / Fix-BomColorwayEmptyBindings normalizes to []).
+    if ($null -eq $Items) { return , @() }
+    $list = @($Items)
+    if ($list.Count -eq 0) { return , @() }
+    return , $list
 }
 
 function Fix-BomColorwayBindingsJsonArray([string]$json) {
@@ -332,9 +335,19 @@ function Fix-BomColorwayBindingsJsonArray([string]$json) {
     $pos = $colonIdx + 1
     while ($pos -lt $json.Length -and [char]::IsWhiteSpace($json[$pos])) { $pos++ }
     if ($pos -ge $json.Length) { return $json }
+
+    # Empty / null / empty-object / [{ }] → canonical []
+    # (PS ConvertTo-Json often emits null, {}, or [{ }] when there are zero bindings.)
+    $rest = $json.Substring($pos)
+    if ($rest -match '^(null|\{\s*\}|\[\s*\]|\[\s*\{\s*\}\s*\])') {
+        $end = $pos + $Matches[0].Length
+        return $json.Substring(0, $pos) + '[]' + $json.Substring($end)
+    }
+
     if ($json[$pos] -eq '[') { return $json }
     if ($json[$pos] -ne '{') { return $json }
 
+    # Single object → wrap as one-element array
     $json = $json.Insert($pos, '[')
     $depth = 0
     for ($i = $pos + 1; $i -lt $json.Length; $i++) {

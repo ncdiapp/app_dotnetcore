@@ -286,9 +286,7 @@
                              "transactionIntegrationId":  "Tab_4219"
                          }
                      ],
-    "bomColorwayPivotBindings":  [{
-
-                                 }],
+    "bomColorwayPivotBindings":  [],
     "blueprintFields":  [
                             {
                                 "appTableName":  "Plm_Fabric_Info",
@@ -7507,3 +7505,4 @@
                        "menuOrder":  100
                    }
 }
+

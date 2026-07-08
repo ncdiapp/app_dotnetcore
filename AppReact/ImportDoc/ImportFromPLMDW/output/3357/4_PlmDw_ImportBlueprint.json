@@ -72,9 +72,7 @@
                              "transactionIntegrationId":  "Grid_7"
                          }
                      ],
-    "bomColorwayPivotBindings":  [{
-
-                                 }],
+    "bomColorwayPivotBindings":  [],
     "blueprintFields":  [
                             {
                                 "appTableName":  "Plm_Color_Patette_Header",
@@ -1412,3 +1410,4 @@
                        "menuOrder":  100
                    }
 }
+

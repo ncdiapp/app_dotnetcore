@@ -65,9 +65,7 @@
     "gridBindings":  [
 
                      ],
-    "bomColorwayPivotBindings":  [{
-
-                                 }],
+    "bomColorwayPivotBindings":  [],
     "blueprintFields":  [
                             {
                                 "appTableName":  "Plm_Graphic_Requests",
@@ -586,3 +584,4 @@
                        "menuOrder":  100
                    }
 }
+

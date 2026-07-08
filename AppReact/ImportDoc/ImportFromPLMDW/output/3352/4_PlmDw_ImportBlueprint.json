@@ -248,9 +248,7 @@
                              "transactionIntegrationId":  "Tab_4238"
                          }
                      ],
-    "bomColorwayPivotBindings":  [{
-
-                                 }],
+    "bomColorwayPivotBindings":  [],
     "blueprintFields":  [
                             {
                                 "appTableName":  "Plm_Grading",
@@ -3989,3 +3987,4 @@
                        "menuOrder":  100
                    }
 }
+
