@@ -785,7 +785,10 @@ ${cells}
             {(['blocks', 'tokens'] as const).map(tab => (
               <button
                 key={tab}
-                onClick={() => setLeftTab(tab)}
+                onClick={() => {
+                  setLeftTab(tab);
+                  if (tab === 'tokens') refreshTokens();
+                }}
                 className={`flex-1 py-1.5 text-xs font-medium capitalize transition-colors
                   ${leftTab === tab
                     ? 'border-b-2 border-blue-500 text-blue-600'
