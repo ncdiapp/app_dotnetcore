@@ -166,7 +166,8 @@ WHERE t.IntegrationId LIKE 'Tab[_]%'
             progressCallback?.Invoke(pct, $"Building Data Model Template {templateName} ({templateIndex}/{templateCount})…");
 
             int searchId = EnsureTemplateSearchShell(conn, template, saasApplicationId);
-            string queryText = BuildReferenceBasicInfoDataSetQuery(rootTable);
+            string masterSiblingTable = ResolveTemplateMasterSiblingTableName(templateTabs);
+            string queryText = BuildReferenceBasicInfoDataSetQuery(rootTable, masterSiblingTable);
             string dataSetName = TruncateDataSetName(templateName);
 
             AppSearchExDto searchDto = AppSearchConfigBL.RetrieveOneAppSearchExDto(searchId);
@@ -334,9 +335,40 @@ WHERE SearchId = @SearchId";
             return searchId.Value;
         }
 
-        private static string BuildReferenceBasicInfoDataSetQuery(string rootTable)
+        private static string ResolveTemplateMasterSiblingTableName(IReadOnlyList<PlmTemplateTabRow> templateTabs)
         {
-            return $"SELECT ReferenceId, ReferenceCode, FolderId, MasterReferenceId FROM dbo.[{rootTable}]";
+            if (templateTabs == null || templateTabs.Count == 0)
+                return null;
+
+            var headerTab = templateTabs
+                .Where(t => t.ImportStatus != TemplateStatusSkipped)
+                .OrderBy(t => t.IsTemplateHeaderTab ? 0 : 1)
+                .ThenBy(t => t.TabSort ?? short.MaxValue)
+                .ThenBy(t => t.TabId)
+                .FirstOrDefault(t => t.IsTemplateHeaderTab && !string.IsNullOrWhiteSpace(t.SiblingTableName));
+            if (!string.IsNullOrWhiteSpace(headerTab?.SiblingTableName))
+                return headerTab.SiblingTableName;
+
+            return templateTabs
+                .Where(t => t.ImportStatus != TemplateStatusSkipped && !string.IsNullOrWhiteSpace(t.SiblingTableName))
+                .OrderBy(t => t.TabSort ?? short.MaxValue)
+                .ThenBy(t => t.TabId)
+                .Select(t => t.SiblingTableName)
+                .FirstOrDefault();
+        }
+
+        private static string BuildReferenceBasicInfoDataSetQuery(string rootTable, string masterSiblingTable = null)
+        {
+            if (string.IsNullOrWhiteSpace(masterSiblingTable))
+                return $"SELECT ReferenceId, ReferenceCode, FolderId, MasterReferenceId FROM dbo.[{rootTable}]";
+
+            var columns = ReferenceBasicInfoViewFields
+                .Select(f => $"[{rootTable}].{f.ColumnName}");
+            string selectList = string.Join(",\r\n", columns);
+            return $@"SELECT
+{selectList}
+FROM [dbo].[{rootTable}]
+INNER JOIN [dbo].[{masterSiblingTable}] ON [{rootTable}].ReferenceId = [{masterSiblingTable}].ReferenceId";
         }
 
         private static string TruncateDataSetName(string name)

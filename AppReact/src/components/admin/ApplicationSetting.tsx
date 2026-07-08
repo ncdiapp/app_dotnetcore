@@ -35,6 +35,43 @@ const resolveUsageType = (item: ApplicationSettingItem) => {
   return Number.isFinite(numericUsage) ? numericUsage : ApplicationSettingValueType.Text;
 };
 
+/** ObservableSet from API may be a plain array or { InternalItems: [...] }. */
+const unwrapAppSetupList = (data: unknown): ApplicationSettingItem[] => {
+  if (Array.isArray(data)) {
+    return data;
+  }
+  if (data && typeof data === 'object' && Array.isArray((data as any).InternalItems)) {
+    return (data as any).InternalItems;
+  }
+  return [];
+};
+
+const buildAppSetupSavePayload = (items: ApplicationSettingItem[]) => {
+  const modifiedItems = items
+    .filter((item) => Boolean(item?.IsModified))
+    .map((item) => {
+      const usageType = resolveUsageType(item);
+      let valueForSave: any = item.SetupValue;
+      if (usageType === ApplicationSettingValueType.Boolean) {
+        if (typeof item.SetupValue === 'string') {
+          valueForSave = item.SetupValue === 'True' ? 'True' : 'False';
+        } else {
+          valueForSave = item.SetupValue ? 'True' : 'False';
+        }
+      }
+      return {
+        ...item,
+        SetupValue: valueForSave ?? '',
+        IsModified: true,
+      };
+    });
+
+  return {
+    DeletedItemIds: [] as unknown[],
+    InternalItems: modifiedItems,
+  };
+};
+
 const extractErrorMessages = (validationResult: any): string[] => {
   if (!validationResult) {
     return [];
@@ -254,7 +291,7 @@ const ApplicationSetting: React.FC = () => {
         adminSvc.retrieveAllAppSetupDtoList(false),
         adminSvc.checkServerSetting(),
       ]);
-      prepareAppSetupDtoList(Array.isArray(appSetupDtoList) ? appSetupDtoList : []);
+      prepareAppSetupDtoList(unwrapAppSetupList(appSetupDtoList));
       setServerSettings(serverSettingDto);
     } catch (error) {
       errorMessage.showError(error instanceof Error ? error.message : String(error));
@@ -333,24 +370,15 @@ const ApplicationSetting: React.FC = () => {
   };
 
   const handleSave = async () => {
+    const payload = buildAppSetupSavePayload(settings);
+    if (!payload.InternalItems.length) {
+      errorMessage.showWarning('No changes to save.');
+      return;
+    }
+
     setIsSaving(true);
     dispatch(setIsBusy());
     try {
-      const payload = settings.map((item) => {
-        const usageType = resolveUsageType(item);
-        let valueForSave: any = item.SetupValue;
-        if (usageType === ApplicationSettingValueType.Boolean) {
-          if (typeof item.SetupValue === 'string') {
-            valueForSave = item.SetupValue === 'True' ? 'True' : 'False';
-          } else {
-            valueForSave = item.SetupValue ? 'True' : 'False';
-          }
-        }
-        return {
-          ...item,
-          SetupValue: valueForSave ?? '',
-        };
-      });
       const response = await adminSvc.saveAllAppSetupEntityDto(payload);
       const validationMessages = extractErrorMessages(response?.ValidationResult);
 

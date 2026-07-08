@@ -415,6 +415,66 @@ WHERE BlueprintKey = @BlueprintKey";
       return prefix + "ReferenceBasicInfo";
     }
 
+    private static string ResolveBlueprintMasterSiblingTableName(PlmDwImportBlueprintDto blueprint, string prefix)
+    {
+      if (blueprint == null)
+        return null;
+
+      var templateHeaderTabIds = GetDwBlueprintTemplateHeaderTabIds(blueprint);
+
+      var headerTransaction = (blueprint.Transactions ?? Enumerable.Empty<PlmDwBlueprintTransactionDto>())
+        .Where(t => t != null
+          && !string.Equals(t.ImportStatus, TemplateStatusSkipped, StringComparison.OrdinalIgnoreCase)
+          && (t.IsTemplateHeaderTab == true || templateHeaderTabIds.Contains(t.PlmTabId)))
+        .OrderBy(t => t.PlmTabSort ?? int.MaxValue)
+        .ThenBy(t => t.PlmTabId)
+        .FirstOrDefault();
+
+      string fromHeader = ResolveMasterSiblingTableFromTransaction(headerTransaction, prefix);
+      if (!string.IsNullOrWhiteSpace(fromHeader))
+        return fromHeader;
+
+      int? primaryTabId = blueprint.PlmTemplate?.TemplateHeaderTabIds?.FirstOrDefault();
+      if (!primaryTabId.HasValue && templateHeaderTabIds.Count > 0)
+        primaryTabId = templateHeaderTabIds.First();
+
+      if (primaryTabId.HasValue)
+      {
+        var sharedGroup = blueprint.TabSharedTableGroups?
+          .FirstOrDefault(g => g != null && g.PrimaryPlmTabId == primaryTabId.Value
+            && !string.IsNullOrWhiteSpace(g.SharedAppTableName));
+        if (sharedGroup != null)
+          return QualifyBlueprintTableName(sharedGroup.SharedAppTableName, prefix);
+      }
+
+      foreach (var tx in blueprint.Transactions ?? Enumerable.Empty<PlmDwBlueprintTransactionDto>())
+      {
+        if (string.Equals(tx.ImportStatus, TemplateStatusSkipped, StringComparison.OrdinalIgnoreCase))
+          continue;
+
+        string fromTx = ResolveMasterSiblingTableFromTransaction(tx, prefix);
+        if (!string.IsNullOrWhiteSpace(fromTx))
+          return fromTx;
+      }
+
+      return null;
+    }
+
+    private static string ResolveMasterSiblingTableFromTransaction(PlmDwBlueprintTransactionDto tx, string prefix)
+    {
+      var siblings = tx?.UnitStructure?.SiblingUnits?
+        .Where(s => s != null && !string.IsNullOrWhiteSpace(s.AppTableName))
+        .ToList();
+      if (siblings == null || siblings.Count == 0)
+        return null;
+
+      var masterSibling = siblings.FirstOrDefault(s => s.IsMasterSibling);
+      if (masterSibling != null)
+        return QualifyBlueprintTableName(masterSibling.AppTableName, prefix);
+
+      return QualifyBlueprintTableName(siblings[0].AppTableName, prefix);
+    }
+
     private static void ValidateDwBlueprintInternal(
       PlmDwImportBlueprintDto blueprint,
       string tenantConn,
@@ -876,7 +936,9 @@ WHERE SearchId = @SearchId";
         }
       }
 
-      string queryText = BuildReferenceBasicInfoDataSetQuery(rootTable);
+      string prefix = ResolveBlueprintTablePrefix(blueprint);
+      string masterSiblingTable = ResolveBlueprintMasterSiblingTableName(blueprint, prefix);
+      string queryText = BuildReferenceBasicInfoDataSetQuery(rootTable, masterSiblingTable);
       string dataSetName = TruncateDataSetName(searchName);
 
       AppSearchExDto searchDto = AppSearchConfigBL.RetrieveOneAppSearchExDto(searchId);

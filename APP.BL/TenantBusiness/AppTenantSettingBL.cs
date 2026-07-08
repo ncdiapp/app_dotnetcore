@@ -96,17 +96,37 @@ namespace App.BL
 
             using (var adapter = new DataAccessAdapter(connStr))
             {
-                const string sql = "SELECT SetupCode, SetupValue FROM dbo.AppTenantSetting ORDER BY SetupCode";
+                const string sql = @"SELECT SetupId, SetupCode, SetupValue, Description, EntityId, UsageType
+                                     FROM dbo.AppTenantSetting
+                                     ORDER BY SetupCode";
                 var dt = adapter.ExecuteDataTableRetrievalQuery(sql, new List<SqlParameter>());
                 foreach (DataRow row in dt.Rows)
                 {
-                    var code = row[0] as string;
+                    var code = row["SetupCode"] as string;
                     if (string.IsNullOrEmpty(code)) continue;
-                    var dto = new AppSetupExDto();
-                    dto.Id = code;
-                    dto.SetupCode = code;
-                    dto.SetupValue = row[1] as string;
-                    dto.Description = code;
+
+                    var dto = new AppSetupExDto
+                    {
+                        Id = row["SetupId"],
+                        SetupCode = code,
+                        SetupValue = row["SetupValue"] as string,
+                        Description = row["Description"] as string ?? code,
+                    };
+
+                    if (row["EntityId"] != DBNull.Value && int.TryParse(row["EntityId"]?.ToString(), out var entityId))
+                        dto.EntityId = entityId;
+
+                    if (row["UsageType"] != DBNull.Value && int.TryParse(row["UsageType"]?.ToString(), out var usageType))
+                        dto.UsageType = usageType;
+
+                    if (dto.UsageType.HasValue
+                        && dto.UsageType.Value == (int)EmAppApplicationSettingValueType.List
+                        && dto.EntityId.HasValue)
+                    {
+                        dto.EntityDataSource = AppEntityInfoBL.GetLookupItemList(dto.EntityId.Value, string.Empty, false);
+                    }
+
+                    dto.StopChangeTracking();
                     set.Add(dto);
                 }
             }
@@ -140,7 +160,13 @@ namespace App.BL
             }
 
             var companyId = identity?.CurrentWorkingCompanyId is int id ? id : 0;
-            var modified = aSet.FindModifiedItems().Where(o => !o.IsNew).ToList();
+            // React/Angular POST JSON may not populate ObservableSet change-tracking; honor IsModified from client.
+            var modified = aSet
+                .Where(o => o != null && !o.IsNew && o.IsModified)
+                .ToList();
+            if (!modified.Any())
+                modified = aSet.FindModifiedItems().Where(o => !o.IsNew).ToList();
+
             if (!modified.Any())
             {
                 result.ObjectList = RetrieveAllAsDto();

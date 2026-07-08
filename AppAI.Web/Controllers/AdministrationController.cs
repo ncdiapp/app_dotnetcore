@@ -370,6 +370,9 @@ public class AdministrationController : SecureBaseController
     {
         if (aSet == null) return null;
 
+        // Match legacy Angular AdministrationController — clear deleted ids for setup saves.
+        aSet.DeletedItemIds ??= new List<object>();
+
         var identity = (APP.Components.Dto.AppClientIdentity?)APP.Framework.ServerContext.Instance.CurrnetClientIdentity;
         bool isSysAdmin = identity?.CurrentLoginUserType == (int)EmAppUserType.SysAdmin;
 

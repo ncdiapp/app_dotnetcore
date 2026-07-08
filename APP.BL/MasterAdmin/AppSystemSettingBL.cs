@@ -152,7 +152,12 @@ namespace App.BL
             var validation = new ValidationResult();
             result.ValidationResult = validation;
 
-            var modified = aSet.FindModifiedItems().Where(o => !o.IsNew).ToList();
+            var modified = aSet
+                .Where(o => o != null && !o.IsNew && o.IsModified)
+                .ToList();
+            if (!modified.Any())
+                modified = aSet.FindModifiedItems().Where(o => !o.IsNew).ToList();
+
             if (!modified.Any())
             {
                 result.ObjectList = RetrieveAllAsDto();
