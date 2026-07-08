@@ -598,10 +598,11 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                         }}
                         onDragEnd={() => { setDraggingToken(null); setDropIndicatorY(null); }}
                         onClick={() => insertAtCursor(block.html)}
-                        title="Click to insert at cursor · Drag onto preview"
-                        className={`w-full text-left px-2 py-1.5 text-xs rounded-[4px] border ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 transition-colors cursor-grab active:cursor-grabbing`}
+                        title="Click to insert at cursor · Drag and drop onto the code editor"
+                        className={`w-full text-left px-2 py-1.5 text-xs rounded-[4px] border ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 transition-colors cursor-grab active:cursor-grabbing flex items-center gap-1.5`}
                       >
-                        <i className={`${block.icon} ${block.color} mr-1.5 w-3`} />
+                        <span className="text-gray-300 text-[10px] select-none shrink-0">⠿</span>
+                        <i className={`${block.icon} ${block.color} w-3 shrink-0`} />
                         {block.label}
                       </button>
                     ))}
@@ -642,9 +643,14 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                 ) : (
                   <>
                   {!draggingToken && (
-                    <p className={`text-[10px] px-2 pt-1 pb-0.5 opacity-40 ${theme.label}`}>
-                      Click to insert · Drag to code editor
-                    </p>
+                    <div className={`mx-2 my-1.5 px-2 py-1.5 rounded-[4px] text-[10px] border border-blue-200 bg-blue-50 text-blue-600`}>
+                      <div className="flex items-center gap-1 font-semibold mb-0.5">
+                        <i className="fa-solid fa-hand-pointer text-[9px]" /> Click token → inserts at cursor
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <i className="fa-solid fa-up-down-left-right text-[9px]" /> Drag token → drop onto any line in the code editor
+                      </div>
+                    </div>
                   )}
                   {groupedTokens.map(grp => (
                     <div key={grp.name}>
@@ -667,14 +673,15 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
                             onDragEnd={() => { setDraggingToken(null); setDropIndicatorY(null); }}
                             onClick={() => insertAtCursor(tok.Token)}
                             title={`${tok.Token}\nClick to insert · Drag to code editor`}
-                            className={`w-full text-left px-2 py-1 text-xs truncate cursor-grab active:cursor-grabbing border-b ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400`}
+                            className={`w-full text-left px-2 py-1 text-xs truncate cursor-grab active:cursor-grabbing border-b ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 flex items-center gap-1`}
                           >
+                            <span className="text-gray-300 text-[10px] shrink-0 select-none">⠿</span>
                             {tok.InsideEach
-                              ? <span className="text-gray-400 mr-1 text-[10px]">↳</span>
+                              ? <span className="text-gray-400 text-[10px]">↳</span>
                               : tok.IsList
-                                ? <i className="fa-solid fa-list mr-1.5 text-orange-400 text-[9px]" />
-                                : <i className="fa-solid fa-tag mr-1.5 text-green-400 text-[9px]" />}
-                            <span className={tok.InsideEach ? 'opacity-70' : ''}>
+                                ? <i className="fa-solid fa-list text-orange-400 text-[9px]" />
+                                : <i className="fa-solid fa-tag text-green-400 text-[9px]" />}
+                            <span className={`truncate ${tok.InsideEach ? 'opacity-70' : ''}`}>
                               {tok.Field === '*' ? `#each ${tok.ResultSet}` : tok.Field}
                             </span>
                           </button>
@@ -721,7 +728,11 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
               <>
                 <i className="fa-solid fa-code text-gray-400 text-xs shrink-0" />
                 <span className={`text-xs font-medium ${theme.label}`}>HTML / CSS</span>
-                <span className={`text-xs opacity-40 ${theme.label}`}>— click or drag blocks/tokens to insert</span>
+                <span className={`text-xs opacity-40 ${theme.label}`}>
+                  — <i className="fa-solid fa-hand-pointer mr-0.5" />click token to insert at cursor
+                  &nbsp;·&nbsp;
+                  <i className="fa-solid fa-up-down-left-right mr-0.5" />drag token onto editor
+                </span>
               </>
             )}
             <div className="flex-auto" />
@@ -749,17 +760,35 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
 
           {/* ── CODE mode: full-height Monaco editor — always mounted, hidden in visual mode ── */}
           <div
-            className={`h-1 flex-auto overflow-hidden ${draggingToken !== null ? 'ring-2 ring-blue-400 ring-inset' : ''}`}
+            className="relative h-1 flex-auto overflow-hidden"
             style={{ display: viewMode === 'split' ? 'flex' : 'none' }}
-            onDragOver={e => { if (draggingToken !== null) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } }}
-            onDrop={e => {
-              if (draggingToken === null) return;
-              e.preventDefault();
-              insertAtCursor(draggingToken);
-              setDraggingToken(null);
-              setDropIndicatorY(null);
-            }}
           >
+            {/* Active drag overlay — shown while user drags a token/block over the editor */}
+            {draggingToken !== null && (
+              <div
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none"
+                style={{
+                  background: 'rgba(59,130,246,0.08)',
+                  border: '2px dashed #3b82f6',
+                  animation: 'pulse 1.2s ease-in-out infinite',
+                }}
+              >
+                <i className="fa-solid fa-down-long text-blue-400 text-2xl mb-2" style={{ animation: 'bounce 1s ease-in-out infinite' }} />
+                <span className="text-sm font-semibold text-blue-500">Drop here to insert</span>
+                <span className="text-xs text-blue-400 mt-1 opacity-80">Token will be inserted at the drop position</span>
+              </div>
+            )}
+
+            {/* Static hint — shown only when idle in Code mode */}
+            {draggingToken === null && viewMode === 'split' && (
+              <div className="absolute bottom-3 right-3 z-10 pointer-events-none">
+                <span className="inline-flex items-center gap-1.5 text-[10px] px-2 py-1 rounded border border-blue-200 bg-white/90 text-blue-500 shadow-sm">
+                  <i className="fa-solid fa-up-down-left-right text-[9px]" />
+                  Drag tokens from left panel · drop onto any line
+                </span>
+              </div>
+            )}
+
             <JsonCodeEditor
               language="html"
               value={templateHtml}
