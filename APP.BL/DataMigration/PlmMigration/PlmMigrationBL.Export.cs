@@ -510,5 +510,23 @@ END";
         {
             return "[" + schema.Replace("]", "]]") + "].[" + table.Replace("]", "]]") + "]";
         }
+
+        internal static int CopyPlmSourceTableToTenant(
+            string plmConnectionString,
+            string tenantConnectionString,
+            string sourceTableName,
+            string targetTableName)
+        {
+            using (var sourceConn = new SqlConnection(plmConnectionString))
+            using (var targetConn = new SqlConnection(tenantConnectionString))
+            {
+                sourceConn.Open();
+                targetConn.Open();
+                if (!TableExists(sourceConn, "dbo", sourceTableName))
+                    throw new InvalidOperationException($"PLM table dbo.{sourceTableName} was not found.");
+
+                return CopyTableWithPrimaryKey(sourceConn, targetConn, "dbo", sourceTableName, targetTableName);
+            }
+        }
     }
 }

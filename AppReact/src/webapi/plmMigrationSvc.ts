@@ -567,6 +567,44 @@ class PlmMigrationService {
     return response.json();
   }
 
+  async previewPlmColorImport(sessionId: number): Promise<OperationCallResult<PlmColorImportPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewPlmColorImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to preview PLM color import');
+    return response.json();
+  }
+
+  async executePlmColorImport(request: PlmColorImportExecuteRequestDto): Promise<OperationCallResult<PlmColorImportExecuteResultDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecutePlmColorImport`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to execute PLM color import');
+    return response.json();
+  }
+
+  async previewPlmPomImport(sessionId: number): Promise<OperationCallResult<PlmPomImportPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewPlmPomImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to preview PLM POM import');
+    return response.json();
+  }
+
+  async executePlmPomImport(request: PlmPomImportExecuteRequestDto): Promise<OperationCallResult<PlmPomImportExecuteResultDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecutePlmPomImport`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to execute PLM POM import');
+    return response.json();
+  }
+
   async previewSystemDefineEntityImport(sessionId: number): Promise<OperationCallResult<PlmSystemDefineEntityPreviewDto>> {
     const response = await fetch(`${this.baseUrl}/PreviewSystemDefineEntityImport?sessionId=${sessionId}`, {
       method: 'POST',
@@ -718,6 +756,52 @@ class PlmMigrationService {
       body: JSON.stringify(request),
     });
     if (!response.ok) throw new Error('Failed to refresh DW import tenant caches');
+    return response.json();
+  }
+
+  async loadSearchImportBlueprint(blueprintJson: string): Promise<OperationCallResult<PlmSearchImportBlueprintDto>> {
+    const response = await fetch(`${this.baseUrl}/LoadSearchImportBlueprint`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ BlueprintJson: blueprintJson }),
+    });
+    if (!response.ok) throw new Error('Failed to load search import blueprint');
+    return response.json();
+  }
+
+  async validateSearchImportBlueprint(
+    blueprint: PlmSearchImportBlueprintDto,
+  ): Promise<OperationCallResult<PlmSearchImportValidationDto>> {
+    const response = await fetch(`${this.baseUrl}/ValidateSearchImportBlueprint`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(blueprint),
+    });
+    if (!response.ok) throw new Error('Failed to validate search import blueprint');
+    return response.json();
+  }
+
+  async previewSearchBlueprintConfig(
+    blueprint: PlmSearchImportBlueprintDto,
+  ): Promise<OperationCallResult<PlmSearchImportPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewSearchBlueprintConfig`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(blueprint),
+    });
+    if (!response.ok) throw new Error('Failed to preview search blueprint config');
+    return response.json();
+  }
+
+  async executeSearchBlueprintConfig(
+    request: PlmSearchImportExecuteRequestDto,
+  ): Promise<OperationCallResult<PlmSearchImportExecuteResultDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecuteSearchBlueprintConfig`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to execute search blueprint config');
     return response.json();
   }
 }
@@ -895,6 +979,241 @@ export interface PlmDwBlueprintExecuteResultDto {
 export interface PlmDwRefreshCachesRequestDto {
   TransactionIds?: number[] | null;
   TableNames?: string[] | null;
+}
+
+export interface PlmColorRootFolderPreviewDto {
+  PlmFolderId?: number;
+  PlmFolderName?: string | null;
+  AppFolderId?: number | null;
+  AppFolderName?: string | null;
+}
+
+export interface PlmColorImportPreviewDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  PlmColorRootFolderCount?: number;
+  RootFolderStrategy?: string | null;
+  ResolvedAppRootFolderId?: number | null;
+  ResolvedAppRootFolderName?: string | null;
+  PlmColorRootFolders?: PlmColorRootFolderPreviewDto[] | null;
+  HasRgbColorTable?: boolean;
+  RgbColorRowCount?: number;
+  ColorGroupDetailRowCount?: number;
+  ExistingTransactionId?: number | null;
+  ExistingListSearchId?: number | null;
+  ExistingFolderTemplateSearchId?: number | null;
+  Warnings?: string[] | null;
+  PlannedActions?: string[] | null;
+}
+
+export interface PlmColorImportExecuteRequestDto {
+  SessionId?: number | null;
+  SaasApplicationId?: number | null;
+}
+
+export interface PlmColorImportExecuteResultDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  RootFolderStrategy?: string | null;
+  AppRootFolderId?: number | null;
+  TransactionId?: number | null;
+  FormId?: number | null;
+  ListSearchId?: number | null;
+  FolderTemplateSearchId?: number | null;
+  FolderSearchViewId?: number | null;
+  ListSearchViewId?: number | null;
+  Messages?: string[] | null;
+}
+
+export interface PlmPomRootFolderPreviewDto {
+  PlmFolderId?: number;
+  PlmFolderName?: string | null;
+  AppFolderId?: number | null;
+  AppFolderName?: string | null;
+}
+
+export interface PlmPomImportPreviewDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  HasBodyPartTable?: boolean;
+  BodyPartRowCount?: number;
+  HasBodyTypeTable?: boolean;
+  BodyTypeRowCount?: number;
+  HasBodyTypeDetailTable?: boolean;
+  BodyTypeDetailRowCount?: number;
+  BodyTypeDetailSourceRowCount?: number;
+  HasSpecBodyPartGradingTable?: boolean;
+  SpecBodyPartGradingRowCount?: number;
+  SpecBodyPartGradingSourceRowCount?: number;
+  PlmPomRootFolderCount?: number;
+  PomAppRootFolderId?: number | null;
+  PomAppRootFolderName?: string | null;
+  PlmPomRootFolders?: PlmPomRootFolderPreviewDto[] | null;
+  PlmPomTemplateRootFolderCount?: number;
+  PomTemplateAppRootFolderId?: number | null;
+  PomTemplateAppRootFolderName?: string | null;
+  PlmPomTemplateRootFolders?: PlmPomRootFolderPreviewDto[] | null;
+  ExistingPomTransactionId?: number | null;
+  ExistingPomListSearchId?: number | null;
+  ExistingPomFolderSearchId?: number | null;
+  ExistingPomTemplateTransactionId?: number | null;
+  ExistingPomTemplateListSearchId?: number | null;
+  ExistingPomTemplateFolderSearchId?: number | null;
+  PomFolderIdReadyToRemap?: number;
+  PomFolderIdUnmappedCount?: number;
+  PomTemplateFolderIdReadyToRemap?: number;
+  PomTemplateFolderIdUnmappedCount?: number;
+  Warnings?: string[] | null;
+  PlannedActions?: string[] | null;
+}
+
+export interface PlmPomImportExecuteRequestDto {
+  SessionId?: number | null;
+  SaasApplicationId?: number | null;
+  ImportJunctionTables?: boolean;
+  ImportFoldersIfMissing?: boolean;
+}
+
+export interface PlmPomImportExecuteResultDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  PomTransactionId?: number | null;
+  PomFormId?: number | null;
+  PomListSearchId?: number | null;
+  PomFolderSearchId?: number | null;
+  PomAppRootFolderId?: number | null;
+  PomTemplateTransactionId?: number | null;
+  PomTemplateFormId?: number | null;
+  PomTemplateListSearchId?: number | null;
+  PomTemplateFolderSearchId?: number | null;
+  PomTemplateAppRootFolderId?: number | null;
+  BodyTypeDetailRowsImported?: number;
+  SpecBodyPartGradingRowsImported?: number;
+  FoldersImported?: number;
+  PomFolderIdsRemapped?: number;
+  PomTemplateFolderIdsRemapped?: number;
+  Messages?: string[] | null;
+}
+
+export interface PlmSearchImportBlueprintDto {
+  SchemaVersion?: number;
+  GeneratedAt?: string | null;
+  Source?: PlmSearchImportSourceDto | null;
+  Search?: PlmSearchImportSearchDto | null;
+  DataSet?: PlmSearchImportDataSetDto | null;
+  JoinPlan?: PlmSearchImportJoinPlanDto | null;
+  TransactionGroup?: PlmSearchImportTransactionGroupDto | null;
+  CriteriaFields?: PlmSearchImportCriteriaFieldDto[] | null;
+  SearchView?: PlmSearchImportSearchViewDto | null;
+  LinkTargets?: PlmSearchImportLinkTargetDto[] | null;
+  Menu?: PlmSearchImportMenuDto | null;
+  Coverage?: PlmSearchImportCoverageDto | null;
+  UnmappedPlmFields?: PlmSearchImportUnmappedFieldDto[] | null;
+}
+
+export interface PlmSearchImportSourceDto {
+  PlmSearchTemplateId?: number | null;
+  PlmSearchName?: string | null;
+  PrimaryTableName?: string | null;
+  SelectedJoinPlanId?: string | null;
+}
+
+export interface PlmSearchImportSearchDto {
+  Name?: string | null;
+  Description?: string | null;
+  IntegrationId?: string | null;
+  UsageType?: string | null;
+  AutoExecute?: boolean;
+  SaasApplicationId?: number | null;
+}
+
+export interface PlmSearchImportDataSetDto {
+  Name?: string | null;
+  PrimaryTableName?: string | null;
+  QueryText?: string | null;
+}
+
+export interface PlmSearchImportJoinPlanDto {
+  PlanId?: string | null;
+  Label?: string | null;
+}
+
+export interface PlmSearchImportTransactionGroupDto {
+  TransactionGroupId?: number | null;
+  GroupName?: string | null;
+  PrimaryTransactionIntegrationId?: string | null;
+}
+
+export interface PlmSearchImportCriteriaFieldDto {
+  DisplayText?: string | null;
+  SysTableFiledPath?: string | null;
+}
+
+export interface PlmSearchImportSearchViewDto {
+  Name?: string | null;
+  IntegrationId?: string | null;
+  Fields?: PlmSearchImportSearchViewFieldDto[] | null;
+}
+
+export interface PlmSearchImportSearchViewFieldDto {
+  DisplayText?: string | null;
+  SysTableFiledPath?: string | null;
+}
+
+export interface PlmSearchImportLinkTargetDto {
+  Name?: string | null;
+  ActionType?: string | null;
+  TransactionIntegrationId?: string | null;
+}
+
+export interface PlmSearchImportMenuDto {
+  RegisterInMainMenu?: boolean;
+  MenuTitle?: string | null;
+}
+
+export interface PlmSearchImportUnmappedFieldDto {
+  DisplayLabel?: string | null;
+  Reason?: string | null;
+}
+
+export interface PlmSearchImportCoverageDto {
+  Criteria?: { Total?: number; Mapped?: number; Ignored?: number };
+  View?: { Total?: number; Mapped?: number; Ignored?: number };
+}
+
+export interface PlmSearchImportValidationDto {
+  IsValid?: boolean;
+  Errors?: string[] | null;
+  Warnings?: string[] | null;
+}
+
+export interface PlmSearchImportPreviewItemDto {
+  ObjectType?: string | null;
+  Name?: string | null;
+  IntegrationId?: string | null;
+  Action?: string | null;
+  ExistingId?: number | null;
+  Detail?: string | null;
+}
+
+export interface PlmSearchImportPreviewDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  Items?: PlmSearchImportPreviewItemDto[] | null;
+}
+
+export interface PlmSearchImportExecuteRequestDto {
+  Blueprint?: PlmSearchImportBlueprintDto | null;
+  SaasApplicationId?: number | null;
+}
+
+export interface PlmSearchImportExecuteResultDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  SearchId?: number | null;
+  SearchViewId?: number | null;
+  DataSetId?: number | null;
+  Messages?: string[] | null;
 }
 
 export const plmMigrationSvc = new PlmMigrationService();

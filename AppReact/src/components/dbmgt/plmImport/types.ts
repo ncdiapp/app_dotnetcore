@@ -7,13 +7,19 @@ import type {
   PlmDwImportBlueprintDto,
   PlmDwBlueprintPreviewItemDto,
   PlmDwBlueprintExecuteResultDto,
+  PlmSearchImportBlueprintDto,
+  PlmSearchImportPreviewItemDto,
+  PlmSearchImportExecuteResultDto,
 } from '../../../webapi/plmMigrationSvc';
 
 export type PlmImportStepCode =
   | 'Connect'
   | 'Entity'
   | 'DwBlueprint'
+  | 'SearchImport'
   | 'FolderImport'
+  | 'ColorImport'
+  | 'PomImport'
   | 'ImageImport'
   /** @deprecated legacy step code (replaced by ImageImport) */
   | 'OtherData';
@@ -21,11 +27,12 @@ export type PlmImportStepCode =
 /** Legacy session/cache step code from before DW Blueprint step. */
 export const normalizePlmImportStepCode = (code: string | undefined | null): PlmImportStepCode => {
   if (code === 'Template') return 'DwBlueprint';
-  // Backward-compat: "OtherData" previously held image import.
-  // Forward: "ImageImport" (UI-only) is used as the new step code.
   if (code === 'ImageImport') return 'ImageImport';
   if (code === 'OtherData') return 'ImageImport';
   if (code === 'FolderImport') return 'FolderImport';
+  if (code === 'ColorImport') return 'ColorImport';
+  if (code === 'PomImport') return 'PomImport';
+  if (code === 'SearchImport') return 'SearchImport';
   if (code === 'Connect' || code === 'Entity' || code === 'DwBlueprint') {
     return code;
   }
@@ -100,10 +107,25 @@ export interface PlmImportDwBlueprintStepUiState {
   includeNavigation: boolean;
 }
 
+/** PLM Search Import step UI persisted across main app tab switches. */
+export interface PlmImportSearchImportStepUiState {
+  blueprint: PlmSearchImportBlueprintDto | null;
+  blueprintFileName: string | null;
+  blueprintJsonText: string | null;
+  previewItems: PlmSearchImportPreviewItemDto[];
+  validationErrors: string[];
+  validationWarnings: string[];
+  lastExecuteResult: PlmSearchImportExecuteResultDto | null;
+  isValidating: boolean;
+  isPreviewing: boolean;
+  isExecuting: boolean;
+}
+
 export interface PlmImportPageCache {
   wizardState: PlmImportWizardState;
   entityStepUi: PlmImportEntityStepUiState;
   dwBlueprintStepUi: PlmImportDwBlueprintStepUiState;
+  searchImportStepUi: PlmImportSearchImportStepUiState;
   /** @deprecated Legacy cache key — migrated to dwBlueprintStepUi on read */
   templateStepUi?: PlmImportDwBlueprintStepUiState;
 }
@@ -136,6 +158,19 @@ export const createInitialDwBlueprintStepUi = (): PlmImportDwBlueprintStepUiStat
   includeNavigation: true,
 });
 
+export const createInitialSearchImportStepUi = (): PlmImportSearchImportStepUiState => ({
+  blueprint: null,
+  blueprintFileName: null,
+  blueprintJsonText: null,
+  previewItems: [],
+  validationErrors: [],
+  validationWarnings: [],
+  lastExecuteResult: null,
+  isValidating: false,
+  isPreviewing: false,
+  isExecuting: false,
+});
+
 export const buildPlmImportStepStateJson = (state: Pick<
   PlmImportWizardState,
   | 'connectionTested'
@@ -160,6 +195,9 @@ export const PLM_IMPORT_STEP_ORDER: PlmImportStepCode[] = [
   'Connect',
   'Entity',
   'DwBlueprint',
+  'SearchImport',
   'FolderImport',
+  'ColorImport',
+  'PomImport',
   'ImageImport',
 ];

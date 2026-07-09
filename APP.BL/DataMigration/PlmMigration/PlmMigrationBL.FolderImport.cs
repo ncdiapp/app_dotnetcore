@@ -19,7 +19,7 @@ namespace APP.BL.DataMigration.PlmMigration
         private const string PlmFolderActionImport = "PlmFolderImport";
         private const string ColorGroupDetailTable = "Plm_pdmColorGroupDetail";
 
-        private static readonly int[] DefaultPlmFolderTypes = { 1, 2, 7 };
+        private static readonly int[] DefaultPlmFolderTypes = { 1, 2, 5, 7, 14 };
 
         private sealed class PlmSeFolderRow
         {
@@ -447,6 +447,22 @@ ORDER BY TransactionID;";
                 },
                 new FolderImportScope
                 {
+                    PlmFolderType = 5,
+                    PlmFolderTypeName = "POM Template",
+                    AppFolderType = (int)EmAppTransBusinessType.FormData,
+                    AppTransactionId = null,
+                    AppAnchorFolderId = null
+                },
+                new FolderImportScope
+                {
+                    PlmFolderType = 14,
+                    PlmFolderTypeName = "POM",
+                    AppFolderType = (int)EmAppTransBusinessType.FormData,
+                    AppTransactionId = null,
+                    AppAnchorFolderId = null
+                },
+                new FolderImportScope
+                {
                     PlmFolderType = 7,
                     PlmFolderTypeName = "Sketch",
                     AppFolderType = (int)EmAppTransBusinessType.File,
@@ -719,6 +735,60 @@ VALUES
                 cmd.Parameters.AddWithValue("@PlmFolderId", plmFolderId);
                 cmd.ExecuteNonQuery();
             }
+        }
+
+        internal static int ImportPlmFolderTypes(
+            int sessionId,
+            int companyId,
+            string plmConnectionString,
+            string tenantConnectionString,
+            IEnumerable<int> folderTypes,
+            ICollection<string> messages)
+        {
+            EnsurePlmFolderImportTables(tenantConnectionString);
+            var typeList = folderTypes?.Distinct().ToList() ?? new List<int>();
+            if (typeList.Count == 0)
+                return 0;
+
+            var scopes = ResolveFolderImportScopes(tenantConnectionString)
+                .Where(s => typeList.Contains(s.PlmFolderType))
+                .ToList();
+            if (scopes.Count == 0)
+                return 0;
+
+            var allFolders = ReadPlmFolders(plmConnectionString, typeList);
+            var foldersByType = allFolders.GroupBy(f => f.FolderType).ToDictionary(g => g.Key, g => g.ToList());
+            var existingMaps = LoadExistingFolderMaps(tenantConnectionString, sessionId);
+            int foldersCreated = 0;
+
+            foreach (var scope in scopes)
+            {
+                if (!foldersByType.TryGetValue(scope.PlmFolderType, out var rows) || rows.Count == 0)
+                    continue;
+
+                var ordered = TopologicalSortFolders(rows);
+                var plmIdSet = new HashSet<int>(rows.Select(r => r.FolderId));
+                var plmToApp = new Dictionary<int, int>();
+
+                foreach (var existing in existingMaps.Where(m => m.PlmFolderType == scope.PlmFolderType))
+                    plmToApp[existing.PlmFolderId] = existing.AppFolderId;
+
+                foreach (var row in ordered)
+                {
+                    if (plmToApp.ContainsKey(row.FolderId))
+                        continue;
+
+                    int? appParentId = ResolveAppParentFolderId(row, scope, plmIdSet, plmToApp);
+                    int appFolderId = InsertAppFolder(tenantConnectionString, row, scope, appParentId);
+                    plmToApp[row.FolderId] = appFolderId;
+                    UpsertFolderMap(tenantConnectionString, sessionId, companyId, row, scope, appFolderId, appParentId);
+                    foldersCreated++;
+                }
+            }
+
+            if (foldersCreated > 0)
+                messages?.Add($"Imported {foldersCreated} POM folder(s) into APP.");
+            return foldersCreated;
         }
     }
 }

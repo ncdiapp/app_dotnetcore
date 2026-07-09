@@ -1,12 +1,15 @@
 import React, { useCallback, useMemo } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { getStepIndex, PLM_IMPORT_STEPS } from './plmImportStepRegistry';
-import type { PlmImportEntityStepUiState, PlmImportStepCode, PlmImportDwBlueprintStepUiState, PlmImportWizardState } from './types';
+import type { PlmImportEntityStepUiState, PlmImportStepCode, PlmImportDwBlueprintStepUiState, PlmImportSearchImportStepUiState, PlmImportWizardState } from './types';
 import { normalizePlmImportStepCode } from './types';
 import ConnectionStep from './steps/ConnectionStep';
 import EntityStep from './steps/EntityStep';
 import DwBlueprintStep from './steps/DwBlueprintStep';
+import SearchImportStep from './steps/SearchImportStep';
 import FolderImportStep from './steps/FolderImportStep';
+import ColorImportStep from './steps/ColorImportStep';
+import PomImportStep from './steps/PomImportStep';
 import ImageImportStep from './steps/ImageImportStep';
 import PlmImportSessionGear from './PlmImportSessionGear';
 
@@ -14,10 +17,12 @@ export type PlmImportWizardProps = {
   state: PlmImportWizardState;
   entityStepUi: PlmImportEntityStepUiState;
   dwBlueprintStepUi: PlmImportDwBlueprintStepUiState;
+  searchImportStepUi: PlmImportSearchImportStepUiState;
   isSysAdmin: boolean;
   onStateChange: (patch: Partial<PlmImportWizardState>) => void;
   onEntityStepUiChange: (patch: Partial<PlmImportEntityStepUiState>) => void;
   onDwBlueprintStepUiChange: (patch: Partial<PlmImportDwBlueprintStepUiState>) => void;
+  onSearchImportStepUiChange: (patch: Partial<PlmImportSearchImportStepUiState>) => void;
   onReloadSession: () => void;
   onDiscardSession: () => Promise<void>;
 };
@@ -26,10 +31,12 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
   state,
   entityStepUi,
   dwBlueprintStepUi,
+  searchImportStepUi,
   isSysAdmin,
   onStateChange,
   onEntityStepUiChange,
   onDwBlueprintStepUiChange,
+  onSearchImportStepUiChange,
   onReloadSession,
   onDiscardSession,
 }) => {
@@ -108,8 +115,21 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
             onSessionSaved={onReloadSession}
           />
         );
+      case 'SearchImport':
+        return (
+          <SearchImportStep
+            state={state}
+            searchImportStepUi={searchImportStepUi}
+            onSearchImportStepUiChange={onSearchImportStepUiChange}
+            onSessionSaved={onReloadSession}
+          />
+        );
       case 'FolderImport':
         return <FolderImportStep state={state} />;
+      case 'ColorImport':
+        return <ColorImportStep state={state} />;
+      case 'PomImport':
+        return <PomImportStep state={state} />;
       case 'ImageImport':
         return <ImageImportStep state={state} />;
       default:

@@ -415,6 +415,110 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("PreviewPlmColorImport")]
+    public OperationCallResult<PlmColorImportPreviewDto> PreviewPlmColorImport(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewPlmColorImport(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmColorImportPreviewDto>("Plm_Color_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecutePlmColorImport")]
+    public OperationCallResult<PlmColorImportExecuteResultDto> ExecutePlmColorImport([FromBody] PlmColorImportExecuteRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecutePlmColorImport(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmColorImportExecuteResultDto>("Plm_Color_Execute_Error", ex);
+        }
+    }
+
+    [HttpPost("PreviewPlmPomImport")]
+    public OperationCallResult<PlmPomImportPreviewDto> PreviewPlmPomImport(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewPlmPomImport(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmPomImportPreviewDto>("Plm_Pom_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecutePlmPomImport")]
+    public OperationCallResult<PlmPomImportExecuteResultDto> ExecutePlmPomImport([FromBody] PlmPomImportExecuteRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecutePlmPomImport(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmPomImportExecuteResultDto>("Plm_Pom_Execute_Error", ex);
+        }
+    }
+
+    [HttpPost("LoadSearchImportBlueprint")]
+    public OperationCallResult<PlmSearchImportBlueprintDto> LoadSearchImportBlueprint([FromBody] PlmSearchImportLoadRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.LoadSearchImportBlueprint(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportBlueprintDto>("Plm_SearchImport_Load_Error", ex);
+        }
+    }
+
+    [HttpPost("ValidateSearchImportBlueprint")]
+    public OperationCallResult<PlmSearchImportValidationDto> ValidateSearchImportBlueprint([FromBody] PlmSearchImportBlueprintDto blueprint)
+    {
+        try
+        {
+            return PlmMigrationBL.ValidateSearchImportBlueprint(blueprint);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportValidationDto>("Plm_SearchImport_Validate_Error", ex);
+        }
+    }
+
+    [HttpPost("PreviewSearchBlueprintConfig")]
+    public OperationCallResult<PlmSearchImportPreviewDto> PreviewSearchBlueprintConfig([FromBody] PlmSearchImportBlueprintDto blueprint)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewSearchBlueprintConfig(blueprint);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportPreviewDto>("Plm_SearchImport_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecuteSearchBlueprintConfig")]
+    public OperationCallResult<PlmSearchImportExecuteResultDto> ExecuteSearchBlueprintConfig([FromBody] PlmSearchImportExecuteRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecuteSearchBlueprintConfig(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportExecuteResultDto>("Plm_SearchImport_Execute_Error", ex);
+        }
+    }
+
     private static OperationCallResult<T> ErrorResult<T>(string code, Exception ex)
     {
         var result = new OperationCallResult<T>();
