@@ -415,6 +415,32 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("PreviewPlmColorImport")]
+    public OperationCallResult<PlmColorImportPreviewDto> PreviewPlmColorImport(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewPlmColorImport(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmColorImportPreviewDto>("Plm_Color_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecutePlmColorImport")]
+    public OperationCallResult<PlmColorImportExecuteResultDto> ExecutePlmColorImport([FromBody] PlmColorImportExecuteRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecutePlmColorImport(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmColorImportExecuteResultDto>("Plm_Color_Execute_Error", ex);
+        }
+    }
+
     private static OperationCallResult<T> ErrorResult<T>(string code, Exception ex)
     {
         var result = new OperationCallResult<T>();

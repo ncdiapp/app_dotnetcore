@@ -567,6 +567,25 @@ class PlmMigrationService {
     return response.json();
   }
 
+  async previewPlmColorImport(sessionId: number): Promise<OperationCallResult<PlmColorImportPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewPlmColorImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to preview PLM color import');
+    return response.json();
+  }
+
+  async executePlmColorImport(request: PlmColorImportExecuteRequestDto): Promise<OperationCallResult<PlmColorImportExecuteResultDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecutePlmColorImport`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to execute PLM color import');
+    return response.json();
+  }
+
   async previewSystemDefineEntityImport(sessionId: number): Promise<OperationCallResult<PlmSystemDefineEntityPreviewDto>> {
     const response = await fetch(`${this.baseUrl}/PreviewSystemDefineEntityImport?sessionId=${sessionId}`, {
       method: 'POST',
@@ -895,6 +914,50 @@ export interface PlmDwBlueprintExecuteResultDto {
 export interface PlmDwRefreshCachesRequestDto {
   TransactionIds?: number[] | null;
   TableNames?: string[] | null;
+}
+
+export interface PlmColorRootFolderPreviewDto {
+  PlmFolderId?: number;
+  PlmFolderName?: string | null;
+  AppFolderId?: number | null;
+  AppFolderName?: string | null;
+}
+
+export interface PlmColorImportPreviewDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  PlmColorRootFolderCount?: number;
+  RootFolderStrategy?: string | null;
+  ResolvedAppRootFolderId?: number | null;
+  ResolvedAppRootFolderName?: string | null;
+  PlmColorRootFolders?: PlmColorRootFolderPreviewDto[] | null;
+  HasRgbColorTable?: boolean;
+  RgbColorRowCount?: number;
+  ColorGroupDetailRowCount?: number;
+  ExistingTransactionId?: number | null;
+  ExistingListSearchId?: number | null;
+  ExistingFolderTemplateSearchId?: number | null;
+  Warnings?: string[] | null;
+  PlannedActions?: string[] | null;
+}
+
+export interface PlmColorImportExecuteRequestDto {
+  SessionId?: number | null;
+  SaasApplicationId?: number | null;
+}
+
+export interface PlmColorImportExecuteResultDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  RootFolderStrategy?: string | null;
+  AppRootFolderId?: number | null;
+  TransactionId?: number | null;
+  FormId?: number | null;
+  ListSearchId?: number | null;
+  FolderTemplateSearchId?: number | null;
+  FolderSearchViewId?: number | null;
+  ListSearchViewId?: number | null;
+  Messages?: string[] | null;
 }
 
 export const plmMigrationSvc = new PlmMigrationService();

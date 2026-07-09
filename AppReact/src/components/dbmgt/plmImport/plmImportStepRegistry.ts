@@ -34,6 +34,12 @@ export const PLM_IMPORT_STEPS: PlmImportStepDefinition[] = [
     icon: 'fa-solid fa-folder-tree',
   },
   {
+    code: 'ColorImport',
+    label: 'COLOR IMPORT',
+    description: 'Create RGB Color transaction, search, folder navigation, and menus.',
+    icon: 'fa-solid fa-palette',
+  },
+  {
     code: 'ImageImport',
     label: 'Image Import',
     description: 'Import PLM tblSketch binary data into AppFile (original/regular/thumbnail).',

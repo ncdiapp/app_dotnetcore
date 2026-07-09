@@ -14,6 +14,7 @@ export type PlmImportStepCode =
   | 'Entity'
   | 'DwBlueprint'
   | 'FolderImport'
+  | 'ColorImport'
   | 'ImageImport'
   /** @deprecated legacy step code (replaced by ImageImport) */
   | 'OtherData';
@@ -21,11 +22,10 @@ export type PlmImportStepCode =
 /** Legacy session/cache step code from before DW Blueprint step. */
 export const normalizePlmImportStepCode = (code: string | undefined | null): PlmImportStepCode => {
   if (code === 'Template') return 'DwBlueprint';
-  // Backward-compat: "OtherData" previously held image import.
-  // Forward: "ImageImport" (UI-only) is used as the new step code.
   if (code === 'ImageImport') return 'ImageImport';
   if (code === 'OtherData') return 'ImageImport';
   if (code === 'FolderImport') return 'FolderImport';
+  if (code === 'ColorImport') return 'ColorImport';
   if (code === 'Connect' || code === 'Entity' || code === 'DwBlueprint') {
     return code;
   }
@@ -161,5 +161,6 @@ export const PLM_IMPORT_STEP_ORDER: PlmImportStepCode[] = [
   'Entity',
   'DwBlueprint',
   'FolderImport',
+  'ColorImport',
   'ImageImport',
 ];
