@@ -57,9 +57,11 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
   const activeRef     = useRef(active);
   const htmlRef       = useRef(html);
 
-  useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
-  useEffect(() => { activeRef.current = active; }, [active]);
-  useEffect(() => { htmlRef.current = html; }, [html]);
+  // Update refs synchronously during render so event handlers always see the latest values
+  // without waiting for an async useEffect tick (which could miss a state transition window).
+  onChangeRef.current = onChange;
+  activeRef.current   = active;
+  htmlRef.current     = html;
 
   // Initialize GrapeJS once on mount
   useEffect(() => {

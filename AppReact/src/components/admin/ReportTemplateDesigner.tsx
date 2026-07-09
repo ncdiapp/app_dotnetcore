@@ -1089,19 +1089,27 @@ ${cells}
             className="relative h-1 flex-auto overflow-hidden"
             style={{ display: viewMode === 'split' ? 'flex' : 'none' }}
           >
-            {/* Active drag overlay — shown while user drags a token/block over the editor */}
+            {/* Drag-drop overlay — intercepts drops when user drags a token onto the code editor */}
             {draggingToken !== null && (
               <div
-                className="absolute inset-0 z-20 flex flex-col items-center justify-center pointer-events-none"
+                className="absolute inset-0 z-20 flex flex-col items-center justify-center"
                 style={{
                   background: 'rgba(59,130,246,0.08)',
                   border: '2px dashed #3b82f6',
-                  animation: 'pulse 1.2s ease-in-out infinite',
+                  cursor: 'copy',
+                }}
+                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+                onDrop={e => {
+                  e.preventDefault();
+                  const token = draggingToken;
+                  setDraggingToken(null);
+                  setDropIndicatorY(null);
+                  if (token) insertAtCursor(token);
                 }}
               >
-                <i className="fa-solid fa-down-long text-blue-400 text-2xl mb-2" style={{ animation: 'bounce 1s ease-in-out infinite' }} />
+                <i className="fa-solid fa-down-long text-blue-400 text-2xl mb-2" />
                 <span className="text-sm font-semibold text-blue-500">Drop here to insert</span>
-                <span className="text-xs text-blue-400 mt-1 opacity-80">Token will be inserted at the drop position</span>
+                <span className="text-xs text-blue-400 mt-1 opacity-80">Token will be inserted at cursor position</span>
               </div>
             )}
 
@@ -1121,11 +1129,9 @@ ${cells}
               onChange={handleHtmlChange}
               debounceMs={300}
               monacoTheme={monacoTheme}
+              enableTriggerSuggestions
               onMount={(editor, monacoInstance) => {
                 editorRef.current = editor;
-
-                // Enable trigger-character suggestions (disabled globally in JsonCodeEditor)
-                editor.updateOptions({ suggestOnTriggerCharacters: true });
 
                 // Register {{token}} autocomplete — reads latest tokens via ref on each invocation
                 completionDisposable.current?.dispose();

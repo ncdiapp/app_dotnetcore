@@ -14,6 +14,8 @@ type JsonCodeEditorProps = {
   onMount?: (editor: any, monaco: any) => void;
   /** Monaco editor theme — 'vs' (light) or 'vs-dark'. Defaults to 'vs'. */
   monacoTheme?: string;
+  /** Enable trigger-character suggestions (e.g. {{ autocomplete). Default false. */
+  enableTriggerSuggestions?: boolean;
 };
 
 export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
@@ -26,6 +28,7 @@ export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
   debounceMs = 150,
   onMount,
   monacoTheme = 'vs',
+  enableTriggerSuggestions = false,
 }) => {
   const [localValue, setLocalValue] = useState<string>(value ?? '');
   const latestOnChangeRef = useRef(onChange);
@@ -109,8 +112,8 @@ export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
             folding: true,
             contextmenu: true,
             automaticLayout: true,
-            quickSuggestions: false,
-            suggestOnTriggerCharacters: false,
+            quickSuggestions: enableTriggerSuggestions ? { other: true, comments: false, strings: true } : false,
+            suggestOnTriggerCharacters: enableTriggerSuggestions,
             selectionHighlight: false,
             occurrencesHighlight: 'off',
             unicodeHighlight: { ambiguousCharacters: false },
