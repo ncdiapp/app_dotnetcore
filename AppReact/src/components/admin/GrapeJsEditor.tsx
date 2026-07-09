@@ -197,12 +197,18 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
     // has pointer-events:auto. Attaching to the iframe element in the parent document
     // is the only reliable way to intercept drops onto the GrapeJS canvas.
     const setupIframeDragDrop = (iframeEl: HTMLIFrameElement) => {
+      // eslint-disable-next-line no-console
+      console.log('[GJS drag] setupIframeDragDrop — sandbox attr:', iframeEl.getAttribute('sandbox'), 'el:', iframeEl.tagName, iframeEl.getBoundingClientRect());
       const onDragOver = (e: DragEvent) => {
+        // eslint-disable-next-line no-console
+        console.log('[GJS drag] dragover on iframe el');
         if (!Array.from(e.dataTransfer?.types ?? []).includes('text/plain')) return;
         e.preventDefault();
         if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
       };
       const onDrop = (e: DragEvent) => {
+        // eslint-disable-next-line no-console
+        console.log('[GJS drag] drop on iframe el, text:', e.dataTransfer?.getData('text/plain'));
         e.preventDefault();
         const text = e.dataTransfer?.getData('text/plain') ?? '';
         if (!text.includes('{{')) return;
