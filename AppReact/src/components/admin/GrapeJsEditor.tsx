@@ -26,20 +26,28 @@ interface GrapeJsEditorProps {
   tokens: TokenDescriptor[];
   blocks: ReportBlock[];
   isDark: boolean;
-  /** When false, GrapeJS will not sync incoming html changes and will not emit onChange.
-   *  Prevents feedback loop with Monaco when the user is in Code mode. */
   active: boolean;
   onChange: (html: string) => void;
   onEditorReady?: (editor: any) => void;
 }
 
-// Strip leading <style> block from HTML string to separate CSS from body content
 function splitStyleAndBody(html: string): { css: string; body: string } {
   const styleMatch = html.match(/^<style>([\s\S]*?)<\/style>\s*/i);
   if (styleMatch) {
     return { css: styleMatch[1], body: html.slice(styleMatch[0].length) };
   }
   return { css: '', body: html };
+}
+
+const TEXT_TAGS = new Set(['TD','TH','P','H1','H2','H3','H4','H5','H6','SPAN','LI','A','LABEL']);
+
+function walkUpToTextTag(el: HTMLElement | null, stopEl: HTMLElement | null): HTMLElement | null {
+  let cur = el;
+  while (cur && cur !== stopEl) {
+    if (TEXT_TAGS.has(cur.tagName)) return cur;
+    cur = cur.parentElement;
+  }
+  return null;
 }
 
 const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
@@ -51,19 +59,35 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
   onChange,
   onEditorReady,
 }) => {
-  const containerRef  = useRef<HTMLDivElement>(null);
-  const gjsRef        = useRef<any>(null);
-  const onChangeRef   = useRef(onChange);
-  const activeRef     = useRef(active);
-  const htmlRef       = useRef(html);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const overlayRef   = useRef<HTMLDivElement>(null);
+  const gjsRef       = useRef<any>(null);
+  const onChangeRef  = useRef(onChange);
+  const activeRef    = useRef(active);
 
-  // Update refs synchronously during render so event handlers always see the latest values
-  // without waiting for an async useEffect tick (which could miss a state transition window).
   onChangeRef.current = onChange;
   activeRef.current   = active;
-  htmlRef.current     = html;
 
-  // Initialize GrapeJS once on mount
+  // Toggle overlay pointer-events via direct DOM ref — never via React style prop.
+  // If pointerEvents were in the JSX style prop, React would re-apply 'none' on every
+  // re-render (e.g. when the parent's draggingToken state changes), racing with enable().
+  // By keeping pointerEvents OUT of the style prop, React never touches it.
+  useEffect(() => {
+    // Set initial value once; React will never override it because it's not in the style prop.
+    if (overlayRef.current) overlayRef.current.style.pointerEvents = 'none';
+
+    const enable  = () => { if (overlayRef.current) overlayRef.current.style.pointerEvents = 'auto'; };
+    const disable = () => { if (overlayRef.current) overlayRef.current.style.pointerEvents = 'none'; };
+    document.addEventListener('dragstart', enable);
+    document.addEventListener('dragend',   disable);
+    document.addEventListener('drop',      disable);
+    return () => {
+      document.removeEventListener('dragstart', enable);
+      document.removeEventListener('dragend',   disable);
+      document.removeEventListener('drop',      disable);
+    };
+  }, []);
+
   useEffect(() => {
     if (!containerRef.current) return;
 
@@ -79,33 +103,21 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
       style: css,
       plugins: [grapesjsNewsletter],
       pluginsOpts: { [grapesjsNewsletter]: {} },
-      // Keep GrapeJS panels minimal — left panel is handled by our app's own panel
       panels: { defaults: [] },
       deviceManager: { devices: [] },
     });
 
-    // Register our REPORT_BLOCKS as GrapeJS blocks
     blocks.forEach(block => {
       const slug = block.label.toLowerCase().replace(/\s+/g, '-');
-      editor.BlockManager.add(slug, {
-        label: block.label,
-        category: 'Report Blocks',
-        content: block.html,
-      });
+      editor.BlockManager.add(slug, { label: block.label, category: 'Report Blocks', content: block.html });
     });
 
-    // Register each token as a draggable block (users can drag from GrapeJS block panel)
     tokens.forEach(tok => {
       const id = `tok-${tok.Token.replace(/[^a-z0-9]/gi, '_')}`;
       const label = tok.Field === '*' ? `#each ${tok.ResultSet}` : tok.Field;
-      editor.BlockManager.add(id, {
-        label,
-        category: tok.ResultSet,
-        content: `<span data-token="true">${tok.Token}</span>`,
-      });
+      editor.BlockManager.add(id, { label, category: tok.ResultSet, content: `<span data-token="true">${tok.Token}</span>` });
     });
 
-    // ── Mark text-container elements as editable ────────────────────────────
     const EDITABLE_TAGS = new Set(['td', 'th', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'li', 'a', 'div', 'label']);
     const markEditable = (comps: any) => {
       comps?.each?.((c: any) => {
@@ -118,48 +130,24 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
       markEditable(c.components?.());
     });
 
-    // ── Canvas ready: wire up dblclick-to-edit ──────────────────────────────
-    // IMPORTANT: editor.Canvas.getDocument() returns undefined immediately after
-    // grapesjs.init() — the iframe hasn't loaded yet. We must wait for 'load'.
-    // Approach: make the DOM element contenteditable directly (GrapeJS's RTE only
-    // works for 'text' component types; td/th/p from newsletter preset are generic).
-    editor.on('load', () => {
-      // Mark all existing text containers editable now that the model is ready
-      markEditable(editor.DomComponents.getComponents());
+    // ── dblclick inline editing ────────────────────────────────────────────────
+    let canvasListenersAbort: AbortController | null = null;
+    let editGuard = false;
 
-      // Apply canvas background
-      try {
-        const canvasDoc = editor.Canvas.getDocument();
-        if (canvasDoc?.body) canvasDoc.body.style.background = isDark ? '#1e1e1e' : '#ffffff';
-      } catch { /* ignore */ }
-
-      // Attach dblclick-to-contenteditable handler to the now-ready canvas document
+    const setupCanvasListeners = () => {
       const canvasDoc = editor.Canvas.getDocument?.();
       if (!canvasDoc) return;
+      canvasListenersAbort?.abort();
+      canvasListenersAbort = new AbortController();
+      const { signal } = canvasListenersAbort;
+      editGuard = false;
 
-      const TEXT_TAGS = new Set(['TD','TH','P','H1','H2','H3','H4','H5','H6','SPAN','LI','A','LABEL']);
-      let editGuard = false;
-
-      const findDeepComp = (comps: any, el: HTMLElement): any => {
-        let hit: any = null;
-        comps?.each?.((c: any) => {
-          if (hit) return;
-          if (c.view?.el === el) { hit = c; return; }
-          const child = findDeepComp(c.components?.(), el);
-          if (child) hit = child;
-        });
-        return hit;
-      };
+      try { if (canvasDoc.body) canvasDoc.body.style.background = isDark ? '#1e1e1e' : '#ffffff'; } catch { /* ignore */ }
 
       canvasDoc.addEventListener('dblclick', (e: Event) => {
         if (editGuard) return;
-        let el: HTMLElement | null = e.target as HTMLElement;
-        while (el && el.tagName !== 'BODY') {
-          if (TEXT_TAGS.has(el.tagName)) break;
-          el = el.parentElement;
-        }
-        if (!el || el.tagName === 'BODY') return;
-
+        const el = walkUpToTextTag(e.target as HTMLElement, canvasDoc.body);
+        if (!el) return;
         e.stopPropagation();
 
         const snapshot = el.innerHTML;
@@ -169,7 +157,6 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
         el.style.cursor = 'text';
         el.focus();
 
-        // Select all existing content so first keystroke replaces it
         try {
           const range = canvasDoc.createRange();
           range.selectNodeContents(el);
@@ -179,7 +166,6 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
         } catch { /* ignore */ }
 
         editGuard = true;
-
         const finish = (cancel = false) => {
           if (!el) return;
           const newHtml = el.innerHTML;
@@ -188,136 +174,26 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
           el.style.outlineOffset = '';
           el.style.cursor = '';
           editGuard = false;
-
           if (cancel) { el.innerHTML = snapshot; return; }
           if (newHtml === snapshot) return;
-
-          // Push edited HTML back into GrapeJS model.
-          // comp.components().reset() + comp.append() already fire GrapeJS's
-          // internal change events which increment changesCount naturally —
-          // no need to trigger it manually (that causes UndoManager crash).
-          const comp = findDeepComp(editor.DomComponents.getComponents(), el);
-          if (comp) {
-            comp.components().reset();
-            comp.append(newHtml);
-          }
+          const comp = editor.Canvas.getModelFromEl?.(el);
+          if (comp) { comp.components().reset(); comp.append(newHtml); }
         };
-
         el.addEventListener('blur', () => finish(false), { once: true });
         el.addEventListener('keydown', (ke: KeyboardEvent) => {
           if (ke.key === 'Escape') { ke.stopPropagation(); finish(true); }
           else if (ke.key === 'Enter' && !ke.shiftKey) { ke.preventDefault(); finish(false); }
         }, { once: true });
-      }, true);
+      }, { capture: true, signal });
+    };
 
-      // ── Drag-drop from left panel: tokens onto cells, blocks into canvas ──────
-      // Tokens  (text/plain = "{{header.Field}}") → replace target cell content.
-      // Blocks  (text/plain = full HTML, marker = application/x-report-block)
-      //         → insert as new sibling element after the drop position.
-      let dragOverEl: HTMLElement | null = null;
-
-      const clearDragHighlight = () => {
-        if (dragOverEl) {
-          dragOverEl.style.outline = '';
-          dragOverEl.style.backgroundColor = '';
-          dragOverEl = null;
-        }
-      };
-
-      const dropTargetFor = (target: EventTarget | null): HTMLElement | null => {
-        let el = target as HTMLElement | null;
-        while (el && el.tagName !== 'BODY') {
-          if (TEXT_TAGS.has(el.tagName)) return el;
-          el = el.parentElement;
-        }
-        return null;
-      };
-
-      // Find the direct child of <body> that contains (or is) `el`
-      const topLevelElFor = (target: EventTarget | null): HTMLElement | null => {
-        let el = target as HTMLElement | null;
-        while (el && el.parentElement && el.parentElement !== canvasDoc.body) {
-          el = el.parentElement;
-        }
-        return el && el !== canvasDoc.body ? el : null;
-      };
-
-      canvasDoc.addEventListener('dragover', (e: Event) => {
-        const de = e as DragEvent;
-        const types = de.dataTransfer?.types ?? [];
-        const isBlock = types.includes('application/x-report-block');
-        const isToken = !isBlock && types.includes('text/plain');
-        if (!isBlock && !isToken) return;
-
-        de.preventDefault();
-        de.dataTransfer!.dropEffect = 'copy';
-
-        if (isToken) {
-          // Highlight target cell for token drops
-          const el = dropTargetFor(de.target);
-          if (el !== dragOverEl) {
-            clearDragHighlight();
-            if (el) {
-              el.style.outline = '2px dashed #0d6efd';
-              el.style.backgroundColor = 'rgba(13,110,253,0.08)';
-              dragOverEl = el;
-            }
-          }
-        } else {
-          // Highlight top-level block for block drops
-          const el = topLevelElFor(de.target);
-          if (el !== dragOverEl) {
-            clearDragHighlight();
-            if (el) {
-              el.style.outline = '2px solid #16a34a';
-              el.style.backgroundColor = 'rgba(22,163,74,0.06)';
-              dragOverEl = el;
-            }
-          }
-        }
-      }, true);
-
-      canvasDoc.addEventListener('dragleave', (e: Event) => {
-        const de = e as DragEvent;
-        const related = de.relatedTarget as HTMLElement | null;
-        if (!related || !canvasDoc.body?.contains(related)) clearDragHighlight();
-      }, true);
-
-      canvasDoc.addEventListener('drop', (e: Event) => {
-        const de = e as DragEvent;
-        clearDragHighlight();
-
-        const text = de.dataTransfer?.getData('text/plain') ?? '';
-        if (!text) return;
-
-        const isBlock = de.dataTransfer?.types.includes('application/x-report-block') ?? false;
-
-        de.preventDefault();
-        de.stopPropagation();
-
-        if (isBlock) {
-          // wrapper.append() and components().add() fail silently for tables
-          // and multi-root HTML fragments in the newsletter preset.
-          // Rebuild the full component tree with the new block appended.
-          // GrapeJS preserves {{tokens}} in getHtml() (braces are not HTML-encoded).
-          const currentHtml = editor.getHtml() ?? '';
-          editor.setComponents(currentHtml + '\n' + text);
-          return;
-        }
-
-        // Token drop → replace target cell content
-        if (!text.includes('{{')) return;
-        const el = dropTargetFor(de.target);
-        if (!el) return;
-        const comp = findDeepComp(editor.DomComponents.getComponents(), el);
-        if (comp) {
-          comp.components().reset();
-          comp.append(text);
-        }
-      }, true);
+    editor.on('load', () => {
+      markEditable(editor.DomComponents.getComponents());
+      setupCanvasListeners();
+      const iframeEl: HTMLIFrameElement | undefined = editor.Canvas.getFrameEl?.();
+      iframeEl?.addEventListener('load', setupCanvasListeners);
     });
 
-    // Emit combined HTML+CSS whenever the content changes — but only when Design mode is active
     editor.on('change:changesCount', () => {
       if (!activeRef.current) return;
       const css = editor.getCss();
@@ -330,13 +206,12 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
     gjsRef.current = editor;
 
     return () => {
+      canvasListenersAbort?.abort();
       try { editor.destroy(); } catch { /* ignore */ }
       gjsRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync HTML into GrapeJS only when Design mode becomes active or html changes while active.
-  // Skipping this sync in Code mode prevents GrapeJS from reformatting Monaco's HTML.
   useEffect(() => {
     const ed = gjsRef.current;
     if (!ed || !active) return;
@@ -348,12 +223,100 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
     }
   }, [html, active]);
 
+  // ── Overlay: parent-frame drag capture ────────────────────────────────────
+  // The overlay is always mounted; pointer-events is toggled via direct DOM ref.
+  // On dragover: use iframe.contentDocument.elementFromPoint to highlight the cell.
+  // On drop: same lookup → GrapeJS getModelFromEl → replace cell content with token.
+
+  const getCanvasIframe = (): HTMLIFrameElement | null =>
+    containerRef.current?.querySelector('iframe') ?? null;
+
+  const clearHighlight = (iframeDoc: Document) => {
+    iframeDoc.querySelectorAll('[data-dh]').forEach(el => {
+      (el as HTMLElement).style.outline = '';
+      (el as HTMLElement).style.backgroundColor = '';
+      (el as HTMLElement).removeAttribute('data-dh');
+    });
+  };
+
+  const handleOverlayDragOver = (e: React.DragEvent) => {
+    const types = Array.from(e.dataTransfer.types);
+    if (!types.includes('text/plain') && !types.includes('application/x-report-block')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+
+    const iframe = getCanvasIframe();
+    if (!iframe?.contentDocument) return;
+    const r = iframe.getBoundingClientRect();
+    const target = walkUpToTextTag(
+      iframe.contentDocument.elementFromPoint(e.clientX - r.left, e.clientY - r.top) as HTMLElement,
+      iframe.contentDocument.body,
+    );
+    clearHighlight(iframe.contentDocument);
+    if (target) {
+      target.style.outline = '2px dashed #0d6efd';
+      target.style.backgroundColor = 'rgba(13,110,253,0.08)';
+      target.setAttribute('data-dh', '1');
+    }
+  };
+
+  const handleOverlayDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (overlayRef.current) overlayRef.current.style.pointerEvents = 'none';
+
+    const iframe = getCanvasIframe();
+    if (iframe?.contentDocument) clearHighlight(iframe.contentDocument);
+
+    const text = e.dataTransfer.getData('text/plain');
+    if (!text) return;
+    const isBlock = Array.from(e.dataTransfer.types).includes('application/x-report-block');
+
+    const editor = gjsRef.current;
+    if (!editor) return;
+
+    if (isBlock) {
+      editor.setComponents((editor.getHtml() ?? '') + '\n' + text);
+      return;
+    }
+
+    if (!text.includes('{{')) return;
+
+    let comp: any = null;
+
+    if (iframe?.contentDocument) {
+      const r = iframe.getBoundingClientRect();
+      const el = walkUpToTextTag(
+        iframe.contentDocument.elementFromPoint(e.clientX - r.left, e.clientY - r.top) as HTMLElement,
+        iframe.contentDocument.body,
+      );
+      if (el) comp = editor.Canvas.getModelFromEl?.(el);
+    }
+
+    if (!comp) comp = editor.getSelected?.();
+    if (comp) { comp.components().reset(); comp.append(text); }
+  };
+
+  const handleOverlayDragLeave = (e: React.DragEvent) => {
+    if (e.relatedTarget && overlayRef.current?.contains(e.relatedTarget as Node)) return;
+    const iframe = getCanvasIframe();
+    if (iframe?.contentDocument) clearHighlight(iframe.contentDocument);
+  };
+
   return (
-    <div
-      ref={containerRef}
-      className="w-full h-full"
-      style={{ minHeight: 0 }}
-    />
+    <div className="relative w-full h-full" style={{ minHeight: 0 }}>
+      <div ref={containerRef} className="w-full h-full" />
+      {/* Overlay: pointer-events controlled ONLY via overlayRef.current.style — NOT via
+          the React style prop. If pointerEvents appeared in the style prop, React would
+          re-apply 'none' on every parent re-render and race with enable(). */}
+      <div
+        ref={overlayRef}
+        className="absolute inset-0"
+        style={{ zIndex: 9999, cursor: 'copy' }}
+        onDragOver={handleOverlayDragOver}
+        onDrop={handleOverlayDrop}
+        onDragLeave={handleOverlayDragLeave}
+      />
+    </div>
   );
 };
 
