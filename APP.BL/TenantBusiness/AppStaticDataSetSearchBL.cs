@@ -1088,19 +1088,22 @@ namespace App.BL
 
             var transRootField = viewEntity.AppSearchViewField?
                 .FirstOrDefault(o => o.IsTransRootId.HasValue && o.IsTransRootId.Value);
-            string rootColumnName = transRootField != null
-                ? GetFolderViewColumnName(transRootField.SysTableFiledPath)
-                : "ReferenceId";
+            string recycleBinFilter = string.Empty;
+            if (transRootField != null && !string.IsNullOrWhiteSpace(transRootField.SysTableFiledPath))
+            {
+                string rootColumnName = GetFolderViewColumnName(transRootField.SysTableFiledPath);
+                recycleBinFilter = $@"
+  AND Src.[{rootColumnName}] NOT IN (
+      SELECT RootKeyValueID FROM AppTrascationRecycleBin WHERE TranscationID = {transactionId}
+  )";
+            }
 
             string query = $@"
 SELECT Src.[{folderColumnName}] AS FolderID, COUNT(*) AS ContentCount
 FROM (
 {baseQuery}
 ) AS Src
-WHERE Src.[{folderColumnName}] IS NOT NULL
-  AND Src.[{rootColumnName}] NOT IN (
-      SELECT RootKeyValueID FROM AppTrascationRecycleBin WHERE TranscationID = {transactionId}
-  )
+WHERE Src.[{folderColumnName}] IS NOT NULL{recycleBinFilter}
 GROUP BY Src.[{folderColumnName}]";
 
             try

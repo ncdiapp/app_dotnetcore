@@ -602,9 +602,6 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
             <i className="fa-solid fa-rotate mr-1" />
             Refresh
           </button>
-          {isTemplateMode && runtimeContext?.TemplateSearchName && (
-            <span className={`text-xs ml-auto ${theme.label}`}>Template: {runtimeContext.TemplateSearchName}</span>
-          )}
         </div>
         <div className={`h-1 flex-auto overflow-hidden ${theme.mainContentSection}`}>
           {currentViewDto ? (
