@@ -102,11 +102,17 @@ export function preparePivotSearchData(
         const noImageUrl = buildEndpointUrl('/Images/noImage.jpeg');
         const resourceUrl = row?.DictThumbnailUrl?.[column.Id];
         const searchUsesThumbnailUrls = row?.DictThumbnailUrl != null;
-        const thumbSrc = resolveSearchThumbnailUrl(value, resourceUrl, searchUsesThumbnailUrls);
-        const imgValue = thumbSrc
-          ? `<img id="pivot-view-image" name="${String(value)}" src="${thumbSrc}"/>`
-          : `<img id="pivot-view-image" name="" src="${noImageUrl}"/>`;
-        rawData[binding] = imgValue;
+        if (searchUsesThumbnailUrls) {
+          // Pivot HTML cells cannot send CurrentUserSessionId header.
+          rawData[binding] = resourceUrl && value
+            ? `<img id="pivot-view-image" name="${String(value)}" src="${noImageUrl}"/>`
+            : `<img id="pivot-view-image" name="" src="${noImageUrl}"/>`;
+        } else {
+          const thumbSrc = resolveSearchThumbnailUrl(value, null, false);
+          rawData[binding] = thumbSrc
+            ? `<img id="pivot-view-image" name="${String(value)}" src="${thumbSrc}"/>`
+            : `<img id="pivot-view-image" name="" src="${noImageUrl}"/>`;
+        }
       } else if (ct === EmAppControlType.DDL) {
         let display = '';
         if (value && column.EntityId != null) {

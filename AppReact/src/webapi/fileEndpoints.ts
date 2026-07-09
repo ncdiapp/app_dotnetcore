@@ -22,18 +22,19 @@ function getSessionId(): string | null {
   return null;
 }
 
-function sessionQuery(): string {
-  const sid = getSessionId();
-  return sid ? `?CurrentUserSessionId=${encodeURIComponent(sid)}` : '';
+function getSessionHeaders(): Record<string, string> {
+  const sessionId = getSessionId();
+  return sessionId ? { CurrentUserSessionId: sessionId } : {};
 }
 
 /** Thumbnail image (small). Replaces GetThumbnailImage.aspx. */
 export function fileThumbnailUrl(fileId: number | string): string {
-  return `${endpoints.BASE_URL}/api/files/thumbnail/${fileId}${sessionQuery()}`;
+  return `${endpoints.BASE_URL}/api/files/thumbnail/${fileId}`;
 }
 
 /**
  * Resolve a static resource path from search results (e.g. /api/resources/Company_1/Image/thumbnail/guid).
+ * Protected resources must be loaded via {@link fetchAuthenticatedImageBlobUrl} (CurrentUserSessionId header).
  */
 export function fileResourceUrl(apiResourcePath: string): string {
   if (!apiResourcePath) return apiResourcePath;
@@ -44,17 +45,55 @@ export function fileResourceUrl(apiResourcePath: string): string {
   return `${endpoints.BASE_URL}${path}`;
 }
 
+const authenticatedImageBlobCache = new Map<string, string>();
+const authenticatedImageInflight = new Map<string, Promise<string | null>>();
+
 /**
- * Resolve search thumbnail src. When the search row includes DictThumbnailUrl (new API),
- * only use server-provided resource URLs — never fall back to /api/files/thumbnail (avoids hang on missing files).
- * Legacy rows without DictThumbnailUrl still use the FileId thumbnail API.
+ * Load a protected /api/resources image using the same session header as WebAPI calls.
+ * Returns a blob: URL suitable for &lt;img src&gt; (browser cannot send custom headers on src directly).
+ */
+export async function fetchAuthenticatedImageBlobUrl(apiResourcePath: string): Promise<string | null> {
+  if (!apiResourcePath) return null;
+
+  const absoluteUrl = fileResourceUrl(apiResourcePath);
+  const cached = authenticatedImageBlobCache.get(absoluteUrl);
+  if (cached) return cached;
+
+  const pending = authenticatedImageInflight.get(absoluteUrl);
+  if (pending) return pending;
+
+  const load = (async () => {
+    const sessionId = getSessionId();
+    if (!sessionId) return null;
+
+    const resp = await fetch(absoluteUrl, {
+      headers: { CurrentUserSessionId: sessionId },
+    });
+    if (!resp.ok) return null;
+
+    const blob = await resp.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    authenticatedImageBlobCache.set(absoluteUrl, objectUrl);
+    return objectUrl;
+  })();
+
+  authenticatedImageInflight.set(absoluteUrl, load);
+  try {
+    return await load;
+  } finally {
+    authenticatedImageInflight.delete(absoluteUrl);
+  }
+}
+
+/**
+ * Resolve search thumbnail src for legacy &lt;img src&gt; (FileId API, session via cookie/header on request).
+ * Resource URLs from search must use {@link fetchAuthenticatedImageBlobUrl} instead.
  */
 export function resolveSearchThumbnailUrl(
   fileId: number | string | null | undefined,
   resourceUrl?: string | null,
   searchUsesThumbnailUrls = false,
 ): string | null {
-  if (resourceUrl) return fileResourceUrl(resourceUrl);
   if (searchUsesThumbnailUrls) return null;
   const numericId = Number(fileId);
   if (!Number.isFinite(numericId) || numericId <= 0) return null;
@@ -63,22 +102,22 @@ export function resolveSearchThumbnailUrl(
 
 /** Original full-size image. Replaces GetImage.aspx / original image use. */
 export function fileImageUrl(fileId: number | string): string {
-  return `${endpoints.BASE_URL}/api/files/image/${fileId}${sessionQuery()}`;
+  return `${endpoints.BASE_URL}/api/files/image/${fileId}`;
 }
 
 /** Regular (medium) size image. Replaces GetRegularImage.aspx. */
 export function fileRegularUrl(fileId: number | string): string {
-  return `${endpoints.BASE_URL}/api/files/regular/${fileId}${sessionQuery()}`;
+  return `${endpoints.BASE_URL}/api/files/regular/${fileId}`;
 }
 
 /** Latest-version file for inline view/preview/open. Replaces GetLatestFile.aspx (no IsDownload). */
 export function fileLatestUrl(fileId: number | string): string {
-  return `${endpoints.BASE_URL}/api/files/latest/${fileId}${sessionQuery()}`;
+  return `${endpoints.BASE_URL}/api/files/latest/${fileId}`;
 }
 
 /** Force-download URL. Replaces GetLatestFile.aspx?...&IsDownload=true. Prefer downloadFileById. */
 export function fileDownloadUrl(fileId: number | string): string {
-  return `${endpoints.BASE_URL}/api/files/stream/${fileId}${sessionQuery()}`;
+  return `${endpoints.BASE_URL}/api/files/stream/${fileId}`;
 }
 
 function parseFileNameFromContentDisposition(header: string | null): string | null {
@@ -97,7 +136,10 @@ function parseFileNameFromContentDisposition(header: string | null): string | nu
  */
 export async function downloadFileById(fileId: number | string, fallbackName?: string): Promise<void> {
   const url = fileDownloadUrl(fileId);
-  const resp = await fetch(url, { credentials: 'include' });
+  const resp = await fetch(url, {
+    credentials: 'include',
+    headers: getSessionHeaders(),
+  });
   if (!resp.ok) {
     throw new Error(`Download failed (${resp.status})`);
   }

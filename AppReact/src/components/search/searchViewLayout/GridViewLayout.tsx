@@ -6,7 +6,7 @@ import { CollectionView } from '@mescius/wijmo';
 import { GroupRow } from '@mescius/wijmo.grid';
 import '@mescius/wijmo.styles/wijmo.css';
 import { useTheme } from '../../../redux/hooks/useTheme';
-import { resolveSearchThumbnailUrl } from "../../../webapi/fileEndpoints";
+import { fetchAuthenticatedImageBlobUrl, resolveSearchThumbnailUrl } from "../../../webapi/fileEndpoints";
 import { useTabNavigation } from '../../../redux/hooks/useTabNavigation';
 import { preserveTabInitialPath, getCurrentActiveTab } from '../../../redux/features/ui/navigation/tabnavSlice';
 import { isTransactionFormGroupPath } from '../../../helper/navigationHelper';
@@ -102,7 +102,7 @@ const EmAppControlType = {
   InvalidControlType: 99
 };
 
-/** Stable grid thumbnail — avoids img reload when unrelated parent state changes. */
+/** Stable grid thumbnail — loads protected resource URLs via session header (same as WebAPI). */
 const SearchGridThumbnailCell = React.memo(({
   fileId,
   thumbUrl,
@@ -113,10 +113,31 @@ const SearchGridThumbnailCell = React.memo(({
   searchUsesThumbnailUrls?: boolean;
 }) => {
   const numericId = Number(fileId);
-  const src = resolveSearchThumbnailUrl(numericId, thumbUrl, Boolean(searchUsesThumbnailUrls));
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setSrc(null);
+
+    if (thumbUrl) {
+      fetchAuthenticatedImageBlobUrl(thumbUrl).then((blobUrl) => {
+        if (!cancelled) setSrc(blobUrl);
+      });
+      return () => { cancelled = true; };
+    }
+
+    if (!searchUsesThumbnailUrls) {
+      const legacyUrl = resolveSearchThumbnailUrl(numericId, null, false);
+      if (!cancelled) setSrc(legacyUrl);
+    }
+
+    return () => { cancelled = true; };
+  }, [thumbUrl, searchUsesThumbnailUrls, numericId]);
+
   if (!src) {
     return <div style={{ width: '60px', height: '60px', background: 'rgba(0,0,0,0.04)' }} />;
   }
+
   return (
     <div style={{ position: 'absolute', top: 0, left: 0, width: '60px', height: '60px', background: 'rgba(0,0,0,0.04)' }}>
       <img

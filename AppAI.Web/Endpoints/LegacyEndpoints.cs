@@ -447,7 +447,7 @@ public static class LegacyEndpoints
 
         app.MapGet("/api/files/latest/{id:int}", (HttpContext ctx, int id) =>
         {
-            if (!ValidateSession(ctx)) return Results.Unauthorized();
+            if (!ValidateApiSession(ctx)) return Results.Unauthorized();
             var dto = AppFileBL.RetrieveOneLatestAppFileExDto(id);
             if (dto == null) return Results.NotFound();
             return ServeFileDto(dto);
@@ -455,16 +455,18 @@ public static class LegacyEndpoints
 
         app.MapGet("/api/files/stream/{id:int}", (HttpContext ctx, int id) =>
         {
-            if (!ValidateSession(ctx)) return Results.Unauthorized();
+            if (!ValidateApiSession(ctx)) return Results.Unauthorized();
             var dto = AppFileBL.RetrieveOneOrgAppFileExDto(id);
             if (dto == null) return Results.NotFound();
             return ServeFileDto(dto, forceDownload: true);
         }).WithName("FileStream");
 
         // ── Resource handler (replaces AppResourceHandler.ashx) ──────────────
-        // Serves files from {AppBaseDir}/FileRepository/{*path} — used for logo/background images.
+        // Session via CurrentUserSessionId header (same as WebAPI SessionValidationFilter).
         app.MapGet("/api/resources/{*path}", (HttpContext ctx, string path) =>
         {
+            if (!ValidateApiSession(ctx)) return Results.Unauthorized();
+            if (!ValidateResourcePathForCurrentCompany(path)) return Results.Forbid();
             if (string.IsNullOrWhiteSpace(path)) return Results.BadRequest();
             string safePath = Path.GetFullPath(Path.Combine(
                 AppDomain.CurrentDomain.BaseDirectory, "FileRepository", path));
@@ -477,10 +479,10 @@ public static class LegacyEndpoints
             string ext = Path.GetExtension(safePath);
             if (IsImageExtension(ext))
             {
-                ctx.Response.Headers.CacheControl = "public, max-age=86400, immutable";
+                ctx.Response.Headers.CacheControl = "private, max-age=86400";
             }
             return Results.File(File.ReadAllBytes(safePath), GetMimeType(ext));
-        }).WithName("ResourceHandler").AllowAnonymous();
+        }).WithName("ResourceHandler");
 
         // ── Admin SQL (replaces AppScript.aspx — admin-only) ─────────────────
         app.MapPost("/api/admin/script", (HttpContext ctx, AdminScriptRequest body) =>
@@ -537,6 +539,28 @@ public static class LegacyEndpoints
         catch { return null; }
     }
 
+    /// <summary>
+    /// Matches WebAPI SessionValidationFilter: header first, then cookie. No query-string session.
+    /// </summary>
+    private static bool ValidateApiSession(HttpContext ctx)
+    {
+        try
+        {
+            var sessionId = ctx.Request.Headers[ServerContext.CurrentUserSessionIdToken].FirstOrDefault()
+                         ?? ctx.Request.Cookies[ServerContext.CurrentUserSessionIdToken]
+                         ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(sessionId)) return false;
+            var anonymous = AppCacheManagerBL.GetAllCompnayAnoymouToken();
+            if (anonymous.Contains(sessionId)) return false;
+            AppSaasUserSessionMgtBL.ViladateSessionIdAndCompanyIdRegisterIdentity(sessionId);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool ValidateSession(HttpContext ctx)
     {
         try
@@ -557,11 +581,36 @@ public static class LegacyEndpoints
         }
     }
 
+    /// <summary>
+    /// Company-scoped resources (Company_{id}/...) must match the session's company.
+    /// </summary>
+    private static bool ValidateResourcePathForCurrentCompany(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        const string prefix = "Company_";
+        if (!path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        int slash = path.IndexOf('/');
+        string companyToken = slash > 0 ? path[..slash] : path;
+        if (!companyToken.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return true;
+
+        string idPart = companyToken[prefix.Length..];
+        if (!int.TryParse(idPart, out int pathCompanyId))
+            return false;
+
+        int? sessionCompanyId = ControlTypeValueConverter.ConvertValueToInt(ServerContext.Instance.CurrentCompanyId);
+        return sessionCompanyId.HasValue && sessionCompanyId.Value == pathCompanyId;
+    }
+
     private enum FileImageVariant { Original, Thumbnail, Regular }
 
     private static IResult TryServeFileImage(HttpContext ctx, int id, FileImageVariant variant)
     {
-        if (!ValidateSession(ctx)) return Results.Unauthorized();
+        if (!ValidateApiSession(ctx)) return Results.Unauthorized();
         try
         {
             var dto = variant == FileImageVariant.Original
