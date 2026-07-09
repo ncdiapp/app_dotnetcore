@@ -249,7 +249,7 @@ const PomImportStep: React.FC<PomImportStepProps> = ({ state }) => {
               <div>POM Template list search: {executeResult.PomTemplateListSearchId ?? '—'}</div>
               <div>POM Template folder search: {executeResult.PomTemplateFolderSearchId ?? '—'}</div>
               <div>POM Template root folder: {executeResult.PomTemplateAppRootFolderId ?? '—'}</div>
-              <div>Junction rows imported: {formatNumber(executeResult.BodyTypeDetailRowsImported + executeResult.SpecBodyPartGradingRowsImported)}</div>
+              <div>Junction rows imported: {formatNumber((executeResult.BodyTypeDetailRowsImported ?? 0) + (executeResult.SpecBodyPartGradingRowsImported ?? 0))}</div>
               <div>Folders imported: {formatNumber(executeResult.FoldersImported)}</div>
             </div>
             {executeResult.Messages && executeResult.Messages.length > 0 && (
