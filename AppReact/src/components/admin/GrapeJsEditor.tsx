@@ -72,19 +72,25 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
   // If pointerEvents were in the JSX style prop, React would re-apply 'none' on every
   // re-render (e.g. when the parent's draggingToken state changes), racing with enable().
   // By keeping pointerEvents OUT of the style prop, React never touches it.
+  // Browsers route drag events directly to <iframe> elements regardless of any covering div
+  // with pointer-events:auto (iframe drag is special-cased by the browser's hit-test).
+  // The fix: attach dragover/drop on the <iframe> element itself (in the parent document).
+  // We also keep a subtle visual hint on the overlay during drag, but don't rely on it for events.
   useEffect(() => {
-    // Set initial value once; React will never override it because it's not in the style prop.
-    if (overlayRef.current) overlayRef.current.style.pointerEvents = 'none';
+    if (overlayRef.current) {
+      overlayRef.current.style.pointerEvents = 'none';
+      overlayRef.current.style.background = '';
+    }
 
-    const enable  = () => { if (overlayRef.current) overlayRef.current.style.pointerEvents = 'auto'; };
-    const disable = () => { if (overlayRef.current) overlayRef.current.style.pointerEvents = 'none'; };
-    document.addEventListener('dragstart', enable);
-    document.addEventListener('dragend',   disable);
-    document.addEventListener('drop',      disable);
+    const showHint  = () => { if (overlayRef.current) overlayRef.current.style.background = 'rgba(59,130,246,0.08)'; };
+    const hideHint  = () => { if (overlayRef.current) overlayRef.current.style.background = ''; };
+    document.addEventListener('dragstart', showHint);
+    document.addEventListener('dragend',   hideHint);
+    document.addEventListener('drop',      hideHint);
     return () => {
-      document.removeEventListener('dragstart', enable);
-      document.removeEventListener('dragend',   disable);
-      document.removeEventListener('drop',      disable);
+      document.removeEventListener('dragstart', showHint);
+      document.removeEventListener('dragend',   hideHint);
+      document.removeEventListener('drop',      hideHint);
     };
   }, []);
 
@@ -187,11 +193,49 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
       }, { capture: true, signal });
     };
 
+    // Browsers send drag events directly to <iframe> elements even when a covering div
+    // has pointer-events:auto. Attaching to the iframe element in the parent document
+    // is the only reliable way to intercept drops onto the GrapeJS canvas.
+    const setupIframeDragDrop = (iframeEl: HTMLIFrameElement) => {
+      const onDragOver = (e: DragEvent) => {
+        if (!Array.from(e.dataTransfer?.types ?? []).includes('text/plain')) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      };
+      const onDrop = (e: DragEvent) => {
+        e.preventDefault();
+        const text = e.dataTransfer?.getData('text/plain') ?? '';
+        if (!text.includes('{{')) return;
+
+        // Prefer the cell under the cursor; fall back to the currently selected component.
+        let comp: any = null;
+        try {
+          const r = iframeEl.getBoundingClientRect();
+          const iframeDoc = iframeEl.contentDocument;
+          if (iframeDoc) {
+            const el = walkUpToTextTag(
+              iframeDoc.elementFromPoint(e.clientX - r.left, e.clientY - r.top) as HTMLElement,
+              iframeDoc.body,
+            );
+            if (el) comp = editor.Canvas.getModelFromEl?.(el);
+          }
+        } catch { /* cross-origin or sandbox — fall through to getSelected */ }
+
+        if (!comp) comp = editor.getSelected?.();
+        if (comp) { comp.components().reset(); comp.append(text); }
+      };
+      iframeEl.addEventListener('dragover', onDragOver);
+      iframeEl.addEventListener('drop', onDrop);
+    };
+
     editor.on('load', () => {
       markEditable(editor.DomComponents.getComponents());
       setupCanvasListeners();
       const iframeEl: HTMLIFrameElement | undefined = editor.Canvas.getFrameEl?.();
-      iframeEl?.addEventListener('load', setupCanvasListeners);
+      if (iframeEl) {
+        iframeEl.addEventListener('load', setupCanvasListeners);
+        setupIframeDragDrop(iframeEl);
+      }
     });
 
     editor.on('change:changesCount', () => {
@@ -223,99 +267,11 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
     }
   }, [html, active]);
 
-  // ── Overlay: parent-frame drag capture ────────────────────────────────────
-  // The overlay is always mounted; pointer-events is toggled via direct DOM ref.
-  // On dragover: use iframe.contentDocument.elementFromPoint to highlight the cell.
-  // On drop: same lookup → GrapeJS getModelFromEl → replace cell content with token.
-
-  const getCanvasIframe = (): HTMLIFrameElement | null =>
-    containerRef.current?.querySelector('iframe') ?? null;
-
-  const clearHighlight = (iframeDoc: Document) => {
-    iframeDoc.querySelectorAll('[data-dh]').forEach(el => {
-      (el as HTMLElement).style.outline = '';
-      (el as HTMLElement).style.backgroundColor = '';
-      (el as HTMLElement).removeAttribute('data-dh');
-    });
-  };
-
-  const handleOverlayDragOver = (e: React.DragEvent) => {
-    const types = Array.from(e.dataTransfer.types);
-    if (!types.includes('text/plain') && !types.includes('application/x-report-block')) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
-
-    const iframe = getCanvasIframe();
-    if (!iframe?.contentDocument) return;
-    const r = iframe.getBoundingClientRect();
-    const target = walkUpToTextTag(
-      iframe.contentDocument.elementFromPoint(e.clientX - r.left, e.clientY - r.top) as HTMLElement,
-      iframe.contentDocument.body,
-    );
-    clearHighlight(iframe.contentDocument);
-    if (target) {
-      target.style.outline = '2px dashed #0d6efd';
-      target.style.backgroundColor = 'rgba(13,110,253,0.08)';
-      target.setAttribute('data-dh', '1');
-    }
-  };
-
-  const handleOverlayDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (overlayRef.current) overlayRef.current.style.pointerEvents = 'none';
-
-    const iframe = getCanvasIframe();
-    if (iframe?.contentDocument) clearHighlight(iframe.contentDocument);
-
-    const text = e.dataTransfer.getData('text/plain');
-    if (!text) return;
-    const isBlock = Array.from(e.dataTransfer.types).includes('application/x-report-block');
-
-    const editor = gjsRef.current;
-    if (!editor) return;
-
-    if (isBlock) {
-      editor.setComponents((editor.getHtml() ?? '') + '\n' + text);
-      return;
-    }
-
-    if (!text.includes('{{')) return;
-
-    let comp: any = null;
-
-    if (iframe?.contentDocument) {
-      const r = iframe.getBoundingClientRect();
-      const el = walkUpToTextTag(
-        iframe.contentDocument.elementFromPoint(e.clientX - r.left, e.clientY - r.top) as HTMLElement,
-        iframe.contentDocument.body,
-      );
-      if (el) comp = editor.Canvas.getModelFromEl?.(el);
-    }
-
-    if (!comp) comp = editor.getSelected?.();
-    if (comp) { comp.components().reset(); comp.append(text); }
-  };
-
-  const handleOverlayDragLeave = (e: React.DragEvent) => {
-    if (e.relatedTarget && overlayRef.current?.contains(e.relatedTarget as Node)) return;
-    const iframe = getCanvasIframe();
-    if (iframe?.contentDocument) clearHighlight(iframe.contentDocument);
-  };
-
   return (
     <div className="relative w-full h-full" style={{ minHeight: 0 }}>
       <div ref={containerRef} className="w-full h-full" />
-      {/* Overlay: pointer-events controlled ONLY via overlayRef.current.style — NOT via
-          the React style prop. If pointerEvents appeared in the style prop, React would
-          re-apply 'none' on every parent re-render and race with enable(). */}
-      <div
-        ref={overlayRef}
-        className="absolute inset-0"
-        style={{ zIndex: 9999, cursor: 'copy' }}
-        onDragOver={handleOverlayDragOver}
-        onDrop={handleOverlayDrop}
-        onDragLeave={handleOverlayDragLeave}
-      />
+      {/* Visual-only hint overlay — no pointer-events; drag events go to the iframe element directly */}
+      <div ref={overlayRef} className="absolute inset-0" style={{ pointerEvents: 'none', zIndex: 1 }} />
     </div>
   );
 };
