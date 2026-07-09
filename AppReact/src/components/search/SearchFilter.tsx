@@ -47,7 +47,8 @@ const EntityMultiSelectValue: React.FC<{
   onSelectionChange: (newSelection: string[]) => void;
 }> = ({ criteria, selection, inputBoxClass, buttonClass, onSelectionChange }) => {
   const [collapsed, setCollapsed] = useState<boolean>(false);
-  const effectiveSelection = criteria?.IsAllowMultipleSelect
+  const allowMultipleSelect = criteria?.IsAllowMultipleSelect === true;
+  const effectiveSelection = allowMultipleSelect
     ? selection
     : // Angular: if IsAllowMultipleSelect=false, keep only the latest picked item.
       (selection?.slice(-1) ?? []);
@@ -134,7 +135,7 @@ const EntityMultiSelectValue: React.FC<{
 
   const enforceSingleSelectionIfNeeded = (sender: wjInput.MultiSelect) => {
     // Angular behavior: when multi-select is disabled, keep only the last selected item.
-    if (criteria?.IsAllowMultipleSelect) return sender.checkedItems ?? [];
+    if (allowMultipleSelect) return sender.checkedItems ?? [];
     const checked = sender.checkedItems ?? [];
     // IMPORTANT: when clearing, MultiSelect may still have `selectedItem` stale.
     // If checked items are empty, we must return empty to allow Clear to work.
@@ -153,11 +154,11 @@ const EntityMultiSelectValue: React.FC<{
       selectedValuePath="Id"
       checkedItems={selectedItems}
       placeholder={`Select ${criteria.Display}`}
-      disabled={criteria.IsReadOnly}
+      disabled={criteria.IsReadOnly === true}
       className={`w-full border text-[11px] ${inputBoxClass}`}
       maxDropDownHeight={220}
       showDropDownButton={true}
-      showSelectAllCheckbox={criteria?.IsAllowMultipleSelect}
+      showSelectAllCheckbox={allowMultipleSelect}
       checkedItemsChanged={(sender: wjInput.MultiSelect) => {
         const nextCheckedItems = enforceSingleSelectionIfNeeded(sender);
         const newSelection = (nextCheckedItems ?? []).map((item: any) => String(item.Id));

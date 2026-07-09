@@ -517,6 +517,8 @@ namespace APP.BL.DataMigration.PlmMigration
                 {
                     IsModified = true,
                     IsVisible = field.IsVisible,
+                    IsReadOnly = false,
+                    IsAllowMultipleSelect = false,
                     SysTableFiledPath = field.SysTableFiledPath,
                     DisplayText = string.IsNullOrWhiteSpace(field.DisplayText) ? field.SysTableFiledPath : field.DisplayText,
                     ControlType = field.ControlType ?? (int)EmAppControlType.TextBox,

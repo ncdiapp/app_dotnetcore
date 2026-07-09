@@ -607,7 +607,7 @@ namespace App.BL
 
                 //aDto.IsUseAsCandarNavigator = searchField.IsUseAsCandarNavigator ;
 
-                aDto.IsAllowMultipleSelect = searchField.IsAllowMultipleSelect;
+                aDto.IsAllowMultipleSelect = searchField.IsAllowMultipleSelect ?? false;
                 aDto.IsChangedAutoExecute = searchField.IsChangedAutoExecute;
                 aDto.ControlType = searchField.ControlType;
 
