@@ -84,16 +84,6 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
       deviceManager: { devices: [] },
     });
 
-    // Apply canvas background based on app theme
-    try {
-      const canvasDoc = editor.Canvas.getDocument();
-      if (canvasDoc?.body) {
-        canvasDoc.body.style.background = isDark ? '#1e1e1e' : '#ffffff';
-      }
-    } catch {
-      // canvas may not be ready yet — harmless
-    }
-
     // Register our REPORT_BLOCKS as GrapeJS blocks
     blocks.forEach(block => {
       const slug = block.label.toLowerCase().replace(/\s+/g, '-');
@@ -115,45 +105,53 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
       });
     });
 
-    // ── Make text-container elements editable ───────────────────────────────
-    // Newsletter preset does not set editable:true on td/th/p/headings.
+    // ── Mark text-container elements as editable ────────────────────────────
     const EDITABLE_TAGS = new Set(['td', 'th', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'li', 'a', 'div', 'label']);
     const markEditable = (comps: any) => {
       comps?.each?.((c: any) => {
-        if (EDITABLE_TAGS.has((c.get('tagName') ?? '').toLowerCase())) {
-          c.set('editable', true);
-        }
+        if (EDITABLE_TAGS.has((c.get('tagName') ?? '').toLowerCase())) c.set('editable', true);
         markEditable(c.components?.());
       });
     };
-    editor.on('load', () => markEditable(editor.DomComponents.getComponents()));
     editor.on('component:add', (c: any) => {
       if (EDITABLE_TAGS.has((c.get('tagName') ?? '').toLowerCase())) c.set('editable', true);
       markEditable(c.components?.());
     });
 
-    // ── Direct double-click-to-edit (contenteditable) ───────────────────────
-    // GrapeJS's RTE only activates for components of type 'text'. td/th/p/h*
-    // from the newsletter preset are generic types — the RTE never fires for them.
-    // Instead: dblclick makes the DOM element contenteditable directly; on blur
-    // (or Enter) we push the edited HTML back into the GrapeJS component model
-    // so the model stays in sync and change:changesCount fires normally.
-    const TEXT_TAGS = new Set(['TD','TH','P','H1','H2','H3','H4','H5','H6','SPAN','LI','A','LABEL']);
-    let editGuard = false;
+    // ── Canvas ready: wire up dblclick-to-edit ──────────────────────────────
+    // IMPORTANT: editor.Canvas.getDocument() returns undefined immediately after
+    // grapesjs.init() — the iframe hasn't loaded yet. We must wait for 'load'.
+    // Approach: make the DOM element contenteditable directly (GrapeJS's RTE only
+    // works for 'text' component types; td/th/p from newsletter preset are generic).
+    editor.on('load', () => {
+      // Mark all existing text containers editable now that the model is ready
+      markEditable(editor.DomComponents.getComponents());
 
-    const findDeepComp = (comps: any, el: HTMLElement): any => {
-      let hit: any = null;
-      comps?.each?.((c: any) => {
-        if (hit) return;
-        if (c.view?.el === el) { hit = c; return; }
-        const child = findDeepComp(c.components?.(), el);
-        if (child) hit = child;
-      });
-      return hit;
-    };
+      // Apply canvas background
+      try {
+        const canvasDoc = editor.Canvas.getDocument();
+        if (canvasDoc?.body) canvasDoc.body.style.background = isDark ? '#1e1e1e' : '#ffffff';
+      } catch { /* ignore */ }
 
-    try {
-      editor.Canvas.getDocument().addEventListener('dblclick', (e: Event) => {
+      // Attach dblclick-to-contenteditable handler to the now-ready canvas document
+      const canvasDoc = editor.Canvas.getDocument?.();
+      if (!canvasDoc) return;
+
+      const TEXT_TAGS = new Set(['TD','TH','P','H1','H2','H3','H4','H5','H6','SPAN','LI','A','LABEL']);
+      let editGuard = false;
+
+      const findDeepComp = (comps: any, el: HTMLElement): any => {
+        let hit: any = null;
+        comps?.each?.((c: any) => {
+          if (hit) return;
+          if (c.view?.el === el) { hit = c; return; }
+          const child = findDeepComp(c.components?.(), el);
+          if (child) hit = child;
+        });
+        return hit;
+      };
+
+      canvasDoc.addEventListener('dblclick', (e: Event) => {
         if (editGuard) return;
         let el: HTMLElement | null = e.target as HTMLElement;
         while (el && el.tagName !== 'BODY') {
@@ -171,14 +169,14 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
         el.style.cursor = 'text';
         el.focus();
 
-        // Select all content for easy replacement
+        // Select all existing content so first keystroke replaces it
         try {
-          const range = el.ownerDocument!.createRange();
+          const range = canvasDoc.createRange();
           range.selectNodeContents(el);
-          const sel = el.ownerDocument!.defaultView?.getSelection();
+          const sel = canvasDoc.defaultView?.getSelection();
           sel?.removeAllRanges();
           sel?.addRange(range);
-        } catch { /* ignore selection errors */ }
+        } catch { /* ignore */ }
 
         editGuard = true;
 
@@ -194,7 +192,7 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
           if (cancel) { el.innerHTML = snapshot; return; }
           if (newHtml === snapshot) return;
 
-          // Push change into GrapeJS model so changesCount fires
+          // Push edited HTML back into GrapeJS model so changesCount fires
           const comp = findDeepComp(editor.DomComponents.getComponents(), el);
           if (comp) {
             comp.components().reset();
@@ -209,7 +207,7 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
           else if (ke.key === 'Enter' && !ke.shiftKey) { ke.preventDefault(); finish(false); }
         }, { once: true });
       }, true);
-    } catch { /* canvas may not be ready */ }
+    });
 
     // Emit combined HTML+CSS whenever the content changes — but only when Design mode is active
     editor.on('change:changesCount', () => {
