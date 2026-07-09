@@ -29,6 +29,7 @@ import { appFileService } from '../../webapi/appfilesvc';
 import FileUploader from '../common/FileUploader';
 import { FolderNavigation } from '../folderNavigation';
 import appHelper from '../../helper/appHelper';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
 import { isRuntimeTransactionFieldVisible } from './FormMasterDetail/MasterDetailFlexLayoutForm/flexLayoutItemHelper';
 import DataGridLayout from './FormMasterDetail/MasterDetailFlexLayoutForm/DataGridLayout';
 import AppSearch, { type AppSearchHandle } from '../search/AppSearch';
@@ -189,6 +190,8 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
   const transactionOrganizedTypeEnum = useEnumValues('EmTransactionOrganizedType');
 
   type CellMenuKind = 'image' | 'file';
+  const CELL_CONTEXT_MENU_ESTIMATED_WIDTH = 190;
+  const CELL_CONTEXT_MENU_ESTIMATED_HEIGHT = 180;
   const [cellMenu, setCellMenu] = useState<{
     open: boolean;
     x: number;
@@ -198,7 +201,36 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     fieldName: string;
     fileId: number | null;
   } | null>(null);
+  type CellMenuState = NonNullable<typeof cellMenu>;
   const cellMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const openCellMenuAt = useCallback(
+    (
+      anchorX: number,
+      anchorY: number,
+      menu: Omit<CellMenuState, 'open' | 'x' | 'y'>
+    ) => {
+      const { x, y } = clampContextMenuPosition(
+        anchorX,
+        anchorY,
+        CELL_CONTEXT_MENU_ESTIMATED_WIDTH,
+        CELL_CONTEXT_MENU_ESTIMATED_HEIGHT
+      );
+      setCellMenu({ open: true, x, y, ...menu });
+    },
+    []
+  );
+
+  const refineCellMenu = useCallback((updater: React.SetStateAction<CellMenuState>) => {
+    setCellMenu((prev) => {
+      if (!prev?.open) return prev;
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      return { ...prev, x: next.x, y: next.y };
+    });
+  }, []);
+
+  useRefineContextMenuField(!!cellMenu?.open, cellMenuRef, refineCellMenu);
+
   const [pendingLibraryFileId, setPendingLibraryFileId] = useState<number | null>(null);
   const [imagePreviewState, setImagePreviewState] = useState<{ open: boolean; fileId: number | null }>({
     open: false,
@@ -347,6 +379,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
 
       rowItem.DictOneToOneFields = rowItem.DictOneToOneFields ?? {};
       rowItem.DictOneToOneFields[fieldName] = newFileId;
+      rowItem[fieldName] = newFileId;
       rowItem.IsDirty = true;
 
       const nextDictDoc = { ...(currentDataModel.currentFormData?.DictDocumentIdFileCode ?? {}) };
@@ -1453,14 +1486,11 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                                    setCellMenu({
-                                      open: true,
-                                      x: rect.right,
-                                      y: rect.top,
+                                    openCellMenuAt(rect.right, rect.top, {
                                       kind: 'image',
-                                        rowItem,
+                                      rowItem,
                                       fieldName: field.DataBaseFieldName,
-                                        fileId,
+                                      fileId,
                                     });
                                   }}
                                 >
@@ -1540,10 +1570,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                                    setCellMenu({
-                                      open: true,
-                                      x: rect.right,
-                                      y: rect.top,
+                                    openCellMenuAt(rect.right, rect.top, {
                                       kind: 'file',
                                       rowItem,
                                       fieldName: field.DataBaseFieldName,
@@ -1612,7 +1639,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
           className={`fixed z-[10005] border rounded shadow-lg py-1 ${theme.contextMenu} ${t(
             'border_mainContentSection'
           )} ${t('bg_mainContentSection')}`}
-          style={{ left: cellMenu.x, top: cellMenu.y, minWidth: 160, maxWidth: 220 }}
+          style={{ left: cellMenu.x, top: cellMenu.y, minWidth: CELL_CONTEXT_MENU_ESTIMATED_WIDTH, maxWidth: 220 }}
           onClick={(e) => e.stopPropagation()}
           role="menu"
         >

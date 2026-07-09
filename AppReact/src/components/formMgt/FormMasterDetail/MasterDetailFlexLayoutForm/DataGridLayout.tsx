@@ -22,6 +22,7 @@ import AppSearch, { type AppSearchHandle } from '../../../search/AppSearch';
 import FormMasterDetail from '../../FormMasterDetail';
 import FormListEdit from '../../FormListEdit';
 import appHelper from '../../../../helper/appHelper';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../../hooks/useClampedContextMenuPosition';
 import { buildLinkTargetTabTitle } from '../../../../utils/linkTargetTabTitle';
 import { EmbeddedLinkedPopupFrame } from '../../EmbeddedLinkedPopupFrame';
 import {
@@ -466,6 +467,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   }, []);
 
   type CellMenuKind = 'image' | 'file';
+  const CELL_CONTEXT_MENU_ESTIMATED_WIDTH = 190;
+  const CELL_CONTEXT_MENU_ESTIMATED_HEIGHT = 180;
   const [cellMenu, setCellMenu] = useState<{
     open: boolean;
     x: number;
@@ -481,6 +484,34 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const closeCellMenu = useCallback(() => setCellMenu(null), []);
 
   const cellMenuRef = useRef<HTMLDivElement | null>(null);
+  type CellMenuState = NonNullable<typeof cellMenu>;
+
+  const openCellMenuAt = useCallback(
+    (
+      anchorX: number,
+      anchorY: number,
+      menu: Omit<CellMenuState, 'open' | 'x' | 'y'>
+    ) => {
+      const { x, y } = clampContextMenuPosition(
+        anchorX,
+        anchorY,
+        CELL_CONTEXT_MENU_ESTIMATED_WIDTH,
+        CELL_CONTEXT_MENU_ESTIMATED_HEIGHT
+      );
+      setCellMenu({ open: true, x, y, ...menu });
+    },
+    []
+  );
+
+  const refineCellMenu = useCallback((updater: React.SetStateAction<CellMenuState>) => {
+    setCellMenu((prev) => {
+      if (!prev?.open) return prev;
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      return { ...prev, x: next.x, y: next.y };
+    });
+  }, []);
+
+  useRefineContextMenuField(!!cellMenu?.open, cellMenuRef, refineCellMenu);
 
   // Close cell menu when clicking outside
   useEffect(() => {
@@ -1128,6 +1159,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       };
       const nextRowData = {
         ...rowData,
+        [fieldName]: newFileId,
         DictOneToOneFields: nextOneToOne,
         IsDirty: true,
       };
@@ -1719,17 +1751,14 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   );
 
   const handleProjectionImageCellMenu = useCallback((ctx: ProjectionImageCellContext) => {
-    setCellMenu({
-      open: true,
-      x: ctx.clientX,
-      y: ctx.clientY,
+    openCellMenuAt(ctx.clientX, ctx.clientY, {
       kind: 'image',
       rowIndex: ctx.rowIndex,
       fieldName: ctx.dbFieldName,
       fileId: ctx.fileId,
       projectionBinding: ctx.binding,
     });
-  }, []);
+  }, [openCellMenuAt]);
 
   const projectionCascadingInitRef = useRef<any>(null);
 
@@ -3654,10 +3683,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                                setCellMenu({
-                                  open: true,
-                                  x: rect.right,
-                                  y: rect.top,
+                                openCellMenuAt(rect.right, rect.top, {
                                   kind: 'image',
                                   rowIndex,
                                   fieldName: field.DataBaseFieldName,
@@ -3746,10 +3772,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                                setCellMenu({
-                                  open: true,
-                                  x: rect.right,
-                                  y: rect.top,
+                                openCellMenuAt(rect.right, rect.top, {
                                   kind: 'file',
                                   rowIndex,
                                   fieldName: field.DataBaseFieldName,
@@ -3887,7 +3910,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
         <div
           ref={cellMenuRef}
           className={`fixed z-[10005] border rounded shadow-lg py-1 ${theme.mainContentSection} ${t('border_mainContentSection')}`}
-          style={{ left: cellMenu.x, top: cellMenu.y, minWidth: 190 }}
+          style={{ left: cellMenu.x, top: cellMenu.y, minWidth: CELL_CONTEXT_MENU_ESTIMATED_WIDTH }}
           onClick={(e) => e.stopPropagation()}
           role="menu"
         >

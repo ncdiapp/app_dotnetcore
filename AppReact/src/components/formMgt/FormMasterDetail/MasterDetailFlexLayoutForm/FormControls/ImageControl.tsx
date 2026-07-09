@@ -1,8 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../../../../redux/hooks/useTheme';
 import { fileImageUrl, downloadFileById } from '../../../../../webapi/fileEndpoints';
-import { getOneToOneFieldValue } from './formDataBindingHelper';
+import { getOneToOneFieldValue, buildFormDataWithOneToOneValue } from './formDataBindingHelper';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../../../hooks/useClampedContextMenuPosition';
 import FileUploader from '../../../../common/FileUploader';
 import { FolderNavigation } from '../../../../folderNavigation';
 import type { RootState } from '../../../../../redux/store';
@@ -17,6 +18,9 @@ interface ImageControlProps {
   transactionExDto?: any;
 }
 
+const IMAGE_CONTEXT_MENU_ESTIMATED_WIDTH = 190;
+const IMAGE_CONTEXT_MENU_ESTIMATED_HEIGHT = 180;
+
 const ImageControl: React.FC<ImageControlProps> = ({
   layoutItemExDto,
   fieldDto,
@@ -27,6 +31,7 @@ const ImageControl: React.FC<ImageControlProps> = ({
   const { theme, t } = useTheme();
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isLibraryOpen, setIsLibraryOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -108,21 +113,17 @@ const ImageControl: React.FC<ImageControlProps> = ({
 
   const assignFileIdToModel = useCallback(
     (newFileId: number | null, fileName?: string) => {
-      const currentFormData = dataModel?.currentFormData ?? {};
-      const updatedOneToOne = {
-        ...(currentFormData.DictOneToOneFields ?? {}),
-        [fieldName]: newFileId,
-      };
-
-      const updatedFormData: any = {
-        ...currentFormData,
-        IsDirty: true,
-        DictOneToOneFields: updatedOneToOne,
-      };
+      const updatedFormData: any = buildFormDataWithOneToOneValue(
+        dataModel.currentFormData,
+        fieldDto,
+        fieldName,
+        newFileId,
+        layoutItemExDto
+      );
 
       if (newFileId && fileName) {
         updatedFormData.DictDocumentIdFileCode = {
-          ...(currentFormData.DictDocumentIdFileCode ?? {}),
+          ...(updatedFormData.DictDocumentIdFileCode ?? dataModel.currentFormData?.DictDocumentIdFileCode ?? {}),
           [String(newFileId)]: fileName,
         };
       }
@@ -137,15 +138,26 @@ const ImageControl: React.FC<ImageControlProps> = ({
                 return copy;
               })()
             : (dataModel as any)?.uiValidationErrors,
-        currentFormData: updatedFormData,
+        currentFormData: {
+          ...updatedFormData,
+          IsDirty: true,
+        },
       });
     },
-    [dataModel, errorKey, errorText, fieldName, onDataModelChange]
+    [dataModel, errorKey, errorText, fieldDto, fieldName, layoutItemExDto, onDataModelChange]
   );
+
+  useRefineContextMenuField(menuState.open, menuRef, setMenuState);
 
   const openMenuAtEvent = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    setMenuState({ open: true, x: e.clientX, y: e.clientY });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX,
+      e.clientY,
+      IMAGE_CONTEXT_MENU_ESTIMATED_WIDTH,
+      IMAGE_CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setMenuState({ open: true, x, y });
   }, []);
 
   const handleUploadUploaded = useCallback(
@@ -264,8 +276,9 @@ const ImageControl: React.FC<ImageControlProps> = ({
         style={{ minHeight: '150px' }}
       >
         {imageUrl ? (
-          <img 
-            src={imageUrl} 
+          <img
+            key={String(fileIdValue)}
+            src={imageUrl}
             alt={label}
             className="max-w-full max-h-full w-auto h-auto object-contain cursor-pointer"
             onClick={() => {
@@ -287,8 +300,9 @@ const ImageControl: React.FC<ImageControlProps> = ({
       {/* Context menu (Angular: imageContextMenu_) */}
       {menuState.open && (
         <div
+          ref={menuRef}
           className={`${theme.mainContentSection} border rounded shadow-lg z-[10005] fixed`}
-          style={{ left: menuState.x, top: menuState.y, minWidth: 190 }}
+          style={{ left: menuState.x, top: menuState.y, minWidth: IMAGE_CONTEXT_MENU_ESTIMATED_WIDTH }}
           onClick={(e) => e.stopPropagation()}
         >
           <button

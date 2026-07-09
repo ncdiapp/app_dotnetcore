@@ -7,6 +7,7 @@ import { appFileService } from '../../../../../webapi/appfilesvc';
 import FileUploader from '../../../../common/FileUploader';
 import { FolderNavigation } from '../../../../folderNavigation';
 import { getOneToOneFieldValue, buildFormDataWithOneToOneValue } from './formDataBindingHelper';
+import { clampContextMenuPosition, useRefineContextMenuField } from '../../../../../hooks/useClampedContextMenuPosition';
 
 // File preview type by extension (matches Angular's docHelper.getFilePreviewType)
 const IMAGE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'bmp'];
@@ -53,6 +54,9 @@ interface FileControlProps {
   transactionExDto?: any;
 }
 
+const FILE_CONTEXT_MENU_ESTIMATED_WIDTH = 190;
+const FILE_CONTEXT_MENU_ESTIMATED_HEIGHT = 180;
+
 const FileControl: React.FC<FileControlProps> = ({
   layoutItemExDto,
   fieldDto,
@@ -63,6 +67,7 @@ const FileControl: React.FC<FileControlProps> = ({
   const { theme, t } = useTheme();
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const fieldName = fieldDto.DataBaseFieldName;
   const fileId = getOneToOneFieldValue(dataModel.currentFormData, fieldDto, fieldName, undefined, layoutItemExDto);
@@ -236,8 +241,16 @@ const FileControl: React.FC<FileControlProps> = ({
 
   const openMenuAtEvent = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
-    setMenuState({ open: true, x: e.clientX, y: e.clientY });
+    const { x, y } = clampContextMenuPosition(
+      e.clientX,
+      e.clientY,
+      FILE_CONTEXT_MENU_ESTIMATED_WIDTH,
+      FILE_CONTEXT_MENU_ESTIMATED_HEIGHT
+    );
+    setMenuState({ open: true, x, y });
   }, []);
+
+  useRefineContextMenuField(menuState.open, menuRef, setMenuState);
 
   return (
     <div
@@ -324,8 +337,9 @@ const FileControl: React.FC<FileControlProps> = ({
       {/* Context menu (Angular: fileContextMenu_) */}
       {menuState.open && (
         <div
+          ref={menuRef}
           className={`${theme.mainContentSection} border rounded shadow-lg z-[10005] fixed`}
-          style={{ left: menuState.x, top: menuState.y, minWidth: 190 }}
+          style={{ left: menuState.x, top: menuState.y, minWidth: FILE_CONTEXT_MENU_ESTIMATED_WIDTH }}
           onClick={(e) => e.stopPropagation()}
         >
           <button
