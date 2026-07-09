@@ -1363,7 +1363,7 @@ ${cells}
 
           {/* ── DESIGN mode: GrapeJS WYSIWYG — always mounted, hidden when not in design mode ── */}
           <div
-            className="h-1 flex-auto overflow-hidden"
+            className="h-1 flex-auto overflow-hidden relative"
             style={{ display: viewMode === 'design' ? 'flex' : 'none' }}
           >
             <Suspense fallback={<div className={`w-full h-full flex items-center justify-center text-xs ${theme.label} opacity-60`}><i className="fa-solid fa-spinner fa-spin mr-2" />Loading visual editor…</div>}>
@@ -1377,6 +1377,31 @@ ${cells}
                 onEditorReady={ed => { gjsEditorRef.current = ed; }}
               />
             </Suspense>
+            {/* Drop zone: Chrome's sandboxed-iframe security blocks dragover/drop events from
+                reaching the GrapeJS canvas iframe. This parent-frame overlay intercepts the drop
+                when the user drags a token. Translucent so the canvas stays visible; appears only
+                while actively dragging a token in Design mode. Click the cell first to select it,
+                then drag the token — it drops into whichever cell is currently selected. */}
+            {draggingToken && (
+              <div
+                className="absolute inset-0 z-50 flex items-end justify-center pb-8"
+                style={{ background: 'rgba(59,130,246,0.08)', cursor: 'copy' }}
+                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
+                onDrop={e => {
+                  e.preventDefault();
+                  const token = e.dataTransfer.getData('text/plain') || draggingToken;
+                  setDraggingToken(null);
+                  if (!token?.includes('{{') || !gjsEditorRef.current) return;
+                  const sel = gjsEditorRef.current.getSelected?.();
+                  if (sel) { sel.components().reset(); sel.append(token); }
+                }}
+              >
+                <div className="px-4 py-2 bg-blue-500 text-white rounded-lg shadow-xl text-xs font-semibold pointer-events-none select-none">
+                  <i className="fa-solid fa-circle-down mr-1.5" />
+                  Drop to insert into selected cell
+                </div>
+              </div>
+            )}
           </div>
 
         </div>
