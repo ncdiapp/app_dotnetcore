@@ -36,6 +36,13 @@ namespace APP.BL.DataMigration.PlmMigration
         private const string PomTemplateListSearchIntegrationId = "PlmPom_BodyType_List";
         private const string PomTemplateFolderSearchIntegrationId = "PlmPom_BodyType_FolderNav";
 
+        private sealed class PomFolderRemapResult
+        {
+            public int ReadyToRemapCount { get; set; }
+            public int UpdatedCount { get; set; }
+            public int UnmappedCount { get; set; }
+        }
+
         private sealed class PlmPomRootFolderRow
         {
             public int FolderId { get; set; }
@@ -190,6 +197,14 @@ namespace APP.BL.DataMigration.PlmMigration
                 preview.ExistingPomTemplateTransactionId = FindTransactionIdByTable(tenantConn, null, PomBodyTypeTableName, PomTemplateTxIntegrationId);
                 preview.ExistingPomTemplateListSearchId = GetSearchIdByIntegrationId(tenantConn, null, PomTemplateListSearchIntegrationId);
                 preview.ExistingPomTemplateFolderSearchId = GetSearchIdByIntegrationId(tenantConn, null, PomTemplateFolderSearchIntegrationId);
+
+                var pomRemapPreview = PreviewPomFolderIdRemap(tenantConn, null, sessionId, PomBodyPartTableName, PlmPomFolderType);
+                preview.PomFolderIdReadyToRemap = pomRemapPreview.ReadyToRemapCount;
+                preview.PomFolderIdUnmappedCount = pomRemapPreview.UnmappedCount;
+
+                var templateRemapPreview = PreviewPomFolderIdRemap(tenantConn, null, sessionId, PomBodyTypeTableName, PlmPomTemplateFolderType);
+                preview.PomTemplateFolderIdReadyToRemap = templateRemapPreview.ReadyToRemapCount;
+                preview.PomTemplateFolderIdUnmappedCount = templateRemapPreview.UnmappedCount;
             }
 
             preview.BodyTypeDetailSourceRowCount = CountPlmSourceTableRows(plmConnectionString, PomBodyTypeDetailSourceTable);
@@ -210,6 +225,13 @@ namespace APP.BL.DataMigration.PlmMigration
             preview.Warnings.AddRange(templateRoot.Warnings);
 
             preview.PlannedActions.Add("Import POM Template junction tables if missing (pdmV2kBodyTypeDetail, pdmV2kSpecBodyPartGrading)");
+            preview.PlannedActions.Add("Remap imported FolderID values from PLM IDs to APP folder IDs (BodyPart + BodyType)");
+            if (preview.PomFolderIdReadyToRemap > 0)
+                preview.PlannedActions.Add($"Remap {preview.PomFolderIdReadyToRemap} POM row(s) FolderID via AppPlmFolderMap");
+            if (preview.PomTemplateFolderIdReadyToRemap > 0)
+                preview.PlannedActions.Add($"Remap {preview.PomTemplateFolderIdReadyToRemap} POM Template row(s) FolderID via AppPlmFolderMap");
+            if (preview.PomFolderIdUnmappedCount > 0 || preview.PomTemplateFolderIdUnmappedCount > 0)
+                preview.Warnings.Add($"Unmapped FolderID: POM {preview.PomFolderIdUnmappedCount}, POM Template {preview.PomTemplateFolderIdUnmappedCount}.");
             preview.PlannedActions.Add("Ensure POM transaction, list search, and folder navigation (FolderType 14 / BodyPart)");
             preview.PlannedActions.Add("Ensure POM Template transaction with detail + grading child grids (FolderType 5 / BodyType)");
             if (!preview.HasBodyTypeDetailTable && preview.BodyTypeDetailSourceRowCount > 0)
@@ -250,6 +272,20 @@ namespace APP.BL.DataMigration.PlmMigration
 
                 if (importJunctionTables)
                     ImportPomJunctionTables(plmConnectionString, tenantConnectionString, executeResult);
+
+                var pomRemap = RemapImportedPomFolderIds(tenantConn, null, sessionId, PomBodyPartTableName, PlmPomFolderType);
+                executeResult.PomFolderIdsRemapped = pomRemap.UpdatedCount;
+                if (pomRemap.UpdatedCount > 0)
+                    executeResult.Messages.Add($"Remapped FolderID on {pomRemap.UpdatedCount} POM row(s) to APP folder IDs.");
+                if (pomRemap.UnmappedCount > 0)
+                    executeResult.Messages.Add($"Warning: {pomRemap.UnmappedCount} POM row(s) still have unmapped FolderID.");
+
+                var templateRemap = RemapImportedPomFolderIds(tenantConn, null, sessionId, PomBodyTypeTableName, PlmPomTemplateFolderType);
+                executeResult.PomTemplateFolderIdsRemapped = templateRemap.UpdatedCount;
+                if (templateRemap.UpdatedCount > 0)
+                    executeResult.Messages.Add($"Remapped FolderID on {templateRemap.UpdatedCount} POM Template row(s) to APP folder IDs.");
+                if (templateRemap.UnmappedCount > 0)
+                    executeResult.Messages.Add($"Warning: {templateRemap.UnmappedCount} POM Template row(s) still have unmapped FolderID.");
 
                 var pomRoot = ResolvePomNavRootFolder(plmConnectionString, tenantConnectionString, sessionId, PlmPomFolderType);
                 executeResult.Messages.AddRange(pomRoot.Warnings);
@@ -325,6 +361,120 @@ namespace APP.BL.DataMigration.PlmMigration
             }
 
             return executeResult;
+        }
+
+        private static PomFolderRemapResult PreviewPomFolderIdRemap(
+            SqlConnection tenantConn,
+            SqlTransaction tran,
+            int sessionId,
+            string tableName,
+            int plmFolderType)
+        {
+            var result = new PomFolderRemapResult();
+            using (var cmd = tenantConn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = $@"
+SELECT
+    SUM(CASE WHEN m.AppFolderId IS NOT NULL AND t.FolderID <> m.AppFolderId THEN 1 ELSE 0 END) AS ReadyToRemap,
+    SUM(CASE WHEN t.FolderID IS NOT NULL AND m.AppFolderId IS NULL THEN 1 ELSE 0 END) AS Unmapped
+FROM dbo.[{tableName}] t
+OUTER APPLY (
+    SELECT TOP 1 AppFolderId
+    FROM dbo.AppPlmFolderMap
+    WHERE PlmFolderId = t.FolderID
+      AND PlmFolderType = @PlmFolderType
+    ORDER BY CASE WHEN SessionId = @SessionId THEN 0 ELSE 1 END, LastSyncAt DESC, MapId DESC
+) m;";
+                cmd.Parameters.AddWithValue("@PlmFolderType", plmFolderType);
+                cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        result.ReadyToRemapCount = reader.IsDBNull(0) ? 0 : Convert.ToInt32(reader.GetValue(0));
+                        result.UnmappedCount = reader.IsDBNull(1) ? 0 : Convert.ToInt32(reader.GetValue(1));
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private static PomFolderRemapResult RemapImportedPomFolderIds(
+            SqlConnection tenantConn,
+            SqlTransaction tran,
+            int sessionId,
+            string tableName,
+            int plmFolderType)
+        {
+            var result = RemapImportedPomFolderIdsCore(tenantConn, tran, sessionId, tableName, plmFolderType);
+            result.UnmappedCount = CountUnmappedPomFolderIds(tenantConn, tran, sessionId, tableName, plmFolderType);
+            return result;
+        }
+
+        private static PomFolderRemapResult RemapImportedPomFolderIdsCore(
+            SqlConnection tenantConn,
+            SqlTransaction tran,
+            int sessionId,
+            string tableName,
+            int plmFolderType)
+        {
+            var result = new PomFolderRemapResult();
+            using (var cmd = tenantConn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = $@"
+UPDATE t
+SET t.FolderID = m.AppFolderId
+FROM dbo.[{tableName}] t
+INNER JOIN (
+    SELECT PlmFolderId, AppFolderId,
+           ROW_NUMBER() OVER (
+               PARTITION BY PlmFolderId
+               ORDER BY CASE WHEN SessionId = @SessionId THEN 0 ELSE 1 END, LastSyncAt DESC, MapId DESC
+           ) AS rn
+    FROM dbo.AppPlmFolderMap
+    WHERE PlmFolderType = @PlmFolderType
+) m ON m.PlmFolderId = t.FolderID AND m.rn = 1
+WHERE t.FolderID IS NOT NULL
+  AND t.FolderID <> m.AppFolderId;";
+                cmd.Parameters.AddWithValue("@PlmFolderType", plmFolderType);
+                cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                result.UpdatedCount = cmd.ExecuteNonQuery();
+            }
+
+            return result;
+        }
+
+        private static int CountUnmappedPomFolderIds(
+            SqlConnection tenantConn,
+            SqlTransaction tran,
+            int sessionId,
+            string tableName,
+            int plmFolderType)
+        {
+            using (var cmd = tenantConn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = $@"
+SELECT COUNT(1)
+FROM dbo.[{tableName}] t
+WHERE t.FolderID IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM dbo.AppSEFolder f
+      WHERE f.FolderID = t.FolderID
+  )
+  AND NOT EXISTS (
+      SELECT 1
+      FROM dbo.AppPlmFolderMap m
+      WHERE m.PlmFolderId = t.FolderID
+        AND m.PlmFolderType = @PlmFolderType
+  );";
+                cmd.Parameters.AddWithValue("@PlmFolderType", plmFolderType);
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
         }
 
         private static void ImportPomJunctionTables(

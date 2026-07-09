@@ -1013,6 +1013,10 @@ export interface PlmPomImportPreviewDto {
   ExistingPomTemplateTransactionId?: number | null;
   ExistingPomTemplateListSearchId?: number | null;
   ExistingPomTemplateFolderSearchId?: number | null;
+  PomFolderIdReadyToRemap?: number;
+  PomFolderIdUnmappedCount?: number;
+  PomTemplateFolderIdReadyToRemap?: number;
+  PomTemplateFolderIdUnmappedCount?: number;
   Warnings?: string[] | null;
   PlannedActions?: string[] | null;
 }
@@ -1040,6 +1044,8 @@ export interface PlmPomImportExecuteResultDto {
   BodyTypeDetailRowsImported?: number;
   SpecBodyPartGradingRowsImported?: number;
   FoldersImported?: number;
+  PomFolderIdsRemapped?: number;
+  PomTemplateFolderIdsRemapped?: number;
   Messages?: string[] | null;
 }
 

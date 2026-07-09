@@ -86,6 +86,18 @@ namespace APP.Components.EntityDto
         public int? ExistingPomTemplateFolderSearchId { get; set; }
 
         [DataMember]
+        public int PomFolderIdReadyToRemap { get; set; }
+
+        [DataMember]
+        public int PomFolderIdUnmappedCount { get; set; }
+
+        [DataMember]
+        public int PomTemplateFolderIdReadyToRemap { get; set; }
+
+        [DataMember]
+        public int PomTemplateFolderIdUnmappedCount { get; set; }
+
+        [DataMember]
         public List<string> Warnings { get; set; } = new List<string>();
 
         [DataMember]
@@ -171,6 +183,12 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public int FoldersImported { get; set; }
+
+        [DataMember]
+        public int PomFolderIdsRemapped { get; set; }
+
+        [DataMember]
+        public int PomTemplateFolderIdsRemapped { get; set; }
 
         [DataMember]
         public List<string> Messages { get; set; } = new List<string>();
