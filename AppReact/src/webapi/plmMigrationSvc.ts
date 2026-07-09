@@ -586,6 +586,25 @@ class PlmMigrationService {
     return response.json();
   }
 
+  async previewPlmPomImport(sessionId: number): Promise<OperationCallResult<PlmPomImportPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewPlmPomImport?sessionId=${sessionId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) throw new Error('Failed to preview PLM POM import');
+    return response.json();
+  }
+
+  async executePlmPomImport(request: PlmPomImportExecuteRequestDto): Promise<OperationCallResult<PlmPomImportExecuteResultDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecutePlmPomImport`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to execute PLM POM import');
+    return response.json();
+  }
+
   async previewSystemDefineEntityImport(sessionId: number): Promise<OperationCallResult<PlmSystemDefineEntityPreviewDto>> {
     const response = await fetch(`${this.baseUrl}/PreviewSystemDefineEntityImport?sessionId=${sessionId}`, {
       method: 'POST',
@@ -957,6 +976,70 @@ export interface PlmColorImportExecuteResultDto {
   FolderTemplateSearchId?: number | null;
   FolderSearchViewId?: number | null;
   ListSearchViewId?: number | null;
+  Messages?: string[] | null;
+}
+
+export interface PlmPomRootFolderPreviewDto {
+  PlmFolderId?: number;
+  PlmFolderName?: string | null;
+  AppFolderId?: number | null;
+  AppFolderName?: string | null;
+}
+
+export interface PlmPomImportPreviewDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  HasBodyPartTable?: boolean;
+  BodyPartRowCount?: number;
+  HasBodyTypeTable?: boolean;
+  BodyTypeRowCount?: number;
+  HasBodyTypeDetailTable?: boolean;
+  BodyTypeDetailRowCount?: number;
+  BodyTypeDetailSourceRowCount?: number;
+  HasSpecBodyPartGradingTable?: boolean;
+  SpecBodyPartGradingRowCount?: number;
+  SpecBodyPartGradingSourceRowCount?: number;
+  PlmPomRootFolderCount?: number;
+  PomAppRootFolderId?: number | null;
+  PomAppRootFolderName?: string | null;
+  PlmPomRootFolders?: PlmPomRootFolderPreviewDto[] | null;
+  PlmPomTemplateRootFolderCount?: number;
+  PomTemplateAppRootFolderId?: number | null;
+  PomTemplateAppRootFolderName?: string | null;
+  PlmPomTemplateRootFolders?: PlmPomRootFolderPreviewDto[] | null;
+  ExistingPomTransactionId?: number | null;
+  ExistingPomListSearchId?: number | null;
+  ExistingPomFolderSearchId?: number | null;
+  ExistingPomTemplateTransactionId?: number | null;
+  ExistingPomTemplateListSearchId?: number | null;
+  ExistingPomTemplateFolderSearchId?: number | null;
+  Warnings?: string[] | null;
+  PlannedActions?: string[] | null;
+}
+
+export interface PlmPomImportExecuteRequestDto {
+  SessionId?: number | null;
+  SaasApplicationId?: number | null;
+  ImportJunctionTables?: boolean;
+  ImportFoldersIfMissing?: boolean;
+}
+
+export interface PlmPomImportExecuteResultDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  PomTransactionId?: number | null;
+  PomFormId?: number | null;
+  PomListSearchId?: number | null;
+  PomFolderSearchId?: number | null;
+  PomAppRootFolderId?: number | null;
+  PomTemplateTransactionId?: number | null;
+  PomTemplateFormId?: number | null;
+  PomTemplateListSearchId?: number | null;
+  PomTemplateFolderSearchId?: number | null;
+  PomTemplateAppRootFolderId?: number | null;
+  BodyTypeDetailRowsImported?: number;
+  SpecBodyPartGradingRowsImported?: number;
+  FoldersImported?: number;
   Messages?: string[] | null;
 }
 

@@ -441,6 +441,32 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("PreviewPlmPomImport")]
+    public OperationCallResult<PlmPomImportPreviewDto> PreviewPlmPomImport(int? sessionId)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewPlmPomImport(sessionId);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmPomImportPreviewDto>("Plm_Pom_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecutePlmPomImport")]
+    public OperationCallResult<PlmPomImportExecuteResultDto> ExecutePlmPomImport([FromBody] PlmPomImportExecuteRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecutePlmPomImport(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmPomImportExecuteResultDto>("Plm_Pom_Execute_Error", ex);
+        }
+    }
+
     private static OperationCallResult<T> ErrorResult<T>(string code, Exception ex)
     {
         var result = new OperationCallResult<T>();

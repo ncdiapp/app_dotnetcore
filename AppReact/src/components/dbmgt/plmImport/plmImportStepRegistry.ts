@@ -40,6 +40,12 @@ export const PLM_IMPORT_STEPS: PlmImportStepDefinition[] = [
     icon: 'fa-solid fa-palette',
   },
   {
+    code: 'PomImport',
+    label: 'POM IMPORT',
+    description: 'Create POM and POM Template transactions, searches, and folder navigation.',
+    icon: 'fa-solid fa-ruler-combined',
+  },
+  {
     code: 'ImageImport',
     label: 'Image Import',
     description: 'Import PLM tblSketch binary data into AppFile (original/regular/thumbnail).',

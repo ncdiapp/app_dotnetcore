@@ -8,6 +8,7 @@ import EntityStep from './steps/EntityStep';
 import DwBlueprintStep from './steps/DwBlueprintStep';
 import FolderImportStep from './steps/FolderImportStep';
 import ColorImportStep from './steps/ColorImportStep';
+import PomImportStep from './steps/PomImportStep';
 import ImageImportStep from './steps/ImageImportStep';
 import PlmImportSessionGear from './PlmImportSessionGear';
 
@@ -113,6 +114,8 @@ const PlmImportWizard: React.FC<PlmImportWizardProps> = ({
         return <FolderImportStep state={state} />;
       case 'ColorImport':
         return <ColorImportStep state={state} />;
+      case 'PomImport':
+        return <PomImportStep state={state} />;
       case 'ImageImport':
         return <ImageImportStep state={state} />;
       default:

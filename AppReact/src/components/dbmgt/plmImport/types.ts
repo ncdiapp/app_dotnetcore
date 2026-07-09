@@ -15,6 +15,7 @@ export type PlmImportStepCode =
   | 'DwBlueprint'
   | 'FolderImport'
   | 'ColorImport'
+  | 'PomImport'
   | 'ImageImport'
   /** @deprecated legacy step code (replaced by ImageImport) */
   | 'OtherData';
@@ -26,6 +27,7 @@ export const normalizePlmImportStepCode = (code: string | undefined | null): Plm
   if (code === 'OtherData') return 'ImageImport';
   if (code === 'FolderImport') return 'FolderImport';
   if (code === 'ColorImport') return 'ColorImport';
+  if (code === 'PomImport') return 'PomImport';
   if (code === 'Connect' || code === 'Entity' || code === 'DwBlueprint') {
     return code;
   }
@@ -162,5 +164,6 @@ export const PLM_IMPORT_STEP_ORDER: PlmImportStepCode[] = [
   'DwBlueprint',
   'FolderImport',
   'ColorImport',
+  'PomImport',
   'ImageImport',
 ];
