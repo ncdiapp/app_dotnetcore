@@ -26,6 +26,9 @@ interface GrapeJsEditorProps {
   tokens: TokenDescriptor[];
   blocks: ReportBlock[];
   isDark: boolean;
+  /** When false, GrapeJS will not sync incoming html changes and will not emit onChange.
+   *  Prevents feedback loop with Monaco when the user is in Code mode. */
+  active: boolean;
   onChange: (html: string) => void;
   onEditorReady?: (editor: any) => void;
 }
@@ -44,15 +47,18 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
   tokens,
   blocks,
   isDark,
+  active,
   onChange,
   onEditorReady,
 }) => {
   const containerRef  = useRef<HTMLDivElement>(null);
   const gjsRef        = useRef<any>(null);
   const onChangeRef   = useRef(onChange);
+  const activeRef     = useRef(active);
   const htmlRef       = useRef(html);
 
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
+  useEffect(() => { activeRef.current = active; }, [active]);
   useEffect(() => { htmlRef.current = html; }, [html]);
 
   // Initialize GrapeJS once on mount
@@ -107,8 +113,9 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
       });
     });
 
-    // Emit combined HTML+CSS whenever the content changes
+    // Emit combined HTML+CSS whenever the content changes — but only when Design mode is active
     editor.on('change:changesCount', () => {
+      if (!activeRef.current) return;
       const css = editor.getCss();
       const body = editor.getHtml();
       const combined = css ? `<style>${css}</style>\n${body}` : body;
@@ -124,17 +131,18 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Sync HTML into GrapeJS when the parent value changes (e.g. switching from Code mode)
+  // Sync HTML into GrapeJS only when Design mode becomes active or html changes while active.
+  // Skipping this sync in Code mode prevents GrapeJS from reformatting Monaco's HTML.
   useEffect(() => {
     const ed = gjsRef.current;
-    if (!ed) return;
+    if (!ed || !active) return;
     const { css, body } = splitStyleAndBody(html);
     const currentBody = ed.getHtml() ?? '';
     if (currentBody.trim() !== body.trim()) {
       ed.setComponents(body);
       if (css) ed.setStyle(css);
     }
-  }, [html]);
+  }, [html, active]);
 
   return (
     <div

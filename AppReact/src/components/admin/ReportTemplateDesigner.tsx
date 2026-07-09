@@ -307,7 +307,6 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
 
   const insertAtCursor = (text: string) => {
     if (viewMode === 'design' && gjsEditorRef.current) {
-      // In GrapeJS mode: try to insert into the selected component, otherwise copy to clipboard
       const gjsEditor = gjsEditorRef.current;
       const sel = gjsEditor.getSelected();
       if (sel) {
@@ -315,19 +314,27 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
         sel.set('content', current + text);
       } else {
         navigator.clipboard?.writeText(text).catch(() => {});
-        // Toast is not available here; the token hint badge already explains the workflow
       }
       return;
     }
-    if (editorRef.current) {
-      const editor = editorRef.current;
+    const editor = editorRef.current;
+    if (editor) {
       const sel = editor.getSelection();
-      editor.executeEdits('insert', [{ range: sel, text, forceMoveMarkers: true }]);
+      if (sel) {
+        editor.executeEdits('insert', [{ range: sel, text, forceMoveMarkers: true }]);
+      } else {
+        const model = editor.getModel();
+        const lastLine = model?.getLineCount() ?? 1;
+        const lastCol  = model?.getLineMaxColumn(lastLine) ?? 1;
+        editor.executeEdits('insert', [{ range: { startLineNumber: lastLine, startColumn: lastCol, endLineNumber: lastLine, endColumn: lastCol }, text, forceMoveMarkers: true }]);
+      }
       editor.focus();
+      schedulePreview(editor.getValue());
     } else {
-      setTemplateHtml(prev => prev + '\n' + text);
+      const next = templateHtml + '\n' + text;
+      setTemplateHtml(next);
+      schedulePreview(next);
     }
-    schedulePreview(templateHtml + '\n' + text);
   };
 
   const applyStarterTemplate = (html: string) => {
@@ -1117,6 +1124,9 @@ ${cells}
               onMount={(editor, monacoInstance) => {
                 editorRef.current = editor;
 
+                // Enable trigger-character suggestions (disabled globally in JsonCodeEditor)
+                editor.updateOptions({ suggestOnTriggerCharacters: true });
+
                 // Register {{token}} autocomplete — reads latest tokens via ref on each invocation
                 completionDisposable.current?.dispose();
                 completionDisposable.current = monacoInstance.languages.registerCompletionItemProvider('html', {
@@ -1143,37 +1153,39 @@ ${cells}
                   },
                 });
 
-                // Wire native drag-drop so tokens can be dropped directly onto the Monaco editor
+                // Wire native drag-drop — use capture phase so Monaco's internal handlers don't block ours
                 const domNode = editor.getDomNode();
                 if (domNode) {
                   domNode.addEventListener('dragover', (e: Event) => {
                     const de = e as DragEvent;
+                    const text = de.dataTransfer?.types?.includes('text/plain');
+                    if (!text) return;
                     de.preventDefault();
                     de.stopPropagation();
                     if (de.dataTransfer) de.dataTransfer.dropEffect = 'copy';
-                  }, false);
+                  }, true); // capture
                   domNode.addEventListener('drop', (e: Event) => {
                     const de = e as DragEvent;
+                    const text = de.dataTransfer?.getData('text/plain');
+                    if (!text) return; // not our drag — let Monaco handle it
                     de.preventDefault();
                     de.stopPropagation();
-                    const text = de.dataTransfer?.getData('text/plain');
-                    if (!text) return;
                     const target = editor.getTargetAtClientPoint(de.clientX, de.clientY);
                     if (target?.position) {
                       const { lineNumber, column } = target.position;
                       const range = new monacoInstance.Range(lineNumber, column, lineNumber, column);
                       editor.executeEdits('drag-drop', [{ range, text: text + '\n', forceMoveMarkers: true }]);
                     } else {
-                      // Fallback: append at end
                       const model = editor.getModel();
                       const lastLine = model?.getLineCount() ?? 1;
-                      const lastCol = model?.getLineMaxColumn(lastLine) ?? 1;
+                      const lastCol  = model?.getLineMaxColumn(lastLine) ?? 1;
                       const range = new monacoInstance.Range(lastLine, lastCol, lastLine, lastCol);
                       editor.executeEdits('drag-drop', [{ range, text: '\n' + text, forceMoveMarkers: true }]);
                     }
                     editor.focus();
+                    schedulePreview(editor.getValue());
                     setDraggingToken(null);
-                  }, false);
+                  }, true); // capture
                 }
               }}
             />
@@ -1248,6 +1260,7 @@ ${cells}
                 tokens={tokens}
                 blocks={REPORT_BLOCKS}
                 isDark={currentThemeId === 'dark'}
+                active={viewMode === 'design'}
                 onChange={html => { setTemplateHtml(html); schedulePreview(html); }}
                 onEditorReady={ed => { gjsEditorRef.current = ed; }}
               />
