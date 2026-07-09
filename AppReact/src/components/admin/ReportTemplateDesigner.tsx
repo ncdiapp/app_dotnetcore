@@ -400,8 +400,9 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
       const gjsEditor = gjsEditorRef.current;
       const sel = gjsEditor.getSelected();
       if (sel) {
-        const current = sel.get('content') ?? '';
-        sel.set('content', current + text);
+        // Use components().reset()+append() — sel.set('content') doesn't update the view
+        sel.components().reset();
+        sel.append(text);
       } else {
         navigator.clipboard?.writeText(text).catch(() => {});
       }
@@ -764,7 +765,7 @@ ${previewHtml}
                       title={tmpl.label}
                       className="absolute top-0 left-0 border-none origin-top-left"
                       style={{ width: '600px', height: '500px', transform: 'scale(0.48)', pointerEvents: 'none' }}
-                      sandbox=""
+                      sandbox="allow-scripts"
                     />
                   </div>
                   {/* Label */}
@@ -996,6 +997,7 @@ ${cells}
                         draggable
                         onDragStart={e => {
                           e.dataTransfer.setData('text/plain', block.html);
+                          e.dataTransfer.setData('application/x-report-block', '1');
                           e.dataTransfer.effectAllowed = 'copy';
                           setDraggingToken(block.html);
                         }}
@@ -1083,7 +1085,7 @@ ${cells}
                             }}
                             onDragEnd={() => { setDraggingToken(null); setDropIndicatorY(null); }}
                             onClick={() => insertAtCursor(tok.Token)}
-                            title={`${tok.Token}\nClick to insert · Drag to code editor`}
+                            title={`${tok.Token}\nDesign mode: click a cell first, then click to insert\nCode mode: click to insert at cursor · drag onto any line`}
                             className={`w-full text-left px-2 py-1 text-xs truncate cursor-grab active:cursor-grabbing border-b ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 flex items-center gap-1`}
                           >
                             <span className="text-gray-300 text-[10px] shrink-0 select-none">⠿</span>
@@ -1141,7 +1143,7 @@ ${cells}
                 <i className="fa-solid fa-pen-ruler text-purple-400 text-xs shrink-0" />
                 <span className={`text-xs font-medium ${theme.label}`}>Visual Designer</span>
                 <span className={`text-xs opacity-40 ${theme.label}`}>
-                  — drag blocks from left panel · click a text element then use Tokens tab to insert
+                  — drag blocks from left panel · click a cell to select it, then click a token to insert
                 </span>
               </>
             ) : (
