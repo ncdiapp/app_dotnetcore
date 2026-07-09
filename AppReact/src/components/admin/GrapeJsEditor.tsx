@@ -115,6 +115,26 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
       });
     });
 
+    // Mark text-container elements as directly editable so double-click works
+    // without needing to navigate the component hierarchy first.
+    // The newsletter preset does not set editable:true on td/th/p/headings by default.
+    const EDITABLE_TAGS = new Set(['td', 'th', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'li', 'a', 'div']);
+    const markEditable = (comps: any) => {
+      comps?.each?.((c: any) => {
+        if (EDITABLE_TAGS.has((c.get('tagName') ?? '').toLowerCase())) {
+          c.set('editable', true);
+        }
+        markEditable(c.components?.());
+      });
+    };
+    editor.on('load', () => markEditable(editor.DomComponents.getComponents()));
+    editor.on('component:add', (c: any) => {
+      if (EDITABLE_TAGS.has((c.get('tagName') ?? '').toLowerCase())) {
+        c.set('editable', true);
+      }
+      markEditable(c.components?.());
+    });
+
     // Emit combined HTML+CSS whenever the content changes — but only when Design mode is active
     editor.on('change:changesCount', () => {
       if (!activeRef.current) return;
