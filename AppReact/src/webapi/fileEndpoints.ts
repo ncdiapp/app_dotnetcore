@@ -34,6 +34,7 @@ export function fileThumbnailUrl(fileId: number | string): string {
 
 /**
  * Resolve a static resource path from search results (e.g. /api/resources/Company_1/Image/thumbnail/guid).
+ * Protected resources must be loaded via {@link fetchAuthenticatedImageBlobUrl} (CurrentUserSessionId header).
  */
 export function fileResourceUrl(apiResourcePath: string): string {
   if (!apiResourcePath) return apiResourcePath;
@@ -44,17 +45,55 @@ export function fileResourceUrl(apiResourcePath: string): string {
   return `${endpoints.BASE_URL}${path}`;
 }
 
+const authenticatedImageBlobCache = new Map<string, string>();
+const authenticatedImageInflight = new Map<string, Promise<string | null>>();
+
 /**
- * Resolve search thumbnail src. When the search row includes DictThumbnailUrl (new API),
- * only use server-provided resource URLs — never fall back to /api/files/thumbnail (avoids hang on missing files).
- * Legacy rows without DictThumbnailUrl still use the FileId thumbnail API.
+ * Load a protected /api/resources image using the same session header as WebAPI calls.
+ * Returns a blob: URL suitable for &lt;img src&gt; (browser cannot send custom headers on src directly).
+ */
+export async function fetchAuthenticatedImageBlobUrl(apiResourcePath: string): Promise<string | null> {
+  if (!apiResourcePath) return null;
+
+  const absoluteUrl = fileResourceUrl(apiResourcePath);
+  const cached = authenticatedImageBlobCache.get(absoluteUrl);
+  if (cached) return cached;
+
+  const pending = authenticatedImageInflight.get(absoluteUrl);
+  if (pending) return pending;
+
+  const load = (async () => {
+    const sessionId = getSessionId();
+    if (!sessionId) return null;
+
+    const resp = await fetch(absoluteUrl, {
+      headers: { CurrentUserSessionId: sessionId },
+    });
+    if (!resp.ok) return null;
+
+    const blob = await resp.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    authenticatedImageBlobCache.set(absoluteUrl, objectUrl);
+    return objectUrl;
+  })();
+
+  authenticatedImageInflight.set(absoluteUrl, load);
+  try {
+    return await load;
+  } finally {
+    authenticatedImageInflight.delete(absoluteUrl);
+  }
+}
+
+/**
+ * Resolve search thumbnail src for legacy &lt;img src&gt; (FileId + query-string API only).
+ * Resource URLs from search must use {@link fetchAuthenticatedImageBlobUrl} instead.
  */
 export function resolveSearchThumbnailUrl(
   fileId: number | string | null | undefined,
   resourceUrl?: string | null,
   searchUsesThumbnailUrls = false,
 ): string | null {
-  if (resourceUrl) return fileResourceUrl(resourceUrl);
   if (searchUsesThumbnailUrls) return null;
   const numericId = Number(fileId);
   if (!Number.isFinite(numericId) || numericId <= 0) return null;
