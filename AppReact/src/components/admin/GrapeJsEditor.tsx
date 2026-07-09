@@ -73,17 +73,72 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
   // re-render (e.g. when the parent's draggingToken state changes), racing with enable().
   // By keeping pointerEvents OUT of the style prop, React never touches it.
   // Browsers route drag events directly to <iframe> elements regardless of any covering div
-  // with pointer-events:auto (iframe drag is special-cased by the browser's hit-test).
-  // The fix: attach dragover/drop on the <iframe> element itself (in the parent document).
-  // We also keep a subtle visual hint on the overlay during drag, but don't rely on it for events.
+  // with pointer-events:auto. We must attach dragover/drop to the actual canvas <iframe>.
+  //
+  // The editor.on('load') fires while the canvas may still be display:none (e.g. when
+  // GrapeJS first mounts before the user switches to Design mode), giving all iframes a
+  // zero-size rect. We wire lazily on the first 'dragstart' instead — at that moment the
+  // user is visibly dragging toward the canvas, which is guaranteed to be displayed.
   useEffect(() => {
     if (overlayRef.current) {
       overlayRef.current.style.pointerEvents = 'none';
       overlayRef.current.style.background = '';
     }
 
-    const showHint  = () => { if (overlayRef.current) overlayRef.current.style.background = 'rgba(59,130,246,0.08)'; };
-    const hideHint  = () => { if (overlayRef.current) overlayRef.current.style.background = ''; };
+    let dropWired = false;
+
+    const wireIframeDrop = () => {
+      if (dropWired) return;
+      const editor = gjsRef.current;
+      if (!editor) return;
+
+      // Pick the largest visible iframe in the container (the real canvas).
+      const iframes = Array.from(containerRef.current?.querySelectorAll<HTMLIFrameElement>('iframe') ?? []);
+      const iframe = iframes
+        .map(f => ({ f, r: f.getBoundingClientRect() }))
+        .filter(({ r }) => r.width > 0 && r.height > 0)
+        .sort((a, b) => (b.r.width * b.r.height) - (a.r.width * a.r.height))[0]?.f ?? null;
+
+      if (!iframe) return; // canvas not visible yet — will retry on next dragstart
+      dropWired = true;
+
+      // eslint-disable-next-line no-console
+      console.log('[GJS drag] wiring iframe:', iframe.getBoundingClientRect());
+
+      iframe.addEventListener('dragover', (e: DragEvent) => {
+        if (!Array.from(e.dataTransfer?.types ?? []).includes('text/plain')) return;
+        e.preventDefault();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+      });
+
+      iframe.addEventListener('drop', (e: DragEvent) => {
+        e.preventDefault();
+        const text = e.dataTransfer?.getData('text/plain') ?? '';
+        if (!text.includes('{{')) return;
+
+        let comp: any = null;
+        try {
+          const r = iframe.getBoundingClientRect();
+          const iDoc = iframe.contentDocument;
+          if (iDoc) {
+            const el = walkUpToTextTag(
+              iDoc.elementFromPoint(e.clientX - r.left, e.clientY - r.top) as HTMLElement,
+              iDoc.body,
+            );
+            if (el) comp = editor.Canvas.getModelFromEl?.(el);
+          }
+        } catch { /* sandboxed iframe — fall through */ }
+
+        if (!comp) comp = editor.getSelected?.();
+        if (comp) { comp.components().reset(); comp.append(text); }
+      });
+    };
+
+    const showHint = () => {
+      if (overlayRef.current) overlayRef.current.style.background = 'rgba(59,130,246,0.08)';
+      wireIframeDrop();
+    };
+    const hideHint = () => { if (overlayRef.current) overlayRef.current.style.background = ''; };
     document.addEventListener('dragstart', showHint);
     document.addEventListener('dragend',   hideHint);
     document.addEventListener('drop',      hideHint);
@@ -193,55 +248,12 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
       }, { capture: true, signal });
     };
 
-    // Browsers send drag events directly to <iframe> elements even when a covering div
-    // has pointer-events:auto. Attaching to the iframe element in the parent document
-    // is the only reliable way to intercept drops onto the GrapeJS canvas.
-    const setupIframeDragDrop = (iframeEl: HTMLIFrameElement) => {
-      // eslint-disable-next-line no-console
-      console.log('[GJS drag] setupIframeDragDrop — sandbox attr:', iframeEl.getAttribute('sandbox'), 'el:', iframeEl.tagName, iframeEl.getBoundingClientRect());
-      const onDragOver = (e: DragEvent) => {
-        // eslint-disable-next-line no-console
-        console.log('[GJS drag] dragover on iframe el');
-        if (!Array.from(e.dataTransfer?.types ?? []).includes('text/plain')) return;
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-      };
-      const onDrop = (e: DragEvent) => {
-        // eslint-disable-next-line no-console
-        console.log('[GJS drag] drop on iframe el, text:', e.dataTransfer?.getData('text/plain'));
-        e.preventDefault();
-        const text = e.dataTransfer?.getData('text/plain') ?? '';
-        if (!text.includes('{{')) return;
-
-        // Prefer the cell under the cursor; fall back to the currently selected component.
-        let comp: any = null;
-        try {
-          const r = iframeEl.getBoundingClientRect();
-          const iframeDoc = iframeEl.contentDocument;
-          if (iframeDoc) {
-            const el = walkUpToTextTag(
-              iframeDoc.elementFromPoint(e.clientX - r.left, e.clientY - r.top) as HTMLElement,
-              iframeDoc.body,
-            );
-            if (el) comp = editor.Canvas.getModelFromEl?.(el);
-          }
-        } catch { /* cross-origin or sandbox — fall through to getSelected */ }
-
-        if (!comp) comp = editor.getSelected?.();
-        if (comp) { comp.components().reset(); comp.append(text); }
-      };
-      iframeEl.addEventListener('dragover', onDragOver);
-      iframeEl.addEventListener('drop', onDrop);
-    };
-
     editor.on('load', () => {
       markEditable(editor.DomComponents.getComponents());
       setupCanvasListeners();
-      const iframeEl: HTMLIFrameElement | undefined = editor.Canvas.getFrameEl?.();
-      if (iframeEl) {
-        iframeEl.addEventListener('load', setupCanvasListeners);
-        setupIframeDragDrop(iframeEl);
-      }
+      // Re-run setupCanvasListeners if the iframe reloads (e.g. after setComponents).
+      const iframeEl = editor.Canvas.getFrameEl?.() as HTMLIFrameElement | undefined;
+      iframeEl?.addEventListener('load', setupCanvasListeners);
     });
 
     editor.on('change:changesCount', () => {
