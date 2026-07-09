@@ -126,7 +126,7 @@ const REPORT_BLOCKS = [
   },
 ];
 
-const STARTER_TEMPLATES: { label: string; icon: string; html: string }[] = [
+const STARTER_TEMPLATES: { label: string; icon: string; html: string; isAbsolute?: boolean; tip?: string }[] = [
   {
     label: 'Style Summary',
     icon: '👗',
@@ -199,6 +199,96 @@ const STARTER_TEMPLATES: { label: string; icon: string; html: string }[] = [
   <tr><th>Field 1</th><th>Field 2</th><th>Field 3</th></tr>
   {{#each header_rs1}}<tr><td>{{Field1}}</td><td>{{Field2}}</td><td>{{Field3}}</td></tr>{{/each}}
 </table>`,
+  },
+
+  // ── Canva-style fixed-layout templates ────────────────────────────────────
+  {
+    label: 'Cover Page',
+    icon: '🎨',
+    isAbsolute: true,
+    tip: 'Fixed-size canvas (760×1050 px). Elements are pixel-positioned — great for decorative covers, posters, and slides. Not suitable for repeating data rows.',
+    html: `<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif}</style>
+<div style="position:relative;width:760px;height:1050px;background:#0f172a;overflow:hidden">
+  <div style="position:absolute;top:0;left:0;width:280px;height:100%;background:#1e3a8a"></div>
+  <div style="position:absolute;top:-120px;right:-120px;width:420px;height:420px;border-radius:50%;background:#2563eb;opacity:.12"></div>
+  <div style="position:absolute;bottom:-80px;left:160px;width:260px;height:260px;border-radius:50%;background:#3b82f6;opacity:.15"></div>
+  <div style="position:absolute;top:56px;left:32px">
+    <div style="color:#93c5fd;font-size:9px;letter-spacing:3px;text-transform:uppercase;margin-bottom:8px">Report</div>
+    <div style="color:white;font-size:22px;font-weight:bold">{{header.Brand}}</div>
+  </div>
+  <div style="position:absolute;top:180px;left:32px;width:220px">
+    <div style="color:#93c5fd;font-size:9px;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px">Style</div>
+    <div style="color:white;font-size:38px;font-weight:900;line-height:1.1">{{header.StyleNumber}}</div>
+    <div style="color:#cbd5e1;font-size:11px;margin-top:10px;line-height:1.5">{{header.Description}}</div>
+  </div>
+  <div style="position:absolute;bottom:80px;left:32px">
+    <table style="border-collapse:collapse;color:white;font-size:11px">
+      <tr><td style="color:#93c5fd;padding-right:16px;padding-bottom:6px">Season</td><td style="padding-bottom:6px">{{header.Season}}</td></tr>
+      <tr><td style="color:#93c5fd;padding-right:16px;padding-bottom:6px">Gender</td><td style="padding-bottom:6px">{{header.Gender}}</td></tr>
+      <tr><td style="color:#93c5fd;padding-right:16px">Country</td><td>{{header.Country}}</td></tr>
+    </table>
+  </div>
+  <div style="position:absolute;top:56px;left:312px;width:400px;height:320px;background:#1e293b;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center">
+    <img src="{{header.ImageUrl}}" style="max-width:380px;max-height:300px;object-fit:contain" alt="" onerror="this.style.display='none'"/>
+  </div>
+  <div style="position:absolute;top:400px;left:312px;width:188px;height:100px;background:#1e293b;border-radius:8px;padding:16px">
+    <div style="color:#64748b;font-size:9px;text-transform:uppercase;letter-spacing:1px">Supplier</div>
+    <div style="color:#e2e8f0;font-size:13px;font-weight:bold;margin-top:6px">{{header.Supplier}}</div>
+  </div>
+  <div style="position:absolute;top:400px;left:514px;width:188px;height:100px;background:#1e293b;border-radius:8px;padding:16px">
+    <div style="color:#64748b;font-size:9px;text-transform:uppercase;letter-spacing:1px">Category</div>
+    <div style="color:#e2e8f0;font-size:13px;font-weight:bold;margin-top:6px">{{header.Category}}</div>
+  </div>
+  <div style="position:absolute;top:514px;left:312px;width:188px;height:100px;background:#1e293b;border-radius:8px;padding:16px">
+    <div style="color:#64748b;font-size:9px;text-transform:uppercase;letter-spacing:1px">Status</div>
+    <div style="color:#e2e8f0;font-size:13px;font-weight:bold;margin-top:6px">{{header.Status}}</div>
+  </div>
+  <div style="position:absolute;top:514px;left:514px;width:188px;height:100px;background:#1e293b;border-radius:8px;padding:16px">
+    <div style="color:#64748b;font-size:9px;text-transform:uppercase;letter-spacing:1px">Colour</div>
+    <div style="color:#e2e8f0;font-size:13px;font-weight:bold;margin-top:6px">{{header.Colour}}</div>
+  </div>
+  <div style="position:absolute;bottom:32px;left:312px;right:40px;display:flex;justify-content:space-between">
+    <div style="color:#475569;font-size:10px">{{header.PrintedAt}}</div>
+    <div style="color:#475569;font-size:10px">Confidential</div>
+  </div>
+</div>`,
+  },
+  {
+    label: 'Hang Tag',
+    icon: '🏷️',
+    isAbsolute: true,
+    tip: 'Fixed-size label (240×360 px per tag). Each tag is pixel-positioned — ideal for product labels, hang tags, and badges printed on label paper.',
+    html: `<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif}</style>
+<div style="position:relative;width:240px;height:360px;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;background:white;box-shadow:0 2px 8px rgba(0,0,0,.08)">
+  <div style="position:absolute;top:0;left:0;right:0;height:110px;background:#1d4ed8"></div>
+  <div style="position:absolute;top:10px;left:50%;transform:translateX(-50%);width:18px;height:18px;border-radius:50%;background:rgba(255,255,255,.3);border:2px solid rgba(255,255,255,.6)"></div>
+  <div style="position:absolute;top:36px;left:0;right:0;text-align:center;color:white;font-size:10px;font-weight:bold;letter-spacing:3px;text-transform:uppercase">{{header.Brand}}</div>
+  <div style="position:absolute;top:72px;left:50%;transform:translateX(-50%);width:96px;height:96px;border-radius:50%;background:white;border:3px solid white;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.15)">
+    <img src="{{header.ImageUrl}}" style="width:100%;height:100%;object-fit:cover" alt="" onerror="this.style.display='none'"/>
+  </div>
+  <div style="position:absolute;top:184px;left:0;right:0;text-align:center">
+    <div style="font-size:16px;font-weight:bold;color:#111">{{header.StyleNumber}}</div>
+    <div style="font-size:10px;color:#6b7280;margin-top:3px">{{header.Description}}</div>
+  </div>
+  <div style="position:absolute;top:238px;left:20px;right:20px;height:1px;background:#f0f0f0"></div>
+  <div style="position:absolute;top:252px;left:0;right:0;display:flex;justify-content:space-around;text-align:center">
+    <div>
+      <div style="font-size:8px;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px">Season</div>
+      <div style="font-size:10px;font-weight:600;color:#374151;margin-top:2px">{{header.Season}}</div>
+    </div>
+    <div>
+      <div style="font-size:8px;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px">Gender</div>
+      <div style="font-size:10px;font-weight:600;color:#374151;margin-top:2px">{{header.Gender}}</div>
+    </div>
+    <div>
+      <div style="font-size:8px;color:#9ca3af;text-transform:uppercase;letter-spacing:.5px">Colour</div>
+      <div style="font-size:10px;font-weight:600;color:#374151;margin-top:2px">{{header.Colour}}</div>
+    </div>
+  </div>
+  <div style="position:absolute;bottom:14px;left:0;right:0;text-align:center">
+    <div style="font-size:9px;color:#9ca3af;font-family:monospace;letter-spacing:5px">{{header.Barcode}}</div>
+  </div>
+</div>`,
   },
 ];
 
@@ -654,9 +744,8 @@ ${previewHtml}
             <div className="flex-shrink-0 flex items-start gap-2 mx-4 mt-4 px-3 py-2.5 rounded-[4px] bg-blue-50 border border-blue-200 text-blue-700">
               <i className="fa-solid fa-circle-info text-blue-400 mt-0.5 shrink-0" />
               <p className="text-xs leading-relaxed">
-                <strong>Why CSS flow layout?</strong> Report templates use normal HTML block/flow layout — not absolute pixel positioning (like Canva's design tool).
-                Flow layout lets tables and text blocks reflow automatically when data length varies across records.
-                Absolute positioning would produce overlapping or clipped content whenever a field is longer or shorter than expected.
+                <strong className="text-green-700">Flow layout</strong> — tables and text reflow automatically as data length varies. Use for data reports with repeating rows.&nbsp;
+                <strong className="text-purple-700">Fixed layout</strong> — pixel-positioned canvas (Canva-style). Use for covers, labels, and posters where the design must be pixel-perfect and data length is predictable.
               </p>
             </div>
             {/* Card grid */}
@@ -665,8 +754,8 @@ ${previewHtml}
                 <button
                   key={tmpl.label}
                   onClick={() => { applyStarterTemplate(tmpl.html); setGalleryOpen(false); }}
-                  title={`${tmpl.label} — uses CSS flow layout so content reflows correctly with real data`}
-                  className={`flex flex-col rounded-lg border-2 overflow-hidden text-left transition-colors hover:border-blue-400 ${t('border_mainContentSection')}`}
+                  title={tmpl.tip ?? `${tmpl.label} — ${tmpl.isAbsolute ? 'fixed-size pixel canvas (Canva-style)' : 'CSS flow layout, content reflows with real data'}`}
+                  className={`flex flex-col rounded-lg border-2 overflow-hidden text-left transition-colors ${tmpl.isAbsolute ? 'hover:border-purple-400' : 'hover:border-blue-400'} ${t('border_mainContentSection')}`}
                 >
                   {/* Scaled HTML thumbnail */}
                   <div className="relative w-full overflow-hidden bg-white" style={{ height: '160px' }}>
@@ -680,7 +769,11 @@ ${previewHtml}
                   </div>
                   {/* Label */}
                   <div className={`px-3 py-2 text-xs font-medium flex items-center gap-1.5 ${theme.label}`}>
-                    <span>{tmpl.icon}</span>{tmpl.label}
+                    <span>{tmpl.icon}</span>
+                    <span className="flex-auto">{tmpl.label}</span>
+                    {tmpl.isAbsolute
+                      ? <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold bg-purple-100 text-purple-600 shrink-0">Fixed</span>
+                      : <span className="text-[9px] px-1.5 py-0.5 rounded font-semibold bg-green-100 text-green-700 shrink-0">Flow</span>}
                   </div>
                 </button>
               ))}
