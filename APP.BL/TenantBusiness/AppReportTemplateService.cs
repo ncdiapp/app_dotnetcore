@@ -400,11 +400,29 @@ namespace App.BL
                 {
                     string rowHtml = inner;
                     foreach (var field in row)
-                        rowHtml = rowHtml.Replace($"{{{{{field.Key}}}}}", field.Value?.ToString() ?? string.Empty);
+                        rowHtml = ReplaceIgnoreCase(rowHtml, $"{{{{{field.Key}}}}}", field.Value?.ToString() ?? string.Empty);
                     sb.Append(rowHtml);
                 }
                 return sb.ToString();
             });
+        }
+
+        // Case-insensitive string replace — prevents token mismatches when SP column names
+        // differ in casing from the template tokens (e.g. SP returns "SKU" but template has "{{Sku}}").
+        private static string ReplaceIgnoreCase(string source, string oldValue, string newValue)
+        {
+            if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(oldValue)) return source;
+            var sb = new StringBuilder(source.Length);
+            int pos = 0;
+            while (pos < source.Length)
+            {
+                int idx = source.IndexOf(oldValue, pos, StringComparison.OrdinalIgnoreCase);
+                if (idx < 0) { sb.Append(source, pos, source.Length - pos); break; }
+                sb.Append(source, pos, idx - pos);
+                sb.Append(newValue);
+                pos = idx + oldValue.Length;
+            }
+            return sb.ToString();
         }
 
         private static string RenderIfBlocks(string html, Dictionary<string, object> context)
