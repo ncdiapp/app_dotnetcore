@@ -298,11 +298,12 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
     setTokenLoading(true);
     // Pass current (unsaved) config so sampleJson for API sources is included
     const liveConfig = JSON.stringify({ dataSources });
-    appReportSvc.getTokensFromConfig(liveConfig)
+    const refId = Number(previewRefId) || 0;
+    appReportSvc.getTokensFromConfig(liveConfig, undefined, refId)
       .then(setTokens)
       .catch(() => setTokens([]))
       .finally(() => setTokenLoading(false));
-  }, [dataSources]);
+  }, [dataSources, previewRefId]);
 
   const insertAtCursor = (text: string) => {
     if (viewMode === 'design' && gjsEditorRef.current) {
@@ -909,7 +910,15 @@ ${cells}
                   <span className={`text-[10px] font-semibold uppercase tracking-wider opacity-60 ${theme.label}`}>
                     Tokens
                   </span>
-                  <div className="flex gap-1">
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      className={`h-6 w-16 px-1 text-[10px] border rounded-[4px] ${theme.inputBox}`}
+                      value={previewRefId}
+                      onChange={e => setPreviewRefId(e.target.value)}
+                      placeholder="ID"
+                      title="Sample record ID used when discovering tokens from stored procedures"
+                    />
                     <button
                       onClick={() => setDsModalOpen(true)}
                       className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default}`}
@@ -927,7 +936,7 @@ ${cells}
                   <div className={`px-3 py-4 text-xs text-center ${theme.label} opacity-70`}>
                     <i className="fa-solid fa-database block text-2xl mb-2 opacity-30" />
                     {dataSources.some(s => s.value.trim())
-                      ? <>Click <i className="fa-solid fa-rotate" /> to load tokens</>
+                      ? <>Set record ID if needed, then click <i className="fa-solid fa-rotate" /> to load tokens</>
                       : <>Click <i className="fa-solid fa-database" /> to add a data source</>}
                   </div>
                 ) : (

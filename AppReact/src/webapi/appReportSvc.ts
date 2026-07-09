@@ -30,9 +30,9 @@ class AppReportService {
     return response.json();
   }
 
-  async getTokens(reportId: number): Promise<any[]> {
+  async getTokens(reportId: number, mainReferenceId = 0, masterReferenceId?: number): Promise<any[]> {
     const response = await fetch(
-      `${endpoints.BASE_URL}/webapi/AppReport/GetTokens?reportId=${reportId}`,
+      `${endpoints.BASE_URL}/webapi/AppReport/GetTokens?reportId=${reportId}&mainReferenceId=${mainReferenceId}${masterReferenceId != null ? `&masterReferenceId=${masterReferenceId}` : ''}`,
       { headers: getHeaders() }
     );
     if (!response.ok) return [];
@@ -40,10 +40,19 @@ class AppReportService {
   }
 
   /** Discover tokens from the designer's current (unsaved) config — includes sampleJson for API sources. */
-  async getTokensFromConfig(extraParamConfig: string, dataSpName?: string): Promise<any[]> {
+  async getTokensFromConfig(
+    extraParamConfig: string,
+    dataSpName?: string,
+    mainReferenceId = 0,
+    masterReferenceId?: number,
+  ): Promise<any[]> {
     const response = await fetch(
       `${endpoints.BASE_URL}/webapi/AppReport/GetTokensFromConfig`,
-      { method: 'POST', headers: getHeaders(), body: JSON.stringify({ extraParamConfig, dataSpName }) }
+      {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ extraParamConfig, dataSpName, mainReferenceId, masterReferenceId }),
+      }
     );
     if (!response.ok) return [];
     return response.json();

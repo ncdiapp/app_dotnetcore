@@ -97,11 +97,15 @@ namespace App.BL
         /// Calls every configured data source with sample data to discover available tokens.
         /// Tokens from additional (non-primary) sources are prefixed with their alias.
         /// </summary>
-        public static List<TokenDescriptor> GetAvailableTokens(AppReportTemplateDto template)
+        public static List<TokenDescriptor> GetAvailableTokens(
+            AppReportTemplateDto template,
+            int mainReferenceId = 0,
+            int? masterReferenceId = null)
         {
             var tokens  = new List<TokenDescriptor>();
             var context = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
             var sources = ParseDataSources(template);
+            var extra   = ParseExtraParams(template);
 
             for (int si = 0; si < sources.Count; si++)
             {
@@ -123,11 +127,16 @@ namespace App.BL
                     using var cmd = new SqlCommand(src.Value, conn);
                     cmd.CommandType    = CommandType.StoredProcedure;
                     cmd.CommandTimeout = 30;
-                    cmd.Parameters.AddWithValue("@MainReferenceId",   0);
-                    cmd.Parameters.AddWithValue("@MasterReferenceId", DBNull.Value);
+                    cmd.Parameters.AddWithValue("@MainReferenceId",   mainReferenceId);
+                    cmd.Parameters.AddWithValue("@MasterReferenceId", (object)masterReferenceId ?? DBNull.Value);
+                    if (extra != null)
+                    {
+                        foreach (var def in extra)
+                            cmd.Parameters.AddWithValue("@" + def.Name, (object)def.DefaultValue ?? DBNull.Value);
+                    }
                     var ds = new DataSet();
                     using (var da = new SqlDataAdapter(cmd)) da.Fill(ds);
-                    MergeResultSets(context, ds, src.Name);
+                    MergeResultSetsForDiscovery(context, ds, src.Name);
                 }
                 catch { }
             }
@@ -257,6 +266,62 @@ namespace App.BL
                     context[key] = rows;
                 }
             }
+        }
+
+        /// <summary>
+        /// Like MergeResultSets but falls back to result-set column metadata when a SP
+        /// returns zero rows (e.g. designer token discovery with @MainReferenceId = 0).
+        /// </summary>
+        private static void MergeResultSetsForDiscovery(
+            Dictionary<string, object> context,
+            DataSet ds, string alias)
+        {
+            for (int i = 0; i < ds.Tables.Count; i++)
+            {
+                var dt  = ds.Tables[i];
+                string key = i == 0 ? alias : $"{alias}_rs{i}";
+
+                if (i == 0)
+                {
+                    var row = dt.Rows.Count == 1
+                        ? BuildRowFromDataRow(dt.Rows[0])
+                        : BuildSchemaPlaceholderRow(dt);
+                    if (row.Count > 0)
+                        context[key] = row;
+                }
+                else
+                {
+                    var rows = new List<Dictionary<string, object>>();
+                    foreach (DataRow dr in dt.Rows)
+                        rows.Add(BuildRowFromDataRow(dr));
+
+                    if (rows.Count == 0)
+                    {
+                        var placeholder = BuildSchemaPlaceholderRow(dt);
+                        if (placeholder.Count > 0)
+                            rows.Add(placeholder);
+                    }
+
+                    if (rows.Count > 0)
+                        context[key] = rows;
+                }
+            }
+        }
+
+        private static Dictionary<string, object> BuildRowFromDataRow(DataRow dr)
+        {
+            var row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            foreach (DataColumn col in dr.Table.Columns)
+                row[col.ColumnName] = dr[col] == DBNull.Value ? null : dr[col];
+            return row;
+        }
+
+        private static Dictionary<string, object> BuildSchemaPlaceholderRow(DataTable dt)
+        {
+            var row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            foreach (DataColumn col in dt.Columns)
+                row[col.ColumnName] = null;
+            return row;
         }
 
         /// <summary>

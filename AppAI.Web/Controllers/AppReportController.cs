@@ -104,13 +104,13 @@ public class AppReportController : SecureBaseController
     // ── Token discovery (for template designer token picker) ─────────────────
 
     [HttpGet]
-    public IActionResult GetTokens(int reportId)
+    public IActionResult GetTokens(int reportId, int mainReferenceId = 0, int? masterReferenceId = null)
     {
         var template = AppReportTemplateBL.GetByReportId(reportId);
         if (template == null)
             return Ok(new List<TokenDescriptor>());
 
-        var tokens = AppReportTemplateService.GetAvailableTokens(template);
+        var tokens = AppReportTemplateService.GetAvailableTokens(template, mainReferenceId, masterReferenceId);
         return Ok(tokens);
     }
 
@@ -127,7 +127,10 @@ public class AppReportController : SecureBaseController
             DataSpName       = request.DataSpName,
             ExtraParamConfig = request.ExtraParamConfig,
         };
-        var tokens = AppReportTemplateService.GetAvailableTokens(template);
+        var tokens = AppReportTemplateService.GetAvailableTokens(
+            template,
+            request.MainReferenceId,
+            request.MasterReferenceId);
         return Ok(tokens);
     }
 
@@ -260,4 +263,6 @@ public class GetTokensFromConfigRequest
 {
     public string ExtraParamConfig { get; set; }
     public string DataSpName       { get; set; }
+    public int    MainReferenceId  { get; set; }
+    public int?   MasterReferenceId { get; set; }
 }
