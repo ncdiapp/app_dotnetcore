@@ -132,11 +132,13 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
       markEditable(c.components?.());
     });
 
-    // ── Direct double-click-to-edit ──────────────────────────────────────────
-    // GrapeJS RTE only fires on dblclick for an already-selected component.
-    // We intercept dblclick on the canvas, select the deepest matching text
-    // component, then re-dispatch dblclick so GrapeJS's own handler activates.
-    const TEXT_TAGS = new Set(['TD','TH','P','H1','H2','H3','H4','H5','H6','SPAN','LI','A','LABEL','DIV']);
+    // ── Direct double-click-to-edit (contenteditable) ───────────────────────
+    // GrapeJS's RTE only activates for components of type 'text'. td/th/p/h*
+    // from the newsletter preset are generic types — the RTE never fires for them.
+    // Instead: dblclick makes the DOM element contenteditable directly; on blur
+    // (or Enter) we push the edited HTML back into the GrapeJS component model
+    // so the model stays in sync and change:changesCount fires normally.
+    const TEXT_TAGS = new Set(['TD','TH','P','H1','H2','H3','H4','H5','H6','SPAN','LI','A','LABEL']);
     let editGuard = false;
 
     const findDeepComp = (comps: any, el: HTMLElement): any => {
@@ -160,18 +162,52 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
         }
         if (!el || el.tagName === 'BODY') return;
 
-        const comp = findDeepComp(editor.DomComponents.getComponents(), el);
-        if (!comp) return;
-        comp.set('editable', true);
-        editor.select(comp);
+        e.stopPropagation();
 
-        // Re-fire dblclick after GrapeJS processes the selection so its RTE activates
+        const snapshot = el.innerHTML;
+        el.setAttribute('contenteditable', 'true');
+        el.style.outline = '2px solid #0d6efd';
+        el.style.outlineOffset = '2px';
+        el.style.cursor = 'text';
+        el.focus();
+
+        // Select all content for easy replacement
+        try {
+          const range = el.ownerDocument!.createRange();
+          range.selectNodeContents(el);
+          const sel = el.ownerDocument!.defaultView?.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+        } catch { /* ignore selection errors */ }
+
         editGuard = true;
-        setTimeout(() => {
-          const viewEl: HTMLElement | undefined = comp.view?.el ?? comp.getView?.()?.el;
-          viewEl?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-          setTimeout(() => { editGuard = false; }, 150);
-        }, 50);
+
+        const finish = (cancel = false) => {
+          if (!el) return;
+          const newHtml = el.innerHTML;
+          el.removeAttribute('contenteditable');
+          el.style.outline = '';
+          el.style.outlineOffset = '';
+          el.style.cursor = '';
+          editGuard = false;
+
+          if (cancel) { el.innerHTML = snapshot; return; }
+          if (newHtml === snapshot) return;
+
+          // Push change into GrapeJS model so changesCount fires
+          const comp = findDeepComp(editor.DomComponents.getComponents(), el);
+          if (comp) {
+            comp.components().reset();
+            comp.append(newHtml);
+          }
+          editor.trigger('change:changesCount');
+        };
+
+        el.addEventListener('blur', () => finish(false), { once: true });
+        el.addEventListener('keydown', (ke: KeyboardEvent) => {
+          if (ke.key === 'Escape') { ke.stopPropagation(); finish(true); }
+          else if (ke.key === 'Enter' && !ke.shiftKey) { ke.preventDefault(); finish(false); }
+        }, { once: true });
       }, true);
     } catch { /* canvas may not be ready */ }
 
