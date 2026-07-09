@@ -115,10 +115,9 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
       });
     });
 
-    // Mark text-container elements as directly editable so double-click works
-    // without needing to navigate the component hierarchy first.
-    // The newsletter preset does not set editable:true on td/th/p/headings by default.
-    const EDITABLE_TAGS = new Set(['td', 'th', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'li', 'a', 'div']);
+    // ── Make text-container elements editable ───────────────────────────────
+    // Newsletter preset does not set editable:true on td/th/p/headings.
+    const EDITABLE_TAGS = new Set(['td', 'th', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'li', 'a', 'div', 'label']);
     const markEditable = (comps: any) => {
       comps?.each?.((c: any) => {
         if (EDITABLE_TAGS.has((c.get('tagName') ?? '').toLowerCase())) {
@@ -129,11 +128,52 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
     };
     editor.on('load', () => markEditable(editor.DomComponents.getComponents()));
     editor.on('component:add', (c: any) => {
-      if (EDITABLE_TAGS.has((c.get('tagName') ?? '').toLowerCase())) {
-        c.set('editable', true);
-      }
+      if (EDITABLE_TAGS.has((c.get('tagName') ?? '').toLowerCase())) c.set('editable', true);
       markEditable(c.components?.());
     });
+
+    // ── Direct double-click-to-edit ──────────────────────────────────────────
+    // GrapeJS RTE only fires on dblclick for an already-selected component.
+    // We intercept dblclick on the canvas, select the deepest matching text
+    // component, then re-dispatch dblclick so GrapeJS's own handler activates.
+    const TEXT_TAGS = new Set(['TD','TH','P','H1','H2','H3','H4','H5','H6','SPAN','LI','A','LABEL','DIV']);
+    let editGuard = false;
+
+    const findDeepComp = (comps: any, el: HTMLElement): any => {
+      let hit: any = null;
+      comps?.each?.((c: any) => {
+        if (hit) return;
+        if (c.view?.el === el) { hit = c; return; }
+        const child = findDeepComp(c.components?.(), el);
+        if (child) hit = child;
+      });
+      return hit;
+    };
+
+    try {
+      editor.Canvas.getDocument().addEventListener('dblclick', (e: Event) => {
+        if (editGuard) return;
+        let el: HTMLElement | null = e.target as HTMLElement;
+        while (el && el.tagName !== 'BODY') {
+          if (TEXT_TAGS.has(el.tagName)) break;
+          el = el.parentElement;
+        }
+        if (!el || el.tagName === 'BODY') return;
+
+        const comp = findDeepComp(editor.DomComponents.getComponents(), el);
+        if (!comp) return;
+        comp.set('editable', true);
+        editor.select(comp);
+
+        // Re-fire dblclick after GrapeJS processes the selection so its RTE activates
+        editGuard = true;
+        setTimeout(() => {
+          const viewEl: HTMLElement | undefined = comp.view?.el ?? comp.getView?.()?.el;
+          viewEl?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
+          setTimeout(() => { editGuard = false; }, 150);
+        }, 50);
+      }, true);
+    } catch { /* canvas may not be ready */ }
 
     // Emit combined HTML+CSS whenever the content changes — but only when Design mode is active
     editor.on('change:changesCount', () => {
