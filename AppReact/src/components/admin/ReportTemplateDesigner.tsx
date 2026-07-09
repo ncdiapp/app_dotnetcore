@@ -500,12 +500,13 @@ ${previewHtml}
       }
       grp.toks.push(tok);
     }
-    // Sort tokens alphabetically within each group (loop headers stay at top)
+    // Sort: scalars first (A-Z), then #each marker, then children (A-Z)
     for (const grp of groups) {
       grp.toks.sort((a, b) => {
-        const labelA = a.Field === '*' ? `#each ${a.ResultSet}` : a.Field;
-        const labelB = b.Field === '*' ? `#each ${b.ResultSet}` : b.Field;
-        return labelA.localeCompare(labelB);
+        const pri = (t: TokenDescriptor) => t.IsList && !t.InsideEach ? 1 : t.InsideEach ? 2 : 0;
+        const pa = pri(a), pb = pri(b);
+        if (pa !== pb) return pa - pb;
+        return a.Field.localeCompare(b.Field);
       });
     }
     return groups;
