@@ -447,7 +447,7 @@ public static class LegacyEndpoints
 
         app.MapGet("/api/files/latest/{id:int}", (HttpContext ctx, int id) =>
         {
-            if (!ValidateSession(ctx)) return Results.Unauthorized();
+            if (!ValidateApiSession(ctx)) return Results.Unauthorized();
             var dto = AppFileBL.RetrieveOneLatestAppFileExDto(id);
             if (dto == null) return Results.NotFound();
             return ServeFileDto(dto);
@@ -455,7 +455,7 @@ public static class LegacyEndpoints
 
         app.MapGet("/api/files/stream/{id:int}", (HttpContext ctx, int id) =>
         {
-            if (!ValidateSession(ctx)) return Results.Unauthorized();
+            if (!ValidateApiSession(ctx)) return Results.Unauthorized();
             var dto = AppFileBL.RetrieveOneOrgAppFileExDto(id);
             if (dto == null) return Results.NotFound();
             return ServeFileDto(dto, forceDownload: true);
@@ -610,7 +610,7 @@ public static class LegacyEndpoints
 
     private static IResult TryServeFileImage(HttpContext ctx, int id, FileImageVariant variant)
     {
-        if (!ValidateSession(ctx)) return Results.Unauthorized();
+        if (!ValidateApiSession(ctx)) return Results.Unauthorized();
         try
         {
             var dto = variant == FileImageVariant.Original

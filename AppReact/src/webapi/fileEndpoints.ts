@@ -22,14 +22,14 @@ function getSessionId(): string | null {
   return null;
 }
 
-function sessionQuery(): string {
-  const sid = getSessionId();
-  return sid ? `?CurrentUserSessionId=${encodeURIComponent(sid)}` : '';
+function getSessionHeaders(): Record<string, string> {
+  const sessionId = getSessionId();
+  return sessionId ? { CurrentUserSessionId: sessionId } : {};
 }
 
 /** Thumbnail image (small). Replaces GetThumbnailImage.aspx. */
 export function fileThumbnailUrl(fileId: number | string): string {
-  return `${endpoints.BASE_URL}/api/files/thumbnail/${fileId}${sessionQuery()}`;
+  return `${endpoints.BASE_URL}/api/files/thumbnail/${fileId}`;
 }
 
 /**
@@ -86,7 +86,7 @@ export async function fetchAuthenticatedImageBlobUrl(apiResourcePath: string): P
 }
 
 /**
- * Resolve search thumbnail src for legacy &lt;img src&gt; (FileId + query-string API only).
+ * Resolve search thumbnail src for legacy &lt;img src&gt; (FileId API, session via cookie/header on request).
  * Resource URLs from search must use {@link fetchAuthenticatedImageBlobUrl} instead.
  */
 export function resolveSearchThumbnailUrl(
@@ -102,22 +102,22 @@ export function resolveSearchThumbnailUrl(
 
 /** Original full-size image. Replaces GetImage.aspx / original image use. */
 export function fileImageUrl(fileId: number | string): string {
-  return `${endpoints.BASE_URL}/api/files/image/${fileId}${sessionQuery()}`;
+  return `${endpoints.BASE_URL}/api/files/image/${fileId}`;
 }
 
 /** Regular (medium) size image. Replaces GetRegularImage.aspx. */
 export function fileRegularUrl(fileId: number | string): string {
-  return `${endpoints.BASE_URL}/api/files/regular/${fileId}${sessionQuery()}`;
+  return `${endpoints.BASE_URL}/api/files/regular/${fileId}`;
 }
 
 /** Latest-version file for inline view/preview/open. Replaces GetLatestFile.aspx (no IsDownload). */
 export function fileLatestUrl(fileId: number | string): string {
-  return `${endpoints.BASE_URL}/api/files/latest/${fileId}${sessionQuery()}`;
+  return `${endpoints.BASE_URL}/api/files/latest/${fileId}`;
 }
 
 /** Force-download URL. Replaces GetLatestFile.aspx?...&IsDownload=true. Prefer downloadFileById. */
 export function fileDownloadUrl(fileId: number | string): string {
-  return `${endpoints.BASE_URL}/api/files/stream/${fileId}${sessionQuery()}`;
+  return `${endpoints.BASE_URL}/api/files/stream/${fileId}`;
 }
 
 function parseFileNameFromContentDisposition(header: string | null): string | null {
@@ -136,7 +136,10 @@ function parseFileNameFromContentDisposition(header: string | null): string | nu
  */
 export async function downloadFileById(fileId: number | string, fallbackName?: string): Promise<void> {
   const url = fileDownloadUrl(fileId);
-  const resp = await fetch(url, { credentials: 'include' });
+  const resp = await fetch(url, {
+    credentials: 'include',
+    headers: getSessionHeaders(),
+  });
   if (!resp.ok) {
     throw new Error(`Download failed (${resp.status})`);
   }
