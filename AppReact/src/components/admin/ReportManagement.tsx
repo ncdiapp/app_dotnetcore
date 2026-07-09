@@ -43,6 +43,7 @@ const ReportManagement: React.FC = () => {
   const [reports, setReports]         = useState<CollectionView>(() => new CollectionView<any>([]));
   const [selectedReport, setSelectedReport] = useState<any>(null);
   const [designerOpen, setDesignerOpen]     = useState(false);
+  const [designerReportId, setDesignerReportId] = useState<number | null>(null);
   const [contextMenu, setContextMenu]       = useState<ContextMenuState>({ visible: false, x: 0, y: 0, item: null });
 
   // Create modal state
@@ -158,6 +159,7 @@ const ReportManagement: React.FC = () => {
 
   const openDesigner = (item: any) => {
     setSelectedReport(item);
+    setDesignerReportId(item?.Id ?? null);
     setDesignerOpen(true);
     closeCtx();
   };
@@ -387,14 +389,14 @@ const ReportManagement: React.FC = () => {
       )}
 
       {/* Template designer overlay */}
-      {designerOpen && selectedReport && (
+      {designerOpen && designerReportId != null && (
         <div className="fixed inset-0 z-40 flex">
           <div className={`w-full h-full overflow-hidden flex flex-col border-0`}>
             <ReportTemplateDesigner
-              reportId={selectedReport.Id}
+              reportId={designerReportId}
               mainReferenceId={0}
               onSaved={() => load()}
-              onClose={() => setDesignerOpen(false)}
+              onClose={() => { setDesignerOpen(false); setDesignerReportId(null); }}
             />
           </div>
         </div>
