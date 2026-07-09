@@ -758,6 +758,52 @@ class PlmMigrationService {
     if (!response.ok) throw new Error('Failed to refresh DW import tenant caches');
     return response.json();
   }
+
+  async loadSearchImportBlueprint(blueprintJson: string): Promise<OperationCallResult<PlmSearchImportBlueprintDto>> {
+    const response = await fetch(`${this.baseUrl}/LoadSearchImportBlueprint`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ BlueprintJson: blueprintJson }),
+    });
+    if (!response.ok) throw new Error('Failed to load search import blueprint');
+    return response.json();
+  }
+
+  async validateSearchImportBlueprint(
+    blueprint: PlmSearchImportBlueprintDto,
+  ): Promise<OperationCallResult<PlmSearchImportValidationDto>> {
+    const response = await fetch(`${this.baseUrl}/ValidateSearchImportBlueprint`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(blueprint),
+    });
+    if (!response.ok) throw new Error('Failed to validate search import blueprint');
+    return response.json();
+  }
+
+  async previewSearchBlueprintConfig(
+    blueprint: PlmSearchImportBlueprintDto,
+  ): Promise<OperationCallResult<PlmSearchImportPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewSearchBlueprintConfig`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(blueprint),
+    });
+    if (!response.ok) throw new Error('Failed to preview search blueprint config');
+    return response.json();
+  }
+
+  async executeSearchBlueprintConfig(
+    request: PlmSearchImportExecuteRequestDto,
+  ): Promise<OperationCallResult<PlmSearchImportExecuteResultDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecuteSearchBlueprintConfig`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to execute search blueprint config');
+    return response.json();
+  }
 }
 
 export interface PlmDwImportBlueprintDto {
@@ -1046,6 +1092,127 @@ export interface PlmPomImportExecuteResultDto {
   FoldersImported?: number;
   PomFolderIdsRemapped?: number;
   PomTemplateFolderIdsRemapped?: number;
+  Messages?: string[] | null;
+}
+
+export interface PlmSearchImportBlueprintDto {
+  SchemaVersion?: number;
+  GeneratedAt?: string | null;
+  Source?: PlmSearchImportSourceDto | null;
+  Search?: PlmSearchImportSearchDto | null;
+  DataSet?: PlmSearchImportDataSetDto | null;
+  JoinPlan?: PlmSearchImportJoinPlanDto | null;
+  TransactionGroup?: PlmSearchImportTransactionGroupDto | null;
+  CriteriaFields?: PlmSearchImportCriteriaFieldDto[] | null;
+  SearchView?: PlmSearchImportSearchViewDto | null;
+  LinkTargets?: PlmSearchImportLinkTargetDto[] | null;
+  Menu?: PlmSearchImportMenuDto | null;
+  Coverage?: PlmSearchImportCoverageDto | null;
+  UnmappedPlmFields?: PlmSearchImportUnmappedFieldDto[] | null;
+}
+
+export interface PlmSearchImportSourceDto {
+  PlmSearchTemplateId?: number | null;
+  PlmSearchName?: string | null;
+  PrimaryTableName?: string | null;
+  SelectedJoinPlanId?: string | null;
+}
+
+export interface PlmSearchImportSearchDto {
+  Name?: string | null;
+  Description?: string | null;
+  IntegrationId?: string | null;
+  UsageType?: string | null;
+  AutoExecute?: boolean;
+  SaasApplicationId?: number | null;
+}
+
+export interface PlmSearchImportDataSetDto {
+  Name?: string | null;
+  PrimaryTableName?: string | null;
+  QueryText?: string | null;
+}
+
+export interface PlmSearchImportJoinPlanDto {
+  PlanId?: string | null;
+  Label?: string | null;
+}
+
+export interface PlmSearchImportTransactionGroupDto {
+  TransactionGroupId?: number | null;
+  GroupName?: string | null;
+  PrimaryTransactionIntegrationId?: string | null;
+}
+
+export interface PlmSearchImportCriteriaFieldDto {
+  DisplayText?: string | null;
+  SysTableFiledPath?: string | null;
+}
+
+export interface PlmSearchImportSearchViewDto {
+  Name?: string | null;
+  IntegrationId?: string | null;
+  Fields?: PlmSearchImportSearchViewFieldDto[] | null;
+}
+
+export interface PlmSearchImportSearchViewFieldDto {
+  DisplayText?: string | null;
+  SysTableFiledPath?: string | null;
+}
+
+export interface PlmSearchImportLinkTargetDto {
+  Name?: string | null;
+  ActionType?: string | null;
+  TransactionIntegrationId?: string | null;
+}
+
+export interface PlmSearchImportMenuDto {
+  RegisterInMainMenu?: boolean;
+  MenuTitle?: string | null;
+}
+
+export interface PlmSearchImportUnmappedFieldDto {
+  DisplayLabel?: string | null;
+  Reason?: string | null;
+}
+
+export interface PlmSearchImportCoverageDto {
+  Criteria?: { Total?: number; Mapped?: number; Ignored?: number };
+  View?: { Total?: number; Mapped?: number; Ignored?: number };
+}
+
+export interface PlmSearchImportValidationDto {
+  IsValid?: boolean;
+  Errors?: string[] | null;
+  Warnings?: string[] | null;
+}
+
+export interface PlmSearchImportPreviewItemDto {
+  ObjectType?: string | null;
+  Name?: string | null;
+  IntegrationId?: string | null;
+  Action?: string | null;
+  ExistingId?: number | null;
+  Detail?: string | null;
+}
+
+export interface PlmSearchImportPreviewDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  Items?: PlmSearchImportPreviewItemDto[] | null;
+}
+
+export interface PlmSearchImportExecuteRequestDto {
+  Blueprint?: PlmSearchImportBlueprintDto | null;
+  SaasApplicationId?: number | null;
+}
+
+export interface PlmSearchImportExecuteResultDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  SearchId?: number | null;
+  SearchViewId?: number | null;
+  DataSetId?: number | null;
   Messages?: string[] | null;
 }
 

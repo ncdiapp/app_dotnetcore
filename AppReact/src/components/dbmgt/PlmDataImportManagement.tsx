@@ -12,11 +12,13 @@ import type {
   PlmImportEntityStepUiState,
   PlmImportPageCache,
   PlmImportDwBlueprintStepUiState,
+  PlmImportSearchImportStepUiState,
   PlmImportWizardState,
 } from './plmImport/types';
 import {
   createInitialEntityStepUi,
   createInitialDwBlueprintStepUi,
+  createInitialSearchImportStepUi,
   normalizePlmImportStepCode,
   normalizePlmImportTablePrefix,
   PLM_DEFAULT_TABLE_PREFIX,
@@ -64,6 +66,9 @@ const readCachedPageState = (): { page: PlmImportPageCache; fromCache: boolean }
             : cached.templateStepUi
               ? { ...createInitialDwBlueprintStepUi(), ...cached.templateStepUi }
               : createInitialDwBlueprintStepUi(),
+          searchImportStepUi: cached.searchImportStepUi
+            ? { ...createInitialSearchImportStepUi(), ...cached.searchImportStepUi }
+            : createInitialSearchImportStepUi(),
         },
         fromCache: true,
       };
@@ -74,6 +79,7 @@ const readCachedPageState = (): { page: PlmImportPageCache; fromCache: boolean }
       wizardState: createInitialWizardState(),
       entityStepUi: createInitialEntityStepUi(),
       dwBlueprintStepUi: createInitialDwBlueprintStepUi(),
+      searchImportStepUi: createInitialSearchImportStepUi(),
     },
     fromCache: false,
   };
@@ -95,6 +101,9 @@ const PlmDataImportManagement: React.FC = () => {
   const [dwBlueprintStepUi, setDwBlueprintStepUi] = useState<PlmImportDwBlueprintStepUiState>(
     () => cachedInit.current.page.dwBlueprintStepUi,
   );
+  const [searchImportStepUi, setSearchImportStepUi] = useState<PlmImportSearchImportStepUiState>(
+    () => cachedInit.current.page.searchImportStepUi,
+  );
   const [isLoading, setIsLoading] = useState(() => !cachedInit.current.fromCache);
 
   const cacheKey = useMemo(() => getPlmImportCacheKey(), []);
@@ -103,7 +112,8 @@ const PlmDataImportManagement: React.FC = () => {
     wizardState: state,
     entityStepUi,
     dwBlueprintStepUi,
-  }), [dwBlueprintStepUi, entityStepUi, state]);
+    searchImportStepUi,
+  }), [dwBlueprintStepUi, entityStepUi, searchImportStepUi, state]);
 
   useTabDataAutoCache(pageCache, cacheKey ?? undefined);
 
@@ -161,6 +171,10 @@ const PlmDataImportManagement: React.FC = () => {
     setDwBlueprintStepUi((prev) => ({ ...prev, ...patch }));
   }, []);
 
+  const patchSearchImportStepUi = useCallback((patch: Partial<PlmImportSearchImportStepUiState>) => {
+    setSearchImportStepUi((prev) => ({ ...prev, ...patch }));
+  }, []);
+
   const resetWizard = useCallback((companyId?: number | null) => {
     setState({
       ...createInitialWizardState(),
@@ -168,6 +182,7 @@ const PlmDataImportManagement: React.FC = () => {
     });
     setEntityStepUi(createInitialEntityStepUi());
     setDwBlueprintStepUi(createInitialDwBlueprintStepUi());
+    setSearchImportStepUi(createInitialSearchImportStepUi());
   }, [defaultCompanyId, isSysAdmin]);
 
   const discardSession = useCallback(async () => {
@@ -247,10 +262,12 @@ const PlmDataImportManagement: React.FC = () => {
           state={state}
           entityStepUi={entityStepUi}
           dwBlueprintStepUi={dwBlueprintStepUi}
+          searchImportStepUi={searchImportStepUi}
           isSysAdmin={isSysAdmin}
           onStateChange={patchState}
           onEntityStepUiChange={patchEntityStepUi}
           onDwBlueprintStepUiChange={patchDwBlueprintStepUi}
+          onSearchImportStepUiChange={patchSearchImportStepUi}
           onReloadSession={() => loadActiveSession(state.targetCompanyId ?? defaultCompanyId, { silent: true })}
           onDiscardSession={discardSession}
         />

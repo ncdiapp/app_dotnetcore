@@ -1,0 +1,50 @@
+{
+  "_comment": "EXAMPLE ONLY — Phase B working config. Written by agent after Phase A user confirmation.",
+  "plmSearchId": 0,
+  "plmSearchName": "1a - Style Search",
+  "plmBlQueryId": null,
+  "plmSqlServer": "SERVER\\INSTANCE",
+  "plmDatabase": "PLM",
+  "appSqlServer": "SERVER\\INSTANCE",
+  "appDatabase": "AppTenant",
+  "tablePrefix": "Plm_",
+  "rootTableName": "Plm_ReferenceBasicInfo",
+  "saasApplicationId": null,
+  "tenantDataSourceRegisterId": null,
+  "selectedJoinPlanId": "A",
+  "gridColumnStrategy": "exclude",
+  "referenceScope": {
+    "mode": "AllReferences",
+    "templateIds": [],
+    "itemTypeEntityId": null,
+    "notes": "AllReferences | ByTemplateIds | CustomFilter"
+  },
+  "joinPlans": [
+    {
+      "planId": "A",
+      "score": 92,
+      "label": "Reference + Style Header (1:1 sibling)",
+      "semanticSummary": "One row per product reference; matches typical style list.",
+      "tables": [
+        { "appTableName": "Plm_ReferenceBasicInfo", "role": "root", "joinType": "FROM" },
+        { "appTableName": "Plm_Style_Header", "role": "sibling", "joinType": "INNER", "onColumn": "ReferenceId" }
+      ],
+      "criteriaCoverage": { "mapped": 12, "total": 12 },
+      "viewCoverage": { "mapped": 13, "total": 15, "excludedGridColumns": 2 }
+    }
+  ],
+  "fieldResolution": [],
+  "linkTargets": [
+    {
+      "actionName": "Open",
+      "actionType": "Edit",
+      "transactionIntegrationId": "Tab_4250",
+      "rootColumn": "ReferenceId",
+      "sort": 1
+    }
+  ],
+  "integrationIds": {
+    "search": "Search_StyleSearch",
+    "searchView": "Search_StyleSearch_View"
+  }
+}

@@ -28,6 +28,12 @@ export const PLM_IMPORT_STEPS: PlmImportStepDefinition[] = [
     icon: 'fa-solid fa-diagram-project',
   },
   {
+    code: 'SearchImport',
+    label: 'PLM Search Import',
+    description: 'Apply PlmSearch_ImportBlueprint.json to create search, criteria, view, and link targets.',
+    icon: 'fa-solid fa-magnifying-glass',
+  },
+  {
     code: 'FolderImport',
     label: 'Folder Import',
     description: 'Import PLM folder structures into APP folders.',

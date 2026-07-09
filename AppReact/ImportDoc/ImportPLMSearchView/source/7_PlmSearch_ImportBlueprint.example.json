@@ -1,0 +1,201 @@
+{
+  "_comment": "Schema reference + example for Phase B output. BL Phase D: ExecuteSearchBlueprintConfig (not yet implemented).",
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-09T00:00:00Z",
+  "source": {
+    "plmSearchId": 42,
+    "plmSearchName": "1a - Style Search",
+    "plmBlQueryId": 1001,
+    "plmDatabase": "PLM",
+    "appDatabase": "AppTenant",
+    "tablePrefix": "Plm_",
+    "selectedJoinPlanId": "A",
+    "gridColumnStrategy": "exclude",
+    "referenceScope": {
+      "mode": "AllReferences",
+      "templateIds": [],
+      "customWhereSql": null,
+      "notes": "AllReferences | ByTemplateIds | CustomFilter"
+    }
+  },
+  "search": {
+    "name": "Style Search",
+    "description": "Imported from PLM Search 42",
+    "integrationId": "Search_StyleSearch",
+    "usageType": "Management",
+    "autoExecute": true,
+    "saasApplicationId": null
+  },
+  "dataSet": {
+    "name": "Style Search",
+    "queryMode": "SynthesizedFromFieldMapping",
+    "rootTableName": "Plm_ReferenceBasicInfo",
+    "queryText": "SELECT\n  [Plm_ReferenceBasicInfo].[ReferenceId],\n  [Plm_ReferenceBasicInfo].[ReferenceCode],\n  [Plm_ReferenceBasicInfo].[FolderId],\n  [hdr].[Style_No],\n  [hdr].[Description]\nFROM [dbo].[Plm_ReferenceBasicInfo]\nINNER JOIN [dbo].[Plm_Style_Header] AS [hdr]\n  ON [hdr].[ReferenceId] = [Plm_ReferenceBasicInfo].[ReferenceId]",
+    "joins": [
+      {
+        "alias": "hdr",
+        "appTableName": "Plm_Style_Header",
+        "joinType": "INNER",
+        "leftTable": "Plm_ReferenceBasicInfo",
+        "leftColumn": "ReferenceId",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1"
+      }
+    ],
+    "filters": [],
+    "tenantDataSourceRegisterId": null
+  },
+  "joinPlan": {
+    "planId": "A",
+    "score": 92,
+    "label": "Reference + Style Header (1:1 sibling)",
+    "semanticSummary": "One row per product reference.",
+    "tables": [
+      { "appTableName": "Plm_ReferenceBasicInfo", "role": "root" },
+      { "appTableName": "Plm_Style_Header", "role": "sibling", "plmTabId": 4250, "isTemplateHeaderTab": true }
+    ]
+  },
+  "fieldResolution": [
+    {
+      "role": "criteria",
+      "plmSource": {
+        "parameterId": 10,
+        "plmSubItemId": 1234,
+        "plmTabId": 4250,
+        "displayLabel": "Style #",
+        "plmControlType": 2,
+        "plmEntityId": null,
+        "defaultOperator": "Contains"
+      },
+      "resolved": {
+        "appTableName": "Plm_Style_Header",
+        "appColumnName": "Style_No",
+        "sysTableFiledPath": "Style_No",
+        "sysTableFiledFullPath": "Plm_Style_Header.Style_No"
+      },
+      "controlType": 2,
+      "entityIntegrationId": null,
+      "operationId": 6,
+      "positionRow": 1,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 20
+    },
+    {
+      "role": "view",
+      "plmSource": {
+        "searchViewColumnId": 55,
+        "plmMetaColumnId": 44,
+        "plmSubItemId": null,
+        "plmTabId": 4250,
+        "displayLabel": "Style #",
+        "plmControlType": 2,
+        "plmEntityId": null
+      },
+      "resolved": {
+        "appTableName": "Plm_Style_Header",
+        "appColumnName": "Style_No",
+        "sysTableFiledPath": "Style_No",
+        "sysTableFiledFullPath": "Plm_Style_Header.Style_No"
+      },
+      "controlType": 2,
+      "entityIntegrationId": null,
+      "isTransRootId": false,
+      "isVisible": true,
+      "sort": 10,
+      "width": null
+    },
+    {
+      "role": "view",
+      "plmSource": {
+        "searchViewColumnId": 1,
+        "plmMetaColumnId": null,
+        "plmSubItemId": null,
+        "displayLabel": "Ref No.",
+        "isBuiltIn": true
+      },
+      "resolved": {
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "appColumnName": "ReferenceId",
+        "sysTableFiledPath": "ReferenceId",
+        "sysTableFiledFullPath": "Plm_ReferenceBasicInfo.ReferenceId"
+      },
+      "controlType": 20,
+      "isTransRootId": true,
+      "isVisible": true,
+      "sort": 5
+    }
+  ],
+  "criteriaFields": [
+    {
+      "integrationKey": "criteria_Style_No",
+      "displayText": "Style #",
+      "sysTableFiledPath": "Style_No",
+      "sysTableFiledFullPath": "Plm_Style_Header.Style_No",
+      "controlType": 2,
+      "entityIntegrationId": null,
+      "operationId": 6,
+      "positionRow": 1,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 20,
+      "defaultValue": null
+    }
+  ],
+  "searchView": {
+    "name": "Style Search",
+    "integrationId": "Search_StyleSearch_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 5
+      },
+      {
+        "displayText": "Style #",
+        "sysTableFiledPath": "Style_No",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 10
+      }
+    ]
+  },
+  "linkTargets": [
+    {
+      "name": "Open",
+      "actionType": "Edit",
+      "transactionIntegrationId": "Tab_4250",
+      "sourceColumn": "ReferenceId",
+      "sort": 1
+    },
+    {
+      "name": "Create",
+      "actionType": "Create",
+      "transactionIntegrationId": "Tab_4250",
+      "sourceColumn": "ReferenceId",
+      "sort": 2
+    }
+  ],
+  "menu": {
+    "registerInMainMenu": true,
+    "menuTitle": "Style Search",
+    "menuGroup": null
+  },
+  "coverage": {
+    "criteria": { "total": 12, "mapped": 12, "missing": [], "ambiguous": [] },
+    "view": { "total": 15, "mapped": 13, "missing": [], "excludedByGridStrategy": 2 }
+  },
+  "unmappedPlmFields": [
+    {
+      "role": "view",
+      "reason": "GridColumn — gridColumnStrategy=exclude",
+      "plmMetaColumnId": 99,
+      "displayLabel": "Sketch"
+    }
+  ]
+}

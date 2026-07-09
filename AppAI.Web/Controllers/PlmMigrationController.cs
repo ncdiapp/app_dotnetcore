@@ -467,6 +467,58 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("LoadSearchImportBlueprint")]
+    public OperationCallResult<PlmSearchImportBlueprintDto> LoadSearchImportBlueprint([FromBody] PlmSearchImportLoadRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.LoadSearchImportBlueprint(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportBlueprintDto>("Plm_SearchImport_Load_Error", ex);
+        }
+    }
+
+    [HttpPost("ValidateSearchImportBlueprint")]
+    public OperationCallResult<PlmSearchImportValidationDto> ValidateSearchImportBlueprint([FromBody] PlmSearchImportBlueprintDto blueprint)
+    {
+        try
+        {
+            return PlmMigrationBL.ValidateSearchImportBlueprint(blueprint);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportValidationDto>("Plm_SearchImport_Validate_Error", ex);
+        }
+    }
+
+    [HttpPost("PreviewSearchBlueprintConfig")]
+    public OperationCallResult<PlmSearchImportPreviewDto> PreviewSearchBlueprintConfig([FromBody] PlmSearchImportBlueprintDto blueprint)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewSearchBlueprintConfig(blueprint);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportPreviewDto>("Plm_SearchImport_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecuteSearchBlueprintConfig")]
+    public OperationCallResult<PlmSearchImportExecuteResultDto> ExecuteSearchBlueprintConfig([FromBody] PlmSearchImportExecuteRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecuteSearchBlueprintConfig(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportExecuteResultDto>("Plm_SearchImport_Execute_Error", ex);
+        }
+    }
+
     private static OperationCallResult<T> ErrorResult<T>(string code, Exception ex)
     {
         var result = new OperationCallResult<T>();
