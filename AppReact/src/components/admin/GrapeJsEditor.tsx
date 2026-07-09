@@ -296,23 +296,12 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
         de.stopPropagation();
 
         if (isBlock) {
-          // Insert block HTML as a new element after the drop target
-          const topEl = topLevelElFor(de.target);
-          const wrapper = editor.getWrapper();
-          if (topEl) {
-            // Find this element's position in the wrapper's component children
-            let insertAt = -1;
-            wrapper?.components()?.each((c: any, idx: number) => {
-              if (c.view?.el === topEl) insertAt = idx;
-            });
-            if (insertAt >= 0) {
-              wrapper?.components().add(text, { at: insertAt + 1 });
-            } else {
-              wrapper?.append(text);
-            }
-          } else {
-            wrapper?.append(text);
-          }
+          // wrapper.append() and components().add() fail silently for tables
+          // and multi-root HTML fragments in the newsletter preset.
+          // Rebuild the full component tree with the new block appended.
+          // GrapeJS preserves {{tokens}} in getHtml() (braces are not HTML-encoded).
+          const currentHtml = editor.getHtml() ?? '';
+          editor.setComponents(currentHtml + '\n' + text);
           return;
         }
 
