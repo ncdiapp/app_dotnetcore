@@ -192,13 +192,15 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
           if (cancel) { el.innerHTML = snapshot; return; }
           if (newHtml === snapshot) return;
 
-          // Push edited HTML back into GrapeJS model so changesCount fires
+          // Push edited HTML back into GrapeJS model.
+          // comp.components().reset() + comp.append() already fire GrapeJS's
+          // internal change events which increment changesCount naturally —
+          // no need to trigger it manually (that causes UndoManager crash).
           const comp = findDeepComp(editor.DomComponents.getComponents(), el);
           if (comp) {
             comp.components().reset();
             comp.append(newHtml);
           }
-          editor.trigger('change:changesCount');
         };
 
         el.addEventListener('blur', () => finish(false), { once: true });
