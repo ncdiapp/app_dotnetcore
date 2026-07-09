@@ -1314,7 +1314,7 @@ ${cells}
                   <p style="font-size:12px">Switch to Visual mode and drag tokens onto the layout</p>
                 </div>`}
                 style={{ width: '100%', height: '100%', border: 'none' }}
-                sandbox="allow-same-origin allow-scripts"
+                sandbox="allow-same-origin"
               />
 
               {/* Transparent overlay — captures drag events over the iframe */}
