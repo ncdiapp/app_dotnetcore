@@ -764,7 +764,7 @@ ${previewHtml}
                       title={tmpl.label}
                       className="absolute top-0 left-0 border-none origin-top-left"
                       style={{ width: '600px', height: '500px', transform: 'scale(0.48)', pointerEvents: 'none' }}
-                      sandbox=""
+                      sandbox="allow-scripts"
                     />
                   </div>
                   {/* Label */}
@@ -1313,7 +1313,7 @@ ${cells}
                   <p style="font-size:12px">Switch to Visual mode and drag tokens onto the layout</p>
                 </div>`}
                 style={{ width: '100%', height: '100%', border: 'none' }}
-                sandbox="allow-same-origin"
+                sandbox="allow-same-origin allow-scripts"
               />
 
               {/* Transparent overlay — captures drag events over the iframe */}
