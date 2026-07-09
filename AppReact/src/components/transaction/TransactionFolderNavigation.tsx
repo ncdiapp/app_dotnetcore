@@ -88,7 +88,10 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
     folder: Partial<FolderDto> | null;
     parentId: number | null;
   }>({ visible: false, mode: 'rename', folder: null, parentId: null });
-  const folderTreeWidth = 280;
+  const [folderTreeWidth, setFolderTreeWidth] = useState(300);
+  const [isFolderTreeResizing, setIsFolderTreeResizing] = useState(false);
+  const folderTreeResizeStartX = useRef(0);
+  const folderTreeResizeStartWidth = useRef(0);
 
   const isTemplateMode = Boolean(runtimeContext?.IsTemplateMode);
 
@@ -290,6 +293,38 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
 
   useRefineContextMenuField(folderContextMenu.visible, folderContextMenuRef, setFolderContextMenu);
 
+  const handleFolderTreeResizeStart = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      setIsFolderTreeResizing(true);
+      folderTreeResizeStartX.current = e.clientX;
+      folderTreeResizeStartWidth.current = folderTreeWidth;
+    },
+    [folderTreeWidth],
+  );
+
+  useEffect(() => {
+    if (!isFolderTreeResizing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientX - folderTreeResizeStartX.current;
+      const newWidth = Math.max(200, Math.min(600, folderTreeResizeStartWidth.current + delta));
+      setFolderTreeWidth(newWidth);
+    };
+
+    const handleMouseUp = () => {
+      setIsFolderTreeResizing(false);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isFolderTreeResizing]);
+
   const openFolderEditPopup = useCallback(
     (mode: 'create' | 'rename' | 'defaultView', folder: Partial<FolderDto> | null, parentId: number | null) => {
       setFolderEditPopup({
@@ -470,7 +505,10 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
 
   return (
     <div className="w-full h-full flex overflow-hidden">
-      <div className="flex flex-col mr-1 relative flex-none" style={{ width: folderTreeWidth, minWidth: 200 }}>
+      <div
+        className="flex flex-col mr-1 relative flex-none"
+        style={{ width: folderTreeWidth, minWidth: 200, maxWidth: 600 }}
+      >
         <div className={`flex items-center justify-between px-3 py-2 ${theme.mainContentSection}`}>
           <div className={`text-xs font-semibold ${theme.title}`}>
             <i className="fa-solid fa-folder-open mr-1" />
@@ -484,7 +522,7 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
           {foldersCV && (
             <FlexGrid
               ref={folderGridRef}
-              className="w-full h-full"
+              className="app-wj-treeview w-full h-full"
               itemsSource={foldersCV}
               selectionMode="Row"
               headersVisibility="None"
@@ -544,10 +582,10 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
                     const showContextBtn = !item.IsFolderReadonly;
                     if (!showContextBtn) return null;
                     return (
-                      <div className="flex items-center justify-center h-full group">
+                      <div className="flex items-center justify-center h-full">
                         <button
                           type="button"
-                          className={`w-6 h-6 opacity-0 group-hover:opacity-100 ${theme.button_default} rounded px-1`}
+                          className={`folder-context-btn w-6 h-6 ${theme.button_default} rounded px-1`}
                           onClick={(e) => openFolderContextMenu(e, item)}
                           title="More Options"
                         >
@@ -560,6 +598,22 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
               </FlexGridColumn>
             </FlexGrid>
           )}
+        </div>
+
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Drag to resize folder tree"
+          title="Drag to resize"
+          onMouseDown={handleFolderTreeResizeStart}
+          className="group absolute right-0 top-0 bottom-0 z-10 flex w-4 -mr-2 cursor-col-resize items-center justify-center select-none touch-none"
+        >
+          <div
+            className={`pointer-events-none h-[min(200px,45vh)] w-1.5 rounded-full border ${theme.mainContentSection} ${theme.menu_default} shadow-sm transition-[opacity,box-shadow] group-hover:border-2 group-hover:shadow-md ${
+              isFolderTreeResizing ? 'border-2 opacity-100 shadow-md' : 'opacity-80 group-hover:opacity-100'
+            }`}
+            aria-hidden
+          />
         </div>
       </div>
 

@@ -1430,7 +1430,7 @@ const FolderNavigation: React.FC<Props> = ({
               {foldersCV && (
                 <FlexGrid
                   ref={folderGridRef}
-                  className="w-full h-full"
+                  className="app-wj-treeview w-full h-full"
                   itemsSource={foldersCV}
                   selectionMode="Row"
                   headersVisibility="None"
@@ -1492,10 +1492,10 @@ const FolderNavigation: React.FC<Props> = ({
                           const item = cell.item as FolderDto;
                           if (item.IsFolderReadonly) return null;
                           return (
-                            <div className="flex items-center justify-center h-full group">
+                            <div className="flex items-center justify-center h-full">
                               <button
                                 type="button"
-                                className={`w-6 h-6 opacity-0 group-hover:opacity-100 ${theme.button_default} rounded px-1`}
+                                className={`folder-context-btn w-6 h-6 ${theme.button_default} rounded px-1`}
                                 onClick={(e) => openFolderContextMenu(e, item)}
                                 title="More Options"
                               >
@@ -1513,9 +1513,20 @@ const FolderNavigation: React.FC<Props> = ({
 
             {/* Resize Handle */}
             <div
-              className="absolute top-0 right-0 w-1 h-full cursor-ew-resize hover:bg-blue-400"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Drag to resize folder tree"
+              title="Drag to resize"
               onMouseDown={handleResizeStart}
-            />
+              className="group absolute right-0 top-0 bottom-0 z-10 flex w-4 -mr-2 cursor-col-resize items-center justify-center select-none touch-none"
+            >
+              <div
+                className={`pointer-events-none h-[min(200px,45vh)] w-1.5 rounded-full border ${theme.mainContentSection} ${theme.menu_default} shadow-sm transition-[opacity,box-shadow] group-hover:border-2 group-hover:shadow-md ${
+                  isResizing ? 'border-2 opacity-100 shadow-md' : 'opacity-80 group-hover:opacity-100'
+                }`}
+                aria-hidden
+              />
+            </div>
           </div>
         )}
 

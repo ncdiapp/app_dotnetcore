@@ -920,6 +920,17 @@ export const applyThirdPartCssOverrides = (theme: any) => {
         color: ${capturedTheme.textColor} !important;
       }
 
+      /* Folder tree row context menu button (Angular: .FolderContextButton) */
+      .wj-flexgrid .wj-row .folder-context-btn {
+        opacity: 0;
+        transition: opacity 0.15s ease;
+      }
+
+      .wj-flexgrid .wj-row:hover .folder-context-btn,
+      .wj-flexgrid .wj-row.wj-state-selected .folder-context-btn {
+        opacity: 1;
+      }
+
       /* Tree View Custom Styling */
       .custom-tree-line.wj-treeview .wj-nodelist > .wj-nodelist > .wj-node,
       .custom-tree-line.wj-treeview .wj-nodelist > .wj-nodelist > .wj-nodelist,
