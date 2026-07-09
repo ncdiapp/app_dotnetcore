@@ -209,6 +209,71 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
           else if (ke.key === 'Enter' && !ke.shiftKey) { ke.preventDefault(); finish(false); }
         }, { once: true });
       }, true);
+
+      // ── Token drag-drop from left panel onto canvas cells ──────────────────
+      // The React token list sets dataTransfer text/plain = "{{header.Field}}".
+      // We accept drops on any text container and replace its content.
+      let dragOverEl: HTMLElement | null = null;
+
+      const clearDragHighlight = () => {
+        if (dragOverEl) {
+          dragOverEl.style.outline = '';
+          dragOverEl.style.backgroundColor = '';
+          dragOverEl = null;
+        }
+      };
+
+      const dropTargetFor = (target: EventTarget | null): HTMLElement | null => {
+        let el = target as HTMLElement | null;
+        while (el && el.tagName !== 'BODY') {
+          if (TEXT_TAGS.has(el.tagName)) return el;
+          el = el.parentElement;
+        }
+        return null;
+      };
+
+      canvasDoc.addEventListener('dragover', (e: Event) => {
+        const de = e as DragEvent;
+        if (!de.dataTransfer?.types.includes('text/plain')) return;
+        de.preventDefault();
+        de.dataTransfer.dropEffect = 'copy';
+
+        const el = dropTargetFor(de.target);
+        if (el !== dragOverEl) {
+          clearDragHighlight();
+          if (el) {
+            el.style.outline = '2px dashed #0d6efd';
+            el.style.backgroundColor = 'rgba(13,110,253,0.08)';
+            dragOverEl = el;
+          }
+        }
+      }, true);
+
+      canvasDoc.addEventListener('dragleave', (e: Event) => {
+        const de = e as DragEvent;
+        const related = de.relatedTarget as HTMLElement | null;
+        if (!related || !canvasDoc.body?.contains(related)) clearDragHighlight();
+      }, true);
+
+      canvasDoc.addEventListener('drop', (e: Event) => {
+        const de = e as DragEvent;
+        clearDragHighlight();
+
+        const token = de.dataTransfer?.getData('text/plain') ?? '';
+        if (!token.includes('{{')) return; // only handle token drops, not GrapeJS block drags
+
+        de.preventDefault();
+        de.stopPropagation();
+
+        const el = dropTargetFor(de.target);
+        if (!el) return;
+
+        const comp = findDeepComp(editor.DomComponents.getComponents(), el);
+        if (comp) {
+          comp.components().reset();
+          comp.append(token);
+        }
+      }, true);
     });
 
     // Emit combined HTML+CSS whenever the content changes — but only when Design mode is active
