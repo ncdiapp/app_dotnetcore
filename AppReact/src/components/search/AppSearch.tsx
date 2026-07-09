@@ -205,6 +205,7 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
 
   // SearchFilter -> TEXT criteria overrides getter (pulled on SEARCH click).
   const textCriteriaOverridesGetterRef = useRef<null | (() => Record<string, any>)>(null);
+  const liveCriteriaOverridesGetterRef = useRef<null | (() => Record<string, any>)>(null);
   const eshopFilterTextOverridesGetterRef = useRef<null | (() => Record<string, any>)>(null);
   const eshopCardSearchRef = useRef<AppSearchHandle>(null);
   const selectedLinkedRowsRef = useRef<any[]>([]);
@@ -241,6 +242,8 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
     dictDcuValueForCriteria?: Record<string, any>,
   ) => {
     try {
+      liveCriteriaOverridesGetterRef.current?.();
+
       if (!searchDtoParam) {
         // Embedded search can be triggered before retrieveOneSearch finishes.
         // Keep this silent to avoid noisy false-negative messages during initialization.
@@ -268,6 +271,8 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
         ...externalText,
         ...(textCriteriaOverridesGetterRef.current?.() ?? {}),
       };
+      const liveCriteriaOverrides: Record<string, any> =
+        liveCriteriaOverridesGetterRef.current?.() ?? {};
       const criteriaOverlay =
         typeof paramObj?.criteriaDictOverride === 'function'
           ? ((paramObj.criteriaDictOverride() ?? {}) as Record<string, any>)
@@ -279,6 +284,7 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
       const dictDcuValueOverridesRaw: Record<string, any> = {
         ...baseDict,
         ...criteriaOverlay,
+        ...(liveCriteriaOverrides ?? {}),
         ...(textCriteriaOverrides ?? {}),
       };
 
@@ -1416,6 +1422,9 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
               dictFieldEntityDataSource={dataModel.dictFieldEntityDataSource}
               onRegisterTextCriteriaOverrides={(getter) => {
                 textCriteriaOverridesGetterRef.current = getter;
+              }}
+              onRegisterLiveCriteriaOverrides={(getter) => {
+                liveCriteriaOverridesGetterRef.current = getter;
               }}
               clearSignal={criteriaClearVersion}
             />

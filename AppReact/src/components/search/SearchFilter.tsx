@@ -10,6 +10,8 @@ interface SearchFilterProps {
   dictFieldEntityDataSource?: { [key: string]: any };
   // Parent will call this getter on SEARCH click to pull the latest raw TEXT input.
   onRegisterTextCriteriaOverrides?: (getter: () => Record<string, any>) => void;
+  // Parent will call this getter on SEARCH click to pull live criteria values (Angular ddlControl parity).
+  onRegisterLiveCriteriaOverrides?: (getter: () => Record<string, any>) => void;
   // Fired when the top-level "Clear" button is clicked.
   clearSignal?: number;
 }
@@ -39,14 +41,30 @@ const areStringArraysEqualIgnoringOrder = (a: any[] | undefined | null, b: any[]
   return true;
 };
 
+/** Prefer parent dictDcuValue overrides (Angular parity); fall back to criteria.Values. */
+const resolveValuesForCriteria = (criteria: any, dictDcuValue?: Record<string, any>) => {
+  const dcuId = criteria?.SearcDCUID;
+  const override = dcuId != null ? dictDcuValue?.[dcuId] : undefined;
+  if (override !== undefined && override !== null) {
+    if (Array.isArray(override)) return normalizeStringArray(override);
+    if (typeof override === "object" && Array.isArray(override.values)) {
+      return normalizeStringArray(override.values);
+    }
+  }
+  return Array.isArray(criteria?.Values) ? normalizeStringArray(criteria.Values) : [];
+};
+
 const EntityMultiSelectValue: React.FC<{
   criteria: any;
   selection: any[];
   inputBoxClass: string;
   buttonClass: string;
   onSelectionChange: (newSelection: string[]) => void;
-}> = ({ criteria, selection, inputBoxClass, buttonClass, onSelectionChange }) => {
+  onControlReady?: (control: wjInput.MultiSelect | null) => void;
+}> = ({ criteria, selection, inputBoxClass, buttonClass, onSelectionChange, onControlReady }) => {
   const [collapsed, setCollapsed] = useState<boolean>(false);
+  const multiSelectRef = React.useRef<wjInput.MultiSelect | null>(null);
+  const lastSyncedSelectionRef = React.useRef<string[]>([]);
   const allowMultipleSelect = criteria?.IsAllowMultipleSelect === true;
   const effectiveSelection = allowMultipleSelect
     ? selection
@@ -63,10 +81,48 @@ const EntityMultiSelectValue: React.FC<{
     [criteria.ItemsSource],
   );
 
-  const selectedItems = useMemo(() => {
-    const selectionSet = new Set(normalizeStringArray(effectiveSelection));
-    return itemsSource.filter((item: any) => selectionSet.has(String(item.Id)));
-  }, [itemsSource, effectiveSelection]);
+  const resolveCheckedItems = useCallback(
+    (sender: wjInput.MultiSelect) => {
+      const checked = sender.checkedItems ?? [];
+      if (!checked.length) return [];
+
+      if (allowMultipleSelect) return checked;
+
+      const selectedItem = (sender as any).selectedItem;
+      if (selectedItem) return [selectedItem];
+      return [checked[checked.length - 1]];
+    },
+    [allowMultipleSelect],
+  );
+
+  const commitSelectionFromControl = useCallback(
+    (sender: wjInput.MultiSelect) => {
+      const nextCheckedItems = resolveCheckedItems(sender);
+      const newSelection = (nextCheckedItems ?? []).map((item: any) => String(item.Id));
+      lastSyncedSelectionRef.current = newSelection;
+      onSelectionChange(newSelection);
+    },
+    [onSelectionChange, resolveCheckedItems],
+  );
+
+  const syncControlCheckedItems = useCallback(
+    (selectionToSync: string[]) => {
+      const ctl = multiSelectRef.current;
+      if (!ctl) return;
+
+      const selectionSet = new Set(normalizeStringArray(selectionToSync));
+      const desired = itemsSource.filter((item: any) => selectionSet.has(String(item.Id)));
+      ctl.checkedItems = desired;
+      lastSyncedSelectionRef.current = normalizeStringArray(selectionToSync);
+    },
+    [itemsSource],
+  );
+
+  useEffect(() => {
+    return () => {
+      onControlReady?.(null);
+    };
+  }, [onControlReady]);
 
   if (criteria?.IsOptionFilterChecklist) {
     const items = (criteria.ItemsSource ?? []).map((item: any) => ({
@@ -133,26 +189,16 @@ const EntityMultiSelectValue: React.FC<{
     );
   }
 
-  const enforceSingleSelectionIfNeeded = (sender: wjInput.MultiSelect) => {
-    // Angular behavior: when multi-select is disabled, keep only the last selected item.
-    if (allowMultipleSelect) return sender.checkedItems ?? [];
-    const checked = sender.checkedItems ?? [];
-    // IMPORTANT: when clearing, MultiSelect may still have `selectedItem` stale.
-    // If checked items are empty, we must return empty to allow Clear to work.
-    if (!checked.length) return [];
-
-    const selectedItem = (sender as any).selectedItem;
-    if (selectedItem) return [selectedItem];
-
-    return [checked[checked.length - 1]];
-  };
-
   return (
     <MultiSelect
+      initialized={(sender: wjInput.MultiSelect) => {
+        multiSelectRef.current = sender;
+        onControlReady?.(sender);
+        syncControlCheckedItems(effectiveSelection);
+      }}
       itemsSource={itemsSource}
       displayMemberPath="Display"
       selectedValuePath="Id"
-      checkedItems={selectedItems}
       placeholder={`Select ${criteria.Display}`}
       disabled={criteria.IsReadOnly === true}
       className={`w-full border text-[11px] ${inputBoxClass}`}
@@ -160,9 +206,12 @@ const EntityMultiSelectValue: React.FC<{
       showDropDownButton={true}
       showSelectAllCheckbox={allowMultipleSelect}
       checkedItemsChanged={(sender: wjInput.MultiSelect) => {
-        const nextCheckedItems = enforceSingleSelectionIfNeeded(sender);
-        const newSelection = (nextCheckedItems ?? []).map((item: any) => String(item.Id));
-        onSelectionChange(newSelection);
+        commitSelectionFromControl(sender);
+      }}
+      isDroppedDownChanged={(sender: wjInput.MultiSelect) => {
+        if (!sender.isDroppedDown) {
+          commitSelectionFromControl(sender);
+        }
       }}
     />
   );
@@ -171,7 +220,9 @@ const EntityMultiSelectValue: React.FC<{
 export const SearchFilter: React.FC<SearchFilterProps> = ({
   searchDto,
   onCriteriaValueChanged,
+  dictDcuValue,
   onRegisterTextCriteriaOverrides,
+  onRegisterLiveCriteriaOverrides,
   clearSignal,
 }) => {
   const { theme, t } = useTheme();
@@ -181,8 +232,21 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
   const [valueSelections, setValueSelections] = useState<Record<string, any[]>>({});
   const [textInputs, setTextInputs] = useState<Record<string, string>>({});
   const lastHandledClearSignalRef = React.useRef<number | undefined>(undefined);
+  const initializedSearchIdRef = React.useRef<any>(undefined);
+  const entityControlRefs = React.useRef<Record<string, wjInput.MultiSelect | null>>({});
+  const valueSelectionsRef = React.useRef(valueSelections);
+  const operatorSelectionsRef = React.useRef(operatorSelections);
+  valueSelectionsRef.current = valueSelections;
+  operatorSelectionsRef.current = operatorSelections;
 
   useEffect(() => {
+    const searchId = searchDto?.Id;
+    const isFirstLoad = initializedSearchIdRef.current === undefined;
+    const isNewSearch = initializedSearchIdRef.current !== searchId;
+    // Do not reset local edits when the same search re-renders (e.g. after SEARCH click).
+    if (!isFirstLoad && !isNewSearch) return;
+    initializedSearchIdRef.current = searchId;
+
     const operatorMap: Record<string, string> = {};
     const valueMap: Record<string, any[]> = {};
     const textMap: Record<string, string> = {};
@@ -190,19 +254,43 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
       const opType = criteria?.CriteriaOperator?.OperatorType;
       operatorMap[criteria.SearcDCUID] =
         opType === 0 || opType ? String(opType) : "";
-      valueMap[criteria.SearcDCUID] = Array.isArray(criteria?.Values)
-        ? [...criteria.Values]
-        : [];
+      valueMap[criteria.SearcDCUID] = resolveValuesForCriteria(criteria, dictDcuValue);
 
       if (criteria.CriteriaType === EmAppCriteriaType.Text) {
-        const values = Array.isArray(criteria?.Values) ? criteria.Values : [];
-        textMap[criteria.SearcDCUID] = values.map((v: any) => String(v)).join(",");
+        const values = resolveValuesForCriteria(criteria, dictDcuValue);
+        textMap[criteria.SearcDCUID] = values.join(",");
       }
     });
     setOperatorSelections(operatorMap);
     setValueSelections(valueMap);
     setTextInputs(textMap);
-  }, [searchDto, Criterias]);
+  }, [searchDto?.Id, Criterias, dictDcuValue]);
+
+  const resolveSelectedOperator = useCallback((criteria: any, operatorSelection: string) => {
+    if (operatorSelection === "") return null;
+    return (
+      criteria.SupportedOperators?.find(
+        (op: any) => String(op.OperatorType) === operatorSelection
+      ) ?? null
+    );
+  }, []);
+
+  const readEntityValuesFromControl = useCallback((criteria: any) => {
+    const dcuId = String(criteria.SearcDCUID);
+    const ctl = entityControlRefs.current[dcuId];
+    if (!ctl) return valueSelectionsRef.current[dcuId] ?? [];
+
+    const checked = ctl.checkedItems ?? [];
+    if (!checked.length) return [];
+
+    if (criteria?.IsAllowMultipleSelect === true) {
+      return checked.map((item: any) => String(item.Id));
+    }
+
+    const selectedItem = (ctl as any).selectedItem;
+    if (selectedItem) return [String(selectedItem.Id)];
+    return [String(checked[checked.length - 1].Id)];
+  }, []);
 
   const rows = useMemo(
     () => Array.from({ length: Math.max(CriteriasRowCount, 1) }, (_, idx) => idx + 1),
@@ -256,30 +344,28 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
 
   const handleValueChange = useCallback(
     (criteria: any, newValues: any[]) => {
-      const current = valueSelections[criteria.SearcDCUID] ?? [];
-      // Prevent controlled-component feedback loops (MultiSelect can emit redundant change events).
-      if (areStringArraysEqualIgnoringOrder(current, newValues)) return;
+      const dcuId = criteria.SearcDCUID;
+      let didChange = false;
+      setValueSelections((prev) => {
+        const current = prev[dcuId] ?? [];
+        if (areStringArraysEqualIgnoringOrder(current, newValues)) return prev;
+        didChange = true;
+        return {
+          ...prev,
+          [dcuId]: newValues,
+        };
+      });
+      if (!didChange) return;
 
-      setValueSelections((prev) => ({
-        ...prev,
-        [criteria.SearcDCUID]: newValues,
-      }));
+      const operatorSelection = operatorSelectionsRef.current[dcuId] ?? "";
+      const selectedOperator = resolveSelectedOperator(criteria, operatorSelection);
 
-      // Keep operator+values together (so executeSearch can build the same payload as Angular).
-      const operatorSelection = operatorSelections[criteria.SearcDCUID] ?? "";
-      const selectedOperator =
-        operatorSelection === ""
-          ? null
-          : criteria.SupportedOperators?.find(
-              (op: any) => String(op.OperatorType) === operatorSelection
-            ) ?? null;
-
-      onCriteriaValueChanged?.(criteria.SearcDCUID, {
+      onCriteriaValueChanged?.(dcuId, {
         operator: selectedOperator ?? null,
         values: newValues,
       });
     },
-    [onCriteriaValueChanged, operatorSelections, valueSelections]
+    [onCriteriaValueChanged, resolveSelectedOperator]
   );
 
   const renderValueControl = useCallback(
@@ -295,6 +381,11 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
             inputBoxClass={theme.inputBox}
             buttonClass={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
             onSelectionChange={(newSelection) => handleValueChange(criteria, newSelection)}
+            onControlReady={(control) => {
+              const dcuId = String(criteria.SearcDCUID);
+              if (control) entityControlRefs.current[dcuId] = control;
+              else delete entityControlRefs.current[dcuId];
+            }}
           />
         );
       }
@@ -411,6 +502,66 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
     onRegisterTextCriteriaOverrides?.(getTextCriteriaOverrides);
   }, [onRegisterTextCriteriaOverrides, getTextCriteriaOverrides]);
 
+  const getLiveCriteriaOverrides = useCallback(() => {
+    const overrides: Record<string, any> = {};
+    (Criterias || []).forEach((criteria: any) => {
+      const dcuId = criteria?.SearcDCUID;
+      if (dcuId === undefined || dcuId === null) return;
+
+      const operatorSelection = operatorSelectionsRef.current[dcuId] ?? "";
+      const selectedOperator = resolveSelectedOperator(criteria, operatorSelection);
+
+      if (criteria.CriteriaType === EmAppCriteriaType.Text) return;
+
+      let values: string[] = [];
+      if (criteria.CriteriaType === EmAppCriteriaType.Entity) {
+        values = readEntityValuesFromControl(criteria);
+      } else {
+        values = normalizeStringArray(valueSelectionsRef.current[dcuId] ?? []);
+      }
+
+      overrides[dcuId] = {
+        operator: selectedOperator ?? null,
+        values,
+      };
+    });
+    return overrides;
+  }, [Criterias, readEntityValuesFromControl, resolveSelectedOperator]);
+
+  const flushAndGetLiveCriteriaOverrides = useCallback(() => {
+    const overrides = getLiveCriteriaOverrides();
+
+    setValueSelections((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      (Criterias || []).forEach((criteria: any) => {
+        const dcuId = criteria?.SearcDCUID;
+        if (dcuId === undefined || dcuId === null) return;
+        if (criteria.CriteriaType !== EmAppCriteriaType.Entity) return;
+        const values = normalizeStringArray(overrides[dcuId]?.values ?? []);
+        if (!areStringArraysEqualIgnoringOrder(prev[dcuId], values)) {
+          next[dcuId] = values;
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+
+    (Criterias || []).forEach((criteria: any) => {
+      const dcuId = criteria?.SearcDCUID;
+      if (dcuId === undefined || dcuId === null) return;
+      if (criteria.CriteriaType !== EmAppCriteriaType.Entity) return;
+      const override = overrides[dcuId];
+      if (override) onCriteriaValueChanged?.(dcuId, override);
+    });
+
+    return overrides;
+  }, [Criterias, getLiveCriteriaOverrides, onCriteriaValueChanged]);
+
+  useEffect(() => {
+    onRegisterLiveCriteriaOverrides?.(flushAndGetLiveCriteriaOverrides);
+  }, [onRegisterLiveCriteriaOverrides, flushAndGetLiveCriteriaOverrides]);
+
   // Clear criteria values (match Angular clearCriteriaValues behavior).
   useEffect(() => {
     if (clearSignal === undefined) return;
@@ -446,6 +597,10 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
       ...prev,
       ...newTextMap,
     }));
+
+    Object.values(entityControlRefs.current).forEach((ctl) => {
+      if (ctl) ctl.checkedItems = [];
+    });
 
     // Angular behavior: clear should force criteria.Values to empty in the outgoing payload.
     // Because AppSearch uses `dictDcuValue` overrides, we must send empty overrides too.
