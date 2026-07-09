@@ -996,6 +996,7 @@ ${cells}
                         draggable
                         onDragStart={e => {
                           e.dataTransfer.setData('text/plain', block.html);
+                          e.dataTransfer.setData('application/x-report-block', '1');
                           e.dataTransfer.effectAllowed = 'copy';
                           setDraggingToken(block.html);
                         }}

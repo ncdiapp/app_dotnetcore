@@ -210,9 +210,10 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
         }, { once: true });
       }, true);
 
-      // ── Token drag-drop from left panel onto canvas cells ──────────────────
-      // The React token list sets dataTransfer text/plain = "{{header.Field}}".
-      // We accept drops on any text container and replace its content.
+      // ── Drag-drop from left panel: tokens onto cells, blocks into canvas ──────
+      // Tokens  (text/plain = "{{header.Field}}") → replace target cell content.
+      // Blocks  (text/plain = full HTML, marker = application/x-report-block)
+      //         → insert as new sibling element after the drop position.
       let dragOverEl: HTMLElement | null = null;
 
       const clearDragHighlight = () => {
@@ -232,19 +233,46 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
         return null;
       };
 
+      // Find the direct child of <body> that contains (or is) `el`
+      const topLevelElFor = (target: EventTarget | null): HTMLElement | null => {
+        let el = target as HTMLElement | null;
+        while (el && el.parentElement && el.parentElement !== canvasDoc.body) {
+          el = el.parentElement;
+        }
+        return el && el !== canvasDoc.body ? el : null;
+      };
+
       canvasDoc.addEventListener('dragover', (e: Event) => {
         const de = e as DragEvent;
-        if (!de.dataTransfer?.types.includes('text/plain')) return;
-        de.preventDefault();
-        de.dataTransfer.dropEffect = 'copy';
+        const types = de.dataTransfer?.types ?? [];
+        const isBlock = types.includes('application/x-report-block');
+        const isToken = !isBlock && types.includes('text/plain');
+        if (!isBlock && !isToken) return;
 
-        const el = dropTargetFor(de.target);
-        if (el !== dragOverEl) {
-          clearDragHighlight();
-          if (el) {
-            el.style.outline = '2px dashed #0d6efd';
-            el.style.backgroundColor = 'rgba(13,110,253,0.08)';
-            dragOverEl = el;
+        de.preventDefault();
+        de.dataTransfer!.dropEffect = 'copy';
+
+        if (isToken) {
+          // Highlight target cell for token drops
+          const el = dropTargetFor(de.target);
+          if (el !== dragOverEl) {
+            clearDragHighlight();
+            if (el) {
+              el.style.outline = '2px dashed #0d6efd';
+              el.style.backgroundColor = 'rgba(13,110,253,0.08)';
+              dragOverEl = el;
+            }
+          }
+        } else {
+          // Highlight top-level block for block drops
+          const el = topLevelElFor(de.target);
+          if (el !== dragOverEl) {
+            clearDragHighlight();
+            if (el) {
+              el.style.outline = '2px solid #16a34a';
+              el.style.backgroundColor = 'rgba(22,163,74,0.06)';
+              dragOverEl = el;
+            }
           }
         }
       }, true);
@@ -259,19 +287,43 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
         const de = e as DragEvent;
         clearDragHighlight();
 
-        const token = de.dataTransfer?.getData('text/plain') ?? '';
-        if (!token.includes('{{')) return; // only handle token drops, not GrapeJS block drags
+        const text = de.dataTransfer?.getData('text/plain') ?? '';
+        if (!text) return;
+
+        const isBlock = de.dataTransfer?.types.includes('application/x-report-block') ?? false;
 
         de.preventDefault();
         de.stopPropagation();
 
+        if (isBlock) {
+          // Insert block HTML as a new element after the drop target
+          const topEl = topLevelElFor(de.target);
+          const wrapper = editor.getWrapper();
+          if (topEl) {
+            // Find this element's position in the wrapper's component children
+            let insertAt = -1;
+            wrapper?.components()?.each((c: any, idx: number) => {
+              if (c.view?.el === topEl) insertAt = idx;
+            });
+            if (insertAt >= 0) {
+              wrapper?.components().add(text, { at: insertAt + 1 });
+            } else {
+              wrapper?.append(text);
+            }
+          } else {
+            wrapper?.append(text);
+          }
+          return;
+        }
+
+        // Token drop → replace target cell content
+        if (!text.includes('{{')) return;
         const el = dropTargetFor(de.target);
         if (!el) return;
-
         const comp = findDeepComp(editor.DomComponents.getComponents(), el);
         if (comp) {
           comp.components().reset();
-          comp.append(token);
+          comp.append(text);
         }
       }, true);
     });
