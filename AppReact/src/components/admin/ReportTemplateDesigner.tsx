@@ -650,12 +650,22 @@ ${previewHtml}
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
+            {/* Layout approach note */}
+            <div className="flex-shrink-0 flex items-start gap-2 mx-4 mt-4 px-3 py-2.5 rounded-[4px] bg-blue-50 border border-blue-200 text-blue-700">
+              <i className="fa-solid fa-circle-info text-blue-400 mt-0.5 shrink-0" />
+              <p className="text-xs leading-relaxed">
+                <strong>Why CSS flow layout?</strong> Report templates use normal HTML block/flow layout — not absolute pixel positioning (like Canva's design tool).
+                Flow layout lets tables and text blocks reflow automatically when data length varies across records.
+                Absolute positioning would produce overlapping or clipped content whenever a field is longer or shorter than expected.
+              </p>
+            </div>
             {/* Card grid */}
             <div className="flex-auto overflow-y-auto p-4 grid grid-cols-2 gap-4">
               {STARTER_TEMPLATES.map(tmpl => (
                 <button
                   key={tmpl.label}
                   onClick={() => { applyStarterTemplate(tmpl.html); setGalleryOpen(false); }}
+                  title={`${tmpl.label} — uses CSS flow layout so content reflows correctly with real data`}
                   className={`flex flex-col rounded-lg border-2 overflow-hidden text-left transition-colors hover:border-blue-400 ${t('border_mainContentSection')}`}
                 >
                   {/* Scaled HTML thumbnail */}
@@ -677,6 +687,7 @@ ${previewHtml}
               {/* Blank option */}
               <button
                 onClick={() => { applyStarterTemplate(''); setGalleryOpen(false); }}
+                title="Start with an empty canvas — write your own HTML using CSS flow layout"
                 className={`flex flex-col rounded-lg border-2 overflow-hidden text-left transition-colors hover:border-blue-400 ${t('border_mainContentSection')}`}
               >
                 <div className={`relative w-full flex items-center justify-center ${theme.mainContentSection}`} style={{ height: '160px' }}>
