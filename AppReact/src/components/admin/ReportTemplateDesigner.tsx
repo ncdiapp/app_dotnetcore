@@ -90,6 +90,36 @@ const REPORT_BLOCKS = [
 </table>`,
   },
   {
+    label: 'List Label/Value',
+    icon: 'fa-solid fa-list',
+    color: 'text-teal-500',
+    html: `<table style="width:100%;border-collapse:collapse;font-family:Arial,sans-serif;font-size:12px;margin-bottom:16px;border:1px solid #d1d5db">
+  <thead>
+    <tr>
+      <th colspan="2" style="background:#e5e7eb;color:#374151;padding:6px 10px;text-align:left;font-size:13px;font-weight:bold;border-bottom:1px solid #d1d5db">Section Title</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="width:45%;padding:5px 10px;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;color:#555;font-weight:bold">Label 1</td>
+      <td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;color:#222">{{header.Field1}}</td>
+    </tr>
+    <tr>
+      <td style="width:45%;padding:5px 10px;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;color:#555;font-weight:bold">Label 2</td>
+      <td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;color:#222">{{header.Field2}}</td>
+    </tr>
+    <tr>
+      <td style="width:45%;padding:5px 10px;border-bottom:1px solid #e5e7eb;border-right:1px solid #e5e7eb;color:#555;font-weight:bold">Label 3</td>
+      <td style="padding:5px 10px;border-bottom:1px solid #e5e7eb;color:#222">{{header.Field3}}</td>
+    </tr>
+    <tr>
+      <td style="width:45%;padding:5px 10px;border-right:1px solid #e5e7eb;color:#555;font-weight:bold">Label 4</td>
+      <td style="padding:5px 10px;color:#222">{{header.Field4}}</td>
+    </tr>
+  </tbody>
+</table>`,
+  },
+  {
     label: 'Section Title',
     icon: 'fa-solid fa-minus',
     color: 'text-orange-400',
@@ -623,12 +653,10 @@ ${exportHtml}
   };
 
   const handleSave = async () => {
-    // In Design mode, read directly from the live GrapeJS instance so we capture
-    // any edits not yet flushed to React state (React batching). Falls back to
-    // templateHtml if the GrapeJS editor isn't ready.
-    // In Code mode, read from Monaco directly to bypass Monaco's debounce.
     let currentHtml: string;
     if (viewMode === 'design') {
+      gjsEditorComponentRef.current?.commitEdit?.();
+
       const ed = gjsEditorRef.current;
       if (ed) {
         const css  = ed.getCss?.() ?? '';
@@ -647,6 +675,7 @@ ${exportHtml}
       const primarySpName = dataSources.find(s => s.type === 'sp')?.value ?? '';
       await appReportSvc.saveReportTemplate({
         ...report,
+        IsModified: true,
         ReportTemplate: {
           ReportId:         reportId,
           TemplateHtml:     currentHtml,

@@ -16,6 +16,7 @@ interface GrapeJsEditorProps {
 
 export type GrapeJsEditorHandle = {
   dropToken: (token: string, clientX: number, clientY: number) => void;
+  commitEdit: () => void;
 };
 
 function splitStyleAndBody(html: string): { css: string; body: string } {
@@ -49,18 +50,17 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
   const gjsRef            = useRef<any>(null);
   const onChangeRef       = useRef(onChange);
   const activeRef         = useRef(active);
-  // Tracks the last HTML string emitted by GrapeJS via onChange.
-  // The useEffect uses this to skip reloading when the html prop change
-  // originated from GrapeJS itself (avoiding a destructive round-trip).
   const lastGjsEmittedRef = useRef<string>('');
+  // Holds the finish() fn while a cell is in contenteditable edit mode.
+  // commitEdit() calls it so the caller (e.g. handleSave) can force-flush
+  // an in-progress edit before reading from ed.getHtml().
+  const activeFinishRef   = useRef<(() => void) | null>(null);
 
   onChangeRef.current = onChange;
   activeRef.current   = active;
 
-  // Expose dropToken to parent via ref — called from pointer-event handlers
-  // on token buttons. Pointer events are NOT intercepted by iframes (unlike HTML5 DnD),
-  // so the parent captures pointerup with client coordinates and calls this to insert.
   useImperativeHandle(ref, () => ({
+    commitEdit: () => { activeFinishRef.current?.(); },
     dropToken: (token: string, clientX: number, clientY: number) => {
       const editor = gjsRef.current;
       if (!editor) return;
@@ -185,6 +185,7 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
         editGuard = true;
         const finish = (cancel = false) => {
           if (!el) return;
+          activeFinishRef.current = null;
           const newHtml = el.innerHTML;
           el.removeAttribute('contenteditable');
           el.style.outline = '';
@@ -193,11 +194,22 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
           editGuard = false;
           if (cancel) { el.innerHTML = snapshot; return; }
           if (newHtml === snapshot) return;
-          const comp = editor.Canvas.getModelFromEl?.(el);
+          // GrapeJS 0.23 has no getModelFromEl. Use the component's id attribute
+          // (every GrapeJS component gets one) to look it up via the wrapper's find().
+          const elId = el.id;
+          const comp = elId ? editor.getWrapper?.()?.find?.(`#${elId}`)?.[0] : undefined;
           // silent:true on reset suppresses the intermediate change:changesCount
           // event (empty state) so only the append fires with the final content.
-          if (comp) { comp.components().reset([], { silent: true }); comp.append(newHtml); }
+          if (comp) {
+            // Clear the DOM first — reset({silent:true}) updates the model but NOT
+            // the DOM, so the old contenteditable text would still be visible.
+            // Without this, append() renders the new child AFTER the stale text → duplication.
+            el.innerHTML = '';
+            comp.components().reset([], { silent: true });
+            comp.append(newHtml);
+          }
         };
+        activeFinishRef.current = () => finish(false);
         el.addEventListener('blur', () => finish(false), { once: true });
         el.addEventListener('keydown', (ke: KeyboardEvent) => {
           if (ke.key === 'Escape') { ke.stopPropagation(); finish(true); }
