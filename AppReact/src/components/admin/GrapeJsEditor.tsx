@@ -206,14 +206,32 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
       const iframeEl = editor.Canvas.getFrameEl?.() as HTMLIFrameElement | undefined;
       iframeEl?.addEventListener('load', setupCanvasListeners);
 
-      // Remove toolbar buttons that are redundant or harmful in the embedded report designer.
-      // Must run after load because the newsletter preset resets panels during plugin init.
+      // Move outline/undo/redo from the now-hidden options panel into the right-side views panel.
+      // Must happen before removeButton so the button definitions are still available.
+      const moveToViews = new Set(['sw-visibility', 'undo', 'redo']);
+      editor.Panels.getPanel('options')?.get('buttons')?.each((btn: any) => {
+        if (moveToViews.has(btn.get('id'))) {
+          editor.Panels.addButton('views', {
+            id:         btn.get('id'),
+            className:  btn.get('className') || '',
+            command:    btn.get('command'),
+            active:     btn.get('active'),
+            label:      btn.get('label') || '',
+            attributes: btn.get('attributes') || {},
+          });
+        }
+      });
+
+      // Remove the remaining redundant buttons from the (now hidden) options panel.
       ['preview', 'fullscreen', 'export-template', 'gjs-open-import-template', 'gjs-toggle-images', 'canvas-clear']
         .forEach(id => editor.Panels.removeButton('options', id));
       ['open-layers', 'open-blocks']
         .forEach(id => editor.Panels.removeButton('views', id));
       ['set-device-desktop', 'set-device-tablet', 'set-device-mobile']
         .forEach(id => editor.Panels.removeButton('devices-c', id));
+
+      // Open Style Manager as the default active right panel
+      editor.runCommand('open-sm');
     });
 
     editor.on('change:changesCount', () => {
@@ -247,6 +265,13 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
 
   return (
     <div className="relative w-full h-full" style={{ minHeight: 0 }}>
+      {/* Hide the top toolbar panels; expand canvas to fill freed vertical space.
+          Rendered before useEffect so GrapeJS measures correct heights on init. */}
+      <style>{`
+        .gjs-pn-options   { display: none !important; }
+        .gjs-pn-devices-c { display: none !important; }
+        .gjs-cv-canvas    { top: 0 !important; height: 100% !important; }
+      `}</style>
       <div ref={containerRef} className="w-full h-full" />
       <div ref={overlayRef} className="absolute inset-0" style={{ pointerEvents: 'none', zIndex: 1 }} />
     </div>
