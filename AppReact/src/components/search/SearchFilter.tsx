@@ -41,17 +41,51 @@ const areStringArraysEqualIgnoringOrder = (a: any[] | undefined | null, b: any[]
   return true;
 };
 
-/** Prefer parent dictDcuValue overrides (Angular parity); fall back to criteria.Values. */
-const resolveValuesForCriteria = (criteria: any, dictDcuValue?: Record<string, any>) => {
+/**
+ * Prefer parent dictDcuValue overrides (Angular parity); fall back to criteria.Values.
+ * Ignore empty object overrides like `{ values: [] }` when criteria still has server Default Values —
+ * those empties are often produced by MultiSelect before isLookupItemSelected sync (do not wipe defaults).
+ */
+const resolveValuesForCriteria = (
+  criteria: any,
+  dictDcuValue?: Record<string, any>,
+  options?: { allowEmptyOverride?: boolean },
+) => {
+  const criteriaValues = Array.isArray(criteria?.Values) ? normalizeStringArray(criteria.Values) : [];
   const dcuId = criteria?.SearcDCUID;
   const override = dcuId != null ? dictDcuValue?.[dcuId] : undefined;
   if (override !== undefined && override !== null) {
-    if (Array.isArray(override)) return normalizeStringArray(override);
-    if (typeof override === "object" && Array.isArray(override.values)) {
-      return normalizeStringArray(override.values);
+    let overrideValues: string[] | undefined;
+    if (Array.isArray(override)) {
+      overrideValues = normalizeStringArray(override);
+    } else if (typeof override === "object" && Array.isArray(override.values)) {
+      overrideValues = normalizeStringArray(override.values);
+    }
+    if (overrideValues !== undefined) {
+      const allowEmpty = options?.allowEmptyOverride === true;
+      if (overrideValues.length > 0 || allowEmpty || criteriaValues.length === 0) {
+        return overrideValues;
+      }
     }
   }
-  return Array.isArray(criteria?.Values) ? normalizeStringArray(criteria.Values) : [];
+  return criteriaValues;
+};
+
+const valuesEqualAsIds = (a: any, b: any) => String(a ?? "") === String(b ?? "");
+
+/** Angular searchViewHelper.initialSearchDtoCriterias: mark isLookupItemSelected from Values. */
+const applyLookupItemSelectedFlags = (items: any[], selection: any[]) => {
+  const selected = normalizeStringArray(selection);
+  items.forEach((lookupItem: any) => {
+    lookupItem.isLookupItemSelected = false;
+    if (!selected.length) return;
+    for (let i = 0; i < selected.length; i++) {
+      if (selected[i] && valuesEqualAsIds(selected[i], lookupItem.Id)) {
+        lookupItem.isLookupItemSelected = true;
+        break;
+      }
+    }
+  });
 };
 
 const EntityMultiSelectValue: React.FC<{
@@ -64,22 +98,25 @@ const EntityMultiSelectValue: React.FC<{
 }> = ({ criteria, selection, inputBoxClass, buttonClass, onSelectionChange, onControlReady }) => {
   const [collapsed, setCollapsed] = useState<boolean>(false);
   const multiSelectRef = React.useRef<wjInput.MultiSelect | null>(null);
-  const lastSyncedSelectionRef = React.useRef<string[]>([]);
+  const isSyncingRef = React.useRef(false);
   const allowMultipleSelect = criteria?.IsAllowMultipleSelect === true;
   const effectiveSelection = allowMultipleSelect
     ? selection
     : // Angular: if IsAllowMultipleSelect=false, keep only the latest picked item.
       (selection?.slice(-1) ?? []);
 
-  // IMPORTANT: hooks must be called unconditionally; this component has an early return below.
-  const itemsSource = useMemo(
-    () =>
-      (criteria.ItemsSource ?? []).map((item: any) => ({
-        ...item,
-        Id: String(item.Id),
-      })),
-    [criteria.ItemsSource],
-  );
+  // Stable item objects (Angular mutates isLookupItemSelected on the same ItemsSource instances).
+  // Do NOT rebuild from selection — that remounts MultiSelect and clears checked items.
+  const itemsSource = useMemo(() => {
+    const items = (criteria.ItemsSource ?? []).map((item: any) => ({
+      ...item,
+      Id: item.Id,
+      isLookupItemSelected: false,
+    }));
+    applyLookupItemSelectedFlags(items, effectiveSelection);
+    return items;
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selection applied in effect below
+  }, [criteria.ItemsSource]);
 
   const resolveCheckedItems = useCallback(
     (sender: wjInput.MultiSelect) => {
@@ -97,26 +134,42 @@ const EntityMultiSelectValue: React.FC<{
 
   const commitSelectionFromControl = useCallback(
     (sender: wjInput.MultiSelect) => {
+      if (isSyncingRef.current) return;
       const nextCheckedItems = resolveCheckedItems(sender);
       const newSelection = (nextCheckedItems ?? []).map((item: any) => String(item.Id));
-      lastSyncedSelectionRef.current = newSelection;
       onSelectionChange(newSelection);
     },
     [onSelectionChange, resolveCheckedItems],
   );
 
-  const syncControlCheckedItems = useCallback(
-    (selectionToSync: string[]) => {
+  const syncSelectionToControl = useCallback(
+    (selectionToSync: any[]) => {
+      applyLookupItemSelectedFlags(itemsSource, selectionToSync);
       const ctl = multiSelectRef.current;
       if (!ctl) return;
 
-      const selectionSet = new Set(normalizeStringArray(selectionToSync));
-      const desired = itemsSource.filter((item: any) => selectionSet.has(String(item.Id)));
-      ctl.checkedItems = desired;
-      lastSyncedSelectionRef.current = normalizeStringArray(selectionToSync);
+      const desired = itemsSource.filter((item: any) => item.isLookupItemSelected === true);
+      // Defaults may not match ItemsSource yet (cascading / id mismatch). Do not clear the control.
+      if (normalizeStringArray(selectionToSync).length > 0 && desired.length === 0) {
+        return;
+      }
+
+      isSyncingRef.current = true;
+      try {
+        ctl.checkedItems = desired;
+      } finally {
+        // Wijmo may raise checkedItemsChanged synchronously or on next tick.
+        setTimeout(() => {
+          isSyncingRef.current = false;
+        }, 0);
+      }
     },
     [itemsSource],
   );
+
+  useEffect(() => {
+    syncSelectionToControl(effectiveSelection);
+  }, [effectiveSelection, syncSelectionToControl]);
 
   useEffect(() => {
     return () => {
@@ -131,7 +184,6 @@ const EntityMultiSelectValue: React.FC<{
       Display: String(item.Display ?? item.Id ?? ''),
     }));
     const selectedSet = new Set(normalizeStringArray(selection));
-    const allSelected = items.length > 0 && items.every((x: any) => selectedSet.has(String(x.Id)));
     return (
       <div className={`w-full min-w-[180px] border rounded overflow-hidden ${inputBoxClass}`}>
         <button
@@ -194,11 +246,11 @@ const EntityMultiSelectValue: React.FC<{
       initialized={(sender: wjInput.MultiSelect) => {
         multiSelectRef.current = sender;
         onControlReady?.(sender);
-        syncControlCheckedItems(effectiveSelection);
+        syncSelectionToControl(effectiveSelection);
       }}
       itemsSource={itemsSource}
       displayMemberPath="Display"
-      selectedValuePath="Id"
+      checkedMemberPath="isLookupItemSelected"
       placeholder={`Select ${criteria.Display}`}
       disabled={criteria.IsReadOnly === true}
       className={`w-full border text-[11px] ${inputBoxClass}`}
@@ -275,21 +327,32 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
     );
   }, []);
 
-  const readEntityValuesFromControl = useCallback((criteria: any) => {
+  const readEntityValuesFromControl = useCallback((criteria: any): string[] | undefined => {
     const dcuId = String(criteria.SearcDCUID);
+    const hasStateKey = Object.prototype.hasOwnProperty.call(valueSelectionsRef.current, dcuId);
+    const stateValues = hasStateKey
+      ? normalizeStringArray(valueSelectionsRef.current[dcuId] ?? [])
+      : undefined;
     const ctl = entityControlRefs.current[dcuId];
-    if (!ctl) return valueSelectionsRef.current[dcuId] ?? [];
 
-    const checked = ctl.checkedItems ?? [];
-    if (!checked.length) return [];
-
-    if (criteria?.IsAllowMultipleSelect === true) {
-      return checked.map((item: any) => String(item.Id));
+    // Angular: if no ddlControl, leave criteria.Values alone (server Default Value).
+    if (!ctl) {
+      return stateValues;
     }
 
-    const selectedItem = (ctl as any).selectedItem;
-    if (selectedItem) return [String(selectedItem.Id)];
-    return [String(checked[checked.length - 1].Id)];
+    const checked = ctl.checkedItems ?? [];
+    if (checked.length > 0) {
+      if (criteria?.IsAllowMultipleSelect === true) {
+        return checked.map((item: any) => String(item.Id));
+      }
+      const selectedItem = (ctl as any).selectedItem;
+      if (selectedItem) return [String(selectedItem.Id)];
+      return [String(checked[checked.length - 1].Id)];
+    }
+
+    // Control empty: use React state if initialized (includes Clear → []).
+    // If state not initialized yet, return undefined so search keeps criteria.Values defaults.
+    return stateValues;
   }, []);
 
   const rows = useMemo(
@@ -370,7 +433,11 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
 
   const renderValueControl = useCallback(
     (criteria: any) => {
-      const selection = valueSelections[criteria.SearcDCUID] ?? [];
+      // First paint: valueSelections is still {} until the init effect runs.
+      // Resolve defaults from criteria.Values / dictDcuValue so DDL shows Default Value immediately.
+      const selection = Object.prototype.hasOwnProperty.call(valueSelections, criteria.SearcDCUID)
+        ? (valueSelections[criteria.SearcDCUID] ?? [])
+        : resolveValuesForCriteria(criteria, dictDcuValue);
       const commonInputClass = `w-full rounded border px-2 py-1 text-[11px] ${theme.inputBox}`;
 
       if (criteria.CriteriaType === EmAppCriteriaType.Entity) {
@@ -471,7 +538,7 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
         />
       );
     },
-    [handleValueChange, theme.inputBox, valueSelections, textInputs]
+    [handleValueChange, theme.inputBox, valueSelections, textInputs, dictDcuValue]
   );
 
   // Expose latest raw TEXT input overrides for parent to parse on SEARCH click.
@@ -513,13 +580,22 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
 
       if (criteria.CriteriaType === EmAppCriteriaType.Text) return;
 
-      let values: string[] = [];
       if (criteria.CriteriaType === EmAppCriteriaType.Entity) {
-        values = readEntityValuesFromControl(criteria);
-      } else {
-        values = normalizeStringArray(valueSelectionsRef.current[dcuId] ?? []);
+        // Angular prepareSearchCriteria: only replace Entity Values when ddlControl exists
+        // and we can read a definitive selection. Otherwise keep server Default Values.
+        const values = readEntityValuesFromControl(criteria);
+        if (values !== undefined) {
+          overrides[dcuId] = {
+            operator: selectedOperator ?? null,
+            values,
+          };
+        } else if (selectedOperator) {
+          overrides[dcuId] = { operator: selectedOperator };
+        }
+        return;
       }
 
+      const values = normalizeStringArray(valueSelectionsRef.current[dcuId] ?? []);
       overrides[dcuId] = {
         operator: selectedOperator ?? null,
         values,
@@ -538,7 +614,10 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
         const dcuId = criteria?.SearcDCUID;
         if (dcuId === undefined || dcuId === null) return;
         if (criteria.CriteriaType !== EmAppCriteriaType.Entity) return;
-        const values = normalizeStringArray(overrides[dcuId]?.values ?? []);
+        const override = overrides[dcuId];
+        // Only sync state when we have an explicit values array (never invent empty wipe).
+        if (!override || !Array.isArray(override.values)) return;
+        const values = normalizeStringArray(override.values);
         if (!areStringArraysEqualIgnoringOrder(prev[dcuId], values)) {
           next[dcuId] = values;
           changed = true;
@@ -552,7 +631,11 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
       if (dcuId === undefined || dcuId === null) return;
       if (criteria.CriteriaType !== EmAppCriteriaType.Entity) return;
       const override = overrides[dcuId];
-      if (override) onCriteriaValueChanged?.(dcuId, override);
+      // Do not push operator-only / missing-values overrides into dictDcuValue —
+      // that previously wiped Default Values with `{ values: [] }`.
+      if (override && Array.isArray(override.values)) {
+        onCriteriaValueChanged?.(dcuId, override);
+      }
     });
 
     return overrides;
