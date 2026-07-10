@@ -99,7 +99,7 @@ Run `source/_plm_probe_search.sql` with `@SearchTemplateId` against **PLM** data
 | Table | Role |
 |-------|------|
 | `pdmSearchTemplate` | Search shell — `SearchTemplateID`, `Name`, `ReferenceViewID`, `BLQueryID` |
-| `pdmSearchTemplateDCU` | Criteria (upper panel) — `SubitemID`, `DisplayText`, `ControlType`, `OperationID`, layout |
+| `pdmSearchTemplateDCU` | Criteria (upper panel) — `SubitemID`, `DisplayText`, `ControlType`, `OperationID`, `DefaultValue`, layout |
 | `pdmReferenceView` | View shell — linked via `ReferenceViewID` |
 | `pdmReferenceViewColumn` | Grid columns — `SubItemID`, `GridColumnID`, `Sort`, `IsVisible` |
 | `pdmBLQuery` | Optional SQL body — often **NULL**; synthesize DataSet instead |
@@ -228,19 +228,27 @@ Do **not** generate Phase B files until user confirms.
 
 ### Operator mapping (PLM → APP)
 
-| PLM / UI hint | APP `operationId` | `EmAppWijmoOperator` |
-|---------------|-------------------|----------------------|
-| = / Equals | 1 | Equals |
-| <> / Not equal | 2 | NotEqual |
-| > | 3 | GreaterThan |
-| < | 4 | LessThan |
-| >= | 5 | GreaterThanOrEqual |
-| <= | 6 | LessThanOrEqual |
-| Like / Contains | 6 | Contains (verify tenant enum) |
-| Starts with | 7 | BeginsWith |
-| Is empty | 10 | IsNull |
+PLM `pdmSearchTemplateDCU.OperationID` uses the **same numeric values** as APP `EmAppCriteriaOperatorType` (stored on `AppSearchField.OperationID`). Copy PLM `OperationID` as-is into blueprint `operationId`. Do **not** use `EmAppWijmoOperator` (grid filter enum — different numbering).
 
-Agent: verify against tenant `EmAppWijmoOperator` if import fails at Phase D.
+| PLM / UI hint | APP `operationId` | `EmAppCriteriaOperatorType` |
+|---------------|-------------------|-----------------------------|
+| = / Equals | **0** | Equals |
+| Is null | 1 | Null |
+| Is not null | 2 | NotNull |
+| > | 3 | GreaterThan |
+| >= | 4 | GreaterThanOrEquals |
+| < | 5 | LessThan |
+| <= | 6 | LessThanOrEquals |
+| Like / Contains | **7** | Like |
+| Is empty | 8 | NullOrEmpty |
+| Is not empty | 9 | NotNullOrEmpty |
+| Starts with | 10 | StartWith |
+| Ends with | 11 | EndWith |
+| In | 12 | In |
+| <> / Not equal | 13 | NotEqual |
+| Between | 14 | Between |
+
+Also copy PLM `pdmSearchTemplateDCU.DefaultValue` → blueprint `defaultValue` (string; omit or `null` when empty). Phase D writes both to `AppSearchField`.
 
 ### ControlType / EntityId
 

@@ -65,7 +65,8 @@
         "displayLabel": "Style #",
         "plmControlType": 2,
         "plmEntityId": null,
-        "defaultOperator": "Contains"
+        "defaultOperator": "Like",
+        "defaultValue": null
       },
       "resolved": {
         "appTableName": "Plm_Style_Header",
@@ -75,7 +76,7 @@
       },
       "controlType": 2,
       "entityIntegrationId": null,
-      "operationId": 6,
+      "operationId": 7,
       "positionRow": 1,
       "positionColumn": 2,
       "isVisible": true,
@@ -134,7 +135,7 @@
       "sysTableFiledFullPath": "Plm_Style_Header.Style_No",
       "controlType": 2,
       "entityIntegrationId": null,
-      "operationId": 6,
+      "operationId": 7,
       "positionRow": 1,
       "positionColumn": 2,
       "isVisible": true,

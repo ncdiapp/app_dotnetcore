@@ -29,3 +29,15 @@ Current PLM migration BL does **not** yet implement Search Blueprint execute —
 
 - Criteria: 15/16 mapped (Created By skipped)
 - View: 17/24 mapped (7 ignored per user)
+
+## Criteria defaults (corrected 2026-07-10)
+
+PLM `OperationID` / `DefaultValue` map 1:1 to APP `EmAppCriteriaOperatorType` / `AppSearchField.DefaultValue`:
+
+| Kind | `operationId` | Notes |
+|------|---------------|-------|
+| Text (Style #, Name, Description, Original Reference) | **7** (Like) | was wrongly 6 |
+| Entity / Ref No. | **0** (Equals) | was wrongly 1 |
+| Item Type | **0** + `defaultValue: "2"` | was missing default |
+
+Re-upload updated blueprint and Execute, or apply the tenant SQL patch for already-imported search.
