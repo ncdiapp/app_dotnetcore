@@ -519,6 +519,62 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("LoadSearchSiblingViewBlueprint")]
+    public OperationCallResult<PlmSearchSiblingViewBlueprintDto> LoadSearchSiblingViewBlueprint(
+        [FromBody] PlmSearchSiblingViewLoadRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.LoadSearchSiblingViewBlueprint(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchSiblingViewBlueprintDto>("Plm_SearchSibling_Load_Error", ex);
+        }
+    }
+
+    [HttpPost("ValidateSearchSiblingViewBlueprint")]
+    public OperationCallResult<PlmSearchImportValidationDto> ValidateSearchSiblingViewBlueprint(
+        [FromBody] PlmSearchSiblingViewBlueprintDto blueprint)
+    {
+        try
+        {
+            return PlmMigrationBL.ValidateSearchSiblingViewBlueprint(blueprint);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportValidationDto>("Plm_SearchSibling_Validate_Error", ex);
+        }
+    }
+
+    [HttpPost("PreviewSearchSiblingViewConfig")]
+    public OperationCallResult<PlmSearchImportPreviewDto> PreviewSearchSiblingViewConfig(
+        [FromBody] PlmSearchSiblingViewBlueprintDto blueprint)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewSearchSiblingViewConfig(blueprint);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportPreviewDto>("Plm_SearchSibling_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecuteSearchSiblingViewConfig")]
+    public OperationCallResult<PlmSearchSiblingViewExecuteResultDto> ExecuteSearchSiblingViewConfig(
+        [FromBody] PlmSearchSiblingViewExecuteRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecuteSearchSiblingViewConfig(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchSiblingViewExecuteResultDto>("Plm_SearchSibling_Execute_Error", ex);
+        }
+    }
+
     private static OperationCallResult<T> ErrorResult<T>(string code, Exception ex)
     {
         var result = new OperationCallResult<T>();

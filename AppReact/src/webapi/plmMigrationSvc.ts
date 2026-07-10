@@ -804,6 +804,54 @@ class PlmMigrationService {
     if (!response.ok) throw new Error('Failed to execute search blueprint config');
     return response.json();
   }
+
+  async loadSearchSiblingViewBlueprint(
+    blueprintJson: string,
+  ): Promise<OperationCallResult<PlmSearchSiblingViewBlueprintDto>> {
+    const response = await fetch(`${this.baseUrl}/LoadSearchSiblingViewBlueprint`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ BlueprintJson: blueprintJson }),
+    });
+    if (!response.ok) throw new Error('Failed to load search sibling view blueprint');
+    return response.json();
+  }
+
+  async validateSearchSiblingViewBlueprint(
+    blueprint: PlmSearchSiblingViewBlueprintDto,
+  ): Promise<OperationCallResult<PlmSearchImportValidationDto>> {
+    const response = await fetch(`${this.baseUrl}/ValidateSearchSiblingViewBlueprint`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(blueprint),
+    });
+    if (!response.ok) throw new Error('Failed to validate search sibling view blueprint');
+    return response.json();
+  }
+
+  async previewSearchSiblingViewConfig(
+    blueprint: PlmSearchSiblingViewBlueprintDto,
+  ): Promise<OperationCallResult<PlmSearchImportPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewSearchSiblingViewConfig`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(blueprint),
+    });
+    if (!response.ok) throw new Error('Failed to preview search sibling view config');
+    return response.json();
+  }
+
+  async executeSearchSiblingViewConfig(
+    request: PlmSearchSiblingViewExecuteRequestDto,
+  ): Promise<OperationCallResult<PlmSearchSiblingViewExecuteResultDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecuteSearchSiblingViewConfig`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to execute search sibling view config');
+    return response.json();
+  }
 }
 
 export interface PlmDwImportBlueprintDto {
@@ -1098,6 +1146,7 @@ export interface PlmPomImportExecuteResultDto {
 export interface PlmSearchImportBlueprintDto {
   SchemaVersion?: number;
   GeneratedAt?: string | null;
+  Mode?: string | null;
   Source?: PlmSearchImportSourceDto | null;
   Search?: PlmSearchImportSearchDto | null;
   DataSet?: PlmSearchImportDataSetDto | null;
@@ -1213,6 +1262,69 @@ export interface PlmSearchImportExecuteResultDto {
   SearchId?: number | null;
   SearchViewId?: number | null;
   DataSetId?: number | null;
+  Messages?: string[] | null;
+}
+
+export interface PlmSearchSiblingViewBlueprintDto {
+  SchemaVersion?: number;
+  Mode?: string | null;
+  GeneratedAt?: string | null;
+  Source?: {
+    PlmSearchTemplateId?: number | null;
+    PlmSearchName?: string | null;
+    PlmReferenceViewId?: number | null;
+    PlmReferenceViewName?: string | null;
+    TablePrefix?: string | null;
+    RowGrain?: string | null;
+  } | null;
+  Target?: {
+    AppSearchIntegrationId?: string | null;
+    AppSearchId?: number | null;
+    AppDataSetId?: number | null;
+  } | null;
+  DataSetPatch?: {
+    ResultingQueryText?: string | null;
+    AddColumns?: Array<{
+      SysTableFiledPath?: string | null;
+      AppTableName?: string | null;
+      Alias?: string | null;
+    }> | null;
+    AddLeftJoins?: Array<{
+      Alias?: string | null;
+      AppTableName?: string | null;
+      JoinType?: string | null;
+      Cardinality?: string | null;
+      LeftTable?: string | null;
+      LeftColumn?: string | null;
+      RightColumn?: string | null;
+    }> | null;
+  } | null;
+  SearchView?: PlmSearchImportSearchViewDto | null;
+  LinkTargets?: {
+    CopyFromDefaultSearchView?: boolean;
+    Items?: PlmSearchImportLinkTargetDto[] | null;
+  } | null;
+  Coverage?: {
+    Covered?: number;
+    AddColumn?: number;
+    AddOneToOneLeftJoin?: number;
+    RequiresOneToN?: number;
+    Unmapped?: number;
+  } | null;
+}
+
+export interface PlmSearchSiblingViewExecuteRequestDto {
+  Blueprint?: PlmSearchSiblingViewBlueprintDto | null;
+  SaasApplicationId?: number | null;
+}
+
+export interface PlmSearchSiblingViewExecuteResultDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  SearchId?: number | null;
+  DataSetId?: number | null;
+  SiblingSearchViewId?: number | null;
+  DefaultSearchViewId?: number | null;
   Messages?: string[] | null;
 }
 

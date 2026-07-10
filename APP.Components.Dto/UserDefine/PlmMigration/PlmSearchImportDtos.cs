@@ -420,4 +420,202 @@ namespace APP.Components.EntityDto
         [DataMember]
         public List<string> Messages { get; set; } = new List<string>();
     }
+
+    // -------------------------------------------------------------------------
+    // Sibling View (Option A) — enrich existing DataSet + add AppSearchView
+    // -------------------------------------------------------------------------
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchSiblingViewBlueprintDto
+    {
+        [DataMember]
+        public int SchemaVersion { get; set; } = 1;
+
+        /// <summary>Must be SiblingViewEnrichDataSet for Option A execute.</summary>
+        [DataMember]
+        public string Mode { get; set; } = "SiblingViewEnrichDataSet";
+
+        [DataMember]
+        public string GeneratedAt { get; set; }
+
+        [DataMember]
+        public PlmSearchSiblingViewSourceDto Source { get; set; }
+
+        [DataMember]
+        public PlmSearchSiblingViewTargetDto Target { get; set; }
+
+        [DataMember]
+        public PlmSearchSiblingViewDataSetPatchDto DataSetPatch { get; set; }
+
+        [DataMember]
+        public PlmSearchImportSearchViewDto SearchView { get; set; }
+
+        [DataMember]
+        public PlmSearchSiblingViewLinkTargetsDto LinkTargets { get; set; }
+
+        [DataMember]
+        public PlmSearchSiblingViewCoverageDto Coverage { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchSiblingViewSourceDto
+    {
+        [DataMember]
+        public int? PlmSearchTemplateId { get; set; }
+
+        [DataMember]
+        public string PlmSearchName { get; set; }
+
+        [DataMember]
+        public int? PlmReferenceViewId { get; set; }
+
+        [DataMember]
+        public string PlmReferenceViewName { get; set; }
+
+        [DataMember]
+        public string TablePrefix { get; set; }
+
+        [DataMember]
+        public string RowGrain { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchSiblingViewTargetDto
+    {
+        [DataMember]
+        public string AppSearchIntegrationId { get; set; }
+
+        [DataMember]
+        public int? AppSearchId { get; set; }
+
+        [DataMember]
+        public int? AppDataSetId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchSiblingViewDataSetPatchDto
+    {
+        /// <summary>Preferred: full QueryText after enrich. If set, used as-is.</summary>
+        [DataMember]
+        public string ResultingQueryText { get; set; }
+
+        [DataMember]
+        public List<PlmSearchSiblingViewAddColumnDto> AddColumns { get; set; } =
+            new List<PlmSearchSiblingViewAddColumnDto>();
+
+        [DataMember]
+        public List<PlmSearchSiblingViewAddJoinDto> AddLeftJoins { get; set; } =
+            new List<PlmSearchSiblingViewAddJoinDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchSiblingViewAddColumnDto
+    {
+        [DataMember]
+        public string SysTableFiledPath { get; set; }
+
+        [DataMember]
+        public string AppTableName { get; set; }
+
+        [DataMember]
+        public string Alias { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchSiblingViewAddJoinDto
+    {
+        [DataMember]
+        public string Alias { get; set; }
+
+        [DataMember]
+        public string AppTableName { get; set; }
+
+        [DataMember]
+        public string JoinType { get; set; } = "LEFT";
+
+        /// <summary>Must be 1:1 for Option A.</summary>
+        [DataMember]
+        public string Cardinality { get; set; } = "1:1";
+
+        [DataMember]
+        public string LeftTable { get; set; }
+
+        [DataMember]
+        public string LeftColumn { get; set; } = "ReferenceId";
+
+        [DataMember]
+        public string RightColumn { get; set; } = "ReferenceId";
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchSiblingViewLinkTargetsDto
+    {
+        [DataMember]
+        public bool CopyFromDefaultSearchView { get; set; } = true;
+
+        [DataMember]
+        public List<PlmSearchImportLinkTargetDto> Items { get; set; } =
+            new List<PlmSearchImportLinkTargetDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchSiblingViewCoverageDto
+    {
+        [DataMember]
+        public int Covered { get; set; }
+
+        [DataMember]
+        public int AddColumn { get; set; }
+
+        [DataMember]
+        public int AddOneToOneLeftJoin { get; set; }
+
+        [DataMember]
+        public int RequiresOneToN { get; set; }
+
+        [DataMember]
+        public int Unmapped { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchSiblingViewLoadRequestDto
+    {
+        [DataMember]
+        public string BlueprintJson { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchSiblingViewExecuteRequestDto
+    {
+        [DataMember]
+        public PlmSearchSiblingViewBlueprintDto Blueprint { get; set; }
+
+        [DataMember]
+        public int? SaasApplicationId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchSiblingViewExecuteResultDto
+    {
+        [DataMember]
+        public bool IsSuccess { get; set; }
+
+        [DataMember]
+        public string ErrorMessage { get; set; }
+
+        [DataMember]
+        public int? SearchId { get; set; }
+
+        [DataMember]
+        public int? DataSetId { get; set; }
+
+        [DataMember]
+        public int? SiblingSearchViewId { get; set; }
+
+        [DataMember]
+        public int? DefaultSearchViewId { get; set; }
+
+        [DataMember]
+        public List<string> Messages { get; set; } = new List<string>();
+    }
 }

@@ -1,0 +1,83 @@
+{
+  "_comment": "Option A — sibling Card View on existing Search_1aStyleSearch / DataSet #2087. No DataSet SQL change (all 4 PLM columns already covered).",
+  "schemaVersion": 1,
+  "mode": "SiblingViewEnrichDataSet",
+  "generatedAt": "2026-07-10T14:09:00Z",
+  "source": {
+    "plmSearchTemplateId": 23702,
+    "plmSearchName": "1a - Style Search",
+    "plmReferenceViewId": 12,
+    "plmReferenceViewName": "3a - Styles (Card)",
+    "tablePrefix": "Plm_",
+    "rowGrain": "Header1to1"
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_1aStyleSearch",
+    "appSearchId": 17,
+    "appDataSetId": 2087
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "_comment_resultingQueryText": "Null = leave DataSet QueryText unchanged. All Card View columns already in SELECT.",
+    "addColumns": [],
+    "addLeftJoins": []
+  },
+  "searchView": {
+    "name": "3a - Styles (Card)",
+    "integrationIdLabel": "Search_1aStyleSearch_V12_View",
+    "viewType": "CardView",
+    "gridOutputMode": 1,
+    "plmReferenceViewId": 12,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 5,
+        "_comment": "Not on PLM Card View column list — required for APP link targets / row key"
+      },
+      {
+        "displayText": "Sketch",
+        "sysTableFiledPath": "Sketch",
+        "controlType": 5,
+        "entityIntegrationId": "11",
+        "isVisible": true,
+        "sort": 10
+      },
+      {
+        "displayText": "Article #",
+        "sysTableFiledPath": "Article",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 20
+      },
+      {
+        "displayText": "Description",
+        "sysTableFiledPath": "Description_23",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 30
+      },
+      {
+        "displayText": "Season",
+        "sysTableFiledPath": "Season_3",
+        "controlType": 1,
+        "entityIntegrationId": "8",
+        "isVisible": true,
+        "sort": 40
+      }
+    ]
+  },
+  "linkTargets": {
+    "copyFromDefaultSearchView": true
+  },
+  "coverage": {
+    "covered": 4,
+    "addColumn": 0,
+    "addOneToOneLeftJoin": 0,
+    "requiresOneToN": 0,
+    "unmapped": 0
+  }
+}

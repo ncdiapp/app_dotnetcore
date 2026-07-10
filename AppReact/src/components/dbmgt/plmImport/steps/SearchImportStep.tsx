@@ -20,6 +20,16 @@ export type SearchImportStepProps = {
   onSessionSaved: () => void;
 };
 
+const isSiblingModeJson = (text: string): boolean => {
+  try {
+    const parsed = JSON.parse(text);
+    const mode = String(parsed?.mode ?? parsed?.Mode ?? '');
+    return mode.toLowerCase() === 'siblingviewenrichdataset';
+  } catch {
+    return false;
+  }
+};
+
 const SearchImportStep: React.FC<SearchImportStepProps> = ({
   state,
   searchImportStepUi,
@@ -31,12 +41,15 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const {
+    importMode,
     blueprint,
+    siblingBlueprint,
     blueprintFileName,
     previewItems,
     validationErrors,
     validationWarnings,
     lastExecuteResult,
+    lastSiblingExecuteResult,
     isValidating,
     isPreviewing,
     isExecuting,
@@ -48,8 +61,16 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
 
   const sessionId = state.session?.SessionId ?? null;
   const isBusy = isValidating || isPreviewing || isExecuting;
+  const isSibling = importMode === 'sibling';
+  const hasBlueprint = isSibling ? Boolean(siblingBlueprint) : Boolean(blueprint);
 
   const blueprintSummary = useMemo(() => {
+    if (isSibling && siblingBlueprint) {
+      const viewName = siblingBlueprint.SearchView?.Name ?? '—';
+      const target = siblingBlueprint.Target?.AppSearchIntegrationId ?? '—';
+      const plmView = siblingBlueprint.Source?.PlmReferenceViewId ?? '—';
+      return `Sibling · target ${target} · View "${viewName}" (PLM #${plmView})`;
+    }
     if (!blueprint) return null;
     const searchName = blueprint.Search?.Name ?? '—';
     const integrationId = blueprint.Search?.IntegrationId ?? '—';
@@ -62,7 +83,7 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
       ? `${view.Mapped ?? 0}/${view.Total ?? 0} view cols`
       : `${blueprint.SearchView?.Fields?.length ?? 0} view cols`;
     return `${searchName} (${integrationId}) · ${criteriaText} · ${viewText}`;
-  }, [blueprint]);
+  }, [blueprint, isSibling, siblingBlueprint]);
 
   useEffect(() => {
     previewCv.sourceCollection = previewItems;
@@ -91,56 +112,127 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
     onSessionSaved();
   }, [onSessionSaved, sessionId, state]);
 
-  const applyLoadedBlueprint = useCallback((
-    dto: PlmSearchImportBlueprintDto,
-    sourceLabel: string,
-    jsonText?: string | null,
-  ) => {
-    onSearchImportStepUiChange({
-      blueprint: dto,
-      blueprintFileName: sourceLabel,
-      blueprintJsonText: jsonText ?? null,
-      previewItems: [],
-      validationErrors: [],
-      validationWarnings: [],
-      lastExecuteResult: null,
-    });
-    setProgressPercent(0);
-    setProgressMessage(null);
-    showInfo(`Loaded search blueprint: ${sourceLabel}`, true);
-  }, [onSearchImportStepUiChange, showInfo]);
-
   const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
       const text = await file.text();
-      const loadResult = await plmMigrationSvc.loadSearchImportBlueprint(text);
-      if (!loadResult.IsSuccessful || !loadResult.Object) {
-        const msg = loadResult.ValidationResult?.Items?.map((i) => i.Message).join('; ')
-          || 'Failed to parse search blueprint JSON.';
-        showError(msg);
-        return;
+      const sibling = isSiblingModeJson(text);
+
+      if (sibling) {
+        const loadResult = await plmMigrationSvc.loadSearchSiblingViewBlueprint(text);
+        if (!loadResult.IsSuccessful || !loadResult.Object) {
+          const msg = loadResult.ValidationResult?.Items?.map((i) => i.Message).join('; ')
+            || 'Failed to parse sibling view blueprint JSON.';
+          showError(msg);
+          return;
+        }
+        onSearchImportStepUiChange({
+          importMode: 'sibling',
+          siblingBlueprint: loadResult.Object,
+          blueprint: null,
+          blueprintFileName: file.name,
+          blueprintJsonText: text,
+          previewItems: [],
+          validationErrors: [],
+          validationWarnings: [],
+          lastExecuteResult: null,
+          lastSiblingExecuteResult: null,
+        });
+        setProgressPercent(0);
+        setProgressMessage(null);
+        showInfo(`Loaded sibling view blueprint: ${file.name}`, true);
+      } else {
+        const loadResult = await plmMigrationSvc.loadSearchImportBlueprint(text);
+        if (!loadResult.IsSuccessful || !loadResult.Object) {
+          const msg = loadResult.ValidationResult?.Items?.map((i) => i.Message).join('; ')
+            || 'Failed to parse search blueprint JSON.';
+          showError(msg);
+          return;
+        }
+        onSearchImportStepUiChange({
+          importMode: 'main',
+          blueprint: loadResult.Object as PlmSearchImportBlueprintDto,
+          siblingBlueprint: null,
+          blueprintFileName: file.name,
+          blueprintJsonText: text,
+          previewItems: [],
+          validationErrors: [],
+          validationWarnings: [],
+          lastExecuteResult: null,
+          lastSiblingExecuteResult: null,
+        });
+        setProgressPercent(0);
+        setProgressMessage(null);
+        showInfo(`Loaded search blueprint: ${file.name}`, true);
       }
-      applyLoadedBlueprint(loadResult.Object, file.name, text);
     } catch (err: any) {
       showError(err?.message || 'Failed to read blueprint file.');
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  }, [applyLoadedBlueprint, showError]);
-
-  const requireBlueprint = useCallback((): PlmSearchImportBlueprintDto | null => {
-    if (!blueprint) {
-      showError('Upload PlmSearch_ImportBlueprint.json first.');
-      return null;
-    }
-    return blueprint;
-  }, [blueprint, showError]);
+  }, [onSearchImportStepUiChange, showError, showInfo]);
 
   const runValidateAndPreview = useCallback(async () => {
-    const bp = requireBlueprint();
-    if (!bp) return;
+    if (isSibling) {
+      if (!siblingBlueprint) {
+        showError('Upload 2_PlmSearch_SiblingView_*.json first.');
+        return;
+      }
+      onSearchImportStepUiChange({
+        isValidating: true,
+        validationErrors: [],
+        validationWarnings: [],
+        previewItems: [],
+        lastSiblingExecuteResult: null,
+      });
+      setProgressPercent(10);
+      setProgressMessage('Validating sibling view blueprint…');
+      try {
+        const validateResult = await plmMigrationSvc.validateSearchSiblingViewBlueprint(siblingBlueprint);
+        const errors = validateResult.Object?.Errors ?? [];
+        const warnings = validateResult.Object?.Warnings ?? [];
+        onSearchImportStepUiChange({ validationErrors: errors, validationWarnings: warnings });
+        if (errors.length > 0) {
+          setProgressPercent(0);
+          setProgressMessage(null);
+          showError(errors.join('; '));
+          return;
+        }
+        if (warnings.length > 0) {
+          showWarning(`${warnings.length} warning(s). Review before execute.`);
+        }
+        onSearchImportStepUiChange({ isPreviewing: true });
+        setProgressPercent(45);
+        setProgressMessage('Building sibling preview…');
+        const previewResult = await plmMigrationSvc.previewSearchSiblingViewConfig(siblingBlueprint);
+        const preview = previewResult.Object;
+        if (!preview?.IsSuccess) {
+          setProgressPercent(0);
+          setProgressMessage(null);
+          showError(preview?.ErrorMessage || 'Preview failed.');
+          return;
+        }
+        onSearchImportStepUiChange({ previewItems: preview.Items ?? [] });
+        setProgressPercent(100);
+        setProgressMessage('Validate & preview complete.');
+        if (!warnings.length) {
+          showInfo('Sibling view blueprint validated.', true);
+        }
+      } catch (err: any) {
+        setProgressPercent(0);
+        setProgressMessage(null);
+        showError(err?.message || 'Validate failed.');
+      } finally {
+        onSearchImportStepUiChange({ isValidating: false, isPreviewing: false });
+      }
+      return;
+    }
+
+    if (!blueprint) {
+      showError('Upload PlmSearch_ImportBlueprint.json first.');
+      return;
+    }
 
     onSearchImportStepUiChange({
       isValidating: true,
@@ -153,10 +245,9 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
     setProgressMessage('Validating search blueprint…');
 
     try {
-      const validateResult = await plmMigrationSvc.validateSearchImportBlueprint(bp);
-      const validation = validateResult.Object;
-      const errors = validation?.Errors ?? [];
-      const warnings = validation?.Warnings ?? [];
+      const validateResult = await plmMigrationSvc.validateSearchImportBlueprint(blueprint);
+      const errors = validateResult.Object?.Errors ?? [];
+      const warnings = validateResult.Object?.Warnings ?? [];
       onSearchImportStepUiChange({ validationErrors: errors, validationWarnings: warnings });
 
       if (errors.length > 0) {
@@ -172,7 +263,7 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
       onSearchImportStepUiChange({ isPreviewing: true });
       setProgressPercent(45);
       setProgressMessage('Building preview…');
-      const previewResult = await plmMigrationSvc.previewSearchBlueprintConfig(bp);
+      const previewResult = await plmMigrationSvc.previewSearchBlueprintConfig(blueprint);
       const preview = previewResult.Object;
       if (!preview?.IsSuccess) {
         setProgressPercent(0);
@@ -193,14 +284,65 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
     } finally {
       onSearchImportStepUiChange({ isValidating: false, isPreviewing: false });
     }
-  }, [onSearchImportStepUiChange, requireBlueprint, showError, showInfo, showWarning]);
+  }, [
+    blueprint,
+    isSibling,
+    onSearchImportStepUiChange,
+    showError,
+    showInfo,
+    showWarning,
+    siblingBlueprint,
+  ]);
 
   const runExecute = useCallback(async () => {
-    const bp = requireBlueprint();
-    if (!bp) return;
-
     if (validationErrors.length > 0) {
       showError('Fix validation errors before execute.');
+      return;
+    }
+
+    if (isSibling) {
+      if (!siblingBlueprint) {
+        showError('Upload sibling view blueprint first.');
+        return;
+      }
+      onSearchImportStepUiChange({ isExecuting: true, lastSiblingExecuteResult: null });
+      setProgressPercent(15);
+      setProgressMessage('Executing sibling view import…');
+      try {
+        const result = await plmMigrationSvc.executeSearchSiblingViewConfig({
+          Blueprint: siblingBlueprint,
+          SaasApplicationId: state.saasApplicationId,
+        });
+        const exec = result.Object;
+        onSearchImportStepUiChange({ lastSiblingExecuteResult: exec ?? null });
+        if (!result.IsSuccessful || !exec?.IsSuccess) {
+          const msg = exec?.ErrorMessage
+            || result.ValidationResult?.Items?.map((i) => i.Message).join('; ')
+            || 'Execute failed.';
+          setProgressPercent(0);
+          setProgressMessage(null);
+          showError(msg);
+          return;
+        }
+        await saveStepState();
+        setProgressPercent(100);
+        setProgressMessage('Sibling view import complete.');
+        showInfo(
+          `Sibling view saved. Search #${exec.SearchId ?? '—'}, Sibling View #${exec.SiblingSearchViewId ?? '—'}, DataSet #${exec.DataSetId ?? '—'}.`,
+          true,
+        );
+      } catch (err: any) {
+        setProgressPercent(0);
+        setProgressMessage(null);
+        showError(err?.message || 'Execute failed.');
+      } finally {
+        onSearchImportStepUiChange({ isExecuting: false });
+      }
+      return;
+    }
+
+    if (!blueprint) {
+      showError('Upload PlmSearch_ImportBlueprint.json first.');
       return;
     }
 
@@ -209,7 +351,7 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
     setProgressMessage('Executing search blueprint…');
     try {
       const result = await plmMigrationSvc.executeSearchBlueprintConfig({
-        Blueprint: bp,
+        Blueprint: blueprint,
         SaasApplicationId: state.saasApplicationId,
       });
 
@@ -227,7 +369,7 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
       }
 
       await saveStepState();
-      if (bp.Menu?.RegisterInMainMenu) {
+      if (blueprint.Menu?.RegisterInMainMenu) {
         try {
           await refreshUserTreeMenu();
         } catch {
@@ -237,11 +379,8 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
 
       setProgressPercent(100);
       setProgressMessage('Search import complete.');
-      const messages = exec.Messages?.length
-        ? ` ${exec.Messages.join(' ')}`
-        : '';
       showInfo(
-        `Search import completed. Search #${exec.SearchId ?? '—'}, View #${exec.SearchViewId ?? '—'}.${messages}`,
+        `Search import completed. Search #${exec.SearchId ?? '—'}, View #${exec.SearchViewId ?? '—'}.`,
         true,
       );
     } catch (err: any) {
@@ -252,11 +391,13 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
       onSearchImportStepUiChange({ isExecuting: false });
     }
   }, [
+    blueprint,
+    isSibling,
     onSearchImportStepUiChange,
-    requireBlueprint,
     saveStepState,
     showError,
     showInfo,
+    siblingBlueprint,
     state.saasApplicationId,
     validationErrors.length,
   ]);
@@ -267,14 +408,23 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
   };
 
   const showProgress = isBusy || (progressMessage != null && progressPercent > 0);
+  const appliedOk = isSibling
+    ? Boolean(lastSiblingExecuteResult?.IsSuccess)
+    : Boolean(lastExecuteResult?.IsSuccess);
 
   return (
     <div className={`flex flex-col h-full overflow-hidden p-4 gap-3 ${theme.mainContentSection}`}>
       <h2 className={`text-sm font-semibold ${theme.label}`}>Step 4 — PLM Search Import</h2>
       <p className={`text-xs ${theme.menu_secondary}`}>
-        Upload <code className="text-[11px]">PlmSearch_ImportBlueprint.json</code> from ImportPLMSearchView output.
-        Creates search shell, criteria, grid view, link targets, and optional main menu entry.
+        Upload main <code className="text-[11px]">1_PlmSearch_ImportBlueprint.json</code>
+        {' '}or sibling <code className="text-[11px]">2_PlmSearch_SiblingView_*.json</code>
+        {' '}(mode auto-detected). Sibling Option A enriches the existing DataSet and adds a View without changing the default View.
       </p>
+      {hasBlueprint && (
+        <div className={`text-xs px-2 py-1 rounded border ${theme.inputBox} ${theme.label}`}>
+          Mode: {isSibling ? 'Sibling View (enrich DataSet)' : 'Main Search import'}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -295,8 +445,8 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
         </button>
         <button
           type="button"
-          className={actionBtnClass(isBusy || !blueprint)}
-          disabled={isBusy || !blueprint}
+          className={actionBtnClass(isBusy || !hasBlueprint)}
+          disabled={isBusy || !hasBlueprint}
           onClick={runValidateAndPreview}
         >
           <i className={`fa-solid ${isValidating || isPreviewing ? 'fa-spinner fa-spin' : 'fa-check'} mr-1`} />
@@ -304,8 +454,8 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
         </button>
         <button
           type="button"
-          className={actionBtnClass(isBusy || !blueprint)}
-          disabled={isBusy || !blueprint}
+          className={actionBtnClass(isBusy || !hasBlueprint)}
+          disabled={isBusy || !hasBlueprint}
           onClick={runExecute}
         >
           <i className={`fa-solid ${isExecuting ? 'fa-spinner fa-spin' : 'fa-play'} mr-1`} />
@@ -320,7 +470,7 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
         {blueprintSummary && (
           <span className={`text-xs ml-auto ${theme.menu_secondary}`}>{blueprintSummary}</span>
         )}
-        {lastExecuteResult?.IsSuccess && (
+        {appliedOk && (
           <span className={`text-xs ${blueprintSummary ? '' : 'ml-auto'} ${theme.label}`}>
             <i className="fa-solid fa-circle-check mr-1" />
             Applied
@@ -366,11 +516,24 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
         </div>
       )}
 
-      {lastExecuteResult?.IsSuccess && !showProgress && (
+      {!isSibling && lastExecuteResult?.IsSuccess && !showProgress && (
         <div className={`text-xs px-2 py-1 rounded border ${theme.inputBox} ${theme.label}`}>
           Last run: Search #{lastExecuteResult.SearchId ?? '—'}
           {lastExecuteResult.SearchViewId ? ` · View #${lastExecuteResult.SearchViewId}` : ''}
           {lastExecuteResult.DataSetId ? ` · DataSet #${lastExecuteResult.DataSetId}` : ''}
+        </div>
+      )}
+
+      {isSibling && lastSiblingExecuteResult?.IsSuccess && !showProgress && (
+        <div className={`text-xs px-2 py-1 rounded border ${theme.inputBox} ${theme.label}`}>
+          Last sibling run: Search #{lastSiblingExecuteResult.SearchId ?? '—'}
+          {lastSiblingExecuteResult.SiblingSearchViewId
+            ? ` · Sibling View #${lastSiblingExecuteResult.SiblingSearchViewId}`
+            : ''}
+          {lastSiblingExecuteResult.DefaultSearchViewId
+            ? ` · Default View #${lastSiblingExecuteResult.DefaultSearchViewId}`
+            : ''}
+          {lastSiblingExecuteResult.DataSetId ? ` · DataSet #${lastSiblingExecuteResult.DataSetId}` : ''}
         </div>
       )}
 
