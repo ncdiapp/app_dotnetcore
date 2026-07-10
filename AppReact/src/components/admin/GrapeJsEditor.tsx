@@ -161,6 +161,77 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
 
       try { if (canvasDoc.body) canvasDoc.body.style.background = isDark ? '#1e1e1e' : '#ffffff'; } catch { /* ignore */ }
 
+      // ── Column resize handles ─────────────────────────────────────────────
+      // Injected into the canvas iframe only — never saved to the template HTML.
+      // The script adds a drag handle on every col boundary in fixed-layout tables,
+      // dispatches 'gjs-col-resized' when the user finishes dragging, and this
+      // handler syncs the new width back to the GrapeJS component model.
+      if (!(canvasDoc as any).__gjsColResizer) {
+        (canvasDoc as any).__gjsColResizer = true;
+        try {
+          const rs = canvasDoc.createElement('script');
+          // Injected into the canvas iframe only — never saved to the template HTML.
+          // Finds the first row whose cell count equals the col count (skips colspan
+          // header rows like <th colspan="2">) and adds a blue drag handle on every
+          // col boundary. On mouseup, dispatches 'gjs-col-resized' so the parent
+          // frame can sync the new width into the GrapeJS component model.
+          rs.textContent = `(function(){
+  var dragging=null;
+  function addHandle(cell,col){
+    if(cell.__rh)return; cell.__rh=true;
+    var h=document.createElement('span');
+    h.style.cssText='position:absolute;right:-3px;top:0;width:7px;height:100%;cursor:col-resize;z-index:999;background:transparent;border-right:2px solid transparent';
+    h.addEventListener('mouseenter',function(){h.style.borderRightColor='rgba(59,130,246,0.7)';});
+    h.addEventListener('mouseleave',function(){if(dragging!==h)h.style.borderRightColor='transparent';});
+    h.addEventListener('mousedown',function(e){
+      e.preventDefault();e.stopPropagation();
+      dragging=h;
+      var sx=e.clientX,sw=parseInt(col.style.width)||cell.offsetWidth;
+      function mv(ev){col.style.width=Math.max(30,sw+ev.clientX-sx)+'px';}
+      function up(){
+        dragging=null;h.style.borderRightColor='transparent';
+        document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);
+        var idx=Array.from(document.querySelectorAll('colgroup col')).indexOf(col);
+        document.dispatchEvent(new CustomEvent('gjs-col-resized',{detail:{colIndex:idx,width:col.style.width}}));
+      }
+      document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+    });
+    cell.style.position='relative';cell.style.userSelect='none';
+    cell.appendChild(h);
+  }
+  function initTable(table){
+    if(table.__gjsT)return;
+    var cols=Array.from(table.querySelectorAll(':scope>colgroup>col'));
+    if(!cols.length)return;
+    // Find first row where cell count equals col count (skips colspan rows)
+    var rows=Array.from(table.querySelectorAll('tr'));
+    var row=null;
+    for(var i=0;i<rows.length;i++){
+      var cells=Array.from(rows[i].querySelectorAll('td,th'));
+      if(cells.length===cols.length && cells.every(function(c){return !(c.colSpan>1);})){row=rows[i];break;}
+    }
+    if(!row)return;
+    table.__gjsT=true;
+    var cells=row.querySelectorAll('td,th');
+    for(var i=0;i<cells.length-1;i++){if(cols[i])addHandle(cells[i],cols[i]);}
+  }
+  function run(){document.querySelectorAll('table').forEach(initTable);}
+  run();
+  new MutationObserver(run).observe(document.documentElement,{childList:true,subtree:true});
+})();`;
+          (canvasDoc.head || canvasDoc.body || canvasDoc.documentElement).appendChild(rs);
+        } catch { /* ignore */ }
+      }
+
+      // Sync resized col widths into the GrapeJS component model
+      canvasDoc.addEventListener('gjs-col-resized', (e: Event) => {
+        const { colIndex, width } = (e as CustomEvent).detail ?? {};
+        if (colIndex == null || !width) return;
+        const cols: any[] = editor.getWrapper?.()?.find?.('col') ?? [];
+        const col = cols[colIndex];
+        if (col) col.setStyle?.({ ...(col.getStyle?.() ?? {}), width });
+      }, { signal });
+
       canvasDoc.addEventListener('dblclick', (e: Event) => {
         if (editGuard) return;
         const el = walkUpToTextTag(e.target as HTMLElement, canvasDoc.body);
