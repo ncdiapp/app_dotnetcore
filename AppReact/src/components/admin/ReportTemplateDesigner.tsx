@@ -1515,8 +1515,6 @@ ${cells}
               <GrapeJsEditor
                 ref={gjsEditorComponentRef as any}
                 html={templateHtml}
-                tokens={tokens}
-                blocks={REPORT_BLOCKS}
                 isDark={currentThemeId === 'dark'}
                 active={viewMode === 'design'}
                 onChange={html => { setTemplateHtml(html); schedulePreview(html); }}

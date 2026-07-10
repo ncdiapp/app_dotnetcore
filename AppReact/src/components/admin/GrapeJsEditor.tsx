@@ -6,25 +6,8 @@ const grapesjs = require('grapesjs');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const grapesjsNewsletter = require('grapesjs-preset-newsletter');
 
-interface TokenDescriptor {
-  Token: string;
-  ResultSet: string;
-  Field: string;
-  IsList: boolean;
-  InsideEach: boolean;
-}
-
-interface ReportBlock {
-  label: string;
-  icon: string;
-  color: string;
-  html: string;
-}
-
 interface GrapeJsEditorProps {
   html: string;
-  tokens: TokenDescriptor[];
-  blocks: ReportBlock[];
   isDark: boolean;
   active: boolean;
   onChange: (html: string) => void;
@@ -56,8 +39,6 @@ function walkUpToTextTag(el: HTMLElement | null, stopEl: HTMLElement | null): HT
 
 const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
   html,
-  tokens,
-  blocks,
   isDark,
   active,
   onChange,
@@ -147,16 +128,8 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
       deviceManager: { devices: [] },
     });
 
-    blocks.forEach(block => {
-      const slug = block.label.toLowerCase().replace(/\s+/g, '-');
-      editor.BlockManager.add(slug, { label: block.label, category: 'Report Blocks', content: block.html });
-    });
-
-    tokens.forEach(tok => {
-      const id = `tok-${tok.Token.replace(/[^a-z0-9]/gi, '_')}`;
-      const label = tok.Field === '*' ? `#each ${tok.ResultSet}` : tok.Field;
-      editor.BlockManager.add(id, { label, category: tok.ResultSet, content: `<span data-token="true">${tok.Token}</span>` });
-    });
+    // Blocks and tokens are managed by the left panel in ReportTemplateDesigner.
+    // Do not register them with GrapeJS BlockManager — keeps the native blocks panel empty.
 
     const EDITABLE_TAGS = new Set(['td', 'th', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'span', 'li', 'a', 'div', 'label']);
     const markEditable = (comps: any) => {
