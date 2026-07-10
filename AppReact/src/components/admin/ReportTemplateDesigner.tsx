@@ -623,9 +623,11 @@ ${exportHtml}
   };
 
   const handleSave = async () => {
-    // Read directly from Monaco model — bypasses debounce so Save always
-    // captures the latest keystrokes, not a potentially-stale React state copy.
-    const currentHtml = editorRef.current?.getValue() ?? templateHtml;
+    // In Design mode GrapeJS drives templateHtml state directly (no debounce).
+    // In Code mode read from Monaco to capture keystrokes not yet flushed to state.
+    const currentHtml = viewMode === 'design'
+      ? templateHtml
+      : (editorRef.current?.getValue() ?? templateHtml);
     setSaving(true);
     setError(null);
     try {
