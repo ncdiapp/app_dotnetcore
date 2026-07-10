@@ -10,6 +10,8 @@ import DataSourceEditor, {
 } from './DataSourceEditor';
 import { RootState } from '../../redux/store';
 
+import type { GrapeJsEditorHandle } from './GrapeJsEditor';
+
 const GrapeJsEditor = React.lazy(() => import('./GrapeJsEditor'));
 
 interface Props {
@@ -318,6 +320,7 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   const [viewMode, setViewMode]             = useState<'split' | 'visual' | 'design'>('split');
   const [draggingToken, setDraggingToken]   = useState<string | null>(null);
   const [dropIndicatorY, setDropIndicatorY] = useState<number | null>(null);
+  const [pointerDragPos, setPointerDragPos] = useState<{x:number;y:number}|null>(null);
   const [galleryOpen, setGalleryOpen]       = useState(false);
   const [tableWizardOpen, setTableWizardOpen] = useState(false);
   const [wizardSrcIdx, setWizardSrcIdx]     = useState(0);
@@ -328,6 +331,7 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
 
   const editorRef              = useRef<any>(null);
   const gjsEditorRef           = useRef<any>(null);
+  const gjsEditorComponentRef  = useRef<GrapeJsEditorHandle>(null);
   const iframeRef              = useRef<HTMLIFrameElement>(null);
   const previewTimer           = useRef<number | null>(null);
   const tokensRef              = useRef<TokenDescriptor[]>([]);
@@ -1079,13 +1083,34 @@ ${cells}
                             key={i}
                             draggable
                             onDragStart={e => {
+                              if (viewMode === 'design') { e.preventDefault(); return; }
                               e.dataTransfer.setData('text/plain', tok.Token);
                               e.dataTransfer.effectAllowed = 'copy';
                               setDraggingToken(tok.Token);
                             }}
                             onDragEnd={() => { setDraggingToken(null); setDropIndicatorY(null); }}
+                            onPointerDown={e => {
+                              (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+                              setDraggingToken(tok.Token);
+                              if (viewMode === 'design') setPointerDragPos({ x: e.clientX, y: e.clientY });
+                            }}
+                            onPointerMove={e => {
+                              if (draggingToken && viewMode === 'design')
+                                setPointerDragPos({ x: e.clientX, y: e.clientY });
+                            }}
+                            onPointerUp={e => {
+                              const token = tok.Token;
+                              (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+                              setPointerDragPos(null);
+                              if (viewMode === 'design' && token.includes('{{')) {
+                                setDraggingToken(null);
+                                gjsEditorComponentRef.current?.dropToken(token, e.clientX, e.clientY);
+                                return;
+                              }
+                              setDraggingToken(null);
+                            }}
                             onClick={() => insertAtCursor(tok.Token)}
-                            title={`${tok.Token}\nDesign mode: click a cell first, then click to insert\nCode mode: click to insert at cursor · drag onto any line`}
+                            title={`${tok.Token}\nDesign mode: drag over canvas cell and release to insert\nCode mode: click to insert at cursor · drag onto any line`}
                             className={`w-full text-left px-2 py-1 text-xs truncate cursor-grab active:cursor-grabbing border-b ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 flex items-center gap-1`}
                           >
                             <span className="text-gray-300 text-[10px] shrink-0 select-none">⠿</span>
@@ -1368,6 +1393,7 @@ ${cells}
           >
             <Suspense fallback={<div className={`w-full h-full flex items-center justify-center text-xs ${theme.label} opacity-60`}><i className="fa-solid fa-spinner fa-spin mr-2" />Loading visual editor…</div>}>
               <GrapeJsEditor
+                ref={gjsEditorComponentRef as any}
                 html={templateHtml}
                 tokens={tokens}
                 blocks={REPORT_BLOCKS}
@@ -1377,35 +1403,27 @@ ${cells}
                 onEditorReady={ed => { gjsEditorRef.current = ed; }}
               />
             </Suspense>
-            {/* Drop zone: Chrome's sandboxed-iframe security blocks dragover/drop events from
-                reaching the GrapeJS canvas iframe. This parent-frame overlay intercepts the drop
-                when the user drags a token. Translucent so the canvas stays visible; appears only
-                while actively dragging a token in Design mode. Click the cell first to select it,
-                then drag the token — it drops into whichever cell is currently selected. */}
-            {draggingToken && (
-              <div
-                className="absolute inset-0 z-50 flex items-end justify-center pb-8"
-                style={{ background: 'rgba(59,130,246,0.08)', cursor: 'copy' }}
-                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; }}
-                onDrop={e => {
-                  e.preventDefault();
-                  const token = e.dataTransfer.getData('text/plain') || draggingToken;
-                  setDraggingToken(null);
-                  if (!token?.includes('{{') || !gjsEditorRef.current) return;
-                  const sel = gjsEditorRef.current.getSelected?.();
-                  if (sel) { sel.components().reset(); sel.append(token); }
-                }}
-              >
-                <div className="px-4 py-2 bg-blue-500 text-white rounded-lg shadow-xl text-xs font-semibold pointer-events-none select-none">
-                  <i className="fa-solid fa-circle-down mr-1.5" />
-                  Drop to insert into selected cell
-                </div>
-              </div>
-            )}
           </div>
 
         </div>
       </div>
+
+      {/* Floating pointer-drag chip — follows cursor in Design mode when dragging a token.
+          Uses position:fixed so it escapes any overflow:hidden ancestor. */}
+      {pointerDragPos && viewMode === 'design' && draggingToken && (
+        <div
+          style={{
+            position: 'fixed',
+            left: pointerDragPos.x + 14,
+            top: pointerDragPos.y - 10,
+            zIndex: 9999,
+            pointerEvents: 'none',
+          }}
+          className="px-2 py-1 bg-blue-600 text-white text-xs rounded shadow-lg select-none font-mono"
+        >
+          {draggingToken}
+        </div>
+      )}
     </div>
   );
 };

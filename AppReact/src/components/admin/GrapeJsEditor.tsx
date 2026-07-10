@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { forwardRef, useEffect, useImperativeHandle, useRef } from 'react';
 import 'grapesjs/dist/css/grapes.min.css';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -31,6 +31,10 @@ interface GrapeJsEditorProps {
   onEditorReady?: (editor: any) => void;
 }
 
+export type GrapeJsEditorHandle = {
+  dropToken: (token: string, clientX: number, clientY: number) => void;
+};
+
 function splitStyleAndBody(html: string): { css: string; body: string } {
   const styleMatch = html.match(/^<style>([\s\S]*?)<\/style>\s*/i);
   if (styleMatch) {
@@ -50,7 +54,7 @@ function walkUpToTextTag(el: HTMLElement | null, stopEl: HTMLElement | null): HT
   return null;
 }
 
-const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
+const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
   html,
   tokens,
   blocks,
@@ -58,7 +62,7 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
   active,
   onChange,
   onEditorReady,
-}) => {
+}, ref) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const overlayRef   = useRef<HTMLDivElement>(null);
   const gjsRef       = useRef<any>(null);
@@ -68,75 +72,50 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
   onChangeRef.current = onChange;
   activeRef.current   = active;
 
-  // Toggle overlay pointer-events via direct DOM ref — never via React style prop.
-  // If pointerEvents were in the JSX style prop, React would re-apply 'none' on every
-  // re-render (e.g. when the parent's draggingToken state changes), racing with enable().
-  // By keeping pointerEvents OUT of the style prop, React never touches it.
-  // Browsers route drag events directly to <iframe> elements regardless of any covering div
-  // with pointer-events:auto. We must attach dragover/drop to the actual canvas <iframe>.
-  //
-  // The editor.on('load') fires while the canvas may still be display:none (e.g. when
-  // GrapeJS first mounts before the user switches to Design mode), giving all iframes a
-  // zero-size rect. We wire lazily on the first 'dragstart' instead — at that moment the
-  // user is visibly dragging toward the canvas, which is guaranteed to be displayed.
+  // Expose dropToken to parent via ref — called from pointer-event handlers
+  // on token buttons. Pointer events are NOT intercepted by iframes (unlike HTML5 DnD),
+  // so the parent captures pointerup with client coordinates and calls this to insert.
+  useImperativeHandle(ref, () => ({
+    dropToken: (token: string, clientX: number, clientY: number) => {
+      const editor = gjsRef.current;
+      if (!editor) return;
+
+      let comp: any = null;
+      try {
+        const iframes = Array.from(containerRef.current?.querySelectorAll<HTMLIFrameElement>('iframe') ?? []);
+        const iframe = iframes
+          .map(f => ({ f, r: f.getBoundingClientRect() }))
+          .filter(({ r }) => r.width > 0 && r.height > 0)
+          .sort((a, b) => (b.r.width * b.r.height) - (a.r.width * a.r.height))[0]?.f ?? null;
+
+        if (iframe) {
+          const r = iframe.getBoundingClientRect();
+          const iDoc = iframe.contentDocument;
+          if (iDoc) {
+            const el = walkUpToTextTag(
+              iDoc.elementFromPoint(clientX - r.left, clientY - r.top) as HTMLElement,
+              iDoc.body,
+            );
+            if (el) comp = editor.Canvas.getModelFromEl?.(el);
+          }
+        }
+      } catch { /* cross-origin guard */ }
+
+      if (!comp) comp = editor.getSelected?.();
+      if (comp) { comp.components().reset(); comp.append(token); }
+    },
+  }));
+
+  // Blue-tint hint overlay — visual feedback only, no DnD logic needed here anymore.
+  // Pointer events stay with the source button via setPointerCapture so no overlay wiring needed.
   useEffect(() => {
     if (overlayRef.current) {
       overlayRef.current.style.pointerEvents = 'none';
       overlayRef.current.style.background = '';
     }
 
-    let dropWired = false;
-
-    const wireIframeDrop = () => {
-      if (dropWired) return;
-      const editor = gjsRef.current;
-      if (!editor) return;
-
-      // Pick the largest visible iframe in the container (the real canvas).
-      const iframes = Array.from(containerRef.current?.querySelectorAll<HTMLIFrameElement>('iframe') ?? []);
-      const iframe = iframes
-        .map(f => ({ f, r: f.getBoundingClientRect() }))
-        .filter(({ r }) => r.width > 0 && r.height > 0)
-        .sort((a, b) => (b.r.width * b.r.height) - (a.r.width * a.r.height))[0]?.f ?? null;
-
-      if (!iframe) return; // canvas not visible yet — will retry on next dragstart
-      dropWired = true;
-
-      // eslint-disable-next-line no-console
-      console.log('[GJS drag] wiring iframe:', iframe.getBoundingClientRect());
-
-      iframe.addEventListener('dragover', (e: DragEvent) => {
-        if (!Array.from(e.dataTransfer?.types ?? []).includes('text/plain')) return;
-        e.preventDefault();
-        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
-      });
-
-      iframe.addEventListener('drop', (e: DragEvent) => {
-        e.preventDefault();
-        const text = e.dataTransfer?.getData('text/plain') ?? '';
-        if (!text.includes('{{')) return;
-
-        let comp: any = null;
-        try {
-          const r = iframe.getBoundingClientRect();
-          const iDoc = iframe.contentDocument;
-          if (iDoc) {
-            const el = walkUpToTextTag(
-              iDoc.elementFromPoint(e.clientX - r.left, e.clientY - r.top) as HTMLElement,
-              iDoc.body,
-            );
-            if (el) comp = editor.Canvas.getModelFromEl?.(el);
-          }
-        } catch { /* sandboxed iframe — fall through */ }
-
-        if (!comp) comp = editor.getSelected?.();
-        if (comp) { comp.components().reset(); comp.append(text); }
-      });
-    };
-
     const showHint = () => {
       if (overlayRef.current) overlayRef.current.style.background = 'rgba(59,130,246,0.08)';
-      wireIframeDrop();
     };
     const hideHint = () => { if (overlayRef.current) overlayRef.current.style.background = ''; };
     document.addEventListener('dragstart', showHint);
@@ -251,7 +230,6 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
     editor.on('load', () => {
       markEditable(editor.DomComponents.getComponents());
       setupCanvasListeners();
-      // Re-run setupCanvasListeners if the iframe reloads (e.g. after setComponents).
       const iframeEl = editor.Canvas.getFrameEl?.() as HTMLIFrameElement | undefined;
       iframeEl?.addEventListener('load', setupCanvasListeners);
     });
@@ -288,10 +266,11 @@ const GrapeJsEditor: React.FC<GrapeJsEditorProps> = ({
   return (
     <div className="relative w-full h-full" style={{ minHeight: 0 }}>
       <div ref={containerRef} className="w-full h-full" />
-      {/* Visual-only hint overlay — no pointer-events; drag events go to the iframe element directly */}
       <div ref={overlayRef} className="absolute inset-0" style={{ pointerEvents: 'none', zIndex: 1 }} />
     </div>
   );
-};
+});
+
+GrapeJsEditor.displayName = 'GrapeJsEditor';
 
 export default GrapeJsEditor;
