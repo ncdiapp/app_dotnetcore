@@ -1309,6 +1309,13 @@ ${cells}
             {/* Toggle pill */}
             <div className="flex shrink-0 rounded-[4px] overflow-hidden border border-gray-300">
               <button
+                onClick={() => setViewMode('design')}
+                title="GrapeJS WYSIWYG visual editor"
+                className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'design' ? 'bg-purple-500 text-white' : theme.button_default}`}
+              >
+                <i className="fa-solid fa-pen-ruler mr-1" />Design
+              </button>
+              <button
                 onClick={() => {
                   setViewMode('split');
                   requestAnimationFrame(() => editorRef.current?.layout());
@@ -1324,13 +1331,6 @@ ${cells}
                 className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'visual' ? 'bg-blue-500 text-white' : theme.button_default}`}
               >
                 <i className="fa-solid fa-paintbrush mr-1" />Visual
-              </button>
-              <button
-                onClick={() => setViewMode('design')}
-                title="GrapeJS WYSIWYG visual editor"
-                className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'design' ? 'bg-purple-500 text-white' : theme.button_default}`}
-              >
-                <i className="fa-solid fa-pen-ruler mr-1" />Design
               </button>
             </div>
           </div>

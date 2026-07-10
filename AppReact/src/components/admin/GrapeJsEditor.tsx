@@ -289,6 +289,7 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
       {/* Hide the top toolbar panels; expand canvas to fill freed vertical space.
           Rendered before useEffect so GrapeJS measures correct heights on init. */}
       <style>{`
+        /* ── Layout overrides ── */
         .gjs-pn-options          { display: none !important; }
         .gjs-pn-devices-c        { display: none !important; }
         .gjs-pn-commands         { display: none !important; }
@@ -296,6 +297,63 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
         .gjs-frame-wrapper__head { display: none !important; }
         .gjs-frame-wrapper       { margin-top: 0 !important; padding-top: 0 !important; }
         .gjs-canvas__frames      { top: 0 !important; }
+
+        /* ── Light panel theme ── */
+        /* Panel backgrounds */
+        .gjs-pn-views,
+        .gjs-pn-views-container,
+        .gjs-one-bg { background-color: #f5f6f7 !important; }
+        .gjs-two-bg  { background-color: #ebedf0 !important; }
+        .gjs-three-bg { background-color: #dde1e7 !important; }
+        .gjs-four-bg  { background-color: #f0f1f3 !important; }
+
+        /* Panel text */
+        .gjs-color-main,
+        .gjs-pn-views .gjs-pn-btn,
+        .gjs-label,
+        .gjs-sm-sector__title,
+        .gjs-sm-label,
+        .gjs-clm-header,
+        .gjs-traits-cs .gjs-label,
+        .gjs-field { color: #333 !important; }
+
+        /* Panel button icons (SVG/icon font) */
+        .gjs-pn-views .gjs-pn-btn       { color: #555 !important; }
+        .gjs-pn-views .gjs-pn-btn.gjs-pn-active { color: #1a73e8 !important; }
+
+        /* Style Manager sectors */
+        .gjs-sm-sector .gjs-sm-sector-title,
+        .gjs-sm-sector__title { background: #ebedf0 !important; color: #333 !important; border-color: #dde1e7 !important; }
+        .gjs-sm-properties    { background: #f5f6f7 !important; }
+
+        /* Trait Manager */
+        .gjs-trt-traits .gjs-label { color: #555 !important; }
+        .gjs-trt-trait__wrp { border-color: #dde1e7 !important; }
+
+        /* Fields & inputs inside panels */
+        .gjs-field,
+        .gjs-field select,
+        .gjs-field input { background: #fff !important; color: #333 !important; border-color: #c4c8ce !important; }
+
+        /* Block manager */
+        .gjs-block-categories  { background: #f5f6f7 !important; }
+        .gjs-block-category .gjs-title { background: #ebedf0 !important; color: #333 !important; border-color: #dde1e7 !important; }
+        .gjs-block {
+          background: #fff !important;
+          color: #333 !important;
+          border-color: #dde1e7 !important;
+        }
+        .gjs-block:hover       { background: #e8eaed !important; border-color: #adb5bd !important; }
+        .gjs-block__media svg,
+        .gjs-block__media i    { color: #555 !important; fill: #555 !important; }
+        .gjs-block__label      { color: #444 !important; }
+
+        /* Class manager */
+        .gjs-clm-header,
+        .gjs-clm-title         { background: #ebedf0 !important; color: #333 !important; }
+        .gjs-clm-tags-field    { background: #fff !important; border-color: #c4c8ce !important; }
+        .gjs-clm-tag           { background: #dde1e7 !important; color: #333 !important; }
+        .gjs-clm-sels-info     { color: #555 !important; }
       `}</style>
       <div ref={containerRef} className="w-full h-full" />
       <div ref={overlayRef} className="absolute inset-0" style={{ pointerEvents: 'none', zIndex: 1 }} />
