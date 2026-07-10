@@ -1,0 +1,305 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-10T15:06:16Z",
+  "source": {
+    "plmSearchTemplateId": 30206,
+    "plmSearchName": "3b - Artwork Search",
+    "plmReferenceViewId": 95,
+    "plmReferenceViewName": "3b - Artwork",
+    "plmBlQueryId": null,
+    "plmDatabase": "plm_live_20260602",
+    "appDatabase": "TenantDB_PLM27",
+    "tablePrefix": "Plm_",
+    "selectedJoinPlanId": "AUTO",
+    "gridColumnStrategy": "exclude",
+    "primaryTableName": "Plm_Artwork_Details",
+    "referenceScope": {
+      "mode": "ArtworkDetailsOnly",
+      "notes": "FROM Plm_Artwork_Details drives row set; LEFT JOIN siblings on ReferenceId."
+    }
+  },
+  "search": {
+    "name": "3b - Artwork Search",
+    "description": "Imported from PLM SearchTemplate 30206",
+    "integrationId": "Search_30206",
+    "usageType": "Management",
+    "autoExecute": false,
+    "saasApplicationId": null
+  },
+  "dataSet": {
+    "name": "3b - Artwork Search",
+    "queryMode": "SynthesizedFromFieldMapping",
+    "primaryTableName": "Plm_Artwork_Details",
+    "rootTableName": "Plm_Artwork_Details",
+    "queryText": "SELECT\n  [hdr].[ReferenceId],\n  [ref].[ReferenceCode],\n  [ref].[FolderId],\n  [hdr].[Article],\n  [hdr].[Artwork_Status],\n  [hdr].[Description_23],\n  [hdr].[Item_Type],\n  [hdr].[Product_Type],\n  [hdr].[Sketch],\n  [hdr].[Classification],\n  [hdr].[Artwork_Placement],\n  [hdr].[Comments],\n  [hdr].[Artwork_Approval_Date],\n  [hdr].[Artwork_File]\nFROM [dbo].[Plm_Artwork_Details] AS [hdr]\nLEFT OUTER JOIN [dbo].[Plm_ReferenceBasicInfo] AS [ref]\n  ON [ref].[ReferenceId] = [hdr].[ReferenceId]",
+    "joins": [
+      {
+        "alias": "hdr",
+        "appTableName": "Plm_Artwork_Details",
+        "joinType": "FROM",
+        "role": "primary",
+        "cardinality": "1:1",
+        "plmTabId": 4228,
+        "isTemplateHeaderTab": true
+      },
+      {
+        "alias": "ref",
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Artwork_Details",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_ReferenceBasicInfo",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1"
+      }
+    ],
+    "filters": [],
+    "tenantDataSourceRegisterId": null
+  },
+  "joinPlan": {
+    "planId": "AUTO",
+    "score": null,
+    "label": "Plm_Artwork_Details + Plm_ReferenceBasicInfo",
+    "semanticSummary": "Auto-selected: primary Plm_Artwork_Details with LEFT JOIN siblings covering mapped fields.",
+    "tables": [
+      {
+        "appTableName": "Plm_Artwork_Details",
+        "role": "primary",
+        "joinType": "FROM"
+      },
+      {
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "role": "reference",
+        "joinType": "LEFT"
+      }
+    ]
+  },
+  "transactionGroup": {
+    "transactionGroupId": 4,
+    "groupName": "04 - Artwork",
+    "primaryTransactionIntegrationId": "Tab_4228"
+  },
+  "criteriaFields": [
+    {
+      "integrationKey": "criteria_Artwork",
+      "displayText": "Artwork #",
+      "sysTableFiledPath": "Article",
+      "sysTableFiledFullPath": "Plm_Artwork_Details.Article",
+      "controlType": 2,
+      "operationId": 7,
+      "positionRow": 1,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 10,
+      "defaultValue": null,
+      "plmSubItemId": 22
+    },
+    {
+      "integrationKey": "criteria_ArtworkStatus",
+      "displayText": "Artwork Status",
+      "sysTableFiledPath": "Artwork_Status",
+      "sysTableFiledFullPath": "Plm_Artwork_Details.Artwork_Status",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 20,
+      "defaultValue": null,
+      "entityIntegrationId": "3699",
+      "plmSubItemId": 5295
+    },
+    {
+      "integrationKey": "criteria_Description",
+      "displayText": "Description",
+      "sysTableFiledPath": "Description_23",
+      "sysTableFiledFullPath": "Plm_Artwork_Details.Description_23",
+      "controlType": 2,
+      "operationId": 7,
+      "positionRow": 2,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 30,
+      "defaultValue": null,
+      "plmSubItemId": 23
+    },
+    {
+      "integrationKey": "criteria_ItemType",
+      "displayText": "Item Type",
+      "sysTableFiledPath": "Item_Type",
+      "sysTableFiledFullPath": "Plm_Artwork_Details.Item_Type",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 2,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 40,
+      "defaultValue": "32",
+      "entityIntegrationId": "123",
+      "isReadOnly": true,
+      "plmSubItemId": 6677
+    },
+    {
+      "integrationKey": "criteria_SubClassification",
+      "displayText": "Sub Classification",
+      "sysTableFiledPath": "Product_Type",
+      "sysTableFiledFullPath": "Plm_Artwork_Details.Product_Type",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 2,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 50,
+      "defaultValue": null,
+      "entityIntegrationId": "4",
+      "plmSubItemId": 2
+    }
+  ],
+  "searchView": {
+    "name": "3b - Artwork",
+    "integrationId": "Search_30206_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 5
+      },
+      {
+        "displayText": "Sketch",
+        "sysTableFiledPath": "Sketch",
+        "controlType": 5,
+        "isVisible": true,
+        "sort": 10,
+        "entityIntegrationId": "11",
+        "plmSubItemId": 6
+      },
+      {
+        "displayText": "Artwork #",
+        "sysTableFiledPath": "Article",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 20,
+        "plmSubItemId": 22
+      },
+      {
+        "displayText": "Description",
+        "sysTableFiledPath": "Description_23",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 30,
+        "plmSubItemId": 23
+      },
+      {
+        "displayText": "Classification",
+        "sysTableFiledPath": "Classification",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 40,
+        "entityIntegrationId": "1",
+        "plmSubItemId": 1
+      },
+      {
+        "displayText": "Product Type",
+        "sysTableFiledPath": "Product_Type",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 50,
+        "entityIntegrationId": "4",
+        "plmSubItemId": 2
+      },
+      {
+        "displayText": "Artwork Status",
+        "sysTableFiledPath": "Artwork_Status",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 60,
+        "entityIntegrationId": "3699",
+        "plmSubItemId": 5295
+      },
+      {
+        "displayText": "Artwork Placement",
+        "sysTableFiledPath": "Artwork_Placement",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 70,
+        "entityIntegrationId": "3706",
+        "plmSubItemId": 5331
+      },
+      {
+        "displayText": "Comments",
+        "sysTableFiledPath": "Comments",
+        "controlType": 4,
+        "isVisible": true,
+        "sort": 80,
+        "plmSubItemId": 5297
+      },
+      {
+        "displayText": "Artwork Approval Date",
+        "sysTableFiledPath": "Artwork_Approval_Date",
+        "controlType": 7,
+        "isVisible": true,
+        "sort": 90,
+        "plmSubItemId": 5324
+      },
+      {
+        "displayText": "Artwork File",
+        "sysTableFiledPath": "Artwork_File",
+        "controlType": 9,
+        "isVisible": true,
+        "sort": 100,
+        "entityIntegrationId": "11",
+        "plmSubItemId": 5320
+      }
+    ]
+  },
+  "linkTargets": [
+    {
+      "name": "Open",
+      "actionType": "Edit",
+      "transactionIntegrationId": "Tab_4228",
+      "linkTargetTransactionGroupId": 4,
+      "linkTargetTransactionGroupName": "04 - Artwork",
+      "sourceColumn": "ReferenceId",
+      "sort": 1
+    },
+    {
+      "name": "Create",
+      "actionType": "Create",
+      "transactionIntegrationId": "Tab_4228",
+      "linkTargetTransactionGroupId": 4,
+      "linkTargetTransactionGroupName": "04 - Artwork",
+      "sourceColumn": "ReferenceId",
+      "sort": 2
+    }
+  ],
+  "menu": {
+    "registerInMainMenu": true,
+    "menuTitle": "3b - Artwork Search",
+    "menuGroup": null
+  },
+  "coverage": {
+    "criteria": {
+      "total": 6,
+      "mapped": 5,
+      "ignored": 1
+    },
+    "view": {
+      "total": 10,
+      "mapped": 10,
+      "ignored": 0
+    }
+  },
+  "unmappedPlmFields": [
+    {
+      "role": "criteria",
+      "displayLabel": "Print #",
+      "plmSubItemId": 5291,
+      "reason": "Not in FieldMapping / ignored"
+    }
+  ]
+}

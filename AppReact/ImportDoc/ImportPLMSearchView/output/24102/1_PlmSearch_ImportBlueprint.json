@@ -1,0 +1,496 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-10T15:06:16Z",
+  "source": {
+    "plmSearchTemplateId": 24102,
+    "plmSearchName": "2b - Label Search",
+    "plmReferenceViewId": 6,
+    "plmReferenceViewName": "2c - Labels",
+    "plmBlQueryId": null,
+    "plmDatabase": "plm_live_20260602",
+    "appDatabase": "TenantDB_PLM27",
+    "tablePrefix": "Plm_",
+    "selectedJoinPlanId": "AUTO",
+    "gridColumnStrategy": "exclude",
+    "primaryTableName": "Plm_Label_Header",
+    "referenceScope": {
+      "mode": "LabelHeaderOnly",
+      "notes": "FROM Plm_Label_Header drives row set; LEFT JOIN siblings on ReferenceId."
+    }
+  },
+  "search": {
+    "name": "2b - Label Search",
+    "description": "Imported from PLM SearchTemplate 24102",
+    "integrationId": "Search_24102",
+    "usageType": "Management",
+    "autoExecute": false,
+    "saasApplicationId": null
+  },
+  "dataSet": {
+    "name": "2b - Label Search",
+    "queryMode": "SynthesizedFromFieldMapping",
+    "primaryTableName": "Plm_Label_Header",
+    "rootTableName": "Plm_Label_Header",
+    "queryText": "SELECT\n  [hdr].[ReferenceId],\n  [ref].[ReferenceCode],\n  [ref].[FolderId],\n  [hdr].[Article],\n  [hdr].[Division_186],\n  [hdr].[Description],\n  [hdr].[ProductTypeGroup],\n  [hdr].[Material],\n  [hdr].[Product_Type],\n  [hdr].[Country_Of_Origin],\n  [hdr].[Raw_Material_Status],\n  [hdr].[Season],\n  [hdr].[Item_Type],\n  [hdr].[Sketch],\n  [hdr].[Classification],\n  [hdr].[Supplier_1],\n  [hdr].[Collection],\n  [hdr].[Group],\n  [info].[Construction]\nFROM [dbo].[Plm_Label_Header] AS [hdr]\nLEFT OUTER JOIN [dbo].[Plm_ReferenceBasicInfo] AS [ref]\n  ON [ref].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Label_Info] AS [info]\n  ON [info].[ReferenceId] = [hdr].[ReferenceId]",
+    "joins": [
+      {
+        "alias": "hdr",
+        "appTableName": "Plm_Label_Header",
+        "joinType": "FROM",
+        "role": "primary",
+        "cardinality": "1:1",
+        "plmTabId": 4247,
+        "isTemplateHeaderTab": true
+      },
+      {
+        "alias": "ref",
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Label_Header",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_ReferenceBasicInfo",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1"
+      },
+      {
+        "alias": "info",
+        "appTableName": "Plm_Label_Info",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Label_Header",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_Label_Info",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1"
+      }
+    ],
+    "filters": [],
+    "tenantDataSourceRegisterId": null
+  },
+  "joinPlan": {
+    "planId": "AUTO",
+    "score": null,
+    "label": "Plm_Label_Header + Plm_ReferenceBasicInfo + Plm_Label_Info",
+    "semanticSummary": "Auto-selected: primary Plm_Label_Header with LEFT JOIN siblings covering mapped fields.",
+    "tables": [
+      {
+        "appTableName": "Plm_Label_Header",
+        "role": "primary",
+        "joinType": "FROM"
+      },
+      {
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "role": "reference",
+        "joinType": "LEFT"
+      },
+      {
+        "appTableName": "Plm_Label_Info",
+        "role": "sibling",
+        "joinType": "LEFT"
+      }
+    ]
+  },
+  "transactionGroup": {
+    "transactionGroupId": 5,
+    "groupName": "03 - Labels & Hangtags",
+    "primaryTransactionIntegrationId": "Tab_4247"
+  },
+  "criteriaFields": [
+    {
+      "integrationKey": "criteria_LabelCode",
+      "displayText": "Label Code",
+      "sysTableFiledPath": "Article",
+      "sysTableFiledFullPath": "Plm_Label_Header.Article",
+      "controlType": 2,
+      "operationId": 7,
+      "positionRow": 1,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 10,
+      "defaultValue": null,
+      "plmSubItemId": 22
+    },
+    {
+      "integrationKey": "criteria_Field186",
+      "displayText": "Field_186",
+      "sysTableFiledPath": "Division_186",
+      "sysTableFiledFullPath": "Plm_Label_Header.Division_186",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 20,
+      "defaultValue": null,
+      "entityIntegrationId": "5",
+      "plmSubItemId": 186
+    },
+    {
+      "integrationKey": "criteria_Field23",
+      "displayText": "Field_23",
+      "sysTableFiledPath": "Description",
+      "sysTableFiledFullPath": "Plm_Label_Header.Description",
+      "controlType": 2,
+      "operationId": 7,
+      "positionRow": 2,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 30,
+      "defaultValue": null,
+      "plmSubItemId": 23
+    },
+    {
+      "integrationKey": "criteria_TypeGroup",
+      "displayText": "Type Group",
+      "sysTableFiledPath": "ProductTypeGroup",
+      "sysTableFiledFullPath": "Plm_Label_Header.ProductTypeGroup",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 2,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 40,
+      "defaultValue": null,
+      "entityIntegrationId": "95",
+      "plmSubItemId": 149
+    },
+    {
+      "integrationKey": "criteria_Field3810",
+      "displayText": "Field_3810",
+      "sysTableFiledPath": "Material",
+      "sysTableFiledFullPath": "Plm_Label_Header.Material",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 3,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 50,
+      "defaultValue": null,
+      "entityIntegrationId": "3521",
+      "plmSubItemId": 3810
+    },
+    {
+      "integrationKey": "criteria_Type",
+      "displayText": "Type",
+      "sysTableFiledPath": "Product_Type",
+      "sysTableFiledFullPath": "Plm_Label_Header.Product_Type",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 3,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 60,
+      "defaultValue": null,
+      "entityIntegrationId": "4",
+      "plmSubItemId": 2
+    },
+    {
+      "integrationKey": "criteria_Field103",
+      "displayText": "Field_103",
+      "sysTableFiledPath": "Country_Of_Origin",
+      "sysTableFiledFullPath": "Plm_Label_Header.Country_Of_Origin",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 3,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 70,
+      "defaultValue": null,
+      "entityIntegrationId": "59",
+      "plmSubItemId": 103
+    },
+    {
+      "integrationKey": "criteria_Status",
+      "displayText": "Status",
+      "sysTableFiledPath": "Raw_Material_Status",
+      "sysTableFiledFullPath": "Plm_Label_Header.Raw_Material_Status",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 4,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 80,
+      "defaultValue": null,
+      "entityIntegrationId": "3461",
+      "plmSubItemId": 3128
+    },
+    {
+      "integrationKey": "criteria_Field3",
+      "displayText": "Field_3",
+      "sysTableFiledPath": "Season",
+      "sysTableFiledFullPath": "Plm_Label_Header.Season",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 4,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 90,
+      "defaultValue": null,
+      "entityIntegrationId": "8",
+      "plmSubItemId": 3
+    },
+    {
+      "integrationKey": "criteria_Field3711",
+      "displayText": "Field_3711",
+      "sysTableFiledPath": "Item_Type",
+      "sysTableFiledFullPath": "Plm_Label_Header.Item_Type",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 4,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 100,
+      "defaultValue": "5",
+      "entityIntegrationId": "123",
+      "isReadOnly": true,
+      "plmSubItemId": 3711
+    }
+  ],
+  "searchView": {
+    "name": "2c - Labels",
+    "integrationId": "Search_24102_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 5
+      },
+      {
+        "displayText": "Sketch",
+        "sysTableFiledPath": "Sketch",
+        "controlType": 5,
+        "isVisible": true,
+        "sort": 10,
+        "entityIntegrationId": "11",
+        "plmSubItemId": 6
+      },
+      {
+        "displayText": "Style #",
+        "sysTableFiledPath": "Article",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 20,
+        "plmSubItemId": 22
+      },
+      {
+        "displayText": "Description",
+        "sysTableFiledPath": "Description",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 30,
+        "plmSubItemId": 23
+      },
+      {
+        "displayText": "Division",
+        "sysTableFiledPath": "Division_186",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 40,
+        "entityIntegrationId": "5",
+        "plmSubItemId": 186
+      },
+      {
+        "displayText": "Product Class",
+        "sysTableFiledPath": "Classification",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 50,
+        "entityIntegrationId": "1",
+        "plmSubItemId": 1
+      },
+      {
+        "displayText": "Type Group",
+        "sysTableFiledPath": "ProductTypeGroup",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 60,
+        "entityIntegrationId": "95",
+        "plmSubItemId": 149
+      },
+      {
+        "displayText": "Product Type",
+        "sysTableFiledPath": "Product_Type",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 70,
+        "entityIntegrationId": "4",
+        "plmSubItemId": 2
+      },
+      {
+        "displayText": "Supplier",
+        "sysTableFiledPath": "Supplier_1",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 80,
+        "entityIntegrationId": "4757",
+        "plmSubItemId": 6885
+      },
+      {
+        "displayText": "Season",
+        "sysTableFiledPath": "Season",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 90,
+        "entityIntegrationId": "8",
+        "plmSubItemId": 3
+      },
+      {
+        "displayText": "Collection",
+        "sysTableFiledPath": "Collection",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 100,
+        "entityIntegrationId": "6",
+        "plmSubItemId": 4
+      },
+      {
+        "displayText": "Group",
+        "sysTableFiledPath": "Group",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 110,
+        "entityIntegrationId": "7",
+        "plmSubItemId": 5
+      },
+      {
+        "displayText": "Label Status",
+        "sysTableFiledPath": "Raw_Material_Status",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 120,
+        "entityIntegrationId": "3461",
+        "plmSubItemId": 3128
+      },
+      {
+        "displayText": "Material",
+        "sysTableFiledPath": "Material",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 130,
+        "entityIntegrationId": "3521",
+        "plmSubItemId": 3810
+      },
+      {
+        "displayText": "Construction",
+        "sysTableFiledPath": "Construction",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 140,
+        "entityIntegrationId": "4724",
+        "plmSubItemId": 3161
+      },
+      {
+        "displayText": "Country Of Origin",
+        "sysTableFiledPath": "Country_Of_Origin",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 150,
+        "entityIntegrationId": "59",
+        "plmSubItemId": 103
+      }
+    ]
+  },
+  "linkTargets": [
+    {
+      "name": "Open",
+      "actionType": "Edit",
+      "transactionIntegrationId": "Tab_4247",
+      "linkTargetTransactionGroupId": 5,
+      "linkTargetTransactionGroupName": "03 - Labels & Hangtags",
+      "sourceColumn": "ReferenceId",
+      "sort": 1
+    },
+    {
+      "name": "Create",
+      "actionType": "Create",
+      "transactionIntegrationId": "Tab_4247",
+      "linkTargetTransactionGroupId": 5,
+      "linkTargetTransactionGroupName": "03 - Labels & Hangtags",
+      "sourceColumn": "ReferenceId",
+      "sort": 2
+    }
+  ],
+  "menu": {
+    "registerInMainMenu": true,
+    "menuTitle": "2b - Label Search",
+    "menuGroup": null
+  },
+  "coverage": {
+    "criteria": {
+      "total": 12,
+      "mapped": 10,
+      "ignored": 2
+    },
+    "view": {
+      "total": 23,
+      "mapped": 15,
+      "ignored": 8
+    }
+  },
+  "unmappedPlmFields": [
+    {
+      "role": "criteria",
+      "displayLabel": "Field_56",
+      "plmSubItemId": 56,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "criteria",
+      "displayLabel": "Field_3789",
+      "plmSubItemId": 3789,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Appearance",
+      "plmSubItemId": 3349,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Hand",
+      "plmSubItemId": 3383,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Construction Details",
+      "plmSubItemId": 3792,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Wash Instructions",
+      "plmSubItemId": 3791,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Supplier",
+      "plmSubItemId": 56,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Supplier Number",
+      "plmSubItemId": 3789,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Created Date",
+      "plmSubItemId": 181,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Color",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    }
+  ]
+}

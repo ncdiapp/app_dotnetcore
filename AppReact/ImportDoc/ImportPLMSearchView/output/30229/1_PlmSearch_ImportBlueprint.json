@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "generatedAt": "2026-07-10T15:06:16Z",
   "source": {
-    "plmSearchTemplateId": 28902,
-    "plmSearchName": "1b - Fabric Search",
-    "plmReferenceViewId": 4,
-    "plmReferenceViewName": "1b -Fabrics (Grid)",
+    "plmSearchTemplateId": 30229,
+    "plmSearchName": "3c - Fabric Costing",
+    "plmReferenceViewId": 105,
+    "plmReferenceViewName": "4c - Fabric Costing (Grid)",
     "plmBlQueryId": null,
     "plmDatabase": "plm_live_20260602",
     "appDatabase": "TenantDB_PLM27",
@@ -19,19 +19,19 @@
     }
   },
   "search": {
-    "name": "1b - Fabric Search",
-    "description": "Imported from PLM SearchTemplate 28902",
-    "integrationId": "Search_28902",
+    "name": "3c - Fabric Costing",
+    "description": "Imported from PLM SearchTemplate 30229",
+    "integrationId": "Search_30229",
     "usageType": "Management",
     "autoExecute": true,
     "saasApplicationId": null
   },
   "dataSet": {
-    "name": "1b - Fabric Search",
+    "name": "3c - Fabric Costing",
     "queryMode": "SynthesizedFromFieldMapping",
     "primaryTableName": "Plm_Fabric_Header",
     "rootTableName": "Plm_Fabric_Header",
-    "queryText": "SELECT\n  [hdr].[ReferenceId],\n  [ref].[ReferenceCode],\n  [ref].[FolderId],\n  [hdr].[Article],\n  [info].[Fabric_Mill],\n  [info].[Season_3],\n  [hdr].[Description],\n  [hdr].[Supplier_Article_Number],\n  [info].[Print_Solid],\n  [hdr].[Raw_Material_Status],\n  [hdr].[Item_Type],\n  [info].[Sketch],\n  [info].[Original_Reference],\n  [info].[New_Carryover],\n  [hdr].[Classification],\n  [hdr].[Fabric_Type],\n  [info].[Collection_4],\n  [info].[SupplierType],\n  [hdr].[Fabric_Mill] AS [Fabric_Mill__hdr],\n  [cost].[Final_Fabric_Cost__Meter],\n  [cost].[Final_Fabric_Cost__Yard],\n  [hdr].[Total_Composition],\n  [attr].[Total_Composition] AS [Total_Composition__attr],\n  [attr].[Weight],\n  [attr].[Bf__Wash_Swt_Weight]\nFROM [dbo].[Plm_Fabric_Header] AS [hdr]\nLEFT OUTER JOIN [dbo].[Plm_ReferenceBasicInfo] AS [ref]\n  ON [ref].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Fabric_Info] AS [info]\n  ON [info].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Fabric_Cost] AS [cost]\n  ON [cost].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Attributes] AS [attr]\n  ON [attr].[ReferenceId] = [hdr].[ReferenceId]",
+    "queryText": "SELECT\n  [hdr].[ReferenceId],\n  [ref].[ReferenceCode],\n  [ref].[FolderId],\n  [hdr].[Article],\n  [info].[Fabric_Mill],\n  [info].[Season_3],\n  [hdr].[Item_Type],\n  [hdr].[Description],\n  [hdr].[Supplier_Article_Number],\n  [info].[Print_Solid],\n  [hdr].[Raw_Material_Status],\n  [hdr].[Fabric_Type],\n  [info].[Created_By],\n  [hdr].[Fabric_Mill] AS [Fabric_Mill__hdr],\n  [attr].[Total_Composition],\n  [attr].[Bf__Wash_Swt_Weight],\n  [attr].[Aft__Wash_Swt_Weight],\n  [attr].[Weight],\n  [attr].[Thread_Count__Construction],\n  [attr].[__Shrinkage_Warp],\n  [attr].[__Shrinkage_Weft],\n  [attr].[Width],\n  [attr].[Cuttable_Width],\n  [cost].[Final_Fabric_Cost__Meter],\n  [cost].[Final_Fabric_Cost__Yard],\n  [cost].[Payment_Term],\n  [cost].[MOQ],\n  [cost].[MCQ],\n  [cost].[Lead_Time],\n  [cost].[Remarks_6848],\n  [cost].[Rmb_Cost_Per_Meter],\n  [cost].[Rmb_Cost_Per_Yard],\n  [cost].[Rmb_Payment_Terms]\nFROM [dbo].[Plm_Fabric_Header] AS [hdr]\nLEFT OUTER JOIN [dbo].[Plm_ReferenceBasicInfo] AS [ref]\n  ON [ref].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Fabric_Info] AS [info]\n  ON [info].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Fabric_Cost] AS [cost]\n  ON [cost].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Attributes] AS [attr]\n  ON [attr].[ReferenceId] = [hdr].[ReferenceId]",
     "joins": [
       {
         "alias": "hdr",
@@ -122,7 +122,7 @@
   "transactionGroup": {
     "transactionGroupId": 3,
     "groupName": "02 - Fabrics",
-    "primaryTransactionIntegrationId": "Tab_4258"
+    "primaryTransactionIntegrationId": "Tab_4270"
   },
   "criteriaFields": [
     {
@@ -170,8 +170,24 @@
       "plmSubItemId": 3
     },
     {
-      "integrationKey": "criteria_Field23",
-      "displayText": "Field_23",
+      "integrationKey": "criteria_ItemType",
+      "displayText": "Item Type",
+      "sysTableFiledPath": "Item_Type",
+      "sysTableFiledFullPath": "Plm_Fabric_Header.Item_Type",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 4,
+      "isVisible": true,
+      "sort": 40,
+      "defaultValue": "3",
+      "entityIntegrationId": "123",
+      "isReadOnly": true,
+      "plmSubItemId": 3708
+    },
+    {
+      "integrationKey": "criteria_Description",
+      "displayText": "Description",
       "sysTableFiledPath": "Description",
       "sysTableFiledFullPath": "Plm_Fabric_Header.Description",
       "controlType": 2,
@@ -179,7 +195,7 @@
       "positionRow": 2,
       "positionColumn": 1,
       "isVisible": true,
-      "sort": 40,
+      "sort": 50,
       "defaultValue": null,
       "plmSubItemId": 23
     },
@@ -193,7 +209,7 @@
       "positionRow": 2,
       "positionColumn": 2,
       "isVisible": true,
-      "sort": 50,
+      "sort": 60,
       "defaultValue": null,
       "plmSubItemId": 3916
     },
@@ -207,7 +223,7 @@
       "positionRow": 2,
       "positionColumn": 3,
       "isVisible": true,
-      "sort": 60,
+      "sort": 70,
       "defaultValue": null,
       "entityIntegrationId": "3462",
       "plmSubItemId": 3127
@@ -222,31 +238,30 @@
       "positionRow": 3,
       "positionColumn": 1,
       "isVisible": true,
-      "sort": 70,
+      "sort": 80,
       "defaultValue": null,
       "entityIntegrationId": "3461",
       "plmSubItemId": 3128
     },
     {
-      "integrationKey": "criteria_ItemType",
-      "displayText": "Item Type",
-      "sysTableFiledPath": "Item_Type",
-      "sysTableFiledFullPath": "Plm_Fabric_Header.Item_Type",
+      "integrationKey": "criteria_FabricType",
+      "displayText": "Fabric Type",
+      "sysTableFiledPath": "Fabric_Type",
+      "sysTableFiledFullPath": "Plm_Fabric_Header.Fabric_Type",
       "controlType": 1,
       "operationId": 0,
       "positionRow": 3,
       "positionColumn": 3,
       "isVisible": true,
-      "sort": 80,
-      "defaultValue": "3",
-      "entityIntegrationId": "123",
-      "isReadOnly": true,
-      "plmSubItemId": 3708
+      "sort": 90,
+      "defaultValue": null,
+      "entityIntegrationId": "3463",
+      "plmSubItemId": 3130
     }
   ],
   "searchView": {
-    "name": "1b -Fabrics (Grid)",
-    "integrationId": "Search_28902_View",
+    "name": "4c - Fabric Costing (Grid)",
+    "integrationId": "Search_30229_View",
     "viewType": "GridView",
     "gridOutputMode": 1,
     "fields": [
@@ -259,164 +274,207 @@
         "sort": 5
       },
       {
-        "displayText": "Sketch",
-        "sysTableFiledPath": "Sketch",
-        "controlType": 5,
+        "displayText": "Designer",
+        "sysTableFiledPath": "Created_By",
+        "controlType": 2,
         "isVisible": true,
         "sort": 10,
-        "entityIntegrationId": "11",
-        "plmSubItemId": 6
-      },
-      {
-        "displayText": "Fabric #",
-        "sysTableFiledPath": "Article",
-        "controlType": 2,
-        "isVisible": true,
-        "sort": 20,
-        "plmSubItemId": 22
-      },
-      {
-        "displayText": "Description",
-        "sysTableFiledPath": "Description",
-        "controlType": 2,
-        "isVisible": true,
-        "sort": 30,
-        "plmSubItemId": 23
-      },
-      {
-        "displayText": "Original Reference",
-        "sysTableFiledPath": "Original_Reference",
-        "controlType": 2,
-        "isVisible": true,
-        "sort": 40,
-        "plmSubItemId": 5082
-      },
-      {
-        "displayText": "New/Carryover",
-        "sysTableFiledPath": "New_Carryover",
-        "controlType": 1,
-        "isVisible": true,
-        "sort": 50,
-        "entityIntegrationId": "3635",
-        "plmSubItemId": 5083
-      },
-      {
-        "displayText": "Status",
-        "sysTableFiledPath": "Raw_Material_Status",
-        "controlType": 1,
-        "isVisible": true,
-        "sort": 60,
-        "entityIntegrationId": "3461",
-        "plmSubItemId": 3128
-      },
-      {
-        "displayText": "Product Class",
-        "sysTableFiledPath": "Classification",
-        "controlType": 1,
-        "isVisible": true,
-        "sort": 70,
-        "entityIntegrationId": "1",
-        "plmSubItemId": 1
-      },
-      {
-        "displayText": "Fabric Type",
-        "sysTableFiledPath": "Fabric_Type",
-        "controlType": 1,
-        "isVisible": true,
-        "sort": 80,
-        "entityIntegrationId": "3463",
-        "plmSubItemId": 3130
-      },
-      {
-        "displayText": "Season",
-        "sysTableFiledPath": "Season_3",
-        "controlType": 1,
-        "isVisible": true,
-        "sort": 90,
-        "entityIntegrationId": "8",
-        "plmSubItemId": 3
-      },
-      {
-        "displayText": "Collection",
-        "sysTableFiledPath": "Collection_4",
-        "controlType": 1,
-        "isVisible": true,
-        "sort": 100,
-        "entityIntegrationId": "6",
-        "plmSubItemId": 4
-      },
-      {
-        "displayText": "SupplierType",
-        "sysTableFiledPath": "SupplierType",
-        "controlType": 1,
-        "isVisible": true,
-        "sort": 110,
-        "entityIntegrationId": "3535",
-        "plmSubItemId": 3896
+        "plmSubItemId": 189
       },
       {
         "displayText": "Fabric Mill",
         "sysTableFiledPath": "Fabric_Mill__hdr",
         "controlType": 2,
         "isVisible": true,
-        "sort": 120,
+        "sort": 20,
         "plmSubItemId": 3133
       },
       {
-        "displayText": "Supplier Article #",
+        "displayText": "Fabric #",
+        "sysTableFiledPath": "Article",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 30,
+        "plmSubItemId": 22
+      },
+      {
+        "displayText": "Supplier Fabric #",
         "sysTableFiledPath": "Supplier_Article_Number",
         "controlType": 2,
         "isVisible": true,
-        "sort": 130,
+        "sort": 40,
         "plmSubItemId": 3916
       },
       {
-        "displayText": "Cost p/m",
-        "sysTableFiledPath": "Final_Fabric_Cost__Meter",
-        "controlType": 20,
+        "displayText": "Fabric Type",
+        "sysTableFiledPath": "Fabric_Type",
+        "controlType": 1,
         "isVisible": true,
-        "sort": 140,
-        "plmSubItemId": 5094
+        "sort": 50,
+        "entityIntegrationId": "3463",
+        "plmSubItemId": 3130
       },
       {
-        "displayText": "Cost p/y",
-        "sysTableFiledPath": "Final_Fabric_Cost__Yard",
-        "controlType": 20,
+        "displayText": "Description",
+        "sysTableFiledPath": "Description",
+        "controlType": 2,
         "isVisible": true,
-        "sort": 150,
-        "plmSubItemId": 5336
-      },
-      {
-        "displayText": "Original Composition",
-        "sysTableFiledPath": "Total_Composition",
-        "controlType": 4,
-        "isVisible": true,
-        "sort": 160,
-        "plmSubItemId": 4938
+        "sort": 60,
+        "plmSubItemId": 23
       },
       {
         "displayText": "Final Composition",
-        "sysTableFiledPath": "Total_Composition__attr",
+        "sysTableFiledPath": "Total_Composition",
         "controlType": 4,
         "isVisible": true,
-        "sort": 170,
+        "sort": 70,
         "plmSubItemId": 7089
       },
       {
-        "displayText": "Weight",
-        "sysTableFiledPath": "Weight",
-        "controlType": 20,
-        "isVisible": true,
-        "sort": 180,
-        "plmSubItemId": 7141
-      },
-      {
-        "displayText": "Bf. Wash Swt Weight",
+        "displayText": "Weight B/W GSM",
         "sysTableFiledPath": "Bf__Wash_Swt_Weight",
         "controlType": 20,
         "isVisible": true,
-        "sort": 190,
+        "sort": 80,
         "plmSubItemId": 3355
+      },
+      {
+        "displayText": "Weight A/W GSM",
+        "sysTableFiledPath": "Aft__Wash_Swt_Weight",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 90,
+        "plmSubItemId": 3357
+      },
+      {
+        "displayText": "Final Weight GSM",
+        "sysTableFiledPath": "Weight",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 100,
+        "plmSubItemId": 7141
+      },
+      {
+        "displayText": "Construction Yarn Count",
+        "sysTableFiledPath": "Thread_Count__Construction",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 110,
+        "plmSubItemId": 5122
+      },
+      {
+        "displayText": "% Shrkg Warp",
+        "sysTableFiledPath": "__Shrinkage_Warp",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 120,
+        "plmSubItemId": 6877
+      },
+      {
+        "displayText": "% Shrkg Weft",
+        "sysTableFiledPath": "__Shrinkage_Weft",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 130,
+        "plmSubItemId": 6878
+      },
+      {
+        "displayText": "Width \"",
+        "sysTableFiledPath": "Width",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 140,
+        "plmSubItemId": 7144
+      },
+      {
+        "displayText": "Cuttable Width \"",
+        "sysTableFiledPath": "Cuttable_Width",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 150,
+        "plmSubItemId": 3381
+      },
+      {
+        "displayText": "Price/M $USD",
+        "sysTableFiledPath": "Final_Fabric_Cost__Meter",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 160,
+        "plmSubItemId": 5094
+      },
+      {
+        "displayText": "Price/Y $USD",
+        "sysTableFiledPath": "Final_Fabric_Cost__Yard",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 170,
+        "plmSubItemId": 5336
+      },
+      {
+        "displayText": "Payment Terms",
+        "sysTableFiledPath": "Payment_Term",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 180,
+        "entityIntegrationId": "3485",
+        "plmSubItemId": 5339
+      },
+      {
+        "displayText": "MOQ",
+        "sysTableFiledPath": "MOQ",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 190,
+        "plmSubItemId": 6845
+      },
+      {
+        "displayText": "MCQ",
+        "sysTableFiledPath": "MCQ",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 200,
+        "plmSubItemId": 6846
+      },
+      {
+        "displayText": "Lead Time",
+        "sysTableFiledPath": "Lead_Time",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 210,
+        "plmSubItemId": 6847
+      },
+      {
+        "displayText": "Remarks",
+        "sysTableFiledPath": "Remarks_6848",
+        "controlType": 4,
+        "isVisible": true,
+        "sort": 220,
+        "plmSubItemId": 6848
+      },
+      {
+        "displayText": "Rmb Cost/M",
+        "sysTableFiledPath": "Rmb_Cost_Per_Meter",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 230,
+        "plmSubItemId": 7055
+      },
+      {
+        "displayText": "Rmb Cost/Y",
+        "sysTableFiledPath": "Rmb_Cost_Per_Yard",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 240,
+        "plmSubItemId": 7054
+      },
+      {
+        "displayText": "Rmb Payment Terms",
+        "sysTableFiledPath": "Rmb_Payment_Terms",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 250,
+        "entityIntegrationId": "3710",
+        "plmSubItemId": 7056
       }
     ]
   },
@@ -424,7 +482,7 @@
     {
       "name": "Open",
       "actionType": "Edit",
-      "transactionIntegrationId": "Tab_4258",
+      "transactionIntegrationId": "Tab_4270",
       "linkTargetTransactionGroupId": 3,
       "linkTargetTransactionGroupName": "02 - Fabrics",
       "sourceColumn": "ReferenceId",
@@ -433,7 +491,7 @@
     {
       "name": "Create",
       "actionType": "Create",
-      "transactionIntegrationId": "Tab_4258",
+      "transactionIntegrationId": "Tab_4270",
       "linkTargetTransactionGroupId": 3,
       "linkTargetTransactionGroupName": "02 - Fabrics",
       "sourceColumn": "ReferenceId",
@@ -442,19 +500,19 @@
   ],
   "menu": {
     "registerInMainMenu": true,
-    "menuTitle": "1b - Fabric Search",
+    "menuTitle": "3c - Fabric Costing",
     "menuGroup": null
   },
   "coverage": {
     "criteria": {
-      "total": 9,
-      "mapped": 8,
+      "total": 10,
+      "mapped": 9,
       "ignored": 1
     },
     "view": {
-      "total": 20,
-      "mapped": 19,
-      "ignored": 1
+      "total": 25,
+      "mapped": 25,
+      "ignored": 0
     }
   },
   "unmappedPlmFields": [
@@ -462,12 +520,6 @@
       "role": "criteria",
       "displayLabel": "COO",
       "plmSubItemId": 103,
-      "reason": "Not in FieldMapping / ignored"
-    },
-    {
-      "role": "view",
-      "displayLabel": "Supplier",
-      "plmSubItemId": 56,
       "reason": "Not in FieldMapping / ignored"
     }
   ]

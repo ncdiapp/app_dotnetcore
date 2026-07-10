@@ -1,0 +1,315 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-10T15:06:16Z",
+  "source": {
+    "plmSearchTemplateId": 30231,
+    "plmSearchName": "Recap by Fabric",
+    "plmReferenceViewId": 108,
+    "plmReferenceViewName": "Recap by Fabric",
+    "plmBlQueryId": null,
+    "plmDatabase": "plm_live_20260602",
+    "appDatabase": "TenantDB_PLM27",
+    "tablePrefix": "Plm_",
+    "selectedJoinPlanId": "AUTO",
+    "gridColumnStrategy": "exclude",
+    "primaryTableName": "Plm_Style_Header",
+    "referenceScope": {
+      "mode": "StyleHeaderOnly",
+      "notes": "FROM Plm_Style_Header drives row set; LEFT JOIN siblings on ReferenceId."
+    }
+  },
+  "search": {
+    "name": "Recap by Fabric",
+    "description": "Imported from PLM SearchTemplate 30231",
+    "integrationId": "Search_30231",
+    "usageType": "Management",
+    "autoExecute": false,
+    "saasApplicationId": null
+  },
+  "dataSet": {
+    "name": "Recap by Fabric",
+    "queryMode": "SynthesizedFromFieldMapping",
+    "primaryTableName": "Plm_Style_Header",
+    "rootTableName": "Plm_Style_Header",
+    "queryText": "SELECT\n  [hdr].[ReferenceId],\n  [ref].[ReferenceCode],\n  [ref].[FolderId],\n  [sum].[Final_Main_Fabric],\n  [sum].[Final_Total_Composition],\n  [sum].[Final_Weight],\n  [hdr].[Season_3],\n  [hdr].[ProductTypeGroup],\n  [sum].[Final_UOM],\n  [hdr].[Article],\n  [hdr].[Fit_Type_5239],\n  [hdr].[New_Carryover],\n  [hdr].[Ref_Style_from_Past_SS],\n  [sum].[Comments],\n  [hdr].[Sketch]\nFROM [dbo].[Plm_Style_Header] AS [hdr]\nLEFT OUTER JOIN [dbo].[Plm_ReferenceBasicInfo] AS [ref]\n  ON [ref].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Style_Summary] AS [sum]\n  ON [sum].[ReferenceId] = [hdr].[ReferenceId]",
+    "joins": [
+      {
+        "alias": "hdr",
+        "appTableName": "Plm_Style_Header",
+        "joinType": "FROM",
+        "role": "primary",
+        "cardinality": "1:1",
+        "plmTabId": 4251,
+        "isTemplateHeaderTab": true
+      },
+      {
+        "alias": "ref",
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Style_Header",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_ReferenceBasicInfo",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1"
+      },
+      {
+        "alias": "sum",
+        "appTableName": "Plm_Style_Summary",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Style_Header",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_Style_Summary",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1"
+      }
+    ],
+    "filters": [],
+    "tenantDataSourceRegisterId": null
+  },
+  "joinPlan": {
+    "planId": "AUTO",
+    "score": null,
+    "label": "Plm_Style_Header + Plm_ReferenceBasicInfo + Plm_Style_Summary",
+    "semanticSummary": "Auto-selected: primary Plm_Style_Header with LEFT JOIN siblings covering mapped fields.",
+    "tables": [
+      {
+        "appTableName": "Plm_Style_Header",
+        "role": "primary",
+        "joinType": "FROM"
+      },
+      {
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "role": "reference",
+        "joinType": "LEFT"
+      },
+      {
+        "appTableName": "Plm_Style_Summary",
+        "role": "sibling",
+        "joinType": "LEFT"
+      }
+    ]
+  },
+  "transactionGroup": {
+    "transactionGroupId": 1,
+    "groupName": "01 - Apparel - 10 Colorways",
+    "primaryTransactionIntegrationId": "Tab_4251"
+  },
+  "criteriaFields": [
+    {
+      "integrationKey": "criteria_FabricCode",
+      "displayText": "Fabric Code",
+      "sysTableFiledPath": "Final_Main_Fabric",
+      "sysTableFiledFullPath": "Plm_Style_Summary.Final_Main_Fabric",
+      "controlType": 2,
+      "operationId": 7,
+      "positionRow": 1,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 10,
+      "defaultValue": null,
+      "plmSubItemId": 7290
+    },
+    {
+      "integrationKey": "criteria_FabricContent",
+      "displayText": "Fabric Content",
+      "sysTableFiledPath": "Final_Total_Composition",
+      "sysTableFiledFullPath": "Plm_Style_Summary.Final_Total_Composition",
+      "controlType": 4,
+      "operationId": 7,
+      "positionRow": 1,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 20,
+      "defaultValue": null,
+      "plmSubItemId": 7301
+    },
+    {
+      "integrationKey": "criteria_FabricWeight",
+      "displayText": "Fabric Weight",
+      "sysTableFiledPath": "Final_Weight",
+      "sysTableFiledFullPath": "Plm_Style_Summary.Final_Weight",
+      "controlType": 2,
+      "operationId": 0,
+      "positionRow": 2,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 30,
+      "defaultValue": null,
+      "plmSubItemId": 7291
+    },
+    {
+      "integrationKey": "criteria_Season",
+      "displayText": "Season",
+      "sysTableFiledPath": "Season_3",
+      "sysTableFiledFullPath": "Plm_Style_Header.Season_3",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 2,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 40,
+      "defaultValue": null,
+      "entityIntegrationId": "8",
+      "plmSubItemId": 3
+    },
+    {
+      "integrationKey": "criteria_TypeGroup",
+      "displayText": "Type Group",
+      "sysTableFiledPath": "ProductTypeGroup",
+      "sysTableFiledFullPath": "Plm_Style_Header.ProductTypeGroup",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 3,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 50,
+      "defaultValue": null,
+      "entityIntegrationId": "95",
+      "plmSubItemId": 149
+    }
+  ],
+  "searchView": {
+    "name": "Recap by Fabric",
+    "integrationId": "Search_30231_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 5
+      },
+      {
+        "displayText": "Fabric Code",
+        "sysTableFiledPath": "Final_Main_Fabric",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 10,
+        "plmSubItemId": 7290
+      },
+      {
+        "displayText": "Fabric Content",
+        "sysTableFiledPath": "Final_Total_Composition",
+        "controlType": 4,
+        "isVisible": true,
+        "sort": 20,
+        "plmSubItemId": 7301
+      },
+      {
+        "displayText": "Fabric Weight",
+        "sysTableFiledPath": "Final_Weight",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 30,
+        "plmSubItemId": 7291
+      },
+      {
+        "displayText": "UOM",
+        "sysTableFiledPath": "Final_UOM",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 40,
+        "plmSubItemId": 7292
+      },
+      {
+        "displayText": "Style #",
+        "sysTableFiledPath": "Article",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 50,
+        "plmSubItemId": 22
+      },
+      {
+        "displayText": "Fit",
+        "sysTableFiledPath": "Fit_Type_5239",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 60,
+        "entityIntegrationId": "3690",
+        "plmSubItemId": 5239
+      },
+      {
+        "displayText": "New/Carryover",
+        "sysTableFiledPath": "New_Carryover",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 70,
+        "entityIntegrationId": "3635",
+        "plmSubItemId": 5083
+      },
+      {
+        "displayText": "Ref# from Past SS",
+        "sysTableFiledPath": "Ref_Style_from_Past_SS",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 80,
+        "plmSubItemId": 5234
+      },
+      {
+        "displayText": "Comments",
+        "sysTableFiledPath": "Comments",
+        "controlType": 4,
+        "isVisible": true,
+        "sort": 90,
+        "plmSubItemId": 5098
+      },
+      {
+        "displayText": "Sketch",
+        "sysTableFiledPath": "Sketch",
+        "controlType": 5,
+        "isVisible": true,
+        "sort": 100,
+        "entityIntegrationId": "11",
+        "plmSubItemId": 6
+      }
+    ]
+  },
+  "linkTargets": [
+    {
+      "name": "Open",
+      "actionType": "Edit",
+      "transactionIntegrationId": "Tab_4251",
+      "linkTargetTransactionGroupId": 1,
+      "linkTargetTransactionGroupName": "01 - Apparel - 10 Colorways",
+      "sourceColumn": "ReferenceId",
+      "sort": 1
+    },
+    {
+      "name": "Create",
+      "actionType": "Create",
+      "transactionIntegrationId": "Tab_4251",
+      "linkTargetTransactionGroupId": 1,
+      "linkTargetTransactionGroupName": "01 - Apparel - 10 Colorways",
+      "sourceColumn": "ReferenceId",
+      "sort": 2
+    }
+  ],
+  "menu": {
+    "registerInMainMenu": true,
+    "menuTitle": "Recap by Fabric",
+    "menuGroup": null
+  },
+  "coverage": {
+    "criteria": {
+      "total": 5,
+      "mapped": 5,
+      "ignored": 0
+    },
+    "view": {
+      "total": 11,
+      "mapped": 10,
+      "ignored": 1
+    }
+  },
+  "unmappedPlmFields": [
+    {
+      "role": "view",
+      "displayLabel": "Colors",
+      "plmSubItemId": 7354,
+      "reason": "Not in FieldMapping / ignored"
+    }
+  ]
+}

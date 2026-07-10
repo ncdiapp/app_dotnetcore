@@ -1,0 +1,262 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-10T15:06:16Z",
+  "source": {
+    "plmSearchTemplateId": 30207,
+    "plmSearchName": "3a - Color Palette Search",
+    "plmReferenceViewId": 96,
+    "plmReferenceViewName": "4b - Color Palette (Grid)",
+    "plmBlQueryId": null,
+    "plmDatabase": "plm_live_20260602",
+    "appDatabase": "TenantDB_PLM27",
+    "tablePrefix": "Plm_",
+    "selectedJoinPlanId": "AUTO",
+    "gridColumnStrategy": "exclude",
+    "primaryTableName": "Plm_Color_Patette_Header",
+    "referenceScope": {
+      "mode": "ColorPaletteHeaderOnly",
+      "notes": "FROM Plm_Color_Patette_Header drives row set; LEFT JOIN siblings on ReferenceId."
+    }
+  },
+  "search": {
+    "name": "3a - Color Palette Search",
+    "description": "Imported from PLM SearchTemplate 30207",
+    "integrationId": "Search_30207",
+    "usageType": "Management",
+    "autoExecute": false,
+    "saasApplicationId": null
+  },
+  "dataSet": {
+    "name": "3a - Color Palette Search",
+    "queryMode": "SynthesizedFromFieldMapping",
+    "primaryTableName": "Plm_Color_Patette_Header",
+    "rootTableName": "Plm_Color_Patette_Header",
+    "queryText": "SELECT\n  [hdr].[ReferenceId],\n  [ref].[ReferenceCode],\n  [ref].[FolderId],\n  [hdr].[Article],\n  [hdr].[Season],\n  [hdr].[Product_Class],\n  [hdr].[Tech_Pack_Type],\n  [hdr].[Description],\n  [hdr].[Brand]\nFROM [dbo].[Plm_Color_Patette_Header] AS [hdr]\nLEFT OUTER JOIN [dbo].[Plm_ReferenceBasicInfo] AS [ref]\n  ON [ref].[ReferenceId] = [hdr].[ReferenceId]",
+    "joins": [
+      {
+        "alias": "hdr",
+        "appTableName": "Plm_Color_Patette_Header",
+        "joinType": "FROM",
+        "role": "primary",
+        "cardinality": "1:1",
+        "plmTabId": 4254,
+        "isTemplateHeaderTab": true
+      },
+      {
+        "alias": "ref",
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Color_Patette_Header",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_ReferenceBasicInfo",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1"
+      }
+    ],
+    "filters": [],
+    "tenantDataSourceRegisterId": null
+  },
+  "joinPlan": {
+    "planId": "AUTO",
+    "score": null,
+    "label": "Plm_Color_Patette_Header + Plm_ReferenceBasicInfo",
+    "semanticSummary": "Auto-selected: primary Plm_Color_Patette_Header with LEFT JOIN siblings covering mapped fields.",
+    "tables": [
+      {
+        "appTableName": "Plm_Color_Patette_Header",
+        "role": "primary",
+        "joinType": "FROM"
+      },
+      {
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "role": "reference",
+        "joinType": "LEFT"
+      }
+    ]
+  },
+  "transactionGroup": {
+    "transactionGroupId": 8,
+    "groupName": "08 - Color Palette",
+    "primaryTransactionIntegrationId": "Tab_4254"
+  },
+  "criteriaFields": [
+    {
+      "integrationKey": "criteria_ColorPaletteName",
+      "displayText": "Color Palette Name",
+      "sysTableFiledPath": "Article",
+      "sysTableFiledFullPath": "Plm_Color_Patette_Header.Article",
+      "controlType": 2,
+      "operationId": 7,
+      "positionRow": 1,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 10,
+      "defaultValue": null,
+      "plmSubItemId": 22
+    },
+    {
+      "integrationKey": "criteria_SellingPeriod",
+      "displayText": "Selling-Period",
+      "sysTableFiledPath": "Season",
+      "sysTableFiledFullPath": "Plm_Color_Patette_Header.Season",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 20,
+      "defaultValue": null,
+      "entityIntegrationId": "8",
+      "plmSubItemId": 3
+    },
+    {
+      "integrationKey": "criteria_ProductClass",
+      "displayText": "Product Class",
+      "sysTableFiledPath": "Product_Class",
+      "sysTableFiledFullPath": "Plm_Color_Patette_Header.Product_Class",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 30,
+      "defaultValue": null,
+      "entityIntegrationId": "1",
+      "plmSubItemId": 6739
+    },
+    {
+      "integrationKey": "criteria_ItemType",
+      "displayText": "Item Type",
+      "sysTableFiledPath": "Tech_Pack_Type",
+      "sysTableFiledFullPath": "Plm_Color_Patette_Header.Tech_Pack_Type",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 4,
+      "isVisible": true,
+      "sort": 40,
+      "defaultValue": "33",
+      "entityIntegrationId": "123",
+      "isReadOnly": true,
+      "plmSubItemId": 6740
+    }
+  ],
+  "searchView": {
+    "name": "4b - Color Palette (Grid)",
+    "integrationId": "Search_30207_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 5
+      },
+      {
+        "displayText": "Color Palette Name",
+        "sysTableFiledPath": "Article",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 10,
+        "plmSubItemId": 22
+      },
+      {
+        "displayText": "Description",
+        "sysTableFiledPath": "Description",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 20,
+        "plmSubItemId": 23
+      },
+      {
+        "displayText": "Product Class",
+        "sysTableFiledPath": "Product_Class",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 30,
+        "entityIntegrationId": "1",
+        "plmSubItemId": 6739
+      },
+      {
+        "displayText": "Bard Label",
+        "sysTableFiledPath": "Brand",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 40,
+        "entityIntegrationId": "93",
+        "plmSubItemId": 141
+      },
+      {
+        "displayText": "Selling-Period",
+        "sysTableFiledPath": "Season",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 50,
+        "entityIntegrationId": "8",
+        "plmSubItemId": 3
+      }
+    ]
+  },
+  "linkTargets": [
+    {
+      "name": "Open",
+      "actionType": "Edit",
+      "transactionIntegrationId": "Tab_4254",
+      "linkTargetTransactionGroupId": 8,
+      "linkTargetTransactionGroupName": "08 - Color Palette",
+      "sourceColumn": "ReferenceId",
+      "sort": 1
+    },
+    {
+      "name": "Create",
+      "actionType": "Create",
+      "transactionIntegrationId": "Tab_4254",
+      "linkTargetTransactionGroupId": 8,
+      "linkTargetTransactionGroupName": "08 - Color Palette",
+      "sourceColumn": "ReferenceId",
+      "sort": 2
+    }
+  ],
+  "menu": {
+    "registerInMainMenu": true,
+    "menuTitle": "3a - Color Palette Search",
+    "menuGroup": null
+  },
+  "coverage": {
+    "criteria": {
+      "total": 4,
+      "mapped": 4,
+      "ignored": 0
+    },
+    "view": {
+      "total": 9,
+      "mapped": 5,
+      "ignored": 4
+    }
+  },
+  "unmappedPlmFields": [
+    {
+      "role": "view",
+      "displayLabel": "LastRevisedBy",
+      "reason": "No SubItemId"
+    },
+    {
+      "role": "view",
+      "displayLabel": "LastRevisedByDate",
+      "reason": "No SubItemId"
+    },
+    {
+      "role": "view",
+      "displayLabel": "CreatedBy",
+      "reason": "No SubItemId"
+    },
+    {
+      "role": "view",
+      "displayLabel": "CreatedDate",
+      "reason": "No SubItemId"
+    }
+  ]
+}

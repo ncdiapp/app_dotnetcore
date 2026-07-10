@@ -1,0 +1,524 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-10T15:06:16Z",
+  "source": {
+    "plmSearchTemplateId": 30233,
+    "plmSearchName": "2a - Robert's Board-20",
+    "plmReferenceViewId": 104,
+    "plmReferenceViewName": "4a - Robert's Board View",
+    "plmBlQueryId": null,
+    "plmDatabase": "plm_live_20260602",
+    "appDatabase": "TenantDB_PLM27",
+    "tablePrefix": "Plm_",
+    "selectedJoinPlanId": "AUTO",
+    "gridColumnStrategy": "exclude",
+    "primaryTableName": "Plm_Style_Header",
+    "referenceScope": {
+      "mode": "StyleHeaderOnly",
+      "notes": "FROM Plm_Style_Header drives row set; LEFT JOIN siblings on ReferenceId."
+    }
+  },
+  "search": {
+    "name": "2a - Robert's Board-20",
+    "description": "Imported from PLM SearchTemplate 30233",
+    "integrationId": "Search_30233",
+    "usageType": "Management",
+    "autoExecute": false,
+    "saasApplicationId": null
+  },
+  "dataSet": {
+    "name": "2a - Robert's Board-20",
+    "queryMode": "SynthesizedFromFieldMapping",
+    "primaryTableName": "Plm_Style_Header",
+    "rootTableName": "Plm_Style_Header",
+    "queryText": "SELECT\n  [hdr].[ReferenceId],\n  [ref].[ReferenceCode],\n  [ref].[FolderId],\n  [hdr].[Classification],\n  [hdr].[Season_3],\n  [hdr].[Item_Type],\n  [hdr].[Article],\n  [hdr].[ProductTypeGroup],\n  [hdr].[Collection_4],\n  [hdr].[Name],\n  [hdr].[Product_Type_2],\n  [hdr].[Group],\n  [hdr].[Description_23],\n  [hdr].[Garment_Factory],\n  [hdr].[Style_Status],\n  [hdr].[Size_Range_10],\n  [hdr].[Long_Description],\n  [hdr].[Manufacturer_COO]\nFROM [dbo].[Plm_Style_Header] AS [hdr]\nLEFT OUTER JOIN [dbo].[Plm_ReferenceBasicInfo] AS [ref]\n  ON [ref].[ReferenceId] = [hdr].[ReferenceId]",
+    "joins": [
+      {
+        "alias": "hdr",
+        "appTableName": "Plm_Style_Header",
+        "joinType": "FROM",
+        "role": "primary",
+        "cardinality": "1:1",
+        "plmTabId": 4251,
+        "isTemplateHeaderTab": true
+      },
+      {
+        "alias": "ref",
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Style_Header",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_ReferenceBasicInfo",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1"
+      }
+    ],
+    "filters": [],
+    "tenantDataSourceRegisterId": null
+  },
+  "joinPlan": {
+    "planId": "AUTO",
+    "score": null,
+    "label": "Plm_Style_Header + Plm_ReferenceBasicInfo",
+    "semanticSummary": "Auto-selected: primary Plm_Style_Header with LEFT JOIN siblings covering mapped fields.",
+    "tables": [
+      {
+        "appTableName": "Plm_Style_Header",
+        "role": "primary",
+        "joinType": "FROM"
+      },
+      {
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "role": "reference",
+        "joinType": "LEFT"
+      }
+    ]
+  },
+  "transactionGroup": {
+    "transactionGroupId": 1,
+    "groupName": "01 - Apparel - 10 Colorways",
+    "primaryTransactionIntegrationId": "Tab_4251"
+  },
+  "criteriaFields": [
+    {
+      "integrationKey": "criteria_RefNo",
+      "displayText": "Ref No.",
+      "sysTableFiledPath": "ReferenceId",
+      "sysTableFiledFullPath": "Plm_Style_Header.ReferenceId",
+      "controlType": 20,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 10,
+      "defaultValue": null
+    },
+    {
+      "integrationKey": "criteria_ProductClass",
+      "displayText": "Product Class",
+      "sysTableFiledPath": "Classification",
+      "sysTableFiledFullPath": "Plm_Style_Header.Classification",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 20,
+      "defaultValue": null,
+      "entityIntegrationId": "1",
+      "plmSubItemId": 1
+    },
+    {
+      "integrationKey": "criteria_Season",
+      "displayText": "Season",
+      "sysTableFiledPath": "Season_3",
+      "sysTableFiledFullPath": "Plm_Style_Header.Season_3",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 30,
+      "defaultValue": null,
+      "entityIntegrationId": "8",
+      "plmSubItemId": 3
+    },
+    {
+      "integrationKey": "criteria_ItemType",
+      "displayText": "Item Type",
+      "sysTableFiledPath": "Item_Type",
+      "sysTableFiledFullPath": "Plm_Style_Header.Item_Type",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 4,
+      "isVisible": true,
+      "sort": 40,
+      "defaultValue": "2",
+      "entityIntegrationId": "123",
+      "plmSubItemId": 3707
+    },
+    {
+      "integrationKey": "criteria_Style",
+      "displayText": "Style #",
+      "sysTableFiledPath": "Article",
+      "sysTableFiledFullPath": "Plm_Style_Header.Article",
+      "controlType": 2,
+      "operationId": 7,
+      "positionRow": 2,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 50,
+      "defaultValue": null,
+      "plmSubItemId": 22
+    },
+    {
+      "integrationKey": "criteria_TypeGroup",
+      "displayText": "Type Group",
+      "sysTableFiledPath": "ProductTypeGroup",
+      "sysTableFiledFullPath": "Plm_Style_Header.ProductTypeGroup",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 2,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 60,
+      "defaultValue": null,
+      "entityIntegrationId": "95",
+      "plmSubItemId": 149
+    },
+    {
+      "integrationKey": "criteria_Collection",
+      "displayText": "Collection",
+      "sysTableFiledPath": "Collection_4",
+      "sysTableFiledFullPath": "Plm_Style_Header.Collection_4",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 2,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 70,
+      "defaultValue": null,
+      "entityIntegrationId": "6",
+      "plmSubItemId": 4
+    },
+    {
+      "integrationKey": "criteria_Name",
+      "displayText": "Name",
+      "sysTableFiledPath": "Name",
+      "sysTableFiledFullPath": "Plm_Style_Header.Name",
+      "controlType": 2,
+      "operationId": 7,
+      "positionRow": 3,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 80,
+      "defaultValue": null,
+      "plmSubItemId": 7028
+    },
+    {
+      "integrationKey": "criteria_ProductType",
+      "displayText": "Product Type",
+      "sysTableFiledPath": "Product_Type_2",
+      "sysTableFiledFullPath": "Plm_Style_Header.Product_Type_2",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 3,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 90,
+      "defaultValue": null,
+      "entityIntegrationId": "4",
+      "plmSubItemId": 2
+    },
+    {
+      "integrationKey": "criteria_Group",
+      "displayText": "Group",
+      "sysTableFiledPath": "Group",
+      "sysTableFiledFullPath": "Plm_Style_Header.Group",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 3,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 100,
+      "defaultValue": null,
+      "entityIntegrationId": "7",
+      "plmSubItemId": 5
+    },
+    {
+      "integrationKey": "criteria_Description",
+      "displayText": "Description",
+      "sysTableFiledPath": "Description_23",
+      "sysTableFiledFullPath": "Plm_Style_Header.Description_23",
+      "controlType": 2,
+      "operationId": 7,
+      "positionRow": 4,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 110,
+      "defaultValue": null,
+      "plmSubItemId": 23
+    },
+    {
+      "integrationKey": "criteria_GarmentFactory",
+      "displayText": "Garment Factory",
+      "sysTableFiledPath": "Garment_Factory",
+      "sysTableFiledFullPath": "Plm_Style_Header.Garment_Factory",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 4,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 120,
+      "defaultValue": null,
+      "entityIntegrationId": "4758",
+      "plmSubItemId": 6887
+    },
+    {
+      "integrationKey": "criteria_StyleStatus",
+      "displayText": "Style Status",
+      "sysTableFiledPath": "Style_Status",
+      "sysTableFiledFullPath": "Plm_Style_Header.Style_Status",
+      "controlType": 1,
+      "operationId": 13,
+      "positionRow": 4,
+      "positionColumn": 4,
+      "isVisible": true,
+      "sort": 130,
+      "defaultValue": "2924",
+      "entityIntegrationId": "3501",
+      "plmSubItemId": 3004
+    }
+  ],
+  "searchView": {
+    "name": "4a - Robert's Board View",
+    "integrationId": "Search_30233_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 5
+      },
+      {
+        "displayText": "Product Class",
+        "sysTableFiledPath": "Classification",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 10,
+        "entityIntegrationId": "1",
+        "plmSubItemId": 1
+      },
+      {
+        "displayText": "Style #",
+        "sysTableFiledPath": "Article",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 20,
+        "plmSubItemId": 22
+      },
+      {
+        "displayText": "Product Type",
+        "sysTableFiledPath": "Product_Type_2",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 30,
+        "entityIntegrationId": "4",
+        "plmSubItemId": 2
+      },
+      {
+        "displayText": "Collection",
+        "sysTableFiledPath": "Collection_4",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 40,
+        "entityIntegrationId": "6",
+        "plmSubItemId": 4
+      },
+      {
+        "displayText": "Size Range",
+        "sysTableFiledPath": "Size_Range_10",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 50,
+        "entityIntegrationId": "10",
+        "plmSubItemId": 10
+      },
+      {
+        "displayText": "Long Description",
+        "sysTableFiledPath": "Long_Description",
+        "controlType": 4,
+        "isVisible": true,
+        "sort": 60,
+        "plmSubItemId": 121
+      },
+      {
+        "displayText": "Factory",
+        "sysTableFiledPath": "Garment_Factory",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 70,
+        "entityIntegrationId": "4758",
+        "plmSubItemId": 6887
+      },
+      {
+        "displayText": "COO",
+        "sysTableFiledPath": "Manufacturer_COO",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 80,
+        "entityIntegrationId": "59",
+        "plmSubItemId": 6805
+      }
+    ]
+  },
+  "linkTargets": [
+    {
+      "name": "Open",
+      "actionType": "Edit",
+      "transactionIntegrationId": "Tab_4251",
+      "linkTargetTransactionGroupId": 1,
+      "linkTargetTransactionGroupName": "01 - Apparel - 10 Colorways",
+      "sourceColumn": "ReferenceId",
+      "sort": 1
+    },
+    {
+      "name": "Create",
+      "actionType": "Create",
+      "transactionIntegrationId": "Tab_4251",
+      "linkTargetTransactionGroupId": 1,
+      "linkTargetTransactionGroupName": "01 - Apparel - 10 Colorways",
+      "sourceColumn": "ReferenceId",
+      "sort": 2
+    }
+  ],
+  "menu": {
+    "registerInMainMenu": true,
+    "menuTitle": "2a - Robert's Board-20",
+    "menuGroup": null
+  },
+  "coverage": {
+    "criteria": {
+      "total": 16,
+      "mapped": 13,
+      "ignored": 3
+    },
+    "view": {
+      "total": 26,
+      "mapped": 8,
+      "ignored": 18
+    }
+  },
+  "unmappedPlmFields": [
+    {
+      "role": "criteria",
+      "displayLabel": "Main",
+      "plmSubItemId": 6787,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "criteria",
+      "displayLabel": "Active",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "criteria",
+      "displayLabel": "CreatedBy",
+      "reason": "No SubItemId / not in FieldMapping"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Color",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Fabric Type",
+      "plmSubItemId": 5345,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "CAN Qty",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "USA Qty",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Final Total Composition",
+      "plmSubItemId": 5345,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "FOB Price",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "CAN Qty Total",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "USA Qty Total",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "CAD VIP/Price",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "CAD WS Price",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "CAD RET Price",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "USD VIP/Price",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "USD WS Price",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "USD RET Price",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "CAN PO #s",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "CAN ETA",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "USA PO #s",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    },
+    {
+      "role": "view",
+      "displayLabel": "USA ETA",
+      "plmSubItemId": 35,
+      "reason": "Not in FieldMapping / ignored"
+    }
+  ]
+}

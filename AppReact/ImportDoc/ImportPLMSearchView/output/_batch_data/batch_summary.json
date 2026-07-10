@@ -1,0 +1,337 @@
+{
+  "generated": [
+    {
+      "id": 23902,
+      "name": "1c - Trim Search",
+      "integrationId": "Search_23902",
+      "primary": "Plm_Trim_Header",
+      "criteria": {
+        "total": 11,
+        "mapped": 9,
+        "ignored": 2
+      },
+      "view": {
+        "total": 22,
+        "mapped": 14,
+        "ignored": 8
+      }
+    },
+    {
+      "id": 24002,
+      "name": "2c - Packaging Search",
+      "integrationId": "Search_24002",
+      "primary": "Plm_Packaging_Header",
+      "criteria": {
+        "total": 11,
+        "mapped": 8,
+        "ignored": 3
+      },
+      "view": {
+        "total": 20,
+        "mapped": 12,
+        "ignored": 8
+      }
+    },
+    {
+      "id": 24102,
+      "name": "2b - Label Search",
+      "integrationId": "Search_24102",
+      "primary": "Plm_Label_Header",
+      "criteria": {
+        "total": 12,
+        "mapped": 10,
+        "ignored": 2
+      },
+      "view": {
+        "total": 23,
+        "mapped": 15,
+        "ignored": 8
+      }
+    },
+    {
+      "id": 25402,
+      "name": "4a - Publish To Erp Status",
+      "integrationId": "Search_25402",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 13,
+        "mapped": 11,
+        "ignored": 2
+      },
+      "view": {
+        "total": 11,
+        "mapped": 10,
+        "ignored": 1
+      }
+    },
+    {
+      "id": 28902,
+      "name": "1b - Fabric Search",
+      "integrationId": "Search_28902",
+      "primary": "Plm_Fabric_Header",
+      "criteria": {
+        "total": 9,
+        "mapped": 8,
+        "ignored": 1
+      },
+      "view": {
+        "total": 20,
+        "mapped": 19,
+        "ignored": 1
+      }
+    },
+    {
+      "id": 30206,
+      "name": "3b - Artwork Search",
+      "integrationId": "Search_30206",
+      "primary": "Plm_Artwork_Details",
+      "criteria": {
+        "total": 6,
+        "mapped": 5,
+        "ignored": 1
+      },
+      "view": {
+        "total": 10,
+        "mapped": 10,
+        "ignored": 0
+      }
+    },
+    {
+      "id": 30207,
+      "name": "3a - Color Palette Search",
+      "integrationId": "Search_30207",
+      "primary": "Plm_Color_Patette_Header",
+      "criteria": {
+        "total": 4,
+        "mapped": 4,
+        "ignored": 0
+      },
+      "view": {
+        "total": 9,
+        "mapped": 5,
+        "ignored": 4
+      }
+    },
+    {
+      "id": 30213,
+      "name": "Bottoms Long",
+      "integrationId": "Search_30213",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 12,
+        "mapped": 9,
+        "ignored": 3
+      },
+      "view": {
+        "total": 24,
+        "mapped": 16,
+        "ignored": 8
+      }
+    },
+    {
+      "id": 30214,
+      "name": "Bottoms Short",
+      "integrationId": "Search_30214",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 12,
+        "mapped": 9,
+        "ignored": 3
+      },
+      "view": {
+        "total": 24,
+        "mapped": 16,
+        "ignored": 8
+      }
+    },
+    {
+      "id": 30215,
+      "name": "Shirts",
+      "integrationId": "Search_30215",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 14,
+        "mapped": 10,
+        "ignored": 4
+      },
+      "view": {
+        "total": 24,
+        "mapped": 16,
+        "ignored": 8
+      }
+    },
+    {
+      "id": 30216,
+      "name": "Tops",
+      "integrationId": "Search_30216",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 14,
+        "mapped": 10,
+        "ignored": 4
+      },
+      "view": {
+        "total": 24,
+        "mapped": 16,
+        "ignored": 8
+      }
+    },
+    {
+      "id": 30217,
+      "name": "Swimwear",
+      "integrationId": "Search_30217",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 14,
+        "mapped": 10,
+        "ignored": 4
+      },
+      "view": {
+        "total": 24,
+        "mapped": 16,
+        "ignored": 8
+      }
+    },
+    {
+      "id": 30218,
+      "name": "Outerwear",
+      "integrationId": "Search_30218",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 12,
+        "mapped": 9,
+        "ignored": 3
+      },
+      "view": {
+        "total": 24,
+        "mapped": 16,
+        "ignored": 8
+      }
+    },
+    {
+      "id": 30219,
+      "name": "Suiting",
+      "integrationId": "Search_30219",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 12,
+        "mapped": 9,
+        "ignored": 3
+      },
+      "view": {
+        "total": 24,
+        "mapped": 16,
+        "ignored": 8
+      }
+    },
+    {
+      "id": 30221,
+      "name": "Sweaters",
+      "integrationId": "Search_30221",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 14,
+        "mapped": 10,
+        "ignored": 4
+      },
+      "view": {
+        "total": 24,
+        "mapped": 16,
+        "ignored": 8
+      }
+    },
+    {
+      "id": 30223,
+      "name": "2a - Robert's Board-10",
+      "integrationId": "Search_30223",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 16,
+        "mapped": 13,
+        "ignored": 3
+      },
+      "view": {
+        "total": 26,
+        "mapped": 8,
+        "ignored": 18
+      }
+    },
+    {
+      "id": 30228,
+      "name": "Betty's Requests",
+      "integrationId": "Search_30228",
+      "primary": "Plm_Graphic_Requests",
+      "criteria": {
+        "total": 10,
+        "mapped": 10,
+        "ignored": 0
+      },
+      "view": {
+        "total": 18,
+        "mapped": 16,
+        "ignored": 2
+      }
+    },
+    {
+      "id": 30229,
+      "name": "3c - Fabric Costing",
+      "integrationId": "Search_30229",
+      "primary": "Plm_Fabric_Header",
+      "criteria": {
+        "total": 10,
+        "mapped": 9,
+        "ignored": 1
+      },
+      "view": {
+        "total": 25,
+        "mapped": 25,
+        "ignored": 0
+      }
+    },
+    {
+      "id": 30231,
+      "name": "Recap by Fabric",
+      "integrationId": "Search_30231",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 5,
+        "mapped": 5,
+        "ignored": 0
+      },
+      "view": {
+        "total": 11,
+        "mapped": 10,
+        "ignored": 1
+      }
+    },
+    {
+      "id": 30233,
+      "name": "2a - Robert's Board-20",
+      "integrationId": "Search_30233",
+      "primary": "Plm_Style_Header",
+      "criteria": {
+        "total": 16,
+        "mapped": 13,
+        "ignored": 3
+      },
+      "view": {
+        "total": 26,
+        "mapped": 8,
+        "ignored": 18
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "id": 26202,
+      "reason": "No imported Request Header table / SubItem 3865 not in FieldMapping",
+      "name": "Vendor Request"
+    },
+    {
+      "id": 30224,
+      "reason": "Trims Approval/Tracking are GridColumn-only; exclude strategy cannot cover criteria/view",
+      "name": "Trims Approval"
+    }
+  ],
+  "errors": []
+}

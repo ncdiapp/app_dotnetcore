@@ -1,0 +1,22 @@
+23902	1c - Trim Search	NULL	3	0	1c - Trims
+24002	2c - Packaging Search	NULL	5	0	3c - Packaging
+24102	2b - Label Search	NULL	6	0	2c - Labels
+25402	4a - Publish To Erp Status	NULL	26	1	1 - Publish to ERP Status
+26202	Vendor Request	NULL	25	0	Zzz - Style Costing Request (Grid)
+28902	1b - Fabric Search	NULL	4	1	1b -Fabrics (Grid)
+30206	3b - Artwork Search	NULL	95	0	3b - Artwork
+30207	3a - Color Palette Search	NULL	96	0	4b - Color Palette (Grid)
+30213	Bottoms Long	NULL	2	1	1a - Styles (Grid)
+30214	Bottoms Short	NULL	2	1	1a - Styles (Grid)
+30215	Shirts	NULL	2	1	1a - Styles (Grid)
+30216	Tops	NULL	2	1	1a - Styles (Grid)
+30217	Swimwear	NULL	2	1	1a - Styles (Grid)
+30218	Outerwear	NULL	2	1	1a - Styles (Grid)
+30219	Suiting	NULL	2	1	1a - Styles (Grid)
+30221	Sweaters	NULL	2	1	1a - Styles (Grid)
+30223	2a - Robert's Board-10	NULL	104	0	4a - Robert's Board View
+30224	Trims Approval	NULL	103	0	5b - Trim Tracking
+30228	Betty's Requests	NULL	97	1	5c - Graphic Request Tracking
+30229	3c - Fabric Costing	NULL	105	1	4c - Fabric Costing (Grid)
+30231	Recap by Fabric	NULL	108	0	Recap by Fabric
+30233	2a - Robert's Board-20	NULL	104	0	4a - Robert's Board View

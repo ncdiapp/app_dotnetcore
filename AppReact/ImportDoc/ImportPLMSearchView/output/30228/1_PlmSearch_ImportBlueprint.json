@@ -1,0 +1,430 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-10T15:06:16Z",
+  "source": {
+    "plmSearchTemplateId": 30228,
+    "plmSearchName": "Betty's Requests",
+    "plmReferenceViewId": 97,
+    "plmReferenceViewName": "5c - Graphic Request Tracking",
+    "plmBlQueryId": null,
+    "plmDatabase": "plm_live_20260602",
+    "appDatabase": "TenantDB_PLM27",
+    "tablePrefix": "Plm_",
+    "selectedJoinPlanId": "AUTO",
+    "gridColumnStrategy": "exclude",
+    "primaryTableName": "Plm_Graphic_Requests",
+    "referenceScope": {
+      "mode": "GraphicRequestsOnly",
+      "notes": "FROM Plm_Graphic_Requests drives row set; LEFT JOIN siblings on ReferenceId."
+    }
+  },
+  "search": {
+    "name": "Betty's Requests",
+    "description": "Imported from PLM SearchTemplate 30228",
+    "integrationId": "Search_30228",
+    "usageType": "Management",
+    "autoExecute": true,
+    "saasApplicationId": null
+  },
+  "dataSet": {
+    "name": "Betty's Requests",
+    "queryMode": "SynthesizedFromFieldMapping",
+    "primaryTableName": "Plm_Graphic_Requests",
+    "rootTableName": "Plm_Graphic_Requests",
+    "queryText": "SELECT\n  [hdr].[ReferenceId],\n  [ref].[ReferenceCode],\n  [ref].[FolderId],\n  [hdr].[Graphic_Req],\n  [hdr].[Request_Date],\n  [hdr].[Request_By],\n  [hdr].[Item_Type],\n  [hdr].[Request_Type],\n  [hdr].[Handled_By],\n  [hdr].[Status],\n  [hdr].[Deliver_By],\n  [hdr].[Additional_Info],\n  [hdr].[Request_Name],\n  [hdr].[Can_Complete_By],\n  [hdr].[Days_Needed],\n  [hdr].[Extra_Time_Needed],\n  [hdr].[Revised_Complete_By],\n  [hdr].[Performed_By],\n  [hdr].[Completed_Date],\n  [hdr].[Attachment_6841]\nFROM [dbo].[Plm_Graphic_Requests] AS [hdr]\nLEFT OUTER JOIN [dbo].[Plm_ReferenceBasicInfo] AS [ref]\n  ON [ref].[ReferenceId] = [hdr].[ReferenceId]",
+    "joins": [
+      {
+        "alias": "hdr",
+        "appTableName": "Plm_Graphic_Requests",
+        "joinType": "FROM",
+        "role": "primary",
+        "cardinality": "1:1",
+        "plmTabId": 4259,
+        "isTemplateHeaderTab": true
+      },
+      {
+        "alias": "ref",
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Graphic_Requests",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_ReferenceBasicInfo",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1"
+      }
+    ],
+    "filters": [],
+    "tenantDataSourceRegisterId": null
+  },
+  "joinPlan": {
+    "planId": "AUTO",
+    "score": null,
+    "label": "Plm_Graphic_Requests + Plm_ReferenceBasicInfo",
+    "semanticSummary": "Auto-selected: primary Plm_Graphic_Requests with LEFT JOIN siblings covering mapped fields.",
+    "tables": [
+      {
+        "appTableName": "Plm_Graphic_Requests",
+        "role": "primary",
+        "joinType": "FROM"
+      },
+      {
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "role": "reference",
+        "joinType": "LEFT"
+      }
+    ]
+  },
+  "transactionGroup": {
+    "transactionGroupId": 9,
+    "groupName": "09 - Graphic Requests",
+    "primaryTransactionIntegrationId": "Tab_4259"
+  },
+  "criteriaFields": [
+    {
+      "integrationKey": "criteria_GraphicReq",
+      "displayText": "Graphic Req #",
+      "sysTableFiledPath": "Graphic_Req",
+      "sysTableFiledFullPath": "Plm_Graphic_Requests.Graphic_Req",
+      "controlType": 23,
+      "operationId": 7,
+      "positionRow": 1,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 10,
+      "defaultValue": null,
+      "plmSubItemId": 6832
+    },
+    {
+      "integrationKey": "criteria_RequestDate",
+      "displayText": "Request Date",
+      "sysTableFiledPath": "Request_Date",
+      "sysTableFiledFullPath": "Plm_Graphic_Requests.Request_Date",
+      "controlType": 7,
+      "operationId": 3,
+      "positionRow": 1,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 20,
+      "defaultValue": null,
+      "plmSubItemId": 6818
+    },
+    {
+      "integrationKey": "criteria_RequestBy",
+      "displayText": "Request By",
+      "sysTableFiledPath": "Request_By",
+      "sysTableFiledFullPath": "Plm_Graphic_Requests.Request_By",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 30,
+      "defaultValue": "259",
+      "entityIntegrationId": "80",
+      "isReadOnly": true,
+      "plmSubItemId": 6819
+    },
+    {
+      "integrationKey": "criteria_ItemType",
+      "displayText": "Item Type",
+      "sysTableFiledPath": "Item_Type",
+      "sysTableFiledFullPath": "Plm_Graphic_Requests.Item_Type",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 4,
+      "isVisible": true,
+      "sort": 40,
+      "defaultValue": "34",
+      "entityIntegrationId": "123",
+      "isReadOnly": true,
+      "plmSubItemId": 6844
+    },
+    {
+      "integrationKey": "criteria_RequestType",
+      "displayText": "Request Type",
+      "sysTableFiledPath": "Request_Type",
+      "sysTableFiledFullPath": "Plm_Graphic_Requests.Request_Type",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 2,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 50,
+      "defaultValue": null,
+      "entityIntegrationId": "4735",
+      "plmSubItemId": 6817
+    },
+    {
+      "integrationKey": "criteria_RequestDate",
+      "displayText": "Request Date",
+      "sysTableFiledPath": "Request_Date",
+      "sysTableFiledFullPath": "Plm_Graphic_Requests.Request_Date",
+      "controlType": 7,
+      "operationId": 5,
+      "positionRow": 2,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 60,
+      "defaultValue": null,
+      "plmSubItemId": 6818
+    },
+    {
+      "integrationKey": "criteria_HandledBy",
+      "displayText": "Handled By",
+      "sysTableFiledPath": "Handled_By",
+      "sysTableFiledFullPath": "Plm_Graphic_Requests.Handled_By",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 2,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 70,
+      "defaultValue": null,
+      "entityIntegrationId": "4780",
+      "plmSubItemId": 6833
+    },
+    {
+      "integrationKey": "criteria_Status",
+      "displayText": "Status",
+      "sysTableFiledPath": "Status",
+      "sysTableFiledFullPath": "Plm_Graphic_Requests.Status",
+      "controlType": 1,
+      "operationId": 0,
+      "positionRow": 3,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 80,
+      "defaultValue": null,
+      "entityIntegrationId": "4736",
+      "plmSubItemId": 6837
+    },
+    {
+      "integrationKey": "criteria_DeliverBy",
+      "displayText": "Deliver By",
+      "sysTableFiledPath": "Deliver_By",
+      "sysTableFiledFullPath": "Plm_Graphic_Requests.Deliver_By",
+      "controlType": 7,
+      "operationId": 0,
+      "positionRow": 3,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 90,
+      "defaultValue": null,
+      "plmSubItemId": 6820
+    },
+    {
+      "integrationKey": "criteria_AdditionalInfo",
+      "displayText": "Additional Info",
+      "sysTableFiledPath": "Additional_Info",
+      "sysTableFiledFullPath": "Plm_Graphic_Requests.Additional_Info",
+      "controlType": 4,
+      "operationId": 7,
+      "positionRow": 3,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 100,
+      "defaultValue": null,
+      "plmSubItemId": 6821
+    }
+  ],
+  "searchView": {
+    "name": "5c - Graphic Request Tracking",
+    "integrationId": "Search_30228_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 5
+      },
+      {
+        "displayText": "Req #",
+        "sysTableFiledPath": "Graphic_Req",
+        "controlType": 23,
+        "isVisible": true,
+        "sort": 10,
+        "plmSubItemId": 6832
+      },
+      {
+        "displayText": "Req By",
+        "sysTableFiledPath": "Request_By",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 20,
+        "entityIntegrationId": "80",
+        "plmSubItemId": 6819
+      },
+      {
+        "displayText": "Status",
+        "sysTableFiledPath": "Status",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 30,
+        "entityIntegrationId": "4736",
+        "plmSubItemId": 6837
+      },
+      {
+        "displayText": "Req Type",
+        "sysTableFiledPath": "Request_Type",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 40,
+        "entityIntegrationId": "4735",
+        "plmSubItemId": 6817
+      },
+      {
+        "displayText": "Request Name",
+        "sysTableFiledPath": "Request_Name",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 50,
+        "plmSubItemId": 7154
+      },
+      {
+        "displayText": "Req Date",
+        "sysTableFiledPath": "Request_Date",
+        "controlType": 7,
+        "isVisible": true,
+        "sort": 60,
+        "plmSubItemId": 6818
+      },
+      {
+        "displayText": "Deliver By",
+        "sysTableFiledPath": "Deliver_By",
+        "controlType": 7,
+        "isVisible": true,
+        "sort": 70,
+        "plmSubItemId": 6820
+      },
+      {
+        "displayText": "Additional Info",
+        "sysTableFiledPath": "Additional_Info",
+        "controlType": 4,
+        "isVisible": true,
+        "sort": 80,
+        "plmSubItemId": 6821
+      },
+      {
+        "displayText": "Can Complete By",
+        "sysTableFiledPath": "Can_Complete_By",
+        "controlType": 7,
+        "isVisible": true,
+        "sort": 90,
+        "plmSubItemId": 6835
+      },
+      {
+        "displayText": "Days Needed",
+        "sysTableFiledPath": "Days_Needed",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 100,
+        "plmSubItemId": 6839
+      },
+      {
+        "displayText": "Extra Days Needed",
+        "sysTableFiledPath": "Extra_Time_Needed",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 110,
+        "plmSubItemId": 6836
+      },
+      {
+        "displayText": "Revised Complete By",
+        "sysTableFiledPath": "Revised_Complete_By",
+        "controlType": 7,
+        "isVisible": true,
+        "sort": 120,
+        "plmSubItemId": 6840
+      },
+      {
+        "displayText": "Handled By",
+        "sysTableFiledPath": "Handled_By",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 130,
+        "entityIntegrationId": "4780",
+        "plmSubItemId": 6833
+      },
+      {
+        "displayText": "Performed By",
+        "sysTableFiledPath": "Performed_By",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 140,
+        "entityIntegrationId": "4780",
+        "plmSubItemId": 6834
+      },
+      {
+        "displayText": "Completed Date",
+        "sysTableFiledPath": "Completed_Date",
+        "controlType": 7,
+        "isVisible": true,
+        "sort": 150,
+        "plmSubItemId": 6838
+      },
+      {
+        "displayText": "File",
+        "sysTableFiledPath": "Attachment_6841",
+        "controlType": 9,
+        "isVisible": true,
+        "sort": 160,
+        "entityIntegrationId": "11",
+        "plmSubItemId": 6841
+      }
+    ]
+  },
+  "linkTargets": [
+    {
+      "name": "Open",
+      "actionType": "Edit",
+      "transactionIntegrationId": "Tab_4259",
+      "linkTargetTransactionGroupId": 9,
+      "linkTargetTransactionGroupName": "09 - Graphic Requests",
+      "sourceColumn": "ReferenceId",
+      "sort": 1
+    },
+    {
+      "name": "Create",
+      "actionType": "Create",
+      "transactionIntegrationId": "Tab_4259",
+      "linkTargetTransactionGroupId": 9,
+      "linkTargetTransactionGroupName": "09 - Graphic Requests",
+      "sourceColumn": "ReferenceId",
+      "sort": 2
+    }
+  ],
+  "menu": {
+    "registerInMainMenu": true,
+    "menuTitle": "Betty's Requests",
+    "menuGroup": null
+  },
+  "coverage": {
+    "criteria": {
+      "total": 10,
+      "mapped": 10,
+      "ignored": 0
+    },
+    "view": {
+      "total": 18,
+      "mapped": 16,
+      "ignored": 2
+    }
+  },
+  "unmappedPlmFields": [
+    {
+      "role": "view",
+      "displayLabel": "Created By",
+      "reason": "No SubItemId"
+    },
+    {
+      "role": "view",
+      "displayLabel": "Created Date",
+      "reason": "No SubItemId"
+    }
+  ]
+}

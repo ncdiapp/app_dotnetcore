@@ -1,0 +1,122 @@
+SearchTemplateID|Name|DisplayText|SubitemID|OperationID|DefaultValue|ControlType|EntityID|PositionRow|PositionColumn|IsReadOnly
+----------------|----|-----------|---------|-----------|------------|-----------|--------|-----------|--------------|----------
+23702|1a - Style Search|Ref No.|NULL|0||NULL|NULL|1|1|0
+23702|1a - Style Search|Original Reference|5082|7||2|NULL|1|2|0
+23702|1a - Style Search|Season|3|0||1|8|1|3|0
+23702|1a - Style Search|Manufacturer COO|6805|0||1|59|1|4|0
+23702|1a - Style Search|Style #|22|7||2|NULL|2|1|0
+23702|1a - Style Search|Product Class|1|0||1|1|2|2|0
+23702|1a - Style Search|Collection|4|0||1|6|2|3|0
+23702|1a - Style Search|Garment Factory|6887|0|NULL|1|4758|2|4|0
+23702|1a - Style Search|Name|7028|7||2|NULL|3|1|0
+23702|1a - Style Search|Type Group|149|0||1|95|3|2|0
+23702|1a - Style Search|Group|5|0||1|7|3|3|0
+23702|1a - Style Search|Created By|NULL|0||NULL|NULL|3|4|0
+23702|1a - Style Search|Description|23|7||4|NULL|4|1|0
+23702|1a - Style Search|Product Type|2|0||1|4|4|2|0
+23702|1a - Style Search|Size Range|10|0||1|10|4|3|0
+23702|1a - Style Search|Item Type|3707|0|2|1|123|4|4|1
+30213|Bottoms Long|Style #|22|7||2|NULL|1|1|0
+30213|Bottoms Long|Season|3|0||1|8|1|3|0
+30213|Bottoms Long|Date Shipping 1|146|0|NULL|7|NULL|1|4|0
+30213|Bottoms Long|Item Type|3707|0|2|1|123|1|5|1
+30213|Bottoms Long|Description|23|7||4|NULL|2|1|0
+30213|Bottoms Long|Product Class|1|0||1|1|2|2|0
+30213|Bottoms Long|Collection|4|13|123|1|6|2|3|0
+30213|Bottoms Long|Date Shipping 2|147|0|NULL|7|NULL|2|4|0
+30213|Bottoms Long|Size Range|10|0||1|10|3|1|0
+30213|Bottoms Long|Type|2|0||1|4|3|2|0
+30213|Bottoms Long|CancelByDate|148|0|NULL|7|NULL|3|4|0
+30213|Bottoms Long|Type Group|149|0|7|1|95|4|2|0
+30214|Bottoms Short|Style #|22|7||2|NULL|1|1|0
+30214|Bottoms Short|Season|3|0||1|8|1|3|0
+30214|Bottoms Short|Date Shipping 1|146|0|NULL|7|NULL|1|4|0
+30214|Bottoms Short|Item Type|3707|0|2|1|123|1|5|1
+30214|Bottoms Short|Description|23|7||4|NULL|2|1|0
+30214|Bottoms Short|Product Class|1|0||1|1|2|2|0
+30214|Bottoms Short|Collection|4|13|123|1|6|2|3|0
+30214|Bottoms Short|Date Shipping 2|147|0|NULL|7|NULL|2|4|0
+30214|Bottoms Short|Size Range|10|0||1|10|3|1|0
+30214|Bottoms Short|Type|2|0||1|4|3|2|0
+30214|Bottoms Short|CancelByDate|148|0|NULL|7|NULL|3|4|0
+30214|Bottoms Short|Type Group|149|0|13|1|95|4|2|0
+30215|Shirts|Style #|22|7||2|NULL|1|1|0
+30215|Shirts|Division|186|0||1|5|1|2|0
+30215|Shirts|Season|3|0||1|8|1|3|0
+30215|Shirts|Date Shipping 1|146|0|NULL|7|NULL|1|4|0
+30215|Shirts|Item Type|3707|0|2|1|123|1|5|1
+30215|Shirts|Description|23|7||4|NULL|2|1|0
+30215|Shirts|Product Class|1|0||1|1|2|2|0
+30215|Shirts|Collection|4|0|NULL|1|6|2|3|0
+30215|Shirts|Date Shipping 2|147|0|NULL|7|NULL|2|4|0
+30215|Shirts|Size Range|10|0||1|10|3|1|0
+30215|Shirts|Type|2|0||1|4|3|2|0
+30215|Shirts|Vendor|56|0||1|42|3|3|0
+30215|Shirts|CancelByDate|148|0|NULL|7|NULL|3|4|0
+30215|Shirts|Type Group|149|0|15|1|95|4|2|0
+30216|Tops|Style #|22|7||2|NULL|1|1|0
+30216|Tops|Division|186|0||1|5|1|2|0
+30216|Tops|Season|3|0||1|8|1|3|0
+30216|Tops|Date Shipping 1|146|0|NULL|7|NULL|1|4|0
+30216|Tops|Item Type|3707|0|2|1|123|1|5|1
+30216|Tops|Description|23|7||4|NULL|2|1|0
+30216|Tops|Product Class|1|0||1|1|2|2|0
+30216|Tops|Collection|4|0||1|6|2|3|0
+30216|Tops|Date Shipping 2|147|0|NULL|7|NULL|2|4|0
+30216|Tops|Size Range|10|0||1|10|3|1|0
+30216|Tops|Type|2|0||1|4|3|2|0
+30216|Tops|Vendor|56|0||1|42|3|3|0
+30216|Tops|CancelByDate|148|0|NULL|7|NULL|3|4|0
+30216|Tops|Type Group|149|0|12|1|95|4|2|0
+30217|Swimwear|Style #|22|7||2|NULL|1|1|0
+30217|Swimwear|Division|186|0||1|5|1|2|0
+30217|Swimwear|Season|3|0||1|8|1|3|0
+30217|Swimwear|Date Shipping 1|146|0|NULL|7|NULL|1|4|0
+30217|Swimwear|Item Type|3707|0|2|1|123|1|5|1
+30217|Swimwear|Description|23|7||4|NULL|2|1|0
+30217|Swimwear|Product Class|1|0||1|1|2|2|0
+30217|Swimwear|Collection|4|0||1|6|2|3|0
+30217|Swimwear|Date Shipping 2|147|0|NULL|7|NULL|2|4|0
+30217|Swimwear|Size Range|10|0||1|10|3|1|0
+30217|Swimwear|Type|2|0||1|4|3|2|0
+30217|Swimwear|Vendor|56|0||1|42|3|3|0
+30217|Swimwear|CancelByDate|148|0|NULL|7|NULL|3|4|0
+30217|Swimwear|Type Group|149|0|14|1|95|4|2|0
+30218|Outerwear|Style #|22|7||2|NULL|1|1|0
+30218|Outerwear|Season|3|0||1|8|1|3|0
+30218|Outerwear|Date Shipping 1|146|0|NULL|7|NULL|1|4|0
+30218|Outerwear|Item Type|3707|0|2|1|123|1|5|1
+30218|Outerwear|Description|23|7||4|NULL|2|1|0
+30218|Outerwear|Product Class|1|0||1|1|2|2|0
+30218|Outerwear|Collection|4|0||1|6|2|3|0
+30218|Outerwear|Date Shipping 2|147|0|NULL|7|NULL|2|4|0
+30218|Outerwear|Size Range|10|0||1|10|3|1|0
+30218|Outerwear|Type|2|0||1|4|3|2|0
+30218|Outerwear|CancelByDate|148|0|NULL|7|NULL|3|4|0
+30218|Outerwear|Type Group|149|0|10|1|95|4|2|0
+30219|Suiting|Style #|22|7||2|NULL|1|1|0
+30219|Suiting|Season|3|0||1|8|1|3|0
+30219|Suiting|Date Shipping 1|146|0|NULL|7|NULL|1|4|0
+30219|Suiting|Item Type|3707|0|2|1|123|1|5|1
+30219|Suiting|Description|23|7||4|NULL|2|1|0
+30219|Suiting|Product Class|1|0||1|1|2|2|0
+30219|Suiting|Collection|4|0||1|6|2|3|0
+30219|Suiting|Date Shipping 2|147|0|NULL|7|NULL|2|4|0
+30219|Suiting|Size Range|10|0||1|10|3|1|0
+30219|Suiting|Type|2|0||1|4|3|2|0
+30219|Suiting|CancelByDate|148|0|NULL|7|NULL|3|4|0
+30219|Suiting|Type Group|149|0|9|1|95|4|2|0
+30221|Sweaters|Style #|22|7||2|NULL|1|1|0
+30221|Sweaters|Division|186|0||1|5|1|2|0
+30221|Sweaters|Season|3|0||1|8|1|3|0
+30221|Sweaters|Date Shipping 1|146|0|NULL|7|NULL|1|4|0
+30221|Sweaters|Item Type|3707|0|2|1|123|1|5|1
+30221|Sweaters|Description|23|7||4|NULL|2|1|0
+30221|Sweaters|Product Class|1|0||1|1|2|2|0
+30221|Sweaters|Collection|4|0||1|6|2|3|0
+30221|Sweaters|Date Shipping 2|147|0|NULL|7|NULL|2|4|0
+30221|Sweaters|Size Range|10|0||1|10|3|1|0
+30221|Sweaters|Type|2|0||1|4|3|2|0
+30221|Sweaters|Vendor|56|0||1|42|3|3|0
+30221|Sweaters|CancelByDate|148|0|NULL|7|NULL|3|4|0
+30221|Sweaters|Type Group|149|0|11|1|95|4|2|0

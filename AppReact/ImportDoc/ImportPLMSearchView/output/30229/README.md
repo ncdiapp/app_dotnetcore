@@ -1,4 +1,4 @@
-# SearchTemplate 28902 — 1b - Fabric Search
+# SearchTemplate 30229 — 3c - Fabric Costing
 
 **Phase B generated:** 2026-07-10 (batch auto)
 **PLM:** `plm_live_20260602`
@@ -12,14 +12,14 @@
 | Grid strategy | exclude |
 | Reference scope | FabricHeaderOnly |
 | Missing fields | ignore |
-| Link target | Group 3 (`02 - Fabrics`) + `Tab_4258` |
-| IntegrationId | `Search_28902` / `Search_28902_View` |
+| Link target | Group 3 (`02 - Fabrics`) + `Tab_4270` |
+| IntegrationId | `Search_30229` / `Search_30229_View` |
 | Main menu | yes |
 
 ## Coverage
 
-- Criteria: 8/9 mapped (1 ignored)
-- View: 19/20 mapped (1 ignored)
+- Criteria: 9/10 mapped (1 ignored)
+- View: 25/25 mapped (0 ignored)
 
 ## Deliverable
 
