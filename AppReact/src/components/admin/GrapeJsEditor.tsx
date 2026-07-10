@@ -123,7 +123,7 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
       components: body,
       style: css,
       plugins: [grapesjsNewsletter],
-      pluginsOpts: { [grapesjsNewsletter]: {} },
+      pluginsOpts: { [grapesjsNewsletter]: { showBlocksOnLoad: 0 } },
       panels: { defaults: [] },
       deviceManager: { devices: [] },
     });
@@ -225,8 +225,8 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
       // Remove the remaining redundant buttons from the (now hidden) options panel.
       ['preview', 'fullscreen', 'export-template', 'gjs-open-import-template', 'gjs-toggle-images', 'canvas-clear']
         .forEach(id => editor.Panels.removeButton('options', id));
-      ['open-layers', 'open-blocks']
-        .forEach(id => editor.Panels.removeButton('views', id));
+      // Keep 'open-blocks' so GrapeJS can enforce radio-like exclusivity (SM vs Blocks)
+      editor.Panels.removeButton('views', 'open-layers');
       ['set-device-desktop', 'set-device-tablet', 'set-device-mobile']
         .forEach(id => editor.Panels.removeButton('devices-c', id));
 
