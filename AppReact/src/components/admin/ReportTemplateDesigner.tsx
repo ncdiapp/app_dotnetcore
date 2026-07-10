@@ -17,6 +17,7 @@ const GrapeJsEditor = React.lazy(() => import('./GrapeJsEditor'));
 interface Props {
   reportId: number;
   mainReferenceId?: number;
+  initialView?: 'split' | 'visual' | 'design';
   onSaved?: () => void;
   onClose?: () => void;
 }
@@ -341,7 +342,7 @@ function generatePageCss(s: PageStyleValues): string {
 
 // ────────────────────────────────────────────────────────────────────────────
 
-const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0, onSaved, onClose }) => {
+const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0, initialView = 'split', onSaved, onClose }) => {
   const { theme, t } = useTheme();
 
   const [report, setReport]                 = useState<any>(null);
@@ -362,7 +363,7 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   const [leftTab, setLeftTab]               = useState<'blocks' | 'tokens'>('blocks');
   const [dsModalOpen, setDsModalOpen]       = useState(false);
   const [pdfPreviewing, setPdfPreviewing]   = useState(false);
-  const [viewMode, setViewMode]             = useState<'split' | 'visual' | 'design'>('split');
+  const [viewMode, setViewMode]             = useState<'split' | 'visual' | 'design'>(initialView);
   const [draggingToken, setDraggingToken]   = useState<string | null>(null);
   const [dropIndicatorY, setDropIndicatorY] = useState<number | null>(null);
   const [pointerDragPos, setPointerDragPos] = useState<{x:number;y:number}|null>(null);
