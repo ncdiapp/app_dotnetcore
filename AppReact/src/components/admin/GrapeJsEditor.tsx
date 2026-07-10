@@ -327,13 +327,23 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
         .gjs-sm-properties    { background: #f5f6f7 !important; }
 
         /* Trait Manager */
-        .gjs-trt-traits .gjs-label { color: #555 !important; }
+        .gjs-trt-header  { color: #333 !important; background: #ebedf0 !important; }
+        .gjs-trt-traits .gjs-label,
+        .gjs-trt-trait .gjs-label,
+        .gjs-label { color: #333 !important; }
         .gjs-trt-trait__wrp { border-color: #dde1e7 !important; }
 
         /* Fields & inputs inside panels */
         .gjs-field,
         .gjs-field select,
-        .gjs-field input { background: #fff !important; color: #333 !important; border-color: #c4c8ce !important; }
+        .gjs-field input,
+        .gjs-field textarea {
+          background: #fff !important;
+          color: #333 !important;
+          border-color: #c4c8ce !important;
+        }
+        .gjs-field input::placeholder,
+        .gjs-field textarea::placeholder { color: #aaa !important; opacity: 1 !important; }
 
         /* Block manager */
         .gjs-block-categories  { background: #f5f6f7 !important; }
