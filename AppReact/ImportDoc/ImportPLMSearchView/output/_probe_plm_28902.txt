@@ -1,0 +1,1060 @@
+=== §0 Catalog: search-related tables ===
+TableName
+---------
+pdmBLQuery
+pdmOCRReferenceSearchTag
+pdmReferenceView
+pdmReferenceViewColumn
+pdmReferenceViewConfiguration
+pdmReferenceViewGridColumnJoin
+pdmReferenceViewLinkTarget
+pdmReferenceViewMember
+pdmReferenceViewSubView
+pdmSearchTemplate
+pdmSearchTemplateDCU
+pdmSearchTemplateMember
+pdmSearchTemplateReferenceView
+pdmSearchTemplateResult
+pdmSearchTemplateSaved
+pdmSearchTemplateSavedValue
+pdmWebAPISearchFilter
+=== §1 Search template shell ===
+SearchTemplateID|Name|Description|Type|BLQueryID|ReferenceViewID|OutputTabID|IsAutoExecute|IsDefault|IsCascadingSearch
+----------------|----|-----------|----|---------|---------------|-----------|-------------|---------|-----------------
+28902|1b - Fabric Search||1|NULL|4|NULL|1|0|NULL
+=== §2 Criteria (pdmSearchTemplateDCU) ===
+SearchTemplateDCUID|SubitemID|GridColumnID|DisplayText|ControlType|EntityID|OperationID|PositionRow|PositionColumn|Sort|IsVisible|IsReadOnly|DefaultValue|SysTableFiledPath
+-------------------|---------|------------|-----------|-----------|--------|-----------|-----------|--------------|----|---------|----------|------------|-----------------
+413|22|NULL|Fabric Code|2|NULL|7|1|1|NULL|1|0||
+793|6790|NULL|Fabric Mill|1|4723|0|1|2|NULL|1|0||
+418|3|NULL|Season|1|8|0|1|3|NULL|1|0||
+414|23|NULL||4|NULL|7|2|1|NULL|1|0||
+794|3916|NULL|Mill Article #|2|NULL|7|2|2|NULL|1|0||
+417|3127|NULL|Print/Solid|1|3462|0|2|3|NULL|1|0||
+424|3128|NULL|Status|1|3461|0|3|1|NULL|1|0||
+420|103|NULL|COO|1|59|0|3|2|NULL|1|0||
+421|3708|NULL|Item Type|1|123|0|3|3|NULL|1|1|3|
+=== §2b Criteria → pdmBlockSubItem enrichment ===
+SearchTemplateDCUID|DisplayText|SubitemID|BlockID|SubItemControlType|SubItemEntityId|TabID|TabName|IsTemplateHeaderTab
+-------------------|-----------|---------|-------|------------------|---------------|-----|-------|-------------------
+413|Fabric Code|22|2|2|NULL|1|ERP Required Fields|NULL
+413|Fabric Code|22|2|2|NULL|3991|Style Header_V2K ERP|1
+413|Fabric Code|22|2|2|NULL|3998|Fabric Header-V2K ERP|1
+413|Fabric Code|22|2|2|NULL|3999|Trim Header-V2K ERP|1
+413|Fabric Code|22|2|2|NULL|4000|Label Header-V2K ERP|1
+413|Fabric Code|22|2|2|NULL|4001|Packaging Header-V2K ERP|1
+413|Fabric Code|22|2|2|NULL|4040|Style Header_Non V2K ERP|1
+413|Fabric Code|22|2|2|NULL|4041|Image|0
+413|Fabric Code|22|2|2|NULL|4042|File|0
+413|Fabric Code|22|2|2|NULL|4096|Fabric Header-Non V2K ERP|1
+413|Fabric Code|22|2|2|NULL|4097|Trim Header-Non V2K ERP|1
+413|Fabric Code|22|2|2|NULL|4099|Label Header-Non V2K ERP|1
+413|Fabric Code|22|2|2|NULL|4100|Packaging Header-Non V2K ERP|1
+413|Fabric Code|22|2|2|NULL|4104|Care Label Image|0
+413|Fabric Code|22|2|2|NULL|4113|Finished Good Master Header|0
+413|Fabric Code|22|2|2|NULL|4118|Fabric Master Header|0
+413|Fabric Code|22|2|2|NULL|4125|Storyboard|0
+413|Fabric Code|22|2|2|NULL|4144|Raw Material - V2K Publish Header|1
+413|Fabric Code|22|2|2|NULL|4146|Range Plan|0
+413|Fabric Code|22|2|2|NULL|4150|Licensing Contract|0
+413|Fabric Code|22|2|2|NULL|4152|VIS Tab|0
+413|Fabric Code|22|2|2|NULL|4114|Request Header|1
+413|Fabric Code|22|2|2|NULL|4153|Style Header_Shopify|1
+413|Fabric Code|22|2|2|NULL|4157|VIS Shopify|0
+413|Fabric Code|22|2|2|NULL|4158|Cost Card List|0
+413|Fabric Code|22|2|2|NULL|4160|Style Brief Mobile Info|0
+413|Fabric Code|22|2|2|NULL|4161|Tablet Sample Tracking|0
+413|Fabric Code|22|2|2|NULL|4162|Tablet Fit Samples|0
+413|Fabric Code|22|2|2|NULL|4163|AI Integration|0
+413|Fabric Code|22|2|2|NULL|4164|Fabric Brief Mobile Info|0
+413|Fabric Code|22|2|2|NULL|4165|Trim Brief Mobile Info|0
+413|Fabric Code|22|2|2|NULL|4166|Style Import|0
+413|Fabric Code|22|2|2|NULL|4167|Label Import|0
+413|Fabric Code|22|2|2|NULL|4168|Packaging Import|0
+413|Fabric Code|22|2|2|NULL|4169|Trim Import|0
+413|Fabric Code|22|2|2|NULL|4170|Labour|1
+413|Fabric Code|22|2|2|NULL|4174|PO-Production|0
+413|Fabric Code|22|2|2|NULL|4175|Production Summary|0
+413|Fabric Code|22|2|2|NULL|4177|PO Request Header|1
+413|Fabric Code|22|2|2|NULL|4179|PO|0
+413|Fabric Code|22|2|2|NULL|4187|Tablet PP Samples|0
+413|Fabric Code|22|2|2|NULL|4199|Customer Label Library Reference|0
+413|Fabric Code|22|2|2|NULL|4200|Construction Library Reference|0
+413|Fabric Code|22|2|2|NULL|4208|Fabric import|0
+413|Fabric Code|22|2|2|NULL|4209|Fabric range product|0
+413|Fabric Code|22|2|2|NULL|4212|Fabric Info|0
+413|Fabric Code|22|2|2|NULL|4222|Fabric Functional Properties Library|0
+413|Fabric Code|22|2|2|NULL|4223|Yarn Library Reference|0
+413|Fabric Code|22|2|2|NULL|4228|Artwork Details|0
+413|Fabric Code|22|2|2|NULL|4247|Label Header|1
+413|Fabric Code|22|2|2|NULL|4249|Packaging Header|1
+413|Fabric Code|22|2|2|NULL|4252|Trim Header|1
+413|Fabric Code|22|2|2|NULL|4254|Color Patette Header|1
+413|Fabric Code|22|2|2|NULL|4251|Style Header|1
+413|Fabric Code|22|2|2|NULL|4258|Fabric Header|1
+413|Fabric Code|22|2|2|NULL|4276|Style Header - Sets|0
+793|Fabric Mill|6790|5086|1|4723|4212|Fabric Info|0
+418|Season|3|4|1|8|1|ERP Required Fields|NULL
+418|Season|3|4|1|8|3991|Style Header_V2K ERP|1
+418|Season|3|4|1|8|3998|Fabric Header-V2K ERP|1
+418|Season|3|4|1|8|3999|Trim Header-V2K ERP|1
+418|Season|3|4|1|8|4000|Label Header-V2K ERP|1
+418|Season|3|4|1|8|4001|Packaging Header-V2K ERP|1
+418|Season|3|4|1|8|4113|Finished Good Master Header|0
+418|Season|3|4|1|8|4118|Fabric Master Header|0
+418|Season|3|4|1|8|4144|Raw Material - V2K Publish Header|1
+418|Season|3|4|1|8|4146|Range Plan|0
+418|Season|3|4|1|8|4152|VIS Tab|0
+418|Season|3|4|1|8|4125|Storyboard|0
+418|Season|3|4|1|8|4153|Style Header_Shopify|1
+418|Season|3|4|1|8|4157|VIS Shopify|0
+418|Season|3|4|1|8|4160|Style Brief Mobile Info|0
+418|Season|3|4|1|8|4163|AI Integration|0
+418|Season|3|4|1|8|4166|Style Import|0
+418|Season|3|4|1|8|4168|Packaging Import|0
+418|Season|3|4|1|8|4169|Trim Import|0
+418|Season|3|4|1|8|4167|Label Import|0
+418|Season|3|4|1|8|4170|Labour|1
+418|Season|3|4|1|8|4164|Fabric Brief Mobile Info|0
+418|Season|3|4|1|8|4165|Trim Brief Mobile Info|0
+418|Season|3|4|1|8|4174|PO-Production|0
+418|Season|3|4|1|8|4175|Production Summary|0
+418|Season|3|4|1|8|4177|PO Request Header|1
+418|Season|3|4|1|8|4179|PO|0
+418|Season|3|4|1|8|4208|Fabric import|0
+418|Season|3|4|1|8|4212|Fabric Info|0
+418|Season|3|4|1|8|4228|Artwork Details|0
+418|Season|3|4|1|8|4247|Label Header|1
+418|Season|3|4|1|8|4249|Packaging Header|1
+418|Season|3|4|1|8|4251|Style Header|1
+418|Season|3|4|1|8|4252|Trim Header|1
+418|Season|3|4|1|8|4254|Color Patette Header|1
+418|Season|3|4|1|8|4276|Style Header - Sets|0
+414||23|2|2|NULL|1|ERP Required Fields|NULL
+414||23|2|2|NULL|3991|Style Header_V2K ERP|1
+414||23|2|2|NULL|3998|Fabric Header-V2K ERP|1
+414||23|2|2|NULL|3999|Trim Header-V2K ERP|1
+414||23|2|2|NULL|4000|Label Header-V2K ERP|1
+414||23|2|2|NULL|4001|Packaging Header-V2K ERP|1
+414||23|2|2|NULL|4040|Style Header_Non V2K ERP|1
+414||23|2|2|NULL|4041|Image|0
+414||23|2|2|NULL|4042|File|0
+414||23|2|2|NULL|4096|Fabric Header-Non V2K ERP|1
+414||23|2|2|NULL|4097|Trim Header-Non V2K ERP|1
+414||23|2|2|NULL|4099|Label Header-Non V2K ERP|1
+414||23|2|2|NULL|4100|Packaging Header-Non V2K ERP|1
+414||23|2|2|NULL|4104|Care Label Image|0
+414||23|2|2|NULL|4113|Finished Good Master Header|0
+414||23|2|2|NULL|4118|Fabric Master Header|0
+414||23|2|2|NULL|4125|Storyboard|0
+414||23|2|2|NULL|4144|Raw Material - V2K Publish Header|1
+414||23|2|2|NULL|4146|Range Plan|0
+414||23|2|2|NULL|4150|Licensing Contract|0
+414||23|2|2|NULL|4152|VIS Tab|0
+414||23|2|2|NULL|4114|Request Header|1
+414||23|2|2|NULL|4153|Style Header_Shopify|1
+414||23|2|2|NULL|4157|VIS Shopify|0
+414||23|2|2|NULL|4158|Cost Card List|0
+414||23|2|2|NULL|4160|Style Brief Mobile Info|0
+414||23|2|2|NULL|4161|Tablet Sample Tracking|0
+414||23|2|2|NULL|4162|Tablet Fit Samples|0
+414||23|2|2|NULL|4163|AI Integration|0
+414||23|2|2|NULL|4164|Fabric Brief Mobile Info|0
+414||23|2|2|NULL|4165|Trim Brief Mobile Info|0
+414||23|2|2|NULL|4166|Style Import|0
+414||23|2|2|NULL|4167|Label Import|0
+414||23|2|2|NULL|4168|Packaging Import|0
+414||23|2|2|NULL|4169|Trim Import|0
+414||23|2|2|NULL|4170|Labour|1
+414||23|2|2|NULL|4174|PO-Production|0
+414||23|2|2|NULL|4175|Production Summary|0
+414||23|2|2|NULL|4177|PO Request Header|1
+414||23|2|2|NULL|4179|PO|0
+414||23|2|2|NULL|4187|Tablet PP Samples|0
+414||23|2|2|NULL|4199|Customer Label Library Reference|0
+414||23|2|2|NULL|4200|Construction Library Reference|0
+414||23|2|2|NULL|4208|Fabric import|0
+414||23|2|2|NULL|4209|Fabric range product|0
+414||23|2|2|NULL|4212|Fabric Info|0
+414||23|2|2|NULL|4222|Fabric Functional Properties Library|0
+414||23|2|2|NULL|4223|Yarn Library Reference|0
+414||23|2|2|NULL|4228|Artwork Details|0
+414||23|2|2|NULL|4247|Label Header|1
+414||23|2|2|NULL|4249|Packaging Header|1
+414||23|2|2|NULL|4252|Trim Header|1
+414||23|2|2|NULL|4254|Color Patette Header|1
+414||23|2|2|NULL|4251|Style Header|1
+414||23|2|2|NULL|4258|Fabric Header|1
+414||23|2|2|NULL|4276|Style Header - Sets|0
+794|Mill Article #|3916|3449|2|NULL|3991|Style Header_V2K ERP|1
+794|Mill Article #|3916|3449|2|NULL|4144|Raw Material - V2K Publish Header|1
+794|Mill Article #|3916|3449|2|NULL|4152|VIS Tab|0
+794|Mill Article #|3916|3449|2|NULL|4153|Style Header_Shopify|1
+794|Mill Article #|3916|3449|2|NULL|4166|Style Import|0
+794|Mill Article #|3916|3449|2|NULL|3998|Fabric Header-V2K ERP|1
+794|Mill Article #|3916|3449|2|NULL|4000|Label Header-V2K ERP|1
+794|Mill Article #|3916|3449|2|NULL|4001|Packaging Header-V2K ERP|1
+794|Mill Article #|3916|3449|2|NULL|3999|Trim Header-V2K ERP|1
+794|Mill Article #|3916|3449|2|NULL|4212|Fabric Info|0
+794|Mill Article #|3916|3449|2|NULL|4247|Label Header|1
+794|Mill Article #|3916|3449|2|NULL|4249|Packaging Header|1
+794|Mill Article #|3916|3449|2|NULL|4252|Trim Header|1
+794|Mill Article #|3916|3449|2|NULL|4258|Fabric Header|1
+417|Print/Solid|3127|3046|1|3462|3998|Fabric Header-V2K ERP|1
+417|Print/Solid|3127|3046|1|3462|4096|Fabric Header-Non V2K ERP|1
+417|Print/Solid|3127|3046|1|3462|4118|Fabric Master Header|0
+417|Print/Solid|3127|3046|1|3462|4164|Fabric Brief Mobile Info|0
+417|Print/Solid|3127|3046|1|3462|4212|Fabric Info|0
+417|Print/Solid|3127|3046|1|3462|4251|Style Header|1
+417|Print/Solid|3127|3046|1|3462|4276|Style Header - Sets|0
+424|Status|3128|3047|1|3461|3998|Fabric Header-V2K ERP|1
+424|Status|3128|3047|1|3461|3999|Trim Header-V2K ERP|1
+424|Status|3128|3047|1|3461|4000|Label Header-V2K ERP|1
+424|Status|3128|3047|1|3461|4001|Packaging Header-V2K ERP|1
+424|Status|3128|3047|1|3461|4096|Fabric Header-Non V2K ERP|1
+424|Status|3128|3047|1|3461|4097|Trim Header-Non V2K ERP|1
+424|Status|3128|3047|1|3461|4099|Label Header-Non V2K ERP|1
+424|Status|3128|3047|1|3461|4100|Packaging Header-Non V2K ERP|1
+424|Status|3128|3047|1|3461|4118|Fabric Master Header|0
+424|Status|3128|3047|1|3461|4208|Fabric import|0
+424|Status|3128|3047|1|3461|4212|Fabric Info|0
+424|Status|3128|3047|1|3461|4247|Label Header|1
+424|Status|3128|3047|1|3461|4249|Packaging Header|1
+424|Status|3128|3047|1|3461|4252|Trim Header|1
+424|Status|3128|3047|1|3461|4258|Fabric Header|1
+420|COO|103|40|1|59|1|ERP Required Fields|NULL
+420|COO|103|40|1|59|3998|Fabric Header-V2K ERP|1
+420|COO|103|40|1|59|3999|Trim Header-V2K ERP|1
+420|COO|103|40|1|59|4000|Label Header-V2K ERP|1
+420|COO|103|40|1|59|4001|Packaging Header-V2K ERP|1
+420|COO|103|40|1|59|3991|Style Header_V2K ERP|1
+420|COO|103|40|1|59|4097|Trim Header-Non V2K ERP|1
+420|COO|103|40|1|59|4099|Label Header-Non V2K ERP|1
+420|COO|103|40|1|59|4100|Packaging Header-Non V2K ERP|1
+420|COO|103|40|1|59|4096|Fabric Header-Non V2K ERP|1
+420|COO|103|40|1|59|4040|Style Header_Non V2K ERP|1
+420|COO|103|40|1|59|4115|Quote Request|0
+420|COO|103|40|1|59|4118|Fabric Master Header|0
+420|COO|103|40|1|59|4144|Raw Material - V2K Publish Header|1
+420|COO|103|40|1|59|4152|VIS Tab|0
+420|COO|103|40|1|59|4153|Style Header_Shopify|1
+420|COO|103|40|1|59|4164|Fabric Brief Mobile Info|0
+420|COO|103|40|1|59|4165|Trim Brief Mobile Info|0
+420|COO|103|40|1|59|4166|Style Import|0
+420|COO|103|40|1|59|4167|Label Import|0
+420|COO|103|40|1|59|4168|Packaging Import|0
+420|COO|103|40|1|59|4169|Trim Import|0
+420|COO|103|40|1|59|4208|Fabric import|0
+420|COO|103|40|1|59|4247|Label Header|1
+420|COO|103|40|1|59|4249|Packaging Header|1
+420|COO|103|40|1|59|4252|Trim Header|1
+421|Item Type|3708|3339|1|123|3998|Fabric Header-V2K ERP|1
+421|Item Type|3708|3339|1|123|4096|Fabric Header-Non V2K ERP|1
+421|Item Type|3708|3339|1|123|4118|Fabric Master Header|0
+421|Item Type|3708|3339|1|123|4164|Fabric Brief Mobile Info|0
+421|Item Type|3708|3339|1|123|4212|Fabric Info|0
+421|Item Type|3708|3339|1|123|4258|Fabric Header|1
+=== §3 Reference view shell ===
+ReferenceViewID|Name|ViewType|BLQueryID
+---------------|----|--------|---------
+4|1b -Fabrics (Grid)|0|NULL
+=== §3b Extra views (pdmSearchTemplateReferenceView) ===
+SearchTemplateViewID|SearchTemplateID|ReferenceViewID|ReferenceIDViewFilterColumnID|MassUpdateViewID
+--------------------|----------------|---------------|-----------------------------|----------------
+110|28902|NULL|NULL|9
+=== §4 View columns (pdmReferenceViewColumn) ===
+ReferenceViewColumnID|SubItemID|GridColumnID|DisplayText|ControlType|EntityID|Sort|IsVisible|SysTableFiledPath
+---------------------|---------|------------|-----------|-----------|--------|----|---------|-----------------
+19|6|NULL|Sketch|NULL|NULL|1|1|
+17|22|NULL|Fabric #|NULL|NULL|2|1|
+18|23|NULL|Description|NULL|NULL|3|1|
+1315|5082|NULL|Original Reference|NULL|NULL|4|1|
+1320|5083|NULL|New/Carryover|NULL|NULL|5|1|
+152|3128|NULL|Status|NULL|NULL|6|1|
+203|1|NULL|Product Class|NULL|NULL|7|1|
+1545|3130|NULL|Fabric Type|NULL|NULL|8|1|
+153|3|NULL|Season|NULL|NULL|9|1|
+206|4|NULL|Collection|NULL|NULL|10|1|
+207|5|NULL|Group|NULL|NULL|11|0|
+22|3127|NULL|Print/Solid|NULL|NULL|12|0|
+1316|3896|NULL|SupplierType|NULL|NULL|13|1|
+155|103|NULL|Country Of Origin|NULL|NULL|14|0|
+151|3133|NULL|Fabric Mill|NULL|NULL|15|1|
+154|56|NULL|Supplier|NULL|NULL|16|1|
+1317|3916|NULL|Supplier Article #|NULL|NULL|17|1|
+1407|5094|NULL|Cost p/m|NULL|NULL|18|1|
+1408|5336|NULL|Cost p/y|NULL|NULL|19|1|
+1321|4938|NULL|Original Composition|NULL|NULL|20|1|
+1546|7089|NULL|Final Composition|NULL|NULL|21|1|
+209|181|NULL|Created Date|NULL|NULL|22|0|
+1588|7141|NULL|Weight|NULL|NULL|23|1|NULL
+1589|3355|NULL|Bf. Wash Swt Weight|NULL|NULL|24|1|NULL
+=== §4b View columns → grid meta / sub-item enrichment ===
+ReferenceViewColumnID|DisplayText|SubItemID|GridColumnID|GridMetaColumnName|ColumnTypeId|GridEntityId|SubItemControlType|SubItemEntityId|TabID|TabName|IsTemplateHeaderTab
+---------------------|-----------|---------|------------|------------------|------------|------------|------------------|---------------|-----|-------|-------------------
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|1|ERP Required Fields|NULL
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|3991|Style Header_V2K ERP|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|3998|Fabric Header-V2K ERP|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|3999|Trim Header-V2K ERP|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4000|Label Header-V2K ERP|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4001|Packaging Header-V2K ERP|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4040|Style Header_Non V2K ERP|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4041|Image|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4096|Fabric Header-Non V2K ERP|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4097|Trim Header-Non V2K ERP|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4099|Label Header-Non V2K ERP|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4100|Packaging Header-Non V2K ERP|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4104|Care Label Image|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4113|Finished Good Master Header|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4118|Fabric Master Header|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4124|Supplier Profile|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4125|Storyboard|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4144|Raw Material - V2K Publish Header|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4152|VIS Tab|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4114|Request Header|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4153|Style Header_Shopify|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4155|Shopify Images|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4157|VIS Shopify|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4160|Style Brief Mobile Info|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4161|Tablet Sample Tracking|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4162|Tablet Fit Samples|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4164|Fabric Brief Mobile Info|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4165|Trim Brief Mobile Info|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4166|Style Import|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4167|Label Import|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4163|AI Integration|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4174|PO-Production|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4175|Production Summary|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4176|PO Summary Single Product|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4179|PO|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4172|Tablet Reference Creation|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4187|Tablet PP Samples|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4212|Fabric Info|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4228|Artwork Details|0
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4247|Label Header|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4249|Packaging Header|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4251|Style Header|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4252|Trim Header|1
+19|Sketch|6|NULL|NULL|NULL|NULL|5|11|4276|Style Header - Sets|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|1|ERP Required Fields|NULL
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|3991|Style Header_V2K ERP|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|3998|Fabric Header-V2K ERP|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|3999|Trim Header-V2K ERP|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4000|Label Header-V2K ERP|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4001|Packaging Header-V2K ERP|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4040|Style Header_Non V2K ERP|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4041|Image|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4042|File|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4096|Fabric Header-Non V2K ERP|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4097|Trim Header-Non V2K ERP|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4099|Label Header-Non V2K ERP|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4100|Packaging Header-Non V2K ERP|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4104|Care Label Image|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4113|Finished Good Master Header|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4118|Fabric Master Header|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4125|Storyboard|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4144|Raw Material - V2K Publish Header|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4146|Range Plan|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4150|Licensing Contract|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4152|VIS Tab|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4114|Request Header|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4153|Style Header_Shopify|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4157|VIS Shopify|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4158|Cost Card List|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4160|Style Brief Mobile Info|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4161|Tablet Sample Tracking|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4162|Tablet Fit Samples|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4163|AI Integration|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4164|Fabric Brief Mobile Info|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4165|Trim Brief Mobile Info|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4166|Style Import|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4167|Label Import|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4168|Packaging Import|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4169|Trim Import|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4170|Labour|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4174|PO-Production|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4175|Production Summary|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4177|PO Request Header|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4179|PO|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4187|Tablet PP Samples|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4199|Customer Label Library Reference|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4200|Construction Library Reference|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4208|Fabric import|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4209|Fabric range product|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4212|Fabric Info|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4222|Fabric Functional Properties Library|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4223|Yarn Library Reference|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4228|Artwork Details|0
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4247|Label Header|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4249|Packaging Header|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4252|Trim Header|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4254|Color Patette Header|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4251|Style Header|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4258|Fabric Header|1
+17|Fabric #|22|NULL|NULL|NULL|NULL|2|NULL|4276|Style Header - Sets|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|1|ERP Required Fields|NULL
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|3991|Style Header_V2K ERP|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|3998|Fabric Header-V2K ERP|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|3999|Trim Header-V2K ERP|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4000|Label Header-V2K ERP|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4001|Packaging Header-V2K ERP|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4040|Style Header_Non V2K ERP|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4041|Image|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4042|File|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4096|Fabric Header-Non V2K ERP|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4097|Trim Header-Non V2K ERP|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4099|Label Header-Non V2K ERP|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4100|Packaging Header-Non V2K ERP|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4104|Care Label Image|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4113|Finished Good Master Header|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4118|Fabric Master Header|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4125|Storyboard|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4144|Raw Material - V2K Publish Header|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4146|Range Plan|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4150|Licensing Contract|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4152|VIS Tab|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4114|Request Header|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4153|Style Header_Shopify|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4157|VIS Shopify|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4158|Cost Card List|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4160|Style Brief Mobile Info|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4161|Tablet Sample Tracking|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4162|Tablet Fit Samples|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4163|AI Integration|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4164|Fabric Brief Mobile Info|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4165|Trim Brief Mobile Info|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4166|Style Import|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4167|Label Import|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4168|Packaging Import|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4169|Trim Import|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4170|Labour|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4174|PO-Production|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4175|Production Summary|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4177|PO Request Header|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4179|PO|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4187|Tablet PP Samples|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4199|Customer Label Library Reference|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4200|Construction Library Reference|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4208|Fabric import|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4209|Fabric range product|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4212|Fabric Info|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4222|Fabric Functional Properties Library|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4223|Yarn Library Reference|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4228|Artwork Details|0
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4247|Label Header|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4249|Packaging Header|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4252|Trim Header|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4254|Color Patette Header|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4251|Style Header|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4258|Fabric Header|1
+18|Description|23|NULL|NULL|NULL|NULL|2|NULL|4276|Style Header - Sets|0
+1315|Original Reference|5082|NULL|NULL|NULL|NULL|2|NULL|4212|Fabric Info|0
+1315|Original Reference|5082|NULL|NULL|NULL|NULL|2|NULL|4251|Style Header|1
+1315|Original Reference|5082|NULL|NULL|NULL|NULL|2|NULL|4276|Style Header - Sets|0
+1320|New/Carryover|5083|NULL|NULL|NULL|NULL|1|3635|4212|Fabric Info|0
+1320|New/Carryover|5083|NULL|NULL|NULL|NULL|1|3635|4251|Style Header|1
+1320|New/Carryover|5083|NULL|NULL|NULL|NULL|1|3635|4276|Style Header - Sets|0
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|3998|Fabric Header-V2K ERP|1
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|3999|Trim Header-V2K ERP|1
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4000|Label Header-V2K ERP|1
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4001|Packaging Header-V2K ERP|1
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4096|Fabric Header-Non V2K ERP|1
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4097|Trim Header-Non V2K ERP|1
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4099|Label Header-Non V2K ERP|1
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4100|Packaging Header-Non V2K ERP|1
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4118|Fabric Master Header|0
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4208|Fabric import|0
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4212|Fabric Info|0
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4247|Label Header|1
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4249|Packaging Header|1
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4252|Trim Header|1
+152|Status|3128|NULL|NULL|NULL|NULL|1|3461|4258|Fabric Header|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|1|ERP Required Fields|NULL
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|3991|Style Header_V2K ERP|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|3999|Trim Header-V2K ERP|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4000|Label Header-V2K ERP|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4001|Packaging Header-V2K ERP|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|3998|Fabric Header-V2K ERP|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4113|Finished Good Master Header|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4118|Fabric Master Header|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4144|Raw Material - V2K Publish Header|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4146|Range Plan|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4152|VIS Tab|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4114|Request Header|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4125|Storyboard|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4153|Style Header_Shopify|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4157|VIS Shopify|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4160|Style Brief Mobile Info|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4163|AI Integration|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4164|Fabric Brief Mobile Info|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4165|Trim Brief Mobile Info|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4166|Style Import|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4167|Label Import|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4168|Packaging Import|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4169|Trim Import|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4170|Labour|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4174|PO-Production|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4175|Production Summary|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4176|PO Summary Single Product|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4172|Tablet Reference Creation|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4199|Customer Label Library Reference|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4200|Construction Library Reference|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4208|Fabric import|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4212|Fabric Info|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4222|Fabric Functional Properties Library|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4228|Artwork Details|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4247|Label Header|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4249|Packaging Header|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4251|Style Header|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4252|Trim Header|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4258|Fabric Header|1
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4224|Style Summary|0
+203|Product Class|1|NULL|NULL|NULL|NULL|1|1|4276|Style Header - Sets|0
+1545|Fabric Type|3130|NULL|NULL|NULL|NULL|1|3463|4096|Fabric Header-Non V2K ERP|1
+1545|Fabric Type|3130|NULL|NULL|NULL|NULL|1|3463|4212|Fabric Info|0
+1545|Fabric Type|3130|NULL|NULL|NULL|NULL|1|3463|4228|Artwork Details|0
+1545|Fabric Type|3130|NULL|NULL|NULL|NULL|1|3463|4258|Fabric Header|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|1|ERP Required Fields|NULL
+153|Season|3|NULL|NULL|NULL|NULL|1|8|3991|Style Header_V2K ERP|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|3998|Fabric Header-V2K ERP|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|3999|Trim Header-V2K ERP|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4000|Label Header-V2K ERP|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4001|Packaging Header-V2K ERP|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4113|Finished Good Master Header|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4118|Fabric Master Header|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4144|Raw Material - V2K Publish Header|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4146|Range Plan|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4152|VIS Tab|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4125|Storyboard|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4153|Style Header_Shopify|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4157|VIS Shopify|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4160|Style Brief Mobile Info|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4163|AI Integration|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4166|Style Import|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4168|Packaging Import|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4169|Trim Import|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4167|Label Import|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4170|Labour|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4164|Fabric Brief Mobile Info|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4165|Trim Brief Mobile Info|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4174|PO-Production|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4175|Production Summary|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4177|PO Request Header|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4179|PO|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4208|Fabric import|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4212|Fabric Info|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4228|Artwork Details|0
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4247|Label Header|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4249|Packaging Header|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4251|Style Header|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4252|Trim Header|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4254|Color Patette Header|1
+153|Season|3|NULL|NULL|NULL|NULL|1|8|4276|Style Header - Sets|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|1|ERP Required Fields|NULL
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|3991|Style Header_V2K ERP|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|3998|Fabric Header-V2K ERP|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|3999|Trim Header-V2K ERP|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4000|Label Header-V2K ERP|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4001|Packaging Header-V2K ERP|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4113|Finished Good Master Header|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4118|Fabric Master Header|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4144|Raw Material - V2K Publish Header|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4146|Range Plan|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4152|VIS Tab|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4125|Storyboard|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4153|Style Header_Shopify|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4157|VIS Shopify|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4160|Style Brief Mobile Info|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4163|AI Integration|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4166|Style Import|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4168|Packaging Import|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4169|Trim Import|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4167|Label Import|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4170|Labour|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4164|Fabric Brief Mobile Info|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4165|Trim Brief Mobile Info|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4174|PO-Production|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4175|Production Summary|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4177|PO Request Header|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4179|PO|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4208|Fabric import|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4212|Fabric Info|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4228|Artwork Details|0
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4247|Label Header|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4249|Packaging Header|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4251|Style Header|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4252|Trim Header|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4254|Color Patette Header|1
+206|Collection|4|NULL|NULL|NULL|NULL|1|6|4276|Style Header - Sets|0
+1316|SupplierType|3896|NULL|NULL|NULL|NULL|1|3535|4124|Supplier Profile|1
+1316|SupplierType|3896|NULL|NULL|NULL|NULL|1|3535|4212|Fabric Info|0
+151|Fabric Mill|3133|NULL|NULL|NULL|NULL|2|NULL|3998|Fabric Header-V2K ERP|1
+151|Fabric Mill|3133|NULL|NULL|NULL|NULL|2|NULL|4096|Fabric Header-Non V2K ERP|1
+151|Fabric Mill|3133|NULL|NULL|NULL|NULL|2|NULL|4118|Fabric Master Header|0
+151|Fabric Mill|3133|NULL|NULL|NULL|NULL|2|NULL|4164|Fabric Brief Mobile Info|0
+151|Fabric Mill|3133|NULL|NULL|NULL|NULL|2|NULL|4258|Fabric Header|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|3991|Style Header_V2K ERP|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|3998|Fabric Header-V2K ERP|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|3999|Trim Header-V2K ERP|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4000|Label Header-V2K ERP|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4001|Packaging Header-V2K ERP|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4040|Style Header_Non V2K ERP|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4096|Fabric Header-Non V2K ERP|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4097|Trim Header-Non V2K ERP|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4099|Label Header-Non V2K ERP|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4100|Packaging Header-Non V2K ERP|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4115|Quote Request|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4118|Fabric Master Header|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4124|Supplier Profile|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4144|Raw Material - V2K Publish Header|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4114|Request Header|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4152|VIS Tab|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4153|Style Header_Shopify|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4160|Style Brief Mobile Info|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4161|Tablet Sample Tracking|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4164|Fabric Brief Mobile Info|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4165|Trim Brief Mobile Info|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4166|Style Import|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4167|Label Import|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4168|Packaging Import|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4169|Trim Import|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4174|PO-Production|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4177|PO Request Header|1
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4179|PO|0
+154|Supplier|56|NULL|NULL|NULL|NULL|1|42|4208|Fabric import|0
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|3991|Style Header_V2K ERP|1
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|4144|Raw Material - V2K Publish Header|1
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|4152|VIS Tab|0
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|4153|Style Header_Shopify|1
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|4166|Style Import|0
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|3998|Fabric Header-V2K ERP|1
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|4000|Label Header-V2K ERP|1
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|4001|Packaging Header-V2K ERP|1
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|3999|Trim Header-V2K ERP|1
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|4212|Fabric Info|0
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|4247|Label Header|1
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|4249|Packaging Header|1
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|4252|Trim Header|1
+1317|Supplier Article #|3916|NULL|NULL|NULL|NULL|2|NULL|4258|Fabric Header|1
+1407|Cost p/m|5094|NULL|NULL|NULL|NULL|20|NULL|4270|Fabric Cost|0
+1408|Cost p/y|5336|NULL|NULL|NULL|NULL|20|NULL|4270|Fabric Cost|0
+1321|Original Composition|4938|NULL|NULL|NULL|NULL|4|NULL|3991|Style Header_V2K ERP|1
+1321|Original Composition|4938|NULL|NULL|NULL|NULL|4|NULL|3998|Fabric Header-V2K ERP|1
+1321|Original Composition|4938|NULL|NULL|NULL|NULL|4|NULL|3999|Trim Header-V2K ERP|1
+1321|Original Composition|4938|NULL|NULL|NULL|NULL|4|NULL|4001|Packaging Header-V2K ERP|1
+1321|Original Composition|4938|NULL|NULL|NULL|NULL|4|NULL|4000|Label Header-V2K ERP|1
+1321|Original Composition|4938|NULL|NULL|NULL|NULL|4|NULL|4212|Fabric Info|0
+1321|Original Composition|4938|NULL|NULL|NULL|NULL|4|NULL|4258|Fabric Header|1
+1546|Final Composition|7089|NULL|NULL|NULL|NULL|4|NULL|4213|Attributes|0
+1546|Final Composition|7089|NULL|NULL|NULL|NULL|4|NULL|4224|Style Summary|0
+1546|Final Composition|7089|NULL|NULL|NULL|NULL|4|NULL|4152|VIS Tab|0
+1546|Final Composition|7089|NULL|NULL|NULL|NULL|4|NULL|4229|Fabrics & Trims-10|0
+1588|Weight|7141|NULL|NULL|NULL|NULL|20|NULL|4213|Attributes|0
+1589|Bf. Wash Swt Weight|3355|NULL|NULL|NULL|NULL|20|NULL|4035|Construction|0
+1589|Bf. Wash Swt Weight|3355|NULL|NULL|NULL|NULL|20|NULL|4213|Attributes|0
+=== §5 BLQuery SQL preview (reference only) ===
+No BLQueryID on search template (synthesize DataSet from FieldMapping JOIN plan)
+=== §6 Tab affinity (SubItem → Tab) ===
+SubItemId|TabID|TabName|IsTemplateHeaderTab|IsMasterReferenceHeaderTab|ControlType|EntityId
+---------|-----|-------|-------------------|--------------------------|-----------|--------
+1|4163|AI Integration|0|0|1|1
+3|4163|AI Integration|0|0|1|8
+4|4163|AI Integration|0|0|1|6
+6|4163|AI Integration|0|0|5|11
+22|4163|AI Integration|0|0|2|NULL
+23|4163|AI Integration|0|0|2|NULL
+1|4228|Artwork Details|0|0|1|1
+3|4228|Artwork Details|0|0|1|8
+4|4228|Artwork Details|0|0|1|6
+6|4228|Artwork Details|0|0|5|11
+22|4228|Artwork Details|0|0|2|NULL
+23|4228|Artwork Details|0|0|2|NULL
+3130|4228|Artwork Details|0|0|1|3463
+3355|4213|Attributes|0|0|20|NULL
+7089|4213|Attributes|0|0|4|NULL
+7141|4213|Attributes|0|0|20|NULL
+6|4104|Care Label Image|0|0|5|11
+22|4104|Care Label Image|0|0|2|NULL
+23|4104|Care Label Image|0|0|2|NULL
+3|4254|Color Patette Header|1|0|1|8
+4|4254|Color Patette Header|1|0|1|6
+22|4254|Color Patette Header|1|0|2|NULL
+23|4254|Color Patette Header|1|0|2|NULL
+3355|4035|Construction|0|0|20|NULL
+1|4200|Construction Library Reference|0|0|1|1
+22|4200|Construction Library Reference|0|0|2|NULL
+23|4200|Construction Library Reference|0|0|2|NULL
+22|4158|Cost Card List|0|0|2|NULL
+23|4158|Cost Card List|0|0|2|NULL
+1|4199|Customer Label Library Reference|0|0|1|1
+22|4199|Customer Label Library Reference|0|0|2|NULL
+23|4199|Customer Label Library Reference|0|0|2|NULL
+1|1|ERP Required Fields|NULL|NULL|1|1
+3|1|ERP Required Fields|NULL|NULL|1|8
+4|1|ERP Required Fields|NULL|NULL|1|6
+6|1|ERP Required Fields|NULL|NULL|5|11
+22|1|ERP Required Fields|NULL|NULL|2|NULL
+23|1|ERP Required Fields|NULL|NULL|2|NULL
+103|1|ERP Required Fields|NULL|NULL|1|59
+1|4164|Fabric Brief Mobile Info|0|0|1|1
+3|4164|Fabric Brief Mobile Info|0|0|1|8
+4|4164|Fabric Brief Mobile Info|0|0|1|6
+6|4164|Fabric Brief Mobile Info|0|0|5|11
+22|4164|Fabric Brief Mobile Info|0|0|2|NULL
+23|4164|Fabric Brief Mobile Info|0|0|2|NULL
+56|4164|Fabric Brief Mobile Info|0|0|1|42
+103|4164|Fabric Brief Mobile Info|0|0|1|59
+3127|4164|Fabric Brief Mobile Info|0|0|1|3462
+3133|4164|Fabric Brief Mobile Info|0|0|2|NULL
+3708|4164|Fabric Brief Mobile Info|0|0|1|123
+5094|4270|Fabric Cost|0|0|20|NULL
+5336|4270|Fabric Cost|0|0|20|NULL
+1|4222|Fabric Functional Properties Library|0|0|1|1
+22|4222|Fabric Functional Properties Library|0|0|2|NULL
+23|4222|Fabric Functional Properties Library|0|0|2|NULL
+1|4258|Fabric Header|1|0|1|1
+22|4258|Fabric Header|1|0|2|NULL
+23|4258|Fabric Header|1|0|2|NULL
+3128|4258|Fabric Header|1|0|1|3461
+3130|4258|Fabric Header|1|0|1|3463
+3133|4258|Fabric Header|1|0|2|NULL
+3708|4258|Fabric Header|1|0|1|123
+3916|4258|Fabric Header|1|0|2|NULL
+4938|4258|Fabric Header|1|0|4|NULL
+6|4096|Fabric Header-Non V2K ERP|1|0|5|11
+22|4096|Fabric Header-Non V2K ERP|1|0|2|NULL
+23|4096|Fabric Header-Non V2K ERP|1|0|2|NULL
+56|4096|Fabric Header-Non V2K ERP|1|0|1|42
+103|4096|Fabric Header-Non V2K ERP|1|0|1|59
+3127|4096|Fabric Header-Non V2K ERP|1|0|1|3462
+3128|4096|Fabric Header-Non V2K ERP|1|0|1|3461
+3130|4096|Fabric Header-Non V2K ERP|1|0|1|3463
+3133|4096|Fabric Header-Non V2K ERP|1|0|2|NULL
+3708|4096|Fabric Header-Non V2K ERP|1|0|1|123
+1|3998|Fabric Header-V2K ERP|1|0|1|1
+3|3998|Fabric Header-V2K ERP|1|0|1|8
+4|3998|Fabric Header-V2K ERP|1|0|1|6
+6|3998|Fabric Header-V2K ERP|1|0|5|11
+22|3998|Fabric Header-V2K ERP|1|0|2|NULL
+23|3998|Fabric Header-V2K ERP|1|0|2|NULL
+56|3998|Fabric Header-V2K ERP|1|0|1|42
+103|3998|Fabric Header-V2K ERP|1|0|1|59
+3127|3998|Fabric Header-V2K ERP|1|0|1|3462
+3128|3998|Fabric Header-V2K ERP|1|0|1|3461
+3133|3998|Fabric Header-V2K ERP|1|0|2|NULL
+3708|3998|Fabric Header-V2K ERP|1|0|1|123
+3916|3998|Fabric Header-V2K ERP|1|0|2|NULL
+4938|3998|Fabric Header-V2K ERP|1|0|4|NULL
+1|4208|Fabric import|0|0|1|1
+3|4208|Fabric import|0|0|1|8
+4|4208|Fabric import|0|0|1|6
+22|4208|Fabric import|0|0|2|NULL
+23|4208|Fabric import|0|0|2|NULL
+56|4208|Fabric import|0|0|1|42
+103|4208|Fabric import|0|0|1|59
+3128|4208|Fabric import|0|0|1|3461
+1|4212|Fabric Info|0|0|1|1
+3|4212|Fabric Info|0|0|1|8
+4|4212|Fabric Info|0|0|1|6
+6|4212|Fabric Info|0|0|5|11
+22|4212|Fabric Info|0|0|2|NULL
+23|4212|Fabric Info|0|0|2|NULL
+3127|4212|Fabric Info|0|0|1|3462
+3128|4212|Fabric Info|0|0|1|3461
+3130|4212|Fabric Info|0|0|1|3463
+3708|4212|Fabric Info|0|0|1|123
+3896|4212|Fabric Info|0|0|1|3535
+3916|4212|Fabric Info|0|0|2|NULL
+4938|4212|Fabric Info|0|0|4|NULL
+5082|4212|Fabric Info|0|0|2|NULL
+5083|4212|Fabric Info|0|0|1|3635
+6790|4212|Fabric Info|0|0|1|4723
+1|4118|Fabric Master Header|0|1|1|1
+3|4118|Fabric Master Header|0|1|1|8
+4|4118|Fabric Master Header|0|1|1|6
+6|4118|Fabric Master Header|0|1|5|11
+22|4118|Fabric Master Header|0|1|2|NULL
+23|4118|Fabric Master Header|0|1|2|NULL
+56|4118|Fabric Master Header|0|1|1|42
+103|4118|Fabric Master Header|0|1|1|59
+3127|4118|Fabric Master Header|0|1|1|3462
+3128|4118|Fabric Master Header|0|1|1|3461
+3133|4118|Fabric Master Header|0|1|2|NULL
+3708|4118|Fabric Master Header|0|1|1|123
+22|4209|Fabric range product|0|0|2|NULL
+23|4209|Fabric range product|0|0|2|NULL
+7089|4229|Fabrics & Trims-10|0|0|4|NULL
+22|4042|File|0|0|2|NULL
+23|4042|File|0|0|2|NULL
+1|4113|Finished Good Master Header|0|1|1|1
+3|4113|Finished Good Master Header|0|1|1|8
+4|4113|Finished Good Master Header|0|1|1|6
+6|4113|Finished Good Master Header|0|1|5|11
+22|4113|Finished Good Master Header|0|1|2|NULL
+23|4113|Finished Good Master Header|0|1|2|NULL
+6|4041|Image|0|0|5|11
+22|4041|Image|0|0|2|NULL
+23|4041|Image|0|0|2|NULL
+1|4247|Label Header|1|0|1|1
+3|4247|Label Header|1|0|1|8
+4|4247|Label Header|1|0|1|6
+6|4247|Label Header|1|0|5|11
+22|4247|Label Header|1|0|2|NULL
+23|4247|Label Header|1|0|2|NULL
+103|4247|Label Header|1|0|1|59
+3128|4247|Label Header|1|0|1|3461
+3916|4247|Label Header|1|0|2|NULL
+6|4099|Label Header-Non V2K ERP|1|0|5|11
+22|4099|Label Header-Non V2K ERP|1|0|2|NULL
+23|4099|Label Header-Non V2K ERP|1|0|2|NULL
+56|4099|Label Header-Non V2K ERP|1|0|1|42
+103|4099|Label Header-Non V2K ERP|1|0|1|59
+3128|4099|Label Header-Non V2K ERP|1|0|1|3461
+1|4000|Label Header-V2K ERP|1|0|1|1
+3|4000|Label Header-V2K ERP|1|0|1|8
+4|4000|Label Header-V2K ERP|1|0|1|6
+6|4000|Label Header-V2K ERP|1|0|5|11
+22|4000|Label Header-V2K ERP|1|0|2|NULL
+23|4000|Label Header-V2K ERP|1|0|2|NULL
+56|4000|Label Header-V2K ERP|1|0|1|42
+103|4000|Label Header-V2K ERP|1|0|1|59
+3128|4000|Label Header-V2K ERP|1|0|1|3461
+3916|4000|Label Header-V2K ERP|1|0|2|NULL
+4938|4000|Label Header-V2K ERP|1|0|4|NULL
+1|4167|Label Import|0|0|1|1
+3|4167|Label Import|0|0|1|8
+4|4167|Label Import|0|0|1|6
+6|4167|Label Import|0|0|5|11
+22|4167|Label Import|0|0|2|NULL
+23|4167|Label Import|0|0|2|NULL
+56|4167|Label Import|0|0|1|42
+103|4167|Label Import|0|0|1|59
+1|4170|Labour|1|0|1|1
+3|4170|Labour|1|0|1|8
+4|4170|Labour|1|0|1|6
+22|4170|Labour|1|0|2|NULL
+23|4170|Labour|1|0|2|NULL
+22|4150|Licensing Contract|0|0|2|NULL
+23|4150|Licensing Contract|0|0|2|NULL
+1|4249|Packaging Header|1|0|1|1
+3|4249|Packaging Header|1|0|1|8
+4|4249|Packaging Header|1|0|1|6
+6|4249|Packaging Header|1|0|5|11
+22|4249|Packaging Header|1|0|2|NULL
+23|4249|Packaging Header|1|0|2|NULL
+103|4249|Packaging Header|1|0|1|59
+3128|4249|Packaging Header|1|0|1|3461
+3916|4249|Packaging Header|1|0|2|NULL
+6|4100|Packaging Header-Non V2K ERP|1|0|5|11
+22|4100|Packaging Header-Non V2K ERP|1|0|2|NULL
+23|4100|Packaging Header-Non V2K ERP|1|0|2|NULL
+56|4100|Packaging Header-Non V2K ERP|1|0|1|42
+103|4100|Packaging Header-Non V2K ERP|1|0|1|59
+3128|4100|Packaging Header-Non V2K ERP|1|0|1|3461
+1|4001|Packaging Header-V2K ERP|1|0|1|1
+3|4001|Packaging Header-V2K ERP|1|0|1|8
+4|4001|Packaging Header-V2K ERP|1|0|1|6
+6|4001|Packaging Header-V2K ERP|1|0|5|11
+22|4001|Packaging Header-V2K ERP|1|0|2|NULL
+23|4001|Packaging Header-V2K ERP|1|0|2|NULL
+56|4001|Packaging Header-V2K ERP|1|0|1|42
+103|4001|Packaging Header-V2K ERP|1|0|1|59
+3128|4001|Packaging Header-V2K ERP|1|0|1|3461
+3916|4001|Packaging Header-V2K ERP|1|0|2|NULL
+4938|4001|Packaging Header-V2K ERP|1|0|4|NULL
+1|4168|Packaging Import|0|0|1|1
+3|4168|Packaging Import|0|0|1|8
+4|4168|Packaging Import|0|0|1|6
+22|4168|Packaging Import|0|0|2|NULL
+23|4168|Packaging Import|0|0|2|NULL
+56|4168|Packaging Import|0|0|1|42
+103|4168|Packaging Import|0|0|1|59
+3|4179|PO|0|0|1|8
+4|4179|PO|0|0|1|6
+6|4179|PO|0|0|5|11
+22|4179|PO|0|0|2|NULL
+23|4179|PO|0|0|2|NULL
+56|4179|PO|0|0|1|42
+3|4177|PO Request Header|1|0|1|8
+4|4177|PO Request Header|1|0|1|6
+22|4177|PO Request Header|1|0|2|NULL
+23|4177|PO Request Header|1|0|2|NULL
+56|4177|PO Request Header|1|0|1|42
+1|4176|PO Summary Single Product|0|0|1|1
+6|4176|PO Summary Single Product|0|0|5|11
+1|4174|PO-Production|0|0|1|1
+3|4174|PO-Production|0|0|1|8
+4|4174|PO-Production|0|0|1|6
+6|4174|PO-Production|0|0|5|11
+22|4174|PO-Production|0|0|2|NULL
+23|4174|PO-Production|0|0|2|NULL
+56|4174|PO-Production|0|0|1|42
+1|4175|Production Summary|0|0|1|1
+3|4175|Production Summary|0|0|1|8
+4|4175|Production Summary|0|0|1|6
+6|4175|Production Summary|0|0|5|11
+22|4175|Production Summary|0|0|2|NULL
+23|4175|Production Summary|0|0|2|NULL
+56|4115|Quote Request|0|0|1|42
+103|4115|Quote Request|0|0|1|59
+1|4146|Range Plan|0|0|1|1
+3|4146|Range Plan|0|0|1|8
+4|4146|Range Plan|0|0|1|6
+22|4146|Range Plan|0|0|2|NULL
+23|4146|Range Plan|0|0|2|NULL
+1|4144|Raw Material - V2K Publish Header|1|0|1|1
+3|4144|Raw Material - V2K Publish Header|1|0|1|8
+4|4144|Raw Material - V2K Publish Header|1|0|1|6
+6|4144|Raw Material - V2K Publish Header|1|0|5|11
+22|4144|Raw Material - V2K Publish Header|1|0|2|NULL
+23|4144|Raw Material - V2K Publish Header|1|0|2|NULL
+56|4144|Raw Material - V2K Publish Header|1|0|1|42
+103|4144|Raw Material - V2K Publish Header|1|0|1|59
+3916|4144|Raw Material - V2K Publish Header|1|0|2|NULL
+1|4114|Request Header|1|0|1|1
+6|4114|Request Header|1|0|5|11
+22|4114|Request Header|1|0|2|NULL
+23|4114|Request Header|1|0|2|NULL
+56|4114|Request Header|1|0|1|42
+6|4155|Shopify Images|0|0|5|11
+1|4125|Storyboard|0|0|1|1
+3|4125|Storyboard|0|0|1|8
+4|4125|Storyboard|0|0|1|6
+6|4125|Storyboard|0|0|5|11
+22|4125|Storyboard|0|0|2|NULL
+23|4125|Storyboard|0|0|2|NULL
+1|4160|Style Brief Mobile Info|0|0|1|1
+3|4160|Style Brief Mobile Info|0|0|1|8
+4|4160|Style Brief Mobile Info|0|0|1|6
+6|4160|Style Brief Mobile Info|0|0|5|11
+22|4160|Style Brief Mobile Info|0|0|2|NULL
+23|4160|Style Brief Mobile Info|0|0|2|NULL
+56|4160|Style Brief Mobile Info|0|0|1|42
+1|4251|Style Header|1|0|1|1
+3|4251|Style Header|1|0|1|8
+4|4251|Style Header|1|0|1|6
+6|4251|Style Header|1|0|5|11
+22|4251|Style Header|1|0|2|NULL
+23|4251|Style Header|1|0|2|NULL
+3127|4251|Style Header|1|0|1|3462
+5082|4251|Style Header|1|0|2|NULL
+5083|4251|Style Header|1|0|1|3635
+1|4276|Style Header - Sets|0|0|1|1
+3|4276|Style Header - Sets|0|0|1|8
+4|4276|Style Header - Sets|0|0|1|6
+6|4276|Style Header - Sets|0|0|5|11
+22|4276|Style Header - Sets|0|0|2|NULL
+23|4276|Style Header - Sets|0|0|2|NULL
+3127|4276|Style Header - Sets|0|0|1|3462
+5082|4276|Style Header - Sets|0|0|2|NULL
+5083|4276|Style Header - Sets|0|0|1|3635
+6|4040|Style Header_Non V2K ERP|1|0|5|11
+22|4040|Style Header_Non V2K ERP|1|0|2|NULL
+23|4040|Style Header_Non V2K ERP|1|0|2|NULL
+56|4040|Style Header_Non V2K ERP|1|0|1|42
+103|4040|Style Header_Non V2K ERP|1|0|1|59
+1|4153|Style Header_Shopify|1|0|1|1
+3|4153|Style Header_Shopify|1|0|1|8
+4|4153|Style Header_Shopify|1|0|1|6
+6|4153|Style Header_Shopify|1|0|5|11
+22|4153|Style Header_Shopify|1|0|2|NULL
+23|4153|Style Header_Shopify|1|0|2|NULL
+56|4153|Style Header_Shopify|1|0|1|42
+103|4153|Style Header_Shopify|1|0|1|59
+3916|4153|Style Header_Shopify|1|0|2|NULL
+1|3991|Style Header_V2K ERP|1|0|1|1
+3|3991|Style Header_V2K ERP|1|0|1|8
+4|3991|Style Header_V2K ERP|1|0|1|6
+6|3991|Style Header_V2K ERP|1|0|5|11
+22|3991|Style Header_V2K ERP|1|0|2|NULL
+23|3991|Style Header_V2K ERP|1|0|2|NULL
+56|3991|Style Header_V2K ERP|1|0|1|42
+103|3991|Style Header_V2K ERP|1|0|1|59
+3916|3991|Style Header_V2K ERP|1|0|2|NULL
+4938|3991|Style Header_V2K ERP|1|0|4|NULL
+1|4166|Style Import|0|0|1|1
+3|4166|Style Import|0|0|1|8
+4|4166|Style Import|0|0|1|6
+6|4166|Style Import|0|0|5|11
+22|4166|Style Import|0|0|2|NULL
+23|4166|Style Import|0|0|2|NULL
+56|4166|Style Import|0|0|1|42
+103|4166|Style Import|0|0|1|59
+3916|4166|Style Import|0|0|2|NULL
+1|4224|Style Summary|0|0|1|1
+7089|4224|Style Summary|0|0|4|NULL
+6|4124|Supplier Profile|1|0|5|11
+56|4124|Supplier Profile|1|0|1|42
+3896|4124|Supplier Profile|1|0|1|3535
+6|4162|Tablet Fit Samples|0|0|5|11
+22|4162|Tablet Fit Samples|0|0|2|NULL
+23|4162|Tablet Fit Samples|0|0|2|NULL
+6|4187|Tablet PP Samples|0|0|5|11
+22|4187|Tablet PP Samples|0|0|2|NULL
+23|4187|Tablet PP Samples|0|0|2|NULL
+1|4172|Tablet Reference Creation|0|0|1|1
+6|4172|Tablet Reference Creation|0|0|5|11
+6|4161|Tablet Sample Tracking|0|0|5|11
+22|4161|Tablet Sample Tracking|0|0|2|NULL
+23|4161|Tablet Sample Tracking|0|0|2|NULL
+56|4161|Tablet Sample Tracking|0|0|1|42
+1|4165|Trim Brief Mobile Info|0|0|1|1
+3|4165|Trim Brief Mobile Info|0|0|1|8
+4|4165|Trim Brief Mobile Info|0|0|1|6
+6|4165|Trim Brief Mobile Info|0|0|5|11
+22|4165|Trim Brief Mobile Info|0|0|2|NULL
+23|4165|Trim Brief Mobile Info|0|0|2|NULL
+56|4165|Trim Brief Mobile Info|0|0|1|42
+103|4165|Trim Brief Mobile Info|0|0|1|59
+1|4252|Trim Header|1|0|1|1
+3|4252|Trim Header|1|0|1|8
+4|4252|Trim Header|1|0|1|6
+6|4252|Trim Header|1|0|5|11
+22|4252|Trim Header|1|0|2|NULL
+23|4252|Trim Header|1|0|2|NULL
+103|4252|Trim Header|1|0|1|59
+3128|4252|Trim Header|1|0|1|3461
+3916|4252|Trim Header|1|0|2|NULL
+6|4097|Trim Header-Non V2K ERP|1|0|5|11
+22|4097|Trim Header-Non V2K ERP|1|0|2|NULL
+23|4097|Trim Header-Non V2K ERP|1|0|2|NULL
+56|4097|Trim Header-Non V2K ERP|1|0|1|42
+103|4097|Trim Header-Non V2K ERP|1|0|1|59
+3128|4097|Trim Header-Non V2K ERP|1|0|1|3461
+1|3999|Trim Header-V2K ERP|1|0|1|1
+3|3999|Trim Header-V2K ERP|1|0|1|8
+4|3999|Trim Header-V2K ERP|1|0|1|6
+6|3999|Trim Header-V2K ERP|1|0|5|11
+22|3999|Trim Header-V2K ERP|1|0|2|NULL
+23|3999|Trim Header-V2K ERP|1|0|2|NULL
+56|3999|Trim Header-V2K ERP|1|0|1|42
+103|3999|Trim Header-V2K ERP|1|0|1|59
+3128|3999|Trim Header-V2K ERP|1|0|1|3461
+3916|3999|Trim Header-V2K ERP|1|0|2|NULL
+4938|3999|Trim Header-V2K ERP|1|0|4|NULL
+1|4169|Trim Import|0|0|1|1
+3|4169|Trim Import|0|0|1|8
+4|4169|Trim Import|0|0|1|6
+22|4169|Trim Import|0|0|2|NULL
+23|4169|Trim Import|0|0|2|NULL
+56|4169|Trim Import|0|0|1|42
+103|4169|Trim Import|0|0|1|59
+1|4157|VIS Shopify|0|0|1|1
+3|4157|VIS Shopify|0|0|1|8
+4|4157|VIS Shopify|0|0|1|6
+6|4157|VIS Shopify|0|0|5|11
+22|4157|VIS Shopify|0|0|2|NULL
+23|4157|VIS Shopify|0|0|2|NULL
+1|4152|VIS Tab|0|0|1|1
+3|4152|VIS Tab|0|0|1|8
+4|4152|VIS Tab|0|0|1|6
+6|4152|VIS Tab|0|0|5|11
+22|4152|VIS Tab|0|0|2|NULL
+23|4152|VIS Tab|0|0|2|NULL
+56|4152|VIS Tab|0|0|1|42
+103|4152|VIS Tab|0|0|1|59
+3916|4152|VIS Tab|0|0|2|NULL
+7089|4152|VIS Tab|0|0|4|NULL
+22|4223|Yarn Library Reference|0|0|2|NULL
+23|4223|Yarn Library Reference|0|0|2|NULL
+=== Probe complete (SearchTemplateId 28902) ===

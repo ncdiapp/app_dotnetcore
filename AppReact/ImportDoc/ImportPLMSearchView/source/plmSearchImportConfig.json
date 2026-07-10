@@ -1,44 +1,53 @@
 {
-  "plmSearchTemplateId": 23702,
-  "plmSearchName": "1a - Style Search",
-  "plmReferenceViewId": 2,
+  "plmSearchTemplateId": 28902,
+  "plmSearchName": "1b - Fabric Search",
+  "plmReferenceViewId": 4,
   "plmBlQueryId": null,
   "plmSqlServer": "PC3B\\MSSQLSERVER01",
   "plmDatabase": "plm_live_20260602",
   "appSqlServer": "PC3B\\MSSQLSERVER01",
   "appDatabase": "TenantDB_PLM27",
   "tablePrefix": "Plm_",
-  "primaryTableName": "Plm_Style_Header",
-  "rootTableName": "Plm_Style_Header",
-  "selectedJoinPlanId": "B",
+  "primaryTableName": "Plm_Fabric_Header",
+  "rootTableName": "Plm_Fabric_Header",
+  "selectedJoinPlanId": "D",
   "gridColumnStrategy": "exclude",
   "referenceScope": {
-    "mode": "StyleHeaderOnly",
-    "notes": "FROM Plm_Style_Header — only style header rows"
+    "mode": "FabricHeaderOnly",
+    "notes": "FROM Plm_Fabric_Header drives row set; no extra Reference filter — only rows present in Fabric Header table."
   },
   "joinPlans": [
     {
-      "planId": "B",
-      "score": 85,
-      "label": "Style Header (primary) + ReferenceBasicInfo + Style Summary",
+      "planId": "D",
+      "score": 88,
+      "label": "Fabric Header (primary) + ReferenceBasicInfo + Fabric Info + Fabric Cost + Attributes",
       "tables": [
-        { "appTableName": "Plm_Style_Header", "role": "primary", "joinType": "FROM" },
+        { "appTableName": "Plm_Fabric_Header", "role": "primary", "joinType": "FROM", "plmTabId": 4258 },
         { "appTableName": "Plm_ReferenceBasicInfo", "role": "reference", "joinType": "LEFT" },
-        { "appTableName": "Plm_Style_Summary", "role": "sibling", "joinType": "LEFT" }
-      ]
+        { "appTableName": "Plm_Fabric_Info", "role": "sibling", "joinType": "LEFT", "plmTabId": 4212 },
+        { "appTableName": "Plm_Fabric_Cost", "role": "sibling", "joinType": "LEFT", "plmTabId": 4270 },
+        { "appTableName": "Plm_Attributes", "role": "sibling", "joinType": "LEFT", "plmTabId": 4213 }
+      ],
+      "criteriaCoverage": { "mapped": 8, "total": 9, "ignored": 1 },
+      "viewCoverage": { "mapped": 19, "total": 20, "ignored": 1 }
     }
   ],
   "transactionGroup": {
-    "transactionGroupId": 1,
-    "groupName": "01 - Apparel - 10 Colorways",
-    "primaryTransactionIntegrationId": "Tab_4251"
+    "transactionGroupId": 3,
+    "groupName": "02 - Fabrics",
+    "primaryTransactionIntegrationId": "Tab_4258"
   },
   "integrationIds": {
-    "search": "Search_1aStyleSearch",
-    "searchView": "Search_1aStyleSearch_View"
+    "search": "Search_28902",
+    "searchView": "Search_28902_View"
   },
   "menu": {
     "registerInMainMenu": true,
-    "menuTitle": "1a - Style Search"
-  }
+    "menuTitle": "1b - Fabric Search"
+  },
+  "missingFieldsPolicy": "ignore",
+  "ignoredFields": [
+    { "role": "criteria", "plmSubItemId": 103, "displayLabel": "COO" },
+    { "role": "view", "plmSubItemId": 56, "displayLabel": "Supplier" }
+  ]
 }

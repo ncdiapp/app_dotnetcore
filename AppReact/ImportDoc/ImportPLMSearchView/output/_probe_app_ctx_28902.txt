@@ -1,0 +1,10 @@
+Msg 207, Level 16, State 1, Server pc3b\MSSQLSERVER01, Line 19
+Invalid column name 'Name'.
+Msg 207, Level 16, State 1, Server pc3b\MSSQLSERVER01, Line 19
+Invalid column name 'IntegrationId'.
+Msg 207, Level 16, State 1, Server pc3b\MSSQLSERVER01, Line 19
+Invalid column name 'Name'.
+Msg 207, Level 16, State 1, Server pc3b\MSSQLSERVER01, Line 17
+Invalid column name 'Name'.
+Msg 207, Level 16, State 1, Server pc3b\MSSQLSERVER01, Line 17
+Invalid column name 'IntegrationId'.

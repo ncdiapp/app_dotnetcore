@@ -1,0 +1,300 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-10T14:51:00Z",
+  "source": {
+    "plmSearchTemplateId": 28902,
+    "plmSearchName": "1b - Fabric Search",
+    "plmReferenceViewId": 4,
+    "plmReferenceViewName": "1b -Fabrics (Grid)",
+    "plmBlQueryId": null,
+    "plmDatabase": "plm_live_20260602",
+    "appDatabase": "TenantDB_PLM27",
+    "tablePrefix": "Plm_",
+    "selectedJoinPlanId": "D",
+    "gridColumnStrategy": "exclude",
+    "primaryTableName": "Plm_Fabric_Header",
+    "referenceScope": {
+      "mode": "FabricHeaderOnly",
+      "notes": "FROM Plm_Fabric_Header drives row set; no extra Reference filter — only rows present in Fabric Header table."
+    }
+  },
+  "search": {
+    "name": "1b - Fabric Search",
+    "description": "Imported from PLM SearchTemplate 28902",
+    "integrationId": "Search_28902",
+    "usageType": "Management",
+    "autoExecute": true,
+    "saasApplicationId": null
+  },
+  "dataSet": {
+    "name": "1b - Fabric Search",
+    "queryMode": "SynthesizedFromFieldMapping",
+    "primaryTableName": "Plm_Fabric_Header",
+    "rootTableName": "Plm_Fabric_Header",
+    "queryText": "SELECT\n  [hdr].[ReferenceId],\n  [ref].[ReferenceCode],\n  [ref].[FolderId],\n  [info].[Sketch],\n  [hdr].[Article],\n  [hdr].[Description],\n  [info].[Original_Reference],\n  [info].[New_Carryover],\n  [hdr].[Raw_Material_Status],\n  [hdr].[Classification],\n  [hdr].[Fabric_Type],\n  [info].[Season_3],\n  [info].[Collection_4],\n  [info].[SupplierType],\n  [hdr].[Fabric_Mill],\n  [info].[Fabric_Mill] AS [Fabric_Mill_6790],\n  [hdr].[Supplier_Article_Number],\n  [cost].[Final_Fabric_Cost__Meter],\n  [cost].[Final_Fabric_Cost__Yard],\n  [hdr].[Total_Composition],\n  [attr].[Total_Composition] AS [Total_Composition_7089],\n  [attr].[Weight],\n  [attr].[Bf__Wash_Swt_Weight],\n  [info].[Print_Solid],\n  [hdr].[Item_Type]\nFROM [dbo].[Plm_Fabric_Header] AS [hdr]\nLEFT OUTER JOIN [dbo].[Plm_ReferenceBasicInfo] AS [ref]\n  ON [ref].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Fabric_Info] AS [info]\n  ON [info].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Fabric_Cost] AS [cost]\n  ON [cost].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Attributes] AS [attr]\n  ON [attr].[ReferenceId] = [hdr].[ReferenceId]",
+    "joins": [
+      {
+        "alias": "hdr",
+        "appTableName": "Plm_Fabric_Header",
+        "joinType": "FROM",
+        "role": "primary",
+        "cardinality": "1:1",
+        "plmTabId": 4258,
+        "isTemplateHeaderTab": true
+      },
+      {
+        "alias": "ref",
+        "appTableName": "Plm_ReferenceBasicInfo",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Fabric_Header",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_ReferenceBasicInfo",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1"
+      },
+      {
+        "alias": "info",
+        "appTableName": "Plm_Fabric_Info",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Fabric_Header",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_Fabric_Info",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1",
+        "plmTabId": 4212
+      },
+      {
+        "alias": "cost",
+        "appTableName": "Plm_Fabric_Cost",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Fabric_Header",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_Fabric_Cost",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1",
+        "plmTabId": 4270
+      },
+      {
+        "alias": "attr",
+        "appTableName": "Plm_Attributes",
+        "joinType": "LEFT",
+        "leftTable": "Plm_Fabric_Header",
+        "leftColumn": "ReferenceId",
+        "rightTable": "Plm_Attributes",
+        "rightColumn": "ReferenceId",
+        "cardinality": "1:1",
+        "plmTabId": 4213
+      }
+    ],
+    "filters": [],
+    "tenantDataSourceRegisterId": null
+  },
+  "joinPlan": {
+    "planId": "D",
+    "score": 88,
+    "label": "Fabric Header (primary) + ReferenceBasicInfo + Fabric Info + Fabric Cost + Attributes",
+    "semanticSummary": "Fabric-centric list: one row per Fabric Header record; Info/Cost/Attributes enrich via LEFT JOIN (1:1 in tenant).",
+    "tables": [
+      { "appTableName": "Plm_Fabric_Header", "role": "primary", "plmTabId": 4258, "isTemplateHeaderTab": true },
+      { "appTableName": "Plm_ReferenceBasicInfo", "role": "reference", "joinType": "LEFT" },
+      { "appTableName": "Plm_Fabric_Info", "role": "sibling", "plmTabId": 4212, "joinType": "LEFT" },
+      { "appTableName": "Plm_Fabric_Cost", "role": "sibling", "plmTabId": 4270, "joinType": "LEFT" },
+      { "appTableName": "Plm_Attributes", "role": "sibling", "plmTabId": 4213, "joinType": "LEFT" }
+    ]
+  },
+  "transactionGroup": {
+    "transactionGroupId": 3,
+    "groupName": "02 - Fabrics",
+    "primaryTransactionIntegrationId": "Tab_4258",
+    "notes": "Open link uses LinkTargetTransactionGroupId so user lands in the full Fabrics template group (BL resolves ID at execute time)."
+  },
+  "criteriaFields": [
+    {
+      "integrationKey": "criteria_FabricCode",
+      "displayText": "Fabric Code",
+      "sysTableFiledPath": "Article",
+      "sysTableFiledFullPath": "Plm_Fabric_Header.Article",
+      "controlType": 2,
+      "entityIntegrationId": null,
+      "operationId": 7,
+      "positionRow": 1,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 10,
+      "defaultValue": null,
+      "plmSubItemId": 22
+    },
+    {
+      "integrationKey": "criteria_FabricMill",
+      "displayText": "Fabric Mill",
+      "sysTableFiledPath": "Fabric_Mill_6790",
+      "sysTableFiledFullPath": "Plm_Fabric_Info.Fabric_Mill",
+      "controlType": 1,
+      "entityIntegrationId": "4723",
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 20,
+      "defaultValue": null,
+      "plmSubItemId": 6790,
+      "notes": "Aliased in queryText because Plm_Fabric_Header.Fabric_Mill (view SubItem 3133) shares the same column name."
+    },
+    {
+      "integrationKey": "criteria_Season",
+      "displayText": "Season",
+      "sysTableFiledPath": "Season_3",
+      "sysTableFiledFullPath": "Plm_Fabric_Info.Season_3",
+      "controlType": 1,
+      "entityIntegrationId": "8",
+      "operationId": 0,
+      "positionRow": 1,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 30,
+      "defaultValue": null,
+      "plmSubItemId": 3
+    },
+    {
+      "integrationKey": "criteria_Description",
+      "displayText": "Description",
+      "sysTableFiledPath": "Description",
+      "sysTableFiledFullPath": "Plm_Fabric_Header.Description",
+      "controlType": 2,
+      "entityIntegrationId": null,
+      "operationId": 7,
+      "positionRow": 2,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 40,
+      "defaultValue": null,
+      "plmSubItemId": 23
+    },
+    {
+      "integrationKey": "criteria_MillArticle",
+      "displayText": "Mill Article #",
+      "sysTableFiledPath": "Supplier_Article_Number",
+      "sysTableFiledFullPath": "Plm_Fabric_Header.Supplier_Article_Number",
+      "controlType": 2,
+      "entityIntegrationId": null,
+      "operationId": 7,
+      "positionRow": 2,
+      "positionColumn": 2,
+      "isVisible": true,
+      "sort": 50,
+      "defaultValue": null,
+      "plmSubItemId": 3916
+    },
+    {
+      "integrationKey": "criteria_PrintSolid",
+      "displayText": "Print/Solid",
+      "sysTableFiledPath": "Print_Solid",
+      "sysTableFiledFullPath": "Plm_Fabric_Info.Print_Solid",
+      "controlType": 1,
+      "entityIntegrationId": "3462",
+      "operationId": 0,
+      "positionRow": 2,
+      "positionColumn": 3,
+      "isVisible": true,
+      "sort": 60,
+      "defaultValue": null,
+      "plmSubItemId": 3127
+    },
+    {
+      "integrationKey": "criteria_Status",
+      "displayText": "Status",
+      "sysTableFiledPath": "Raw_Material_Status",
+      "sysTableFiledFullPath": "Plm_Fabric_Header.Raw_Material_Status",
+      "controlType": 1,
+      "entityIntegrationId": "3461",
+      "operationId": 0,
+      "positionRow": 3,
+      "positionColumn": 1,
+      "isVisible": true,
+      "sort": 70,
+      "defaultValue": null,
+      "plmSubItemId": 3128
+    },
+    {
+      "integrationKey": "criteria_ItemType",
+      "displayText": "Item Type",
+      "sysTableFiledPath": "Item_Type",
+      "sysTableFiledFullPath": "Plm_Fabric_Header.Item_Type",
+      "controlType": 1,
+      "entityIntegrationId": "123",
+      "operationId": 0,
+      "positionRow": 3,
+      "positionColumn": 3,
+      "isVisible": true,
+      "isReadOnly": true,
+      "sort": 80,
+      "defaultValue": "3",
+      "plmSubItemId": 3708
+    }
+  ],
+  "searchView": {
+    "name": "1b -Fabrics (Grid)",
+    "integrationId": "Search_28902_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "fields": [
+      { "displayText": "Ref No.", "sysTableFiledPath": "ReferenceId", "controlType": 20, "isTransRootId": true, "isVisible": true, "sort": 5 },
+      { "displayText": "Sketch", "sysTableFiledPath": "Sketch", "controlType": 5, "entityIntegrationId": "11", "isVisible": true, "sort": 10, "plmSubItemId": 6 },
+      { "displayText": "Fabric #", "sysTableFiledPath": "Article", "controlType": 2, "isVisible": true, "sort": 20, "plmSubItemId": 22 },
+      { "displayText": "Description", "sysTableFiledPath": "Description", "controlType": 2, "isVisible": true, "sort": 30, "plmSubItemId": 23 },
+      { "displayText": "Original Reference", "sysTableFiledPath": "Original_Reference", "controlType": 2, "isVisible": true, "sort": 40, "plmSubItemId": 5082 },
+      { "displayText": "New/Carryover", "sysTableFiledPath": "New_Carryover", "controlType": 1, "entityIntegrationId": "3635", "isVisible": true, "sort": 50, "plmSubItemId": 5083 },
+      { "displayText": "Status", "sysTableFiledPath": "Raw_Material_Status", "controlType": 1, "entityIntegrationId": "3461", "isVisible": true, "sort": 60, "plmSubItemId": 3128 },
+      { "displayText": "Product Class", "sysTableFiledPath": "Classification", "controlType": 1, "entityIntegrationId": "1", "isVisible": true, "sort": 70, "plmSubItemId": 1 },
+      { "displayText": "Fabric Type", "sysTableFiledPath": "Fabric_Type", "controlType": 1, "entityIntegrationId": "3463", "isVisible": true, "sort": 80, "plmSubItemId": 3130 },
+      { "displayText": "Season", "sysTableFiledPath": "Season_3", "controlType": 1, "entityIntegrationId": "8", "isVisible": true, "sort": 90, "plmSubItemId": 3 },
+      { "displayText": "Collection", "sysTableFiledPath": "Collection_4", "controlType": 1, "entityIntegrationId": "6", "isVisible": true, "sort": 100, "plmSubItemId": 4 },
+      { "displayText": "SupplierType", "sysTableFiledPath": "SupplierType", "controlType": 1, "entityIntegrationId": "3535", "isVisible": true, "sort": 110, "plmSubItemId": 3896 },
+      { "displayText": "Fabric Mill", "sysTableFiledPath": "Fabric_Mill", "controlType": 2, "isVisible": true, "sort": 120, "plmSubItemId": 3133 },
+      { "displayText": "Supplier Article #", "sysTableFiledPath": "Supplier_Article_Number", "controlType": 2, "isVisible": true, "sort": 130, "plmSubItemId": 3916 },
+      { "displayText": "Cost p/m", "sysTableFiledPath": "Final_Fabric_Cost__Meter", "controlType": 20, "isVisible": true, "sort": 140, "plmSubItemId": 5094 },
+      { "displayText": "Cost p/y", "sysTableFiledPath": "Final_Fabric_Cost__Yard", "controlType": 20, "isVisible": true, "sort": 150, "plmSubItemId": 5336 },
+      { "displayText": "Original Composition", "sysTableFiledPath": "Total_Composition", "controlType": 4, "isVisible": true, "sort": 160, "plmSubItemId": 4938 },
+      { "displayText": "Final Composition", "sysTableFiledPath": "Total_Composition_7089", "controlType": 4, "isVisible": true, "sort": 170, "plmSubItemId": 7089, "notes": "Aliased — Plm_Attributes.Total_Composition conflicts with Header Total_Composition (4938)." },
+      { "displayText": "Weight", "sysTableFiledPath": "Weight", "controlType": 20, "isVisible": true, "sort": 180, "plmSubItemId": 7141 },
+      { "displayText": "Bf. Wash Swt Weight", "sysTableFiledPath": "Bf__Wash_Swt_Weight", "controlType": 20, "isVisible": true, "sort": 190, "plmSubItemId": 3355 }
+    ]
+  },
+  "linkTargets": [
+    {
+      "name": "Open",
+      "actionType": "Edit",
+      "transactionIntegrationId": "Tab_4258",
+      "linkTargetTransactionGroupId": 3,
+      "linkTargetTransactionGroupName": "02 - Fabrics",
+      "sourceColumn": "ReferenceId",
+      "sort": 1
+    },
+    {
+      "name": "Create",
+      "actionType": "Create",
+      "transactionIntegrationId": "Tab_4258",
+      "linkTargetTransactionGroupId": 3,
+      "linkTargetTransactionGroupName": "02 - Fabrics",
+      "sourceColumn": "ReferenceId",
+      "sort": 2
+    }
+  ],
+  "menu": {
+    "registerInMainMenu": true,
+    "menuTitle": "1b - Fabric Search",
+    "menuGroup": null
+  },
+  "coverage": {
+    "criteria": { "total": 9, "mapped": 8, "ignored": 1 },
+    "view": { "total": 20, "mapped": 19, "ignored": 1, "hiddenPlmColumnsSkipped": 4 }
+  },
+  "unmappedPlmFields": [
+    { "role": "criteria", "displayLabel": "COO", "plmSubItemId": 103, "reason": "FieldMapping only on Label/Packaging/Trim Header — not on Fabric_* tables; ignored per user" },
+    { "role": "view", "displayLabel": "Supplier", "plmSubItemId": 56, "reason": "No FieldMapping row in tenant; ignored per user" },
+    { "role": "view", "displayLabel": "Group", "plmSubItemId": 5, "reason": "PLM IsVisible=0 — skipped" },
+    { "role": "view", "displayLabel": "Print/Solid", "plmSubItemId": 3127, "reason": "PLM IsVisible=0 — skipped (still in criteria)" },
+    { "role": "view", "displayLabel": "Country Of Origin", "plmSubItemId": 103, "reason": "PLM IsVisible=0 — skipped" },
+    { "role": "view", "displayLabel": "Created Date", "plmSubItemId": 181, "reason": "PLM IsVisible=0 / no FieldMapping — skipped" }
+  ]
+}

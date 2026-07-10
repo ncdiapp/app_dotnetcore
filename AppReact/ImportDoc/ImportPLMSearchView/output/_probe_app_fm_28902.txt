@@ -1,0 +1,135 @@
+=== APP tables with FieldMapping (Fabric-related) ===
+AppTableName|ColumnCount|TabFieldCount|GridColumnCount|ReferenceFieldCount
+------------|-----------|-------------|---------------|-------------------
+Plm_Attributes|123|123|0|0
+Plm_Costing|222|222|0|0
+Plm_Fabric_Approvals_Tracker|28|0|28|0
+Plm_Fabric_BOM_prod|92|0|72|0
+Plm_Fabric_BOM_prodGrandColorway|4|0|0|0
+Plm_Fabric_Cost|20|20|0|0
+Plm_Fabric_Header|85|85|0|0
+Plm_Fabric_Info|72|72|0|0
+Plm_Fabric_Policy|1|1|0|0
+Plm_Fabrics___Trims|66|66|0|0
+Plm_MaterialCosting_reg|17|0|17|0
+Plm_ReferenceBasicInfo|1|0|0|1
+Plm_Style_Reference|26|26|0|0
+=== TabId -> AppTableName (Fabric tabs) ===
+PlmTabId|AppTableName|FieldKind
+--------|------------|---------
+4212|Plm_Fabric_Info|TabField
+4213|Plm_Attributes|TabField
+4213|Plm_functional_properties_reg|GridColumn
+4258|Plm_Fabric_Header|TabField
+4270|Plm_Fabric_Cost|TabField
+4270|Plm_Material_MOQ_reg|GridColumn
+=== Resolve SubItemIds ===
+SubItemId|AppTableName|AppColumnName|PlmTabId|FieldKind|PlmControlType|PlmEntityId
+---------|------------|-------------|--------|---------|--------------|-----------
+1|Plm_Artwork_Details|Classification|4228|TabField|1|1
+1|Plm_Fabric_Header|Classification|4258|TabField|1|1
+1|Plm_Label_Header|Classification|4247|TabField|1|1
+1|Plm_Packaging_Header|Classification|4249|TabField|1|1
+1|Plm_Style_Header|Classification|4251|TabField|1|1
+1|Plm_Style_Header___Sets|Classification|4276|TabField|1|1
+1|Plm_Trim_Header|Classification|4252|TabField|1|1
+3|Plm_Artwork_Details|Season|4228|TabField|1|8
+3|Plm_Color_Patette_Header|Season|4254|TabField|1|8
+3|Plm_Fabric_Info|Season_3|4212|TabField|1|8
+3|Plm_Label_Header|Season|4247|TabField|1|8
+3|Plm_Packaging_Header|Season|4249|TabField|1|8
+3|Plm_Style_Header|Season_3|4251|TabField|1|8
+3|Plm_Style_Header___Sets|Season_3|4276|TabField|1|8
+3|Plm_Trim_Header|Season|4252|TabField|1|8
+4|Plm_Artwork_Details|Collection|4228|TabField|1|6
+4|Plm_Color_Patette_Header|Collection|4254|TabField|1|6
+4|Plm_Fabric_Info|Collection_4|4212|TabField|1|6
+4|Plm_Label_Header|Collection|4247|TabField|1|6
+4|Plm_Packaging_Header|Collection|4249|TabField|1|6
+4|Plm_Style_Header|Collection_4|4251|TabField|1|6
+4|Plm_Style_Header___Sets|Collection_4|4276|TabField|1|6
+4|Plm_Trim_Header|Collection|4252|TabField|1|6
+5|Plm_Artwork_Details|Group|4228|TabField|1|7
+5|Plm_Color_Patette_Header|Group|4254|TabField|1|7
+5|Plm_Fabric_Info|Group|4212|TabField|1|7
+5|Plm_Label_Header|Group|4247|TabField|1|7
+5|Plm_Packaging_Header|Group|4249|TabField|1|7
+5|Plm_Style_Header|Group|4251|TabField|1|7
+5|Plm_Style_Header___Sets|Group|4276|TabField|1|7
+5|Plm_Trim_Header|Group|4252|TabField|1|7
+6|Plm_Artwork_Details|Sketch|4228|TabField|5|11
+6|Plm_Fabric_Info|Sketch|4212|TabField|5|11
+6|Plm_Label_Header|Sketch|4247|TabField|5|11
+6|Plm_Packaging_Header|Sketch|4249|TabField|5|11
+6|Plm_Style_Header|Sketch|4251|TabField|5|11
+6|Plm_Style_Header___Sets|Sketch|4276|TabField|5|11
+6|Plm_Trim_Header|Sketch|4252|TabField|5|11
+22|Plm_Artwork_Details|Article|4228|TabField|2|NULL
+22|Plm_Color_Patette_Header|Article|4254|TabField|2|NULL
+22|Plm_Fabric_Header|Article|4258|TabField|2|NULL
+22|Plm_Label_Header|Article|4247|TabField|2|NULL
+22|Plm_Packaging_Header|Article|4249|TabField|2|NULL
+22|Plm_Style_Header|Article|4251|TabField|2|NULL
+22|Plm_Style_Header___Sets|Article|4276|TabField|2|NULL
+22|Plm_Trim_Header|Article|4252|TabField|2|NULL
+23|Plm_Artwork_Details|Description_23|4228|TabField|2|NULL
+23|Plm_Color_Patette_Header|Description|4254|TabField|2|NULL
+23|Plm_Fabric_Header|Description|4258|TabField|2|NULL
+23|Plm_Label_Header|Description|4247|TabField|2|NULL
+23|Plm_Packaging_Header|Description|4249|TabField|2|NULL
+23|Plm_Style_Header|Description_23|4251|TabField|2|NULL
+23|Plm_Style_Header___Sets|Description_23|4276|TabField|2|NULL
+23|Plm_Trim_Header|Description|4252|TabField|2|NULL
+56|NULL|NULL|NULL|NULL|NULL|NULL
+103|Plm_Label_Header|Country_Of_Origin|4247|TabField|1|59
+103|Plm_Packaging_Header|Country_Of_Origin|4249|TabField|1|59
+103|Plm_Trim_Header|Country_Of_Origin|4252|TabField|1|59
+181|NULL|NULL|NULL|NULL|NULL|NULL
+3127|Plm_Fabric_Info|Print_Solid|4212|TabField|1|3462
+3127|Plm_Style_Header|Print_Solid|4251|TabField|1|3462
+3127|Plm_Style_Header___Sets|Print_Solid|4276|TabField|1|3462
+3128|Plm_Fabric_Header|Raw_Material_Status|4258|TabField|1|3461
+3128|Plm_Label_Header|Raw_Material_Status|4247|TabField|1|3461
+3128|Plm_Packaging_Header|Raw_Material_Status|4249|TabField|1|3461
+3128|Plm_Trim_Header|Raw_Material_Status|4252|TabField|1|3461
+3130|Plm_Artwork_Details|Fabric_Type|4228|TabField|1|3463
+3130|Plm_Fabric_Header|Fabric_Type|4258|TabField|1|3463
+3133|Plm_Fabric_Header|Fabric_Mill|4258|TabField|2|NULL
+3355|Plm_Attributes|Bf__Wash_Swt_Weight|4213|TabField|20|NULL
+3708|Plm_Fabric_Header|Item_Type|4258|TabField|1|123
+3896|Plm_Fabric_Info|SupplierType|4212|TabField|1|3535
+3916|Plm_Fabric_Header|Supplier_Article_Number|4258|TabField|2|NULL
+3916|Plm_Label_Header|Supplier_Article_Number|4247|TabField|2|NULL
+3916|Plm_Packaging_Header|Supplier_Article_Number|4249|TabField|2|NULL
+3916|Plm_Trim_Header|Supplier_Article_Number|4252|TabField|2|NULL
+4938|Plm_Fabric_Header|Total_Composition|4258|TabField|4|NULL
+5082|Plm_Fabric_Info|Original_Reference|4212|TabField|2|NULL
+5082|Plm_Style_Header|Original_Reference|4251|TabField|2|NULL
+5082|Plm_Style_Header___Sets|Original_Reference|4276|TabField|2|NULL
+5083|Plm_Fabric_Info|New_Carryover|4212|TabField|1|3635
+5083|Plm_Style_Header|New_Carryover|4251|TabField|1|3635
+5083|Plm_Style_Header___Sets|New_Carryover|4276|TabField|1|3635
+5094|Plm_Fabric_Cost|Final_Fabric_Cost__Meter|4270|TabField|20|NULL
+5336|Plm_Fabric_Cost|Final_Fabric_Cost__Yard|4270|TabField|20|NULL
+6790|Plm_Fabric_Info|Fabric_Mill|4212|TabField|1|4723
+7089|Plm_Attributes|Total_Composition|4213|TabField|4|NULL
+7089|Plm_Style_Summary|Total_Composition_7089|4224|TabField|4|NULL
+7141|Plm_Attributes|Weight|4213|TabField|20|NULL
+=== Ambiguous among wanted ===
+PlmSubItemId|AppTableCount|AppTables
+------------|-------------|---------
+1|7|Plm_Artwork_Details, Plm_Fabric_Header, Plm_Label_Header, Plm_Packaging_Header, Plm_Style_Header, Plm_Style_Header___Sets, Plm_Trim_Header
+3|8|Plm_Artwork_Details, Plm_Color_Patette_Header, Plm_Fabric_Info, Plm_Label_Header, Plm_Packaging_Header, Plm_Style_Header, Plm_Style_Header___Sets, Plm_Trim_Header
+4|8|Plm_Artwork_Details, Plm_Color_Patette_Header, Plm_Fabric_Info, Plm_Label_Header, Plm_Packaging_Header, Plm_Style_Header, Plm_Style_Header___Sets, Plm_Trim_Header
+5|8|Plm_Artwork_Details, Plm_Color_Patette_Header, Plm_Fabric_Info, Plm_Label_Header, Plm_Packaging_Header, Plm_Style_Header, Plm_Style_Header___Sets, Plm_Trim_Header
+6|7|Plm_Artwork_Details, Plm_Fabric_Info, Plm_Label_Header, Plm_Packaging_Header, Plm_Style_Header, Plm_Style_Header___Sets, Plm_Trim_Header
+22|8|Plm_Artwork_Details, Plm_Color_Patette_Header, Plm_Fabric_Header, Plm_Label_Header, Plm_Packaging_Header, Plm_Style_Header, Plm_Style_Header___Sets, Plm_Trim_Header
+23|8|Plm_Artwork_Details, Plm_Color_Patette_Header, Plm_Fabric_Header, Plm_Label_Header, Plm_Packaging_Header, Plm_Style_Header, Plm_Style_Header___Sets, Plm_Trim_Header
+103|3|Plm_Label_Header, Plm_Packaging_Header, Plm_Trim_Header
+3127|3|Plm_Fabric_Info, Plm_Style_Header, Plm_Style_Header___Sets
+3128|4|Plm_Fabric_Header, Plm_Label_Header, Plm_Packaging_Header, Plm_Trim_Header
+3130|2|Plm_Artwork_Details, Plm_Fabric_Header
+3916|4|Plm_Fabric_Header, Plm_Label_Header, Plm_Packaging_Header, Plm_Trim_Header
+5082|3|Plm_Fabric_Info, Plm_Style_Header, Plm_Style_Header___Sets
+5083|3|Plm_Fabric_Info, Plm_Style_Header, Plm_Style_Header___Sets
+7089|2|Plm_Attributes, Plm_Style_Summary
