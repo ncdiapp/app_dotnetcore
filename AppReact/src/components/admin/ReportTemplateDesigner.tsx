@@ -294,6 +294,51 @@ const STARTER_TEMPLATES: { label: string; icon: string; html: string; isAbsolute
   },
 ];
 
+// ── Page Style ───────────────────────────────────────────────────────────────
+
+interface PageStyleValues {
+  fontFamily: string;
+  fontSize: number;
+  textColor: string;
+  primaryColor: string;
+  altRowColor: string;
+  borderColor: string;
+}
+
+const DEFAULT_PAGE_STYLE: PageStyleValues = {
+  fontFamily: 'Arial, sans-serif',
+  fontSize: 12,
+  textColor: '#222222',
+  primaryColor: '#1d4ed8',
+  altRowColor: '#f8faff',
+  borderColor: '#e5e7eb',
+};
+
+const FONT_FAMILIES = [
+  { label: 'Arial',           value: 'Arial, sans-serif' },
+  { label: 'Helvetica Neue',  value: "'Helvetica Neue', Helvetica, sans-serif" },
+  { label: 'Calibri',         value: "Calibri, 'Gill Sans', sans-serif" },
+  { label: 'Trebuchet MS',    value: "'Trebuchet MS', sans-serif" },
+  { label: 'Georgia',         value: 'Georgia, serif' },
+  { label: 'Times New Roman', value: "'Times New Roman', Times, serif" },
+];
+
+function generatePageCss(s: PageStyleValues): string {
+  const h1Size = Math.round(s.fontSize * 1.75);
+  const h2Size = Math.round(s.fontSize * 1.4);
+  const h3Size = Math.round(s.fontSize * 1.15);
+  return [
+    `body{font-family:${s.fontFamily};font-size:${s.fontSize}px;color:${s.textColor};padding:0;margin:0}`,
+    `h1{color:${s.primaryColor};font-size:${h1Size}px}`,
+    `h2{color:${s.primaryColor};font-size:${h2Size}px}`,
+    `h3{color:${s.textColor};font-size:${h3Size}px}`,
+    `table{border-collapse:collapse;width:100%}`,
+    `th{background:${s.primaryColor};color:white;padding:6px 10px;text-align:left;font-size:${s.fontSize}px}`,
+    `td{padding:5px 10px;border-bottom:1px solid ${s.borderColor};font-size:${s.fontSize}px}`,
+    `tr:nth-child(even) td{background:${s.altRowColor}}`,
+  ].join('\n');
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 
 const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0, onSaved, onClose }) => {
@@ -322,6 +367,8 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   const [dropIndicatorY, setDropIndicatorY] = useState<number | null>(null);
   const [pointerDragPos, setPointerDragPos] = useState<{x:number;y:number}|null>(null);
   const [gjsSelectedPath, setGjsSelectedPath] = useState<string[]>([]);
+  const [pageStyle, setPageStyle]             = useState<PageStyleValues>(DEFAULT_PAGE_STYLE);
+  const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
   const [galleryOpen, setGalleryOpen]       = useState(false);
   const [tableWizardOpen, setTableWizardOpen] = useState(false);
   const [wizardSrcIdx, setWizardSrcIdx]     = useState(0);
@@ -404,12 +451,10 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
     if (viewMode === 'design' && gjsEditorRef.current) {
       const gjsEditor = gjsEditorRef.current;
 
-      // <style> blocks → apply via GrapeJS CSS API (cannot be inserted as a DOM component)
+      // <style> blocks → open the Style Panel (CSS is managed there, not via raw insertion)
       const styleMatch = text.trim().match(/^<style>([\s\S]*?)<\/style>$/i);
       if (styleMatch) {
-        const newCss = styleMatch[1].trim();
-        const currentCss = gjsEditor.getCss?.() ?? '';
-        gjsEditor.setStyle?.(currentCss + '\n' + newCss);
+        setStylesPanelOpen(true);
         return;
       }
 
@@ -447,6 +492,11 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
       setTemplateHtml(next);
       schedulePreview(next);
     }
+  };
+
+  const applyPageStyle = (values: PageStyleValues) => {
+    setPageStyle(values);
+    gjsEditorRef.current?.setStyle?.(generatePageCss(values));
   };
 
   const applyStarterTemplate = (html: string) => {
@@ -1232,6 +1282,14 @@ ${cells}
                     </button>
                   </>
                 )}
+                {/* Styles button — always visible in Design mode */}
+                <button
+                  onClick={() => setStylesPanelOpen(v => !v)}
+                  title="Edit page-level styles (font, colors, table theme)"
+                  className={`h-6 px-2 text-[10px] rounded shrink-0 flex items-center gap-1 ml-1 ${stylesPanelOpen ? 'bg-purple-500 text-white' : theme.button_default}`}
+                >
+                  <i className="fa-solid fa-palette" /> Styles
+                </button>
               </>
             ) : (
               /* Code bar — label on left */
@@ -1483,6 +1541,111 @@ ${cells}
                 }}
               />
             </Suspense>
+
+            {/* ── Style Panel ── floats over canvas, anchored top-right */}
+            {stylesPanelOpen && (
+              <div
+                className={`absolute top-2 right-2 z-40 w-60 rounded-lg shadow-2xl border flex flex-col overflow-auto ${t('border_mainContentSection')} ${theme.mainContentSection}`}
+                style={{ maxHeight: 'calc(100% - 16px)' }}
+              >
+                {/* Header */}
+                <div className={`flex items-center justify-between px-3 py-2 border-b shrink-0 ${t('border_mainContentSection')}`}>
+                  <span className={`text-xs font-semibold ${theme.title}`}>
+                    <i className="fa-solid fa-palette mr-1.5 text-purple-400" />Page Style
+                  </span>
+                  <button onClick={() => setStylesPanelOpen(false)} className={`px-1.5 py-0.5 text-xs rounded ${theme.button_default}`}>
+                    <i className="fa-solid fa-xmark" />
+                  </button>
+                </div>
+
+                <div className="p-3 space-y-4 overflow-y-auto">
+                  {/* Typography */}
+                  <div>
+                    <p className={`text-[10px] font-semibold uppercase tracking-wider mb-2 ${theme.label} opacity-60`}>Typography</p>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <label className={`text-xs w-14 shrink-0 ${theme.label}`}>Font</label>
+                        <select
+                          className={`flex-auto h-6 px-1.5 text-[10px] border rounded-[4px] ${theme.inputBox}`}
+                          value={pageStyle.fontFamily}
+                          onChange={e => applyPageStyle({ ...pageStyle, fontFamily: e.target.value })}
+                        >
+                          {FONT_FAMILIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className={`text-xs w-14 shrink-0 ${theme.label}`}>Size</label>
+                        <input
+                          type="number" min={8} max={24}
+                          className={`w-14 h-6 px-1.5 text-xs border rounded-[4px] ${theme.inputBox}`}
+                          value={pageStyle.fontSize}
+                          onChange={e => applyPageStyle({ ...pageStyle, fontSize: Number(e.target.value) })}
+                        />
+                        <span className={`text-[10px] ${theme.label} opacity-50`}>px</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className={`text-xs w-14 shrink-0 ${theme.label}`}>Text</label>
+                        <input type="color"
+                          className="w-8 h-6 rounded border cursor-pointer p-0"
+                          value={pageStyle.textColor}
+                          onChange={e => applyPageStyle({ ...pageStyle, textColor: e.target.value })}
+                        />
+                        <span className={`text-[10px] font-mono ${theme.label} opacity-60`}>{pageStyle.textColor}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Colors */}
+                  <div>
+                    <p className={`text-[10px] font-semibold uppercase tracking-wider mb-2 ${theme.label} opacity-60`}>Colors</p>
+                    <div className="space-y-2">
+                      {([
+                        { key: 'primaryColor', label: 'Primary', hint: 'headings · table headers' },
+                        { key: 'altRowColor',  label: 'Alt row',  hint: 'even table rows' },
+                        { key: 'borderColor',  label: 'Border',   hint: 'table cell borders' },
+                      ] as { key: keyof PageStyleValues; label: string; hint: string }[]).map(({ key, label, hint }) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <label className={`text-xs w-14 shrink-0 ${theme.label}`} title={hint}>{label}</label>
+                          <input type="color"
+                            className="w-8 h-6 rounded border cursor-pointer p-0 shrink-0"
+                            value={pageStyle[key] as string}
+                            onChange={e => applyPageStyle({ ...pageStyle, [key]: e.target.value })}
+                          />
+                          <span className={`text-[10px] font-mono ${theme.label} opacity-60`}>{pageStyle[key]}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Preview swatches */}
+                  <div>
+                    <p className={`text-[10px] font-semibold uppercase tracking-wider mb-2 ${theme.label} opacity-60`}>Preview</p>
+                    <div className="rounded border overflow-hidden text-[10px]" style={{ borderColor: pageStyle.borderColor }}>
+                      <div className="flex">
+                        <div className="px-2 py-1 font-bold text-white shrink-0 w-1/2" style={{ background: pageStyle.primaryColor }}>Col A</div>
+                        <div className="px-2 py-1 font-bold text-white w-1/2" style={{ background: pageStyle.primaryColor }}>Col B</div>
+                      </div>
+                      <div className="flex" style={{ borderTop: `1px solid ${pageStyle.borderColor}` }}>
+                        <div className="px-2 py-1 w-1/2" style={{ color: pageStyle.textColor, fontFamily: pageStyle.fontFamily }}>Row 1</div>
+                        <div className="px-2 py-1 w-1/2" style={{ color: pageStyle.textColor, fontFamily: pageStyle.fontFamily }}>Data</div>
+                      </div>
+                      <div className="flex" style={{ background: pageStyle.altRowColor, borderTop: `1px solid ${pageStyle.borderColor}` }}>
+                        <div className="px-2 py-1 w-1/2" style={{ color: pageStyle.textColor, fontFamily: pageStyle.fontFamily }}>Row 2</div>
+                        <div className="px-2 py-1 w-1/2" style={{ color: pageStyle.textColor, fontFamily: pageStyle.fontFamily }}>Data</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Reset */}
+                  <button
+                    onClick={() => applyPageStyle(DEFAULT_PAGE_STYLE)}
+                    className={`w-full text-xs px-2 py-1.5 rounded-[4px] border ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400`}
+                  >
+                    <i className="fa-solid fa-rotate-left mr-1 opacity-60" />Reset to defaults
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
         </div>
