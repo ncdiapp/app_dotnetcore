@@ -321,6 +321,7 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   const [draggingToken, setDraggingToken]   = useState<string | null>(null);
   const [dropIndicatorY, setDropIndicatorY] = useState<number | null>(null);
   const [pointerDragPos, setPointerDragPos] = useState<{x:number;y:number}|null>(null);
+  const [gjsSelectedPath, setGjsSelectedPath] = useState<string[]>([]);
   const [galleryOpen, setGalleryOpen]       = useState(false);
   const [tableWizardOpen, setTableWizardOpen] = useState(false);
   const [wizardSrcIdx, setWizardSrcIdx]     = useState(0);
@@ -1163,13 +1164,55 @@ ${cells}
                 </button>
               </>
             ) : viewMode === 'design' ? (
-              /* Design bar */
+              /* Design bar — breadcrumb + parent selector */
               <>
                 <i className="fa-solid fa-pen-ruler text-purple-400 text-xs shrink-0" />
-                <span className={`text-xs font-medium ${theme.label}`}>Visual Designer</span>
-                <span className={`text-xs opacity-40 ${theme.label}`}>
-                  — drag blocks from left panel · click a cell to select it, then click a token to insert
-                </span>
+                {gjsSelectedPath.length === 0 ? (
+                  <span className={`text-xs opacity-40 ${theme.label}`}>
+                    Click any element to select it
+                  </span>
+                ) : (
+                  <>
+                    {/* Clickable breadcrumb — each tag navigates to that ancestor */}
+                    <div className="flex items-center gap-0.5 overflow-x-auto max-w-[420px]">
+                      {gjsSelectedPath.map((tag, i) => (
+                        <React.Fragment key={i}>
+                          {i > 0 && <span className="text-gray-400 text-[10px] shrink-0 select-none">›</span>}
+                          <button
+                            title={i === gjsSelectedPath.length - 1 ? `Selected: ${tag}` : `Click to select ${tag}`}
+                            onClick={() => {
+                              const ed = gjsEditorRef.current;
+                              let cur = ed?.getSelected?.();
+                              const stepsUp = gjsSelectedPath.length - 1 - i;
+                              for (let s = 0; s < stepsUp; s++) cur = cur?.parent?.();
+                              if (cur && ed) ed.select(cur);
+                            }}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono shrink-0 transition-colors ${
+                              i === gjsSelectedPath.length - 1
+                                ? 'bg-purple-100 text-purple-700 font-bold'
+                                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+                            }`}
+                          >
+                            {tag}
+                          </button>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                    {/* Go up one level */}
+                    <button
+                      title="Select parent element (↑)"
+                      onClick={() => {
+                        const ed = gjsEditorRef.current;
+                        const sel = ed?.getSelected?.();
+                        const parent = sel?.parent?.();
+                        if (parent?.get?.('tagName') && ed) ed.select(parent);
+                      }}
+                      className={`h-5 px-1.5 text-[10px] rounded shrink-0 ${theme.button_default}`}
+                    >
+                      ↑
+                    </button>
+                  </>
+                )}
               </>
             ) : (
               /* Code bar — label on left */
@@ -1400,7 +1443,25 @@ ${cells}
                 isDark={currentThemeId === 'dark'}
                 active={viewMode === 'design'}
                 onChange={html => { setTemplateHtml(html); schedulePreview(html); }}
-                onEditorReady={ed => { gjsEditorRef.current = ed; }}
+                onEditorReady={ed => {
+                  gjsEditorRef.current = ed;
+                  const buildPath = () => {
+                    const sel = ed.getSelected?.();
+                    if (!sel) { setGjsSelectedPath([]); return; }
+                    const path: string[] = [];
+                    let cur = sel;
+                    while (cur) {
+                      const tag = (cur.get?.('tagName') ?? '').toUpperCase();
+                      if (tag && tag !== 'BODY') path.unshift(tag);
+                      const parent = cur.parent?.();
+                      if (!parent?.get?.('tagName')) break;
+                      cur = parent;
+                    }
+                    setGjsSelectedPath(path);
+                  };
+                  ed.on('component:selected', buildPath);
+                  ed.on('component:deselected', () => setGjsSelectedPath([]));
+                }}
               />
             </Suspense>
           </div>
