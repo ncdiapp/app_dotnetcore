@@ -655,7 +655,7 @@ SELECT
     SourceViewColumnID1
 FROM dbo.AppFormLinkTarget
 WHERE SearchViewID = @ViewId
-ORDER BY Sort, AppFormLinkTargetID";
+ORDER BY Sort, LinkTargetID";
                 cmd.Parameters.AddWithValue("@ViewId", sourceSearchViewId);
                 using (var reader = cmd.ExecuteReader())
                 {
