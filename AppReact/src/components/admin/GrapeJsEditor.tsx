@@ -244,11 +244,14 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
                       ?? containerRef.current?.querySelector<HTMLElement>('.gjs-pn-options');
         const devEl    = (editor.Panels.getPanel('devices-c')?.get?.('el') as HTMLElement | undefined)
                       ?? containerRef.current?.querySelector<HTMLElement>('.gjs-pn-devices-c');
+        const cmdEl    = (editor.Panels.getPanel('commands')?.get?.('el') as HTMLElement | undefined)
+                      ?? containerRef.current?.querySelector<HTMLElement>('.gjs-pn-commands');
 
         canvasEl?.style.setProperty('top',    '0px', 'important');
         canvasEl?.style.setProperty('height', '100%', 'important');
         optEl?.style.setProperty('display', 'none', 'important');
         devEl?.style.setProperty('display', 'none', 'important');
+        cmdEl?.style.setProperty('display', 'none', 'important');
       }));
     });
 
@@ -288,6 +291,7 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
       <style>{`
         .gjs-pn-options          { display: none !important; }
         .gjs-pn-devices-c        { display: none !important; }
+        .gjs-pn-commands         { display: none !important; }
         .gjs-cv-canvas           { top: 0 !important; height: 100% !important; }
         .gjs-frame-wrapper__head { display: none !important; }
         .gjs-frame-wrapper       { margin-top: 0 !important; padding-top: 0 !important; }
