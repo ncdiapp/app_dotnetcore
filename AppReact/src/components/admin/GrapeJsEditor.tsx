@@ -232,6 +232,15 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
       setupCanvasListeners();
       const iframeEl = editor.Canvas.getFrameEl?.() as HTMLIFrameElement | undefined;
       iframeEl?.addEventListener('load', setupCanvasListeners);
+
+      // Remove toolbar buttons that are redundant or harmful in the embedded report designer.
+      // Must run after load because the newsletter preset resets panels during plugin init.
+      ['preview', 'fullscreen', 'export-template', 'gjs-open-import-template', 'gjs-toggle-images', 'canvas-clear']
+        .forEach(id => editor.Panels.removeButton('options', id));
+      ['open-layers', 'open-blocks']
+        .forEach(id => editor.Panels.removeButton('views', id));
+      ['set-device-desktop', 'set-device-tablet', 'set-device-mobile']
+        .forEach(id => editor.Panels.removeButton('devices-c', id));
     });
 
     editor.on('change:changesCount', () => {
