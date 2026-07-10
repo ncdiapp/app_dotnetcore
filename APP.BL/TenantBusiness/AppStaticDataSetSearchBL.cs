@@ -1458,15 +1458,15 @@ GROUP BY Src.[{folderColumnName}]";
 
 
 
-            PopulateSearchResultThumbnailUrls(viewEntity, rows);
+            PopulateSearchResultImageResourceUrls(viewEntity, rows);
 
             return rows;
         }
 
         /// <summary>
-        /// Fills DictThumbnailUrl for Image columns using one batch AppFile lookup per search result.
+        /// Fills DictThumbnailUrl (grid) and DictImageUrl (card) for Image columns using one batch AppFile lookup.
         /// </summary>
-        internal static void PopulateSearchResultThumbnailUrls(AppSearchViewEntity viewEntity, List<StaticSearchResultRowJsonDto> rows)
+        internal static void PopulateSearchResultImageResourceUrls(AppSearchViewEntity viewEntity, List<StaticSearchResultRowJsonDto> rows)
         {
             if (viewEntity?.AppSearchViewField == null || rows == null || rows.Count == 0)
                 return;
@@ -1493,8 +1493,8 @@ GROUP BY Src.[{folderColumnName}]";
             if (fileIds.Count == 0)
                 return;
 
-            Dictionary<int, string> urlByFileId = AppFileBL.RetrieveThumbnailResourceUrlsByFileIds(fileIds);
-            if (urlByFileId.Count == 0)
+            var (thumbByFileId, imageByFileId) = AppFileBL.RetrieveSearchImageResourceUrlsByFileIds(fileIds);
+            if (thumbByFileId.Count == 0 && imageByFileId.Count == 0)
                 return;
 
             foreach (StaticSearchResultRowJsonDto row in rows)
@@ -1507,11 +1507,18 @@ GROUP BY Src.[{folderColumnName}]";
                     if (!int.TryParse(raw.ToString(), out int fileId) || fileId <= 0)
                         continue;
 
-                    if (urlByFileId.TryGetValue(fileId, out string? url) && !string.IsNullOrWhiteSpace(url))
-                        row.DictThumbnailUrl[column.SearchViewFieldId] = url;
+                    if (thumbByFileId.TryGetValue(fileId, out string? thumbUrl) && !string.IsNullOrWhiteSpace(thumbUrl))
+                        row.DictThumbnailUrl[column.SearchViewFieldId] = thumbUrl;
+
+                    if (imageByFileId.TryGetValue(fileId, out string? imageUrl) && !string.IsNullOrWhiteSpace(imageUrl))
+                        row.DictImageUrl[column.SearchViewFieldId] = imageUrl;
                 }
             }
         }
+
+        /// <summary>Legacy name — prefer <see cref="PopulateSearchResultImageResourceUrls"/>.</summary>
+        internal static void PopulateSearchResultThumbnailUrls(AppSearchViewEntity viewEntity, List<StaticSearchResultRowJsonDto> rows)
+            => PopulateSearchResultImageResourceUrls(viewEntity, rows);
 
         internal static object PrepareOneSearchResultRowCellValue(AppSearchViewEntity viewEntity,
             Dictionary<int, Dictionary<string, string>> dictColumnIdValuesList, AppSearchViewFieldEntity aColumn, object value, string specificTimeToken)

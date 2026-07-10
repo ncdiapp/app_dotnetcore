@@ -100,6 +100,21 @@ export function resolveSearchThumbnailUrl(
   return fileThumbnailUrl(numericId);
 }
 
+/**
+ * Resolve search card image src for legacy &lt;img src&gt; (FileId regular API).
+ * Resource URLs from search must use {@link fetchAuthenticatedImageBlobUrl} instead.
+ */
+export function resolveSearchImageUrl(
+  fileId: number | string | null | undefined,
+  resourceUrl?: string | null,
+  searchUsesImageUrls = false,
+): string | null {
+  if (searchUsesImageUrls) return null;
+  const numericId = Number(fileId);
+  if (!Number.isFinite(numericId) || numericId <= 0) return null;
+  return fileRegularUrl(numericId);
+}
+
 /** Original full-size image. Replaces GetImage.aspx / original image use. */
 export function fileImageUrl(fileId: number | string): string {
   return `${endpoints.BASE_URL}/api/files/image/${fileId}`;

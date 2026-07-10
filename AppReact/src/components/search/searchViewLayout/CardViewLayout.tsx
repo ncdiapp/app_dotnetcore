@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch } from "react-redux";
 import { useTheme } from "../../../redux/hooks/useTheme";
-import { fileRegularUrl } from "../../../webapi/fileEndpoints";
+import { fetchAuthenticatedImageBlobUrl, resolveSearchImageUrl } from "../../../webapi/fileEndpoints";
 import { searchSvc } from "../../../webapi/searchSvc";
 import { useTabNavigation } from "../../../redux/hooks/useTabNavigation";
 import { preserveTabInitialPath, getCurrentActiveTab } from "../../../redux/features/ui/navigation/tabnavSlice";
@@ -41,18 +41,56 @@ const EmAppControlType = {
   ExternalImageUrl: 50,
 };
 
-/** Stable card image — avoids img reload when another card's checkbox selection changes. */
+/** Stable card image — loads protected resource URLs via session header (same as Grid thumbnails). */
 const SearchCardImage = React.memo(
-  ({ src, alt }: { src: string; alt: string }) => (
-    <img
-      src={src}
-      alt={alt}
-      className="absolute left-0 right-0 top-0 bottom-0 m-auto max-h-[200px] max-w-[280px] object-contain"
-      onError={(e) => {
-        (e.currentTarget as HTMLImageElement).style.display = "none";
-      }}
-    />
-  )
+  ({
+    fileId,
+    imageUrl,
+    searchUsesImageUrls,
+    alt,
+  }: {
+    fileId?: number | string | null;
+    imageUrl?: string | null;
+    searchUsesImageUrls?: boolean;
+    alt: string;
+  }) => {
+    const numericId = Number(fileId);
+    const [src, setSrc] = useState<string | null>(null);
+
+    useEffect(() => {
+      let cancelled = false;
+      setSrc(null);
+
+      if (imageUrl) {
+        fetchAuthenticatedImageBlobUrl(imageUrl).then((blobUrl) => {
+          if (!cancelled) setSrc(blobUrl);
+        });
+        return () => { cancelled = true; };
+      }
+
+      if (!searchUsesImageUrls) {
+        const legacyUrl = resolveSearchImageUrl(numericId, null, false);
+        if (!cancelled) setSrc(legacyUrl);
+      }
+
+      return () => { cancelled = true; };
+    }, [imageUrl, searchUsesImageUrls, numericId]);
+
+    if (!src) {
+      return <div className="w-full h-full" style={{ background: "rgba(0,0,0,0.04)" }} />;
+    }
+
+    return (
+      <img
+        src={src}
+        alt={alt}
+        className="absolute left-0 right-0 top-0 bottom-0 m-auto max-h-[200px] max-w-[280px] object-contain"
+        onError={(e) => {
+          (e.currentTarget as HTMLImageElement).style.display = "none";
+        }}
+      />
+    );
+  }
 );
 SearchCardImage.displayName = 'SearchCardImage';
 
@@ -333,19 +371,38 @@ export const CardViewLayout: React.FC<CardViewLayoutProps> = ({ viewDto, viewDat
     if (controlType === EmAppControlType.Time) return <div className={`w-full py-1 text-xs whitespace-nowrap overflow-hidden text-ellipsis ${theme.label}`}>{formatTime(value)}</div>;
 
     if (controlType === EmAppControlType.Image || controlType === EmAppControlType.ExternalImageUrl) {
-     
-        const imageUrl = controlType === EmAppControlType.ExternalImageUrl
-          ? String(value ?? "")
-          : (value ? fileRegularUrl(value) : "");
+      if (controlType === EmAppControlType.ExternalImageUrl) {
+        const imageUrl = String(value ?? "");
         return (
           <div className="w-full h-[202px] relative">
             {imageUrl ? (
-              <SearchCardImage src={imageUrl} alt={String(getColumnName(column) || "image")} />
+              <img
+                src={imageUrl}
+                alt={String(getColumnName(column) || "image")}
+                className="absolute left-0 right-0 top-0 bottom-0 m-auto max-h-[200px] max-w-[280px] object-contain"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
             ) : <div className="w-full h-full" />}
           </div>
         );
-      
-      return <div className={`w-full py-1 text-xs whitespace-nowrap overflow-hidden text-ellipsis ${theme.label}`}>{value == null ? "" : String(value)}</div>;
+      }
+
+      const resourceUrl = row?.DictImageUrl?.[getColumnId(column)];
+      const searchUsesImageUrls = row?.DictImageUrl != null;
+      return (
+        <div className="w-full h-[202px] relative">
+          {value || resourceUrl ? (
+            <SearchCardImage
+              fileId={value}
+              imageUrl={resourceUrl}
+              searchUsesImageUrls={searchUsesImageUrls}
+              alt={String(getColumnName(column) || "image")}
+            />
+          ) : <div className="w-full h-full" />}
+        </div>
+      );
     }
 
     if (controlType === EmAppControlType.YoutubeVideo) {
