@@ -298,6 +298,10 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
         .gjs-frame-wrapper       { margin-top: 0 !important; padding-top: 0 !important; }
         .gjs-canvas__frames      { top: 0 !important; }
 
+        /* ── Hide class/state manager (not relevant for report templates) ── */
+        .gjs-clm-tags-c,
+        .gjs-clm-tags   { display: none !important; }
+
         /* ── Light panel theme ── */
         /* Panel backgrounds */
         .gjs-pn-views,
