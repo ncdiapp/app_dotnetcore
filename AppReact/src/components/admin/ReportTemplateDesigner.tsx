@@ -717,26 +717,15 @@ ${exportHtml}
           onClick={handleHtmlPreview}
           disabled={!previewHtml}
           title="Open rendered HTML in new tab"
-          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 border border-blue-300 text-blue-500
-            hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
+          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${theme.button_default}`}
         >
           <i className="fa-solid fa-globe mr-1" />HTML Preview
-        </button>
-        <button
-          onClick={handleHtmlExport}
-          disabled={!templateHtml}
-          title="Download as standalone HTML file — opens in any browser, no server needed"
-          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 border border-blue-300 text-blue-500
-            hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
-        >
-          <i className="fa-solid fa-file-arrow-down mr-1" />Export HTML
         </button>
         <button
           onClick={handlePdfPreview}
           disabled={pdfPreviewing || !templateHtml}
           title="Generate PDF and open in new tab"
-          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 border border-red-300 text-red-500
-            hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
+          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${theme.button_default}`}
         >
           {pdfPreviewing
             ? <><i className="fa-solid fa-spinner fa-spin mr-1" />Generating…</>
