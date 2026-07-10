@@ -623,11 +623,23 @@ ${exportHtml}
   };
 
   const handleSave = async () => {
-    // In Design mode GrapeJS drives templateHtml state directly (no debounce).
-    // In Code mode read from Monaco to capture keystrokes not yet flushed to state.
-    const currentHtml = viewMode === 'design'
-      ? templateHtml
-      : (editorRef.current?.getValue() ?? templateHtml);
+    // In Design mode, read directly from the live GrapeJS instance so we capture
+    // any edits not yet flushed to React state (React batching). Falls back to
+    // templateHtml if the GrapeJS editor isn't ready.
+    // In Code mode, read from Monaco directly to bypass Monaco's debounce.
+    let currentHtml: string;
+    if (viewMode === 'design') {
+      const ed = gjsEditorRef.current;
+      if (ed) {
+        const css  = ed.getCss?.() ?? '';
+        const body = ed.getHtml?.() ?? '';
+        currentHtml = css ? `<style>${css}</style>\n${body}` : body;
+      } else {
+        currentHtml = templateHtml;
+      }
+    } else {
+      currentHtml = editorRef.current?.getValue() ?? templateHtml;
+    }
     setSaving(true);
     setError(null);
     try {
