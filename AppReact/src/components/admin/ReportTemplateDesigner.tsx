@@ -516,7 +516,8 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   // <!DOCTYPE html> document so it opens standalone in any browser (same approach
   // Claude uses for artifacts: pure HTML blob downloaded directly from the browser).
   const handleHtmlExport = () => {
-    if (!previewHtml) return;
+    const exportHtml = previewHtml || templateHtml;
+    if (!exportHtml) return;
     const reportName = report?.ReportName ?? 'report';
     const fullHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -531,7 +532,7 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
 </style>
 </head>
 <body>
-${previewHtml}
+${exportHtml}
 </body>
 </html>`;
     const blob = new Blob([fullHtml], { type: 'text/html' });
@@ -723,7 +724,7 @@ ${previewHtml}
         </button>
         <button
           onClick={handleHtmlExport}
-          disabled={!previewHtml}
+          disabled={!templateHtml}
           title="Download as standalone HTML file — opens in any browser, no server needed"
           className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 border border-blue-300 text-blue-500
             hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}

@@ -206,9 +206,10 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
       const iframeEl = editor.Canvas.getFrameEl?.() as HTMLIFrameElement | undefined;
       iframeEl?.addEventListener('load', setupCanvasListeners);
 
-      // Move outline/undo/redo from the now-hidden options panel into the right-side views panel.
-      // Must happen before removeButton so the button definitions are still available.
-      const moveToViews = new Set(['sw-visibility', 'undo', 'redo']);
+      // Move undo/redo from the now-hidden options panel into the right-side views panel.
+      // sw-visibility (outline toggle) is excluded — component outlines are not useful
+      // in a report designer and the newsletter preset may activate it by default.
+      const moveToViews = new Set(['undo', 'redo']);
       editor.Panels.getPanel('options')?.get('buttons')?.each((btn: any) => {
         if (moveToViews.has(btn.get('id'))) {
           editor.Panels.addButton('views', {
@@ -232,6 +233,8 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
 
       // Open Style Manager as the default active right panel
       editor.runCommand('open-sm');
+      // Deactivate component outline toggle (not needed for report design)
+      try { editor.stopCommand('sw-visibility'); } catch { /* ignore */ }
 
       // GrapeJS may set inline style="top:40px !important" on the canvas after init.
       // Inline !important beats author-stylesheet !important, so we must use
