@@ -56,7 +56,9 @@ namespace App.BL
             using var playwright = await Playwright.CreateAsync();
             await using var browser = await playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions
             {
-                Headless = true
+                Headless = true,
+                // --no-sandbox is required when running as root or in containers/Linux servers
+                Args = new[] { "--no-sandbox", "--disable-setuid-sandbox" },
             });
             var page = await browser.NewPageAsync();
             await page.SetContentAsync(html, new PageSetContentOptions
