@@ -232,6 +232,17 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
 
       // Open Style Manager as the default active right panel
       editor.runCommand('open-sm');
+
+      // GrapeJS sets inline style="top:40px" on the canvas after init (JS beats CSS !important).
+      // Override directly so the canvas fills the full height once the top bar is hidden.
+      requestAnimationFrame(() => {
+        const canvasEl  = containerRef.current?.querySelector<HTMLElement>('.gjs-cv-canvas');
+        const optionsEl = containerRef.current?.querySelector<HTMLElement>('.gjs-pn-options');
+        const devicesEl = containerRef.current?.querySelector<HTMLElement>('.gjs-pn-devices-c');
+        if (canvasEl)  { canvasEl.style.top = '0'; canvasEl.style.height = '100%'; }
+        if (optionsEl) optionsEl.style.display = 'none';
+        if (devicesEl) devicesEl.style.display = 'none';
+      });
     });
 
     editor.on('change:changesCount', () => {
