@@ -1301,7 +1301,7 @@ ${cells}
               <button
                 onClick={() => setViewMode('design')}
                 title="GrapeJS WYSIWYG visual editor"
-                className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'design' ? 'bg-purple-500 text-white' : theme.button_default}`}
+                className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'design' ? 'bg-blue-500 text-white' : theme.button_default}`}
               >
                 <i className="fa-solid fa-pen-ruler mr-1" />Design
               </button>
