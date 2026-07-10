@@ -403,9 +403,25 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   const insertAtCursor = (text: string) => {
     if (viewMode === 'design' && gjsEditorRef.current) {
       const gjsEditor = gjsEditorRef.current;
-      const sel = gjsEditor.getSelected();
+
+      // <style> blocks → apply via GrapeJS CSS API (cannot be inserted as a DOM component)
+      const styleMatch = text.trim().match(/^<style>([\s\S]*?)<\/style>$/i);
+      if (styleMatch) {
+        const newCss = styleMatch[1].trim();
+        const currentCss = gjsEditor.getCss?.() ?? '';
+        gjsEditor.setStyle?.(currentCss + '\n' + newCss);
+        return;
+      }
+
+      // Rich block HTML (starts with a tag) → append to canvas body, not into a selected cell
+      if (text.trim().startsWith('<')) {
+        gjsEditor.DomComponents?.getWrapper?.()?.append(text);
+        return;
+      }
+
+      // Token ({{...}}) → replace selected cell content
+      const sel = gjsEditor.getSelected?.();
       if (sel) {
-        // Use components().reset()+append() — sel.set('content') doesn't update the view
         sel.components().reset();
         sel.append(text);
       } else {
@@ -1008,7 +1024,7 @@ ${cells}
                         }}
                         onDragEnd={() => { setDraggingToken(null); setDropIndicatorY(null); }}
                         onClick={() => insertAtCursor(block.html)}
-                        title="Click to insert at cursor · Drag and drop onto the code editor"
+                        title="Design mode: click to insert onto canvas · Code mode: click to insert at cursor or drag onto editor"
                         className={`w-full text-left px-2 py-1.5 text-xs rounded-[4px] border ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 transition-colors cursor-grab active:cursor-grabbing flex items-center gap-1.5`}
                       >
                         <span className="text-gray-300 text-[10px] select-none shrink-0">⠿</span>
@@ -1172,6 +1188,9 @@ ${cells}
                     Click any element to select it
                   </span>
                 ) : (
+                  <span className={`text-xs opacity-40 ${theme.label} shrink-0`}>Click blocks to insert · select a cell then click a token</span>
+                )}
+                {gjsSelectedPath.length > 0 && (
                   <>
                     {/* Clickable breadcrumb — each tag navigates to that ancestor */}
                     <div className="flex items-center gap-0.5 overflow-x-auto max-w-[420px]">
