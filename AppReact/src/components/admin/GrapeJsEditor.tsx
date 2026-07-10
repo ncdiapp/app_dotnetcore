@@ -233,16 +233,23 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
       // Open Style Manager as the default active right panel
       editor.runCommand('open-sm');
 
-      // GrapeJS sets inline style="top:40px" on the canvas after init (JS beats CSS !important).
-      // Override directly so the canvas fills the full height once the top bar is hidden.
-      requestAnimationFrame(() => {
-        const canvasEl  = containerRef.current?.querySelector<HTMLElement>('.gjs-cv-canvas');
-        const optionsEl = containerRef.current?.querySelector<HTMLElement>('.gjs-pn-options');
-        const devicesEl = containerRef.current?.querySelector<HTMLElement>('.gjs-pn-devices-c');
-        if (canvasEl)  { canvasEl.style.top = '0'; canvasEl.style.height = '100%'; }
-        if (optionsEl) optionsEl.style.display = 'none';
-        if (devicesEl) devicesEl.style.display = 'none';
-      });
+      // GrapeJS may set inline style="top:40px !important" on the canvas after init.
+      // Inline !important beats author-stylesheet !important, so we must use
+      // style.setProperty('prop', 'val', 'important') — the last JS write wins.
+      // Double-rAF ensures we run after any GrapeJS post-load frame callbacks.
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const canvasEl = (editor.Canvas.getElement?.() as HTMLElement | undefined)
+                      ?? containerRef.current?.querySelector<HTMLElement>('.gjs-cv-canvas');
+        const optEl    = (editor.Panels.getPanel('options')?.get?.('el') as HTMLElement | undefined)
+                      ?? containerRef.current?.querySelector<HTMLElement>('.gjs-pn-options');
+        const devEl    = (editor.Panels.getPanel('devices-c')?.get?.('el') as HTMLElement | undefined)
+                      ?? containerRef.current?.querySelector<HTMLElement>('.gjs-pn-devices-c');
+
+        canvasEl?.style.setProperty('top',    '0px', 'important');
+        canvasEl?.style.setProperty('height', '100%', 'important');
+        optEl?.style.setProperty('display', 'none', 'important');
+        devEl?.style.setProperty('display', 'none', 'important');
+      }));
     });
 
     editor.on('change:changesCount', () => {
@@ -279,9 +286,12 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
       {/* Hide the top toolbar panels; expand canvas to fill freed vertical space.
           Rendered before useEffect so GrapeJS measures correct heights on init. */}
       <style>{`
-        .gjs-pn-options   { display: none !important; }
-        .gjs-pn-devices-c { display: none !important; }
-        .gjs-cv-canvas    { top: 0 !important; height: 100% !important; }
+        .gjs-pn-options          { display: none !important; }
+        .gjs-pn-devices-c        { display: none !important; }
+        .gjs-cv-canvas           { top: 0 !important; height: 100% !important; }
+        .gjs-frame-wrapper__head { display: none !important; }
+        .gjs-frame-wrapper       { margin-top: 0 !important; padding-top: 0 !important; }
+        .gjs-canvas__frames      { top: 0 !important; }
       `}</style>
       <div ref={containerRef} className="w-full h-full" />
       <div ref={overlayRef} className="absolute inset-0" style={{ pointerEvents: 'none', zIndex: 1 }} />
