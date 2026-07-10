@@ -183,7 +183,7 @@ namespace App.BL
                         const string sql = "UPDATE dbo.AppTenantSetting SET SetupValue = @val WHERE SetupCode = @code";
                         adapter.ExecuteExecuteNonQuery(sql, new List<SqlParameter>
                         {
-                            new SqlParameter("@val", (object)dto.SetupValue ?? DBNull.Value),
+                            new SqlParameter("@val", (object)(dto.SetupValue ?? string.Empty)),
                             new SqlParameter("@code", dto.SetupCode)
                         });
                     }

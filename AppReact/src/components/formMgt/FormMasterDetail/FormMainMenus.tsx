@@ -243,7 +243,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
 
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
   const { tabs, activeTabKey } = useSelector((state: RootState) => state.tabnav);
-  // Match Angular: tenant EnableConfigurationMode + admin; default on for admin when unset.
+  // Match Angular _FormMainMenus: EnableConfigurationMode must be explicitly true + admin.
   const enableConfigurationMode = isEnableConfigurationModeForUser(userContext);
   const isAdminUser = isAdminUserFromContext(userContext);
   

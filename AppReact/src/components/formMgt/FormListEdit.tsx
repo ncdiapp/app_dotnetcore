@@ -30,6 +30,7 @@ import FileUploader from '../common/FileUploader';
 import { FolderNavigation } from '../folderNavigation';
 import appHelper from '../../helper/appHelper';
 import { clampContextMenuPosition, useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
+import { isAdminUserFromContext, isEnableConfigurationModeForUser } from '../../helper/adminPermissionHelper';
 import { isRuntimeTransactionFieldVisible } from './FormMasterDetail/MasterDetailFlexLayoutForm/flexLayoutItemHelper';
 import DataGridLayout from './FormMasterDetail/MasterDetailFlexLayoutForm/DataGridLayout';
 import AppSearch, { type AppSearchHandle } from '../search/AppSearch';
@@ -1206,6 +1207,14 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     setConfigPopupOpen(false);
   };
 
+  // Match Angular _FormMainMenus / _ListEditLayoutForm: EnableConfigurationMode + admin, hide for draft.
+  const enableConfigurationMode = isEnableConfigurationModeForUser(userContext);
+  const isAdminUser = isAdminUserFromContext(userContext);
+  const isDraft = Boolean(
+    dataModel.currentFormStructure?.IsDraft ?? dataModel.currentFormStructure?.isDraft
+  );
+  const showConfigurationButton = enableConfigurationMode && isAdminUser && !isDraft;
+
   return (
     <div className={`w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden ${theme.default}`}>
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
@@ -1214,7 +1223,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         </div>
         <div className="flex items-center gap-2">
           <FlexGridAddOn gridRef={flexGridRef} title="Freeze / Show / Hide columns" />
-          {controllerModel.isEnableFormConfigButtons && (
+          {showConfigurationButton && (
             <button
               type="button"
               className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}

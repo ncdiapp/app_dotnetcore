@@ -802,7 +802,10 @@ class AdminService {
       headers: getHeaders(),
       body: JSON.stringify(aSet)
     });
-    if (!response.ok) throw new Error('Failed to save app setup entities');
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '');
+      throw new Error(detail || `Failed to save app setup entities (${response.status})`);
+    }
     return response.json();
   }
 

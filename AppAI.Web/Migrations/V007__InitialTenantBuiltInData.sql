@@ -444,6 +444,9 @@ GO
 -- SetupCode uses the EmTenantSettings enum member NAME
 -- (e.g. "SystemDefinedFileTransactionId"), matching AppTenantSettingBL.
 -- SetupValue defaults to empty string; tenant admins configure values later.
+-- Description stores EmAppApplicationSettingCategory (numeric) for UI grouping.
+-- UsageType = EmAppApplicationSettingValueType (1 Int, 2 List, 3 Bool, 4 Text, 5 Password).
+-- EntityId resolved by EntityCode for List-type settings (dropdown datasource).
 --
 -- Idempotent: only inserts missing SetupCode rows.
 -- ============================================================
@@ -453,95 +456,108 @@ BEGIN
 END
 ELSE
 BEGIN
-    INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description)
-    SELECT val.SetupCode, val.SetupValue, val.Description
+    INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, EntityId, UsageType)
+    SELECT
+        val.SetupCode,
+        val.SetupValue,
+        val.Description,
+        CASE
+            WHEN val.EntityCode IS NULL THEN NULL
+            ELSE (SELECT TOP 1 e.EntityInfoID FROM dbo.AppEntityInfo e WHERE e.EntityCode = val.EntityCode)
+        END,
+        val.UsageType
     FROM (VALUES
-        ('EnableConfigurationMode', '', 'EnableConfigurationMode'),
-        ('SystemEmailFromAddress', '', 'SystemEmailFromAddress'),
-        ('SystemAgentUser', '', 'SystemAgentUser'),
+        -- Description stores EmAppApplicationSettingCategory (UI group).
+        -- UsageType: 1=Integer, 2=List, 3=Boolean, 4=Text, 5=Password
+        -- Category: 1=ServerSetting, 3=EmailSystem, 4=UILayout, 5=EShop, 6=FileFolder,
+        --           8=Mobile/Google(legacy), 10=Calendar, 11=UserProfile, 12=SecurityFilterEntity,
+        --           14=PartnerMapping, 15=PartnerExtendMapping, 16=Figma, 100=GeneralSetting
+        ('EnableConfigurationMode', '', '1', CAST(NULL AS varchar(100)), 3),
+        ('SystemEmailFromAddress', '', '3', NULL, 4),
+        ('SystemAgentUser', '', '3', 'AppSecurityUser', 2),
 
-        ('SmtpIntegrationActivation', '', 'SmtpIntegrationActivation'),
-        ('SmtpServer', '', 'SmtpServer'),
-        ('SmtpPort', '', 'SmtpPort'),
-        ('SmtpEnableSSL', '', 'SmtpEnableSSL'),
-        ('SmtpUserName', '', 'SmtpUserName'),
-        ('SmtpPassword', '', 'SmtpPassword'),
+        ('SmtpIntegrationActivation', '', '3', NULL, 3),
+        ('SmtpServer', '', '3', NULL, 4),
+        ('SmtpPort', '', '3', NULL, 4),
+        ('SmtpEnableSSL', '', '3', NULL, 3),
+        ('SmtpUserName', '', '3', NULL, 4),
+        ('SmtpPassword', '', '3', NULL, 5),
 
-        ('EshopMyAddressesSearch', '', 'EshopMyAddressesSearch'),
-        ('EshopMyOrdersSearch', '', 'EshopMyOrdersSearch'),
-        ('EshopMyWishListSearch', '', 'EshopMyWishListSearch'),
-        ('EshopUserInfoTransaction', '', 'EshopUserInfoTransaction'),
-        ('EshopNewProductTreeView', '', 'EshopNewProductTreeView'),
-        ('EshopTreeView', '', 'EshopTreeView'),
-        ('EshopTopProductsSearchView', '', 'EshopTopProductsSearchView'),
-        ('EshopOrderDetailTransaction', '', 'EshopOrderDetailTransaction'),
-        ('EshopMyAccountDesktop', '', 'EshopMyAccountDesktop'),
-        ('EshopMyAccountExUrl', '', 'EshopMyAccountExUrl'),
-        ('EshopTopNewProductsSearchView', '', 'EshopTopNewProductsSearchView'),
-        ('EshopDefaultStoreId', '', 'EshopDefaultStoreId'),
+        ('EshopMyAddressesSearch', '', '5', 'AppSearch', 2),
+        ('EshopMyOrdersSearch', '', '5', 'AppSearch', 2),
+        ('EshopMyWishListSearch', '', '5', 'AppSearch', 2),
+        ('EshopUserInfoTransaction', '', '5', 'AppTransaction', 2),
+        ('EshopNewProductTreeView', '', '5', 'AppSearchView', 2),
+        ('EshopTreeView', '', '5', 'AppSearchView', 2),
+        ('EshopTopProductsSearchView', '', '5', 'AppSearchView', 2),
+        ('EshopOrderDetailTransaction', '', '5', 'AppTransaction', 2),
+        ('EshopMyAccountDesktop', '', '5', 'AppDesktop', 2),
+        ('EshopMyAccountExUrl', '', '5', NULL, 4),
+        ('EshopTopNewProductsSearchView', '', '5', 'AppSearchView', 2),
+        ('EshopDefaultStoreId', '', '5', NULL, 1),
 
-        ('StripeGateWaySecretkey', '', 'StripeGateWaySecretkey'),
+        ('StripeGateWaySecretkey', '', '5', NULL, 5),
 
-        ('WebPageTemplatePath', '', 'WebPageTemplatePath'),
+        ('WebPageTemplatePath', '', '2', NULL, 4),
 
-        ('PublicFileFolderId', '', 'PublicFileFolderId'),
-        ('TempFileFolderId', '', 'TempFileFolderId'),
-        ('UsersFolderId', '', 'UsersFolderId'),
-        ('SystemDefinedFileTransactionId', '', 'SystemDefinedFileTransactionId'),
-        ('TransactionFileStorageRootFolderId', '', 'TransactionFileStorageRootFolderId'),
+        ('PublicFileFolderId', '', '6', NULL, 4),
+        ('TempFileFolderId', '', '6', NULL, 4),
+        ('UsersFolderId', '', '6', NULL, 4),
+        ('SystemDefinedFileTransactionId', '', '6', NULL, 4),
+        ('TransactionFileStorageRootFolderId', '', '6', NULL, 4),
 
-        ('AdminTheme', '', 'AdminTheme'),
-        ('ClientTheme', '', 'ClientTheme'),
-        ('ApplicationLayoutMode', '', 'ApplicationLayoutMode'),
-        ('WorkflowBatchLogSearchId', '', 'WorkflowBatchLogSearchId'),
-        ('WorkflowLogTrackDetailSearchId', '', 'WorkflowLogTrackDetailSearchId'),
+        ('AdminTheme', '', '4', 'EmAppAdminTheme', 2),
+        ('ClientTheme', '', '4', 'EmAppClientTheme', 2),
+        ('ApplicationLayoutMode', '', '4', 'EmAppApplicationLayoutMode', 2),
+        ('WorkflowBatchLogSearchId', '', '100', 'AppSearch', 2),
+        ('WorkflowLogTrackDetailSearchId', '', '100', 'AppSearch', 2),
 
-        ('DefaultCollapseLeftMenuForAdminUsers', '', 'DefaultCollapseLeftMenuForAdminUsers'),
-        ('DefaultCollapseLeftMenuForEmployeeUsers', '', 'DefaultCollapseLeftMenuForEmployeeUsers'),
-        ('DefaultCollapseLeftMenuForCustomerUsers', '', 'DefaultCollapseLeftMenuForCustomerUsers'),
-        ('DefaultCollapseLeftMenuForSupplierUsers', '', 'DefaultCollapseLeftMenuForSupplierUsers'),
-        ('DefaultCollapseLeftMenuForClientAgentUsers', '', 'DefaultCollapseLeftMenuForClientAgentUsers'),
-        ('DefaultCollapseLeftMenuForSupplierAgentUsers', '', 'DefaultCollapseLeftMenuForSupplierAgentUsers'),
+        ('DefaultCollapseLeftMenuForAdminUsers', '', '4', NULL, 3),
+        ('DefaultCollapseLeftMenuForEmployeeUsers', '', '4', NULL, 3),
+        ('DefaultCollapseLeftMenuForCustomerUsers', '', '4', NULL, 3),
+        ('DefaultCollapseLeftMenuForSupplierUsers', '', '4', NULL, 3),
+        ('DefaultCollapseLeftMenuForClientAgentUsers', '', '4', NULL, 3),
+        ('DefaultCollapseLeftMenuForSupplierAgentUsers', '', '4', NULL, 3),
 
-        ('EmployeeEntity', '', 'EmployeeEntity'),
-        ('CustomerEntity', '', 'CustomerEntity'),
-        ('CustomerAgentEntity', '', 'CustomerAgentEntity'),
-        ('SupplierEntity', '', 'SupplierEntity'),
-        ('SupplierAgentEntity', '', 'SupplierAgentEntity'),
+        ('EmployeeEntity', '', '12', 'AppEntityInfo', 2),
+        ('CustomerEntity', '', '12', 'AppEntityInfo', 2),
+        ('CustomerAgentEntity', '', '12', 'AppEntityInfo', 2),
+        ('SupplierEntity', '', '12', 'AppEntityInfo', 2),
+        ('SupplierAgentEntity', '', '12', 'AppEntityInfo', 2),
 
-        ('GoogleApiKey', '', 'GoogleApiKey'),
+        ('GoogleApiKey', '', '8', NULL, 4),
 
-        ('AdminCalenarSearch', '', 'AdminCalenarSearch'),
-        ('EmployeeCalendarSearch', '', 'EmployeeCalendarSearch'),
-        ('CustomerCalendarSearch', '', 'CustomerCalendarSearch'),
-        ('SupplierCalendarSearch', '', 'SupplierCalendarSearch'),
-        ('ClientAgentCalendarSearch', '', 'ClientAgentCalendarSearch'),
-        ('SupplierAgentCalendarSearch', '', 'SupplierAgentCalendarSearch'),
+        ('AdminCalenarSearch', '', '10', 'AppSearch', 2),
+        ('EmployeeCalendarSearch', '', '10', 'AppSearch', 2),
+        ('CustomerCalendarSearch', '', '10', 'AppSearch', 2),
+        ('SupplierCalendarSearch', '', '10', 'AppSearch', 2),
+        ('ClientAgentCalendarSearch', '', '10', 'AppSearch', 2),
+        ('SupplierAgentCalendarSearch', '', '10', 'AppSearch', 2),
 
-        ('AdminUserTransaction', '', 'AdminUserTransaction'),
-        ('EmployeeUserTransaction', '', 'EmployeeUserTransaction'),
-        ('CustomerUserTransaction', '', 'CustomerUserTransaction'),
-        ('SupplierUserTransaction', '', 'SupplierUserTransaction'),
-        ('ClientAgentUserTransaction', '', 'ClientAgentUserTransaction'),
-        ('SupplierAgentUserTransaction', '', 'SupplierAgentUserTransaction'),
+        ('AdminUserTransaction', '', '11', 'AppMasterDetailTransaction', 2),
+        ('EmployeeUserTransaction', '', '11', 'AppMasterDetailTransaction', 2),
+        ('CustomerUserTransaction', '', '11', 'AppMasterDetailTransaction', 2),
+        ('SupplierUserTransaction', '', '11', 'AppMasterDetailTransaction', 2),
+        ('ClientAgentUserTransaction', '', '11', 'AppMasterDetailTransaction', 2),
+        ('SupplierAgentUserTransaction', '', '11', 'AppMasterDetailTransaction', 2),
 
-        ('IsCustomerUserToPartnerOneToOneMapping', '', 'IsCustomerUserToPartnerOneToOneMapping'),
-        ('IsSupplierUserToPartnerOneToOneMapping', '', 'IsSupplierUserToPartnerOneToOneMapping'),
+        ('IsCustomerUserToPartnerOneToOneMapping', '', '14', NULL, 3),
+        ('IsSupplierUserToPartnerOneToOneMapping', '', '14', NULL, 3),
 
-        ('CustomerPartnerTransaction', '', 'CustomerPartnerTransaction'),
-        ('CustomerPartnerDbtableName', '', 'CustomerPartnerDbtableName'),
-        ('CustomerPartnerIdDbfieldName', '', 'CustomerPartnerIdDbfieldName'),
-        ('CustomerPartnerEmailDbfieldName', '', 'CustomerPartnerEmailDbfieldName'),
-        ('CustomerPartnerDataTransferId', '', 'CustomerPartnerDataTransferId'),
+        ('CustomerPartnerTransaction', '', '15', 'AppMasterDetailTransaction', 2),
+        ('CustomerPartnerDbtableName', '', '15', NULL, 4),
+        ('CustomerPartnerIdDbfieldName', '', '15', NULL, 4),
+        ('CustomerPartnerEmailDbfieldName', '', '15', NULL, 4),
+        ('CustomerPartnerDataTransferId', '', '15', NULL, 4),
 
-        ('SupplierPartnerTransaction', '', 'SupplierPartnerTransaction'),
-        ('SupplierPartnerDbtableName', '', 'SupplierPartnerDbtableName'),
-        ('SupplierPartnerIdDbfieldName', '', 'SupplierPartnerIdDbfieldName'),
-        ('SupplierPartnerEmailDbfieldName', '', 'SupplierPartnerEmailDbfieldName'),
-        ('SupplierPartnerDataTransferId', '', 'SupplierPartnerDataTransferId'),
+        ('SupplierPartnerTransaction', '', '15', 'AppMasterDetailTransaction', 2),
+        ('SupplierPartnerDbtableName', '', '15', NULL, 4),
+        ('SupplierPartnerIdDbfieldName', '', '15', NULL, 4),
+        ('SupplierPartnerEmailDbfieldName', '', '15', NULL, 4),
+        ('SupplierPartnerDataTransferId', '', '15', NULL, 4),
 
-        ('FigmaPersonalAccessToken', '', 'FigmaPersonalAccessToken')
-    ) AS val(SetupCode, SetupValue, Description)
+        ('FigmaPersonalAccessToken', '', '16', NULL, 5)
+    ) AS val(SetupCode, SetupValue, Description, EntityCode, UsageType)
     WHERE NOT EXISTS (
         SELECT 1 FROM dbo.AppTenantSetting t WHERE t.SetupCode = val.SetupCode
     );

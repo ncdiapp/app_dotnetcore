@@ -63,9 +63,14 @@ const buildAppSetupSavePayload = (items: ApplicationSettingItem[]) => {
           valueForSave = item.SetupValue ? 'True' : 'False';
         }
       }
+      // Send only fields the save API needs; stringify SetupValue (List editors use numbers).
       return {
-        ...item,
-        SetupValue: valueForSave ?? '',
+        Id: item.Id,
+        SetupCode: item.SetupCode,
+        SetupValue: valueForSave == null || valueForSave === '' ? '' : String(valueForSave),
+        Description: item.Description,
+        EntityId: item.EntityId ?? null,
+        UsageType: item.UsageType ?? null,
         IsModified: true,
       };
     });

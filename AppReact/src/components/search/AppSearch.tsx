@@ -8,7 +8,7 @@ import { updateCurrentTabLabel, getDataModelFromCache, getCurrentActiveTab } fro
 import { useTabDataAutoCache } from '../../redux/hooks/useTabNavigation';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
-import { isAdminUserFromContext } from '../../helper/adminPermissionHelper';
+import { isAdminUserFromContext, isEnableConfigurationModeForUser } from '../../helper/adminPermissionHelper';
 import { integrationService } from '../../webapi/integrationsvc';
 import { endpoints } from '../../webapi/endpoints';
 import { getHeaders } from '../../helper/apiServiceHelper';
@@ -884,13 +884,8 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
   // Get user context for admin check
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
   
-  // Check if configuration mode is enabled (match Angular AppSecurityUserBL.IsAdminUser behavior)
-  const enableConfigurationMode =
-    userContext?.DictAppSetup?.EnableConfigurationMode ||
-    userContext?.DictAppSetup?.enableConfigurationMode ||
-    userContext?.EnableConfigurationMode ||
-    userContext?.enableConfigurationMode ||
-    false;
+  // Match Angular: EnableConfigurationMode must be explicitly true + admin.
+  const enableConfigurationMode = isEnableConfigurationModeForUser(userContext);
   const isAdminUser = isAdminUserFromContext(userContext);
   
   // Check if views exist and have more than 1

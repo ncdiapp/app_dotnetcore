@@ -121,7 +121,11 @@ namespace APP.LBL.DatabaseSpecific
 
 
             SqlCommand command  = new SqlCommand(aQuery, connect as SqlConnection);
-           
+
+            if (this.IsTransactionInProgress && this.PhysicalTransaction != null)
+            {
+                command.Transaction = this.PhysicalTransaction as SqlTransaction;
+            }
 
             if (listParamters != null)
             {
@@ -149,12 +153,14 @@ namespace APP.LBL.DatabaseSpecific
                 connect.Open();
             }
 
-
-          
-
             SqlCommand command = new SqlCommand(aQuery, connect as SqlConnection);
-           
-           
+
+            // Required when StartTransaction() is active — otherwise ExecuteNonQuery throws.
+            if (this.IsTransactionInProgress && this.PhysicalTransaction != null)
+            {
+                command.Transaction = this.PhysicalTransaction as SqlTransaction;
+            }
+
             if (listParamters != null)
             {
                 foreach (var parameter in listParamters)
@@ -183,6 +189,10 @@ namespace APP.LBL.DatabaseSpecific
 
             // Use base class' connection object
             cmdToExecute.Connection = connect as SqlConnection;
+            if (this.IsTransactionInProgress && this.PhysicalTransaction != null)
+            {
+                cmdToExecute.Transaction = this.PhysicalTransaction as SqlTransaction;
+            }
             foreach (string paName in aParamterValue.Keys)
             {
                 cmdToExecute.Parameters.Add(new SqlParameter(paName, aParamterValue[paName]));
@@ -201,6 +211,10 @@ namespace APP.LBL.DatabaseSpecific
 
             // Use base class' connection object
             cmdToExecute.Connection = connect as SqlConnection;
+            if (this.IsTransactionInProgress && this.PhysicalTransaction != null)
+            {
+                cmdToExecute.Transaction = this.PhysicalTransaction as SqlTransaction;
+            }
 
             cmdToExecute.Parameters.AddRange(paramtersList.ToArray());
 

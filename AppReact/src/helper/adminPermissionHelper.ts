@@ -26,13 +26,13 @@ export const readDictAppSetupBool = (
 };
 
 /**
- * Configuration menu on transaction forms: tenant setting EnableConfigurationMode.
- * Defaults to enabled for admin users when the setting is absent (Angular parity).
+ * Tenant System Setting EnableConfigurationMode (Angular AppSetupBL.GetBoolValue).
+ * Empty/absent/false => false; only explicit true/"true"/"1" enables Configuration UI.
+ * Callers must still require admin (IsAdminUser) separately, matching Angular views.
  */
 export const isEnableConfigurationModeForUser = (userContext: any): boolean => {
-  const isAdmin = isAdminUserFromContext(userContext);
   const dict = userContext?.DictAppSetup ?? userContext?.dictAppSetup;
-  return readDictAppSetupBool(dict, 'EnableConfigurationMode', isAdmin);
+  return readDictAppSetupBool(dict, 'EnableConfigurationMode', false);
 };
 
 export const isAdminUserFromContext = (userContext: any): boolean => {

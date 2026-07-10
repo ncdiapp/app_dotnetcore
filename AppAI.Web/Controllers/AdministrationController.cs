@@ -17,6 +17,7 @@ using APP.Framework.Globalization;
 using APP.Framework.Validation;
 using APP.LBL.EntityClasses;
 using AppAI.Web.Controllers.Base;
+using AppAI.Web.Models;
 using Microsoft.AspNetCore.Mvc;
 using static App.BL.AppThemeBL;
 
@@ -366,12 +367,19 @@ public class AdministrationController : SecureBaseController
     }
 
     [HttpPost]
-    public OperationCallResult<AppSetupExDto> SaveAllAppSetupEntityDto(ObservableSet<AppSetupExDto> aSet)
+    public OperationCallResult<AppSetupExDto> SaveAllAppSetupEntityDto([FromBody] AppSetupSaveRequest request)
     {
-        if (aSet == null) return null;
+        if (request?.InternalItems == null) return null;
 
-        // Match legacy Angular AdministrationController — clear deleted ids for setup saves.
-        aSet.DeletedItemIds ??= new List<object>();
+        // ObservableSet implements IEnumerable — Newtonsoft expects a JSON array for that type,
+        // so bind via AppSetupSaveRequest ({ InternalItems, DeletedItemIds }) instead.
+        var aSet = new ObservableSet<AppSetupExDto>();
+        foreach (var item in request.InternalItems)
+        {
+            if (item != null)
+                aSet.Add(item);
+        }
+        aSet.DeletedItemIds = request.DeletedItemIds ?? new List<object>();
 
         var identity = (APP.Components.Dto.AppClientIdentity?)APP.Framework.ServerContext.Instance.CurrnetClientIdentity;
         bool isSysAdmin = identity?.CurrentLoginUserType == (int)EmAppUserType.SysAdmin;
