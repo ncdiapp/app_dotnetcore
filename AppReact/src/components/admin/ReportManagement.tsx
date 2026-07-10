@@ -395,6 +395,7 @@ const ReportManagement: React.FC = () => {
             <ReportTemplateDesigner
               reportId={designerReportId}
               mainReferenceId={0}
+              initialView="design"
               onSaved={() => load()}
               onClose={() => { setDesignerOpen(false); setDesignerReportId(null); }}
             />

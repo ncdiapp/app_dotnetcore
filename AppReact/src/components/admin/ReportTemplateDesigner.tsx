@@ -17,6 +17,7 @@ const GrapeJsEditor = React.lazy(() => import('./GrapeJsEditor'));
 interface Props {
   reportId: number;
   mainReferenceId?: number;
+  initialView?: 'split' | 'visual' | 'design';
   onSaved?: () => void;
   onClose?: () => void;
 }
@@ -294,9 +295,54 @@ const STARTER_TEMPLATES: { label: string; icon: string; html: string; isAbsolute
   },
 ];
 
+// ── Page Style ───────────────────────────────────────────────────────────────
+
+interface PageStyleValues {
+  fontFamily: string;
+  fontSize: number;
+  textColor: string;
+  primaryColor: string;
+  altRowColor: string;
+  borderColor: string;
+}
+
+const DEFAULT_PAGE_STYLE: PageStyleValues = {
+  fontFamily: 'Arial, sans-serif',
+  fontSize: 12,
+  textColor: '#222222',
+  primaryColor: '#1d4ed8',
+  altRowColor: '#f8faff',
+  borderColor: '#e5e7eb',
+};
+
+const FONT_FAMILIES = [
+  { label: 'Arial',           value: 'Arial, sans-serif' },
+  { label: 'Helvetica Neue',  value: "'Helvetica Neue', Helvetica, sans-serif" },
+  { label: 'Calibri',         value: "Calibri, 'Gill Sans', sans-serif" },
+  { label: 'Trebuchet MS',    value: "'Trebuchet MS', sans-serif" },
+  { label: 'Georgia',         value: 'Georgia, serif' },
+  { label: 'Times New Roman', value: "'Times New Roman', Times, serif" },
+];
+
+function generatePageCss(s: PageStyleValues): string {
+  const h1Size = Math.round(s.fontSize * 1.75);
+  const h2Size = Math.round(s.fontSize * 1.4);
+  const h3Size = Math.round(s.fontSize * 1.15);
+  return [
+    `body{font-family:${s.fontFamily};font-size:${s.fontSize}px;color:${s.textColor};padding:0;margin:0}`,
+    `h1{color:${s.primaryColor};font-size:${h1Size}px}`,
+    `h2{color:${s.primaryColor};font-size:${h2Size}px}`,
+    `h3{color:${s.textColor};font-size:${h3Size}px}`,
+    `table{border-collapse:collapse;width:100%}`,
+    `th{background:${s.primaryColor};color:white;padding:6px 10px;text-align:left;font-size:${s.fontSize}px}`,
+    `td{padding:5px 10px;border-bottom:1px solid ${s.borderColor};font-size:${s.fontSize}px}`,
+    `tr:nth-child(even) td{background:${s.altRowColor}}`,
+  ].join('\n');
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 
-const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0, onSaved, onClose }) => {
+const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0, initialView = 'split', onSaved, onClose }) => {
   const { theme, t } = useTheme();
 
   const [report, setReport]                 = useState<any>(null);
@@ -317,11 +363,13 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   const [leftTab, setLeftTab]               = useState<'blocks' | 'tokens'>('blocks');
   const [dsModalOpen, setDsModalOpen]       = useState(false);
   const [pdfPreviewing, setPdfPreviewing]   = useState(false);
-  const [viewMode, setViewMode]             = useState<'split' | 'visual' | 'design'>('split');
+  const [viewMode, setViewMode]             = useState<'split' | 'visual' | 'design'>(initialView);
   const [draggingToken, setDraggingToken]   = useState<string | null>(null);
   const [dropIndicatorY, setDropIndicatorY] = useState<number | null>(null);
   const [pointerDragPos, setPointerDragPos] = useState<{x:number;y:number}|null>(null);
   const [gjsSelectedPath, setGjsSelectedPath] = useState<string[]>([]);
+  const [pageStyle, setPageStyle]             = useState<PageStyleValues>(DEFAULT_PAGE_STYLE);
+  const [stylesPanelOpen, setStylesPanelOpen] = useState(false);
   const [galleryOpen, setGalleryOpen]       = useState(false);
   const [tableWizardOpen, setTableWizardOpen] = useState(false);
   const [wizardSrcIdx, setWizardSrcIdx]     = useState(0);
@@ -403,9 +451,23 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   const insertAtCursor = (text: string) => {
     if (viewMode === 'design' && gjsEditorRef.current) {
       const gjsEditor = gjsEditorRef.current;
-      const sel = gjsEditor.getSelected();
+
+      // <style> blocks → open the Style Panel (CSS is managed there, not via raw insertion)
+      const styleMatch = text.trim().match(/^<style>([\s\S]*?)<\/style>$/i);
+      if (styleMatch) {
+        setStylesPanelOpen(true);
+        return;
+      }
+
+      // Rich block HTML (starts with a tag) → append to canvas body, not into a selected cell
+      if (text.trim().startsWith('<')) {
+        gjsEditor.DomComponents?.getWrapper?.()?.append(text);
+        return;
+      }
+
+      // Token ({{...}}) → replace selected cell content
+      const sel = gjsEditor.getSelected?.();
       if (sel) {
-        // Use components().reset()+append() — sel.set('content') doesn't update the view
         sel.components().reset();
         sel.append(text);
       } else {
@@ -433,6 +495,11 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
     }
   };
 
+  const applyPageStyle = (values: PageStyleValues) => {
+    setPageStyle(values);
+    gjsEditorRef.current?.setStyle?.(generatePageCss(values));
+  };
+
   const applyStarterTemplate = (html: string) => {
     setTemplateHtml(html);
     schedulePreview(html);
@@ -450,7 +517,8 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
   // <!DOCTYPE html> document so it opens standalone in any browser (same approach
   // Claude uses for artifacts: pure HTML blob downloaded directly from the browser).
   const handleHtmlExport = () => {
-    if (!previewHtml) return;
+    const exportHtml = previewHtml || templateHtml;
+    if (!exportHtml) return;
     const reportName = report?.ReportName ?? 'report';
     const fullHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -465,7 +533,7 @@ const ReportTemplateDesigner: React.FC<Props> = ({ reportId, mainReferenceId = 0
 </style>
 </head>
 <body>
-${previewHtml}
+${exportHtml}
 </body>
 </html>`;
     const blob = new Blob([fullHtml], { type: 'text/html' });
@@ -650,26 +718,15 @@ ${previewHtml}
           onClick={handleHtmlPreview}
           disabled={!previewHtml}
           title="Open rendered HTML in new tab"
-          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 border border-blue-300 text-blue-500
-            hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
+          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${theme.button_default}`}
         >
           <i className="fa-solid fa-globe mr-1" />HTML Preview
-        </button>
-        <button
-          onClick={handleHtmlExport}
-          disabled={!previewHtml}
-          title="Download as standalone HTML file — opens in any browser, no server needed"
-          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 border border-blue-300 text-blue-500
-            hover:bg-blue-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
-        >
-          <i className="fa-solid fa-file-arrow-down mr-1" />Export HTML
         </button>
         <button
           onClick={handlePdfPreview}
           disabled={pdfPreviewing || !templateHtml}
           title="Generate PDF and open in new tab"
-          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 border border-red-300 text-red-500
-            hover:bg-red-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors`}
+          className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 disabled:opacity-40 disabled:cursor-not-allowed ${theme.button_default}`}
         >
           {pdfPreviewing
             ? <><i className="fa-solid fa-spinner fa-spin mr-1" />Generating…</>
@@ -1008,7 +1065,7 @@ ${cells}
                         }}
                         onDragEnd={() => { setDraggingToken(null); setDropIndicatorY(null); }}
                         onClick={() => insertAtCursor(block.html)}
-                        title="Click to insert at cursor · Drag and drop onto the code editor"
+                        title="Design mode: click to insert onto canvas · Code mode: click to insert at cursor or drag onto editor"
                         className={`w-full text-left px-2 py-1.5 text-xs rounded-[4px] border ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400 transition-colors cursor-grab active:cursor-grabbing flex items-center gap-1.5`}
                       >
                         <span className="text-gray-300 text-[10px] select-none shrink-0">⠿</span>
@@ -1172,6 +1229,9 @@ ${cells}
                     Click any element to select it
                   </span>
                 ) : (
+                  <span className={`text-xs opacity-40 ${theme.label} shrink-0`}>Click blocks to insert · select a cell then click a token</span>
+                )}
+                {gjsSelectedPath.length > 0 && (
                   <>
                     {/* Clickable breadcrumb — each tag navigates to that ancestor */}
                     <div className="flex items-center gap-0.5 overflow-x-auto max-w-[420px]">
@@ -1213,6 +1273,14 @@ ${cells}
                     </button>
                   </>
                 )}
+                {/* Styles button — always visible in Design mode */}
+                <button
+                  onClick={() => setStylesPanelOpen(v => !v)}
+                  title="Edit page-level styles (font, colors, table theme)"
+                  className={`h-6 px-2 text-[10px] rounded shrink-0 flex items-center gap-1 ml-1 ${stylesPanelOpen ? 'bg-purple-500 text-white' : theme.button_default}`}
+                >
+                  <i className="fa-solid fa-palette" /> Styles
+                </button>
               </>
             ) : (
               /* Code bar — label on left */
@@ -1232,6 +1300,13 @@ ${cells}
             {/* Toggle pill */}
             <div className="flex shrink-0 rounded-[4px] overflow-hidden border border-gray-300">
               <button
+                onClick={() => setViewMode('design')}
+                title="GrapeJS WYSIWYG visual editor"
+                className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'design' ? 'bg-blue-500 text-white' : theme.button_default}`}
+              >
+                <i className="fa-solid fa-pen-ruler mr-1" />Design
+              </button>
+              <button
                 onClick={() => {
                   setViewMode('split');
                   requestAnimationFrame(() => editorRef.current?.layout());
@@ -1247,13 +1322,6 @@ ${cells}
                 className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'visual' ? 'bg-blue-500 text-white' : theme.button_default}`}
               >
                 <i className="fa-solid fa-paintbrush mr-1" />Visual
-              </button>
-              <button
-                onClick={() => setViewMode('design')}
-                title="GrapeJS WYSIWYG visual editor"
-                className={`h-6 px-2.5 text-xs transition-colors ${viewMode === 'design' ? 'bg-purple-500 text-white' : theme.button_default}`}
-              >
-                <i className="fa-solid fa-pen-ruler mr-1" />Design
               </button>
             </div>
           </div>
@@ -1438,8 +1506,6 @@ ${cells}
               <GrapeJsEditor
                 ref={gjsEditorComponentRef as any}
                 html={templateHtml}
-                tokens={tokens}
-                blocks={REPORT_BLOCKS}
                 isDark={currentThemeId === 'dark'}
                 active={viewMode === 'design'}
                 onChange={html => { setTemplateHtml(html); schedulePreview(html); }}
@@ -1464,6 +1530,111 @@ ${cells}
                 }}
               />
             </Suspense>
+
+            {/* ── Style Panel ── floats over canvas, anchored top-right */}
+            {stylesPanelOpen && (
+              <div
+                className={`absolute top-2 right-2 z-40 w-60 rounded-lg shadow-2xl border flex flex-col overflow-auto ${t('border_mainContentSection')} ${theme.mainContentSection}`}
+                style={{ maxHeight: 'calc(100% - 16px)' }}
+              >
+                {/* Header */}
+                <div className={`flex items-center justify-between px-3 py-2 border-b shrink-0 ${t('border_mainContentSection')}`}>
+                  <span className={`text-xs font-semibold ${theme.title}`}>
+                    <i className="fa-solid fa-palette mr-1.5 text-purple-400" />Page Style
+                  </span>
+                  <button onClick={() => setStylesPanelOpen(false)} className={`px-1.5 py-0.5 text-xs rounded ${theme.button_default}`}>
+                    <i className="fa-solid fa-xmark" />
+                  </button>
+                </div>
+
+                <div className="p-3 space-y-4 overflow-y-auto">
+                  {/* Typography */}
+                  <div>
+                    <p className={`text-[10px] font-semibold uppercase tracking-wider mb-2 ${theme.label} opacity-60`}>Typography</p>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <label className={`text-xs w-14 shrink-0 ${theme.label}`}>Font</label>
+                        <select
+                          className={`flex-auto h-6 px-1.5 text-[10px] border rounded-[4px] ${theme.inputBox}`}
+                          value={pageStyle.fontFamily}
+                          onChange={e => applyPageStyle({ ...pageStyle, fontFamily: e.target.value })}
+                        >
+                          {FONT_FAMILIES.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className={`text-xs w-14 shrink-0 ${theme.label}`}>Size</label>
+                        <input
+                          type="number" min={8} max={24}
+                          className={`w-14 h-6 px-1.5 text-xs border rounded-[4px] ${theme.inputBox}`}
+                          value={pageStyle.fontSize}
+                          onChange={e => applyPageStyle({ ...pageStyle, fontSize: Number(e.target.value) })}
+                        />
+                        <span className={`text-[10px] ${theme.label} opacity-50`}>px</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className={`text-xs w-14 shrink-0 ${theme.label}`}>Text</label>
+                        <input type="color"
+                          className="w-8 h-6 rounded border cursor-pointer p-0"
+                          value={pageStyle.textColor}
+                          onChange={e => applyPageStyle({ ...pageStyle, textColor: e.target.value })}
+                        />
+                        <span className={`text-[10px] font-mono ${theme.label} opacity-60`}>{pageStyle.textColor}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Colors */}
+                  <div>
+                    <p className={`text-[10px] font-semibold uppercase tracking-wider mb-2 ${theme.label} opacity-60`}>Colors</p>
+                    <div className="space-y-2">
+                      {([
+                        { key: 'primaryColor', label: 'Primary', hint: 'headings · table headers' },
+                        { key: 'altRowColor',  label: 'Alt row',  hint: 'even table rows' },
+                        { key: 'borderColor',  label: 'Border',   hint: 'table cell borders' },
+                      ] as { key: keyof PageStyleValues; label: string; hint: string }[]).map(({ key, label, hint }) => (
+                        <div key={key} className="flex items-center gap-2">
+                          <label className={`text-xs w-14 shrink-0 ${theme.label}`} title={hint}>{label}</label>
+                          <input type="color"
+                            className="w-8 h-6 rounded border cursor-pointer p-0 shrink-0"
+                            value={pageStyle[key] as string}
+                            onChange={e => applyPageStyle({ ...pageStyle, [key]: e.target.value })}
+                          />
+                          <span className={`text-[10px] font-mono ${theme.label} opacity-60`}>{pageStyle[key]}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Preview swatches */}
+                  <div>
+                    <p className={`text-[10px] font-semibold uppercase tracking-wider mb-2 ${theme.label} opacity-60`}>Preview</p>
+                    <div className="rounded border overflow-hidden text-[10px]" style={{ borderColor: pageStyle.borderColor }}>
+                      <div className="flex">
+                        <div className="px-2 py-1 font-bold text-white shrink-0 w-1/2" style={{ background: pageStyle.primaryColor }}>Col A</div>
+                        <div className="px-2 py-1 font-bold text-white w-1/2" style={{ background: pageStyle.primaryColor }}>Col B</div>
+                      </div>
+                      <div className="flex" style={{ borderTop: `1px solid ${pageStyle.borderColor}` }}>
+                        <div className="px-2 py-1 w-1/2" style={{ color: pageStyle.textColor, fontFamily: pageStyle.fontFamily }}>Row 1</div>
+                        <div className="px-2 py-1 w-1/2" style={{ color: pageStyle.textColor, fontFamily: pageStyle.fontFamily }}>Data</div>
+                      </div>
+                      <div className="flex" style={{ background: pageStyle.altRowColor, borderTop: `1px solid ${pageStyle.borderColor}` }}>
+                        <div className="px-2 py-1 w-1/2" style={{ color: pageStyle.textColor, fontFamily: pageStyle.fontFamily }}>Row 2</div>
+                        <div className="px-2 py-1 w-1/2" style={{ color: pageStyle.textColor, fontFamily: pageStyle.fontFamily }}>Data</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Reset */}
+                  <button
+                    onClick={() => applyPageStyle(DEFAULT_PAGE_STYLE)}
+                    className={`w-full text-xs px-2 py-1.5 rounded-[4px] border ${t('border_mainContentSection')} ${theme.contextMenu} hover:border-blue-400`}
+                  >
+                    <i className="fa-solid fa-rotate-left mr-1 opacity-60" />Reset to defaults
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
         </div>
