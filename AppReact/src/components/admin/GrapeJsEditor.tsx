@@ -44,11 +44,15 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
   onChange,
   onEditorReady,
 }, ref) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const overlayRef   = useRef<HTMLDivElement>(null);
-  const gjsRef       = useRef<any>(null);
-  const onChangeRef  = useRef(onChange);
-  const activeRef    = useRef(active);
+  const containerRef      = useRef<HTMLDivElement>(null);
+  const overlayRef        = useRef<HTMLDivElement>(null);
+  const gjsRef            = useRef<any>(null);
+  const onChangeRef       = useRef(onChange);
+  const activeRef         = useRef(active);
+  // Tracks the last HTML string emitted by GrapeJS via onChange.
+  // The useEffect uses this to skip reloading when the html prop change
+  // originated from GrapeJS itself (avoiding a destructive round-trip).
+  const lastGjsEmittedRef = useRef<string>('');
 
   onChangeRef.current = onChange;
   activeRef.current   = active;
@@ -190,7 +194,9 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
           if (cancel) { el.innerHTML = snapshot; return; }
           if (newHtml === snapshot) return;
           const comp = editor.Canvas.getModelFromEl?.(el);
-          if (comp) { comp.components().reset(); comp.append(newHtml); }
+          // silent:true on reset suppresses the intermediate change:changesCount
+          // event (empty state) so only the append fires with the final content.
+          if (comp) { comp.components().reset([], { silent: true }); comp.append(newHtml); }
         };
         el.addEventListener('blur', () => finish(false), { once: true });
         el.addEventListener('keydown', (ke: KeyboardEvent) => {
@@ -263,6 +269,7 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
       const css = editor.getCss();
       const body = editor.getHtml();
       const combined = css ? `<style>${css}</style>\n${body}` : body;
+      lastGjsEmittedRef.current = combined;
       onChangeRef.current(combined);
     });
 
@@ -279,12 +286,12 @@ const GrapeJsEditor = forwardRef<GrapeJsEditorHandle, GrapeJsEditorProps>(({
   useEffect(() => {
     const ed = gjsRef.current;
     if (!ed || !active) return;
+    // Skip if this html change originated from GrapeJS itself — it already has
+    // the content; reloading would clobber any in-progress edit.
+    if (html === lastGjsEmittedRef.current) return;
     const { css, body } = splitStyleAndBody(html);
-    const currentBody = ed.getHtml() ?? '';
-    if (currentBody.trim() !== body.trim()) {
-      ed.setComponents(body);
-      if (css) ed.setStyle(css);
-    }
+    ed.setComponents(body);
+    if (css) ed.setStyle(css);
   }, [html, active]);
 
   return (
