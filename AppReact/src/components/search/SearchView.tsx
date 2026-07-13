@@ -104,7 +104,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   useEffect(() => {
     setDeletedMassUpdateRows([]);
-  }, [viewDto?.Id, viewDataList]);
+  }, [viewDto?.Id]);
 
   const gridViewType = emAppViewType?.GridView ?? 1;
   const cardViewType = emAppViewType?.CardView ?? 2;

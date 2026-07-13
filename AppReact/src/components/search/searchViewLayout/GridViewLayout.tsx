@@ -22,6 +22,26 @@ import { buildLinkTargetTabTitle, getDictViewColumnValue } from '../../../utils/
 import RgbColorSwatch from '../../common/RgbColorSwatch';
 import { searchSvc } from '../../../webapi/searchSvc';
 
+/**
+ * Search API / Immer-frozen rows make DictViewColumnIDKeyValue read-only.
+ * Mass Update needs mutable copies so Wijmo nested binding can write (Angular mutates plain objects).
+ */
+function ensureMutableMassUpdateRows(rows: any[]): any[] {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((row) => {
+    if (!row || typeof row !== 'object') return row;
+    const dict = row.DictViewColumnIDKeyValue;
+    const mutableDict =
+      dict && typeof dict === 'object' ? { ...(dict as Record<string, unknown>) } : {};
+    return {
+      ...row,
+      DictViewColumnIDKeyValue: mutableDict,
+      IsChanged: false,
+      ChangedColumnIds: Array.isArray(row.ChangedColumnIds) ? [...row.ChangedColumnIds] : [],
+    };
+  });
+}
+
 interface ViewDto {
   Id: string;
   Display: string;
@@ -213,7 +233,12 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
       if (!dict || typeof dict !== 'object') return next;
       Object.entries(dict).forEach(([key, list]) => {
         if (!Array.isArray(list) || list.length === 0) return;
-        next[String(key)] = new DataMap(list, 'Id', 'Display');
+        // Match Angular lookupHelper: DataMap(list, 'Id', 'Display').
+        // Mass Update: prepend blank so DDL can be cleared (with column isRequired=false).
+        const mapSource = isMassUpdate
+          ? [{ Id: null, Display: '' }, ...list]
+          : list;
+        next[String(key)] = new DataMap(mapSource, 'Id', 'Display');
       });
       return next;
     };
@@ -251,13 +276,64 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
       .map((column) => `DictViewColumnIDKeyValue.${column.Id}`);
   }, [viewDto]);
 
-  // Create CollectionView for the grid data
-  const [gridDataCV, setGridDataCV] = useState<CollectionView<any>>(() => new CollectionView<any>([]));
+  const visibleColumns = useMemo(() => {
+    if (!Array.isArray(viewDto?.Columns)) return [];
+    return [...viewDto.Columns]
+      .filter((column) => column.IsVisible !== false)
+      .sort((a, b) => (a.Sort || 0) - (b.Sort || 0));
+  }, [viewDto?.Columns]);
 
-  // Update CollectionView when viewDataList changes
+  // Stable CollectionView — recreating it on every parent render cancels in-cell edits.
+  const gridDataCVRef = useRef<CollectionView<any>>(new CollectionView<any>([]));
+  const [gridDataCV] = useState<CollectionView<any>>(() => gridDataCVRef.current);
+  /** Last `viewDataList` array identity bound into the grid (avoid re-cloning and wiping IsChanged). */
+  const boundViewDataListRef = useRef<any[] | null>(null);
+  const changedMassUpdateRowsRef = useRef<Set<any>>(new Set());
+
+  const markMassUpdateRowChanged = useCallback((rowData: any, columnId?: string | number) => {
+    if (!rowData) return;
+    rowData.IsChanged = true;
+    if (columnId != null && columnId !== '') {
+      if (!Array.isArray(rowData.ChangedColumnIds)) rowData.ChangedColumnIds = [];
+      const idNum = Number(columnId);
+      const idVal = Number.isFinite(idNum) ? idNum : columnId;
+      if (!rowData.ChangedColumnIds.some((x: any) => String(x) === String(idVal))) {
+        rowData.ChangedColumnIds.push(idVal);
+      }
+    }
+    changedMassUpdateRowsRef.current.add(rowData);
+  }, []);
+
   useEffect(() => {
-    setGridDataCV(new CollectionView<any>(Array.isArray(viewDataList) ? viewDataList : []));
-  }, [viewDataList]);
+    const cv = gridDataCVRef.current;
+    const raw = Array.isArray(viewDataList) ? viewDataList : [];
+    const grid = flex.current?.control ?? flex.current;
+    // Never replace/refresh the itemsSource while a cell editor is open.
+    if (grid?.activeEditor || grid?.editRange) {
+      return;
+    }
+
+    if (!isMassUpdate) {
+      boundViewDataListRef.current = raw;
+      changedMassUpdateRowsRef.current.clear();
+      if (cv.sourceCollection !== raw) {
+        cv.sourceCollection = raw;
+        cv.refresh();
+      }
+      return;
+    }
+
+    // Same search-result array → keep current mutable clones (preserves IsChanged for Save).
+    if (raw === boundViewDataListRef.current && Array.isArray(cv.sourceCollection) && cv.sourceCollection !== raw) {
+      return;
+    }
+
+    boundViewDataListRef.current = raw;
+    changedMassUpdateRowsRef.current.clear();
+    const next = ensureMutableMassUpdateRows(raw);
+    cv.sourceCollection = next;
+    cv.refresh();
+  }, [viewDataList, isMassUpdate]);
 
   // Expose Mass Update API to SearchView toolbar (Angular massUpdateHelper parity).
   useEffect(() => {
@@ -277,6 +353,7 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
         newRow.DictLinkTargetParameterValue = {};
         newRow.DictSketchOrFileDisplayCode = {};
         newRow.DictViewColumnIDKeyValue = {};
+        changedMassUpdateRowsRef.current.add(newRow);
         cv.commitNew();
       },
       removeSelectedRow: () => {
@@ -285,15 +362,32 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
         if (rowIndex == null || rowIndex < 0) return null;
         const rowData = grid.rows?.[rowIndex]?.dataItem;
         if (!rowData) return null;
+        changedMassUpdateRowsRef.current.delete(rowData);
         gridDataCV.remove(rowData);
         return rowData;
       },
       getItems: () => (gridDataCV?.items ? [...gridDataCV.items] : []),
-      getChangedItems: () => (gridDataCV?.items ?? []).filter((r: any) => r?.IsChanged),
+      getChangedItems: () => {
+        const items = gridDataCV?.items ?? [];
+        const flagged = items.filter((r: any) => r?.IsChanged);
+        if (flagged.length > 0) return flagged;
+        // Fallback if IsChanged was lost on the object but we tracked the row ref.
+        return items.filter((r: any) => changedMassUpdateRowsRef.current.has(r));
+      },
     };
     onMassUpdateApiReady(api);
     return () => onMassUpdateApiReady(null);
   }, [isMassUpdate, gridDataCV, onMassUpdateApiReady]);
+
+  // Keep isRequired=false after column rebuild (DataMap load / column list change).
+  useEffect(() => {
+    if (!isMassUpdate) return;
+    const g = flex.current?.control ?? flex.current;
+    if (!g?.columns) return;
+    for (let i = 0; i < g.columns.length; i++) {
+      g.columns[i].isRequired = false;
+    }
+  }, [isMassUpdate, visibleColumns, entityDataMaps]);
 
   // Find edit and delete link targets from view configuration
   const linkTargets = useMemo(() => {
@@ -333,7 +427,9 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
   }, [viewDto]);
 
   useEffect(() => {
-    const close = () => setRowMenu((m) => ({ ...m, visible: false }));
+    // Only update state when the menu is open. Returning the same state object skips re-render.
+    // Otherwise every grid click (start edit / DDL pick) re-renders FlexGrid and cancels editing.
+    const close = () => setRowMenu((m) => (m.visible ? { ...m, visible: false } : m));
     document.addEventListener('click', close);
     return () => document.removeEventListener('click', close);
   }, []);
@@ -687,16 +783,39 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
       <div className={`h-1 flex-auto ${theme.mainContentSection} overflow-hidden`}>
         <FlexGrid
           ref={flex}
-          initialized={(g: any) => onGridControlReady?.(g)}
+          initialized={(g: any) => {
+            onGridControlReady?.(g);
+            // Angular GridViewLayout: is-required="false" on view columns (allow clear DDL / empty).
+            if (isMassUpdate && g?.columns) {
+              for (let i = 0; i < g.columns.length; i++) {
+                g.columns[i].isRequired = false;
+              }
+            }
+          }}
           itemsSource={gridDataCV}
           isReadOnly={false}
           selectionMode={isLinkedSearchMode && !isSingleSelection ? "ListBox" : "CellRange"}
           validateEdits={false}
           frozenColumns={frozenColumns}
+          cellEditEnding={(s: any, e: any) => {
+            if (!isMassUpdate) return;
+            const rowData = s?.rows?.[e?.row]?.dataItem;
+            const col = s?.columns?.[e?.col];
+            const binding: string | undefined = col?.binding;
+            const columnId = binding?.startsWith('DictViewColumnIDKeyValue.')
+              ? binding.slice('DictViewColumnIDKeyValue.'.length)
+              : undefined;
+            markMassUpdateRowChanged(rowData, columnId);
+          }}
           cellEditEnded={(s: any, e: any) => {
             if (!isMassUpdate) return;
             const rowData = s?.rows?.[e?.row]?.dataItem;
-            if (rowData) rowData.IsChanged = true;
+            const col = s?.columns?.[e?.col];
+            const binding: string | undefined = col?.binding;
+            const columnId = binding?.startsWith('DictViewColumnIDKeyValue.')
+              ? binding.slice('DictViewColumnIDKeyValue.'.length)
+              : undefined;
+            markMassUpdateRowChanged(rowData, columnId);
           }}
           selectionChanged={(s: any) => {
             if (!(isLinkedSearchMode && !isSingleSelection)) return;
@@ -791,10 +910,9 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
 
 
           {/* Dynamic Columns from viewDto */}
-          {(Array.isArray(viewDto?.Columns) ? viewDto.Columns : [])
-            .filter(column => column.IsVisible !== false)
-            .sort((a, b) => (a.Sort || 0) - (b.Sort || 0))
+          {visibleColumns
             .map((column, index) => {
+              // Angular GridViewLayout.cshtml: binding="DictViewColumnIDKeyValue.@filed.Id"
               const binding = `DictViewColumnIDKeyValue.${column.Id}`;
               const width = getColumnWidth(column);
               const _dataType = getDataType(column);
@@ -848,6 +966,7 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
                     width={width}
                     aggregate={aggregate}
                     isReadOnly={isReadOnly}
+                    isRequired={false}
                     dataMap={ddlDataMap}
                     visible={column.IsVisible !== false}
                   >
@@ -876,6 +995,7 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
                     dataType="Boolean"
                     aggregate={aggregate}
                     isReadOnly={isReadOnly}
+                    isRequired={false}
                     visible={column.IsVisible !== false}
                   >
                     {/* <FlexGridCellTemplate cellType="Cell" template={(ctx: any) => (
@@ -928,6 +1048,7 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
                     dataType="Date"
                     aggregate={aggregate}
                     isReadOnly={isReadOnly}
+                    isRequired={false}
                     visible={column.IsVisible !== false}
                   >
                     <FlexGridCellTemplate cellType="CellEdit" template={(ctx: any) => (
@@ -956,6 +1077,7 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
                     width={width}
                     aggregate={aggregate}
                     isReadOnly={isReadOnly}
+                    isRequired={false}
                     wordWrap={column.ControlType === EmAppControlType.Memo}
                     visible={column.IsVisible !== false}
                   >
