@@ -8,10 +8,12 @@ import {
   buildFormGroupOpenPayload,
   cacheFormGroupSession,
   EmAppLinkTargetActionType,
+  expandBusinessTemplateForFormGroupOpen,
   filterRowContextMenuFormLinkTargets,
   filterRowContextMenuLinkedSearches,
   shouldOpenAsFormGroup,
 } from "../../../utils/transactionFormGroupHelper";
+import { appTransactionService } from "../../../webapi/apptransactionsvc";
 
 const EmAppLinkTargetUsageType = {
   SearchViewLinkSystemDefinedPage: 5,
@@ -47,7 +49,7 @@ export function useSearchViewRowLinkExecution(viewDto: any, viewDataList: any[] 
   }, []);
 
   const executeLinkTarget = useCallback(
-    (linkTarget: any, row: any) => {
+    async (linkTarget: any, row: any) => {
       if (!linkTarget || !row) return;
       if (!isLinkTargetAllowed(linkTarget, row)) {
         window.alert(`${linkTarget.NavigationActionName || "Action"} is not available for current row.`);
@@ -89,10 +91,12 @@ export function useSearchViewRowLinkExecution(viewDto: any, viewDataList: any[] 
       }
 
       const useFormGroup =
-        dataModel?.forceTransactionFormGroup || shouldOpenAsFormGroup(linkTarget, viewDto);
+        dataModel?.forceTransactionFormGroup ||
+        shouldOpenAsFormGroup(linkTarget, viewDto) ||
+        Boolean(linkTarget.LinkTargetTransactionGroupId);
       if (useFormGroup) {
         const dictDefaults = dataModel?.dictViewColumnIdAndValue_For_LinkTargetParameterDefaultValue || {};
-        const effectiveLinkTarget =
+        let effectiveLinkTarget =
           linkTarget ??
           (dataModel?.forceTransactionFormGroup
             ? viewDto?.AppFormLinkTargetList?.find(
@@ -103,10 +107,22 @@ export function useSearchViewRowLinkExecution(viewDto: any, viewDataList: any[] 
           window.alert('No form group link target is configured for this view.');
           return;
         }
+        let effectiveViewDto = viewDto;
+        try {
+          const expanded = await expandBusinessTemplateForFormGroupOpen(
+            effectiveLinkTarget,
+            viewDto,
+            (id) => appTransactionService.retrieveOneAppBusinessTemplateGroupExDto(id),
+          );
+          effectiveLinkTarget = expanded.linkTarget;
+          effectiveViewDto = expanded.viewDto;
+        } catch (err) {
+          console.error('Failed to expand business template before open', err);
+        }
         const { tabTitle, sessionKey, param2, sessionData } = buildFormGroupOpenPayload(
           effectiveLinkTarget,
           row,
-          viewDto,
+          effectiveViewDto,
           viewDataList,
           dictDefaults,
         );

@@ -14,6 +14,7 @@ import {
   buildFormGroupOpenPayload,
   cacheFormGroupSession,
   EmAppLinkTargetActionType,
+  expandBusinessTemplateForFormGroupOpen,
   filterRowContextMenuFormLinkTargets,
   filterRowContextMenuLinkedSearches,
   shouldOpenAsFormGroup,
@@ -21,6 +22,7 @@ import {
 import { buildLinkTargetTabTitle, getDictViewColumnValue } from '../../../utils/linkTargetTabTitle';
 import RgbColorSwatch from '../../common/RgbColorSwatch';
 import { searchSvc } from '../../../webapi/searchSvc';
+import { appTransactionService } from '../../../webapi/apptransactionsvc';
 
 /**
  * Search API / Immer-frozen rows make DictViewColumnIDKeyValue read-only.
@@ -444,8 +446,8 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
     return conditionValue && conditionValue !== 'False' && conditionValue !== '0';
   };
 
-  // Execute link target - navigate to FormMasterDetail
-  const executeLinkTarget = (linkTarget: any, dataItem: any) => {
+  // Execute link target - navigate to FormMasterDetail / TransactionFormGroup
+  const executeLinkTarget = async (linkTarget: any, dataItem: any) => {
     if (!linkTarget || !dataItem) return;
 
     // Check if link target is allowed
@@ -496,13 +498,27 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
       return;
     }
 
-    // Data model template: open TransactionFormGroup when view has form-group link targets
-    if (shouldOpenAsFormGroup(linkTarget, viewDto)) {
+    // Data model template / Business Template: open TransactionFormGroup
+    if (shouldOpenAsFormGroup(linkTarget, viewDto) || linkTarget.LinkTargetTransactionGroupId) {
+      let openLinkTarget = linkTarget;
+      let openViewDto: any = viewDto;
+      try {
+        const expanded = await expandBusinessTemplateForFormGroupOpen(
+          linkTarget,
+          viewDto,
+          (id) => appTransactionService.retrieveOneAppBusinessTemplateGroupExDto(id),
+        );
+        openLinkTarget = expanded.linkTarget;
+        openViewDto = expanded.viewDto;
+      } catch (err) {
+        console.error('Failed to expand business template before open', err);
+      }
+
       const dictDefaults = dataModel?.dictViewColumnIdAndValue_For_LinkTargetParameterDefaultValue || {};
       const { tabTitle, sessionKey, param2, sessionData } = buildFormGroupOpenPayload(
-        linkTarget,
+        openLinkTarget,
         dataItem,
-        viewDto,
+        openViewDto,
         viewDataList,
         dictDefaults,
       );

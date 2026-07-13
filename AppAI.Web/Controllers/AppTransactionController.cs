@@ -1651,14 +1651,77 @@ public class AppTransactionController : SecureBaseController
 
     /// <summary>
     /// Real AppTransactionGroup (Business Template group) with items — not DataModelTemplate Search.
-    /// Used when Search View LinkTarget.LinkTargetTransactionGroupId opens a form group.
+    /// Returns a plain list (not ObservableSet) so React can expand left-nav items reliably.
+    /// Template header tabs are flagged via IsGroupSharedHeader / Data Model Template link OtherSettings.
     /// </summary>
     [HttpGet]
-    public AppTransactionGroupExDto RetrieveOneAppBusinessTemplateGroupExDto(int? groupId)
+    public object RetrieveOneAppBusinessTemplateGroupExDto(int? groupId)
     {
         if (!groupId.HasValue)
             return null;
-        return AppTransactionGroupBL.RetrieveOneAppTransactionGroupExDto(groupId.Value);
+
+        AppTransactionGroupExDto group = AppTransactionGroupBL.RetrieveOneAppTransactionGroupExDto(groupId.Value);
+        if (group == null)
+            return null;
+
+        var rawItems = (group.AppTransactionGroupItemList ?? new ObservableSet<AppTransactionGroupItemExDto>())
+            .OrderBy(o => o.TransactionLayoutOrder ?? int.MaxValue)
+            .ToList();
+
+        var transactionIds = rawItems
+            .Select(o => o.ForeignAppTransactionItemExDto?.TransactionId)
+            .Where(id => id.HasValue)
+            .Select(id => id.Value)
+            .Distinct()
+            .ToList();
+
+        // Fallback for groups imported before IsGroupSharedHeader was written: read TemplateItemType
+        // from Data Model Template Search link targets (same transactions).
+        HashSet<int> templateHeaderTxIds = AppTransactionGroupBL.ResolveTemplateHeaderTransactionIds(transactionIds);
+
+        var items = rawItems
+            .Select(o =>
+            {
+                int? transactionId = o.ForeignAppTransactionItemExDto?.TransactionId;
+                string transactionName = o.ForeignAppTransactionItemExDto?.TransactionItemName;
+                bool isSharedHeader =
+                    (o.IsGroupSharedHeader == true) ||
+                    (o.IsCrossGroupSharedHeader == true) ||
+                    (transactionId.HasValue && templateHeaderTxIds.Contains(transactionId.Value));
+                int templateItemType = isSharedHeader
+                    ? (int)EmAppTransactionTemplateItemType.TemplateHeader
+                    : (int)EmAppTransactionTemplateItemType.MainItem;
+
+                return new
+                {
+                    Id = o.Id,
+                    TransactionLayoutOrder = o.TransactionLayoutOrder,
+                    TransactionId = transactionId,
+                    TransactionName = transactionName,
+                    IsGroupSharedHeader = o.IsGroupSharedHeader == true || isSharedHeader,
+                    IsCrossGroupSharedHeader = o.IsCrossGroupSharedHeader == true,
+                    TemplateItemType = templateItemType,
+                    ForeignAppTransactionItemExDto = o.ForeignAppTransactionItemExDto == null
+                        ? null
+                        : new
+                        {
+                            Id = o.ForeignAppTransactionItemExDto.Id,
+                            TransactionId = o.ForeignAppTransactionItemExDto.TransactionId,
+                            TransactionItemName = o.ForeignAppTransactionItemExDto.TransactionItemName,
+                            Description = o.ForeignAppTransactionItemExDto.Description,
+                        },
+                };
+            })
+            .Where(o => o.TransactionId.HasValue)
+            .ToList();
+
+        return new
+        {
+            Id = group.Id,
+            GroupName = group.GroupName,
+            Description = group.Description,
+            AppTransactionGroupItemList = items,
+        };
     }
 
 

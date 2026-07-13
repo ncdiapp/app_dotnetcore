@@ -18,6 +18,7 @@ import {
   findLinkTargetInList,
   isCreateLikeLinkTarget,
   parseRouteParam2,
+  preferFormGroupMainItemLinkTarget,
   cacheFormGroupSession,
   repairFormGroupSession,
   resolveFormGroupSession,
@@ -89,11 +90,11 @@ const TransactionFormGroup: React.FC = () => {
   const [sessionResolved, setSessionResolved] = useState(false);
   const [businessTemplateReady, setBusinessTemplateReady] = useState(false);
   const initializedRef = useRef(false);
-  const businessTemplateExpandAttemptedRef = useRef(false);
+  const businessTemplateExpandAttemptedRef = useRef<number | null>(null);
 
   useEffect(() => {
     initializedRef.current = false;
-    businessTemplateExpandAttemptedRef.current = false;
+    businessTemplateExpandAttemptedRef.current = null;
     setBusinessTemplateReady(false);
     if (!sessionKey) {
       setSessionData(null);
@@ -132,33 +133,41 @@ const TransactionFormGroup: React.FC = () => {
         return;
       }
 
-      const groupId = sessionData.linkTargetDto.LinkTargetTransactionGroupId;
-      if (
-        !groupId ||
-        viewHasTemplateTypedFormGroupItems(sessionData.viewDto) ||
-        businessTemplateExpandAttemptedRef.current
-      ) {
+      const groupId = Number(sessionData.linkTargetDto.LinkTargetTransactionGroupId);
+      if (!groupId || Number.isNaN(groupId)) {
         setBusinessTemplateReady(true);
         return;
       }
 
-      businessTemplateExpandAttemptedRef.current = true;
+      // Already expanded for this group (or Data Model Template already has typed items).
+      if (viewHasTemplateTypedFormGroupItems(sessionData.viewDto)) {
+        setBusinessTemplateReady(true);
+        return;
+      }
+
+      // Strict Mode / remount: allow retry until a successful expand for this sessionKey+groupId.
+      if (businessTemplateExpandAttemptedRef.current === groupId) {
+        setBusinessTemplateReady(true);
+        return;
+      }
 
       try {
         const groupDto = await appTransactionService.retrieveOneAppBusinessTemplateGroupExDto(groupId);
         if (cancelled) return;
         const synthetic = buildLinkTargetsFromBusinessTemplateGroup(groupDto, sessionData.linkTargetDto);
         if (synthetic.length === 0) {
+          console.warn(
+            'Business template group returned no expandable transactions',
+            groupId,
+            groupDto,
+          );
+          // Mark attempted only after response so Strict Mode remount can retry once if first aborted.
+          businessTemplateExpandAttemptedRef.current = groupId;
           setBusinessTemplateReady(true);
           return;
         }
 
-        const preferred =
-          synthetic.find(
-            (lt: any) =>
-              sessionData.linkTargetDto?.LinkTargetTransactionId != null &&
-              Number(lt.LinkTargetTransactionId) === Number(sessionData.linkTargetDto.LinkTargetTransactionId),
-          ) || synthetic[0];
+        const preferred = preferFormGroupMainItemLinkTarget(synthetic, sessionData.linkTargetDto);
 
         const next: TransactionFormGroupSessionData = {
           ...sessionData,
@@ -169,11 +178,13 @@ const TransactionFormGroup: React.FC = () => {
           },
           linkTargetDto: preferred,
         };
+        businessTemplateExpandAttemptedRef.current = groupId;
         cacheFormGroupSession(dispatch, sessionKey, next);
         setSessionData(next);
       } catch (err) {
         console.error('Failed to expand business template group', err);
         showError('Failed to load transaction form group: ' + (err as Error).message);
+        businessTemplateExpandAttemptedRef.current = groupId;
       } finally {
         if (!cancelled) setBusinessTemplateReady(true);
       }

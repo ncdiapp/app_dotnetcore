@@ -255,7 +255,8 @@ WHERE BlueprintKey = @BlueprintKey";
 
           if (request.IncludeTransactionGroup)
           {
-            var groupTransactionIds = new List<int>();
+            var templateHeaderTabIds = GetDwBlueprintTemplateHeaderTabIds(request.Blueprint);
+            var groupTransactionItems = new List<(int TransactionId, bool IsTemplateHeader)>();
             foreach (var plan in plans)
             {
               if (plan.Tab.ImportStatus == TemplateStatusSkipped)
@@ -263,12 +264,16 @@ WHERE BlueprintKey = @BlueprintKey";
 
               string integrationId = ResolveDwTransactionIntegrationId(request.Blueprint, plan);
               int? txId = GetTransactionIdByIntegrationId(conn, null, integrationId);
-              if (txId.HasValue)
-                groupTransactionIds.Add(txId.Value);
+              if (!txId.HasValue)
+                continue;
+
+              bool isHeader = IsDwBlueprintTemplateHeaderTab(
+                request.Blueprint, plan.Tab, templateHeaderTabIds);
+              groupTransactionItems.Add((txId.Value, isHeader));
             }
 
             result.Object.TransactionGroupId = EnsureDwBlueprintTransactionGroup(
-              conn, request.Blueprint, groupTransactionIds);
+              conn, request.Blueprint, groupTransactionItems);
           }
 
           if (request.IncludeSearchView && request.Blueprint.SearchView != null)
@@ -834,14 +839,14 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
     private static int EnsureDwBlueprintTransactionGroup(
       SqlConnection conn,
       PlmDwImportBlueprintDto blueprint,
-      List<int> transactionIds)
+      List<(int TransactionId, bool IsTemplateHeader)> transactionItems)
     {
       var groupSpec = blueprint.TransactionGroup;
       if (groupSpec == null || string.IsNullOrWhiteSpace(groupSpec.Name))
         return 0;
 
       int? groupId = GetTransactionGroupIdByName(conn, groupSpec.Name);
-      if (!groupId.HasValue && transactionIds.Count == 0)
+      if (!groupId.HasValue && (transactionItems == null || transactionItems.Count == 0))
         return 0;
 
       if (!groupId.HasValue)
@@ -867,19 +872,30 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
       }
 
       int order = 0;
-      foreach (int txId in transactionIds.Distinct())
+      foreach (var item in (transactionItems ?? new List<(int, bool)>())
+        .GroupBy(t => t.TransactionId)
+        .Select(g => g.First()))
       {
         order++;
-        int transactionItemId = EnsureAppTransactionItemId(conn, null, txId);
+        int transactionItemId = EnsureAppTransactionItemId(conn, null, item.TransactionId);
         using (var cmd = conn.CreateCommand())
         {
+          // IsGroupSharedHeader column = ORM IsCrossGroupSharedHeader (mapped swap).
+          // IsCrossGroupSharedHeader column = ORM IsGroupSharedHeader.
+          // Template header tabs → mark both shared-header flags so Form Group treats them as headers.
           cmd.CommandText = @"
-INSERT INTO dbo.AppTransactionGroupItem (TransactionGroupID, TransactionItemID, TransactionLayoutOrder, TransID)
-VALUES (@GroupId, @TransactionItemId, @Order, @TransactionId)";
+INSERT INTO dbo.AppTransactionGroupItem (
+    TransactionGroupID, TransactionItemID, TransactionLayoutOrder, TransID,
+    IsGroupSharedHeader, IsCrossGroupSharedHeader)
+VALUES (
+    @GroupId, @TransactionItemId, @Order, @TransactionId,
+    @IsGroupSharedHeader, @IsCrossGroupSharedHeader)";
           cmd.Parameters.AddWithValue("@GroupId", groupId.Value);
           cmd.Parameters.AddWithValue("@TransactionItemId", transactionItemId);
           cmd.Parameters.AddWithValue("@Order", order);
-          cmd.Parameters.AddWithValue("@TransactionId", txId);
+          cmd.Parameters.AddWithValue("@TransactionId", item.TransactionId);
+          cmd.Parameters.AddWithValue("@IsGroupSharedHeader", item.IsTemplateHeader);
+          cmd.Parameters.AddWithValue("@IsCrossGroupSharedHeader", item.IsTemplateHeader);
           cmd.ExecuteNonQuery();
         }
       }

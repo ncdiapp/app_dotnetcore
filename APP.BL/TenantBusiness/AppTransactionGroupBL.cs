@@ -7,6 +7,7 @@ using APP.Framework.Communication;
 using APP.Framework.Validation;
 using APP.Components.EntityConverter;
 using APP.Components.EntityDto;
+using APP.Components.Dto;
 using System.Collections.Generic;
 using System.Linq;
 using System.Data;
@@ -78,6 +79,44 @@ namespace App.BL
             return aAppTransactionGroupExDto;
 
 
+        }
+
+        /// <summary>
+        /// Transaction IDs that are TemplateHeader on any Data Model Template Search link target.
+        /// Used when AppTransactionGroupItem.IsGroupSharedHeader was not set at DW import time.
+        /// </summary>
+        public static HashSet<int> ResolveTemplateHeaderTransactionIds(IEnumerable<int> transactionIds)
+        {
+            var result = new HashSet<int>();
+            var idList = (transactionIds ?? Enumerable.Empty<int>()).Distinct().Where(id => id > 0).ToList();
+            if (idList.Count == 0)
+                return result;
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                EntityCollection<AppFormLinkTargetEntity> list = new EntityCollection<AppFormLinkTargetEntity>();
+                adapter.FetchEntityCollection(
+                    list,
+                    new RelationPredicateBucket(AppFormLinkTargetFields.LinkTargetTransactionId == idList));
+
+                int headerType = (int)EmAppTransactionTemplateItemType.TemplateHeader;
+                foreach (var entity in list)
+                {
+                    if (!entity.LinkTargetTransactionId.HasValue)
+                        continue;
+                    string other = entity.OtherSettings;
+                    if (string.IsNullOrWhiteSpace(other))
+                        continue;
+                    // OtherSettings JSON: "TemplateItemType":2 (TemplateHeader)
+                    if (other.IndexOf("\"TemplateItemType\":" + headerType, StringComparison.Ordinal) >= 0
+                        || other.IndexOf("\"TemplateItemType\": " + headerType, StringComparison.Ordinal) >= 0)
+                    {
+                        result.Add(entity.LinkTargetTransactionId.Value);
+                    }
+                }
+            }
+
+            return result;
         }
 
        

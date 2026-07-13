@@ -361,14 +361,25 @@ export function buildTemplateItemLists(viewDto: any, clickedLinkTarget: any): {
  * Expand AppTransactionGroup (Business Template) into MainItem link targets so
  * TransactionFormGroup shows left-nav of all group transactions (same PK as seed Open link).
  */
+export function unwrapObservableSetList(data: unknown): any[] {
+  if (Array.isArray(data)) return data;
+  if (data && typeof data === 'object') {
+    const obj = data as any;
+    if (Array.isArray(obj.InternalItems)) return obj.InternalItems;
+    if (Array.isArray(obj.$values)) return obj.$values;
+    if (Array.isArray(obj.Items)) return obj.Items;
+  }
+  return [];
+}
+
 export function buildLinkTargetsFromBusinessTemplateGroup(
   groupDto: any,
   seedLinkTarget: any,
 ): any[] {
   if (!seedLinkTarget || !groupDto) return [];
-  const items = Array.isArray(groupDto.AppTransactionGroupItemList)
-    ? [...groupDto.AppTransactionGroupItemList]
-    : [];
+  const items = unwrapObservableSetList(
+    groupDto.AppTransactionGroupItemList ?? groupDto.appTransactionGroupItemList,
+  );
   if (items.length === 0) return [];
 
   items.sort(
@@ -382,19 +393,37 @@ export function buildLinkTargetsFromBusinessTemplateGroup(
   return items
     .map((item: any, idx: number) => {
       const txItem = item.ForeignAppTransactionItemExDto || item.ForeignAppTransactionItem || {};
+      const transactionIdRaw =
+        item.TransactionId ??
+        txItem.TransactionId ??
+        item.TransId ??
+        item.transactionId;
       const transactionId =
-        txItem.TransactionId != null
-          ? Number(txItem.TransactionId)
-          : item.TransId != null
-            ? Number(item.TransId)
-            : null;
+        transactionIdRaw != null && transactionIdRaw !== '' ? Number(transactionIdRaw) : null;
       if (transactionId == null || Number.isNaN(transactionId)) return null;
 
       const name =
+        item.TransactionName ||
         txItem.TransactionItemName ||
         txItem.Display ||
         txItem.TransactionName ||
         `Transaction ${transactionId}`;
+
+      const explicitType = Number(
+        item.TemplateItemType ?? item.OtherSettingsDto?.TemplateItemType,
+      );
+      const isHeaderFlag =
+        item.IsGroupSharedHeader === true ||
+        item.IsCrossGroupSharedHeader === true ||
+        item.isGroupSharedHeader === true ||
+        item.isCrossGroupSharedHeader === true;
+      const templateItemType =
+        explicitType === EmAppTransactionTemplateItemType.TemplateHeader ||
+        explicitType === EmAppTransactionTemplateItemType.MainItem
+          ? explicitType
+          : isHeaderFlag
+            ? EmAppTransactionTemplateItemType.TemplateHeader
+            : EmAppTransactionTemplateItemType.MainItem;
 
       return {
         ...seedLinkTarget,
@@ -412,16 +441,88 @@ export function buildLinkTargetsFromBusinessTemplateGroup(
         Sort: item.TransactionLayoutOrder ?? idx + 1,
         OtherSettingsDto: {
           ...(seedLinkTarget.OtherSettingsDto || {}),
-          TemplateItemType: EmAppTransactionTemplateItemType.MainItem,
+          TemplateItemType: templateItemType,
         },
       };
     })
     .filter(Boolean);
 }
 
+/** Prefer a MainItem for Form Group open — Search Open often targets Style Header (TemplateHeader). */
+export function preferFormGroupMainItemLinkTarget(
+  linkTargets: any[],
+  seedLinkTarget: any,
+): any {
+  if (!Array.isArray(linkTargets) || linkTargets.length === 0) {
+    return seedLinkTarget;
+  }
+  const mainItems = linkTargets.filter(
+    (lt) =>
+      Number(lt?.OtherSettingsDto?.TemplateItemType) === EmAppTransactionTemplateItemType.MainItem,
+  );
+  if (mainItems.length === 0) {
+    return (
+      linkTargets.find(
+        (lt) =>
+          seedLinkTarget?.LinkTargetTransactionId != null &&
+          Number(lt.LinkTargetTransactionId) === Number(seedLinkTarget.LinkTargetTransactionId),
+      ) || linkTargets[0]
+    );
+  }
+  const seedIsMain =
+    seedLinkTarget?.LinkTargetTransactionId != null &&
+    mainItems.some(
+      (lt) => Number(lt.LinkTargetTransactionId) === Number(seedLinkTarget.LinkTargetTransactionId),
+    );
+  if (seedIsMain) {
+    return (
+      mainItems.find(
+        (lt) => Number(lt.LinkTargetTransactionId) === Number(seedLinkTarget.LinkTargetTransactionId),
+      ) || mainItems[0]
+    );
+  }
+  // Seed is Style Header (TemplateHeader) or unknown — open first MainItem (e.g. Style Summary).
+  return mainItems[0];
+}
+
 export function viewHasTemplateTypedFormGroupItems(viewDto: any): boolean {
   const list = getFormGroupLinkTargetList(viewDto);
   return list.some((lt: any) => lt?.OtherSettingsDto?.TemplateItemType != null);
+}
+
+/**
+ * If link has LinkTargetTransactionGroupId, expand Business Template group into MainItems
+ * so TransactionFormGroup left nav has all transactions. No-op when already template-typed.
+ */
+export async function expandBusinessTemplateForFormGroupOpen(
+  linkTarget: any,
+  viewDto: any,
+  loadGroup: (groupId: number) => Promise<any>,
+): Promise<{ linkTarget: any; viewDto: any }> {
+  const groupId = Number(linkTarget?.LinkTargetTransactionGroupId);
+  if (!linkTarget || !groupId || Number.isNaN(groupId)) {
+    return { linkTarget, viewDto };
+  }
+  if (viewHasTemplateTypedFormGroupItems(viewDto)) {
+    return { linkTarget, viewDto };
+  }
+
+  const groupDto = await loadGroup(groupId);
+  const synthetic = buildLinkTargetsFromBusinessTemplateGroup(groupDto, linkTarget);
+  if (synthetic.length === 0) {
+    return { linkTarget, viewDto };
+  }
+
+  const preferred = preferFormGroupMainItemLinkTarget(synthetic, linkTarget);
+
+  return {
+    linkTarget: preferred,
+    viewDto: {
+      ...viewDto,
+      AppFormLinkTargetList: synthetic,
+      FormGroupLinkTargetList: synthetic,
+    },
+  };
 }
 
 export function findLinkTargetInList(dto: any, list: any[]): any | null {
