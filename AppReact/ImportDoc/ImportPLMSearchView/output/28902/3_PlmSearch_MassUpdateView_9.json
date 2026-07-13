@@ -1,0 +1,296 @@
+{
+  "_comment": "Option A MassUpdateViewAttach — SingleTableUpdate on Tab_4258 / Plm_Fabric_Header unit #85. Unmapped PLM fields omitted. Fabric_Info fields (Season/Collection/Group/Print_Solid/Sketch) are display-only (not on update Unit). setAsDefaultMassUpdateView=true (PLM DefaultMassUpdateViewId=9).",
+  "schemaVersion": 1,
+  "mode": "MassUpdateViewAttach",
+  "generatedAt": "2026-07-13T18:05:00Z",
+  "source": {
+    "plmSearchTemplateId": 28902,
+    "plmSearchName": "1b - Fabric Search",
+    "plmMassUpdateViewId": 9,
+    "plmMassUpdateViewName": "10- Fabric MU",
+    "plmUpdateType": "TabField",
+    "plmUpdateTypeId": 1,
+    "plmMainTabId": 3998,
+    "plmGridBlockId": null,
+    "tablePrefix": "Plm_",
+    "isPlmDefaultMassUpdateView": true,
+    "_comment_mainTab": "PLM MainTabId=3998 (Fabric Header-V2K ERP) has no APP Tab_3998; update target is Fabric Header Tab_4258 by field majority / FieldMapping."
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_28902",
+    "appSearchId": 18,
+    "appDataSetId": 2091,
+    "_comment": "Resolve IntegrationId first, then AppSearchId."
+  },
+  "dataSetPatch": {
+    "resultingQueryText": "SELECT\n  [hdr].[ReferenceId],\n  [ref].[ReferenceCode],\n  [ref].[FolderId],\n  [info].[Sketch],\n  [hdr].[Article],\n  [hdr].[Description],\n  [info].[Original_Reference],\n  [info].[New_Carryover],\n  [hdr].[Raw_Material_Status],\n  [hdr].[Classification],\n  [hdr].[Fabric_Type],\n  [info].[Season_3],\n  [info].[Collection_4],\n  [info].[SupplierType],\n  [hdr].[Fabric_Mill],\n  [info].[Fabric_Mill] AS [Fabric_Mill_6790],\n  [hdr].[Supplier_Article_Number],\n  [cost].[Final_Fabric_Cost__Meter],\n  [cost].[Final_Fabric_Cost__Yard],\n  [hdr].[Total_Composition],\n  [attr].[Total_Composition] AS [Total_Composition_7089],\n  [attr].[Weight],\n  [attr].[Bf__Wash_Swt_Weight],\n  [info].[Print_Solid],\n  [hdr].[Item_Type],\n  [hdr].[Fabric_Name],\n  [hdr].[Division_186],\n  [hdr].[Product_Type],\n  [hdr].[ProductTypeGroup],\n  [hdr].[Composition],\n  [hdr].[Designer_1],\n  [hdr].[Designer_2],\n  [info].[Group]\nFROM [dbo].[Plm_Fabric_Header] AS [hdr]\nLEFT OUTER JOIN [dbo].[Plm_ReferenceBasicInfo] AS [ref]\n  ON [ref].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Fabric_Info] AS [info]\n  ON [info].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Fabric_Cost] AS [cost]\n  ON [cost].[ReferenceId] = [hdr].[ReferenceId]\nLEFT OUTER JOIN [dbo].[Plm_Attributes] AS [attr]\n  ON [attr].[ReferenceId] = [hdr].[ReferenceId]",
+    "addColumns": [
+      { "sysTableFiledPath": "Fabric_Name", "appTableName": "Plm_Fabric_Header", "alias": "hdr" },
+      { "sysTableFiledPath": "Division_186", "appTableName": "Plm_Fabric_Header", "alias": "hdr" },
+      { "sysTableFiledPath": "Product_Type", "appTableName": "Plm_Fabric_Header", "alias": "hdr" },
+      { "sysTableFiledPath": "ProductTypeGroup", "appTableName": "Plm_Fabric_Header", "alias": "hdr" },
+      { "sysTableFiledPath": "Composition", "appTableName": "Plm_Fabric_Header", "alias": "hdr" },
+      { "sysTableFiledPath": "Designer_1", "appTableName": "Plm_Fabric_Header", "alias": "hdr" },
+      { "sysTableFiledPath": "Designer_2", "appTableName": "Plm_Fabric_Header", "alias": "hdr" },
+      { "sysTableFiledPath": "Group", "appTableName": "Plm_Fabric_Info", "alias": "info" }
+    ],
+    "addLeftJoins": []
+  },
+  "massUpdate": {
+    "appMode": "SingleTableUpdate",
+    "updateTransactionIntegrationId": "Tab_4258",
+    "updateTransactionId": 2266,
+    "updateBaseTransactionUnitId": 85,
+    "updateUnitTableName": "Plm_Fabric_Header",
+    "pkDatabaseFieldName": "ReferenceId",
+    "isAllowAddRow": true,
+    "isAllowDeleteRow": true,
+    "isAllowAdvancedUpdate": true,
+    "setAsDefaultMassUpdateView": true
+  },
+  "searchView": {
+    "name": "10- Fabric MU",
+    "integrationId": "Search_28902_MU9_View",
+    "integrationIdLabel": "Search_28902_MU9_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "isMassUpdateView": true,
+    "plmMassUpdateViewId": 9,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 0,
+        "isUpdatable": true,
+        "massUpdateDatabaseFieldName": "ReferenceId",
+        "massUpdateTransactionFieldId": 2723,
+        "_comment": "REQUIRED Unit PK for SingleTableUpdate"
+      },
+      {
+        "displayText": "Sketch",
+        "sysTableFiledPath": "Sketch",
+        "controlType": 5,
+        "entityIntegrationId": "11",
+        "isVisible": true,
+        "sort": 1,
+        "isUpdatable": false,
+        "plmSubItemId": 6,
+        "massUpdateDatabaseFieldName": null,
+        "_comment": "PLM IsReadonly; FieldMapping → Plm_Fabric_Info — display only (not on update Unit #85)"
+      },
+      {
+        "displayText": "Article #",
+        "sysTableFiledPath": "Article",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 2,
+        "isUpdatable": false,
+        "plmSubItemId": 22,
+        "massUpdateDatabaseFieldName": null,
+        "_comment": "PLM IsReadonly"
+      },
+      {
+        "displayText": "Description",
+        "sysTableFiledPath": "Description",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 3,
+        "isUpdatable": false,
+        "plmSubItemId": 23,
+        "massUpdateDatabaseFieldName": null,
+        "_comment": "PLM IsReadonly"
+      },
+      {
+        "displayText": "Fabric Name",
+        "sysTableFiledPath": "Fabric_Name",
+        "controlType": 1,
+        "entityIntegrationId": "3708",
+        "isVisible": true,
+        "sort": 4,
+        "isUpdatable": true,
+        "plmSubItemId": 5333,
+        "massUpdateDatabaseFieldName": "Fabric_Name",
+        "massUpdateTransactionFieldId": 2793
+      },
+      {
+        "displayText": "Division",
+        "sysTableFiledPath": "Division_186",
+        "controlType": 1,
+        "entityIntegrationId": "5",
+        "isVisible": true,
+        "sort": 5,
+        "isUpdatable": true,
+        "plmSubItemId": 186,
+        "massUpdateDatabaseFieldName": "Division_186",
+        "massUpdateTransactionFieldId": 2733
+      },
+      {
+        "displayText": "Product Class",
+        "sysTableFiledPath": "Classification",
+        "controlType": 1,
+        "entityIntegrationId": "1",
+        "isVisible": true,
+        "sort": 6,
+        "isUpdatable": true,
+        "plmSubItemId": 1,
+        "massUpdateDatabaseFieldName": "Classification",
+        "massUpdateTransactionFieldId": 2724
+      },
+      {
+        "displayText": "Type Group",
+        "sysTableFiledPath": "ProductTypeGroup",
+        "controlType": 1,
+        "entityIntegrationId": "95",
+        "isVisible": true,
+        "sort": 7,
+        "isUpdatable": true,
+        "plmSubItemId": 149,
+        "massUpdateDatabaseFieldName": "ProductTypeGroup",
+        "massUpdateTransactionFieldId": 2732
+      },
+      {
+        "displayText": "Product Type",
+        "sysTableFiledPath": "Product_Type",
+        "controlType": 1,
+        "entityIntegrationId": "4",
+        "isVisible": true,
+        "sort": 8,
+        "isUpdatable": true,
+        "plmSubItemId": 2,
+        "massUpdateDatabaseFieldName": "Product_Type",
+        "massUpdateTransactionFieldId": 2725
+      },
+      {
+        "displayText": "Season",
+        "sysTableFiledPath": "Season_3",
+        "controlType": 1,
+        "entityIntegrationId": "8",
+        "isVisible": true,
+        "sort": 9,
+        "isUpdatable": false,
+        "plmSubItemId": 3,
+        "massUpdateDatabaseFieldName": null,
+        "_comment": "Plm_Fabric_Info — display only; not on update Unit #85"
+      },
+      {
+        "displayText": "Collection",
+        "sysTableFiledPath": "Collection_4",
+        "controlType": 1,
+        "entityIntegrationId": "6",
+        "isVisible": true,
+        "sort": 10,
+        "isUpdatable": false,
+        "plmSubItemId": 4,
+        "massUpdateDatabaseFieldName": null,
+        "_comment": "Plm_Fabric_Info — display only; not on update Unit #85"
+      },
+      {
+        "displayText": "Group",
+        "sysTableFiledPath": "Group",
+        "controlType": 1,
+        "entityIntegrationId": "7",
+        "isVisible": true,
+        "sort": 11,
+        "isUpdatable": false,
+        "plmSubItemId": 5,
+        "massUpdateDatabaseFieldName": null,
+        "_comment": "Plm_Fabric_Info — display only; not on update Unit #85"
+      },
+      {
+        "displayText": "Print/Solid",
+        "sysTableFiledPath": "Print_Solid",
+        "controlType": 1,
+        "entityIntegrationId": "3462",
+        "isVisible": true,
+        "sort": 12,
+        "isUpdatable": false,
+        "plmSubItemId": 3127,
+        "massUpdateDatabaseFieldName": null,
+        "_comment": "Plm_Fabric_Info — display only; not on update Unit #85"
+      },
+      {
+        "displayText": "Fabric Mill",
+        "sysTableFiledPath": "Fabric_Mill",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 13,
+        "isUpdatable": true,
+        "plmSubItemId": 3133,
+        "massUpdateDatabaseFieldName": "Fabric_Mill",
+        "massUpdateTransactionFieldId": 2739
+      },
+      {
+        "displayText": "Fabric Status",
+        "sysTableFiledPath": "Raw_Material_Status",
+        "controlType": 1,
+        "entityIntegrationId": "3461",
+        "isVisible": true,
+        "sort": 14,
+        "isUpdatable": true,
+        "plmSubItemId": 3128,
+        "massUpdateDatabaseFieldName": "Raw_Material_Status",
+        "massUpdateTransactionFieldId": 2736
+      },
+      {
+        "displayText": "Composition",
+        "sysTableFiledPath": "Composition",
+        "controlType": 1,
+        "entityIntegrationId": "12",
+        "isVisible": true,
+        "sort": 15,
+        "isUpdatable": true,
+        "plmSubItemId": 47,
+        "massUpdateDatabaseFieldName": "Composition",
+        "massUpdateTransactionFieldId": 2729
+      },
+      {
+        "displayText": "Designer 1",
+        "sysTableFiledPath": "Designer_1",
+        "controlType": 1,
+        "entityIntegrationId": "4772",
+        "isVisible": true,
+        "sort": 20,
+        "isUpdatable": true,
+        "plmSubItemId": 7202,
+        "massUpdateDatabaseFieldName": "Designer_1",
+        "massUpdateTransactionFieldId": 2799
+      },
+      {
+        "displayText": "Designer 2",
+        "sysTableFiledPath": "Designer_2",
+        "controlType": 1,
+        "entityIntegrationId": "4772",
+        "isVisible": true,
+        "sort": 21,
+        "isUpdatable": true,
+        "plmSubItemId": 7201,
+        "massUpdateDatabaseFieldName": "Designer_2",
+        "massUpdateTransactionFieldId": 2798
+      }
+    ]
+  },
+  "linkTargets": {
+    "copyFromDefaultSearchView": true,
+    "_comment": "Copy Open/Create from Search default display View #2085 (Tab_4258 / Group 3) so MU result rows can open Fabric Header.",
+    "items": []
+  },
+  "coverage": {
+    "mappedToTxnField": 11,
+    "coveredInDataSet": 10,
+    "addColumn": 8,
+    "addOneToOneLeftJoin": 0,
+    "requiresOneToN": 0,
+    "unmapped": 4,
+    "readonlySkip": 4,
+    "displayOnlyNotOnUnit": 5
+  },
+  "unmappedPlmFields": [
+    { "friendName": "Supplier", "plmSubItemId": 56, "reason": "No FieldMapping for SubItem 56 (Vendor column exists on Plm_Fabric_Info but SubItem not in FieldMapping)" },
+    { "friendName": "Supplier Number", "plmSubItemId": 3789, "reason": "No FieldMapping (Supplier_Article_Number is a different SubItem / Mill Article #)" },
+    { "friendName": "Country Of Origin", "plmSubItemId": 103, "reason": "Mapped only to Label/Packaging/Trim headers, not Fabric" },
+    { "friendName": "Created Date", "plmSubItemId": 181, "reason": "No FieldMapping; PLM IsReadonly" }
+  ]
+}

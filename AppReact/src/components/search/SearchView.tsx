@@ -1,6 +1,10 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useDispatch } from "react-redux";
 import { GridViewLayout, type MassUpdateGridApi } from "./searchViewLayout/GridViewLayout";
+import {
+  AdvancedMassUpdatePopup,
+  type AdvancedMassUpdateApplyParams,
+} from "./searchViewLayout/AdvancedMassUpdatePopup";
 import FlexGridAddOn from "../common/FlexGridAddOn";
 import { CardViewLayout } from "./searchViewLayout/CardViewLayout";
 import { CalendarViewLayout } from "./searchViewLayout/CalendarViewLayout";
@@ -24,6 +28,90 @@ import {
 import { isTransactionFormGroupPath } from "../../helper/navigationHelper";
 import { searchSvc } from "../../webapi/searchSvc";
 import type { AppDispatch } from "../../redux/store";
+
+function getRowColumnValue(row: any, columnId: number | string): any {
+  const dict = row?.DictViewColumnIDKeyValue;
+  if (!dict || typeof dict !== 'object') return undefined;
+  if (Object.prototype.hasOwnProperty.call(dict, columnId)) return dict[columnId as any];
+  const asStr = String(columnId);
+  if (Object.prototype.hasOwnProperty.call(dict, asStr)) return dict[asStr];
+  const asNum = Number(columnId);
+  if (Number.isFinite(asNum) && Object.prototype.hasOwnProperty.call(dict, asNum)) return dict[asNum];
+  return undefined;
+}
+
+function setRowColumnValue(row: any, columnId: number, value: any): void {
+  if (!row.DictViewColumnIDKeyValue || typeof row.DictViewColumnIDKeyValue !== 'object') {
+    row.DictViewColumnIDKeyValue = {};
+  }
+  const dict = row.DictViewColumnIDKeyValue;
+  const asStr = String(columnId);
+  if (Object.prototype.hasOwnProperty.call(dict, asStr)) {
+    dict[asStr] = value;
+  } else if (Object.prototype.hasOwnProperty.call(dict, columnId)) {
+    dict[columnId] = value;
+  } else {
+    // Prefer string keys (JSON / Immer round-trip); keep numeric if already used elsewhere.
+    dict[asStr] = value;
+  }
+}
+
+function advancedValuesEqual(a: any, b: any): boolean {
+  if (a == null && (b == null || b === '')) return true;
+  if (b == null && (a == null || a === '')) return true;
+  if (typeof a === 'boolean' || typeof b === 'boolean') {
+    const toBool = (v: any) => v === true || v === 'true' || v === 1 || v === '1';
+    return toBool(a) === toBool(b);
+  }
+  if (typeof a === 'number' || typeof b === 'number') {
+    const na = Number(a);
+    const nb = Number(b);
+    if (Number.isFinite(na) && Number.isFinite(nb)) return na === nb;
+  }
+  return String(a ?? '') === String(b ?? '');
+}
+
+/** EmAppCriteriaOperatorType matching AdvancedMassUpdatePopup operators. */
+function rowMatchesCondition(
+  row: any,
+  columnId: number,
+  operator: number,
+  conditionValue: any,
+): boolean {
+  const current = getRowColumnValue(row, columnId);
+  const isEmpty = current == null || current === '';
+
+  switch (operator) {
+    case 1: // Null
+      return current == null;
+    case 2: // Not Null
+      return current != null;
+    case 8: // NullOrEmpty — not in popup list but keep safe
+      return isEmpty;
+    case 9: // NotNullOrEmpty
+      return !isEmpty;
+    case 0: // Equals
+      return advancedValuesEqual(current, conditionValue);
+    case 13: // Not Equal
+      return !advancedValuesEqual(current, conditionValue);
+    case 3: // Greater Than
+      return Number(current) > Number(conditionValue);
+    case 4: // Greater Than Or Equals
+      return Number(current) >= Number(conditionValue);
+    case 5: // Less Than
+      return Number(current) < Number(conditionValue);
+    case 6: // Less Than Or Equals
+      return Number(current) <= Number(conditionValue);
+    case 7: // Like / Contains
+      return String(current ?? '').toLowerCase().includes(String(conditionValue ?? '').toLowerCase());
+    case 10: // Start With
+      return String(current ?? '').toLowerCase().startsWith(String(conditionValue ?? '').toLowerCase());
+    case 11: // End With
+      return String(current ?? '').toLowerCase().endsWith(String(conditionValue ?? '').toLowerCase());
+    default:
+      return true;
+  }
+}
 interface SearchViewProps {
   viewDto: any;
   viewDataList: any[];
@@ -51,6 +139,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const massUpdateApiRef = useRef<MassUpdateGridApi | null>(null);
   const [deletedMassUpdateRows, setDeletedMassUpdateRows] = useState<any[]>([]);
   const [massUpdateBusy, setMassUpdateBusy] = useState(false);
+  const [advancedMassUpdateOpen, setAdvancedMassUpdateOpen] = useState(false);
 
   const isMassUpdate = Boolean(viewDto?.IsMassUpdate);
   // Hierarchical ListEdit mass update uses embedded FormListEdit (not this SingleTable grid path).
@@ -102,8 +191,57 @@ export const SearchView: React.FC<SearchViewProps> = ({
     }
   }, [deletedMassUpdateRows, onExecuteSearch, showError, showInfo, viewDto?.Id]);
 
+  const applyAdvancedMassUpdate = useCallback((params: AdvancedMassUpdateApplyParams) => {
+    const api = massUpdateApiRef.current;
+    if (!api) {
+      showError('Mass update grid is not ready.');
+      return;
+    }
+
+    let rows = api.getItems();
+    if (!rows.length) {
+      showInfo('No rows to update.', true);
+      return;
+    }
+
+    if (params.isFilterBySelectedRows) {
+      const selected = api.getSelectedItems();
+      if (!selected.length) {
+        showInfo('No selected rows. Select rows in the grid first, or turn off Filter By Selected Rows.', true);
+        return;
+      }
+      const selectedSet = new Set(selected);
+      rows = rows.filter((r) => selectedSet.has(r));
+    }
+
+    if (params.conditionColumnId != null && params.conditionOperator != null) {
+      rows = rows.filter((r) =>
+        rowMatchesCondition(r, params.conditionColumnId!, params.conditionOperator!, params.conditionValue),
+      );
+    }
+
+    let updated = 0;
+    for (const row of rows) {
+      if (params.matchFindValue) {
+        const current = getRowColumnValue(row, params.updateColumnId);
+        if (!advancedValuesEqual(current, params.findValue)) continue;
+      }
+      setRowColumnValue(row, params.updateColumnId, params.replaceValue);
+      api.markRowChanged(row, params.updateColumnId);
+      updated += 1;
+    }
+
+    api.refresh();
+    if (updated === 0) {
+      showInfo('No rows matched the criteria.', true);
+    } else {
+      showInfo(`Updated ${updated} row(s). Click Save to persist.`, true);
+    }
+  }, [showError, showInfo]);
+
   useEffect(() => {
     setDeletedMassUpdateRows([]);
+    setAdvancedMassUpdateOpen(false);
   }, [viewDto?.Id]);
 
   const gridViewType = emAppViewType?.GridView ?? 1;
@@ -360,6 +498,18 @@ export const SearchView: React.FC<SearchViewProps> = ({
                   Delete Row
                 </button>
               )}
+              {viewDto?.IsAllowAdvancedUpdate && (
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
+                  onClick={() => setAdvancedMassUpdateOpen(true)}
+                  disabled={massUpdateBusy}
+                  title="Advanced Update"
+                >
+                  <i className="fa-solid fa-filter mr-1" aria-hidden="true" />
+                  Advanced Update
+                </button>
+              )}
             </>
           )}
           {topMenuData.toDataModel.map((m: any, idx: number) => (
@@ -401,6 +551,16 @@ export const SearchView: React.FC<SearchViewProps> = ({
       <div className="w-full h-1 flex-auto overflow-hidden">
         {renderViewByType()}
       </div>
+      {showSingleTableMassUpdateToolbar && viewDto?.IsAllowAdvancedUpdate && (
+        <AdvancedMassUpdatePopup
+          isOpen={advancedMassUpdateOpen}
+          viewId={viewDto?.Id}
+          columns={Array.isArray(viewDto?.Columns) ? viewDto.Columns : []}
+          dictEntityLookupItemDto={viewDto?.DictEntityLookupItemDto}
+          onClose={() => setAdvancedMassUpdateOpen(false)}
+          onApply={applyAdvancedMassUpdate}
+        />
+      )}
     </div>
   );
 }; 

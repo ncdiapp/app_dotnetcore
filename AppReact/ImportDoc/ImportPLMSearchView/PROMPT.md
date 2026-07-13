@@ -57,6 +57,7 @@ If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** i
 | **Criteria ≠ View** | Score JOIN plans separately for criteria coverage and view coverage. One plan may not fit both — report explicitly. |
 | **Grid 1:N warning** | `FieldKind = GridColumn` tables are **1:N**. Default `gridColumnStrategy = exclude`. Other options: `scalar` (subquery), `accept-1N` (user accepts row multiplication). |
 | **Prefix is parameter** | All APP table names respect `@TablePrefix`. |
+| **Cleanup temp probes** | Probe SQL under `source/` is permanent. Scratch dumps written during a run (`output/_probe_*`, ad-hoc `.sql`/`.txt` under `output/` root — not under `output/{SearchTemplateId}/`) must be **deleted** when the run finishes (Phase B done, cancel/stop after probes, or Gate abort after any probes). Do not leave them for the user. |
 
 ---
 
@@ -306,6 +307,7 @@ Reference implementation pattern: `PlmMigrationBL.PomImport.cs` (`EnsurePomListS
 [ ] Generate output/{searchId}/1_PlmSearch_ImportBlueprint.json
 [ ] Verify queryText uses only tables/columns from FieldMapping
 [ ] Verify integrationIds unique vs existing AppSearch
+[ ] Delete output/_probe_* (and other output-root scratch dumps) before ending the run
 ```
 
 ---

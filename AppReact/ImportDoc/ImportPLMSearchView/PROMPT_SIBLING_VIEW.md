@@ -52,6 +52,7 @@ APP Search IntegrationId: Search_Fabric   (optional)
 | **Cross-grain → B** | If the new View needs header×grid row multiplication → recommend **Option B** (new DataSet + new Search). |
 | **Option B IntegrationId** | New Search: `Search_{Name}_V{ViewId}`. New View: `Search_{Name}_V{ViewId}_View`. |
 | **Do not change default View** | Option A adds a **sibling** `AppSearchView` on the same DataSet; keep the Search’s existing default `SearchViewId` unless the user explicitly asks to switch default. |
+| **Cleanup temp probes** | Probe SQL under `source/` is permanent. Scratch dumps written during a run (`output/_probe_*`, ad-hoc `.sql`/`.txt` under `output/` root — not under `output/{SearchTemplateId}/`) must be **deleted** when the run finishes (Phase B done, Option C stop, or Gate abort after any probes). Do not leave them for the user. |
 
 ---
 
@@ -232,6 +233,7 @@ STOP. List blockers only.
 [ ] A → 2_PlmSearch_SiblingView_{ViewId}.json (+ DataSet patch, no new Search)
 [ ] B → 1_PlmSearch_ImportBlueprint_V{ViewId}.json with Search_{Name}_V{ViewId}
 [ ] No 1:N joins in Option A dataSetPatch
+[ ] Delete output/_probe_* (and other output-root scratch dumps) before ending the run
 ```
 
 ---

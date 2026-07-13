@@ -64,3 +64,7 @@ output/{searchTemplateId}/
 - Phase D: PLM Search Import Tool — upload `3_PlmSearch_MassUpdateView_*.json`; if `CreateNew`, creates ListEdit then Mass Update View (`ExecuteSearchMassUpdateViewConfig`)
 
 Do not commit connection strings or tenant secrets.
+
+## Temporary probe dumps
+
+Agent may write scratch files under `output/` root as `output/_probe_*` (or similar) while probing. These are **not** deliverables. After each PROMPT run finishes (Phase B, cancel, or stop), the agent **deletes** them. Keep only `output/{searchTemplateId}/` blueprints and READMEs.

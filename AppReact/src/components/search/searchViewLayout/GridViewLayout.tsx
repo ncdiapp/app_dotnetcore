@@ -68,6 +68,10 @@ export interface MassUpdateGridApi {
   removeSelectedRow: () => any | null;
   getItems: () => any[];
   getChangedItems: () => any[];
+  /** Rows covered by the current FlexGrid selection (for Advanced Update "Filter By Selected Rows"). */
+  getSelectedItems: () => any[];
+  markRowChanged: (rowData: any, columnId?: string | number) => void;
+  refresh: () => void;
 }
 
 interface GridViewLayoutProps {
@@ -376,10 +380,37 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
         // Fallback if IsChanged was lost on the object but we tracked the row ref.
         return items.filter((r: any) => changedMassUpdateRowsRef.current.has(r));
       },
+      getSelectedItems: () => {
+        const grid = flex.current?.control ?? flex.current;
+        if (!grid?.rows?.length) return [];
+        const sel = grid.selection;
+        if (!sel || sel.row < 0) return [];
+        const top = Math.min(sel.row, sel.row2 ?? sel.row);
+        const bottom = Math.max(sel.row, sel.row2 ?? sel.row);
+        const picked: any[] = [];
+        const seen = new Set<any>();
+        for (let r = top; r <= bottom; r++) {
+          const rowData = grid.rows[r]?.dataItem;
+          if (rowData != null && !seen.has(rowData)) {
+            seen.add(rowData);
+            picked.push(rowData);
+          }
+        }
+        return picked;
+      },
+      markRowChanged: (rowData: any, columnId?: string | number) => {
+        markMassUpdateRowChanged(rowData, columnId);
+      },
+      refresh: () => {
+        gridDataCV?.refresh?.();
+        const grid = flex.current?.control ?? flex.current;
+        grid?.invalidate?.();
+        grid?.refresh?.(true);
+      },
     };
     onMassUpdateApiReady(api);
     return () => onMassUpdateApiReady(null);
-  }, [isMassUpdate, gridDataCV, onMassUpdateApiReady]);
+  }, [isMassUpdate, gridDataCV, onMassUpdateApiReady, markMassUpdateRowChanged]);
 
   // Keep isRequired=false after column rebuild (DataMap load / column list change).
   useEffect(() => {

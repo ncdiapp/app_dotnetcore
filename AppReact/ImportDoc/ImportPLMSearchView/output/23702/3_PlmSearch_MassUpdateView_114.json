@@ -1,0 +1,217 @@
+{
+  "_comment": "Option B2 MassUpdateViewAttach — HierarchicalTableUpdate. CreateNew ListEdit ListEdit_MU114_DeleteColors (Style Header root + ProductDesignColorGrid child). SearchView maps root PK only. setAsDefaultMassUpdateView=false. PLM IsActive=0 (inactive) but linked via junction.",
+  "schemaVersion": 1,
+  "mode": "MassUpdateViewAttach",
+  "generatedAt": "2026-07-13T18:11:00Z",
+  "source": {
+    "plmSearchTemplateId": 23702,
+    "plmSearchName": "1a - Style Search",
+    "plmMassUpdateViewId": 114,
+    "plmMassUpdateViewName": "Delete Colors from Styles",
+    "plmUpdateType": "RegularGrid",
+    "plmUpdateTypeId": 2,
+    "plmMainTabId": 3996,
+    "plmGridBlockId": 17,
+    "plmGridId": 7,
+    "tablePrefix": "Plm_",
+    "isPlmDefaultMassUpdateView": false,
+    "_comment_mainTab": "PLM MainTabId=3996 Colourways / GridBlock 17 ProductDesignColor. All MU fields are GridColumn on Plm_ProductDesignColorGrid (GridId=7)."
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_1aStyleSearch",
+    "appSearchId": 17,
+    "appDataSetId": 2087,
+    "_comment": "Resolve IntegrationId first, then AppSearchId. appDataSetId used when AppSearch.DataSetID is null."
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "addColumns": [],
+    "addLeftJoins": [],
+    "_comment": "Root PK ReferenceId already in DataSet. Do not join Plm_ProductDesignColorGrid (1:N)."
+  },
+  "listEditCreate": {
+    "action": "CreateNew",
+    "_comment_action": "UseExisting | CreateNew — user approved B2 structure 2026-07-13",
+    "existingTransactionId": null,
+    "existingIntegrationId": null,
+    "create": {
+      "integrationId": "ListEdit_MU114_DeleteColors",
+      "name": "Delete Colors from Styles ListEdit",
+      "transactionOrganizedType": "List",
+      "transactionOrganizedTypeId": 3,
+      "tenantDataSourceRegisterId": null,
+      "saasApplicationId": null,
+      "unitStructure": {
+        "mode": "RootPlusChild",
+        "root": {
+          "appTableName": "Plm_Style_Header",
+          "unitDisplayName": "Style Header",
+          "pkColumn": "ReferenceId",
+          "fields": [
+            {
+              "appColumnName": "ReferenceId",
+              "displayLabel": "Ref No.",
+              "controlType": 20,
+              "isVisible": true,
+              "sort": 1,
+              "isPrimaryKey": true
+            },
+            {
+              "appColumnName": "Article",
+              "displayLabel": "Article #",
+              "controlType": 2,
+              "isVisible": true,
+              "sort": 10,
+              "plmSubItemId": 22
+            },
+            {
+              "appColumnName": "Name",
+              "displayLabel": "Name",
+              "controlType": 2,
+              "isVisible": true,
+              "sort": 20,
+              "plmSubItemId": 7028
+            }
+          ]
+        },
+        "children": [
+          {
+            "appTableName": "Plm_ProductDesignColorGrid",
+            "unitDisplayName": "Product Design Color",
+            "fkColumn": "ReferenceId",
+            "parentPkColumn": "ReferenceId",
+            "pkColumn": "RowId",
+            "fields": [
+              {
+                "appColumnName": "RowId",
+                "displayLabel": "Row Id",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 1,
+                "isPrimaryKey": true
+              },
+              {
+                "appColumnName": "ReferenceId",
+                "displayLabel": "Parent Ref",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 2,
+                "isForeignKey": true
+              },
+              {
+                "appColumnName": "Color",
+                "displayLabel": "Color",
+                "controlType": 1,
+                "entityIntegrationId": "79",
+                "isVisible": true,
+                "sort": 10,
+                "plmMetaColumnId": 44
+              },
+              {
+                "appColumnName": "Color_Code",
+                "displayLabel": "Color Code",
+                "controlType": 2,
+                "isVisible": true,
+                "sort": 20,
+                "plmMetaColumnId": 635,
+                "isReadOnly": true
+              },
+              {
+                "appColumnName": "Name",
+                "displayLabel": "Name",
+                "controlType": 2,
+                "isVisible": true,
+                "sort": 30,
+                "plmMetaColumnId": 372,
+                "isReadOnly": true
+              },
+              {
+                "appColumnName": "Description",
+                "displayLabel": "Description",
+                "controlType": 2,
+                "isVisible": true,
+                "sort": 40,
+                "plmMetaColumnId": 45,
+                "isReadOnly": true
+              },
+              {
+                "appColumnName": "ReferenceCode",
+                "displayLabel": "ReferenceCode",
+                "controlType": 2,
+                "isVisible": true,
+                "sort": 50,
+                "plmMetaColumnId": 470,
+                "isReadOnly": true
+              },
+              {
+                "appColumnName": "ReferenceName",
+                "displayLabel": "ReferenceName",
+                "controlType": 2,
+                "isVisible": true,
+                "sort": 60,
+                "plmMetaColumnId": 471,
+                "isReadOnly": true
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "massUpdate": {
+    "appMode": "HierarchicalTableUpdate",
+    "updateTransactionIntegrationId": "ListEdit_MU114_DeleteColors",
+    "updateTransactionId": null,
+    "updateBaseTransactionUnitId": null,
+    "updateUnitTableName": "Plm_Style_Header",
+    "pkDatabaseFieldName": "ReferenceId",
+    "isAllowAddRow": true,
+    "isAllowDeleteRow": true,
+    "isAllowAdvancedUpdate": true,
+    "setAsDefaultMassUpdateView": false,
+    "_comment": "SearchView maps ROOT PK only; color grid columns live on ListEdit child unit. Delete-oriented MU — allow delete row."
+  },
+  "searchView": {
+    "name": "Delete Colors from Styles",
+    "integrationId": "Search_1aStyleSearch_MU114_View",
+    "integrationIdLabel": "Search_1aStyleSearch_MU114_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "isMassUpdateView": true,
+    "plmMassUpdateViewId": 114,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 1,
+        "isUpdatable": true,
+        "massUpdateDatabaseFieldName": "ReferenceId",
+        "massUpdateTransactionFieldId": null,
+        "_comment": "ONLY required SearchView MU mapping for HierarchicalTableUpdate — root PK → ListEdit root PK"
+      }
+    ]
+  },
+  "linkTargets": {
+    "copyFromDefaultSearchView": true,
+    "items": []
+  },
+  "coverage": {
+    "mappedToTxnField": 1,
+    "coveredInDataSet": 1,
+    "addColumn": 0,
+    "addOneToOneLeftJoin": 0,
+    "requiresOneToN": 6,
+    "unmapped": 0,
+    "readonlySkip": 0,
+    "listEditChildFieldsProposed": 6
+  },
+  "unmappedPlmFields": [],
+  "notes": [
+    "PLM MassUpdateView 114 IsActive=0 (inactive) but linked on SearchTemplate 23702 via pdmSearchTemplateReferenceView.",
+    "Do not change AppSearch.SearchViewId (display default).",
+    "Existing MU View #2105 (MU 8) remains; this adds a second Mass Update View."
+  ]
+}

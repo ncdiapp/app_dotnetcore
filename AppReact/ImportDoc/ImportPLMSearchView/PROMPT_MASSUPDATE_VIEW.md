@@ -54,6 +54,7 @@ APP Search IntegrationId: Search_28902   (optional)
 | **Option A join limit** | Enriching DataSet for missing MU columns may only add SELECT columns and/or **first-level 1:1** `LEFT OUTER JOIN`. **Forbidden:** 1:N grid tables that multiply rows. |
 | **Do not change default display View** | Adding a Mass Update View must **not** replace `AppSearch.SearchViewId` (display default) unless the user explicitly asks. |
 | **Prefix is parameter** | All APP table names respect `@TablePrefix`. |
+| **Cleanup temp probes** | Probe SQL under `source/` is permanent. Scratch dumps written during a run (`output/_probe_*`, ad-hoc `.sql`/`.txt` under `output/` root — not under `output/{SearchTemplateId}/`) must be **deleted** when the run finishes (Phase B done, Option C stop, or Gate abort after any probes). Do not leave them for the user. |
 
 ---
 
@@ -402,6 +403,7 @@ STOP. List blockers only (missing FieldMapping, no resolvable header/grid tables
 [ ] Mode B SearchView maps root PK only
 [ ] Do not change display default SearchViewId
 [ ] If Phase D fails → fix Blueprint / report BL error; do not invent columns
+[ ] Delete output/_probe_* (and other output-root scratch dumps) before ending the run
 ```
 
 ---
