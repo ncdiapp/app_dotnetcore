@@ -68,10 +68,20 @@ export interface MassUpdateGridApi {
   removeSelectedRow: () => any | null;
   getItems: () => any[];
   getChangedItems: () => any[];
+  /** Commit in-cell editor before Save (avoids lost edits / missed IsChanged). */
+  finishEditing: () => void;
   /** Rows covered by the current FlexGrid selection (for Advanced Update "Filter By Selected Rows"). */
   getSelectedItems: () => any[];
   markRowChanged: (rowData: any, columnId?: string | number) => void;
   refresh: () => void;
+}
+
+function snapshotMassUpdateRowDict(dict: any): string {
+  try {
+    return JSON.stringify(dict ?? {});
+  } catch {
+    return '';
+  }
 }
 
 interface GridViewLayoutProps {
@@ -229,6 +239,9 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
   }, [onGridControlReady]);
 
   const isMassUpdate = Boolean(viewDto?.IsMassUpdate);
+  // Wijmo React (_oldSyncBehavior) keeps the first cellEdit* handler forever — always read current flag via ref.
+  const isMassUpdateRef = useRef(isMassUpdate);
+  isMassUpdateRef.current = isMassUpdate;
 
   // Angular: dictViewEntityDataMap from DictEntityLookupItemDto (needed for Mass Update DDL editing).
   useEffect(() => {
@@ -295,20 +308,38 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
   /** Last `viewDataList` array identity bound into the grid (avoid re-cloning and wiping IsChanged). */
   const boundViewDataListRef = useRef<any[] | null>(null);
   const changedMassUpdateRowsRef = useRef<Set<any>>(new Set());
+  /** Baseline DictViewColumnIDKeyValue JSON per row (diff fallback when IsChanged flag is missed). */
+  const massUpdateBaselineRef = useRef<WeakMap<any, string>>(new WeakMap());
 
   const markMassUpdateRowChanged = useCallback((rowData: any, columnId?: string | number) => {
     if (!rowData) return;
-    rowData.IsChanged = true;
-    if (columnId != null && columnId !== '') {
-      if (!Array.isArray(rowData.ChangedColumnIds)) rowData.ChangedColumnIds = [];
-      const idNum = Number(columnId);
-      const idVal = Number.isFinite(idNum) ? idNum : columnId;
-      if (!rowData.ChangedColumnIds.some((x: any) => String(x) === String(idVal))) {
-        rowData.ChangedColumnIds.push(idVal);
+    try {
+      rowData.IsChanged = true;
+      if (columnId != null && columnId !== '') {
+        if (!Array.isArray(rowData.ChangedColumnIds)) rowData.ChangedColumnIds = [];
+        const idNum = Number(columnId);
+        const idVal = Number.isFinite(idNum) ? idNum : columnId;
+        if (!rowData.ChangedColumnIds.some((x: any) => String(x) === String(idVal))) {
+          rowData.ChangedColumnIds.push(idVal);
+        }
       }
+    } catch {
+      // Frozen row objects — Set-tracking + baseline diff still pick up the edit.
     }
     changedMassUpdateRowsRef.current.add(rowData);
   }, []);
+
+  const onMassUpdateCellEditCommit = useCallback((s: any, e: any) => {
+    // Must use isMassUpdateRef: Wijmo React keeps the first cellEdit* handler (does not re-bind).
+    if (!isMassUpdateRef.current) return;
+    const rowData = s?.rows?.[e?.row]?.dataItem;
+    const col = s?.columns?.[e?.col];
+    const binding: string | undefined = col?.binding;
+    const columnId = binding?.startsWith('DictViewColumnIDKeyValue.')
+      ? binding.slice('DictViewColumnIDKeyValue.'.length)
+      : undefined;
+    markMassUpdateRowChanged(rowData, columnId);
+  }, [markMassUpdateRowChanged]);
 
   useEffect(() => {
     const cv = gridDataCVRef.current;
@@ -322,6 +353,7 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
     if (!isMassUpdate) {
       boundViewDataListRef.current = raw;
       changedMassUpdateRowsRef.current.clear();
+      massUpdateBaselineRef.current = new WeakMap();
       if (cv.sourceCollection !== raw) {
         cv.sourceCollection = raw;
         cv.refresh();
@@ -337,6 +369,11 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
     boundViewDataListRef.current = raw;
     changedMassUpdateRowsRef.current.clear();
     const next = ensureMutableMassUpdateRows(raw);
+    const baseline = new WeakMap<any, string>();
+    for (const row of next) {
+      baseline.set(row, snapshotMassUpdateRowDict(row?.DictViewColumnIDKeyValue));
+    }
+    massUpdateBaselineRef.current = baseline;
     cv.sourceCollection = next;
     cv.refresh();
   }, [viewDataList, isMassUpdate]);
@@ -360,6 +397,7 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
         newRow.DictSketchOrFileDisplayCode = {};
         newRow.DictViewColumnIDKeyValue = {};
         changedMassUpdateRowsRef.current.add(newRow);
+        massUpdateBaselineRef.current.set(newRow, snapshotMassUpdateRowDict({}));
         cv.commitNew();
       },
       removeSelectedRow: () => {
@@ -375,10 +413,26 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
       getItems: () => (gridDataCV?.items ? [...gridDataCV.items] : []),
       getChangedItems: () => {
         const items = gridDataCV?.items ?? [];
-        const flagged = items.filter((r: any) => r?.IsChanged);
+        const flagged = items.filter(
+          (r: any) => r?.IsChanged || changedMassUpdateRowsRef.current.has(r),
+        );
         if (flagged.length > 0) return flagged;
-        // Fallback if IsChanged was lost on the object but we tracked the row ref.
-        return items.filter((r: any) => changedMassUpdateRowsRef.current.has(r));
+        // Diff vs baseline — covers cases where cellEdit handler missed (e.g. before IsMassUpdate ref fix).
+        const baseline = massUpdateBaselineRef.current;
+        return items.filter((r: any) => {
+          if (!r || r.IsNew) return Boolean(r?.IsNew);
+          const before = baseline.get(r);
+          if (before == null) return false;
+          return snapshotMassUpdateRowDict(r.DictViewColumnIDKeyValue) !== before;
+        });
+      },
+      finishEditing: () => {
+        const grid = flex.current?.control ?? flex.current;
+        try {
+          grid?.finishEditing?.(true);
+        } catch {
+          // ignore
+        }
       },
       getSelectedItems: () => {
         const grid = flex.current?.control ?? flex.current;
@@ -852,26 +906,8 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
           selectionMode={isLinkedSearchMode && !isSingleSelection ? "ListBox" : "CellRange"}
           validateEdits={false}
           frozenColumns={frozenColumns}
-          cellEditEnding={(s: any, e: any) => {
-            if (!isMassUpdate) return;
-            const rowData = s?.rows?.[e?.row]?.dataItem;
-            const col = s?.columns?.[e?.col];
-            const binding: string | undefined = col?.binding;
-            const columnId = binding?.startsWith('DictViewColumnIDKeyValue.')
-              ? binding.slice('DictViewColumnIDKeyValue.'.length)
-              : undefined;
-            markMassUpdateRowChanged(rowData, columnId);
-          }}
-          cellEditEnded={(s: any, e: any) => {
-            if (!isMassUpdate) return;
-            const rowData = s?.rows?.[e?.row]?.dataItem;
-            const col = s?.columns?.[e?.col];
-            const binding: string | undefined = col?.binding;
-            const columnId = binding?.startsWith('DictViewColumnIDKeyValue.')
-              ? binding.slice('DictViewColumnIDKeyValue.'.length)
-              : undefined;
-            markMassUpdateRowChanged(rowData, columnId);
-          }}
+          cellEditEnding={onMassUpdateCellEditCommit}
+          cellEditEnded={onMassUpdateCellEditCommit}
           selectionChanged={(s: any) => {
             if (!(isLinkedSearchMode && !isSingleSelection)) return;
             emitSelectedItems(s);
@@ -1114,6 +1150,7 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
                         onChange={(e) => {
                           if (!isReadOnly) {
                             ctx.item.DictViewColumnIDKeyValue[column.Id] = e.target.value;
+                            markMassUpdateRowChanged(ctx.item, column.Id);
                           }
                         }}
                         style={{ width: '100%', height: '100%', boxSizing: 'border-box' }}

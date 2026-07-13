@@ -172,6 +172,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const massupdated_save = useCallback(async () => {
     const api = massUpdateApiRef.current;
     if (!api || !viewDto?.Id) return;
+    api.finishEditing?.();
     const changed = api.getChangedItems();
     if ((!changed || changed.length === 0) && deletedMassUpdateRows.length === 0) {
       showInfo('No changes to save.', true);
