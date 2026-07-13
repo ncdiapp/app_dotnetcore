@@ -1,0 +1,240 @@
+{
+  "_comment": "Option A MassUpdateViewAttach — Tab_4249 / Plm_Packaging_Header unit #109. Unmapped Vendor/Material/Created*. setAsDefaultMassUpdateView=true.",
+  "schemaVersion": 1,
+  "mode": "MassUpdateViewAttach",
+  "generatedAt": "2026-07-13T20:10:00Z",
+  "source": {
+    "plmSearchTemplateId": 24002,
+    "plmSearchName": "2c - Packaging Search",
+    "plmMassUpdateViewId": 22,
+    "plmMassUpdateViewName": "12- Packaging Mass Update View",
+    "plmUpdateType": "TabField",
+    "plmUpdateTypeId": 1,
+    "plmMainTabId": 4001,
+    "tablePrefix": "Plm_",
+    "isPlmDefaultMassUpdateView": true
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_24002",
+    "appSearchId": 20,
+    "appDataSetId": 2096
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "addColumns": [
+      {
+        "sysTableFiledPath": "Collection",
+        "appTableName": "Plm_Packaging_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Sketch",
+        "appTableName": "Plm_Packaging_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Classification",
+        "appTableName": "Plm_Packaging_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Season",
+        "appTableName": "Plm_Packaging_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Group",
+        "appTableName": "Plm_Packaging_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Raw_Material_Status",
+        "appTableName": "Plm_Packaging_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Country_Of_Origin",
+        "appTableName": "Plm_Packaging_Header",
+        "alias": "hdr"
+      }
+    ],
+    "addLeftJoins": []
+  },
+  "massUpdate": {
+    "appMode": "SingleTableUpdate",
+    "updateTransactionIntegrationId": "Tab_4249",
+    "updateTransactionId": 2274,
+    "updateBaseTransactionUnitId": 109,
+    "updateUnitTableName": "Plm_Packaging_Header",
+    "pkDatabaseFieldName": "ReferenceId",
+    "isAllowAddRow": true,
+    "isAllowDeleteRow": true,
+    "isAllowAdvancedUpdate": true,
+    "setAsDefaultMassUpdateView": true
+  },
+  "searchView": {
+    "name": "12- Packaging Mass Update View",
+    "integrationId": "Search_24002_MU22_View",
+    "integrationIdLabel": "Search_24002_MU22_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "isMassUpdateView": true,
+    "plmMassUpdateViewId": 22,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 0,
+        "isUpdatable": true,
+        "isTransRootId": true,
+        "massUpdateDatabaseFieldName": "ReferenceId",
+        "massUpdateTransactionFieldId": 3349,
+        "_comment": "REQUIRED Unit PK"
+      },
+      {
+        "displayText": "Sketch",
+        "sysTableFiledPath": "Sketch",
+        "controlType": 5,
+        "isVisible": true,
+        "sort": 1,
+        "isUpdatable": true,
+        "entityIntegrationId": "11",
+        "plmSubItemId": 6,
+        "massUpdateDatabaseFieldName": "Sketch",
+        "massUpdateTransactionFieldId": 3355
+      },
+      {
+        "displayText": "Article #",
+        "sysTableFiledPath": "Article",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 2,
+        "isUpdatable": true,
+        "plmSubItemId": 22,
+        "massUpdateDatabaseFieldName": "Article",
+        "massUpdateTransactionFieldId": 3359
+      },
+      {
+        "displayText": "Description",
+        "sysTableFiledPath": "Description",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 3,
+        "isUpdatable": true,
+        "plmSubItemId": 23,
+        "massUpdateDatabaseFieldName": "Description",
+        "massUpdateTransactionFieldId": 3360
+      },
+      {
+        "displayText": "Division",
+        "sysTableFiledPath": "Division_186",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 4,
+        "isUpdatable": true,
+        "entityIntegrationId": "5",
+        "plmSubItemId": 186,
+        "massUpdateDatabaseFieldName": "Division_186",
+        "massUpdateTransactionFieldId": 3368
+      },
+      {
+        "displayText": "Classification",
+        "sysTableFiledPath": "Classification",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 5,
+        "isUpdatable": true,
+        "entityIntegrationId": "1",
+        "plmSubItemId": 1,
+        "massUpdateDatabaseFieldName": "Classification",
+        "massUpdateTransactionFieldId": 3350
+      },
+      {
+        "displayText": "ProductTypeGroup",
+        "sysTableFiledPath": "ProductTypeGroup",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 6,
+        "isUpdatable": true,
+        "entityIntegrationId": "95",
+        "plmSubItemId": 149,
+        "massUpdateDatabaseFieldName": "ProductTypeGroup",
+        "massUpdateTransactionFieldId": 3366
+      },
+      {
+        "displayText": "Product Type",
+        "sysTableFiledPath": "Product_Type",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 7,
+        "isUpdatable": true,
+        "entityIntegrationId": "4",
+        "plmSubItemId": 2,
+        "massUpdateDatabaseFieldName": "Product_Type",
+        "massUpdateTransactionFieldId": 3351
+      },
+      {
+        "displayText": "Season",
+        "sysTableFiledPath": "Season",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 8,
+        "isUpdatable": true,
+        "entityIntegrationId": "8",
+        "plmSubItemId": 3,
+        "massUpdateDatabaseFieldName": "Season",
+        "massUpdateTransactionFieldId": 3352
+      },
+      {
+        "displayText": "Collection",
+        "sysTableFiledPath": "Collection",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 9,
+        "isUpdatable": true,
+        "entityIntegrationId": "6",
+        "plmSubItemId": 4,
+        "massUpdateDatabaseFieldName": "Collection",
+        "massUpdateTransactionFieldId": 3353
+      },
+      {
+        "displayText": "Group",
+        "sysTableFiledPath": "Group",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 10,
+        "isUpdatable": true,
+        "entityIntegrationId": "7",
+        "plmSubItemId": 5,
+        "massUpdateDatabaseFieldName": "Group",
+        "massUpdateTransactionFieldId": 3354
+      },
+      {
+        "displayText": "Status",
+        "sysTableFiledPath": "Raw_Material_Status",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 11,
+        "isUpdatable": true,
+        "entityIntegrationId": "3461",
+        "plmSubItemId": 3128,
+        "massUpdateDatabaseFieldName": "Raw_Material_Status",
+        "massUpdateTransactionFieldId": 3372
+      },
+      {
+        "displayText": "Country Of Origin",
+        "sysTableFiledPath": "Country_Of_Origin",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 13,
+        "isUpdatable": true,
+        "entityIntegrationId": "59",
+        "plmSubItemId": 103,
+        "massUpdateDatabaseFieldName": "Country_Of_Origin",
+        "massUpdateTransactionFieldId": 3361
+      }
+    ]
+  }
+}

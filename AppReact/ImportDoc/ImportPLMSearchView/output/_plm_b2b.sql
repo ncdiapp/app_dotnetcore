@@ -1,0 +1,14 @@
+SET NOCOUNT ON;
+PRINT '=== shells ===';
+SELECT MassUpdateViewID, Name, UpdateType, MainTabID, GridBlockID, GridID, IsActive
+FROM dbo.pdmMassUpdateView WHERE MassUpdateViewID IN (114,115,112,116);
+
+PRINT '=== Meta cols ===';
+SELECT GridColumnID, ColumnName, ColumnTypeID, EntityID, GridID
+FROM dbo.pdmGridMetaColumn WHERE GridColumnID IN (7068,7072,7360,7074,44,635,372,45,470,471,7976,5483,8051,8048,5511,5512);
+
+PRINT '=== pdmGrid columns ===';
+SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='pdmGrid' ORDER BY ORDINAL_POSITION;
+
+PRINT '=== pdmGridBlock columns ===';
+SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='pdmGridBlock' ORDER BY ORDINAL_POSITION;

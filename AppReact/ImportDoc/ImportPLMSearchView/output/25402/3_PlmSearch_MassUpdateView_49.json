@@ -1,0 +1,260 @@
+{
+  "_comment": "Option A MassUpdateViewAttach — Tab_4272 Style Header unit #49 (SingleTable). Publish child Notes/Price_By/Message omitted (different unit; would need hierarchical). Matrix MUs 48/79 skipped separately. setAsDefaultMassUpdateView=true.",
+  "schemaVersion": 1,
+  "mode": "MassUpdateViewAttach",
+  "generatedAt": "2026-07-13T20:10:00Z",
+  "source": {
+    "plmSearchTemplateId": 25402,
+    "plmSearchName": "4a - Publish To Erp Status",
+    "plmMassUpdateViewId": 49,
+    "plmMassUpdateViewName": "Publish to ERP",
+    "plmUpdateType": "TabField",
+    "plmUpdateTypeId": 1,
+    "plmMainTabId": 4128,
+    "tablePrefix": "Plm_",
+    "isPlmDefaultMassUpdateView": true
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_25402",
+    "appSearchId": 22,
+    "appDataSetId": 2098
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "addColumns": [
+      {
+        "sysTableFiledPath": "Long_Description",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Division_186",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Size_Range_10",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Dimension_11",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Description_23",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Product_Type_2",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Collection_4",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Group",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Sketch",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      }
+    ],
+    "addLeftJoins": []
+  },
+  "massUpdate": {
+    "appMode": "SingleTableUpdate",
+    "updateTransactionIntegrationId": "Tab_4272",
+    "updateTransactionId": 2257,
+    "updateBaseTransactionUnitId": 49,
+    "updateUnitTableName": "Plm_Style_Header",
+    "pkDatabaseFieldName": "ReferenceId",
+    "isAllowAddRow": true,
+    "isAllowDeleteRow": true,
+    "isAllowAdvancedUpdate": true,
+    "setAsDefaultMassUpdateView": true
+  },
+  "searchView": {
+    "name": "Publish to ERP",
+    "integrationId": "Search_25402_MU49_View",
+    "integrationIdLabel": "Search_25402_MU49_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "isMassUpdateView": true,
+    "plmMassUpdateViewId": 49,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 0,
+        "isUpdatable": true,
+        "isTransRootId": true,
+        "massUpdateDatabaseFieldName": "ReferenceId",
+        "massUpdateTransactionFieldId": 1599,
+        "_comment": "REQUIRED Style Header PK on Tab_4272 unit #49"
+      },
+      {
+        "displayText": "Sketch",
+        "sysTableFiledPath": "Sketch",
+        "controlType": 5,
+        "isVisible": true,
+        "sort": 1,
+        "isUpdatable": true,
+        "entityIntegrationId": "11",
+        "plmSubItemId": 6,
+        "massUpdateDatabaseFieldName": "Sketch",
+        "massUpdateTransactionFieldId": 1605
+      },
+      {
+        "displayText": "Article #",
+        "sysTableFiledPath": "Article",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 2,
+        "isUpdatable": true,
+        "plmSubItemId": 22,
+        "massUpdateDatabaseFieldName": "Article",
+        "massUpdateTransactionFieldId": 1609
+      },
+      {
+        "displayText": "Description",
+        "sysTableFiledPath": "Description_23",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 3,
+        "isUpdatable": true,
+        "plmSubItemId": 23,
+        "massUpdateDatabaseFieldName": "Description_23",
+        "massUpdateTransactionFieldId": 1610
+      },
+      {
+        "displayText": "Long Description",
+        "sysTableFiledPath": "Long_Description",
+        "controlType": 4,
+        "isVisible": true,
+        "sort": 4,
+        "isUpdatable": true,
+        "plmSubItemId": 121,
+        "massUpdateDatabaseFieldName": "Long_Description",
+        "massUpdateTransactionFieldId": 1612
+      },
+      {
+        "displayText": "Division",
+        "sysTableFiledPath": "Division_186",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 5,
+        "isUpdatable": true,
+        "entityIntegrationId": "5",
+        "plmSubItemId": 186,
+        "massUpdateDatabaseFieldName": "Division_186",
+        "massUpdateTransactionFieldId": 1616
+      },
+      {
+        "displayText": "Classification",
+        "sysTableFiledPath": "Classification",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 6,
+        "isUpdatable": true,
+        "entityIntegrationId": "1",
+        "plmSubItemId": 1,
+        "massUpdateDatabaseFieldName": "Classification",
+        "massUpdateTransactionFieldId": 1600
+      },
+      {
+        "displayText": "Product Type",
+        "sysTableFiledPath": "Product_Type_2",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 7,
+        "isUpdatable": true,
+        "entityIntegrationId": "4",
+        "plmSubItemId": 2,
+        "massUpdateDatabaseFieldName": "Product_Type_2",
+        "massUpdateTransactionFieldId": 1601
+      },
+      {
+        "displayText": "Season",
+        "sysTableFiledPath": "Season_3",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 8,
+        "isUpdatable": true,
+        "entityIntegrationId": "8",
+        "plmSubItemId": 3,
+        "massUpdateDatabaseFieldName": "Season_3",
+        "massUpdateTransactionFieldId": 1602
+      },
+      {
+        "displayText": "Collection",
+        "sysTableFiledPath": "Collection_4",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 9,
+        "isUpdatable": true,
+        "entityIntegrationId": "6",
+        "plmSubItemId": 4,
+        "massUpdateDatabaseFieldName": "Collection_4",
+        "massUpdateTransactionFieldId": 1603
+      },
+      {
+        "displayText": "Group",
+        "sysTableFiledPath": "Group",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 10,
+        "isUpdatable": true,
+        "entityIntegrationId": "7",
+        "plmSubItemId": 5,
+        "massUpdateDatabaseFieldName": "Group",
+        "massUpdateTransactionFieldId": 1604
+      },
+      {
+        "displayText": "Size Range",
+        "sysTableFiledPath": "Size_Range_10",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 11,
+        "isUpdatable": true,
+        "entityIntegrationId": "10",
+        "plmSubItemId": 10,
+        "massUpdateDatabaseFieldName": "Size_Range_10",
+        "massUpdateTransactionFieldId": 1607
+      },
+      {
+        "displayText": "Dimension",
+        "sysTableFiledPath": "Dimension_11",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 12,
+        "isUpdatable": true,
+        "entityIntegrationId": "9",
+        "plmSubItemId": 11,
+        "massUpdateDatabaseFieldName": "Dimension_11",
+        "massUpdateTransactionFieldId": 1608
+      },
+      {
+        "displayText": "Publish to ERP",
+        "sysTableFiledPath": "Publish_to_ERP",
+        "controlType": 13,
+        "isVisible": true,
+        "sort": 20,
+        "isUpdatable": true,
+        "plmSubItemId": 3914,
+        "massUpdateDatabaseFieldName": "Publish_to_ERP",
+        "massUpdateTransactionFieldId": 1682
+      }
+    ]
+  }
+}

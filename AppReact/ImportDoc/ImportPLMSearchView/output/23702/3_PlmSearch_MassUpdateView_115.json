@@ -1,0 +1,177 @@
+{
+  "_comment": "Option B2 HierarchicalTableUpdate. CreateNew ListEdit_MU115_TrimBOM. PLM Grid 3162 metas remapped by column name to APP Grid 3169 / Plm_Trim_BOM_prod. setAsDefaultMassUpdateView=false.",
+  "schemaVersion": 1,
+  "mode": "MassUpdateViewAttach",
+  "generatedAt": "2026-07-13T20:10:00Z",
+  "source": {
+    "plmSearchTemplateId": 23702,
+    "plmSearchName": "1a - Style Search",
+    "plmMassUpdateViewId": 115,
+    "plmMassUpdateViewName": "Trim BOM MU",
+    "plmUpdateType": "RegularGrid",
+    "plmUpdateTypeId": 2,
+    "plmMainTabId": 4229,
+    "plmGridBlockId": 3975,
+    "plmGridId": 3169,
+    "tablePrefix": "Plm_",
+    "isPlmDefaultMassUpdateView": false,
+    "_comment_grid": "PLM GridId 3162 not imported; use APP Grid 3169 Plm_Trim_BOM_prod FieldMapping metas 7257/7260/7361/7262."
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_1aStyleSearch",
+    "appSearchId": 17,
+    "appDataSetId": 2087
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "addColumns": [],
+    "addLeftJoins": [],
+    "_comment": "Do not join 1:N Trim_BOM."
+  },
+  "listEditCreate": {
+    "action": "CreateNew",
+    "existingTransactionId": null,
+    "existingIntegrationId": null,
+    "create": {
+      "integrationId": "ListEdit_MU115_TrimBOM",
+      "name": "Trim BOM MU ListEdit",
+      "transactionOrganizedType": "List",
+      "transactionOrganizedTypeId": 3,
+      "tenantDataSourceRegisterId": null,
+      "saasApplicationId": 5602,
+      "unitStructure": {
+        "mode": "RootPlusChild",
+        "root": {
+          "appTableName": "Plm_Style_Header",
+          "unitDisplayName": "Style Header",
+          "pkColumn": "ReferenceId",
+          "fields": [
+            {
+              "appColumnName": "ReferenceId",
+              "displayLabel": "Ref No.",
+              "controlType": 20,
+              "isVisible": true,
+              "sort": 0,
+              "isPrimaryKey": true,
+              "isReadOnly": true
+            },
+            {
+              "appColumnName": "Article",
+              "displayLabel": "Article #",
+              "controlType": 2,
+              "isVisible": true,
+              "sort": 1,
+              "isReadOnly": true,
+              "plmSubItemId": 22
+            },
+            {
+              "appColumnName": "Description_23",
+              "displayLabel": "Description",
+              "controlType": 2,
+              "isVisible": true,
+              "sort": 2,
+              "isReadOnly": true,
+              "plmSubItemId": 23
+            }
+          ]
+        },
+        "children": [
+          {
+            "appTableName": "Plm_Trim_BOM_prod",
+            "unitDisplayName": "Trim BOM",
+            "fkColumn": "ReferenceId",
+            "parentPkColumn": "ReferenceId",
+            "pkColumn": "RowId",
+            "fields": [
+              {
+                "appColumnName": "RowId",
+                "displayLabel": "Row Id",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 0,
+                "isPrimaryKey": true,
+                "isReadOnly": true
+              },
+              {
+                "appColumnName": "ReferenceId",
+                "displayLabel": "Parent Ref",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 0,
+                "isForeignKey": true,
+                "isReadOnly": true
+              },
+              {
+                "appColumnName": "ProductReferenceID",
+                "displayLabel": "Product Ref",
+                "controlType": 20,
+                "isVisible": true,
+                "sort": 1,
+                "plmMetaColumnId": 7257
+              },
+              {
+                "appColumnName": "Trim_Code",
+                "displayLabel": "Trim Code",
+                "controlType": 2,
+                "isVisible": true,
+                "sort": 2,
+                "plmMetaColumnId": 7260
+              },
+              {
+                "appColumnName": "Trim_Type",
+                "displayLabel": "Trim Type",
+                "controlType": 1,
+                "isVisible": true,
+                "sort": 3,
+                "entityIntegrationId": "4",
+                "plmMetaColumnId": 7361
+              },
+              {
+                "appColumnName": "Description",
+                "displayLabel": "Description",
+                "controlType": 4,
+                "isVisible": true,
+                "sort": 4,
+                "plmMetaColumnId": 7262
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "massUpdate": {
+    "appMode": "HierarchicalTableUpdate",
+    "updateTransactionIntegrationId": "ListEdit_MU115_TrimBOM",
+    "updateTransactionId": null,
+    "updateBaseTransactionUnitId": null,
+    "updateUnitTableName": "Plm_Style_Header",
+    "pkDatabaseFieldName": "ReferenceId",
+    "isAllowAddRow": true,
+    "isAllowDeleteRow": true,
+    "isAllowAdvancedUpdate": true,
+    "setAsDefaultMassUpdateView": false
+  },
+  "searchView": {
+    "name": "Trim BOM MU",
+    "integrationId": "Search_1aStyleSearch_MU115_View",
+    "integrationIdLabel": "Search_1aStyleSearch_MU115_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "isMassUpdateView": true,
+    "plmMassUpdateViewId": 115,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 1,
+        "isUpdatable": true,
+        "isTransRootId": true,
+        "massUpdateDatabaseFieldName": "ReferenceId",
+        "_comment": "Root PK only for HierarchicalTableUpdate"
+      }
+    ]
+  }
+}

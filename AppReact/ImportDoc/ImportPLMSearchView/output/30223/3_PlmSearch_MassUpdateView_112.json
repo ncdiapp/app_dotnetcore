@@ -1,0 +1,262 @@
+{
+  "_comment": "Option B2 HierarchicalTableUpdate. ListEdit_MU112_RobertsBoard — Style Header + ProductDesignColorGrid. Unmapped Total_Composition (4938). setAsDefaultMassUpdateView=false.",
+  "schemaVersion": 1,
+  "mode": "MassUpdateViewAttach",
+  "generatedAt": "2026-07-13T20:10:00Z",
+  "source": {
+    "plmSearchTemplateId": 30223,
+    "plmSearchName": "2a - Robert's Board-10",
+    "plmMassUpdateViewId": 112,
+    "plmMassUpdateViewName": "Robert's Board MU",
+    "plmUpdateType": "RegularGrid",
+    "plmUpdateTypeId": 2,
+    "plmMainTabId": 4033,
+    "plmGridBlockId": 17,
+    "plmGridId": 7,
+    "tablePrefix": "Plm_",
+    "isPlmDefaultMassUpdateView": false
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_30223",
+    "appSearchId": 33,
+    "appDataSetId": 2109
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "addColumns": [
+      {
+        "sysTableFiledPath": "Long_Description",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Garment_Factory",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Manufacturer_COO",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Original_Reference",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Size_Range_10",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Product_Type_2",
+        "appTableName": "Plm_Style_Header",
+        "alias": "hdr"
+      }
+    ],
+    "addLeftJoins": [],
+    "_comment": "Do not join color grid 1:N."
+  },
+  "listEditCreate": {
+    "action": "CreateNew",
+    "create": {
+      "integrationId": "ListEdit_MU112_RobertsBoard",
+      "name": "Robert's Board MU ListEdit",
+      "transactionOrganizedType": "List",
+      "transactionOrganizedTypeId": 3,
+      "saasApplicationId": 5602,
+      "unitStructure": {
+        "mode": "RootPlusChild",
+        "root": {
+          "appTableName": "Plm_Style_Header",
+          "unitDisplayName": "Style Header",
+          "pkColumn": "ReferenceId",
+          "fields": [
+            {
+              "appColumnName": "ReferenceId",
+              "displayLabel": "Ref No.",
+              "controlType": 20,
+              "isVisible": true,
+              "sort": 0,
+              "isPrimaryKey": true,
+              "isReadOnly": true
+            },
+            {
+              "appColumnName": "Article",
+              "displayLabel": "Article #",
+              "controlType": 2,
+              "isVisible": true,
+              "sort": 1,
+              "isReadOnly": true,
+              "plmSubItemId": 22
+            },
+            {
+              "appColumnName": "Description_23",
+              "displayLabel": "Description",
+              "controlType": 2,
+              "isVisible": true,
+              "sort": 2,
+              "isReadOnly": true,
+              "plmSubItemId": 23
+            },
+            {
+              "appColumnName": "Classification",
+              "displayLabel": "Classification",
+              "controlType": 1,
+              "isVisible": true,
+              "sort": 3,
+              "isReadOnly": true,
+              "entityIntegrationId": "1",
+              "plmSubItemId": 1
+            },
+            {
+              "appColumnName": "Product_Type_2",
+              "displayLabel": "Product Type",
+              "controlType": 1,
+              "isVisible": true,
+              "sort": 4,
+              "entityIntegrationId": "4",
+              "plmSubItemId": 2
+            },
+            {
+              "appColumnName": "Size_Range_10",
+              "displayLabel": "Size Range",
+              "controlType": 1,
+              "isVisible": true,
+              "sort": 5,
+              "entityIntegrationId": "10",
+              "plmSubItemId": 10
+            },
+            {
+              "appColumnName": "Long_Description",
+              "displayLabel": "Long Description",
+              "controlType": 4,
+              "isVisible": true,
+              "sort": 6,
+              "plmSubItemId": 121
+            },
+            {
+              "appColumnName": "Garment_Factory",
+              "displayLabel": "Garment Factory",
+              "controlType": 1,
+              "isVisible": true,
+              "sort": 7,
+              "plmSubItemId": 6887
+            },
+            {
+              "appColumnName": "Manufacturer_COO",
+              "displayLabel": "Manufacturer COO",
+              "controlType": 1,
+              "isVisible": true,
+              "sort": 8,
+              "plmSubItemId": 6805
+            }
+          ]
+        },
+        "children": [
+          {
+            "appTableName": "Plm_ProductDesignColorGrid",
+            "unitDisplayName": "Colorways",
+            "fkColumn": "ReferenceId",
+            "parentPkColumn": "ReferenceId",
+            "pkColumn": "RowId",
+            "fields": [
+              {
+                "appColumnName": "RowId",
+                "displayLabel": "Row Id",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 0,
+                "isPrimaryKey": true,
+                "isReadOnly": true
+              },
+              {
+                "appColumnName": "ReferenceId",
+                "displayLabel": "Parent Ref",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 0,
+                "isForeignKey": true,
+                "isReadOnly": true
+              },
+              {
+                "appColumnName": "Active",
+                "displayLabel": "Active",
+                "controlType": 13,
+                "isVisible": true,
+                "sort": 1,
+                "plmMetaColumnId": 7976
+              },
+              {
+                "appColumnName": "Color_Code",
+                "displayLabel": "Color Code",
+                "controlType": 2,
+                "isVisible": true,
+                "sort": 2,
+                "plmMetaColumnId": 635
+              },
+              {
+                "appColumnName": "Color",
+                "displayLabel": "Color",
+                "controlType": 1,
+                "isVisible": true,
+                "sort": 3,
+                "entityIntegrationId": "79",
+                "plmMetaColumnId": 44
+              },
+              {
+                "appColumnName": "Name",
+                "displayLabel": "Name",
+                "controlType": 2,
+                "isVisible": true,
+                "sort": 4,
+                "plmMetaColumnId": 372
+              },
+              {
+                "appColumnName": "Description",
+                "displayLabel": "Description",
+                "controlType": 2,
+                "isVisible": true,
+                "sort": 5,
+                "plmMetaColumnId": 45
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "massUpdate": {
+    "appMode": "HierarchicalTableUpdate",
+    "updateTransactionIntegrationId": "ListEdit_MU112_RobertsBoard",
+    "updateUnitTableName": "Plm_Style_Header",
+    "pkDatabaseFieldName": "ReferenceId",
+    "isAllowAddRow": true,
+    "isAllowDeleteRow": true,
+    "isAllowAdvancedUpdate": true,
+    "setAsDefaultMassUpdateView": false
+  },
+  "searchView": {
+    "name": "Robert's Board MU",
+    "integrationId": "Search_30223_MU112_View",
+    "integrationIdLabel": "Search_30223_MU112_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "isMassUpdateView": true,
+    "plmMassUpdateViewId": 112,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 1,
+        "isUpdatable": true,
+        "isTransRootId": true,
+        "massUpdateDatabaseFieldName": "ReferenceId",
+        "_comment": "Root PK only"
+      }
+    ]
+  }
+}

@@ -1,0 +1,356 @@
+{
+  "_comment": "Option A MassUpdateViewAttach — Tab_4247 / Plm_Label_Header unit #98. setAsDefaultMassUpdateView=true.",
+  "schemaVersion": 1,
+  "mode": "MassUpdateViewAttach",
+  "generatedAt": "2026-07-13T20:10:00Z",
+  "source": {
+    "plmSearchTemplateId": 24102,
+    "plmSearchName": "2b - Label Search",
+    "plmMassUpdateViewId": 20,
+    "plmMassUpdateViewName": "13- Label Mass Update View",
+    "plmUpdateType": "TabField",
+    "plmUpdateTypeId": 1,
+    "plmMainTabId": 4000,
+    "tablePrefix": "Plm_",
+    "isPlmDefaultMassUpdateView": true
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_24102",
+    "appSearchId": 21,
+    "appDataSetId": 2097
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "addColumns": [
+      {
+        "sysTableFiledPath": "Brand",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Cost_1",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Cost_2",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Cost_3",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Supplier_2",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Sketch",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Classification",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Season",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Collection",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Group",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Product_Type",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Raw_Material_Status",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Country_Of_Origin",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      },
+      {
+        "sysTableFiledPath": "Supplier_1",
+        "appTableName": "Plm_Label_Header",
+        "alias": "hdr"
+      }
+    ],
+    "addLeftJoins": []
+  },
+  "massUpdate": {
+    "appMode": "SingleTableUpdate",
+    "updateTransactionIntegrationId": "Tab_4247",
+    "updateTransactionId": 2271,
+    "updateBaseTransactionUnitId": 98,
+    "updateUnitTableName": "Plm_Label_Header",
+    "pkDatabaseFieldName": "ReferenceId",
+    "isAllowAddRow": true,
+    "isAllowDeleteRow": true,
+    "isAllowAdvancedUpdate": true,
+    "setAsDefaultMassUpdateView": true
+  },
+  "searchView": {
+    "name": "13- Label Mass Update View",
+    "integrationId": "Search_24102_MU20_View",
+    "integrationIdLabel": "Search_24102_MU20_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "isMassUpdateView": true,
+    "plmMassUpdateViewId": 20,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 0,
+        "isUpdatable": true,
+        "isTransRootId": true,
+        "massUpdateDatabaseFieldName": "ReferenceId",
+        "massUpdateTransactionFieldId": 3066,
+        "_comment": "REQUIRED Unit PK"
+      },
+      {
+        "displayText": "Sketch",
+        "sysTableFiledPath": "Sketch",
+        "controlType": 5,
+        "isVisible": true,
+        "sort": 1,
+        "isUpdatable": true,
+        "entityIntegrationId": "11",
+        "plmSubItemId": 6,
+        "massUpdateDatabaseFieldName": "Sketch",
+        "massUpdateTransactionFieldId": 3072
+      },
+      {
+        "displayText": "Article #",
+        "sysTableFiledPath": "Article",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 2,
+        "isUpdatable": true,
+        "plmSubItemId": 22,
+        "massUpdateDatabaseFieldName": "Article",
+        "massUpdateTransactionFieldId": 3076
+      },
+      {
+        "displayText": "Description",
+        "sysTableFiledPath": "Description",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 3,
+        "isUpdatable": true,
+        "plmSubItemId": 23,
+        "massUpdateDatabaseFieldName": "Description",
+        "massUpdateTransactionFieldId": 3077
+      },
+      {
+        "displayText": "Division",
+        "sysTableFiledPath": "Division_186",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 4,
+        "isUpdatable": true,
+        "entityIntegrationId": "5",
+        "plmSubItemId": 186,
+        "massUpdateDatabaseFieldName": "Division_186",
+        "massUpdateTransactionFieldId": 3085
+      },
+      {
+        "displayText": "Classification",
+        "sysTableFiledPath": "Classification",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 5,
+        "isUpdatable": true,
+        "entityIntegrationId": "1",
+        "plmSubItemId": 1,
+        "massUpdateDatabaseFieldName": "Classification",
+        "massUpdateTransactionFieldId": 3067
+      },
+      {
+        "displayText": "Brand",
+        "sysTableFiledPath": "Brand",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 6,
+        "isUpdatable": true,
+        "entityIntegrationId": "93",
+        "plmSubItemId": 141,
+        "massUpdateDatabaseFieldName": "Brand",
+        "massUpdateTransactionFieldId": 3082
+      },
+      {
+        "displayText": "ProductTypeGroup",
+        "sysTableFiledPath": "ProductTypeGroup",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 7,
+        "isUpdatable": true,
+        "entityIntegrationId": "95",
+        "plmSubItemId": 149,
+        "massUpdateDatabaseFieldName": "ProductTypeGroup",
+        "massUpdateTransactionFieldId": 3083
+      },
+      {
+        "displayText": "Product Type",
+        "sysTableFiledPath": "Product_Type",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 8,
+        "isUpdatable": true,
+        "entityIntegrationId": "4",
+        "plmSubItemId": 2,
+        "massUpdateDatabaseFieldName": "Product_Type",
+        "massUpdateTransactionFieldId": 3068
+      },
+      {
+        "displayText": "Season",
+        "sysTableFiledPath": "Season",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 9,
+        "isUpdatable": true,
+        "entityIntegrationId": "8",
+        "plmSubItemId": 3,
+        "massUpdateDatabaseFieldName": "Season",
+        "massUpdateTransactionFieldId": 3069
+      },
+      {
+        "displayText": "Collection",
+        "sysTableFiledPath": "Collection",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 10,
+        "isUpdatable": true,
+        "entityIntegrationId": "6",
+        "plmSubItemId": 4,
+        "massUpdateDatabaseFieldName": "Collection",
+        "massUpdateTransactionFieldId": 3070
+      },
+      {
+        "displayText": "Group",
+        "sysTableFiledPath": "Group",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 11,
+        "isUpdatable": true,
+        "entityIntegrationId": "7",
+        "plmSubItemId": 5,
+        "massUpdateDatabaseFieldName": "Group",
+        "massUpdateTransactionFieldId": 3071
+      },
+      {
+        "displayText": "Status",
+        "sysTableFiledPath": "Raw_Material_Status",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 12,
+        "isUpdatable": true,
+        "entityIntegrationId": "3461",
+        "plmSubItemId": 3128,
+        "massUpdateDatabaseFieldName": "Raw_Material_Status",
+        "massUpdateTransactionFieldId": 3089
+      },
+      {
+        "displayText": "Material",
+        "sysTableFiledPath": "Material",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 13,
+        "isUpdatable": true,
+        "entityIntegrationId": "3521",
+        "plmSubItemId": 3810,
+        "massUpdateDatabaseFieldName": "Material",
+        "massUpdateTransactionFieldId": 3092
+      },
+      {
+        "displayText": "Supplier 1",
+        "sysTableFiledPath": "Supplier_1",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 14,
+        "isUpdatable": true,
+        "entityIntegrationId": "4757",
+        "plmSubItemId": 6885,
+        "massUpdateDatabaseFieldName": "Supplier_1",
+        "massUpdateTransactionFieldId": 3102
+      },
+      {
+        "displayText": "Supplier 2",
+        "sysTableFiledPath": "Supplier_2",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 15,
+        "isUpdatable": true,
+        "entityIntegrationId": "4757",
+        "plmSubItemId": 7333,
+        "massUpdateDatabaseFieldName": "Supplier_2",
+        "massUpdateTransactionFieldId": 3109
+      },
+      {
+        "displayText": "Country Of Origin",
+        "sysTableFiledPath": "Country_Of_Origin",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 16,
+        "isUpdatable": true,
+        "entityIntegrationId": "59",
+        "plmSubItemId": 103,
+        "massUpdateDatabaseFieldName": "Country_Of_Origin",
+        "massUpdateTransactionFieldId": 3078
+      },
+      {
+        "displayText": "Cost 1",
+        "sysTableFiledPath": "Cost_1",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 18,
+        "isUpdatable": true,
+        "plmSubItemId": 6688,
+        "massUpdateDatabaseFieldName": "Cost_1",
+        "massUpdateTransactionFieldId": 3098
+      },
+      {
+        "displayText": "Cost 2",
+        "sysTableFiledPath": "Cost_2",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 21,
+        "isUpdatable": true,
+        "plmSubItemId": 7335,
+        "massUpdateDatabaseFieldName": "Cost_2",
+        "massUpdateTransactionFieldId": 3110
+      },
+      {
+        "displayText": "Cost 3",
+        "sysTableFiledPath": "Cost_3",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 24,
+        "isUpdatable": true,
+        "plmSubItemId": 7337,
+        "massUpdateDatabaseFieldName": "Cost_3",
+        "massUpdateTransactionFieldId": 3111
+      }
+    ]
+  }
+}

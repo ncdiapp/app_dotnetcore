@@ -1,0 +1,178 @@
+{
+  "_comment": "Option B2 HierarchicalTableUpdate. ListEdit_MU116_RobertsBoardPrice — Style Header + Selling_and_Retail_by_Style_Currency. setAsDefaultMassUpdateView=false.",
+  "schemaVersion": 1,
+  "mode": "MassUpdateViewAttach",
+  "generatedAt": "2026-07-13T20:10:00Z",
+  "source": {
+    "plmSearchTemplateId": 30223,
+    "plmSearchName": "2a - Robert's Board-10",
+    "plmMassUpdateViewId": 116,
+    "plmMassUpdateViewName": "Robert's Board Price MU",
+    "plmUpdateType": "RegularGrid",
+    "plmUpdateTypeId": 2,
+    "plmMainTabId": 4272,
+    "plmGridBlockId": 3690,
+    "plmGridId": 3084,
+    "tablePrefix": "Plm_",
+    "isPlmDefaultMassUpdateView": false
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_30223",
+    "appSearchId": 33,
+    "appDataSetId": 2109
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "addColumns": [],
+    "addLeftJoins": []
+  },
+  "listEditCreate": {
+    "action": "CreateNew",
+    "create": {
+      "integrationId": "ListEdit_MU116_RobertsBoardPrice",
+      "name": "Robert's Board Price MU ListEdit",
+      "transactionOrganizedType": "List",
+      "transactionOrganizedTypeId": 3,
+      "saasApplicationId": 5602,
+      "unitStructure": {
+        "mode": "RootPlusChild",
+        "root": {
+          "appTableName": "Plm_Style_Header",
+          "unitDisplayName": "Style Header",
+          "pkColumn": "ReferenceId",
+          "fields": [
+            {
+              "appColumnName": "ReferenceId",
+              "displayLabel": "Ref No.",
+              "controlType": 20,
+              "isVisible": true,
+              "sort": 0,
+              "isPrimaryKey": true,
+              "isReadOnly": true
+            },
+            {
+              "appColumnName": "Article",
+              "displayLabel": "Article #",
+              "controlType": 2,
+              "isVisible": true,
+              "sort": 1,
+              "isReadOnly": true,
+              "plmSubItemId": 22
+            },
+            {
+              "appColumnName": "Description_23",
+              "displayLabel": "Description",
+              "controlType": 2,
+              "isVisible": true,
+              "sort": 2,
+              "isReadOnly": true,
+              "plmSubItemId": 23
+            }
+          ]
+        },
+        "children": [
+          {
+            "appTableName": "Plm_Selling_and_Retail_by_Style_Currency",
+            "unitDisplayName": "Selling and Retail",
+            "fkColumn": "ReferenceId",
+            "parentPkColumn": "ReferenceId",
+            "pkColumn": "RowId",
+            "fields": [
+              {
+                "appColumnName": "RowId",
+                "displayLabel": "Row Id",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 0,
+                "isPrimaryKey": true,
+                "isReadOnly": true
+              },
+              {
+                "appColumnName": "ReferenceId",
+                "displayLabel": "Parent Ref",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 0,
+                "isForeignKey": true,
+                "isReadOnly": true
+              },
+              {
+                "appColumnName": "Selling_Currency",
+                "displayLabel": "Selling Currency",
+                "controlType": 1,
+                "isVisible": true,
+                "sort": 1,
+                "entityIntegrationId": "68",
+                "plmMetaColumnId": 5483
+              },
+              {
+                "appColumnName": "Fob_Cost",
+                "displayLabel": "FOB Cost",
+                "controlType": 2,
+                "isVisible": true,
+                "sort": 2,
+                "plmMetaColumnId": 8051
+              },
+              {
+                "appColumnName": "VIP_Price",
+                "displayLabel": "VIP Price",
+                "controlType": 20,
+                "isVisible": true,
+                "sort": 3,
+                "plmMetaColumnId": 8048
+              },
+              {
+                "appColumnName": "Selling_Price",
+                "displayLabel": "Selling Price",
+                "controlType": 20,
+                "isVisible": true,
+                "sort": 4,
+                "plmMetaColumnId": 5511
+              },
+              {
+                "appColumnName": "Retail",
+                "displayLabel": "Retail",
+                "controlType": 20,
+                "isVisible": true,
+                "sort": 5,
+                "plmMetaColumnId": 5512
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "massUpdate": {
+    "appMode": "HierarchicalTableUpdate",
+    "updateTransactionIntegrationId": "ListEdit_MU116_RobertsBoardPrice",
+    "updateUnitTableName": "Plm_Style_Header",
+    "pkDatabaseFieldName": "ReferenceId",
+    "isAllowAddRow": true,
+    "isAllowDeleteRow": true,
+    "isAllowAdvancedUpdate": true,
+    "setAsDefaultMassUpdateView": false
+  },
+  "searchView": {
+    "name": "Robert's Board Price MU",
+    "integrationId": "Search_30223_MU116_View",
+    "integrationIdLabel": "Search_30223_MU116_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "isMassUpdateView": true,
+    "plmMassUpdateViewId": 116,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isVisible": true,
+        "sort": 1,
+        "isUpdatable": true,
+        "isTransRootId": true,
+        "massUpdateDatabaseFieldName": "ReferenceId",
+        "_comment": "Root PK only"
+      }
+    ]
+  }
+}

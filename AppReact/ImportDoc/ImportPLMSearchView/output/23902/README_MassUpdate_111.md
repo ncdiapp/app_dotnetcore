@@ -49,3 +49,7 @@ All other Tracking columns hidden.
 - ListEdit field **ControlType / EntityId** come from blueprint `controlType` + `entityIntegrationId`, else **FieldMapping** (root SubItems + child GridColumns) by `AppTableName`/`AppColumnName`. CreateHierarchy alone defaults TextBox with no EntityId.
 - **Hide/Show / Sort** follow PLM MU field list only (`isVisible = !(IsHide)`), **except root identity**: always show ReferenceId (+ Article/Product Code + Description when present on the unit). Non-MU other columns stay hidden but still get FieldMapping ControlType/EntityId.
 - **UI:** FormListEdit must not fall back to `DictTransactionUnitIdFiledNameFiledID` when unit fields exist but are all hidden — that dumped every physical column without ControlType (first-layer Trim Tracking MU bug).
+
+## Batch status (2026-07-13)
+
+Already executed in APP as SearchView **#2105** / ListEdit **#2284**. Batch import: **verify only — do not duplicate**.
