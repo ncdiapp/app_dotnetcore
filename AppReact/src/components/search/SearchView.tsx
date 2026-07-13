@@ -15,7 +15,7 @@ import { ChartViewLayout } from "./searchViewLayout/ChartViewLayout";
 import { ClusterAnalysisViewLayout } from "./searchViewLayout/ClusterAnalysisViewLayout";
 import { FlatDataSetTreeViewLayout } from "./searchViewLayout/FlatDataSetTreeViewLayout";
 import { GoogleMapViewLayout } from "./searchViewLayout/GoogleMapViewLayout";
-import FormListEdit from "../formMgt/FormListEdit";
+import FormListEdit, { type FormListEditToolbarApi } from "../formMgt/FormListEdit";
 import { useEnumValues } from "../../hooks/useEnumDictionary";
 import { useTheme } from "../../redux/hooks/useTheme";
 import { useTabNavigation } from "../../redux/hooks/useTabNavigation";
@@ -138,6 +138,8 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const emAppViewType = useEnumValues('EmAppViewType');
   const [gridControl, setGridControl] = useState<any>(null);
   const massUpdateApiRef = useRef<MassUpdateGridApi | null>(null);
+  const listEditToolbarApiRef = useRef<FormListEditToolbarApi | null>(null);
+  const [listEditToolbarApi, setListEditToolbarApi] = useState<FormListEditToolbarApi | null>(null);
   const [deletedMassUpdateRows, setDeletedMassUpdateRows] = useState<any[]>([]);
   const [massUpdateBusy, setMassUpdateBusy] = useState(false);
   const [advancedMassUpdateOpen, setAdvancedMassUpdateOpen] = useState(false);
@@ -149,6 +151,11 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   const onMassUpdateApiReady = useCallback((api: MassUpdateGridApi | null) => {
     massUpdateApiRef.current = api;
+  }, []);
+
+  const onListEditToolbarApiReady = useCallback((api: FormListEditToolbarApi | null) => {
+    listEditToolbarApiRef.current = api;
+    setListEditToolbarApi(api);
   }, []);
 
   const massupdated_addRow = useCallback(() => {
@@ -309,33 +316,68 @@ export const SearchView: React.FC<SearchViewProps> = ({
     }
   };
 
+  // Bump when Search returns a new MassUpdateAppListDataDto so FormListEdit reloads
+  // even if root IDs / row count are unchanged (discard half-edited local grid state).
+  // Must run before any early return (rules-of-hooks).
+  const massUpdateSearchReloadEpochRef = useRef(0);
+  const lastMassUpdateListDtoRef = useRef<any>(undefined);
+  const rawMassUpdateListDto = dataModel?.searchResultDto?.MassUpdateAppListDataDto;
+  if (rawMassUpdateListDto !== lastMassUpdateListDtoRef.current) {
+    lastMassUpdateListDtoRef.current = rawMassUpdateListDto;
+    massUpdateSearchReloadEpochRef.current += 1;
+  }
+
+  const hierarchicalEmbeddedListDto = useMemo(() => {
+    if (
+      !isHierarchicalMassUpdate ||
+      viewDto?.MassUpdateTransactionId == null ||
+      !(Number(viewDto.MassUpdateTransactionId) > 0)
+    ) {
+      return null;
+    }
+    const listDto = rawMassUpdateListDto;
+    const txId = Number(viewDto.MassUpdateTransactionId);
+    const epoch = massUpdateSearchReloadEpochRef.current;
+    if (listDto) {
+      return {
+        ...listDto,
+        IsMassUpdate: true,
+        MassUpdateViewId: listDto.MassUpdateViewId ?? viewDto.Id,
+        TransactionId: listDto.TransactionId ?? txId,
+        _clientSearchReloadEpoch: epoch,
+      };
+    }
+    return {
+      TransactionId: txId,
+      ListData: [] as any[],
+      IsMassUpdate: true,
+      MassUpdateViewId: viewDto.Id,
+      _clientSearchReloadEpoch: epoch,
+    };
+  }, [
+    isHierarchicalMassUpdate,
+    rawMassUpdateListDto,
+    viewDto?.MassUpdateTransactionId,
+    viewDto?.Id,
+  ]);
+
   if (!viewDto) {
     return null;
   }
 
   // Render different view types based on ViewType.
   // Unmigrated types are routed to GridView for now so every type is usable.
-  // Hierarchical ListEdit mass update: Angular SearchView/ListEditViewLayout embeds FormListEdit.
   const renderViewByType = () => {
-    if (
-      isHierarchicalMassUpdate &&
-      viewDto?.MassUpdateTransactionId != null &&
-      Number(viewDto.MassUpdateTransactionId) > 0
-    ) {
-      const listDto = dataModel?.searchResultDto?.MassUpdateAppListDataDto;
-      const emptyMassUpdateListDto = {
-        TransactionId: Number(viewDto.MassUpdateTransactionId),
-        ListData: [] as any[],
-        IsMassUpdate: true,
-        MassUpdateViewId: viewDto.Id,
-      };
+    if (hierarchicalEmbeddedListDto != null && viewDto?.MassUpdateTransactionId != null) {
       return (
         <div className="w-full h-full overflow-hidden">
           <FormListEdit
             embedded={{
               embeddedTransactionId: Number(viewDto.MassUpdateTransactionId),
-              embeddedListEditDataDto: listDto ?? emptyMassUpdateListDto,
+              embeddedListEditDataDto: hierarchicalEmbeddedListDto,
               hideHeader: true,
+              hostToolbarInParent: true,
+              onToolbarApiReady: onListEditToolbarApiReady,
               onMassUpdateSaved: onExecuteSearch,
               embeddedParam2: { isEnableFormConfigButtons: false },
             }}
@@ -472,7 +514,14 @@ export const SearchView: React.FC<SearchViewProps> = ({
       <div className={`px-3 py-1 text-xs border-b flex items-center justify-between gap-2 ${theme.label}`}>
         <div className="flex items-center gap-1 min-w-0">
           <span className="truncate">{headerTitle}</span>
-          {gridControl && (
+          {isHierarchicalMassUpdate && listEditToolbarApi && (
+            <FlexGridAddOn
+              gridRef={listEditToolbarApi.flexGridRef}
+              buttonClassName={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
+              title="Freeze / Show / Hide columns"
+            />
+          )}
+          {!isHierarchicalMassUpdate && gridControl && (
             <FlexGridAddOn
               grid={gridControl}
               buttonClassName={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
@@ -575,6 +624,38 @@ export const SearchView: React.FC<SearchViewProps> = ({
               {m?.NavigationActionName || 'To Built-In Page'}
             </button>
           ))}
+          {isHierarchicalMassUpdate && listEditToolbarApi && !listEditToolbarApi.isReadOnly && (
+            <>
+              <button
+                type="button"
+                className={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
+                onClick={() => listEditToolbarApiRef.current?.addRow()}
+                title="Add row"
+              >
+                <i className="fa-solid fa-plus-circle mr-1" aria-hidden="true" />
+                Add
+              </button>
+              <button
+                type="button"
+                className={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
+                onClick={() => listEditToolbarApiRef.current?.deleteRow()}
+                title="Delete selected row"
+              >
+                <i className="fa-solid fa-minus-circle mr-1" aria-hidden="true" />
+                Delete
+              </button>
+              <button
+                type="button"
+                className={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
+                onClick={() => void listEditToolbarApiRef.current?.save()}
+                title="Save"
+                disabled={!listEditToolbarApi.isDirty}
+              >
+                <i className="fa-solid fa-floppy-disk mr-1" aria-hidden="true" />
+                Save
+              </button>
+            </>
+          )}
         </div>
       </div>
       <div className="w-full h-1 flex-auto overflow-hidden">

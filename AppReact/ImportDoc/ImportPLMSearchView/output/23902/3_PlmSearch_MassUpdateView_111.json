@@ -56,7 +56,25 @@
               "sort": 0,
               "isPrimaryKey": true,
               "isReadOnly": true,
-              "_comment": "RegularGrid: no header MU SubItems. Show root PK only for row identity; all other header columns IsVisible=false."
+              "_comment": "Root identity — always show ReferenceId on first layer."
+            },
+            {
+              "appColumnName": "Article",
+              "displayLabel": "Article",
+              "controlType": 2,
+              "isVisible": true,
+              "sort": 1,
+              "isReadOnly": true,
+              "_comment": "Root identity — Product Code alias on Trim Header (show when present on unit)."
+            },
+            {
+              "appColumnName": "Description",
+              "displayLabel": "Description",
+              "controlType": 2,
+              "isVisible": true,
+              "sort": 2,
+              "isReadOnly": true,
+              "_comment": "Root identity — show Description when present on unit."
             }
           ]
         },

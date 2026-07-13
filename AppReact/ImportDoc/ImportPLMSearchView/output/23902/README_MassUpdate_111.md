@@ -18,7 +18,7 @@
 
 ## ListEdit fields (approved — PLM MU Sort / IsHide)
 
-**Root:** **Ref No.** (`ReferenceId`) only — RegularGrid MU has no header SubItems; other header columns `IsVisible=0` (FieldMapping ControlType/EntityId still applied).
+**Root identity (always when present on unit):** Ref No. (`ReferenceId`), Article / Product Code, Description — other header columns stay hidden.
 
 **Child (PLM Sort → SortOrder×10):**  
 | PLM Sort | Column | Visible | Readonly |
@@ -47,5 +47,5 @@ All other Tracking columns hidden.
 - Do **not** reuse/convert MasterDetail `Grid_3179` (#2273).
 - Child FK `ReferenceId` must be **Link to Parent Primary Key** → root `ReferenceId` (BL now sets this from blueprint `fkColumn` after CreateHierarchy; schema FK auto-detect alone is insufficient for PLM tables).
 - ListEdit field **ControlType / EntityId** come from blueprint `controlType` + `entityIntegrationId`, else **FieldMapping** (root SubItems + child GridColumns) by `AppTableName`/`AppColumnName`. CreateHierarchy alone defaults TextBox with no EntityId.
-- **Hide/Show / Sort** follow PLM MU field list only (`isVisible = !(IsHide)`). Non-MU columns stay hidden but still get FieldMapping ControlType/EntityId.
+- **Hide/Show / Sort** follow PLM MU field list only (`isVisible = !(IsHide)`), **except root identity**: always show ReferenceId (+ Article/Product Code + Description when present on the unit). Non-MU other columns stay hidden but still get FieldMapping ControlType/EntityId.
 - **UI:** FormListEdit must not fall back to `DictTransactionUnitIdFiledNameFiledID` when unit fields exist but are all hidden — that dumped every physical column without ControlType (first-layer Trim Tracking MU bug).

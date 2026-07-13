@@ -370,7 +370,8 @@ Embed in the same blueprint (so Import Tool can create ListEdit then Mass Update
   - `isReadOnly` = PLM `IsReadonly`  
   - `controlType` / `entityIntegrationId` from FieldMapping SubItem/GridColumn  
   - Columns **not** in the PLM Mass Update View field list must be **hidden** on the ListEdit unit (do not leave CreateHierarchy defaults visible)  
-  - Do **not** invent extra display columns on root/child beyond PK/FK + PLM MU fields (RegularGrid → root PK only)
+  - **Root identity exception (Hierarchical ListEdit):** always show **ReferenceId** (or unit PK). If the root unit also has **Product Code** (aliases: `Article`, `ProductCode`, `Product_Code`, `ItemCode`, `TrimCode`, `StyleCode`, …) and/or **Description**, show those too (typically readonly). Do **not** invent missing columns — only show when the field exists on the unit.  
+  - Do **not** invent other display columns on root/child beyond PK/FK + PLM MU fields + the root identity exception above
 - `massUpdate.updateTransactionIntegrationId` = the **new** ListEdit IntegrationId (same as `listEditCreate.create.integrationId`)
 
 **Do not** silently change an existing MasterDetail `Tab_*` into List. Always create a **dedicated** ListEdit IntegrationId for B2.

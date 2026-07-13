@@ -1102,15 +1102,20 @@ WHERE TransactionUnitID = @ChildUnitId
                     blueprintByColumn[f.AppColumnName.Trim()] = f;
                 }
 
-                // Structural PK/FK — always known; keep hidden unless blueprint overrides visibility.
+                bool isRootUnit = unitStructure.Root != null
+                    && string.Equals(unit.AppTableName?.Trim(), unitStructure.Root.AppTableName?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+                // Structural PK/FK — always known. Root PK defaults visible (row identity);
+                // child PK/FK stay hidden unless blueprint explicitly shows them.
                 if (!string.IsNullOrWhiteSpace(unit.PkColumn) && !blueprintByColumn.ContainsKey(unit.PkColumn))
                 {
                     blueprintByColumn[unit.PkColumn.Trim()] = new PlmSearchMassUpdateListEditFieldDto
                     {
                         AppColumnName = unit.PkColumn.Trim(),
                         IsPrimaryKey = true,
-                        IsVisible = false,
+                        IsVisible = isRootUnit,
                         Sort = 0,
+                        IsReadOnly = true,
                         ControlType = (int)EmAppControlType.Numeric
                     };
                 }
@@ -1155,6 +1160,9 @@ WHERE TransactionUnitID = @UnitId";
 
                     bool inMuBlueprint = blueprintByColumn.TryGetValue(dbName, out PlmSearchMassUpdateListEditFieldDto bpField);
                     mappingByColumn.TryGetValue(dbName, out FieldMappingColumnMeta mapMeta);
+                    var identityKind = isRootUnit
+                        ? ClassifyRootIdentityColumn(dbName, unit.PkColumn)
+                        : RootIdentityColumnKind.None;
 
                     // --- ControlType / EntityId: blueprint wins, else FieldMapping SubItem/GridColumn ---
                     int controlType;
@@ -1162,7 +1170,7 @@ WHERE TransactionUnitID = @UnitId";
                         controlType = MapPlmControlTypeToApp(bpField.ControlType.Value);
                     else if (mapMeta != null && mapMeta.PlmControlType.HasValue)
                         controlType = MapPlmControlTypeToApp(mapMeta.PlmControlType.Value);
-                    else if (isPk || (inMuBlueprint && bpField.IsPrimaryKey == true))
+                    else if (isPk || identityKind == RootIdentityColumnKind.ReferenceId || (inMuBlueprint && bpField.IsPrimaryKey == true))
                         controlType = (int)EmAppControlType.Numeric;
                     else
                         controlType = (int)EmAppControlType.TextBox;
@@ -1182,18 +1190,29 @@ WHERE TransactionUnitID = @UnitId";
                         appEntityId = null;
                     }
 
-                    // --- Hide/Show + Sort: PLM Mass Update View field list is truth ---
-                    // In MU list → isVisible / sort from blueprint (IsHide → isVisible=false).
-                    // Not in MU list → hide (CreateHierarchy leftover columns), keep FieldMapping ControlType/Entity.
+                    // --- Hide/Show + Sort ---
+                    // MU blueprint fields: IsVisible from PLM IsHide / blueprint.
+                    // Root identity (ReferenceId + Product Code/Article + Description): always show when present on unit.
+                    // Other non-MU columns: hide (CreateHierarchy leftovers), keep FieldMapping ControlType/Entity.
                     bool isVisible;
                     bool isReadonly;
                     int sortOrder;
                     string displayName = null;
 
-                    if (inMuBlueprint)
+                    if (identityKind != RootIdentityColumnKind.None)
                     {
-                        // Blueprint IsVisible is truth (PLM IsHide / intentional root PK identity).
-                        // Do not force-hide PK when blueprint sets isVisible=true (RegularGrid Ref No.).
+                        isVisible = true;
+                        isReadonly = identityKind == RootIdentityColumnKind.ReferenceId
+                            || isPk
+                            || isLinkParent
+                            || (inMuBlueprint && (bpField.IsReadOnly == true || bpField.IsPrimaryKey == true));
+                        displayName = inMuBlueprint && !string.IsNullOrWhiteSpace(bpField.DisplayLabel)
+                            ? bpField.DisplayLabel.Trim()
+                            : DefaultRootIdentityDisplayName(identityKind, dbName);
+                        sortOrder = RootIdentitySortOrder(identityKind);
+                    }
+                    else if (inMuBlueprint)
+                    {
                         isVisible = bpField.IsVisible == true;
                         isReadonly = isPk || isLinkParent
                             || bpField.IsReadOnly == true
@@ -1258,6 +1277,72 @@ WHERE TransactionFieldID = @FieldId";
                 {
                     // Best-effort cache refresh; field rows are already persisted.
                 }
+            }
+        }
+
+        private enum RootIdentityColumnKind
+        {
+            None = 0,
+            ReferenceId = 1,
+            ProductCode = 2,
+            Description = 3
+        }
+
+        /// <summary>
+        /// Root ListEdit identity columns for hierarchical MU: always show when present on the unit.
+        /// Product Code aliases include Article (Trim/Style common naming).
+        /// </summary>
+        private static RootIdentityColumnKind ClassifyRootIdentityColumn(string dbColumnName, string pkColumn)
+        {
+            if (string.IsNullOrWhiteSpace(dbColumnName))
+                return RootIdentityColumnKind.None;
+
+            string name = dbColumnName.Trim();
+            if (!string.IsNullOrWhiteSpace(pkColumn)
+                && string.Equals(name, pkColumn.Trim(), StringComparison.OrdinalIgnoreCase))
+                return RootIdentityColumnKind.ReferenceId;
+            if (string.Equals(name, "ReferenceId", StringComparison.OrdinalIgnoreCase))
+                return RootIdentityColumnKind.ReferenceId;
+
+            if (string.Equals(name, "Article", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "ProductCode", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Product_Code", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "ItemCode", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Item_Code", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "TrimCode", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Trim_Code", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "StyleCode", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "Style_Code", StringComparison.OrdinalIgnoreCase))
+                return RootIdentityColumnKind.ProductCode;
+
+            if (string.Equals(name, "Description", StringComparison.OrdinalIgnoreCase))
+                return RootIdentityColumnKind.Description;
+
+            return RootIdentityColumnKind.None;
+        }
+
+        private static int RootIdentitySortOrder(RootIdentityColumnKind kind)
+        {
+            switch (kind)
+            {
+                case RootIdentityColumnKind.ReferenceId: return 0;
+                case RootIdentityColumnKind.ProductCode: return 10;
+                case RootIdentityColumnKind.Description: return 20;
+                default: return 30;
+            }
+        }
+
+        private static string DefaultRootIdentityDisplayName(RootIdentityColumnKind kind, string dbName)
+        {
+            switch (kind)
+            {
+                case RootIdentityColumnKind.ReferenceId: return "Ref No.";
+                case RootIdentityColumnKind.ProductCode:
+                    return string.Equals(dbName, "Article", StringComparison.OrdinalIgnoreCase)
+                        ? "Article"
+                        : "Product Code";
+                case RootIdentityColumnKind.Description: return "Description";
+                default: return dbName;
             }
         }
 

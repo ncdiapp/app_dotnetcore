@@ -93,6 +93,15 @@ function applyLinkedSearchResultToListRow(result: any, linkedSearch: any, rowIte
   rowItem.IsDirty = true;
 }
 
+export type FormListEditToolbarApi = {
+  addRow: () => void;
+  deleteRow: () => void;
+  save: () => void | Promise<void>;
+  flexGridRef: React.RefObject<any>;
+  isDirty: boolean;
+  isReadOnly: boolean;
+};
+
 export type FormListEditEmbeddedProps = {
   embeddedTransactionId: number;
   embeddedParam2?: Record<string, unknown>;
@@ -105,11 +114,38 @@ export type FormListEditEmbeddedProps = {
   onMassUpdateSaved?: () => void | Promise<void>;
   /** Angular isHideHeaderAndFooter when embedded in Search Mass Update. */
   hideHeader?: boolean;
+  /**
+   * When true with hideHeader: do not render the embedded toolbar strip —
+   * parent (SearchView) hosts gear / Add / Delete / Save next to the view title.
+   */
+  hostToolbarInParent?: boolean;
+  onToolbarApiReady?: (api: FormListEditToolbarApi | null) => void;
 };
 
 type FormListEditProps = {
   embedded?: FormListEditEmbeddedProps | null;
 };
+
+/** Deep-clone ListEdit row data so CollectionView / splice / Object.assign can mutate (search MU DTO may be frozen). */
+function cloneListEditDataDeep<T>(value: T): T {
+  if (value == null) return value;
+  try {
+    return JSON.parse(JSON.stringify(value)) as T;
+  } catch {
+    return value;
+  }
+}
+
+function getCollectionViewSource(cv: any): any[] {
+  const src = cv?.sourceCollection;
+  return Array.isArray(src) ? src : [];
+}
+
+function setCollectionViewSource(cv: any, next: any[]) {
+  if (!cv) return;
+  cv.sourceCollection = next;
+  cv.refresh?.();
+}
 
 /** If API returned a flat unit list with ParentTransactionUnitId, rebuild Children for FlexGridDetail. */
 function ensureTransactionUnitChildrenTree(tx: any): any {
@@ -147,6 +183,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
   const isEmbedded = embedded != null && embedded.embeddedTransactionId != null;
   const hideHeader = Boolean(embedded?.hideHeader);
+  const hostToolbarInParent = Boolean(embedded?.hostToolbarInParent);
 
   const [paramObj, setParamObj] = useState<{ id?: number; param1?: string; param2?: any }>(() => {
     if (isEmbedded && embedded) {
@@ -470,6 +507,42 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     [updateRowFileValue]
   );
 
+  // Parent may pass a new embeddedListEditDataDto object every render (e.g. SearchView spread).
+  // Depend on a stable reload key + ref, otherwise loadData → setState → re-render → infinite API loop.
+  // Also bump when Search re-fetches the same root IDs (discard half-edited local state).
+  const embeddedListDtoRef = useRef(embedded?.embeddedListEditDataDto);
+  embeddedListDtoRef.current = embedded?.embeddedListEditDataDto;
+  const onMassUpdateSavedRef = useRef(embedded?.onMassUpdateSaved);
+  onMassUpdateSavedRef.current = embedded?.onMassUpdateSaved;
+  const showErrorRef = useRef(showError);
+  showErrorRef.current = showError;
+
+  const lastEmbeddedListDtoInstanceRef = useRef<any>(undefined);
+  const embeddedListDtoInstanceSeqRef = useRef(0);
+  if (embedded?.embeddedListEditDataDto !== lastEmbeddedListDtoInstanceRef.current) {
+    lastEmbeddedListDtoInstanceRef.current = embedded?.embeddedListEditDataDto;
+    embeddedListDtoInstanceSeqRef.current += 1;
+  }
+
+  const embeddedMassUpdateReloadKey = useMemo(() => {
+    const dto = embedded?.embeddedListEditDataDto;
+    if (dto == null) return `no-embedded-list|${embeddedListDtoInstanceSeqRef.current}`;
+    const rootIds = Array.isArray(dto.MassUpdateRootIdList) ? dto.MassUpdateRootIdList.join(',') : '';
+    const listLen = Array.isArray(dto.ListData) ? dto.ListData.length : 0;
+    const searchEpoch =
+      dto._clientSearchReloadEpoch ??
+      dto.ClientSearchReloadEpoch ??
+      embeddedListDtoInstanceSeqRef.current;
+    return [
+      dto.MassUpdateViewId ?? '',
+      dto.TransactionId ?? '',
+      listLen,
+      rootIds,
+      dto.IsMassUpdate === true ? '1' : '0',
+      searchEpoch,
+    ].join('|');
+  }, [embedded?.embeddedListEditDataDto]);
+
   const loadData = useCallback(
     async (_isRefresh = false) => {
       if (!transactionId) return;
@@ -477,7 +550,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         dispatch(setIsBusy());
         setDataModel((prev) => ({ ...prev, isLoading: true }));
 
-        const embeddedListDto = embedded?.embeddedListEditDataDto;
+        const embeddedListDto = embeddedListDtoRef.current;
         const [formStructureData, listDataResponseRaw, transactionExDtoRaw] = await Promise.all([
           appTransactionService.getFormStructure(transactionId),
           embeddedListDto != null
@@ -487,8 +560,10 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         ]);
 
         const listDataResponse = listDataResponseRaw ?? {};
-        const listData = listDataResponse?.ListData ?? [];
-        const blankRow = listDataResponse?.EditCloneAppChildDataDto ?? null;
+        // Clone: MassUpdateAppListDataDto from search can be frozen (Immer/shared refs).
+        // Without a mutable copy, Delete splice and in-place dirty flags throw / Save stays disabled.
+        const listData = cloneListEditDataDeep(listDataResponse?.ListData ?? []);
+        const blankRow = cloneListEditDataDeep(listDataResponse?.EditCloneAppChildDataDto ?? null);
         blankRowRef.current = blankRow;
 
         const dictFieldEntityDataMap: Record<string, any> = {};
@@ -505,13 +580,23 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         const cv = new CollectionView(listData);
         cv.sortDescriptions.clear();
 
+        const isMassUpdate =
+          listDataResponse?.IsMassUpdate === true ||
+          embeddedListDto?.IsMassUpdate === true ||
+          Boolean(onMassUpdateSavedRef.current);
+        const massUpdateViewId =
+          listDataResponse?.MassUpdateViewId ??
+          embeddedListDto?.MassUpdateViewId ??
+          null;
+
         const currentFormData = {
-          ...listDataResponse,
+          ...cloneListEditDataDeep(listDataResponse),
           TransactionId: transactionId,
           ListData: listData,
           IsDirty: false,
-          IsMassUpdate: listDataResponse?.IsMassUpdate ?? false,
-          MassUpdateViewId: listDataResponse?.MassUpdateViewId,
+          IsMassUpdate: isMassUpdate,
+          MassUpdateViewId: massUpdateViewId,
+          MassUpdateRootIdList: listDataResponse?.MassUpdateRootIdList ?? embeddedListDto?.MassUpdateRootIdList,
         };
 
         const transactionExDto = ensureTransactionUnitChildrenTree(transactionExDtoRaw);
@@ -533,25 +618,27 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         if (displayName && !isEmbedded) dispatch(updateCurrentTabLabel(displayName));
       } catch (err) {
         appHelper.debugLog('FormListEdit loadData error', err);
-        showError('Failed to load list edit data: ' + (err as Error).message);
+        showErrorRef.current('Failed to load list edit data: ' + (err as Error).message);
         setDataModel((prev) => ({ ...prev, isLoading: false }));
       } finally {
         dispatch(setIsNotBusy());
       }
     },
-    [transactionId, dispatch, showError, embedded?.embeddedListEditDataDto, isEmbedded]
+    [transactionId, dispatch, isEmbedded]
   );
 
   useEffect(() => {
     if (transactionId) loadData();
-  }, [transactionId, loadData]);
+  }, [transactionId, loadData, embeddedMassUpdateReloadKey]);
 
   const addChildNew = useCallback(() => {
     const blankRow = blankRowRef.current;
     const cv = dataModel.listDataSource;
     if (!cv || !dataModel.currentFormData) return;
 
-    const newItem = blankRow ? JSON.parse(JSON.stringify(blankRow)) : { UIId: appHelper.guid(), DictOneToOneFields: {}, DictOneToManyFields: {} };
+    const newItem = blankRow
+      ? cloneListEditDataDeep(blankRow)
+      : { UIId: appHelper.guid(), DictOneToOneFields: {}, DictOneToManyFields: {} };
     newItem.UIId = newItem.UIId || appHelper.guid();
     if (!newItem.DictOneToOneFields) newItem.DictOneToOneFields = {};
     if (newItem.DictOneToOneFields && typeof newItem.DictOneToOneFields === 'object') {
@@ -560,16 +647,20 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     if (newItem.DictOneToManyFields && typeof newItem.DictOneToManyFields === 'object') {
       const copy: Record<string, any[]> = {};
       for (const k of Object.keys(newItem.DictOneToManyFields)) {
-        copy[k] = Array.isArray(newItem.DictOneToManyFields[k]) ? [...newItem.DictOneToManyFields[k]] : [];
+        copy[k] = Array.isArray(newItem.DictOneToManyFields[k])
+          ? newItem.DictOneToManyFields[k].map((r: any) => cloneListEditDataDeep(r))
+          : [];
       }
       newItem.DictOneToManyFields = copy;
     }
-    (cv as any).sourceCollection.push(newItem);
-    cv.refresh();
+    const next = [...getCollectionViewSource(cv), newItem];
+    setCollectionViewSource(cv, next);
 
     setDataModel((prev) => ({
       ...prev,
-      currentFormData: prev.currentFormData ? { ...prev.currentFormData, IsDirty: true, ListData: (cv as any).sourceCollection ?? prev.currentFormData.ListData } : prev.currentFormData,
+      currentFormData: prev.currentFormData
+        ? { ...prev.currentFormData, IsDirty: true, ListData: next }
+        : prev.currentFormData,
     }));
   }, [dataModel.listDataSource, dataModel.currentFormData]);
 
@@ -585,13 +676,25 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     const dataItem = row?.dataItem;
     if (!dataItem) return;
 
-    const src = (cv as any).sourceCollection;
-    if (Array.isArray(src)) src.splice(rowIndex, 1);
-    cv.refresh();
+    // Prefer CollectionView dataIndex (expanded detail rows shift visual row index).
+    const dataIndex =
+      typeof row?.dataIndex === 'number' && row.dataIndex >= 0 ? Number(row.dataIndex) : -1;
+    const src = getCollectionViewSource(cv);
+    let removeAt = dataIndex;
+    if (removeAt < 0 || removeAt >= src.length) {
+      removeAt = src.indexOf(dataItem);
+    }
+    if (removeAt < 0) return;
+
+    const next = src.slice();
+    next.splice(removeAt, 1);
+    setCollectionViewSource(cv, next);
 
     setDataModel((prev) => ({
       ...prev,
-      currentFormData: prev.currentFormData ? { ...prev.currentFormData, IsDirty: true, ListData: (cv as any).sourceCollection ?? prev.currentFormData.ListData } : prev.currentFormData,
+      currentFormData: prev.currentFormData
+        ? { ...prev.currentFormData, IsDirty: true, ListData: next }
+        : prev.currentFormData,
       errorMessages: { error: [], warning: [], message: [] },
     }));
   }, [dataModel.listDataSource, dataModel.currentFormData]);
@@ -603,16 +706,25 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     try {
       dispatch(setIsBusy());
       const cv = dataModel.listDataSource;
+      const listData = cv ? getCollectionViewSource(cv) : formData.ListData ?? [];
       const payload = {
         ...formData,
-        ListData: cv ? (cv as any).sourceCollection : formData.ListData,
+        ListData: listData,
+        IsDirty: true,
+        IsMassUpdate: formData.IsMassUpdate === true,
+        MassUpdateViewId: formData.MassUpdateViewId,
       };
 
       let result: any;
-      if (formData.IsMassUpdate) {
+      if (payload.IsMassUpdate) {
+        const searchViewId = payload.MassUpdateViewId ?? embedded?.embeddedListEditDataDto?.MassUpdateViewId;
+        if (searchViewId == null || Number(searchViewId) <= 0) {
+          showError('Mass Update View Id is missing — cannot save.');
+          return;
+        }
         // Angular formListEditCtrl: SaveMassUpdateResult + IsListEditSimpleMassUpdate
         result = await searchSvc.saveMassUpdateResult({
-          SearchViewId: formData.MassUpdateViewId,
+          SearchViewId: Number(searchViewId),
           IsListEditSimpleMassUpdate: true,
           MassUpdateAppListDataDto: payload,
         });
@@ -631,15 +743,14 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
       }
 
       const savedObject = result?.Object;
-      if (savedObject && !formData.IsMassUpdate) {
-        const listData = savedObject?.ListData ?? payload.ListData;
-        if (cv && Array.isArray(listData)) {
-          (cv as any).sourceCollection = listData;
-          cv.refresh();
+      if (savedObject && !payload.IsMassUpdate) {
+        const savedList = cloneListEditDataDeep(savedObject?.ListData ?? payload.ListData);
+        if (cv && Array.isArray(savedList)) {
+          setCollectionViewSource(cv, savedList);
         }
         setDataModel((prev) => ({
           ...prev,
-          currentFormData: { ...prev.currentFormData, ...savedObject, ListData: listData, IsDirty: false },
+          currentFormData: { ...prev.currentFormData, ...savedObject, ListData: savedList, IsDirty: false },
           errorMessages: { error: [], warning: [], message: [] },
         }));
       } else {
@@ -657,7 +768,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         setDataModel((prev) => ({ ...prev, errorMessages: errMsg }));
       }
 
-      if (formData.IsMassUpdate && embedded?.onMassUpdateSaved) {
+      if (payload.IsMassUpdate && embedded?.onMassUpdateSaved) {
         await embedded.onMassUpdateSaved();
       }
     } catch (err) {
@@ -670,9 +781,10 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     dataModel.currentFormData,
     dataModel.listDataSource,
     dispatch,
-    showError,
+    embedded?.embeddedListEditDataDto?.MassUpdateViewId,
+    embedded?.onMassUpdateSaved,
     getErrorMessage,
-    embedded,
+    showError,
   ]);
 
   const rootUnit =
@@ -747,6 +859,45 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
   const fields = hasUnitFieldDefinitions ? fieldsFromUnit : fieldsFromStructure;
 
   const isReadOnly = rootUnit?.IsReadOnly === true;
+
+  const addChildNewRef = useRef(addChildNew);
+  addChildNewRef.current = addChildNew;
+  const deleteChildRef = useRef(deleteChild);
+  deleteChildRef.current = deleteChild;
+  const saveFormDataRef = useRef(saveFormData);
+  saveFormDataRef.current = saveFormData;
+
+  useEffect(() => {
+    const onReady = embedded?.onToolbarApiReady;
+    if (!onReady) return;
+    if (!(hideHeader && hostToolbarInParent)) {
+      onReady(null);
+      return;
+    }
+    onReady({
+      addRow: () => addChildNewRef.current(),
+      deleteRow: () => deleteChildRef.current(),
+      save: () => saveFormDataRef.current(),
+      flexGridRef,
+      isDirty: Boolean(dataModel.currentFormData?.IsDirty),
+      isReadOnly,
+    });
+  }, [
+    embedded?.onToolbarApiReady,
+    hideHeader,
+    hostToolbarInParent,
+    dataModel.currentFormData?.IsDirty,
+    isReadOnly,
+    dataModel.listDataSource,
+  ]);
+
+  useEffect(() => {
+    const onReady = embedded?.onToolbarApiReady;
+    return () => {
+      onReady?.(null);
+    };
+  }, [embedded?.onToolbarApiReady]);
+
   const normalizeBool = (v: any): boolean =>
     v === true || v === 1 || String(v).toLowerCase() === 'true';
   // List Edit runs in edit mode (add/edit rows + Save).
@@ -1169,29 +1320,30 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
       if (!updatedRow) return;
 
       const dm = dataModelRef.current;
-      const src = (dm?.listDataSource as any)?.sourceCollection as any[] | undefined;
+      const cv = dm?.listDataSource;
+      const src = getCollectionViewSource(cv);
       const host =
-        Array.isArray(src) && parentDataIndex >= 0 && parentDataIndex < src.length
-          ? src[parentDataIndex]
-          : rowItemRef;
+        parentDataIndex >= 0 && parentDataIndex < src.length ? src[parentDataIndex] : rowItemRef;
       if (!host) return;
-      Object.assign(host, updatedRow);
 
-      setDataModel((prev) => {
-        const sourceCollection = prev.listDataSource?.sourceCollection;
-        if (Array.isArray(sourceCollection) && parentDataIndex >= 0 && parentDataIndex < sourceCollection.length) {
-          sourceCollection[parentDataIndex] = host;
-        }
-        return {
-          ...prev,
-          currentFormData: {
-            ...prev.currentFormData,
-            IsDirty: true,
-            DictDocumentIdFileCode:
-              updatedRow?.DictDocumentIdFileCode ?? prev.currentFormData?.DictDocumentIdFileCode ?? {},
-          },
-        };
-      });
+      // Prefer immutable replace — sourceCollection may still be frozen from old loads.
+      const mergedHost = { ...host, ...updatedRow, IsDirty: true };
+      const next =
+        parentDataIndex >= 0 && parentDataIndex < src.length
+          ? src.map((r, i) => (i === parentDataIndex ? mergedHost : r))
+          : src;
+      if (cv) setCollectionViewSource(cv, next);
+
+      setDataModel((prev) => ({
+        ...prev,
+        currentFormData: {
+          ...prev.currentFormData,
+          IsDirty: true,
+          ListData: next,
+          DictDocumentIdFileCode:
+            updatedRow?.DictDocumentIdFileCode ?? prev.currentFormData?.DictDocumentIdFileCode ?? {},
+        },
+      }));
 
       if (!grandChildPopupOpenRef.current) {
         reopenExpandedRowDetail(parentDataIndex);
@@ -1326,6 +1478,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
   return (
     <div className={`w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden ${theme.default}`}>
       {hideHeader ? (
+        hostToolbarInParent ? null : (
         <div className={`flex items-center justify-end gap-2 px-2 py-1 shrink-0 ${theme.mainContentSection}`}>
           <FlexGridAddOn gridRef={flexGridRef} title="Freeze / Show / Hide columns" />
           {!isReadOnly && (
@@ -1358,6 +1511,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
             </>
           )}
         </div>
+        )
       ) : (
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>
@@ -1488,7 +1642,11 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
                 const row = s.rows[e.row];
                 const item = row?.dataItem;
                 if (item) {
-                  item.IsDirty = true;
+                  try {
+                    item.IsDirty = true;
+                  } catch {
+                    // row may be frozen — markChange covers form dirty flag
+                  }
                   markChange();
                 }
               }}
