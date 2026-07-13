@@ -85,6 +85,7 @@ pdmMassUpdateView
 | Field SubItem / GridColumn | `AppSearchViewField.MassUpdateTransactionFieldId` → Transaction field (Mode A) or ListEdit unit fields (Mode B create) |
 | MainTab / update table | `UpdateTransctionId` + `UpdateBaseTranscationUnitId` |
 | Default Mass Update | Document / set Search’s default Mass Update view when supported |
+| Result-row Open / Create | Copy `AppFormLinkTarget` from default display View onto the MU View (or explicit `linkTargets`) — same as Sibling |
 
 Runtime type is **derived** from Transaction (`MasterDetail` → SingleTable; `List` → Hierarchical) — see `AppSearchViewConfigBL` / `EmAppMassUpdateViewType`.
 
@@ -298,6 +299,9 @@ Blueprint contents (minimum) — schema reference: [`source/9_PlmSearch_MassUpda
 - Each field: display, `sysTableFiledPath`, controlType, `isVisible`, `sort`, and when updatable:  
   `massUpdateTransactionFieldId` **or** resolvable `massUpdateTransactionFieldIntegrationId` / `databaseFieldName` on the Unit  
 - **Must include PK** field with mass-update mapping  
+- `linkTargets` (optional; **default copy from default display View**):
+  - `copyFromDefaultSearchView`: **true** (default) — copy `AppFormLinkTarget` from Search’s default View (same as Sibling), so MU result rows can Open the product editor
+  - or `copyFromDefaultSearchView: false` + `items[]` for explicit links
 - `coverage` summary counts  
 
 **Do not** rewrite Search criteria. **Do not** create a second Search. **Do not** change display default View.
@@ -316,7 +320,8 @@ Execute must:
 2. Create `AppSearchView` with `IsMassUpdateView=true`, `UpdateTransctionId`, `UpdateBaseTranscationUnitId`, allow flags.  
 3. Create `AppSearchViewField` rows; set `MassUpdateTransactionFieldId` for updatable columns (incl. PK).  
 4. Leave `AppSearch.SearchViewId` (display) unchanged.  
-5. If `setAsDefaultMassUpdateView` — note in execute messages (manual assign may still be needed).
+5. **Copy / configure LinkTargets** on the Mass Update View (default: from default display View) so result-row Open works.  
+6. If `setAsDefaultMassUpdateView` — note in execute messages (manual assign may still be needed).
 
 ### Option B — HierarchicalListEdit
 

@@ -11,6 +11,7 @@ import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import {
   buildEmbeddedFormParam2,
   buildLinkedSearchCriteriaDict,
+  buildLinkTargetsFromBusinessTemplateGroup,
   buildTemplateItemLists,
   EmAppLinkTargetActionType,
   EmAppTemplateHeaderVisibility,
@@ -20,9 +21,11 @@ import {
   cacheFormGroupSession,
   repairFormGroupSession,
   resolveFormGroupSession,
+  viewHasTemplateTypedFormGroupItems,
   type TransactionFormGroupSessionData,
 } from '../../utils/transactionFormGroupHelper';
 import { adaptLinkTargetForFolderNavigationCreate } from '../../utils/folderNavigationHelper';
+import { appTransactionService } from '../../webapi/apptransactionsvc';
 
 type NavigationObj = {
   currentIndex: number;
@@ -84,13 +87,18 @@ const TransactionFormGroup: React.FC = () => {
   const sessionKey = param2Obj.formGroupSessionKey || paramObj.id || '';
   const [sessionData, setSessionData] = useState<TransactionFormGroupSessionData | null>(null);
   const [sessionResolved, setSessionResolved] = useState(false);
+  const [businessTemplateReady, setBusinessTemplateReady] = useState(false);
   const initializedRef = useRef(false);
+  const businessTemplateExpandAttemptedRef = useRef(false);
 
   useEffect(() => {
     initializedRef.current = false;
+    businessTemplateExpandAttemptedRef.current = false;
+    setBusinessTemplateReady(false);
     if (!sessionKey) {
       setSessionData(null);
       setSessionResolved(true);
+      setBusinessTemplateReady(true);
       return;
     }
 
@@ -113,10 +121,74 @@ const TransactionFormGroup: React.FC = () => {
     setSessionResolved(true);
   }, [dispatch, param2Obj, sessionKey]);
 
+  // When Open carries LinkTargetTransactionGroupId (Business Template), expand group items into MainItems.
+  useEffect(() => {
+    let cancelled = false;
+
+    const expandBusinessTemplate = async () => {
+      if (!sessionResolved) return;
+      if (!sessionData?.linkTargetDto) {
+        setBusinessTemplateReady(true);
+        return;
+      }
+
+      const groupId = sessionData.linkTargetDto.LinkTargetTransactionGroupId;
+      if (
+        !groupId ||
+        viewHasTemplateTypedFormGroupItems(sessionData.viewDto) ||
+        businessTemplateExpandAttemptedRef.current
+      ) {
+        setBusinessTemplateReady(true);
+        return;
+      }
+
+      businessTemplateExpandAttemptedRef.current = true;
+
+      try {
+        const groupDto = await appTransactionService.retrieveOneAppBusinessTemplateGroupExDto(groupId);
+        if (cancelled) return;
+        const synthetic = buildLinkTargetsFromBusinessTemplateGroup(groupDto, sessionData.linkTargetDto);
+        if (synthetic.length === 0) {
+          setBusinessTemplateReady(true);
+          return;
+        }
+
+        const preferred =
+          synthetic.find(
+            (lt: any) =>
+              sessionData.linkTargetDto?.LinkTargetTransactionId != null &&
+              Number(lt.LinkTargetTransactionId) === Number(sessionData.linkTargetDto.LinkTargetTransactionId),
+          ) || synthetic[0];
+
+        const next: TransactionFormGroupSessionData = {
+          ...sessionData,
+          viewDto: {
+            ...sessionData.viewDto,
+            AppFormLinkTargetList: synthetic,
+            FormGroupLinkTargetList: synthetic,
+          },
+          linkTargetDto: preferred,
+        };
+        cacheFormGroupSession(dispatch, sessionKey, next);
+        setSessionData(next);
+      } catch (err) {
+        console.error('Failed to expand business template group', err);
+        showError('Failed to load transaction form group: ' + (err as Error).message);
+      } finally {
+        if (!cancelled) setBusinessTemplateReady(true);
+      }
+    };
+
+    expandBusinessTemplate();
+    return () => {
+      cancelled = true;
+    };
+  }, [dispatch, sessionData, sessionKey, sessionResolved, showError]);
+
   const { linkTargetList, templateHeaderList } = useMemo(() => {
-    if (!sessionData) return { linkTargetList: [], templateHeaderList: [] };
+    if (!sessionData || !businessTemplateReady) return { linkTargetList: [], templateHeaderList: [] };
     return buildTemplateItemLists(sessionData.viewDto, sessionData.linkTargetDto);
-  }, [sessionData]);
+  }, [businessTemplateReady, sessionData]);
 
   const [selectedLinkTarget, setSelectedLinkTarget] = useState<any>(null);
   const [selecedDataRow, setSelecedDataRow] = useState<any>(null);
@@ -372,7 +444,8 @@ const TransactionFormGroup: React.FC = () => {
   );
 
   useEffect(() => {
-    if (!sessionData || initializedRef.current) return;
+    if (!sessionData || !businessTemplateReady || initializedRef.current) return;
+    if (!linkTargetList.length && !isCreateLikeLinkTarget(sessionData.linkTargetDto)) return;
     initializedRef.current = true;
     if (isCreateLikeLinkTarget(sessionData.linkTargetDto)) {
       loadFormGroupCreateLayout(sessionData.selecedDataRow);
@@ -383,7 +456,7 @@ const TransactionFormGroup: React.FC = () => {
       sessionData.linkTargetDto ||
       linkTargetList[0];
     loadTemplateItem(initial, sessionData.selecedDataRow);
-  }, [sessionData, linkTargetList, loadFormGroupCreateLayout, loadTemplateItem]);
+  }, [businessTemplateReady, sessionData, linkTargetList, loadFormGroupCreateLayout, loadTemplateItem]);
 
   const loadFromByNavigation = useCallback(
     (direction: 'First' | 'Prev' | 'Next' | 'Last') => {
@@ -408,7 +481,7 @@ const TransactionFormGroup: React.FC = () => {
     })),
   [headerForms]);
 
-  if (!sessionResolved) {
+  if (!sessionResolved || !businessTemplateReady) {
     return (
       <div className={`w-full h-full flex items-center justify-center ${theme.default}`}>
         <div className={`text-sm ${theme.label}`}>Loading form group...</div>

@@ -575,8 +575,15 @@ namespace APP.BL.DataMigration.PlmMigration
             int sourceViewColumnId,
             string targetColumn,
             int sort,
-            int? linkTargetTransactionGroupId)
+            int? linkTargetTransactionGroupId,
+            int? linkTargetUsageType = null)
         {
+            // Group id ⇒ Business Template / Form Group (UsageType 2); otherwise Link To Form (1).
+            int usageType = linkTargetUsageType
+                ?? (linkTargetTransactionGroupId.HasValue && linkTargetTransactionGroupId.Value > 0
+                    ? (int)EmAppLinkTargetUsageType.SearchViewLinkToFormGroup
+                    : (int)EmAppLinkTargetUsageType.SearchViewLinkToForm);
+
             using (var cmd = tenantConn.CreateCommand())
             {
                 cmd.CommandText = @"
@@ -613,7 +620,7 @@ VALUES (
                 cmd.Parameters.AddWithValue("@ActionType", actionType);
                 cmd.Parameters.AddWithValue("@LinkTargetTransactionId", linkTargetTransactionId);
                 cmd.Parameters.AddWithValue("@LinkTargetTransactionGroupId", (object)linkTargetTransactionGroupId ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("@LinkTargetUsageType", (int)EmAppLinkTargetUsageType.SearchViewLinkToForm);
+                cmd.Parameters.AddWithValue("@LinkTargetUsageType", usageType);
                 cmd.Parameters.AddWithValue("@SourceColumnType", (int)EmAppLinkTargetSourceColumnType.SearchViewField);
                 cmd.Parameters.AddWithValue("@SourceViewColumnId1", sourceViewColumnId);
                 cmd.Parameters.AddWithValue("@TargetColumn1", targetColumn);

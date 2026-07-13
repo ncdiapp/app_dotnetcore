@@ -308,14 +308,24 @@ export function buildTemplateItemLists(viewDto: any, clickedLinkTarget: any): {
   let linkTargetList: any[] = [];
   let templateHeaderList: any[] = [];
 
-  if (clickedLinkTarget?.OtherSettingsDto?.TemplateItemType) {
-    const formGroupList = getFormGroupLinkTargetList(viewDto);
+  const formGroupList = getFormGroupLinkTargetList(viewDto);
+  const hasTemplateTypedItems = formGroupList.some(
+    (lt: any) => lt?.OtherSettingsDto?.TemplateItemType != null,
+  );
+  // Data-model template OR Business Template expansion (synthetic MainItems on viewDto).
+  const useTemplateLayout =
+    Boolean(clickedLinkTarget?.OtherSettingsDto?.TemplateItemType) || hasTemplateTypedItems;
+
+  if (useTemplateLayout) {
     formGroupList.forEach((lt: any) => {
       const display = lt.NavigationActionName || '';
       const item = { ...lt, display };
       if (lt.OtherSettingsDto?.TemplateItemType === EmAppTransactionTemplateItemType.TemplateHeader) {
         templateHeaderList.push({ ...item, isTemplateHeader: true });
       } else if (lt.OtherSettingsDto?.TemplateItemType === EmAppTransactionTemplateItemType.MainItem) {
+        linkTargetList.push(item);
+      } else if (lt.OtherSettingsDto?.TemplateItemType == null && isFormGroupCandidateLinkTarget(lt)) {
+        // Untyped Edit/Preview still participate when mixed with typed items
         linkTargetList.push(item);
       }
     });
@@ -345,6 +355,73 @@ export function buildTemplateItemLists(viewDto: any, clickedLinkTarget: any): {
   }
 
   return { linkTargetList, templateHeaderList };
+}
+
+/**
+ * Expand AppTransactionGroup (Business Template) into MainItem link targets so
+ * TransactionFormGroup shows left-nav of all group transactions (same PK as seed Open link).
+ */
+export function buildLinkTargetsFromBusinessTemplateGroup(
+  groupDto: any,
+  seedLinkTarget: any,
+): any[] {
+  if (!seedLinkTarget || !groupDto) return [];
+  const items = Array.isArray(groupDto.AppTransactionGroupItemList)
+    ? [...groupDto.AppTransactionGroupItemList]
+    : [];
+  if (items.length === 0) return [];
+
+  items.sort(
+    (a: any, b: any) =>
+      (a.TransactionLayoutOrder ?? a.Sort ?? 0) - (b.TransactionLayoutOrder ?? b.Sort ?? 0),
+  );
+
+  const groupId = groupDto.Id ?? groupDto.TransactionGroupId ?? seedLinkTarget.LinkTargetTransactionGroupId;
+  const seedId = seedLinkTarget.Id != null ? Number(seedLinkTarget.Id) : 0;
+
+  return items
+    .map((item: any, idx: number) => {
+      const txItem = item.ForeignAppTransactionItemExDto || item.ForeignAppTransactionItem || {};
+      const transactionId =
+        txItem.TransactionId != null
+          ? Number(txItem.TransactionId)
+          : item.TransId != null
+            ? Number(item.TransId)
+            : null;
+      if (transactionId == null || Number.isNaN(transactionId)) return null;
+
+      const name =
+        txItem.TransactionItemName ||
+        txItem.Display ||
+        txItem.TransactionName ||
+        `Transaction ${transactionId}`;
+
+      return {
+        ...seedLinkTarget,
+        // Keep seed Id on the matching primary transaction so findLinkTargetInList still works.
+        Id:
+          seedLinkTarget.LinkTargetTransactionId != null &&
+          Number(seedLinkTarget.LinkTargetTransactionId) === transactionId
+            ? seedLinkTarget.Id
+            : seedId > 0
+              ? seedId * 100000 + idx + 1
+              : -(idx + 1),
+        LinkTargetTransactionId: transactionId,
+        LinkTargetTransactionGroupId: groupId,
+        NavigationActionName: name,
+        Sort: item.TransactionLayoutOrder ?? idx + 1,
+        OtherSettingsDto: {
+          ...(seedLinkTarget.OtherSettingsDto || {}),
+          TemplateItemType: EmAppTransactionTemplateItemType.MainItem,
+        },
+      };
+    })
+    .filter(Boolean);
+}
+
+export function viewHasTemplateTypedFormGroupItems(viewDto: any): boolean {
+  const list = getFormGroupLinkTargetList(viewDto);
+  return list.some((lt: any) => lt?.OtherSettingsDto?.TemplateItemType != null);
 }
 
 export function findLinkTargetInList(dto: any, list: any[]): any | null {

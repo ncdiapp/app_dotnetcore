@@ -187,6 +187,17 @@ class AppTransactionService {
     return response.json();
   }
 
+  /** Real AppTransactionGroup (Business Template) with items — for Search LinkTargetTransactionGroupId. */
+  async retrieveOneAppBusinessTemplateGroupExDto(groupId: number | string | null): Promise<any> {
+    if (groupId == null || groupId === '') return null;
+    const response = await fetch(
+      `${endpoints.BASE_URL}/webapi/AppTransaction/RetrieveOneAppBusinessTemplateGroupExDto?groupId=${groupId}`,
+      { headers: getHeaders() },
+    );
+    if (!response.ok) throw new Error('Failed to retrieve business template group');
+    return response.json();
+  }
+
   async saveAppTransactionGroupExDto(data: any): Promise<any> {
     const response = await fetch(`${endpoints.BASE_URL}/webapi/AppTransaction/SaveAppTransactionGroupExDto`, {
       method: 'POST',

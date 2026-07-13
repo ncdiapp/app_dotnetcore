@@ -94,6 +94,11 @@
       }
     ]
   },
+  "linkTargets": {
+    "copyFromDefaultSearchView": true,
+    "_comment": "Default true — copy Open/Create from Search default display View so MU result rows can open product editor. Set false + items[] for explicit links.",
+    "items": []
+  },
   "coverage": {
     "mappedToTxnField": 2,
     "coveredInDataSet": 3,

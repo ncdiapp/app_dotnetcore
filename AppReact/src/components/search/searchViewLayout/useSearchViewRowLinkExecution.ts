@@ -143,7 +143,15 @@ export function useSearchViewRowLinkExecution(viewDto: any, viewDataList: any[] 
         const paramObj: any = { preserveLinkTabTitle: true };
         if (linkTarget.LinkTargetTransactionId) paramObj.id = linkTarget.LinkTargetTransactionId;
         if (paramId) paramObj.param1 = paramId;
-        if (param1) paramObj.param2 = param1;
+        const param2Payload: Record<string, unknown> = {};
+        if (linkTarget.LinkTargetTransactionGroupId) {
+          param2Payload.transGroupId = linkTarget.LinkTargetTransactionGroupId;
+          param2Payload.LinkTargetTransactionGroupId = linkTarget.LinkTargetTransactionGroupId;
+        }
+        if (param1) param2Payload.legacyParam1 = param1;
+        if (Object.keys(param2Payload).length > 0) {
+          paramObj.param2 = param2Payload;
+        }
         addTabAndNavigate("FormMasterDetail", tabTitle, paramObj);
       }
     },

@@ -1649,6 +1649,18 @@ public class AppTransactionController : SecureBaseController
         return null;
     }
 
+    /// <summary>
+    /// Real AppTransactionGroup (Business Template group) with items — not DataModelTemplate Search.
+    /// Used when Search View LinkTarget.LinkTargetTransactionGroupId opens a form group.
+    /// </summary>
+    [HttpGet]
+    public AppTransactionGroupExDto RetrieveOneAppBusinessTemplateGroupExDto(int? groupId)
+    {
+        if (!groupId.HasValue)
+            return null;
+        return AppTransactionGroupBL.RetrieveOneAppTransactionGroupExDto(groupId.Value);
+    }
+
 
     [HttpPost]
     public OperationCallResult<AppTransactionGroupExDto> SaveAppTransactionGroupExDto(AppTransactionGroupExDto aAppTransactionGroupExDto)

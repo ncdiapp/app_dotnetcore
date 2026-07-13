@@ -407,6 +407,31 @@ namespace APP.BL.DataMigration.PlmMigration
                     Detail =
                         $"IsMassUpdateView=true, AppMode={blueprint.MassUpdate?.AppMode}, fields={blueprint.SearchView?.Fields?.Count ?? 0}; default display View #{defaultViewId} kept"
                 });
+
+                bool copyLinks = blueprint.LinkTargets?.CopyFromDefaultSearchView != false;
+                if (copyLinks)
+                {
+                    items.Add(new PlmSearchImportPreviewItemDto
+                    {
+                        ObjectType = "LinkTarget",
+                        Name = "Copy from default SearchView",
+                        Action = SearchImportActionInsert,
+                        ExistingId = defaultViewId,
+                        Detail = defaultViewId.HasValue
+                            ? $"Copy AppFormLinkTarget rows from default View #{defaultViewId}"
+                            : "Default View not found — no links will be copied"
+                    });
+                }
+                else if (blueprint.LinkTargets?.Items != null && blueprint.LinkTargets.Items.Count > 0)
+                {
+                    items.Add(new PlmSearchImportPreviewItemDto
+                    {
+                        ObjectType = "LinkTarget",
+                        Name = "Explicit link targets",
+                        Action = SearchImportActionInsert,
+                        Detail = $"{blueprint.LinkTargets.Items.Count} explicit link(s)"
+                    });
+                }
             }
 
             return items;
@@ -514,6 +539,49 @@ namespace APP.BL.DataMigration.PlmMigration
 
                 if (defaultViewId.HasValue)
                     EnsureSearchDefaultView(conn, searchId, defaultViewId.Value, dataSetId);
+
+                // Row Open/Create actions: same as Sibling — copy from default display View by default.
+                ClearSearchViewFormLinkTargets(conn, muViewId);
+                bool copyLinks = blueprint.LinkTargets?.CopyFromDefaultSearchView != false;
+                if (copyLinks && defaultViewId.HasValue)
+                {
+                    int copied = CopyFormLinkTargetsBetweenSearchViews(conn, defaultViewId.Value, muViewId);
+                    executeResult.Messages.Add($"Copied {copied} link target(s) from default View #{defaultViewId}.");
+                }
+                else if (blueprint.LinkTargets?.Items != null && blueprint.LinkTargets.Items.Count > 0)
+                {
+                    string rootColumn = blueprint.SearchView.Fields?
+                        .FirstOrDefault(f => f.IsTransRootId)?.SysTableFiledPath
+                        ?? blueprint.MassUpdate?.PkDatabaseFieldName
+                        ?? "ReferenceId";
+                    int? rootFieldId = GetSearchViewFieldId(conn, null, muViewId, rootColumn);
+                    if (!rootFieldId.HasValue)
+                        throw new InvalidOperationException($"Mass Update view is missing root column '{rootColumn}'.");
+
+                    foreach (var link in blueprint.LinkTargets.Items)
+                    {
+                        int? transactionId = GetTransactionIdByIntegrationId(conn, null, link.TransactionIntegrationId);
+                        if (!transactionId.HasValue)
+                            throw new InvalidOperationException($"Transaction '{link.TransactionIntegrationId}' not found.");
+
+                        InsertSearchFormLinkTarget(
+                            conn,
+                            muViewId,
+                            link.Name,
+                            ResolveLinkTargetActionType(link.ActionType),
+                            transactionId.Value,
+                            rootFieldId.Value,
+                            link.SourceColumn ?? rootColumn,
+                            link.Sort ?? 1,
+                            link.LinkTargetTransactionGroupId);
+                    }
+                    executeResult.Messages.Add($"Configured {blueprint.LinkTargets.Items.Count} explicit link target(s).");
+                }
+                else
+                {
+                    executeResult.Messages.Add(
+                        "No link targets configured (default View missing or copy disabled with empty Items).");
+                }
 
                 if (blueprint.MassUpdate?.SetAsDefaultMassUpdateView == true)
                 {

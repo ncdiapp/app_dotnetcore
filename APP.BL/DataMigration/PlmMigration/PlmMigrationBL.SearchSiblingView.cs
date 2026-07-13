@@ -659,7 +659,7 @@ WHERE SearchID = @SearchId";
             int sourceSearchViewId,
             int targetSearchViewId)
         {
-            var rows = new List<(string Name, int ActionType, int TxId, int? GroupId, string TargetCol, int Sort, int SourceFieldId)>();
+            var rows = new List<(string Name, int ActionType, int TxId, int? GroupId, int? UsageType, string TargetCol, int Sort, int SourceFieldId)>();
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText = @"
@@ -668,6 +668,7 @@ SELECT
     ActionType,
     LinkTargetTransactionID,
     LinkTargetTransactionGroupID,
+    LinkTargetUsageType,
     TargetColumn1,
     Sort,
     SourceViewColumnID1
@@ -686,6 +687,9 @@ ORDER BY Sort, LinkTargetID";
                             reader["LinkTargetTransactionGroupID"] == DBNull.Value
                                 ? (int?)null
                                 : Convert.ToInt32(reader["LinkTargetTransactionGroupID"]),
+                            reader["LinkTargetUsageType"] == DBNull.Value
+                                ? (int?)null
+                                : Convert.ToInt32(reader["LinkTargetUsageType"]),
                             reader["TargetColumn1"]?.ToString() ?? "ReferenceId",
                             reader["Sort"] == DBNull.Value ? 1 : Convert.ToInt32(reader["Sort"]),
                             reader["SourceViewColumnID1"] == DBNull.Value
@@ -716,6 +720,14 @@ ORDER BY Sort, LinkTargetID";
                 if (!targetFieldId.HasValue)
                     continue;
 
+                // Prefer source UsageType; if missing but group is set, InsertSearchFormLinkTarget derives FormGroup (2).
+                int? usageType = row.UsageType;
+                if ((!usageType.HasValue || usageType.Value == (int)EmAppLinkTargetUsageType.SearchViewLinkToForm)
+                    && row.GroupId.HasValue && row.GroupId.Value > 0)
+                {
+                    usageType = (int)EmAppLinkTargetUsageType.SearchViewLinkToFormGroup;
+                }
+
                 InsertSearchFormLinkTarget(
                     conn,
                     targetSearchViewId,
@@ -725,7 +737,8 @@ ORDER BY Sort, LinkTargetID";
                     targetFieldId.Value,
                     row.TargetCol,
                     row.Sort,
-                    row.GroupId);
+                    row.GroupId,
+                    usageType);
                 copied++;
             }
 

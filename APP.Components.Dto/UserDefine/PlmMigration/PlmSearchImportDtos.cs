@@ -669,6 +669,13 @@ namespace APP.Components.EntityDto
         [DataMember]
         public PlmSearchImportSearchViewDto SearchView { get; set; }
 
+        /// <summary>
+        /// Default: copy Open/Create/… link targets from the Search default display View
+        /// (same pattern as Sibling View). Set CopyFromDefaultSearchView=false and Items for explicit links.
+        /// </summary>
+        [DataMember]
+        public PlmSearchSiblingViewLinkTargetsDto LinkTargets { get; set; }
+
         [DataMember]
         public PlmSearchMassUpdateViewCoverageDto Coverage { get; set; }
     }
