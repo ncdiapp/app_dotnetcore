@@ -30,7 +30,20 @@ namespace APP.BL.DataMigration.PlmMigration
                 if (request == null || string.IsNullOrWhiteSpace(request.BlueprintJson))
                     throw new ArgumentException("BlueprintJson is required.");
 
-                var blueprint = JsonConvert.DeserializeObject<PlmSearchMassUpdateViewBlueprintDto>(request.BlueprintJson);
+                var blueprint = JsonConvert.DeserializeObject<PlmSearchMassUpdateViewBlueprintDto>(
+                    request.BlueprintJson,
+                    new JsonSerializerSettings
+                    {
+                        ContractResolver = new Newtonsoft.Json.Serialization.CamelCasePropertyNamesContractResolver(),
+                        MissingMemberHandling = MissingMemberHandling.Ignore
+                    });
+                // Also accept PascalCase blueprints (re-uploaded API payloads).
+                if (blueprint?.Target == null
+                    || (string.IsNullOrWhiteSpace(blueprint.Target.AppSearchIntegrationId)
+                        && !(blueprint.Target.AppSearchId > 0)))
+                {
+                    blueprint = JsonConvert.DeserializeObject<PlmSearchMassUpdateViewBlueprintDto>(request.BlueprintJson);
+                }
                 if (blueprint == null)
                     throw new InvalidOperationException("Mass Update view blueprint JSON could not be deserialized.");
 
@@ -60,6 +73,7 @@ namespace APP.BL.DataMigration.PlmMigration
             try
             {
                 RequirePlmMigrationAdmin();
+                EnsurePlmImportSchema();
                 string tenantConn = GetTenantConnectionString();
                 ValidateSearchMassUpdateViewBlueprintInternal(blueprint, tenantConn, result.Object);
                 result.Object.IsValid = result.Object.Errors.Count == 0;
@@ -88,6 +102,7 @@ namespace APP.BL.DataMigration.PlmMigration
                 if (blueprint == null)
                     throw new ArgumentException("Blueprint is required.");
 
+                EnsurePlmImportSchema();
                 string tenantConn = GetTenantConnectionString();
                 result.Object.Items = BuildSearchMassUpdateViewPreviewItems(blueprint, tenantConn);
             }
@@ -115,6 +130,7 @@ namespace APP.BL.DataMigration.PlmMigration
                 if (request?.Blueprint == null)
                     throw new ArgumentException("Blueprint is required.");
 
+                EnsurePlmImportSchema();
                 string tenantConn = GetTenantConnectionString();
                 var validation = new PlmSearchImportValidationDto();
                 ValidateSearchMassUpdateViewBlueprintInternal(request.Blueprint, tenantConn, validation);
@@ -226,17 +242,22 @@ namespace APP.BL.DataMigration.PlmMigration
             using (var conn = new SqlConnection(tenantConn))
             {
                 conn.Open();
-                int? searchId = ResolveMassUpdateTargetSearchId(conn, blueprint.Target);
+                int? searchId = ResolveMassUpdateTargetSearchId(conn, blueprint.Target, blueprint.Source?.PlmSearchName);
                 if (!searchId.HasValue)
                 {
                     validation.Errors.Add(
-                        $"APP Search not found for IntegrationId '{blueprint.Target?.AppSearchIntegrationId}' / Id '{blueprint.Target?.AppSearchId}'. Run main Search Import first.");
+                        $"APP Search not found for IntegrationId '{blueprint.Target?.AppSearchIntegrationId}' / Id '{blueprint.Target?.AppSearchId}' / Name '{blueprint.Source?.PlmSearchName}'. " +
+                        "Confirm you are logged into the TenantDB_PLM27 company where this Search exists, or run main Search Import first.");
                     return;
                 }
 
-                int? dataSetId = GetDataSetIdForSearch(conn, searchId.Value);
+                int? dataSetId = ResolveMassUpdateDataSetId(conn, searchId.Value, blueprint.Target);
                 if (!dataSetId.HasValue)
-                    validation.Errors.Add($"Search #{searchId} has no DataSetId.");
+                {
+                    validation.Errors.Add(
+                        $"Search #{searchId} has no DataSetId (and blueprint Target.AppDataSetId is missing). " +
+                        "Open the Search in APP and confirm DataSet is assigned, or set target.appDataSetId in the blueprint.");
+                }
 
                 if (!string.IsNullOrWhiteSpace(blueprint.SearchView?.Name) && dataSetId.HasValue)
                 {
@@ -292,8 +313,10 @@ namespace APP.BL.DataMigration.PlmMigration
             using (var conn = new SqlConnection(tenantConn))
             {
                 conn.Open();
-                int? searchId = ResolveMassUpdateTargetSearchId(conn, blueprint.Target);
-                int? dataSetId = searchId.HasValue ? GetDataSetIdForSearch(conn, searchId.Value) : null;
+                int? searchId = ResolveMassUpdateTargetSearchId(conn, blueprint.Target, blueprint.Source?.PlmSearchName);
+                int? dataSetId = searchId.HasValue
+                    ? ResolveMassUpdateDataSetId(conn, searchId.Value, blueprint.Target)
+                    : null;
                 int? defaultViewId = searchId.HasValue ? GetSearchViewIdForSearch(conn, searchId.Value) : null;
                 bool isHierarchical = string.Equals(
                     blueprint.MassUpdate?.AppMode, MassUpdateAppModeHierarchical, StringComparison.OrdinalIgnoreCase);
@@ -399,12 +422,13 @@ namespace APP.BL.DataMigration.PlmMigration
             {
                 conn.Open();
 
-                int searchId = ResolveMassUpdateTargetSearchId(conn, blueprint.Target)
+                int searchId = ResolveMassUpdateTargetSearchId(conn, blueprint.Target, blueprint.Source?.PlmSearchName)
                     ?? throw new InvalidOperationException("Target APP Search not found.");
                 executeResult.SearchId = searchId;
 
-                int dataSetId = GetDataSetIdForSearch(conn, searchId)
-                    ?? throw new InvalidOperationException($"Search #{searchId} has no DataSet.");
+                int dataSetId = ResolveMassUpdateDataSetId(conn, searchId, blueprint.Target, persistFallback: true)
+                    ?? throw new InvalidOperationException(
+                        $"Search #{searchId} has no DataSetId (and blueprint Target.AppDataSetId is missing).");
                 executeResult.DataSetId = dataSetId;
 
                 int? defaultViewId = GetSearchViewIdForSearch(conn, searchId);
@@ -425,7 +449,17 @@ namespace APP.BL.DataMigration.PlmMigration
                     blueprint.MassUpdate?.AppMode, MassUpdateAppModeHierarchical, StringComparison.OrdinalIgnoreCase);
 
                 int updateTransactionId;
-                int? updateUnitId = blueprint.MassUpdate?.UpdateBaseTransactionUnitId;
+                // Prefer table-name resolution when provided — unit ids are tenant-specific.
+                int? updateUnitId = null;
+                if (!string.IsNullOrWhiteSpace(blueprint.MassUpdate?.UpdateUnitTableName)
+                    && !isHierarchical)
+                {
+                    // Resolved after we know updateTransactionId below.
+                }
+                else if (blueprint.MassUpdate?.UpdateBaseTransactionUnitId > 0)
+                {
+                    updateUnitId = blueprint.MassUpdate.UpdateBaseTransactionUnitId;
+                }
 
                 if (isHierarchical)
                 {
@@ -447,12 +481,13 @@ namespace APP.BL.DataMigration.PlmMigration
                 {
                     updateTransactionId = ResolveMassUpdateTransactionId(conn, blueprint, forListEditExisting: false)
                         ?? throw new InvalidOperationException("Update Transaction not found.");
-                    if (!updateUnitId.HasValue
-                        && !string.IsNullOrWhiteSpace(blueprint.MassUpdate?.UpdateUnitTableName))
+                    if (!string.IsNullOrWhiteSpace(blueprint.MassUpdate?.UpdateUnitTableName))
                     {
                         updateUnitId = GetTransactionUnitIdByTableName(
                             conn, updateTransactionId, blueprint.MassUpdate.UpdateUnitTableName);
                     }
+                    if (!updateUnitId.HasValue && blueprint.MassUpdate?.UpdateBaseTransactionUnitId > 0)
+                        updateUnitId = blueprint.MassUpdate.UpdateBaseTransactionUnitId;
                 }
 
                 var viewFields = BuildMassUpdateSearchViewFields(
@@ -599,19 +634,18 @@ namespace APP.BL.DataMigration.PlmMigration
 
                 if (wantsMap && field.IsUpdatable != false)
                 {
-                    if (field.MassUpdateTransactionFieldId.HasValue)
-                    {
+                    string dbName = !string.IsNullOrWhiteSpace(field.MassUpdateDatabaseFieldName)
+                        ? field.MassUpdateDatabaseFieldName
+                        : (field.IsTransRootId || string.Equals(field.SysTableFiledPath, pkDatabaseFieldName, StringComparison.OrdinalIgnoreCase)
+                            ? (pkDatabaseFieldName ?? field.SysTableFiledPath)
+                            : field.SysTableFiledPath);
+
+                    // Prefer resolve-by-name (tenant-safe). Fall back to blueprint field id only if name resolve fails.
+                    int? txnFieldId = ResolveTransactionFieldId(conn, updateTransactionId, updateUnitId, dbName);
+                    if (txnFieldId.HasValue)
+                        dto.MassUpdateTransactionFieldId = txnFieldId;
+                    else if (field.MassUpdateTransactionFieldId.HasValue)
                         dto.MassUpdateTransactionFieldId = field.MassUpdateTransactionFieldId;
-                    }
-                    else
-                    {
-                        string dbName = !string.IsNullOrWhiteSpace(field.MassUpdateDatabaseFieldName)
-                            ? field.MassUpdateDatabaseFieldName
-                            : field.SysTableFiledPath;
-                        int? txnFieldId = ResolveTransactionFieldId(conn, updateTransactionId, updateUnitId, dbName);
-                        if (txnFieldId.HasValue)
-                            dto.MassUpdateTransactionFieldId = txnFieldId;
-                    }
                 }
 
                 result.Add(dto);
@@ -678,15 +712,91 @@ namespace APP.BL.DataMigration.PlmMigration
             return Convert.ToInt32(saveViewResult.Object.Id);
         }
 
-        private static int? ResolveMassUpdateTargetSearchId(SqlConnection conn, PlmSearchMassUpdateViewTargetDto target)
+        private static int? ResolveMassUpdateTargetSearchId(
+            SqlConnection conn,
+            PlmSearchMassUpdateViewTargetDto target,
+            string plmSearchName = null)
         {
-            if (target == null)
+            if (target == null && string.IsNullOrWhiteSpace(plmSearchName))
                 return null;
-            if (target.AppSearchId.HasValue && target.AppSearchId.Value > 0)
+
+            // 1) IntegrationId (when column+value exist)
+            if (!string.IsNullOrWhiteSpace(target?.AppSearchIntegrationId))
+            {
+                int? byIntegration = GetSearchIdByIntegrationId(conn, null, target.AppSearchIntegrationId.Trim());
+                if (byIntegration.HasValue)
+                    return byIntegration;
+            }
+
+            // 2) Numeric AppSearchId when the row exists (IntegrationId may be unset on older imports)
+            if (target?.AppSearchId > 0 && SearchRowExists(conn, target.AppSearchId.Value))
                 return target.AppSearchId.Value;
-            if (!string.IsNullOrWhiteSpace(target.AppSearchIntegrationId))
-                return GetSearchIdByIntegrationId(conn, null, target.AppSearchIntegrationId);
+
+            // 3) Match by PLM / APP Search display name
+            if (!string.IsNullOrWhiteSpace(plmSearchName))
+            {
+                int? byName = GetSearchIdByExactName(conn, plmSearchName.Trim());
+                if (byName.HasValue)
+                    return byName;
+            }
+
             return null;
+        }
+
+        private static int? GetSearchIdByExactName(SqlConnection conn, string name)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT TOP 1 SearchID FROM dbo.AppSearch WHERE Name = @Name ORDER BY SearchID";
+                cmd.Parameters.AddWithValue("@Name", name);
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        private static int? ResolveMassUpdateDataSetId(
+            SqlConnection conn,
+            int searchId,
+            PlmSearchMassUpdateViewTargetDto target,
+            bool persistFallback = false)
+        {
+            int? fromSearch = GetDataSetIdForSearch(conn, searchId);
+            if (fromSearch.HasValue && fromSearch.Value > 0)
+                return fromSearch;
+
+            if (target?.AppDataSetId > 0)
+            {
+                if (persistFallback)
+                    EnsureSearchDataSetId(conn, searchId, target.AppDataSetId.Value);
+                return target.AppDataSetId;
+            }
+
+            return null;
+        }
+
+        private static void EnsureSearchDataSetId(SqlConnection conn, int searchId, int dataSetId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE dbo.AppSearch
+SET DataSetID = @DataSetId
+WHERE SearchID = @SearchId
+  AND (DataSetID IS NULL OR DataSetID = 0)";
+                cmd.Parameters.AddWithValue("@DataSetId", dataSetId);
+                cmd.Parameters.AddWithValue("@SearchId", searchId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static bool SearchRowExists(SqlConnection conn, int searchId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT 1 FROM dbo.AppSearch WHERE SearchID = @SearchId";
+                cmd.Parameters.AddWithValue("@SearchId", searchId);
+                return cmd.ExecuteScalar() != null;
+            }
         }
 
         private static int? ResolveMassUpdateTransactionId(
@@ -696,16 +806,30 @@ namespace APP.BL.DataMigration.PlmMigration
         {
             if (forListEditExisting && blueprint.ListEditCreate != null)
             {
+                if (!string.IsNullOrWhiteSpace(blueprint.ListEditCreate.ExistingIntegrationId))
+                {
+                    int? byIntegration = GetTransactionIdByIntegrationId(
+                        conn, null, blueprint.ListEditCreate.ExistingIntegrationId);
+                    if (byIntegration.HasValue)
+                        return byIntegration;
+                }
+
                 if (blueprint.ListEditCreate.ExistingTransactionId > 0)
                     return blueprint.ListEditCreate.ExistingTransactionId;
-                if (!string.IsNullOrWhiteSpace(blueprint.ListEditCreate.ExistingIntegrationId))
-                    return GetTransactionIdByIntegrationId(conn, null, blueprint.ListEditCreate.ExistingIntegrationId);
+            }
+
+            // Prefer IntegrationId over numeric TransactionId (tenant-safe).
+            if (!string.IsNullOrWhiteSpace(blueprint.MassUpdate?.UpdateTransactionIntegrationId))
+            {
+                int? byIntegration = GetTransactionIdByIntegrationId(
+                    conn, null, blueprint.MassUpdate.UpdateTransactionIntegrationId);
+                if (byIntegration.HasValue)
+                    return byIntegration;
             }
 
             if (blueprint.MassUpdate?.UpdateTransactionId > 0)
                 return blueprint.MassUpdate.UpdateTransactionId;
-            if (!string.IsNullOrWhiteSpace(blueprint.MassUpdate?.UpdateTransactionIntegrationId))
-                return GetTransactionIdByIntegrationId(conn, null, blueprint.MassUpdate.UpdateTransactionIntegrationId);
+
             return null;
         }
 

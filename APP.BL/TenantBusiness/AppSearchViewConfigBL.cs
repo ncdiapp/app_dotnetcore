@@ -236,6 +236,10 @@ namespace App.BL
             viewDto.IsMassUpdate = searchViewEntity.IsMassUpdateView.HasValue && searchViewEntity.IsMassUpdateView.Value;
             viewDto.MassUpdateTransactionId = searchViewEntity.UpdateTransctionId;
 
+            viewDto.IsAllowAddRow = searchViewEntity.IsAllowAddRow.HasValue && searchViewEntity.IsAllowAddRow.Value;
+            viewDto.IsAllowDeleteRow = searchViewEntity.IsAllowDeleteRow.HasValue && searchViewEntity.IsAllowDeleteRow.Value;
+            viewDto.IsAllowAdvancedUpdate = searchViewEntity.IsAllowUpdateRow.HasValue && searchViewEntity.IsAllowUpdateRow.Value;
+
             viewDto.CanlendarDefaultViewMode = searchViewEntity.CanlendarDefaultViewMode;
             viewDto.IsEnableCalendarMonthView = searchViewEntity.IsEnableCalendarMonthView.HasValue && searchViewEntity.IsEnableCalendarMonthView.Value;
             viewDto.IsEnableCalendarWeekView = searchViewEntity.IsEnableCalendarWeekView.HasValue && searchViewEntity.IsEnableCalendarWeekView.Value;

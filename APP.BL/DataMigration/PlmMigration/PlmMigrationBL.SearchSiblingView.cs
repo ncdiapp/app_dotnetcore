@@ -385,10 +385,25 @@ namespace APP.BL.DataMigration.PlmMigration
         {
             if (target == null)
                 return null;
-            if (target.AppSearchId.HasValue && target.AppSearchId.Value > 0)
-                return target.AppSearchId.Value;
+            // Prefer IntegrationId — numeric AppSearchId may not match the current tenant.
             if (!string.IsNullOrWhiteSpace(target.AppSearchIntegrationId))
-                return GetSearchIdByIntegrationId(conn, null, target.AppSearchIntegrationId);
+            {
+                int? byIntegration = GetSearchIdByIntegrationId(conn, null, target.AppSearchIntegrationId);
+                if (byIntegration.HasValue)
+                    return byIntegration;
+            }
+
+            if (target.AppSearchId.HasValue && target.AppSearchId.Value > 0)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT 1 FROM dbo.AppSearch WHERE SearchID = @SearchId";
+                    cmd.Parameters.AddWithValue("@SearchId", target.AppSearchId.Value);
+                    if (cmd.ExecuteScalar() != null)
+                        return target.AppSearchId.Value;
+                }
+            }
+
             return null;
         }
 
@@ -396,10 +411,13 @@ namespace APP.BL.DataMigration.PlmMigration
         {
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = "SELECT DataSetId FROM dbo.AppSearch WHERE SearchID = @SearchId";
+                cmd.CommandText = "SELECT DataSetID FROM dbo.AppSearch WHERE SearchID = @SearchId";
                 cmd.Parameters.AddWithValue("@SearchId", searchId);
                 var val = cmd.ExecuteScalar();
-                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+                if (val == null || val == DBNull.Value)
+                    return null;
+                int id = Convert.ToInt32(val);
+                return id > 0 ? (int?)id : null;
             }
         }
 

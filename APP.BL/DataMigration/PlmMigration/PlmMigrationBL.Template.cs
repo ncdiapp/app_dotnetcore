@@ -1539,13 +1539,24 @@ WHERE TransactionID = @TransactionId";
 
         private static int? GetSearchIdByIntegrationId(SqlConnection conn, SqlTransaction tran, string integrationId)
         {
-            using (var cmd = conn.CreateCommand())
+            if (string.IsNullOrWhiteSpace(integrationId))
+                return null;
+
+            try
             {
-                cmd.Transaction = tran;
-                cmd.CommandText = "SELECT SearchId FROM dbo.AppSearch WHERE IntegrationId = @IntegrationId";
-                cmd.Parameters.AddWithValue("@IntegrationId", integrationId);
-                var val = cmd.ExecuteScalar();
-                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = "SELECT SearchID FROM dbo.AppSearch WHERE IntegrationId = @IntegrationId";
+                    cmd.Parameters.AddWithValue("@IntegrationId", integrationId.Trim());
+                    var val = cmd.ExecuteScalar();
+                    return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+                }
+            }
+            catch (SqlException)
+            {
+                // IntegrationId column may not exist yet on some tenant DBs.
+                return null;
             }
         }
 

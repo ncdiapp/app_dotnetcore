@@ -148,6 +148,12 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
   const addFieldRef = useRef<HTMLDivElement>(null);
   const flexGridRef = useRef<any>(null);
   const suppressViewTypeChangeRef = useRef(false);
+  /** Ignore Wijmo ComboBox init/rebuild events for Mass Update Model/Unit (same pattern as View Type). */
+  const suppressMassUpdateComboRef = useRef(false);
+  /** Remount Mass Update ComboBoxes after each load/refresh so selectedValue re-binds. */
+  const [massUpdateComboEpoch, setMassUpdateComboEpoch] = useState(0);
+  const [massUpdateUnitsLoaded, setMassUpdateUnitsLoaded] = useState(false);
+  const [transactionListReady, setTransactionListReady] = useState(false);
   
   const emAppControlType = useEnumValues('EmAppControlType');
   const emAppAggregationFunctionType = useEnumValues('EmAppAggregationFunctionType');
@@ -194,6 +200,7 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
   const controlTypeDataMap = useMemo(() => new DataMap(controlTypeList, 'Id', 'Display'), [controlTypeList]);
   const aggregationFunctionTypeDataMap = useMemo(() => (aggregationFunctionTypeList.length ? new DataMap(aggregationFunctionTypeList, 'Id', 'Display') : null), [aggregationFunctionTypeList]);
   const massUpdateTransFieldDataMap = useMemo(() => (massUpdateFieldList.length ? new DataMap(massUpdateFieldList, 'Id', 'Display') : null), [massUpdateFieldList]);
+  const entityDataMap = useMemo(() => (entityListForFilter.length ? new DataMap(entityListForFilter, 'Id', 'Display') : null), [entityListForFilter]);
   const gridOutputModeDataMap = useMemo(() => (gridOutputModeList.length ? new DataMap(gridOutputModeList, 'Id', 'Display') : null), [gridOutputModeList]);
   const calendarModeDataMap = useMemo(() => (calendarModeList.length ? new DataMap(calendarModeList, 'Id', 'Display') : null), [calendarModeList]);
   const googleMapInternalCodeRegistrationDataMap = useMemo(
@@ -204,8 +211,20 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
     [googleMapInternalCodeRegistrationList]
   );
   const pivotAggregationDataMap = useMemo(() => (pivotAggregationList.length ? new DataMap(pivotAggregationList, 'Id', 'longDisplay') : null), [pivotAggregationList]);
+  // Plain arrays (not CollectionView) — Wijmo React ComboBox selectedValue syncs more reliably.
+  const transactionItemsForCombo = useMemo(() => {
+    const list = [...(transactionList ?? [])];
+    const txId = currentSearchView?.UpdateTransctionId;
+    if (txId != null && txId !== '') {
+      const idNum = Number(txId);
+      if (Number.isFinite(idNum) && !list.some((t) => Number(t.Id) === idNum)) {
+        list.push({ Id: idNum, Display: `Transaction #${idNum}` });
+      }
+    }
+    return list;
+  }, [transactionList, currentSearchView?.UpdateTransctionId]);
+  /** Used by EShop Product Detail "Data Model" ComboBox (non–Mass Update). */
   const transactionCV = useMemo(() => new CollectionView(transactionList ?? []), [transactionList]);
-  const massUpdateUnitCV = useMemo(() => new CollectionView(massUpdateUnitList ?? []), [massUpdateUnitList]);
 
   /** Same dataset searches for Scheduler "Group Filter Search" — must be stable; new CollectionView each render freezes Wijmo ComboBox. */
   const schedulerGroupFilterSearchCV = useMemo(() => {
@@ -225,22 +244,37 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
   const transactionUnitPickerCV = useMemo(() => new CollectionView(transactionUnitPickerList), [transactionUnitPickerList]);
 
   useEffect(() => {
-    if (!currentSearchView?.Id && !currentSearchView?.DataSetId) return;
-    adminSvc.getMassEntitiesLookupItem('AppEntityInfo').then((data: any) => {
-      const raw = data?.AppEntityInfo ?? data;
-      const arr = Array.isArray(raw) ? raw : [];
-      setEntityListForFilter(arr.map((e: any) => ({
-        Id: e.Id,
-        Display: e.Display ?? e.Name ?? e.Code ?? String(e.Id ?? '')
-      })));
+    // Full entity list (includes imported PLM entities). Mass-lookup AppEntityInfo often omits them.
+    adminSvc.retrieveAllAppEntityInfoDto(false).then((data: any) => {
+      const arr = Array.isArray(data) ? data : [];
+      setEntityListForFilter(
+        arr
+          .map((e: any) => {
+            const idNum = e.Id != null ? Number(e.Id) : NaN;
+            return {
+              Id: Number.isFinite(idNum) ? idNum : e.Id,
+              Display: e.EntityCode ?? e.Display ?? e.Name ?? e.Code ?? (Number.isFinite(idNum) ? String(idNum) : String(e.Id ?? '')),
+            };
+          })
+          .filter((e: any) => e.Id != null && e.Id !== '')
+          .sort((a: any, b: any) => String(a.Display ?? '').localeCompare(String(b.Display ?? ''), undefined, { sensitivity: 'base' }))
+      );
     }).catch(() => setEntityListForFilter([]));
-  }, [currentSearchView?.Id, currentSearchView?.DataSetId]);
+  }, []);
 
   const getEntityCodeById = useCallback((entityId: number | null | undefined) => {
-    if (entityId == null) return '';
-    const found = entityListForFilter.find((e) => e.Id === entityId);
-    return found?.Display ?? found?.Name ?? found?.Code ?? String(entityId);
-  }, [entityListForFilter]);
+    if (entityId == null || entityId === ('' as any)) return '';
+    const idNum = Number(entityId);
+    if (!Number.isFinite(idNum) || idNum <= 0) return '';
+    if (entityDataMap) {
+      try {
+        const display = entityDataMap.getDisplayValue(idNum);
+        if (display != null && display !== '') return String(display);
+      } catch { /* fall through */ }
+    }
+    const found = entityListForFilter.find((e) => Number(e.Id) === idNum);
+    return found?.Display ?? found?.Name ?? found?.Code ?? String(idNum);
+  }, [entityDataMap, entityListForFilter]);
 
   const openEntityInfoPopup = useCallback((item: any) => {
     if (item?.ControlType === CONTROL_TYPE_DDL) {
@@ -354,6 +388,7 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
     dispatch(setIsBusy());
     setIsLoading(true);
     suppressViewTypeChangeRef.current = true;
+    suppressMassUpdateComboRef.current = true;
     try {
       const searchViewId = paramObj.id != null ? String(paramObj.id) : null;
       let param2Obj: any = {};
@@ -383,6 +418,24 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
             }
           }
           normalizeEventViewFieldIsRequired(data);
+          // Coerce FK ids so Wijmo DataMaps / ComboBox selectedValue match (number vs string).
+          if (data.UpdateTransctionId != null && data.UpdateTransctionId !== '') {
+            data.UpdateTransctionId = Number(data.UpdateTransctionId);
+          }
+          if (data.UpdateBaseTranscationUnitId != null && data.UpdateBaseTranscationUnitId !== '') {
+            data.UpdateBaseTranscationUnitId = Number(data.UpdateBaseTranscationUnitId);
+          }
+          data.AppSearchViewFieldList = (data.AppSearchViewFieldList ?? []).map((f: any) => ({
+            ...f,
+            MassUpdateTransactionFieldId:
+              f.MassUpdateTransactionFieldId != null && f.MassUpdateTransactionFieldId !== ''
+                ? Number(f.MassUpdateTransactionFieldId)
+                : f.MassUpdateTransactionFieldId,
+            EntityId:
+              f.EntityId != null && f.EntityId !== ''
+                ? Number(f.EntityId)
+                : f.EntityId,
+          }));
           setCurrentSearchView(data);
           if (viewData.DataSetId) {
             try {
@@ -433,11 +486,12 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
     } finally {
       setIsLoading(false);
       dispatch(setIsNotBusy());
+      setMassUpdateComboEpoch((n) => n + 1);
       // ComboBox may still fire selection events after load completes due to async Wijmo init.
-      // Keep suppression for one more tick to avoid rebuilding mappings.
       setTimeout(() => {
         suppressViewTypeChangeRef.current = false;
-      }, 0);
+        suppressMassUpdateComboRef.current = false;
+      }, 150);
     }
   }, [paramObj.id, paramObj.param1, paramObj.param2, dispatch, showError, embedded]);
 
@@ -467,8 +521,16 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
     adminSvc.getMassEntitiesLookupItem('AppTransaction').then((data) => {
       const list = Array.isArray(data) ? data : (data?.AppTransaction ?? []);
       const arr = Array.isArray(list) ? list : [];
-      setTransactionList(arr.map((t: any) => ({ ...t, Display: t.Display ?? t.Name ?? t.Id })));
-    }).catch(() => setTransactionList([]));
+      setTransactionList(arr.map((t: any) => ({
+        ...t,
+        Id: t.Id != null ? Number(t.Id) : t.Id,
+        Display: t.Display ?? t.Name ?? t.TransactionName ?? String(t.Id ?? ''),
+      })));
+      setTransactionListReady(true);
+    }).catch(() => {
+      setTransactionList([]);
+      setTransactionListReady(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -493,11 +555,40 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
   useEffect(() => {
     if (!currentSearchView?.UpdateTransctionId) {
       setMassUpdateUnitList([]);
+      setMassUpdateUnitsLoaded(true);
       return;
     }
-    appTransactionService.getOneAppTransactionData(String(currentSearchView.UpdateTransctionId)).then((data) => {
-      setMassUpdateUnitList(data?.AppTransactionUnitList ?? []);
-    }).catch(() => setMassUpdateUnitList([]));
+    const txId = String(currentSearchView.UpdateTransctionId);
+    setMassUpdateUnitsLoaded(false);
+    suppressMassUpdateComboRef.current = true;
+    appTransactionService.getOneAppTransactionData(txId).then((data) => {
+      const units = (data?.AppTransactionUnitList ?? []).map((u: any) => {
+        const idNum = u.Id != null ? Number(u.Id) : NaN;
+        return {
+          ...u,
+          Id: Number.isFinite(idNum) ? idNum : u.Id,
+          UnitDisplayName: u.UnitDisplayName ?? u.UnitName ?? u.DataBaseTableName ?? String(u.Id ?? ''),
+        };
+      });
+      setMassUpdateUnitList(units);
+      // Enrich Update Data Model display once units/tx are loaded (no ComboBox selection change).
+      const name = data?.TransactionName ?? data?.Name ?? data?.Display;
+      if (name) {
+        const idNum = Number(currentSearchView.UpdateTransctionId);
+        setTransactionList((prev) => {
+          const idx = prev.findIndex((t) => Number(t.Id) === idNum);
+          if (idx < 0) return [...prev, { Id: idNum, Display: name }];
+          if (prev[idx].Display === name) return prev;
+          const next = [...prev];
+          next[idx] = { ...next[idx], Display: name };
+          return next;
+        });
+      }
+    }).catch(() => setMassUpdateUnitList([])).finally(() => {
+      setMassUpdateUnitsLoaded(true);
+      setMassUpdateComboEpoch((n) => n + 1);
+      setTimeout(() => { suppressMassUpdateComboRef.current = false; }, 150);
+    });
   }, [currentSearchView?.UpdateTransctionId]);
 
   useEffect(() => {
@@ -507,7 +598,14 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
     }
     appTransactionService.retrieveOneAppTransactionUnitExDto(String(currentSearchView.UpdateBaseTranscationUnitId)).then((data) => {
       const fields = data?.AppTransactionFieldList ?? [];
-      setMassUpdateFieldList(fields.map((f: any) => ({ Id: f.Id, Display: f.DataBaseFieldName ?? f.Id })));
+      // Match Angular: DataMap key = TransFieldId (field.Id), Display = DataBaseFieldName
+      setMassUpdateFieldList(fields.map((f: any) => {
+        const idNum = f.Id != null ? Number(f.Id) : NaN;
+        return {
+          Id: Number.isFinite(idNum) ? idNum : f.Id,
+          Display: f.DataBaseFieldName ?? f.DisplayName ?? String(f.Id ?? ''),
+        };
+      }).filter((f: any) => f.Id != null && f.Id !== ''));
     }).catch(() => setMassUpdateFieldList([]));
   }, [currentSearchView?.UpdateBaseTranscationUnitId]);
 
@@ -1193,28 +1291,59 @@ const SearchViewEditor: React.FC<SearchViewEditorProps> = ({
               <>
                 <div className="flex items-center gap-3 py-1">
                   <label className={`w-40 shrink-0 text-xs whitespace-nowrap ${theme.label}`}>Update Data Model</label>
-                  <ComboBox
-                    isRequired={false}
-                    itemsSource={transactionCV}
-                    displayMemberPath="Display"
-                    selectedValuePath="Id"
-                    selectedValue={currentSearchView?.UpdateTransctionId ?? null}
-                    selectedIndexChanged={(s: any) => { const v = s.selectedValue; markChange(); setCurrentSearchView((p: any) => (p ? { ...p, UpdateTransctionId: v ?? null, UpdateBaseTranscationUnitId: null } : p)); }}
-                    style={{ width: '13rem', height: '28px', fontSize: '12px' }}
-                  />
+                  {transactionListReady ? (
+                    <ComboBox
+                      key={`mu-model-${massUpdateComboEpoch}`}
+                      isRequired={false}
+                      itemsSource={transactionItemsForCombo}
+                      displayMemberPath="Display"
+                      selectedValuePath="Id"
+                      selectedValue={currentSearchView?.UpdateTransctionId != null ? Number(currentSearchView.UpdateTransctionId) : null}
+                      selectedIndexChanged={(s: any) => {
+                        // Only accept user picks — ignore Wijmo init / itemsSource rebind (shows first item otherwise).
+                        if (suppressMassUpdateComboRef.current || isLoading || !s?.containsFocus?.()) return;
+                        const v = s.selectedValue;
+                        const cur = currentSearchView?.UpdateTransctionId;
+                        if (v == null) return;
+                        if (cur != null && Number(v) === Number(cur)) return;
+                        markChange();
+                        setCurrentSearchView((p: any) => (p ? {
+                          ...p,
+                          UpdateTransctionId: Number(v),
+                          UpdateBaseTranscationUnitId: null,
+                        } : p));
+                      }}
+                      style={{ width: '13rem', height: '28px', fontSize: '12px' }}
+                    />
+                  ) : (
+                    <span className={`text-xs ${theme.label}`}>Loading…</span>
+                  )}
                 </div>
                 {currentSearchView?.UpdateTransctionId && (
                   <div className="flex items-center gap-3 py-1">
                     <label className={`w-40 shrink-0 text-xs whitespace-nowrap ${theme.label}`}>Update Data Model Unit</label>
-                    <ComboBox
-                      isRequired={false}
-                      itemsSource={massUpdateUnitCV}
-                      displayMemberPath="UnitDisplayName"
-                      selectedValuePath="Id"
-                      selectedValue={currentSearchView?.UpdateBaseTranscationUnitId ?? null}
-                      selectedIndexChanged={(s: any) => { const v = s.selectedValue; markChange(); setCurrentSearchView((p: any) => (p ? { ...p, UpdateBaseTranscationUnitId: v ?? null } : p)); }}
-                      style={{ width: '13rem', height: '28px', fontSize: '12px' }}
-                    />
+                    {massUpdateUnitsLoaded ? (
+                      <ComboBox
+                        key={`mu-unit-${massUpdateComboEpoch}-${currentSearchView?.UpdateTransctionId}`}
+                        isRequired={false}
+                        itemsSource={massUpdateUnitList}
+                        displayMemberPath="UnitDisplayName"
+                        selectedValuePath="Id"
+                        selectedValue={currentSearchView?.UpdateBaseTranscationUnitId != null ? Number(currentSearchView.UpdateBaseTranscationUnitId) : null}
+                        selectedIndexChanged={(s: any) => {
+                          if (suppressMassUpdateComboRef.current || isLoading || !s?.containsFocus?.()) return;
+                          const v = s.selectedValue;
+                          const cur = currentSearchView?.UpdateBaseTranscationUnitId;
+                          if (v == null) return;
+                          if (cur != null && Number(v) === Number(cur)) return;
+                          markChange();
+                          setCurrentSearchView((p: any) => (p ? { ...p, UpdateBaseTranscationUnitId: Number(v) } : p));
+                        }}
+                        style={{ width: '13rem', height: '28px', fontSize: '12px' }}
+                      />
+                    ) : (
+                      <span className={`text-xs ${theme.label}`}>Loading…</span>
+                    )}
                   </div>
                 )}
                 <div className="flex items-center gap-3 py-1">

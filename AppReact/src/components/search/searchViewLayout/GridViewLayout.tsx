@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useDispatch } from 'react-redux';
 import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
 import { FlexGridFilter } from '@mescius/wijmo.react.grid.filter';
 import { CollectionView } from '@mescius/wijmo';
-import { GroupRow } from '@mescius/wijmo.grid';
+import { DataMap, GroupRow } from '@mescius/wijmo.grid';
 import '@mescius/wijmo.styles/wijmo.css';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { fetchAuthenticatedImageBlobUrl, resolveSearchThumbnailUrl } from "../../../webapi/fileEndpoints";
@@ -20,6 +20,7 @@ import {
 } from '../../../utils/transactionFormGroupHelper';
 import { buildLinkTargetTabTitle, getDictViewColumnValue } from '../../../utils/linkTargetTabTitle';
 import RgbColorSwatch from '../../common/RgbColorSwatch';
+import { searchSvc } from '../../../webapi/searchSvc';
 
 interface ViewDto {
   Id: string;
@@ -31,8 +32,20 @@ interface ViewDto {
   IsClusterChildView?: boolean;
   UiId?: string;
   GridOutputMode?: number;
+  IsMassUpdate?: boolean;
+  IsAllowAddRow?: boolean;
+  IsAllowDeleteRow?: boolean;
+  IsAllowAdvancedUpdate?: boolean;
   AppFormLinkTargetList?: any[];
   AppViewLinkedSeaechOrUrlDtoList?: any[];
+}
+
+/** Angular massUpdateHelper API surface exposed to SearchView toolbar. */
+export interface MassUpdateGridApi {
+  addRow: () => void;
+  removeSelectedRow: () => any | null;
+  getItems: () => any[];
+  getChangedItems: () => any[];
 }
 
 interface GridViewLayoutProps {
@@ -43,6 +56,8 @@ interface GridViewLayoutProps {
   onSelectionChanged?: (selectedItems: any[]) => void;
   /** Exposes the underlying Wijmo FlexGrid control to the parent (e.g. for FlexGridAddOn). */
   onGridControlReady?: (grid: any) => void;
+  /** Mass Update: expose add/remove/getChanged for SearchView toolbar (Angular massUpdateHelper). */
+  onMassUpdateApiReady?: (api: MassUpdateGridApi | null) => void;
 }
 
 // Aggregation function types enum
@@ -168,7 +183,8 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
   dataModel,
   onExecuteSearch,
   onSelectionChanged,
-  onGridControlReady
+  onGridControlReady,
+  onMassUpdateApiReady,
 }) => {
   const dispatch = useDispatch();
   const { addTabAndNavigate } = useTabNavigation();
@@ -180,10 +196,51 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
     y: number;
     rowItem: any | null;
   }>({ visible: false, x: 0, y: 0, rowItem: null });
+  const [entityDataMaps, setEntityDataMaps] = useState<Record<string, DataMap>>({});
 
   useEffect(() => {
     return () => { onGridControlReady?.(null); };
   }, [onGridControlReady]);
+
+  const isMassUpdate = Boolean(viewDto?.IsMassUpdate);
+
+  // Angular: dictViewEntityDataMap from DictEntityLookupItemDto (needed for Mass Update DDL editing).
+  useEffect(() => {
+    let cancelled = false;
+
+    const buildMaps = (dict: Record<string, any[] | undefined> | null | undefined) => {
+      const next: Record<string, DataMap> = {};
+      if (!dict || typeof dict !== 'object') return next;
+      Object.entries(dict).forEach(([key, list]) => {
+        if (!Array.isArray(list) || list.length === 0) return;
+        next[String(key)] = new DataMap(list, 'Id', 'Display');
+      });
+      return next;
+    };
+
+    const fromView = viewDto?.DictEntityLookupItemDto;
+    if (fromView && typeof fromView === 'object' && Object.keys(fromView).length > 0) {
+      setEntityDataMaps(buildMaps(fromView as any));
+      return;
+    }
+
+    const viewId = viewDto?.Id;
+    if (!viewId || !isMassUpdate) {
+      setEntityDataMaps({});
+      return;
+    }
+
+    searchSvc.retrieveViewDictEntityLookupItemDto(String(viewId))
+      .then((data: any) => {
+        if (cancelled) return;
+        setEntityDataMaps(buildMaps(data));
+      })
+      .catch(() => {
+        if (!cancelled) setEntityDataMaps({});
+      });
+
+    return () => { cancelled = true; };
+  }, [viewDto?.Id, viewDto?.DictEntityLookupItemDto, isMassUpdate]);
 
   const filterableBindings = useMemo(() => {
     if (!Array.isArray(viewDto?.Columns)) {
@@ -199,8 +256,44 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
 
   // Update CollectionView when viewDataList changes
   useEffect(() => {
-    setGridDataCV(new CollectionView<any>(viewDataList));
+    setGridDataCV(new CollectionView<any>(Array.isArray(viewDataList) ? viewDataList : []));
   }, [viewDataList]);
+
+  // Expose Mass Update API to SearchView toolbar (Angular massUpdateHelper parity).
+  useEffect(() => {
+    if (!onMassUpdateApiReady) return;
+    if (!isMassUpdate) {
+      onMassUpdateApiReady(null);
+      return;
+    }
+    const api: MassUpdateGridApi = {
+      addRow: () => {
+        const cv = gridDataCV;
+        if (!cv?.addNew) return;
+        const newRow = cv.addNew();
+        newRow.IsChanged = true;
+        newRow.IsNew = true;
+        newRow.ChangedColumnIds = [];
+        newRow.DictLinkTargetParameterValue = {};
+        newRow.DictSketchOrFileDisplayCode = {};
+        newRow.DictViewColumnIDKeyValue = {};
+        cv.commitNew();
+      },
+      removeSelectedRow: () => {
+        const grid = flex.current?.control ?? flex.current;
+        const rowIndex = grid?.selection?.row;
+        if (rowIndex == null || rowIndex < 0) return null;
+        const rowData = grid.rows?.[rowIndex]?.dataItem;
+        if (!rowData) return null;
+        gridDataCV.remove(rowData);
+        return rowData;
+      },
+      getItems: () => (gridDataCV?.items ? [...gridDataCV.items] : []),
+      getChangedItems: () => (gridDataCV?.items ?? []).filter((r: any) => r?.IsChanged),
+    };
+    onMassUpdateApiReady(api);
+    return () => onMassUpdateApiReady(null);
+  }, [isMassUpdate, gridDataCV, onMassUpdateApiReady]);
 
   // Find edit and delete link targets from view configuration
   const linkTargets = useMemo(() => {
@@ -210,7 +303,6 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
 
     const rowFormLinkTargets = filterRowContextMenuFormLinkTargets(viewDto.AppFormLinkTargetList);
 
-    // Get available link targets for context menu (excluding delete and template headers)
     const menuLinkTargets = rowFormLinkTargets.filter((lt: any) =>
       lt.ActionType === EmAppLinkTargetActionType.Edit ||
       lt.ActionType === EmAppLinkTargetActionType.EditOnPopup ||
@@ -218,16 +310,13 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
       lt.ActionType === EmAppLinkTargetActionType.CreateFromExistingItem
     );
 
-    // Count menu items (for context menu, excluding delete)
     const menuItemCount = menuLinkTargets.length;
 
-    // Also check linked searches (exclude template header items)
     const availableLinkToSearchList = filterRowContextMenuLinkedSearches(
       viewDto.AppViewLinkedSeaechOrUrlDtoList?.filter((ls: any) => ls.LinkTargetSearchId) || [],
     );
     const totalMenuItemCount = menuItemCount + availableLinkToSearchList.length;
 
-    // Find default edit link target (Edit or EditOnPopup, ordered by Sort)
     const editLinkTarget = rowFormLinkTargets
       .filter((lt: any) =>
         lt.ActionType === EmAppLinkTargetActionType.Edit ||
@@ -236,7 +325,6 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
       )
       .sort((a: any, b: any) => (a.Sort || 0) - (b.Sort || 0))[0] || null;
 
-    // Find default delete link target
     const deleteLinkTarget = viewDto.AppFormLinkTargetList
       .filter((lt: any) => lt.ActionType === EmAppLinkTargetActionType.Delete)
       .sort((a: any, b: any) => (a.Sort || 0) - (b.Sort || 0))[0] || null;
@@ -605,6 +693,11 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
           selectionMode={isLinkedSearchMode && !isSingleSelection ? "ListBox" : "CellRange"}
           validateEdits={false}
           frozenColumns={frozenColumns}
+          cellEditEnded={(s: any, e: any) => {
+            if (!isMassUpdate) return;
+            const rowData = s?.rows?.[e?.row]?.dataItem;
+            if (rowData) rowData.IsChanged = true;
+          }}
           selectionChanged={(s: any) => {
             if (!(isLinkedSearchMode && !isSingleSelection)) return;
             emitSelectedItems(s);
@@ -707,6 +800,10 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
               const _dataType = getDataType(column);
               const aggregate = getAggregationType(column);
               const isReadOnly = !column.IsUpdatable;
+              const ddlDataMap =
+                column.ControlType === EmAppControlType.DDL && column.EntityId != null
+                  ? entityDataMaps[String(column.EntityId)]
+                  : undefined;
 
               if (column.ControlType === EmAppControlType.Image) {
                 return (
@@ -737,6 +834,33 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
                         );
                       }}
                     />
+                    <FlexGridCellTemplate cellType="Group" template={() => <div></div>} />
+                  </FlexGridColumn>
+                );
+              }
+
+              else if (column.ControlType === EmAppControlType.DDL && ddlDataMap) {
+                return (
+                  <FlexGridColumn
+                    key={column.Id}
+                    header={column.Name || column.Display}
+                    binding={binding}
+                    width={width}
+                    aggregate={aggregate}
+                    isReadOnly={isReadOnly}
+                    dataMap={ddlDataMap}
+                    visible={column.IsVisible !== false}
+                  >
+                    {!hasActionColumn && index === 0 && (
+                      <FlexGridCellTemplate
+                        cellType="ColumnFooter"
+                        template={() => (
+                          <div style={{ textAlign: 'left', paddingLeft: 4, fontSize: 11 }}>
+                            {rowCountText}
+                          </div>
+                        )}
+                      />
+                    )}
                     <FlexGridCellTemplate cellType="Group" template={() => <div></div>} />
                   </FlexGridColumn>
                 );

@@ -106,7 +106,6 @@ interface DataSetItem {
 }
 
 const PAGE_TITLE = 'Report & View Editor';
-const SEARCH_INFO_SECTION_LABEL = 'Report Settings';
 // Match Angular EmAppDataServiceType (subset used here)
 const EmAppDataServiceType = {
   QueryText: 1,
@@ -178,13 +177,11 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
   const [dictSearchFieldById, setDictSearchFieldById] = useState<Record<string, any>>({});
   const [apiMenuOpen, setApiMenuOpen] = useState(false);
   const apiMenuRef = useRef<HTMLDivElement | null>(null);
-  /** Collapse title-row control: hides Name/Dataset/Description + Filters (not Views). */
-  const [propertiesAndFiltersCollapsed, setPropertiesAndFiltersCollapsed] = useState(false);
+  /** Sub-tabs when dataset is set: Filters vs Report Views (full-height each). */
+  const [editorSubTab, setEditorSubTab] = useState<'filters' | 'views'>('views');
   /** Views list: which row's action menu is open (chevron). */
   const [viewRowMenuOpenId, setViewRowMenuOpenId] = useState<number | null>(null);
   const viewRowMenuWrapRef = useRef<HTMLDivElement | null>(null);
-  /** Collapse: hides the whole Report Views block (list + embedded editor). */
-  const [reportViewsSectionCollapsed, setReportViewsSectionCollapsed] = useState(false);
 
   /** New Report wizard (no saved Id, no initial dataset in URL). */
   const [newSearchWizardPhase, setNewSearchWizardPhase] = useState<NewSearchWizardPhase>('off');
@@ -294,13 +291,23 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
     }).catch(() => setWhereUsedSearchList([]));
   }, []);
 
-  // Load entity list for Filters "Entity List of Value" when a view is selected
+  // Load full entity list for Filters / Datasource Selector (includes imported PLM entities)
   useEffect(() => {
     if (!currentSearch?.SearchViewId && !currentSearch?.DataSetId) return;
-    adminSvc.getMassEntitiesLookupItem('AppEntityInfo').then((data: any) => {
-      const raw = data?.AppEntityInfo ?? data;
-      const arr = Array.isArray(raw) ? raw : [];
-      setEntityListForFilter(arr.map((e: any) => ({ Id: e.Id, Display: e.Display ?? e.Name ?? e.Code ?? String(e.Id ?? '') })));
+    adminSvc.retrieveAllAppEntityInfoDto(false).then((data: any) => {
+      const arr = Array.isArray(data) ? data : [];
+      setEntityListForFilter(
+        arr
+          .map((e: any) => {
+            const idNum = e.Id != null ? Number(e.Id) : NaN;
+            return {
+              Id: Number.isFinite(idNum) ? idNum : e.Id,
+              Display: e.EntityCode ?? e.Display ?? e.Name ?? e.Code ?? (Number.isFinite(idNum) ? String(idNum) : String(e.Id ?? '')),
+            };
+          })
+          .filter((e: any) => e.Id != null && e.Id !== '')
+          .sort((a: any, b: any) => String(a.Display ?? '').localeCompare(String(b.Display ?? ''), undefined, { sensitivity: 'base' }))
+      );
     }).catch(() => setEntityListForFilter([]));
   }, [currentSearch?.SearchViewId, currentSearch?.DataSetId]);
 
@@ -457,8 +464,10 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
 
   const getEntityCodeById = useCallback((entityId: number | null | undefined) => {
     if (entityId == null) return '';
-    const found = entityListForFilter.find((e) => e.Id === entityId);
-    return found?.Display ?? found?.Name ?? found?.Code ?? String(entityId);
+    const idNum = Number(entityId);
+    if (!Number.isFinite(idNum)) return String(entityId);
+    const found = entityListForFilter.find((e) => Number(e.Id) === idNum);
+    return found?.Display ?? found?.Name ?? found?.Code ?? String(idNum);
   }, [entityListForFilter]);
 
   const openEntityInfoPopup = useCallback((item: any) => {
@@ -1233,7 +1242,7 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
     setPendingNewViewType(null);
     setSelectedViewId(null);
     setViewRowMenuOpenId(null);
-    setReportViewsSectionCollapsed(false);
+    setEditorSubTab('views');
   }, [currentSearch?.DataSetId, showWarning]);
 
   const createClusterSearchView = useCallback(() => {
@@ -1246,7 +1255,7 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
     setPendingNewViewType(CLUSTER_ANALYSIS_VIEW_TYPE);
     setSelectedViewId(null);
     setViewRowMenuOpenId(null);
-    setReportViewsSectionCollapsed(false);
+    setEditorSubTab('views');
   }, [currentSearch?.DataSetId, showWarning]);
 
   const deleteSearchView = useCallback(async (view: ViewItem) => {
@@ -1297,8 +1306,8 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
   }, [viewRowMenuOpenId]);
 
   useEffect(() => {
-    if (reportViewsSectionCollapsed) setViewRowMenuOpenId(null);
-  }, [reportViewsSectionCollapsed]);
+    if (editorSubTab !== 'views') setViewRowMenuOpenId(null);
+  }, [editorSubTab]);
 
   const viewEditorParam2 = useMemo(
     () =>
@@ -1563,21 +1572,6 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
     setViewRowMenuOpenId(null);
   }, [creatingViewMode, selectedViewId]);
 
-  /** At least one of Search (properties+filters) / Report Views stays expanded; collapsing one opens the other. */
-  const togglePropertiesAndFiltersCollapsed = useCallback(() => {
-    setPropertiesAndFiltersCollapsed((prev) => {
-      if (!prev) setReportViewsSectionCollapsed(false);
-      return !prev;
-    });
-  }, []);
-
-  const toggleReportViewsSectionCollapsed = useCallback(() => {
-    setReportViewsSectionCollapsed((prev) => {
-      if (!prev) setPropertiesAndFiltersCollapsed(false);
-      return !prev;
-    });
-  }, []);
-
   const viewTypeLabel = useCallback(
     (vt?: number) => resolveAppViewTypeDisplay(vt, emAppViewType),
     [emAppViewType]
@@ -1596,21 +1590,6 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
     if (!currentDataSet?.Id) return;
     addTabAndNavigate('dataset-editor', currentDataSet.Name || 'Dataset', { id: currentDataSet.Id }, true);
   }, [currentDataSet, addTabAndNavigate]);
-
-  /**
-   * Search Info pane (with dataset): when Search body + Report Views both expanded,
-   * height is min 100px and max 50% of the main body; Report Views uses remaining space.
-   */
-  let searchInfoPaneClass = '';
-  if (currentSearch?.DataSetId) {
-    if (propertiesAndFiltersCollapsed) {
-      searchInfoPaneClass = 'flex shrink-0 flex-col overflow-hidden min-w-0';
-    } else if (reportViewsSectionCollapsed) {
-      searchInfoPaneClass = 'flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden';
-    } else {
-      searchInfoPaneClass = 'flex min-h-[100px] max-h-[50%] min-w-0 flex-col overflow-hidden';
-    }
-  }
 
   const renderSearchPropertiesRow = (opts?: { tightBottom?: boolean }) => (
     <div
@@ -1710,32 +1689,34 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
     </div>
   );
 
-  const renderSearchInfoSectionHeader = () => (
-    <div className={`flex items-center px-3 py-0 shrink-0 border-b ${theme.mainContentSection}`}>
-      <div className="flex items-center min-w-0 gap-1.5">
-        <button
-          type="button"
-          onClick={togglePropertiesAndFiltersCollapsed}
-          className={`text-sm font-semibold truncate min-w-0 text-left rounded-[4px] px-1 py-0.5 -mx-1 ${theme.title} hover:opacity-90`}
-          aria-expanded={!propertiesAndFiltersCollapsed}
-          title={propertiesAndFiltersCollapsed ? `Expand ${SEARCH_INFO_SECTION_LABEL}` : `Collapse ${SEARCH_INFO_SECTION_LABEL}`}
-        >
-          {SEARCH_INFO_SECTION_LABEL}
-        </button>
-        <button
-          type="button"
-          onClick={togglePropertiesAndFiltersCollapsed}
-          className={`h-6 px-1.5 inline-flex items-center justify-center gap-1 rounded-[4px] ${theme.button_default}`}
-          aria-expanded={!propertiesAndFiltersCollapsed}
-          title={propertiesAndFiltersCollapsed ? `Expand ${SEARCH_INFO_SECTION_LABEL}` : `Collapse ${SEARCH_INFO_SECTION_LABEL}`}
-          aria-label={propertiesAndFiltersCollapsed ? `Expand ${SEARCH_INFO_SECTION_LABEL}` : `Collapse ${SEARCH_INFO_SECTION_LABEL}`}
-        >
-          <i className={`fa-solid ${propertiesAndFiltersCollapsed ? 'fa-angle-down' : 'fa-angle-up'} text-[10px]`} aria-hidden />
-          <span className={`text-[10px] opacity-60 leading-none ${theme.label}`}>
-            {propertiesAndFiltersCollapsed ? 'Expand' : 'Collapse'}
-          </span>
-        </button>
-      </div>
+  const renderEditorSubTabs = () => (
+    <div className={`flex items-center gap-1 px-3 pt-1 shrink-0 border-b ${theme.mainContentSection}`}>
+      <button
+        type="button"
+        onClick={() => setEditorSubTab('filters')}
+        className={`px-3 py-1.5 text-sm rounded-t-[4px] border-b-2 ${
+          editorSubTab === 'filters'
+            ? `${theme.title} border-current font-semibold`
+            : `${theme.label} border-transparent`
+        }`}
+        aria-selected={editorSubTab === 'filters'}
+        role="tab"
+      >
+        Filters
+      </button>
+      <button
+        type="button"
+        onClick={() => setEditorSubTab('views')}
+        className={`px-3 py-1.5 text-sm rounded-t-[4px] border-b-2 ${
+          editorSubTab === 'views'
+            ? `${theme.title} border-current font-semibold`
+            : `${theme.label} border-transparent`
+        }`}
+        aria-selected={editorSubTab === 'views'}
+        role="tab"
+      >
+        Report Views
+      </button>
     </div>
   );
 
@@ -1935,81 +1916,49 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
         <>
       {!currentSearch?.DataSetId && (
         <div className="flex w-full shrink-0 flex-col">
-          {renderSearchInfoSectionHeader()}
-          {!propertiesAndFiltersCollapsed && renderSearchPropertiesRow()}
+          {renderSearchPropertiesRow()}
         </div>
       )}
 
       {currentSearch?.DataSetId && (
-        <div className="w-full h-1 flex-auto flex flex-col min-h-0 gap-y-2 overflow-hidden">
-          <div className={`w-full ${searchInfoPaneClass}`}>
-            {renderSearchInfoSectionHeader()}
-            {!propertiesAndFiltersCollapsed && (
-              <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden">
-                {renderSearchPropertiesRow({ tightBottom: true })}
-                {currentSearch?.SearchViewId && (
-                  <div className="min-h-0 flex-1 flex flex-col overflow-hidden">
-                    <SearchFilterEditor
-                      compactFilterHeader
-                      flexFillParent
-                      sectionMinHeightPx={100}
-                      filterList={currentSearch?.AppSearchFieldList ?? []}
-                      onAddFilter={addSearchFilter}
-                      onRemoveFilter={removeSearchFilter}
-                      onMarkChange={markChange}
-                      filterColumnsDataMap={dataSetColumnsList.length ? dataSetColumnsDataMap : null}
-                      controlTypeDataMap={controlTypeDataMap}
-                      criteriaOperatorDataMap={criteriaOperatorDataMap}
-                      enableAdvancedOptions={true}
-                      entityListForFilter={entityListForFilter}
-                      getEntityCodeById={getEntityCodeById}
-                      onOpenDatasourceSelector={openEntityInfoPopup}
-                      onOpenEntityDataPreview={openEntityDataEditorPopup}
-                      subControlTypeDataMap={subControlTypeDataMap}
-                      internalCodeDataMap={internalCodeDataMap}
-                      getSearchFieldNameById={getSearchFieldNameById}
-                      onOpenCascadingConfig={openCascadingConfigPopup}
-                      onOpenInnerRelationConfig={openInnerRelationPopup}
-                      showWarning={showWarning}
-                      minHeight={0}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          <div
-            className={`flex w-full min-h-0 min-w-0 flex-col overflow-hidden ${
-              reportViewsSectionCollapsed ? 'shrink-0' : 'flex-1'
-            }`}
-          >
-            <div className={`flex items-center px-3 py-0 shrink-0 border-b ${theme.mainContentSection}`}>
-              <div className="flex items-center min-w-0 gap-1.5">
-                <button
-                  type="button"
-                  onClick={toggleReportViewsSectionCollapsed}
-                  className={`text-sm font-semibold truncate min-w-0 text-left rounded-[4px] px-1 py-0.5 -mx-1 ${theme.title} hover:opacity-90`}
-                  aria-expanded={!reportViewsSectionCollapsed}
-                  title={reportViewsSectionCollapsed ? 'Expand Report Views' : 'Collapse Report Views'}
-                >
-                  Report Views
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleReportViewsSectionCollapsed}
-                  className={`h-6 px-1.5 inline-flex items-center justify-center gap-1 rounded-[4px] ${theme.button_default}`}
-                  aria-expanded={!reportViewsSectionCollapsed}
-                  title={reportViewsSectionCollapsed ? 'Expand Report Views' : 'Collapse Report Views'}
-                  aria-label={reportViewsSectionCollapsed ? 'Expand Report Views' : 'Collapse Report Views'}
-                >
-                  <i className={`fa-solid ${reportViewsSectionCollapsed ? 'fa-angle-down' : 'fa-angle-up'} text-[10px]`} aria-hidden />
-                  <span className={`text-[10px] opacity-60 leading-none ${theme.label}`}>
-                    {reportViewsSectionCollapsed ? 'Expand' : 'Collapse'}
-                  </span>
-                </button>
-              </div>
+        <div className="w-full h-1 flex-auto flex flex-col min-h-0 overflow-hidden">
+          {renderSearchPropertiesRow({ tightBottom: true })}
+          {renderEditorSubTabs()}
+          {editorSubTab === 'filters' && (
+            <div className="min-h-0 flex-1 flex flex-col overflow-hidden">
+              {currentSearch?.SearchViewId ? (
+                <SearchFilterEditor
+                  compactFilterHeader
+                  flexFillParent
+                  sectionMinHeightPx={100}
+                  filterList={currentSearch?.AppSearchFieldList ?? []}
+                  onAddFilter={addSearchFilter}
+                  onRemoveFilter={removeSearchFilter}
+                  onMarkChange={markChange}
+                  filterColumnsDataMap={dataSetColumnsList.length ? dataSetColumnsDataMap : null}
+                  controlTypeDataMap={controlTypeDataMap}
+                  criteriaOperatorDataMap={criteriaOperatorDataMap}
+                  enableAdvancedOptions={true}
+                  entityListForFilter={entityListForFilter}
+                  getEntityCodeById={getEntityCodeById}
+                  onOpenDatasourceSelector={openEntityInfoPopup}
+                  onOpenEntityDataPreview={openEntityDataEditorPopup}
+                  subControlTypeDataMap={subControlTypeDataMap}
+                  internalCodeDataMap={internalCodeDataMap}
+                  getSearchFieldNameById={getSearchFieldNameById}
+                  onOpenCascadingConfig={openCascadingConfigPopup}
+                  onOpenInnerRelationConfig={openInnerRelationPopup}
+                  showWarning={showWarning}
+                  minHeight={0}
+                />
+              ) : (
+                <div className={`flex-1 flex items-center justify-center text-sm px-4 text-center ${theme.label}`}>
+                  Set a Default View in Report Settings to edit filters.
+                </div>
+              )}
             </div>
-            {!reportViewsSectionCollapsed && (
+          )}
+          {editorSubTab === 'views' && (
               <div className="w-full h-1 flex-auto flex flex-row gap-2 min-h-0 overflow-hidden">
             <div className={`w-72 pl-4 shrink-0 flex flex-col min-h-0 overflow-hidden ${theme.mainContentSection}`}>
               <div className={`flex flex-col gap-1.5 px-2 py-2 border-b shrink-0 ${theme.mainContentSection}`}>
@@ -2181,8 +2130,7 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
               )}
             </div>
               </div>
-            )}
-          </div>
+          )}
         </div>
       )}
         </>

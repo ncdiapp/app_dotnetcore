@@ -1,6 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback, useRef, useEffect } from "react";
 import { useDispatch } from "react-redux";
-import { GridViewLayout } from "./searchViewLayout/GridViewLayout";
+import { GridViewLayout, type MassUpdateGridApi } from "./searchViewLayout/GridViewLayout";
 import FlexGridAddOn from "../common/FlexGridAddOn";
 import { CardViewLayout } from "./searchViewLayout/CardViewLayout";
 import { CalendarViewLayout } from "./searchViewLayout/CalendarViewLayout";
@@ -14,6 +14,7 @@ import { GoogleMapViewLayout } from "./searchViewLayout/GoogleMapViewLayout";
 import { useEnumValues } from "../../hooks/useEnumDictionary";
 import { useTheme } from "../../redux/hooks/useTheme";
 import { useTabNavigation } from "../../redux/hooks/useTabNavigation";
+import { useErrorMessage } from "../../redux/hooks/useErrorMessage";
 import { getCurrentActiveTab, preserveTabInitialPath } from "../../redux/features/ui/navigation/tabnavSlice";
 import {
   buildFormGroupOpenPayload,
@@ -21,6 +22,7 @@ import {
   hasDataModelTemplateFormGroup,
 } from "../../utils/transactionFormGroupHelper";
 import { isTransactionFormGroupPath } from "../../helper/navigationHelper";
+import { searchSvc } from "../../webapi/searchSvc";
 import type { AppDispatch } from "../../redux/store";
 interface SearchViewProps {
   viewDto: any;
@@ -43,8 +45,66 @@ export const SearchView: React.FC<SearchViewProps> = ({
   const { theme } = useTheme();
   const dispatch = useDispatch<AppDispatch>();
   const { addTabAndNavigate } = useTabNavigation();
+  const { showError, showInfo } = useErrorMessage();
   const emAppViewType = useEnumValues('EmAppViewType');
   const [gridControl, setGridControl] = useState<any>(null);
+  const massUpdateApiRef = useRef<MassUpdateGridApi | null>(null);
+  const [deletedMassUpdateRows, setDeletedMassUpdateRows] = useState<any[]>([]);
+  const [massUpdateBusy, setMassUpdateBusy] = useState(false);
+
+  const isMassUpdate = Boolean(viewDto?.IsMassUpdate);
+  // Hierarchical ListEdit mass update uses embedded FormListEdit (not this SingleTable grid path).
+  const isHierarchicalMassUpdate = Number(viewDto?.MassUpdateViewType) === 2;
+  const showSingleTableMassUpdateToolbar = isMassUpdate && !isHierarchicalMassUpdate;
+
+  const onMassUpdateApiReady = useCallback((api: MassUpdateGridApi | null) => {
+    massUpdateApiRef.current = api;
+  }, []);
+
+  const massupdated_addRow = useCallback(() => {
+    massUpdateApiRef.current?.addRow();
+  }, []);
+
+  const massupdated_removeRow = useCallback(() => {
+    const removed = massUpdateApiRef.current?.removeSelectedRow();
+    if (removed) {
+      setDeletedMassUpdateRows((prev) => [...prev, removed]);
+    }
+  }, []);
+
+  const massupdated_save = useCallback(async () => {
+    const api = massUpdateApiRef.current;
+    if (!api || !viewDto?.Id) return;
+    const changed = api.getChangedItems();
+    if ((!changed || changed.length === 0) && deletedMassUpdateRows.length === 0) {
+      showInfo('No changes to save.', true);
+      return;
+    }
+    setMassUpdateBusy(true);
+    try {
+      const result = await searchSvc.saveMassUpdateResult({
+        SearchViewId: Number(viewDto.Id),
+        ModifiedSearchResult: changed ?? [],
+        DeletedSearchResult: deletedMassUpdateRows,
+      });
+      if (result?.IsSuccessful === false) {
+        const msgs = result?.ValidationResult?.Items?.map((i: any) => i.Message).filter(Boolean) ?? [];
+        showError(msgs.join('; ') || 'Mass update save failed.');
+        return;
+      }
+      setDeletedMassUpdateRows([]);
+      showInfo('Mass update saved.', true);
+      await onExecuteSearch?.();
+    } catch (err: any) {
+      showError(err?.message || 'Mass update save failed.');
+    } finally {
+      setMassUpdateBusy(false);
+    }
+  }, [deletedMassUpdateRows, onExecuteSearch, showError, showInfo, viewDto?.Id]);
+
+  useEffect(() => {
+    setDeletedMassUpdateRows([]);
+  }, [viewDto?.Id, viewDataList]);
 
   const gridViewType = emAppViewType?.GridView ?? 1;
   const cardViewType = emAppViewType?.CardView ?? 2;
@@ -127,6 +187,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             onExecuteSearch={onExecuteSearch}
             onSelectionChanged={onSelectionChanged}
             onGridControlReady={setGridControl}
+            onMassUpdateApiReady={onMassUpdateApiReady}
           />
         );
       case cardViewType:
@@ -233,6 +294,7 @@ export const SearchView: React.FC<SearchViewProps> = ({
             onExecuteSearch={onExecuteSearch}
             onSelectionChanged={onSelectionChanged}
             onGridControlReady={setGridControl}
+            onMassUpdateApiReady={onMassUpdateApiReady}
           />
         );
     }
@@ -252,6 +314,54 @@ export const SearchView: React.FC<SearchViewProps> = ({
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0">
+          {showSingleTableMassUpdateToolbar && (
+            <>
+              <button
+                type="button"
+                className={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
+                onClick={() => void onExecuteSearch?.()}
+                disabled={massUpdateBusy}
+                title="Refresh"
+              >
+                <i className="fa-solid fa-rotate mr-1" aria-hidden="true" />
+                Refresh
+              </button>
+              <button
+                type="button"
+                className={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
+                onClick={() => void massupdated_save()}
+                disabled={massUpdateBusy}
+                title="Save"
+              >
+                <i className="fa-solid fa-floppy-disk mr-1" aria-hidden="true" />
+                Save
+              </button>
+              {viewDto?.IsAllowAddRow && (
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
+                  onClick={massupdated_addRow}
+                  disabled={massUpdateBusy}
+                  title="Add Row"
+                >
+                  <i className="fa-solid fa-plus mr-1" aria-hidden="true" />
+                  Add Row
+                </button>
+              )}
+              {viewDto?.IsAllowDeleteRow && (
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 text-xs rounded ${theme.button_default}`}
+                  onClick={massupdated_removeRow}
+                  disabled={massUpdateBusy}
+                  title="Delete Row"
+                >
+                  <i className="fa-solid fa-xmark mr-1" aria-hidden="true" />
+                  Delete Row
+                </button>
+              )}
+            </>
+          )}
           {topMenuData.toDataModel.map((m: any, idx: number) => (
             <button
               key={`to-form-${m?.Id ?? idx}`}
