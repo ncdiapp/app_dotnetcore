@@ -609,6 +609,9 @@ namespace APP.BL.DataMigration.PlmMigration
                 if (existing.HasValue)
                 {
                     executeResult.Messages.Add($"ListEdit '{integrationId}' already exists as #{existing} — reused.");
+                    // PLM DW tables often lack formal FKs — always (re)apply blueprint parent-key links.
+                    EnsureListEditChildParentKeyLinks(conn, existing.Value, le.Create.UnitStructure, executeResult);
+                    ApplyListEditUnitFieldMetadataFromBlueprint(conn, existing.Value, le.Create.UnitStructure, executeResult);
                     executeResult.ListEditIntegrationId = integrationId;
                     return existing.Value;
                 }
@@ -647,6 +650,13 @@ namespace APP.BL.DataMigration.PlmMigration
                 int txId = Convert.ToInt32(createResult.Object.Id);
                 SetTransactionOrganizedType(conn, txId, (int)EmTransactionOrganizedType.List);
                 SetIntegrationId(conn, null, "AppTransaction", "TransactionID", txId, integrationId);
+
+                // CreateHierarchyTransactionFromTables only marks LinkToParent when DB schema has an FK
+                // to the master table. PLM imported tables usually share ReferenceId without that FK —
+                // apply blueprint FkColumn / ParentPkColumn / IsForeignKey explicitly.
+                EnsureListEditChildParentKeyLinks(conn, txId, le.Create.UnitStructure, executeResult);
+                // Same for ControlType/EntityId — hierarchy create defaults TextBox with no EntityId.
+                ApplyListEditUnitFieldMetadataFromBlueprint(conn, txId, le.Create.UnitStructure, executeResult);
 
                 executeResult.Messages.Add(
                     $"Created ListEdit Transaction #{txId} IntegrationId={integrationId} (OrganizedType=List), root={rootTable}, children={childTables.Count}.");
@@ -921,6 +931,440 @@ WHERE SearchID = @SearchId
                 cmd.Parameters.AddWithValue("@Type", organizedType);
                 cmd.Parameters.AddWithValue("@Id", transactionId);
                 cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>
+        /// Sets child unit FK → root PK as IsLinkToParentPrimaryKey using blueprint FkColumn / ParentPkColumn
+        /// (or field IsForeignKey / default ReferenceId). Needed because CreateHierarchyTransactionFromTables
+        /// only auto-detects formal database foreign keys.
+        /// </summary>
+        private static void EnsureListEditChildParentKeyLinks(
+            SqlConnection conn,
+            int transactionId,
+            PlmSearchMassUpdateListEditUnitStructureDto unitStructure,
+            PlmSearchMassUpdateViewExecuteResultDto executeResult)
+        {
+            if (unitStructure?.Root == null
+                || unitStructure.Children == null
+                || unitStructure.Children.Count == 0)
+                return;
+
+            string rootTable = unitStructure.Root.AppTableName;
+            string rootPkColumn = !string.IsNullOrWhiteSpace(unitStructure.Root.PkColumn)
+                ? unitStructure.Root.PkColumn.Trim()
+                : "ReferenceId";
+
+            int? rootUnitId = !string.IsNullOrWhiteSpace(rootTable)
+                ? GetTransactionUnitIdByTableName(conn, transactionId, rootTable.Trim())
+                : GetRootTransactionUnitId(conn, transactionId);
+            if (!rootUnitId.HasValue)
+            {
+                executeResult.Messages.Add(
+                    "ListEdit child parent-key link skipped: root unit not found.");
+                return;
+            }
+
+            int? rootPkFieldId = ResolveTransactionFieldId(conn, transactionId, rootUnitId, rootPkColumn);
+            if (!rootPkFieldId.HasValue)
+            {
+                executeResult.Messages.Add(
+                    $"ListEdit child parent-key link skipped: root PK '{rootPkColumn}' not found on unit #{rootUnitId}.");
+                return;
+            }
+
+            foreach (var child in unitStructure.Children.Where(c => !string.IsNullOrWhiteSpace(c?.AppTableName)))
+            {
+                int? childUnitId = GetTransactionUnitIdByTableName(conn, transactionId, child.AppTableName.Trim());
+                if (!childUnitId.HasValue)
+                {
+                    executeResult.Messages.Add(
+                        $"ListEdit child parent-key link skipped: unit for '{child.AppTableName}' not found.");
+                    continue;
+                }
+
+                EnsureChildUnitParent(conn, childUnitId.Value, rootUnitId.Value);
+
+                string fkColumn = !string.IsNullOrWhiteSpace(child.FkColumn)
+                    ? child.FkColumn.Trim()
+                    : child.Fields?.FirstOrDefault(f => f.IsForeignKey == true && !string.IsNullOrWhiteSpace(f.AppColumnName))
+                        ?.AppColumnName?.Trim();
+                if (string.IsNullOrWhiteSpace(fkColumn))
+                    fkColumn = !string.IsNullOrWhiteSpace(child.ParentPkColumn)
+                        ? child.ParentPkColumn.Trim()
+                        : rootPkColumn;
+
+                string parentPkColumn = !string.IsNullOrWhiteSpace(child.ParentPkColumn)
+                    ? child.ParentPkColumn.Trim()
+                    : rootPkColumn;
+                int? parentPkFieldId = string.Equals(parentPkColumn, rootPkColumn, StringComparison.OrdinalIgnoreCase)
+                    ? rootPkFieldId
+                    : (ResolveTransactionFieldId(conn, transactionId, rootUnitId, parentPkColumn) ?? rootPkFieldId);
+
+                int updated = SetChildFieldLinkToParentPrimaryKey(
+                    conn, childUnitId.Value, fkColumn, parentPkFieldId.Value);
+                if (updated > 0)
+                {
+                    executeResult.Messages.Add(
+                        $"ListEdit child '{child.AppTableName}': set {fkColumn} IsLinkToParentPrimaryKey → root #{parentPkFieldId}.");
+                }
+                else
+                {
+                    executeResult.Messages.Add(
+                        $"ListEdit child '{child.AppTableName}': FK column '{fkColumn}' not found — LinkToParentPrimaryKey not set.");
+                }
+            }
+        }
+
+        private static void EnsureChildUnitParent(SqlConnection conn, int childUnitId, int rootUnitId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit
+SET ParentTransactionUnitID = @RootUnitId,
+    IsMasterSiblingUnit = 0
+WHERE TransactionUnitID = @ChildUnitId
+  AND (ParentTransactionUnitID IS NULL OR ParentTransactionUnitID = 0 OR ParentTransactionUnitID <> @RootUnitId)";
+                cmd.Parameters.AddWithValue("@RootUnitId", rootUnitId);
+                cmd.Parameters.AddWithValue("@ChildUnitId", childUnitId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static int SetChildFieldLinkToParentPrimaryKey(
+            SqlConnection conn,
+            int childUnitId,
+            string fkColumn,
+            int parentPkFieldId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField
+SET IsLinkToParentPrimaryKey = 1,
+    LinkToParentPrimaryKeyFieldID = @ParentPkFieldId,
+    IsReadonly = 1,
+    IsVisible = 0
+WHERE TransactionUnitID = @ChildUnitId
+  AND DataBaseFieldName = @FkColumn";
+                cmd.Parameters.AddWithValue("@ParentPkFieldId", parentPkFieldId);
+                cmd.Parameters.AddWithValue("@ChildUnitId", childUnitId);
+                cmd.Parameters.AddWithValue("@FkColumn", fkColumn);
+                return cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>
+        /// Applies blueprint unit fields' ControlType / EntityId / DisplayName / visibility / sort
+        /// onto AppTransactionField rows. CreateHierarchyTransactionFromTables defaults TextBox + null EntityId.
+        /// Columns not listed in the blueprint (except PK / LinkToParent) are hidden.
+        /// SortOrder and IsVisible must follow PLM MassUpdateViewField.Sort / IsHide (via blueprint sort / isVisible).
+        /// </summary>
+        private static void ApplyListEditUnitFieldMetadataFromBlueprint(
+            SqlConnection conn,
+            int transactionId,
+            PlmSearchMassUpdateListEditUnitStructureDto unitStructure,
+            PlmSearchMassUpdateViewExecuteResultDto executeResult)
+        {
+            if (unitStructure == null)
+                return;
+
+            var units = new List<PlmSearchMassUpdateListEditUnitDto>();
+            if (unitStructure.Root != null)
+                units.Add(unitStructure.Root);
+            if (unitStructure.Children != null)
+                units.AddRange(unitStructure.Children.Where(c => c != null));
+
+            int applied = 0;
+            int hidden = 0;
+
+            foreach (var unit in units)
+            {
+                if (string.IsNullOrWhiteSpace(unit.AppTableName))
+                    continue;
+
+                string appTableName = unit.AppTableName.Trim();
+                int? unitId = GetTransactionUnitIdByTableName(conn, transactionId, appTableName);
+                if (!unitId.HasValue)
+                    continue;
+
+                // FieldMapping SubItem / GridColumn → ControlType + Entity for every column on this unit
+                // (root TabFields and child GridColumns). MU blueprint then overlays Sort / IsVisible / explicit meta.
+                var mappingByColumn = LoadFieldMappingMetaByAppTable(conn, appTableName);
+
+                var blueprintByColumn = new Dictionary<string, PlmSearchMassUpdateListEditFieldDto>(
+                    StringComparer.OrdinalIgnoreCase);
+                foreach (var f in unit.Fields ?? Enumerable.Empty<PlmSearchMassUpdateListEditFieldDto>())
+                {
+                    if (string.IsNullOrWhiteSpace(f?.AppColumnName))
+                        continue;
+                    blueprintByColumn[f.AppColumnName.Trim()] = f;
+                }
+
+                // Structural PK/FK — always known; keep hidden unless blueprint overrides visibility.
+                if (!string.IsNullOrWhiteSpace(unit.PkColumn) && !blueprintByColumn.ContainsKey(unit.PkColumn))
+                {
+                    blueprintByColumn[unit.PkColumn.Trim()] = new PlmSearchMassUpdateListEditFieldDto
+                    {
+                        AppColumnName = unit.PkColumn.Trim(),
+                        IsPrimaryKey = true,
+                        IsVisible = false,
+                        Sort = 0,
+                        ControlType = (int)EmAppControlType.Numeric
+                    };
+                }
+                if (!string.IsNullOrWhiteSpace(unit.FkColumn) && !blueprintByColumn.ContainsKey(unit.FkColumn))
+                {
+                    blueprintByColumn[unit.FkColumn.Trim()] = new PlmSearchMassUpdateListEditFieldDto
+                    {
+                        AppColumnName = unit.FkColumn.Trim(),
+                        IsForeignKey = true,
+                        IsVisible = false,
+                        Sort = 0,
+                        ControlType = (int)EmAppControlType.Numeric
+                    };
+                }
+
+                var dbFields = new List<(int FieldId, string DbName, bool IsPk, bool IsLinkParent)>();
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+SELECT TransactionFieldID, DataBaseFieldName,
+       ISNULL(IsPrimaryKey, 0), ISNULL(IsLinkToParentPrimaryKey, 0)
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId";
+                    cmd.Parameters.AddWithValue("@UnitId", unitId.Value);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            dbFields.Add((
+                                reader.GetInt32(0),
+                                reader.IsDBNull(1) ? null : reader.GetString(1),
+                                reader.GetBoolean(2),
+                                reader.GetBoolean(3)));
+                        }
+                    }
+                }
+
+                foreach (var (fieldId, dbName, isPk, isLinkParent) in dbFields)
+                {
+                    if (string.IsNullOrWhiteSpace(dbName))
+                        continue;
+
+                    bool inMuBlueprint = blueprintByColumn.TryGetValue(dbName, out PlmSearchMassUpdateListEditFieldDto bpField);
+                    mappingByColumn.TryGetValue(dbName, out FieldMappingColumnMeta mapMeta);
+
+                    // --- ControlType / EntityId: blueprint wins, else FieldMapping SubItem/GridColumn ---
+                    int controlType;
+                    if (inMuBlueprint && bpField.ControlType.HasValue)
+                        controlType = MapPlmControlTypeToApp(bpField.ControlType.Value);
+                    else if (mapMeta != null && mapMeta.PlmControlType.HasValue)
+                        controlType = MapPlmControlTypeToApp(mapMeta.PlmControlType.Value);
+                    else if (isPk || (inMuBlueprint && bpField.IsPrimaryKey == true))
+                        controlType = (int)EmAppControlType.Numeric;
+                    else
+                        controlType = (int)EmAppControlType.TextBox;
+
+                    int? appEntityId = null;
+                    if (inMuBlueprint && !string.IsNullOrWhiteSpace(bpField.EntityIntegrationId))
+                        appEntityId = ResolveEntityInfoId(conn, bpField.EntityIntegrationId);
+                    else if (inMuBlueprint && (bpField.PlmMetaColumnId.HasValue || bpField.PlmSubItemId.HasValue))
+                        appEntityId = ResolveEntityFromFieldMapping(conn, bpField);
+                    else if (mapMeta?.PlmEntityId.HasValue == true)
+                        appEntityId = GetAppEntityInfoIdByPlmEntityId(conn, null, mapMeta.PlmEntityId.Value);
+
+                    if (controlType != (int)EmAppControlType.DDL
+                        && controlType != (int)EmAppControlType.SearchAbleDDL
+                        && controlType != (int)EmAppControlType.AutoComplete)
+                    {
+                        appEntityId = null;
+                    }
+
+                    // --- Hide/Show + Sort: PLM Mass Update View field list is truth ---
+                    // In MU list → isVisible / sort from blueprint (IsHide → isVisible=false).
+                    // Not in MU list → hide (CreateHierarchy leftover columns), keep FieldMapping ControlType/Entity.
+                    bool isVisible;
+                    bool isReadonly;
+                    int sortOrder;
+                    string displayName = null;
+
+                    if (inMuBlueprint)
+                    {
+                        // Blueprint IsVisible is truth (PLM IsHide / intentional root PK identity).
+                        // Do not force-hide PK when blueprint sets isVisible=true (RegularGrid Ref No.).
+                        isVisible = bpField.IsVisible == true;
+                        isReadonly = isPk || isLinkParent
+                            || bpField.IsReadOnly == true
+                            || bpField.IsForeignKey == true
+                            || bpField.IsPrimaryKey == true;
+                        displayName = !string.IsNullOrWhiteSpace(bpField.DisplayLabel)
+                            ? bpField.DisplayLabel.Trim()
+                            : null;
+                        sortOrder = bpField.Sort.HasValue
+                            ? bpField.Sort.Value * 10
+                            : (isPk || isLinkParent || bpField.IsPrimaryKey == true || bpField.IsForeignKey == true
+                                ? 0
+                                : 9990);
+                    }
+                    else if (isPk || isLinkParent)
+                    {
+                        isVisible = false;
+                        isReadonly = true;
+                        sortOrder = 0;
+                    }
+                    else
+                    {
+                        isVisible = false;
+                        isReadonly = false;
+                        sortOrder = 9990;
+                        hidden++;
+                    }
+
+                    using (var upd = conn.CreateCommand())
+                    {
+                        upd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    ControlType = @ControlType,
+    EntityId = @EntityId,
+    DisplayName = COALESCE(@DisplayName, DisplayName),
+    SortOrder = @SortOrder,
+    IsVisible = @IsVisible,
+    IsReadonly = @IsReadonly
+WHERE TransactionFieldID = @FieldId";
+                        upd.Parameters.AddWithValue("@ControlType", controlType);
+                        upd.Parameters.AddWithValue("@EntityId", (object)appEntityId ?? DBNull.Value);
+                        upd.Parameters.AddWithValue("@DisplayName", (object)displayName ?? DBNull.Value);
+                        upd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                        upd.Parameters.AddWithValue("@IsVisible", isVisible);
+                        upd.Parameters.AddWithValue("@IsReadonly", isReadonly);
+                        upd.Parameters.AddWithValue("@FieldId", fieldId);
+                        if (upd.ExecuteNonQuery() > 0)
+                            applied++;
+                    }
+                }
+            }
+
+            if (applied > 0 || hidden > 0)
+            {
+                executeResult.Messages.Add(
+                    $"ListEdit field metadata applied: updated={applied}, hiddenExtra={hidden} (MU Sort/IsVisible; ControlType/EntityId from blueprint or FieldMapping).");
+                try
+                {
+                    AppCacheManagerBL.RefreshOnetHierarchyTranscation(transactionId);
+                }
+                catch
+                {
+                    // Best-effort cache refresh; field rows are already persisted.
+                }
+            }
+        }
+
+        private sealed class FieldMappingColumnMeta
+        {
+            public int? PlmControlType { get; set; }
+            public int? PlmEntityId { get; set; }
+        }
+
+        /// <summary>
+        /// Load Plm_FieldMapping ControlType/Entity by AppColumnName for one APP table
+        /// (root TabFields via PlmSubItemId, child GridColumns via PlmMetaColumnId).
+        /// </summary>
+        private static Dictionary<string, FieldMappingColumnMeta> LoadFieldMappingMetaByAppTable(
+            SqlConnection conn,
+            string appTableName)
+        {
+            var map = new Dictionary<string, FieldMappingColumnMeta>(StringComparer.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(appTableName) || OBJECT_ID_Exists(conn, "Plm_FieldMapping") == false)
+                return map;
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT AppColumnName, PlmControlType, PlmEntityId
+FROM dbo.Plm_FieldMapping
+WHERE AppTableName = @Table
+  AND AppColumnName IS NOT NULL";
+                cmd.Parameters.AddWithValue("@Table", appTableName.Trim());
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        string col = reader.IsDBNull(0) ? null : reader.GetString(0);
+                        if (string.IsNullOrWhiteSpace(col))
+                            continue;
+                        // Prefer rows that carry EntityId when duplicates exist.
+                        var meta = new FieldMappingColumnMeta
+                        {
+                            PlmControlType = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1),
+                            PlmEntityId = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2)
+                        };
+                        if (!map.TryGetValue(col, out var existing)
+                            || (existing.PlmEntityId == null && meta.PlmEntityId != null))
+                        {
+                            map[col] = meta;
+                        }
+                    }
+                }
+            }
+
+            return map;
+        }
+
+        /// <summary>
+        /// Fallback: resolve EntityId from Plm_FieldMapping when blueprint only has PlmMetaColumnId / PlmSubItemId.
+        /// </summary>
+        private static int? ResolveEntityFromFieldMapping(
+            SqlConnection conn,
+            PlmSearchMassUpdateListEditFieldDto bpField)
+        {
+            string mappingTable = "Plm_FieldMapping";
+            if (OBJECT_ID_Exists(conn, mappingTable) == false)
+                return null;
+
+            using (var cmd = conn.CreateCommand())
+            {
+                if (bpField.PlmMetaColumnId.HasValue)
+                {
+                    cmd.CommandText = $@"
+SELECT TOP 1 PlmEntityId, PlmControlType
+FROM dbo.[{mappingTable}]
+WHERE PlmMetaColumnId = @Id AND PlmEntityId IS NOT NULL";
+                    cmd.Parameters.AddWithValue("@Id", bpField.PlmMetaColumnId.Value);
+                }
+                else if (bpField.PlmSubItemId.HasValue)
+                {
+                    cmd.CommandText = $@"
+SELECT TOP 1 PlmEntityId, PlmControlType
+FROM dbo.[{mappingTable}]
+WHERE PlmSubItemId = @Id AND PlmEntityId IS NOT NULL";
+                    cmd.Parameters.AddWithValue("@Id", bpField.PlmSubItemId.Value);
+                }
+                else
+                {
+                    return null;
+                }
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (!reader.Read())
+                        return null;
+                    int plmEntityId = reader.GetInt32(0);
+                    reader.Close();
+                    return GetAppEntityInfoIdByPlmEntityId(conn, null, plmEntityId);
+                }
+            }
+        }
+
+        private static bool OBJECT_ID_Exists(SqlConnection conn, string tableName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT OBJECT_ID(@Name, 'U')";
+                cmd.Parameters.AddWithValue("@Name", "dbo." + tableName);
+                var val = cmd.ExecuteScalar();
+                return val != null && val != DBNull.Value;
             }
         }
 

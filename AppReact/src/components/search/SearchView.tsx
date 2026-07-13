@@ -15,6 +15,7 @@ import { ChartViewLayout } from "./searchViewLayout/ChartViewLayout";
 import { ClusterAnalysisViewLayout } from "./searchViewLayout/ClusterAnalysisViewLayout";
 import { FlatDataSetTreeViewLayout } from "./searchViewLayout/FlatDataSetTreeViewLayout";
 import { GoogleMapViewLayout } from "./searchViewLayout/GoogleMapViewLayout";
+import FormListEdit from "../formMgt/FormListEdit";
 import { useEnumValues } from "../../hooks/useEnumDictionary";
 import { useTheme } from "../../redux/hooks/useTheme";
 import { useTabNavigation } from "../../redux/hooks/useTabNavigation";
@@ -314,7 +315,35 @@ export const SearchView: React.FC<SearchViewProps> = ({
 
   // Render different view types based on ViewType.
   // Unmigrated types are routed to GridView for now so every type is usable.
+  // Hierarchical ListEdit mass update: Angular SearchView/ListEditViewLayout embeds FormListEdit.
   const renderViewByType = () => {
+    if (
+      isHierarchicalMassUpdate &&
+      viewDto?.MassUpdateTransactionId != null &&
+      Number(viewDto.MassUpdateTransactionId) > 0
+    ) {
+      const listDto = dataModel?.searchResultDto?.MassUpdateAppListDataDto;
+      const emptyMassUpdateListDto = {
+        TransactionId: Number(viewDto.MassUpdateTransactionId),
+        ListData: [] as any[],
+        IsMassUpdate: true,
+        MassUpdateViewId: viewDto.Id,
+      };
+      return (
+        <div className="w-full h-full overflow-hidden">
+          <FormListEdit
+            embedded={{
+              embeddedTransactionId: Number(viewDto.MassUpdateTransactionId),
+              embeddedListEditDataDto: listDto ?? emptyMassUpdateListDto,
+              hideHeader: true,
+              onMassUpdateSaved: onExecuteSearch,
+              embeddedParam2: { isEnableFormConfigButtons: false },
+            }}
+          />
+        </div>
+      );
+    }
+
     switch (viewDto.ViewType) {
       case gridViewType:
         return (

@@ -26,6 +26,7 @@ import { store } from '../../redux/store';
 import { appTransactionService } from '../../webapi/apptransactionsvc';
 import { dynamicLayoutService } from '../../webapi/dynamiclayoutsvc';
 import { appFileService } from '../../webapi/appfilesvc';
+import { searchSvc } from '../../webapi/searchSvc';
 import FileUploader from '../common/FileUploader';
 import { FolderNavigation } from '../folderNavigation';
 import appHelper from '../../helper/appHelper';
@@ -95,11 +96,48 @@ function applyLinkedSearchResultToListRow(result: any, linkedSearch: any, rowIte
 export type FormListEditEmbeddedProps = {
   embeddedTransactionId: number;
   embeddedParam2?: Record<string, unknown>;
+  /**
+   * Search hierarchical mass update: use MassUpdateAppListDataDto from search result
+   * (Angular directivOutercontrol.listEditDataDto) instead of loading all ListEdit rows.
+   */
+  embeddedListEditDataDto?: any | null;
+  /** After ListEdit mass-update save (Angular saveCallBack → re-run search). */
+  onMassUpdateSaved?: () => void | Promise<void>;
+  /** Angular isHideHeaderAndFooter when embedded in Search Mass Update. */
+  hideHeader?: boolean;
 };
 
 type FormListEditProps = {
   embedded?: FormListEditEmbeddedProps | null;
 };
+
+/** If API returned a flat unit list with ParentTransactionUnitId, rebuild Children for FlexGridDetail. */
+function ensureTransactionUnitChildrenTree(tx: any): any {
+  if (!tx || !Array.isArray(tx.AppTransactionUnitList) || tx.AppTransactionUnitList.length === 0) {
+    return tx;
+  }
+  const units = tx.AppTransactionUnitList as any[];
+  const alreadyNested = units.some((u) => Array.isArray(u?.Children) && u.Children.length > 0);
+  if (alreadyNested) return tx;
+
+  const byId = new Map<string, any>();
+  units.forEach((u) => {
+    if (u?.Id == null) return;
+    byId.set(String(u.Id), { ...u, Children: Array.isArray(u.Children) ? [...u.Children] : [] });
+  });
+  const roots: any[] = [];
+  byId.forEach((u) => {
+    const parentId = u.ParentTransactionUnitId ?? u.ParentTransactionUnitID;
+    const isSibling = u.IsMasterSiblingUnit === true;
+    if (!isSibling && parentId != null && byId.has(String(parentId))) {
+      byId.get(String(parentId)).Children.push(u);
+    } else if (!isSibling) {
+      roots.push(u);
+    }
+  });
+  if (roots.length === 0) return tx;
+  return { ...tx, AppTransactionUnitList: roots };
+}
 
 const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
   const { theme, t } = useTheme();
@@ -108,6 +146,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
   const { param } = useParams<{ param: string }>();
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
   const isEmbedded = embedded != null && embedded.embeddedTransactionId != null;
+  const hideHeader = Boolean(embedded?.hideHeader);
 
   const [paramObj, setParamObj] = useState<{ id?: number; param1?: string; param2?: any }>(() => {
     if (isEmbedded && embedded) {
@@ -438,12 +477,16 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         dispatch(setIsBusy());
         setDataModel((prev) => ({ ...prev, isLoading: true }));
 
-        const [formStructureData, listDataResponse, transactionExDto] = await Promise.all([
+        const embeddedListDto = embedded?.embeddedListEditDataDto;
+        const [formStructureData, listDataResponseRaw, transactionExDtoRaw] = await Promise.all([
           appTransactionService.getFormStructure(transactionId),
-          appTransactionService.getListEditFormData(transactionId),
+          embeddedListDto != null
+            ? Promise.resolve(embeddedListDto)
+            : appTransactionService.getListEditFormData(transactionId),
           dynamicLayoutService.getTransactionForm(transactionId).catch(() => null),
         ]);
 
+        const listDataResponse = listDataResponseRaw ?? {};
         const listData = listDataResponse?.ListData ?? [];
         const blankRow = listDataResponse?.EditCloneAppChildDataDto ?? null;
         blankRowRef.current = blankRow;
@@ -471,12 +514,15 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
           MassUpdateViewId: listDataResponse?.MassUpdateViewId,
         };
 
+        const transactionExDto = ensureTransactionUnitChildrenTree(transactionExDtoRaw);
+        const currentFormStructure = ensureTransactionUnitChildrenTree(formStructureData);
+
         const displayName =
-          transactionExDto?.TransactionName ?? formStructureData?.TransactionName ?? listDataResponse?.TransactionName;
+          transactionExDto?.TransactionName ?? currentFormStructure?.TransactionName ?? listDataResponse?.TransactionName;
 
         setDataModel({
           currentFormData,
-          currentFormStructure: formStructureData,
+          currentFormStructure,
           transactionExDto: transactionExDto ?? null,
           listDataSource: cv,
           errorMessages: { error: [], warning: [], message: [] },
@@ -484,7 +530,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
           dictFieldEntityDataMap,
         });
 
-        if (displayName) dispatch(updateCurrentTabLabel(displayName));
+        if (displayName && !isEmbedded) dispatch(updateCurrentTabLabel(displayName));
       } catch (err) {
         appHelper.debugLog('FormListEdit loadData error', err);
         showError('Failed to load list edit data: ' + (err as Error).message);
@@ -493,7 +539,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         dispatch(setIsNotBusy());
       }
     },
-    [transactionId, dispatch, showError]
+    [transactionId, dispatch, showError, embedded?.embeddedListEditDataDto, isEmbedded]
   );
 
   useEffect(() => {
@@ -562,18 +608,46 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
         ListData: cv ? (cv as any).sourceCollection : formData.ListData,
       };
 
-      const result = await appTransactionService.saveListEditFormData(payload);
+      let result: any;
+      if (formData.IsMassUpdate) {
+        // Angular formListEditCtrl: SaveMassUpdateResult + IsListEditSimpleMassUpdate
+        result = await searchSvc.saveMassUpdateResult({
+          SearchViewId: formData.MassUpdateViewId,
+          IsListEditSimpleMassUpdate: true,
+          MassUpdateAppListDataDto: payload,
+        });
+      } else {
+        result = await appTransactionService.saveListEditFormData(payload);
+      }
 
-      if (result?.Object) {
-        const listData = result.Object?.ListData ?? payload.ListData;
-        const cv = dataModel.listDataSource;
+      if (result?.IsSuccessful === false) {
+        const errMsg = result?.ValidationResult ? getErrorMessage(result.ValidationResult) : null;
+        if (errMsg && (errMsg.error?.length || errMsg.warning?.length || errMsg.message?.length)) {
+          setDataModel((prev) => ({ ...prev, errorMessages: errMsg }));
+        } else {
+          showError('Failed to save list edit data.');
+        }
+        return;
+      }
+
+      const savedObject = result?.Object;
+      if (savedObject && !formData.IsMassUpdate) {
+        const listData = savedObject?.ListData ?? payload.ListData;
         if (cv && Array.isArray(listData)) {
           (cv as any).sourceCollection = listData;
           cv.refresh();
         }
         setDataModel((prev) => ({
           ...prev,
-          currentFormData: { ...prev.currentFormData, ...result.Object, ListData: listData, IsDirty: false },
+          currentFormData: { ...prev.currentFormData, ...savedObject, ListData: listData, IsDirty: false },
+          errorMessages: { error: [], warning: [], message: [] },
+        }));
+      } else {
+        setDataModel((prev) => ({
+          ...prev,
+          currentFormData: prev.currentFormData
+            ? { ...prev.currentFormData, IsDirty: false }
+            : prev.currentFormData,
           errorMessages: { error: [], warning: [], message: [] },
         }));
       }
@@ -582,13 +656,24 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
       if (errMsg && (errMsg.error?.length || errMsg.warning?.length || errMsg.message?.length)) {
         setDataModel((prev) => ({ ...prev, errorMessages: errMsg }));
       }
+
+      if (formData.IsMassUpdate && embedded?.onMassUpdateSaved) {
+        await embedded.onMassUpdateSaved();
+      }
     } catch (err) {
       appHelper.debugLog('FormListEdit saveFormData error', err);
       showError('Failed to save: ' + (err as Error).message);
     } finally {
       dispatch(setIsNotBusy());
     }
-  }, [dataModel.currentFormData, dataModel.listDataSource, dispatch, showError, getErrorMessage]);
+  }, [
+    dataModel.currentFormData,
+    dataModel.listDataSource,
+    dispatch,
+    showError,
+    getErrorMessage,
+    embedded,
+  ]);
 
   const rootUnit =
     dataModel.transactionExDto?.AppTransactionUnitList?.[0] ??
@@ -614,7 +699,15 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
   const hasListRootUnitNavigation =
     listRootLinkTargets.length > 0 || listRootLinkedSearchesMenu.length > 0;
 
-  const fieldsFromUnit = (rootUnit?.AppTransactionFieldList ?? [])
+  // Prefer unit field list (has ControlType / EntityId / IsVisible). Filter by runtime visibility.
+  // IMPORTANT: when every field is IsVisible=false (e.g. RegularGrid MU — MU cols live on child),
+  // do NOT fall back to DictTransactionUnitIdFiledNameFiledID — that dumps all physical columns
+  // as plain headers with no ControlType/Entity (see Trim Tracking MU first-layer bug).
+  const unitFieldListRaw =
+    rootUnitMergedForNav?.AppTransactionFieldList ?? rootUnit?.AppTransactionFieldList;
+  const hasUnitFieldDefinitions =
+    Array.isArray(unitFieldListRaw) && unitFieldListRaw.length > 0;
+  const fieldsFromUnit = (unitFieldListRaw ?? [])
     .filter((f: any) => isRuntimeTransactionFieldVisible(f))
     .sort((a: any, b: any) => (a.SortOrder ?? 0) - (b.SortOrder ?? 0));
 
@@ -627,16 +720,31 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     const nameToId = st.DictTransactionUnitIdFiledNameFiledID[unitId];
     const idToDisplay = st.DictTransactionUnitIdFieldIdFieldDisplayName?.[unitId];
     if (!nameToId || typeof nameToId !== 'object') return [];
-    return Object.entries(nameToId).map(([dataBaseFieldName, id]) => ({
-      Id: id,
-      DataBaseFieldName: dataBaseFieldName,
-      DisplayName: (idToDisplay && (idToDisplay as Record<number, string>)[Number(id)]) ?? dataBaseFieldName,
-      SortOrder: 0,
-      Width: 100,
-    }));
+    const dictAll = st.DictAllTransactionField ?? dataModel.transactionExDto?.DictAllTransactionField;
+    return Object.entries(nameToId).map(([dataBaseFieldName, id]) => {
+      const fromDict = dictAll?.[id as any] ?? dictAll?.[Number(id)] ?? dictAll?.[String(id)];
+      const merged = {
+        Id: id,
+        DataBaseFieldName: dataBaseFieldName,
+        DisplayName:
+          fromDict?.DisplayName ??
+          (idToDisplay && (idToDisplay as Record<number, string>)[Number(id)]) ??
+          dataBaseFieldName,
+        SortOrder: fromDict?.SortOrder ?? 0,
+        Width: fromDict?.Width ?? fromDict?.DisplayWidth ?? 100,
+        ControlType: fromDict?.ControlType,
+        EntityId: fromDict?.EntityId,
+        IsVisible: fromDict?.IsVisible,
+        IsFormLayoutVisible: fromDict?.IsFormLayoutVisible,
+        IsReadonly: fromDict?.IsReadonly ?? fromDict?.IsReadOnly,
+        IsPrimaryKey: fromDict?.IsPrimaryKey,
+        TransactionUnitId: fromDict?.TransactionUnitId,
+      };
+      return merged;
+    }).filter((f: any) => isRuntimeTransactionFieldVisible(f));
   })();
 
-  const fields = fieldsFromUnit.length > 0 ? fieldsFromUnit : fieldsFromStructure;
+  const fields = hasUnitFieldDefinitions ? fieldsFromUnit : fieldsFromStructure;
 
   const isReadOnly = rootUnit?.IsReadOnly === true;
   const normalizeBool = (v: any): boolean =>
@@ -1217,6 +1325,40 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
 
   return (
     <div className={`w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden ${theme.default}`}>
+      {hideHeader ? (
+        <div className={`flex items-center justify-end gap-2 px-2 py-1 shrink-0 ${theme.mainContentSection}`}>
+          <FlexGridAddOn gridRef={flexGridRef} title="Freeze / Show / Hide columns" />
+          {!isReadOnly && (
+            <>
+              <button
+                type="button"
+                className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
+                onClick={addChildNew}
+                title="Add row"
+              >
+                <i className="fa-solid fa-plus-circle mr-1" aria-hidden /> Add
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
+                onClick={deleteChild}
+                title="Delete selected row"
+              >
+                <i className="fa-solid fa-minus-circle mr-1" aria-hidden /> Delete
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
+                onClick={saveFormData}
+                title="Save"
+                disabled={!dataModel.currentFormData?.IsDirty}
+              >
+                <i className="fa-solid fa-floppy-disk mr-1" aria-hidden /> Save
+              </button>
+            </>
+          )}
+        </div>
+      ) : (
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>
           {dataModel.transactionExDto?.TransactionName ?? dataModel.currentFormStructure?.TransactionName ?? 'List Edit'}
@@ -1302,6 +1444,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
           )}
         </div>
       </div>
+      )}
 
       {(dataModel.errorMessages?.error?.length > 0 || dataModel.errorMessages?.warning?.length > 0) && (
         <div className={`px-3 py-1 text-xs ${theme.label}`}>

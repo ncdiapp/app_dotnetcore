@@ -364,7 +364,13 @@ Embed in the same blueprint (so Import Tool can create ListEdit then Mass Update
   - `unitStructure`:
     - **root**: header / parent table (usually same grain as Search result PK, e.g. `Plm_*_Header` or `Plm_ReferenceBasicInfo`) — include PK field
     - **children**: 1:N grid table(s) from MU `GridColumnId` / FieldMapping — FK to root PK
-  - `fields[]` per unit: from MU fields via FieldMapping (`appTableName`, `appColumnName`, controlType, visible, sort). Readonly MU fields → visible non-editable on ListEdit as appropriate
+- `listEditCreate.create.fields[]` per unit: from **PLM `pdmMassUpdateViewField`** via FieldMapping  
+  - `sort` = PLM `Sort` (exact)  
+  - `isVisible` = **false** when PLM `IsHide=1`, else true (unless structural PK/FK — always hidden)  
+  - `isReadOnly` = PLM `IsReadonly`  
+  - `controlType` / `entityIntegrationId` from FieldMapping SubItem/GridColumn  
+  - Columns **not** in the PLM Mass Update View field list must be **hidden** on the ListEdit unit (do not leave CreateHierarchy defaults visible)  
+  - Do **not** invent extra display columns on root/child beyond PK/FK + PLM MU fields (RegularGrid → root PK only)
 - `massUpdate.updateTransactionIntegrationId` = the **new** ListEdit IntegrationId (same as `listEditCreate.create.integrationId`)
 
 **Do not** silently change an existing MasterDetail `Tab_*` into List. Always create a **dedicated** ListEdit IntegrationId for B2.
@@ -401,6 +407,7 @@ STOP. List blockers only (missing FieldMapping, no resolvable header/grid tables
 [ ] No 1:N joins in dataSetPatch
 [ ] Mode A includes Unit PK mass-update mapping
 [ ] Mode B SearchView maps root PK only
+[ ] ListEdit fields: sort=PLM Sort, isVisible=!(IsHide), hide non-MU columns
 [ ] Do not change display default SearchViewId
 [ ] If Phase D fails → fix Blueprint / report BL error; do not invent columns
 [ ] Delete output/_probe_* (and other output-root scratch dumps) before ending the run

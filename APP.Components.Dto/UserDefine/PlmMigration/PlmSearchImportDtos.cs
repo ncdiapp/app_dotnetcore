@@ -866,6 +866,13 @@ namespace APP.Components.EntityDto
         public bool? IsForeignKey { get; set; }
 
         [DataMember]
+        public bool? IsReadOnly { get; set; }
+
+        /// <summary>PLM Entity IntegrationId (e.g. "79") — resolved to AppEntityInfo.EntityInfoID on import.</summary>
+        [DataMember]
+        public string EntityIntegrationId { get; set; }
+
+        [DataMember]
         public int? PlmSubItemId { get; set; }
 
         [DataMember]

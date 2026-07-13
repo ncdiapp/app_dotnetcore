@@ -6,7 +6,7 @@ import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/bus
 import { appTransactionService } from '../../../webapi/apptransactionsvc';
 import { dynamicLayoutService } from '../../../webapi/dynamiclayoutsvc';
 import MasterDetailEditLayoutForm from '../../formMgt/FormMasterDetail/MasterDetailEditLayoutForm';
-import FormListEditPreview from '../../formMgt/FormListEditPreview';
+import FormListEdit from '../../formMgt/FormListEdit';
 
 interface TransactionFormPreviewProps {
   isOpen: boolean;
@@ -288,7 +288,11 @@ const TransactionFormPreview: React.FC<TransactionFormPreviewProps> = ({
             </div>
           ) : transactionType === 3 ? (
             <div className={`w-full h-full flex ${theme.default}`}>
-              <FormListEditPreview transactionId={transactionId} />
+              <FormListEdit
+                embedded={{
+                  embeddedTransactionId: transactionId,
+                }}
+              />
             </div>
           ) : (
             <div className="w-full h-full flex items-center justify-center">

@@ -1,0 +1,204 @@
+{
+  "_comment": "Option B2 MassUpdateViewAttach — HierarchicalTableUpdate. CreateNew ListEdit ListEdit_MU111_TrimTracking (Trim Header root + Trims_Tracking child). SearchView maps root PK only. setAsDefaultMassUpdateView=false. PLM IsActive=0 (inactive) but linked via junction.",
+  "schemaVersion": 1,
+  "mode": "MassUpdateViewAttach",
+  "generatedAt": "2026-07-13T18:18:00Z",
+  "source": {
+    "plmSearchTemplateId": 23902,
+    "plmSearchName": "1c - Trim Search",
+    "plmMassUpdateViewId": 111,
+    "plmMassUpdateViewName": "Trim Tracking MU",
+    "plmUpdateType": "RegularGrid",
+    "plmUpdateTypeId": 2,
+    "plmMainTabId": 4268,
+    "plmGridBlockId": 5207,
+    "plmGridId": 3179,
+    "tablePrefix": "Plm_",
+    "isPlmDefaultMassUpdateView": false,
+    "_comment_mainTab": "PLM MainTabId=4268 Tracking / GridBlock 5207. All MU fields are GridColumn on Plm_Trims_Tracking (GridId=3179). PLM DefaultMassUpdateViewId=18 (not this view)."
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_23902",
+    "appSearchId": 19,
+    "appDataSetId": 2095,
+    "_comment": "Resolve IntegrationId first, then AppSearchId. appDataSetId used when AppSearch.DataSetID is null."
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "addColumns": [],
+    "addLeftJoins": [],
+    "_comment": "Root PK ReferenceId already in DataSet. Do not join Plm_Trims_Tracking (1:N)."
+  },
+  "listEditCreate": {
+    "action": "CreateNew",
+    "_comment_action": "UseExisting | CreateNew — user approved B2 structure 2026-07-13",
+    "existingTransactionId": null,
+    "existingIntegrationId": null,
+    "create": {
+      "integrationId": "ListEdit_MU111_TrimTracking",
+      "name": "Trim Tracking MU ListEdit",
+      "transactionOrganizedType": "List",
+      "transactionOrganizedTypeId": 3,
+      "tenantDataSourceRegisterId": null,
+      "saasApplicationId": 5602,
+      "unitStructure": {
+        "mode": "RootPlusChild",
+        "root": {
+          "appTableName": "Plm_Trim_Header",
+          "unitDisplayName": "Trim Header",
+          "pkColumn": "ReferenceId",
+          "fields": [
+            {
+              "appColumnName": "ReferenceId",
+              "displayLabel": "Ref No.",
+              "controlType": 20,
+              "isVisible": true,
+              "sort": 0,
+              "isPrimaryKey": true,
+              "isReadOnly": true,
+              "_comment": "RegularGrid: no header MU SubItems. Show root PK only for row identity; all other header columns IsVisible=false."
+            }
+          ]
+        },
+        "children": [
+          {
+            "appTableName": "Plm_Trims_Tracking",
+            "unitDisplayName": "Trims Tracking",
+            "fkColumn": "ReferenceId",
+            "parentPkColumn": "ReferenceId",
+            "pkColumn": "RowId",
+            "fields": [
+              {
+                "appColumnName": "RowId",
+                "displayLabel": "Row Id",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 0,
+                "isPrimaryKey": true
+              },
+              {
+                "appColumnName": "ReferenceId",
+                "displayLabel": "Parent Ref",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 0,
+                "isForeignKey": true
+              },
+              {
+                "appColumnName": "ID",
+                "displayLabel": "ID",
+                "controlType": 1,
+                "entityIntegrationId": "3482",
+                "isVisible": true,
+                "sort": 1,
+                "plmMetaColumnId": 7621,
+                "isReadOnly": true,
+                "_comment": "PLM MassUpdateViewField Sort=1 IsHide=null IsReadonly=1"
+              },
+              {
+                "appColumnName": "Combo_Color",
+                "displayLabel": "Combo Color",
+                "controlType": 1,
+                "entityIntegrationId": "79",
+                "isVisible": true,
+                "sort": 2,
+                "plmMetaColumnId": 7605
+              },
+              {
+                "appColumnName": "Season",
+                "displayLabel": "Season",
+                "controlType": 1,
+                "entityIntegrationId": "3662",
+                "isVisible": true,
+                "sort": 3,
+                "plmMetaColumnId": 7607
+              },
+              {
+                "appColumnName": "Status",
+                "displayLabel": "Status",
+                "controlType": 1,
+                "entityIntegrationId": "4771",
+                "isVisible": true,
+                "sort": 5,
+                "plmMetaColumnId": 7612
+              },
+              {
+                "appColumnName": "Date",
+                "displayLabel": "Date",
+                "controlType": 7,
+                "isVisible": true,
+                "sort": 6,
+                "plmMetaColumnId": 7606
+              },
+              {
+                "appColumnName": "Comment",
+                "displayLabel": "Comment",
+                "controlType": 4,
+                "isVisible": true,
+                "sort": 7,
+                "plmMetaColumnId": 7613
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "massUpdate": {
+    "appMode": "HierarchicalTableUpdate",
+    "updateTransactionIntegrationId": "ListEdit_MU111_TrimTracking",
+    "updateTransactionId": null,
+    "updateBaseTransactionUnitId": null,
+    "updateUnitTableName": "Plm_Trim_Header",
+    "pkDatabaseFieldName": "ReferenceId",
+    "isAllowAddRow": true,
+    "isAllowDeleteRow": true,
+    "isAllowAdvancedUpdate": true,
+    "setAsDefaultMassUpdateView": false,
+    "_comment": "SearchView maps ROOT PK only; tracking grid columns live on ListEdit child unit. PLM default MU remains 18."
+  },
+  "searchView": {
+    "name": "Trim Tracking MU",
+    "integrationId": "Search_23902_MU111_View",
+    "integrationIdLabel": "Search_23902_MU111_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "isMassUpdateView": true,
+    "plmMassUpdateViewId": 111,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 1,
+        "isUpdatable": true,
+        "massUpdateDatabaseFieldName": "ReferenceId",
+        "massUpdateTransactionFieldId": null,
+        "_comment": "ONLY required SearchView MU mapping for HierarchicalTableUpdate — root PK → ListEdit root PK"
+      }
+    ]
+  },
+  "linkTargets": {
+    "copyFromDefaultSearchView": true,
+    "items": []
+  },
+  "coverage": {
+    "mappedToTxnField": 1,
+    "coveredInDataSet": 1,
+    "addColumn": 0,
+    "addOneToOneLeftJoin": 0,
+    "requiresOneToN": 6,
+    "unmapped": 0,
+    "readonlySkip": 1,
+    "listEditChildFieldsProposed": 6
+  },
+  "unmappedPlmFields": [],
+  "notes": [
+    "PLM MassUpdateView 111 IsActive=0 (inactive) but linked on SearchTemplate 23902 via pdmSearchTemplateReferenceView (SearchTemplateViewID=109).",
+    "Do not change AppSearch.SearchViewId (display default #2086).",
+    "Do not convert existing MasterDetail Grid_3179 (#2273) into ListEdit — CreateNew dedicated ListEdit_MU111_TrimTracking.",
+    "Child physical PK is RowId; PLM grid display column ID (7621) is readonly on ListEdit."
+  ]
+}
