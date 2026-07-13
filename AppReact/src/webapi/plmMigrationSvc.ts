@@ -852,6 +852,54 @@ class PlmMigrationService {
     if (!response.ok) throw new Error('Failed to execute search sibling view config');
     return response.json();
   }
+
+  async loadSearchMassUpdateViewBlueprint(
+    blueprintJson: string,
+  ): Promise<OperationCallResult<PlmSearchMassUpdateViewBlueprintDto>> {
+    const response = await fetch(`${this.baseUrl}/LoadSearchMassUpdateViewBlueprint`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ BlueprintJson: blueprintJson }),
+    });
+    if (!response.ok) throw new Error('Failed to load search mass update view blueprint');
+    return response.json();
+  }
+
+  async validateSearchMassUpdateViewBlueprint(
+    blueprint: PlmSearchMassUpdateViewBlueprintDto,
+  ): Promise<OperationCallResult<PlmSearchImportValidationDto>> {
+    const response = await fetch(`${this.baseUrl}/ValidateSearchMassUpdateViewBlueprint`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(blueprint),
+    });
+    if (!response.ok) throw new Error('Failed to validate search mass update view blueprint');
+    return response.json();
+  }
+
+  async previewSearchMassUpdateViewConfig(
+    blueprint: PlmSearchMassUpdateViewBlueprintDto,
+  ): Promise<OperationCallResult<PlmSearchImportPreviewDto>> {
+    const response = await fetch(`${this.baseUrl}/PreviewSearchMassUpdateViewConfig`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(blueprint),
+    });
+    if (!response.ok) throw new Error('Failed to preview search mass update view config');
+    return response.json();
+  }
+
+  async executeSearchMassUpdateViewConfig(
+    request: PlmSearchMassUpdateViewExecuteRequestDto,
+  ): Promise<OperationCallResult<PlmSearchMassUpdateViewExecuteResultDto>> {
+    const response = await fetch(`${this.baseUrl}/ExecuteSearchMassUpdateViewConfig`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(request),
+    });
+    if (!response.ok) throw new Error('Failed to execute search mass update view config');
+    return response.json();
+  }
 }
 
 export interface PlmDwImportBlueprintDto {
@@ -1201,12 +1249,23 @@ export interface PlmSearchImportCriteriaFieldDto {
 export interface PlmSearchImportSearchViewDto {
   Name?: string | null;
   IntegrationId?: string | null;
+  ViewType?: string | null;
+  GridOutputMode?: number | null;
+  IsMassUpdateView?: boolean | null;
   Fields?: PlmSearchImportSearchViewFieldDto[] | null;
 }
 
 export interface PlmSearchImportSearchViewFieldDto {
   DisplayText?: string | null;
   SysTableFiledPath?: string | null;
+  ControlType?: number | null;
+  EntityIntegrationId?: string | null;
+  IsTransRootId?: boolean;
+  IsVisible?: boolean;
+  Sort?: number | null;
+  MassUpdateTransactionFieldId?: number | null;
+  MassUpdateDatabaseFieldName?: string | null;
+  IsUpdatable?: boolean | null;
 }
 
 export interface PlmSearchImportLinkTargetDto {
@@ -1325,6 +1384,99 @@ export interface PlmSearchSiblingViewExecuteResultDto {
   DataSetId?: number | null;
   SiblingSearchViewId?: number | null;
   DefaultSearchViewId?: number | null;
+  Messages?: string[] | null;
+}
+
+export interface PlmSearchMassUpdateViewBlueprintDto {
+  SchemaVersion?: number;
+  Mode?: string | null;
+  GeneratedAt?: string | null;
+  Source?: {
+    PlmSearchTemplateId?: number | null;
+    PlmSearchName?: string | null;
+    PlmMassUpdateViewId?: number | null;
+    PlmMassUpdateViewName?: string | null;
+    PlmUpdateType?: string | null;
+    PlmUpdateTypeId?: number | null;
+    PlmMainTabId?: number | null;
+    PlmGridBlockId?: number | null;
+    TablePrefix?: string | null;
+    IsPlmDefaultMassUpdateView?: boolean | null;
+  } | null;
+  Target?: {
+    AppSearchIntegrationId?: string | null;
+    AppSearchId?: number | null;
+    AppDataSetId?: number | null;
+  } | null;
+  DataSetPatch?: PlmSearchSiblingViewBlueprintDto['DataSetPatch'];
+  ListEditCreate?: {
+    Action?: string | null;
+    ExistingTransactionId?: number | null;
+    ExistingIntegrationId?: string | null;
+    Create?: {
+      IntegrationId?: string | null;
+      Name?: string | null;
+      TransactionOrganizedType?: string | null;
+      TransactionOrganizedTypeId?: number | null;
+      TenantDataSourceRegisterId?: number | null;
+      SaasApplicationId?: number | null;
+      UnitStructure?: {
+        Mode?: string | null;
+        Root?: {
+          AppTableName?: string | null;
+          UnitDisplayName?: string | null;
+          PkColumn?: string | null;
+          Fields?: Array<Record<string, unknown>> | null;
+        } | null;
+        Children?: Array<{
+          AppTableName?: string | null;
+          UnitDisplayName?: string | null;
+          FkColumn?: string | null;
+          ParentPkColumn?: string | null;
+          Fields?: Array<Record<string, unknown>> | null;
+        }> | null;
+      } | null;
+    } | null;
+  } | null;
+  MassUpdate?: {
+    AppMode?: string | null;
+    UpdateTransactionIntegrationId?: string | null;
+    UpdateTransactionId?: number | null;
+    UpdateBaseTransactionUnitId?: number | null;
+    UpdateUnitTableName?: string | null;
+    PkDatabaseFieldName?: string | null;
+    IsAllowAddRow?: boolean | null;
+    IsAllowDeleteRow?: boolean | null;
+    IsAllowAdvancedUpdate?: boolean | null;
+    SetAsDefaultMassUpdateView?: boolean | null;
+  } | null;
+  SearchView?: PlmSearchImportSearchViewDto | null;
+  Coverage?: {
+    MappedToTxnField?: number;
+    CoveredInDataSet?: number;
+    AddColumn?: number;
+    AddOneToOneLeftJoin?: number;
+    RequiresOneToN?: number;
+    Unmapped?: number;
+    ReadonlySkip?: number;
+    ListEditChildFieldsProposed?: number;
+  } | null;
+}
+
+export interface PlmSearchMassUpdateViewExecuteRequestDto {
+  Blueprint?: PlmSearchMassUpdateViewBlueprintDto | null;
+  SaasApplicationId?: number | null;
+}
+
+export interface PlmSearchMassUpdateViewExecuteResultDto {
+  IsSuccess?: boolean;
+  ErrorMessage?: string | null;
+  SearchId?: number | null;
+  DataSetId?: number | null;
+  MassUpdateSearchViewId?: number | null;
+  DefaultSearchViewId?: number | null;
+  ListEditTransactionId?: number | null;
+  ListEditIntegrationId?: string | null;
   Messages?: string[] | null;
 }
 

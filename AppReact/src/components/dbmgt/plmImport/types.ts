@@ -12,6 +12,8 @@ import type {
   PlmSearchImportExecuteResultDto,
   PlmSearchSiblingViewBlueprintDto,
   PlmSearchSiblingViewExecuteResultDto,
+  PlmSearchMassUpdateViewBlueprintDto,
+  PlmSearchMassUpdateViewExecuteResultDto,
 } from '../../../webapi/plmMigrationSvc';
 
 export type PlmImportStepCode =
@@ -111,10 +113,11 @@ export interface PlmImportDwBlueprintStepUiState {
 
 /** PLM Search Import step UI persisted across main app tab switches. */
 export interface PlmImportSearchImportStepUiState {
-  /** 'main' = first Search import; 'sibling' = Option A enrich DataSet + sibling View */
-  importMode: 'main' | 'sibling';
+  /** 'main' | 'sibling' | 'massUpdate' */
+  importMode: 'main' | 'sibling' | 'massUpdate';
   blueprint: PlmSearchImportBlueprintDto | null;
   siblingBlueprint: PlmSearchSiblingViewBlueprintDto | null;
+  massUpdateBlueprint: PlmSearchMassUpdateViewBlueprintDto | null;
   blueprintFileName: string | null;
   blueprintJsonText: string | null;
   previewItems: PlmSearchImportPreviewItemDto[];
@@ -122,6 +125,7 @@ export interface PlmImportSearchImportStepUiState {
   validationWarnings: string[];
   lastExecuteResult: PlmSearchImportExecuteResultDto | null;
   lastSiblingExecuteResult: PlmSearchSiblingViewExecuteResultDto | null;
+  lastMassUpdateExecuteResult: PlmSearchMassUpdateViewExecuteResultDto | null;
   isValidating: boolean;
   isPreviewing: boolean;
   isExecuting: boolean;
@@ -168,6 +172,7 @@ export const createInitialSearchImportStepUi = (): PlmImportSearchImportStepUiSt
   importMode: 'main',
   blueprint: null,
   siblingBlueprint: null,
+  massUpdateBlueprint: null,
   blueprintFileName: null,
   blueprintJsonText: null,
   previewItems: [],
@@ -175,6 +180,7 @@ export const createInitialSearchImportStepUi = (): PlmImportSearchImportStepUiSt
   validationWarnings: [],
   lastExecuteResult: null,
   lastSiblingExecuteResult: null,
+  lastMassUpdateExecuteResult: null,
   isValidating: false,
   isPreviewing: false,
   isExecuting: false,

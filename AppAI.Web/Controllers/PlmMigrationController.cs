@@ -575,6 +575,62 @@ public class PlmMigrationController : SecureBaseController
         }
     }
 
+    [HttpPost("LoadSearchMassUpdateViewBlueprint")]
+    public OperationCallResult<PlmSearchMassUpdateViewBlueprintDto> LoadSearchMassUpdateViewBlueprint(
+        [FromBody] PlmSearchMassUpdateViewLoadRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.LoadSearchMassUpdateViewBlueprint(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchMassUpdateViewBlueprintDto>("Plm_SearchMassUpdate_Load_Error", ex);
+        }
+    }
+
+    [HttpPost("ValidateSearchMassUpdateViewBlueprint")]
+    public OperationCallResult<PlmSearchImportValidationDto> ValidateSearchMassUpdateViewBlueprint(
+        [FromBody] PlmSearchMassUpdateViewBlueprintDto blueprint)
+    {
+        try
+        {
+            return PlmMigrationBL.ValidateSearchMassUpdateViewBlueprint(blueprint);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportValidationDto>("Plm_SearchMassUpdate_Validate_Error", ex);
+        }
+    }
+
+    [HttpPost("PreviewSearchMassUpdateViewConfig")]
+    public OperationCallResult<PlmSearchImportPreviewDto> PreviewSearchMassUpdateViewConfig(
+        [FromBody] PlmSearchMassUpdateViewBlueprintDto blueprint)
+    {
+        try
+        {
+            return PlmMigrationBL.PreviewSearchMassUpdateViewConfig(blueprint);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchImportPreviewDto>("Plm_SearchMassUpdate_Preview_Error", ex);
+        }
+    }
+
+    [HttpPost("ExecuteSearchMassUpdateViewConfig")]
+    public OperationCallResult<PlmSearchMassUpdateViewExecuteResultDto> ExecuteSearchMassUpdateViewConfig(
+        [FromBody] PlmSearchMassUpdateViewExecuteRequestDto request)
+    {
+        try
+        {
+            return PlmMigrationBL.ExecuteSearchMassUpdateViewConfig(request);
+        }
+        catch (Exception ex)
+        {
+            return ErrorResult<PlmSearchMassUpdateViewExecuteResultDto>("Plm_SearchMassUpdate_Execute_Error", ex);
+        }
+    }
+
     private static OperationCallResult<T> ErrorResult<T>(string code, Exception ex)
     {
         var result = new OperationCallResult<T>();

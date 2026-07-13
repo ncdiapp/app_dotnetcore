@@ -249,4 +249,5 @@ STOP. List blockers only.
 
 - [`source/MULTI_VIEW_COVERAGE.md`](source/MULTI_VIEW_COVERAGE.md)  
 - [`PROMPT.md`](PROMPT.md) — first import  
+- [`PROMPT_MASSUPDATE_VIEW.md`](PROMPT_MASSUPDATE_VIEW.md) — PLM Mass Update (not a display ReferenceView)  
 - Probe helpers: `source/_plm_probe_search.sql`, `source/_app_probe_fieldmapping.sql`, `source/_app_probe_search_context.sql`

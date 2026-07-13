@@ -1,0 +1,107 @@
+{
+  "_comment": "Option A Mass Update View blueprint — attach IsMassUpdateView SearchView to an existing APP Search. Prerequisite: main PROMPT.md import done. Phase D: ExecuteSearchMassUpdateViewConfig (mode MassUpdateViewAttach).",
+  "schemaVersion": 1,
+  "mode": "MassUpdateViewAttach",
+  "generatedAt": "2026-07-13T00:00:00Z",
+  "source": {
+    "plmSearchTemplateId": 28902,
+    "plmSearchName": "1b - Fabric Search",
+    "plmMassUpdateViewId": 9,
+    "plmMassUpdateViewName": "Fabric Mass Update",
+    "plmUpdateType": "TabField",
+    "plmUpdateTypeId": 1,
+    "plmMainTabId": 4258,
+    "plmGridBlockId": null,
+    "tablePrefix": "Plm_",
+    "isPlmDefaultMassUpdateView": true
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_28902",
+    "appSearchId": null,
+    "appDataSetId": null
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "_comment_resultingQueryText": "Preferred: full enriched QueryText. If null, BL applies addColumns/addLeftJoins best-effort. 1:1 LEFT JOINs only.",
+    "addColumns": [],
+    "addLeftJoins": []
+  },
+  "massUpdate": {
+    "appMode": "SingleTableUpdate",
+    "_comment_appMode": "SingleTableUpdate | HierarchicalTableUpdate",
+    "updateTransactionIntegrationId": "Tab_4258",
+    "updateTransactionId": null,
+    "updateBaseTransactionUnitId": null,
+    "updateUnitTableName": "Plm_Fabric_Header",
+    "pkDatabaseFieldName": "ReferenceId",
+    "isAllowAddRow": true,
+    "isAllowDeleteRow": true,
+    "isAllowAdvancedUpdate": true,
+    "setAsDefaultMassUpdateView": true
+  },
+  "searchView": {
+    "name": "Fabric Mass Update",
+    "integrationIdLabel": "Search_28902_MU9_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "isMassUpdateView": true,
+    "plmMassUpdateViewId": 9,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 1,
+        "isUpdatable": true,
+        "massUpdateDatabaseFieldName": "ReferenceId",
+        "massUpdateTransactionFieldId": null,
+        "_comment": "REQUIRED for SingleTableUpdate — Unit PK must be mapped"
+      },
+      {
+        "displayText": "Fabric #",
+        "sysTableFiledPath": "Fabric_No",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 10,
+        "isUpdatable": true,
+        "plmSubItemId": 22,
+        "massUpdateDatabaseFieldName": "Fabric_No",
+        "massUpdateTransactionFieldId": null
+      },
+      {
+        "displayText": "Description",
+        "sysTableFiledPath": "Description",
+        "controlType": 2,
+        "isVisible": true,
+        "sort": 20,
+        "isUpdatable": true,
+        "plmSubItemId": 23,
+        "massUpdateDatabaseFieldName": "Description",
+        "massUpdateTransactionFieldId": null
+      },
+      {
+        "displayText": "Status (readonly example)",
+        "sysTableFiledPath": "Status",
+        "controlType": 1,
+        "isVisible": true,
+        "sort": 30,
+        "isUpdatable": false,
+        "plmSubItemId": 3128,
+        "massUpdateDatabaseFieldName": null,
+        "_comment": "PLM IsReadonly or display-only — no MassUpdateTransactionFieldId"
+      }
+    ]
+  },
+  "coverage": {
+    "mappedToTxnField": 2,
+    "coveredInDataSet": 3,
+    "addColumn": 0,
+    "addOneToOneLeftJoin": 0,
+    "requiresOneToN": 0,
+    "unmapped": 0,
+    "readonlySkip": 1
+  },
+  "unmappedPlmFields": []
+}

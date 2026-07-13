@@ -1,0 +1,156 @@
+{
+  "_comment": "Option B Mass Update — HierarchicalListEdit. Prefer UseExisting after user confirm; CreateNew only after user approves unitStructure. Phase D: create ListEdit first (if CreateNew), then attach Mass Update View.",
+  "schemaVersion": 1,
+  "mode": "MassUpdateViewAttach",
+  "generatedAt": "2026-07-13T00:00:00Z",
+  "source": {
+    "plmSearchTemplateId": 28902,
+    "plmSearchName": "1b - Fabric Search",
+    "plmMassUpdateViewId": 9,
+    "plmMassUpdateViewName": "Fabric Grid Mass Update",
+    "plmUpdateType": "RegularGrid",
+    "plmUpdateTypeId": 2,
+    "plmMainTabId": 4258,
+    "plmGridBlockId": 1001,
+    "tablePrefix": "Plm_",
+    "isPlmDefaultMassUpdateView": false
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_28902",
+    "appSearchId": null,
+    "appDataSetId": null
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "addColumns": [],
+    "addLeftJoins": []
+  },
+  "listEditCreate": {
+    "action": "CreateNew",
+    "_comment_action": "UseExisting | CreateNew",
+    "existingTransactionId": null,
+    "existingIntegrationId": null,
+    "create": {
+      "integrationId": "ListEdit_MU9_FabricGrid",
+      "name": "Fabric Grid Mass Update ListEdit",
+      "transactionOrganizedType": "List",
+      "transactionOrganizedTypeId": 3,
+      "tenantDataSourceRegisterId": null,
+      "saasApplicationId": null,
+      "unitStructure": {
+        "mode": "RootPlusChild",
+        "root": {
+          "appTableName": "Plm_Fabric_Header",
+          "unitDisplayName": "Fabric Header",
+          "pkColumn": "ReferenceId",
+          "fields": [
+            {
+              "appColumnName": "ReferenceId",
+              "displayLabel": "Ref No.",
+              "controlType": 20,
+              "isVisible": true,
+              "sort": 1,
+              "isPrimaryKey": true
+            },
+            {
+              "appColumnName": "Fabric_No",
+              "displayLabel": "Fabric #",
+              "controlType": 2,
+              "isVisible": true,
+              "sort": 10,
+              "plmSubItemId": 22
+            }
+          ]
+        },
+        "children": [
+          {
+            "appTableName": "Plm_Fabric_Colorway",
+            "unitDisplayName": "Colorway Grid",
+            "fkColumn": "ReferenceId",
+            "parentPkColumn": "ReferenceId",
+            "fields": [
+              {
+                "appColumnName": "ColorwayId",
+                "displayLabel": "Colorway Id",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 1,
+                "isPrimaryKey": true
+              },
+              {
+                "appColumnName": "ReferenceId",
+                "displayLabel": "Parent Ref",
+                "controlType": 20,
+                "isVisible": false,
+                "sort": 2,
+                "isForeignKey": true
+              },
+              {
+                "appColumnName": "Color",
+                "displayLabel": "Color",
+                "controlType": 1,
+                "isVisible": true,
+                "sort": 10,
+                "plmMetaColumnId": 44
+              },
+              {
+                "appColumnName": "Qty",
+                "displayLabel": "Qty",
+                "controlType": 3,
+                "isVisible": true,
+                "sort": 20,
+                "plmMetaColumnId": 55
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "massUpdate": {
+    "appMode": "HierarchicalTableUpdate",
+    "updateTransactionIntegrationId": "ListEdit_MU9_FabricGrid",
+    "updateTransactionId": null,
+    "updateBaseTransactionUnitId": null,
+    "updateUnitTableName": "Plm_Fabric_Header",
+    "pkDatabaseFieldName": "ReferenceId",
+    "isAllowAddRow": true,
+    "isAllowDeleteRow": true,
+    "isAllowAdvancedUpdate": true,
+    "setAsDefaultMassUpdateView": false,
+    "_comment": "SearchView maps ROOT PK only; grid columns live on ListEdit child unit"
+  },
+  "searchView": {
+    "name": "Fabric Grid Mass Update",
+    "integrationIdLabel": "Search_28902_MU9_View",
+    "viewType": "GridView",
+    "gridOutputMode": 1,
+    "isMassUpdateView": true,
+    "plmMassUpdateViewId": 9,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 1,
+        "isUpdatable": true,
+        "massUpdateDatabaseFieldName": "ReferenceId",
+        "massUpdateTransactionFieldId": null,
+        "_comment": "ONLY required SearchView MU mapping for HierarchicalTableUpdate — root PK → ListEdit root PK"
+      }
+    ]
+  },
+  "coverage": {
+    "mappedToTxnField": 1,
+    "coveredInDataSet": 1,
+    "addColumn": 0,
+    "addOneToOneLeftJoin": 0,
+    "requiresOneToN": 2,
+    "unmapped": 0,
+    "readonlySkip": 0,
+    "listEditChildFieldsProposed": 2
+  },
+  "unmappedPlmFields": []
+}

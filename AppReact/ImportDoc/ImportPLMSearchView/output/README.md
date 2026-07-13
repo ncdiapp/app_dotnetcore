@@ -36,7 +36,7 @@ Detail: `_batch_data/batch_summary.json`. All generated `queryText` validated on
 
 ## Sibling View import ([`../PROMPT_SIBLING_VIEW.md`](../PROMPT_SIBLING_VIEW.md))
 
-After an existing Search import, adding another PLM View:
+After an existing Search import, adding another PLM **display** View:
 
 ```text
 output/{searchTemplateId}/
@@ -46,5 +46,21 @@ output/{searchTemplateId}/
 ```
 
 Architecture: [`../source/MULTI_VIEW_COVERAGE.md`](../source/MULTI_VIEW_COVERAGE.md)
+
+## Mass Update View import ([`../PROMPT_MASSUPDATE_VIEW.md`](../PROMPT_MASSUPDATE_VIEW.md))
+
+After an existing Search import, attaching one PLM **`pdmMassUpdateView`** (not a ReferenceView):
+
+```text
+output/{searchTemplateId}/
+  3_PlmSearch_MassUpdateView_{massUpdateViewId}.json
+  README_MassUpdate_{massUpdateViewId}.md              (optional)
+```
+
+- Mode: `MassUpdateViewAttach`
+- Mode A example: [`../source/9_PlmSearch_MassUpdateView.example.json`](../source/9_PlmSearch_MassUpdateView.example.json)
+- Mode B (ListEdit) example: [`../source/9b_PlmSearch_MassUpdateView_ListEdit.example.json`](../source/9b_PlmSearch_MassUpdateView_ListEdit.example.json) — may embed `listEditCreate` (`UseExisting` | `CreateNew`)
+- Probe: [`../source/_plm_probe_massupdate.sql`](../source/_plm_probe_massupdate.sql)
+- Phase D: PLM Search Import Tool — upload `3_PlmSearch_MassUpdateView_*.json`; if `CreateNew`, creates ListEdit then Mass Update View (`ExecuteSearchMassUpdateViewConfig`)
 
 Do not commit connection strings or tenant secrets.

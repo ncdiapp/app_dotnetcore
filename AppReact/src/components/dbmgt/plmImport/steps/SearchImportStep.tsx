@@ -30,6 +30,16 @@ const isSiblingModeJson = (text: string): boolean => {
   }
 };
 
+const isMassUpdateModeJson = (text: string): boolean => {
+  try {
+    const parsed = JSON.parse(text);
+    const mode = String(parsed?.mode ?? parsed?.Mode ?? '');
+    return mode.toLowerCase() === 'massupdateviewattach';
+  } catch {
+    return false;
+  }
+};
+
 const SearchImportStep: React.FC<SearchImportStepProps> = ({
   state,
   searchImportStepUi,
@@ -44,12 +54,14 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
     importMode,
     blueprint,
     siblingBlueprint,
+    massUpdateBlueprint,
     blueprintFileName,
     previewItems,
     validationErrors,
     validationWarnings,
     lastExecuteResult,
     lastSiblingExecuteResult,
+    lastMassUpdateExecuteResult,
     isValidating,
     isPreviewing,
     isExecuting,
@@ -62,9 +74,22 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
   const sessionId = state.session?.SessionId ?? null;
   const isBusy = isValidating || isPreviewing || isExecuting;
   const isSibling = importMode === 'sibling';
-  const hasBlueprint = isSibling ? Boolean(siblingBlueprint) : Boolean(blueprint);
+  const isMassUpdate = importMode === 'massUpdate';
+  const hasBlueprint = isMassUpdate
+    ? Boolean(massUpdateBlueprint)
+    : isSibling
+      ? Boolean(siblingBlueprint)
+      : Boolean(blueprint);
 
   const blueprintSummary = useMemo(() => {
+    if (isMassUpdate && massUpdateBlueprint) {
+      const viewName = massUpdateBlueprint.SearchView?.Name ?? '—';
+      const target = massUpdateBlueprint.Target?.AppSearchIntegrationId ?? '—';
+      const muId = massUpdateBlueprint.Source?.PlmMassUpdateViewId ?? '—';
+      const appMode = massUpdateBlueprint.MassUpdate?.AppMode ?? '—';
+      const leAction = massUpdateBlueprint.ListEditCreate?.Action ?? '';
+      return `Mass Update · target ${target} · "${viewName}" (PLM MU #${muId}) · ${appMode}${leAction ? ` · ListEdit ${leAction}` : ''}`;
+    }
     if (isSibling && siblingBlueprint) {
       const viewName = siblingBlueprint.SearchView?.Name ?? '—';
       const target = siblingBlueprint.Target?.AppSearchIntegrationId ?? '—';
@@ -83,7 +108,7 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
       ? `${view.Mapped ?? 0}/${view.Total ?? 0} view cols`
       : `${blueprint.SearchView?.Fields?.length ?? 0} view cols`;
     return `${searchName} (${integrationId}) · ${criteriaText} · ${viewText}`;
-  }, [blueprint, isSibling, siblingBlueprint]);
+  }, [blueprint, isMassUpdate, isSibling, massUpdateBlueprint, siblingBlueprint]);
 
   useEffect(() => {
     previewCv.sourceCollection = previewItems;
@@ -117,9 +142,35 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
     if (!file) return;
     try {
       const text = await file.text();
-      const sibling = isSiblingModeJson(text);
+      const massUpdate = isMassUpdateModeJson(text);
+      const sibling = !massUpdate && isSiblingModeJson(text);
 
-      if (sibling) {
+      if (massUpdate) {
+        const loadResult = await plmMigrationSvc.loadSearchMassUpdateViewBlueprint(text);
+        if (!loadResult.IsSuccessful || !loadResult.Object) {
+          const msg = loadResult.ValidationResult?.Items?.map((i) => i.Message).join('; ')
+            || 'Failed to parse mass update view blueprint JSON.';
+          showError(msg);
+          return;
+        }
+        onSearchImportStepUiChange({
+          importMode: 'massUpdate',
+          massUpdateBlueprint: loadResult.Object,
+          siblingBlueprint: null,
+          blueprint: null,
+          blueprintFileName: file.name,
+          blueprintJsonText: text,
+          previewItems: [],
+          validationErrors: [],
+          validationWarnings: [],
+          lastExecuteResult: null,
+          lastSiblingExecuteResult: null,
+          lastMassUpdateExecuteResult: null,
+        });
+        setProgressPercent(0);
+        setProgressMessage(null);
+        showInfo(`Loaded mass update view blueprint: ${file.name}`, true);
+      } else if (sibling) {
         const loadResult = await plmMigrationSvc.loadSearchSiblingViewBlueprint(text);
         if (!loadResult.IsSuccessful || !loadResult.Object) {
           const msg = loadResult.ValidationResult?.Items?.map((i) => i.Message).join('; ')
@@ -130,6 +181,7 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
         onSearchImportStepUiChange({
           importMode: 'sibling',
           siblingBlueprint: loadResult.Object,
+          massUpdateBlueprint: null,
           blueprint: null,
           blueprintFileName: file.name,
           blueprintJsonText: text,
@@ -138,6 +190,7 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
           validationWarnings: [],
           lastExecuteResult: null,
           lastSiblingExecuteResult: null,
+          lastMassUpdateExecuteResult: null,
         });
         setProgressPercent(0);
         setProgressMessage(null);
@@ -154,6 +207,7 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
           importMode: 'main',
           blueprint: loadResult.Object as PlmSearchImportBlueprintDto,
           siblingBlueprint: null,
+          massUpdateBlueprint: null,
           blueprintFileName: file.name,
           blueprintJsonText: text,
           previewItems: [],
@@ -161,6 +215,7 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
           validationWarnings: [],
           lastExecuteResult: null,
           lastSiblingExecuteResult: null,
+          lastMassUpdateExecuteResult: null,
         });
         setProgressPercent(0);
         setProgressMessage(null);
@@ -174,6 +229,61 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
   }, [onSearchImportStepUiChange, showError, showInfo]);
 
   const runValidateAndPreview = useCallback(async () => {
+    if (isMassUpdate) {
+      if (!massUpdateBlueprint) {
+        showError('Upload 3_PlmSearch_MassUpdateView_*.json first.');
+        return;
+      }
+      onSearchImportStepUiChange({
+        isValidating: true,
+        validationErrors: [],
+        validationWarnings: [],
+        previewItems: [],
+        lastMassUpdateExecuteResult: null,
+      });
+      setProgressPercent(10);
+      setProgressMessage('Validating mass update view blueprint…');
+      try {
+        const validateResult = await plmMigrationSvc.validateSearchMassUpdateViewBlueprint(massUpdateBlueprint);
+        const errors = validateResult.Object?.Errors ?? [];
+        const warnings = validateResult.Object?.Warnings ?? [];
+        onSearchImportStepUiChange({ validationErrors: errors, validationWarnings: warnings });
+        if (errors.length > 0) {
+          setProgressPercent(0);
+          setProgressMessage(null);
+          showError(errors.join('; '));
+          return;
+        }
+        if (warnings.length > 0) {
+          showWarning(`${warnings.length} warning(s). Review before execute.`);
+        }
+        onSearchImportStepUiChange({ isPreviewing: true });
+        setProgressPercent(45);
+        setProgressMessage('Building mass update preview…');
+        const previewResult = await plmMigrationSvc.previewSearchMassUpdateViewConfig(massUpdateBlueprint);
+        const preview = previewResult.Object;
+        if (!preview?.IsSuccess) {
+          setProgressPercent(0);
+          setProgressMessage(null);
+          showError(preview?.ErrorMessage || 'Preview failed.');
+          return;
+        }
+        onSearchImportStepUiChange({ previewItems: preview.Items ?? [] });
+        setProgressPercent(100);
+        setProgressMessage('Validate & preview complete.');
+        if (!warnings.length) {
+          showInfo('Mass update view blueprint validated.', true);
+        }
+      } catch (err: any) {
+        setProgressPercent(0);
+        setProgressMessage(null);
+        showError(err?.message || 'Validate failed.');
+      } finally {
+        onSearchImportStepUiChange({ isValidating: false, isPreviewing: false });
+      }
+      return;
+    }
+
     if (isSibling) {
       if (!siblingBlueprint) {
         showError('Upload 2_PlmSearch_SiblingView_*.json first.');
@@ -286,7 +396,9 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
     }
   }, [
     blueprint,
+    isMassUpdate,
     isSibling,
+    massUpdateBlueprint,
     onSearchImportStepUiChange,
     showError,
     showInfo,
@@ -297,6 +409,50 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
   const runExecute = useCallback(async () => {
     if (validationErrors.length > 0) {
       showError('Fix validation errors before execute.');
+      return;
+    }
+
+    if (isMassUpdate) {
+      if (!massUpdateBlueprint) {
+        showError('Upload mass update view blueprint first.');
+        return;
+      }
+      onSearchImportStepUiChange({ isExecuting: true, lastMassUpdateExecuteResult: null });
+      setProgressPercent(15);
+      setProgressMessage('Executing mass update view import…');
+      try {
+        const result = await plmMigrationSvc.executeSearchMassUpdateViewConfig({
+          Blueprint: massUpdateBlueprint,
+          SaasApplicationId: state.saasApplicationId,
+        });
+        const exec = result.Object;
+        onSearchImportStepUiChange({ lastMassUpdateExecuteResult: exec ?? null });
+        if (!result.IsSuccessful || !exec?.IsSuccess) {
+          const msg = exec?.ErrorMessage
+            || result.ValidationResult?.Items?.map((i) => i.Message).join('; ')
+            || 'Execute failed.';
+          setProgressPercent(0);
+          setProgressMessage(null);
+          showError(msg);
+          return;
+        }
+        await saveStepState();
+        setProgressPercent(100);
+        setProgressMessage('Mass update view import complete.');
+        const listPart = exec.ListEditTransactionId
+          ? `, ListEdit #${exec.ListEditTransactionId}`
+          : '';
+        showInfo(
+          `Mass Update View saved. Search #${exec.SearchId ?? '—'}, MU View #${exec.MassUpdateSearchViewId ?? '—'}, DataSet #${exec.DataSetId ?? '—'}${listPart}.`,
+          true,
+        );
+      } catch (err: any) {
+        setProgressPercent(0);
+        setProgressMessage(null);
+        showError(err?.message || 'Execute failed.');
+      } finally {
+        onSearchImportStepUiChange({ isExecuting: false });
+      }
       return;
     }
 
@@ -392,7 +548,9 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
     }
   }, [
     blueprint,
+    isMassUpdate,
     isSibling,
+    massUpdateBlueprint,
     onSearchImportStepUiChange,
     saveStepState,
     showError,
@@ -408,21 +566,31 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
   };
 
   const showProgress = isBusy || (progressMessage != null && progressPercent > 0);
-  const appliedOk = isSibling
-    ? Boolean(lastSiblingExecuteResult?.IsSuccess)
-    : Boolean(lastExecuteResult?.IsSuccess);
+  const appliedOk = isMassUpdate
+    ? Boolean(lastMassUpdateExecuteResult?.IsSuccess)
+    : isSibling
+      ? Boolean(lastSiblingExecuteResult?.IsSuccess)
+      : Boolean(lastExecuteResult?.IsSuccess);
+
+  const modeLabel = isMassUpdate
+    ? 'Mass Update View (attach / ListEdit)'
+    : isSibling
+      ? 'Sibling View (enrich DataSet)'
+      : 'Main Search import';
 
   return (
     <div className={`flex flex-col h-full overflow-hidden p-4 gap-3 ${theme.mainContentSection}`}>
       <h2 className={`text-sm font-semibold ${theme.label}`}>Step 4 — PLM Search Import</h2>
       <p className={`text-xs ${theme.menu_secondary}`}>
         Upload main <code className="text-[11px]">1_PlmSearch_ImportBlueprint.json</code>
-        {' '}or sibling <code className="text-[11px]">2_PlmSearch_SiblingView_*.json</code>
-        {' '}(mode auto-detected). Sibling Option A enriches the existing DataSet and adds a View without changing the default View.
+        {', '}sibling <code className="text-[11px]">2_PlmSearch_SiblingView_*.json</code>
+        {', or mass update '}
+        <code className="text-[11px]">3_PlmSearch_MassUpdateView_*.json</code>
+        {' '}(mode auto-detected). Mass Update may create a ListEdit Transaction then attach an IsMassUpdateView SearchView.
       </p>
       {hasBlueprint && (
         <div className={`text-xs px-2 py-1 rounded border ${theme.inputBox} ${theme.label}`}>
-          Mode: {isSibling ? 'Sibling View (enrich DataSet)' : 'Main Search import'}
+          Mode: {modeLabel}
         </div>
       )}
 
@@ -516,7 +684,7 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
         </div>
       )}
 
-      {!isSibling && lastExecuteResult?.IsSuccess && !showProgress && (
+      {!isSibling && !isMassUpdate && lastExecuteResult?.IsSuccess && !showProgress && (
         <div className={`text-xs px-2 py-1 rounded border ${theme.inputBox} ${theme.label}`}>
           Last run: Search #{lastExecuteResult.SearchId ?? '—'}
           {lastExecuteResult.SearchViewId ? ` · View #${lastExecuteResult.SearchViewId}` : ''}
@@ -534,6 +702,21 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
             ? ` · Default View #${lastSiblingExecuteResult.DefaultSearchViewId}`
             : ''}
           {lastSiblingExecuteResult.DataSetId ? ` · DataSet #${lastSiblingExecuteResult.DataSetId}` : ''}
+        </div>
+      )}
+
+      {isMassUpdate && lastMassUpdateExecuteResult?.IsSuccess && !showProgress && (
+        <div className={`text-xs px-2 py-1 rounded border ${theme.inputBox} ${theme.label}`}>
+          Last mass-update run: Search #{lastMassUpdateExecuteResult.SearchId ?? '—'}
+          {lastMassUpdateExecuteResult.MassUpdateSearchViewId
+            ? ` · MU View #${lastMassUpdateExecuteResult.MassUpdateSearchViewId}`
+            : ''}
+          {lastMassUpdateExecuteResult.ListEditTransactionId
+            ? ` · ListEdit #${lastMassUpdateExecuteResult.ListEditTransactionId}`
+            : ''}
+          {lastMassUpdateExecuteResult.DataSetId
+            ? ` · DataSet #${lastMassUpdateExecuteResult.DataSetId}`
+            : ''}
         </div>
       )}
 

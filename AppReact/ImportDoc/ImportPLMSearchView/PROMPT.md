@@ -64,16 +64,24 @@ If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** i
 
 ```text
 ImportPLMSearchView/
-  PROMPT.md
+  PROMPT.md                              ← first Search import (this file)
+  PROMPT_SIBLING_VIEW.md                 ← extra display ReferenceView
+  PROMPT_MASSUPDATE_VIEW.md              ← Mass Update View (after Search exists)
   source/
     _plm_probe_search.sql              ← PLM: Search / Parameter / ViewColumn / tab affinity
+    _plm_probe_massupdate.sql          ← PLM: MassUpdateView + fields
     _app_probe_fieldmapping.sql        ← APP: FieldMapping inventory + SubItem/MetaColumn resolve
     _app_probe_search_context.sql      ← APP: transactions, data sources, existing searches
     plmSearchImportConfig.example.json ← Phase B working config (agent-written)
     7_PlmSearch_ImportBlueprint.example.json  ← schema reference + example
+    8_PlmSearch_SiblingView.example.json
+    9_PlmSearch_MassUpdateView.example.json
+    9b_PlmSearch_MassUpdateView_ListEdit.example.json
   output/
     {searchTemplateId}/                ← one subfolder per SearchTemplateID (e.g. 23702/)
       1_PlmSearch_ImportBlueprint.json
+      2_PlmSearch_SiblingView_{viewId}.json      (optional)
+      3_PlmSearch_MassUpdateView_{muId}.json     (optional)
       README.md                        ← optional: Phase A notes + user selections
 ```
 
@@ -341,4 +349,6 @@ PLM SearchTemplateId:
 ## Related docs
 
 - Template DW import: `AppReact/ImportDoc/ImportFromPLMDW/PROMPT.md`  
+- Sibling display View: [`PROMPT_SIBLING_VIEW.md`](PROMPT_SIBLING_VIEW.md)  
+- Mass Update View: [`PROMPT_MASSUPDATE_VIEW.md`](PROMPT_MASSUPDATE_VIEW.md)  
 - POM search import (BL reference): `APP.BL/DataMigration/PlmMigration/PlmMigrationBL.PomImport.cs`

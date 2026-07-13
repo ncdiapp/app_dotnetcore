@@ -225,6 +225,9 @@ namespace APP.Components.EntityDto
         public int GridOutputMode { get; set; } = 1;
 
         [DataMember]
+        public bool? IsMassUpdateView { get; set; }
+
+        [DataMember]
         public List<PlmSearchImportSearchViewFieldDto> Fields { get; set; } =
             new List<PlmSearchImportSearchViewFieldDto>();
     }
@@ -252,6 +255,18 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public int? Sort { get; set; }
+
+        /// <summary>Mass Update: map this view column to a transaction field (by id).</summary>
+        [DataMember]
+        public int? MassUpdateTransactionFieldId { get; set; }
+
+        /// <summary>Mass Update: resolve TransactionField by DataBaseFieldName on the update unit.</summary>
+        [DataMember]
+        public string MassUpdateDatabaseFieldName { get; set; }
+
+        /// <summary>Mass Update: when false, do not set MassUpdateTransactionFieldId.</summary>
+        [DataMember]
+        public bool? IsUpdatable { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -614,6 +629,313 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public int? DefaultSearchViewId { get; set; }
+
+        [DataMember]
+        public List<string> Messages { get; set; } = new List<string>();
+    }
+
+    // -------------------------------------------------------------------------
+    // Mass Update View — attach IsMassUpdateView SearchView (+ optional ListEdit create)
+    // -------------------------------------------------------------------------
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateViewBlueprintDto
+    {
+        [DataMember]
+        public int SchemaVersion { get; set; } = 1;
+
+        /// <summary>Must be MassUpdateViewAttach.</summary>
+        [DataMember]
+        public string Mode { get; set; } = "MassUpdateViewAttach";
+
+        [DataMember]
+        public string GeneratedAt { get; set; }
+
+        [DataMember]
+        public PlmSearchMassUpdateViewSourceDto Source { get; set; }
+
+        [DataMember]
+        public PlmSearchMassUpdateViewTargetDto Target { get; set; }
+
+        [DataMember]
+        public PlmSearchSiblingViewDataSetPatchDto DataSetPatch { get; set; }
+
+        [DataMember]
+        public PlmSearchMassUpdateListEditCreateDto ListEditCreate { get; set; }
+
+        [DataMember]
+        public PlmSearchMassUpdateSettingsDto MassUpdate { get; set; }
+
+        [DataMember]
+        public PlmSearchImportSearchViewDto SearchView { get; set; }
+
+        [DataMember]
+        public PlmSearchMassUpdateViewCoverageDto Coverage { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateViewSourceDto
+    {
+        [DataMember]
+        public int? PlmSearchTemplateId { get; set; }
+
+        [DataMember]
+        public string PlmSearchName { get; set; }
+
+        [DataMember]
+        public int? PlmMassUpdateViewId { get; set; }
+
+        [DataMember]
+        public string PlmMassUpdateViewName { get; set; }
+
+        [DataMember]
+        public string PlmUpdateType { get; set; }
+
+        [DataMember]
+        public int? PlmUpdateTypeId { get; set; }
+
+        [DataMember]
+        public int? PlmMainTabId { get; set; }
+
+        [DataMember]
+        public int? PlmGridBlockId { get; set; }
+
+        [DataMember]
+        public string TablePrefix { get; set; }
+
+        [DataMember]
+        public bool? IsPlmDefaultMassUpdateView { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateViewTargetDto
+    {
+        [DataMember]
+        public string AppSearchIntegrationId { get; set; }
+
+        [DataMember]
+        public int? AppSearchId { get; set; }
+
+        [DataMember]
+        public int? AppDataSetId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateSettingsDto
+    {
+        /// <summary>SingleTableUpdate | HierarchicalTableUpdate</summary>
+        [DataMember]
+        public string AppMode { get; set; }
+
+        [DataMember]
+        public string UpdateTransactionIntegrationId { get; set; }
+
+        [DataMember]
+        public int? UpdateTransactionId { get; set; }
+
+        [DataMember]
+        public int? UpdateBaseTransactionUnitId { get; set; }
+
+        [DataMember]
+        public string UpdateUnitTableName { get; set; }
+
+        [DataMember]
+        public string PkDatabaseFieldName { get; set; }
+
+        [DataMember]
+        public bool? IsAllowAddRow { get; set; } = true;
+
+        [DataMember]
+        public bool? IsAllowDeleteRow { get; set; } = true;
+
+        [DataMember]
+        public bool? IsAllowAdvancedUpdate { get; set; } = true;
+
+        [DataMember]
+        public bool? SetAsDefaultMassUpdateView { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateListEditCreateDto
+    {
+        /// <summary>UseExisting | CreateNew</summary>
+        [DataMember]
+        public string Action { get; set; }
+
+        [DataMember]
+        public int? ExistingTransactionId { get; set; }
+
+        [DataMember]
+        public string ExistingIntegrationId { get; set; }
+
+        [DataMember]
+        public PlmSearchMassUpdateListEditCreateSpecDto Create { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateListEditCreateSpecDto
+    {
+        [DataMember]
+        public string IntegrationId { get; set; }
+
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string TransactionOrganizedType { get; set; } = "List";
+
+        [DataMember]
+        public int? TransactionOrganizedTypeId { get; set; } = 3;
+
+        [DataMember]
+        public int? TenantDataSourceRegisterId { get; set; }
+
+        [DataMember]
+        public int? SaasApplicationId { get; set; }
+
+        [DataMember]
+        public PlmSearchMassUpdateListEditUnitStructureDto UnitStructure { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateListEditUnitStructureDto
+    {
+        [DataMember]
+        public string Mode { get; set; } = "RootPlusChild";
+
+        [DataMember]
+        public PlmSearchMassUpdateListEditUnitDto Root { get; set; }
+
+        [DataMember]
+        public List<PlmSearchMassUpdateListEditUnitDto> Children { get; set; } =
+            new List<PlmSearchMassUpdateListEditUnitDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateListEditUnitDto
+    {
+        [DataMember]
+        public string AppTableName { get; set; }
+
+        [DataMember]
+        public string UnitDisplayName { get; set; }
+
+        [DataMember]
+        public string PkColumn { get; set; }
+
+        [DataMember]
+        public string FkColumn { get; set; }
+
+        [DataMember]
+        public string ParentPkColumn { get; set; }
+
+        [DataMember]
+        public List<PlmSearchMassUpdateListEditFieldDto> Fields { get; set; } =
+            new List<PlmSearchMassUpdateListEditFieldDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateListEditFieldDto
+    {
+        [DataMember]
+        public string AppColumnName { get; set; }
+
+        [DataMember]
+        public string DisplayLabel { get; set; }
+
+        [DataMember]
+        public int? ControlType { get; set; }
+
+        [DataMember]
+        public bool IsVisible { get; set; } = true;
+
+        [DataMember]
+        public int? Sort { get; set; }
+
+        [DataMember]
+        public bool? IsPrimaryKey { get; set; }
+
+        [DataMember]
+        public bool? IsForeignKey { get; set; }
+
+        [DataMember]
+        public int? PlmSubItemId { get; set; }
+
+        [DataMember]
+        public int? PlmMetaColumnId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateViewCoverageDto
+    {
+        [DataMember]
+        public int MappedToTxnField { get; set; }
+
+        [DataMember]
+        public int CoveredInDataSet { get; set; }
+
+        [DataMember]
+        public int AddColumn { get; set; }
+
+        [DataMember]
+        public int AddOneToOneLeftJoin { get; set; }
+
+        [DataMember]
+        public int RequiresOneToN { get; set; }
+
+        [DataMember]
+        public int Unmapped { get; set; }
+
+        [DataMember]
+        public int ReadonlySkip { get; set; }
+
+        [DataMember]
+        public int ListEditChildFieldsProposed { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateViewLoadRequestDto
+    {
+        [DataMember]
+        public string BlueprintJson { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateViewExecuteRequestDto
+    {
+        [DataMember]
+        public PlmSearchMassUpdateViewBlueprintDto Blueprint { get; set; }
+
+        [DataMember]
+        public int? SaasApplicationId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchMassUpdateViewExecuteResultDto
+    {
+        [DataMember]
+        public bool IsSuccess { get; set; }
+
+        [DataMember]
+        public string ErrorMessage { get; set; }
+
+        [DataMember]
+        public int? SearchId { get; set; }
+
+        [DataMember]
+        public int? DataSetId { get; set; }
+
+        [DataMember]
+        public int? MassUpdateSearchViewId { get; set; }
+
+        [DataMember]
+        public int? DefaultSearchViewId { get; set; }
+
+        [DataMember]
+        public int? ListEditTransactionId { get; set; }
+
+        [DataMember]
+        public string ListEditIntegrationId { get; set; }
 
         [DataMember]
         public List<string> Messages { get; set; } = new List<string>();
