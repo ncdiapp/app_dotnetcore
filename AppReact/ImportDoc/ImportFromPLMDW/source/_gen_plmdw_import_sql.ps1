@@ -278,12 +278,27 @@ function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap, $subItemMetaMap, $grid
     if ($fieldRow.FieldKind -eq 'GridColumn' -and $null -ne $fieldRow.PlmGridId -and $subItemId) {
         # GRID column visibility: pdmTabGridMetaColumn.Visible (TabID + GridColumnID). NOT pdmTabBlockSubItemExtraInfo.
         $gridKey = "$([int]$fieldRow.PlmGridId)|$subItemId"
-        if ($gridColMetaMap.ContainsKey($gridKey) -and $tabId) {
-            $tgKey = "$tabId|$subItemId"
-            if ($tabGridVisibleMap.ContainsKey($tgKey)) {
-                $tg = $tabGridVisibleMap[$tgKey]
-                if ($tg.AliasName) { $displayLabel = $tg.AliasName }
-                if ($tg.Visible) { $isVisible = $true }
+        if ($gridColMetaMap.ContainsKey($gridKey)) {
+            $resolved = $false
+            if ($tabId) {
+                $tgKey = "$tabId|$subItemId"
+                if ($tabGridVisibleMap.ContainsKey($tgKey)) {
+                    $tg = $tabGridVisibleMap[$tgKey]
+                    if ($tg.AliasName) { $displayLabel = $tg.AliasName }
+                    if ($tg.Visible) { $isVisible = $true }
+                    $resolved = $true
+                }
+            }
+            # Grid-only / wrong parentPlmTabId / orphan: fall back to ANY hosting tab that marks this column Visible.
+            if (-not $resolved) {
+                $suffix = "|$subItemId"
+                foreach ($k in @($tabGridVisibleMap.Keys)) {
+                    if (-not $k.EndsWith($suffix)) { continue }
+                    $tg = $tabGridVisibleMap[$k]
+                    if ($tg.AliasName -and -not $displayLabel) { $displayLabel = $tg.AliasName }
+                    elseif ($tg.AliasName -and $displayLabel -eq $fieldRow.AppColumn) { $displayLabel = $tg.AliasName }
+                    if ($tg.Visible) { $isVisible = $true; break }
+                }
             }
         }
     }
@@ -297,6 +312,27 @@ function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap, $subItemMetaMap, $grid
         }
     }
     return [pscustomobject]@{ DisplayLabel = $displayLabel; IsVisible = $isVisible }
+}
+
+function Get-PlmHostTabIdsForGrids([int[]]$GridIds) {
+    # True PLM tabs that host these grids (ExtraInfo Visible=1). Needed for grid-only tabs
+    # that are absent from importTabIds but still own pdmTabGridMetaColumn visibility.
+    $set = [System.Collections.Generic.HashSet[int]]::new()
+    if (-not $GridIds -or $GridIds.Count -eq 0) { return @() }
+    $inList = ($GridIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT DISTINCT e.TabID
+FROM dbo.pdmTabBlockSubItemExtraInfo e
+INNER JOIN dbo.pdmBlockSubItem bs ON bs.SubItemID = e.SubItemID
+WHERE bs.ControlType = 6
+  AND bs.GridID IN ($inList)
+  AND ISNULL(e.Visible, 0) = 1
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $raw = ($line -split '\|')[0].Trim()
+        if ($raw -match '^\d+$') { [void]$set.Add([int]$raw) }
+    }
+    return @($set)
 }
 
 function Infer-PlmControlType($meta, $dataType) {
@@ -452,13 +488,23 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
     $gridBindings = @()
     foreach ($grid in ($config.grids | ForEach-Object { $_ })) {
         $parentTabId = if ($grid.parentPlmTabId) { [int]$grid.parentPlmTabId } else { $null }
+        # Prefer Tab_{parent} when attached; orphan / grid-only → Grid_{id} (BL builds Root+Child).
+        $txIntegrationId = if ($grid.transactionIntegrationId) {
+            [string]$grid.transactionIntegrationId
+        }
+        elseif ($parentTabId) {
+            "Tab_$parentTabId"
+        }
+        else {
+            "Grid_$($grid.gridId)"
+        }
         $gridBindings += [ordered]@{
             plmGridId                  = [int]$grid.gridId
             appTableName               = $prefix + $grid.appTable
             parentPlmTabId             = $parentTabId
             attachToRoot               = (-not $parentTabId)
             integrationId              = "Grid_$($grid.gridId)"
-            transactionIntegrationId   = if ($grid.transactionIntegrationId) { $grid.transactionIntegrationId } else { "Grid_$($grid.gridId)" }
+            transactionIntegrationId   = $txIntegrationId
         }
     }
 
@@ -1234,6 +1280,20 @@ if ($config.importTabIds) {
 elseif ($config.tabs) {
     $tabIdsForExtra += @($config.tabs | ForEach-Object { [int]$_.tabId })
 }
+# Include every grid parentPlmTabId + PLM hosting tabs (grid-only parents not in importTabIds).
+if ($config.grids) {
+    foreach ($g in $config.grids) {
+        if ($g.parentPlmTabId) { $tabIdsForExtra += [int]$g.parentPlmTabId }
+    }
+}
+if ($gridIdsForPlm.Count -gt 0) {
+    $hostTabs = @(Get-PlmHostTabIdsForGrids $gridIdsForPlm)
+    if ($hostTabs.Count -gt 0) {
+        Write-Host "  PLM host tabs for grids (visibility): $($hostTabs -join ', ')"
+        $tabIdsForExtra += $hostTabs
+    }
+}
+$tabIdsForExtra = @($tabIdsForExtra | Sort-Object -Unique)
 Write-Host "Loading PLM pdmTabBlockSubItemExtraInfo for $($tabIdsForExtra.Count) tab(s) from $PlmDatabase..."
 $extraInfoMap = Get-PlmSubItemExtraInfoMap $tabIdsForExtra
 Write-Host "  Extra info rows: $($extraInfoMap.Count)"

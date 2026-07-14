@@ -53,7 +53,7 @@ If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** i
 | **No server code** | **Default:** deliverables are **SQL + JSON + PowerShell in this folder only** — no C# / WebAPI edits, no `dotnet build`. **Exception (BOM colorway pivot):** `PlmMigrationBL` pivot/hierarchy support in `APP.BL` is required for Phase D; already in repo. Any *other* BL gap → **STOP**, explain, warn user. |
 | **Two phases** | **Phase A:** DW analysis + APP table proposal + **Blueprint draft** → **STOP for user confirmation**. **Phase B:** generate SQL + Blueprint JSON **after** confirm. **Phase D:** BL TOOLS apply Blueprint to APP config (separate step; user runs in app). |
 | **plmDW is truth** | Column names, SubItem IDs, TabIds from DW — not legacy PLM exports. |
-| **1 Tab → 1 sibling table + N grid tables** | Tab wide table (`PLM_DW_Tab_*_{TabId}`) = the tab's regular sub-items → **sibling** (PK `ReferenceId`). Each materialized grid sub-item (`PLM_DW_Grid_*`) = a **grid table** (PK `RowId` identity). A tab with both yields 1 sibling + 1 grid table per grid; the tab table is never a child. |
+| **1 Tab → 1 sibling table + N grid tables** | Tab wide table (`PLM_DW_Tab_*_{TabId}`) = the tab's regular sub-items → **sibling** (PK `ReferenceId`). Each materialized grid sub-item (`PLM_DW_Grid_*`) = a **grid table** (PK `RowId` identity). A tab with both yields 1 sibling + 1 grid table per grid; the tab table is never a child. Grid-only tabs (no DW Tab table): true PLM `parentPlmTabId` or orphan `Grid_{id}` as **Root+Child** — never Master Sibling. |
 | **Mapping drives import** | `{prefix}FieldMapping` stores `DwTableName` + `DwColumnName` per APP column. |
 | **Prefix is parameter** | `@TablePrefix` in all three SQL scripts (default `Plm_`). |
 
@@ -179,6 +179,32 @@ A PLM tab can contain **regular sub-items** and/or **grid sub-items** (`ControlT
 - **Therefore:** a tab that hosts **both** regular and grid sub-items produces **1 sibling table** (regular sub-items) **plus 1 grid table per materialized grid** (each with `RowId` identity PK). **The tab wide table itself is NEVER a child** — hosting a Grid sub-item does **not** turn the tab table into a child unit.
 - **Override (optional):** set `unitType: "child"` or `unitType: "sibling"` on a tab in the config to force the kind. Omit `unitType` → tab wide table defaults to **`sibling`**.
 
+#### Grid-only PLM tabs (no `PLM_DW_Tab_*`) — required rules
+
+Some PLM tabs host **only** a grid sub-item: ExtraInfo/layout places the grid on Tab X, but plmDW has **no** `PLM_DW_Tab_*_{TabId}` — only `PLM_DW_Grid_*_{GridId}`.
+
+**Resolve the true parent TabId from PLM** (not from DW table list, not by guessing the template header):
+
+```sql
+-- Authoritative grid → tab placement
+SELECT e.TabID, t.TabName, bs.GridID, bs.SubItemID, bs.SubItemName
+FROM dbo.pdmTabBlockSubItemExtraInfo e
+JOIN dbo.pdmBlockSubItem bs ON bs.SubItemID = e.SubItemID
+JOIN dbo.pdmTab t ON t.TabID = e.TabID
+WHERE bs.ControlType = 6 AND bs.GridID = @GridId AND e.Visible = 1;
+-- Prefer the TabID that also appears on this Template's pdmTemplateTab.
+```
+
+| Rule | Detail |
+|------|--------|
+| **`parentPlmTabId` = true PLM TabId** | Always the Tab that hosts the grid in PLM (e.g. 3171→4215, 3181→4217, 3179→4268). **Never** substitute the template header / Fabric Header / a random sibling tab. |
+| **Prefer attach to imported Tab** | If that parent TabId is in `importTabIds` / `tabs` (has a DW tab wide table), set `parentPlmTabId` + `transactionIntegrationId: "Tab_{parentTabId}"` so the grid becomes a **child** of that Tab Transaction. |
+| **Grid-only parent not in this template's DW tabs** | Parent Tab has no `PLM_DW_Tab_*` (or Tab is out of import scope). Options (pick one, tell user in Phase A): **(A)** set `parentPlmTabId: null`, `attachToRoot: true`, `transactionIntegrationId: "Grid_{gridId}"` → BL creates standalone **`Grid_{id}`** Transaction = **Root + Child** (grid table under root; **never** Master Sibling); **(B)** skip the grid and list it for a later import that owns the parent Tab. |
+| **Do not invent wrong parents** | Wrong: hang Fabric Approvals Tracker (PLM Tab 4215) under Fabric Header 4258 just because 4258 is the header. Right: `parentPlmTabId: 4215` or orphan `Grid_3171` with Root+Child. |
+| **Shared grids (e.g. Grid_7 ProductDesignColorGrid)** | When this template's tab hosts it, set `parentPlmTabId` to **that** tab. Do **not** create a second standalone `Grid_7` with `parentPlmTabId: null` if another template already attached Grid_7 as a child — Insert skips existing IntegrationIds; orphan `Grid_7` is only for templates that have no hosting tab in scope (rare). |
+
+**BL TOOLS behavior (Phase D):** `AttachOrphanGridTransactions` builds orphan grids as **Root + Child** (`AppTransaction.IntegrationId = Grid_{plmGridId}`). Re-run **Update** / **Repair** on the Blueprint to fix existing transactions that were wrongly created as Root + Master Sibling.
+
 **Re-import note:** tab wide tables keep `[ReferenceId]` as PK — re-running `1_PlmDw_Tables.sql` does **not** rewrite the PK. Drop the existing table (or `ALTER` PK manually) before re-running only if you set an explicit `unitType: "child"` override.
 
 ### A7. Confirmation checklist — **STOP**
@@ -189,12 +215,12 @@ Ask user to confirm:
 2. TabId → APP table mapping (all tabs from PLM for this template)  
 3. **IsTemplateHeaderTab** tab(s) → `referenceScope` DW table + column  
 4. Overlap / exclusive SubItem split (if any)  
-5. Grid ↔ TabId associations (grid-only tabs: no `PLM_DW_Tab_*`)  
+5. Grid ↔ TabId associations — **true PLM parent from ExtraInfo** (grid-only tabs: no `PLM_DW_Tab_*`); never invent parent = template header; orphan = Root+Child `Grid_{id}` only when parent Tab is out of scope (see §A6 *Grid-only PLM tabs*)  
 6. Skip tabs/grids with no DW source  
 7. `@TablePrefix` default `Plm_` OK?  
 8. **`@ImportMode`** — default **`APPEND`** when tenant may already have rows from another template; `REPLACE` only for full reload of scoped refs  
-9. Per TabId → Transaction unit structure: tab wide table = **sibling** (regular sub-items); each materialized grid = a **grid/child table** (PK `RowId` identity). Tab table is child only with explicit `unitType: "child"` override  
-10. **Existing transactions** — optional tenant probe: `AppTransaction.IntegrationId = 'Tab_{TabId}'`; mark `importStatus: "Skipped"` in config for tabs that already exist (Phase D Insert also skips automatically)  
+9. Per TabId → Transaction unit structure: tab wide table = **sibling** (regular sub-items); each materialized grid = a **grid/child table** (PK `RowId` identity). Tab table is child only with explicit `unitType: "child"` override. Orphan `Grid_*` txs = **Root + Child**, never Root + Master Sibling.  
+10. **Existing transactions** — optional tenant probe: `AppTransaction.IntegrationId = 'Tab_{TabId}'` or `'Grid_{GridId}'`; mark `importStatus: "Skipped"` in config for tabs that already exist (Phase D Insert also skips automatically). Wrong-unit orphan grids → re-Execute **Update/Repair** after TOOLS fix.  
 11. Blueprint field counts per Transaction vs FieldMapping rows  
 12. **BOM colorway grids** (if any): auto-detected `ProductDesignColor` DCU columns → grandchild `{HostAppTable}GrandColorway`; **no** `Colorway_N`/`ImageN` on host APP table (DW slot mapping only)  
 
@@ -322,6 +348,7 @@ Generator details:
     1. Layer 1 `pdmTabBlockSubItemExtraInfo.Visible = 1` (keyed `TabID + SubItemID`; `AliasName` → `displayLabel`), AND
     2. Layer 2 placed on the **Tab Design** layout (`pdmTabLayout` → `pdmTabLayoutItem` → `pdmTabLayoutSubitem`, keyed `TabID + SubItemID`).
   - **Grid columns** — visibility is **not** in `pdmTabBlockSubItemExtraInfo`. It is controlled at tab level by `pdmTabGridMetaColumn.Visible = 1` (keyed `TabID + GridColumnID`; `pdmTabGridMetaColumn.AliasName` → `displayLabel`). `pdmGridMetaColumn.Hidden` is only the grid-wide default and is overridden by the tab-level row.
+  - **Grid-only / orphan grids** — the generator **must** load `pdmTabGridMetaColumn` for the **true PLM hosting TabId(s)** of each grid (from ExtraInfo / `parentPlmTabId`), even when that Tab has no `PLM_DW_Tab_*` and is **not** in `importTabIds`. If `parentPlmTabId` is null or wrong (e.g. template header), lookup fails and Blueprint marks every column `isVisible: false` → Phase D hides all child-grid fields. Fallback: any hosting tab with `Visible=1` for that `GridColumnID`. BL also falls back to “show all mapped columns” when the visible set is empty for a grid unit.
   - Anything not matching the rule above → `isVisible: false`.
 - APP column names: strip `_SubItemId` / `_FK_*`; suffix `_SubItemId` on collisions  
 - Mapping DELETE scoped to **tables in config only** (no `LIKE Fabric_%`)  
@@ -335,6 +362,8 @@ Generator details:
 ### B3b. `4_PlmDw_ImportBlueprint.json`
 
 Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMasterSibling` for tab wide tables — the default; `RootPlusChild` only for `unitType: "child"` override tabs — child tab table goes in `unitStructure.childUnits`; grids always land in `gridBindings` / `childUnits`), `fieldPolicy` (`AllMappedColumns` | `ExclusiveSubItemsOnly`), grid bindings, field UI metadata (`blueprintFields`: `plmControlType`, `plmEntityId` / `entityIntegrationId`, `displayLabel`, `isVisible` from PLM), Search/View/navigation targets, and **`bomColorwayPivotBindings`** (host/grandchild/source table names, pivot column keys, staging column patterns). Generated from `dwTabImportConfig.json` + DW column probe + PLM sub-item/grid/extra-info metadata + BOM colorway probe. BL TOOLS: `PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`. On Execute, BL maps PLM control type → `AppTransactionField.ControlType`, resolves `plmEntityId` → tenant `AppEntityInfo.EntityInfoID` via `IntegrationId`, and applies pivot bindings (`ApplyBomColorwayPivotBindingsSql` — hides/deletes host staging fields, configures grandchild `EmGridViewDisplayType=7`).
+
+**Orphan / grid-only grids** (`parentPlmTabId` null or parent Tab not in this Blueprint's `transactions`): BL `AttachOrphanGridTransactions` creates `AppTransaction.IntegrationId = Grid_{plmGridId}` with unit structure **Root (`ReferenceBasicInfo`) + Child (grid table, `RowId` PK)** — never Master Sibling. `transactionIntegrationId` for orphans must be `Grid_{id}` (generator default when parent is null). Do **not** set `transactionIntegrationId` to a `Tab_*` unless that Tab is actually in the Blueprint plan.
 
 ### B4. `3_PlmDw_ImportFromDW.sql`
 

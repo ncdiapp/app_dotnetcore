@@ -1121,11 +1121,16 @@ CREATE TABLE dbo.[{tableName}] (
                 SaasApplicationId = saasApplicationId
             };
 
+            // Orphan DW grids use IntegrationId Grid_{plmGridId} with TabId = -plmGridId.
+            string transactionIntegrationId = tab.TabId < 0
+                ? $"Grid_{-tab.TabId}"
+                : $"Tab_{tab.TabId}";
+
             OperationCallResult<AppTransactionExDto> saveResult;
             int txId;
             if (isUpdate)
             {
-                int? existingId = GetTransactionIdByIntegrationId(conn, tran, $"Tab_{tab.TabId}");
+                int? existingId = GetTransactionIdByIntegrationId(conn, tran, transactionIntegrationId);
                 if (!existingId.HasValue)
                     isUpdate = false;
             }
@@ -1143,7 +1148,7 @@ CREATE TABLE dbo.[{tableName}] (
             }
             else
             {
-                txId = GetTransactionIdByIntegrationId(conn, tran, $"Tab_{tab.TabId}").Value;
+                txId = GetTransactionIdByIntegrationId(conn, tran, transactionIntegrationId).Value;
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.Transaction = tran;
@@ -1172,7 +1177,7 @@ WHERE TransactionID = @TransactionId";
                 siblingTableNames,
                 rootChildTables.Select(g => g.TableName).ToList());
 
-            SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, $"Tab_{tab.TabId}");
+            SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, transactionIntegrationId);
             return txId;
         }
 
@@ -1276,8 +1281,6 @@ WHERE TransactionID = @TransactionId
 
             var rootColumns = GetVisibleColumnNames(plan.RootSubItems);
 
-            var gridColumns = GetVisibleGridColumnNames(tab.GridColumns);
-
             foreach (var pair in plan.GrandchildColumnsByTable)
             {
                 visibleColumnsByTable[pair.Key] = GetVisibleColumnNames(pair.Value);
@@ -1313,7 +1316,23 @@ WHERE TransactionID = @TransactionId";
                     else if (string.Equals(unitTable, rootTable, StringComparison.OrdinalIgnoreCase))
                         allowed = rootColumns;
                     else if (tab.GridColumns.Any(g => string.Equals(g.TableName, unitTable, StringComparison.OrdinalIgnoreCase)))
-                        allowed = gridColumns;
+                    {
+                        // Per-table visible set (do not mix columns from other grids on the same tab).
+                        var tableGridCols = tab.GridColumns
+                            .Where(g => string.Equals(g.TableName, unitTable, StringComparison.OrdinalIgnoreCase));
+                        allowed = GetVisibleGridColumnNames(tableGridCols);
+                        // Orphan / mis-parented blueprint meta often marks every column invisible
+                        // (pdmTabGridMetaColumn never loaded for true PLM host tab). Fall back to all
+                        // mapped columns rather than leaving the child grid empty.
+                        if (allowed.Count == 0)
+                        {
+                            allowed = new HashSet<string>(
+                                tableGridCols
+                                    .Where(c => !string.IsNullOrWhiteSpace(c.ColumnSqlName))
+                                    .Select(c => c.ColumnSqlName),
+                                StringComparer.OrdinalIgnoreCase);
+                        }
+                    }
                     else if (plan.GrandchildColumnsByTable.TryGetValue(unitTable, out var gcCols))
                         allowed = GetVisibleColumnNames(gcCols);
                 }
@@ -1400,8 +1419,6 @@ WHERE TransactionUnitID = @UnitId
 
             var rootColumns = GetVisibleColumnNames(plan.RootSubItems);
 
-            var gridColumns = GetVisibleGridColumnNames(tab.GridColumns);
-
             void ApplyToUnits(IEnumerable<AppTransactionUnitExDto> units, string tableName, HashSet<string> visible)
             {
                 if (units == null)
@@ -1418,7 +1435,19 @@ WHERE TransactionUnitID = @UnitId
                         else if (string.Equals(unitTable, transaction.AppTransactionUnitList.FirstOrDefault()?.DataBaseTableName, StringComparison.OrdinalIgnoreCase))
                             allowed = rootColumns;
                         else if (tab.GridColumns.Any(g => string.Equals(g.TableName, unitTable, StringComparison.OrdinalIgnoreCase)))
-                            allowed = gridColumns;
+                        {
+                            var tableGridCols = tab.GridColumns
+                                .Where(g => string.Equals(g.TableName, unitTable, StringComparison.OrdinalIgnoreCase));
+                            allowed = GetVisibleGridColumnNames(tableGridCols);
+                            if (allowed.Count == 0)
+                            {
+                                allowed = new HashSet<string>(
+                                    tableGridCols
+                                        .Where(c => !string.IsNullOrWhiteSpace(c.ColumnSqlName))
+                                        .Select(c => c.ColumnSqlName),
+                                    StringComparer.OrdinalIgnoreCase);
+                            }
+                        }
                     }
 
                     if (unit.AppTransactionFieldList != null)

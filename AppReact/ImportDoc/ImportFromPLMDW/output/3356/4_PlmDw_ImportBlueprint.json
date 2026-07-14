@@ -1,6 +1,6 @@
 ﻿{
     "schemaVersion":  1,
-    "generatedAt":  "2026-07-08T14:31:08.1269018Z",
+    "generatedAt":  "2026-07-14T13:53:02.0943402Z",
     "source":  {
                    "plmTemplateId":  3356,
                    "plmDatabase":  "plm_live_20260602",
@@ -36,15 +36,7 @@
                                         }
                  },
     "tabSharedTableGroups":  [
-                                 {
-                                     "groupId":  "shared_trim_header",
-                                     "sharedAppTableName":  "Plm_Trim_Header",
-                                     "primaryPlmTabId":  4252,
-                                     "secondaryPlmTabIds":  [
-                                                                4253
-                                                            ],
-                                     "rule":  "SharedSubItemsOnPrimaryOnly"
-                                 }
+
                              ],
     "transactions":  [
                          {
@@ -83,15 +75,9 @@
                                                    "rootTableName":  "Plm_ReferenceBasicInfo",
                                                    "siblingUnits":  [
                                                                         {
-                                                                            "appTableName":  "Plm_Trim_Header",
+                                                                            "appTableName":  "Plm_Trim_Info",
                                                                             "isMasterSibling":  true,
                                                                             "fieldPolicy":  "AllMappedColumns"
-                                                                        },
-                                                                        {
-                                                                            "appTableName":  "Plm_Trim_Info",
-                                                                            "isMasterSibling":  false,
-                                                                            "fieldPolicy":  "ExclusiveSubItemsOnly",
-                                                                            "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Trim_Header_4252"
                                                                         }
                                                                     ],
                                                    "childUnits":  [
@@ -2902,4 +2888,3 @@
                        "menuOrder":  100
                    }
 }
-

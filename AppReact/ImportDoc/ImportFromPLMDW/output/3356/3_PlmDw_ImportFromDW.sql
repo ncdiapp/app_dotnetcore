@@ -1,4 +1,4 @@
--- =============================================================================
+﻿-- =============================================================================
 -- PLM DW â†’ APP product data import (template: source/PlmDw_ImportFromDW.sql)
 -- Deliverable copy: output/PlmDw_ImportFromDW.sql (see ImportFromPLMDW/PROMPT.md)
 -- EXECUTION ORDER:
@@ -18,7 +18,7 @@ DECLARE @RootTableSuffix   NVARCHAR(128) = N'ReferenceBasicInfo'; -- <<< USER SE
 DECLARE @DwDatabase        NVARCHAR(128) = N'plmDW';               -- <<< USER SETTING (plmDW)
 DECLARE @PlmDatabase       NVARCHAR(128) = N'plm_live_20260602';                -- <<< USER SETTING (PLM source DB for pdmProductTemplate)
 DECLARE @PlmTemplateId     INT           = 3356;                   -- <<< USER SETTING â€” scope refs: pdmProductTemplate.TemplateID
-DECLARE @ImportMode        NVARCHAR(16)  = N'APPEND';             -- REPLACE | APPEND (APPEND skips existing ReferenceId per table)
+DECLARE @ImportMode        NVARCHAR(16)  = N'REPLACE';             -- REPLACE | APPEND (fresh tenant full load)
 DECLARE @ReferenceIdList   NVARCHAR(MAX) = NULL;                   -- optional pilot, e.g. N'1536,2001'
 DECLARE @DryRun            BIT           = 0;
 
@@ -324,4 +324,6 @@ END CATCH;
 -- EXEC avoids compile-time bind to a prior #ImportLog shape (e.g. after step 5 in same SSMS session).
 EXEC (N'SELECT [Step],[TableName],[RowCount] FROM #ImportLog ORDER BY [Step],[TableName];');
 PRINT N'PlmDw_ImportFromDW completed.';
+
+
 

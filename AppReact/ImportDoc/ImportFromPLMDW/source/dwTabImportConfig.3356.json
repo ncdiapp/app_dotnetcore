@@ -1,98 +1,95 @@
-﻿{
-    "plmTemplateId":  3356,
-    "plmSqlServer":  "PC3B\\MSSQLSERVER01",
-    "plmDatabase":  "plm_live_20260602",
-    "sqlServer":  "PC3B\\MSSQLSERVER01",
-    "dwDatabase":  "plmDW",
-    "importTabIds":  [
-                         4252,
-                         4253
-                     ],
-    "tablePrefixDefault":  "Plm_",
-    "rootTableSuffix":  "ReferenceBasicInfo",
-    "plmTemplate":  {
-                        "templateId":  3356,
-                        "templateName":  "06 - Trims",
-                        "templateHeaderTabIds":  [
-                                                     4252
-                                                 ]
-                    },
-    "referenceScope":  {
-                           "dwTable":  "PLM_DW_Tab_Trim_Header_4252",
-                           "dwColumn":  "Article__22",
-                           "plmTabId":  4252,
-                           "plmSubItemId":  22
-                       },
-    "tabs":  [
-                 {
-                     "appTable":  "Trim_Header",
-                     "dwTable":  "PLM_DW_Tab_Trim_Header_4252",
-                     "tabId":  4252,
-                     "plmTabName":  "Trim Header",
-                     "tabSort":  1,
-                     "isTemplateHeaderTab":  true,
-                     "importStatus":  "Ready",
-                     "mode":  "all"
-                 },
-                 {
-                     "appTable":  "Trim_Info",
-                     "dwTable":  "PLM_DW_Tab_Trim_Info_4253",
-                     "tabId":  4253,
-                     "plmTabName":  "Trim Info",
-                     "tabSort":  2,
-                     "isTemplateHeaderTab":  false,
-                     "importStatus":  "Ready",
-                     "mode":  "excludeSubItemsFromDwTable",
-                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Trim_Header_4252"
-                 }
-             ],
-    "grids":  [
-                  {
-                      "appTable":  "SizeRunDetailGrid",
-                      "dwTable":  "PLM_DW_Grid_SizeRunDetailGrid_26",
-                      "gridSubItemId":  191,
-                      "gridId":  26,
-                      "parentPlmTabId":  4252,
-                      "transactionIntegrationId":  "Tab_4252"
-                  },
-                  {
-                      "appTable":  "DimensionDetailGrid",
-                      "dwTable":  "PLM_DW_Grid_DimensionDetailGrid_27",
-                      "gridSubItemId":  192,
-                      "gridId":  27,
-                      "parentPlmTabId":  4252,
-                      "transactionIntegrationId":  "Tab_4252"
-                  },
-                  {
-                      "appTable":  "ProductDesignColorGrid",
-                      "dwTable":  "PLM_DW_Grid_ProductDesignColorGrid_7",
-                      "gridSubItemId":  35,
-                      "gridId":  7,
-                      "parentPlmTabId":  4253,
-                      "transactionIntegrationId":  "Tab_4253"
-                  },
-                  {
-                      "appTable":  "MaterialCosting_reg",
-                      "dwTable":  "PLM_DW_Grid_MaterialCosting_reg_3144",
-                      "gridSubItemId":  5193,
-                      "gridId":  3144,
-                      "parentPlmTabId":  4253,
-                      "transactionIntegrationId":  "Tab_4253"
-                  },
-                  {
-                      "appTable":  "Trims_Tracking",
-                      "dwTable":  "PLM_DW_Grid_Trims_Tracking_3179",
-                      "gridSubItemId":  7027,
-                      "gridId":  3179,
-                      "parentPlmTabId":  null,
-                      "transactionIntegrationId":  "Grid_3179"
-                  }
-              ],
-    "blueprint":  {
-                      "transactionGroupName":  "06 - Trims",
-                      "transactionGroupIntegrationId":  "TG_06Trims",
-                      "searchName":  "06 - Trims References",
-                      "searchIntegrationId":  "Search_06Trims",
-                      "folderName":  "06 - Trims"
-                  }
+{
+  "plmTemplateId": 3356,
+  "plmSqlServer": "PC3B\\MSSQLSERVER01",
+  "plmDatabase": "plm_live_20260602",
+  "sqlServer": "PC3B\\MSSQLSERVER01",
+  "dwDatabase": "plmDW",
+  "sqlUser": "sa",
+  "importModeDefault": "REPLACE",
+  "importTabIds": [4252, 4253],
+  "tablePrefixDefault": "Plm_",
+  "rootTableSuffix": "ReferenceBasicInfo",
+  "plmTemplate": {
+    "templateId": 3356,
+    "templateName": "06 - Trims",
+    "templateHeaderTabIds": [4252]
+  },
+  "referenceScope": {
+    "dwTable": "PLM_DW_Tab_Trim_Header_4252",
+    "dwColumn": "Article__22",
+    "plmTabId": 4252,
+    "plmSubItemId": 22
+  },
+  "tabs": [
+    {
+      "appTable": "Trim_Header",
+      "dwTable": "PLM_DW_Tab_Trim_Header_4252",
+      "tabId": 4252,
+      "plmTabName": "Trim Header",
+      "tabSort": 1,
+      "isTemplateHeaderTab": true,
+      "importStatus": "Ready",
+      "mode": "all"
+    },
+    {
+      "appTable": "Trim_Info",
+      "dwTable": "PLM_DW_Tab_Trim_Info_4253",
+      "tabId": 4253,
+      "plmTabName": "Trim Info",
+      "tabSort": 2,
+      "isTemplateHeaderTab": false,
+      "importStatus": "Ready",
+      "mode": "all"
+    }
+  ],
+  "grids": [
+    {
+      "appTable": "SizeRunDetailGrid",
+      "dwTable": "PLM_DW_Grid_SizeRunDetailGrid_26",
+      "gridSubItemId": 191,
+      "gridId": 26,
+      "parentPlmTabId": 4252,
+      "transactionIntegrationId": "Tab_4252"
+    },
+    {
+      "appTable": "DimensionDetailGrid",
+      "dwTable": "PLM_DW_Grid_DimensionDetailGrid_27",
+      "gridSubItemId": 192,
+      "gridId": 27,
+      "parentPlmTabId": 4252,
+      "transactionIntegrationId": "Tab_4252"
+    },
+    {
+      "appTable": "ProductDesignColorGrid",
+      "dwTable": "PLM_DW_Grid_ProductDesignColorGrid_7",
+      "gridSubItemId": 35,
+      "gridId": 7,
+      "parentPlmTabId": 4253,
+      "transactionIntegrationId": "Tab_4253"
+    },
+    {
+      "appTable": "MaterialCosting_reg",
+      "dwTable": "PLM_DW_Grid_MaterialCosting_reg_3144",
+      "gridSubItemId": 5193,
+      "gridId": 3144,
+      "parentPlmTabId": 4253,
+      "transactionIntegrationId": "Tab_4253"
+    },
+    {
+      "appTable": "Trims_Tracking",
+      "dwTable": "PLM_DW_Grid_Trims_Tracking_3179",
+      "gridSubItemId": 7027,
+      "gridId": 3179,
+      "parentPlmTabId": null,
+      "transactionIntegrationId": "Grid_3179",
+      "_comment": "PLM parent Tab 4268 Tracking is grid-only (no PLM_DW_Tab_*); orphan Root+Child"
+    }
+  ],
+  "blueprint": {
+    "transactionGroupName": "06 - Trims",
+    "transactionGroupIntegrationId": "TG_06Trims",
+    "searchName": "06 - Trims References",
+    "searchIntegrationId": "Search_06Trims",
+    "folderName": "06 - Trims"
+  }
 }

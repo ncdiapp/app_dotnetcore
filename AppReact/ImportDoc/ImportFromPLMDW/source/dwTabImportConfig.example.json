@@ -55,6 +55,7 @@
   ],
   "grids": [
     {
+      "_comment_parent": "parentPlmTabId = true PLM hosting TabId from pdmTabBlockSubItemExtraInfo. Never use template header as a stand-in. If parent Tab has no PLM_DW_Tab_* and is out of import scope: parentPlmTabId null + transactionIntegrationId Grid_{id} → BL Root+Child orphan.",
       "appTable": "ProductDesignColorGrid",
       "dwTable": "PLM_DW_Grid_ProductDesignColorGrid_7",
       "gridSubItemId": 7354,

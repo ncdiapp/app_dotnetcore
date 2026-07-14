@@ -1085,18 +1085,18 @@ WHERE SearchId = @SearchId";
       if (!string.IsNullOrWhiteSpace(txSpec?.IntegrationId))
         return txSpec.IntegrationId;
 
+      // Orphan grids (pseudo TabId = -PlmGridId): always Grid_{id}.
+      // Do not use grid.TransactionIntegrationId — that value means "host under Tab_X" and
+      // only applies when the parent tab is present in the blueprint plan.
       if (tab.TabId < 0)
       {
+        int gridId = -tab.TabId;
         var grid = blueprint?.GridBindings?
-          .FirstOrDefault(g => g.PlmGridId == -tab.TabId);
-        if (grid != null)
-        {
-          if (!string.IsNullOrWhiteSpace(grid.TransactionIntegrationId))
-            return grid.TransactionIntegrationId;
-          if (!string.IsNullOrWhiteSpace(grid.IntegrationId))
-            return grid.IntegrationId;
-          return $"Grid_{grid.PlmGridId}";
-        }
+          .FirstOrDefault(g => g.PlmGridId == gridId);
+        if (!string.IsNullOrWhiteSpace(grid?.IntegrationId)
+          && grid.IntegrationId.StartsWith("Grid_", StringComparison.OrdinalIgnoreCase))
+          return grid.IntegrationId.Trim();
+        return $"Grid_{gridId}";
       }
 
       return $"Tab_{tab.TabId}";
@@ -1426,6 +1426,11 @@ WHERE SearchId = @SearchId";
         }
       }
 
+      /// <summary>
+      /// Grids whose parent TabId is missing from this blueprint become standalone
+      /// <c>Grid_{plmGridId}</c> transactions. Physical grid tables use RowId identity PK →
+      /// unit structure must be Root + Child (never Master Sibling).
+      /// </summary>
       private static void AttachOrphanGridTransactions(
         PlmDwImportBlueprintDto blueprint,
         string prefix,
@@ -1440,45 +1445,68 @@ WHERE SearchId = @SearchId";
             continue;
 
           int pseudoTabId = grid.PlmGridId > 0 ? -grid.PlmGridId : -(plans.Count + 1);
-          string txName = grid.TransactionIntegrationId ?? grid.IntegrationId ?? $"Grid_{grid.PlmGridId}";
+          string gridIntegrationId = !string.IsNullOrWhiteSpace(grid.IntegrationId)
+            ? grid.IntegrationId.Trim()
+            : $"Grid_{grid.PlmGridId}";
+          // Prefer Grid_{id} as display name — never adopt a Tab_* transactionIntegrationId
+          // (that id means "attach to parent tab", which only applies when parent is in plans).
+          string txName = gridIntegrationId.StartsWith("Grid_", StringComparison.OrdinalIgnoreCase)
+            ? gridIntegrationId
+            : $"Grid_{grid.PlmGridId}";
+
           var tab = new PlmTemplateTabRow
           {
             TabId = pseudoTabId,
             TabName = txName,
             ImportStatus = TemplateStatusReady,
-            SiblingTableName = QualifyBlueprintTableName(grid.AppTableName, prefix)
+            SiblingTableName = null
           };
 
-          var plan = new TemplateTabExecutionPlan { Tab = tab, PrimarySiblingTable = tab.SiblingTableName };
-          string gridTable = tab.SiblingTableName;
+          // Root + Child only: no sibling table. Grid columns go on tab.GridColumns so
+          // UpsertTabTransactionFromPlan places the table in ChildTables (RowId PK).
+          var plan = new TemplateTabExecutionPlan { Tab = tab, PrimarySiblingTable = null };
+          string gridTable = QualifyBlueprintTableName(grid.AppTableName, prefix);
           var gridMappings = mappingRows
-            .Where(m => string.Equals(QualifyBlueprintTableName(m.AppTableName, prefix), gridTable, StringComparison.OrdinalIgnoreCase))
+            .Where(m => string.Equals(QualifyBlueprintTableName(m.AppTableName, prefix), gridTable, StringComparison.OrdinalIgnoreCase)
+              || string.Equals(m.AppTableName, grid.AppTableName, StringComparison.OrdinalIgnoreCase))
+            .Where(m => string.Equals(m.FieldKind, "GridColumn", StringComparison.OrdinalIgnoreCase)
+              || string.IsNullOrWhiteSpace(m.FieldKind))
             .ToList();
 
           int order = 0;
-          foreach (var mapRow in gridMappings)
+          foreach (var mapRow in gridMappings.OrderBy(m => m.AppColumnName))
           {
             order++;
             string metaKey = $"{mapRow.AppTableName}|{mapRow.AppColumnName}";
             fieldMetaByKey.TryGetValue(metaKey, out PlmDwBlueprintFieldDto fieldMeta);
-            plan.SiblingColumnsByTable.TryGetValue(gridTable, out var subItems);
-            if (subItems == null)
-            {
-              subItems = new List<PlmTemplateSubItemRow>();
-              plan.SiblingColumnsByTable[gridTable] = subItems;
-            }
+            int plmControlType = fieldMeta?.PlmControlType
+              ?? mapRow.PlmControlType
+              ?? InferPlmControlType(mapRow);
 
-            subItems.Add(new PlmTemplateSubItemRow
+            tab.GridColumns.Add(new PlmTemplateGridColumnRow
             {
               TabId = pseudoTabId,
-              SubItemId = mapRow.PlmSubItemId ?? mapRow.PlmMetaColumnId ?? 0,
-              SubItemName = fieldMeta?.DisplayLabel ?? mapRow.AppColumnName,
-              ControlType = fieldMeta?.PlmControlType ?? mapRow.PlmControlType ?? InferPlmControlType(mapRow),
+              SubItemId = mapRow.PlmGridSubItemId ?? mapRow.PlmSubItemId ?? 0,
+              GridId = mapRow.PlmGridId ?? grid.PlmGridId,
+              GridColumnId = mapRow.PlmMetaColumnId ?? mapRow.PlmSubItemId ?? 0,
+              ColumnName = fieldMeta?.DisplayLabel ?? mapRow.AppColumnName,
+              ColumnTypeId = plmControlType,
               EntityId = fieldMeta?.PlmEntityId ?? mapRow.PlmEntityId ?? TryParseEntityFromFk(mapRow.DwFkTarget),
-              SortOrder = fieldMeta?.DisplayOrder ?? order,
-              ColumnName = mapRow.AppColumnName,
+              ColumnOrder = fieldMeta?.DisplayOrder ?? order,
+              TableName = gridTable,
+              ColumnSqlName = mapRow.AppColumnName,
+              // Prefer Blueprint isVisible. If every column is false (host TabId missing from
+              // blueprintFields / FieldMapping.PlmTabId null), keep mapped columns visible —
+              // ApplyTransactionFieldSubsetSql also falls back so child grids are not empty.
               IsVisible = fieldMeta == null || fieldMeta.IsVisible
             });
+          }
+
+          // Safety: orphan with zero visible meta → show all mapped columns.
+          if (tab.GridColumns.Count > 0 && tab.GridColumns.All(c => !c.IsVisible))
+          {
+            foreach (var col in tab.GridColumns)
+              col.IsVisible = true;
           }
 
           plans.Add(plan);
