@@ -278,7 +278,7 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
   clearSignal,
 }) => {
   const { theme, t } = useTheme();
-  const { CriteriasRowCount = 0, Criterias = [] } = searchDto ?? {};
+  const { Criterias = [] } = searchDto ?? {};
 
   const [operatorSelections, setOperatorSelections] = useState<Record<string, string>>({});
   const [valueSelections, setValueSelections] = useState<Record<string, any[]>>({});
@@ -355,28 +355,50 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
     return stateValues;
   }, []);
 
-  const rows = useMemo(
-    () => Array.from({ length: Math.max(CriteriasRowCount, 1) }, (_, idx) => idx + 1),
-    [CriteriasRowCount]
-  );
+  // Pack visible criteria upward within each column so empty/hidden RowIndex slots
+  // do not leave blank cells in the runtime filter grid.
+  const { rows, cols, rowColumnMap, columnCount, visibleCriteriaCount } = useMemo(() => {
+    const visible = (Criterias || []).filter((criteria: any) => criteria?.IsVisible !== false);
+    const byColumn = new Map<number, any[]>();
 
-  const columnCount = useMemo(() => {
-    const indices = (Criterias || []).map((criteria: any) => criteria?.ColumnIndex || 1);
-    return indices.length ? Math.max(...indices) : 1;
-  }, [Criterias]);
-
-  const cols = useMemo(
-    () => Array.from({ length: columnCount }, (_, idx) => idx + 1),
-    [columnCount]
-  );
-
-  const rowColumnMap = useMemo(() => {
-    const map: Record<string, any> = {};
-    (Criterias || []).forEach((criteria: any) => {
-      const key = `${criteria.RowIndex}_${criteria.ColumnIndex}`;
-      map[key] = criteria;
+    visible.forEach((criteria: any) => {
+      const col = Number(criteria?.ColumnIndex) > 0 ? Number(criteria.ColumnIndex) : 1;
+      if (!byColumn.has(col)) byColumn.set(col, []);
+      byColumn.get(col)!.push(criteria);
     });
-    return map;
+
+    const map: Record<string, any> = {};
+    let maxRow = 0;
+    let maxCol = 1;
+
+    byColumn.forEach((items, col) => {
+      maxCol = Math.max(maxCol, col);
+      items
+        .slice()
+        .sort((a: any, b: any) => {
+          const rowA = Number(a?.RowIndex) || 0;
+          const rowB = Number(b?.RowIndex) || 0;
+          if (rowA !== rowB) return rowA - rowB;
+          return (Number(a?.SearcDCUID) || 0) - (Number(b?.SearcDCUID) || 0);
+        })
+        .forEach((criteria: any, idx: number) => {
+          const packedRow = idx + 1;
+          map[`${packedRow}_${col}`] = criteria;
+          maxRow = Math.max(maxRow, packedRow);
+        });
+    });
+
+    const hasVisible = Object.keys(map).length > 0;
+    const effectiveColCount = hasVisible ? Math.max(maxCol, 1) : 0;
+    const effectiveRowCount = maxRow;
+
+    return {
+      rowColumnMap: map,
+      columnCount: Math.max(effectiveColCount, 1),
+      rows: Array.from({ length: effectiveRowCount }, (_, idx) => idx + 1),
+      cols: Array.from({ length: Math.max(effectiveColCount, 1) }, (_, idx) => idx + 1),
+      visibleCriteriaCount: Object.keys(map).length,
+    };
   }, [Criterias]);
 
   const handleOperatorChange = useCallback(
@@ -762,36 +784,28 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
   );
 
   return (
-    Criterias.length === 0 ? (<></>) : (
-      
+    visibleCriteriaCount === 0 ? (<></>) : (
         <div className={`w-full overflow-x-auto mb-1 ${theme.mainContentSection}`}>
           <div className="space-y-3 p-4">
-            {Criterias.length === 0 ? (
-              <div className="rounded-md border px-4 py-6 text-center text-xs opacity-70">
-                No criteria available for this search.
+            {rows.map((row) => (
+              <div
+                key={`row-${row}`}
+                className="grid gap-3"
+                style={gridStyle}
+              >
+                {cols.map((col) => {
+                  const criteria = rowColumnMap[`${row}_${col}`];
+                  if (!criteria) {
+                    return (
+                      <div key={`placeholder-${row}-${col}`} className="hidden md:block md:invisible" />
+                    );
+                  }
+                  return renderCriteriaCard(criteria);
+                })}
               </div>
-            ) : (
-              rows.map((row) => (
-                <div
-                  key={`row-${row}`}
-                  className="grid gap-3"
-                  style={gridStyle}
-                >
-                  {cols.map((col) => {
-                    const criteria = rowColumnMap[`${row}_${col}`];
-                    if (!criteria) {
-                      return (
-                        <div key={`placeholder-${row}-${col}`} className="hidden md:block md:invisible" />
-                      );
-                    }
-                    return renderCriteriaCard(criteria);
-                  })}
-                </div>
-              ))
-            )}
+            ))}
           </div>
         </div>
-     
     )
   );
 };
