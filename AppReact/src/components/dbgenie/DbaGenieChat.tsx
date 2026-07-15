@@ -12,6 +12,7 @@ import {
     ExecuteSQLResultDto,
     DataSourceOptionDto,
 } from '../../webapi/dbgeniesvc';
+import appHelper from '../../helper/appHelper';
 import { DbaGenieSessionState } from './DbaGenie';
 
 // DataSourceType: 1=SQL Server, 2=Oracle, 3=MySQL
@@ -114,7 +115,7 @@ const DbaGenieChat: React.FC<DbaGenieChatProps> = ({
             Role: 'user',
             Content: inputMessage,
             Timestamp: new Date().toISOString(),
-            MessageId: crypto.randomUUID(),
+            MessageId: appHelper.guid(),
             HasSQL: false,
         };
 
@@ -165,7 +166,7 @@ const DbaGenieChat: React.FC<DbaGenieChatProps> = ({
             Role: 'user',
             Content: content,
             Timestamp: new Date().toISOString(),
-            MessageId: crypto.randomUUID(),
+            MessageId: appHelper.guid(),
             HasSQL: false,
         };
     }, []);
@@ -240,7 +241,7 @@ const DbaGenieChat: React.FC<DbaGenieChatProps> = ({
     const handleClearConversation = useCallback(() => {
         onSessionStateChange({
             conversationHistory: [],
-            sessionId: crypto.randomUUID(),
+            sessionId: appHelper.guid(),
         });
         setExecutionResult(null);
         setEditingMessageId(null);

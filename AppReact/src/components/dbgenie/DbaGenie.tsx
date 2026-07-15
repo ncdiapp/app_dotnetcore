@@ -4,6 +4,7 @@ import { useTheme } from '../../redux/hooks/useTheme';
 import { useTabDataAutoCache } from '../../redux/hooks/useTabNavigation';
 import { getDataModelFromCache, getCurrentActiveTab } from '../../redux/features/ui/navigation/tabnavSlice';
 import { DbGenieChatMessageDto, SchemaExtractionResultDto, DbGenieTableMetadataDto } from '../../webapi/dbgeniesvc';
+import appHelper from '../../helper/appHelper';
 
 // Section components
 import DbaGenieDashboard from './DbaGenieDashboard';
@@ -127,7 +128,7 @@ const DbaGenie: React.FC = () => {
 
     // Session state
     const [sessionState, setSessionState] = useState<DbaGenieSessionState>({
-        sessionId: crypto.randomUUID(),
+        sessionId: appHelper.guid(),
         conversationHistory: [],
     });
 
@@ -188,7 +189,7 @@ const DbaGenie: React.FC = () => {
     // New chat — create a fresh session (current one is already saved via useEffect)
     const handleNewChat = useCallback(() => {
         setSessionState({
-            sessionId: crypto.randomUUID(),
+            sessionId: appHelper.guid(),
             dataSourceRegisterId: sessionState.dataSourceRegisterId,
             dataSourceType: sessionState.dataSourceType,
             dataSourceName: sessionState.dataSourceName,
