@@ -715,7 +715,7 @@ const AppBuilderAgent: React.FC = () => {
 
   // ── State ─────────────────────────────────────────────────────────────────
   const _savedSession = loadActiveSession();
-  const [sessionId, setSessionId]                 = useState<string>(() => _savedSession?.sessionId ?? crypto.randomUUID());
+  const [sessionId, setSessionId]                 = useState<string>(() => _savedSession?.sessionId ?? appHelper.guid());
   const [messages, setMessages]                   = useState<ChatMessage[]>(() => _savedSession?.messages ?? []);
   const [input, setInput]                         = useState('');
   const [isRunning, setIsRunning]                 = useState(false);
@@ -976,7 +976,7 @@ const AppBuilderAgent: React.FC = () => {
   // ── New chat ───────────────────────────────────────────────────────────────
   const handleNewChat = useCallback(() => {
     clearActiveSession();
-    setSessionId(crypto.randomUUID());
+    setSessionId(appHelper.guid());
     setMessages([]);
     setConversationHistory([]);
     setActiveCheckpoint(null);
