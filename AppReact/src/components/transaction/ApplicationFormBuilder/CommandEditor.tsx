@@ -24,6 +24,7 @@ import { CompositionCommandSection } from './CommandEditorPart/CompositionComman
 import { ExecDataModelAllFormulaSection } from './CommandEditorPart/ExecDataModelAllFormulaSection';
 import { LinkTargetSettingSection } from './CommandEditorPart/LinkTargetSettingSection';
 import { CollapsibleSection } from './CommandEditorPart/CollapsibleSection';
+import { AiActionConfigSection } from './CommandEditorPart/AiActionConfigSection';
 import { buildChildGridFieldGroups } from './CommandEditorPart/sqlQueryBuilderTokens';
 import type { CommandEditorHostContext } from './commandEditorContext';
 
@@ -401,6 +402,21 @@ export function CommandEditor(props: {
                 onToggle={toggleSection}
               >
                 <OpenLinkedSearchSection hierarchy={hierarchy} action={currentEditAction} onMarkChange={onMarkChange} />
+              </CollapsibleSection>
+            ) : null}
+
+            {Number(currentEditAction.ActionType) === 56 ? (
+              <CollapsibleSection
+                sectionId="aiAction"
+                title="AI Action Configuration"
+                collapsed={!!collapsedBySectionId['aiAction']}
+                onToggle={toggleSection}
+              >
+                <AiActionConfigSection
+                  action={currentEditAction}
+                  hierarchy={hierarchy}
+                  onMarkChange={onMarkChange}
+                />
               </CollapsibleSection>
             ) : null}
 
