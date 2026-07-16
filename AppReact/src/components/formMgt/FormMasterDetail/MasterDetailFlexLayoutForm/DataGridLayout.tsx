@@ -1249,6 +1249,9 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const isAvailableSelectPair = gridViewDisplayType === pairDisplayVal;
   const isMultipleSelectBox = gridViewDisplayType === multiBoxDisplayVal;
   const isAvailableSelectLayout = isAvailableSelectPair || isMultipleSelectBox;
+  /** MinRowCount===1 on subscribe unit: allow picking the same available-source key more than once. */
+  const allowAvailableSelectDuplicates =
+    isAvailableSelectLayout && Number(unitExDto?.MinRowCount) === 1;
   const isPivotEditGrid = gridViewDisplayType === pivotEditVal;
   // Matrix unit: rows are (re)generated server-side as the Cartesian product of the
   // matrix foreign-key field values (Angular generateMatrix / GenerateMatrix endpoint).
@@ -1419,14 +1422,15 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     const formSlice = dictOneToManyHostRow ?? dataModel?.currentFormData;
     const propData = formSlice?.DictOneToManyFields?.[sourceUnitIdStr];
     const data = Array.isArray(propData) ? propData : [];
-      const filtered = isAvailableSelectPair
-      ? data.filter((row: any) => {
-          const k = readTransactionRowField(row, mappingSourceDb);
-          const ks = k != null && k !== '' ? String(k) : '';
-          if (!ks) return true;
-          return !selectedKeysAlreadyInSubscribeGrid.has(ks);
-        })
-      : data;
+    const filtered =
+      isAvailableSelectPair && !allowAvailableSelectDuplicates
+        ? data.filter((row: any) => {
+            const k = readTransactionRowField(row, mappingSourceDb);
+            const ks = k != null && k !== '' ? String(k) : '';
+            if (!ks) return true;
+            return !selectedKeysAlreadyInSubscribeGrid.has(ks);
+          })
+        : data;
     return filtered.map((row: any, index: number) => ({
       _rowIndex: index,
       _originalData: row,
@@ -1436,6 +1440,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   }, [
     isAvailableSelectLayout,
     isAvailableSelectPair,
+    allowAvailableSelectDuplicates,
     sourceUnitIdStr,
     availableSelectConfigOk,
     mappingSourceDb,
@@ -2776,19 +2781,21 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     const currentDataModel = dataModelRef.current;
     const unitIdStrLocal = String(unitId);
     const gridDataArray = getGridRowsForThisUnit();
-    const existingKeys = new Set(
-      gridDataArray
-        .map((r: any) => readTransactionRowField(r, mappingSubscribeDb))
-        .filter((v: any) => v != null && v !== '')
-        .map((v: any) => String(v))
-    );
+    const existingKeys = allowAvailableSelectDuplicates
+      ? null
+      : new Set(
+          gridDataArray
+            .map((r: any) => readTransactionRowField(r, mappingSubscribeDb))
+            .filter((v: any) => v != null && v !== '')
+            .map((v: any) => String(v))
+        );
 
     const toAdd: any[] = [];
     for (const srcRow of picked) {
       const srcKey = readTransactionRowField(srcRow, mappingSourceDb);
       if (srcKey == null || srcKey === '') continue;
       const ks = String(srcKey);
-      if (existingKeys.has(ks)) continue;
+      if (existingKeys?.has(ks)) continue;
 
       const newRow: any = {
         DictOneToOneFields: {},
@@ -2808,7 +2815,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       });
       newRow.DictOneToOneFields[mappingSubscribeDb] = srcKey;
       toAdd.push(newRow);
-      existingKeys.add(ks);
+      existingKeys?.add(ks);
     }
 
     if (toAdd.length === 0) return;
@@ -2855,6 +2862,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   }, [
     isGridReadOnly,
     availableSelectConfigOk,
+    allowAvailableSelectDuplicates,
     mappingSubscribeDb,
     mappingSourceDb,
     unitId,
@@ -2881,8 +2889,12 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       let gridDataArray = [...getGridRowsForThisUnit()];
 
       if (nextChecked) {
-        const exists =         gridDataArray.some((r: any) => String(readTransactionRowField(r, mappingSubscribeDb) ?? '') === ks);
-        if (exists) return;
+        if (!allowAvailableSelectDuplicates) {
+          const exists = gridDataArray.some(
+            (r: any) => String(readTransactionRowField(r, mappingSubscribeDb) ?? '') === ks
+          );
+          if (exists) return;
+        }
 
         const newRow: any = {
           DictOneToOneFields: {},
@@ -2933,6 +2945,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     [
       isGridReadOnly,
       availableSelectConfigOk,
+      allowAvailableSelectDuplicates,
       mappingSubscribeDb,
       mappingSourceDb,
       unitId,

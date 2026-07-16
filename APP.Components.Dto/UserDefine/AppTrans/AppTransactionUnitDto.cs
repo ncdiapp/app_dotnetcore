@@ -25,17 +25,6 @@ namespace APP.Components.EntityDto
             }
         }
 
-
-
-        public int? MaxWidthToEnableMobileRowEditorPopup
-        {
-            get
-            {
-
-                return MaxRowCount;
-
-
-            }
-        }
+     
     }
 }

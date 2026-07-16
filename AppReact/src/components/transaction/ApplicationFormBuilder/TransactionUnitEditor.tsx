@@ -2458,6 +2458,22 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                             ))}
                                         </select>
                                     </div>
+                                    {/* Stored in MinRowCount: 1=allow duplicates, 0/null=one-time only */}
+                                    <label
+                                        className="flex items-center gap-2"
+                                        title="When checked, items stay in AVAILABLE ITEMS after selection and can be added to SELECTED ITEMS more than once. Stored in MinRowCount (1=yes)."
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={Number(unitData.MinRowCount) === 1}
+                                            onChange={(e) =>
+                                                handleUnitPropertyChange('MinRowCount', e.target.checked ? 1 : null)
+                                            }
+                                            className="w-4 h-4"
+                                            disabled={isReadOnly}
+                                        />
+                                        <span className={`text-xs ${theme.label}`}>Allow Duplicate Selection</span>
+                                    </label>
                                 </div>
                             )}
                     </div>
