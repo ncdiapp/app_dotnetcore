@@ -1873,12 +1873,20 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     });
   }, [availableGridData, sourceFields, isAvailableSelectPair, availableSelectConfigOk]);
 
-  /** Non-edit display: formStructure standalone entity only (Angular: grid uses full entity list for display text). */
+  /** Non-edit display: formStructure standalone entity, or query DDL items from root DictCascadingFiledDataSource. */
   const getDataMapForField = (field: any): DataMap | null => {
     if (!isDdLikeControlType(field?.ControlType)) return null;
     const fieldIdStr = field.Id != null ? String(field.Id) : '';
     if (!fieldIdStr) return null;
-    return buildStandaloneDataMapFromFormStructure(dataModel, fieldIdStr);
+    const standalone = buildStandaloneDataMapFromFormStructure(dataModel, fieldIdStr);
+    if (standalone) return standalone;
+    const queryItems =
+      dataModel?.currentFormData?.DictCascadingFiledDataSource?.[fieldIdStr] ??
+      masterDetailFormDataRef.current?.DictCascadingFiledDataSource?.[fieldIdStr];
+    if (Array.isArray(queryItems) && queryItems.length > 0) {
+      return new DataMap(queryItems, 'Id', 'Display');
+    }
+    return null;
   };
 
   const getDataMapForSourceField = (field: any): DataMap | null => {
@@ -1897,7 +1905,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       if (!isDdLikeControlType(field?.ControlType)) return;
       const fieldIdStr = field.Id != null ? String(field.Id) : '';
       if (!fieldIdStr) return;
-      const dm = buildStandaloneDataMapFromFormStructure(dataModel, fieldIdStr);
+      const dm = getDataMapForField(field);
       if (!dm) return;
       const col = flexGridControl.columns?.find((c: any) => String(c?.name ?? '') === String(fieldIdStr));
       if (col) col.dataMap = dm;
@@ -1906,7 +1914,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     flexGridControl.invalidate();
     flexGridControl.refresh();
   }, [
-    buildStandaloneDataMapFromFormStructure,
+    getDataMapForField,
+    dataModel?.currentFormData?.DictCascadingFiledDataSource,
     dataModel?.currentFormStructure?.DictStandAloneEntityDataSource,
     dataModel?.currentFormStructure?.DictStandAloneFiledIDMappingEntityID,
     dataModel?.currentFormStructure,

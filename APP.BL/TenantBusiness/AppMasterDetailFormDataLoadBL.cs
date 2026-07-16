@@ -416,8 +416,7 @@ namespace App.BL
         {
             var dictAllFieds = transactionExDto.DictAllTransactionField;
             var ddlQueryFuelds = transactionExDto.DictAllTransactionField.Values.Where(
-                o => !String.IsNullOrWhiteSpace(o.DdlQueryText)
-              && !String.IsNullOrWhiteSpace(o.WhereClauseExpress));
+                o => !String.IsNullOrWhiteSpace(o.DdlQueryText));
 
             if (transactionExDto.DataSourceFrom.HasValue)
             {
@@ -682,9 +681,11 @@ namespace App.BL
 
 
 
-            string whareClaseu = specailDdlFiedl.WhereClauseExpress;
+            string whareClaseu = specailDdlFiedl.WhereClauseExpress ?? string.Empty;
 
-            string[] fieldParaname = whareClaseu.Split("|".ToCharArray());
+            string[] fieldParaname = string.IsNullOrWhiteSpace(whareClaseu)
+                ? Array.Empty<string>()
+                : whareClaseu.Split("|".ToCharArray());
 
             DatabaseFixture databaseFixtureInstance = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegistrationId);
 
@@ -693,6 +694,11 @@ namespace App.BL
 
             for (int index = 0; index < fieldParaname.Length; index++)
             {
+                if (string.IsNullOrWhiteSpace(fieldParaname[index]))
+                {
+                    continue;
+                }
+
                 int filedId = int.Parse(fieldParaname[index].Trim());
 
                 if (dictAllFieds.ContainsKey(filedId))
@@ -748,8 +754,8 @@ namespace App.BL
             foreach (DataRow row in dt.Rows)
             {
                 var itmeDto = new LookupItemDto();
-                itmeDto.Id = (int)row[0];
-                itmeDto.Display = row[1].ToString();
+                itmeDto.Id = row[0] == DBNull.Value ? null : row[0];
+                itmeDto.Display = row[1] == DBNull.Value ? string.Empty : row[1].ToString();
                 listDisplay.Add(itmeDto);
             }
             //var list = dt.AsEnumerable().Select(
@@ -759,6 +765,10 @@ namespace App.BL
             {
 
                 aAppformDataDto.DictCascadingFiledDataSource.Add(specailDdlFiedl.Id.ToString(), listDisplay);
+            }
+            else
+            {
+                aAppformDataDto.DictCascadingFiledDataSource[specailDdlFiedl.Id.ToString()] = listDisplay;
             }
 
         }

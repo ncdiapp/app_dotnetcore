@@ -211,6 +211,8 @@ namespace App.BL
 
                     SetupOneUnitCascadingDataSource(aCascadingAppformDataDto.DictCascadingFiledDataSource, aCascadingAppformDataDto.DictOneToOneFields, rootUnit, cascadingTrigerFieldExDto, true, aCascadingAppformDataDto, null);
 
+                    AppMasterDetailFormDataLoadBL.SetupDdlQueryLookItem(hierarchyTransactionExDto, aCascadingAppformDataDto);
+
                     //
 
                     //foreach (var unitDto in hierarchyTransactionExDto.DictAllTransactionUnitIdExDto.Values)
@@ -387,7 +389,8 @@ namespace App.BL
              allFiedExdtoList.Where(o =>
 
                      o.DdlparentLevelId.HasValue ||
-                    o.MasterEntityFieldlId.HasValue
+                    o.MasterEntityFieldlId.HasValue ||
+                    !string.IsNullOrWhiteSpace(o.DdlQueryText)
 
              )
              .Select(o => o.Id.ToString())
