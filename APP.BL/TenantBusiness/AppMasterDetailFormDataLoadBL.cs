@@ -1205,6 +1205,7 @@ namespace App.BL
 
                     if (grandChildQuery != string.Empty)
                     {
+                        grandChildQuery = grandChildQuery + BuildChildUnitRowOrderByClause(aGrandchildAppTransactionUnitExDto, grandChilddatabaseTable);
                         var grandChilddataTble = databaseFixtureInstance.RetriveDataTable(grandChildQuery, paraList);
 
                         dictGrandChilddataTble[aGrandchildAppTransactionUnitExDto] = grandChilddataTble;
@@ -1841,6 +1842,8 @@ namespace App.BL
 
             }
 
+            childQuery = childQuery + BuildChildUnitRowOrderByClause(avialbeDataSourceChildUnitExDto, childdatabaseTable);
+
             childdataTble = databaseFixtureInstance.RetriveDataTable(childQuery, listParamters); //adpater.ExecuteDataTableRetrievalQuery(childQuery, listParamters);
 
 
@@ -1880,6 +1883,40 @@ namespace App.BL
             return childPkValueIDList;
         }
 
+        private static string BuildChildUnitRowOrderByClause(AppTransactionUnitExDto unitExDto, DatabaseTable databaseTable)
+        {
+            if (unitExDto?.AppTransactionFieldList == null || databaseTable == null)
+            {
+                return string.Empty;
+            }
+
+            var orderFields = unitExDto.AppTransactionFieldList
+                .Where(f => f.GroupByLevel.HasValue && !string.IsNullOrWhiteSpace(f.DataBaseFieldName))
+                .OrderBy(f => f.GroupByLevel.Value)
+                .ToList();
+
+            if (orderFields.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var orderParts = new List<string>();
+            foreach (var field in orderFields)
+            {
+                if (databaseTable.FindColumn(field.DataBaseFieldName) != null)
+                {
+                    orderParts.Add(string.Format("[{0}]", field.DataBaseFieldName));
+                }
+            }
+
+            if (orderParts.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            return " ORDER BY " + string.Join(", ", orderParts);
+        }
+
         private static DataTable GetChildDataTable(Dictionary<string, object> dictRootOneToOneValue, AppTransactionUnitExDto aChildTransactionUnitExDto)
         {
             string childtableName = aChildTransactionUnitExDto.DataBaseTableName;
@@ -1905,6 +1942,7 @@ namespace App.BL
                 if (!string.IsNullOrWhiteSpace(linkToParentWhere))
                 {
                     childQuery = childQuery + "WHERE " + linkToParentWhere;
+                    childQuery = childQuery + BuildChildUnitRowOrderByClause(aChildTransactionUnitExDto, childdatabaseTable);
                     childdataTble = databaseFixtureInstance.RetriveDataTable(childQuery, listParamters); //adpater.ExecuteDataTableRetrievalQuery(childQuery, listParamters);
 
                 }

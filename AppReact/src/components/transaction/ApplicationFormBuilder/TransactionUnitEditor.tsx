@@ -2945,9 +2945,9 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 <FlexGridColumn binding="IsGroupBy" header="IsGroupBy" isReadOnly={false} width={90} dataType="Boolean" />
                                 <FlexGridColumn
                                     binding="GroupByLevel"
-                                    header="Group Level"
+                                    header="Row Order Level"
                                     isReadOnly={false}
-                                    width={100}
+                                    width={150}
                                     dataType="Number"
                                 />
                                 <FlexGridColumn
