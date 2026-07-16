@@ -43,7 +43,21 @@ namespace App.BL
                 sections.Append(rendered);
             }
 
-            return $"<!DOCTYPE html><html><head><meta charset=\"utf-8\"></head><body>{sections}</body></html>";
+            string pageSize = request.PageSize ?? "A4";
+            string orient   = request.Orientation ?? "portrait";
+            int    margin   = request.MarginMm > 0 ? request.MarginMm : 15;
+            string pageRule = $"@page{{size:{pageSize} {orient};margin:{margin}mm}}";
+
+            // PDF reset: zero out UA body margin and enforce border-box so that
+            // table widths and padding don't cause column overflow/overlap in print.
+            const string reset =
+                "*, *::before, *::after{box-sizing:border-box}" +
+                "body{margin:0;padding:0;font-family:Arial,sans-serif}" +
+                "table{border-collapse:collapse;max-width:100%}" +
+                "img{max-width:100%;height:auto;display:block}" +
+                "td,th{word-wrap:break-word;overflow-wrap:break-word}";
+
+            return $"<!DOCTYPE html><html><head><meta charset=\"utf-8\"><style>{pageRule}{reset}</style></head><body>{sections}</body></html>";
         }
 
         /// <summary>Uses Playwright headless Chromium to render HTML → PDF bytes.</summary>

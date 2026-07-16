@@ -384,7 +384,14 @@ namespace App.BL
             string size   = $"{t?.PageSize ?? "A4"} {t?.Orientation ?? "portrait"}";
             int    margin = t?.MarginMm ?? 15;
             string css    = $"<style>@page{{size:{size};margin:{margin}mm}}</style>";
-            return html.Contains("<head>") ? html.Replace("<head>", $"<head>{css}") : css + html;
+
+            if (html.Contains("<head>"))
+                return html.Replace("<head>", $"<head>{css}");
+
+            // Standard templates have no <head> tag — placing @page in <body> works
+            // but is fragile. BuildCombinedHtml injects @page into the final <head>,
+            // so bare template fragments don't need it duplicated here.
+            return html;
         }
 
         private static string RenderEachBlocks(string html, Dictionary<string, object> context)
