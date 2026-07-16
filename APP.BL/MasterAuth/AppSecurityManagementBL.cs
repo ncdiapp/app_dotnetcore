@@ -670,6 +670,17 @@ namespace App.BL
         // unit table security
         private static void ProcessCurrentUserTransactionUnitSecurity(AppTransactionExDto appTransactionExDto, object formDataCreatedById)
         {
+            // Hierarchy DTO is shared via cache — never assign IsReadOnly=false onto design-time read-only units.
+            HashSet<string> designTimeReadOnlyUnitIds = null;
+            if (appTransactionExDto?.DictAllTransactionUnitIdExDto != null)
+            {
+                designTimeReadOnlyUnitIds = new HashSet<string>(
+                    appTransactionExDto.DictAllTransactionUnitIdExDto.Values
+                        .Where(u => u.IsReadOnly == true && u.Id != null)
+                        .Select(u => u.Id.ToString()),
+                    StringComparer.Ordinal);
+            }
+
             bool isAdmin = AppSecurityUserBL.IsAdminUser();
 
             if (isAdmin)
@@ -680,7 +691,7 @@ namespace App.BL
                     foreach (var unitDto in appTransactionExDto.DictAllTransactionUnitIdExDto.Values)
                     {
                         unitDto.IsFormLayoutVisible = true;
-                        unitDto.IsReadOnly = false;
+                        // Do not assign IsReadOnly = false — Unit Editor "Is Read-Only" must remain.
                     }
                 }
 
@@ -723,7 +734,11 @@ namespace App.BL
                         {
                             var unitDto = appTransactionExDto.DictAllTransactionUnitIdExDto[unitId.ToString()];
 
-                            unitDto.IsReadOnly = false;
+                            // Owner may clear security UnSaveAble, but not Unit Editor Is Read-Only.
+                            if (designTimeReadOnlyUnitIds == null || !designTimeReadOnlyUnitIds.Contains(unitId.ToString()))
+                            {
+                                unitDto.IsReadOnly = false;
+                            }
 
                         }
 
@@ -760,7 +775,11 @@ namespace App.BL
                 foreach (var unitDto in appTransactionExDto.DictAllTransactionUnitIdExDto.Values)
                 {
                     unitDto.IsFormLayoutVisible = true;
-                    unitDto.IsReadOnly = false;
+                    // Do not clear design-time IsReadOnly (shared hierarchy cache).
+                    if (unitDto.IsReadOnly != true)
+                    {
+                        unitDto.IsReadOnly = false;
+                    }
 
                     if (transactionUnitUserRights.Count > 0)
                     {

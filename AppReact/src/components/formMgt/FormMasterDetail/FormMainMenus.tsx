@@ -335,6 +335,8 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
 
       const validateUnit = (unit: any) => {
         if (!unit?.Id) return;
+        // Angular / server parity (IsEditableUnit): skip read-only and available-source pool units.
+        if (unit.IsReadOnly === true || unit.IsUsedForLoadingAvailableSource === true) return;
         const unitIdStr = String(unit.Id);
         const unitFields = Array.isArray(unit.AppTransactionFieldList) ? unit.AppTransactionFieldList : [];
         const required = unitFields.filter((f: any) => f && f.IsFormLayoutVisible !== false && f.IsAllowEmpty === false && needValidateField(f));
