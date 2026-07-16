@@ -157,7 +157,7 @@ function syncCollectionViewFlatRows(prevCv: CollectionView<any>, nextFlatRows: a
   const nNext = nextFlatRows.length;
 
   const finish = () => {
-    prevCv.sortDescriptions.clear();
+    // Keep header-click sort; only full replace (assignAll) clears sortDescriptions.
     prevCv.refresh();
   };
 
@@ -3526,7 +3526,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             isReadOnly={isGridReadOnly}
             selectionMode="MultiRange"
             preserveOutlineState={true}
-            allowSorting={false}
+            allowSorting={true}
             headersVisibility="All"
             className="w-full h-full"
             style={{ width: '100%', border: 'none' }}
@@ -3554,6 +3554,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                   header={gc.UnitDisplayName ?? gc.Name ?? `Unit ${gcUnitId}`}
                   width={130}
                   isReadOnly={true}
+                  allowSorting={false}
                 >
                   <FlexGridCellTemplate
                     cellType="Cell"
@@ -3819,7 +3820,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             );
           })}
           {/* Spacer column so Wijmo grid layout stays stable */}
-          <FlexGridColumn header="" binding="" width="*" isReadOnly={true} />
+          <FlexGridColumn header="" binding="" width="*" isReadOnly={true} allowSorting={false} />
         </FlexGrid>
           </div>
         </div>
