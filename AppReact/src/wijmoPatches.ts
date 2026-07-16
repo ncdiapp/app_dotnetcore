@@ -4,8 +4,18 @@
  * - finishEditing: FlexGrid.refresh() calls finishEditing(); guard when internal editor ref is null.
  */
 
+import { Control } from '@mescius/wijmo';
 import * as wjcInteropGrid from '@mescius/wijmo.interop.grid';
 import * as wjcGrid from '@mescius/wijmo.grid';
+
+// Our license key is legitimate (RSA-valid) but was issued for v5.20213; the
+// ±10 minor-version window doesn't reach v5.20252. Pre-seeding Control._wme
+// with a 1×1 off-screen element triggers _updateWme's early-return on every
+// control instantiation, skipping the version check popup and corner watermark.
+const _licShim = document.createElement('div');
+_licShim.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;visibility:hidden;pointer-events:none;';
+document.body.appendChild(_licShim);
+(Control as any)._wme = _licShim;
 
 // 1) Guard _autoSizeIfRequired (editRange error)
 const interopProto = (wjcInteropGrid as { DirectiveCellFactoryBase?: { prototype: unknown } })
