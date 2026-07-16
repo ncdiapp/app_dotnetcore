@@ -31,6 +31,7 @@ import {
 } from '../transactionCommandActionTypes';
 import { buildCommandFieldLookups } from './commandFieldLookup';
 import { tw } from '../../../helper/themeHelper';
+import appHelper from '../../../helper/appHelper';
 
 const EmAppTransactionScopeUsageWorkflowAutomation = 2;
 const EmAppTransactionCommandTypePrintFromMessageTemplate = 74;
@@ -318,7 +319,7 @@ const TransactionCommandActionEditor: React.FC<TransactionCommandActionEditorPro
     const maxOrder = Math.max(0, ...list.map((c: any) => Number(c.ActionFlowOrder) || 0));
     const newAction: any = {
       CommandTransactionId: hierarchy.Id,
-      ActionGuid: 'guid-' + Math.random().toString(36).slice(2),
+      ActionGuid: appHelper.guid(),
       ActionFlowOrder: maxOrder + 1,
       Name: 'NewOperationTask' + (maxOrder + 1),
       NextTransactionId: null,

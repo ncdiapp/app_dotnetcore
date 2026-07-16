@@ -14,6 +14,7 @@ import {
 } from './SendMessageSections';
 import { ChildCommandEditorPopup } from './ChildCommandEditorPopup';
 import { buildCommandDisplayName, resolveIsBatchCommand } from './childCommandGridHelpers';
+import appHelper from '../../../../helper/appHelper';
 
 type OperationTypeOption = { Id: any; Display: string };
 
@@ -150,7 +151,7 @@ export function MessageLinkCommandsSection(props: {
     const maxOrder = Math.max(0, ...list.map((c: any) => Number(c.ActionFlowOrder) || 0));
     const newAction: any = {
       CommandTransactionId: hierarchy.Id,
-      ActionGuid: 'guid-' + Math.random().toString(36).slice(2),
+      ActionGuid: appHelper.guid(),
       ActionFlowOrder: maxOrder + 1,
       Name: '_ChildCommand' + (maxOrder + 1),
       NextTransactionId: null,

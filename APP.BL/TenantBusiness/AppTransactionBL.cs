@@ -326,7 +326,13 @@ namespace App.BL
 
                 transactionUnitExdto.DataSourceFrom = aAppTransactionExDto.DataSourceFrom;
 
-                transactionUnitExdto.IsReadOnly = transactionUnitExdto.IsUsedForLoadingAvailableSource;
+                // Available-source pool units are always treated as read-only.
+                // Do not overwrite a persisted IsReadOnly=true when IsUsedForLoadingAvailableSource is false/null
+                // (that was wiping Unit Editor "Is Read-Only" after save/reload).
+                if (transactionUnitExdto.IsUsedForLoadingAvailableSource == true)
+                {
+                    transactionUnitExdto.IsReadOnly = true;
+                }
 
 
                 //	transactionUnitExdto.PrimaryKeyDbfieldList = new List<string>(); 

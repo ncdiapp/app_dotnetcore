@@ -13,6 +13,7 @@ import ApplicationFormBuilder from '../../ApplicationFormBuilder';
 import { PopupModalOverlay } from '../../../formMgt/PopupModalOverlay';
 import { ChildCommandEditorPopup } from './ChildCommandEditorPopup';
 import { buildCommandDisplayName, resolveIsBatchCommand } from './childCommandGridHelpers';
+import appHelper from '../../../../helper/appHelper';
 
 export const EmAppTransactionCommandTypeCompositionCommand = 200;
 
@@ -208,7 +209,7 @@ export function CompositionCommandSection(props: {
     const maxOrder = Math.max(0, ...list.map((c: any) => Number(c.ActionFlowOrder) || 0));
     const newAction: any = {
       CommandTransactionId: hierarchy.Id,
-      ActionGuid: 'guid-' + Math.random().toString(36).slice(2),
+      ActionGuid: appHelper.guid(),
       ActionFlowOrder: maxOrder + 1,
       Name: '_ChildCommand' + (maxOrder + 1),
       NextTransactionId: null,

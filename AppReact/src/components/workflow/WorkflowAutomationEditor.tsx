@@ -18,6 +18,7 @@ import type { RootState } from '../../redux/store';
 import { closeTab, updateActiveTabPath, updateCurrentTabLabel } from '../../redux/features/ui/navigation/tabnavSlice';
 import { setUserMenu } from '../../redux/features/admin/userSessionSlice';
 import { buildRoutePathFromParamObj, getReactPathForRouteCode } from '../../helper/navigationHelper';
+import appHelper from '../../helper/appHelper';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
@@ -2187,7 +2188,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
     const maxSort = Math.max(0, ...childList.map((c: any) => c.Sort || 0));
     const newAction: any = {
       CommandTransactionId: workflowId,
-      ActionGuid: 'guid-' + Math.random().toString(36).slice(2),
+      ActionGuid: appHelper.guid(),
       ActionFlowOrder: maxSort + 1,
       Name: '_ChildCommand' + (maxSort + 1),
       NextTransactionId: null,
@@ -2370,7 +2371,7 @@ const WorkflowAutomationEditor: React.FC<WorkflowAutomationEditorProps> = ({ emb
       const maxSort = Math.max(0, ...childList.map((c: any) => c.Sort || 0));
       const newAction: any = {
         CommandTransactionId: workflowId,
-        ActionGuid: 'guid-' + Math.random().toString(36).slice(2),
+        ActionGuid: appHelper.guid(),
         ActionFlowOrder: maxSort + 1,
         Name: '_ChildCommand' + (maxSort + 1),
         NextTransactionId: null,

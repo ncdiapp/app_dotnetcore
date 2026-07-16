@@ -26,6 +26,7 @@ import SimpleValueListEntityEdit from '../../admin/EntityListOfValue/SimpleValue
 import MetaDataViewDesign from '../metaDataViewDesign';
 import SystemObjectSecurityEditorPopup from '../../admin/CompanySecuritySetting/SystemObjectSecurityEditorPopup';
 import FlexGridAddOn from '../../common/FlexGridAddOn';
+import appHelper from '../../../helper/appHelper';
 
 interface TransactionUnitEditorProps {
     isOpen: boolean;
@@ -1734,10 +1735,8 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         return Math.max(...unitData.AppTransactionFieldList.map((f: any) => f.SortOrder || 0));
     }, [unitData]);
 
-    // Helper to generate unique ID
-    const generateGuid = () => {
-        return `field_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    };
+    // RowIdentityGuid is Nullable<Guid> on the server — must be a real UUID, not a client temp key.
+    const generateGuid = () => appHelper.guid();
 
     // Add Temp Field
     const handleAddTempField = useCallback(() => {
@@ -1745,7 +1744,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
 
         const maxSortOrder = getMaxSortOrder();
         const newField = {
-            uiId: generateGuid(),
+            uiId: `field_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             RowIdentityGuid: generateGuid(),
             SortOrder: Math.ceil(maxSortOrder / 10.0) * 10 + 10,
             DisplayName: `Field${Math.ceil(maxSortOrder / 10.0) * 10 + 10}`,
@@ -1781,7 +1780,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
 
         const maxSortOrder = getMaxSortOrder();
         const newField = {
-            uiId: generateGuid(),
+            uiId: `field_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             RowIdentityGuid: generateGuid(),
             SortOrder: Math.ceil(maxSortOrder / 10.0) * 10 + 10,
             DisplayName: `Field${Math.ceil(maxSortOrder / 10.0) * 10 + 10}`,
@@ -2593,6 +2592,26 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 selectionMode="ListBox"
                                 style={{ height: '100%', border: 'none' }}
                                 cellEditEnded={handleCellEditEnded}
+                                cellEditEnding={(s: any, e: any) => {
+                                    // GroupByLevel is nullable (null = no ORDER BY). Empty cell must become null, not 0.
+                                    const col = s.columns?.[e.col];
+                                    if (col?.binding !== 'GroupByLevel') return;
+                                    const raw = s.activeEditor?.value;
+                                    if (raw === '' || raw == null) {
+                                        e.cancel = true;
+                                        const item = s.rows?.[e.row]?.dataItem;
+                                        if (item) {
+                                            item.GroupByLevel = null;
+                                            setIsModified(true);
+                                            isModifiedRef.current = true;
+                                            try {
+                                                fieldCollectionView?.refresh?.();
+                                            } catch {
+                                                // ignore
+                                            }
+                                        }
+                                    }
+                                }}
                                 initialized={(g: any) => setFieldGridControl(g)}
                             >
                                 <FlexGridFilter />
@@ -2947,6 +2966,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     binding="GroupByLevel"
                                     header="Row Order Level"
                                     isReadOnly={false}
+                                    isRequired={false}
                                     width={150}
                                     dataType="Number"
                                 />
