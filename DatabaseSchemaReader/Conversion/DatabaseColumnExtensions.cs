@@ -20,6 +20,13 @@ namespace DatabaseSchemaMrg.Conversion
                     return true;
                 }
             }
+            // Fallback when DataType object is not populated: check the raw type name
+            if (!string.IsNullOrEmpty(column.DbDataType))
+            {
+                var dbType = column.DbDataType.ToLowerInvariant();
+                if (dbType == "timestamp" || dbType == "rowversion")
+                    return true;
+            }
             return false;
         }
 
