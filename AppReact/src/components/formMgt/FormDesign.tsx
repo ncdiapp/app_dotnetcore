@@ -1724,16 +1724,10 @@ const FormDesign: React.FC<FormDesignProps> = ({
         const controlTypeChanged = (updatedLayoutItem.DomAttribute?.ControlType !== existingItem.DomAttribute?.ControlType) ||
                                    (updatedLayoutItem.ForeignAppTransactionFieldExDto?.ControlType !== existingItem.ForeignAppTransactionFieldExDto?.ControlType);
         const displayNameChanged = (updatedLayoutItem.ForeignAppTransactionFieldExDto?.DisplayName !== existingItem.ForeignAppTransactionFieldExDto?.DisplayName);
-        // CRITICAL: Also check DomAttribute.DisplayName for Tab items and Content/Space items (which use DomAttribute.DisplayName, not ForeignAppTransactionFieldExDto.DisplayName)
-        const tabDisplayNameChanged = (updatedLayoutItem.DomAttribute?.DisplayName !== existingItem.DomAttribute?.DisplayName) &&
-                                      (updatedLayoutItem.DomAttribute?.IsTab || existingItem.DomAttribute?.IsTab);
-        // CRITICAL: Check DomAttribute.DisplayName for Content/Space types (which don't have ForeignAppTransactionFieldExDto)
-        const contentDisplayNameChanged = (updatedLayoutItem.DomAttribute?.DisplayName !== existingItem.DomAttribute?.DisplayName) &&
-                                         (!updatedLayoutItem.ForeignAppTransactionFieldExDto && !existingItem.ForeignAppTransactionFieldExDto) &&
-                                         (updatedLayoutItem.DomAttribute?.WidgetDisplayType === layoutItemTypeEnum?.Content ||
-                                          updatedLayoutItem.DomAttribute?.WidgetDisplayType === layoutItemTypeEnum?.Space ||
-                                          existingItem.DomAttribute?.WidgetDisplayType === layoutItemTypeEnum?.Content ||
-                                          existingItem.DomAttribute?.WidgetDisplayType === layoutItemTypeEnum?.Space);
+        // DomAttribute.DisplayName is used by Section/Stack, Tab, Content, Space, containers, etc.
+        // Previously only Tab/Content/Space were checked — Section Label Text edits were discarded (felt read-only).
+        const domAttributeDisplayNameChanged =
+          updatedLayoutItem.DomAttribute?.DisplayName !== existingItem.DomAttribute?.DisplayName;
         const colSpanChanged = (updatedLayoutItem.DomAttribute?.ColSpanValue !== existingItem.DomAttribute?.ColSpanValue);
         const heightChanged = (updatedLayoutItem.DomAttribute?.HeightValue !== existingItem.DomAttribute?.HeightValue);
         const backgroundColorChanged = (updatedLayoutItem.DomAttribute?.BackgroundColor !== existingItem.DomAttribute?.BackgroundColor);
@@ -1741,10 +1735,17 @@ const FormDesign: React.FC<FormDesignProps> = ({
         const formulaChanged = (updatedLayoutItem.DomAttribute?.Formula !== existingItem.DomAttribute?.Formula);
         const visibleExpressionChanged = (updatedLayoutItem.DomAttribute?.VisibleExpression !== existingItem.DomAttribute?.VisibleExpression);
         const workflowTriggerChanged = (updatedLayoutItem.DomAttribute?.WorkflowTrigger !== existingItem.DomAttribute?.WorkflowTrigger);
+        const isCollapsibleChanged =
+          updatedLayoutItem.DomAttribute?.IsCollapsible !== existingItem.DomAttribute?.IsCollapsible;
+        const isDefaultCollapsedChanged =
+          updatedLayoutItem.DomAttribute?.IsDefaultCollapsed !== existingItem.DomAttribute?.IsDefaultCollapsed;
+        const defaultNbColumnsChanged =
+          updatedLayoutItem.DomAttribute?.DefaultNbColumns !== existingItem.DomAttribute?.DefaultNbColumns;
         
-        const hasActualChange = controlTypeChanged || displayNameChanged || tabDisplayNameChanged || contentDisplayNameChanged || colSpanChanged || heightChanged || 
+        const hasActualChange = controlTypeChanged || displayNameChanged || domAttributeDisplayNameChanged || colSpanChanged || heightChanged || 
                                 backgroundColorChanged || textColorChanged || formulaChanged || 
-                                visibleExpressionChanged || workflowTriggerChanged;
+                                visibleExpressionChanged || workflowTriggerChanged ||
+                                isCollapsibleChanged || isDefaultCollapsedChanged || defaultNbColumnsChanged;
         
         if (!hasActualChange) {
           appHelper.debugLog('handleLayoutItemChange: Early return - no actual changes detected (likely false trigger from ComboBox initialization)');
@@ -1754,14 +1755,17 @@ const FormDesign: React.FC<FormDesignProps> = ({
         appHelper.debugLog('handleLayoutItemChange: Changes detected:', {
           controlTypeChanged,
           displayNameChanged,
-          tabDisplayNameChanged,
+          domAttributeDisplayNameChanged,
           colSpanChanged,
           heightChanged,
           backgroundColorChanged,
           textColorChanged,
           formulaChanged,
           visibleExpressionChanged,
-          workflowTriggerChanged
+          workflowTriggerChanged,
+          isCollapsibleChanged,
+          isDefaultCollapsedChanged,
+          defaultNbColumnsChanged
         });
       }
     }

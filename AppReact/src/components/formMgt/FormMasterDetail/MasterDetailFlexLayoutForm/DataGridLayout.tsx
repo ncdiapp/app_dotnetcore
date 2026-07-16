@@ -3296,13 +3296,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             <div
               className={`w-1 flex-auto min-w-0 min-h-0 flex flex-col border-r pr-5 ${t('border_mainContentSection')} ${theme.mainContentSection}`}
             >
-              <div className={`flex items-center justify-between gap-2 px-1 py-1 text-xs ${theme.label}`}>
-                <span className="font-medium">{sourceUnitExDto?.UnitDisplayName ?? 'Available'}</span>
-                <span
-                  className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${theme.mainContentSection}`}
-                >
-                  AvailableSelectGridPair
-                </span>
+              <div className={`flex items-center px-1 py-1 text-xs ${theme.label}`}>
+                <span className="font-medium">AVAILABLE ITEMS</span>
               </div>
               <div className="h-1 w-full flex-auto">
                 <FlexGrid
@@ -3490,13 +3485,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           }
         >
           {showAvailableSelectPairSplit && (
-            <div className={`flex items-center justify-between gap-2 px-1 py-1 text-xs ${theme.label}`}>
-              <span className="font-medium">Selected — {unitExDto?.UnitDisplayName ?? ''}</span>
-              <span
-                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide ${theme.mainContentSection}`}
-              >
-                AvailableSelectGridPair
-              </span>
+            <div className={`flex items-center px-1 py-1 text-xs ${theme.label}`}>
+              <span className="font-medium">SELECTED ITEMS</span>
             </div>
           )}
           <div

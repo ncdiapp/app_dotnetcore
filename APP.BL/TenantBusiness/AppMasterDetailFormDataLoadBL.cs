@@ -1141,7 +1141,10 @@ namespace App.BL
         {
             List<AppChildDataDto> childAppformChildDataDto;
             Dictionary<int, object> dictRootUnitOneRowFiedIdValue = AppTransactionFormulaBL.ConvertUnitOneRowDbFileNameToFileId(rootMasterUnit, masterDetailDto.DictOneToOneFields);
-            DataTable childdataTble = GetAvaialbeChildDataTable(dictRootUnitOneRowFiedIdValue, aVaialbeChildTransactionUnitExDto);
+            DataTable childdataTble = GetAvaialbeChildDataTable(
+                dictRootUnitOneRowFiedIdValue,
+                masterDetailDto.DictOneToOneFields,
+                aVaialbeChildTransactionUnitExDto);
 
             childAppformChildDataDto = ConvertChildAndGradnChildTableToAppChildDataDtoList(aVaialbeChildTransactionUnitExDto, childdataTble, new Dictionary<AppTransactionUnitExDto, DataTable>());
             return childAppformChildDataDto;
@@ -1709,7 +1712,9 @@ namespace App.BL
         }
 
         private static DataTable GetAvaialbeChildDataTable(
-            Dictionary<int, object> dictOneRowFiedIdValue, AppTransactionUnitExDto avialbeDataSourceChildUnitExDto)
+            Dictionary<int, object> dictOneRowFiedIdValue,
+            Dictionary<string, object> dictParentOneToOneValue,
+            AppTransactionUnitExDto avialbeDataSourceChildUnitExDto)
         {
             string childtableName = avialbeDataSourceChildUnitExDto.DataBaseTableName;
             DatabaseTable childdatabaseTable = AppCacheManagerBL.GetDatabaseTable(childtableName, avialbeDataSourceChildUnitExDto.DataSourceFrom, avialbeDataSourceChildUnitExDto.SchemaOwner);
@@ -1799,6 +1804,34 @@ namespace App.BL
 
 
 
+            }
+
+            // Also honor Link To Parent Primary Key (DictLinkToParentKeyDbfield).
+            // Available-source units previously ignored this and loaded all rows unless AvailableSourceFilter* was set.
+            if (dictParentOneToOneValue != null
+                && avialbeDataSourceChildUnitExDto.DictLinkToParentKeyDbfield != null
+                && avialbeDataSourceChildUnitExDto.DictLinkToParentKeyDbfield.Count > 0)
+            {
+                string linkPkWhere = string.Empty;
+                List<DbParameter> linkPkParams = GetChildWhereClauseParamters(
+                    dictParentOneToOneValue,
+                    avialbeDataSourceChildUnitExDto,
+                    ref linkPkWhere);
+                if (!string.IsNullOrWhiteSpace(linkPkWhere))
+                {
+                    if (!string.IsNullOrWhiteSpace(linkToParentWhere))
+                    {
+                        linkToParentWhere = linkToParentWhere + " AND (" + linkPkWhere + ")";
+                    }
+                    else
+                    {
+                        linkToParentWhere = linkPkWhere;
+                    }
+                    if (linkPkParams != null && linkPkParams.Count > 0)
+                    {
+                        listParamters.AddRange(linkPkParams);
+                    }
+                }
             }
 
             DataTable childdataTble = new DataTable();

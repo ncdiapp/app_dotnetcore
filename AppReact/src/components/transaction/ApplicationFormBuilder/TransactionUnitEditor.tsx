@@ -130,6 +130,36 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     });
     const [linkTargetDropdownOpen, setLinkTargetDropdownOpen] = useState(false);
 
+    // Angular: MappingToAvailableSourceUnitPopup
+    const [mappingToAvailableSourceState, setMappingToAvailableSourceState] = useState<{
+        isOpen: boolean;
+        field: any | null;
+        selectedFieldId: number | null;
+        sourceFieldOptions: Array<{ Id: number; Display: string; DataBaseFieldName?: string }>;
+        sourceUnitTableName: string;
+    }>({
+        isOpen: false,
+        field: null,
+        selectedFieldId: null,
+        sourceFieldOptions: [],
+        sourceUnitTableName: ''
+    });
+
+    // Angular: AvailableSourceFilterByFieldSelectorPopup (stores DdlparentLevelId on source-pool units)
+    const [availableSourceFilterByState, setAvailableSourceFilterByState] = useState<{
+        isOpen: boolean;
+        field: any | null;
+        currentFieldName: string;
+        selectedParentFieldId: number | null;
+        parentFieldOptions: Array<{ Id: number; Display: string }>;
+    }>({
+        isOpen: false,
+        field: null,
+        currentFieldName: '',
+        selectedParentFieldId: null,
+        parentFieldOptions: []
+    });
+
     // Matrix Grid Foreignkey popup (Angular: MatrixFkPopup / OpenMatrixFkPopup / assignMatrixFkMapping)
     const [matrixFkPopupState, setMatrixFkPopupState] = useState<{
         isOpen: boolean;
@@ -613,6 +643,40 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
 
     const parentUnit = getParentUnit();
     const parentPkFields = parentUnit?.masterKeyList || parentUnit?.AppTransactionFieldList?.filter((f: any) => f.IsPrimaryKey) || [];
+    // Angular: availableSourceUnitList = parent.Children where IsUsedForLoadingAvailableSource (not for master sibling).
+    const availableSourceUnitOptions = useMemo(() => {
+        if (!unitData || unitData.IsMasterSiblingUnit || !parentUnit) return [];
+        const siblings: any[] = Array.isArray(parentUnit.Children) ? parentUnit.Children : [];
+        return siblings.filter((u: any) => Boolean(u?.IsUsedForLoadingAvailableSource));
+    }, [unitData, parentUnit]);
+
+    const resolvedAvailableSourceUnit = useMemo(() => {
+        const srcId = unitData?.AvailableSourceUnitId;
+        if (srcId == null) return null;
+        const fromOptions = availableSourceUnitOptions.find((u: any) => Number(u?.Id) === Number(srcId));
+        if (fromOptions) return fromOptions;
+        const siblings: any[] = Array.isArray(parentUnit?.Children) ? parentUnit.Children : [];
+        return siblings.find((u: any) => Number(u?.Id) === Number(srcId)) ?? null;
+    }, [unitData?.AvailableSourceUnitId, availableSourceUnitOptions, parentUnit]);
+
+    const getMappingToAvailableSourceUnitCellDisplay = useCallback(
+        (field: any, sourceUnit?: any | null): string => {
+            const mappedId = field?.MappingToAvailableSourceUnitTransactionFieldId;
+            if (mappedId == null) return '';
+            const src = sourceUnit ?? resolvedAvailableSourceUnit;
+            const srcField = (src?.AppTransactionFieldList ?? []).find(
+                (f: any) => Number(f?.Id) === Number(mappedId)
+            );
+            if (!srcField) return ` [${mappedId}]`;
+            const table = src?.DataBaseTableName || src?.UnitDisplayName || '';
+            if (table) {
+                return ` [${table}] . [${srcField.DisplayName || srcField.DataBaseFieldName || ''}]`;
+            }
+            return ` [${srcField.DataBaseFieldName || srcField.DisplayName || ''}]`;
+        },
+        [resolvedAvailableSourceUnit]
+    );
+
     const [resolvedParentPkFields, setResolvedParentPkFields] = useState<any[]>([]);
     // Ensure parentUnit's PK fields are available for FK DataMap (Angular uses parentUnit.masterKeyList)
     useEffect(() => {
@@ -835,6 +899,164 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         setUnitData({ ...unitData, [property]: value });
         setIsModified(true);
         isModifiedRef.current = true;
+    };
+
+    // Angular: availableSourceUnitChanged — clear Mapping To Available Source Unit when source unit changes.
+    const handleAvailableSourceUnitChange = (rawValue: string) => {
+        if (!unitData) return;
+        const newId = rawValue ? Number(rawValue) : null;
+        const fields = (unitData.AppTransactionFieldList || []).map((f: any) => {
+            if (f?.MappingToAvailableSourceUnitTransactionFieldId == null) return f;
+            return {
+                ...f,
+                MappingToAvailableSourceUnitTransactionFieldId: null,
+                MappingToAvailableSourceUnitPopupOpener: ''
+            };
+        });
+        setUnitData({
+            ...unitData,
+            AvailableSourceUnitId: newId,
+            AppTransactionFieldList: fields
+        });
+        setIsModified(true);
+        isModifiedRef.current = true;
+    };
+
+    const handleOpenMappingToAvailableSourceUnit = (field: any) => {
+        if (!field) return;
+        if (!unitData?.AvailableSourceUnitId) {
+            showInfo('Select Available Source Unit first.');
+            return;
+        }
+        const src = resolvedAvailableSourceUnit;
+        if (!src) {
+            showInfo('Available Source Unit was not found among sibling units marked Is Used For Loading Available Source.');
+            return;
+        }
+        const sourceFieldOptions = (src.AppTransactionFieldList ?? [])
+            .filter((f: any) => f?.Id != null)
+            .map((f: any) => ({
+                Id: Number(f.Id),
+                Display: `${f.DisplayName || f.DataBaseFieldName || ''} (${f.DataBaseFieldName || ''})`.trim(),
+                DataBaseFieldName: f.DataBaseFieldName
+            }));
+        setMappingToAvailableSourceState({
+            isOpen: true,
+            field,
+            selectedFieldId:
+                field.MappingToAvailableSourceUnitTransactionFieldId != null
+                    ? Number(field.MappingToAvailableSourceUnitTransactionFieldId)
+                    : null,
+            sourceFieldOptions,
+            sourceUnitTableName: src.DataBaseTableName || src.UnitDisplayName || ''
+        });
+    };
+
+    const handleAssignMappingToAvailableSourceUnit = () => {
+        const field = mappingToAvailableSourceState.field;
+        if (!field || !unitData) return;
+        const selectedId = mappingToAvailableSourceState.selectedFieldId;
+        const display = getMappingToAvailableSourceUnitCellDisplay(
+            { ...field, MappingToAvailableSourceUnitTransactionFieldId: selectedId },
+            resolvedAvailableSourceUnit
+        );
+        const fields = (unitData.AppTransactionFieldList || []).map((f: any) => {
+            if (f !== field && Number(f?.Id) !== Number(field?.Id) && f?.uiId !== field?.uiId) {
+                return f;
+            }
+            return {
+                ...f,
+                MappingToAvailableSourceUnitTransactionFieldId: selectedId,
+                MappingToAvailableSourceUnitPopupOpener: display
+            };
+        });
+        setUnitData({ ...unitData, AppTransactionFieldList: fields });
+        setIsModified(true);
+        isModifiedRef.current = true;
+        setMappingToAvailableSourceState({
+            isOpen: false,
+            field: null,
+            selectedFieldId: null,
+            sourceFieldOptions: [],
+            sourceUnitTableName: ''
+        });
+    };
+
+    // Angular: OpenAvailableSourceFilterByFieldSelectorPopup — pick a parent DDL field into DdlparentLevelId.
+    const handleOpenAvailableSourceFilterBy = (field: any) => {
+        if (!field?.Id) return;
+        const ctl = Number(field.ControlType);
+        const allowed: number[] = [
+            controlTypeIdsForDatasource.DDL,
+            controlTypeIdsForDatasource.AutoComplete!,
+            controlTypeIdsForDatasource.SearchAbleDDL!
+        ].filter((v) => typeof v === 'number') as number[];
+        if (!allowed.includes(ctl)) return;
+
+        const parentFields = parentUnit?.AppTransactionFieldList ?? [];
+        const parentTable = parentUnit?.DataBaseTableName || parentUnit?.UnitDisplayName || '';
+        const parentFieldOptions = parentFields
+            .filter((f: any) => {
+                if (f?.Id == null || Number(f.Id) === Number(field.Id)) return false;
+                const t = Number(f.ControlType);
+                return allowed.includes(t);
+            })
+            .map((f: any) => ({
+                Id: Number(f.Id),
+                Display: parentTable
+                    ? `[${parentTable}] . [${f.DataBaseFieldName || f.DisplayName || ''}]`
+                    : String(f.DataBaseFieldName || f.DisplayName || f.Id)
+            }));
+
+        setAvailableSourceFilterByState({
+            isOpen: true,
+            field,
+            currentFieldName: field.DisplayName || field.DataBaseFieldName || '',
+            selectedParentFieldId:
+                field.DdlparentLevelId != null && field.DdlparentLevelId !== ''
+                    ? Number(field.DdlparentLevelId)
+                    : null,
+            parentFieldOptions
+        });
+    };
+
+    const handleAssignAvailableSourceFilterBy = () => {
+        const field = availableSourceFilterByState.field;
+        if (!field || !unitData) return;
+        const selectedId = availableSourceFilterByState.selectedParentFieldId;
+        const parentTable = parentUnit?.DataBaseTableName || '';
+        const parentField =
+            selectedId != null
+                ? (parentUnit?.AppTransactionFieldList ?? []).find((f: any) => Number(f?.Id) === Number(selectedId))
+                : null;
+        const parentFieldName = parentField?.DisplayName || parentField?.DataBaseFieldName || '';
+        const filterText =
+            selectedId != null && parentFieldName
+                ? parentTable
+                    ? `Filter By: ${parentTable} . ${parentFieldName}`
+                    : `Filter By: ${parentFieldName}`
+                : '';
+
+        const fields = (unitData.AppTransactionFieldList || []).map((f: any) => {
+            if (f !== field && Number(f?.Id) !== Number(field?.Id) && f?.uiId !== field?.uiId) {
+                return f;
+            }
+            return {
+                ...f,
+                DdlparentLevelId: selectedId,
+                AvailableSourceFilterByFieldSelector: filterText
+            };
+        });
+        setUnitData({ ...unitData, AppTransactionFieldList: fields });
+        setIsModified(true);
+        isModifiedRef.current = true;
+        setAvailableSourceFilterByState({
+            isOpen: false,
+            field: null,
+            currentFieldName: '',
+            selectedParentFieldId: null,
+            parentFieldOptions: []
+        });
     };
 
     const handleFieldChange = (field: any, property: string, value: any) => {
@@ -2215,6 +2437,29 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 </div>
                             </div>
                         )}
+
+                        {/* Angular: Available Source Unit when AvailableSelectGridPair (5) or MultipleSelectBox (6) */}
+                        {(unitData.EmGridViewDisplayType === 5 || unitData.EmGridViewDisplayType === 6) &&
+                            !unitData.IsUsedForLoadingAvailableSource && (
+                                <div className="flex items-center gap-6 flex-wrap">
+                                    <div className="flex items-center">
+                                        <div className={`w-32 text-xs ${theme.label} mr-2`}>Available Source Unit</div>
+                                        <select
+                                            value={unitData.AvailableSourceUnitId ?? ''}
+                                            onChange={(e) => handleAvailableSourceUnitChange(e.target.value)}
+                                            className={`h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none w-[260px]`}
+                                            disabled={isReadOnly}
+                                        >
+                                            <option value="">None</option>
+                                            {availableSourceUnitOptions.map((u: any) => (
+                                                <option key={u.Id ?? u.uiId} value={u.Id}>
+                                                    {u.UnitDisplayName || u.UnitName || String(u.Id)}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
                     </div>
                 </div>
 
@@ -2408,10 +2653,36 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     binding="MappingToAvailableSourceUnitPopupOpener"
                                     header="Mapping To Available Source Unit"
                                     isReadOnly={true}
-                                    isContentHtml={true}
                                     width={250}
                                     visible={Boolean(unitData.EmGridViewDisplayType === 5 || unitData.EmGridViewDisplayType === 6)}
-                                />
+                                >
+                                    <FlexGridCellTemplate
+                                        cellType="Cell"
+                                        template={(cell: any) => {
+                                            const item = cell.item;
+                                            if (!item) return null;
+                                            const text =
+                                                item.MappingToAvailableSourceUnitPopupOpener ||
+                                                getMappingToAvailableSourceUnitCellDisplay(item);
+                                            return (
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className={`px-1 py-0.5 text-[10px] rounded ${theme.button_default}`}
+                                                        onClick={() => handleOpenMappingToAvailableSourceUnit(item)}
+                                                        title="Map to Available Source Unit Field"
+                                                        disabled={isReadOnly}
+                                                    >
+                                                        <i className="fa fa-plus" />
+                                                    </button>
+                                                    <span className="text-xs truncate" title={text}>
+                                                        {text}
+                                                    </span>
+                                                </div>
+                                            );
+                                        }}
+                                    />
+                                </FlexGridColumn>
                                 <FlexGridColumn
                                     binding="MappingToAvailableSourceUnitTransactionFieldId"
                                     header="Mapping To Available Source Unit Field"
@@ -2565,9 +2836,62 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     header="Available Source Filter By"
                                     isReadOnly={true}
                                     width={250}
-                                    isContentHtml={true}
                                     visible={Boolean(unitData.IsUsedForLoadingAvailableSource)}
-                                />
+                                >
+                                    <FlexGridCellTemplate
+                                        cellType="Cell"
+                                        template={(cell: any) => {
+                                            const item = cell.item;
+                                            if (!item) return null;
+                                            const ctl = Number(item.ControlType);
+                                            const allowed: number[] = [
+                                                controlTypeIdsForDatasource.DDL,
+                                                controlTypeIdsForDatasource.AutoComplete!,
+                                                controlTypeIdsForDatasource.SearchAbleDDL!
+                                            ].filter((v) => typeof v === 'number') as number[];
+                                            if (!allowed.includes(ctl)) {
+                                                return <span className="text-xs text-gray-500"> </span>;
+                                            }
+                                            const pid =
+                                                item.DdlparentLevelId != null && item.DdlparentLevelId !== ''
+                                                    ? Number(item.DdlparentLevelId)
+                                                    : null;
+                                            const parentField =
+                                                pid != null
+                                                    ? parentUnit?.AppTransactionFieldList?.find(
+                                                          (f: any) => Number(f.Id) === pid
+                                                      ) || null
+                                                    : null;
+                                            const parentTable = parentUnit?.DataBaseTableName || '';
+                                            const fieldName =
+                                                parentField?.DisplayName || parentField?.DataBaseFieldName || '';
+                                            const fallbackText =
+                                                pid != null && fieldName
+                                                    ? parentTable
+                                                        ? `Filter By: ${parentTable} . ${fieldName}`
+                                                        : `Filter By: ${fieldName}`
+                                                    : '';
+                                            const displayText =
+                                                item.AvailableSourceFilterByFieldSelector || fallbackText || '';
+                                            return (
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className={`px-1 py-0.5 text-[10px] rounded ${theme.button_default}`}
+                                                        onClick={() => handleOpenAvailableSourceFilterBy(item)}
+                                                        title="Available Source Filter By"
+                                                        disabled={isReadOnly}
+                                                    >
+                                                        <i className="fa fa-plus" />
+                                                    </button>
+                                                    <span className="text-xs truncate" title={displayText}>
+                                                        {displayText}
+                                                    </span>
+                                                </div>
+                                            );
+                                        }}
+                                    />
+                                </FlexGridColumn>
                                 {/* Code Auto Generate */}
                                 <FlexGridColumn
                                     binding="CodeAutoGenerationSetting"
@@ -3494,6 +3818,141 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                     });
                                 }}
                             />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Mapping To Available Source Unit Field popup (Angular: MappingToAvailableSourceUnitPopup) */}
+            {mappingToAvailableSourceState.isOpen && (
+                <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/50">
+                    <div
+                        className={`${theme.mainContentSection} rounded-md shadow-lg border flex flex-col overflow-hidden`}
+                        style={{ width: '400px', height: '220px', maxWidth: '95vw' }}
+                    >
+                        <div className={`flex items-center justify-between px-3 py-2 border-b ${theme.mainContentSection}`}>
+                            <div className={`text-sm font-semibold ${theme.title}`}>
+                                Mapping To Available Source Unit Field
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setMappingToAvailableSourceState({
+                                        isOpen: false,
+                                        field: null,
+                                        selectedFieldId: null,
+                                        sourceFieldOptions: [],
+                                        sourceUnitTableName: ''
+                                    })
+                                }
+                                className={`p-1 rounded ${theme.button_default}`}
+                                aria-label="Close"
+                            >
+                                <i className="fa-solid fa-times" aria-hidden />
+                            </button>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-auto p-3 text-xs space-y-2">
+                            <div className="flex items-center">
+                                <span className={`w-32 ${theme.label}`}>Source Field</span>
+                                <select
+                                    className={`h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none w-1 flex-auto`}
+                                    value={mappingToAvailableSourceState.selectedFieldId ?? ''}
+                                    onChange={(e) =>
+                                        setMappingToAvailableSourceState((prev) => ({
+                                            ...prev,
+                                            selectedFieldId: e.target.value ? Number(e.target.value) : null
+                                        }))
+                                    }
+                                >
+                                    <option value="">None</option>
+                                    {mappingToAvailableSourceState.sourceFieldOptions.map((opt) => (
+                                        <option key={opt.Id} value={opt.Id}>
+                                            {opt.Display}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            {mappingToAvailableSourceState.sourceUnitTableName ? (
+                                <div className={`text-[11px] ${theme.label}`}>
+                                    Source unit: {mappingToAvailableSourceState.sourceUnitTableName}
+                                </div>
+                            ) : null}
+                        </div>
+                        <div className="flex justify-end gap-2 px-3 py-2 border-t">
+                            <button
+                                type="button"
+                                className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
+                                onClick={handleAssignMappingToAvailableSourceUnit}
+                            >
+                                Ok
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Available Source Filter By popup (Angular: AvailableSourceFilterByFieldSelectorPopup) */}
+            {availableSourceFilterByState.isOpen && (
+                <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/50">
+                    <div
+                        className={`${theme.mainContentSection} rounded-md shadow-lg border flex flex-col overflow-hidden`}
+                        style={{ width: '450px', height: '200px', maxWidth: '95vw' }}
+                    >
+                        <div className={`flex items-center justify-between px-3 py-2 border-b ${theme.mainContentSection}`}>
+                            <div className={`text-sm font-semibold ${theme.title}`}>Available Source Filter</div>
+                            <button
+                                type="button"
+                                onClick={() =>
+                                    setAvailableSourceFilterByState({
+                                        isOpen: false,
+                                        field: null,
+                                        currentFieldName: '',
+                                        selectedParentFieldId: null,
+                                        parentFieldOptions: []
+                                    })
+                                }
+                                className={`p-1 rounded ${theme.button_default}`}
+                                aria-label="Close"
+                            >
+                                <i className="fa-solid fa-times" aria-hidden />
+                            </button>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-auto p-3 text-xs space-y-2">
+                            <div className="flex items-center">
+                                <span className={`w-32 ${theme.label}`}>Filter By Field</span>
+                                <select
+                                    className={`h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none w-1 flex-auto`}
+                                    value={availableSourceFilterByState.selectedParentFieldId ?? ''}
+                                    onChange={(e) =>
+                                        setAvailableSourceFilterByState((prev) => ({
+                                            ...prev,
+                                            selectedParentFieldId: e.target.value ? Number(e.target.value) : null
+                                        }))
+                                    }
+                                >
+                                    <option value="">None</option>
+                                    {availableSourceFilterByState.parentFieldOptions.map((opt) => (
+                                        <option key={opt.Id} value={opt.Id}>
+                                            {opt.Display}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex items-center">
+                                <span className={`w-32 ${theme.label}`}>Current Field</span>
+                                <div className="w-1 flex-auto truncate" title={availableSourceFilterByState.currentFieldName}>
+                                    {availableSourceFilterByState.currentFieldName}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex justify-end gap-2 px-3 py-2 border-t">
+                            <button
+                                type="button"
+                                className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
+                                onClick={handleAssignAvailableSourceFilterBy}
+                            >
+                                Ok
+                            </button>
                         </div>
                     </div>
                 </div>
