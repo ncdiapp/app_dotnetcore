@@ -10,8 +10,6 @@ namespace DatabaseSchemaMrg.Conversion
     {
         public static bool IsTimestamp(this DatabaseColumn column)
         {
-            if (column == null) return false;
-
             if (column.DataType != null)
             {
                 //if it's a timestamp, you can't insert it
@@ -22,34 +20,14 @@ namespace DatabaseSchemaMrg.Conversion
                     return true;
                 }
             }
-
-            // Fallback when schema cache has DbDataType but DataType is not linked.
-            // SQL Server rowversion/timestamp cannot be INSERTed explicitly;
-            // Form Save uses GetColumnsExcludeAutoTimeStampAndComputed() which depends on this.
-            var dbType = NormalizeDbDataTypeName(column.DbDataType);
-            if (dbType == "ROWVERSION")
-                return true;
-
-            // SQL Server "timestamp" is rowversion (byte[]). Oracle/PG "timestamp" is datetime —
-            // only treat as concurrency token when NetType is byte[] or DataType is missing.
-            if (dbType == "TIMESTAMP")
+            // Fallback when DataType object is not populated: check the raw type name
+            if (!string.IsNullOrEmpty(column.DbDataType))
             {
-                if (column.DataType == null)
+                var dbType = column.DbDataType.ToLowerInvariant();
+                if (dbType == "timestamp" || dbType == "rowversion")
                     return true;
-                return column.DataType.GetNetType() == typeof(byte[]);
             }
-
             return false;
-        }
-
-        private static string NormalizeDbDataTypeName(string dbDataType)
-        {
-            if (string.IsNullOrEmpty(dbDataType)) return null;
-            var dataType = dbDataType.Trim().ToUpperInvariant();
-            var brace = dataType.IndexOf('(');
-            if (brace > 0)
-                dataType = dataType.Substring(0, brace).Trim();
-            return dataType;
         }
 
         /// <summary>
