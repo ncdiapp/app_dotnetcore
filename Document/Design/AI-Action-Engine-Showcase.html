@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Generic AI Action Engine — Platform Architecture</title>
+<style>
+/* ── Tokens ──────────────────────────────────────────────────────────────── */
+:root {
+  --bg:        #F4F6FA;
+  --bg-2:      #ECEEF5;
+  --bg-3:      #E1E5EF;
+  --fg:        #0E1523;
+  --fg-2:      #3B4560;
+  --fg-3:      #6B7A96;
+  --accent:    #0ABFA3;
+  --accent-lo: rgba(10,191,163,0.12);
+  --amber:     #E09010;
+  --amber-lo:  rgba(224,144,16,0.12);
+  --border:    #D4D9E8;
+  --ink:       #0B1222;
+  --code-bg:   #0C1626;
+  --code-fg:   #DDE4F0;
+  --code-key:  #6DD5C8;
+  --code-val:  #FFCF7D;
+  --code-cmt:  #4A5878;
+  --code-pun:  #8899BB;
+  --r:         2px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:      #07101E;
+    --bg-2:    #0D1828;
+    --bg-3:    #162135;
+    --fg:      #DDE4F0;
+    --fg-2:    #8FA4C4;
+    --fg-3:    #455875;
+    --accent:  #0FD4B5;
+    --accent-lo: rgba(15,212,181,0.10);
+    --amber:   #F5A522;
+    --amber-lo: rgba(245,165,34,0.10);
+    --border:  #1A2840;
+    --ink:     #DDE4F0;
+    --code-bg: #040C18;
+  }
+}
+:root[data-theme="light"] {
+  --bg:#F4F6FA; --bg-2:#ECEEF5; --bg-3:#E1E5EF; --fg:#0E1523; --fg-2:#3B4560;
+  --fg-3:#6B7A96; --accent:#0ABFA3; --accent-lo:rgba(10,191,163,0.12);
+  --amber:#E09010; --amber-lo:rgba(224,144,16,0.12); --border:#D4D9E8;
+  --ink:#0B1222; --code-bg:#0C1626; --code-fg:#DDE4F0;
+}
+:root[data-theme="dark"] {
+  --bg:#07101E; --bg-2:#0D1828; --bg-3:#162135; --fg:#DDE4F0; --fg-2:#8FA4C4;
+  --fg-3:#455875; --accent:#0FD4B5; --accent-lo:rgba(15,212,181,0.10);
+  --amber:#F5A522; --amber-lo:rgba(245,165,34,0.10); --border:#1A2840;
+  --ink:#DDE4F0; --code-bg:#040C18; --code-fg:#DDE4F0;
+}
+
+/* ── Reset ───────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 14px;
+  line-height: 1.65;
+}
+a { color: var(--accent); }
+
+/* ── Type scale ──────────────────────────────────────────────────────────── */
+h1, h2, h3 {
+  font-family: Georgia, 'Times New Roman', serif;
+  text-wrap: balance;
+  line-height: 1.15;
+  color: var(--ink);
+}
+h1 { font-size: clamp(1.9rem, 4vw, 2.7rem); letter-spacing: -0.03em; font-weight: 700; }
+h2 { font-size: clamp(1.15rem, 2.5vw, 1.5rem); letter-spacing: -0.02em; font-weight: 700; }
+h3 { font-family: system-ui; font-size: 0.9rem; font-weight: 600; }
+.eyebrow {
+  font-size: 0.67rem; font-weight: 600; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--fg-3);
+}
+.mono { font-family: 'Cascadia Code','Fira Code','Consolas', ui-monospace, monospace; }
+
+/* ── Site frame ──────────────────────────────────────────────────────────── */
+.topbar {
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
+  padding: 13px 28px;
+  display: flex; align-items: center; gap: 14px;
+}
+.topbar-brand { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--fg-3); }
+.topbar-sep { width: 1px; height: 16px; background: var(--border); }
+.topbar-title { font-size: 0.82rem; color: var(--fg-2); }
+.topbar-pill {
+  margin-left: auto;
+  font-size: 0.67rem; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  padding: 2px 9px; border-radius: 20px;
+}
+
+/* ── Page wrap ───────────────────────────────────────────────────────────── */
+.wrap { max-width: 960px; margin: 0 auto; padding: 0 28px; }
+
+/* ── Sections ────────────────────────────────────────────────────────────── */
+.sect { padding: 56px 0; border-top: 1px solid var(--border); }
+.sect:first-child { border-top: none; }
+.sect-head { margin-bottom: 28px; display: flex; flex-direction: column; gap: 8px; }
+.sect-head h2 { margin: 0; }
+
+/* ── Hero ────────────────────────────────────────────────────────────────── */
+.hero { padding: 60px 0 52px; }
+.hero-tag {
+  display: inline-flex; align-items: center; gap: 8px; margin-bottom: 22px;
+}
+.hero-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
+.hero-tag-text { font-size: 0.72rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); }
+.hero h1 { max-width: 680px; margin-bottom: 18px; }
+.hero-sub { font-size: 1rem; color: var(--fg-2); max-width: 580px; line-height: 1.6; margin-bottom: 40px; }
+
+.kpi-row { display: flex; flex-wrap: wrap; gap: 36px; }
+.kpi { display: flex; flex-direction: column; gap: 4px; }
+.kpi-val {
+  font-family: Georgia, serif; font-size: 2rem; font-weight: 700;
+  line-height: 1; font-variant-numeric: tabular-nums; color: var(--ink);
+}
+.kpi-val em { color: var(--accent); font-style: normal; }
+.kpi-lbl { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.07em; color: var(--fg-3); }
+
+/* ── Architecture flow ───────────────────────────────────────────────────── */
+.arch-flow { display: flex; align-items: stretch; overflow-x: auto; padding-bottom: 4px; }
+.arch-box {
+  flex: 1; min-width: 220px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  padding: 24px 20px;
+}
+.arch-box:first-child { border-radius: var(--r) 0 0 var(--r); }
+.arch-box:last-child  { border-radius: 0 var(--r) var(--r) 0; }
+.arch-box + .arch-box { border-left: none; }
+
+.arch-arrow {
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  width: 32px;
+  color: var(--accent);
+  font-size: 1.1rem;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.arch-eyebrow { font-size: 0.66rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); margin-bottom: 8px; }
+.arch-box h3 { margin-bottom: 12px; }
+.arch-list { list-style: none; display: flex; flex-direction: column; gap: 5px; }
+.arch-list li { font-size: 0.78rem; color: var(--fg-2); display: flex; align-items: flex-start; gap: 7px; }
+.arch-list li::before { content: '–'; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+.arch-foot { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--fg-3); }
+
+/* ── Tool cards ──────────────────────────────────────────────────────────── */
+.tools-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  margin-top: 28px;
+}
+.tool {
+  background: var(--bg-2);
+  padding: 26px 22px;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.tool-label { font-size: 0.67rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--fg-3); }
+.tool h3 { color: var(--ink); }
+.tool p  { font-size: 0.8rem; color: var(--fg-2); line-height: 1.55; }
+
+/* ── Code blocks ─────────────────────────────────────────────────────────── */
+.code {
+  background: var(--code-bg);
+  border-radius: var(--r);
+  padding: 14px 16px;
+  overflow-x: auto;
+  font-family: 'Cascadia Code','Fira Code','Consolas', ui-monospace, monospace;
+  font-size: 0.73rem;
+  line-height: 1.7;
+  color: var(--code-fg);
+}
+.ck  { color: var(--code-key); }
+.cv  { color: var(--code-val); }
+.cc  { color: var(--code-cmt); }
+.cp  { color: var(--code-pun); }
+
+.tag-inline {
+  display: inline-block; font-size: 0.67rem; font-weight: 600; padding: 1px 7px; border-radius: 2px;
+  font-family: system-ui; letter-spacing: 0.03em;
+}
+.tag-v { background: var(--accent-lo); color: var(--accent); }
+.tag-t { background: var(--amber-lo); color: var(--amber); }
+
+/* ── Providers ───────────────────────────────────────────────────────────── */
+.providers { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 28px; }
+.provider {
+  flex: 1; min-width: 200px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 20px 18px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+.provider-name { font-size: 0.9rem; font-weight: 600; color: var(--ink); }
+.provider-model { font-size: 0.72rem; color: var(--fg-3); font-family: 'Cascadia Code', ui-monospace, monospace; margin-bottom: 4px; }
+.provider-note { font-size: 0.76rem; color: var(--fg-2); margin-top: 6px; line-height: 1.5; }
+.provider code { font-size: 0.71rem; background: var(--bg-3); padding: 0 4px; border-radius: 2px; }
+
+/* ── Use case table ──────────────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; margin-top: 28px; }
+.uc-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; min-width: 560px; }
+.uc-table th {
+  text-align: left;
+  font-size: 0.66rem; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--fg-3); padding: 8px 14px;
+  background: var(--bg-2); border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.uc-table td {
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  color: var(--fg-2); vertical-align: top;
+}
+.uc-table tr:last-child td { border-bottom: none; }
+.uc-table td:first-child { font-weight: 500; color: var(--fg); }
+.uc-table code {
+  font-family: 'Cascadia Code', ui-monospace, monospace;
+  font-size: 0.72rem; background: var(--bg-3); padding: 1px 5px; border-radius: 2px; color: var(--accent);
+}
+.uc-table .type-g { background: var(--accent-lo); color: var(--accent); }
+.uc-table .type-f { background: var(--amber-lo); color: var(--amber); }
+
+/* ── Zero-code callout ───────────────────────────────────────────────────── */
+.callout {
+  margin-top: 28px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 var(--r) var(--r) 0;
+  padding: 28px 30px;
+}
+.callout h3 { font-size: 0.95rem; color: var(--ink); margin-bottom: 16px; }
+.check-list { display: flex; flex-direction: column; gap: 8px; }
+.check-item { display: flex; align-items: center; gap: 10px; font-size: 0.82rem; color: var(--fg-2); }
+.check-icon {
+  width: 16px; height: 16px; border-radius: 50%; background: var(--accent);
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+}
+.check-icon svg { display: block; }
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.footer {
+  padding: 28px 0;
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+}
+.footer-note { font-size: 0.73rem; color: var(--fg-3); }
+.footer-mark { font-size: 0.7rem; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--accent); }
+
+@media (max-width: 640px) {
+  h1 { font-size: 1.7rem; }
+  .arch-flow { flex-direction: column; }
+  .arch-arrow { display: none; }
+  .arch-box { border-radius: 0 !important; border-left: 1px solid var(--border) !important; border-top: none; }
+  .arch-box:first-child { border-radius: var(--r) var(--r) 0 0 !important; border-top: 1px solid var(--border) !important; }
+  .arch-box:last-child  { border-radius: 0 0 var(--r) var(--r) !important; }
+  .kpi-row { gap: 20px; }
+  .topbar-pill { display: none; }
+}
+</style>
+</head>
+<body>
+
+<!-- Top bar -->
+<nav class="topbar">
+  <span class="topbar-brand">AppAI Platform</span>
+  <span class="topbar-sep"></span>
+  <span class="topbar-title">Generic AI Action Engine</span>
+  <span class="topbar-pill">Architecture Showcase</span>
+</nav>
+
+<div class="wrap">
+
+  <!-- ── Hero ─────────────────────────────────────────────────────────── -->
+  <section class="sect hero">
+    <div class="hero-tag">
+      <div class="hero-dot"></div>
+      <span class="hero-tag-text">Open Architecture · Zero-Code AI</span>
+    </div>
+    <h1>Any AI Feature.<br>Pure Configuration.</h1>
+    <p class="hero-sub">
+      The Generic AI Action Engine is a platform capability, not a product feature.
+      End users define their own AI abilities by combining a skill prompt with form
+      configuration — no development sprint required per use case.
+    </p>
+    <div class="kpi-row">
+      <div class="kpi">
+        <span class="kpi-val"><em>3</em></span>
+        <span class="kpi-lbl">AI Providers</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-val"><em>0</em></span>
+        <span class="kpi-lbl">Code lines / feature</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-val">∞</span>
+        <span class="kpi-lbl">Use cases via config</span>
+      </div>
+      <div class="kpi">
+        <span class="kpi-val">1</span>
+        <span class="kpi-lbl">Platform engine, built once</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Architecture ─────────────────────────────────────────────────── -->
+  <section class="sect">
+    <div class="sect-head">
+      <span class="eyebrow">System Architecture</span>
+      <h2>Three Configuration Layers</h2>
+      <p style="color:var(--fg-2);max-width:600px;">Every AI feature is completely defined by two administrator configurations and executed by one platform engine that handles all three AI providers. No per-feature build cycle exists.</p>
+    </div>
+
+    <div class="arch-flow">
+      <div class="arch-box">
+        <div class="arch-eyebrow">Layer 1 · Admin</div>
+        <h3>AI Skill Library</h3>
+        <ul class="arch-list">
+          <li>Named prompt template</li>
+          <li>Optional reference documents</li>
+          <li>Versioned and reusable</li>
+          <li>Shared across any form</li>
+        </ul>
+        <div class="arch-foot">AI Skill Management UI</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-box">
+        <div class="arch-eyebrow">Layer 2 · Admin</div>
+        <h3>Command Action Config</h3>
+        <ul class="arch-list">
+          <li>Skill picker dropdown</li>
+          <li>Input bindings (field → AI)</li>
+          <li>Output bindings (AI → field or grid)</li>
+          <li>Visual editor — no raw JSON</li>
+        </ul>
+        <div class="arch-foot">Form Builder · Action Editor</div>
+      </div>
+      <div class="arch-arrow">→</div>
+      <div class="arch-box">
+        <div class="arch-eyebrow">Layer 3 · Platform</div>
+        <h3>Runtime Engine</h3>
+        <ul class="arch-list">
+          <li>Reads config at button click</li>
+          <li>Calls the configured AI provider</li>
+          <li>Auto-maps AI keys → DB columns</li>
+          <li>Updates form state, triggers save</li>
+        </ul>
+        <div class="arch-foot">AiActionService · OneLayoutItem</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Toolset ───────────────────────────────────────────────────────── -->
+  <section class="sect">
+    <div class="sect-head">
+      <span class="eyebrow">Configuration Toolset</span>
+      <h2>What Administrators Configure</h2>
+    </div>
+
+    <div class="tools-grid">
+
+      <div class="tool">
+        <span class="tool-label">Skill Library</span>
+        <h3>Prompt Template Management</h3>
+        <p>Each AI capability begins with an <code class="mono" style="background:var(--amber-lo);color:var(--amber);padding:0 4px;border-radius:2px;font-size:0.76rem;">AppAISkill</code> record — a named system prompt the engine resolves at runtime. Multiple skills can share the same engine.</p>
+        <div class="code">
+<span class="cc">// AI Skill Management UI → save a skill</span>
+<span class="cp">{</span>
+  <span class="ck">"Name"</span><span class="cp">:</span> <span class="cv">"FabricBomExtract"</span><span class="cp">,</span>
+  <span class="ck">"SkillContent"</span><span class="cp">:</span> <span class="cv">"You are a fashion industry expert.\nAnalyze the input and extract a\ncomplete fabric Bill of Materials.\nReturn only valid JSON:\n{ \"rows\": [...], \"warnings\": \"\" }"</span>
+<span class="cp">}</span>
+        </div>
+      </div>
+
+      <div class="tool">
+        <span class="tool-label">Command Action Editor</span>
+        <h3>Input / Output Binding</h3>
+        <p>A <code class="mono" style="background:var(--accent-lo);color:var(--accent);padding:0 4px;border-radius:2px;font-size:0.76rem;">CommandActionButton</code> with <code class="mono" style="background:var(--accent-lo);color:var(--accent);padding:0 4px;border-radius:2px;font-size:0.76rem;">ActionType = 56</code> on any form activates the engine. The visual editor generates this configuration automatically:</p>
+        <div class="code">
+<span class="cp">{</span>
+  <span class="ck">"skillName"</span><span class="cp">:</span>    <span class="cv">"FabricBomExtract"</span><span class="cp">,</span>
+  <span class="ck">"inputBindings"</span><span class="cp">: [{</span>
+    <span class="ck">"fieldName"</span><span class="cp">:</span>  <span class="cv">"ProductImage"</span><span class="cp">,</span>
+    <span class="ck">"inputType"</span><span class="cp">:</span>  <span class="cv">"image"</span>
+  <span class="cp">}],</span>
+  <span class="ck">"outputBindings"</span><span class="cp">: [{</span>
+    <span class="ck">"outputKey"</span><span class="cp">:</span>   <span class="cv">"rows"</span><span class="cp">,</span>
+    <span class="ck">"targetType"</span><span class="cp">:</span> <span class="cv">"child_grid"</span><span class="cp">,</span>
+    <span class="ck">"targetName"</span><span class="cp">:</span> <span class="cv">"FabricBomLines"</span>
+  <span class="cp">}]</span>
+<span class="cp">}</span>
+        </div>
+      </div>
+
+      <div class="tool">
+        <span class="tool-label">Auto-Map Engine</span>
+        <h3>AI Keys → Database Columns</h3>
+        <p>The runtime resolves AI-returned friendly keys to actual database column names using the form's own field metadata — no explicit column mapping configuration needed.</p>
+        <div class="code">
+<span class="cc">// AI returns friendly keys</span>
+<span class="cp">{</span> <span class="ck">"materialName"</span><span class="cp">:</span> <span class="cv">"Cotton Twill"</span><span class="cp">,</span>
+  <span class="ck">"fiberComp"</span><span class="cp">:</span>    <span class="cv">"80% Cotton"</span> <span class="cp">}</span>
+
+<span class="cc">// Auto-map resolves via field metadata</span>
+<span class="cp">{</span> <span class="ck">"Fabric_Name"</span><span class="cp">:</span>        <span class="cv">"Cotton Twill"</span><span class="cp">,</span>
+  <span class="ck">"Fiber_Composition"</span><span class="cp">:</span> <span class="cv">"80% Cotton"</span> <span class="cp">}</span>
+
+<span class="cc">// Lookup built from transactionExDto at runtime</span>
+<span class="ck">buildDbNameLookup</span><span class="cp">(</span>transactionExDto<span class="cp">,</span> unitId<span class="cp">)</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ── Providers ─────────────────────────────────────────────────────── -->
+  <section class="sect">
+    <div class="sect-head">
+      <span class="eyebrow">Multi-Provider Support</span>
+      <h2>One Engine, Any Provider</h2>
+      <p style="color:var(--fg-2);max-width:580px;">Provider selection is a single configuration value in <code class="mono" style="font-size:0.8rem;">appsettings.json</code>. The engine handles all protocol differences — message formats, image encoding, system prompt placement — transparently.</p>
+    </div>
+    <div class="providers">
+      <div class="provider">
+        <span class="provider-name">Anthropic Claude</span>
+        <span class="provider-model">claude-sonnet-4 · claude-opus-4</span>
+        <div style="display:flex;gap:6px;">
+          <span class="tag-inline tag-v">Vision</span>
+          <span class="tag-inline tag-t">Text</span>
+        </div>
+        <p class="provider-note">System prompt in top-level <code>system</code> field. Images as base64 content blocks with <code>source.type = "base64"</code>.</p>
+      </div>
+      <div class="provider">
+        <span class="provider-name">OpenAI GPT-4o</span>
+        <span class="provider-model">gpt-4o · gpt-4-turbo</span>
+        <div style="display:flex;gap:6px;">
+          <span class="tag-inline tag-v">Vision</span>
+          <span class="tag-inline tag-t">Text</span>
+        </div>
+        <p class="provider-note">System role message. Images as <code>image_url</code> blocks with data URI <code>data:mime;base64,…</code>.</p>
+      </div>
+      <div class="provider">
+        <span class="provider-name">Google Gemini</span>
+        <span class="provider-model">gemini-2.0-flash · gemini-1.5-pro</span>
+        <div style="display:flex;gap:6px;">
+          <span class="tag-inline tag-v">Vision</span>
+          <span class="tag-inline tag-t">Text</span>
+        </div>
+        <p class="provider-note">System prompt via <code>system_instruction</code>. Images as <code>inline_data</code> parts alongside text parts.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Use Case Matrix ───────────────────────────────────────────────── -->
+  <section class="sect">
+    <div class="sect-head">
+      <span class="eyebrow">Use Case Library</span>
+      <h2>Features Delivered by Configuration</h2>
+      <p style="color:var(--fg-2);max-width:600px;">Every row below is a complete AI feature delivered by creating one AppAISkill prompt and configuring one CommandActionButton in Form Builder. No development sprint. No deployment.</p>
+    </div>
+    <div class="table-wrap">
+      <table class="uc-table">
+        <thead>
+          <tr>
+            <th>Feature</th>
+            <th>Input Fields</th>
+            <th>Skill</th>
+            <th>Output → Target</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Fabric BOM from image</td>
+            <td><code>ProductImage</code> (image)</td>
+            <td><code>FabricBomExtract</code></td>
+            <td><code>rows</code> → <span class="tag-inline type-g">child_grid</span></td>
+          </tr>
+          <tr>
+            <td>Style description</td>
+            <td><code>Category</code>, <code>Color</code>, <code>Season</code></td>
+            <td><code>StyleDescriptionGen</code></td>
+            <td><code>description</code> → <span class="tag-inline type-f">text_field</span></td>
+          </tr>
+          <tr>
+            <td>Care instructions</td>
+            <td><code>FiberComposition</code> (text)</td>
+            <td><code>CareInstructionGen</code></td>
+            <td><code>careText</code> → <span class="tag-inline type-f">text_field</span></td>
+          </tr>
+          <tr>
+            <td>Quality defect detection</td>
+            <td><code>ProductPhoto</code> (image)</td>
+            <td><code>QualityDefectDetect</code></td>
+            <td><code>defects</code> → <span class="tag-inline type-g">child_grid</span></td>
+          </tr>
+          <tr>
+            <td>Garment cost estimation</td>
+            <td><code>FabricType</code>, <code>Weight</code>, <code>Market</code></td>
+            <td><code>CostEstimator</code></td>
+            <td><code>estimatedCost</code> → <span class="tag-inline type-f">text_field</span></td>
+          </tr>
+          <tr>
+            <td>Hang tag / care label reader</td>
+            <td><code>HangTagPhoto</code> (image)</td>
+            <td><code>HangTagReader</code></td>
+            <td><code>rows</code> → <span class="tag-inline type-g">child_grid</span></td>
+          </tr>
+          <tr>
+            <td>Compliance risk flagging</td>
+            <td><code>MaterialData</code>, <code>TargetMarket</code></td>
+            <td><code>ComplianceRiskCheck</code></td>
+            <td><code>flags</code> → <span class="tag-inline type-g">child_grid</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Zero code guarantee ───────────────────────────────────────────── -->
+  <section class="sect">
+    <div class="sect-head">
+      <span class="eyebrow">Platform Guarantee</span>
+      <h2>Adding a New AI Feature Requires</h2>
+    </div>
+    <div class="callout">
+      <h3>None of the following:</h3>
+      <div class="check-list">
+        <div class="check-item">
+          <div class="check-icon"><svg width="8" height="7" viewBox="0 0 8 7" fill="none"><polyline points="1,3.5 3,5.5 7,1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          No new React components
+        </div>
+        <div class="check-item">
+          <div class="check-icon"><svg width="8" height="7" viewBox="0 0 8 7" fill="none"><polyline points="1,3.5 3,5.5 7,1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          No new API controllers or backend services
+        </div>
+        <div class="check-item">
+          <div class="check-icon"><svg width="8" height="7" viewBox="0 0 8 7" fill="none"><polyline points="1,3.5 3,5.5 7,1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          No new plugins or compiled assemblies
+        </div>
+        <div class="check-item">
+          <div class="check-icon"><svg width="8" height="7" viewBox="0 0 8 7" fill="none"><polyline points="1,3.5 3,5.5 7,1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          No npm or NuGet package additions
+        </div>
+        <div class="check-item">
+          <div class="check-icon"><svg width="8" height="7" viewBox="0 0 8 7" fill="none"><polyline points="1,3.5 3,5.5 7,1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          No database schema changes
+        </div>
+        <div class="check-item">
+          <div class="check-icon"><svg width="8" height="7" viewBox="0 0 8 7" fill="none"><polyline points="1,3.5 3,5.5 7,1" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          No deployment required to deliver new capability
+        </div>
+      </div>
+    </div>
+    <p style="color:var(--fg-2);font-size:0.83rem;margin-top:22px;max-width:640px;line-height:1.65;">After the engine ships once, new AI capabilities live entirely in the AI Skill Library and Form Builder. Administrators self-serve. The platform team focuses on the platform.</p>
+  </section>
+
+  <footer class="footer">
+    <span class="footer-note">AppAI Platform · Generic AI Action Engine · Architecture Overview · 2026</span>
+    <span class="footer-mark">Open Architecture · Zero-Code AI</span>
+  </footer>
+
+</div>
+</body>
+</html>

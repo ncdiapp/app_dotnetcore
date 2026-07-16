@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { callAiAction, parseImageFieldValue, type AiActionInput } from '../../../../webapi/aiActionSvc';
 import { useTheme } from '../../../../redux/hooks/useTheme';
 import { useEnumValues } from '../../../../hooks/useEnumDictionary';
 import FormItemLayout from './FormItemLayout';
@@ -13,6 +14,41 @@ import {
   resolveTabContainerType,
   shouldRenderRuntimeLayoutItem,
 } from './flexLayoutItemHelper';
+
+// ── AI Action auto-map helpers ────────────────────────────────────────────────
+
+const findUnit = (units: any[], targetId: string): any => {
+  for (const u of units ?? []) {
+    if (String(u.Id) === targetId) return u;
+    const found = findUnit(u.AppTransactionUnitList ?? u.Children ?? [], targetId);
+    if (found) return found;
+  }
+  return null;
+};
+
+const buildDbNameLookup = (transactionExDto: any, unitId: string): Record<string, string> => {
+  const unit = findUnit(transactionExDto?.AppTransactionUnitList ?? [], unitId);
+  const lookup: Record<string, string> = {};
+  for (const f of unit?.AppTransactionFieldList ?? []) {
+    const dbName: string = f.DataBaseFieldName ?? f.dataBaseFieldName ?? '';
+    if (!dbName) continue;
+    lookup[dbName.toLowerCase().replace(/[\s_-]/g, '')] = dbName;
+    const display = (f.DisplayName ?? f.displayName ?? '').toLowerCase().replace(/[\s_-]/g, '');
+    if (display) lookup[display] = dbName;
+  }
+  return lookup;
+};
+
+const mapRowToDbColumns = (row: Record<string, any>, lookup: Record<string, string>): Record<string, any> => {
+  const out: Record<string, any> = {};
+  for (const [k, v] of Object.entries(row)) {
+    const normalized = k.toLowerCase().replace(/[\s_-]/g, '');
+    out[lookup[normalized] ?? k] = v;
+  }
+  return out;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 interface OneLayoutItemProps {
   layoutItemExDto: any;
@@ -41,6 +77,7 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
   const _gridDisplayTypeEnum = useEnumValues('EmAppTransactionGridDisplayType');
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [activeTabs, setActiveTabs] = useState<Record<string, number>>({});
+  const [isAiActionLoading, setIsAiActionLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Render section rows (uses RowComponent prop to avoid circular import with OneLayoutRow)
@@ -628,12 +665,126 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
     
     // Command Action Button
     if (displayType === layoutItemTypeEnum?.CommandActionButton) {
-      // TODO: Implement CommandActionButton component
+      const cmdActionId = da.CommandActionId ?? (da as any).commandActionId;
+      const cmdAction = transactionExDto?.CommandActionList?.find(
+        (c: any) => String(c.Id) === String(cmdActionId)
+      );
+
+      const label = (da.DisplayName ?? (da as any).displayName)
+        || cmdAction?.DisplayName
+        || cmdAction?.displayName
+        || 'Command Button';
+
+      // ActionType 56 = AI_ACTION — driven by AppAISkill + ActionAttribute config
+      const isAiAction = cmdAction && (
+        (cmdAction.ActionType ?? cmdAction.actionType) === 56
+      );
+
+      const handleAiActionClick = async () => {
+        if (!cmdAction) return;
+        const cfg = (() => {
+          try {
+            const raw = cmdAction.ActionAttribute ?? cmdAction.actionAttribute;
+            if (!raw) return {};
+            return typeof raw === 'string' ? JSON.parse(raw) : raw;
+          } catch { return {}; }
+        })();
+
+        const { inputBindings = [], skillName = '', outputBindings = [] } = cfg as {
+          inputBindings: Array<{ fieldName: string; inputType: 'text' | 'image' }>;
+          skillName: string;
+          outputBindings: Array<{ outputKey: string; targetType: 'text_field' | 'child_grid'; targetName: string }>;
+        };
+
+        if (!skillName) {
+          alert('AI Action: skillName is missing in ActionAttribute config.');
+          return;
+        }
+
+        const currentFormData = dataModel?.currentFormData ?? dataModel;
+        const inputs: AiActionInput[] = inputBindings.map((b) => {
+          const raw = currentFormData?.DictOneToOneFields?.[b.fieldName];
+          if (b.inputType === 'image') {
+            const parsed = parseImageFieldValue(raw);
+            return parsed
+              ? { inputType: 'image', imageBase64: parsed.base64, mimeType: parsed.mimeType }
+              : { inputType: 'text', textValue: '' };
+          }
+          return { inputType: 'text', textValue: raw != null ? String(raw) : '' };
+        });
+
+        setIsAiActionLoading(true);
+        try {
+          const result = await callAiAction(inputs, skillName);
+          const parsed = JSON.parse(result.rawJson);
+
+          if (outputBindings.length > 0) {
+            let updatedFormData = { ...(currentFormData ?? {}) };
+            for (const ob of outputBindings) {
+              const value = parsed[ob.outputKey];
+              if (value === undefined) continue;
+
+              if (ob.targetType === 'text_field') {
+                updatedFormData = {
+                  ...updatedFormData,
+                  DictOneToOneFields: {
+                    ...(updatedFormData.DictOneToOneFields ?? {}),
+                    [ob.targetName]: typeof value === 'string' ? value : JSON.stringify(value),
+                  },
+                  IsDirty: true,
+                };
+              } else if (ob.targetType === 'child_grid' && Array.isArray(value)) {
+                const unitKey = String(ob.targetName);
+                const lookup = buildDbNameLookup(transactionExDto, unitKey);
+                const mappedRows = value.map((row: any) => mapRowToDbColumns(row, lookup));
+                updatedFormData = {
+                  ...updatedFormData,
+                  DictOneToManyFields: {
+                    ...(updatedFormData.DictOneToManyFields ?? {}),
+                    [unitKey]: mappedRows,
+                  },
+                  IsDirty: true,
+                };
+              }
+            }
+
+            const updatedModel = dataModel?.currentFormData != null
+              ? { ...dataModel, currentFormData: updatedFormData }
+              : updatedFormData;
+            onDataModelChange(updatedModel);
+          }
+
+          if (result.warnings) {
+            // Non-blocking advisory — user can proceed
+            console.warn('[AI Action]', result.warnings);
+          }
+        } catch (err: any) {
+          alert(`AI Action failed: ${err?.message ?? 'Unknown error'}`);
+        } finally {
+          setIsAiActionLoading(false);
+        }
+      };
+
       return (
         <div className="w-full p-2">
-          <button className="px-4 py-2 bg-blue-500 text-white rounded">
-            {(da.DisplayName ?? (da as any).displayName) || 'Command Button'}
-            {/* TODO: Render command action button */}
+          <button
+            type="button"
+            className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default} ${isAiActionLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
+            onClick={isAiAction ? handleAiActionClick : undefined}
+            disabled={isAiActionLoading}
+            title={isAiAction ? `AI Action: ${cmdAction?.ActionAttribute ?? ''}` : label}
+          >
+            {isAiActionLoading ? (
+              <span className="flex items-center gap-1">
+                <i className="fa-solid fa-spinner fa-spin text-xs" aria-hidden />
+                Processing...
+              </span>
+            ) : (
+              <span className="flex items-center gap-1">
+                {isAiAction && <i className="fa-solid fa-wand-magic-sparkles text-xs" aria-hidden />}
+                {label}
+              </span>
+            )}
           </button>
         </div>
       );

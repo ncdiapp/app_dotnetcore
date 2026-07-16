@@ -101,6 +101,9 @@ try
     builder.Services.AddHttpClient();
     builder.Services.AddScoped<IOcrService, LLMOcrService>();
 
+    // IAiActionService — Generic AI Action Engine (skill-driven, multi-modal)
+    builder.Services.AddScoped<IAiActionService, AiActionService>();
+
     builder.Services.AddScoped<PlmUnitContext>();
     builder.Services.AddScoped<PlmUnitConversionFilter>();
 
@@ -439,6 +442,7 @@ try
 
     // Minimal API endpoints replacing .ashx / .aspx handlers
     LegacyEndpoints.Map(app);
+    AiActionEndpoints.Map(app);
 
     // React SPA fallback (build output in wwwroot/)
     app.MapFallbackToFile("index.html");
