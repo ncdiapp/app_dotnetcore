@@ -3219,8 +3219,45 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const showAvailableSelectRuntime = showAvailableSelectPairSplit || showMultipleSelectBoxUi;
   const showAvailableSelectConfigWarning = isAvailableSelectLayout && !availableSelectConfigOk;
 
-  // In design mode, show a placeholder for the grid
+  // In design mode, show a placeholder for the grid / MultipleSelectBox
   if (controllerModel?.isDesignMode) {
+    if (isMultipleSelectBox) {
+      const placeholderOptions = [
+        { label: 'Option A', checked: true },
+        { label: 'Option B', checked: false },
+        { label: 'Option C', checked: true },
+        { label: 'Option D', checked: false }
+      ];
+      return (
+        <div className={`w-full h-full min-h-[120px] border rounded flex flex-col overflow-hidden ${theme.mainContentSection}`}>
+          <div className={`px-3 py-2 border-b shrink-0 ${theme.mainContentSection}`}>
+            <div className={`text-sm font-semibold ${theme.title}`}>
+              {unitExDto?.UnitDisplayName || 'Multiple Select'}
+            </div>
+          </div>
+          <div className={`min-h-0 flex-auto overflow-auto px-3 py-3 ${theme.mainContentSection}`}>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {placeholderOptions.map((opt) => (
+                <label
+                  key={opt.label}
+                  className={`flex cursor-default items-center gap-2 rounded px-2 py-1.5 pointer-events-none ${theme.inputBox}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-3 w-3 shrink-0 accent-current"
+                    checked={opt.checked}
+                    readOnly
+                    tabIndex={-1}
+                    aria-hidden
+                  />
+                  <span className={`min-w-0 flex-auto truncate text-[11px] ${theme.label}`}>{opt.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="w-full border-2 border-dashed border-gray-300 rounded p-4 bg-gray-50">
         <div className="text-center text-gray-500">
@@ -3231,7 +3268,6 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             {isAvailableSelectLayout && (
               <div className="mt-1">
                 {isAvailableSelectPair ? 'Layout: AvailableSelectGridPair' : ''}
-                {isMultipleSelectBox ? 'Layout: MultipleSelectBox' : ''}
               </div>
             )}
           </div>
@@ -3430,14 +3466,6 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
 
         {showMultipleSelectBoxUi && (
           <div className="h-1 w-full min-h-0 min-w-0 flex-auto flex flex-col overflow-hidden">
-            <div className={`flex shrink-0 items-center justify-between gap-2 px-1 py-2 text-xs ${theme.label}`}>
-              <span className="font-normal">{sourceUnitExDto?.UnitDisplayName ?? 'Available'}</span>
-              <span
-                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-normal uppercase tracking-wide opacity-80 ${theme.label}`}
-              >
-                MultipleSelectBox
-              </span>
-            </div>
             <div
               className={`min-h-0 flex-auto overflow-auto rounded border px-3 py-3 ${theme.mainContentSection}`}
               role="group"

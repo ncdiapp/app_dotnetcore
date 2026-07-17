@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
+import { useEnumValues } from '../../../hooks/useEnumDictionary';
 
 interface GridDesignLayoutProps {
   layoutItemExDto: any;
@@ -21,6 +22,13 @@ type GridField = {
   ControlType?: number;
 };
 
+const MULTI_SELECT_PLACEHOLDER_OPTIONS = [
+  { label: 'Option A', checked: true },
+  { label: 'Option B', checked: false },
+  { label: 'Option C', checked: true },
+  { label: 'Option D', checked: false }
+];
+
 export const GridDesignLayout: React.FC<GridDesignLayoutProps> = ({
   layoutItemExDto,
   unitExDto,
@@ -30,7 +38,12 @@ export const GridDesignLayout: React.FC<GridDesignLayoutProps> = ({
   onOpenRowItemContextMenu
 }) => {
   const { theme } = useTheme();
+  const gridDisplayTypeEnum = useEnumValues('EmAppTransactionGridDisplayType');
   const [hoveredFieldId, setHoveredFieldId] = useState<number | undefined>(undefined);
+
+  const isMultipleSelectBox =
+    Number(unitExDto?.EmGridViewDisplayType) ===
+    Number(gridDisplayTypeEnum?.MultipleSelectBox ?? 6);
 
   const getFieldId = useCallback((field: GridField): number | undefined => {
     const anyField = field as any;
@@ -100,33 +113,75 @@ export const GridDesignLayout: React.FC<GridDesignLayoutProps> = ({
     });
   };
 
+  const contextMenuButton =
+    controllerModel?.isEnableFormConfigButtons && onOpenRowItemContextMenu ? (
+      <button
+        className="ContainerContextMenuButton absolute right-1 top-1"
+        title="Grid Menu"
+        style={{
+          zIndex: 60,
+          width: '22px',
+          height: '22px',
+          borderRadius: '3px',
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          border: '1px solid #ccc',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpenRowItemContextMenu(e, layoutItemExDto);
+        }}
+      >
+        <i className="fa fa-ellipsis-v"></i>
+      </button>
+    ) : null;
+
+  // Design-mode placeholder for MultipleSelectBox (checkbox tiles, no real data)
+  if (isMultipleSelectBox) {
+    const title =
+      unitExDto?.UnitDisplayName || layoutItemExDto?.DomAttribute?.DisplayName || 'Multiple Select';
+    return (
+      <div className="w-full h-full relative flex flex-col">
+        {contextMenuButton}
+        <div
+          className={`w-full h-full min-h-[120px] border rounded flex flex-col overflow-hidden ${theme.mainContentSection}`}
+        >
+          <div className={`px-2 py-1 border-b shrink-0 ${theme.mainContentSection}`}>
+            <div className={`text-xs font-semibold ${theme.title}`}>{title}</div>
+          </div>
+          <div className={`min-h-0 flex-auto overflow-auto px-3 py-3 ${theme.mainContentSection}`}>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {MULTI_SELECT_PLACEHOLDER_OPTIONS.map((opt) => (
+                <label
+                  key={opt.label}
+                  className={`flex cursor-default items-center gap-2 rounded px-2 py-1.5 pointer-events-none ${theme.inputBox}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="h-3 w-3 shrink-0 accent-current"
+                    checked={opt.checked}
+                    readOnly
+                    tabIndex={-1}
+                    aria-hidden
+                  />
+                  <span className={`min-w-0 flex-auto truncate text-[11px] ${theme.label}`}>
+                    {opt.label}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-full relative flex flex-col">
-      {/* Grid top-right context menu button */}
-      {controllerModel?.isEnableFormConfigButtons && onOpenRowItemContextMenu && (
-        <button
-          className="ContainerContextMenuButton absolute right-1 top-1"
-          title="Grid Menu"
-          style={{
-            zIndex: 60,
-            width: '22px',
-            height: '22px',
-            borderRadius: '3px',
-            backgroundColor: 'rgba(255, 255, 255, 0.9)',
-            border: '1px solid #ccc',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onOpenRowItemContextMenu(e, layoutItemExDto);
-          }}
-        >
-          <i className="fa fa-ellipsis-v"></i>
-        </button>
-      )}
+      {contextMenuButton}
 
       {/* Header */}
       <div

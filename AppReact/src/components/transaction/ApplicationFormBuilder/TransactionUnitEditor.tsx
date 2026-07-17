@@ -974,6 +974,16 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         });
     };
 
+    // Match one field only: reference, or non-null Id, or non-null uiId.
+    // Do NOT treat null/undefined Id or uiId as equal — that wrongly updates every row.
+    const isSameTransactionField = (f: any, target: any): boolean => {
+        if (!f || !target) return false;
+        if (f === target) return true;
+        if (target.Id != null && f.Id != null && Number(f.Id) === Number(target.Id)) return true;
+        if (target.uiId != null && f.uiId != null && String(f.uiId) === String(target.uiId)) return true;
+        return false;
+    };
+
     const handleAssignMappingToAvailableSourceUnit = () => {
         const field = mappingToAvailableSourceState.field;
         if (!field || !unitData) return;
@@ -982,10 +992,9 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             { ...field, MappingToAvailableSourceUnitTransactionFieldId: selectedId },
             resolvedAvailableSourceUnit
         );
+        // Angular: mutate currentEditTransactionField only
         const fields = (unitData.AppTransactionFieldList || []).map((f: any) => {
-            if (f !== field && Number(f?.Id) !== Number(field?.Id) && f?.uiId !== field?.uiId) {
-                return f;
-            }
+            if (!isSameTransactionField(f, field)) return f;
             return {
                 ...f,
                 MappingToAvailableSourceUnitTransactionFieldId: selectedId,
@@ -1060,9 +1069,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                 : '';
 
         const fields = (unitData.AppTransactionFieldList || []).map((f: any) => {
-            if (f !== field && Number(f?.Id) !== Number(field?.Id) && f?.uiId !== field?.uiId) {
-                return f;
-            }
+            if (!isSameTransactionField(f, field)) return f;
             return {
                 ...f,
                 DdlparentLevelId: selectedId,
