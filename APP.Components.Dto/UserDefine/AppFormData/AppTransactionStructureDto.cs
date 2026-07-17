@@ -503,6 +503,22 @@ namespace APP.Components.EntityDto
             set;
         }
 
+        // Optional source-grid boolean field (DB name) from MatrixKeyTransactionFieldId.
+        // When set, only source rows with a true-ish value are projected as pivot columns.
+        [DataMember(EmitDefaultValue = false)]
+        public string ColumnSourceVisibleFieldName
+        {
+            get;
+            set;
+        }
+
+        [DataMember(EmitDefaultValue = false)]
+        public int? ColumnSourceVisibleFieldId
+        {
+            get;
+            set;
+        }
+
         // The parent (child) unit that hosts the projected columns (= this grandchild's ParentTransactionUnitId).
         [DataMember(EmitDefaultValue = false)]
         public int? HostParentUnitId

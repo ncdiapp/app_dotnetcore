@@ -442,6 +442,18 @@ namespace App.BL
                         {
                             appPivotDto.ColumnSourceUnitId = parsedSourceUnitId;
                         }
+
+                        // Pivot Column Visible Condition Field (MatrixKeyTransactionFieldId) — same source unit only.
+                        if (columnKeyField.MatrixKeyTransactionFieldId.HasValue
+                            && appPivotDto.ColumnSourceUnitId.HasValue
+                            && dictAllFiledIdDataBaseFileName.TryGetValue(columnKeyField.MatrixKeyTransactionFieldId.Value, out string visibleFieldName)
+                            && transactionStructureDto.DictFieldIdUnitId.TryGetValue(columnKeyField.MatrixKeyTransactionFieldId.Value.ToString(), out string visibleUnitId)
+                            && int.TryParse(visibleUnitId, out int parsedVisibleUnitId)
+                            && parsedVisibleUnitId == appPivotDto.ColumnSourceUnitId.Value)
+                        {
+                            appPivotDto.ColumnSourceVisibleFieldName = visibleFieldName;
+                            appPivotDto.ColumnSourceVisibleFieldId = columnKeyField.MatrixKeyTransactionFieldId;
+                        }
                     }
                 }
 

@@ -180,6 +180,25 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         sourceFieldOptions: []
     });
 
+    // Pivot Column Visible Condition Field (stores Id in MatrixKeyTransactionFieldId)
+    const [pivotVisibleConditionPopupState, setPivotVisibleConditionPopupState] = useState<{
+        isOpen: boolean;
+        field: any | null;
+        currentFieldName: string;
+        sourceUnitId: number | null;
+        sourceUnitDisplay: string;
+        matrixKeyTransactionFieldId: number | null;
+        checkboxFieldOptions: Array<{ Id: number; Display: string }>;
+    }>({
+        isOpen: false,
+        field: null,
+        currentFieldName: '',
+        sourceUnitId: null,
+        sourceUnitDisplay: '',
+        matrixKeyTransactionFieldId: null,
+        checkboxFieldOptions: []
+    });
+
     // Enum values
     const emAppDataType = useEnumValues('EmAppDataType');
     const emAppTransactionGridDisplayType = useEnumValues('EmAppTransactionGridDisplayType');
@@ -286,7 +305,8 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                 AutoComplete: undefined as number | undefined,
                 SearchAbleDDL: undefined as number | undefined,
                 RadioButtons: undefined as number | undefined,
-                Progress: undefined as number | undefined
+                Progress: undefined as number | undefined,
+                CheckBox: 13 as number | undefined
             };
         }
         return {
@@ -294,7 +314,8 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             AutoComplete: emAppControlType.AutoComplete,
             SearchAbleDDL: (emAppControlType as any).SearchAbleDDL,
             RadioButtons: (emAppControlType as any).RadioButtons,
-            Progress: (emAppControlType as any).Progress
+            Progress: (emAppControlType as any).Progress,
+            CheckBox: emAppControlType.CheckBox ?? 13
         };
     }, [emAppControlType]);
 
@@ -1697,12 +1718,28 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             field.MatrixForeignKeyFieldIdSelector = matrixForeignKeyFieldId
                 ? getDdlColumnNameById(matrixForeignKeyFieldId)
                 : '';
+            // Drop visible condition if FK cleared or source unit no longer matches.
+            if (!matrixForeignKeyFieldId) {
+                field.MatrixKeyTransactionFieldId = null;
+                field.MatrixKeyTransactionFieldIdSelector = '';
+            } else if (field.MatrixKeyTransactionFieldId != null) {
+                const fkField = allFieldsById[String(matrixForeignKeyFieldId)];
+                const visibleField = allFieldsById[String(field.MatrixKeyTransactionFieldId)];
+                if (
+                    !fkField?.TransactionUnitId ||
+                    !visibleField?.TransactionUnitId ||
+                    Number(fkField.TransactionUnitId) !== Number(visibleField.TransactionUnitId)
+                ) {
+                    field.MatrixKeyTransactionFieldId = null;
+                    field.MatrixKeyTransactionFieldIdSelector = '';
+                }
+            }
             if (fieldCollectionView) fieldCollectionView.refresh();
             setIsModified(true);
             isModifiedRef.current = true;
         }
         setMatrixFkPopupState((prev) => ({ ...prev, isOpen: false, field: null }));
-    }, [matrixFkPopupState, getDdlColumnNameById, fieldCollectionView]);
+    }, [matrixFkPopupState, getDdlColumnNameById, fieldCollectionView, allFieldsById]);
 
     const handleClearMatrixFkMapping = useCallback(() => {
         const { field } = matrixFkPopupState;
@@ -1710,6 +1747,9 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             field.MatrixForeignKeyFieldId = null;
             field.IsModified = true;
             field.MatrixForeignKeyFieldIdSelector = '';
+            // Visible condition is scoped to the Matrix FK source unit — clear with FK.
+            field.MatrixKeyTransactionFieldId = null;
+            field.MatrixKeyTransactionFieldIdSelector = '';
             if (fieldCollectionView) fieldCollectionView.refresh();
             setIsModified(true);
             isModifiedRef.current = true;
@@ -1719,6 +1759,82 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
 
     const handleCloseMatrixFkPopup = useCallback(() => {
         setMatrixFkPopupState((prev) => ({ ...prev, isOpen: false, field: null }));
+    }, []);
+
+    const buildPivotVisibleConditionCheckboxOptions = useCallback(
+        (sourceUnitId: number | null): Array<{ Id: number; Display: string }> => {
+            if (sourceUnitId == null) return [];
+            const checkBoxType = Number(controlTypeIdsForDatasource.CheckBox ?? 13);
+            const units = collectAllUnits(transactionData?.AppTransactionUnitList ?? []);
+            const unit = units.find((u: any) => Number(u?.Id) === Number(sourceUnitId));
+            return (unit?.AppTransactionFieldList ?? [])
+                .filter((f: any) => f?.Id != null && Number(f.ControlType) === checkBoxType)
+                .map((f: any) => ({
+                    Id: Number(f.Id),
+                    Display: f.DisplayName || f.DataBaseFieldName || String(f.Id)
+                }));
+        },
+        [transactionData, collectAllUnits, controlTypeIdsForDatasource.CheckBox]
+    );
+
+    const handleOpenPivotVisibleConditionPopup = useCallback(
+        (field: any) => {
+            if (!field || !field.Id) return;
+            if (!field.MatrixForeignKeyFieldId) {
+                window.alert('Set Pivot Matrix FK Field first, then choose the Visible Condition Field on that source unit.');
+                return;
+            }
+            const fkField = allFieldsById[String(field.MatrixForeignKeyFieldId)];
+            const sourceUnitId = fkField?.TransactionUnitId != null ? Number(fkField.TransactionUnitId) : null;
+            if (sourceUnitId == null) {
+                window.alert('Pivot Matrix FK Field must point to a field on a source unit.');
+                return;
+            }
+            const units = collectAllUnits(transactionData?.AppTransactionUnitList ?? []);
+            const sourceUnit = units.find((u: any) => Number(u?.Id) === sourceUnitId);
+            setPivotVisibleConditionPopupState({
+                isOpen: true,
+                field,
+                currentFieldName: field.DisplayName || field.DataBaseFieldName || '',
+                sourceUnitId,
+                sourceUnitDisplay: sourceUnit?.UnitDisplayName || sourceUnit?.DataBaseTableName || `Unit ${sourceUnitId}`,
+                matrixKeyTransactionFieldId: field.MatrixKeyTransactionFieldId ?? null,
+                checkboxFieldOptions: buildPivotVisibleConditionCheckboxOptions(sourceUnitId)
+            });
+        },
+        [allFieldsById, collectAllUnits, transactionData, buildPivotVisibleConditionCheckboxOptions]
+    );
+
+    const handleApplyPivotVisibleCondition = useCallback(() => {
+        const { field, matrixKeyTransactionFieldId } = pivotVisibleConditionPopupState;
+        if (field) {
+            field.MatrixKeyTransactionFieldId = matrixKeyTransactionFieldId ?? null;
+            field.IsModified = true;
+            field.MatrixKeyTransactionFieldIdSelector = matrixKeyTransactionFieldId
+                ? getDdlColumnNameById(matrixKeyTransactionFieldId)
+                : '';
+            if (fieldCollectionView) fieldCollectionView.refresh();
+            setIsModified(true);
+            isModifiedRef.current = true;
+        }
+        setPivotVisibleConditionPopupState((prev) => ({ ...prev, isOpen: false, field: null }));
+    }, [pivotVisibleConditionPopupState, getDdlColumnNameById, fieldCollectionView]);
+
+    const handleClearPivotVisibleCondition = useCallback(() => {
+        const { field } = pivotVisibleConditionPopupState;
+        if (field) {
+            field.MatrixKeyTransactionFieldId = null;
+            field.IsModified = true;
+            field.MatrixKeyTransactionFieldIdSelector = '';
+            if (fieldCollectionView) fieldCollectionView.refresh();
+            setIsModified(true);
+            isModifiedRef.current = true;
+        }
+        setPivotVisibleConditionPopupState((prev) => ({ ...prev, isOpen: false, field: null }));
+    }, [pivotVisibleConditionPopupState, fieldCollectionView]);
+
+    const handleClosePivotVisibleConditionPopup = useCallback(() => {
+        setPivotVisibleConditionPopupState((prev) => ({ ...prev, isOpen: false, field: null }));
     }, []);
 
     const handleCellEditEnded = (sender: any, e: any) => {
@@ -3064,10 +3180,10 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                         }}
                                     />
                                 </FlexGridColumn>
-                                {/* Matrix FK — click to assign the matrix foreign-key field (Angular OpenMatrixFkPopup) */}
+                                {/* Pivot Matrix FK — click to assign the source key field */}
                                 <FlexGridColumn
                                     binding="MatrixForeignKeyFieldIdSelector"
-                                    header="Matrix ForeignKey Field"
+                                    header="Pivot Matrix FK Field"
                                     isReadOnly={true}
                                     width={180}
                                     isContentHtml={true}
@@ -3096,12 +3212,50 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                                         type="button"
                                                         className={`px-1 py-0.5 text-[10px] rounded ${theme.button_default}`}
                                                         onClick={() => handleOpenMatrixFkPopup(item)}
-                                                        title="Matrix Grid Foreignkey"
+                                                        title="Pivot Matrix FK Field"
                                                     >
                                                         <i className="fa-solid fa-link" />
                                                     </button>
                                                     <span className="text-xs truncate" title={fkName}>
                                                         {fkName}
+                                                    </span>
+                                                </div>
+                                            );
+                                        }}
+                                    />
+                                </FlexGridColumn>
+                                {/* Pivot Column Visible Condition Field — CheckBox on same source unit (MatrixKeyTransactionFieldId) */}
+                                <FlexGridColumn
+                                    binding="MatrixKeyTransactionFieldIdSelector"
+                                    header="Pivot Column Visible Condition Field"
+                                    isReadOnly={true}
+                                    width={220}
+                                    isContentHtml={true}
+                                    visible={Boolean(isChildUnitPivotColumns)}
+                                >
+                                    <FlexGridCellTemplate
+                                        cellType="Cell"
+                                        template={(cell: any) => {
+                                            const item = cell.item;
+                                            if (!item) return null;
+                                            if (!item.IsPivotColumn) {
+                                                return <span className="text-xs text-gray-500"> </span>;
+                                            }
+                                            const visibleName = item.MatrixKeyTransactionFieldId
+                                                ? getDdlColumnNameById(item.MatrixKeyTransactionFieldId)
+                                                : '';
+                                            return (
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        type="button"
+                                                        className={`px-1 py-0.5 text-[10px] rounded ${theme.button_default}`}
+                                                        onClick={() => handleOpenPivotVisibleConditionPopup(item)}
+                                                        title="Pivot Column Visible Condition Field"
+                                                    >
+                                                        <i className="fa-solid fa-eye" />
+                                                    </button>
+                                                    <span className="text-xs truncate" title={visibleName}>
+                                                        {visibleName}
                                                     </span>
                                                 </div>
                                             );
@@ -4168,7 +4322,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                         style={{ width: '420px', maxWidth: '95vw' }}
                     >
                         <div className={`flex items-center justify-between px-3 py-2 border-b ${theme.mainContentSection}`}>
-                            <div className={`text-sm font-semibold ${theme.title}`}>Matrix Grid Foreignkey</div>
+                            <div className={`text-sm font-semibold ${theme.title}`}>Pivot Matrix FK Field</div>
                             <button
                                 type="button"
                                 onClick={handleCloseMatrixFkPopup}
@@ -4235,6 +4389,81 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 type="button"
                                 className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
                                 onClick={handleApplyMatrixFkMapping}
+                            >
+                                Ok
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Pivot Column Visible Condition Field popup */}
+            {pivotVisibleConditionPopupState.isOpen && (
+                <div className="fixed inset-0 z-[10030] flex items-center justify-center bg-black/50">
+                    <div
+                        className={`${theme.mainContentSection} rounded-md shadow-lg border flex flex-col overflow-hidden`}
+                        style={{ width: '420px', maxWidth: '95vw' }}
+                    >
+                        <div className={`flex items-center justify-between px-3 py-2 border-b ${theme.mainContentSection}`}>
+                            <div className={`text-sm font-semibold ${theme.title}`}>Pivot Column Visible Condition Field</div>
+                            <button
+                                type="button"
+                                onClick={handleClosePivotVisibleConditionPopup}
+                                className={`p-1 rounded ${theme.button_default}`}
+                                aria-label="Close"
+                            >
+                                <i className="fa-solid fa-times" aria-hidden />
+                            </button>
+                        </div>
+                        <div className="flex-1 min-h-0 overflow-auto p-3 text-xs space-y-2">
+                            <div className="flex items-center">
+                                <span className="w-36">Current Field</span>
+                                <div className="flex-1 truncate" title={pivotVisibleConditionPopupState.currentFieldName}>
+                                    {pivotVisibleConditionPopupState.currentFieldName}
+                                </div>
+                            </div>
+                            <div className="flex items-center">
+                                <span className="w-36">Source Unit</span>
+                                <div className="flex-1 truncate" title={pivotVisibleConditionPopupState.sourceUnitDisplay}>
+                                    {pivotVisibleConditionPopupState.sourceUnitDisplay}
+                                </div>
+                            </div>
+                            <div className="flex items-center">
+                                <span className="w-36">CheckBox Field</span>
+                                <select
+                                    className={`flex-1 px-2 py-1 border rounded ${theme.inputBox}`}
+                                    value={pivotVisibleConditionPopupState.matrixKeyTransactionFieldId ?? ''}
+                                    onChange={(e) =>
+                                        setPivotVisibleConditionPopupState((prev) => ({
+                                            ...prev,
+                                            matrixKeyTransactionFieldId: e.target.value ? Number(e.target.value) : null
+                                        }))
+                                    }
+                                >
+                                    <option value="">(None — show all)</option>
+                                    {pivotVisibleConditionPopupState.checkboxFieldOptions.map((f) => (
+                                        <option key={f.Id} value={f.Id}>
+                                            {f.Display}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className={`text-[11px] ${theme.label}`}>
+                                Only CheckBox fields on the Pivot Matrix FK source unit. Unset = project all key columns.
+                            </div>
+                        </div>
+                        <div className={`flex justify-end gap-2 px-3 py-2 border-t ${theme.mainContentSection}`}>
+                            <button
+                                type="button"
+                                className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
+                                onClick={handleClearPivotVisibleCondition}
+                            >
+                                Clear
+                            </button>
+                            <button
+                                type="button"
+                                className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
+                                onClick={handleApplyPivotVisibleCondition}
                             >
                                 Ok
                             </button>

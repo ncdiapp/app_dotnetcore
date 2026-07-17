@@ -1600,8 +1600,13 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     const srcSig = srcField
       ? srcRows.map((r: any) => readTransactionRowField(r, srcField) ?? '').join('|')
       : String(srcRows.length);
+    // Include visible-condition field so Formula/Command flips of IsVisible rebuild the projection.
+    const srcVisibleField = desc?.ColumnSourceVisibleFieldName;
+    const srcVisibleSig = srcVisibleField
+      ? srcRows.map((r: any) => String(readTransactionRowField(r, srcVisibleField) ?? '')).join('|')
+      : '';
     const hostRows: any[] = fd?.DictOneToManyFields?.[String(unitId)] ?? [];
-    return `${srcSig}#${hostRows.length}`;
+    return `${srcSig}#${srcVisibleSig}#${hostRows.length}`;
   }, [isChildPivotProjectionHost, masterDetailFormData, dataModel?.currentFormData, childPivotProjection, unitId]);
 
   useEffect(() => {

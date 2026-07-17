@@ -40,6 +40,9 @@ export interface ChildPivotProjectionModel {
   ColumnSourceFieldName?: string;
   ColumnSourceFieldId?: number | null;
   ColumnSourceUnitId?: number | null;
+  /** Source-grid boolean field; when set, only true-ish rows become pivot columns. */
+  ColumnSourceVisibleFieldName?: string | null;
+  ColumnSourceVisibleFieldId?: number | null;
   GrandchildUnitId?: number | null;
   IsConfigured?: boolean;
   ChildRowCount?: number;

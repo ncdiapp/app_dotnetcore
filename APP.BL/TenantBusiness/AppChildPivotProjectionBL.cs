@@ -31,6 +31,13 @@ namespace App.BL
             public int? ColumnSourceFieldId;      // source-grid field id (for UI display-text lookup)
             public int? ColumnSourceEntityId;     // entity on source field (e.g. pdmRGBColor) for display text
             public int? ColumnSourceUnitId;
+            /// <summary>
+            /// Optional source-grid boolean field (from pivot-column MatrixKeyTransactionFieldId).
+            /// When set, only source rows with a true-ish value are projected as pivot columns.
+            /// When null/empty, all source key rows are projected.
+            /// </summary>
+            public string ColumnSourceVisibleFieldName;
+            public int? ColumnSourceVisibleFieldId;
             public List<AppTransactionFieldExDto> ValueFields;
         }
 
@@ -60,6 +67,8 @@ namespace App.BL
             model.ColumnSourceFieldName = ctx.ColumnSourceFieldName;
             model.ColumnSourceFieldId = ctx.ColumnSourceFieldId;
             model.ColumnSourceUnitId = ctx.ColumnSourceUnitId;
+            model.ColumnSourceVisibleFieldName = ctx.ColumnSourceVisibleFieldName;
+            model.ColumnSourceVisibleFieldId = ctx.ColumnSourceVisibleFieldId;
             model.GrandchildUnitId = ToNullableInt(ctx.GrandchildUnitId);
             model.ChildRowCount = childRows.Count;
             model.SourceRowCount = sourceRows.Count;
@@ -107,6 +116,8 @@ namespace App.BL
             string sourceFieldName = null;
             int? sourceUnitId = null;
             int? sourceEntityId = null;
+            string sourceVisibleFieldName = null;
+            int? sourceVisibleFieldId = null;
             AppTransactionFieldExDto sourceField = null;
             if (columnKeyField != null && columnKeyField.MatrixForeignKeyFieldId.HasValue
                 && tx.DictAllTransactionField != null
@@ -120,6 +131,22 @@ namespace App.BL
 
             if (!sourceEntityId.HasValue && columnKeyField?.EntityId != null)
                 sourceEntityId = columnKeyField.EntityId;
+
+            // Pivot Column Visible Condition Field (stored in MatrixKeyTransactionFieldId):
+            // must resolve to a field on the same source unit as MatrixForeignKeyFieldId.
+            AppTransactionFieldExDto visibleField = null;
+            if (columnKeyField != null
+                && columnKeyField.MatrixKeyTransactionFieldId.HasValue
+                && sourceUnitId.HasValue
+                && tx.DictAllTransactionField != null
+                && tx.DictAllTransactionField.TryGetValue(columnKeyField.MatrixKeyTransactionFieldId.Value, out visibleField)
+                && visibleField != null
+                && visibleField.TransactionUnitId == sourceUnitId.Value
+                && !string.IsNullOrWhiteSpace(visibleField.DataBaseFieldName))
+            {
+                sourceVisibleFieldName = visibleField.DataBaseFieldName;
+                sourceVisibleFieldId = columnKeyField.MatrixKeyTransactionFieldId;
+            }
 
             List<AppTransactionFieldExDto> valueFields = grandchild.AppTransactionFieldList
                 .Where(f => (f.IsPivotValue.HasValue && f.IsPivotValue.Value) || f.IsPrimaryKey || f.IsLinkToParentPrimaryKey)
@@ -135,6 +162,8 @@ namespace App.BL
                 ColumnSourceFieldId = columnKeyField?.MatrixForeignKeyFieldId,
                 ColumnSourceEntityId = sourceEntityId,
                 ColumnSourceUnitId = sourceUnitId,
+                ColumnSourceVisibleFieldName = sourceVisibleFieldName,
+                ColumnSourceVisibleFieldId = sourceVisibleFieldId,
                 ValueFields = valueFields,
             };
         }
@@ -167,6 +196,7 @@ namespace App.BL
             foreach (var sr in sourceRows)
             {
                 if (sr?.DictOneToOneFields == null) continue;
+                if (!IsSourceRowPivotColumnVisible(sr, ctx.ColumnSourceVisibleFieldName)) continue;
                 if (!sr.DictOneToOneFields.TryGetValue(ctx.ColumnSourceFieldName, out object colValue)) continue;
                 if (colValue == null) continue;
                 string comboId = colValue.ToString();
@@ -387,6 +417,35 @@ namespace App.BL
         private static bool IsVisible(bool? isVisible)
         {
             return !isVisible.HasValue || isVisible.Value;
+        }
+
+        /// <summary>
+        /// When visibleFieldName is not configured → all rows visible.
+        /// When configured: true / 1 / "true" / "yes" → visible; null / empty / false → hidden.
+        /// </summary>
+        private static bool IsSourceRowPivotColumnVisible(AppChildDataDto sourceRow, string visibleFieldName)
+        {
+            if (string.IsNullOrWhiteSpace(visibleFieldName)) return true;
+            if (sourceRow?.DictOneToOneFields == null) return false;
+            if (!sourceRow.DictOneToOneFields.TryGetValue(visibleFieldName, out object raw) || raw == null)
+                return false;
+
+            if (raw is bool b) return b;
+            if (raw is byte || raw is short || raw is int || raw is long)
+            {
+                try { return Convert.ToInt64(raw) != 0; }
+                catch { return false; }
+            }
+
+            string s = raw.ToString()?.Trim();
+            if (string.IsNullOrEmpty(s)) return false;
+            if (string.Equals(s, "true", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(s, "yes", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(s, "1", StringComparison.OrdinalIgnoreCase)) return true;
+            if (string.Equals(s, "false", StringComparison.OrdinalIgnoreCase)) return false;
+            if (string.Equals(s, "no", StringComparison.OrdinalIgnoreCase)) return false;
+            if (string.Equals(s, "0", StringComparison.OrdinalIgnoreCase)) return false;
+            return false;
         }
 
         private static int? ToNullableInt(object value)

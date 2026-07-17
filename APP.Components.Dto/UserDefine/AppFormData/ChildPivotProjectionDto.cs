@@ -124,6 +124,16 @@ namespace APP.Components.EntityDto
         [DataMember(EmitDefaultValue = false)]
         public int? ColumnSourceUnitId { get; set; }
 
+        /// <summary>
+        /// Optional source-grid boolean field (DB name) that gates which key rows become pivot columns.
+        /// From pivot-column field MatrixKeyTransactionFieldId. Null = project all keys.
+        /// </summary>
+        [DataMember(EmitDefaultValue = false)]
+        public string ColumnSourceVisibleFieldName { get; set; }
+
+        [DataMember(EmitDefaultValue = false)]
+        public int? ColumnSourceVisibleFieldId { get; set; }
+
         [DataMember(EmitDefaultValue = false)]
         public int? GrandchildUnitId { get; set; }
 
