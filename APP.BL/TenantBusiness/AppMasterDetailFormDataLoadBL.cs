@@ -30,13 +30,16 @@ namespace App.BL
 
             if (rootPrimaryKeyValue == null)
             {
-                return AppMasterDetailFormDataLoadBL.GetNewFormData(transactionExDto);
+                return AppChildPivotProjectionBL.PopulateInitialPivotProjections(
+                    AppMasterDetailFormDataLoadBL.GetNewFormData(transactionExDto));
             }
 
             // ReadOnly Master Detail Dto load
             if (transactionExDto.IsReadOnly.HasValue && transactionExDto.IsReadOnly.Value )
             {
-                return AppMasterDetailFormReadOnlyDtoDataLoadBL.GetMasterDetailFormData(transactionId, rootPrimaryKeyValue, autoExecuteCommandId, selectDataRow);
+                return AppChildPivotProjectionBL.PopulateInitialPivotProjections(
+                    AppMasterDetailFormReadOnlyDtoDataLoadBL.GetMasterDetailFormData(
+                        transactionId, rootPrimaryKeyValue, autoExecuteCommandId, selectDataRow));
             }
 
             // From  IsApiIntegrationTransaction
@@ -62,7 +65,7 @@ namespace App.BL
                     }
                 }
 
-                return toReturn;
+                return AppChildPivotProjectionBL.PopulateInitialPivotProjections(toReturn);
             }
 
             //  real trasction Master Detail Dto loading
@@ -176,7 +179,7 @@ namespace App.BL
 
             aAppformDataDto.IsDirty = false;
 
-            return aAppformDataDto;
+            return AppChildPivotProjectionBL.PopulateInitialPivotProjections(aAppformDataDto);
         }
 
 
@@ -780,7 +783,8 @@ namespace App.BL
 
             if(transactionExDto.IsReadOnly .HasValue && transactionExDto.IsReadOnly.Value )
             {
-                return GetReadonlyNewFormData(transactionId, isConfigTestRun);
+                return AppChildPivotProjectionBL.PopulateInitialPivotProjections(
+                    GetReadonlyNewFormData(transactionId, isConfigTestRun));
             }
 
            else if (transactionExDto.OtherOptions != null && transactionExDto.OtherOptions.IsApiIntegrationTransaction)
@@ -789,11 +793,13 @@ namespace App.BL
                 if (isConfigTestRun)
                 {
                     var rootPkValue = new Dictionary<string, object>();
-                    return AppMasterDetailApiFormDataLoadBL.GetApiMasterDetailFormData(transactionId, rootPkValue);
+                    return AppChildPivotProjectionBL.PopulateInitialPivotProjections(
+                        AppMasterDetailApiFormDataLoadBL.GetApiMasterDetailFormData(transactionId, rootPkValue));
                 }
                 else
                 {
-                    return AppMasterDetailApiFormDataLoadBL.GetNewFormData(transactionExDto);
+                    return AppChildPivotProjectionBL.PopulateInitialPivotProjections(
+                        AppMasterDetailApiFormDataLoadBL.GetNewFormData(transactionExDto));
                 }
 
             }
@@ -817,7 +823,7 @@ namespace App.BL
 
 
 
-                return rootAppformDataDto;
+                return AppChildPivotProjectionBL.PopulateInitialPivotProjections(rootAppformDataDto);
             }
           
         }
@@ -1247,7 +1253,7 @@ namespace App.BL
                 if (srcFormData != null)
                 {
                     AppMasterDetailDto newFormData = AppTransactionDataTransferBL.PrepareDataTransferFormData_FromMasterDetailToMasterDetail(srcFormData, dataTransferSettingId);
-                    return newFormData;
+                    return AppChildPivotProjectionBL.PopulateInitialPivotProjections(newFormData);
                 }
             }
 
@@ -1267,7 +1273,7 @@ namespace App.BL
                 if (srcFormData != null)
                 {
                     AppMasterDetailDto newFormData = AppTransactionDataTransferBL.PrepareDataTransferFormData_FromMasterDetailToMasterDetail(srcFormData, defaultTransferSettingEntity.DataTransferSettingId);
-                    return newFormData;
+                    return AppChildPivotProjectionBL.PopulateInitialPivotProjections(newFormData);
                 }
             }
 
@@ -2556,7 +2562,7 @@ namespace App.BL
 
                 if (calculationResult.IsSuccessfulWithResult)
                 {
-                    return calculationResult.Object;
+                    return AppChildPivotProjectionBL.PopulateInitialPivotProjections(calculationResult.Object);
                 }
             }
 

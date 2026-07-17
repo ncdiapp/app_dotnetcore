@@ -126,6 +126,24 @@ namespace APP.Components.EntityDto
             set;
         }
 
+        // Initial server-built ChildUnitPivotColumns projections, keyed by host unit Id.
+        // Subsequent structural changes are rebuilt through ConvertGrandChildDataToPivotColumns.
+        [DataMember(EmitDefaultValue = false)]
+        public Dictionary<string, ChildPivotProjectionModelDto> DictHostUnitIdChildPivotProjection
+        {
+            get;
+            set;
+        }
+
+        // Changes on every server form load so the client can distinguish a refreshed preset
+        // from the preset already consumed for the current form instance.
+        [DataMember(EmitDefaultValue = false)]
+        public string ChildPivotProjectionLoadToken
+        {
+            get;
+            set;
+        }
+
 
 		//Key1: Tanscation unit ID toString()
 		//Key2: MasterFieldlId

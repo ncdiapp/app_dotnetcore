@@ -41,6 +41,48 @@ namespace App.BL
             public List<AppTransactionFieldExDto> ValueFields;
         }
 
+        /// <summary>
+        /// Builds the initial projection for every configured host grid and attaches it to the
+        /// form-load DTO. Call this only after form-load commands have updated temporary fields.
+        /// </summary>
+        public static AppMasterDetailDto PopulateInitialPivotProjections(AppMasterDetailDto formData)
+        {
+            if (formData == null) return null;
+
+            AppTransactionExDto tx = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(formData.TransactionId);
+            if (tx?.DictAllTransactionUnitIdExDto == null) return formData;
+
+            List<int> hostUnitIds = tx.DictAllTransactionUnitIdExDto.Values
+                .Where(u => u != null
+                    && u.ParentTransactionUnitId.HasValue
+                    && u.EmGridViewDisplayType.HasValue
+                    && u.EmGridViewDisplayType.Value == (int)EmAppTransactionGridDisplayType.ChildUnitPivotColumns)
+                .Select(u => u.ParentTransactionUnitId.Value)
+                .Distinct()
+                .ToList();
+
+            if (hostUnitIds.Count == 0)
+            {
+                formData.DictHostUnitIdChildPivotProjection = null;
+                formData.ChildPivotProjectionLoadToken = null;
+                return formData;
+            }
+
+            var projections = new Dictionary<string, ChildPivotProjectionModelDto>();
+            foreach (int hostUnitId in hostUnitIds)
+            {
+                ChildPivotProjectionModelDto model = ConvertGrandChildDataToPivotColumns(formData, hostUnitId);
+                if (model != null && model.IsConfigured)
+                {
+                    projections[hostUnitId.ToString()] = model;
+                }
+            }
+
+            formData.DictHostUnitIdChildPivotProjection = projections.Count > 0 ? projections : null;
+            formData.ChildPivotProjectionLoadToken = projections.Count > 0 ? Guid.NewGuid().ToString("N") : null;
+            return formData;
+        }
+
         public static ChildPivotProjectionModelDto ConvertGrandChildDataToPivotColumns(AppMasterDetailDto formData, int hostUnitId)
         {
             var model = new ChildPivotProjectionModelDto { IsConfigured = false };

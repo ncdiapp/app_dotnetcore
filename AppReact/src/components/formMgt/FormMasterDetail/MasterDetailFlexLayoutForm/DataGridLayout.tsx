@@ -1568,7 +1568,15 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   }, [isChildPivotProjectionHost, transactionExDto?.DictAllTransactionField, unitExDto, childPivotProjection]);
 
   // Server-built projection model (columns + wide rows). Build runs on server; fold-back on edit is client-side.
-  const [projectionModel, setProjectionModel] = useState<ChildPivotProjectionModel | null>(null);
+  const projectionFormData = masterDetailFormData ?? dataModel?.currentFormData;
+  const presetProjectionLoadToken = projectionFormData?.ChildPivotProjectionLoadToken as string | undefined;
+  const presetProjectionModel = projectionFormData?.DictHostUnitIdChildPivotProjection?.[
+    String(unitId)
+  ] as ChildPivotProjectionModel | undefined;
+  const [projectionModel, setProjectionModel] = useState<ChildPivotProjectionModel | null>(
+    () => presetProjectionModel ?? null,
+  );
+  const consumedProjectionLoadTokenRef = useRef<string | null>(null);
   const projectionModelRef = useRef<ChildPivotProjectionModel | null>(null);
   projectionModelRef.current = projectionModel;
   const projectionFlexGridRef = useRef<any>(null);
@@ -1614,14 +1622,31 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       setProjectionModel(null);
       return;
     }
+
+    // Open/New/Refresh responses carry a server-built preset. Consume each load token once;
+    // later structural changes for that same form instance continue through the rebuild API.
+    if (
+      presetProjectionLoadToken &&
+      presetProjectionLoadToken !== consumedProjectionLoadTokenRef.current &&
+      presetProjectionModel
+    ) {
+      consumedProjectionLoadTokenRef.current = presetProjectionLoadToken;
+      setProjectionModel(presetProjectionModel);
+      return;
+    }
+
     let cancelled = false;
     const fd = buildMasterDetailDataDtoForCascading(
       dataModelRef.current,
       unitIdStr,
       getGridRowsForThisUnit()
     );
+    // Presets are response-only data; do not echo their wide rows back in rebuild requests.
+    const projectionRequestFormData = { ...fd };
+    delete projectionRequestFormData.DictHostUnitIdChildPivotProjection;
+    delete projectionRequestFormData.ChildPivotProjectionLoadToken;
     appTransactionService
-      .convertGrandChildDataToPivotColumns(fd, Number(unitId))
+      .convertGrandChildDataToPivotColumns(projectionRequestFormData, Number(unitId))
       .then((m) => {
         if (!cancelled) setProjectionModel(m ?? null);
       })
@@ -1633,7 +1658,12 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isChildPivotProjectionHost, unitId, projectionRebuildKey]);
+  }, [
+    isChildPivotProjectionHost,
+    unitId,
+    projectionRebuildKey,
+    presetProjectionLoadToken,
+  ]);
 
   // Fold edited wide rows back into nested grandchild structure (client-side, mirrors server BL).
   // No API per cell edit — only BuildChildPivotProjection runs on load / structural rebuild.
