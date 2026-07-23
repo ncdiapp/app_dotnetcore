@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using APP.Components.EntityDto;
 
@@ -39,8 +40,10 @@ namespace App.BL.AppBuilderAgent
 
         public class SessionData
         {
-            public ConcurrentQueue<AgentEventDto> Events = new ConcurrentQueue<AgentEventDto>();
-            public DateTime CreatedAt = DateTime.UtcNow;
+            public ConcurrentQueue<AgentEventDto> Events     = new ConcurrentQueue<AgentEventDto>();
+            public DateTime                       CreatedAt  = DateTime.UtcNow;
+            // Released once per enqueued event so SSE connections wake immediately.
+            public SemaphoreSlim                  EventReady = new SemaphoreSlim(0, int.MaxValue);
         }
 
         public static string CreateSession()
@@ -55,7 +58,24 @@ namespace App.BL.AppBuilderAgent
         {
             SessionData session;
             if (Sessions.TryGetValue(sessionId, out session))
+            {
                 session.Events.Enqueue(evt);
+                session.EventReady.Release(); // wake any waiting SSE connection
+            }
+        }
+
+        /// <summary>
+        /// Waits up to <paramref name="timeout"/> for at least one event to be enqueued.
+        /// Returns true if an event is available, false on timeout or cancellation.
+        /// Used by the SSE endpoint to block efficiently instead of busy-polling.
+        /// </summary>
+        public static async Task<bool> WaitForEventAsync(
+            string sessionId, TimeSpan timeout, CancellationToken ct = default)
+        {
+            SessionData session;
+            if (!Sessions.TryGetValue(sessionId, out session)) return false;
+            try   { return await session.EventReady.WaitAsync(timeout, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { return false; }
         }
 
         public static AgentPollResponseDto DequeueAll(string sessionId)
@@ -144,13 +164,12 @@ namespace App.BL.AppBuilderAgent
                 {
                     SessionData removed;
                     Sessions.TryRemove(kv.Key, out removed);
+                    removed?.EventReady.Dispose();
 
-                    // Cancel any pending plan confirmation for the expired session
                     TaskCompletionSource<bool> tcs;
                     PendingConfirmations.TryRemove(kv.Key, out tcs);
                     if (tcs != null) tcs.TrySetResult(false);
 
-                    // Cancel any pending schema confirmation for the expired session
                     TaskCompletionSource<AgentSchemaResponse> schemaTcs;
                     PendingSchemaConfirmations.TryRemove(kv.Key, out schemaTcs);
                     if (schemaTcs != null)

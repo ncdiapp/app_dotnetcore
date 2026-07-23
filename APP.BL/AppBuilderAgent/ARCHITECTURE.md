@@ -1,203 +1,200 @@
-# AppBuilder AI Agent — Architecture Design
+# AppBuilder AI Agent — Architecture
 
 > **Location:** `APP.BL/AppBuilderAgent/`
-> **Last updated:** 2026-03-13
+> **Last updated:** 2026-07-23
 
 ---
 
 ## 1. Overview
 
-The AppBuilder AI Agent lets a user describe a business application in plain language and have it fully built on the AppAI no-code platform automatically — the same actions a human would perform manually through the UI (design tables, create transactions, build forms, generate search views).
+The AppBuilder AI Agent accepts a plain-language description of a business application and builds it automatically on the AppAI no-code platform — the same actions a human performs manually (design tables, create transactions, build forms, generate search views).
 
 ```
 User (React Chat UI)
         │  natural-language request
         ▼
-AppBuilderAgentController  (Web API)
-        │  fire-and-forget Task.Run
+AppBuilderAgentController  POST /RunAgent
+        │  returns SessionId immediately; fires Task.Run in background
+        │
+        │◄── React polls GET /PollEvents every ~500ms
+        │         drains ConcurrentQueue<AgentEventDto>
+        │
         ▼
-AppBuilderAgentBL.RunAgentAsync()   ◄──── AgentCallbacks (SignalR wiring)
+AppBuilderAgentBL.RunAgentAsync()    ◄──── AgentCallbacks (enqueue to session store)
         │
-        ├─ System prompt (static instructions, no memory pre-load)
-        ├─ Discover Tools (reflection over plugin instances)
-        ├─ Build LLM Tool Definitions
-        ├─ Trim ConversationHistory (last N turns)
+        ├─ RegisterSystemAgentIdentity   ← agent gets a DB-connected user identity
+        ├─ AppBuilderAgentSessionBL.SaveSession  ← row in dbo.AppBuilderAgentSession
+        ├─ DiscoverTools()               ← reflection over 12 plugin instances → 31 tools
+        ├─ BuildToolDefinitions()        ← provider-specific JSON schemas
+        ├─ TrimConversationHistory()     ← last MaxHistoryTurns × 2 messages
         │
-        └─ Agentic Loop (max 40 iterations, configurable)
+        └─ Agentic Loop  (max 40 iterations, configurable)
                │
-               ├──► PruneMessages()  ← sliding-window context guard
-               ├──► LLM API (Anthropic / OpenAI / Gemini)
+               ├──► PruneMessages()   ← sliding-window token budget guard
+               ├──► LLM API call      ← Anthropic / OpenAI / Gemini
                │       returns: text | tool_use
                │
-               ├──► Tool Invocation (reflection)
-               │       CapToolResult()  ← size-cap before adding to context
-               │       [all plugin tools — see §3]
+               ├──► Tool Invocation via reflection
+               │       CapToolResult()  ← cap before adding to context
                │
-               └──► Stream events via SignalR ──► React Chat UI
-                       agentStep / agentToken / agentDone / agentError
+               └──► Enqueue AgentEventDto → React poll receives it
+
+Human gates: React POST /ConfirmPlan or /ConfirmSchema
+        → controller resolves TaskCompletionSource
+        → agentic loop resumes
 ```
 
 ---
 
-## 2. The Brain — LLM Integration
+## 2. LLM Integration
 
-The agent uses the **same LLM provider** configured for DbGenie (read from `web.config` via `LLMProviderHelper`).
+The agent uses the same LLM provider configured for DbGenie (read from `web.config` via `LLMProviderHelper`).
 
 ### Supported Providers
 
 | Provider  | API Endpoint | Tool Protocol |
 |-----------|--------------|---------------|
-| Anthropic | `https://api.anthropic.com/v1/messages` | `tools` + `tool_use` content block |
-| OpenAI    | `https://api.openai.com/v1/chat/completions` | `tools` + `tool_calls` finish reason |
+| Anthropic | `https://api.anthropic.com/v1/messages` | `tools` array + `tool_use` content block |
+| OpenAI    | `https://api.openai.com/v1/chat/completions` | `tools` array + `tool_calls` finish reason |
 | Gemini    | `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` | `functionDeclarations` + `functionCall` parts |
+
+Config keys: `DbaGenieLLMProvider`, `DbaGenieApiKey`, `DbaGenieAnthropicModel`, `DbaGenieOpenAIModel`, `DbaGenieGeminiModel`
 
 ### Tool Calling Flow (Anthropic example)
 
 ```
-BL sends:  { model, system, messages, tools: [...] }
+BL sends:   { model, system, messages, tools: [...], max_tokens: 8192 }
 LLM returns: stop_reason = "tool_use"  →  tool_use content blocks
-BL invokes: plugin method via reflection → CapToolResult()
-BL sends:  { role: "user", content: [{ type: "tool_result", ... }] }
+BL invokes:  plugin method via reflection
+BL sends:   { role: "user", content: [{ type: "tool_result", tool_use_id, content }] }
 LLM returns: stop_reason = "end_turn"  →  final text response
 ```
+
+All three providers share one `HttpClient` per call (10-minute timeout). No provider SDK is used — raw HTTP only.
 
 ### Key Files
 
 | File | Role |
 |------|------|
-| `AppBuilderAgentBL.cs` | Agentic loop, LLM HTTP calls, tool dispatch, context management |
+| `AppBuilderAgentBL.cs` | Agentic loop, all three LLM HTTP callers, tool dispatch, context management |
 | `AgentFunctionAttribute.cs` | `[AgentFunction]` / `[AgentParam]` attributes |
-| `App.BL.DbGenie/LLMProviderHelper.cs` | Reads API key & provider from web.config |
+| `App.BL.DbGenie/LLMProviderHelper.cs` | Reads API key and provider from `web.config` |
 
 ---
 
-## 3. The Body — Plugin System (Tools)
+## 3. Plugin System (Tools)
 
-Tools are plain C# methods decorated with `[AgentFunction]`. No external framework — discovery and invocation use `System.Reflection`.
+Tools are plain C# methods decorated with `[AgentFunction]`. No external framework — `System.Reflection` handles discovery and invocation. `[AgentParam]` on each parameter provides description and required/optional.
 
-### Plugin Discovery
+### Discovery
 
 ```csharp
 // AppBuilderAgentBL.DiscoverTools()
-foreach plugin instance
-  foreach method with [AgentFunction] attribute
-    → build ToolDescriptor { Name, Description, Method, Instance, Parameters }
+foreach plugin instance  // 12 instances, instantiated in fixed order
+  foreach method with [AgentFunction]
+    → ToolDescriptor { Name, Description, Method, Instance, Parameters }
 ```
 
-### Tool Invocation
+### Invocation
 
 ```csharp
 // AppBuilderAgentBL.InvokeToolAsync()
-JObject inputArgs = JObject.Parse(toolCall.InputJson);
-object[] args = MapJsonArgsToParameters(inputArgs, method.Parameters);
-var raw = method.Invoke(instance, args);
-if (raw is Task<string> t) return await t;   // async support
+JObject args = JObject.Parse(toolCall.InputJson);
+object[] typedArgs = MapJsonArgsToParameters(args, method.Parameters);
+var raw = method.Invoke(instance, typedArgs);
+if (raw is Task<string> t) return await t;   // async tools supported
 
-// result is capped before being added to the message list:
-var cappedResult = CapToolResult(toolResult);  // default: 10,000 chars max
+// result capped before being added to the LLM message list:
+string capped = CapToolResult(toolResult);   // default: 10,000 chars max
 ```
 
-### Plugins and Their Tools
-
-#### `PlatformExplorerPlugin` — Explore what exists
-
-| Tool | Description |
-|------|-------------|
-| `explore_platform` | Compact overview: all apps, transactions, entity sources, and DB tables (returns `Formatting.None` — call first) |
-| `search_platform(query)` | **RAG tool** — filter apps / transactions / entities / tables by name keyword; max 20 matches per category |
-| `list_applications` | Full child tree of every app: transactions + fields + search screens (use for modification work) |
-| `get_database_tables` | List all tables and views |
-| `get_existing_transactions` | List all configured transaction units |
-| `get_transaction_details` | Full config of one transaction unit (fields, search views) |
+### All 12 Plugins and 31 Tools
 
 #### `PlanConfirmPlugin` — Human-in-the-loop gates
-
 | Tool | Description |
 |------|-------------|
-| `propose_plan` | Pauses the agent; shows a build plan to the user for approval before any DDL |
-| `confirm_drop_tables` | Pauses the agent; asks user whether to physically DROP database tables on delete |
-
-Both tools use a `TaskCompletionSource<bool>` gate — the agentic loop suspends until the user responds via the React UI.
+| `propose_plan` | Shows build plan to user (tablesToCreate, screensToCreate); pauses loop until approved/rejected via `TCS<bool>` |
+| `confirm_drop_tables` | Shows table drop list; pauses loop for drop confirmation via `TCS<bool>` |
 
 #### `SchemaDesignerPlugin` — Two-step schema review
-
 | Tool | Description |
 |------|-------------|
-| `propose_schema` | Pauses the agent; shows the full table/column/FK design to the user for inline editing. Returns `{Confirmed, SchemaJson, Feedback}`. Schema is stored in-memory on the session store. |
-| `execute_approved_schema` | Executes the schema stored from `propose_schema`. Creates DB tables + master-detail transaction in one call. Uses a `TaskCompletionSource<AgentSchemaResponse>` gate. |
+| `propose_schema` | Calls `AppDbGenieBL.ExtractSchemaFromTextAsync` (second LLM call); shows table/column/FK design for inline user editing; stores approved schema on plugin instance; pauses via `TCS<AgentSchemaResponse>` |
+| `execute_approved_schema` | Reads schema stored by `propose_schema`; calls `AppDbGenieBL.CreateHierarchyFromApprovedSchemaAsync`; auto-rolls back (DROP TABLE) on partial failure |
 
 #### `ApplicationManagerPlugin` — Application packages
-
 | Tool | Description |
 |------|-------------|
-| `create_app_package` | Create a named application package; returns `SaasApplicationId` |
-| `delete_application` | Delete an entire application (transactions, searches, entities, optionally DB tables) |
-| `list_applications` | (Also on PlatformExplorerPlugin) Full child tree |
+| `create_app_package` | Creates named application package; returns `SaasApplicationId` |
+| `delete_application` | Deletes entire application: searches → transactions → entities → optionally DROP tables → package |
+| `add_transaction_to_menu` | Adds a list-transaction link to the navigation menu |
+| `add_search_to_menu` | Adds a search/dataset link to the navigation menu |
+
+#### `PlatformExplorerPlugin` — Inspect existing state
+| Tool | Description |
+|------|-------------|
+| `explore_platform` | Compact overview: all apps, transactions, entity sources, DB tables (compact JSON; call first) |
+| `search_platform` | Keyword-filtered lookup across apps / transactions / entities / tables (≤20 matches per category) |
+| `list_applications` | Full child tree per app: transactions + fields + search screens |
+| `get_database_tables` | All tables and views for the configured data source |
+| `get_existing_transactions` | All configured transaction units |
+| `get_transaction_details` | Full config of one transaction: all units, fields, search views |
 
 #### `EntityDataSourcePlugin` — Dropdown data sources
-
 | Tool | Description |
 |------|-------------|
-| `create_entity_simple_list` | Create a fixed-enumeration dropdown (Sex, Status, Priority, etc.) |
-| `create_entity_from_table` | Create a database-table-linked dropdown (Customer, Department, etc.) |
-| `list_entity_data_sources` | List all entity sources for the current data source |
+| `list_entity_data_sources` | All entity sources for the current data source |
+| `create_entity_simple_list` | Fixed-enumeration dropdown (Sex, Status, Priority, …); `EntityType=4` |
+| `create_entity_from_table` | Database-table-linked dropdown (Customer, Department, …); `EntityType=1` |
 
 #### `TransactionBuilderPlugin` — Build application screens
-
 | Tool | Description |
 |------|-------------|
-| `create_application` | Full pipeline: AI → schema → tables → transaction hierarchy + forms |
-| `create_transaction_from_table` | Create a transaction unit from a pre-existing DB table |
-| `create_hierarchy_from_tables` | Build a master-detail transaction from existing tables (recovery path) |
-| `create_list_edit_form` | Generate an editable-grid form for a lookup/reference transaction |
-| `create_search_view` | Generate a default search/list view; auto-adds to navigation menu |
-| `add_search_to_menu` | Manually add a search view to the navigation menu |
+| `create_application` | Full pipeline: AI schema extraction → DDL → transaction hierarchy; optional FK field entity wiring; auto-rollback on failure |
+| `create_search_view` | Generates default search/list view for a transaction; auto-adds nav link |
+| `create_transaction_from_table` | Creates a transaction unit from an existing DB table |
+| `create_hierarchy_from_tables` | Builds master-detail transaction from existing tables; validates FKs via `sys.foreign_keys` |
+| `create_list_edit_form` | Generates editable-grid form for a lookup/reference transaction; auto-generates search view |
 
 #### `TransactionModifierPlugin` — Modify existing screens
-
 | Tool | Description |
 |------|-------------|
-| `update_transaction_field` | Change `displayName`, `controlType`, `entityId`, or `defaultValue` on a field |
-| `set_field_entity` | Link a field to an entity data source (makes it a dropdown) |
-| `delete_transaction` | Remove a transaction screen (does NOT drop the DB table) |
+| `update_transaction_field` | Changes `displayName`, `controlType`, `entityId`, or `defaultValue` on a field; always resolves by `fieldId` (not name, which is non-unique across a hierarchy) |
+| `set_field_entity` | Links a field to an entity data source (`ControlType=1` DDL); pass `null` to unlink |
+| `delete_transaction` | Removes a transaction screen (does NOT drop the DB table) |
 
-#### `SchemaBuilderPlugin` — Database schema
-
+#### `SchemaBuilderPlugin` — Raw schema tools
 | Tool | Description |
 |------|-------------|
-| `get_table_schema` | Get column definitions for a table |
-| `create_database_table` | Execute a `CREATE TABLE` SQL script |
+| `get_table_schema` | Column definitions for a specific table |
+| `create_database_table` | Executes a `CREATE TABLE` DDL script |
 
 #### `SchemaAlterPlugin` — Modify existing tables
-
 | Tool | Description |
 |------|-------------|
-| `alter_table` | Execute `ALTER TABLE ... ADD column` and sync the AppAI data model field in one call |
+| `alter_table` | Executes `ALTER TABLE … ADD column` and optionally syncs the AppAI transaction field in one call |
 
-#### `DataQueryPlugin` — Verify and inspect data
-
+#### `DataQueryPlugin` — Inspect and seed data
 | Tool | Description |
 |------|-------------|
-| `execute_sql` | Run a `SELECT` query (SELECT only — DDL/DML blocked) |
-| `check_table_exists` | Returns true/false for a given table name |
-| `insert_mockup_data` | Insert realistic demo/seed rows into a table |
+| `execute_sql` | Runs a `SELECT` query only (DDL/DML blocked at BL level) |
+| `check_table_exists` | Returns true/false for a given table name via `INFORMATION_SCHEMA.TABLES` |
+| `insert_mockup_data` | Inserts realistic demo rows; caller must supply INSERT SQL; executed statement by statement |
 
 #### `SearchBuilderPlugin` — Standalone report screens
-
 | Tool | Description |
 |------|-------------|
-| `create_search` | Create a Dataset (SQL) + SearchView (columns) + Search in one step |
-| `list_searches` | List all searches for a given application |
+| `create_search` | Creates Dataset (SQL query) + SearchView (auto-columns) + Search record in one step |
+| `list_searches` | Lists all searches for a given application |
 
 #### `MemorySearchPlugin` — RAG memory retrieval
-
 | Tool | Description |
 |------|-------------|
-| `search_memory(query)` | **RAG tool** — searches build history, platform state, and agent notes for sections matching the query keywords. Returns up to 5 matching sections, each capped at 1,000 chars. |
+| `search_memory` | Keyword search over build history, platform state, and agent notes; up to 5 matching sections, each ≤1,000 chars |
 
 ---
 
-## 4. The Memory — RAG-Based Cross-Session Context
+## 4. Memory — RAG-Based Cross-Session Context
 
 Memory is stored as plain markdown files under `{AppRoot}/memory/appbuilder/`.
 
@@ -211,319 +208,380 @@ memory/
 
 ### RAG Pattern — On-Demand Retrieval
 
-Memory is **not pre-loaded into the system prompt**. Instead, the agent calls `search_memory(query)` when it needs historical context. This avoids injecting 5,000–9,000 chars of memory overhead on every API call, regardless of relevance.
+Memory is **not pre-loaded into the system prompt**. The agent calls `search_memory(query)` when it needs historical context. This avoids injecting 5,000–9,000 chars of memory on every API call regardless of relevance.
 
 ```
 Agent starts:
   system prompt = static instructions only (~8,300 chars)
 
-Agent Step 1 (if building something similar to past work):
-  LLM → tool_use: search_memory("inventory management")
-  MemorySearchPlugin → AppBuilderAgentMemoryBL.SearchMemory("inventory management")
-    splits files by "---" sections
-    returns up to 5 matching sections (each ≤1,000 chars)
-  LLM receives: only the relevant history context
+Agent Step 1 (when building something with prior history):
+  LLM → tool_use: search_memory("inventory product stock")
+  MemorySearchPlugin → splits files by "---" sections, keyword-matches, returns ≤5 sections
+  LLM receives: only the relevant historical context
 ```
 
 ### Memory Lifecycle
 
 ```
 RunAgentAsync()
-  │
-  ├─ START: no memory load — agent calls search_memory() when needed
-  │
+  ├─ START: no memory load — agent calls search_memory() on demand
   └─ END:   AppBuilderAgentMemoryBL.RecordBuildSession()
-             → AppendBuildHistory()   (trim to last 5 entries)
-             → UpdatePlatformState()  (overwrite with latest snapshot)
+               → build-history.md  (appended; trimmed to last 5 entries)
+               → platform-state.md (overwritten with latest snapshot)
 ```
 
-### File-Level Size Guards
+Memory read failures are silently swallowed — never crash the agent.
 
-Each memory file section is capped when read to prevent unbounded growth:
+### File Size Guards
 
-| File | Cap |
-|------|-----|
-| `platform-state.md` | 3,000 chars (tail — most recent content kept) |
-| `build-history.md` | 4,000 chars (tail — most recent 5 sessions kept) |
-| `agent-notes.md` | 2,000 chars (tail — most recent notes kept) |
-
-Implemented via `AppBuilderAgentMemoryBL.TailChars()`, used by `LoadMemoryContext()` (still available for diagnostic use).
-
-### Key File
-
-| File | Role |
+| File | Cap (tail-truncated) |
 |------|------|
-| `AppBuilderAgentMemoryBL.cs` | Read, write, search markdown memory files |
+| `platform-state.md` | 3,000 chars |
+| `build-history.md` | 4,000 chars |
+| `agent-notes.md` | 2,000 chars |
 
 ---
 
 ## 5. Context Management — Token Budget
 
-Token explosion is prevented by four independent layers applied at different points in the loop.
+Four independent layers prevent token explosion at different points in the loop.
 
 ### Layer 1 — Conversation History Trim (at session seed)
 
-When a multi-turn conversation is resumed from the database, only the last **N turns** are included:
-
 ```
-default: MaxHistoryTurns = 4  →  max 8 messages pre-loaded
-override: web.config <add key="Agent.MaxHistoryTurns" value="4" />
+default: MaxHistoryTurns = 4  →  max 8 messages seeded
+config:  <add key="Agent.MaxHistoryTurns" value="4" />
 ```
 
 ### Layer 2 — Tool Result Cap (per tool invocation)
 
-Every tool result is capped before being added to the LLM message list:
-
 ```
 default: MaxToolResultChars = 10,000 chars
-override: web.config <add key="Agent.MaxToolResultChars" value="10000" />
+config:  <add key="Agent.MaxToolResultChars" value="10000" />
 
-Large results get a trailing note:
+Truncated results append:
 "[... 45231 chars truncated — ask me to fetch specific details if needed ...]"
 ```
 
-The UI callback still receives the full result (via the separate `Truncate(result, 600)` path) — only the LLM message is capped.
+The step event shown in the UI uses a separate 600-char truncation and is not affected.
 
 ### Layer 3 — Sliding-Window Message Pruner (per iteration, before LLM call)
 
-Before every LLM API call, the total estimated token count is checked:
-
 ```
-EstimateTokens = (systemPrompt.Length + all messages serialized) / 4
+EstimateTokens = (systemPrompt.Length + serialized messages) / 4
 
-If EstimateTokens > TokenBudget:
-  Drop oldest assistant + tool_result message pair
-  Repeat until under budget or fewer than 4 messages remain
+If over TokenBudget:
+  Drop oldest logical group (assistant message + its tool_result messages)
+  Repeat until under budget or only gate groups remain
   Always preserve messages[0] (original user request)
 
-default: TokenBudget = 120,000 tokens (~480,000 chars)
-override: web.config <add key="Agent.TokenBudget" value="120000" />
+default: TokenBudget = 120,000 tokens
+config:  <add key="Agent.TokenBudget" value="120000" />
 ```
+
+**Gate tool protection** — these four tool names are never evicted from the window:
+```csharp
+private static readonly string[] GateToolNames =
+{
+    "propose_schema",
+    "propose_plan",
+    "execute_approved_schema",
+    "confirm_drop_tables",
+};
+```
+If any message in a group references a gate tool name, the group is skipped by the pruner.
 
 ### Layer 4 — Memory RAG (replaces bulk system prompt injection)
 
-See §4. The system prompt is static (~8,300 chars). Memory is retrieved on demand via `search_memory`, returning only relevant sections.
+System prompt is static (~8,300 chars). Memory is fetched on demand via `search_memory`.
 
-### Combined Budget Example (worst case, defaults)
+### Token Budget Summary (worst case, defaults)
 
-| Source | Size | Notes |
-|--------|------|-------|
-| System prompt | ~2,075 tokens | Static, never grows |
-| Conversation history seed | ~1,000 tokens | 4 turns max |
-| Per iteration (tool results) | ≤2,500 tokens | 10,000 chars ÷ 4 |
-| Memory (search_memory call) | ≤1,250 tokens | 5 sections × 1,000 chars ÷ 4 |
-| **Sliding window triggers at** | **120,000 tokens** | Drops oldest pairs |
+| Source | Approximate Size |
+|--------|------|
+| System prompt | ~2,075 tokens (static) |
+| Seeded conversation history | ~1,000 tokens (4 turns max) |
+| Per-iteration tool results | ≤2,500 tokens (10,000 chars ÷ 4) |
+| Memory (`search_memory` call) | ≤1,250 tokens (5 sections × 1,000 chars ÷ 4) |
+| Sliding window triggers at | **120,000 tokens** |
 
 ---
 
-## 6. The Loop — Agentic Execution
+## 6. Agentic Loop
 
 ```
-iteration 0..39  (default max 40, configurable)
+iteration 0..39  (default max 40)
 │
-├─ PruneMessages(messages, systemPrompt)  ← context guard
-│
-├─ emit: agentStep { type: "thinking" }
+├─ PruneMessages()                 ← token budget guard
+├─ emit step { type: "thinking" }
 │
 ├─ call LLM API
-│   ├─ stop_reason = "end_turn" / "stop"  →  DONE (emit agentDone)
-│   └─ stop_reason = "tool_use"           →  CONTINUE
+│   ├─ stop_reason = "end_turn"/"stop"  →  set finalResponse, BREAK
+│   └─ stop_reason = "tool_use"         →  CONTINUE
 │
 ├─ foreach tool_call in response
-│   ├─ emit: agentStep { type: "tool_call", toolName, details (400 chars) }
-│   ├─ invoke tool via reflection
-│   ├─ emit: agentStep { type: "tool_result", toolName, details (600 chars) }
-│   ├─ CapToolResult(result)              ← LLM gets ≤10,000 chars
-│   └─ append capped result to messages
+│   ├─ emit step { type: "tool_call", toolName, input (400 chars) }
+│   ├─ InvokeToolAsync()           ← reflection dispatch
+│   ├─ ExtractCreatedItems()       ← harvest IDs/names for checkpoint
+│   ├─ emit step { type: "tool_result", toolName, result (600 chars) }
+│   ├─ CapToolResult()             ← LLM gets ≤10,000 chars
+│   └─ append to messages
 │
 └─ repeat
+
+On loop exit:
+  AppBuilderAgentMemoryBL.RecordBuildSession()
+  BuildCheckpoint(createdItems)   ← AgentCheckpointDto
+  AppBuilderAgentSessionBL.UpdateSession("Completed", checkpoint, ...)
+  emit OnDone { FinalResponse, CreatedTransactions, UpdatedHistory, Checkpoint }
+
+On unhandled exception:
+  UpdateSession("Failed")
+  emit OnError
 ```
 
-**Max iterations:** 40 (default) — configurable via `web.config`:
-```xml
-<add key="Agent.MaxIterations" value="40" />
-```
-
-**On LLM text content:** streamed immediately via `OnToken` callback.
+Config: `<add key="Agent.MaxIterations" value="40" />`
 
 ---
 
-## 7. Human-in-the-Loop Gates
+## 7. 8-Step Build Workflow (System Prompt)
 
-Two tools pause the agentic loop and wait for user input before proceeding:
+The system prompt (embedded constant, ~344 lines) instructs the LLM to follow this workflow for every new build:
 
-### `propose_plan` Gate (PlanConfirmPlugin)
+| Step | Tools Used |
+|------|-----------|
+| 1 — Explore | `explore_platform`, `search_platform`, `search_memory` |
+| 2 — Create App Package | `create_app_package` → obtain `SaasApplicationId` |
+| 3 — Create Entity Data Sources | `create_entity_simple_list` (fixed enumerations), `create_entity_from_table` (managed DB tables) |
+| 4a — Propose Schema | `propose_schema(requirements, appName)` → user approves/edits |
+| 4b — Execute Schema | `execute_approved_schema(saasApplicationId)` → DDL + transactions; process `LookupTables[]` |
+| 5 — Search Views | `create_search_view` for master-detail; `create_list_edit_form` + `create_search_view` for lookup tables |
+| 5b — Mockup Data | `insert_mockup_data` per table in FK-dependency order |
+| 6–8 — Search, Menu, Summary | `create_search`, `add_search_to_menu` / `add_transaction_to_menu`, final text report |
+
+**Key rules embedded in the prompt:**
+- `propose_plan` is required before `create_application` or `create_database_table` (not before `execute_approved_schema` — that has its own schema gate)
+- FK in child table → composition (master-detail hierarchy); FK in current table pointing outward → lookup (DDL dropdown)
+- Maximum 3-level hierarchy: master → child → grandchild
+- Always use `fieldId` over `fieldName` for modifications (`fieldName` is not unique across a hierarchy)
+- Delete workflow: `list_applications` → `propose_plan` → `confirm_drop_tables` → `delete_application`
+- Resume workflow: inspect checkpoint, skip completed steps, jump to first incomplete step
+
+---
+
+## 8. Human-in-the-Loop Gates
+
+Two tools pause the agentic loop and wait for user input via `TaskCompletionSource`.
+
+### `propose_plan` Gate
 
 ```
 Agent calls propose_plan(planSummary, tablesToCreate, screensToCreate)
   │
-  ├─ AppBuilderAgentSessionStore stores TaskCompletionSource<bool>
-  ├─ SignalR → agentPlan event → React shows plan dialog
+  ├─ SessionStore.RegisterPlanConfirmation(sessionId) → stores TCS<bool>
+  ├─ Enqueue AgentEventDto { EventType: "plan", Plan: AgentPlanEvent }
   │
+  │  React poll receives event → shows plan approval dialog
   │  [User clicks Approve or Reject]
+  │  React POST /webapi/AppBuilderAgent/ConfirmPlan { sessionId, confirmed }
   │
-  ├─ React POST /AppBuilderAgent/RespondToPlan { sessionId, confirmed }
-  ├─ Controller calls AppBuilderAgentSessionStore.RespondToPlan(sessionId, bool)
-  └─ TCS.SetResult(bool) → agentic loop resumes
+  ├─ Controller: SessionStore.ConfirmPlan(sessionId, confirmed)
+  └─ TCS.SetResult(bool) → loop resumes
        confirmed = true  → proceed with build
        confirmed = false → agent re-plans
 ```
 
-### `propose_schema` Gate (SchemaDesignerPlugin)
+### `propose_schema` Gate
 
 ```
 Agent calls propose_schema(requirements, appName)
   │
-  ├─ LLM generates schema JSON (tables, columns, FKs, relationships)
-  ├─ AppBuilderAgentSessionStore stores TaskCompletionSource<AgentSchemaResponse>
-  ├─ SignalR → agentSchema event → React shows schema designer UI
+  ├─ AppDbGenieBL.ExtractSchemaFromTextAsync()  ← second LLM call, structured output
+  ├─ SessionStore.RegisterSchemaConfirmation(sessionId) → stores TCS<AgentSchemaResponse>
+  ├─ Enqueue AgentEventDto { EventType: "schema", Schema: AgentSchemaEvent }
   │
-  │  [User reviews/edits schema, clicks Build or Reject]
+  │  React poll receives event → shows schema designer (editable tables/columns/FKs)
+  │  [User edits schema, clicks Build or Reject]
+  │  React POST /webapi/AppBuilderAgent/ConfirmSchema { sessionId, confirmed, schemaJson, feedback }
   │
-  ├─ React POST /AppBuilderAgent/RespondToSchema { sessionId, confirmed, schemaJson, feedback }
-  ├─ Controller calls AppBuilderAgentSessionStore.RespondToSchema(sessionId, response)
-  └─ TCS.SetResult(response) → agentic loop resumes
-       confirmed = true  → schemaJson stored on session; agent calls execute_approved_schema
+  ├─ Controller: SessionStore.ConfirmSchema(sessionId, AgentSchemaResponse)
+  └─ TCS.SetResult(response) → loop resumes
+       confirmed = true  → schemaJson stored on SchemaDesignerPlugin instance
+                           agent calls execute_approved_schema
        confirmed = false → agent adjusts and re-proposes
 ```
 
 ### Session Store
 
-`AppBuilderAgentSessionStore` is an in-memory `ConcurrentDictionary` keyed by `sessionId`. It holds the TCS gates and (after schema confirmation) the approved schema JSON so `execute_approved_schema` can retrieve it without the agent re-submitting it.
+`AppBuilderAgentSessionStore` (static, `ConcurrentDictionary`-backed):
+- `Sessions` — one `ConcurrentQueue<AgentEventDto>` per active session
+- `PendingConfirmations` — one `TCS<bool>` per plan gate
+- `PendingSchemaConfirmations` — one `TCS<AgentSchemaResponse>` per schema gate
+- Sessions older than 30 minutes are garbage-collected on `CreateSession()`; expired TCS gates are auto-resolved with `false` / `{ Confirmed = false }` on cleanup
 
 ---
 
-## 8. Real-Time Streaming — SignalR
+## 9. Transport — HTTP Polling
 
-The BL layer has **zero SignalR dependency**. It accepts `AgentCallbacks` (plain `Func<T, Task>` delegates). The Controller wires these delegates to SignalR at the web layer.
+The BL layer has **zero transport dependency**. It accepts `AgentCallbacks` (plain `Func<T, Task>` delegates). The Controller wires these to the session store event queue.
 
 ### AgentCallbacks
 
 ```csharp
 public class AgentCallbacks
 {
-    public Func<AgentStepEvent, Task>   OnStep;       // tool_call / tool_result / thinking
-    public Func<string, Task>           OnToken;      // streaming text chunks
-    public Func<AgentDoneEvent, Task>   OnDone;       // final response + created items
-    public Func<string, Task>           OnError;      // error message
-    public Func<AgentPlanEvent, Task>   OnPlanReady;  // propose_plan gate
-    public Func<AgentSchemaEvent, Task> OnSchemaReady;// propose_schema gate
+    public Func<AgentStepEvent, Task>                        OnStep;        // tool_call / tool_result / thinking
+    public Func<string, Task>                                OnToken;       // streaming text chunks
+    public Func<AgentDoneEvent, Task>                        OnDone;        // final response + created items
+    public Func<string, Task>                                OnError;       // error message
+    public Func<AgentPlanEvent, Task<bool>>                  OnPlanReady;   // propose_plan gate (blocking)
+    public Func<AgentSchemaEvent, Task<AgentSchemaResponse>> OnSchemaReady; // propose_schema gate (blocking)
 }
 ```
 
-### SignalR Events (server → client)
-
-| Event | Payload | When |
-|-------|---------|------|
-| `agentStep` | `AgentStepEvent` | Each thinking / tool_call / tool_result step |
-| `agentToken` | `string` | Each text chunk from LLM |
-| `agentDone` | `AgentDoneEvent` | Agent finished; includes created transaction IDs, updated history, checkpoint |
-| `agentError` | `string` | Unrecoverable error |
-| `agentPlan` | `AgentPlanEvent` | `propose_plan` gate — React shows approval dialog |
-| `agentSchema` | `AgentSchemaEvent` | `propose_schema` gate — React shows schema designer |
-
-### Request Flow
+### Polling Flow
 
 ```
 React UI
-  │ 1. GET /appBuilderAgentHub (SignalR connect)
-  │ 2. invoke GetConnectionId() → store connectionId
-  │ 3. POST /webapi/AppBuilderAgent/RunAgent { connectionId, userMessage, sessionId, ... }
-  ▼
-AppBuilderAgentController
-  │ 4. Build AgentCallbacks wired to hubContext.Clients.Client(connectionId)
-  │ 5. Task.Run → AppBuilderAgentBL.RunAgentAsync(request, callbacks)
-  │ 6. Return 202 Accepted immediately
-  ▼
-React UI receives real-time events via SignalR connection
+  │ 1. POST /webapi/AppBuilderAgent/RunAgent
+  │     { userMessage, dataSourceRegisterId, conversationHistory, ... }
+  │     ← 200 { SessionId, IsStarted }
+  │
+  │ 2. poll every ~500ms:
+  │     GET /webapi/AppBuilderAgent/PollEvents?sessionId=...
+  │     ← { Events: [...], SessionExists: true/false }
+  │
+  │    Each AgentEventDto.EventType: "step" | "token" | "done" | "error" | "plan" | "schema"
+  │
+  │ 3. On "plan" event:
+  │     Show approval dialog → POST /ConfirmPlan { sessionId, confirmed }
+  │
+  │ 4. On "schema" event:
+  │     Show schema designer → POST /ConfirmSchema { sessionId, confirmed, schemaJson }
+  │
+  └─ On "done" event: stop polling
 ```
 
-### Key Files
-
-| File | Role |
-|------|------|
-| `PlmApplication/Server/SignalR/AppBuilderAgentHub.cs` | Hub: `GetConnectionId()` |
-| `PlmApplication/Server/WebApi/AppBuilderAgentController.cs` | POST endpoint + callback wiring + gate response endpoints |
-| `PlmApplication/AppReact/src/webapi/appbuilderagentsvc.ts` | SignalR client + API calls |
-| `PlmApplication/AppReact/src/components/integration/AppBuilderAgent.tsx` | Chat UI component |
+**Note:** `AppBuilderAgentHub` (`AppAI.Web/Hubs/AppBuilderAgentHub.cs`) is registered but not used by the controller. It is a retained artifact from an earlier SignalR-push design.
 
 ---
 
-## 9. Data Flow — Full Example
+## 10. Session Persistence and Resume
+
+`AppBuilderAgentSessionBL` persists each run to `dbo.AppBuilderAgentSession` (auto-created on first use, no migration script required).
+
+### Table Schema
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `SessionGuid` | `NVARCHAR(50)` | PK, generated GUID |
+| `CreatedAt` / `UpdatedAt` | `DATETIME` | |
+| `UserRequest` | `NVARCHAR(2000)` | |
+| `Status` | `NVARCHAR(20)` | `InProgress` \| `Completed` \| `Failed` |
+| `CurrentStep` | `NVARCHAR(200)` | |
+| `CreatedById` | `INT` | User who started the run |
+| `CheckpointJson` | `NVARCHAR(MAX)` | Serialized `AgentCheckpointDto` |
+| `ConversationHistoryJson` | `NVARCHAR(MAX)` | Serialized `List<AppBuilderAgentMessageDto>` |
+| `FinalResponse` | `NVARCHAR(4000)` | |
+
+### AgentCheckpointDto
+
+Stored after each run; enables **resumable builds**:
+
+```
+SaasApplicationId     — ID of the created application package
+ApplicationName       — display name
+TablesCreated[]       — DB tables successfully created
+TransactionsCreated[] — platform transaction IDs and names
+EntitiesCreated[]     — entity data source IDs and names
+ApprovedSchemaJson    — schema approved but not yet executed (mid-run resume)
+IsComplete            — whether the run finished
+Timestamp
+```
+
+The system prompt's RESUME RULE tells the LLM to inspect the checkpoint and skip steps already complete.
+
+---
+
+## 11. Data Flow — Full Example
 
 > **User says:** "Build an inventory management app with products, categories, and stock movements."
 
 ```
-1. React POST /webapi/AppBuilderAgent/RunAgent
-   { connectionId, sessionId, userMessage: "Build inventory...", dataSourceId: 1 }
+1.  POST /RunAgent { userMessage: "Build inventory...", dataSourceRegisterId: 1 }
+    ← { SessionId: "abc-123", IsStarted: true }
 
-2. Agent starts:
-   a. System prompt = static instructions only (no memory pre-load)
-   b. Discovers 26 tools from 11 plugins (via reflection)
-   c. Trims ConversationHistory to last 4 turns
+2.  Agent starts:
+    a. Registers system agent identity for DB access
+    b. Discovers 31 tools from 12 plugins
+    c. Seeds ConversationHistory (empty for first run)
 
-3. Iteration 1 — Explore + memory check:
-   LLM → tool_use: explore_platform()
-   Result: compact JSON, Formatting.None (~3k chars) → CapToolResult passes through
-   LLM → tool_use: search_memory("inventory product stock")
-   Result: 2 matching sections from build-history.md (~800 chars)
+3.  Iter 1 — Explore:
+    explore_platform()           → compact overview of existing apps/tables
+    search_memory("inventory")   → 0 matches (nothing in history yet)
 
-4. Iteration 2 — Propose schema:
-   LLM → tool_use: propose_schema(requirements, appName)
-   SchemaDesignerPlugin → LLM generates schema JSON
-   SignalR → agentSchema event → React shows schema designer
-   [User edits columns, clicks Build]
-   Controller → RespondToSchema(confirmed=true, schemaJson=...)
-   TCS.SetResult → loop resumes
+4.  Iter 2 — Propose schema:
+    propose_schema("inventory app with...", "Inventory")
+      → ExtractSchemaFromTextAsync (second LLM call)
+      → Enqueue { EventType: "schema", Tables: [Category, Product, StockMovement] }
+    React shows schema designer → user edits columns → POST /ConfirmSchema
+    TCS resolved → loop resumes with approved schemaJson stored on plugin
 
-5. Iteration 3 — Create entity sources:
-   LLM → tool_use: create_entity_simple_list("Category Status", [...])
-   Result: { EntityId: 5, EntityCode: "CategoryStatus" }
+5.  Iter 3 — App package + entity sources:
+    create_app_package("Inventory Management") → { SaasApplicationId: 12 }
+    create_entity_simple_list("MovementType", "IN|OUT|ADJUST", 12)
 
-6. Iteration 4 — Execute schema:
-   LLM → tool_use: execute_approved_schema(saasApplicationId: 12, entityMapJson: {...})
-   SchemaDesignerPlugin → creates DB tables + master-detail transaction
-   Result: { TablesCreated: ["Category","Product","StockMovement"], TransactionId: 42, LookupTables: ["Category"] }
+6.  Iter 4 — Execute schema:
+    execute_approved_schema(saasApplicationId: 12)
+      → CreateHierarchyFromApprovedSchemaAsync
+      → tables: Category, Product, StockMovement
+      → master transaction: Inventory (Product master, StockMovement child)
+      → LookupTables: ["Category"]
 
-7. Iterations 5-7 — Lookup table screens + search views:
-   create_entity_from_table("Category", 12)
-   create_transaction_from_table + create_list_edit_form + create_search_view for Category
-   create_search_view(transactionId: 42)   ← master-detail screen
+7.  Iters 5-7 — Lookup screens and search views:
+    create_entity_from_table("Category", "Category", "dbo", "CategoryId", "CategoryName", 12)
+    create_transaction_from_table("Category", 12) + create_list_edit_form + create_search_view
+    create_search_view(transactionId: 42)         ← master Inventory screen
 
-8. Iterations 8-10 — Mockup data:
-   insert_mockup_data("Category", [...])
-   insert_mockup_data("Product", [...])
-   insert_mockup_data("StockMovement", [...])
+8.  Iters 8-10 — Mockup data (FK order: Category first, then Product, then StockMovement):
+    insert_mockup_data("Category", "INSERT INTO ...")
+    insert_mockup_data("Product",  "INSERT INTO ...")
+    insert_mockup_data("StockMovement", "INSERT INTO ...")
 
-9. Iteration 11 — Done:
-   LLM → stop_reason: "end_turn"
-   SignalR → agentToken "I have built your Inventory Management application..."
-   SignalR → agentDone { createdTransactions: [{42, "Inventory"}, ...], checkpoint: {...} }
+9.  Iter 11 — Menu:
+    create_search("Inventory Overview", "SELECT ...", 12) → { SearchId: 7 }
+    add_search_to_menu(7, "Inventory")
+    add_transaction_to_menu("Category", "Inventory")
 
-10. Memory updated:
-    build-history.md ← appended new session entry
-    platform-state.md ← updated with new tables/transactions
+10. Iter 12 — Done:
+    LLM stop_reason: "end_turn"
+    Enqueue { EventType: "token", Token: "I have built your Inventory Management app..." }
+    Enqueue { EventType: "done", Done: { CreatedTransactions: [{42, "Inventory"}], ... } }
+
+11. Memory updated:
+    build-history.md ← new session entry appended
+    platform-state.md ← updated with Category, Product, StockMovement tables
 ```
 
 ---
 
-## 10. File Structure
+## 12. File Structure
 
 ```
 APP.BL/AppBuilderAgent/
 ├── ARCHITECTURE.md                       ← this file
 ├── AgentFunctionAttribute.cs             ← [AgentFunction] / [AgentParam] attributes
-├── AppBuilderAgentBL.cs                  ← core orchestrator (loop, LLM calls, context management)
-├── AppBuilderAgentMemoryBL.cs            ← markdown memory read / write / RAG search
-├── AppBuilderAgentSessionStore.cs        ← in-memory TCS gates for propose_plan / propose_schema
-├── AppBuilderAgentSessionBL.cs           ← persist session state to database
+├── AppBuilderAgentBL.cs                  ← core orchestrator: loop, LLM calls, context management
+├── AppBuilderAgentMemoryBL.cs            ← markdown memory: read / write / RAG search
+├── AppBuilderAgentSessionBL.cs           ← persist session to dbo.AppBuilderAgentSession
+├── AppBuilderAgentSessionStore.cs        ← in-memory event queues + TCS gates (polling transport)
 └── Plugins/
-    ├── PlatformExplorerPlugin.cs         ← explore_platform, search_platform, list_applications, get_*
     ├── PlanConfirmPlugin.cs              ← propose_plan, confirm_drop_tables
     ├── SchemaDesignerPlugin.cs           ← propose_schema, execute_approved_schema
-    ├── ApplicationManagerPlugin.cs       ← create_app_package, delete_application
-    ├── EntityDataSourcePlugin.cs         ← create_entity_simple_list, create_entity_from_table
-    ├── TransactionBuilderPlugin.cs       ← create_application, create_search_view, create_transaction_from_table, create_hierarchy_from_tables, create_list_edit_form, add_search_to_menu
+    ├── ApplicationManagerPlugin.cs       ← create_app_package, delete_application, add_*_to_menu
+    ├── PlatformExplorerPlugin.cs         ← explore_platform, search_platform, list_applications, get_*
+    ├── EntityDataSourcePlugin.cs         ← list_entity_data_sources, create_entity_*
+    ├── TransactionBuilderPlugin.cs       ← create_application, create_search_view, create_*_from_*, create_list_edit_form
     ├── TransactionModifierPlugin.cs      ← update_transaction_field, set_field_entity, delete_transaction
     ├── SchemaBuilderPlugin.cs            ← get_table_schema, create_database_table
     ├── SchemaAlterPlugin.cs              ← alter_table
@@ -532,18 +590,22 @@ APP.BL/AppBuilderAgent/
     └── MemorySearchPlugin.cs             ← search_memory (RAG over build history / notes)
 
 APP.Components.Dto/UserDefine/AppBuilderAgent/
-└── AppBuilderAgentDto.cs                 ← all request/response/event DTOs + AgentCallbacks
+└── AppBuilderAgentDto.cs                 ← all request / response / event DTOs + AgentCallbacks
 
-PlmApplication/Server/
-├── SignalR/AppBuilderAgentHub.cs         ← SignalR hub (GetConnectionId)
-└── WebApi/AppBuilderAgentController.cs  ← RunAgent + RespondToPlan + RespondToSchema
+AppAI.Web/Controllers/
+└── AppBuilderAgentController.cs          ← RunAgent, PollEvents, ConfirmPlan, ConfirmSchema,
+                                             RecentSessions, GetSession, DeleteSession
 
-PlmApplication/AppReact/src/
-├── webapi/appbuilderagentsvc.ts          ← SignalR client + API service
-└── components/integration/
-    └── AppBuilderAgent.tsx               ← chat UI component
+AppAI.Web/Hubs/
+└── AppBuilderAgentHub.cs                 ← SignalR hub (GetConnectionId only; not used by controller)
 
-memory/appbuilder/                        ← runtime, not in source control
+AppReact/src/webapi/
+└── appbuilderagentsvc.ts                 ← polling client + RunAgent / ConfirmPlan / ConfirmSchema calls
+
+AppReact/src/components/integration/
+└── AppBuilderAgent.tsx                   ← chat UI component
+
+memory/appbuilder/                        ← runtime files, not in source control
 ├── platform-state.md
 ├── build-history.md
 └── agent-notes.md
@@ -551,19 +613,22 @@ memory/appbuilder/                        ← runtime, not in source control
 
 ---
 
-## 11. Key Design Decisions
+## 13. Key Design Decisions
 
 | Decision | Rationale |
 |----------|-----------|
-| **No Microsoft.SemanticKernel** | SK 1.70+ requires Azure.AI.OpenAI ≥ 2.8.0-beta, incompatible with .NET 4.6.2. Custom `[AgentFunction]` attributes + `System.Reflection` achieve the same plugin pattern with zero external dependencies. |
-| **AgentCallbacks delegates** | Keeps BL infrastructure-free. SignalR stays in the web layer. BL is testable without a running SignalR hub. |
-| **Fire-and-forget Task.Run** | Agent runs take 30–180 seconds. Controller returns HTTP 202 immediately; progress streams via SignalR. |
-| **Raw HttpClient** | Direct HTTP calls to Anthropic/OpenAI/Gemini APIs. No SDK dependency. Provider-specific parsing in separate `CallXxxWithToolsAsync` methods. |
-| **RAG memory (search_memory)** | Memory is not pre-loaded into the system prompt. The agent calls `search_memory(query)` on demand. Saves ~2,000–2,500 tokens per API call on sessions where history is irrelevant. |
-| **search_platform tool** | Filtered platform lookup instead of dumping all 200 tables every time. Agent calls `explore_platform` for the index, then `search_platform("Foo")` to find a specific item. |
-| **Tool result cap (10,000 chars)** | Prevents a single large tool result (schema dumps, entity lists) from consuming 50–200k chars in one shot. Model receives a truncation notice and can request specific details. |
-| **Sliding-window pruner (120k token budget)** | Drops oldest assistant+tool_result pairs when the context grows too large. Preserves the original user request (messages[0]) so the model never forgets the task. |
-| **Conversation history trim (4 turns)** | On multi-turn sessions loaded from DB, limits pre-seeded history to avoid blowing the budget before the first tool call. |
-| **Two TCS gate patterns** | `propose_plan` uses `TCS<bool>` (approved/rejected). `propose_schema` uses `TCS<AgentSchemaResponse>` (includes edited schema JSON + feedback). Both gates suspend the agentic loop without blocking a thread pool thread. |
-| **SELECT-only guard in execute_sql** | Prevents the agent from running destructive SQL through the verification tool. All DDL goes through dedicated tools (`create_database_table`, `alter_table`, `execute_approved_schema`). |
-| **Configurable limits via web.config** | `Agent.MaxIterations`, `Agent.TokenBudget`, `Agent.MaxToolResultChars`, `Agent.MaxHistoryTurns` — all tunable without recompile. |
+| **No Microsoft.SemanticKernel** | SK 1.70+ requires Azure.AI.OpenAI ≥ 2.8.0-beta, incompatible with .NET 4.6.2. `[AgentFunction]` + `System.Reflection` achieve the same plugin pattern with zero external dependencies. |
+| **HTTP polling over SignalR push** | Polling (`ConcurrentQueue` + `GET /PollEvents`) works across all deployment environments without WebSocket config. SignalR hub exists but is not used by the current controller. |
+| **AgentCallbacks delegates** | Keeps BL infrastructure-free. Transport (queue vs SignalR) stays in the web layer. BL is testable without a running HTTP server. |
+| **Fire-and-forget `Task.Run`** | Agent runs take 30–180 seconds. Controller returns immediately with `SessionId`; client drives progress via polling. |
+| **Raw `HttpClient`** | Direct HTTP to all three LLM APIs. No SDK dependency. Provider-specific parsing in three separate `CallXxxWithToolsAsync` methods. |
+| **RAG memory (`search_memory`)** | Memory not pre-loaded into system prompt. Agent fetches on demand. Saves ~2,000–2,500 tokens per call on sessions where history is irrelevant. |
+| **Gate tool pruner protection** | `propose_plan`, `propose_schema`, `execute_approved_schema`, `confirm_drop_tables` messages are never evicted from the sliding window. Evicting them would cause the LLM to re-invoke approval dialogs. |
+| **Tool result cap (10,000 chars)** | Prevents a single large result (schema dump, entity list) from consuming the entire context. LLM receives a truncation notice and can request specific details. |
+| **Sliding-window pruner (120k token budget)** | Drops oldest non-gate turn pairs when context grows too large. `messages[0]` (original user request) always preserved. |
+| **Conversation history trim (4 turns)** | On multi-turn sessions resumed from DB, limits pre-seeded history to avoid blowing the budget before the first tool call. |
+| **Two TCS gate patterns** | `propose_plan` uses `TCS<bool>` (approved/rejected). `propose_schema` uses `TCS<AgentSchemaResponse>` (includes user-edited schema JSON + feedback). Both gates suspend the agentic loop without blocking a thread-pool thread. |
+| **`SELECT`-only guard in `execute_sql`** | Prevents the agent from running destructive SQL through the verification tool. All DDL goes through `create_database_table`, `alter_table`, or `execute_approved_schema`. |
+| **Configurable limits via `web.config`** | `Agent.MaxIterations`, `Agent.TokenBudget`, `Agent.MaxToolResultChars`, `Agent.MaxHistoryTurns` — all tunable without recompile. |
+| **Resumable checkpoint** | `AgentCheckpointDto` persisted to DB after every run. System prompt's RESUME RULE lets the LLM skip already-completed steps when the user re-submits after an interruption. |
+| **Auto-create session table** | `dbo.AppBuilderAgentSession` is created by `AppBuilderAgentSessionBL.EnsureTable()` on first use — no migration script required. |

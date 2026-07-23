@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using Microsoft.AspNetCore.Mvc;
 using App.BL;
 using App.BL.AppBuilderAgent;
@@ -124,6 +126,62 @@ public class AppBuilderAgentController : SecureBaseController
     public AgentPollResponseDto PollEvents(string sessionId)
     {
         return AppBuilderAgentSessionStore.DequeueAll(sessionId);
+    }
+
+    /// <summary>
+    /// Server-Sent Events endpoint — preferred over PollEvents.
+    /// Keeps the connection open and pushes events as they arrive.
+    /// Each SSE message: "event: {type}\ndata: {json}\n\n"
+    /// A ": keepalive" comment is sent every 30 s to maintain the connection.
+    /// React client: new EventSource('/webapi/AppBuilderAgent/StreamEvents?sessionId=...')
+    /// </summary>
+    [HttpGet]
+    public async Task StreamEvents(string sessionId, CancellationToken cancellationToken)
+    {
+        Response.ContentType = "text/event-stream";
+        Response.Headers["Cache-Control"]      = "no-cache";
+        Response.Headers["X-Accel-Buffering"]  = "no"; // disable nginx/IIS buffering
+        Response.Headers["Connection"]         = "keep-alive";
+        await Response.Body.FlushAsync(cancellationToken);
+
+        bool done = false;
+        while (!done && !cancellationToken.IsCancellationRequested)
+        {
+            // Block efficiently until an event arrives or 30 s timeout (keepalive interval)
+            await AppBuilderAgentSessionStore.WaitForEventAsync(
+                sessionId, TimeSpan.FromSeconds(30), cancellationToken);
+
+            if (cancellationToken.IsCancellationRequested) break;
+
+            var poll = AppBuilderAgentSessionStore.DequeueAll(sessionId);
+
+            if (!poll.SessionExists)
+            {
+                var errMsg = Encoding.UTF8.GetBytes("event: error\ndata: {\"error\":\"Session not found\"}\n\n");
+                await Response.Body.WriteAsync(errMsg, 0, errMsg.Length, cancellationToken);
+                await Response.Body.FlushAsync(cancellationToken);
+                break;
+            }
+
+            foreach (var evt in poll.Events)
+            {
+                var data  = JsonConvert.SerializeObject(evt);
+                var bytes = Encoding.UTF8.GetBytes($"event: {evt.EventType}\ndata: {data}\n\n");
+                await Response.Body.WriteAsync(bytes, 0, bytes.Length, cancellationToken);
+                await Response.Body.FlushAsync(cancellationToken);
+
+                if (evt.EventType == "done" || evt.EventType == "error")
+                    done = true;
+            }
+
+            // If the wait timed out with no events, send a keepalive comment
+            if (!done && poll.Events.Count == 0)
+            {
+                var ka = Encoding.UTF8.GetBytes(": keepalive\n\n");
+                await Response.Body.WriteAsync(ka, 0, ka.Length, cancellationToken);
+                await Response.Body.FlushAsync(cancellationToken);
+            }
+        }
     }
 
     [HttpPost]

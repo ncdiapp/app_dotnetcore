@@ -102,37 +102,54 @@ namespace App.BL.AppBuilderAgent
         // ─────────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Searches all memory files for sections containing the query keywords.
-        /// Returns up to <paramref name="maxSections"/> matching sections so the
-        /// agent retrieves only the context it needs rather than the full memory dump.
+        /// Searches all memory files for sections relevant to the query using TF-IDF-style scoring.
+        /// Ranks sections by: keyword coverage × term frequency, normalised by section length.
+        /// Returns the top <paramref name="maxSections"/> sections so the agent gets the most
+        /// relevant context rather than just the first-found keyword match.
         /// </summary>
         public static string SearchMemory(string query, int maxSections = 5)
         {
             if (string.IsNullOrWhiteSpace(query))
                 return "No query provided.";
 
-            var keywords = query.Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries);
-            var results  = new System.Text.StringBuilder();
-            int found    = 0;
+            // Tokenise: split on whitespace and common delimiters; drop single-char stop tokens.
+            var keywords = query
+                .Split(new[] { ' ', ',', ';', '_', '-', '.' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(k => k.ToLowerInvariant())
+                .Where(k => k.Length > 2)
+                .Distinct()
+                .ToArray();
+
+            if (keywords.Length == 0)
+                return $"No meaningful keywords in query: {query}";
+
+            var scored = new List<(float Score, string Label, string Text)>();
 
             void SearchFile(string path, string label)
             {
                 if (!File.Exists(path)) return;
-                var text     = ReadFile(path, "");
-                var sections = text.Split(new[] { "\n---\n", "---\n" }, StringSplitOptions.RemoveEmptyEntries);
+                var sections = ReadFile(path, "")
+                    .Split(new[] { "\n---\n", "---\n" }, StringSplitOptions.RemoveEmptyEntries);
+
                 foreach (var section in sections)
                 {
-                    if (found >= maxSections) break;
-                    bool matches = keywords.Any(k =>
-                        section.IndexOf(k, StringComparison.OrdinalIgnoreCase) >= 0);
-                    if (matches)
+                    var lower        = section.ToLowerInvariant();
+                    int totalMatches = 0;
+                    int uniqueHits   = 0;
+
+                    foreach (var kw in keywords)
                     {
-                        results.AppendLine($"[{label}]");
-                        // Return up to 1000 chars per matching section
-                        results.AppendLine(section.Length > 1000 ? section.Substring(0, 1000) + "…" : section);
-                        results.AppendLine();
-                        found++;
+                        int count = CountOccurrences(lower, kw);
+                        if (count > 0) { totalMatches += count; uniqueHits++; }
                     }
+
+                    if (uniqueHits == 0) continue;
+
+                    // coverage: fraction of query keywords found in this section (0–1)
+                    // tf:       average hits per 100 chars (rewards dense, focused sections)
+                    float coverage = (float)uniqueHits / keywords.Length;
+                    float tf       = (float)totalMatches / Math.Max(1, section.Length / 100f);
+                    scored.Add((coverage * 2f + tf, label, section));
                 }
             }
 
@@ -140,9 +157,29 @@ namespace App.BL.AppBuilderAgent
             SearchFile(BuildHistoryFile,  "Build History");
             SearchFile(AgentNotesFile,    "Agent Notes");
 
-            return found == 0
-                ? $"No memory entries found matching: {query}"
-                : results.ToString().Trim();
+            if (scored.Count == 0)
+                return $"No memory entries found matching: {query}";
+
+            var sb = new StringBuilder();
+            foreach (var (_, label, text) in scored.OrderByDescending(s => s.Score).Take(maxSections))
+            {
+                sb.AppendLine($"[{label}]");
+                sb.AppendLine(text.Length > 1000 ? text.Substring(0, 1000) + "…" : text);
+                sb.AppendLine();
+            }
+
+            return sb.ToString().Trim();
+        }
+
+        private static int CountOccurrences(string haystack, string needle)
+        {
+            int count = 0, idx = 0;
+            while ((idx = haystack.IndexOf(needle, idx, StringComparison.Ordinal)) >= 0)
+            {
+                count++;
+                idx += needle.Length;
+            }
+            return count;
         }
 
         // ─────────────────────────────────────────────────────────────────────

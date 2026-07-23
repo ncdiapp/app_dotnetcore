@@ -53,6 +53,13 @@ namespace App.BL.AppBuilderAgent
         // Internal descriptor built from reflection
         // ─────────────────────────────────────────────────────────────────────
 
+        // Single shared client — avoids socket exhaustion from creating one client per LLM call.
+        // Per-request auth headers are set on HttpRequestMessage, not DefaultRequestHeaders.
+        private static readonly HttpClient _httpClient = new HttpClient
+        {
+            Timeout = TimeSpan.FromMinutes(10)
+        };
+
         private class ToolDescriptor
         {
             public string       Name        { get; set; }
@@ -505,43 +512,52 @@ Only call search_memory when you need historical context — skip it for entirel
                     if (llmResponse.ToolCalls?.Any() == true)
                     {
                         messages.Add((JObject)llmResponse.AssistantMessageRaw);
-                        var toolResults = new List<object>();
 
-                        foreach (var toolCall in llmResponse.ToolCalls)
+                        // Run independent tool calls concurrently; results collected in LLM call order.
+                        var toolTasks = llmResponse.ToolCalls.Select(async toolCall =>
                         {
                             await SafeCallback(callbacks.OnStep, new AgentStepEvent
                             {
-                                Type = "tool_call",
-                                ToolName = toolCall.Name,
+                                Type        = "tool_call",
+                                ToolName    = toolCall.Name,
                                 Description = FriendlyLabel(toolCall.Name),
-                                Details = Truncate(toolCall.InputJson, 400),
-                                IsSuccess = true
+                                Details     = Truncate(toolCall.InputJson, 400),
+                                IsSuccess   = true
                             });
 
                             string toolResult;
-                            bool success = true;
+                            bool   success = true;
                             try
                             {
                                 toolResult = await InvokeToolAsync(tools, toolCall);
-                                ExtractCreatedItems(toolCall.Name, toolResult, createdItems);
                             }
                             catch (Exception ex)
                             {
                                 toolResult = JsonConvert.SerializeObject(new { Error = ex.Message });
-                                success = false;
+                                success    = false;
                             }
 
                             await SafeCallback(callbacks.OnStep, new AgentStepEvent
                             {
-                                Type = "tool_result",
-                                ToolName = toolCall.Name,
+                                Type        = "tool_result",
+                                ToolName    = toolCall.Name,
                                 Description = success ? FriendlyLabel(toolCall.Name) + " — done"
                                                       : toolCall.Name + " failed",
-                                Details = Truncate(toolResult, 600),
+                                Details   = Truncate(toolResult, 600),
                                 IsSuccess = success
                             });
 
-                            // Cap tool result size before sending to the LLM to prevent token explosion.
+                            return (toolCall, toolResult, success);
+                        }).ToArray();
+
+                        var outputs     = await Task.WhenAll(toolTasks);
+                        var toolResults = new List<object>();
+
+                        foreach (var (toolCall, toolResult, success) in outputs)
+                        {
+                            // ExtractCreatedItems runs single-threaded here (after WhenAll)
+                            ExtractCreatedItems(toolCall.Name, toolResult, createdItems);
+
                             var cappedResult = CapToolResult(toolResult);
 
                             if (provider == EmLLMProvider.Anthropic)
@@ -830,60 +846,56 @@ Only call search_memory when you need historical context — skip it for entirel
             var apiKey = LLMProviderHelper.GetConfiguredApiKey();
             var model  = LLMProviderHelper.AnthropicDefaultModel;
 
-            using (var http = new HttpClient())
+            var body = new JObject
             {
-                http.DefaultRequestHeaders.Add("x-api-key", apiKey);
-                http.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
-                http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                http.Timeout = TimeSpan.FromMinutes(10);
+                ["model"]      = model,
+                ["max_tokens"] = 8192,
+                ["system"]     = systemPrompt,
+                ["messages"]   = JArray.FromObject(messages),
+                ["tools"]      = JArray.FromObject(tools)
+            };
 
-                var body = new JObject
-                {
-                    ["model"]      = model,
-                    ["max_tokens"] = 8192,
-                    ["system"]     = systemPrompt,
-                    ["messages"]   = JArray.FromObject(messages),
-                    ["tools"]      = JArray.FromObject(tools)
-                };
+            var req = new HttpRequestMessage(HttpMethod.Post, "https://api.anthropic.com/v1/messages");
+            req.Headers.Add("x-api-key", apiKey);
+            req.Headers.Add("anthropic-version", "2023-06-01");
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            req.Content = new StringContent(body.ToString(), Encoding.UTF8, "application/json");
 
-                var resp = await http.PostAsync("https://api.anthropic.com/v1/messages",
-                    new StringContent(body.ToString(), Encoding.UTF8, "application/json"))
-                    .ConfigureAwait(false);
-                var raw = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            var resp = await _httpClient.SendAsync(req).ConfigureAwait(false);
+            var raw  = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-                if (!resp.IsSuccessStatusCode)
-                    return new AgentLLMResponseDto { IsSuccess = false, Error = $"Anthropic: {raw}" };
+            if (!resp.IsSuccessStatusCode)
+                return new AgentLLMResponseDto { IsSuccess = false, Error = $"Anthropic: {raw}" };
 
-                var json       = JObject.Parse(raw);
-                var stopReason = json["stop_reason"]?.ToString() ?? "end_turn";
-                var contentArr = json["content"] as JArray ?? new JArray();
+            var json       = JObject.Parse(raw);
+            var stopReason = json["stop_reason"]?.ToString() ?? "end_turn";
+            var contentArr = json["content"] as JArray ?? new JArray();
 
-                var textParts = new List<string>();
-                var toolCalls = new List<AgentToolCallDto>();
+            var textParts = new List<string>();
+            var toolCalls = new List<AgentToolCallDto>();
 
-                foreach (var item in contentArr)
-                {
-                    var itype = item["type"]?.ToString();
-                    if (itype == "text")
-                        textParts.Add(item["text"]?.ToString() ?? "");
-                    else if (itype == "tool_use")
-                        toolCalls.Add(new AgentToolCallDto
-                        {
-                            Id        = item["id"]?.ToString(),
-                            Name      = item["name"]?.ToString(),
-                            InputJson = item["input"]?.ToString(Formatting.None) ?? "{}"
-                        });
-                }
-
-                return new AgentLLMResponseDto
-                {
-                    IsSuccess           = true,
-                    StopReason          = stopReason,
-                    TextContent         = string.Join("\n", textParts),
-                    ToolCalls           = toolCalls,
-                    AssistantMessageRaw = JObject.FromObject(new { role = "assistant", content = contentArr })
-                };
+            foreach (var item in contentArr)
+            {
+                var itype = item["type"]?.ToString();
+                if (itype == "text")
+                    textParts.Add(item["text"]?.ToString() ?? "");
+                else if (itype == "tool_use")
+                    toolCalls.Add(new AgentToolCallDto
+                    {
+                        Id        = item["id"]?.ToString(),
+                        Name      = item["name"]?.ToString(),
+                        InputJson = item["input"]?.ToString(Formatting.None) ?? "{}"
+                    });
             }
+
+            return new AgentLLMResponseDto
+            {
+                IsSuccess           = true,
+                StopReason          = stopReason,
+                TextContent         = string.Join("\n", textParts),
+                ToolCalls           = toolCalls,
+                AssistantMessageRaw = JObject.FromObject(new { role = "assistant", content = contentArr })
+            };
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -896,62 +908,57 @@ Only call search_memory when you need historical context — skip it for entirel
             var apiKey = LLMProviderHelper.GetConfiguredApiKey();
             var model  = LLMProviderHelper.OpenAIDefaultModel;
 
-            using (var http = new HttpClient())
+            var allMsgs = new JArray(
+                JObject.FromObject(new { role = "system", content = systemPrompt }));
+            foreach (var m in messages) allMsgs.Add(m);
+
+            var body = new JObject
             {
-                http.DefaultRequestHeaders.Authorization =
-                    new AuthenticationHeaderValue("Bearer", apiKey);
-                http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                http.Timeout = TimeSpan.FromMinutes(10);
+                ["model"]       = model,
+                ["messages"]    = allMsgs,
+                ["tools"]       = JArray.FromObject(tools),
+                ["tool_choice"] = "auto",
+                ["max_tokens"]  = 8192
+            };
 
-                var allMsgs = new JArray(
-                    JObject.FromObject(new { role = "system", content = systemPrompt }));
-                foreach (var m in messages) allMsgs.Add(m);
+            var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/chat/completions");
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            req.Content = new StringContent(body.ToString(), Encoding.UTF8, "application/json");
 
-                var body = new JObject
-                {
-                    ["model"]       = model,
-                    ["messages"]    = allMsgs,
-                    ["tools"]       = JArray.FromObject(tools),
-                    ["tool_choice"] = "auto",
-                    ["max_tokens"]  = 8192
-                };
+            var resp = await _httpClient.SendAsync(req).ConfigureAwait(false);
+            var raw  = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-                var resp = await http.PostAsync("https://api.openai.com/v1/chat/completions",
-                    new StringContent(body.ToString(), Encoding.UTF8, "application/json"))
-                    .ConfigureAwait(false);
-                var raw = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            if (!resp.IsSuccessStatusCode)
+                return new AgentLLMResponseDto { IsSuccess = false, Error = $"OpenAI: {raw}" };
 
-                if (!resp.IsSuccessStatusCode)
-                    return new AgentLLMResponseDto { IsSuccess = false, Error = $"OpenAI: {raw}" };
+            var json         = JObject.Parse(raw);
+            var choice       = json["choices"]?[0];
+            var finishReason = choice?["finish_reason"]?.ToString() ?? "stop";
+            var message      = choice?["message"] as JObject ?? new JObject();
+            var textContent  = message["content"]?.ToString();
+            var toolCallsJ   = message["tool_calls"] as JArray;
 
-                var json        = JObject.Parse(raw);
-                var choice      = json["choices"]?[0];
-                var finishReason = choice?["finish_reason"]?.ToString() ?? "stop";
-                var message     = choice?["message"] as JObject ?? new JObject();
-                var textContent = message["content"]?.ToString();
-                var toolCallsJ  = message["tool_calls"] as JArray;
+            var toolCalls = new List<AgentToolCallDto>();
+            if (toolCallsJ != null)
+                foreach (var tc in toolCallsJ)
+                    toolCalls.Add(new AgentToolCallDto
+                    {
+                        Id        = tc["id"]?.ToString(),
+                        Name      = tc["function"]?["name"]?.ToString(),
+                        InputJson = tc["function"]?["arguments"]?.ToString() ?? "{}"
+                    });
 
-                var toolCalls = new List<AgentToolCallDto>();
-                if (toolCallsJ != null)
-                    foreach (var tc in toolCallsJ)
-                        toolCalls.Add(new AgentToolCallDto
-                        {
-                            Id        = tc["id"]?.ToString(),
-                            Name      = tc["function"]?["name"]?.ToString(),
-                            InputJson = tc["function"]?["arguments"]?.ToString() ?? "{}"
-                        });
+            message["role"] = "assistant";
 
-                message["role"] = "assistant";
-
-                return new AgentLLMResponseDto
-                {
-                    IsSuccess           = true,
-                    StopReason          = finishReason == "tool_calls" ? "tool_use" : "end_turn",
-                    TextContent         = textContent,
-                    ToolCalls           = toolCalls,
-                    AssistantMessageRaw = message
-                };
-            }
+            return new AgentLLMResponseDto
+            {
+                IsSuccess           = true,
+                StopReason          = finishReason == "tool_calls" ? "tool_use" : "end_turn",
+                TextContent         = textContent,
+                ToolCalls           = toolCalls,
+                AssistantMessageRaw = message
+            };
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -965,61 +972,57 @@ Only call search_memory when you need historical context — skip it for entirel
             var model  = LLMProviderHelper.GeminiDefaultModel;
             var url    = $"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={apiKey}";
 
-            using (var http = new HttpClient())
+            var body = new JObject
             {
-                http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-                http.Timeout = TimeSpan.FromMinutes(10);
+                ["systemInstruction"] = JObject.FromObject(new { parts = new[] { new { text = systemPrompt } } }),
+                ["contents"]          = JArray.FromObject(messages),
+                ["tools"]             = JArray.FromObject(tools)
+            };
 
-                var body = new JObject
-                {
-                    ["systemInstruction"] = JObject.FromObject(new { parts = new[] { new { text = systemPrompt } } }),
-                    ["contents"]          = JArray.FromObject(messages),
-                    ["tools"]             = JArray.FromObject(tools)
-                };
+            var req = new HttpRequestMessage(HttpMethod.Post, url);
+            req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            req.Content = new StringContent(body.ToString(), Encoding.UTF8, "application/json");
 
-                var resp = await http.PostAsync(url,
-                    new StringContent(body.ToString(), Encoding.UTF8, "application/json"))
-                    .ConfigureAwait(false);
-                var raw = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
+            var resp = await _httpClient.SendAsync(req).ConfigureAwait(false);
+            var raw  = await resp.Content.ReadAsStringAsync().ConfigureAwait(false);
 
-                if (!resp.IsSuccessStatusCode)
-                    return new AgentLLMResponseDto { IsSuccess = false, Error = $"Gemini: {raw}" };
+            if (!resp.IsSuccessStatusCode)
+                return new AgentLLMResponseDto { IsSuccess = false, Error = $"Gemini: {raw}" };
 
-                var json      = JObject.Parse(raw);
-                var candidate = json["candidates"]?[0];
-                var content   = candidate?["content"] as JObject ?? new JObject();
-                var parts     = content["parts"] as JArray ?? new JArray();
+            var json      = JObject.Parse(raw);
+            var candidate = json["candidates"]?[0];
+            var content   = candidate?["content"] as JObject ?? new JObject();
+            var parts     = content["parts"] as JArray ?? new JArray();
 
-                var textParts = new List<string>();
-                var toolCalls = new List<AgentToolCallDto>();
+            var textParts = new List<string>();
+            var toolCalls = new List<AgentToolCallDto>();
 
-                foreach (var part in parts)
-                {
-                    var text = part["text"]?.ToString();
-                    if (!string.IsNullOrEmpty(text)) textParts.Add(text);
+            foreach (var part in parts)
+            {
+                var text = part["text"]?.ToString();
+                if (!string.IsNullOrEmpty(text)) textParts.Add(text);
 
-                    var fc = part["functionCall"] as JObject;
-                    if (fc != null)
-                        toolCalls.Add(new AgentToolCallDto
-                        {
-                            Id        = fc["name"]?.ToString(), // Gemini has no call ID; use name
-                            Name      = fc["name"]?.ToString(),
-                            InputJson = fc["args"]?.ToString(Formatting.None) ?? "{}"
-                        });
-                }
-
-                // Gemini signals "done" by returning text with no function calls
-                var stopReason = toolCalls.Count > 0 ? "tool_use" : "end_turn";
-
-                return new AgentLLMResponseDto
-                {
-                    IsSuccess           = true,
-                    StopReason          = stopReason,
-                    TextContent         = string.Join("\n", textParts),
-                    ToolCalls           = toolCalls,
-                    AssistantMessageRaw = content  // { role: "model", parts: [...] }
-                };
+                var fc = part["functionCall"] as JObject;
+                if (fc != null)
+                    toolCalls.Add(new AgentToolCallDto
+                    {
+                        Id        = fc["name"]?.ToString(), // Gemini has no call ID; use name
+                        Name      = fc["name"]?.ToString(),
+                        InputJson = fc["args"]?.ToString(Formatting.None) ?? "{}"
+                    });
             }
+
+            // Gemini signals "done" by returning text with no function calls
+            var stopReason = toolCalls.Count > 0 ? "tool_use" : "end_turn";
+
+            return new AgentLLMResponseDto
+            {
+                IsSuccess           = true,
+                StopReason          = stopReason,
+                TextContent         = string.Join("\n", textParts),
+                ToolCalls           = toolCalls,
+                AssistantMessageRaw = content  // { role: "model", parts: [...] }
+            };
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -1225,6 +1228,22 @@ Only call search_memory when you need historical context — skip it for entirel
         // Context management — prevents token count explosion
         // ─────────────────────────────────────────────────────────────────────
 
+        /// Tools whose results are always re-runnable and typically high-volume.
+        /// PruneMessages drops these groups first before touching any other content.
+        private static readonly HashSet<string> EphemeralToolNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "explore_platform",
+            "search_platform",
+            "get_database_tables",
+            "get_existing_transactions",
+            "get_transaction_details",
+            "list_entity_data_sources",
+            "list_applications",
+            "list_searches",
+            "check_table_exists",
+            "execute_sql",
+        };
+
         /// <summary>
         /// Tool names whose message groups are NEVER dropped by PruneMessages.
         /// These are "gate" events — user approvals that the LLM must always remember.
@@ -1277,6 +1296,23 @@ Only call search_memory when you need historical context — skip it for entirel
             {
                 var msgStr = messages[k].ToString(Newtonsoft.Json.Formatting.None);
                 foreach (var name in GateToolNames)
+                    if (msgStr.Contains($"\"{name}\""))
+                        return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Returns true if any message in the group references an ephemeral (re-runnable) tool.
+        /// These groups are dropped first during pruning — their results are cheap to re-fetch.
+        /// </summary>
+        private static bool IsEphemeralGroup(List<JObject> messages, int startIdx, int groupSize)
+        {
+            int end = Math.Min(startIdx + groupSize, messages.Count);
+            for (int k = startIdx; k < end; k++)
+            {
+                var msgStr = messages[k].ToString(Newtonsoft.Json.Formatting.None);
+                foreach (var name in EphemeralToolNames)
                     if (msgStr.Contains($"\"{name}\""))
                         return true;
             }
@@ -1379,26 +1415,41 @@ Only call search_memory when you need historical context — skip it for entirel
             int budget = TokenBudget;
             while (messages.Count > 4 && EstimateTokens(systemPrompt, messages) > budget)
             {
-                // messages[0] = original user request — always preserved.
-                // Walk forward group by group from index 1, find the oldest non-gate group.
-                int dropIdx   = -1;
-                int dropCount = 0;
+                // Pass 1: prefer dropping ephemeral (re-runnable, high-volume) groups first.
+                // This preserves substantive build history while still freeing token budget.
+                int dropIdx = -1, dropCount = 0;
                 int i = 1;
                 while (i < messages.Count - 1)
                 {
                     int groupSize = GetGroupSize(messages, i, provider);
-                    if (!IsGateGroup(messages, i, groupSize))
+                    if (!IsGateGroup(messages, i, groupSize) && IsEphemeralGroup(messages, i, groupSize))
                     {
                         dropIdx   = i;
                         dropCount = groupSize;
                         break;
                     }
-                    i += groupSize; // skip protected gate group, try next
+                    i += groupSize;
+                }
+
+                // Pass 2: if no ephemeral group found, fall back to oldest non-gate group.
+                if (dropIdx < 0)
+                {
+                    i = 1;
+                    while (i < messages.Count - 1)
+                    {
+                        int groupSize = GetGroupSize(messages, i, provider);
+                        if (!IsGateGroup(messages, i, groupSize))
+                        {
+                            dropIdx   = i;
+                            dropCount = groupSize;
+                            break;
+                        }
+                        i += groupSize;
+                    }
                 }
 
                 if (dropIdx < 0) break; // only gate groups remain — stop pruning
 
-                // Drop all messages in this group atomically (avoids orphaned tool results)
                 for (int d = 0; d < dropCount && dropIdx < messages.Count; d++)
                     messages.RemoveAt(dropIdx);
             }
