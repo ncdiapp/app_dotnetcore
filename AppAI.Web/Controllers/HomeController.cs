@@ -13,6 +13,7 @@ using APP.Framework.Validation;
 using App.BL;
 using AppWeb.Models;
 using Microsoft.AspNetCore.Mvc;
+using System.Threading.Tasks;
 
 namespace AppAI.Web.Controllers;
 
@@ -21,7 +22,7 @@ namespace AppAI.Web.Controllers;
 public class HomeController : ControllerBase
 {
     [HttpGet]
-    public UserContext Login()
+    public async Task<UserContext> Login()
     {
         var authrizationHeader = HttpContext.Request.Headers["Authorization"];
 
@@ -29,14 +30,14 @@ public class HomeController : ControllerBase
 
         AppSecurityUserDto userDto = LoginModel.GetUserInfoFromRequestHeader(authrizationHeader);
 
-        UserContext aUserContext = AuthenticateUserLogin(userDto);
+        UserContext aUserContext = await AuthenticateUserLoginAsync(userDto).ConfigureAwait(false);
 
 
         return aUserContext;
     }
 
     [HttpPost]
-    public UserContext MgtLogin()
+    public async Task<UserContext> MgtLogin()
     {
         var authrizationHeader = HttpContext.Request.Headers["Authorization"];
 
@@ -51,8 +52,7 @@ public class HomeController : ControllerBase
 
         try
         {
-            // need to ask XH
-            aUserContext = AppSecurityAuthenticationBL.Authenticate(userDto.LoginName, userDto.Password);
+            aUserContext = await AppSecurityAuthenticationBL.AuthenticateAsync(userDto.LoginName, userDto.Password).ConfigureAwait(false);
 
             if (aUserContext.IsLoginFailed)
             {
@@ -70,9 +70,6 @@ public class HomeController : ControllerBase
             aUserContext.LoginFailedErroMessage = ex.ToString().Replace("\r\n", " | ").Replace("\n", " | ");
             return aUserContext;
         }
-
-
-        return aUserContext;
     }
 
 
@@ -81,19 +78,19 @@ public class HomeController : ControllerBase
     // userDto.Password = password;
 
     [HttpPost]
-    public UserContext LoginWithDto(AppSecurityUserDto userDto)
+    public async Task<UserContext> LoginWithDto(AppSecurityUserDto userDto)
     {
-        UserContext aUserContext = AuthenticateUserLogin(userDto);
+        UserContext aUserContext = await AuthenticateUserLoginAsync(userDto).ConfigureAwait(false);
 
         return aUserContext;
     }
 
 
     [HttpGet]
-    public UserContext Logout(string sessionId) //for administrato
+    public async Task<UserContext> Logout(string sessionId) //for administrato
     {
         UserContext aUserContext = new UserContext();
-        AppSecurityUserSessionBL.DeleteAppSecurityUserSession(sessionId);
+        await AppSecurityUserSessionBL.DeleteAppSecurityUserSessionAsync(sessionId).ConfigureAwait(false);
         aUserContext.IsLoginFailed = true;
         aUserContext.IsFirstTimeLogin = false;
 
@@ -103,10 +100,9 @@ public class HomeController : ControllerBase
 
 
     [HttpGet]
-    public double CheckCurrenSessionIsExsit(string sessionId) //for administrato
+    public async Task<double> CheckCurrenSessionIsExsit(string sessionId) //for administrato
     {
-        UserContext aUserContext = new UserContext();
-        return AppSecurityUserSessionBL.CheckCurrenSessionIsExsit(sessionId);
+        return await AppSecurityUserSessionBL.CheckCurrenSessionIsExsitAsync(sessionId).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -128,7 +124,7 @@ public class HomeController : ControllerBase
     }
 
     [HttpGet]
-    public UserContext GetUserContextBySessionId(string sessionId) //for Test
+    public async Task<UserContext> GetUserContextBySessionId(string sessionId) //for Test
     {
         if (!string.IsNullOrEmpty(sessionId) && sessionId.Contains(","))
         {
@@ -136,14 +132,14 @@ public class HomeController : ControllerBase
             sessionId = sessionId.Substring(0, index);
         }
 
-        UserContext aUserContext = AppSecurityUserBL.GetUserContextBySessionId(sessionId);
-
-        aUserContext.UserId = null;
-        // aUserContext.DomainId = null;
-        // dont/ get
+        UserContext aUserContext = await AppSecurityUserBL.GetUserContextBySessionIdAsync(sessionId).ConfigureAwait(false);
 
         if (aUserContext != null)
         {
+            aUserContext.UserId = null;
+            // aUserContext.DomainId = null;
+            // dont/ get
+
             Dictionary<string, Dictionary<string, int>> dictEnumApp = GetJsClientEnum();
 
             aUserContext.DictEnumApp = dictEnumApp;
@@ -199,7 +195,7 @@ public class HomeController : ControllerBase
     }
 
     [HttpGet]
-    public UserContext RetrievePassword() //for administrato
+    public async Task<UserContext> RetrievePassword() //for administrato
     {
         string retrievePasswordHeader = HttpContext.Request.Headers["RetrievePassword"];
 
@@ -218,7 +214,7 @@ public class HomeController : ControllerBase
             string userName = usernameEmail.Substring(0, seperatorIndex);
             string email = usernameEmail.Substring(seperatorIndex + 1);
 
-            return AppSecurityUserBL.SendUserNameAndPassword(userName, email);
+            return await AppSecurityUserBL.SendUserNameAndPasswordAsync(userName, email).ConfigureAwait(false);
         }
         else
         {
@@ -249,6 +245,31 @@ public class HomeController : ControllerBase
                 return aUserContext;
             }
 
+        }
+        catch (Exception ex)
+        {
+            return aUserContext;
+        }
+    }
+
+    internal static async Task<UserContext> AuthenticateUserLoginAsync(AppSecurityUserDto userDto)
+    {
+        UserContext aUserContext = new UserContext();
+        aUserContext.LoginFailedErroMessage = "Cannot find your  Account";
+        aUserContext.IsLoginFailed = true;
+
+        try
+        {
+            aUserContext = await AppSecurityAuthenticationBL.AuthenticateEStoreAsync(userDto.LoginName, userDto.Password).ConfigureAwait(false);
+
+            if (aUserContext.IsLoginFailed)
+            {
+                return aUserContext;
+            }
+            else
+            {
+                return aUserContext;
+            }
         }
         catch (Exception ex)
         {

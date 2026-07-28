@@ -24,14 +24,13 @@ using Microsoft.Exchange.WebServices.Data;
 // TODO-PHASE4: Replace with .NET 10 equivalent
 #endif
 using System.ComponentModel.Design;
+using System.Threading.Tasks;
 
 
 namespace App.BL
 {
     public static class AppSecurityUserBL
     {
-        private static string MasterConnStr => AppCompanyBL.AppMasterDBConnectionString;
-
         // when  user  edit is done, need to refresh the  processCache
 
         private static readonly string AuthenticationMode = (AppConfig.Get("AuthenticationMode") ?? string.Empty).ToUpperInvariant();
@@ -164,7 +163,7 @@ namespace App.BL
 
         public static AppSecurityUserEntity RetrieveOneAppSecurityUserEntity(object userId)
         {
-            using (DataAccessAdapter adpater = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
             {
 
 
@@ -186,7 +185,7 @@ namespace App.BL
 
         public static IEnumerable<AppSecurityUserEntity> RetrieveAppSecurityUserEntity(object groupId)
         {
-            using (DataAccessAdapter adpater = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
             {
                 EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
                 RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityGroupMemberFields.GroupId == groupId);
@@ -200,7 +199,7 @@ namespace App.BL
 
         public static AppSecurityUserEntity RetrieveOneAppSecurityUserSimpleEntity(object userId)
         {
-            using (DataAccessAdapter adpater = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
             {
 
                 AppSecurityUserEntity userEntity = new AppSecurityUserEntity(int.Parse(userId.ToString()));
@@ -215,7 +214,7 @@ namespace App.BL
             if (userIdList != null && userIdList.Count > 0)
             {
                 EntityCollection<AppSecurityUserEntity> userEntityList = new EntityCollection<AppSecurityUserEntity>();
-                using (DataAccessAdapter adpater = new DataAccessAdapter(MasterConnStr))
+                using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
                 {
 
                     RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserFields.UserId == userIdList);
@@ -304,7 +303,7 @@ namespace App.BL
                     userEntity.Password = AppSecurityPasswordHashBL.HashPassword(aAppSecurityUserExDto.Password);
                 }
 
-                using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                 {
                     try
                     {
@@ -364,7 +363,7 @@ namespace App.BL
                 userEntity.MenuSetting = aAppSecurityUserExDto.MenuSetting;
                 userEntity.MappingExternalEmployeeAccountId = aAppSecurityUserExDto.MappingExternalEmployeeAccountId;
 
-                using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                 {
                     try
                     {
@@ -408,7 +407,7 @@ namespace App.BL
 
         public static EntityCollection<AppSecurityUserEntity> RetrieveSimpleAppSecurityUserEntityList(List<int> userIds)
         {
-            using (DataAccessAdapter adpater = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
             {
                 EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
                 RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserFields.UserId == userIds);
@@ -422,7 +421,7 @@ namespace App.BL
 
         public static EntityCollection<AppSecurityUserEntity> GetUserEntityListbyUserName(string username)
         {
-            using (DataAccessAdapter adpater = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
             {
                 EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
                 RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserFields.UserName == username);
@@ -614,7 +613,7 @@ namespace App.BL
 
         private static AppSecurityUserEntity APpAuthentication(string userName, string password)
         {
-            using (DataAccessAdapter dapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter dapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 password = EnDeCrypt.Encrypt(password, userName);
 
@@ -689,7 +688,7 @@ namespace App.BL
         {
 
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 RelationPredicateBucket filterBucket = new RelationPredicateBucket();
                 IPredicateExpression predicate = new PredicateExpression();
@@ -724,7 +723,7 @@ namespace App.BL
         {
             EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 adapter.FetchEntityCollection(users, new RelationPredicateBucket(new PredicateExpression(AppSecurityUserFields.LoginName == loginName)));
             }
@@ -736,7 +735,7 @@ namespace App.BL
         {
             EntityCollection<AppSecurityUserEntity> list = new EntityCollection<AppSecurityUserEntity>();
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSecurityUserEntity);
 
@@ -783,7 +782,7 @@ namespace App.BL
         {
             EntityCollection<AppSecurityUserEntity> list = new EntityCollection<AppSecurityUserEntity>();
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSecurityUserEntity);
 
@@ -836,7 +835,7 @@ namespace App.BL
             var filter = new RelationPredicateBucket(
                 AppSecurityUserFields.AppCreatedByCompanyId == companyId);
             var list = new EntityCollection<AppSecurityUserEntity>();
-            using (var adapter = new DataAccessAdapter(MasterConnStr))
+            using (var adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 adapter.FetchEntityCollection(list, filter);
             }
@@ -874,7 +873,7 @@ namespace App.BL
 
             EntityCollection<AppSecurityUserEntity> list = new EntityCollection<AppSecurityUserEntity>();
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSecurityUserEntity);
                 adapter.FetchEntityCollection(list, null, rootPath);
@@ -969,7 +968,7 @@ namespace App.BL
                     aAppSecurityUserEntity.GlobalGuid = new Guid();
                     aAppSecurityUserEntity.IsRegisterCompleted = true;
 
-                    using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                    using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                     {
                         try
                         {
@@ -1046,7 +1045,7 @@ namespace App.BL
             aAppSecurityUserSessionEntity.SessionId = sessionId;
 
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 try
                 {
@@ -1081,7 +1080,7 @@ namespace App.BL
             aAppSecurityUserEntity.Password = aAppSecurityUserExDto.Password;
             aAppSecurityUserEntity.AppModifiedDate = System.DateTime.UtcNow;
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 try
                 {
@@ -1120,7 +1119,7 @@ namespace App.BL
         {
             EntityCollection<AppSecurityUserEntity> list = new EntityCollection<AppSecurityUserEntity>();
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSecurityUserEntity);
 
@@ -1134,7 +1133,7 @@ namespace App.BL
 
         public static AppSecurityUserEntity RetrieveOneIntegrationTokenEntity(object userId)
         {
-            using (DataAccessAdapter adpater = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
             {
                 AppSecurityUserEntity userEntity = new AppSecurityUserEntity(int.Parse(userId.ToString()));
 
@@ -1270,7 +1269,7 @@ namespace App.BL
 
             EntityCollection<AppSecurityUserEntity> list = new EntityCollection<AppSecurityUserEntity>();
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserFields.UserId == userIds);
 
@@ -1291,7 +1290,7 @@ namespace App.BL
 
             EntityCollection<AppSecurityUserEntity> list = new EntityCollection<AppSecurityUserEntity>();
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserFields.UserId == userIds);
 
@@ -1366,7 +1365,7 @@ namespace App.BL
             {
                 EntityCollection<AppSecurityUserEntity> list = new EntityCollection<AppSecurityUserEntity>();
 
-                using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                 {
                     IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSecurityUserEntity);
 
@@ -1400,7 +1399,7 @@ namespace App.BL
 
                 EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
 
-                using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                 {
                     adapter.FetchEntityCollection(users, new RelationPredicateBucket(predicateExpression));
                 }
@@ -1422,7 +1421,7 @@ namespace App.BL
 
         //        EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
 
-        //        using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+        //        using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
         //        {
         //            adapter.FetchEntityCollection(users, new RelationPredicateBucket(predicateExpression));
         //        }
@@ -1444,7 +1443,7 @@ namespace App.BL
 
         //        EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
 
-        //        using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+        //        using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
         //        {
         //            adapter.FetchEntityCollection(users, new RelationPredicateBucket(predicateExpression));
         //        }
@@ -1466,7 +1465,7 @@ namespace App.BL
 
                 EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
 
-                using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                 {
                     adapter.FetchEntityCollection(users, new RelationPredicateBucket(predicateExpression));
                 }
@@ -1574,7 +1573,7 @@ namespace App.BL
 
             EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 adapter.FetchEntityCollection(users, new RelationPredicateBucket(predicateExpression));
             }
@@ -1594,7 +1593,7 @@ namespace App.BL
 
             EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 adapter.FetchEntityCollection(users, new RelationPredicateBucket(predicateExpression));
             }
@@ -1620,7 +1619,7 @@ namespace App.BL
 
             EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 adapter.FetchEntityCollection(users, new RelationPredicateBucket(predicateExpression));
             }
@@ -1640,7 +1639,7 @@ namespace App.BL
 
         //    if (!string.IsNullOrWhiteSpace(email))
         //    {
-        //        using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+        //        using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
         //        {
         //            PredicateExpression predicateExpression = new PredicateExpression(AppSecurityUserFields.Email == email);
         //            adapter.FetchEntityCollection(users, new RelationPredicateBucket(predicateExpression));
@@ -1779,7 +1778,7 @@ namespace App.BL
                 string getlastid = string.Empty;
 
 
-                using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                 {
                     try
                     {
@@ -1886,7 +1885,7 @@ namespace App.BL
 
                     aAppSefolderEntity.AppCreatedById = (int)aAppSecurityUserExDto.Id;
 
-                    using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                    using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                     {
                         try
                         {
@@ -1904,7 +1903,7 @@ namespace App.BL
                         }
                     }
 
-                    using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                    using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                     {
                         try
                         {
@@ -2014,7 +2013,7 @@ namespace App.BL
             int[] deletSecurityGroupMemberIDs = aAppSecurityUserExDto.AppSecurityGroupMemberList.FindDeletedItemIds().Cast<int>().ToArray();
 
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 try
                 {
@@ -2078,7 +2077,7 @@ namespace App.BL
                 bool isBuiltInUser = userEntity.IsBuiltIntUser.HasValue && userEntity.IsBuiltIntUser.Value;
                 if (!isBuiltInUser)
                 {
-                    using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                    using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                     {
                         try
                         {
@@ -2104,7 +2103,7 @@ namespace App.BL
 
                 if (!aValidationResult.ValidationResult.HasErrors)
                 {
-                    using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                    using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                     {
                         try
                         {
@@ -2219,7 +2218,7 @@ namespace App.BL
             else
             {
                 EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
-                using (DataAccessAdapter adpater = new DataAccessAdapter(MasterConnStr))
+                using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
                 {
 
                     RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserFields.LoginName == loginName);
@@ -2244,7 +2243,7 @@ namespace App.BL
                         string hasssavepwad = AppSecurityPasswordHashBL.HashPassword(passpwrod);
 
                         userEntity.Password = hasssavepwad;
-                        using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                        using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                         {
 
 
@@ -2470,7 +2469,7 @@ namespace App.BL
             var partnerEntities = new EntityCollection<AppBusinessPartnerEntity>();
             var invitedUserEntities = new EntityCollection<AppBusinessPartnerInviteUserEntity>();
 
-            using (DataAccessAdapter adapater = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapater = AppMasterAdapterBL.GetMasterAdapter())
             {
                 adapater.FetchEntityCollection(partnerEntities, null);
                 adapater.FetchEntityCollection(invitedUserEntities, null);
@@ -2504,6 +2503,110 @@ namespace App.BL
             }
 
             return dictUserIdAndPartnerDtoList;
+        }
+
+        // ---- Async variants (additive — sync methods above are untouched) ----
+
+        public static async Task<AppSecurityUserEntity> RetrieveOneAppSecurityUserEntityAsync(object userId)
+        {
+            using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
+            {
+                AppSecurityUserEntity userEntity = new AppSecurityUserEntity(int.Parse(userId.ToString()));
+                IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSecurityUserEntity);
+                // LLBLGen 5.13 has no FetchEntityAsync; wrapping sync call to stay async to caller.
+                await Task.Run(() => adpater.FetchEntity(userEntity, rootPath)).ConfigureAwait(false);
+                return userEntity;
+            }
+        }
+
+        public static async Task<UserContext> GetUserContextBySessionIdAsync(string sessionId)
+        {
+            UserContext aUserContext = InitUserContext();
+
+            AppSecurityUserSessionEntity sessionEntity = await AppSecurityUserSessionBL.GetSessionEntityBySessionIDAsync(sessionId).ConfigureAwait(false);
+
+            if (sessionEntity != null)
+            {
+                aUserContext.IsLoginFailed = false;
+                aUserContext.LoginFailedErroMessage = "";
+                aUserContext = SetupUserContextWithSessionEntity(sessionEntity);
+                aUserContext.SessionId = sessionId;
+                return aUserContext;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        public static async Task<UserContext> SendUserNameAndPasswordAsync(string loginName, string toEmailAddress, string newPassword = "")
+        {
+            UserContext aUserContext = new UserContext();
+
+            if (loginName.IsEmpty() || toEmailAddress.IsEmpty())
+            {
+                aUserContext.IsLoginFailed = true;
+                aUserContext.LoginFailedErroMessage = "Invalid Login name or Passwrod";
+                return aUserContext;
+            }
+            else
+            {
+                EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
+                using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
+                {
+                    RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserFields.LoginName == loginName);
+                    filter.PredicateExpression.Add(AppSecurityUserFields.Email == toEmailAddress);
+                    var qp = new QueryParameters(0, 0, 0, filter);
+                    qp.CollectionToFetch = users;
+                    await adpater.FetchEntityCollectionAsync(qp, default).ConfigureAwait(false);
+                }
+
+                if (users.Count > 0)
+                {
+                    var userEntity = users[0];
+                    aUserContext.IsLoginFailed = false;
+
+                    if (string.IsNullOrWhiteSpace(newPassword))
+                    {
+                        string passpwrod = Guid.NewGuid().ToString();
+                        string hasssavepwad = AppSecurityPasswordHashBL.HashPassword(passpwrod);
+                        userEntity.Password = hasssavepwad;
+                        using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
+                        {
+                            await adapter.UpdateEntitiesDirectlyAsync(userEntity, new RelationPredicateBucket(AppSecurityUserFields.UserId == userEntity.UserId)).ConfigureAwait(false);
+                        }
+                        newPassword = passpwrod;
+                    }
+
+                    string appHostUrl = string.Empty;
+#if NETFRAMEWORK
+                    if (HttpContext.Current != null)
+                    {
+                        appHostUrl = HttpContext.Current.Request.Url.GetLeftPart(UriPartial.Authority) + HttpContext.Current.Request.ApplicationPath;
+                        appHostUrl = appHostUrl.Trim();
+                        if (!appHostUrl.EndsWith("/"))
+                        {
+                            appHostUrl = appHostUrl + "/";
+                        }
+                    }
+#endif
+
+                    string messageBody = string.Format(@" The following is the detail of your account <br>" + System.Environment.NewLine +
+                                @"URL: {0} <br> " + System.Environment.NewLine +
+                                "Username: {1} <br> " + System.Environment.NewLine +
+                                "Temprary Password: {2} <br> ", appHostUrl, loginName, newPassword);
+
+                    EmailHelper.SmtpEamilSend(toEmailAddress, appHostUrl + " account info ", messageBody);
+                    aUserContext.LoginFailedErroMessage = "Please check your Inbox and change the password asap";
+                    return aUserContext;
+                }
+                else
+                {
+                    aUserContext.IsLoginFailed = false;
+                    aUserContext.LoginFailedErroMessage = "Cannot find the user";
+                    return aUserContext;
+                }
+            }
         }
     }
 }
