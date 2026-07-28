@@ -13,6 +13,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Data;
 using System.Linq;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 namespace App.BL
 {
     public static class AppSecurityAuthenticationBL
@@ -24,7 +25,6 @@ namespace App.BL
 
         public readonly static DataTable LoginFailedLog = new DataTable();
         public readonly static int AllowAttemptTimes = 5;
-        private static string MasterConnStr => AppCompanyBL.AppMasterDBConnectionString;
         static AppSecurityAuthenticationBL()
         {
             LoginFailedLog.Columns.Add(new DataColumn("LoginName", typeof(string)));
@@ -273,7 +273,7 @@ namespace App.BL
                     aUserContext.LoginFailedType = (int)EmAppAuthenticationResult.InActive;
                     aUserContext.UserId = aMasterDbAppSecurityUserEntity.UserId;
 
-                    using (DataAccessAdapter adpater = new DataAccessAdapter(MasterConnStr))
+                    using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
                     {
                         aMasterDbAppSecurityUserEntity.Addomain = EmAppAuthenticationResult.LockedByTooManyWrongPassword.ToString();
                         aMasterDbAppSecurityUserEntity.IsActive = false;
@@ -419,8 +419,8 @@ namespace App.BL
 
         internal static AppSecurityUserEntity GetUserAccountbyLogName(string LoginName)
         {
-            // need to use master DB for authentication 
-            using (DataAccessAdapter dapter = new DataAccessAdapter(AppCompanyBL.AppMasterDBConnectionString))
+            // need to use master DB for authentication
+            using (DataAccessAdapter dapter = AppMasterAdapterBL.GetMasterAdapter())
             {
 
 
@@ -460,6 +460,282 @@ namespace App.BL
             }
 
 
+        }
+
+        // ---- Async variants (additive — sync methods above are untouched) ----
+
+        internal static async Task<AppSecurityUserEntity> GetUserAccountbyLogNameAsync(string LoginName)
+        {
+            using (DataAccessAdapter dapter = AppMasterAdapterBL.GetMasterAdapter())
+            {
+                RelationPredicateBucket filterBucket;
+                if (IsValidEmail(LoginName))
+                {
+                    filterBucket = new RelationPredicateBucket(AppSecurityUserFields.Email == LoginName);
+                }
+                else
+                {
+                    filterBucket = new RelationPredicateBucket(AppSecurityUserFields.LoginName == LoginName);
+                }
+
+                EntityCollection<AppSecurityUserEntity> users = new EntityCollection<AppSecurityUserEntity>();
+                var qp = new QueryParameters(0, 0, 0, filterBucket);
+                qp.CollectionToFetch = users;
+                await dapter.FetchEntityCollectionAsync(qp, default).ConfigureAwait(false);
+                return users.Count > 0 ? users[0] : null;
+            }
+        }
+
+        public static async Task<UserContext> AuthenticateAsync(string username, string password)
+        {
+            UserContext aUserContext = new UserContext();
+            aUserContext.LoginFailedErroMessage = "Cannot find your  Account";
+            aUserContext.IsLoginFailed = true;
+
+            AppSecurityUserEntity aMasterDbAppSecurityUserEntity = await GetUserAccountbyLogNameAsync(username).ConfigureAwait(false);
+
+            EmAppAuthenticationResult emAppAuthenticationResult;
+            if (aMasterDbAppSecurityUserEntity == null)
+            {
+                emAppAuthenticationResult = EmAppAuthenticationResult.NotFound;
+            }
+            else
+            {
+                bool isMasteruser = aMasterDbAppSecurityUserEntity.IsBuiltIntUser.HasValue && aMasterDbAppSecurityUserEntity.IsBuiltIntUser.Value;
+                bool isRegisterComple = aMasterDbAppSecurityUserEntity.IsRegisterCompleted.HasValue && aMasterDbAppSecurityUserEntity.IsRegisterCompleted.Value;
+                bool isCompnayLink = aMasterDbAppSecurityUserEntity.MyOwnCompnanyId.HasValue;
+
+                if (!isMasteruser && (!(isRegisterComple || isCompnayLink)))
+                {
+                    emAppAuthenticationResult = EmAppAuthenticationResult.SaasUserRegisterNotComplete;
+                }
+                else if (!isRegisterComple && aMasterDbAppSecurityUserEntity.DomainId == (int)EmAppUserType.SaasCompanyAdmin)
+                {
+                    emAppAuthenticationResult = EmAppAuthenticationResult.SaasUserRegisterNotComplete;
+                }
+                else if (!aMasterDbAppSecurityUserEntity.IsActive)
+                {
+                    if (aMasterDbAppSecurityUserEntity.Addomain == EmAppAuthenticationResult.LockedByTooManyWrongPassword.ToString())
+                        emAppAuthenticationResult = EmAppAuthenticationResult.LockedByTooManyWrongPassword;
+                    else if (aMasterDbAppSecurityUserEntity.Addomain == EmAppAuthenticationResult.NewUserNotActivedByEmail.ToString())
+                        emAppAuthenticationResult = EmAppAuthenticationResult.NewUserNotActivedByEmail;
+                    else
+                        emAppAuthenticationResult = EmAppAuthenticationResult.InActive;
+                }
+                else
+                {
+                    bool isUserAllowAccessCurrentDB = CheckIfUserAllowAccessCurrentDB(aMasterDbAppSecurityUserEntity);
+                    if (!isUserAllowAccessCurrentDB)
+                    {
+                        emAppAuthenticationResult = EmAppAuthenticationResult.AccessDenied;
+                    }
+                    else
+                    {
+                        emAppAuthenticationResult = AppSecurityPasswordHashBL.ValidatePassword(password, aMasterDbAppSecurityUserEntity.Password)
+                            ? EmAppAuthenticationResult.LoginSucceful
+                            : EmAppAuthenticationResult.InvalidPassword;
+                    }
+                }
+            }
+
+            if (emAppAuthenticationResult != EmAppAuthenticationResult.LoginSucceful)
+            {
+                if (emAppAuthenticationResult == EmAppAuthenticationResult.NotFound)
+                {
+                    aUserContext = new UserContext();
+                    aUserContext.LoginFailedErroMessage = "Cannot find your  Account  ";
+                    aUserContext.IsLoginFailed = true;
+                }
+                else if (emAppAuthenticationResult == EmAppAuthenticationResult.SaasUserRegisterNotComplete)
+                {
+                    aUserContext = new UserContext();
+                    aUserContext.LoginFailedErroMessage = "You did not complete the registration process for this user ID. ";
+                    aUserContext.IsLoginFailed = true;
+                    aUserContext.LoginFailedType = (int)EmAppAuthenticationResult.SaasUserRegisterNotComplete;
+                    aUserContext.UserId = aMasterDbAppSecurityUserEntity.UserId;
+                }
+                else if (emAppAuthenticationResult == EmAppAuthenticationResult.InActive)
+                {
+                    aUserContext = new UserContext();
+                    aUserContext.LoginFailedErroMessage = "Your account is locked.";
+                    aUserContext.IsLoginFailed = true;
+                    aUserContext.LoginFailedType = (int)EmAppAuthenticationResult.InActive;
+                    aUserContext.UserId = aMasterDbAppSecurityUserEntity.UserId;
+                }
+                else if (emAppAuthenticationResult == EmAppAuthenticationResult.LockedByTooManyWrongPassword)
+                {
+                    aUserContext = new UserContext();
+                    aUserContext.LoginFailedErroMessage = "Your account is locked, too many times sign in.";
+                    aUserContext.IsLoginFailed = true;
+                    aUserContext.LoginFailedType = (int)EmAppAuthenticationResult.InActive;
+                    aUserContext.UserId = aMasterDbAppSecurityUserEntity.UserId;
+                }
+                else if (emAppAuthenticationResult == EmAppAuthenticationResult.NewUserNotActivedByEmail)
+                {
+                    aUserContext = new UserContext();
+                    aUserContext.LoginFailedErroMessage = "Please confirm your account via email first!";
+                    aUserContext.IsLoginFailed = true;
+                    aUserContext.LoginFailedType = (int)EmAppAuthenticationResult.InActive;
+                    aUserContext.UserId = aMasterDbAppSecurityUserEntity.UserId;
+                }
+                else if (emAppAuthenticationResult == EmAppAuthenticationResult.InvalidPassword)
+                {
+                    aUserContext = new UserContext();
+                    aUserContext.LoginFailedErroMessage = "Wrong password ";
+                    aUserContext.IsLoginFailed = true;
+
+                    DataRow row = LoginFailedLog.NewRow();
+                    LoginFailedLog.Rows.Add(row);
+                    row["LoginName"] = username;
+                    row["FailedLogTimeStamp"] = System.DateTime.Now;
+
+                    int trycount = LoginFailedLog.AsEnumerable().Where(o => o["LoginName"].ToString() == username).Count();
+                    if (trycount > AllowAttemptTimes)
+                    {
+                        aUserContext.LoginFailedErroMessage = "Your account is locked, too many times sign in.";
+                        aUserContext.IsLoginFailed = true;
+                        aUserContext.LoginFailedType = (int)EmAppAuthenticationResult.InActive;
+                        aUserContext.UserId = aMasterDbAppSecurityUserEntity.UserId;
+
+                        using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
+                        {
+                            aMasterDbAppSecurityUserEntity.Addomain = EmAppAuthenticationResult.LockedByTooManyWrongPassword.ToString();
+                            aMasterDbAppSecurityUserEntity.IsActive = false;
+                            await adpater.UpdateEntitiesDirectlyAsync(aMasterDbAppSecurityUserEntity, new RelationPredicateBucket(AppSecurityUserFields.UserId == aMasterDbAppSecurityUserEntity.UserId)).ConfigureAwait(false);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                var faieldRows = LoginFailedLog.AsEnumerable().Where(o => o["LoginName"].ToString() == username).ToList();
+                foreach (var row in faieldRows)
+                {
+                    LoginFailedLog.Rows.Remove(row);
+                }
+
+                var availableCompnay = AppSecurityManagementBL.RetrieveUserAvailableCompaniesFromMasterDB(aMasterDbAppSecurityUserEntity.UserId);
+
+                aUserContext.IsLoginFailed = false;
+                aUserContext.LoginFailedErroMessage = "";
+                aUserContext.UserId = aMasterDbAppSecurityUserEntity.UserId;
+                aUserContext.AvailableCompnay = availableCompnay;
+                aUserContext.SessionId = System.Guid.NewGuid().ToString();
+                aUserContext.DisplayName = aMasterDbAppSecurityUserEntity.UserName;
+                aUserContext.DocumentId = aMasterDbAppSecurityUserEntity.DocumentId;
+                aUserContext.DomainId = aMasterDbAppSecurityUserEntity.DomainId;
+
+                if (availableCompnay.Count == 1)
+                {
+                    string ecryptCompanyId = availableCompnay[0].Id as string;
+                    aUserContext.ServerSideCurrentCompnayId = AppSaasAccountUserBL.DecryptCompanyIdString(ecryptCompanyId);
+                    await AppSecurityUserSessionBL.CreateNewAppSecurityUserSessionAsync(aUserContext).ConfigureAwait(false);
+                }
+            }
+
+            return aUserContext;
+        }
+
+        public static async Task<UserContext> AuthenticateEStoreAsync(string username, string password)
+        {
+            UserContext aUserContext = new UserContext();
+            aUserContext.LoginFailedErroMessage = "Cannot find your  Account";
+            aUserContext.IsLoginFailed = true;
+
+            AppSecurityUserEntity aMasterDbAppSecurityUserEntity = await GetUserAccountbyLogNameAsync(username).ConfigureAwait(false);
+
+            EmAppAuthenticationResult emAppAuthenticationResult;
+            if (aMasterDbAppSecurityUserEntity == null)
+            {
+                emAppAuthenticationResult = EmAppAuthenticationResult.NotFound;
+            }
+            else
+            {
+                bool isMasteruser = aMasterDbAppSecurityUserEntity.IsBuiltIntUser.HasValue && aMasterDbAppSecurityUserEntity.IsBuiltIntUser.Value;
+                bool isRegisterComple = aMasterDbAppSecurityUserEntity.IsRegisterCompleted.HasValue && aMasterDbAppSecurityUserEntity.IsRegisterCompleted.Value;
+                bool isCompnayLink = aMasterDbAppSecurityUserEntity.MyOwnCompnanyId.HasValue;
+
+                if (!isMasteruser && (!(isRegisterComple || isCompnayLink)))
+                {
+                    emAppAuthenticationResult = EmAppAuthenticationResult.SaasUserRegisterNotComplete;
+                }
+                else if (!isRegisterComple && aMasterDbAppSecurityUserEntity.DomainId == (int)EmAppUserType.SaasCompanyAdmin)
+                {
+                    emAppAuthenticationResult = EmAppAuthenticationResult.SaasUserRegisterNotComplete;
+                }
+                else if (!aMasterDbAppSecurityUserEntity.IsActive)
+                {
+                    if (aMasterDbAppSecurityUserEntity.Addomain == EmAppAuthenticationResult.LockedByTooManyWrongPassword.ToString())
+                        emAppAuthenticationResult = EmAppAuthenticationResult.LockedByTooManyWrongPassword;
+                    else if (aMasterDbAppSecurityUserEntity.Addomain == EmAppAuthenticationResult.NewUserNotActivedByEmail.ToString())
+                        emAppAuthenticationResult = EmAppAuthenticationResult.NewUserNotActivedByEmail;
+                    else
+                        emAppAuthenticationResult = EmAppAuthenticationResult.InActive;
+                }
+                else
+                {
+                    bool isUserAllowAccessCurrentDB = CheckIfUserAllowAccessCurrentDB(aMasterDbAppSecurityUserEntity);
+                    if (!isUserAllowAccessCurrentDB)
+                    {
+                        emAppAuthenticationResult = EmAppAuthenticationResult.AccessDenied;
+                    }
+                    else
+                    {
+                        emAppAuthenticationResult = AppSecurityPasswordHashBL.ValidatePassword(password, aMasterDbAppSecurityUserEntity.Password)
+                            ? EmAppAuthenticationResult.LoginSucceful
+                            : EmAppAuthenticationResult.InvalidPassword;
+                    }
+                }
+            }
+
+            if (emAppAuthenticationResult != EmAppAuthenticationResult.LoginSucceful)
+            {
+                aUserContext = ProcessLoginFailedUserContext(username, aUserContext, aMasterDbAppSecurityUserEntity, emAppAuthenticationResult);
+            }
+            else
+            {
+                var faieldRows = LoginFailedLog.AsEnumerable().Where(o => o["LoginName"].ToString() == username).ToList();
+                foreach (var row in faieldRows)
+                {
+                    LoginFailedLog.Rows.Remove(row);
+                }
+
+                bool isUserOnEStoreUserDB = AppSecurityUserBL.RetrieveSimpleAppSecurityUserEntityList(new List<int>() { aMasterDbAppSecurityUserEntity.UserId })
+                    .Count > 0;
+
+                if (isUserOnEStoreUserDB)
+                {
+                    aUserContext.IsLoginFailed = false;
+                    aUserContext.LoginFailedErroMessage = "";
+                    aUserContext.AvailableCompnay = new List<LookupItemDto>();
+                    aUserContext.SessionId = System.Guid.NewGuid().ToString();
+                    aUserContext.DisplayName = aMasterDbAppSecurityUserEntity.UserName;
+                    aUserContext.ServerSideCurrentCompnayId = ServerContext.Instance.CurrentCompanyId as int?;
+                    aUserContext.UserId = aMasterDbAppSecurityUserEntity.UserId;
+                    aUserContext.DomainId = aMasterDbAppSecurityUserEntity.DomainId;
+                    aUserContext.DocumentId = aMasterDbAppSecurityUserEntity.DocumentId;
+                    aUserContext.Email = aMasterDbAppSecurityUserEntity.Email;
+
+                    if (aUserContext.ServerSideCurrentCompnayId.HasValue)
+                    {
+                        int? compnayId = aUserContext.ServerSideCurrentCompnayId;
+                        int? userId = aMasterDbAppSecurityUserEntity.UserId;
+                        UpdateUserContextDomainUserType(aUserContext, compnayId, userId);
+                    }
+
+                    await AppSecurityUserSessionBL.CreateNewAppSecurityUserSessionAsync(aUserContext).ConfigureAwait(false);
+                }
+                else
+                {
+                    aUserContext = new UserContext();
+                    aUserContext.LoginFailedType = (int)EmAppAuthenticationResult.UserNotLinkedToEStoreUserDB;
+                    aUserContext.TempToken = AppSaasAccountUserBL.EncryptCompanyIdString(aMasterDbAppSecurityUserEntity.UserId);
+                    aUserContext.LoginFailedErroMessage = "You account is not linked to current EStore.";
+                    aUserContext.IsLoginFailed = true;
+                }
+            }
+
+            return aUserContext;
         }
     }
 }

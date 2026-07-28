@@ -15,6 +15,7 @@ using APP.Framework;
 using APP.Components.Dto;
 using APP.Components.EntityConverter;
 using APP.Components.EntityDto;
+using System.Threading.Tasks;
 
 
 namespace App.BL
@@ -27,8 +28,6 @@ namespace App.BL
 
 
         public static readonly Timer SessionTimer = new Timer();
-        private static string MasterConnStr => AppCompanyBL.AppMasterDBConnectionString;
-       
 
         public static Dictionary<int, int> RetrieveCurrentUserByDomain()
         {
@@ -36,7 +35,7 @@ namespace App.BL
             string querySesstion = @"SELECT DISTINCT  AppSecurityUser.DomainID , AppSecurityUserSession.SessionID, AppSecurityUserSession.UserID
                  FROM          AppSecurityUser INNER JOIN   AppSecurityUserSession ON  AppSecurityUser.UserID = AppSecurityUserSession.UserID";
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
 
                 DataTable result = adapter.ExecuteDataTableRetrievalQuery(querySesstion, null);
@@ -53,7 +52,7 @@ namespace App.BL
         {
             if (ServerContext.Instance.CurrentSessionId != null)
             {
-                using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                 {
                     AppSecurityUserSessionEntity aAppSecurityUserSessionEntity = new AppSecurityUserSessionEntity();
                     aAppSecurityUserSessionEntity.ExpirationDate = System.DateTime.UtcNow.AddMinutes(SessionAdnGracePeriodTime);
@@ -110,7 +109,7 @@ namespace App.BL
 
 
             //need to call master DB ConnectionStringFromConfig
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 try
                 {
@@ -131,7 +130,7 @@ namespace App.BL
 
         public static AppSecurityUserSessionEntity GetSessionEntityBySessionID(string currentSessionId)
         {
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
 
                 RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserSessionFields.SessionId == currentSessionId);
@@ -151,7 +150,7 @@ namespace App.BL
 
         public static int? GetUserIDBySessionID(string currentSessionId)
         {
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
 
                 RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserSessionFields.SessionId == currentSessionId);
@@ -171,7 +170,7 @@ namespace App.BL
 
         public static bool DeleteSecurityWebUserSession(object currentSessionId)
         {
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 try
                 {
@@ -196,7 +195,7 @@ namespace App.BL
 
         public static bool DeleteEXpiredSecurityWebUserSession()
         {
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 try
                 {
@@ -220,7 +219,7 @@ namespace App.BL
 
         public static bool DeleteAllSecurityWebUserSession()
         {
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 try
                 {
@@ -261,7 +260,7 @@ namespace App.BL
 
         public static bool CheckIfUserAlreayLogIn(int Uid)
         {
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserSessionFields.UserId == Uid);
 
@@ -274,7 +273,7 @@ namespace App.BL
 
         private static AppSecurityUserSessionEntity RetrieveOneAppSecurityUserSessionEntity(object id)
         {
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 AppSecurityUserSessionEntity aEntity = new AppSecurityUserSessionEntity(int.Parse(id.ToString()));
                 adapter.FetchEntity(aEntity);
@@ -292,7 +291,7 @@ namespace App.BL
 
         public static ObservableSet<AppSecurityUserSessionDto> RetrieveAllAppSecurityUserSessionDto()
         {
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 EntityCollection<AppSecurityUserSessionEntity> list = new EntityCollection<AppSecurityUserSessionEntity>();
                 adapter.FetchEntityCollection(list, null);
@@ -322,7 +321,7 @@ namespace App.BL
                 aAppSecurityUserSessionEntity = new AppSecurityUserSessionEntity();
                 AppSecurityUserSessionConverter.CopyDtoToEntity(aAppSecurityUserSessionEntity, aAppSecurityUserSessionExDto);
 
-                using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                 {
                     try
                     {
@@ -370,7 +369,7 @@ namespace App.BL
             AppSecurityUserSessionEntity aAppSecurityUserSessionEntity = RetrieveOneAppSecurityUserSessionEntity(aAppSecurityUserSessionExDto.Id);
             AppSecurityUserSessionConverter.CopyDtoToEntity(aAppSecurityUserSessionEntity, aAppSecurityUserSessionExDto);
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 try
                 {
@@ -414,7 +413,7 @@ namespace App.BL
             if (userSessionId != null && userSessionId.ToString() != applicationToken)
             {
 
-                using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+                using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
                 {
                     try
                     {
@@ -458,7 +457,7 @@ namespace App.BL
 
         public static double CheckCurrenSessionIsExsit(object sessionId)
         {
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 EntityCollection<AppSecurityUserSessionEntity> list = new EntityCollection<AppSecurityUserSessionEntity>();
 
@@ -487,7 +486,7 @@ namespace App.BL
         private static int? GetUserIdBySessionId()
         {
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(MasterConnStr))
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
                 EntityCollection<AppSecurityUserSessionEntity> list = new EntityCollection<AppSecurityUserSessionEntity>();
 
@@ -543,6 +542,152 @@ namespace App.BL
 
 
 
+        }
+
+        // ---- Async variants (additive — sync methods above are untouched) ----
+
+        public static async Task<Dictionary<int, int>> RetrieveCurrentUserByDomainAsync()
+        {
+            string querySesstion = @"SELECT DISTINCT  AppSecurityUser.DomainID , AppSecurityUserSession.SessionID, AppSecurityUserSession.UserID
+                 FROM          AppSecurityUser INNER JOIN   AppSecurityUserSession ON  AppSecurityUser.UserID = AppSecurityUserSession.UserID";
+
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
+            {
+                // ExecuteDataTableRetrievalQueryAsync with raw string is not available in LLBLGen 5.13;
+                // wrapping the sync call so the method stays non-blocking to the caller.
+                DataTable result = await Task.Run(() => adapter.ExecuteDataTableRetrievalQuery(querySesstion, null)).ConfigureAwait(false);
+                return result.AsEnumerable().GroupBy(row => (int)row["DomainID"])
+                                     .Select(grp => new { grp.Key, Count = grp.Count() })
+                                     .ToDictionary(grp => grp.Key, grp => grp.Count);
+            }
+        }
+
+        public static async Task<bool> UpdateLoginUserExpiredDateAsync()
+        {
+            if (ServerContext.Instance.CurrentSessionId != null)
+            {
+                using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
+                {
+                    AppSecurityUserSessionEntity aAppSecurityUserSessionEntity = new AppSecurityUserSessionEntity();
+                    aAppSecurityUserSessionEntity.ExpirationDate = System.DateTime.UtcNow.AddMinutes(SessionAdnGracePeriodTime);
+                    RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserSessionFields.SessionId == ServerContext.Instance.CurrentSessionId
+                        & (AppSecurityUserSessionFields.EmExternalSigninType == System.DBNull.Value | (AppSecurityUserSessionFields.EmExternalSigninType != (int)EmAppExternalLoginType.Anonymous & AppSecurityUserSessionFields.EmExternalSigninType != (int)EmAppExternalLoginType.Integration)));
+
+                    await adapter.UpdateEntitiesDirectlyAsync(aAppSecurityUserSessionEntity, filter).ConfigureAwait(false);
+
+                    return true;
+                }
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        public static async Task CreateNewAppSecurityUserSessionAsync(UserContext aUserContext)
+        {
+            AppSecurityUserSessionEntity aAppSecurityUserSessionEntity = new AppSecurityUserSessionEntity();
+            aAppSecurityUserSessionEntity.UserId = (int)aUserContext.UserId;
+            aAppSecurityUserSessionEntity.SessionId = aUserContext.SessionId as string;
+            aAppSecurityUserSessionEntity.ExpirationDate = System.DateTime.UtcNow.AddMinutes(SessionAdnGracePeriodTime);
+            aAppSecurityUserSessionEntity.ApplicationType = 1;
+            aAppSecurityUserSessionEntity.AppCreatedByCompanyId = aUserContext.ServerSideCurrentCompnayId;
+            aAppSecurityUserSessionEntity.ExternalAcessToken = aUserContext.ExternalAcessToken;
+            aAppSecurityUserSessionEntity.EmExternalSigninType = aUserContext.EmExternalSigninType;
+
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
+            {
+                try
+                {
+                    adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+                    await adapter.SaveEntityAsync(aAppSecurityUserSessionEntity).ConfigureAwait(false);
+                    adapter.Commit();
+                }
+                catch (Exception ex)
+                {
+                    adapter.Rollback();
+                }
+            }
+        }
+
+        public static async Task<AppSecurityUserSessionEntity> GetSessionEntityBySessionIDAsync(string currentSessionId)
+        {
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
+            {
+                RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserSessionFields.SessionId == currentSessionId);
+                EntityCollection<AppSecurityUserSessionEntity> list = new EntityCollection<AppSecurityUserSessionEntity>();
+                var qp = new QueryParameters(0, 0, 0, filter);
+                qp.CollectionToFetch = list;
+                await adapter.FetchEntityCollectionAsync(qp, default).ConfigureAwait(false);
+                return list.Count > 0 ? list[0] : null;
+            }
+        }
+
+        public static async Task<OperationCallResult<object>> DeleteAppSecurityUserSessionAsync(object userSessionId)
+        {
+            OperationCallResult<object> aValidationResult = new OperationCallResult<object>();
+
+            string applicationToken = "6601508d-e7e0-4ed6-892b-879c834676af";
+
+            if (userSessionId != null && userSessionId.ToString() != applicationToken)
+            {
+                using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
+                {
+                    try
+                    {
+                        adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+
+                        await adapter.DeleteEntitiesDirectlyAsync(typeof(AppSecurityUserSessionEntity), new RelationPredicateBucket(AppSecurityUserSessionFields.SessionId == userSessionId)).ConfigureAwait(false);
+
+                        aValidationResult.ValidationResult.Items.Add(new ValidationItem(typeof(AppSecurityUserSessionEntity), "plm_AppSecurityUserSessionEntity_Delete_Ok", ValidationItemType.Message, "plm_AppSecurityUserSessionEntity_Delete_Ok"));
+                        adapter.Commit();
+                    }
+                    catch (ORMEntityValidationException ex)
+                    {
+                        adapter.Rollback();
+                        aValidationResult.ValidationResult.Items.Add(new ValidationItem(typeof(AppSecurityUserSessionEntity), "plm_AppSecurityUserSessionEntity_BLValidation_Error", ValidationItemType.Error, ex.ToString()));
+                    }
+                    catch (ORMQueryExecutionException ex)
+                    {
+                        adapter.Rollback();
+                        aValidationResult.ValidationResult.Items.Add(new ValidationItem(typeof(AppSecurityUserSessionEntity), "plm_AppSecurityUserSessionEntity_QueryExecution_Error", ValidationItemType.Error, ex.ToString()));
+                    }
+
+                    if (!aValidationResult.ValidationResult.HasErrors)
+                    {
+                        aValidationResult.Object = userSessionId;
+                    }
+                }
+            }
+
+            return aValidationResult;
+        }
+
+        public static async Task<double> CheckCurrenSessionIsExsitAsync(object sessionId)
+        {
+            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
+            {
+                EntityCollection<AppSecurityUserSessionEntity> list = new EntityCollection<AppSecurityUserSessionEntity>();
+                RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserSessionFields.SessionId == sessionId);
+                var qp = new QueryParameters(0, 0, 0, filter);
+                qp.CollectionToFetch = list;
+                await adapter.FetchEntityCollectionAsync(qp, default).ConfigureAwait(false);
+                if (list.Count > 0)
+                {
+                    bool isAnoymouseSession = list.FirstOrDefault(o => o.EmExternalSigninType.HasValue && o.EmExternalSigninType.Value == (int)EmAppExternalLoginType.Anonymous) != null;
+                    if (isAnoymouseSession)
+                    {
+                        return 10000;
+                    }
+                    else
+                    {
+                        DateTime expireDate = list.Max(o => o.ExpirationDate);
+                        TimeSpan span = expireDate.Subtract(DateTime.UtcNow);
+                        return span.TotalMinutes;
+                    }
+                }
+            }
+            return -1;
         }
     }
 
