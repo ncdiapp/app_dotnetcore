@@ -16,6 +16,7 @@ using System.Data;
 using System.Data.Common;
 using System.Data.SqlClient;
 using System.Linq;
+using System.Threading.Tasks;
 
 using APP.Framework;
 namespace App.BL
@@ -391,6 +392,29 @@ namespace App.BL
             return isFolderEmpty;
         }
 
+        public static async Task<bool> CheckIsFolderEmptyAsync(int folderId)
+        {
+            AppSefolderEntity folderEntity = AppSeFolderBL.RetrieveOneAppSefolderEntity(folderId);
+            bool isFolderEmpty = true;
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                List<SqlParameter> lsitparamter = new List<SqlParameter>();
+                lsitparamter.Add(new SqlParameter("@folderId", folderId));
+
+                string query = @"  SELECT [FileID] FROM AppFile where FolderID = @folderId ";
+
+                System.Data.DataTable dt = await adapter.ExecuteDataTableRetrievalQueryAsync(query, lsitparamter).ConfigureAwait(false);
+
+                if (dt.Rows.Count > 0)
+                {
+                    isFolderEmpty = false;
+                }
+            }
+
+            return isFolderEmpty;
+        }
+
         public static OperationCallResult<bool> UpdateAppFileFolder(List<int> fileIdList, int? targetFolderId)
         {
             OperationCallResult<bool> aOperationCallResult = new OperationCallResult<bool>();
@@ -422,6 +446,54 @@ namespace App.BL
                         filter.PredicateExpression.Add(AppFileFields.FileId == fileIdList.ToArray());
 
                         adapter.UpdateEntitiesDirectly(fileEntity, filter);
+                        aOperationCallResult.ValidationResult.AddItem(null, "File_Folder_Update_OK", ValidationItemType.Message, "File folder updated successful.");
+                        adapter.Commit();
+                    }
+                    catch (ORMQueryExecutionException ex)
+                    {
+                        adapter.Rollback();
+                        aOperationCallResult.ValidationResult.Items.Add(new ValidationItem(null, "File_Folder_Update_Failed", ValidationItemType.Error, ex.ToString()));
+                    }
+                }
+            }
+
+            if (!aOperationCallResult.ValidationResult.HasErrors)
+            {
+                aOperationCallResult.Object = true;
+            }
+
+            return aOperationCallResult;
+        }
+
+        public static async Task<OperationCallResult<bool>> UpdateAppFileFolderAsync(List<int> fileIdList, int? targetFolderId)
+        {
+            OperationCallResult<bool> aOperationCallResult = new OperationCallResult<bool>();
+
+            ValidationResult aValidationResult = new ValidationResult();
+            aOperationCallResult.ValidationResult = aValidationResult;
+
+            if (fileIdList.Count > 0 && targetFolderId.HasValue)
+            {
+                AppFileEntity fileEntity = new AppFileEntity();
+                fileEntity.FolderId = targetFolderId;
+
+                var folderEntity = AppSeFolderBL.RetrieveOneAppSefolderEntity(targetFolderId.Value);
+
+                if (folderEntity != null && folderEntity.AppCreatedById.HasValue)
+                {
+                    fileEntity.AppCreatedById = folderEntity.AppCreatedById.Value;
+                }
+
+                using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+                {
+                    try
+                    {
+                        adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+
+                        RelationPredicateBucket filter = new RelationPredicateBucket();
+                        filter.PredicateExpression.Add(AppFileFields.FileId == fileIdList.ToArray());
+
+                        await adapter.UpdateEntitiesDirectlyAsync(fileEntity, filter).ConfigureAwait(false);
                         aOperationCallResult.ValidationResult.AddItem(null, "File_Folder_Update_OK", ValidationItemType.Message, "File folder updated successful.");
                         adapter.Commit();
                     }

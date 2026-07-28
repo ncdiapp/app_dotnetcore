@@ -33,6 +33,7 @@ using System.IO;
 using Microsoft.SqlServer.Server;
 using Newtonsoft.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using System.CodeDom.Compiler;
 using System.Net;
 using System.Runtime.Serialization;
@@ -1033,6 +1034,18 @@ namespace App.BL
             }
         }
 
+        public static async Task<AppProjectWorkFlowActionExDto> RetrieveOneTransactionCommandExDtoAsync(int? CommanfWorkFlowActionId)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                AppProjectWorkFlowActionEntity aAppProjectWorkFlowActionEntity = new AppProjectWorkFlowActionEntity(CommanfWorkFlowActionId.Value);
+                await adapter.FetchEntityAsync(aAppProjectWorkFlowActionEntity).ConfigureAwait(false);
+
+                AppProjectWorkFlowActionExDto dto = AppProjectWorkFlowActionConverter.ConvertEntityToExDto(aAppProjectWorkFlowActionEntity);
+
+                return dto;
+            }
+        }
 
 
         public static OperationCallResult<bool> SaveOneTransactionCommandActionList(AppTransactionExDto aAppTransactionExDto)
@@ -1354,6 +1367,24 @@ namespace App.BL
             return null;
         }
 
+        public static async Task<AppProjectWorkFlowActionExDto> RetrieveOneTransactionCommandAsync(object Id)
+        {
+            if (Id != null)
+            {
+                using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+                {
+                    AppProjectWorkFlowActionEntity entity = new AppProjectWorkFlowActionEntity(int.Parse(Id.ToString()));
+                    await adapter.FetchEntityAsync(entity).ConfigureAwait(false);
+
+                    AppProjectWorkFlowActionExDto appProjectWorkFlowActionExDto = AppProjectWorkFlowActionConverter.ConvertEntityToExDto(entity);
+
+                    return appProjectWorkFlowActionExDto;
+                }
+            }
+
+            return null;
+        }
+
 
         public static List<AppProjectWorkFlowActionExDto> RetrieveCommandListByIds(List<int> IdList)
         {
@@ -1383,6 +1414,37 @@ namespace App.BL
                         //}
 
                         //InitChildCommandProperties(commandActionList, actionDto);
+
+                        toReturn.Add(actionDto);
+                    }
+                }
+            }
+
+            return toReturn;
+        }
+
+        public static async Task<List<AppProjectWorkFlowActionExDto>> RetrieveCommandListByIdsAsync(List<int> IdList)
+        {
+            List<AppProjectWorkFlowActionExDto> toReturn = new List<AppProjectWorkFlowActionExDto>();
+
+            if (IdList != null && IdList.Count > 0)
+            {
+                using (DataAccessAdapter adpater = AppTenantAdapterBL.GetTenantAdapter())
+                {
+                    EntityCollection<AppProjectWorkFlowActionEntity> commandActionList = new EntityCollection<AppProjectWorkFlowActionEntity>();
+                    await adpater.FetchEntityCollectionAsync(new QueryParameters(0, 0, 0, new RelationPredicateBucket(AppProjectWorkFlowActionFields.WorkFlowActionId == IdList))
+                    {
+                        CollectionToFetch = commandActionList
+                    }, default).ConfigureAwait(false);
+
+                    foreach (var entity in commandActionList)
+                    {
+                        var actionDto = AppProjectWorkFlowActionConverter.ConvertEntityToExDto(entity);
+
+                        if (!actionDto.ActionAttribute.EmAppValidationResultPreference.HasValue)
+                        {
+                            actionDto.ActionAttribute.EmAppValidationResultPreference = EmAppValidationResultPreference.ShowResultDetails;
+                        }
 
                         toReturn.Add(actionDto);
                     }
@@ -1448,6 +1510,55 @@ namespace App.BL
             aAppTransactionExDto.CommandActionList = toReturn;
 
 
+
+            return toReturn;
+        }
+
+        public static async Task<List<AppProjectWorkFlowActionExDto>> RetrieveOneTransactionCommandActionListAsync(AppTransactionExDto aAppTransactionExDto, int? rootWorkflowTransactionId = null)
+        {
+            List<AppProjectWorkFlowActionExDto> toReturn = new List<AppProjectWorkFlowActionExDto>();
+
+            if (aAppTransactionExDto != null && aAppTransactionExDto.Id != null)
+            {
+                var transactionFieldList = aAppTransactionExDto.DictAllTransactionField.Values.ToList();
+
+                AppTransactionFormulaSetupBL.InitialTransactionFieldFormularDisplayName(aAppTransactionExDto, transactionFieldList);
+
+                if (rootWorkflowTransactionId.HasValue && rootWorkflowTransactionId.Value != (int)aAppTransactionExDto.Id)
+                {
+                    MergeWorkflowGlobalFieldWithFormularDisplayName(rootWorkflowTransactionId.Value, transactionFieldList);
+                }
+
+                using (DataAccessAdapter adpater = AppTenantAdapterBL.GetTenantAdapter())
+                {
+                    EntityCollection<AppProjectWorkFlowActionEntity> commandActionList = new EntityCollection<AppProjectWorkFlowActionEntity>();
+                    await adpater.FetchEntityCollectionAsync(new QueryParameters(0, 0, 0, new RelationPredicateBucket(AppProjectWorkFlowActionFields.CommandTransactionId == (int)aAppTransactionExDto.Id))
+                    {
+                        CollectionToFetch = commandActionList
+                    }, default).ConfigureAwait(false);
+
+                    foreach (var entity in commandActionList)
+                    {
+                        var actionDto = AppProjectWorkFlowActionConverter.ConvertEntityToExDto(entity);
+
+                        if (actionDto.ActionType.HasValue && actionDto.ActionType.Value == (int)EmAppTransactionCommandType.CommnadFormulaCalculation)
+                        {
+                            OutFormatExecutionFormula(transactionFieldList, actionDto);
+                        }
+
+                        if (!actionDto.ActionAttribute.EmAppValidationResultPreference.HasValue)
+                        {
+                            actionDto.ActionAttribute.EmAppValidationResultPreference = EmAppValidationResultPreference.ShowResultDetails;
+                        }
+
+                        InitChildCommandProperties(commandActionList, actionDto);
+
+                        toReturn.Add(actionDto);
+                    }
+                }
+            }
+
+            aAppTransactionExDto.CommandActionList = toReturn;
 
             return toReturn;
         }

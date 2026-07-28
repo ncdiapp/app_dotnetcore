@@ -16,6 +16,7 @@ using APP.Components.EntityConverter;
 using APP.Components.EntityDto;
 using System.Text.RegularExpressions;
 using System;
+using System.Threading.Tasks;
 using DatabaseSchemaMrg.DataSchema;
 using System.Data.SqlClient;
 using DatabaseSchemaMrg;
@@ -129,6 +130,86 @@ namespace App.BL
             }
         }
 
+        public static async Task<List<AppTransactionDto>> RetrieveAllAppTransactionDtoAsync(bool? isSystemBuitIn, int? transactionOrganizedType = null, bool isIncludeWorkflow = false)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                EntityCollection<AppTransactionEntity> list = new EntityCollection<AppTransactionEntity>();
+
+                SortExpression expression = new SortExpression(AppTransactionFields.TransactionName | SortOperator.Ascending);
+                PrefetchPath2 path = new PrefetchPath2(EntityType.AppTransactionEntity);
+                path.Add(AppTransactionEntity.PrefetchPathAppTransactionNavigation);
+
+                RelationPredicateBucket filter = new RelationPredicateBucket();
+                if (isSystemBuitIn.HasValue)
+                {
+                    if (isSystemBuitIn.Value)
+                    {
+                        filter.PredicateExpression.Add(AppTransactionFields.IsSystemBuitIn == isSystemBuitIn.Value);
+                    }
+                    else
+                    {
+                        filter.PredicateExpression.Add(AppTransactionFields.IsSystemBuitIn == isSystemBuitIn.Value | AppTransactionFields.IsSystemBuitIn == DBNull.Value);
+                    }
+                }
+
+                if (transactionOrganizedType.HasValue)
+                {
+                    filter.PredicateExpression.AddWithAnd(AppTransactionFields.TransactionOrganizedType == transactionOrganizedType.Value);
+                }
+
+                if (!isIncludeWorkflow)
+                {
+                    filter.PredicateExpression.AddWithAnd(AppTransactionFields.BusinessScopeId == DBNull.Value | AppTransactionFields.BusinessScopeId != (int)EmAppTransactionScopeUsage.WorkflowAutomation);
+                }
+
+                await adapter.FetchEntityCollectionAsync(new QueryParameters(0, 0, 0, filter)
+                {
+                    CollectionToFetch = list,
+                    SorterToUse = expression,
+                    PrefetchPathToUse = path
+                }, default).ConfigureAwait(false);
+
+                var aDtoList = new List<AppTransactionDto>();
+
+                foreach (var o in list)
+                {
+                    var transDto = AppTransactionConverter.ConvertEntityToDto(o);
+                    aDtoList.Add(transDto);
+
+                    if (o.AppTransactionNavigation != null && o.AppTransactionNavigation.Count > 0)
+                    {
+                        foreach (var navigationEntity in o.AppTransactionNavigation)
+                        {
+                            if (navigationEntity.QuickSearchId.HasValue)
+                            {
+                                transDto.DefaultNavigationSearchId = navigationEntity.QuickSearchId.Value;
+                            }
+                            else if (navigationEntity.FolderViewId.HasValue)
+                            {
+                                transDto.DefaultNavigationFolderViewId = navigationEntity.FolderViewId.Value;
+                            }
+                        }
+                    }
+
+                    transDto.CreatedFromDisplay = EmTransactionCreatedFrom.Database.ToString();
+
+                    if (transDto.OtherOptions != null)
+                    {
+                        if (transDto.OtherOptions.IsApiIntegrationTransaction)
+                        {
+                            transDto.CreatedFromDisplay = EmTransactionCreatedFrom.Json.ToString();
+                        }
+                        else if (transDto.OtherOptions.ImportSettingId.HasValue)
+                        {
+                            transDto.CreatedFromDisplay = EmTransactionCreatedFrom.Excel.ToString();
+                        }
+                    }
+                }
+
+                return aDtoList;
+            }
+        }
 
 
         public static List<AppTransactionDto> RetrieveSaasApplicationWorkflowAutomationList(int? applicationId, bool isIncludeDraftImportSetting = false)
@@ -247,6 +328,33 @@ namespace App.BL
                 return idlistt;
             }
         }
+
+        public static async Task<List<int>> RetrieveAllAppTransactionIdsAsync()
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                EntityCollection<AppTransactionEntity> list = new EntityCollection<AppTransactionEntity>();
+
+                IncludeFieldsList includeList = new IncludeFieldsList();
+                includeList.Add(AppTransactionFields.TransactionId);
+
+                await adapter.FetchEntityCollectionAsync(new QueryParameters
+                {
+                    CollectionToFetch = list,
+                    ExcludedIncludedFields = includeList
+                }, default).ConfigureAwait(false);
+
+                List<int> idlistt = new List<int>();
+
+                foreach (var o in list)
+                {
+                    idlistt.Add(o.TransactionId);
+                }
+
+                return idlistt;
+            }
+        }
+
         public static AppTransactionExDto RetrieveOneAppTransactionExDto(object transcactionId, int? rootWorkflowTransactionId = null)
         {
              int? transcactionIdint = ControlTypeValueConverter.ConvertValueToInt(transcactionId);
@@ -286,6 +394,47 @@ namespace App.BL
                 aAppTransactionExDto.DefaultNavigationMenuId = (int)existingNavigationDto.DefaultMenuDto.Id;
             }
 
+
+            return aAppTransactionExDto;
+        }
+
+        public static async Task<AppTransactionExDto> RetrieveOneAppTransactionExDtoAsync(object transcactionId, int? rootWorkflowTransactionId = null)
+        {
+            int? transcactionIdint = ControlTypeValueConverter.ConvertValueToInt(transcactionId);
+            if (!transcactionIdint.HasValue) return null;
+
+            AppTransactionEntity aAppTransactionEntity = await RetrieveOneAppTransactionEntityAsync(transcactionId).ConfigureAwait(false);
+            if (aAppTransactionEntity == null) return null;
+
+            AppTransactionExDto aAppTransactionExDto = ConvertTransactionEntityToExdto(aAppTransactionEntity);
+
+            if (aAppTransactionEntity.FormId.HasValue)
+            {
+                var formEntity = AppFormBL.RetrieveSimpleAppFormEntity(aAppTransactionEntity.FormId.Value);
+                aAppTransactionExDto.FormLayoutType = formEntity.LayoutType;
+            }
+
+            if (aAppTransactionEntity.PrintFormId.HasValue)
+            {
+                var formEntity = AppFormBL.RetrieveSimpleAppFormEntity(aAppTransactionEntity.PrintFormId.Value);
+                aAppTransactionExDto.PrintFormLayoutType = formEntity.LayoutType;
+            }
+
+            SetupMappingToAvailableSourceUnitTransactionFieldExDto(aAppTransactionExDto);
+
+            aAppTransactionExDto.CommandActionList = AppTransactionCommandBL.RetrieveOneTransactionCommandActionList(aAppTransactionExDto, rootWorkflowTransactionId);
+
+            PrepareApiTransactionProperties(aAppTransactionExDto);
+
+            int? transId = ControlTypeValueConverter.ConvertValueToInt(transcactionId);
+
+            var existingNavigationDto = AppTransactionNavigationBL.RetrieveOneTransactionDefaultNavigationDto(transId, false);
+
+            if (existingNavigationDto != null && existingNavigationDto.DefaultMenuDto != null)
+            {
+                aAppTransactionExDto.DefaultNavigationSearchId = existingNavigationDto.QuickSearchId;
+                aAppTransactionExDto.DefaultNavigationMenuId = (int)existingNavigationDto.DefaultMenuDto.Id;
+            }
 
             return aAppTransactionExDto;
         }
@@ -1749,6 +1898,43 @@ namespace App.BL
             }
         }
 
+        public static async Task<AppTransactionEntity> RetrieveOneAppTransactionEntityAsync(object transcactionId)
+        {
+            int? transcactionIdInt = ControlTypeValueConverter.ConvertValueToInt(transcactionId);
+            if (!transcactionIdInt.HasValue)
+                return null;
+            using (DataAccessAdapter adpater = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                AppTransactionEntity transactionEntity = new AppTransactionEntity(transcactionIdInt.Value);
+
+                IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppTransactionEntity);
+                IPrefetchPathElement2 unitFetchElment = rootPath.Add(AppTransactionEntity.PrefetchPathAppTransactionUnit);
+                rootPath.Add(AppTransactionEntity.PrefetchPathAppTransactionDataLoad);
+                rootPath.Add(AppTransactionEntity.PrefetchPathAppProjectWorkFlowAction);
+
+                unitFetchElment.SubPath.Add(AppTransactionUnitEntity.PrefetchPathAppTransactionUnitFormula_);
+
+                var transcationFiedPath = unitFetchElment.SubPath.Add(AppTransactionUnitEntity.PrefetchPathAppTransactionField);
+
+                transcationFiedPath.SubPath.Add(AppTransactionFieldEntity.PrefetchPathAppTransactionFieldAggFunction_);
+                transcationFiedPath.SubPath.Add(AppTransactionFieldEntity.PrefetchPathAppConditionalAction__);
+
+                unitFetchElment.SubPath.Add(AppTransactionUnitEntity.PrefetchPathAppFormLinkTarget);
+
+                IPrefetchPathElement2 linkedSearchElement = unitFetchElment.SubPath.Add(AppTransactionUnitEntity.PrefetchPathAppTransactionUnitLinkedSearch);
+
+                linkedSearchElement.SubPath.Add(AppTransactionUnitLinkedSearchEntity.PrefetchPathAppTransactionUnitSearchFieldMapping)
+                    .SubPath.Add(AppTransactionUnitSearchFieldMappingEntity.PrefetchPathAppTransactionField);
+
+                linkedSearchElement.SubPath.Add(AppTransactionUnitLinkedSearchEntity.PrefetchPathAppTransactionUnitSearchViewFieldMapping)
+                    .SubPath.Add(AppTransactionUnitSearchViewFieldMappingEntity.PrefetchPathAppTransactionField);
+
+                await adpater.FetchEntityAsync(transactionEntity, rootPath).ConfigureAwait(false);
+
+                return transactionEntity;
+            }
+        }
+
         //public static List<AppProjectWorkFlowActionExDto> RetrieveOneTransactionCommandActionList(object transcactionId)
         //{
         //    List<AppProjectWorkFlowActionExDto> toReturn = new List<AppProjectWorkFlowActionExDto>();
@@ -1772,6 +1958,16 @@ namespace App.BL
             {
                 AppTransactionEntity transactionEntity = new AppTransactionEntity(int.Parse(transcactionId.ToString()));
                 adpater.FetchEntity(transactionEntity);
+                return transactionEntity;
+            }
+        }
+
+        public static async Task<AppTransactionEntity> RetrieveOneAppTransactionSimpleEntityAsync(object transcactionId)
+        {
+            using (DataAccessAdapter adpater = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                AppTransactionEntity transactionEntity = new AppTransactionEntity(int.Parse(transcactionId.ToString()));
+                await adpater.FetchEntityAsync(transactionEntity).ConfigureAwait(false);
                 return transactionEntity;
             }
         }
@@ -3155,6 +3351,37 @@ namespace App.BL
 
             }
 
+        }
+
+        public static async Task<Dictionary<int, string>> RetrieveListEditTransactionsBySchemaOwnerTableNameAsync(string tableName, string schemaOwner, int? dataSourceFrom)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                string queryDatasourceTransId =
+                    @"  SELECT    distinct AppTransaction.TransactionID AS DataSourceTransactionID, AppTransaction.TransactionName
+                        FROM    [AppTransactionUnit] INNER JOIN AppTransaction ON AppTransactionUnit.TransactionID = AppTransaction.TransactionID
+
+                        WHERE   (AppTransactionUnit.ParentTransactionUnitID is null) AND (AppTransaction.TransactionOrganizedType = 3)
+                                and  AppTransactionUnit.DataBaseTableName = @DataBaseTableName";
+
+                List<SqlParameter> listPars = new List<SqlParameter>();
+                listPars.Add(new SqlParameter("@DataBaseTableName", tableName));
+
+                if (!string.IsNullOrWhiteSpace(schemaOwner))
+                {
+                    queryDatasourceTransId += @" AND AppTransactionUnit.SchemaOwner = @SchemaOwner";
+                    listPars.Add(new SqlParameter("@SchemaOwner", schemaOwner));
+                }
+
+                if (dataSourceFrom.HasValue)
+                {
+                    queryDatasourceTransId += @" AND AppTransaction.DataSourceFrom = @DataSourceFrom";
+                    listPars.Add(new SqlParameter("@DataSourceFrom", dataSourceFrom.Value));
+                }
+
+                System.Data.DataTable dt = await adapter.ExecuteDataTableRetrievalQueryAsync(queryDatasourceTransId, listPars).ConfigureAwait(false);
+                return dt.AsEnumerable().ToDictionary(o => (int)o["DataSourceTransactionID"], o => o["TransactionName"] as string);
+            }
         }
 
         public static OperationCallResult<bool> ImportSaasApplicationTransactions(SaasApplicationSectionItemImportDto importDto)
