@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Linq;
@@ -21,6 +21,7 @@ using Newtonsoft.Json;
 //using System.Management.Automation;
 
 using APP.Framework;
+using System.Threading.Tasks;
 namespace App.BL
 {
     public static class AppSearchViewConfigBL
@@ -1897,5 +1898,454 @@ namespace App.BL
 
 
 
+
+        // =====================================================================
+        // ASYNC SIBLINGS — Task 6B
+        // =====================================================================
+
+        public static async Task<AppSearchViewEntity> RetrieveOneAppSearchViewEntityAsync(object searchViewId)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                AppSearchViewEntity aEntity = new AppSearchViewEntity(int.Parse(searchViewId.ToString()));
+                IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSearchViewEntity);
+                rootPath.Add(AppSearchViewEntity.PrefetchPathAppSearchViewField);
+                rootPath.Add(AppSearchViewEntity.PrefetchPathAppFormLinkTarget);
+                rootPath.Add(AppSearchViewEntity.PrefetchPathAppViewLinkedSeaechOrUrl);
+                rootPath.Add(AppSearchViewEntity.PrefetchPathAppDataSet);
+                await Task.Run(() => adapter.FetchEntity(aEntity, rootPath)).ConfigureAwait(false);
+                return aEntity;
+            }
+        }
+
+        public static async Task<AppSearchViewExDto> RetrieveOneAppSearchViewExDtoAsync(object searchViewId)
+        {
+            AppSearchViewEntity aAppSearchViewEntity = await RetrieveOneAppSearchViewEntityAsync(searchViewId).ConfigureAwait(false);
+            AppSearchViewExDto aAppSearchViewDto = ConvertOneEntityToExDto(aAppSearchViewEntity);
+
+            if (aAppSearchViewDto.ViewType == (int)EmAppViewType.FlatDataSetTreeView
+                && aAppSearchViewDto.OtherSettingsDto != null
+                && aAppSearchViewDto.OtherSettingsDto.EshopCategorySearchMapping != null
+                && aAppSearchViewDto.OtherSettingsDto.EshopCategorySearchMapping.LinkTargetSearchId.HasValue)
+            {
+                aAppSearchViewDto.EshopCardViewSearchId = aAppSearchViewDto.OtherSettingsDto.EshopCategorySearchMapping.LinkTargetSearchId.Value;
+            }
+
+            if (aAppSearchViewDto.ViewType == (int)EmAppViewType.HierarchyMasterDetailView)
+            {
+                aAppSearchViewDto.ChildViewExDtoList = RetrieveHierarchyMasterDetailViewChildViewExDtoList(searchViewId);
+            }
+
+            return aAppSearchViewDto;
+        }
+
+        public static async Task<EntityCollection<AppSearchViewEntity>> RetrieveAllAppSearchViewEntityAsync()
+        {
+            EntityCollection<AppSearchViewEntity> list = new EntityCollection<AppSearchViewEntity>();
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                var qp = new QueryParameters(0, 0, 0, null) { CollectionToFetch = list };
+                await adapter.FetchEntityCollectionAsync(qp, default).ConfigureAwait(false);
+            }
+            return list;
+        }
+
+        public static async Task<ObservableSet<AppSearchViewDto>> RetrieveAllAppSearchViewDtoAsync()
+        {
+            EntityCollection<AppSearchViewEntity> list = await RetrieveAllAppSearchViewEntityAsync().ConfigureAwait(false);
+            var aDtoList = new ObservableSet<AppSearchViewDto>();
+            foreach (var o in list)
+            {
+                aDtoList.Add(AppSearchViewConverter.ConvertEntityToDto(o));
+            }
+            return aDtoList;
+        }
+
+        public static async Task<ObservableSet<AppSearchViewDto>> RetrieveAllSearchViewDtoByViewTypeAsync(int? viewType = null)
+        {
+            EntityCollection<AppSearchViewEntity> list = new EntityCollection<AppSearchViewEntity>();
+            IRelationPredicateBucket filter = viewType.HasValue
+                ? new RelationPredicateBucket(AppSearchViewFields.ViewType == viewType.Value)
+                : null;
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                var qp = new QueryParameters(0, 0, 0, filter) { CollectionToFetch = list };
+                await adapter.FetchEntityCollectionAsync(qp, default).ConfigureAwait(false);
+            }
+
+            var aDtoList = new ObservableSet<AppSearchViewDto>();
+            foreach (var o in list)
+            {
+                aDtoList.Add(AppSearchViewConverter.ConvertEntityToDto(o));
+            }
+            return aDtoList;
+        }
+
+        private static async Task<ValidationResult> ProcessDirtyAppSearchViewExDtoAsync(AppSearchViewExDto aAppSearchViewExDto)
+        {
+            ValidationResult aValidationResult = new ValidationResult();
+
+            AppSearchViewEntity aAppSearchViewEntity = await RetrieveOneAppSearchViewEntityAsync(aAppSearchViewExDto.Id).ConfigureAwait(false);
+
+            Dictionary<int, AppSearchViewFieldEntity> dictAppSearchViewFieldFromDbms = aAppSearchViewEntity.AppSearchViewField.ToDictionary(o => o.SearchViewFieldId, o => o);
+            AppSearchViewConverter.CopyDtoToEntity(aAppSearchViewEntity, aAppSearchViewExDto);
+
+            foreach (AppSearchViewFieldDto aChildDto in aAppSearchViewExDto.AppSearchViewFieldList.FindNewItems())
+            {
+                AppSearchViewFieldEntity aNewChildEntity = new AppSearchViewFieldEntity();
+                AppSearchViewFieldConverter.CopyDtoToEntity(aNewChildEntity, aChildDto);
+                aAppSearchViewEntity.AppSearchViewField.Add(aNewChildEntity);
+            }
+
+            foreach (var modifyitem in aAppSearchViewExDto.AppSearchViewFieldList.FindModifiedItems())
+            {
+                int dtoKey = int.Parse(modifyitem.Id.ToString());
+                if (dictAppSearchViewFieldFromDbms.ContainsKey(dtoKey))
+                {
+                    AppSearchViewFieldConverter.CopyDtoToEntity(dictAppSearchViewFieldFromDbms[dtoKey], modifyitem);
+                }
+            }
+
+            int[] deleteAppSearchViewFieldIDs = new int[0];
+            var deletedFieldIds = aAppSearchViewExDto.AppSearchViewFieldList.FindDeletedItemIds();
+            if (deletedFieldIds != null)
+            {
+                deleteAppSearchViewFieldIDs = deletedFieldIds.Cast<int>().ToArray();
+            }
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                try
+                {
+                    adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+                    await adapter.SaveEntityAsync(aAppSearchViewEntity).ConfigureAwait(false);
+
+                    if (deleteAppSearchViewFieldIDs.Count() > 0)
+                    {
+                        await adapter.DeleteEntitiesDirectlyAsync(typeof(AppSearchViewFieldEntity), new RelationPredicateBucket(AppSearchViewFieldFields.SearchViewFieldId == deleteAppSearchViewFieldIDs)).ConfigureAwait(false);
+                    }
+
+                    adapter.Commit();
+                    aValidationResult.Items.Add(new ValidationItem(typeof(AppSearchViewEntity), "app_SearchViewEntity_Save_OK", ValidationItemType.Message, "Saved Successfully"));
+                }
+                catch (ORMQueryExecutionException ex)
+                {
+                    adapter.Rollback();
+                    aValidationResult.Items.Add(new ValidationItem(typeof(AppSearchViewEntity), "app_SearchViewEntity_QueryExecution_Error", ValidationItemType.Error, ex.ToString()));
+                }
+            }
+            return aValidationResult;
+        }
+
+        public static async Task<OperationCallResult<AppSearchViewExDto>> SaveAppSearchViewExDtoAsync(AppSearchViewExDto aAppSearchViewExDto)
+        {
+            OperationCallResult<AppSearchViewExDto> aOperationCallResult = new OperationCallResult<AppSearchViewExDto>();
+
+            PrepaireDayPilotTypeSearchViewFieldsBeforeSave(aAppSearchViewExDto);
+
+            var aValidationResult = aAppSearchViewExDto.ValidateDto();
+            if (aValidationResult.HasErrors)
+            {
+                aOperationCallResult.ValidationResult = aValidationResult;
+                return aOperationCallResult;
+            }
+
+            aValidationResult = new ValidationResult();
+            aOperationCallResult.ValidationResult = aValidationResult;
+
+            AppSearchViewEntity aAppSearchViewEntity;
+
+            foreach (var searchViewFieldDto in aAppSearchViewExDto.AppSearchViewFieldList)
+            {
+                if (string.IsNullOrEmpty(searchViewFieldDto.DisplayText))
+                {
+                    searchViewFieldDto.DisplayText = searchViewFieldDto.SysTableFiledPath;
+                }
+                if (searchViewFieldDto.ControlType.HasValue && searchViewFieldDto.ControlType.Value != (int)EmAppControlType.DDL
+                    && searchViewFieldDto.ControlType.Value != (int)EmAppControlType.AutoComplete
+                    && searchViewFieldDto.ControlType.Value != (int)EmAppControlType.SearchAbleDDL)
+                {
+                    searchViewFieldDto.EntityId = null;
+                }
+
+                if (!searchViewFieldDto.Sort.HasValue)
+                {
+                    int? maxSort = aAppSearchViewExDto.AppSearchViewFieldList.Max(o => o.Sort);
+                    maxSort = maxSort.HasValue ? maxSort.Value : 0;
+                    searchViewFieldDto.Sort = maxSort.Value + 10;
+                }
+            }
+
+            if (aAppSearchViewExDto.IsNew)
+            {
+                aAppSearchViewEntity = new AppSearchViewEntity();
+                AppSearchViewConverter.CopyDtoToEntity(aAppSearchViewEntity, aAppSearchViewExDto);
+
+                foreach (var searchTemplateSubitemDto in aAppSearchViewExDto.AppSearchViewFieldList)
+                {
+                    AppSearchViewFieldEntity aAppSearchViewFieldEntity = new AppSearchViewFieldEntity();
+                    AppSearchViewFieldConverter.CopyDtoToEntity(aAppSearchViewFieldEntity, searchTemplateSubitemDto);
+                    aAppSearchViewEntity.AppSearchViewField.Add(aAppSearchViewFieldEntity);
+                }
+                using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+                {
+                    try
+                    {
+                        adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+                        await adapter.SaveEntityAsync(aAppSearchViewEntity).ConfigureAwait(false);
+                        adapter.Commit();
+                        aAppSearchViewExDto.Id = aAppSearchViewEntity.SearchViewId;
+                        aValidationResult.Items.Add(new ValidationItem(typeof(AppSearchViewExDto), "app_SearchViewEntity_Save_OK", ValidationItemType.Message, "Saved Successfully"));
+                    }
+                    catch (ORMQueryExecutionException ex)
+                    {
+                        adapter.Rollback();
+                        aValidationResult.Items.Add(new ValidationItem(typeof(AppSearchViewExDto), "app_SearchViewEntity_QueryExecution_Error", ValidationItemType.Error, ex.ToString()));
+                    }
+                }
+            }
+            else if (aAppSearchViewExDto.IsRelatedEntitiesModified())
+            {
+                aValidationResult.Merge(await ProcessDirtyAppSearchViewExDtoAsync(aAppSearchViewExDto).ConfigureAwait(false));
+            }
+
+            if (!aValidationResult.HasErrors)
+            {
+                object serchViewId = aAppSearchViewExDto.Id;
+                RemoveViewNoneExsitDateFilePath(aValidationResult, serchViewId);
+                aOperationCallResult.Object = await RetrieveOneAppSearchViewExDtoAsync(aAppSearchViewExDto.Id).ConfigureAwait(false);
+            }
+
+            return aOperationCallResult;
+        }
+
+        public static async Task<AppSearchViewFieldEntity> RetrieveOneAppSearchViewFieldEntityAsync(object searchViewFieldId)
+        {
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                AppSearchViewFieldEntity aEntity = new AppSearchViewFieldEntity(int.Parse(searchViewFieldId.ToString()));
+                await Task.Run(() => adapter.FetchEntity(aEntity)).ConfigureAwait(false);
+                return aEntity;
+            }
+        }
+
+        public static async Task<AppSearchViewFieldExDto> RetrieveOneAppSearchViewFieldExDtoAsync(object searchViewFieldId)
+        {
+            AppSearchViewFieldEntity aAppSearchViewFieldEntity = await RetrieveOneAppSearchViewFieldEntityAsync(searchViewFieldId).ConfigureAwait(false);
+            return AppSearchViewFieldConverter.ConvertEntityToExDto(aAppSearchViewFieldEntity);
+        }
+
+        private static async Task<ValidationResult> ProcessDirtyAppSearchViewFieldExDtoAsync(AppSearchViewFieldExDto aAppSearchViewFieldExDto)
+        {
+            ValidationResult aValidationResult = new ValidationResult();
+            AppSearchViewFieldEntity aAppSearchViewFieldEntity = await RetrieveOneAppSearchViewFieldEntityAsync(aAppSearchViewFieldExDto.Id).ConfigureAwait(false);
+            AppSearchViewFieldConverter.CopyDtoToEntity(aAppSearchViewFieldEntity, aAppSearchViewFieldExDto);
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                try
+                {
+                    adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+                    await adapter.SaveEntityAsync(aAppSearchViewFieldEntity).ConfigureAwait(false);
+                    adapter.Commit();
+                    aValidationResult.Items.Add(new ValidationItem(typeof(AppSearchViewFieldEntity), "App_SearchEntity_Save_OK", ValidationItemType.Message, "Saved Successfully"));
+                }
+                catch (ORMQueryExecutionException ex)
+                {
+                    adapter.Rollback();
+                    aValidationResult.Items.Add(new ValidationItem(typeof(AppSearchViewFieldEntity), "App_SearchEntity_QueryExecution_Error", ValidationItemType.Error, ex.ToString()));
+                }
+            }
+            return aValidationResult;
+        }
+
+        public static async Task<OperationCallResult<AppSearchViewFieldExDto>> SaveAppSearchViewFieldExDtoAsync(AppSearchViewFieldExDto aAppSearchViewFieldExDto)
+        {
+            OperationCallResult<AppSearchViewFieldExDto> aOperationCallResult = new OperationCallResult<AppSearchViewFieldExDto>();
+
+            var aValidationResult = aAppSearchViewFieldExDto.ValidateDto();
+            if (aValidationResult.HasErrors)
+            {
+                aOperationCallResult.ValidationResult = aValidationResult;
+                return aOperationCallResult;
+            }
+
+            aValidationResult = new ValidationResult();
+            aOperationCallResult.ValidationResult = aValidationResult;
+
+            AppSearchViewFieldEntity aAppSearchViewFieldEntity;
+
+            if (string.IsNullOrEmpty(aAppSearchViewFieldExDto.DisplayText))
+            {
+                aAppSearchViewFieldExDto.DisplayText = aAppSearchViewFieldExDto.SysTableFiledPath;
+            }
+
+            if (aAppSearchViewFieldExDto.ControlType.HasValue
+                && aAppSearchViewFieldExDto.ControlType.Value != (int)EmAppControlType.DDL
+                && aAppSearchViewFieldExDto.ControlType.Value != (int)EmAppControlType.AutoComplete
+                && aAppSearchViewFieldExDto.ControlType.Value != (int)EmAppControlType.SearchAbleDDL)
+            {
+                aAppSearchViewFieldExDto.EntityId = null;
+            }
+
+            if (aAppSearchViewFieldExDto.IsNew)
+            {
+                aAppSearchViewFieldEntity = new AppSearchViewFieldEntity();
+                AppSearchViewFieldConverter.CopyDtoToEntity(aAppSearchViewFieldEntity, aAppSearchViewFieldExDto);
+
+                if (!aValidationResult.HasErrors)
+                {
+                    using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+                    {
+                        try
+                        {
+                            adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+                            await adapter.SaveEntityAsync(aAppSearchViewFieldEntity).ConfigureAwait(false);
+                            adapter.Commit();
+                            aAppSearchViewFieldExDto.Id = aAppSearchViewFieldEntity.SearchViewFieldId;
+                            aValidationResult.Items.Add(new ValidationItem(typeof(AppSearchViewFieldExDto), "App_SearchEntity_Save_OK", ValidationItemType.Message, "Saved Successfully"));
+                        }
+                        catch (ORMQueryExecutionException ex)
+                        {
+                            adapter.Rollback();
+                            aValidationResult.Items.Add(new ValidationItem(typeof(AppSearchViewFieldExDto), "App_SearchEntity_QueryExecution_Error", ValidationItemType.Error, ex.ToString()));
+                        }
+                    }
+                }
+            }
+            else if (aAppSearchViewFieldExDto.IsRelatedEntitiesModified())
+            {
+                aValidationResult.Merge(await ProcessDirtyAppSearchViewFieldExDtoAsync(aAppSearchViewFieldExDto).ConfigureAwait(false));
+            }
+
+            if (!aValidationResult.HasErrors)
+            {
+                aOperationCallResult.Object = await RetrieveOneAppSearchViewFieldExDtoAsync(aAppSearchViewFieldExDto.Id).ConfigureAwait(false);
+            }
+
+            return aOperationCallResult;
+        }
+
+        public static async Task<OperationCallResult<object>> DeleteAppSearchViewAsync(object searchViewId, bool needToResetSearchDefultView = true)
+        {
+            OperationCallResult<object> aValidationResult = new OperationCallResult<object>();
+
+            List<AppSearchViewEntity> siblingViewList = GetSiblingSearchViewList(searchViewId);
+            AppSearchViewEntity aAppSearchViewEntity2 = siblingViewList.FirstOrDefault();
+            int? defaultSearchViewId = aAppSearchViewEntity2 == null ? null : aAppSearchViewEntity2.SearchViewId as int?;
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                try
+                {
+                    adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+
+                    if (needToResetSearchDefultView)
+                    {
+                        string updateToSearchViewID = "null";
+                        if (defaultSearchViewId.HasValue)
+                        {
+                            updateToSearchViewID = defaultSearchViewId.ToString();
+                        }
+                        string setSearchViewIdNull = "update AppSearch set SearchViewID = " + updateToSearchViewID + " where SearchViewID = @searchViewId";
+                        List<SqlParameter> paramter = new List<SqlParameter>();
+                        paramter.Add(new SqlParameter("@searchViewId", searchViewId));
+                        await Task.Run(() => adapter.ExecuteScalarQuery(setSearchViewIdNull, paramter)).ConfigureAwait(false);
+                    }
+
+                    await adapter.DeleteEntitiesDirectlyAsync(typeof(AppViewLinkedSeaechOrUrlEntity), new RelationPredicateBucket(AppViewLinkedSeaechOrUrlFields.SearchViewId == searchViewId)).ConfigureAwait(false);
+                    await adapter.DeleteEntitiesDirectlyAsync(typeof(AppFormLinkTargetEntity), new RelationPredicateBucket(AppFormLinkTargetFields.SearchViewId == searchViewId)).ConfigureAwait(false);
+                    await adapter.DeleteEntitiesDirectlyAsync(typeof(AppSearchViewFieldEntity), new RelationPredicateBucket(AppSearchViewFieldFields.SearchViewId == searchViewId)).ConfigureAwait(false);
+                    await adapter.DeleteEntitiesDirectlyAsync(typeof(AppSearchViewEntity), new RelationPredicateBucket(AppSearchViewFields.SearchViewId == searchViewId)).ConfigureAwait(false);
+                    adapter.Commit();
+                }
+                catch (ORMQueryExecutionException ex)
+                {
+                    adapter.Rollback();
+                    aValidationResult.ValidationResult.Items.Add(new ValidationItem(typeof(AppSearchViewEntity), "app_SearchViewEntity_QueryExecution_Error", ValidationItemType.Error, ex.ToString()));
+                }
+
+                if (!aValidationResult.ValidationResult.HasErrors)
+                {
+                    aValidationResult.Object = searchViewId;
+                }
+            }
+            return aValidationResult;
+        }
+
+        public static async Task<ObservableSet<AppViewFiledSearchFiledMappingExDto>> RetrieveAppViewFiledSearchFiledMappingBySearchViewIdAsync(object searchViewId)
+        {
+            EntityCollection<AppViewFiledSearchFiledMappingEntity> entityList = new EntityCollection<AppViewFiledSearchFiledMappingEntity>();
+            IRelationPredicateBucket filter = new RelationPredicateBucket(AppViewFiledSearchFiledMappingFields.SearchViewId == searchViewId);
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                var qp = new QueryParameters(0, 0, 0, filter) { CollectionToFetch = entityList };
+                await adapter.FetchEntityCollectionAsync(qp, default).ConfigureAwait(false);
+            }
+
+            var aDtoList = new ObservableSet<AppViewFiledSearchFiledMappingExDto>();
+            foreach (var entity in entityList)
+            {
+                aDtoList.Add(AppViewFiledSearchFiledMappingConverter.ConvertEntityToExDto(entity));
+            }
+            return aDtoList;
+        }
+
+        public static async Task<OperationCallResult<AppViewFiledSearchFiledMappingExDto>> SaveAllAppViewFiledSearchFiledMappingExDtoAsync(ObservableSet<AppViewFiledSearchFiledMappingExDto> aSet, int searchViewId)
+        {
+            OperationCallResult<AppViewFiledSearchFiledMappingExDto> aOperationCallResult = new OperationCallResult<AppViewFiledSearchFiledMappingExDto>();
+            ValidationResult validationResult = new ValidationResult();
+            aOperationCallResult.ValidationResult = validationResult;
+
+            foreach (AppViewFiledSearchFiledMappingExDto aDto in aSet)
+            {
+                validationResult.Merge(aDto.ValidateDto());
+            }
+
+            if (validationResult.HasErrors)
+            {
+                aOperationCallResult.ValidationResult = validationResult;
+                return aOperationCallResult;
+            }
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                try
+                {
+                    adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
+                    await adapter.DeleteEntitiesDirectlyAsync(typeof(AppViewFiledSearchFiledMappingEntity), new RelationPredicateBucket(AppViewFiledSearchFiledMappingFields.SearchViewId == searchViewId)).ConfigureAwait(false);
+
+                    foreach (AppViewFiledSearchFiledMappingExDto aDto in aSet)
+                    {
+                        AppViewFiledSearchFiledMappingEntity aEntity = new AppViewFiledSearchFiledMappingEntity();
+                        AppViewFiledSearchFiledMappingConverter.CopyDtoToEntity(aEntity, aDto);
+                        aEntity.SearchViewId = searchViewId;
+                        await adapter.SaveEntityAsync(aEntity, false, true).ConfigureAwait(false);
+                    }
+
+                    adapter.Commit();
+                    validationResult.Items.Add(new ValidationItem(typeof(AppViewFiledSearchFiledMappingEntity), "plm_AppViewFiledSearchFiledMapping_Save_OK", ValidationItemType.Message, "Saved Successfully"));
+                }
+                catch (ORMEntityValidationException ex)
+                {
+                    adapter.Rollback();
+                    validationResult.Items.Add(new ValidationItem(typeof(AppViewFiledSearchFiledMappingEntity), "plm_AppViewFiledSearchFiledMapping_BLValidation_Error", ValidationItemType.Error, ex.ToString()));
+                }
+                catch (ORMQueryExecutionException ex)
+                {
+                    adapter.Rollback();
+                    validationResult.Items.Add(new ValidationItem(typeof(AppViewFiledSearchFiledMappingEntity), "plm_AppViewFiledSearchFiledMapping_QueryExecution_Error", ValidationItemType.Error, ex.ToString()));
+                }
+            }
+
+            if (!validationResult.HasErrors)
+            {
+                aOperationCallResult.ObjectList = await RetrieveAppViewFiledSearchFiledMappingBySearchViewIdAsync(searchViewId).ConfigureAwait(false);
+            }
+
+            return aOperationCallResult;
+        }
     }
 }

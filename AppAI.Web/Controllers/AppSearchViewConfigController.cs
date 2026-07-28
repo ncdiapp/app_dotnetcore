@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using App.BL;
@@ -96,9 +97,9 @@ public class AppSearchViewConfigController : SecureBaseController
     }
 
     [HttpGet]
-    public AppSearchExDto RetrieveOneAppSearchExDto(int? searchId)
+    public async Task<AppSearchExDto> RetrieveOneAppSearchExDto(int? searchId)
     {
-        return AppSearchConfigBL.RetrieveOneAppSearchExDto(searchId);
+        return await AppSearchConfigBL.RetrieveOneAppSearchExDtoAsync(searchId).ConfigureAwait(false);
     }
 
     [HttpGet]
@@ -108,7 +109,7 @@ public class AppSearchViewConfigController : SecureBaseController
     }
 
     [HttpPost]
-    public OperationCallResult<AppSearchExDto> SaveAppSearchExDto(AppSearchExDto aAppSearchExDto)
+    public async Task<OperationCallResult<AppSearchExDto>> SaveAppSearchExDto(AppSearchExDto aAppSearchExDto)
     {
         aAppSearchExDto.AppSearchFieldList.DeletedItemIds = aAppSearchExDto.DeletedItemsIds;
 
@@ -120,7 +121,7 @@ public class AppSearchViewConfigController : SecureBaseController
             }
         }
 
-        return AppSearchConfigBL.SaveAppSearchExDto(aAppSearchExDto);
+        return await AppSearchConfigBL.SaveAppSearchExDtoAsync(aAppSearchExDto).ConfigureAwait(false);
     }
 
     [HttpPost]
@@ -176,34 +177,34 @@ public class AppSearchViewConfigController : SecureBaseController
     }
 
     [HttpGet]
-    public OperationCallResult<object> DeleteAppSearch(int? searchId)
+    public async Task<OperationCallResult<object>> DeleteAppSearch(int? searchId)
     {
-        return AppSearchConfigBL.DeleteAppSearch(searchId);
+        return await AppSearchConfigBL.DeleteAppSearchAsync(searchId).ConfigureAwait(false);
     }
 
     [HttpGet]
-    public AppSearchViewExDto RetrieveOneAppSearchViewExDto(int? searchViewId)
+    public async Task<AppSearchViewExDto> RetrieveOneAppSearchViewExDto(int? searchViewId)
     {
-        return AppSearchViewConfigBL.RetrieveOneAppSearchViewExDto(searchViewId);
+        return await AppSearchViewConfigBL.RetrieveOneAppSearchViewExDtoAsync(searchViewId).ConfigureAwait(false);
     }
 
     [HttpGet]
-    public ObservableSet<AppSearchViewDto> RetrieveAllAppSearchViewDto()
+    public async Task<ObservableSet<AppSearchViewDto>> RetrieveAllAppSearchViewDto()
     {
-        return AppSearchViewConfigBL.RetrieveAllAppSearchViewDto();
+        return await AppSearchViewConfigBL.RetrieveAllAppSearchViewDtoAsync().ConfigureAwait(false);
     }
 
     [HttpGet]
-    public ObservableSet<AppSearchViewDto> RetrieveAllSearchViewDtoByViewType(int? viewType)
+    public async Task<ObservableSet<AppSearchViewDto>> RetrieveAllSearchViewDtoByViewType(int? viewType)
     {
-        return AppSearchViewConfigBL.RetrieveAllSearchViewDtoByViewType(viewType);
+        return await AppSearchViewConfigBL.RetrieveAllSearchViewDtoByViewTypeAsync(viewType).ConfigureAwait(false);
     }
 
     [HttpPost]
-    public OperationCallResult<AppSearchViewExDto> SaveAppSearchViewExDto(AppSearchViewExDto aAppSearchViewExDto)
+    public async Task<OperationCallResult<AppSearchViewExDto>> SaveAppSearchViewExDto(AppSearchViewExDto aAppSearchViewExDto)
     {
         aAppSearchViewExDto.AppSearchViewFieldList.DeletedItemIds = aAppSearchViewExDto.DeletedItemsIds;
-        return AppSearchViewConfigBL.SaveAppSearchViewExDto(aAppSearchViewExDto);
+        return await AppSearchViewConfigBL.SaveAppSearchViewExDtoAsync(aAppSearchViewExDto).ConfigureAwait(false);
     }
 
     [HttpGet]
@@ -218,9 +219,9 @@ public class AppSearchViewConfigController : SecureBaseController
     }
 
     [HttpGet]
-    public OperationCallResult<object> DeleteAppSearchView(int? searchViewId)
+    public async Task<OperationCallResult<object>> DeleteAppSearchView(int? searchViewId)
     {
-        return AppSearchViewConfigBL.DeleteAppSearchView(searchViewId);
+        return await AppSearchViewConfigBL.DeleteAppSearchViewAsync(searchViewId).ConfigureAwait(false);
     }
 
     [HttpGet]
@@ -273,20 +274,20 @@ public class AppSearchViewConfigController : SecureBaseController
     }
 
     [HttpGet]
-    public ObservableSet<AppViewFiledSearchFiledMappingExDto> RetrieveAppViewFiledSearchFiledMappingBySearchViewId(int? searchViewId)
+    public async Task<ObservableSet<AppViewFiledSearchFiledMappingExDto>> RetrieveAppViewFiledSearchFiledMappingBySearchViewId(int? searchViewId)
     {
-        return AppSearchViewConfigBL.RetrieveAppViewFiledSearchFiledMappingBySearchViewId(searchViewId);
+        return await AppSearchViewConfigBL.RetrieveAppViewFiledSearchFiledMappingBySearchViewIdAsync(searchViewId).ConfigureAwait(false);
     }
 
     [HttpPost]
-    public OperationCallResult<AppViewFiledSearchFiledMappingExDto> SaveAllAppViewFiledSearchFiledMappingExDto(AppViewFiledSearchFiledMappingSetDto setDto)
+    public async Task<OperationCallResult<AppViewFiledSearchFiledMappingExDto>> SaveAllAppViewFiledSearchFiledMappingExDto(AppViewFiledSearchFiledMappingSetDto setDto)
     {
         ObservableSet<AppViewFiledSearchFiledMappingExDto> appViewFiledSearchFiledMappingSet = setDto.AppViewFiledSearchFiledMappingSet;
         appViewFiledSearchFiledMappingSet.DeletedItemIds = new List<object>();
         int? searchViewId = setDto.SearchViewId;
         if (appViewFiledSearchFiledMappingSet != null && searchViewId.HasValue)
         {
-            return AppSearchViewConfigBL.SaveAllAppViewFiledSearchFiledMappingExDto(appViewFiledSearchFiledMappingSet, searchViewId.Value);
+            return await AppSearchViewConfigBL.SaveAllAppViewFiledSearchFiledMappingExDtoAsync(appViewFiledSearchFiledMappingSet, searchViewId.Value).ConfigureAwait(false);
         }
         else
         {
@@ -339,38 +340,38 @@ public class AppSearchViewConfigController : SecureBaseController
     }
 
     [HttpGet]
-    public OperationCallResult<bool> SetSearchForPublicAccess(int? searchId)
+    public async Task<OperationCallResult<bool>> SetSearchForPublicAccess(int? searchId)
     {
         if (searchId.HasValue)
         {
-            return AppSearchConfigBL.SetSearchForPublicAccess(searchId.Value);
+            return await AppSearchConfigBL.SetSearchForPublicAccessAsync(searchId.Value).ConfigureAwait(false);
         }
 
         return null;
     }
 
     [HttpGet]
-    public AppSearchFieldExDto RetrieveOneAppSearchFieldExDto(int? searchFieldId)
+    public async Task<AppSearchFieldExDto> RetrieveOneAppSearchFieldExDto(int? searchFieldId)
     {
-        return AppSearchConfigBL.RetrieveOneAppSearchFieldExDto(searchFieldId);
+        return await AppSearchConfigBL.RetrieveOneAppSearchFieldExDtoAsync(searchFieldId).ConfigureAwait(false);
     }
 
     [HttpPost]
-    public OperationCallResult<AppSearchFieldExDto> SaveAppSearchFieldExDto(AppSearchFieldExDto aAppSearchFieldExDto)
+    public async Task<OperationCallResult<AppSearchFieldExDto>> SaveAppSearchFieldExDto(AppSearchFieldExDto aAppSearchFieldExDto)
     {
-        return AppSearchConfigBL.SaveAppSearchFieldExDto(aAppSearchFieldExDto);
+        return await AppSearchConfigBL.SaveAppSearchFieldExDtoAsync(aAppSearchFieldExDto).ConfigureAwait(false);
     }
 
     [HttpGet]
-    public AppSearchViewFieldExDto RetrieveOneAppSearchViewFieldExDto(int? searchViewFieldId)
+    public async Task<AppSearchViewFieldExDto> RetrieveOneAppSearchViewFieldExDto(int? searchViewFieldId)
     {
-        return AppSearchViewConfigBL.RetrieveOneAppSearchViewFieldExDto(searchViewFieldId);
+        return await AppSearchViewConfigBL.RetrieveOneAppSearchViewFieldExDtoAsync(searchViewFieldId).ConfigureAwait(false);
     }
 
     [HttpPost]
-    public OperationCallResult<AppSearchViewFieldExDto> SaveAppSearchViewFieldExDto(AppSearchViewFieldExDto aAppSearchViewFieldExDto)
+    public async Task<OperationCallResult<AppSearchViewFieldExDto>> SaveAppSearchViewFieldExDto(AppSearchViewFieldExDto aAppSearchViewFieldExDto)
     {
-        return AppSearchViewConfigBL.SaveAppSearchViewFieldExDto(aAppSearchViewFieldExDto);
+        return await AppSearchViewConfigBL.SaveAppSearchViewFieldExDtoAsync(aAppSearchViewFieldExDto).ConfigureAwait(false);
     }
 
     [HttpGet]

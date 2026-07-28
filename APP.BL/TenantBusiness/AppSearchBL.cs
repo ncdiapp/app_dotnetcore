@@ -22,6 +22,7 @@ using Newtonsoft.Json.Linq;
 using System.ComponentModel.Design;
 
 using APP.Framework;
+using System.Threading.Tasks;
 namespace App.BL
 {
     public static class AppSearchBL
@@ -881,6 +882,143 @@ namespace App.BL
 
             searchDto.LinkToTransactions = linkToTransactions;
             searchDto.LinkToCommands = linkToCommands;
+        }
+
+        // =====================================================================
+        // ASYNC SIBLINGS — Task 6A
+        // =====================================================================
+
+        public static async Task<SearchDto> RetrieveDefaultSearchAsync(int? searchUsageType = null)
+        {
+            SearchDto toReturnSearchDto = null;
+
+            EntityCollection<AppSearchSavedEntity> userSaveedSearchlist = await AppSearchConfigBL.RetrieveAllCurrentUserSavedSearchEntityAsync(searchUsageType).ConfigureAwait(false);
+
+            if (userSaveedSearchlist.Count > 0)
+            {
+                AppSearchSavedEntity defaultAppSearchSavedEntity = userSaveedSearchlist.Where(o => o.IsDefault.HasValue && o.IsDefault.Value).FirstOrDefault();
+
+                if (defaultAppSearchSavedEntity == null)
+                {
+                    defaultAppSearchSavedEntity = userSaveedSearchlist.First();
+                }
+
+                toReturnSearchDto = AppSearchConfigBL.ConvertSavedSearchEntitySearchDto(defaultAppSearchSavedEntity);
+            }
+            else
+            {
+                var listUserAllAvaibleSearchEntity = AppSecurityManagementBL.RetrieveUserAllAvaibleSearchEntity(searchUsageType);
+                if (listUserAllAvaibleSearchEntity.Count > 0)
+                {
+                    var appSearchEntity = listUserAllAvaibleSearchEntity[0];
+                    appSearchEntity = await AppSearchConfigBL.RetrieveOneAppSearchEntityAsync(appSearchEntity.SearchId).ConfigureAwait(false);
+                    toReturnSearchDto = AppSearchConfigBL.ConvertSearchEntitySearchDto(appSearchEntity);
+                }
+            }
+
+            if (toReturnSearchDto != null)
+            {
+                if (toReturnSearchDto.WhereUsedSearchId.HasValue)
+                {
+                    toReturnSearchDto.EmbeddedChildSearchDto = await RetrieveOneSearchDtoAsync(toReturnSearchDto.WhereUsedSearchId.Value, false, false).ConfigureAwait(false);
+                }
+                AppCascadingSearchBL.SetupIntialCscadingSearchCretiaDataSource(toReturnSearchDto, false);
+            }
+
+            return toReturnSearchDto;
+        }
+
+        public static async Task<SearchDto> RetrieveOneSearchDtoAsync(int searchId, bool? isSavedSearch, bool needToCheckUserSecurity = true)
+        {
+            SearchDto toReturnSearchDto = null;
+            if (isSavedSearch.HasValue && isSavedSearch.Value)
+            {
+                AppSearchSavedEntity appSearchSavedEntity = await AppSearchConfigBL.RetrieveOneUserSavedSearchEntityAsync(searchId).ConfigureAwait(false);
+                toReturnSearchDto = AppSearchConfigBL.ConvertSavedSearchEntitySearchDto(appSearchSavedEntity);
+            }
+            else
+            {
+                var appSearchEntity = await AppSearchConfigBL.RetrieveOneAppSearchEntityAsync(searchId).ConfigureAwait(false);
+                toReturnSearchDto = AppSearchConfigBL.ConvertSearchEntitySearchDto(appSearchEntity);
+            }
+
+            if (toReturnSearchDto != null)
+            {
+                if (toReturnSearchDto.IsForPublicAcesss.HasValue && toReturnSearchDto.IsForPublicAcesss.Value)
+                {
+                    needToCheckUserSecurity = false;
+                }
+
+                if (needToCheckUserSecurity)
+                {
+                    List<int> accessibleSearchIds = AppSecurityManagementBL.GetCurrentUserAvailableSearchIds();
+                    if (!accessibleSearchIds.Contains(searchId))
+                    {
+                        return new SearchDto() { Id = -1, Display = "Access Denied" };
+                    }
+                }
+
+                if (toReturnSearchDto.WhereUsedSearchId.HasValue)
+                {
+                    toReturnSearchDto.EmbeddedChildSearchDto = await RetrieveOneSearchDtoAsync(toReturnSearchDto.WhereUsedSearchId.Value, false, false).ConfigureAwait(false);
+                }
+
+                AppCascadingSearchBL.SetupIntialCscadingSearchCretiaDataSource(toReturnSearchDto, false);
+                PrepareSearchDtoLinkToTransactionsAndCommands(toReturnSearchDto);
+            }
+
+            return toReturnSearchDto;
+        }
+
+        public static async Task<ReferenceViewDto> RetrieveOneReferenceViewDtoAsync(int viewId)
+        {
+            var appSearchViewEntity = await AppSearchViewConfigBL.RetrieveOneAppSearchViewEntityAsync(viewId).ConfigureAwait(false);
+            return AppSearchViewConfigBL.ConvertReverenceViewEntityToReferenceViewDto(appSearchViewEntity);
+        }
+
+        public static async Task<List<int>> FullTextLatestVersionFileSearchAsync(string keywords)
+        {
+            List<int> toReturn = new List<int>();
+
+            if (!string.IsNullOrEmpty(keywords))
+            {
+                string[] splitKeywordString = keywords.Trim().Split();
+
+                if (splitKeywordString.Length > 0)
+                {
+                    string containsKeywords = string.Empty;
+
+                    foreach (string aKeyword in splitKeywordString)
+                    {
+                        if (!string.IsNullOrEmpty(aKeyword.Trim()))
+                        {
+                            if (containsKeywords.Length == 0)
+                            {
+                                containsKeywords = '"' + aKeyword.Trim() + '"';
+                            }
+                            else
+                            {
+                                containsKeywords += " AND  " + '"' + aKeyword.Trim() + '"';
+                            }
+                        }
+                    }
+
+                    if (containsKeywords.Length > 0)
+                    {
+                        string queryStringFormat = @" SELECT FileID FROM AppFile WHERE CONTAINS(FileContent, ' {0}')  And FileID in ( select  FileID  from [dbo].[App_FileView_Latest]  )  ";
+                        string queryContain = string.Format(queryStringFormat, containsKeywords);
+                        string queryInitFileIds = string.Format(@"select [InitialFileID]   FROM  [dbo].[App_FileView_Latest] where[FileID] IN({0} )", queryContain);
+
+                        using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+                        {
+                            toReturn = (await Task.Run(() => adapter.ExecuteDataTableRetrievalQuery(queryInitFileIds, new List<SqlParameter>())).ConfigureAwait(false))
+                                .AsEnumerable().Select(o => (int)o[0]).ToList();
+                        }
+                    }
+                }
+            }
+
+            return toReturn;
         }
     }
 }
