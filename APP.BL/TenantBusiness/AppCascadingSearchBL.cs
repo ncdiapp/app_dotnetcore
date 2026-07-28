@@ -19,6 +19,7 @@ using DatabaseSchemaMrg;
 
 // Caculation result could trigger  cascading triger, need to disable cscading after assignment
 using APP.Framework;
+using System.Threading.Tasks;
 namespace App.BL
 {
 
@@ -470,6 +471,59 @@ namespace App.BL
             ).ToList();
         }
 
+        // =====================================================================
+        // ASYNC SIBLINGS — Task 6C
+        // =====================================================================
 
+        internal static async Task SetupInnerEntityRelationValueAsync(Dictionary<int, object> origialOneToOneFields, Dictionary<int, object> dictModifiedOneToOneFields, AppSearchFieldExDto parentCascadingFieldExDto, object parenFiledValue, List<AppSearchFieldExDto> InnerEntitySubscribeFileds)
+        {
+            if (!ControlTypeValueConverter.ConvertValueToInt(parenFiledValue).HasValue)
+            {
+                foreach (var inerentityChildDto in InnerEntitySubscribeFileds)
+                {
+                    dictModifiedOneToOneFields[(int)inerentityChildDto.Id] = null;
+                }
+                return;
+            }
+
+            if (parenFiledValue == null)
+            {
+                foreach (var inerentityChildDto in InnerEntitySubscribeFileds)
+                {
+                    dictModifiedOneToOneFields[(int)inerentityChildDto.Id] = null;
+                }
+                return;
+            }
+
+            var entityInfo = AppEntityInfoBL.RetrieveOneAppEntityInfoExDto(parentCascadingFieldExDto.EntityId);
+            string tablename = entityInfo.TableName;
+
+            string selectField = string.Empty;
+            foreach (var inerentityChildDto in InnerEntitySubscribeFileds)
+            {
+                selectField = selectField + "[" + inerentityChildDto.InnerEntitySubscribeFiled + "],";
+            }
+
+            selectField = selectField.Substring(0, selectField.Length - 1);
+
+            string query = @" select " + selectField + " From " + tablename + " where  " + entityInfo.IdentityField + "=@parenFiledValue";
+
+            List<SqlParameter> lsitparamter = new List<SqlParameter>();
+            lsitparamter.Add(new SqlParameter("@parenFiledValue", parenFiledValue));
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                DataTable result = await Task.Run(() => adapter.ExecuteDataTableRetrievalQuery(query, lsitparamter)).ConfigureAwait(false);
+
+                if (result.Rows.Count > 0)
+                {
+                    DataRow row = result.Rows[0];
+                    foreach (var inerentityChildDto in InnerEntitySubscribeFileds)
+                    {
+                        dictModifiedOneToOneFields[(int)inerentityChildDto.Id] = row[inerentityChildDto.InnerEntitySubscribeFiled];
+                    }
+                }
+            }
+        }
     }
 }

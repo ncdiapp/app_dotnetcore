@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using App.BL;
@@ -13,11 +14,9 @@ namespace AppAI.Web.Controllers;
 public class AppSearchController : SecureBaseController
 {
     [HttpGet]
-    public SearchDto RetrieveDefaultSearch(int? searchUsageType = null)
+    public async Task<SearchDto> RetrieveDefaultSearch(int? searchUsageType = null)
     {
-        var aSearchDto = AppSearchBL.RetrieveDefaultSearch(searchUsageType);
-
-        return aSearchDto;
+        return await AppSearchBL.RetrieveDefaultSearchAsync(searchUsageType).ConfigureAwait(false);
     }
 
     [HttpGet]
@@ -27,23 +26,22 @@ public class AppSearchController : SecureBaseController
     }
 
     [HttpGet]
-    public SearchDto RetrieveOneSearch(int searchId, bool? isSavedSearch)
+    public async Task<SearchDto> RetrieveOneSearch(int searchId, bool? isSavedSearch)
     {
-        return RetrieveOneSearchMethod(searchId, isSavedSearch);
+        return await RetrieveOneSearchMethodAsync(searchId, isSavedSearch).ConfigureAwait(false);
     }
 
     [HttpGet]
-    public Dictionary<int, List<LookupItemDto>> RetrieveViewDictEntityLookupItemDto(int viewId)
+    public async Task<Dictionary<int, List<LookupItemDto>>> RetrieveViewDictEntityLookupItemDto(int viewId)
     {
-        return AppSearchBL.RetrieveOneReferenceViewDto(viewId).DictEntityLookupItemDto;
+        var dto = await AppSearchBL.RetrieveOneReferenceViewDtoAsync(viewId).ConfigureAwait(false);
+        return dto.DictEntityLookupItemDto;
     }
 
     [HttpGet]
-    public ReferenceViewDto RetrieveOneReferenceViewDto(int viewId)
+    public async Task<ReferenceViewDto> RetrieveOneReferenceViewDto(int viewId)
     {
-        var toReturn = AppSearchBL.RetrieveOneReferenceViewDto(viewId);
-
-        return toReturn;
+        return await AppSearchBL.RetrieveOneReferenceViewDtoAsync(viewId).ConfigureAwait(false);
     }
 
     [HttpPost]
@@ -86,33 +84,33 @@ public class AppSearchController : SecureBaseController
     }
 
     [HttpPost]
-    public OperationCallResult<SearchDefinitionDto> SaveCriteriaPreset(SearchDto searchDto)
+    public async Task<OperationCallResult<SearchDefinitionDto>> SaveCriteriaPreset(SearchDto searchDto)
     {
-        return AppSearchConfigBL.SaveCriteriaPreset(searchDto, false);
+        return await AppSearchConfigBL.SaveCriteriaPresetAsync(searchDto, false).ConfigureAwait(false);
     }
 
     [HttpPost]
-    public OperationCallResult<SearchDefinitionDto> SaveCriteriaPresetAs(SearchDto searchDto)
+    public async Task<OperationCallResult<SearchDefinitionDto>> SaveCriteriaPresetAs(SearchDto searchDto)
     {
-        return AppSearchConfigBL.SaveCriteriaPreset(searchDto, true);
+        return await AppSearchConfigBL.SaveCriteriaPresetAsync(searchDto, true).ConfigureAwait(false);
     }
 
     [HttpPost]
-    public OperationCallResult<SearchDefinitionDto> DeleteCriteriaPreset(SearchDto searchDto)
+    public async Task<OperationCallResult<SearchDefinitionDto>> DeleteCriteriaPreset(SearchDto searchDto)
     {
-        return AppSearchConfigBL.DeleteCriteriaPreset(searchDto);
+        return await AppSearchConfigBL.DeleteCriteriaPresetAsync(searchDto).ConfigureAwait(false);
     }
 
     [HttpPost]
-    public bool SetAsDefaultCriteriaPreset(SearchDto searchDto)
+    public async Task<bool> SetAsDefaultCriteriaPreset(SearchDto searchDto)
     {
-        return AppSearchConfigBL.SetAsDefaultCriteriaPreset(searchDto);
+        return await AppSearchConfigBL.SetAsDefaultCriteriaPresetAsync(searchDto).ConfigureAwait(false);
     }
 
     [HttpPost]
-    public bool ChangeSearchAutoExecute(SearchDto searchDto)
+    public async Task<bool> ChangeSearchAutoExecute(SearchDto searchDto)
     {
-        return AppSearchConfigBL.ChangeSearchAutoExecute(searchDto);
+        return await AppSearchConfigBL.ChangeSearchAutoExecuteAsync(searchDto).ConfigureAwait(false);
     }
 
     [HttpPost]
@@ -153,6 +151,18 @@ public class AppSearchController : SecureBaseController
         return searchDto;
     }
 
+    public static async Task<SearchDto> RetrieveOneSearchMethodAsync(int searchId, bool? isSavedSearch)
+    {
+        var aSearchDto = await AppSearchBL.RetrieveOneSearchDtoAsync(searchId, isSavedSearch).ConfigureAwait(false);
+
+        if (aSearchDto.DefaultView != null && !aSearchDto.DefaultView.IsMassUpdate)
+        {
+            aSearchDto.DefaultView.DictEntityLookupItemDto = new Dictionary<int, List<LookupItemDto>>();
+        }
+
+        return aSearchDto;
+    }
+
     public static SearchDto RetrieveOneSearchMethod(int searchId, bool? isSavedSearch)
     {
         var aSearchDto = AppSearchBL.RetrieveOneSearchDto(searchId, isSavedSearch);
@@ -186,8 +196,8 @@ public class AppSearchController : SecureBaseController
     }
 
     [HttpGet]
-    public List<SearchApiSettingDto> RetrieveSearchApiSettings(int? searchId)
+    public async Task<List<SearchApiSettingDto>> RetrieveSearchApiSettings(int? searchId)
     {
-        return AppSearchConfigBL.RetrieveSearchApiSettings(searchId);
+        return await AppSearchConfigBL.RetrieveSearchApiSettingsAsync(searchId).ConfigureAwait(false);
     }
 }
