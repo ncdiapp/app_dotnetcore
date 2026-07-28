@@ -7,6 +7,8 @@ using System.Data.SqlClient;
 using System.Data.SqlTypes;
 using Microsoft.SqlServer.Server;
 using System.Transactions;
+using System.Threading;
+using System.Threading.Tasks;
 
 using SD.LLBLGen.Pro.ORMSupportClasses;
 using System.IO;
@@ -220,6 +222,19 @@ namespace APP.LBL.DatabaseSpecific
 
             return cmdToExecute.ExecuteNonQuery();
         }
+
+        // Async wrappers — LLBLGen 5.13 does not expose FetchEntityAsync or an async variant of the
+        // custom ExecuteDataTableRetrievalQuery. These helpers offload the synchronous I/O to the
+        // thread-pool so that ASP.NET Core request threads remain unblocked.
+
+        public Task<bool> FetchEntityAsync(IEntity2 entityToFetch)
+            => Task.Run(() => FetchEntity(entityToFetch));
+
+        public Task<bool> FetchEntityAsync(IEntity2 entityToFetch, IPrefetchPath2 prefetchPath)
+            => Task.Run(() => FetchEntity(entityToFetch, prefetchPath));
+
+        public Task<DataTable> ExecuteDataTableRetrievalQueryAsync(string aQuery, List<SqlParameter> listParameters)
+            => Task.Run(() => ExecuteDataTableRetrievalQuery(aQuery, listParameters));
     }
 
      class EnDeCrypt

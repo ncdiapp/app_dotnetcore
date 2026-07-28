@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using App.BL;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
@@ -43,13 +44,13 @@ public class AppTransactionController : SecureBaseController
 
 
     [HttpGet]
-    public List<AppTransactionDto> RetrieveAllAppTransactions(bool? isSystemBuitIn, int? transactionOrganizedType, bool? isIncludeWorkflow)
+    public async Task<List<AppTransactionDto>> RetrieveAllAppTransactions(bool? isSystemBuitIn, int? transactionOrganizedType, bool? isIncludeWorkflow)
     {
         if (!isIncludeWorkflow.HasValue)
         {
             isIncludeWorkflow = false;
         }
-        List<AppTransactionDto> toReturn = AppTransactionBL.RetrieveAllAppTransactionDto(isSystemBuitIn, transactionOrganizedType, isIncludeWorkflow.Value);
+        List<AppTransactionDto> toReturn = await AppTransactionBL.RetrieveAllAppTransactionDtoAsync(isSystemBuitIn, transactionOrganizedType, isIncludeWorkflow.Value).ConfigureAwait(false);
 
         return toReturn;
     }
@@ -64,7 +65,7 @@ public class AppTransactionController : SecureBaseController
 
 
     [HttpGet]
-    public AppTransactionExDto RetrieveOneAppTransaction(string Id)
+    public async Task<AppTransactionExDto> RetrieveOneAppTransaction(string Id)
     {
         AppTransactionExDto aAppTransactionExDto = null;
         if (Id == "NewTransaction")
@@ -76,7 +77,7 @@ public class AppTransactionController : SecureBaseController
         }
         else
         {
-            aAppTransactionExDto = AppTransactionBL.RetrieveOneAppTransactionExDto(Id);
+            aAppTransactionExDto = await AppTransactionBL.RetrieveOneAppTransactionExDtoAsync(Id).ConfigureAwait(false);
         }
 
         return aAppTransactionExDto;
