@@ -1009,11 +1009,15 @@ namespace App.BL
                         string queryContain = string.Format(queryStringFormat, containsKeywords);
                         string queryInitFileIds = string.Format(@"select [InitialFileID]   FROM  [dbo].[App_FileView_Latest] where[FileID] IN({0} )", queryContain);
 
-                        using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+                        var (connStr, dbName) = AppTenantAdapterBL.GetTenantConnectionInfo();
+                        toReturn = await Task.Run(() =>
                         {
-                            toReturn = (await Task.Run(() => adapter.ExecuteDataTableRetrievalQuery(queryInitFileIds, new List<SqlParameter>())).ConfigureAwait(false))
-                                .AsEnumerable().Select(o => (int)o[0]).ToList();
-                        }
+                            using (DataAccessAdapter adapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
+                            {
+                                return adapter.ExecuteDataTableRetrievalQuery(queryInitFileIds, new List<SqlParameter>())
+                                    .AsEnumerable().Select(o => (int)o[0]).ToList();
+                            }
+                        }).ConfigureAwait(false);
                     }
                 }
             }

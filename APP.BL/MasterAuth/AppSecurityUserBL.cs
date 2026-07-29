@@ -2509,14 +2509,18 @@ namespace App.BL
 
         public static async Task<AppSecurityUserEntity> RetrieveOneAppSecurityUserEntityAsync(object userId)
         {
-            using (DataAccessAdapter adpater = AppMasterAdapterBL.GetMasterAdapter())
+            int id = int.Parse(userId.ToString());
+            var rootPath = new PrefetchPath2(EntityType.AppSecurityUserEntity);
+            string masterConnStr = AppMasterAdapterBL.GetMasterConnectionString();
+            return await Task.Run(() =>
             {
-                AppSecurityUserEntity userEntity = new AppSecurityUserEntity(int.Parse(userId.ToString()));
-                IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSecurityUserEntity);
-                // LLBLGen 5.13 has no FetchEntityAsync; wrapping sync call to stay async to caller.
-                await Task.Run(() => adpater.FetchEntity(userEntity, rootPath)).ConfigureAwait(false);
+                var userEntity = new AppSecurityUserEntity(id);
+                using (DataAccessAdapter adapter = new DataAccessAdapter(masterConnStr))
+                {
+                    adapter.FetchEntity(userEntity, rootPath);
+                }
                 return userEntity;
-            }
+            }).ConfigureAwait(false);
         }
 
         public static async Task<UserContext> GetUserContextBySessionIdAsync(string sessionId)

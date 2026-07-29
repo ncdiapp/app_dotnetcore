@@ -550,16 +550,17 @@ namespace App.BL
         {
             string querySesstion = @"SELECT DISTINCT  AppSecurityUser.DomainID , AppSecurityUserSession.SessionID, AppSecurityUserSession.UserID
                  FROM          AppSecurityUser INNER JOIN   AppSecurityUserSession ON  AppSecurityUser.UserID = AppSecurityUserSession.UserID";
-
-            using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
+            string masterConnStr = AppMasterAdapterBL.GetMasterConnectionString();
+            DataTable result = await Task.Run(() =>
             {
-                // ExecuteDataTableRetrievalQueryAsync with raw string is not available in LLBLGen 5.13;
-                // wrapping the sync call so the method stays non-blocking to the caller.
-                DataTable result = await Task.Run(() => adapter.ExecuteDataTableRetrievalQuery(querySesstion, null)).ConfigureAwait(false);
-                return result.AsEnumerable().GroupBy(row => (int)row["DomainID"])
-                                     .Select(grp => new { grp.Key, Count = grp.Count() })
-                                     .ToDictionary(grp => grp.Key, grp => grp.Count);
-            }
+                using (DataAccessAdapter adapter = new DataAccessAdapter(masterConnStr))
+                {
+                    return adapter.ExecuteDataTableRetrievalQuery(querySesstion, null);
+                }
+            }).ConfigureAwait(false);
+            return result.AsEnumerable().GroupBy(row => (int)row["DomainID"])
+                                 .Select(grp => new { grp.Key, Count = grp.Count() })
+                                 .ToDictionary(grp => grp.Key, grp => grp.Count);
         }
 
         public static async Task<bool> UpdateLoginUserExpiredDateAsync()

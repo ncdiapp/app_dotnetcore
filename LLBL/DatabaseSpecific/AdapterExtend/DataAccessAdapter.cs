@@ -235,6 +235,12 @@ namespace APP.LBL.DatabaseSpecific
 
         public Task<DataTable> ExecuteDataTableRetrievalQueryAsync(string aQuery, List<SqlParameter> listParameters)
             => Task.Run(() => ExecuteDataTableRetrievalQuery(aQuery, listParameters));
+
+        // Used when ExecuteScalarQuery is called inside an existing transaction on the same adapter
+        // (the adapter/connection must not be replaced). Offloads the blocking SQL call to a
+        // thread-pool thread so the request thread is released while waiting.
+        public Task<object> ExecuteScalarQueryAsync(string aQuery, List<SqlParameter> listParameters)
+            => Task.Run(() => ExecuteScalarQuery(aQuery, listParameters));
     }
 
      class EnDeCrypt

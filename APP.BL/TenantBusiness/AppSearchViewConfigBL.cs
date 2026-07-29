@@ -1905,17 +1905,22 @@ namespace App.BL
 
         public static async Task<AppSearchViewEntity> RetrieveOneAppSearchViewEntityAsync(object searchViewId)
         {
-            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            int id = int.Parse(searchViewId.ToString());
+            var rootPath = new PrefetchPath2(EntityType.AppSearchViewEntity);
+            rootPath.Add(AppSearchViewEntity.PrefetchPathAppSearchViewField);
+            rootPath.Add(AppSearchViewEntity.PrefetchPathAppFormLinkTarget);
+            rootPath.Add(AppSearchViewEntity.PrefetchPathAppViewLinkedSeaechOrUrl);
+            rootPath.Add(AppSearchViewEntity.PrefetchPathAppDataSet);
+            var (connStr, dbName) = AppTenantAdapterBL.GetTenantConnectionInfo();
+            return await Task.Run(() =>
             {
-                AppSearchViewEntity aEntity = new AppSearchViewEntity(int.Parse(searchViewId.ToString()));
-                IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSearchViewEntity);
-                rootPath.Add(AppSearchViewEntity.PrefetchPathAppSearchViewField);
-                rootPath.Add(AppSearchViewEntity.PrefetchPathAppFormLinkTarget);
-                rootPath.Add(AppSearchViewEntity.PrefetchPathAppViewLinkedSeaechOrUrl);
-                rootPath.Add(AppSearchViewEntity.PrefetchPathAppDataSet);
-                await Task.Run(() => adapter.FetchEntity(aEntity, rootPath)).ConfigureAwait(false);
+                var aEntity = new AppSearchViewEntity(id);
+                using (DataAccessAdapter adapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
+                {
+                    adapter.FetchEntity(aEntity, rootPath);
+                }
                 return aEntity;
-            }
+            }).ConfigureAwait(false);
         }
 
         public static async Task<AppSearchViewExDto> RetrieveOneAppSearchViewExDtoAsync(object searchViewId)
@@ -2122,12 +2127,17 @@ namespace App.BL
 
         public static async Task<AppSearchViewFieldEntity> RetrieveOneAppSearchViewFieldEntityAsync(object searchViewFieldId)
         {
-            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            int id = int.Parse(searchViewFieldId.ToString());
+            var (connStr, dbName) = AppTenantAdapterBL.GetTenantConnectionInfo();
+            return await Task.Run(() =>
             {
-                AppSearchViewFieldEntity aEntity = new AppSearchViewFieldEntity(int.Parse(searchViewFieldId.ToString()));
-                await Task.Run(() => adapter.FetchEntity(aEntity)).ConfigureAwait(false);
+                var aEntity = new AppSearchViewFieldEntity(id);
+                using (DataAccessAdapter adapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
+                {
+                    adapter.FetchEntity(aEntity);
+                }
                 return aEntity;
-            }
+            }).ConfigureAwait(false);
         }
 
         public static async Task<AppSearchViewFieldExDto> RetrieveOneAppSearchViewFieldExDtoAsync(object searchViewFieldId)
@@ -2251,7 +2261,7 @@ namespace App.BL
                         string setSearchViewIdNull = "update AppSearch set SearchViewID = " + updateToSearchViewID + " where SearchViewID = @searchViewId";
                         List<SqlParameter> paramter = new List<SqlParameter>();
                         paramter.Add(new SqlParameter("@searchViewId", searchViewId));
-                        await Task.Run(() => adapter.ExecuteScalarQuery(setSearchViewIdNull, paramter)).ConfigureAwait(false);
+                        await adapter.ExecuteScalarQueryAsync(setSearchViewIdNull, paramter).ConfigureAwait(false);
                     }
 
                     await adapter.DeleteEntitiesDirectlyAsync(typeof(AppViewLinkedSeaechOrUrlEntity), new RelationPredicateBucket(AppViewLinkedSeaechOrUrlFields.SearchViewId == searchViewId)).ConfigureAwait(false);

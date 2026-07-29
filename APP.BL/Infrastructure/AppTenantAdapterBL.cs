@@ -27,6 +27,30 @@ namespace App.BL
             return adapter;
         }
 
+        // Captures tenant connection info from the request thread (HttpContext-bound ServerContext).
+        // Call this on the request thread before entering Task.Run so the lambda can create a
+        // short-lived adapter inside the thread-pool thread without touching ServerContext.
+        internal static (string connStr, string dbName) GetTenantConnectionInfo()
+        {
+            var identity = (AppClientIdentity?)ServerContext.Instance.CurrnetClientIdentity;
+            var connStr  = identity?.CurrentUserDbConnectionString;
+            var dbName   = identity?.CurrentUserDataBaseName;
+
+            if (string.IsNullOrEmpty(connStr) || string.IsNullOrEmpty(dbName))
+                throw new InvalidOperationException(
+                    "Tenant DB context is not available. GetTenantConnectionInfo() must only be called after login and identity registration.");
+
+            return (connStr, dbName);
+        }
+
+        // Creates a DataAccessAdapter from pre-captured connection info (safe to call inside Task.Run).
+        internal static DataAccessAdapter CreateTenantAdapter(string connStr, string dbName)
+        {
+            var adapter = new DataAccessAdapter(connStr);
+            adapter.CatalogNameOverwrites.Add(DefaultCatalogName, dbName);
+            return adapter;
+        }
+
         // For tables that exist in BOTH AppMasterDB and every TenantDB (e.g. AppLanguage,
         // AppLanguageKey, AppSysLabelLanguage).  SysAdmin connects directly to AppMasterDB
         // so no catalog rewrite is needed.  Tenant users get the standard catalog overwrite.

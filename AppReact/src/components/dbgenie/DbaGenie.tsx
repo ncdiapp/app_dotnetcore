@@ -7,15 +7,13 @@ import { DbGenieChatMessageDto, SchemaExtractionResultDto, DbGenieTableMetadataD
 import appHelper from '../../helper/appHelper';
 
 // Section components
-import DbaGenieDashboard from './DbaGenieDashboard';
 import DbaGenieChat from './DbaGenieChat';
-import DbaGenieSchemaView from './DbaGenieSchemaView';
+import DbaGenieSchema from './DbaGenieSchema';
 
 // Section codes
 const EmSectionCode = {
-    Dashboard: 'Dashboard',
     Chat: 'Chat',
-    SchemaView: 'SchemaView',
+    Schema: 'Schema',
 };
 
 // Section configuration
@@ -26,9 +24,8 @@ interface SectionConfig {
 }
 
 const SECTIONS: SectionConfig[] = [
-    { code: EmSectionCode.Dashboard, label: 'Dashboard', icon: 'fa-solid fa-gauge-high' },
-    { code: EmSectionCode.Chat,      label: 'AI Chat',   icon: 'fa-solid fa-comments' },
-    { code: EmSectionCode.SchemaView, label: 'Schema',   icon: 'fa-solid fa-diagram-project' },
+    { code: EmSectionCode.Chat,   label: 'AI Chat', icon: 'fa-solid fa-comments' },
+    { code: EmSectionCode.Schema, label: 'Schema',  icon: 'fa-solid fa-database' },
 ];
 
 // ── Chat History (localStorage) ──────────────────────────────────────────────
@@ -101,7 +98,7 @@ function getInitialSectionCode(searchParams: URLSearchParams): string {
             return cached.currentSectionCode;
         }
     }
-    return searchParams.get('param1') || EmSectionCode.Dashboard;
+    return searchParams.get('param1') || EmSectionCode.Schema;
 }
 
 // DBA-Genie session state
@@ -170,21 +167,10 @@ const DbaGenie: React.FC = () => {
         return currentSectionCode === sectionCode ? `${theme.tab_active}` : `${theme.tab}`;
     };
 
-    // Navigate to chat section
-    const navigateToChat = useCallback(() => {
-        handleSelectSection(EmSectionCode.Chat);
+    // Navigate to Schema section (used by Chat when user wants to view extracted schema)
+    const navigateToSchema = useCallback(() => {
+        handleSelectSection(EmSectionCode.Schema);
     }, [searchParams]);
-
-    // Navigate to schema view
-    const navigateToSchemaView = useCallback(() => {
-        handleSelectSection(EmSectionCode.SchemaView);
-    }, [searchParams]);
-
-    // Handle schema extraction result
-    const handleSchemaExtracted = useCallback((result: SchemaExtractionResultDto) => {
-        updateSessionState({ extractedSchema: result });
-        navigateToSchemaView();
-    }, [updateSessionState, navigateToSchemaView]);
 
     // New chat — create a fresh session (current one is already saved via useEffect)
     const handleNewChat = useCallback(() => {
@@ -223,39 +209,28 @@ const DbaGenie: React.FC = () => {
     // Get the current section component
     const getCurrentSectionComponent = (): React.ReactNode => {
         switch (currentSectionCode) {
-            case EmSectionCode.Dashboard:
-                return (
-                    <DbaGenieDashboard
-                        sessionState={sessionState}
-                        onSessionStateChange={updateSessionState}
-                        onSchemaExtracted={handleSchemaExtracted}
-                        onNavigateToChat={navigateToChat}
-                    />
-                );
             case EmSectionCode.Chat:
                 return (
                     <DbaGenieChat
                         sessionState={sessionState}
                         onSessionStateChange={updateSessionState}
-                        onNavigateToSchemaView={navigateToSchemaView}
+                        onNavigateToSchemaView={navigateToSchema}
                         onNewChat={handleNewChat}
                     />
                 );
-            case EmSectionCode.SchemaView:
+            case EmSectionCode.Schema:
                 return (
-                    <DbaGenieSchemaView
+                    <DbaGenieSchema
                         sessionState={sessionState}
                         onSessionStateChange={updateSessionState}
                     />
                 );
             default:
                 return (
-                    <div className="flex items-center justify-center h-full text-gray-500">
-                        <div className="text-center">
-                            <i className="fa-solid fa-question-circle text-4xl mb-2"></i>
-                            <div>Unknown section: {currentSectionCode}</div>
-                        </div>
-                    </div>
+                    <DbaGenieSchema
+                        sessionState={sessionState}
+                        onSessionStateChange={updateSessionState}
+                    />
                 );
         }
     };
@@ -269,12 +244,6 @@ const DbaGenie: React.FC = () => {
                 {/* Left Icon Navigation */}
                 <div className={`w-[72px] flex-none ${theme.mainContentSection} overflow-y-auto rounded-l-md`}>
                     <div className="py-4">
-                        {/* DBA-Genie Title */}
-                        <div className="flex flex-col items-center mb-4 px-1">
-                            <i className="fa-solid fa-robot text-xl text-blue-500 mb-1"></i>
-                            <div className="text-[10px] font-semibold text-center leading-tight">DBA<br/>Genie</div>
-                        </div>
-
                         {/* Section buttons */}
                         {SECTIONS.map((section) => (
                             <div

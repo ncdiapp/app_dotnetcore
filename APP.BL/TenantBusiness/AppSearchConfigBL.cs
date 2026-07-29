@@ -2648,15 +2648,20 @@ namespace App.BL
 
         public static async Task<AppSearchEntity> RetrieveOneAppSearchEntityAsync(object searchId)
         {
-            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            int id = int.Parse(searchId.ToString());
+            var rootPath = new PrefetchPath2(EntityType.AppSearchEntity);
+            rootPath.Add(AppSearchEntity.PrefetchPathAppSearchField);
+            rootPath.Add(AppSearchEntity.PrefetchPathAppSearchParameter);
+            var (connStr, dbName) = AppTenantAdapterBL.GetTenantConnectionInfo();
+            return await Task.Run(() =>
             {
-                AppSearchEntity aEntity = new AppSearchEntity(int.Parse(searchId.ToString()));
-                IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSearchEntity);
-                rootPath.Add(AppSearchEntity.PrefetchPathAppSearchField);
-                rootPath.Add(AppSearchEntity.PrefetchPathAppSearchParameter);
-                await Task.Run(() => adapter.FetchEntity(aEntity, rootPath)).ConfigureAwait(false);
+                var aEntity = new AppSearchEntity(id);
+                using (DataAccessAdapter adapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
+                {
+                    adapter.FetchEntity(aEntity, rootPath);
+                }
                 return aEntity;
-            }
+            }).ConfigureAwait(false);
         }
 
         public static async Task<EntityCollection<AppSearchEntity>> RetrieveAllSearchEntityAsync(int? searchUsageType = null)
@@ -2933,12 +2938,17 @@ namespace App.BL
 
         public static async Task<AppSearchFieldEntity> RetrieveOneAppSearchFieldEntityAsync(object searchFieldId)
         {
-            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            int id = int.Parse(searchFieldId.ToString());
+            var (connStr, dbName) = AppTenantAdapterBL.GetTenantConnectionInfo();
+            return await Task.Run(() =>
             {
-                AppSearchFieldEntity aEntity = new AppSearchFieldEntity(int.Parse(searchFieldId.ToString()));
-                await Task.Run(() => adapter.FetchEntity(aEntity)).ConfigureAwait(false);
+                var aEntity = new AppSearchFieldEntity(id);
+                using (DataAccessAdapter adapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
+                {
+                    adapter.FetchEntity(aEntity);
+                }
                 return aEntity;
-            }
+            }).ConfigureAwait(false);
         }
 
         public static async Task<AppSearchFieldExDto> RetrieveOneAppSearchFieldExDtoAsync(object searchFieldId)
@@ -3098,71 +3108,91 @@ namespace App.BL
 
         public static async Task<List<LookupItemDto>> RetrieveBLQueryColumnListAsync(int dataSetId)
         {
-            List<LookupItemDto> list = new List<LookupItemDto>();
-            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            var (connStr, dbName) = AppTenantAdapterBL.GetTenantConnectionInfo();
+            AppDataSetEntity aEntity = await Task.Run(() =>
             {
-                AppDataSetEntity aEntity = new AppDataSetEntity(dataSetId);
-                await Task.Run(() => adapter.FetchEntity(aEntity)).ConfigureAwait(false);
-
-                var dataBaseFixture = AppCacheManagerBL.GetOneDatabaseFixture(aEntity.DataSourceFrom.Value);
-                var dictColumNameDataType = dataBaseFixture.GetQuerySchemeColumnNameDataType(aEntity.QueryText);
-
-                foreach (var pair in dictColumNameDataType)
+                var entity = new AppDataSetEntity(dataSetId);
+                using (DataAccessAdapter adapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
                 {
-                    LookupItemDto aLookupItemDto = new LookupItemDto();
-                    aLookupItemDto.Id = pair.Key;
-                    aLookupItemDto.Display = pair.Value;
-                    list.Add(aLookupItemDto);
+                    adapter.FetchEntity(entity);
                 }
-                return list;
+                return entity;
+            }).ConfigureAwait(false);
+
+            var list = new List<LookupItemDto>();
+            var dataBaseFixture = AppCacheManagerBL.GetOneDatabaseFixture(aEntity.DataSourceFrom.Value);
+            var dictColumNameDataType = dataBaseFixture.GetQuerySchemeColumnNameDataType(aEntity.QueryText);
+            foreach (var pair in dictColumNameDataType)
+            {
+                list.Add(new LookupItemDto { Id = pair.Key, Display = pair.Value });
             }
+            return list;
         }
 
         internal static async Task<EntityCollection<AppSearchSavedEntity>> RetrieveAllCurrentUserSavedSearchEntityAsync(int? searchUsageType = null)
         {
-            EntityCollection<AppSearchSavedEntity> userSaveedSearchlist = new EntityCollection<AppSearchSavedEntity>();
-
-            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            // Build filter on the request thread — ServerContext.Instance is HttpContext-bound.
+            var filter = new RelationPredicateBucket(AppSearchSavedFields.UserId == ServerContext.Instance.CurrentUid);
+            if (searchUsageType.HasValue)
             {
-                RelationPredicateBucket filter = new RelationPredicateBucket(AppSearchSavedFields.UserId == ServerContext.Instance.CurrentUid);
-
-                if (searchUsageType.HasValue)
-                {
-                    filter.Relations.Add(AppSearchSavedEntity.Relations.AppSearchEntityUsingSearchId);
-                    filter.PredicateExpression.AddWithAnd(AppSearchFields.Type == searchUsageType.Value);
-                }
-
-                IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSearchSavedEntity);
-                rootPath.Add(AppSearchSavedEntity.PrefetchPathAppSearchSavedValue);
-
-                await Task.Run(() => adapter.FetchEntityCollection(userSaveedSearchlist, filter, rootPath)).ConfigureAwait(false);
+                filter.Relations.Add(AppSearchSavedEntity.Relations.AppSearchEntityUsingSearchId);
+                filter.PredicateExpression.AddWithAnd(AppSearchFields.Type == searchUsageType.Value);
             }
-            return userSaveedSearchlist;
+            var rootPath = new PrefetchPath2(EntityType.AppSearchSavedEntity);
+            rootPath.Add(AppSearchSavedEntity.PrefetchPathAppSearchSavedValue);
+            var (connStr, dbName) = AppTenantAdapterBL.GetTenantConnectionInfo();
+
+            return await Task.Run(() =>
+            {
+                var list = new EntityCollection<AppSearchSavedEntity>();
+                using (DataAccessAdapter adapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
+                {
+                    adapter.FetchEntityCollection(list, filter, rootPath);
+                }
+                return list;
+            }).ConfigureAwait(false);
         }
 
         internal static async Task<AppSearchSavedEntity> RetrieveOneUserSavedSearchEntityAsync(int saveSearchId)
         {
-            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            var rootPath = new PrefetchPath2(EntityType.AppSearchSavedEntity);
+            rootPath.Add(AppSearchSavedEntity.PrefetchPathAppSearchSavedValue);
+            var (connStr, dbName) = AppTenantAdapterBL.GetTenantConnectionInfo();
+            return await Task.Run(() =>
             {
-                AppSearchSavedEntity appSearchSavedEntity = new AppSearchSavedEntity(saveSearchId);
-                IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSearchSavedEntity);
-                rootPath.Add(AppSearchSavedEntity.PrefetchPathAppSearchSavedValue);
-                await Task.Run(() => adapter.FetchEntity(appSearchSavedEntity, rootPath)).ConfigureAwait(false);
-                return appSearchSavedEntity;
-            }
+                var entity = new AppSearchSavedEntity(saveSearchId);
+                using (DataAccessAdapter adapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
+                {
+                    adapter.FetchEntity(entity, rootPath);
+                }
+                return entity;
+            }).ConfigureAwait(false);
         }
 
         public static async Task<ValidationResult> DeleteAppSearchSavedEntityAsync(object searchSavedId)
         {
             var aValidationResult = new ValidationResult();
-            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
-            {
-                AppSearchSavedEntity aEntity = new AppSearchSavedEntity(int.Parse(searchSavedId.ToString()));
-                IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSearchSavedEntity);
-                rootPath.Add(AppSearchSavedEntity.PrefetchPathAppSearchSavedValue);
-                await Task.Run(() => adapter.FetchEntity(aEntity, rootPath)).ConfigureAwait(false);
-                int[] saveValueIds = aEntity.AppSearchSavedValue.Select(o => o.SearchSavedValueId).ToArray();
+            int id = int.Parse(searchSavedId.ToString());
+            var rootPath = new PrefetchPath2(EntityType.AppSearchSavedEntity);
+            rootPath.Add(AppSearchSavedEntity.PrefetchPathAppSearchSavedValue);
+            var (connStr, dbName) = AppTenantAdapterBL.GetTenantConnectionInfo();
 
+            // Step 1: fetch with a short-lived connection (returned to pool before the transaction).
+            AppSearchSavedEntity aEntity = await Task.Run(() =>
+            {
+                var entity = new AppSearchSavedEntity(id);
+                using (DataAccessAdapter fetchAdapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
+                {
+                    fetchAdapter.FetchEntity(entity, rootPath);
+                }
+                return entity;
+            }).ConfigureAwait(false);
+
+            int[] saveValueIds = aEntity.AppSearchSavedValue.Select(o => o.SearchSavedValueId).ToArray();
+
+            // Step 2: delete in a fresh short-lived transaction.
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
+            {
                 try
                 {
                     adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
