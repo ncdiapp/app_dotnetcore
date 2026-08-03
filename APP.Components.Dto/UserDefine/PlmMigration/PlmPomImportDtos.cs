@@ -35,6 +35,24 @@ namespace APP.Components.EntityDto
         public int BodyTypeDetailSourceRowCount { get; set; }
 
         [DataMember]
+        public bool HasTchpBodyPartTable { get; set; }
+
+        [DataMember]
+        public int TchpBodyPartRowCount { get; set; }
+
+        [DataMember]
+        public bool HasTchpPomTemplateTable { get; set; }
+
+        [DataMember]
+        public int TchpPomTemplateRowCount { get; set; }
+
+        [DataMember]
+        public bool HasTchpPomTemplatePartTable { get; set; }
+
+        [DataMember]
+        public int TchpPomTemplatePartRowCount { get; set; }
+
+        [DataMember]
         public bool HasSpecBodyPartGradingTable { get; set; }
 
         [DataMember]
@@ -177,6 +195,15 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public int BodyTypeDetailRowsImported { get; set; }
+
+        [DataMember]
+        public int TchpBodyPartRowsImported { get; set; }
+
+        [DataMember]
+        public int TchpPomTemplateRowsImported { get; set; }
+
+        [DataMember]
+        public int TchpPomTemplatePartRowsImported { get; set; }
 
         [DataMember]
         public int SpecBodyPartGradingRowsImported { get; set; }

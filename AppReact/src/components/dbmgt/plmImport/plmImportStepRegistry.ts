@@ -48,7 +48,7 @@ export const PLM_IMPORT_STEPS: PlmImportStepDefinition[] = [
   {
     code: 'PomImport',
     label: 'POM IMPORT',
-    description: 'Create POM and POM Template transactions, searches, and folder navigation.',
+    description: 'Import TchpPomTemplate + Template Parts and create POM / Template editors.',
     icon: 'fa-solid fa-ruler-combined',
   },
   {

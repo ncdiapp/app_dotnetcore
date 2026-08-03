@@ -61,9 +61,9 @@ const PomImportStep: React.FC<PomImportStepProps> = ({ state }) => {
     }
 
     if (!window.confirm(
-      'Create or update POM Management and POM Template Management configurations?\n\n'
-      + 'Includes transactions, searches, folder navigation, and optional junction table import.\n\n'
-      + 'Recommended order: Entity Import → Folder Import → POM IMPORT.',
+      'Create or update POM Management and POM Template (Tchp) configurations?\n\n'
+      + 'Imports TchpBodyPart / TchpPomTemplate / TchpPomTemplatePart and builds Template Parts child grid.\n\n'
+      + 'Requires POM_Grading_QC_NewSchema.sql. Recommended: Entity Import (Plm BodyPart) → Folder Import → POM IMPORT.',
     )) {
       return;
     }
@@ -121,8 +121,8 @@ const PomImportStep: React.FC<PomImportStepProps> = ({ state }) => {
       <div className={`flex-none px-4 py-3 border-b ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>POM IMPORT</div>
         <div className={`text-xs mt-1 ${theme.label}`}>
-          Creates POM Management (FolderType 14) and POM Template Management (FolderType 5) editors,
-          list searches, and folder navigation. FolderID is stored directly on each POM row.
+          Creates POM Management (Plm BodyPart + folder nav) and POM Template Management
+          (TchpPomTemplate + TchpPomTemplatePart child grid). Template Parts are imported from PLM BodyTypeDetail.
         </div>
       </div>
 
@@ -136,7 +136,7 @@ const PomImportStep: React.FC<PomImportStepProps> = ({ state }) => {
               onChange={(e) => setImportJunctionTables(e.target.checked)}
               disabled={isBusy}
             />
-            Import junction tables (BodyTypeDetail, SpecBodyPartGrading)
+            Upsert Tchp BodyPart / PomTemplate / TemplatePart from PLM
           </label>
           <label className={`text-xs flex items-center ${theme.label}`}>
             <input
@@ -173,29 +173,19 @@ const PomImportStep: React.FC<PomImportStepProps> = ({ state }) => {
           <div className={`rounded border p-3 ${theme.inputBox}`}>
             <div className={`text-sm font-semibold mb-2 ${theme.title}`}>Preview</div>
             <div className={`text-xs space-y-1 ${theme.label}`}>
-              <div>POM (BodyPart) rows: {formatNumber(preview.BodyPartRowCount)}</div>
-              <div>POM Template (BodyType) rows: {formatNumber(preview.BodyTypeRowCount)}</div>
+              <div>POM (Plm BodyPart) rows: {formatNumber(preview.BodyPartRowCount)}</div>
+              <div>TchpBodyPart rows: {formatNumber(preview.TchpBodyPartRowCount)}</div>
+              <div>TchpPomTemplate rows: {formatNumber(preview.TchpPomTemplateRowCount)}</div>
               <div>
-                BodyTypeDetail:
+                TchpPomTemplatePart:
                 {' '}
-                {preview.HasBodyTypeDetailTable
-                  ? `${formatNumber(preview.BodyTypeDetailRowCount)} in tenant`
-                  : `${formatNumber(preview.BodyTypeDetailSourceRowCount)} in PLM (not imported)`}
-              </div>
-              <div>
-                SpecBodyPartGrading:
-                {' '}
-                {preview.HasSpecBodyPartGradingTable
-                  ? `${formatNumber(preview.SpecBodyPartGradingRowCount)} in tenant`
-                  : `${formatNumber(preview.SpecBodyPartGradingSourceRowCount)} in PLM (not imported)`}
+                {formatNumber(preview.TchpPomTemplatePartRowCount)} in tenant
+                {' / '}
+                {formatNumber(preview.BodyTypeDetailSourceRowCount)} in PLM BodyTypeDetail
               </div>
               <div>POM FolderID ready to remap: {formatNumber(preview.PomFolderIdReadyToRemap)}</div>
-              <div>POM Template FolderID ready to remap: {formatNumber(preview.PomTemplateFolderIdReadyToRemap)}</div>
-              {(preview.PomFolderIdUnmappedCount ?? 0) > 0 || (preview.PomTemplateFolderIdUnmappedCount ?? 0) > 0 ? (
-                <div>
-                  Unmapped FolderID — POM: {formatNumber(preview.PomFolderIdUnmappedCount)}
-                  , Template: {formatNumber(preview.PomTemplateFolderIdUnmappedCount)}
-                </div>
+              {(preview.PomFolderIdUnmappedCount ?? 0) > 0 ? (
+                <div>Unmapped FolderID on POM: {formatNumber(preview.PomFolderIdUnmappedCount)}</div>
               ) : null}
               <div>
                 POM root folder:
@@ -255,12 +245,12 @@ const PomImportStep: React.FC<PomImportStepProps> = ({ state }) => {
               <div>POM root folder: {executeResult.PomAppRootFolderId ?? '—'}</div>
               <div>POM Template transaction: {executeResult.PomTemplateTransactionId ?? '—'}</div>
               <div>POM Template list search: {executeResult.PomTemplateListSearchId ?? '—'}</div>
-              <div>POM Template folder search: {executeResult.PomTemplateFolderSearchId ?? '—'}</div>
               <div>POM Template root folder: {executeResult.PomTemplateAppRootFolderId ?? '—'}</div>
-              <div>Junction rows imported: {formatNumber((executeResult.BodyTypeDetailRowsImported ?? 0) + (executeResult.SpecBodyPartGradingRowsImported ?? 0))}</div>
+              <div>TchpBodyPart upserted: {formatNumber(executeResult.TchpBodyPartRowsImported)}</div>
+              <div>TchpPomTemplate upserted: {formatNumber(executeResult.TchpPomTemplateRowsImported)}</div>
+              <div>TchpPomTemplatePart upserted: {formatNumber(executeResult.TchpPomTemplatePartRowsImported)}</div>
               <div>Folders imported: {formatNumber(executeResult.FoldersImported)}</div>
               <div>POM FolderIDs remapped: {formatNumber(executeResult.PomFolderIdsRemapped)}</div>
-              <div>POM Template FolderIDs remapped: {formatNumber(executeResult.PomTemplateFolderIdsRemapped)}</div>
             </div>
             {executeResult.Messages && executeResult.Messages.length > 0 && (
               <ul className={`text-xs list-disc pl-5 mt-2 ${theme.label}`}>

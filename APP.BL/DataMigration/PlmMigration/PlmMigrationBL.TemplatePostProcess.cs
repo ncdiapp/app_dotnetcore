@@ -407,6 +407,9 @@ INNER JOIN [dbo].[{masterSiblingTable}] ON [{rootTable}].ReferenceId = [{masterS
 
         private static void ClearSearchViewFields(SqlConnection conn, int searchViewId)
         {
+            // AppFormLinkTarget.SourceViewColumnID1/2/3 FK → AppSearchViewField. Must clear links first.
+            ClearSearchViewFormLinkTargets(conn, searchViewId);
+
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText = "DELETE FROM dbo.AppSearchViewField WHERE SearchViewID = @SearchViewId";
@@ -419,7 +422,14 @@ INNER JOIN [dbo].[{masterSiblingTable}] ON [{rootTable}].ReferenceId = [{masterS
         {
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = "DELETE FROM dbo.AppFormLinkTarget WHERE SearchViewID = @SearchViewId";
+                // Delete by SearchViewID and by any SourceViewColumn* that still points at this view's fields
+                // (covers orphaned rows where SearchViewID is null/mismatched).
+                cmd.CommandText = @"
+DELETE FROM dbo.AppFormLinkTarget
+WHERE SearchViewID = @SearchViewId
+   OR SourceViewColumnID1 IN (SELECT SearchViewFieldID FROM dbo.AppSearchViewField WHERE SearchViewID = @SearchViewId)
+   OR SourceViewColumnID2 IN (SELECT SearchViewFieldID FROM dbo.AppSearchViewField WHERE SearchViewID = @SearchViewId)
+   OR SourceViewColumnID3 IN (SELECT SearchViewFieldID FROM dbo.AppSearchViewField WHERE SearchViewID = @SearchViewId);";
                 cmd.Parameters.AddWithValue("@SearchViewId", searchViewId);
                 cmd.ExecuteNonQuery();
             }

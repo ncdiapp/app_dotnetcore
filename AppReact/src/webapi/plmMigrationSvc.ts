@@ -1138,6 +1138,12 @@ export interface PlmPomImportPreviewDto {
   HasBodyTypeDetailTable?: boolean;
   BodyTypeDetailRowCount?: number;
   BodyTypeDetailSourceRowCount?: number;
+  HasTchpBodyPartTable?: boolean;
+  TchpBodyPartRowCount?: number;
+  HasTchpPomTemplateTable?: boolean;
+  TchpPomTemplateRowCount?: number;
+  HasTchpPomTemplatePartTable?: boolean;
+  TchpPomTemplatePartRowCount?: number;
   HasSpecBodyPartGradingTable?: boolean;
   SpecBodyPartGradingRowCount?: number;
   SpecBodyPartGradingSourceRowCount?: number;
@@ -1184,6 +1190,9 @@ export interface PlmPomImportExecuteResultDto {
   PomTemplateFolderSearchId?: number | null;
   PomTemplateAppRootFolderId?: number | null;
   BodyTypeDetailRowsImported?: number;
+  TchpBodyPartRowsImported?: number;
+  TchpPomTemplateRowsImported?: number;
+  TchpPomTemplatePartRowsImported?: number;
   SpecBodyPartGradingRowsImported?: number;
   FoldersImported?: number;
   PomFolderIdsRemapped?: number;

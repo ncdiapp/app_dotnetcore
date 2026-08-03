@@ -32,9 +32,10 @@ namespace APP.BL.DataMigration.PlmMigration
         private const string PomListSearchIntegrationId = "PlmPom_BodyPart_List";
         private const string PomFolderSearchIntegrationId = "PlmPom_BodyPart_FolderNav";
 
-        private const string PomTemplateTxIntegrationId = "PlmPom_BodyType";
-        private const string PomTemplateListSearchIntegrationId = "PlmPom_BodyType_List";
-        private const string PomTemplateFolderSearchIntegrationId = "PlmPom_BodyType_FolderNav";
+        // Tchp* integration IDs — do not reuse PlmPom_BodyType (legacy Plm_* Form Builder txs).
+        private const string PomTemplateTxIntegrationId = "TchpPom_Template";
+        private const string PomTemplateListSearchIntegrationId = "TchpPom_Template_List";
+        private const string PomTemplateFolderSearchIntegrationId = "TchpPom_Template_FolderNav";
 
         private sealed class PomFolderRemapResult
         {
@@ -173,19 +174,33 @@ namespace APP.BL.DataMigration.PlmMigration
                 tenantConn.Open();
                 preview.HasBodyPartTable = TemplateTableExists(tenantConn, null, PomBodyPartTableName);
                 preview.HasBodyTypeTable = TemplateTableExists(tenantConn, null, PomBodyTypeTableName);
-                if (!preview.HasBodyPartTable || !preview.HasBodyTypeTable)
+                preview.HasTchpBodyPartTable = TemplateTableExists(tenantConn, null, TchpBodyPartTableName);
+                preview.HasTchpPomTemplateTable = TemplateTableExists(tenantConn, null, TchpPomTemplateTableName);
+                preview.HasTchpPomTemplatePartTable = TemplateTableExists(tenantConn, null, TchpPomTemplatePartTableName);
+
+                if (!preview.HasBodyPartTable)
                 {
                     preview.IsSuccess = false;
-                    preview.ErrorMessage = "Tenant POM tables were not found. Import PLM tables (PdmV2kBodyPart, pdmv2kBodyType) first.";
+                    preview.ErrorMessage = "Tenant Plm_PdmV2kBodyPart was not found. Import PLM BodyPart table first (Entity Import).";
+                    return preview;
+                }
+
+                if (!preview.HasTchpBodyPartTable || !preview.HasTchpPomTemplateTable || !preview.HasTchpPomTemplatePartTable)
+                {
+                    preview.IsSuccess = false;
+                    preview.ErrorMessage =
+                        "Tchp POM schema missing. Run Document/Design/POM_Grading_QC_NewSchema.sql "
+                        + "(TchpBodyPart, TchpPomTemplate, TchpPomTemplatePart).";
                     return preview;
                 }
 
                 preview.BodyPartRowCount = CountTableRows(tenantConn, PomBodyPartTableName);
-                preview.BodyTypeRowCount = CountTableRows(tenantConn, PomBodyTypeTableName);
-                preview.HasBodyTypeDetailTable = TemplateTableExists(tenantConn, null, PomBodyTypeDetailTableName);
-                preview.BodyTypeDetailRowCount = preview.HasBodyTypeDetailTable
-                    ? CountTableRows(tenantConn, PomBodyTypeDetailTableName)
-                    : 0;
+                preview.BodyTypeRowCount = preview.HasBodyTypeTable ? CountTableRows(tenantConn, PomBodyTypeTableName) : 0;
+                preview.TchpBodyPartRowCount = CountTableRows(tenantConn, TchpBodyPartTableName);
+                preview.TchpPomTemplateRowCount = CountTableRows(tenantConn, TchpPomTemplateTableName);
+                preview.TchpPomTemplatePartRowCount = CountTableRows(tenantConn, TchpPomTemplatePartTableName);
+                preview.HasBodyTypeDetailTable = preview.HasTchpPomTemplatePartTable;
+                preview.BodyTypeDetailRowCount = preview.TchpPomTemplatePartRowCount;
                 preview.HasSpecBodyPartGradingTable = TemplateTableExists(tenantConn, null, PomSpecGradingTableName);
                 preview.SpecBodyPartGradingRowCount = preview.HasSpecBodyPartGradingTable
                     ? CountTableRows(tenantConn, PomSpecGradingTableName)
@@ -194,17 +209,14 @@ namespace APP.BL.DataMigration.PlmMigration
                 preview.ExistingPomTransactionId = FindTransactionIdByTable(tenantConn, null, PomBodyPartTableName, PomTxIntegrationId);
                 preview.ExistingPomListSearchId = GetSearchIdByIntegrationId(tenantConn, null, PomListSearchIntegrationId);
                 preview.ExistingPomFolderSearchId = GetSearchIdByIntegrationId(tenantConn, null, PomFolderSearchIntegrationId);
-                preview.ExistingPomTemplateTransactionId = FindTransactionIdByTable(tenantConn, null, PomBodyTypeTableName, PomTemplateTxIntegrationId);
+                preview.ExistingPomTemplateTransactionId = FindTransactionIdByTable(
+                    tenantConn, null, TchpPomTemplateTableName, PomTemplateTxIntegrationId);
                 preview.ExistingPomTemplateListSearchId = GetSearchIdByIntegrationId(tenantConn, null, PomTemplateListSearchIntegrationId);
                 preview.ExistingPomTemplateFolderSearchId = GetSearchIdByIntegrationId(tenantConn, null, PomTemplateFolderSearchIntegrationId);
 
                 var pomRemapPreview = PreviewPomFolderIdRemap(tenantConn, null, sessionId, PomBodyPartTableName, PlmPomFolderType);
                 preview.PomFolderIdReadyToRemap = pomRemapPreview.ReadyToRemapCount;
                 preview.PomFolderIdUnmappedCount = pomRemapPreview.UnmappedCount;
-
-                var templateRemapPreview = PreviewPomFolderIdRemap(tenantConn, null, sessionId, PomBodyTypeTableName, PlmPomTemplateFolderType);
-                preview.PomTemplateFolderIdReadyToRemap = templateRemapPreview.ReadyToRemapCount;
-                preview.PomTemplateFolderIdUnmappedCount = templateRemapPreview.UnmappedCount;
             }
 
             preview.BodyTypeDetailSourceRowCount = CountPlmSourceTableRows(plmConnectionString, PomBodyTypeDetailSourceTable);
@@ -223,21 +235,20 @@ namespace APP.BL.DataMigration.PlmMigration
             preview.PomTemplateAppRootFolderId = templateRoot.AppRootFolderId;
             preview.PomTemplateAppRootFolderName = templateRoot.AppRootFolderName;
             preview.Warnings.AddRange(templateRoot.Warnings);
+            preview.Warnings.Add(
+                "POM Template editor uses TchpPomTemplate + TchpPomTemplatePart (no FolderID on Tchp rows; list search only).");
 
-            preview.PlannedActions.Add("Import POM Template junction tables if missing (pdmV2kBodyTypeDetail, pdmV2kSpecBodyPartGrading)");
-            preview.PlannedActions.Add("Remap imported FolderID values from PLM IDs to APP folder IDs (BodyPart + BodyType)");
+            preview.PlannedActions.Add("Upsert TchpBodyPart / TchpPomTemplate / TchpPomTemplatePart from PLM");
+            preview.PlannedActions.Add("Remap FolderID on Plm_PdmV2kBodyPart via AppPlmFolderMap");
             if (preview.PomFolderIdReadyToRemap > 0)
                 preview.PlannedActions.Add($"Remap {preview.PomFolderIdReadyToRemap} POM row(s) FolderID via AppPlmFolderMap");
-            if (preview.PomTemplateFolderIdReadyToRemap > 0)
-                preview.PlannedActions.Add($"Remap {preview.PomTemplateFolderIdReadyToRemap} POM Template row(s) FolderID via AppPlmFolderMap");
-            if (preview.PomFolderIdUnmappedCount > 0 || preview.PomTemplateFolderIdUnmappedCount > 0)
-                preview.Warnings.Add($"Unmapped FolderID: POM {preview.PomFolderIdUnmappedCount}, POM Template {preview.PomTemplateFolderIdUnmappedCount}.");
-            preview.PlannedActions.Add("Ensure POM transaction, list search, and folder navigation (FolderType 14 / BodyPart)");
-            preview.PlannedActions.Add("Ensure POM Template transaction with detail + grading child grids (FolderType 5 / BodyType)");
-            if (!preview.HasBodyTypeDetailTable && preview.BodyTypeDetailSourceRowCount > 0)
-                preview.PlannedActions.Add($"Copy {preview.BodyTypeDetailSourceRowCount} BodyTypeDetail row(s) from PLM");
-            if (!preview.HasSpecBodyPartGradingTable && preview.SpecBodyPartGradingSourceRowCount > 0)
-                preview.PlannedActions.Add($"Copy {preview.SpecBodyPartGradingSourceRowCount} SpecBodyPartGrading row(s) from PLM");
+            if (preview.PomFolderIdUnmappedCount > 0)
+                preview.Warnings.Add($"Unmapped FolderID on POM: {preview.PomFolderIdUnmappedCount}.");
+            preview.PlannedActions.Add("Ensure POM transaction, list search, and folder navigation (FolderType 14 / Plm BodyPart)");
+            preview.PlannedActions.Add(
+                "Ensure POM Template transaction with TchpPomTemplatePart child (TchpPomTemplate master)");
+            if (preview.BodyTypeDetailSourceRowCount > 0)
+                preview.PlannedActions.Add($"Import up to {preview.BodyTypeDetailSourceRowCount} Template Part row(s) from PLM BodyTypeDetail");
 
             preview.IsSuccess = true;
             return preview;
@@ -257,11 +268,10 @@ namespace APP.BL.DataMigration.PlmMigration
             using (var tenantConn = new SqlConnection(tenantConnectionString))
             {
                 tenantConn.Open();
-                if (!TemplateTableExists(tenantConn, null, PomBodyPartTableName)
-                    || !TemplateTableExists(tenantConn, null, PomBodyTypeTableName))
-                {
-                    throw new InvalidOperationException("Tenant POM tables were not found. Import PLM tables first.");
-                }
+                if (!TemplateTableExists(tenantConn, null, PomBodyPartTableName))
+                    throw new InvalidOperationException("Tenant Plm_PdmV2kBodyPart was not found. Import PLM tables first.");
+
+                RequireTchpPomSchema(tenantConn);
 
                 if (importFoldersIfMissing)
                 {
@@ -271,7 +281,13 @@ namespace APP.BL.DataMigration.PlmMigration
                 }
 
                 if (importJunctionTables)
-                    ImportPomJunctionTables(plmConnectionString, tenantConnectionString, executeResult);
+                    ImportTchpPomTemplateMasterData(plmConnectionString, tenantConnectionString, executeResult);
+
+                // Tchp tables must be in schema cache before CreateHierarchyTransactionFromTables.
+                RefreshTenantTableSchemaCache(tenantDataSourceId);
+                AppCacheManagerBL.RefreshOneTableCache(TchpBodyPartTableName, tenantDataSourceId, "dbo");
+                AppCacheManagerBL.RefreshOneTableCache(TchpPomTemplateTableName, tenantDataSourceId, "dbo");
+                AppCacheManagerBL.RefreshOneTableCache(TchpPomTemplatePartTableName, tenantDataSourceId, "dbo");
 
                 var pomRemap = RemapImportedPomFolderIds(tenantConn, null, sessionId, PomBodyPartTableName, PlmPomFolderType);
                 executeResult.PomFolderIdsRemapped = pomRemap.UpdatedCount;
@@ -279,13 +295,6 @@ namespace APP.BL.DataMigration.PlmMigration
                     executeResult.Messages.Add($"Remapped FolderID on {pomRemap.UpdatedCount} POM row(s) to APP folder IDs.");
                 if (pomRemap.UnmappedCount > 0)
                     executeResult.Messages.Add($"Warning: {pomRemap.UnmappedCount} POM row(s) still have unmapped FolderID.");
-
-                var templateRemap = RemapImportedPomFolderIds(tenantConn, null, sessionId, PomBodyTypeTableName, PlmPomTemplateFolderType);
-                executeResult.PomTemplateFolderIdsRemapped = templateRemap.UpdatedCount;
-                if (templateRemap.UpdatedCount > 0)
-                    executeResult.Messages.Add($"Remapped FolderID on {templateRemap.UpdatedCount} POM Template row(s) to APP folder IDs.");
-                if (templateRemap.UnmappedCount > 0)
-                    executeResult.Messages.Add($"Warning: {templateRemap.UnmappedCount} POM Template row(s) still have unmapped FolderID.");
 
                 var pomRoot = ResolvePomNavRootFolder(plmConnectionString, tenantConnectionString, sessionId, PlmPomFolderType);
                 executeResult.Messages.AddRange(pomRoot.Warnings);
@@ -338,23 +347,20 @@ namespace APP.BL.DataMigration.PlmMigration
                 }
 
                 executeResult.PomTemplateFormId = GetTransactionFormId(tenantConn, null, templateTransactionId);
-                var templateColumns = LoadTableColumns(tenantConn, null, PomBodyTypeTableName);
+                var templateColumns = LoadTableColumns(tenantConn, null, TchpPomTemplateTableName);
                 executeResult.PomTemplateListSearchId = EnsurePomListSearch(
                     tenantConn, saasApplicationId, tenantDataSourceId, templateTransactionId,
-                    PomTemplateListSearchIntegrationId, "POM Template Management", PomBodyTypeTableName, "BodyTypeID", templateColumns, executeResult);
-                executeResult.PomTemplateFolderSearchId = EnsurePomFolderSearch(
-                    tenantConn, saasApplicationId, tenantDataSourceId, templateTransactionId,
-                    PomTemplateFolderSearchIntegrationId, "POM Template Management", PomBodyTypeTableName, "BodyTypeID", templateColumns, executeResult);
-                if (templateRoot.AppRootFolderId.HasValue && executeResult.PomTemplateFolderSearchId > 0)
-                {
-                    ConfigurePomFolderNavigation(tenantConn, executeResult.PomTemplateFolderSearchId.Value, templateTransactionId, templateRoot.AppRootFolderId.Value, "POM Template", executeResult);
-                }
+                    PomTemplateListSearchIntegrationId, "POM Template Management", TchpPomTemplateTableName, "PomTemplateId", templateColumns, executeResult);
+                // TchpPomTemplate has no FolderID — list search only (no folder-nav search).
+                executeResult.Messages.Add("Skipped POM Template folder search (TchpPomTemplate has no FolderID).");
 
                 RefreshTenantTableSchemaCache(tenantDataSourceId);
                 AppCacheManagerBL.RefreshOneHierarchyTransaction(pomTransactionId);
                 AppCacheManagerBL.RefreshOneHierarchyTransaction(templateTransactionId);
                 AppCacheManagerBL.RefreshOneTableCache(PomBodyPartTableName, tenantDataSourceId, "dbo");
-                AppCacheManagerBL.RefreshOneTableCache(PomBodyTypeTableName, tenantDataSourceId, "dbo");
+                AppCacheManagerBL.RefreshOneTableCache(TchpBodyPartTableName, tenantDataSourceId, "dbo");
+                AppCacheManagerBL.RefreshOneTableCache(TchpPomTemplateTableName, tenantDataSourceId, "dbo");
+                AppCacheManagerBL.RefreshOneTableCache(TchpPomTemplatePartTableName, tenantDataSourceId, "dbo");
 
                 executeResult.IsSuccess = true;
                 executeResult.Messages.Add("POM import configuration completed.");
@@ -477,40 +483,6 @@ WHERE t.FolderID IS NOT NULL
             }
         }
 
-        private static void ImportPomJunctionTables(
-            string plmConnectionString,
-            string tenantConnectionString,
-            PlmPomImportExecuteResultDto executeResult)
-        {
-            using (var tenantConn = new SqlConnection(tenantConnectionString))
-            {
-                tenantConn.Open();
-                if (!TemplateTableExists(tenantConn, null, PomBodyTypeDetailTableName))
-                {
-                    int rows = CopyPlmSourceTableToTenant(
-                        plmConnectionString, tenantConnectionString, PomBodyTypeDetailSourceTable, PomBodyTypeDetailTableName);
-                    executeResult.BodyTypeDetailRowsImported = rows;
-                    executeResult.Messages.Add($"Imported {rows} row(s) into {PomBodyTypeDetailTableName}.");
-                }
-                else
-                {
-                    executeResult.Messages.Add($"Reused existing table {PomBodyTypeDetailTableName}.");
-                }
-
-                if (!TemplateTableExists(tenantConn, null, PomSpecGradingTableName))
-                {
-                    int rows = CopyPlmSourceTableToTenant(
-                        plmConnectionString, tenantConnectionString, PomSpecGradingSourceTable, PomSpecGradingTableName);
-                    executeResult.SpecBodyPartGradingRowsImported = rows;
-                    executeResult.Messages.Add($"Imported {rows} row(s) into {PomSpecGradingTableName}.");
-                }
-                else
-                {
-                    executeResult.Messages.Add($"Reused existing table {PomSpecGradingTableName}.");
-                }
-            }
-        }
-
         private static PomRootFolderResolution ResolvePomNavRootFolder(
             string plmConnectionString,
             string tenantConnectionString,
@@ -628,41 +600,73 @@ ORDER BY CASE WHEN SessionId = @SessionId THEN 0 ELSE 1 END, LastSyncAt DESC, Ma
             int tenantDataSourceId,
             PlmPomImportExecuteResultDto executeResult)
         {
-            int? existingId = FindTransactionIdByTable(tenantConn, null, PomBodyTypeTableName, PomTemplateTxIntegrationId);
+            RequireTchpPomSchema(tenantConn);
+
+            int? existingId = FindTransactionIdByTable(tenantConn, null, TchpPomTemplateTableName, PomTemplateTxIntegrationId);
             if (existingId.HasValue)
             {
                 SetIntegrationId(tenantConn, null, "AppTransaction", "TransactionID", existingId.Value, PomTemplateTxIntegrationId);
                 UpdateTransactionShell(tenantConn, existingId.Value, "POM Template", saasApplicationId);
-                executeResult.Messages.Add($"Reused existing POM Template transaction {existingId.Value}.");
+
+                if (TransactionHasChildTable(tenantConn, existingId.Value, TchpPomTemplatePartTableName))
+                {
+                    EnsurePomTemplateParentKeyLinks(tenantConn, existingId.Value, executeResult);
+                    ApplyPomTemplateChildDisplayNames(tenantConn, existingId.Value);
+                    executeResult.Messages.Add($"Reused existing POM Template transaction {existingId.Value}.");
+                    return existingId.Value;
+                }
+
+                executeResult.Messages.Add(
+                    $"Existing POM Template transaction {existingId.Value} is missing {TchpPomTemplatePartTableName} child — repairing.");
+                RepairPomTemplateTransactionChildren(
+                    tenantConn, existingId.Value, saasApplicationId, tenantDataSourceId, executeResult);
                 return existingId.Value;
             }
 
-            if (!TemplateTableExists(tenantConn, null, PomBodyTypeDetailTableName))
-                throw new InvalidOperationException($"Table dbo.{PomBodyTypeDetailTableName} is required for POM Template editor. Enable junction table import.");
+            int transactionId = CreatePomTemplateHierarchyTransaction(tenantConn, saasApplicationId, tenantDataSourceId);
+            SetIntegrationId(tenantConn, null, "AppTransaction", "TransactionID", transactionId, PomTemplateTxIntegrationId);
+            EnsurePomTemplateParentKeyLinks(tenantConn, transactionId, executeResult);
+            ApplyPomTemplateChildDisplayNames(tenantConn, transactionId);
+            executeResult.Messages.Add(
+                $"Created POM Template transaction {transactionId} with {TchpPomTemplatePartTableName} child grid.");
+            return transactionId;
+        }
 
+        private static HierarchyTableSetupDto BuildPomTemplateHierarchySetup(
+            SqlConnection tenantConn,
+            int? saasApplicationId,
+            int tenantDataSourceId,
+            string transactionName)
+        {
             var childTables = new List<HierarchyChildTableDto>
             {
                 new HierarchyChildTableDto
                 {
-                    TableName = PomBodyTypeDetailTableName,
-                    GrandChildTableNames = TemplateTableExists(tenantConn, null, PomSpecGradingTableName)
-                        ? new List<string> { PomSpecGradingTableName }
-                        : new List<string>()
+                    TableName = TchpPomTemplatePartTableName,
+                    GrandChildTableNames = new List<string>()
                 }
             };
 
-            var setup = new HierarchyTableSetupDto
+            return new HierarchyTableSetupDto
             {
-                MasterTableName = PomBodyTypeTableName,
-                TransactionName = "POM Template",
+                MasterTableName = TchpPomTemplateTableName,
+                TransactionName = transactionName,
                 DataSourceRegisterId = tenantDataSourceId,
                 SchemaOwner = "dbo",
                 SaasApplicationId = saasApplicationId,
                 SiblingTableNames = new List<string>(),
                 ChildTables = childTables
             };
+        }
 
-            var saveResult = AppTransactionBL.CreateHierarchyTransactionFromTables(setup, isIgnoreValidation: true, skipPostSaveCacheSync: true);
+        private static int CreatePomTemplateHierarchyTransaction(
+            SqlConnection tenantConn,
+            int? saasApplicationId,
+            int tenantDataSourceId)
+        {
+            var setup = BuildPomTemplateHierarchySetup(tenantConn, saasApplicationId, tenantDataSourceId, "POM Template");
+            var saveResult = AppTransactionBL.CreateHierarchyTransactionFromTables(
+                setup, isIgnoreValidation: true, skipPostSaveCacheSync: true);
             if (!saveResult.IsSuccessfulWithResult)
             {
                 throw new InvalidOperationException(saveResult.ValidationResult?.Items?.FirstOrDefault()?.Message
@@ -670,9 +674,222 @@ ORDER BY CASE WHEN SessionId = @SessionId THEN 0 ELSE 1 END, LastSyncAt DESC, Ma
             }
 
             int transactionId = Convert.ToInt32(saveResult.Object.Id);
-            SetIntegrationId(tenantConn, null, "AppTransaction", "TransactionID", transactionId, PomTemplateTxIntegrationId);
-            executeResult.Messages.Add($"Created POM Template transaction {transactionId} with detail/grading child grids.");
+            if (!TransactionHasChildTable(tenantConn, transactionId, TchpPomTemplatePartTableName))
+            {
+                throw new InvalidOperationException(
+                    $"POM Template transaction {transactionId} was created without {TchpPomTemplatePartTableName} child. "
+                    + "Schema cache likely still missing the table after import.");
+            }
+
             return transactionId;
+        }
+
+        private static void RepairPomTemplateTransactionChildren(
+            SqlConnection tenantConn,
+            int existingTransactionId,
+            int? saasApplicationId,
+            int tenantDataSourceId,
+            PlmPomImportExecuteResultDto executeResult)
+        {
+            int? existingRootId = GetRootTransactionUnitId(tenantConn, existingTransactionId);
+            if (!existingRootId.HasValue)
+                throw new InvalidOperationException($"POM Template transaction {existingTransactionId} has no root unit.");
+
+            // Drop any incorrect legacy children (e.g. Plm_pdmV2kBodyTypeDetail) before attaching Tchp parts.
+            DeleteNonRootTransactionUnits(tenantConn, existingTransactionId, existingRootId.Value);
+
+            var setup = BuildPomTemplateHierarchySetup(
+                tenantConn, saasApplicationId, tenantDataSourceId, "POM Template __repair_tmp");
+            var saveResult = AppTransactionBL.CreateHierarchyTransactionFromTables(
+                setup, isIgnoreValidation: true, skipPostSaveCacheSync: true);
+            if (!saveResult.IsSuccessfulWithResult)
+            {
+                throw new InvalidOperationException(saveResult.ValidationResult?.Items?.FirstOrDefault()?.Message
+                    ?? "Failed to build temporary POM Template hierarchy for repair.");
+            }
+
+            int tempTxId = Convert.ToInt32(saveResult.Object.Id);
+            int? tempRootId = GetRootTransactionUnitId(tenantConn, tempTxId);
+            if (!tempRootId.HasValue)
+                throw new InvalidOperationException($"Temporary POM Template transaction {tempTxId} has no root unit.");
+
+            if (!TransactionHasChildTable(tenantConn, tempTxId, TchpPomTemplatePartTableName))
+            {
+                DeletePomTemplateTransactionShell(tenantConn, tempTxId);
+                throw new InvalidOperationException(
+                    $"Cannot repair POM Template: temporary hierarchy still missing {TchpPomTemplatePartTableName}. Refresh schema cache and retry.");
+            }
+
+            using (var cmd = tenantConn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit
+SET TransactionID = @ExistingTxId,
+    ParentTransactionUnitID = CASE
+        WHEN ParentTransactionUnitID = @TempRootId THEN @ExistingRootId
+        ELSE ParentTransactionUnitID
+    END
+WHERE TransactionID = @TempTxId
+  AND TransactionUnitID <> @TempRootId;";
+                cmd.Parameters.AddWithValue("@ExistingTxId", existingTransactionId);
+                cmd.Parameters.AddWithValue("@ExistingRootId", existingRootId.Value);
+                cmd.Parameters.AddWithValue("@TempTxId", tempTxId);
+                cmd.Parameters.AddWithValue("@TempRootId", tempRootId.Value);
+                int moved = cmd.ExecuteNonQuery();
+                executeResult.Messages.Add($"Moved {moved} child unit(s) onto POM Template transaction {existingTransactionId}.");
+            }
+
+            DeletePomTemplateTransactionShell(tenantConn, tempTxId);
+            EnsurePomTemplateParentKeyLinks(tenantConn, existingTransactionId, executeResult);
+            ApplyPomTemplateChildDisplayNames(tenantConn, existingTransactionId);
+
+            int? formId = GetTransactionFormId(tenantConn, null, existingTransactionId);
+            if (formId.HasValue)
+            {
+                ClearPomFormLayoutItems(tenantConn, formId.Value);
+                executeResult.Messages.Add(
+                    $"Cleared form layout {formId.Value} so Template Part grid can be regenerated.");
+            }
+        }
+
+        private static void DeleteNonRootTransactionUnits(SqlConnection tenantConn, int transactionId, int rootUnitId)
+        {
+            using (var cmd = tenantConn.CreateCommand())
+            {
+                cmd.CommandText = @"
+DELETE f
+FROM dbo.AppTransactionField f
+INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
+WHERE u.TransactionID = @TxId
+  AND u.TransactionUnitID <> @RootUnitId;
+
+DELETE FROM dbo.AppTransactionUnit
+WHERE TransactionID = @TxId
+  AND TransactionUnitID <> @RootUnitId;";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.Parameters.AddWithValue("@RootUnitId", rootUnitId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void DeletePomTemplateTransactionShell(SqlConnection tenantConn, int transactionId)
+        {
+            int? formId = GetTransactionFormId(tenantConn, null, transactionId);
+            if (formId.HasValue)
+                ClearPomFormLayoutItems(tenantConn, formId.Value);
+
+            using (var cmd = tenantConn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE dbo.AppTransaction SET FormID = NULL WHERE TransactionID = @TxId;
+
+DELETE f
+FROM dbo.AppTransactionField f
+INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
+WHERE u.TransactionID = @TxId;
+
+DELETE FROM dbo.AppTransactionUnit WHERE TransactionID = @TxId;
+
+IF @FormId IS NOT NULL
+    DELETE FROM dbo.AppForm WHERE FormID = @FormId;
+
+DELETE FROM dbo.AppTransaction WHERE TransactionID = @TxId;";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.Parameters.AddWithValue("@FormId", (object)formId ?? DBNull.Value);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void ClearPomFormLayoutItems(SqlConnection tenantConn, int formId)
+        {
+            using (var cmd = tenantConn.CreateCommand())
+            {
+                cmd.CommandText = @"
+IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'AppFormGridLayoutItemBindField')
+BEGIN
+    DELETE b
+    FROM dbo.AppFormGridLayoutItemBindField b
+    INNER JOIN dbo.AppFormLayoutItem i ON i.FormLayoutItemID = b.FormLayoutId
+    WHERE i.FormID = @FormId;
+END
+
+UPDATE dbo.AppTransactionField
+SET HostFormLayoutItemId = NULL
+WHERE HostFormLayoutItemId IN (
+    SELECT FormLayoutItemID FROM dbo.AppFormLayoutItem WHERE FormID = @FormId
+);
+
+DECLARE @guard int = 0;
+WHILE @guard < 50 AND EXISTS (SELECT 1 FROM dbo.AppFormLayoutItem WHERE FormID = @FormId)
+BEGIN
+    SET @guard = @guard + 1;
+    DELETE FROM dbo.AppFormLayoutItem
+    WHERE FormID = @FormId
+      AND FormLayoutItemID NOT IN (
+          SELECT DISTINCT UigridLayoutParentId
+          FROM dbo.AppFormLayoutItem
+          WHERE FormID = @FormId
+            AND UigridLayoutParentId IS NOT NULL
+      );
+END";
+                cmd.Parameters.AddWithValue("@FormId", formId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static bool TransactionHasChildTable(SqlConnection tenantConn, int transactionId, string childTableName)
+        {
+            using (var cmd = tenantConn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 1
+FROM dbo.AppTransactionUnit
+WHERE TransactionID = @TxId
+  AND DataBaseTableName = @TableName
+  AND ParentTransactionUnitID IS NOT NULL
+  AND ParentTransactionUnitID <> 0;";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.Parameters.AddWithValue("@TableName", childTableName);
+                return cmd.ExecuteScalar() != null;
+            }
+        }
+
+        private static void EnsurePomTemplateParentKeyLinks(
+            SqlConnection tenantConn,
+            int transactionId,
+            PlmPomImportExecuteResultDto executeResult)
+        {
+            // Tchp schema has real FKs, but still set LinkToParent explicitly for Form Builder runtime.
+            int? rootUnitId = GetRootTransactionUnitId(tenantConn, transactionId);
+            int? partUnitId = GetTransactionUnitIdByTableName(tenantConn, transactionId, TchpPomTemplatePartTableName);
+            if (!rootUnitId.HasValue || !partUnitId.HasValue)
+                return;
+
+            EnsureChildUnitParent(tenantConn, partUnitId.Value, rootUnitId.Value);
+
+            int? templatePkFieldId = ResolveTransactionFieldId(tenantConn, transactionId, rootUnitId, "PomTemplateId");
+            if (!templatePkFieldId.HasValue)
+                return;
+
+            int updated = SetChildFieldLinkToParentPrimaryKey(
+                tenantConn, partUnitId.Value, "PomTemplateId", templatePkFieldId.Value);
+            if (updated > 0)
+                executeResult.Messages.Add("Linked TchpPomTemplatePart.PomTemplateId → TchpPomTemplate.PomTemplateId.");
+        }
+
+        private static void ApplyPomTemplateChildDisplayNames(SqlConnection tenantConn, int transactionId)
+        {
+            using (var cmd = tenantConn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit
+SET UnitDisplayName = N'Template Parts'
+WHERE TransactionID = @TxId
+  AND DataBaseTableName = @PartTable;";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.Parameters.AddWithValue("@PartTable", TchpPomTemplatePartTableName);
+                cmd.ExecuteNonQuery();
+            }
         }
 
         private static int EnsureSingleTableTransaction(
