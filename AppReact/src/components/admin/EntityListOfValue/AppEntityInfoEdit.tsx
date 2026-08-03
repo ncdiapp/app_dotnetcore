@@ -68,6 +68,7 @@ interface CurrentEntity {
     IdentityColumnDataType?: string;
     ListEditTransactionId?: number | null;
     ItemDetailFormTransactionId?: number | null;
+    SortByField?: string;
   };
   IsModified?: boolean;
 }
@@ -175,6 +176,7 @@ const AppEntityInfoEdit: React.FC<AppEntityInfoEditProps> = ({ paramOverride }) 
   const displayField1ColumnsCV = useMemo(() => new CollectionView(columnListWithBlank), [columnListWithBlank]);
   const displayField2ColumnsCV = useMemo(() => new CollectionView(columnListWithBlank), [columnListWithBlank]);
   const displayField3ColumnsCV = useMemo(() => new CollectionView(columnListWithBlank), [columnListWithBlank]);
+  const sortByFieldColumnsCV = useMemo(() => new CollectionView(columnListWithBlank), [columnListWithBlank]);
   const partnerFilterColumnsCV = useMemo(() => new CollectionView(columnListWithBlank), [columnListWithBlank]);
   const dataSourceCV = useMemo(() => new CollectionView(dataSourceList), [dataSourceList]);
   const listEditTransactionCV = useMemo(() => new CollectionView(listEditWithBlank), [listEditWithBlank]);
@@ -271,6 +273,7 @@ const AppEntityInfoEdit: React.FC<AppEntityInfoEditProps> = ({ paramOverride }) 
           const identityColumnDataType = entityData.OtherSettingsDto?.IdentityColumnDataType ?? '';
           const listEditTransactionId = entityData.OtherSettingsDto?.ListEditTransactionId ?? null;
           const itemDetailFormTransactionId = entityData.OtherSettingsDto?.ItemDetailFormTransactionId ?? null;
+          const sortByField = entityData.OtherSettingsDto?.SortByField ?? '';
           setCurrentEntity((prev) => ({
             ...prev,
             ...entityData,
@@ -286,7 +289,8 @@ const AppEntityInfoEdit: React.FC<AppEntityInfoEditProps> = ({ paramOverride }) 
               ...entityData.OtherSettingsDto,
               IdentityColumnDataType: '',
               ListEditTransactionId: null,
-              ItemDetailFormTransactionId: null
+              ItemDetailFormTransactionId: null,
+              SortByField: ''
             }
           }));
           if (entityData.TableName && entityData.DataSourceFrom != null) {
@@ -310,7 +314,8 @@ const AppEntityInfoEdit: React.FC<AppEntityInfoEditProps> = ({ paramOverride }) 
                         ...prev.OtherSettingsDto,
                         IdentityColumnDataType: identityColumnDataType,
                         ListEditTransactionId: listEditTransactionId,
-                        ItemDetailFormTransactionId: itemDetailFormTransactionId
+                        ItemDetailFormTransactionId: itemDetailFormTransactionId,
+                        SortByField: sortByField
                       }
                     }
                   : prev
@@ -332,7 +337,8 @@ const AppEntityInfoEdit: React.FC<AppEntityInfoEditProps> = ({ paramOverride }) 
                         ...prev.OtherSettingsDto,
                         IdentityColumnDataType: identityColumnDataType,
                         ListEditTransactionId: listEditTransactionId,
-                        ItemDetailFormTransactionId: itemDetailFormTransactionId
+                        ItemDetailFormTransactionId: itemDetailFormTransactionId,
+                        SortByField: sortByField
                       }
                     }
                   : prev
@@ -405,7 +411,21 @@ const AppEntityInfoEdit: React.FC<AppEntityInfoEditProps> = ({ paramOverride }) 
       // Cascade: clear column list and selections first so column DDLs refresh (Wijmo ComboBox itemsSource change)
       setTableColumns([]);
       setCurrentEntity((prev) =>
-        prev ? { ...prev, ownerTableName, TableName: tableObj.Name ?? '', SchemaOwner: tableObj.SchemaOwner ?? '', IdentityField: '', DisplayFiled1: '', DisplayFiled2: '', DisplayFiled3: '', PartnerFilterFiled: '', IsModified: true } : prev
+        prev
+          ? {
+              ...prev,
+              ownerTableName,
+              TableName: tableObj.Name ?? '',
+              SchemaOwner: tableObj.SchemaOwner ?? '',
+              IdentityField: '',
+              DisplayFiled1: '',
+              DisplayFiled2: '',
+              DisplayFiled3: '',
+              PartnerFilterFiled: '',
+              OtherSettingsDto: { ...prev.OtherSettingsDto, SortByField: '' },
+              IsModified: true
+            }
+          : prev
       );
       try {
         const schema = await schemaMetadataService.getOneDatabaseTableSchema(tableObj.Name ?? '', currentEntity.DataSourceFrom, tableObj.SchemaOwner ?? null);
@@ -421,7 +441,8 @@ const AppEntityInfoEdit: React.FC<AppEntityInfoEditProps> = ({ paramOverride }) 
                   DisplayFiled1: '',
                   DisplayFiled2: '',
                   DisplayFiled3: '',
-                  PartnerFilterFiled: ''
+                  PartnerFilterFiled: '',
+                  OtherSettingsDto: { ...prev.OtherSettingsDto, SortByField: '' }
                 }
               : prev
           );
@@ -628,6 +649,10 @@ const AppEntityInfoEdit: React.FC<AppEntityInfoEditProps> = ({ paramOverride }) 
                 <div className="flex items-center gap-2">
                   <label className={`w-36 shrink-0 text-xs ${theme.label}`}>Display Filed 3</label>
                   <ComboBox key={`d3-${columnDdlKey}`} itemsSource={displayField3ColumnsCV} displayMemberPath="Name" selectedValuePath="Name" selectedValue={currentEntity.DisplayFiled3 ?? ''} selectedIndexChanged={(s: any) => { if (isLoading) return; setCurrentEntity((p) => (p ? { ...p, DisplayFiled3: s?.selectedValue ?? '', IsModified: true } : p)); }} isRequired={false} className={`w-52 h-7 ${theme.inputBox}`} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className={`w-36 shrink-0 text-xs ${theme.label}`}>Sort By Field</label>
+                  <ComboBox key={`sort-${columnDdlKey}`} itemsSource={sortByFieldColumnsCV} displayMemberPath="Name" selectedValuePath="Name" selectedValue={currentEntity.OtherSettingsDto?.SortByField ?? ''} selectedIndexChanged={(s: any) => { if (isLoading) return; setCurrentEntity((p) => (p ? { ...p, OtherSettingsDto: { ...p.OtherSettingsDto, SortByField: s?.selectedValue ?? '' }, IsModified: true } : p)); }} isRequired={false} className={`w-52 h-7 ${theme.inputBox}`} />
                 </div>
                 <div className="flex items-center gap-2">
                   <label className={`w-36 shrink-0 text-xs ${theme.label}`}>Partner Filter Field</label>

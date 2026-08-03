@@ -76,5 +76,12 @@ namespace APP.Components.EntityDto
             get;
             set;
         }
+
+        [DataMember(EmitDefaultValue = false)]
+        public string SortByField
+        {
+            get;
+            set;
+        }
     }
 }

@@ -10,6 +10,7 @@ using SD.LLBLGen.Pro.ORMSupportClasses;
 using APP.Components.Dto;
 using DatabaseSchemaMrg;
 using APP.Components.EntityDto;
+using Newtonsoft.Json;
 
 #if NETFRAMEWORK
 using System.Management.Automation.Language;
@@ -40,10 +41,33 @@ namespace App.BL
 
             //toReturn.Sort((x, y) => x.Display.CompareTo(y.Display));
 
+            // Preserve SQL ORDER BY when SortByField is configured.
+            if (!string.IsNullOrWhiteSpace(GetEntitySortByField(EntityInfo)))
+                return toReturn;
+
             return toReturn.OrderBy(o => o.Display).ToList();
 
 
 
+        }
+
+        /// <summary>
+        /// Reads SortByField from AppEntityInfo.OtherSettings JSON (AppEntityInfoOtherSettingsDto).
+        /// </summary>
+        private static string GetEntitySortByField(AppEntityInfoEntity entityInfo)
+        {
+            if (entityInfo == null || string.IsNullOrWhiteSpace(entityInfo.OtherSettings))
+                return null;
+
+            try
+            {
+                var settings = JsonConvert.DeserializeObject<AppEntityInfoOtherSettingsDto>(entityInfo.OtherSettings);
+                return string.IsNullOrWhiteSpace(settings?.SortByField) ? null : settings.SortByField.Trim();
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         public static List<LookupItemDto> GetLookupItemList(int entityInfoID, string pkInClause, bool isNeedToCheckSeccurity = true)
@@ -240,7 +264,9 @@ namespace App.BL
             {
                 GetSystemTableNoQueryLookupItem(toReturn, entityInfo, pkInClause);
 
-                toReturn.Sort((x, y) => x.Display.CompareTo(y.Display));
+                // When SortByField is set, SQL ORDER BY already applied — do not re-sort by Display.
+                if (string.IsNullOrWhiteSpace(GetEntitySortByField(entityInfo)))
+                    toReturn.Sort((x, y) => x.Display.CompareTo(y.Display));
 
 
                
@@ -471,6 +497,12 @@ namespace App.BL
                 }
 
 
+            }
+
+            string sortByField = GetEntitySortByField(entityInfo);
+            if (!string.IsNullOrWhiteSpace(sortByField))
+            {
+                selectStatment = selectStatment + " ORDER BY [" + sortByField + "]";
             }
 
             //	string connectInfo = AppMetaDataBL.GetConnectInfo(entityInfo.DataSourceFrom );

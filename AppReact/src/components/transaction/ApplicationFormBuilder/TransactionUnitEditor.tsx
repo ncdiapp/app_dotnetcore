@@ -109,6 +109,8 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         field: any | null;
         currentFieldName: string;
         parentFieldId: number | null;
+        /** Field Entity DataSourceFrom (runtime cascading connection); used to load Relation Table lists. */
+        relationDataSourceId: number | null;
         relationTable: string;
         relationTableSchemaOwner: string | null;
         relationParentKey: string;
@@ -121,6 +123,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         field: null,
         currentFieldName: '',
         parentFieldId: null,
+        relationDataSourceId: null,
         relationTable: '',
         relationTableSchemaOwner: null,
         relationParentKey: '',
@@ -1438,6 +1441,66 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         setFieldSecurityPopup({ open: true, fieldId, display });
     };
 
+    const loadRelationTableOptionsForDataSource = async (
+        dsId: number | null
+    ): Promise<Array<{ schemaOwner: string | null; name: string; display: string }>> => {
+        if (dsId == null) return [];
+        try {
+            const tableList = await schemaMetadataService.getDataSourceTableAndViewListFromCache(dsId, null, null);
+            const arr = Array.isArray(tableList) ? tableList : [];
+            const options: Array<{ schemaOwner: string | null; name: string; display: string }> = [];
+            arr.forEach((t: any) => {
+                const schemaOwner = t.SchemaOwner || t.schemaOwner || null;
+                const name = t.Name || t.name || '';
+                if (!name) return;
+                const display =
+                    schemaOwner && schemaOwner.length > 0 ? `${schemaOwner}.${name}` : name;
+                options.push({ schemaOwner, name, display });
+            });
+            return options;
+        } catch {
+            return [];
+        }
+    };
+
+    const loadRelationTableColumns = async (
+        tableName: string,
+        dsId: number | null,
+        schemaOwner: string | null
+    ): Promise<Array<{ name: string }>> => {
+        if (!tableName || dsId == null) return [];
+        try {
+            const tableData = await schemaMetadataService.getOneDatabaseTableSchema(
+                tableName,
+                dsId,
+                schemaOwner
+            );
+            const cols = Array.isArray(tableData?.Columns) ? tableData.Columns : [];
+            return cols.filter((c: any) => c?.Name).map((c: any) => ({ name: String(c.Name) }));
+        } catch {
+            return [];
+        }
+    };
+
+    const resolveCascadingRelationDataSourceId = async (field: any): Promise<number | null> => {
+        const defaultDs =
+            unitData?.DataSourceFrom ??
+            transactionData?.DataSourceFrom ??
+            dataSourceRegisterId ??
+            null;
+        if (field?.EntityId) {
+            try {
+                const entityDto = await adminSvc.retrieveOneAppEntityInfoExDto(String(field.EntityId), true);
+                if (entityDto?.DataSourceFrom != null) {
+                    return Number(entityDto.DataSourceFrom);
+                }
+            } catch {
+                // fall through to default
+            }
+        }
+        return defaultDs != null ? Number(defaultDs) : null;
+    };
+
     const handleOpenParentDataSourceMapping = async (field: any) => {
         if (!field) return;
         const currentFieldName = field.DisplayName || field.DataBaseFieldName || '';
@@ -1449,7 +1512,6 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         ].filter((v) => typeof v === 'number') as number[];
 
         const parentFields: Array<{ Id: number; Display: string }> = [];
-        const relationTableOptions: Array<{ schemaOwner: string | null; name: string; display: string }> = [];
         const unitList = transactionData?.AppTransactionUnitList ?? [];
 
         // Resolve current edit unit by field (Angular: dictTransactionUnitldAndObj[item.TransactionUnitId])
@@ -1512,48 +1574,19 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         }
         pushFromUnit(resolvedCurrentUnit);
 
-        // Load available relation tables from schema (Angular: databaseSchemaData)
-        try {
-            const dsId = transactionData?.DataSourceFrom ?? dataSourceRegisterId ?? null;
-            if (dsId != null) {
-                const tableList = await schemaMetadataService.getDataSourceTableAndViewListFromCache(dsId, null, null);
-                const arr = Array.isArray(tableList) ? tableList : [];
-                arr.forEach((t: any) => {
-                    const schemaOwner = t.SchemaOwner || t.schemaOwner || null;
-                    const name = t.Name || t.name || '';
-                    if (!name) return;
-                    const display =
-                        schemaOwner && schemaOwner.length > 0 ? `${schemaOwner}.${name}` : name;
-                    relationTableOptions.push({
-                        schemaOwner,
-                        name,
-                        display
-                    });
-                });
-            }
-        } catch {
-            // ignore schema load errors; user can still type manually
-        }
+        // Runtime cascading uses the child field Entity DataSourceFrom — load tables from that DS.
+        const relationDataSourceId = await resolveCascadingRelationDataSourceId(field);
+        const relationTableOptions = await loadRelationTableOptionsForDataSource(relationDataSourceId);
 
-        // If there is an existing relation table, try to pre-load its columns
         let relationTableColumnOptions: Array<{ name: string }> = [];
         const existingSchemaOwner = field.CascadingRelationTableSchemaOwner || null;
         const existingTableName = field.CascadingRelationTable || '';
         if (existingTableName) {
-            try {
-                const dsId = transactionData?.DataSourceFrom ?? dataSourceRegisterId ?? null;
-                const tableData = await schemaMetadataService.getOneDatabaseTableSchema(
-                    existingTableName,
-                    dsId,
-                    existingSchemaOwner
-                );
-                const cols = Array.isArray(tableData?.Columns) ? tableData.Columns : [];
-                relationTableColumnOptions = cols
-                    .filter((c: any) => c?.Name)
-                    .map((c: any) => ({ name: String(c.Name) }));
-            } catch {
-                relationTableColumnOptions = [];
-            }
+            relationTableColumnOptions = await loadRelationTableColumns(
+                existingTableName,
+                relationDataSourceId,
+                existingSchemaOwner
+            );
         }
 
         setParentDataSourceMappingState({
@@ -1561,6 +1594,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             field,
             currentFieldName,
             parentFieldId: field.DdlparentLevelId ?? null,
+            relationDataSourceId,
             relationTable: field.CascadingRelationTable || '',
             relationTableSchemaOwner: field.CascadingRelationTableSchemaOwner || null,
             relationParentKey: field.CascadingRelationTableParentKeyField || '',
@@ -4178,17 +4212,17 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 <i className="fa-solid fa-times" aria-hidden />
                             </button>
                         </div>
-                        <div className="flex-1 min-h-0 overflow-auto p-3 text-xs space-y-2">
+                        <div className="h-1 flex-auto min-h-0 overflow-auto p-3 text-xs space-y-2">
                             <div className="flex items-center">
-                                <span className="w-32">Current Field</span>
-                                <div className="flex-1 truncate" title={parentDataSourceMappingState.currentFieldName}>
+                                <span className={`w-32 ${theme.label}`}>Current Field</span>
+                                <div className="w-1 flex-auto truncate" title={parentDataSourceMappingState.currentFieldName}>
                                     {parentDataSourceMappingState.currentFieldName}
                                 </div>
                             </div>
                             <div className="flex items-center">
-                                <span className="w-32">Parent Field</span>
+                                <span className={`w-32 ${theme.label}`}>Parent Field</span>
                                 <select
-                                    className={`flex-1 px-2 py-1 border rounded ${theme.inputBox}`}
+                                    className={`w-1 flex-auto px-2 py-1 border rounded ${theme.inputBox}`}
                                     value={parentDataSourceMappingState.parentFieldId ?? ''}
                                     onChange={(e) => {
                                         const val = e.target.value ? Number(e.target.value) : null;
@@ -4207,10 +4241,10 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 </select>
                             </div>
                             <div className="flex items-center">
-                                <span className="w-32">Relation Table</span>
+                                <span className={`w-32 ${theme.label}`}>Relation Table</span>
                                 {/** Use schemaOwner+table as option value so duplicate table names across schemas are handled correctly. */}
                                 <select
-                                    className={`flex-1 px-2 py-1 border rounded ${theme.inputBox}`}
+                                    className={`w-1 flex-auto px-2 py-1 border rounded ${theme.inputBox}`}
                                     value={
                                         parentDataSourceMappingState.relationTable
                                             ? `${parentDataSourceMappingState.relationTableSchemaOwner || ''}::${parentDataSourceMappingState.relationTable}`
@@ -4223,24 +4257,15 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                         const selectedSchemaOwner = tableName ? (schemaOwnerPart || null) : null;
                                         let cols: Array<{ name: string }> = [];
                                         if (tableName) {
-                                            try {
-                                                const selected = parentDataSourceMappingState.relationTableOptions.find(
-                                                    (t) => t.name === tableName && (t.schemaOwner || '') === (selectedSchemaOwner || '')
-                                                );
-                                                const schemaOwner = selected?.schemaOwner || null;
-                                                const dsId = transactionData?.DataSourceFrom ?? dataSourceRegisterId ?? null;
-                                                const tableData = await schemaMetadataService.getOneDatabaseTableSchema(
-                                                    tableName,
-                                                    dsId,
-                                                    schemaOwner
-                                                );
-                                                const colArr = Array.isArray(tableData?.Columns) ? tableData.Columns : [];
-                                                cols = colArr
-                                                    .filter((c: any) => c?.Name)
-                                                    .map((c: any) => ({ name: String(c.Name) }));
-                                            } catch {
-                                                cols = [];
-                                            }
+                                            const selected = parentDataSourceMappingState.relationTableOptions.find(
+                                                (t) => t.name === tableName && (t.schemaOwner || '') === (selectedSchemaOwner || '')
+                                            );
+                                            const schemaOwner = selected?.schemaOwner || null;
+                                            cols = await loadRelationTableColumns(
+                                                tableName,
+                                                parentDataSourceMappingState.relationDataSourceId,
+                                                schemaOwner
+                                            );
                                         }
                                         setParentDataSourceMappingState((prev) => ({
                                             ...prev,
@@ -4261,9 +4286,9 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 </select>
                             </div>
                             <div className="flex items-center">
-                                <span className="w-32">Relation Parent Key</span>
+                                <span className={`w-32 ${theme.label}`}>Relation Parent Key</span>
                                 <select
-                                    className={`flex-1 px-2 py-1 border rounded ${theme.inputBox}`}
+                                    className={`w-1 flex-auto px-2 py-1 border rounded ${theme.inputBox}`}
                                     value={parentDataSourceMappingState.relationParentKey}
                                     onChange={(e) =>
                                         setParentDataSourceMappingState((prev) => ({
@@ -4281,9 +4306,9 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                 </select>
                             </div>
                             <div className="flex items-center">
-                                <span className="w-32">Relation Child Key</span>
+                                <span className={`w-32 ${theme.label}`}>Relation Child Key</span>
                                 <select
-                                    className={`flex-1 px-2 py-1 border rounded ${theme.inputBox}`}
+                                    className={`w-1 flex-auto px-2 py-1 border rounded ${theme.inputBox}`}
                                     value={parentDataSourceMappingState.relationChildKey}
                                     onChange={(e) =>
                                         setParentDataSourceMappingState((prev) => ({
