@@ -667,6 +667,44 @@ public class AdministrationController : SecureBaseController
         return null;
     }
 
+    [HttpGet]
+    public List<AppExternalMethodRegisterExDto> RetrieveAllAppExternalMethodRegisterExDto()
+    {
+        return AppExternalMethodRegisterBL.RetrieveAllAppExternalMethodRegisterEntityDto().ToList();
+    }
+
+    [HttpPost]
+    public OperationCallResult<AppExternalMethodRegisterExDto> SaveAllAppExternalMethodRegisterExDto(
+        [FromBody] ObservableSetSaveRequest<AppExternalMethodRegisterExDto> request)
+    {
+        if (request?.InternalItems == null)
+        {
+            return null;
+        }
+
+        // ObservableSet implements IEnumerable — Newtonsoft expects a JSON array for that type,
+        // so bind via { InternalItems, DeletedItemIds } then build ObservableSet (same as AppSetup).
+        var aSet = new ObservableSet<AppExternalMethodRegisterExDto>();
+        foreach (var item in request.InternalItems)
+        {
+            if (item != null)
+            {
+                aSet.Add(item);
+            }
+        }
+        aSet.DeletedItemIds = request.DeletedItemIds ?? new List<object>();
+        return AppExternalMethodRegisterBL.SaveAllAppExternalMethodRegisterEntityDto(aSet);
+    }
+
+    /// <summary>
+    /// Scans ExternalDllRepository and returns discoverable plugin methods for registration UI.
+    /// </summary>
+    [HttpGet]
+    public List<AppExternalMethodRegisterDto> DiscoverExternalPluginMethods()
+    {
+        return AppPluginEngine.DiscoverAvailableMethods();
+    }
+
 
     [HttpGet]
     public List<AppDataSourceRegisterExDto> GetDataSourceRegisterList()

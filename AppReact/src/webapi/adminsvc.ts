@@ -1001,6 +1001,32 @@ class AdminService {
     return response.json();
   }
 
+  async retrieveAllAppExternalMethodRegisterExDto(): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Administration/RetrieveAllAppExternalMethodRegisterExDto`, {
+      headers: getHeaders()
+    });
+    if (!response.ok) throw new Error('Failed to retrieve external method register');
+    return response.json();
+  }
+
+  async saveAllAppExternalMethodRegisterExDto(aSet: any): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Administration/SaveAllAppExternalMethodRegisterExDto`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(aSet)
+    });
+    if (!response.ok) throw new Error('Failed to save external method register');
+    return response.json();
+  }
+
+  async discoverExternalPluginMethods(): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Administration/DiscoverExternalPluginMethods`, {
+      headers: getHeaders()
+    });
+    if (!response.ok) throw new Error('Failed to discover external plugin methods');
+    return response.json();
+  }
+
   async retrieveCurrentUserCompany(): Promise<any> {
     const response = await fetch(`${endpoints.BASE_URL}/webapi/Administration/RetrieveCurrentUserCompany`, {
       headers: getHeaders()

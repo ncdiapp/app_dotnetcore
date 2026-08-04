@@ -20,6 +20,7 @@ import ApplicationSetting from './components/admin/ApplicationSetting';
 import ApplicationSetting2 from './components/admin/ApplicationSetting2';
 import TestDDL from './components/admin/TestDDL';
 import DataSourceRegister from './components/admin/DataSourceRegister';
+import ExternalMethodRegister from './components/admin/ExternalMethodRegister';
 import MetaDataManagement from './components/transaction/metaDataManagement';
 import FormMasterDetail from './components/formMgt/FormMasterDetail';
 import FormListEdit from './components/formMgt/FormListEdit';
@@ -114,6 +115,8 @@ export const AUTHENTICATED_ROUTES: SharedRouteDef[] = [
   { path: 'system-setting-2', element: <ApplicationSetting2 /> },
   { path: 'database-registration/:param', element: <DataSourceRegister /> },
   { path: 'database-registration', element: <DataSourceRegister /> },
+  { path: 'external-method-register/:param', element: <ExternalMethodRegister /> },
+  { path: 'external-method-register', element: <ExternalMethodRegister /> },
 
   { path: 'company-security/:param', element: <CompanySecuritySetting /> },
   { path: 'company-security', element: <CompanySecuritySetting /> },

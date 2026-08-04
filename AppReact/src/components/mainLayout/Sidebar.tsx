@@ -63,6 +63,7 @@ const Sidebar: React.FC = () => {
         { Id: 'sysadmin-tenant-provisioning', Name: 'Tenant Provisioning', RouteCode: '/tenant-provisioning' },
         { Id: 'sysadmin-company-security', Name: 'Company and Users', RouteCode: '/company-security' },
         { Id: 'sysadmin-database-registration', Name: 'Database Registration', RouteCode: 'database-registration' },
+        { Id: 'sysadmin-external-method-register', Name: 'External Method Register', RouteCode: 'external-method-register' },
       ]
     },
     {
@@ -91,6 +92,11 @@ const Sidebar: React.FC = () => {
           Id:'database-registration',
           Name: 'Database Registration',
           RouteCode: 'database-registration'
+        },
+        {
+          Id:'external-method-register',
+          Name: 'External Method Register',
+          RouteCode: 'external-method-register'
         },
         {
           Id:'db-driver-management',

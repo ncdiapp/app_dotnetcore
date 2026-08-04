@@ -533,7 +533,11 @@ WHERE BlueprintKey = @BlueprintKey";
               validation.Errors.Add($"Sibling table dbo.[{siblingTable}] does not exist for Tab_{tx.PlmTabId}.");
 
             var visibleMappings = FilterMappingForTransaction(tx, sibling, mappingRows, prefix);
-            if (visibleMappings.Count == 0 && !sibling.SkipTablePrefix)
+            // ExclusiveSubItemsOnly siblings (e.g. Plm_Fit_1 after Fit hub merge to Fit_Summary) may
+            // intentionally have zero remaining mapped columns; SpecFit lives on TchpFitRound.
+            if (visibleMappings.Count == 0
+                && !sibling.SkipTablePrefix
+                && !string.Equals(sibling.FieldPolicy, DwFieldPolicyExclusive, StringComparison.OrdinalIgnoreCase))
               validation.Warnings.Add($"Transaction Tab_{tx.PlmTabId} has no field mapping rows for table {siblingTable}.");
           }
 

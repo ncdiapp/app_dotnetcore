@@ -40,6 +40,20 @@ const isMassUpdateModeJson = (text: string): boolean => {
   }
 };
 
+/** Dw template blueprint (4_PlmDw_ImportBlueprint.json) — not a Search Import schema. */
+const isDwImportBlueprintJson = (text: string): boolean => {
+  try {
+    const parsed = JSON.parse(text);
+    const txs = parsed?.transactions ?? parsed?.Transactions;
+    const hasTx = Array.isArray(txs) && txs.length > 0;
+    const queryText = parsed?.dataSet?.queryText ?? parsed?.DataSet?.QueryText;
+    // Dw blueprints have transactions[]; Search Import blueprints have dataSet.queryText.
+    return hasTx && !queryText;
+  } catch {
+    return false;
+  }
+};
+
 const SearchImportStep: React.FC<SearchImportStepProps> = ({
   state,
   searchImportStepUi,
@@ -144,6 +158,15 @@ const SearchImportStep: React.FC<SearchImportStepProps> = ({
       const text = await file.text();
       const massUpdate = isMassUpdateModeJson(text);
       const sibling = !massUpdate && isSiblingModeJson(text);
+
+      if (!massUpdate && !sibling && isDwImportBlueprintJson(text)) {
+        showError(
+          'This file is a Dw Import Blueprint (4_PlmDw_ImportBlueprint.json). '
+          + 'Use the DwBlueprint step — Search/View are created there on Execute (IncludeSearchView). '
+          + 'Search Import needs 1_PlmSearch_ImportBlueprint.json from ImportPLMSearchView.',
+        );
+        return;
+      }
 
       if (massUpdate) {
         const loadResult = await plmMigrationSvc.loadSearchMassUpdateViewBlueprint(text);
