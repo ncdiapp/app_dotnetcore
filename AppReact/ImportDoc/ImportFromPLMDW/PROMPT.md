@@ -513,13 +513,13 @@ When `dwTabImportConfig` includes a `techPack` block (α bindings):
 | Blueprint wiring | **α** — explicit `techPack.bindings` per `plmTabId` |
 | SizeRun / BaseSize / UOM | **S1** — from Grading DW only → `TchpStyleSpec` columns; stripped from `Plm_*` |
 | Import scope | **D1** — step `3b_Tchp_ImportFromDW.sql` writes Tchp now |
-| StyleSpec unit kind | **Sibling** with different PK (`StyleSpecId`); link via `ProductReferenceId` |
-| Link without DB FK | **L2** — Blueprint Execute sets `IsLinkToParentPrimaryKey` manually (no FK on `ProductReferenceId`) |
+| StyleSpec unit kind | **Sibling**; `StyleSpecId` = non-identity PK = `Root.ReferenceId` |
+| Link without DB FK | **L2** — sibling `StyleSpecId` → Root.`ReferenceId`; children **attachToRoot** with `StyleSpecId` → Root.`ReferenceId` |
 | Fit Summary Fit grid | **F1** — all FitRounds; Fit1–4 filter by `fitRoundNumberFilter`; Comments do **not** host Fit grid |
 | SpecFit ActualValue | `COALESCE(ReviseN, SampleN)` |
 | POM_Template / Spec_Selected_Size | Stay on `Plm_Grading` / `Plm_Fit_Summary` |
 
-Phase D (`ExecuteDwBlueprintConfig`) applies L2 after `CreateHierarchyTransactionFromTables`: sibling `LinkToParentField`, then reparent `TchpPomSpecLine` / `TchpFitRound` under `TchpStyleSpec`.
+Phase D (`ExecuteDwBlueprintConfig`) applies L2 after `CreateHierarchyTransactionFromTables`: sibling + child `IsLinkToParentPrimaryKey` to Root only (never reparent under StyleSpec sibling).
 
 ---
 

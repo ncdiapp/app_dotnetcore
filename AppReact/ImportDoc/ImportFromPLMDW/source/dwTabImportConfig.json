@@ -1,361 +1,857 @@
-{
-  "plmTemplateId": 3283,
-  "plmSqlServer": "PC3B\\MSSQLSERVER01",
-  "plmDatabase": "plm_live_20260602",
-  "sqlServer": "PC3B\\MSSQLSERVER01",
-  "dwDatabase": "plmDW",
-  "importTabIds": [3991, 4006, 4110, 4007, 4008, 4009, 4010, 4013, 4011, 4014, 4012, 4015, 4162],
-  "tablePrefixDefault": "Plm_",
-  "rootTableSuffix": "ReferenceBasicInfo",
-  "plmTemplate": {
-    "templateId": 3283,
-    "templateName": "02a- Fit & Grading",
-    "templateHeaderTabIds": [3991]
-  },
-  "referenceScope": {
-    "dwTable": "PLM_DW_Tab_Style_Header_V2K_ERP_3991",
-    "dwColumn": "Product_Code_5021",
-    "plmTabId": 3991,
-    "plmSubItemId": 5021
-  },
-  "_fitShareComment": "Hub=Fit_Summary. Shared (on Summary OR on 2+ of Fit1-4/Comments/Tablet) live on Fit_Summary. Member tabs keep only SubItems unique to that single tab. B-pool merged onto Summary from first DW that has the column (Fit1 preferred).",
-  "tabs": [
-    {
-      "appTable": "Style_Header_V2K_ERP",
-      "dwTable": "PLM_DW_Tab_Style_Header_V2K_ERP_3991",
-      "tabId": 3991,
-      "plmTabName": "Style Header_V2K ERP",
-      "tabSort": 1,
-      "isTemplateHeaderTab": true,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Grading",
-      "dwTable": "PLM_DW_Tab_Grading_4006",
-      "tabId": 4006,
-      "plmTabName": "Grading",
-      "tabSort": 2,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "How_to_Measure_Instructions",
-      "dwTable": "PLM_DW_Tab_How_to_Measure_Instructions_4110",
-      "tabId": 4110,
-      "plmTabName": "How to Measure Instructions",
-      "tabSort": 3,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all"
-    },
-    {
-      "appTable": "Fit_Summary",
-      "dwTable": "PLM_DW_Tab_Fit_Summary_4007",
-      "tabId": 4007,
-      "plmTabName": "Fit Summary",
-      "tabSort": 4,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "all",
-      "mergeSubItemsFrom": [
-        {
-          "dwTable": "PLM_DW_Tab_Fit_1_4008",
-          "plmTabId": 4008,
-          "subItemIds": [119, 3189, 3190, 3191, 3192, 3210, 3221, 3222, 3227, 3228, 3229, 3755, 3756, 3818, 3819, 3820, 3821, 3822, 3823, 4161]
-        },
-        {
-          "dwTable": "PLM_DW_Tab_Fit_1_Comments_4009",
-          "plmTabId": 4009,
-          "subItemIds": [3220]
-        },
-        {
-          "dwTable": "PLM_DW_Tab_Fit_2_4010",
-          "plmTabId": 4010,
-          "subItemIds": [3193, 3211, 3257, 3265, 3305, 3313, 3321, 4162]
-        },
-        {
-          "dwTable": "PLM_DW_Tab_Fit_3_4011",
-          "plmTabId": 4011,
-          "subItemIds": [3194, 3212, 3258, 3266, 3306, 3314, 3322, 4163]
-        },
-        {
-          "dwTable": "PLM_DW_Tab_Fit_4_4012",
-          "plmTabId": 4012,
-          "subItemIds": [3195, 3213, 3259, 3267, 3307, 3315, 3323, 4164]
-        }
-      ]
-    },
-    {
-      "appTable": "Fit_1",
-      "dwTable": "PLM_DW_Tab_Fit_1_4008",
-      "tabId": 4008,
-      "plmTabName": "Fit 1",
-      "tabSort": 5,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "excludeSubItemsFromDwTable",
-      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fit_Summary_4007",
-      "alsoExcludeSubItemIds": [119, 3189, 3190, 3191, 3192, 3193, 3194, 3195, 3210, 3211, 3212, 3213, 3220, 3221, 3222, 3227, 3228, 3229, 3257, 3258, 3259, 3265, 3266, 3267, 3305, 3306, 3307, 3313, 3314, 3315, 3321, 3322, 3323, 3755, 3756, 3818, 3819, 3820, 3821, 3822, 3823, 4161, 4162, 4163, 4164]
-    },
-    {
-      "appTable": "Fit_1_Comments",
-      "dwTable": "PLM_DW_Tab_Fit_1_Comments_4009",
-      "tabId": 4009,
-      "plmTabName": "Fit 1 Comments",
-      "tabSort": 6,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "excludeSubItemsFromDwTable",
-      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fit_Summary_4007",
-      "alsoExcludeSubItemIds": [119, 3189, 3190, 3191, 3192, 3193, 3194, 3195, 3210, 3211, 3212, 3213, 3220, 3221, 3222, 3227, 3228, 3229, 3257, 3258, 3259, 3265, 3266, 3267, 3305, 3306, 3307, 3313, 3314, 3315, 3321, 3322, 3323, 3755, 3756, 3818, 3819, 3820, 3821, 3822, 3823, 4161, 4162, 4163, 4164]
-    },
-    {
-      "appTable": "Fit_2",
-      "dwTable": "PLM_DW_Tab_Fit_2_4010",
-      "tabId": 4010,
-      "plmTabName": "Fit 2",
-      "tabSort": 7,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "excludeSubItemsFromDwTable",
-      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fit_Summary_4007",
-      "alsoExcludeSubItemIds": [119, 3189, 3190, 3191, 3192, 3193, 3194, 3195, 3210, 3211, 3212, 3213, 3220, 3221, 3222, 3227, 3228, 3229, 3257, 3258, 3259, 3265, 3266, 3267, 3305, 3306, 3307, 3313, 3314, 3315, 3321, 3322, 3323, 3755, 3756, 3818, 3819, 3820, 3821, 3822, 3823, 4161, 4162, 4163, 4164]
-    },
-    {
-      "appTable": "Fit_2_Comment",
-      "dwTable": "PLM_DW_Tab_Fit_2_Comment_4013",
-      "tabId": 4013,
-      "plmTabName": "Fit 2 Comment",
-      "tabSort": 8,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "excludeSubItemsFromDwTable",
-      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fit_Summary_4007",
-      "alsoExcludeSubItemIds": [119, 3189, 3190, 3191, 3192, 3193, 3194, 3195, 3210, 3211, 3212, 3213, 3220, 3221, 3222, 3227, 3228, 3229, 3257, 3258, 3259, 3265, 3266, 3267, 3305, 3306, 3307, 3313, 3314, 3315, 3321, 3322, 3323, 3755, 3756, 3818, 3819, 3820, 3821, 3822, 3823, 4161, 4162, 4163, 4164]
-    },
-    {
-      "appTable": "Fit_3",
-      "dwTable": "PLM_DW_Tab_Fit_3_4011",
-      "tabId": 4011,
-      "plmTabName": "Fit 3",
-      "tabSort": 9,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "excludeSubItemsFromDwTable",
-      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fit_Summary_4007",
-      "alsoExcludeSubItemIds": [119, 3189, 3190, 3191, 3192, 3193, 3194, 3195, 3210, 3211, 3212, 3213, 3220, 3221, 3222, 3227, 3228, 3229, 3257, 3258, 3259, 3265, 3266, 3267, 3305, 3306, 3307, 3313, 3314, 3315, 3321, 3322, 3323, 3755, 3756, 3818, 3819, 3820, 3821, 3822, 3823, 4161, 4162, 4163, 4164]
-    },
-    {
-      "appTable": "Fit_3_Comments",
-      "dwTable": "PLM_DW_Tab_Fit_3_Comments_4014",
-      "tabId": 4014,
-      "plmTabName": "Fit 3 Comments",
-      "tabSort": 10,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "excludeSubItemsFromDwTable",
-      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fit_Summary_4007",
-      "alsoExcludeSubItemIds": [119, 3189, 3190, 3191, 3192, 3193, 3194, 3195, 3210, 3211, 3212, 3213, 3220, 3221, 3222, 3227, 3228, 3229, 3257, 3258, 3259, 3265, 3266, 3267, 3305, 3306, 3307, 3313, 3314, 3315, 3321, 3322, 3323, 3755, 3756, 3818, 3819, 3820, 3821, 3822, 3823, 4161, 4162, 4163, 4164]
-    },
-    {
-      "appTable": "Fit_4",
-      "dwTable": "PLM_DW_Tab_Fit_4_4012",
-      "tabId": 4012,
-      "plmTabName": "Fit 4",
-      "tabSort": 11,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "excludeSubItemsFromDwTable",
-      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fit_Summary_4007",
-      "alsoExcludeSubItemIds": [119, 3189, 3190, 3191, 3192, 3193, 3194, 3195, 3210, 3211, 3212, 3213, 3220, 3221, 3222, 3227, 3228, 3229, 3257, 3258, 3259, 3265, 3266, 3267, 3305, 3306, 3307, 3313, 3314, 3315, 3321, 3322, 3323, 3755, 3756, 3818, 3819, 3820, 3821, 3822, 3823, 4161, 4162, 4163, 4164]
-    },
-    {
-      "appTable": "Fit_4_Comments",
-      "dwTable": "PLM_DW_Tab_Fit_4_Comments_4015",
-      "tabId": 4015,
-      "plmTabName": "Fit 4 Comments",
-      "tabSort": 12,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "excludeSubItemsFromDwTable",
-      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fit_Summary_4007",
-      "alsoExcludeSubItemIds": [119, 3189, 3190, 3191, 3192, 3193, 3194, 3195, 3210, 3211, 3212, 3213, 3220, 3221, 3222, 3227, 3228, 3229, 3257, 3258, 3259, 3265, 3266, 3267, 3305, 3306, 3307, 3313, 3314, 3315, 3321, 3322, 3323, 3755, 3756, 3818, 3819, 3820, 3821, 3822, 3823, 4161, 4162, 4163, 4164]
-    },
-    {
-      "appTable": "Tablet_Fit_Samples",
-      "dwTable": "PLM_DW_Tab_Tablet_Fit_Samples_4162",
-      "tabId": 4162,
-      "plmTabName": "Tablet Fit Samples",
-      "tabSort": 13,
-      "isTemplateHeaderTab": false,
-      "importStatus": "Ready",
-      "mode": "excludeSubItemsFromDwTable",
-      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fit_Summary_4007",
-      "alsoExcludeSubItemIds": [119, 3189, 3190, 3191, 3192, 3193, 3194, 3195, 3210, 3211, 3212, 3213, 3220, 3221, 3222, 3227, 3228, 3229, 3257, 3258, 3259, 3265, 3266, 3267, 3305, 3306, 3307, 3313, 3314, 3315, 3321, 3322, 3323, 3755, 3756, 3818, 3819, 3820, 3821, 3822, 3823, 4161, 4162, 4163, 4164]
-    }
-  ],
-  "grids": [
-    {
-      "appTable": "SizeRunDetailGrid",
-      "dwTable": "PLM_DW_Grid_SizeRunDetailGrid_26",
-      "gridSubItemId": 191,
-      "gridId": 26,
-      "parentPlmTabId": 3991,
-      "transactionIntegrationId": "Tab_3991"
-    },
-    {
-      "appTable": "DimensionDetailGrid",
-      "dwTable": "PLM_DW_Grid_DimensionDetailGrid_27",
-      "gridSubItemId": 192,
-      "gridId": 27,
-      "parentPlmTabId": 3991,
-      "transactionIntegrationId": "Tab_3991"
-    },
-    {
-      "_comment": "Also hosted on Fit 2/3/4 Comment tabs. One binding; primary = Fit 1 Comments.",
-      "appTable": "Fit_Comment_Grid_reg",
-      "dwTable": "PLM_DW_Grid_Fit_Comment_Grid_reg_3004",
-      "gridSubItemId": 3219,
-      "gridId": 3004,
-      "parentPlmTabId": 4009,
-      "transactionIntegrationId": "Tab_4009"
-    }
-  ],
-  "techPack": {
-    "_comment": "L2: TchpStyleSpec sibling via ProductReferenceId→Root.ReferenceId (no DB FK). SpecFit/SpecGrading → Tchp (not Plm flat grids). Size_Run/Base_Size/Measure_Unit → TchpStyleSpec only (S1 from Grading 4006).",
-    "styleSpecShared": true,
-    "styleSpecOwnedColumns": ["Size_Run", "Base_Size", "Measure_Unit"],
-    "styleSpecSourcePlmTabId": 4006,
-    "styleSpecSibling": {
-      "appTableName": "TchpStyleSpec",
-      "skipTablePrefix": true,
-      "linkToParentField": "ProductReferenceId",
-      "parentPrimaryKeyField": "ReferenceId",
-      "isMasterSibling": true
-    },
-    "systemBlockGrids": [
-      {
-        "role": "SpecGrading",
-        "appTable": "SpecGradingGrid",
-        "dwTable": "PLM_DW_Grid_SpecGradingGrid_10",
-        "gridId": 10,
-        "gridSubItemId": 46,
-        "parentPlmTabId": 4006
-      },
-      {
-        "role": "SpecFit",
-        "appTable": "SpecFitGrid",
-        "dwTable": "PLM_DW_Grid_SpecFitGrid_5",
-        "gridId": 5,
-        "gridSubItemId": 32,
-        "parentPlmTabId": 4007
-      }
-    ],
-    "bindings": [
-      {
-        "plmTabId": 4006,
-        "role": "Grading",
-        "includeStyleSpec": true,
-        "childUnits": [
-          {
-            "appTableName": "TchpPomSpecLine",
-            "skipTablePrefix": true,
-            "parentAppTableName": "TchpStyleSpec",
-            "linkToParentField": "StyleSpecId",
-            "parentPrimaryKeyField": "StyleSpecId",
-            "grandChildAppTableNames": ["TchpGradeValue"]
-          }
-        ]
-      },
-      {
-        "plmTabId": 4007,
-        "role": "FitSummary",
-        "includeStyleSpec": true,
-        "childUnits": [
-          {
-            "appTableName": "TchpFitRound",
-            "skipTablePrefix": true,
-            "parentAppTableName": "TchpStyleSpec",
-            "linkToParentField": "StyleSpecId",
-            "parentPrimaryKeyField": "StyleSpecId",
-            "grandChildAppTableNames": ["TchpFitMeasurement"],
-            "fitRoundNumberFilter": null
-          }
-        ]
-      },
-      {
-        "plmTabId": 4008,
-        "role": "Fit1",
-        "includeStyleSpec": true,
-        "childUnits": [
-          {
-            "appTableName": "TchpFitRound",
-            "skipTablePrefix": true,
-            "parentAppTableName": "TchpStyleSpec",
-            "linkToParentField": "StyleSpecId",
-            "parentPrimaryKeyField": "StyleSpecId",
-            "grandChildAppTableNames": ["TchpFitMeasurement"],
-            "fitRoundNumberFilter": 1
-          }
-        ]
-      },
-      {
-        "plmTabId": 4010,
-        "role": "Fit2",
-        "includeStyleSpec": true,
-        "childUnits": [
-          {
-            "appTableName": "TchpFitRound",
-            "skipTablePrefix": true,
-            "parentAppTableName": "TchpStyleSpec",
-            "linkToParentField": "StyleSpecId",
-            "parentPrimaryKeyField": "StyleSpecId",
-            "grandChildAppTableNames": ["TchpFitMeasurement"],
-            "fitRoundNumberFilter": 2
-          }
-        ]
-      },
-      {
-        "plmTabId": 4011,
-        "role": "Fit3",
-        "includeStyleSpec": true,
-        "childUnits": [
-          {
-            "appTableName": "TchpFitRound",
-            "skipTablePrefix": true,
-            "parentAppTableName": "TchpStyleSpec",
-            "linkToParentField": "StyleSpecId",
-            "parentPrimaryKeyField": "StyleSpecId",
-            "grandChildAppTableNames": ["TchpFitMeasurement"],
-            "fitRoundNumberFilter": 3
-          }
-        ]
-      },
-      {
-        "plmTabId": 4012,
-        "role": "Fit4",
-        "includeStyleSpec": true,
-        "childUnits": [
-          {
-            "appTableName": "TchpFitRound",
-            "skipTablePrefix": true,
-            "parentAppTableName": "TchpStyleSpec",
-            "linkToParentField": "StyleSpecId",
-            "parentPrimaryKeyField": "StyleSpecId",
-            "grandChildAppTableNames": ["TchpFitMeasurement"],
-            "fitRoundNumberFilter": 4
-          }
-        ]
-      }
-    ]
-  },
-  "blueprint": {
-    "transactionGroupName": "02a- Fit & Grading",
-    "transactionGroupIntegrationId": "TG_02aFitGrading",
-    "searchName": "02a- Fit & Grading References",
-    "searchIntegrationId": "Search_02aFitGrading",
-    "folderName": "02a- Fit & Grading"
-  }
+﻿{
+    "plmTemplateId":  3283,
+    "plmSqlServer":  "PC3B\\MSSQLSERVER01",
+    "plmDatabase":  "plm_live_20260602",
+    "sqlServer":  "PC3B\\MSSQLSERVER01",
+    "dwDatabase":  "plmDW",
+    "importTabIds":  [
+                         3991,
+                         4006,
+                         4110,
+                         4007,
+                         4008,
+                         4009,
+                         4010,
+                         4013,
+                         4011,
+                         4014,
+                         4012,
+                         4015,
+                         4162
+                     ],
+    "tablePrefixDefault":  "Plm_",
+    "rootTableSuffix":  "ReferenceBasicInfo",
+    "plmTemplate":  {
+                        "templateId":  3283,
+                        "templateName":  "02a- Fit \u0026 Grading",
+                        "templateHeaderTabIds":  [
+                                                     3991
+                                                 ]
+                    },
+    "referenceScope":  {
+                           "dwTable":  "PLM_DW_Tab_Style_Header_V2K_ERP_3991",
+                           "dwColumn":  "Product_Code_5021",
+                           "plmTabId":  3991,
+                           "plmSubItemId":  5021
+                       },
+    "_fitShareComment":  "Hub=Fit_Summary. Shared (on Summary OR on 2+ of Fit1-4/Comments/Tablet) live on Fit_Summary. Member tabs keep only SubItems unique to that single tab. B-pool merged onto Summary from first DW that has the column (Fit1 preferred).",
+    "tabs":  [
+                 {
+                     "appTable":  "Style_Header_V2K_ERP",
+                     "dwTable":  "PLM_DW_Tab_Style_Header_V2K_ERP_3991",
+                     "tabId":  3991,
+                     "plmTabName":  "Style Header_V2K ERP",
+                     "tabSort":  1,
+                     "isTemplateHeaderTab":  true,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Grading",
+                     "dwTable":  "PLM_DW_Tab_Grading_4006",
+                     "tabId":  4006,
+                     "plmTabName":  "Grading",
+                     "tabSort":  2,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "How_to_Measure_Instructions",
+                     "dwTable":  "PLM_DW_Tab_How_to_Measure_Instructions_4110",
+                     "tabId":  4110,
+                     "plmTabName":  "How to Measure Instructions",
+                     "tabSort":  3,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all"
+                 },
+                 {
+                     "appTable":  "Fit_Summary",
+                     "dwTable":  "PLM_DW_Tab_Fit_Summary_4007",
+                     "tabId":  4007,
+                     "plmTabName":  "Fit Summary",
+                     "tabSort":  4,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "all",
+                     "mergeSubItemsFrom":  [
+                                               {
+                                                   "dwTable":  "PLM_DW_Tab_Fit_1_4008",
+                                                   "plmTabId":  4008,
+                                                   "subItemIds":  [
+                                                                      119,
+                                                                      3189,
+                                                                      3190,
+                                                                      3191,
+                                                                      3192,
+                                                                      3210,
+                                                                      3221,
+                                                                      3222,
+                                                                      3227,
+                                                                      3228,
+                                                                      3229,
+                                                                      3755,
+                                                                      3756,
+                                                                      3818,
+                                                                      3819,
+                                                                      3820,
+                                                                      3821,
+                                                                      3822,
+                                                                      3823,
+                                                                      4161
+                                                                  ]
+                                               },
+                                               {
+                                                   "dwTable":  "PLM_DW_Tab_Fit_1_Comments_4009",
+                                                   "plmTabId":  4009,
+                                                   "subItemIds":  [
+                                                                      3220
+                                                                  ]
+                                               },
+                                               {
+                                                   "dwTable":  "PLM_DW_Tab_Fit_2_4010",
+                                                   "plmTabId":  4010,
+                                                   "subItemIds":  [
+                                                                      3193,
+                                                                      3211,
+                                                                      3257,
+                                                                      3265,
+                                                                      3305,
+                                                                      3313,
+                                                                      3321,
+                                                                      4162
+                                                                  ]
+                                               },
+                                               {
+                                                   "dwTable":  "PLM_DW_Tab_Fit_3_4011",
+                                                   "plmTabId":  4011,
+                                                   "subItemIds":  [
+                                                                      3194,
+                                                                      3212,
+                                                                      3258,
+                                                                      3266,
+                                                                      3306,
+                                                                      3314,
+                                                                      3322,
+                                                                      4163
+                                                                  ]
+                                               },
+                                               {
+                                                   "dwTable":  "PLM_DW_Tab_Fit_4_4012",
+                                                   "plmTabId":  4012,
+                                                   "subItemIds":  [
+                                                                      3195,
+                                                                      3213,
+                                                                      3259,
+                                                                      3267,
+                                                                      3307,
+                                                                      3315,
+                                                                      3323,
+                                                                      4164
+                                                                  ]
+                                               }
+                                           ]
+                 },
+                 {
+                     "appTable":  "Fit_1",
+                     "dwTable":  "PLM_DW_Tab_Fit_1_4008",
+                     "tabId":  4008,
+                     "plmTabName":  "Fit 1",
+                     "tabSort":  5,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Fit_Summary_4007",
+                     "alsoExcludeSubItemIds":  [
+                                                   119,
+                                                   3189,
+                                                   3190,
+                                                   3191,
+                                                   3192,
+                                                   3193,
+                                                   3194,
+                                                   3195,
+                                                   3210,
+                                                   3211,
+                                                   3212,
+                                                   3213,
+                                                   3220,
+                                                   3221,
+                                                   3222,
+                                                   3227,
+                                                   3228,
+                                                   3229,
+                                                   3257,
+                                                   3258,
+                                                   3259,
+                                                   3265,
+                                                   3266,
+                                                   3267,
+                                                   3305,
+                                                   3306,
+                                                   3307,
+                                                   3313,
+                                                   3314,
+                                                   3315,
+                                                   3321,
+                                                   3322,
+                                                   3323,
+                                                   3755,
+                                                   3756,
+                                                   3818,
+                                                   3819,
+                                                   3820,
+                                                   3821,
+                                                   3822,
+                                                   3823,
+                                                   4161,
+                                                   4162,
+                                                   4163,
+                                                   4164
+                                               ]
+                 },
+                 {
+                     "appTable":  "Fit_1_Comments",
+                     "dwTable":  "PLM_DW_Tab_Fit_1_Comments_4009",
+                     "tabId":  4009,
+                     "plmTabName":  "Fit 1 Comments",
+                     "tabSort":  6,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Fit_Summary_4007",
+                     "alsoExcludeSubItemIds":  [
+                                                   119,
+                                                   3189,
+                                                   3190,
+                                                   3191,
+                                                   3192,
+                                                   3193,
+                                                   3194,
+                                                   3195,
+                                                   3210,
+                                                   3211,
+                                                   3212,
+                                                   3213,
+                                                   3220,
+                                                   3221,
+                                                   3222,
+                                                   3227,
+                                                   3228,
+                                                   3229,
+                                                   3257,
+                                                   3258,
+                                                   3259,
+                                                   3265,
+                                                   3266,
+                                                   3267,
+                                                   3305,
+                                                   3306,
+                                                   3307,
+                                                   3313,
+                                                   3314,
+                                                   3315,
+                                                   3321,
+                                                   3322,
+                                                   3323,
+                                                   3755,
+                                                   3756,
+                                                   3818,
+                                                   3819,
+                                                   3820,
+                                                   3821,
+                                                   3822,
+                                                   3823,
+                                                   4161,
+                                                   4162,
+                                                   4163,
+                                                   4164
+                                               ]
+                 },
+                 {
+                     "appTable":  "Fit_2",
+                     "dwTable":  "PLM_DW_Tab_Fit_2_4010",
+                     "tabId":  4010,
+                     "plmTabName":  "Fit 2",
+                     "tabSort":  7,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Fit_Summary_4007",
+                     "alsoExcludeSubItemIds":  [
+                                                   119,
+                                                   3189,
+                                                   3190,
+                                                   3191,
+                                                   3192,
+                                                   3193,
+                                                   3194,
+                                                   3195,
+                                                   3210,
+                                                   3211,
+                                                   3212,
+                                                   3213,
+                                                   3220,
+                                                   3221,
+                                                   3222,
+                                                   3227,
+                                                   3228,
+                                                   3229,
+                                                   3257,
+                                                   3258,
+                                                   3259,
+                                                   3265,
+                                                   3266,
+                                                   3267,
+                                                   3305,
+                                                   3306,
+                                                   3307,
+                                                   3313,
+                                                   3314,
+                                                   3315,
+                                                   3321,
+                                                   3322,
+                                                   3323,
+                                                   3755,
+                                                   3756,
+                                                   3818,
+                                                   3819,
+                                                   3820,
+                                                   3821,
+                                                   3822,
+                                                   3823,
+                                                   4161,
+                                                   4162,
+                                                   4163,
+                                                   4164
+                                               ]
+                 },
+                 {
+                     "appTable":  "Fit_2_Comment",
+                     "dwTable":  "PLM_DW_Tab_Fit_2_Comment_4013",
+                     "tabId":  4013,
+                     "plmTabName":  "Fit 2 Comment",
+                     "tabSort":  8,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Fit_Summary_4007",
+                     "alsoExcludeSubItemIds":  [
+                                                   119,
+                                                   3189,
+                                                   3190,
+                                                   3191,
+                                                   3192,
+                                                   3193,
+                                                   3194,
+                                                   3195,
+                                                   3210,
+                                                   3211,
+                                                   3212,
+                                                   3213,
+                                                   3220,
+                                                   3221,
+                                                   3222,
+                                                   3227,
+                                                   3228,
+                                                   3229,
+                                                   3257,
+                                                   3258,
+                                                   3259,
+                                                   3265,
+                                                   3266,
+                                                   3267,
+                                                   3305,
+                                                   3306,
+                                                   3307,
+                                                   3313,
+                                                   3314,
+                                                   3315,
+                                                   3321,
+                                                   3322,
+                                                   3323,
+                                                   3755,
+                                                   3756,
+                                                   3818,
+                                                   3819,
+                                                   3820,
+                                                   3821,
+                                                   3822,
+                                                   3823,
+                                                   4161,
+                                                   4162,
+                                                   4163,
+                                                   4164
+                                               ]
+                 },
+                 {
+                     "appTable":  "Fit_3",
+                     "dwTable":  "PLM_DW_Tab_Fit_3_4011",
+                     "tabId":  4011,
+                     "plmTabName":  "Fit 3",
+                     "tabSort":  9,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Fit_Summary_4007",
+                     "alsoExcludeSubItemIds":  [
+                                                   119,
+                                                   3189,
+                                                   3190,
+                                                   3191,
+                                                   3192,
+                                                   3193,
+                                                   3194,
+                                                   3195,
+                                                   3210,
+                                                   3211,
+                                                   3212,
+                                                   3213,
+                                                   3220,
+                                                   3221,
+                                                   3222,
+                                                   3227,
+                                                   3228,
+                                                   3229,
+                                                   3257,
+                                                   3258,
+                                                   3259,
+                                                   3265,
+                                                   3266,
+                                                   3267,
+                                                   3305,
+                                                   3306,
+                                                   3307,
+                                                   3313,
+                                                   3314,
+                                                   3315,
+                                                   3321,
+                                                   3322,
+                                                   3323,
+                                                   3755,
+                                                   3756,
+                                                   3818,
+                                                   3819,
+                                                   3820,
+                                                   3821,
+                                                   3822,
+                                                   3823,
+                                                   4161,
+                                                   4162,
+                                                   4163,
+                                                   4164
+                                               ]
+                 },
+                 {
+                     "appTable":  "Fit_3_Comments",
+                     "dwTable":  "PLM_DW_Tab_Fit_3_Comments_4014",
+                     "tabId":  4014,
+                     "plmTabName":  "Fit 3 Comments",
+                     "tabSort":  10,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Fit_Summary_4007",
+                     "alsoExcludeSubItemIds":  [
+                                                   119,
+                                                   3189,
+                                                   3190,
+                                                   3191,
+                                                   3192,
+                                                   3193,
+                                                   3194,
+                                                   3195,
+                                                   3210,
+                                                   3211,
+                                                   3212,
+                                                   3213,
+                                                   3220,
+                                                   3221,
+                                                   3222,
+                                                   3227,
+                                                   3228,
+                                                   3229,
+                                                   3257,
+                                                   3258,
+                                                   3259,
+                                                   3265,
+                                                   3266,
+                                                   3267,
+                                                   3305,
+                                                   3306,
+                                                   3307,
+                                                   3313,
+                                                   3314,
+                                                   3315,
+                                                   3321,
+                                                   3322,
+                                                   3323,
+                                                   3755,
+                                                   3756,
+                                                   3818,
+                                                   3819,
+                                                   3820,
+                                                   3821,
+                                                   3822,
+                                                   3823,
+                                                   4161,
+                                                   4162,
+                                                   4163,
+                                                   4164
+                                               ]
+                 },
+                 {
+                     "appTable":  "Fit_4",
+                     "dwTable":  "PLM_DW_Tab_Fit_4_4012",
+                     "tabId":  4012,
+                     "plmTabName":  "Fit 4",
+                     "tabSort":  11,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Fit_Summary_4007",
+                     "alsoExcludeSubItemIds":  [
+                                                   119,
+                                                   3189,
+                                                   3190,
+                                                   3191,
+                                                   3192,
+                                                   3193,
+                                                   3194,
+                                                   3195,
+                                                   3210,
+                                                   3211,
+                                                   3212,
+                                                   3213,
+                                                   3220,
+                                                   3221,
+                                                   3222,
+                                                   3227,
+                                                   3228,
+                                                   3229,
+                                                   3257,
+                                                   3258,
+                                                   3259,
+                                                   3265,
+                                                   3266,
+                                                   3267,
+                                                   3305,
+                                                   3306,
+                                                   3307,
+                                                   3313,
+                                                   3314,
+                                                   3315,
+                                                   3321,
+                                                   3322,
+                                                   3323,
+                                                   3755,
+                                                   3756,
+                                                   3818,
+                                                   3819,
+                                                   3820,
+                                                   3821,
+                                                   3822,
+                                                   3823,
+                                                   4161,
+                                                   4162,
+                                                   4163,
+                                                   4164
+                                               ]
+                 },
+                 {
+                     "appTable":  "Fit_4_Comments",
+                     "dwTable":  "PLM_DW_Tab_Fit_4_Comments_4015",
+                     "tabId":  4015,
+                     "plmTabName":  "Fit 4 Comments",
+                     "tabSort":  12,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Fit_Summary_4007",
+                     "alsoExcludeSubItemIds":  [
+                                                   119,
+                                                   3189,
+                                                   3190,
+                                                   3191,
+                                                   3192,
+                                                   3193,
+                                                   3194,
+                                                   3195,
+                                                   3210,
+                                                   3211,
+                                                   3212,
+                                                   3213,
+                                                   3220,
+                                                   3221,
+                                                   3222,
+                                                   3227,
+                                                   3228,
+                                                   3229,
+                                                   3257,
+                                                   3258,
+                                                   3259,
+                                                   3265,
+                                                   3266,
+                                                   3267,
+                                                   3305,
+                                                   3306,
+                                                   3307,
+                                                   3313,
+                                                   3314,
+                                                   3315,
+                                                   3321,
+                                                   3322,
+                                                   3323,
+                                                   3755,
+                                                   3756,
+                                                   3818,
+                                                   3819,
+                                                   3820,
+                                                   3821,
+                                                   3822,
+                                                   3823,
+                                                   4161,
+                                                   4162,
+                                                   4163,
+                                                   4164
+                                               ]
+                 },
+                 {
+                     "appTable":  "Tablet_Fit_Samples",
+                     "dwTable":  "PLM_DW_Tab_Tablet_Fit_Samples_4162",
+                     "tabId":  4162,
+                     "plmTabName":  "Tablet Fit Samples",
+                     "tabSort":  13,
+                     "isTemplateHeaderTab":  false,
+                     "importStatus":  "Ready",
+                     "mode":  "excludeSubItemsFromDwTable",
+                     "excludeSubItemsFromDwTable":  "PLM_DW_Tab_Fit_Summary_4007",
+                     "alsoExcludeSubItemIds":  [
+                                                   119,
+                                                   3189,
+                                                   3190,
+                                                   3191,
+                                                   3192,
+                                                   3193,
+                                                   3194,
+                                                   3195,
+                                                   3210,
+                                                   3211,
+                                                   3212,
+                                                   3213,
+                                                   3220,
+                                                   3221,
+                                                   3222,
+                                                   3227,
+                                                   3228,
+                                                   3229,
+                                                   3257,
+                                                   3258,
+                                                   3259,
+                                                   3265,
+                                                   3266,
+                                                   3267,
+                                                   3305,
+                                                   3306,
+                                                   3307,
+                                                   3313,
+                                                   3314,
+                                                   3315,
+                                                   3321,
+                                                   3322,
+                                                   3323,
+                                                   3755,
+                                                   3756,
+                                                   3818,
+                                                   3819,
+                                                   3820,
+                                                   3821,
+                                                   3822,
+                                                   3823,
+                                                   4161,
+                                                   4162,
+                                                   4163,
+                                                   4164
+                                               ]
+                 }
+             ],
+    "grids":  [
+                  {
+                      "appTable":  "SizeRunDetailGrid",
+                      "dwTable":  "PLM_DW_Grid_SizeRunDetailGrid_26",
+                      "gridSubItemId":  191,
+                      "gridId":  26,
+                      "parentPlmTabId":  3991,
+                      "transactionIntegrationId":  "Tab_3991"
+                  },
+                  {
+                      "appTable":  "DimensionDetailGrid",
+                      "dwTable":  "PLM_DW_Grid_DimensionDetailGrid_27",
+                      "gridSubItemId":  192,
+                      "gridId":  27,
+                      "parentPlmTabId":  3991,
+                      "transactionIntegrationId":  "Tab_3991"
+                  },
+                  {
+                      "_comment":  "Also hosted on Fit 2/3/4 Comment tabs. One binding; primary = Fit 1 Comments.",
+                      "appTable":  "Fit_Comment_Grid_reg",
+                      "dwTable":  "PLM_DW_Grid_Fit_Comment_Grid_reg_3004",
+                      "gridSubItemId":  3219,
+                      "gridId":  3004,
+                      "parentPlmTabId":  4009,
+                      "transactionIntegrationId":  "Tab_4009"
+                  }
+              ],
+    "techPack":  {
+                     "_comment":  "L2: TchpStyleSpec.StyleSpecId (=ReferenceId, no identity) → Root.ReferenceId. Children attachToRoot only. SpecFit/SpecGrading → Tchp. Size_Run/Base_Size/Measure_Unit → TchpStyleSpec (S1 from Grading 4006).",
+                     "styleSpecShared":  true,
+                     "styleSpecOwnedColumns":  [
+                                                   "Size_Run",
+                                                   "Base_Size",
+                                                   "Measure_Unit"
+                                               ],
+                     "styleSpecSourcePlmTabId":  4006,
+                     "styleSpecSibling":  {
+                                              "appTableName":  "TchpStyleSpec",
+                                              "skipTablePrefix":  true,
+                                              "linkToParentField":  "StyleSpecId",
+                                              "parentPrimaryKeyField":  "ReferenceId",
+                                              "isMasterSibling":  false
+                                          },
+                     "systemBlockGrids":  [
+                                              {
+                                                  "role":  "SpecGrading",
+                                                  "appTable":  "SpecGradingGrid",
+                                                  "dwTable":  "PLM_DW_Grid_SpecGradingGrid_10",
+                                                  "gridId":  10,
+                                                  "gridSubItemId":  46,
+                                                  "parentPlmTabId":  4006
+                                              },
+                                              {
+                                                  "role":  "SpecFit",
+                                                  "appTable":  "SpecFitGrid",
+                                                  "dwTable":  "PLM_DW_Grid_SpecFitGrid_5",
+                                                  "gridId":  5,
+                                                  "gridSubItemId":  32,
+                                                  "parentPlmTabId":  4007
+                                              }
+                                          ],
+                     "bindings":  [
+                                      {
+                                          "plmTabId":  4006,
+                                          "role":  "Grading",
+                                          "includeStyleSpec":  true,
+                                          "childUnits":  [
+                                                             {
+                                                                 "appTableName":  "TchpPomSpecLine",
+                                                                 "skipTablePrefix":  true,
+                                                                 "linkToParentField":  "StyleSpecId",
+                                                                 "parentPrimaryKeyField":  "ReferenceId",
+                                                                 "grandChildAppTableNames":  [
+                                                                                                 "TchpGradeValue"
+                                                                                             ],
+                                                                 "attachToRoot":  true
+                                                             }
+                                                         ]
+                                      },
+                                      {
+                                          "plmTabId":  4007,
+                                          "role":  "FitSummary",
+                                          "includeStyleSpec":  true,
+                                          "childUnits":  [
+                                                             {
+                                                                 "appTableName":  "TchpFitRound",
+                                                                 "skipTablePrefix":  true,
+                                                                 "linkToParentField":  "StyleSpecId",
+                                                                 "parentPrimaryKeyField":  "ReferenceId",
+                                                                 "grandChildAppTableNames":  [
+                                                                                                 "TchpFitMeasurement"
+                                                                                             ],
+                                                                 "fitRoundNumberFilter":  null,
+                                                                 "attachToRoot":  true
+                                                             }
+                                                         ]
+                                      },
+                                      {
+                                          "plmTabId":  4008,
+                                          "role":  "Fit1",
+                                          "includeStyleSpec":  true,
+                                          "childUnits":  [
+                                                             {
+                                                                 "appTableName":  "TchpFitRound",
+                                                                 "skipTablePrefix":  true,
+                                                                 "linkToParentField":  "StyleSpecId",
+                                                                 "parentPrimaryKeyField":  "ReferenceId",
+                                                                 "grandChildAppTableNames":  [
+                                                                                                 "TchpFitMeasurement"
+                                                                                             ],
+                                                                 "fitRoundNumberFilter":  1,
+                                                                 "attachToRoot":  true
+                                                             }
+                                                         ]
+                                      },
+                                      {
+                                          "plmTabId":  4010,
+                                          "role":  "Fit2",
+                                          "includeStyleSpec":  true,
+                                          "childUnits":  [
+                                                             {
+                                                                 "appTableName":  "TchpFitRound",
+                                                                 "skipTablePrefix":  true,
+                                                                 "linkToParentField":  "StyleSpecId",
+                                                                 "parentPrimaryKeyField":  "ReferenceId",
+                                                                 "grandChildAppTableNames":  [
+                                                                                                 "TchpFitMeasurement"
+                                                                                             ],
+                                                                 "fitRoundNumberFilter":  2,
+                                                                 "attachToRoot":  true
+                                                             }
+                                                         ]
+                                      },
+                                      {
+                                          "plmTabId":  4011,
+                                          "role":  "Fit3",
+                                          "includeStyleSpec":  true,
+                                          "childUnits":  [
+                                                             {
+                                                                 "appTableName":  "TchpFitRound",
+                                                                 "skipTablePrefix":  true,
+                                                                 "linkToParentField":  "StyleSpecId",
+                                                                 "parentPrimaryKeyField":  "ReferenceId",
+                                                                 "grandChildAppTableNames":  [
+                                                                                                 "TchpFitMeasurement"
+                                                                                             ],
+                                                                 "fitRoundNumberFilter":  3,
+                                                                 "attachToRoot":  true
+                                                             }
+                                                         ]
+                                      },
+                                      {
+                                          "plmTabId":  4012,
+                                          "role":  "Fit4",
+                                          "includeStyleSpec":  true,
+                                          "childUnits":  [
+                                                             {
+                                                                 "appTableName":  "TchpFitRound",
+                                                                 "skipTablePrefix":  true,
+                                                                 "linkToParentField":  "StyleSpecId",
+                                                                 "parentPrimaryKeyField":  "ReferenceId",
+                                                                 "grandChildAppTableNames":  [
+                                                                                                 "TchpFitMeasurement"
+                                                                                             ],
+                                                                 "fitRoundNumberFilter":  4,
+                                                                 "attachToRoot":  true
+                                                             }
+                                                         ]
+                                      }
+                                  ]
+                 },
+    "blueprint":  {
+                      "transactionGroupName":  "02a- Fit \u0026 Grading",
+                      "transactionGroupIntegrationId":  "TG_02aFitGrading",
+                      "searchName":  "02a- Fit \u0026 Grading References",
+                      "searchIntegrationId":  "Search_02aFitGrading",
+                      "folderName":  "02a- Fit \u0026 Grading"
+                  }
 }

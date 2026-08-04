@@ -488,20 +488,20 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
                         isMasterSibling        = $false
                         fieldPolicy            = 'AllMappedColumns'
                         skipTablePrefix        = $true
-                        linkToParentField      = if ($ss.linkToParentField) { [string]$ss.linkToParentField } else { 'ProductReferenceId' }
+                        linkToParentField      = if ($ss.linkToParentField) { [string]$ss.linkToParentField } else { 'StyleSpecId' }
                         parentPrimaryKeyField  = if ($ss.parentPrimaryKeyField) { [string]$ss.parentPrimaryKeyField } else { 'ReferenceId' }
                     })
                 }
             }
             foreach ($cu in @($tpBinding.childUnits)) {
                 if (-not $cu -or -not $cu.appTableName) { continue }
+                # Platform: only ROOT hosts CHILD. StyleSpecId → Root.ReferenceId (StyleSpecId == ReferenceId).
                 $childEntry = [ordered]@{
                     appTableName            = [string]$cu.appTableName
-                    attachToRoot            = $false
+                    attachToRoot            = $true
                     skipTablePrefix         = $true
-                    parentAppTableName      = if ($cu.parentAppTableName) { [string]$cu.parentAppTableName } else { 'TchpStyleSpec' }
                     linkToParentField       = if ($cu.linkToParentField) { [string]$cu.linkToParentField } else { 'StyleSpecId' }
-                    parentPrimaryKeyField   = if ($cu.parentPrimaryKeyField) { [string]$cu.parentPrimaryKeyField } else { 'StyleSpecId' }
+                    parentPrimaryKeyField   = if ($cu.parentPrimaryKeyField) { [string]$cu.parentPrimaryKeyField } else { 'ReferenceId' }
                     grandChildAppTableNames = @(if ($cu.grandChildAppTableNames) { $cu.grandChildAppTableNames } else { @() })
                 }
                 if ($null -ne $cu.fitRoundNumberFilter -and "$($cu.fitRoundNumberFilter)" -ne '') {

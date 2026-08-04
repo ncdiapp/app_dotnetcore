@@ -139,7 +139,8 @@ A **Dimension** segments a size run into sub-ranges that are graded independentl
 **Key naming conventions:**
 - `GradingMinuValue` — "Minu" not "Minus" (preserved from legacy `PdmV2kBodyPart` DTO convention)
 - `SizeRunSizeId` — PK on `TchpSizeRunSize` (replaces legacy `SizeRunRotateId`)
-- `ProductReferenceId` — FK column name for product/style reference (matches legacy PLM convention)
+- `StyleSpecId` — PK on `TchpStyleSpec` (non-identity); equals product `ReferenceId` (sibling link; no `ProductReferenceId` column)
+- `ProductReferenceId` — still used on `TchpQcOrder` for product/style reference (legacy PLM convention)
 - `BaseSizeDetailId` — FK column on `TchpStyleSpec` pointing to `TchpSizeRunSize`; matches `TchpPomTemplate.DefaultBaseSizeId` convention
 
 ---

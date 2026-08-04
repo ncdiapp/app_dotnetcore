@@ -217,8 +217,8 @@ namespace APP.Components.EntityDto
         public string ExcludeSubItemsFromDwTable { get; set; }
 
         /// <summary>
-        /// L2: sibling FK column linking to root when no DB FK exists
-        /// (e.g. TchpStyleSpec.ProductReferenceId → Root.ReferenceId).
+        /// L2: sibling column linking to root PK when no DB FK exists
+        /// (e.g. TchpStyleSpec.StyleSpecId → Root.ReferenceId; StyleSpecId equals ReferenceId).
         /// </summary>
         [DataMember]
         public string LinkToParentField { get; set; }
@@ -242,8 +242,8 @@ namespace APP.Components.EntityDto
         public bool AttachToRoot { get; set; } = true;
 
         /// <summary>
-        /// Optional parent unit table (sibling or child). When set, Blueprint Execute reparents
-        /// this unit under that parent and wires LinkToParent (L2-style, no DB FK required).
+        /// Optional non-root parent (legacy). Prefer AttachToRoot=true: only ROOT hosts CHILD units.
+        /// When AttachToRoot, LinkToParentField wires to Root PK (e.g. StyleSpecId → ReferenceId).
         /// </summary>
         [DataMember]
         public string ParentAppTableName { get; set; }

@@ -179,6 +179,8 @@ WHERE tgc.TabID IN ({inList})";
         /// <summary>
         /// After hierarchy transaction creation, apply PLM sub-item / grid-column control types and entity bindings.
         /// CreateHierarchyTransactionFromTables defaults every field to TextBox with no EntityId.
+        /// Schema-only TechPack units (TchpPomSpecLine / TchpFitRound / …) have no FieldMapping rows —
+        /// do not hide their columns when metadata is missing (that left grids with zero visible columns).
         /// </summary>
         private static void ApplyTransactionFieldPlmMetadataSql(
             SqlConnection conn,
@@ -191,12 +193,13 @@ WHERE tgc.TabID IN ({inList})";
             if (metadataByColumn.Count == 0)
                 return;
 
-            var fields = new List<(int FieldId, string DbName)>();
+            var schemaOnlyTables = GetSchemaOnlyUnitTableNames(plan, tab);
+            var fields = new List<(int FieldId, string DbName, string TableName)>();
             using (var cmd = conn.CreateCommand())
             {
                 cmd.Transaction = tran;
                 cmd.CommandText = @"
-SELECT f.TransactionFieldID, f.DataBaseFieldName
+SELECT f.TransactionFieldID, f.DataBaseFieldName, u.DataBaseTableName
 FROM dbo.AppTransactionField f
 INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
 WHERE u.TransactionID = @TransactionId
@@ -209,18 +212,27 @@ WHERE u.TransactionID = @TransactionId
                     {
                         fields.Add((
                             reader.GetInt32(0),
-                            reader.IsDBNull(1) ? null : reader.GetString(1)));
+                            reader.IsDBNull(1) ? null : reader.GetString(1),
+                            reader.IsDBNull(2) ? null : reader.GetString(2)));
                     }
                 }
             }
 
-            foreach (var (fieldId, dbName) in fields)
+            foreach (var (fieldId, dbName, tableName) in fields)
             {
                 if (string.IsNullOrWhiteSpace(dbName))
                     continue;
 
+                bool schemaOnlyUnit = !string.IsNullOrWhiteSpace(tableName)
+                    && schemaOnlyTables.Contains(tableName);
+
                 if (!metadataByColumn.TryGetValue(dbName, out PlmFieldMetadata meta))
                 {
+                    // Plm-mapped units: unmapped leftover columns stay hidden.
+                    // Schema-only TechPack units: keep CreateHierarchy / Subset visibility.
+                    if (schemaOnlyUnit)
+                        continue;
+
                     using (var hideCmd = conn.CreateCommand())
                     {
                         hideCmd.Transaction = tran;
@@ -232,6 +244,11 @@ WHERE TransactionFieldID = @FieldId";
                     }
                     continue;
                 }
+
+                // Do not overlay Plm column-name metadata onto schema-only TechPack tables
+                // (global map is keyed by column name only — "Sort" etc. would steal visibility).
+                if (schemaOnlyUnit)
+                    continue;
 
                 int? appEntityId = null;
                 if (meta.PlmEntityId.HasValue && meta.ControlType == (int)EmAppControlType.DDL)
@@ -259,6 +276,76 @@ WHERE TransactionFieldID = @FieldId";
                     cmd.ExecuteNonQuery();
                 }
             }
+        }
+
+        /// <summary>
+        /// Units created from blueprint sibling/child defs with no FieldMapping column plan
+        /// (TechPack Tchp* tables filled by step 3b). Visibility comes from schema defaults.
+        /// </summary>
+        private static HashSet<string> GetSchemaOnlyUnitTableNames(
+            TemplateTabExecutionPlan plan,
+            PlmTemplateTabRow tab)
+        {
+            var mapped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void AddMapped(Dictionary<string, List<PlmTemplateSubItemRow>> byTable)
+            {
+                if (byTable == null)
+                    return;
+                foreach (var pair in byTable)
+                {
+                    if (pair.Value != null && pair.Value.Count > 0)
+                        mapped.Add(pair.Key);
+                }
+            }
+
+            if (plan != null)
+            {
+                AddMapped(plan.SiblingColumnsByTable);
+                AddMapped(plan.ChildColumnsByTable);
+                AddMapped(plan.GrandchildColumnsByTable);
+            }
+            if (tab?.GridColumns != null)
+            {
+                foreach (var g in tab.GridColumns)
+                {
+                    if (!string.IsNullOrWhiteSpace(g.TableName))
+                        mapped.Add(g.TableName);
+                }
+            }
+
+            var schemaOnly = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void Consider(string tableName)
+            {
+                if (string.IsNullOrWhiteSpace(tableName))
+                    return;
+                string name = tableName.Trim();
+                if (!mapped.Contains(name))
+                    schemaOnly.Add(name);
+            }
+
+            if (plan?.SiblingUnitDefs != null)
+            {
+                foreach (var s in plan.SiblingUnitDefs)
+                {
+                    if (!string.IsNullOrWhiteSpace(s?.AppTableName))
+                        Consider(s.AppTableName);
+                }
+            }
+            if (plan?.ChildUnitDefs != null)
+            {
+                foreach (var c in plan.ChildUnitDefs)
+                {
+                    if (string.IsNullOrWhiteSpace(c?.AppTableName))
+                        continue;
+                    Consider(c.AppTableName);
+                    if (c.GrandChildAppTableNames == null)
+                        continue;
+                    foreach (var g in c.GrandChildAppTableNames)
+                        Consider(g);
+                }
+            }
+
+            return schemaOnly;
         }
 
         private static Dictionary<string, PlmFieldMetadata> BuildPlmFieldMetadataByColumnName(

@@ -1,6 +1,6 @@
 ﻿-- =============================================================================
 -- TechPack Tchp* import from plmDW (D1) -- STATIC SQL (no dynamic @sql).
--- L2: TchpStyleSpec.ProductReferenceId -> Root.ReferenceId (Blueprint Link-to-Parent; no DB FK).
+-- L2: TchpStyleSpec.StyleSpecId = Root.ReferenceId (no identity; sibling PK = parent PK).
 -- S1: SizeRun/BaseSize/UOM from Grading tab 4006 (PLM_DW_Tab_Grading_4006).
 -- UOM: PLM tblUnitOfMeasure (not on tenant) -> CM|INCH; unmatched defaults to CM.
 -- SpecFit ActualValue = COALESCE(ReviseN, SampleN). Comments tabs do not host Fit grid.
@@ -11,18 +11,18 @@
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
--- 1. TchpStyleSpec
+-- 1. TchpStyleSpec (StyleSpecId = ProductReferenceID = ReferenceId)
 ;WITH src AS (
-  SELECT g.ProductReferenceID AS ProductReferenceId,
+  SELECT TRY_CONVERT(INT, g.ProductReferenceID) AS StyleSpecId,
     TRY_CONVERT(INT, g.Size_Run_43_FK_tblSizeRun) AS SizeRunIdRaw,
     TRY_CONVERT(INT, g.Base_Size_44_FK_tblSizeRunRotate) AS BaseSizeRaw,
     CONVERT(NVARCHAR(50), g.Measure_Unit_58_FK_) AS MeasureUnitRaw
   FROM [plmDW].dbo.PLM_DW_Tab_Grading_4006 g
-  WHERE g.ProductReferenceID IS NOT NULL
+  WHERE TRY_CONVERT(INT, g.ProductReferenceID) IS NOT NULL
 )
 MERGE dbo.TchpStyleSpec AS t
 USING (
-  SELECT s.ProductReferenceId,
+  SELECT s.StyleSpecId,
     COALESCE(sr.SizeRunId, s.SizeRunIdRaw) AS SizeRunId,
     COALESCE(sz.SizeRunSizeId, s.BaseSizeRaw) AS BaseSizeDetailId,
     CASE
@@ -38,11 +38,11 @@ USING (
   LEFT JOIN [plm_live_20260602].dbo.tblUnitOfMeasure uom ON uom.Unit_Id = TRY_CONVERT(INT, s.MeasureUnitRaw)
   WHERE COALESCE(sr.SizeRunId, s.SizeRunIdRaw) IS NOT NULL
     AND COALESCE(sz.SizeRunSizeId, s.BaseSizeRaw) IS NOT NULL
-) AS x ON x.ProductReferenceId = t.ProductReferenceId
+) AS x ON x.StyleSpecId = t.StyleSpecId
 WHEN MATCHED THEN UPDATE SET SizeRunId = x.SizeRunId, BaseSizeDetailId = x.BaseSizeDetailId,
   UnitOfMeasure = x.UnitOfMeasure, AppModifiedDate = GETDATE()
-WHEN NOT MATCHED THEN INSERT (ProductReferenceId, SizeRunId, BaseSizeDetailId, UnitOfMeasure, AppCreatedDate)
-VALUES (x.ProductReferenceId, x.SizeRunId, x.BaseSizeDetailId, x.UnitOfMeasure, GETDATE());
+WHEN NOT MATCHED THEN INSERT (StyleSpecId, SizeRunId, BaseSizeDetailId, UnitOfMeasure, AppCreatedDate)
+VALUES (x.StyleSpecId, x.SizeRunId, x.BaseSizeDetailId, x.UnitOfMeasure, GETDATE());
 PRINT N'TchpStyleSpec MERGE done. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
 
 -- 2. TchpPomSpecLine
@@ -50,7 +50,7 @@ INSERT INTO dbo.TchpPomSpecLine (StyleSpecId, BodyPartId, BaseValue, Tolerance, 
 SELECT ss.StyleSpecId, COALESCE(bp.BodyPartId, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_167_FK_PdmV2kBodyPart)),
   TRY_CONVERT(DECIMAL(10,3), g.GradingBaseSize_173), TRY_CONVERT(DECIMAL(10,3), g.Tolerance_172), CASE WHEN UPPER(ISNULL(CONVERT(NVARCHAR(20), g.NeedToApplyGradingRule_651), N'')) IN (N'0', N'N', N'NO', N'FALSE') THEN 1 ELSE 0 END, g.Sort, CONVERT(NVARCHAR(50), g.BodyPartName_169), GETDATE()
 FROM [plmDW].dbo.PLM_DW_Grid_SpecGradingGrid_10 g
-INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = g.ProductReferenceID
+INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, g.ProductReferenceID)
 LEFT JOIN dbo.TchpBodyPart bp ON bp.BodyPartId = TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_167_FK_PdmV2kBodyPart)
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_167_FK_PdmV2kBodyPart) IS NOT NULL
   AND NOT EXISTS (
@@ -165,7 +165,7 @@ WHERE TRY_CONVERT(DECIMAL(10,3), g.GradingSize20_231) IS NOT NULL
 INSERT INTO dbo.TchpGradeValue (PomSpecLineId, SizeRunSizeId, GradingDelta, AppCreatedDate)
 SELECT pl.PomSpecLineId, sz.SizeRunSizeId, u.DeltaVal, GETDATE()
 FROM unpvt u
-INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = u.ProductReferenceID
+INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, u.ProductReferenceID)
 INNER JOIN dbo.TchpPomSpecLine pl ON pl.StyleSpecId = ss.StyleSpecId AND pl.BodyPartId = u.BodyPartRaw
 INNER JOIN dbo.TchpSizeRunSize sz ON sz.SizeRunId = ss.SizeRunId AND ISNULL(sz.SizeOrder, 0) = u.SizeOrdinal
 WHERE NOT EXISTS (
@@ -222,7 +222,7 @@ WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
   AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise6_331, g.Sample6_329)) IS NOT NULL
   ) x
 ) r
-INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = r.ProductReferenceID
+INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, r.ProductReferenceID)
 WHERE NOT EXISTS (
   SELECT 1 FROM dbo.TchpFitRound fr
   WHERE fr.StyleSpecId = ss.StyleSpecId AND fr.RoundNumber = r.RoundNumber
@@ -275,7 +275,7 @@ WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
 INSERT INTO dbo.TchpFitMeasurement (FitRoundId, PomSpecLineId, ActualValue, AppCreatedDate)
 SELECT fr.FitRoundId, pl.PomSpecLineId, m.ActualValue, GETDATE()
 FROM meas m
-INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = m.ProductReferenceID
+INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, m.ProductReferenceID)
 INNER JOIN dbo.TchpFitRound fr ON fr.StyleSpecId = ss.StyleSpecId AND fr.RoundNumber = m.RoundNumber
 INNER JOIN dbo.TchpPomSpecLine pl ON pl.StyleSpecId = ss.StyleSpecId AND pl.BodyPartId = m.BodyPartRaw
 WHERE NOT EXISTS (

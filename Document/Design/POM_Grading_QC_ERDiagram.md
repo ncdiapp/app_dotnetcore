@@ -75,8 +75,7 @@ erDiagram
 
     %% ── STYLE SPEC ───────────────────────────────────────────
     TchpStyleSpec {
-        int StyleSpecId PK
-        int ProductReferenceId "external product ref"
+        int StyleSpecId PK "same as product ReferenceId (no identity)"
         int SizeRunId FK
         int BaseSizeDetailId FK
         nvarchar UnitOfMeasure "CM|INCH"

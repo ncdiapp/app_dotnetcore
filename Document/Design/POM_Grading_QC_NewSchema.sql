@@ -239,15 +239,36 @@ ELSE
 GO
 
 -- ── TchpStyleSpec ────────────────────────────────────────────
--- Spec aggregate root — one per style, versioned on approval.
--- ProductReferenceId matches existing PLM FK naming convention.
+-- Spec aggregate — one per product. StyleSpecId is NOT identity:
+-- it equals Root Plm_ReferenceBasicInfo.ReferenceId (sibling PK = parent PK).
 -- BaseSizeDetailId: suggested base size; matches TchpPomTemplate.DefaultBaseSizeId convention.
+-- Rebuild when old shape exists (IDENTITY StyleSpecId and/or ProductReferenceId column).
+IF OBJECT_ID(N'dbo.TchpStyleSpec', N'U') IS NOT NULL
+   AND (
+        COL_LENGTH(N'dbo.TchpStyleSpec', N'ProductReferenceId') IS NOT NULL
+        OR COLUMNPROPERTY(OBJECT_ID(N'dbo.TchpStyleSpec'), N'StyleSpecId', N'IsIdentity') = 1
+   )
+BEGIN
+    PRINT 'Rebuilding TchpStyleSpec (drop ProductReferenceId / IDENTITY StyleSpecId)...';
+    -- Leaf → root (FK-safe). Children recreated by later IF NOT EXISTS blocks.
+    IF OBJECT_ID(N'dbo.TchpQcResult', N'U') IS NOT NULL DROP TABLE [dbo].[TchpQcResult];
+    IF OBJECT_ID(N'dbo.TchpQcGarment', N'U') IS NOT NULL DROP TABLE [dbo].[TchpQcGarment];
+    IF OBJECT_ID(N'dbo.TchpQcOrderSize', N'U') IS NOT NULL DROP TABLE [dbo].[TchpQcOrderSize];
+    IF OBJECT_ID(N'dbo.TchpQcOrder', N'U') IS NOT NULL DROP TABLE [dbo].[TchpQcOrder];
+    IF OBJECT_ID(N'dbo.TchpGradeValue', N'U') IS NOT NULL DROP TABLE [dbo].[TchpGradeValue];
+    IF OBJECT_ID(N'dbo.TchpFitMeasurement', N'U') IS NOT NULL DROP TABLE [dbo].[TchpFitMeasurement];
+    IF OBJECT_ID(N'dbo.TchpPomSpecLine', N'U') IS NOT NULL DROP TABLE [dbo].[TchpPomSpecLine];
+    IF OBJECT_ID(N'dbo.TchpFitRound', N'U') IS NOT NULL DROP TABLE [dbo].[TchpFitRound];
+    IF OBJECT_ID(N'dbo.TchpStyleSpecDimension', N'U') IS NOT NULL DROP TABLE [dbo].[TchpStyleSpecDimension];
+    DROP TABLE [dbo].[TchpStyleSpec];
+END
+GO
+
 IF OBJECT_ID(N'dbo.TchpStyleSpec', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[TchpStyleSpec] (
-        [StyleSpecId]           INT             IDENTITY(1,1)   NOT NULL,
-        -- FK → product/style (ProductReferenceId convention from PdmProductQcSize)
-        [ProductReferenceId]    INT             NOT NULL,
+        -- Same value as product ReferenceId (sibling link to Root; no IDENTITY)
+        [StyleSpecId]           INT             NOT NULL,
         [SizeRunId]             INT             NOT NULL,
         -- FK → TchpSizeRunSize (BaseSizeDetailId matches BodyType convention)
         [BaseSizeDetailId]      INT             NOT NULL,
@@ -270,8 +291,6 @@ BEGIN
         CONSTRAINT [FK_TchpStyleSpec_TchpSizeRunSize]
             FOREIGN KEY ([BaseSizeDetailId]) REFERENCES [dbo].[TchpSizeRunSize] ([SizeRunSizeId])
     );
-    CREATE NONCLUSTERED INDEX [IX_TchpStyleSpec_ProductRef]
-        ON [dbo].[TchpStyleSpec] ([ProductReferenceId] ASC);
     PRINT 'Created TchpStyleSpec';
 END
 ELSE

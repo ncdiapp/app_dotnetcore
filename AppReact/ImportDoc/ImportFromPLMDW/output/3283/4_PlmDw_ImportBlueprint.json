@@ -103,18 +103,17 @@
                                                                             "isMasterSibling":  false,
                                                                             "fieldPolicy":  "AllMappedColumns",
                                                                             "skipTablePrefix":  true,
-                                                                            "linkToParentField":  "ProductReferenceId",
+                                                                            "linkToParentField":  "StyleSpecId",
                                                                             "parentPrimaryKeyField":  "ReferenceId"
                                                                         }
                                                                     ],
                                                    "childUnits":  [
                                                                       {
                                                                           "appTableName":  "TchpPomSpecLine",
-                                                                          "attachToRoot":  false,
+                                                                          "attachToRoot":  true,
                                                                           "skipTablePrefix":  true,
-                                                                          "parentAppTableName":  "TchpStyleSpec",
                                                                           "linkToParentField":  "StyleSpecId",
-                                                                          "parentPrimaryKeyField":  "StyleSpecId",
+                                                                          "parentPrimaryKeyField":  "ReferenceId",
                                                                           "grandChildAppTableNames":  [
                                                                                                           "TchpGradeValue"
                                                                                                       ]
@@ -167,18 +166,17 @@
                                                                             "isMasterSibling":  false,
                                                                             "fieldPolicy":  "AllMappedColumns",
                                                                             "skipTablePrefix":  true,
-                                                                            "linkToParentField":  "ProductReferenceId",
+                                                                            "linkToParentField":  "StyleSpecId",
                                                                             "parentPrimaryKeyField":  "ReferenceId"
                                                                         }
                                                                     ],
                                                    "childUnits":  [
                                                                       {
                                                                           "appTableName":  "TchpFitRound",
-                                                                          "attachToRoot":  false,
+                                                                          "attachToRoot":  true,
                                                                           "skipTablePrefix":  true,
-                                                                          "parentAppTableName":  "TchpStyleSpec",
                                                                           "linkToParentField":  "StyleSpecId",
-                                                                          "parentPrimaryKeyField":  "StyleSpecId",
+                                                                          "parentPrimaryKeyField":  "ReferenceId",
                                                                           "grandChildAppTableNames":  [
                                                                                                           "TchpFitMeasurement"
                                                                                                       ]
@@ -214,18 +212,17 @@
                                                                             "isMasterSibling":  false,
                                                                             "fieldPolicy":  "AllMappedColumns",
                                                                             "skipTablePrefix":  true,
-                                                                            "linkToParentField":  "ProductReferenceId",
+                                                                            "linkToParentField":  "StyleSpecId",
                                                                             "parentPrimaryKeyField":  "ReferenceId"
                                                                         }
                                                                     ],
                                                    "childUnits":  [
                                                                       {
                                                                           "appTableName":  "TchpFitRound",
-                                                                          "attachToRoot":  false,
+                                                                          "attachToRoot":  true,
                                                                           "skipTablePrefix":  true,
-                                                                          "parentAppTableName":  "TchpStyleSpec",
                                                                           "linkToParentField":  "StyleSpecId",
-                                                                          "parentPrimaryKeyField":  "StyleSpecId",
+                                                                          "parentPrimaryKeyField":  "ReferenceId",
                                                                           "grandChildAppTableNames":  [
                                                                                                           "TchpFitMeasurement"
                                                                                                       ],
@@ -291,18 +288,17 @@
                                                                             "isMasterSibling":  false,
                                                                             "fieldPolicy":  "AllMappedColumns",
                                                                             "skipTablePrefix":  true,
-                                                                            "linkToParentField":  "ProductReferenceId",
+                                                                            "linkToParentField":  "StyleSpecId",
                                                                             "parentPrimaryKeyField":  "ReferenceId"
                                                                         }
                                                                     ],
                                                    "childUnits":  [
                                                                       {
                                                                           "appTableName":  "TchpFitRound",
-                                                                          "attachToRoot":  false,
+                                                                          "attachToRoot":  true,
                                                                           "skipTablePrefix":  true,
-                                                                          "parentAppTableName":  "TchpStyleSpec",
                                                                           "linkToParentField":  "StyleSpecId",
-                                                                          "parentPrimaryKeyField":  "StyleSpecId",
+                                                                          "parentPrimaryKeyField":  "ReferenceId",
                                                                           "grandChildAppTableNames":  [
                                                                                                           "TchpFitMeasurement"
                                                                                                       ],
@@ -368,18 +364,17 @@
                                                                             "isMasterSibling":  false,
                                                                             "fieldPolicy":  "AllMappedColumns",
                                                                             "skipTablePrefix":  true,
-                                                                            "linkToParentField":  "ProductReferenceId",
+                                                                            "linkToParentField":  "StyleSpecId",
                                                                             "parentPrimaryKeyField":  "ReferenceId"
                                                                         }
                                                                     ],
                                                    "childUnits":  [
                                                                       {
                                                                           "appTableName":  "TchpFitRound",
-                                                                          "attachToRoot":  false,
+                                                                          "attachToRoot":  true,
                                                                           "skipTablePrefix":  true,
-                                                                          "parentAppTableName":  "TchpStyleSpec",
                                                                           "linkToParentField":  "StyleSpecId",
-                                                                          "parentPrimaryKeyField":  "StyleSpecId",
+                                                                          "parentPrimaryKeyField":  "ReferenceId",
                                                                           "grandChildAppTableNames":  [
                                                                                                           "TchpFitMeasurement"
                                                                                                       ],
@@ -445,18 +440,17 @@
                                                                             "isMasterSibling":  false,
                                                                             "fieldPolicy":  "AllMappedColumns",
                                                                             "skipTablePrefix":  true,
-                                                                            "linkToParentField":  "ProductReferenceId",
+                                                                            "linkToParentField":  "StyleSpecId",
                                                                             "parentPrimaryKeyField":  "ReferenceId"
                                                                         }
                                                                     ],
                                                    "childUnits":  [
                                                                       {
                                                                           "appTableName":  "TchpFitRound",
-                                                                          "attachToRoot":  false,
+                                                                          "attachToRoot":  true,
                                                                           "skipTablePrefix":  true,
-                                                                          "parentAppTableName":  "TchpStyleSpec",
                                                                           "linkToParentField":  "StyleSpecId",
-                                                                          "parentPrimaryKeyField":  "StyleSpecId",
+                                                                          "parentPrimaryKeyField":  "ReferenceId",
                                                                           "grandChildAppTableNames":  [
                                                                                                           "TchpFitMeasurement"
                                                                                                       ],
@@ -550,7 +544,9 @@
                              "transactionIntegrationId":  "Tab_4009"
                          }
                      ],
-    "bomColorwayPivotBindings":  [],
+    "bomColorwayPivotBindings":  [
+
+                                 ],
     "blueprintFields":  [
                             {
                                 "appTableName":  "Plm_Style_Header_V2K_ERP",

@@ -1107,8 +1107,8 @@ CREATE TABLE dbo.[{tableName}] (
                 siblingTableNames.Add(plan.PrimarySiblingTable);
 
             // Root children = grid tables + child-unit tab tables (unitType "child").
-            // Both are 1:many under root with their own identity PK and a [ReferenceId] FK.
-            // TechPack: child may later be reparented under TchpStyleSpec sibling (L2).
+            // Both are 1:many under root. TechPack: PomSpecLine/FitRound stay under ROOT;
+            // StyleSpecId links to Root.ReferenceId (equals TchpStyleSpec.StyleSpecId).
             var childTableNames = new List<string>();
             childTableNames.AddRange(tab.GridColumns.Select(g => g.TableName));
             childTableNames.AddRange(plan.ChildColumnsByTable.Keys);
@@ -1222,8 +1222,7 @@ WHERE TransactionID = @TransactionId";
                 siblingTableNames,
                 rootChildTables.Select(g => g.TableName).ToList());
 
-            // L2: manual Link-to-Parent when no physical FK (TchpStyleSpec.ProductReferenceId,
-            // and reparent PomSpecLine / FitRound under StyleSpec via StyleSpecId).
+            // L2: sibling StyleSpecId → Root.ReferenceId; child StyleSpecId → Root.ReferenceId (ROOT-only children).
             ApplyDwBlueprintL2ParentLinks(conn, tran, txId, rootTable, plan, tablePrefix);
 
             SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, transactionIntegrationId);
@@ -1232,8 +1231,8 @@ WHERE TransactionID = @TransactionId";
 
         /// <summary>
         /// L2: wire LinkToParentPrimaryKey without requiring a DB FK.
-        /// Sibling defs (e.g. TchpStyleSpec.ProductReferenceId → Root.ReferenceId) stay master siblings.
-        /// Child defs with ParentAppTableName are reparented and linked to that parent's PK field.
+        /// Sibling: TchpStyleSpec.StyleSpecId → Root.ReferenceId (StyleSpecId equals ReferenceId, no identity).
+        /// Child: always under ROOT; StyleSpecId → Root.ReferenceId. Never reparent under a sibling.
         /// </summary>
         private static void ApplyDwBlueprintL2ParentLinks(
             SqlConnection conn,
@@ -1277,7 +1276,6 @@ WHERE TransactionID = @TransactionId";
             foreach (var child in plan.ChildUnitDefs ?? Enumerable.Empty<PlmDwBlueprintChildUnitDto>())
             {
                 if (string.IsNullOrWhiteSpace(child?.AppTableName)
-                    || string.IsNullOrWhiteSpace(child.ParentAppTableName)
                     || string.IsNullOrWhiteSpace(child.LinkToParentField))
                     continue;
 
@@ -1285,21 +1283,17 @@ WHERE TransactionID = @TransactionId";
                     child.AppTableName, tablePrefix,
                     child.SkipTablePrefix
                     || child.AppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase));
-                string parentTable = QualifyBlueprintTableName(
-                    child.ParentAppTableName, tablePrefix,
-                    child.ParentAppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase));
-
                 int? childUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, childTable);
-                int? parentUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, parentTable);
-                if (!childUnitId.HasValue || !parentUnitId.HasValue)
+                if (!childUnitId.HasValue)
                     continue;
 
-                EnsureChildUnitParentSql(conn, tran, childUnitId.Value, parentUnitId.Value);
+                // Platform rule: only ROOT hosts CHILD units.
+                EnsureChildUnitParentSql(conn, tran, childUnitId.Value, rootUnitId.Value);
 
                 string parentPk = string.IsNullOrWhiteSpace(child.ParentPrimaryKeyField)
-                    ? "StyleSpecId"
+                    ? "ReferenceId"
                     : child.ParentPrimaryKeyField.Trim();
-                int? parentPkFieldId = ResolveTransactionFieldIdSql(conn, tran, parentUnitId.Value, parentPk);
+                int? parentPkFieldId = ResolveTransactionFieldIdSql(conn, tran, rootUnitId.Value, parentPk);
                 if (!parentPkFieldId.HasValue)
                     continue;
 
@@ -1539,6 +1533,8 @@ WHERE TransactionID = @TransactionId";
                 }
             }
 
+            var schemaOnlyTables = GetSchemaOnlyUnitTableNames(plan, tab);
+
             foreach (var (unitId, unitTable) in units)
             {
                 HashSet<string> allowed = null;
@@ -1568,6 +1564,11 @@ WHERE TransactionID = @TransactionId";
                     }
                     else if (plan.GrandchildColumnsByTable.TryGetValue(unitTable, out var gcCols))
                         allowed = GetVisibleColumnNames(gcCols);
+
+                    // TechPack schema-only units (no FieldMapping): empty visible set → show all
+                    // schema columns (CreateHierarchy defaults), same as orphan-grid fallback.
+                    if (allowed != null && allowed.Count == 0 && schemaOnlyTables.Contains(unitTable))
+                        allowed = null;
                 }
 
                 SqlSetUnitFieldVisibility(conn, tran, unitId, allowed);

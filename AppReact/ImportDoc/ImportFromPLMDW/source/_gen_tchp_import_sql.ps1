@@ -78,7 +78,7 @@ function Generate-TchpImportSqlFile($config, [string]$outDir) {
 
     & $add '-- ============================================================================='
     & $add '-- TechPack Tchp* import from plmDW (D1) — STATIC SQL (no dynamic @sql).'
-    & $add '-- L2: TchpStyleSpec.ProductReferenceId -> Root.ReferenceId (Blueprint Link-to-Parent; no DB FK).'
+    & $add '-- L2: TchpStyleSpec.StyleSpecId = Root.ReferenceId (no identity; sibling PK = parent PK).'
     & $add "-- S1: SizeRun/BaseSize/UOM from Grading tab $sourceTabId ($gradingDw)."
     & $add '-- UOM: PLM tblUnitOfMeasure (not on tenant) -> CM|INCH; unmatched defaults to CM.'
     & $add '-- SpecFit ActualValue = COALESCE(ReviseN, SampleN). Comments tabs do not host Fit grid.'
@@ -93,18 +93,18 @@ function Generate-TchpImportSqlFile($config, [string]$outDir) {
     if ($gradingDw -and $sizeDwCol) {
         $baseExpr = if ($baseDwCol) { "TRY_CONVERT(INT, g.$baseDwCol)" } else { 'CAST(NULL AS INT)' }
         $uomExpr = if ($uomDwCol) { "CONVERT(NVARCHAR(50), g.$uomDwCol)" } else { 'CAST(NULL AS NVARCHAR(50))' }
-        & $add '-- 1. TchpStyleSpec'
+        & $add '-- 1. TchpStyleSpec (StyleSpecId = ProductReferenceID = ReferenceId)'
         & $add ';WITH src AS ('
-        & $add '  SELECT g.ProductReferenceID AS ProductReferenceId,'
+        & $add '  SELECT TRY_CONVERT(INT, g.ProductReferenceID) AS StyleSpecId,'
         & $add "    TRY_CONVERT(INT, g.$sizeDwCol) AS SizeRunIdRaw,"
         & $add "    $baseExpr AS BaseSizeRaw,"
         & $add "    $uomExpr AS MeasureUnitRaw"
         & $add "  FROM $dwRef.$gradingDw g"
-        & $add '  WHERE g.ProductReferenceID IS NOT NULL'
+        & $add '  WHERE TRY_CONVERT(INT, g.ProductReferenceID) IS NOT NULL'
         & $add ')'
         & $add 'MERGE dbo.TchpStyleSpec AS t'
         & $add 'USING ('
-        & $add '  SELECT s.ProductReferenceId,'
+        & $add '  SELECT s.StyleSpecId,'
         & $add '    COALESCE(sr.SizeRunId, s.SizeRunIdRaw) AS SizeRunId,'
         & $add '    COALESCE(sz.SizeRunSizeId, s.BaseSizeRaw) AS BaseSizeDetailId,'
         & $add '    CASE'
@@ -120,11 +120,11 @@ function Generate-TchpImportSqlFile($config, [string]$outDir) {
         & $add "  LEFT JOIN $plmRef.tblUnitOfMeasure uom ON uom.Unit_Id = TRY_CONVERT(INT, s.MeasureUnitRaw)"
         & $add '  WHERE COALESCE(sr.SizeRunId, s.SizeRunIdRaw) IS NOT NULL'
         & $add '    AND COALESCE(sz.SizeRunSizeId, s.BaseSizeRaw) IS NOT NULL'
-        & $add ') AS x ON x.ProductReferenceId = t.ProductReferenceId'
+        & $add ') AS x ON x.StyleSpecId = t.StyleSpecId'
         & $add 'WHEN MATCHED THEN UPDATE SET SizeRunId = x.SizeRunId, BaseSizeDetailId = x.BaseSizeDetailId,'
         & $add '  UnitOfMeasure = x.UnitOfMeasure, AppModifiedDate = GETDATE()'
-        & $add 'WHEN NOT MATCHED THEN INSERT (ProductReferenceId, SizeRunId, BaseSizeDetailId, UnitOfMeasure, AppCreatedDate)'
-        & $add 'VALUES (x.ProductReferenceId, x.SizeRunId, x.BaseSizeDetailId, x.UnitOfMeasure, GETDATE());'
+        & $add 'WHEN NOT MATCHED THEN INSERT (StyleSpecId, SizeRunId, BaseSizeDetailId, UnitOfMeasure, AppCreatedDate)'
+        & $add 'VALUES (x.StyleSpecId, x.SizeRunId, x.BaseSizeDetailId, x.UnitOfMeasure, GETDATE());'
         & $add 'PRINT N''TchpStyleSpec MERGE done. Rows='' + CAST(@@ROWCOUNT AS NVARCHAR(20));'
         & $add ''
     }
@@ -145,7 +145,7 @@ function Generate-TchpImportSqlFile($config, [string]$outDir) {
         & $add "SELECT ss.StyleSpecId, COALESCE(bp.BodyPartId, TRY_CONVERT(INT, g.$sgBodyPartCol)),"
         & $add "  $baseVal, $tolVal, $fixedVal, g.Sort, $aliasVal, GETDATE()"
         & $add "FROM $dwRef.$sgDw g"
-        & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = g.ProductReferenceID'
+        & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, g.ProductReferenceID)'
         & $add "LEFT JOIN dbo.TchpBodyPart bp ON bp.BodyPartId = TRY_CONVERT(INT, g.$sgBodyPartCol)"
         & $add "WHERE TRY_CONVERT(INT, g.$sgBodyPartCol) IS NOT NULL"
         & $add '  AND NOT EXISTS ('
@@ -175,7 +175,7 @@ WHERE TRY_CONVERT(DECIMAL(10,3), g.$($gc.DwColumn)) IS NOT NULL
             & $add 'INSERT INTO dbo.TchpGradeValue (PomSpecLineId, SizeRunSizeId, GradingDelta, AppCreatedDate)'
             & $add 'SELECT pl.PomSpecLineId, sz.SizeRunSizeId, u.DeltaVal, GETDATE()'
             & $add 'FROM unpvt u'
-            & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = u.ProductReferenceID'
+            & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, u.ProductReferenceID)'
             & $add 'INNER JOIN dbo.TchpPomSpecLine pl ON pl.StyleSpecId = ss.StyleSpecId AND pl.BodyPartId = u.BodyPartRaw'
             & $add 'INNER JOIN dbo.TchpSizeRunSize sz ON sz.SizeRunId = ss.SizeRunId AND ISNULL(sz.SizeOrder, 0) = u.SizeOrdinal'
             & $add 'WHERE NOT EXISTS ('
@@ -214,7 +214,7 @@ WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
         & $add $fitUnionSql
         & $add '  ) x'
         & $add ') r'
-        & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = r.ProductReferenceID'
+        & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, r.ProductReferenceID)'
         & $add 'WHERE NOT EXISTS ('
         & $add '  SELECT 1 FROM dbo.TchpFitRound fr'
         & $add '  WHERE fr.StyleSpecId = ss.StyleSpecId AND fr.RoundNumber = r.RoundNumber'
@@ -227,7 +227,7 @@ WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
         & $add 'INSERT INTO dbo.TchpFitMeasurement (FitRoundId, PomSpecLineId, ActualValue, AppCreatedDate)'
         & $add 'SELECT fr.FitRoundId, pl.PomSpecLineId, m.ActualValue, GETDATE()'
         & $add 'FROM meas m'
-        & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = m.ProductReferenceID'
+        & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, m.ProductReferenceID)'
         & $add 'INNER JOIN dbo.TchpFitRound fr ON fr.StyleSpecId = ss.StyleSpecId AND fr.RoundNumber = m.RoundNumber'
         & $add 'INNER JOIN dbo.TchpPomSpecLine pl ON pl.StyleSpecId = ss.StyleSpecId AND pl.BodyPartId = m.BodyPartRaw'
         & $add 'WHERE NOT EXISTS ('
