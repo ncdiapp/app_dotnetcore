@@ -7,6 +7,7 @@ import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLo
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { adminSvc } from '../../webapi/adminsvc';
+import { searchSvc } from '../../webapi/searchSvc';
 import { refreshUserTreeMenu } from '../../helper/userMenuHelper';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
 import type { RootState } from '../../redux/store';
@@ -58,6 +59,42 @@ const sortAllTreeBySort = (list: MenuDto[]): MenuDto[] => {
   return clone;
 };
 
+/** Build Id→Name map from DTO lists (Name / TransactionName / Display). */
+const buildNameById = (items: any[] | null | undefined, ...nameKeys: string[]): Map<number, string> => {
+  const map = new Map<number, string>();
+  (Array.isArray(items) ? items : []).forEach((it: any) => {
+    const rawId = it?.Id ?? it?.SearchViewId ?? it?.SearchID ?? it?.TransactionId;
+    if (rawId == null) return;
+    const id = Number(rawId);
+    if (Number.isNaN(id) || map.has(id)) return;
+    for (const key of nameKeys) {
+      const name = it?.[key];
+      if (name != null && String(name).trim() !== '') {
+        map.set(id, String(name));
+        return;
+      }
+    }
+  });
+  return map;
+};
+
+const mergeNameMaps = (...maps: Map<number, string>[]): Map<number, string> => {
+  const out = new Map<number, string>();
+  maps.forEach((m) => {
+    m.forEach((name, id) => {
+      if (!out.has(id)) out.set(id, name);
+    });
+  });
+  return out;
+};
+
+const dataMapFromNameById = (nameById: Map<number, string>): DataMap =>
+  new DataMap(
+    Array.from(nameById.entries()).map(([Id, Display]) => ({ Id, Display })),
+    'Id',
+    'Display'
+  );
+
 const MenuManagement: React.FC = () => {
   const dispatch = useDispatch();
   const { theme } = useTheme();
@@ -97,9 +134,6 @@ const MenuManagement: React.FC = () => {
 
   const [manipulationDto, setManipulationDto] = useState<any>(null);
   const [dictLogicIdAndNavigationItem, setDictLogicIdAndNavigationItem] = useState<Record<string, any>>({});
-  const [searchDataMap, setSearchDataMap] = useState<DataMap | null>(null);
-  const [searchViewDataMap, setSearchViewDataMap] = useState<DataMap | null>(null);
-  const [transactionDataMap, setTransactionDataMap] = useState<DataMap | null>(null);
   const [availableNavigationMenuItemsDataMap, setAvailableNavigationMenuItemsDataMap] = useState<DataMap | null>(null);
 
   const listMenuGridRef = useRef<any>(null);
@@ -272,9 +306,10 @@ const MenuManagement: React.FC = () => {
   const loadData = useCallback(async () => {
     dispatch(setIsBusy());
     try {
-      const [menuData, massEntityData] = await Promise.all([
+      const [menuData, massEntityData, allSearchViewsRaw] = await Promise.all([
         adminSvc.retrieveListMenuHairarchyDto(false, ''),
-        adminSvc.getMassEntitiesLookupItem('AppSearch|AppSearchView|AppTransaction')
+        adminSvc.getMassEntitiesLookupItem('AppSearch|AppSearchView|AppTransaction').catch(() => null),
+        searchSvc.retrieveAllAppSearchViewDto().catch(() => [])
       ]);
 
       const manipulations = await Promise.all(
@@ -282,16 +317,6 @@ const MenuManagement: React.FC = () => {
           adminSvc.retrieveAppApplicationDataManipulations(String(app.Id)).catch(() => null)
         )
       );
-
-      const searches = massEntityData?.AppSearch || [];
-      const searchViews = massEntityData?.AppSearchView || [];
-      const transactions = massEntityData?.AppTransaction || [];
-      const sMap = new DataMap(searches, 'Id', 'Display');
-      const svMap = new DataMap(searchViews, 'Id', 'Display');
-      const tMap = new DataMap(transactions, 'Id', 'Display');
-      setSearchDataMap(sMap);
-      setSearchViewDataMap(svMap);
-      setTransactionDataMap(tMap);
 
       const mergedManipulationDto: any = {
         ApplicationId: null,
@@ -335,6 +360,46 @@ const MenuManagement: React.FC = () => {
         mergedManipulationDto.ApplicationSearchDtoList.push(
           ...mergeWithAppContext(app, mDto.ApplicationSearchDtoList || [])
         );
+      });
+
+      // Prefer real Name fields from DTO lists — mass-entity lookup often returns empty/unusable
+      // Display for AppSearch / AppSearchView in this screen (Form Data Model already had tx fallback).
+      const allSearchViews = Array.isArray(allSearchViewsRaw)
+        ? allSearchViewsRaw
+        : Array.isArray(allSearchViewsRaw?.ObjectList)
+          ? allSearchViewsRaw.ObjectList
+          : [];
+
+      const searchNameById = mergeNameMaps(
+        buildNameById(mergedManipulationDto.AllSearchDtoList, 'Name', 'Display'),
+        buildNameById(mergedManipulationDto.ApplicationSearchDtoList, 'Name', 'Display'),
+        buildNameById(massEntityData?.AppSearch, 'Display', 'Name')
+      );
+      const searchViewNameById = mergeNameMaps(
+        buildNameById(allSearchViews, 'Name', 'Display'),
+        buildNameById(massEntityData?.AppSearchView, 'Display', 'Name')
+      );
+      const txNameById = mergeNameMaps(
+        buildNameById(mergedManipulationDto.MasterDetailTransactionList, 'TransactionName', 'Name', 'Display'),
+        buildNameById(mergedManipulationDto.ListEditTransactionList, 'TransactionName', 'Name', 'Display'),
+        buildNameById(massEntityData?.AppTransaction, 'Display', 'TransactionName', 'Name')
+      );
+
+      const sMap = dataMapFromNameById(searchNameById);
+      const svMap = dataMapFromNameById(searchViewNameById);
+      const tMap = dataMapFromNameById(txNameById);
+
+      (mergedManipulationDto.FolderNavigationList || []).forEach((nav: any) => {
+        const folderViewId = Number(nav.FolderViewId);
+        const txId = Number(nav.TransactionId);
+        nav.FolderViewDisplay = searchViewNameById.get(folderViewId) ?? String(nav.FolderViewId ?? '');
+        nav.TransactionDisplay = txNameById.get(txId) ?? String(nav.TransactionId ?? '');
+      });
+      (mergedManipulationDto.SearchNavigationList || []).forEach((nav: any) => {
+        const searchId = Number(nav.QuickSearchId);
+        const txId = Number(nav.TransactionId);
+        nav.QuickSearchDisplay = searchNameById.get(searchId) ?? String(nav.QuickSearchId ?? '');
+        nav.TransactionDisplay = txNameById.get(txId) ?? String(nav.TransactionId ?? '');
       });
 
       const { availableNavigationMenuItems, dict } = buildNavigationItems(mergedManipulationDto, sMap, tMap);
@@ -812,6 +877,7 @@ const MenuManagement: React.FC = () => {
                     selectionMode="Row"
                     isReadOnly={true}
                     allowSorting={false}
+                    autoGenerateColumns={false}
                     showGroups={true}
                     groupHeaderFormat="<span style='font-weight:600;'>{value}</span>"
                   >
@@ -829,6 +895,7 @@ const MenuManagement: React.FC = () => {
                     selectionMode="Row"
                     isReadOnly={true}
                     allowSorting={false}
+                    autoGenerateColumns={false}
                     showGroups={true}
                     groupHeaderFormat="<span style='font-weight:600;'>{value}</span>"
                   >
@@ -846,12 +913,13 @@ const MenuManagement: React.FC = () => {
                     selectionMode="Row"
                     isReadOnly={true}
                     allowSorting={false}
+                    autoGenerateColumns={false}
                     showGroups={true}
                     groupHeaderFormat="<span style='font-weight:600;'>{value}</span>"
                   >
                     <FlexGridColumn binding="TransactionId" header="Id" width={80} format="d" />
-                    <FlexGridColumn binding="FolderViewId" header="Folder View" width={260} dataMap={searchViewDataMap || undefined} />
-                    <FlexGridColumn binding="TransactionId" header="Form Data Model" width={280} dataMap={transactionDataMap || undefined} />
+                    <FlexGridColumn binding="FolderViewDisplay" header="Folder View" width={260} />
+                    <FlexGridColumn binding="TransactionDisplay" header="Form Data Model" width={280} />
                     <FlexGridColumn header="" binding="" width="*" />
                   </FlexGrid>
                 )}
@@ -863,12 +931,13 @@ const MenuManagement: React.FC = () => {
                     selectionMode="Row"
                     isReadOnly={true}
                     allowSorting={false}
+                    autoGenerateColumns={false}
                     showGroups={true}
                     groupHeaderFormat="<span style='font-weight:600;'>{value}</span>"
                   >
                     <FlexGridColumn binding="QuickSearchId" header="Search Id" width={90} format="d" />
-                    <FlexGridColumn binding="QuickSearchId" header="Form Search" width={260} dataMap={searchDataMap || undefined} />
-                    <FlexGridColumn binding="TransactionId" header="Form Data Model" width={280} dataMap={transactionDataMap || undefined} />
+                    <FlexGridColumn binding="QuickSearchDisplay" header="Form Search" width={260} />
+                    <FlexGridColumn binding="TransactionDisplay" header="Form Data Model" width={280} />
                     <FlexGridColumn header="" binding="" width="*" />
                   </FlexGrid>
                 )}
@@ -880,6 +949,7 @@ const MenuManagement: React.FC = () => {
                     selectionMode="Row"
                     isReadOnly={true}
                     allowSorting={false}
+                    autoGenerateColumns={false}
                     showGroups={true}
                     groupHeaderFormat="<span style='font-weight:600;'>{value}</span>"
                   >

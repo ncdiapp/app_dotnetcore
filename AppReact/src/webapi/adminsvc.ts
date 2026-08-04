@@ -261,9 +261,13 @@ class AdminService {
   }
 
   async getMassEntitiesLookupItem(data: string): Promise<any> {
-    const response = await fetch(`${endpoints.BASE_URL}/webapi/Administration/RetrieveMassAppEntitiesLookupItem?entityCodes=${data}`, {
-      headers: getHeaders()
-    });
+    // Encode so '|' separators are not truncated by proxies / URL parsers.
+    const response = await fetch(
+      `${endpoints.BASE_URL}/webapi/Administration/RetrieveMassAppEntitiesLookupItem?entityCodes=${encodeURIComponent(data)}`,
+      {
+        headers: getHeaders()
+      }
+    );
     if (!response.ok) throw new Error('Failed to get mass entities lookup items');
     return response.json();
   }
