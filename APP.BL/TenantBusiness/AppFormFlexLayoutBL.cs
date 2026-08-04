@@ -1482,13 +1482,16 @@ namespace App.BL
 
             int totalHeight = totalImgFieldHeight + totalVideoOrMapFieldHeight + totalMemoFieldHeight + totalRegularFieldHeight;
 
-            int averageHeightPerCol = totalHeight / columns;
-
-
+            // Integer division truncates; clamp so column indexes stay in 1..columns.
+            // Image-only tabs (e.g. How to Measure) can make Ceiling(totalLarge/avg) > columns,
+            // which previously produced largeFieldColumnIndex == 0 → KeyNotFoundException.
+            int averageHeightPerCol = columns > 0 ? Math.Max(1, totalHeight / columns) : 1;
 
             int totalLargeFieldHeight = totalImgFieldHeight + totalVideoOrMapFieldHeight;
 
-            int nbColWithLargeField = (int)Math.Ceiling(totalLargeFieldHeight * 1.0 / averageHeightPerCol);
+            int nbColWithLargeField = totalLargeFieldHeight <= 0
+                ? 1
+                : Math.Min(columns, Math.Max(1, (int)Math.Ceiling(totalLargeFieldHeight * 1.0 / averageHeightPerCol)));
 
             for (int col = 1; col <= columns; col++)
             {
@@ -1509,6 +1512,9 @@ namespace App.BL
                 largeFieldList.Remove(fieldDto);
 
                 int largeFieldColumnIndex = columns - (remainLargeFieldCount % nbColWithLargeField);
+                if (largeFieldColumnIndex < 1 || largeFieldColumnIndex > columns)
+                    largeFieldColumnIndex = ((remainLargeFieldCount - 1) % columns) + 1;
+
                 var colFieldList = dictColAndFieldList[largeFieldColumnIndex];
                 colFieldList.Add(fieldDto);
                 remainLargeFieldCount = largeFieldList.Count;
@@ -1542,12 +1548,9 @@ namespace App.BL
             {
                 while (remainSmallFieldCount > 0)
                 {
-
                     int? colIndexFound = FindSmallestHeightColumnIndex(dictColAndFieldList);
-                    if (colIndexFound.HasValue)
-                    {
+                    if (!colIndexFound.HasValue)
                         colIndexFound = 1;
-                    }
 
                     var colFieldList = dictColAndFieldList[colIndexFound.Value];
 

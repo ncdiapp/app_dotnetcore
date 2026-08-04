@@ -215,6 +215,21 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public string ExcludeSubItemsFromDwTable { get; set; }
+
+        /// <summary>
+        /// L2: sibling FK column linking to root when no DB FK exists
+        /// (e.g. TchpStyleSpec.ProductReferenceId → Root.ReferenceId).
+        /// </summary>
+        [DataMember]
+        public string LinkToParentField { get; set; }
+
+        /// <summary>Root PK column name for <see cref="LinkToParentField"/> (default ReferenceId).</summary>
+        [DataMember]
+        public string ParentPrimaryKeyField { get; set; }
+
+        /// <summary>When true, do not prepend tablePrefix (Tchp* / already-qualified names).</summary>
+        [DataMember]
+        public bool SkipTablePrefix { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -225,6 +240,30 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public bool AttachToRoot { get; set; } = true;
+
+        /// <summary>
+        /// Optional parent unit table (sibling or child). When set, Blueprint Execute reparents
+        /// this unit under that parent and wires LinkToParent (L2-style, no DB FK required).
+        /// </summary>
+        [DataMember]
+        public string ParentAppTableName { get; set; }
+
+        [DataMember]
+        public string LinkToParentField { get; set; }
+
+        [DataMember]
+        public string ParentPrimaryKeyField { get; set; }
+
+        [DataMember]
+        public bool SkipTablePrefix { get; set; }
+
+        /// <summary>Grandchild tables under this child (e.g. TchpGradeValue under TchpPomSpecLine).</summary>
+        [DataMember]
+        public List<string> GrandChildAppTableNames { get; set; } = new List<string>();
+
+        /// <summary>Optional FitRound RoundNumber filter for Fit 1–4 tabs (UI filter hint).</summary>
+        [DataMember]
+        public int? FitRoundNumberFilter { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

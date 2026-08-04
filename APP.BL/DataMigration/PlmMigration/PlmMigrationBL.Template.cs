@@ -1087,23 +1087,68 @@ CREATE TABLE dbo.[{tableName}] (
             var siblingTableNames = plan.SiblingColumnsByTable.Keys
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            // TechPack siblings (e.g. TchpStyleSpec) may have no FieldMapping rows yet —
+            // still include them from SiblingUnitDefs so CreateHierarchy receives them.
+            foreach (var siblingDef in plan.SiblingUnitDefs ?? Enumerable.Empty<PlmDwBlueprintSiblingUnitDto>())
+            {
+                if (string.IsNullOrWhiteSpace(siblingDef?.AppTableName))
+                    continue;
+                string siblingTable = QualifyBlueprintTableName(
+                    siblingDef.AppTableName, tablePrefix,
+                    siblingDef.SkipTablePrefix
+                    || siblingDef.AppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase));
+                if (!siblingTableNames.Any(s => string.Equals(s, siblingTable, StringComparison.OrdinalIgnoreCase)))
+                    siblingTableNames.Add(siblingTable);
+            }
             if (siblingTableNames.Count == 0
                 && plan.ChildColumnsByTable.Count == 0
+                && (plan.ChildUnitDefs == null || plan.ChildUnitDefs.Count == 0)
                 && !string.IsNullOrWhiteSpace(plan.PrimarySiblingTable))
                 siblingTableNames.Add(plan.PrimarySiblingTable);
 
             // Root children = grid tables + child-unit tab tables (unitType "child").
             // Both are 1:many under root with their own identity PK and a [ReferenceId] FK.
+            // TechPack: child may later be reparented under TchpStyleSpec sibling (L2).
             var childTableNames = new List<string>();
             childTableNames.AddRange(tab.GridColumns.Select(g => g.TableName));
             childTableNames.AddRange(plan.ChildColumnsByTable.Keys);
 
             var rootChildTables = new List<HierarchyChildTableDto>();
+            var grandChildAttached = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var childDef in plan.ChildUnitDefs ?? Enumerable.Empty<PlmDwBlueprintChildUnitDto>())
+            {
+                if (string.IsNullOrWhiteSpace(childDef?.AppTableName))
+                    continue;
+                string childTable = QualifyBlueprintTableName(childDef.AppTableName, tablePrefix,
+                    childDef.SkipTablePrefix || childDef.AppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase));
+                if (siblingTableNames.Any(s => string.Equals(s, childTable, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                var grands = (childDef.GrandChildAppTableNames ?? new List<string>())
+                    .Where(n => !string.IsNullOrWhiteSpace(n))
+                    .Select(n => QualifyBlueprintTableName(n, tablePrefix,
+                        n.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                foreach (var g in grands)
+                    grandChildAttached.Add(g);
+
+                rootChildTables.Add(new HierarchyChildTableDto
+                {
+                    TableName = childTable,
+                    GrandChildTableNames = grands
+                });
+            }
+
             foreach (var childTable in childTableNames.Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 if (string.IsNullOrWhiteSpace(childTable))
                     continue;
                 if (siblingTableNames.Any(s => string.Equals(s, childTable, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+                if (grandChildAttached.Contains(childTable))
+                    continue;
+                if (rootChildTables.Any(c => string.Equals(c.TableName, childTable, StringComparison.OrdinalIgnoreCase)))
                     continue;
                 rootChildTables.Add(new HierarchyChildTableDto { TableName = childTable });
             }
@@ -1177,8 +1222,196 @@ WHERE TransactionID = @TransactionId";
                 siblingTableNames,
                 rootChildTables.Select(g => g.TableName).ToList());
 
+            // L2: manual Link-to-Parent when no physical FK (TchpStyleSpec.ProductReferenceId,
+            // and reparent PomSpecLine / FitRound under StyleSpec via StyleSpecId).
+            ApplyDwBlueprintL2ParentLinks(conn, tran, txId, rootTable, plan, tablePrefix);
+
             SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, transactionIntegrationId);
             return txId;
+        }
+
+        /// <summary>
+        /// L2: wire LinkToParentPrimaryKey without requiring a DB FK.
+        /// Sibling defs (e.g. TchpStyleSpec.ProductReferenceId → Root.ReferenceId) stay master siblings.
+        /// Child defs with ParentAppTableName are reparented and linked to that parent's PK field.
+        /// </summary>
+        private static void ApplyDwBlueprintL2ParentLinks(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            string rootTable,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            if (plan == null)
+                return;
+
+            int? rootUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, rootTable);
+            if (!rootUnitId.HasValue)
+                return;
+
+            foreach (var sibling in plan.SiblingUnitDefs ?? Enumerable.Empty<PlmDwBlueprintSiblingUnitDto>())
+            {
+                if (string.IsNullOrWhiteSpace(sibling?.LinkToParentField))
+                    continue;
+
+                string siblingTable = QualifyBlueprintTableName(
+                    sibling.AppTableName, tablePrefix,
+                    sibling.SkipTablePrefix
+                    || sibling.AppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase));
+                int? siblingUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, siblingTable);
+                if (!siblingUnitId.HasValue)
+                    continue;
+
+                string parentPk = string.IsNullOrWhiteSpace(sibling.ParentPrimaryKeyField)
+                    ? "ReferenceId"
+                    : sibling.ParentPrimaryKeyField.Trim();
+                int? parentPkFieldId = ResolveTransactionFieldIdSql(conn, tran, rootUnitId.Value, parentPk);
+                if (!parentPkFieldId.HasValue)
+                    continue;
+
+                SetFieldLinkToParentPrimaryKeySql(
+                    conn, tran, siblingUnitId.Value, sibling.LinkToParentField.Trim(), parentPkFieldId.Value);
+            }
+
+            foreach (var child in plan.ChildUnitDefs ?? Enumerable.Empty<PlmDwBlueprintChildUnitDto>())
+            {
+                if (string.IsNullOrWhiteSpace(child?.AppTableName)
+                    || string.IsNullOrWhiteSpace(child.ParentAppTableName)
+                    || string.IsNullOrWhiteSpace(child.LinkToParentField))
+                    continue;
+
+                string childTable = QualifyBlueprintTableName(
+                    child.AppTableName, tablePrefix,
+                    child.SkipTablePrefix
+                    || child.AppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase));
+                string parentTable = QualifyBlueprintTableName(
+                    child.ParentAppTableName, tablePrefix,
+                    child.ParentAppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase));
+
+                int? childUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, childTable);
+                int? parentUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, parentTable);
+                if (!childUnitId.HasValue || !parentUnitId.HasValue)
+                    continue;
+
+                EnsureChildUnitParentSql(conn, tran, childUnitId.Value, parentUnitId.Value);
+
+                string parentPk = string.IsNullOrWhiteSpace(child.ParentPrimaryKeyField)
+                    ? "StyleSpecId"
+                    : child.ParentPrimaryKeyField.Trim();
+                int? parentPkFieldId = ResolveTransactionFieldIdSql(conn, tran, parentUnitId.Value, parentPk);
+                if (!parentPkFieldId.HasValue)
+                    continue;
+
+                SetFieldLinkToParentPrimaryKeySql(
+                    conn, tran, childUnitId.Value, child.LinkToParentField.Trim(), parentPkFieldId.Value);
+
+                foreach (var grandName in child.GrandChildAppTableNames ?? Enumerable.Empty<string>())
+                {
+                    if (string.IsNullOrWhiteSpace(grandName))
+                        continue;
+                    string grandTable = QualifyBlueprintTableName(
+                        grandName, tablePrefix,
+                        grandName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase));
+                    int? grandUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, grandTable);
+                    if (grandUnitId.HasValue)
+                        EnsureChildUnitParentSql(conn, tran, grandUnitId.Value, childUnitId.Value);
+                }
+            }
+        }
+
+        private static int? GetAnyTransactionUnitIdByTableName(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            string tableName)
+        {
+            if (string.IsNullOrWhiteSpace(tableName))
+                return null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT TOP 1 TransactionUnitID
+FROM dbo.AppTransactionUnit
+WHERE TransactionID = @TransactionId
+  AND DataBaseTableName = @TableName
+ORDER BY CASE WHEN ISNULL(IsMasterSiblingUnit, 0) = 1 THEN 0 ELSE 1 END, TransactionUnitID";
+                cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+                cmd.Parameters.AddWithValue("@TableName", tableName.Trim());
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        private static int? ResolveTransactionFieldIdSql(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string databaseFieldName)
+        {
+            if (string.IsNullOrWhiteSpace(databaseFieldName))
+                return null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT TOP 1 TransactionFieldID
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @Col
+ORDER BY TransactionFieldID";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@Col", databaseFieldName.Trim());
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        private static void EnsureChildUnitParentSql(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int childUnitId,
+            int parentUnitId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit
+SET ParentTransactionUnitID = @ParentUnitId,
+    IsMasterSiblingUnit = 0
+WHERE TransactionUnitID = @ChildUnitId
+  AND (ParentTransactionUnitID IS NULL OR ParentTransactionUnitID = 0 OR ParentTransactionUnitID <> @ParentUnitId
+       OR ISNULL(IsMasterSiblingUnit, 0) <> 0)";
+                cmd.Parameters.AddWithValue("@ParentUnitId", parentUnitId);
+                cmd.Parameters.AddWithValue("@ChildUnitId", childUnitId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static int SetFieldLinkToParentPrimaryKeySql(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string fkColumn,
+            int parentPkFieldId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField
+SET IsLinkToParentPrimaryKey = 1,
+    LinkToParentPrimaryKeyFieldID = @ParentPkFieldId,
+    IsReadonly = 1,
+    IsVisible = 0
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FkColumn";
+                cmd.Parameters.AddWithValue("@ParentPkFieldId", parentPkFieldId);
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@FkColumn", fkColumn);
+                return cmd.ExecuteNonQuery();
+            }
         }
 
         /// <summary>

@@ -36,6 +36,14 @@ namespace APP.BL.DataMigration.PlmMigration
             /// <summary>Grandchild pivot unit fields (visibility after transaction create).</summary>
             public Dictionary<string, List<PlmTemplateSubItemRow>> GrandchildColumnsByTable { get; } =
                 new Dictionary<string, List<PlmTemplateSubItemRow>>(StringComparer.OrdinalIgnoreCase);
+
+            /// <summary>Original blueprint sibling defs (L2 link fields, SkipTablePrefix).</summary>
+            public List<PlmDwBlueprintSiblingUnitDto> SiblingUnitDefs { get; set; } =
+                new List<PlmDwBlueprintSiblingUnitDto>();
+
+            /// <summary>Original blueprint child defs (parent reparent + grandchildren).</summary>
+            public List<PlmDwBlueprintChildUnitDto> ChildUnitDefs { get; set; } =
+                new List<PlmDwBlueprintChildUnitDto>();
         }
 
         public static OperationCallResult<PlmTemplateMappingGridDto> GetTemplateTabMappingGrid(int? sessionId)

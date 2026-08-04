@@ -475,9 +475,9 @@ WHERE BlueprintKey = @BlueprintKey";
 
       var masterSibling = siblings.FirstOrDefault(s => s.IsMasterSibling);
       if (masterSibling != null)
-        return QualifyBlueprintTableName(masterSibling.AppTableName, prefix);
+        return QualifyBlueprintTableName(masterSibling.AppTableName, prefix, masterSibling.SkipTablePrefix);
 
-      return QualifyBlueprintTableName(siblings[0].AppTableName, prefix);
+      return QualifyBlueprintTableName(siblings[0].AppTableName, prefix, siblings[0].SkipTablePrefix);
     }
 
     private static void ValidateDwBlueprintInternal(
@@ -528,18 +528,18 @@ WHERE BlueprintKey = @BlueprintKey";
 
           foreach (var sibling in siblings)
           {
-            string siblingTable = QualifyBlueprintTableName(sibling.AppTableName, prefix);
+            string siblingTable = QualifyBlueprintTableName(sibling.AppTableName, prefix, sibling.SkipTablePrefix);
             if (!TemplateTableExists(conn, null, siblingTable))
               validation.Errors.Add($"Sibling table dbo.[{siblingTable}] does not exist for Tab_{tx.PlmTabId}.");
 
             var visibleMappings = FilterMappingForTransaction(tx, sibling, mappingRows, prefix);
-            if (visibleMappings.Count == 0)
+            if (visibleMappings.Count == 0 && !sibling.SkipTablePrefix)
               validation.Warnings.Add($"Transaction Tab_{tx.PlmTabId} has no field mapping rows for table {siblingTable}.");
           }
 
           foreach (var child in childUnits)
           {
-            string childTable = QualifyBlueprintTableName(child.AppTableName, prefix);
+            string childTable = QualifyBlueprintTableName(child.AppTableName, prefix, child.SkipTablePrefix);
             if (!TemplateTableExists(conn, null, childTable))
               validation.Errors.Add($"Child unit table dbo.[{childTable}] does not exist for Tab_{tx.PlmTabId}.");
           }
@@ -743,11 +743,20 @@ WHERE object_id = OBJECT_ID(@Table) AND name = @Column";
 
     private static string QualifyBlueprintTableName(string appTableName, string prefix)
     {
+      return QualifyBlueprintTableName(appTableName, prefix, skipTablePrefix: false);
+    }
+
+    private static string QualifyBlueprintTableName(string appTableName, string prefix, bool skipTablePrefix)
+    {
       if (string.IsNullOrWhiteSpace(appTableName))
         return appTableName;
-      if (appTableName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-        return appTableName;
-      return prefix + appTableName.TrimStart('_');
+      string name = appTableName.Trim();
+      if (skipTablePrefix
+          || name.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)
+          || (!string.IsNullOrWhiteSpace(prefix)
+              && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
+        return name;
+      return prefix + name.TrimStart('_');
     }
 
     private static List<DwFieldMappingRow> FilterMappingForTransaction(
@@ -756,10 +765,10 @@ WHERE object_id = OBJECT_ID(@Table) AND name = @Column";
       List<DwFieldMappingRow> mappingRows,
       string prefix)
     {
-      string siblingTable = QualifyBlueprintTableName(sibling.AppTableName, prefix);
+      string siblingTable = QualifyBlueprintTableName(sibling.AppTableName, prefix, sibling.SkipTablePrefix);
       string logicalTable = sibling.AppTableName;
       var tableMappings = mappingRows.Where(m =>
-        string.Equals(QualifyBlueprintTableName(m.AppTableName, prefix), siblingTable, StringComparison.OrdinalIgnoreCase)
+        string.Equals(QualifyBlueprintTableName(m.AppTableName, prefix, sibling.SkipTablePrefix), siblingTable, StringComparison.OrdinalIgnoreCase)
         || string.Equals(m.AppTableName, logicalTable, StringComparison.OrdinalIgnoreCase)).ToList();
 
       if (string.Equals(sibling.FieldPolicy, DwFieldPolicyExclusive, StringComparison.OrdinalIgnoreCase)
@@ -1220,7 +1229,7 @@ WHERE SearchId = @SearchId";
           }
 
           string primarySiblingTable = siblings.Count > 0
-            ? QualifyBlueprintTableName(siblings[0].AppTableName, prefix)
+            ? QualifyBlueprintTableName(siblings[0].AppTableName, prefix, siblings[0].SkipTablePrefix)
             : null;
           if (!string.IsNullOrWhiteSpace(primarySiblingTable))
             tab.SiblingTableName = primarySiblingTable;
@@ -1228,13 +1237,15 @@ WHERE SearchId = @SearchId";
           var plan = new TemplateTabExecutionPlan
           {
             Tab = tab,
-            PrimarySiblingTable = primarySiblingTable
+            PrimarySiblingTable = primarySiblingTable,
+            SiblingUnitDefs = siblings,
+            ChildUnitDefs = childUnits
           };
 
           int sortOrder = 0;
           foreach (var sibling in siblings)
           {
-            string siblingTable = QualifyBlueprintTableName(sibling.AppTableName, prefix);
+            string siblingTable = QualifyBlueprintTableName(sibling.AppTableName, prefix, sibling.SkipTablePrefix);
             var tableMappings = FilterMappingForTransaction(tx, sibling, mappingRows, prefix);
             foreach (var mapRow in tableMappings.OrderBy(m => m.AppColumnName))
             {
@@ -1271,9 +1282,10 @@ WHERE SearchId = @SearchId";
           // [ReferenceId] is a plain FK. Columns come from the tab wide table (FieldKind TabField).
           foreach (var child in childUnits)
           {
-            string childTable = QualifyBlueprintTableName(child.AppTableName, prefix);
+            string childTable = QualifyBlueprintTableName(child.AppTableName, prefix, child.SkipTablePrefix);
+
             var childMappings = mappingRows
-              .Where(m => (string.Equals(QualifyBlueprintTableName(m.AppTableName, prefix), childTable, StringComparison.OrdinalIgnoreCase)
+              .Where(m => (string.Equals(QualifyBlueprintTableName(m.AppTableName, prefix, child.SkipTablePrefix), childTable, StringComparison.OrdinalIgnoreCase)
                             || string.Equals(m.AppTableName, child.AppTableName, StringComparison.OrdinalIgnoreCase))
                           && !string.Equals(m.FieldKind, "GridColumn", StringComparison.OrdinalIgnoreCase))
               .ToList();

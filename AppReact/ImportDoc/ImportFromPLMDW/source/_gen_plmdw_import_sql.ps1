@@ -468,6 +468,48 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
             $siblingUnits.Add($ownSibling)
         }
 
+        # TechPack α bindings: shared TchpStyleSpec sibling (L2) + PomLine/FitRound children.
+        $tpBinding = $null
+        if ($config.techPack -and $config.techPack.bindings) {
+            $tpBinding = @($config.techPack.bindings) | Where-Object { [int]$_.plmTabId -eq [int]$tab.tabId } | Select-Object -First 1
+        }
+        if ($tpBinding -and -not $isChildTab) {
+            if ($tpBinding.includeStyleSpec -ne $false -and $config.techPack.styleSpecSibling) {
+                $ss = $config.techPack.styleSpecSibling
+                $ssName = if ($ss.appTableName) { [string]$ss.appTableName } else { 'TchpStyleSpec' }
+                $already = @($siblingUnits) | Where-Object {
+                    $n = [string]$_.appTableName
+                    $n -eq $ssName -or $n.EndsWith($ssName)
+                } | Select-Object -First 1
+                if (-not $already) {
+                    $siblingUnits.Add([ordered]@{
+                        appTableName           = $ssName
+                        isMasterSibling        = $false
+                        fieldPolicy            = 'AllMappedColumns'
+                        skipTablePrefix        = $true
+                        linkToParentField      = if ($ss.linkToParentField) { [string]$ss.linkToParentField } else { 'ProductReferenceId' }
+                        parentPrimaryKeyField  = if ($ss.parentPrimaryKeyField) { [string]$ss.parentPrimaryKeyField } else { 'ReferenceId' }
+                    })
+                }
+            }
+            foreach ($cu in @($tpBinding.childUnits)) {
+                if (-not $cu -or -not $cu.appTableName) { continue }
+                $childEntry = [ordered]@{
+                    appTableName            = [string]$cu.appTableName
+                    attachToRoot            = $false
+                    skipTablePrefix         = $true
+                    parentAppTableName      = if ($cu.parentAppTableName) { [string]$cu.parentAppTableName } else { 'TchpStyleSpec' }
+                    linkToParentField       = if ($cu.linkToParentField) { [string]$cu.linkToParentField } else { 'StyleSpecId' }
+                    parentPrimaryKeyField   = if ($cu.parentPrimaryKeyField) { [string]$cu.parentPrimaryKeyField } else { 'StyleSpecId' }
+                    grandChildAppTableNames = @(if ($cu.grandChildAppTableNames) { $cu.grandChildAppTableNames } else { @() })
+                }
+                if ($null -ne $cu.fitRoundNumberFilter -and "$($cu.fitRoundNumberFilter)" -ne '') {
+                    $childEntry.fitRoundNumberFilter = [int]$cu.fitRoundNumberFilter
+                }
+                $childUnits.Add($childEntry)
+            }
+        }
+
         $transactions += [ordered]@{
             plmTabId         = [int]$tab.tabId
             plmTabName       = $tabName
@@ -741,6 +783,52 @@ function Get-SubItemIdSet([string]$DwTable) {
     return $set
 }
 
+function Get-AlsoExcludeSubItemIdSet($tab) {
+    $set = [System.Collections.Generic.HashSet[int]]::new()
+    if (-not $tab.alsoExcludeSubItemIds) { return $set }
+    foreach ($id in @($tab.alsoExcludeSubItemIds)) {
+        if ($null -ne $id) { [void]$set.Add([int]$id) }
+    }
+    return $set
+}
+
+function Merge-FieldRowsFromDwSources([string]$AppTable, $mergeFromList, [System.Collections.Generic.HashSet[string]]$existingDwColumns) {
+    $merged = [System.Collections.Generic.List[object]]::new()
+    if (-not $mergeFromList) { return $merged }
+    $seenSubItemIds = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($src in @($mergeFromList)) {
+        if (-not $src.dwTable) { continue }
+        $wantIds = $null
+        if ($src.subItemIds) {
+            $wantIds = [System.Collections.Generic.HashSet[int]]::new()
+            foreach ($id in @($src.subItemIds)) {
+                if ($null -ne $id) { [void]$wantIds.Add([int]$id) }
+            }
+        }
+        $srcTabId = if ($null -ne $src.plmTabId) { [int]$src.plmTabId } else { $null }
+        $dwCols = Get-DwTableColumns $src.dwTable
+        $pick = [System.Collections.Generic.List[object]]::new()
+        foreach ($col in $dwCols) {
+            if ($TabSystemColumns.Contains($col.DwColumn)) { continue }
+            if ($existingDwColumns -and $existingDwColumns.Contains($col.DwColumn)) { continue }
+            $meta = Get-DwColumnMeta $col.DwColumn
+            if ($null -eq $meta.SubItemId) { continue }
+            $sid = [int]$meta.SubItemId
+            if ($seenSubItemIds.Contains($sid)) { continue }
+            if ($wantIds -and -not $wantIds.Contains($sid)) { continue }
+            [void]$pick.Add($col)
+        }
+        if ($pick.Count -eq 0) { continue }
+        $rows = Build-FieldRows @($pick) $src.dwTable $srcTabId $AppTable 'TabField' $null $null
+        foreach ($r in $rows) {
+            if ($null -ne $r.SubItemId) { [void]$seenSubItemIds.Add([int]$r.SubItemId) }
+            [void]$merged.Add($r)
+        }
+        Write-Host "  merge -> $AppTable from $($src.dwTable): $($rows.Count) column(s)"
+    }
+    return $merged
+}
+
 function Build-FieldRows($dwCols, [string]$DwTable, $TabId, [string]$AppTable, [string]$FieldKind, $gridSubItemId, $gridId) {
     $rows = @()
     foreach ($c in $dwCols) {
@@ -851,6 +939,262 @@ function SqlInt($n) {
     return [string]$n
 }
 
+function Find-DwColumnByStem($dwCols, [string]$stem) {
+    if (-not $dwCols) { return $null }
+    $exact = @($dwCols | Where-Object {
+        $m = Get-DwColumnMeta $_.DwColumn
+        $m.Stem -eq $stem -or $_.DwColumn -eq $stem
+    } | Select-Object -First 1)
+    if ($exact) { return $exact[0] }
+    $prefix = @($dwCols | Where-Object {
+        $m = Get-DwColumnMeta $_.DwColumn
+        ($m.Stem -and $m.Stem.StartsWith($stem)) -or ($_.DwColumn -and $_.DwColumn.StartsWith($stem))
+    } | Select-Object -First 1)
+    if ($prefix) { return $prefix[0] }
+    return $null
+}
+
+
+function Generate-TchpImportSqlFile($config, [string]$outDir) {
+    if (-not $config.techPack) { return $null }
+
+    $dwDb = [string]$config.dwDatabase
+    $sourceTabId = if ($null -ne $config.techPack.styleSpecSourcePlmTabId) { [int]$config.techPack.styleSpecSourcePlmTabId } else { 4006 }
+    $gradingTab = @($config.tabs) | Where-Object { [int]$_.tabId -eq $sourceTabId } | Select-Object -First 1
+    $gradingDw = if ($gradingTab) { [string]$gradingTab.dwTable } else { $null }
+
+    $specGrading = @($config.techPack.systemBlockGrids) | Where-Object { $_.role -eq 'SpecGrading' } | Select-Object -First 1
+    $specFit = @($config.techPack.systemBlockGrids) | Where-Object { $_.role -eq 'SpecFit' } | Select-Object -First 1
+    $sgDw = if ($specGrading) { [string]$specGrading.dwTable } else { $null }
+    $sfDw = if ($specFit) { [string]$specFit.dwTable } else { $null }
+
+    $sizeDwCol = $null; $baseDwCol = $null; $uomDwCol = $null
+    if ($gradingDw) {
+        $gCols = @(Get-DwTableColumns $gradingDw)
+        $c = Find-DwColumnByStem $gCols 'Size_Run'; if ($c) { $sizeDwCol = $c.DwColumn }
+        $c = Find-DwColumnByStem $gCols 'Base_Size'; if ($c) { $baseDwCol = $c.DwColumn }
+        $c = Find-DwColumnByStem $gCols 'Measure_Unit'; if ($c) { $uomDwCol = $c.DwColumn }
+        if (-not $uomDwCol) { $c = Find-DwColumnByStem $gCols 'Unit_Of_Measure'; if ($c) { $uomDwCol = $c.DwColumn } }
+    }
+
+    $sgBodyPartCol = $null; $sgBaseCol = $null; $sgTolCol = $null; $sgFixedCol = $null; $sgAliasCol = $null
+    $gradeSizeCols = @()
+    if ($sgDw) {
+        $sgCols = @(Get-DwTableColumns $sgDw)
+        $c = Find-DwColumnByStem $sgCols 'BodyPartDetailIDWDimDetailID'; if (-not $c) { $c = Find-DwColumnByStem $sgCols 'BodyPart' }
+        if ($c) { $sgBodyPartCol = $c.DwColumn }
+        $c = Find-DwColumnByStem $sgCols 'GradingBaseSize'; if ($c) { $sgBaseCol = $c.DwColumn }
+        $c = Find-DwColumnByStem $sgCols 'Tolerance'; if ($c) { $sgTolCol = $c.DwColumn }
+        $c = Find-DwColumnByStem $sgCols 'NeedToApplyGradingRule'; if ($c) { $sgFixedCol = $c.DwColumn }
+        $c = Find-DwColumnByStem $sgCols 'BodyPartName'; if ($c) { $sgAliasCol = $c.DwColumn }
+        $gradeSizeCols = @($sgCols | Where-Object { (Get-DwColumnMeta $_.DwColumn).Stem -match '^GradingSize\d+$' } |
+            Sort-Object { [int](([regex]::Match((Get-DwColumnMeta $_.DwColumn).Stem, '\d+')).Value) })
+    }
+
+    $sfBodyPartCol = $null
+    $sfRoundPairs = @()
+    if ($sfDw) {
+        $sfCols = @(Get-DwTableColumns $sfDw)
+        $c = Find-DwColumnByStem $sfCols 'BodyPartDetailIDWDimDetailID'; if (-not $c) { $c = Find-DwColumnByStem $sfCols 'BodyPart' }
+        if ($c) { $sfBodyPartCol = $c.DwColumn }
+        for ($rn = 1; $rn -le 6; $rn++) {
+            $sample = Find-DwColumnByStem $sfCols "Sample$rn"
+            $revise = Find-DwColumnByStem $sfCols "Revise$rn"
+            if ($sample -or $revise) {
+                $sfRoundPairs += [pscustomobject]@{
+                    Round = $rn
+                    SampleCol = if ($sample) { $sample.DwColumn } else { $null }
+                    ReviseCol = if ($revise) { $revise.DwColumn } else { $null }
+                }
+            }
+        }
+    }
+
+    $L = New-Object System.Collections.Generic.List[string]
+    $add = { param($s) [void]$L.Add($s) }
+
+    & $add '-- ============================================================================='
+    & $add '-- TechPack Tchp* import from plmDW (D1)'
+    & $add '-- L2: TchpStyleSpec.ProductReferenceId -> Root.ReferenceId (Blueprint Link-to-Parent; no DB FK).'
+    & $add "-- S1: SizeRun/BaseSize/UOM from Grading tab $sourceTabId ($gradingDw)."
+    & $add '-- SpecFit ActualValue = COALESCE(ReviseN, SampleN). Comments tabs do not host Fit grid.'
+    & $add '-- Prerequisites: Tchp foundation (ImportPlmPomAndGrading); Plm_* steps 1-3.'
+    & $add "-- Size_Run=$sizeDwCol Base_Size=$baseDwCol Measure_Unit=$uomDwCol"
+    & $add "-- SpecGrading=$sgDw SpecFit=$sfDw"
+    & $add '-- ============================================================================='
+    & $add 'SET NOCOUNT ON;'
+    & $add "DECLARE @DwDatabase NVARCHAR(128) = N'$dwDb';"
+    & $add 'DECLARE @DwTwoPart NVARCHAR(260) = QUOTENAME(@DwDatabase) + N''.dbo'';'
+    & $add 'DECLARE @sql NVARCHAR(MAX);'
+    & $add ''
+
+    if ($gradingDw -and $sizeDwCol) {
+        $baseExpr = if ($baseDwCol) { "TRY_CONVERT(INT, g.$baseDwCol)" } else { 'CAST(NULL AS INT)' }
+        $uomExpr = if ($uomDwCol) { "CONVERT(NVARCHAR(50), g.$uomDwCol)" } else { 'CAST(NULL AS NVARCHAR(50))' }
+        & $add '-- 1. TchpStyleSpec'
+        & $add 'SET @sql = N'''
+        & $add ';WITH src AS ('
+        & $add '  SELECT g.ProductReferenceID AS ProductReferenceId,'
+        & $add "    TRY_CONVERT(INT, g.$sizeDwCol) AS SizeRunIdRaw,"
+        & $add "    $baseExpr AS BaseSizeRaw,"
+        & $add "    $uomExpr AS MeasureUnitRaw"
+        & $add "  FROM ' + @DwTwoPart + N'.$gradingDw g"
+        & $add '  WHERE g.ProductReferenceID IS NOT NULL'
+        & $add ')'
+        & $add 'MERGE dbo.TchpStyleSpec AS t'
+        & $add 'USING ('
+        & $add '  SELECT s.ProductReferenceId,'
+        & $add '    COALESCE(sr.SizeRunId, s.SizeRunIdRaw) AS SizeRunId,'
+        & $add '    COALESCE(sz.SizeRunSizeId, s.BaseSizeRaw) AS BaseSizeDetailId,'
+        & $add '    CASE WHEN UPPER(ISNULL(uom.EntityValue, N'''')) LIKE N''%INCH%'' THEN N''INCH'' ELSE N''CM'' END AS UnitOfMeasure'
+        & $add '  FROM src s'
+        & $add '  LEFT JOIN dbo.TchpSizeRun sr ON sr.SizeRunId = s.SizeRunIdRaw'
+        & $add '  LEFT JOIN dbo.TchpSizeRunSize sz ON sz.SizeRunSizeId = s.BaseSizeRaw'
+        & $add '    OR (sz.SizeRunId = COALESCE(sr.SizeRunId, s.SizeRunIdRaw) AND sz.SizeRunSizeId = s.BaseSizeRaw)'
+        & $add '  LEFT JOIN dbo.AppEntityInfo uom ON uom.EntityCode = N''UnitOfMeasure'''
+        & $add '   AND uom.EntityKeyId = TRY_CONVERT(INT, s.MeasureUnitRaw)'
+        & $add '  WHERE COALESCE(sr.SizeRunId, s.SizeRunIdRaw) IS NOT NULL'
+        & $add '    AND COALESCE(sz.SizeRunSizeId, s.BaseSizeRaw) IS NOT NULL'
+        & $add ') AS x ON x.ProductReferenceId = t.ProductReferenceId'
+        & $add 'WHEN MATCHED THEN UPDATE SET SizeRunId = x.SizeRunId, BaseSizeDetailId = x.BaseSizeDetailId,'
+        & $add '  UnitOfMeasure = x.UnitOfMeasure, AppModifiedDate = GETDATE()'
+        & $add 'WHEN NOT MATCHED THEN INSERT (ProductReferenceId, SizeRunId, BaseSizeDetailId, UnitOfMeasure, AppCreatedDate)'
+        & $add 'VALUES (x.ProductReferenceId, x.SizeRunId, x.BaseSizeDetailId, x.UnitOfMeasure, GETDATE());'
+        & $add ''';'
+        & $add 'EXEC sp_executesql @sql;'
+        & $add 'PRINT N''TchpStyleSpec MERGE done.'';'
+        & $add ''
+    }
+    else {
+        & $add 'PRINT N''WARN: StyleSpec header skipped — Grading DW / Size_Run not resolved.'';'
+        & $add ''
+    }
+
+    if ($sgDw -and $sgBodyPartCol) {
+        $baseVal = if ($sgBaseCol) { "TRY_CONVERT(DECIMAL(10,3), g.$sgBaseCol)" } else { 'CAST(NULL AS DECIMAL(10,3))' }
+        $tolVal = if ($sgTolCol) { "TRY_CONVERT(DECIMAL(10,3), g.$sgTolCol)" } else { 'CAST(NULL AS DECIMAL(10,3))' }
+        $fixedVal = if ($sgFixedCol) {
+            "CASE WHEN UPPER(ISNULL(CONVERT(NVARCHAR(20), g.$sgFixedCol), N'''')) IN (N''0'', N''N'', N''NO'', N''FALSE'') THEN 1 ELSE 0 END"
+        } else { '0' }
+        $aliasVal = if ($sgAliasCol) { "CONVERT(NVARCHAR(50), g.$sgAliasCol)" } else { 'CAST(NULL AS NVARCHAR(50))' }
+        & $add '-- 2. TchpPomSpecLine'
+        & $add 'SET @sql = N'''
+        & $add 'INSERT INTO dbo.TchpPomSpecLine (StyleSpecId, BodyPartId, BaseValue, Tolerance, IsFixed, Sort, BodypartAliasName, AppCreatedDate)'
+        & $add "SELECT ss.StyleSpecId, COALESCE(bp.BodyPartId, TRY_CONVERT(INT, g.$sgBodyPartCol)),"
+        & $add "  $baseVal, $tolVal, $fixedVal, g.Sort, $aliasVal, GETDATE()"
+        & $add "FROM ' + @DwTwoPart + N'.$sgDw g"
+        & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = g.ProductReferenceID'
+        & $add "LEFT JOIN dbo.TchpBodyPart bp ON bp.BodyPartId = TRY_CONVERT(INT, g.$sgBodyPartCol)"
+        & $add "WHERE TRY_CONVERT(INT, g.$sgBodyPartCol) IS NOT NULL"
+        & $add '  AND NOT EXISTS ('
+        & $add '    SELECT 1 FROM dbo.TchpPomSpecLine pl'
+        & $add '    WHERE pl.StyleSpecId = ss.StyleSpecId'
+        & $add "      AND pl.BodyPartId = COALESCE(bp.BodyPartId, TRY_CONVERT(INT, g.$sgBodyPartCol))"
+        & $add '  );'
+        & $add ''';'
+        & $add 'EXEC sp_executesql @sql;'
+        & $add 'PRINT N''TchpPomSpecLine insert done.'';'
+        & $add ''
+
+        $unions = New-Object System.Collections.Generic.List[string]
+        foreach ($gc in $gradeSizeCols) {
+            $ord = [int](([regex]::Match((Get-DwColumnMeta $gc.DwColumn).Stem, '\d+')).Value)
+            if ($ord -le 0) { continue }
+            [void]$unions.Add(@"
+SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.$sgBodyPartCol) AS BodyPartRaw,
+  $ord AS SizeOrdinal, TRY_CONVERT(DECIMAL(10,3), g.$($gc.DwColumn)) AS DeltaVal
+FROM ' + @DwTwoPart + N'.$sgDw g
+WHERE TRY_CONVERT(DECIMAL(10,3), g.$($gc.DwColumn)) IS NOT NULL
+"@.Trim())
+        }
+        if ($unions.Count -gt 0) {
+            & $add '-- 3. TchpGradeValue'
+            & $add 'SET @sql = N'''
+            & $add ';WITH unpvt AS ('
+            & $add ($unions -join "`r`nUNION ALL`r`n")
+            & $add ')'
+            & $add 'INSERT INTO dbo.TchpGradeValue (PomSpecLineId, SizeRunSizeId, GradingDelta, AppCreatedDate)'
+            & $add 'SELECT pl.PomSpecLineId, sz.SizeRunSizeId, u.DeltaVal, GETDATE()'
+            & $add 'FROM unpvt u'
+            & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = u.ProductReferenceID'
+            & $add 'INNER JOIN dbo.TchpPomSpecLine pl ON pl.StyleSpecId = ss.StyleSpecId AND pl.BodyPartId = u.BodyPartRaw'
+            & $add 'INNER JOIN dbo.TchpSizeRunSize sz ON sz.SizeRunId = ss.SizeRunId AND ISNULL(sz.Sort, 0) = u.SizeOrdinal'
+            & $add 'WHERE NOT EXISTS ('
+            & $add '  SELECT 1 FROM dbo.TchpGradeValue gv'
+            & $add '  WHERE gv.PomSpecLineId = pl.PomSpecLineId AND gv.SizeRunSizeId = sz.SizeRunSizeId'
+            & $add ');'
+            & $add ''';'
+            & $add 'EXEC sp_executesql @sql;'
+            & $add 'PRINT N''TchpGradeValue insert done.'';'
+            & $add ''
+        }
+    }
+    else {
+        & $add 'PRINT N''WARN: PomSpecLine/GradeValue skipped — SpecGrading not resolved.'';'
+        & $add ''
+    }
+
+    if ($sfDw -and $sfBodyPartCol -and $sfRoundPairs.Count -gt 0) {
+        $fitUnions = New-Object System.Collections.Generic.List[string]
+        foreach ($rp in $sfRoundPairs) {
+            $sampleExpr = if ($rp.SampleCol) { "g.$($rp.SampleCol)" } else { 'NULL' }
+            $reviseExpr = if ($rp.ReviseCol) { "g.$($rp.ReviseCol)" } else { 'NULL' }
+            [void]$fitUnions.Add(@"
+SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.$sfBodyPartCol) AS BodyPartRaw,
+  $($rp.Round) AS RoundNumber,
+  TRY_CONVERT(DECIMAL(10,3), COALESCE($reviseExpr, $sampleExpr)) AS ActualValue
+FROM ' + @DwTwoPart + N'.$sfDw g
+WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE($reviseExpr, $sampleExpr)) IS NOT NULL
+"@.Trim())
+        }
+        $fitUnionSql = $fitUnions -join "`r`nUNION ALL`r`n"
+        & $add '-- 4. TchpFitRound + TchpFitMeasurement'
+        & $add 'SET @sql = N'''
+        & $add 'INSERT INTO dbo.TchpFitRound (StyleSpecId, RoundNumber, RoundType, RoundStatus, AppCreatedDate)'
+        & $add 'SELECT DISTINCT ss.StyleSpecId, r.RoundNumber, N''INTERNAL'', N''PENDING'', GETDATE()'
+        & $add 'FROM ('
+        & $add '  SELECT DISTINCT ProductReferenceID, RoundNumber FROM ('
+        & $add $fitUnionSql
+        & $add '  ) x'
+        & $add ') r'
+        & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = r.ProductReferenceID'
+        & $add 'WHERE NOT EXISTS ('
+        & $add '  SELECT 1 FROM dbo.TchpFitRound fr'
+        & $add '  WHERE fr.StyleSpecId = ss.StyleSpecId AND fr.RoundNumber = r.RoundNumber'
+        & $add ');'
+        & $add ''
+        & $add ';WITH meas AS ('
+        & $add $fitUnionSql
+        & $add ')'
+        & $add 'INSERT INTO dbo.TchpFitMeasurement (FitRoundId, PomSpecLineId, ActualValue, AppCreatedDate)'
+        & $add 'SELECT fr.FitRoundId, pl.PomSpecLineId, m.ActualValue, GETDATE()'
+        & $add 'FROM meas m'
+        & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.ProductReferenceId = m.ProductReferenceID'
+        & $add 'INNER JOIN dbo.TchpFitRound fr ON fr.StyleSpecId = ss.StyleSpecId AND fr.RoundNumber = m.RoundNumber'
+        & $add 'INNER JOIN dbo.TchpPomSpecLine pl ON pl.StyleSpecId = ss.StyleSpecId AND pl.BodyPartId = m.BodyPartRaw'
+        & $add 'WHERE NOT EXISTS ('
+        & $add '  SELECT 1 FROM dbo.TchpFitMeasurement fm'
+        & $add '  WHERE fm.FitRoundId = fr.FitRoundId AND fm.PomSpecLineId = pl.PomSpecLineId'
+        & $add ');'
+        & $add ''';'
+        & $add 'EXEC sp_executesql @sql;'
+        & $add 'PRINT N''TchpFitRound / TchpFitMeasurement insert done.'';'
+        & $add ''
+    }
+    else {
+        & $add 'PRINT N''WARN: FitRound/Measurement skipped — SpecFit not resolved.'';'
+        & $add ''
+    }
+
+    & $add 'PRINT N''TechPack Tchp import batch finished.'';'
+    & $add 'GO'
+
+    $path = Join-Path $outDir '3b_Tchp_ImportFromDW.sql'
+    Set-Content -Path $path -Value ($L -join "`r`n") -Encoding UTF8
+    return $path
+}
+
 $allFieldRows = New-Object System.Collections.Generic.List[object]
 $scopeAppTables = New-Object System.Collections.Generic.List[string]
 [void]$scopeAppTables.Add($config.rootTableSuffix)
@@ -864,6 +1208,7 @@ $ddlParts.Add(@"
 --   1. 1_PlmDw_Tables.sql          (this file)
 --   2. 2_PlmDw_FieldMapping.sql
 --   3. 3_PlmDw_ImportFromDW.sql
+--   3b. 3b_Tchp_ImportFromDW.sql   (when techPack config present — StyleSpec/Pom/Fit)
 --   4. 4_PlmDw_ImportBlueprint.json + Phase D Execute
 --   5. 5_PlmDw_ImportBomColorwayGrandchild.sql  (when BOM colorway grids detected)
 --   6. 6_PlmDw_CleanupBomColorwayStaging.sql
@@ -871,6 +1216,8 @@ $ddlParts.Add(@"
 --   @TablePrefix     table prefix, include trailing underscore (default Plm_)
 --   @RootTableSuffix root table name after prefix (default ReferenceBasicInfo)
 -- Source: plmDW Tab/Grid wide tables for user TabId set
+-- TechPack (optional techPack in dwTabImportConfig): SpecFit/SpecGrading → Tchp*;
+--   Size_Run/Base_Size/Measure_Unit → TchpStyleSpec only (L2 Link-to-Parent, no DB FK).
 -- =============================================================================
 SET ANSI_NULLS ON
 GO
@@ -937,7 +1284,9 @@ foreach ($tab in $config.tabs) {
         $fieldRows = Build-FieldRows $dwCols $tab.dwTable $tab.tabId $tab.appTable 'TabField' $null $null
     }
     elseif ($tab.mode -eq 'excludeSubItemsFromDwTable') {
-        $excludeIds = Get-SubItemIdSet $tab.excludeSubItemsFromDwTable
+        $excludeIds = [System.Collections.Generic.HashSet[int]]::new()
+        foreach ($id in (Get-SubItemIdSet $tab.excludeSubItemsFromDwTable)) { [void]$excludeIds.Add([int]$id) }
+        foreach ($extraId in (Get-AlsoExcludeSubItemIdSet $tab)) { [void]$excludeIds.Add([int]$extraId) }
         $filtered = @($dwCols | Where-Object {
             -not $TabSystemColumns.Contains($_.DwColumn) -and (
                 $null -eq (Get-DwColumnMeta $_.DwColumn).SubItemId -or
@@ -947,6 +1296,27 @@ foreach ($tab in $config.tabs) {
         $fieldRows = Build-FieldRows $filtered $tab.dwTable $tab.tabId $tab.appTable 'TabField' $null $null
     }
     else { throw "Unknown tab mode: $($tab.mode)" }
+
+    # Optional: pull shared SubItem columns from other DW tables onto this APP table (e.g. Fit Summary hub).
+    $existingDwColNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($r in $fieldRows) { if ($r.DwColumn) { [void]$existingDwColNames.Add([string]$r.DwColumn) } }
+    $mergedRows = Merge-FieldRowsFromDwSources $tab.appTable $tab.mergeSubItemsFrom $existingDwColNames
+    if ($mergedRows.Count -gt 0) {
+        $fieldRows = @($fieldRows) + @($mergedRows)
+        $fieldRows = Get-AppColumnNames $fieldRows
+    }
+
+    # TechPack S1: Size_Run / Base_Size / Measure_Unit live on TchpStyleSpec only — strip from Plm_* DDL/mapping.
+    $ownedCols = @()
+    if ($config.techPack -and $config.techPack.styleSpecOwnedColumns) {
+        $ownedCols = @($config.techPack.styleSpecOwnedColumns | ForEach-Object { [string]$_ })
+    }
+    if ($ownedCols.Count -gt 0) {
+        $fieldRows = @($fieldRows | Where-Object {
+            $col = [string]$_.AppColumn
+            -not ($ownedCols | Where-Object { $_ -eq $col })
+        })
+    }
 
     $tabUnitKind = Resolve-TabUnitKind $tab $childTabIds
     $ddlParts.Add((Build-CreateTableBlock $tab.appTable $fieldRows $tabUnitKind))
@@ -962,7 +1332,20 @@ foreach ($bg in $bomColorwayGrids) {
     $bomHostByAppTable[$bg.hostAppTable] = $bg
 }
 
+# SpecFit / SpecGrading are TechPack system-block sources (Tchp*), not Plm_* grid children.
+$systemBlockAppTables = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+if ($config.techPack -and $config.techPack.systemBlockGrids) {
+    foreach ($sb in @($config.techPack.systemBlockGrids)) {
+        if ($sb.appTable) { [void]$systemBlockAppTables.Add([string]$sb.appTable) }
+    }
+    Write-Host "  TechPack systemBlockGrids (no Plm_* DDL): $($systemBlockAppTables -join ', ')"
+}
+
 foreach ($grid in $config.grids) {
+    if ($systemBlockAppTables.Contains([string]$grid.appTable)) {
+        Write-Host "  Skip Plm_* grid DDL for TechPack system block: $($grid.appTable)"
+        continue
+    }
     [void]$scopeAppTables.Add($grid.appTable)
     $dwCols = Get-DwTableColumns $grid.dwTable
     $parentTabId = if ($grid.parentPlmTabId) { [int]$grid.parentPlmTabId } else { $null }
@@ -1265,6 +1648,11 @@ $importContent = $importContent -replace '(?m)^--   1\. PlmDw_Tables\.sql', '-- 
 $importContent = $importContent -replace '(?m)^--   2\. PlmDw_FieldMapping\.sql', '--   2. 2_PlmDw_FieldMapping.sql'
 $importContent = $importContent -replace '(?m)^--   3\. PlmDw_ImportFromDW\.sql', '--   3. 3_PlmDw_ImportFromDW.sql'
 Set-Content -Path $importPath -Value $importContent -Encoding UTF8
+
+$tchpImportPath = Generate-TchpImportSqlFile $config $outDir
+if ($tchpImportPath) {
+    Write-Host "Generated: $tchpImportPath"
+}
 
 if (-not $config.blueprint) {
     $config | Add-Member -NotePropertyName blueprint -NotePropertyValue ([ordered]@{

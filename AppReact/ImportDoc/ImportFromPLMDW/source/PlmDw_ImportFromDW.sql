@@ -29,6 +29,7 @@ DECLARE @RefCodeDwColumn   NVARCHAR(256);
 DECLARE @sql               NVARCHAR(MAX);
 DECLARE @InsertCols        NVARCHAR(MAX);
 DECLARE @SelectExprs       NVARCHAR(MAX);
+DECLARE @UpdateSet         NVARCHAR(MAX);
 DECLARE @RowCnt            INT;
 DECLARE @AppTableName      NVARCHAR(128);
 DECLARE @DwTableName       NVARCHAR(256);
@@ -149,8 +150,11 @@ END
 
 PRINT N'Import scope: ' + CAST(@RowCnt AS NVARCHAR(20)) + N' reference(s). Mode=' + @ImportMode;
 
+-- One target row per (AppTable, FieldKind, DwTable[, GridId]).
+-- Fit_Summary / mergeSubItemsFrom maps columns from several DW tab tables onto one APP table;
+-- collapsing to MIN(DwTableName) caused Invalid_Date_* from Fit_Summary to be SELECTed from Fit_1 DW.
 CREATE TABLE #Targets (
-    [AppTableName] NVARCHAR(128) NOT NULL PRIMARY KEY,
+    [AppTableName] NVARCHAR(128) NOT NULL,
     [FieldKind] NVARCHAR(16) NOT NULL,
     [DwTableName] NVARCHAR(256) NOT NULL,
     [GridIdFilter] INT NULL
@@ -162,14 +166,17 @@ SET @sql = N'
 INSERT INTO #Targets ([AppTableName], [FieldKind], [DwTableName], [GridIdFilter])
 SELECT
     m.[AppTableName],
-    CASE WHEN MAX(CASE WHEN m.[FieldKind] = N''GridColumn'' THEN 1 ELSE 0 END) = 1
-         THEN N''GridColumn'' ELSE N''TabField'' END,
-    MIN(m.[DwTableName]),
-    MAX(m.[PlmGridId])
+    m.[FieldKind],
+    m.[DwTableName],
+    CASE WHEN m.[FieldKind] = N''GridColumn'' THEN m.[PlmGridId] ELSE NULL END
 FROM dbo.' + QUOTENAME(@MappingTable) + N' AS m
 WHERE m.[FieldKind] IN (N''TabField'', N''GridColumn'')
   AND m.[AppTableName] IN (/*<<SCOPE_APP_TABLES>>*/)
-GROUP BY m.[AppTableName];';
+GROUP BY
+    m.[AppTableName],
+    m.[FieldKind],
+    m.[DwTableName],
+    CASE WHEN m.[FieldKind] = N''GridColumn'' THEN m.[PlmGridId] ELSE NULL END;';
 SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
 EXEC sp_executesql @sql;
 
@@ -188,9 +195,9 @@ BEGIN TRY
     BEGIN
         DECLARE @DelTables TABLE ([Ord] INT IDENTITY(1,1), [TableName] NVARCHAR(128));
         INSERT INTO @DelTables ([TableName])
-        SELECT [AppTableName] FROM #Targets WHERE [FieldKind] = N'GridColumn'
+        SELECT [AppTableName] FROM #Targets WHERE [FieldKind] = N'GridColumn' GROUP BY [AppTableName]
         UNION ALL
-        SELECT [AppTableName] FROM #Targets WHERE [FieldKind] = N'TabField';
+        SELECT [AppTableName] FROM #Targets WHERE [FieldKind] = N'TabField' GROUP BY [AppTableName];
 
         DECLARE @DelName NVARCHAR(128);
         DECLARE del_cur CURSOR LOCAL FAST_FORWARD FOR
@@ -239,7 +246,7 @@ BEGIN TRY
     DECLARE imp_cur CURSOR LOCAL FAST_FORWARD FOR
         SELECT [AppTableName],[FieldKind],[DwTableName],[GridIdFilter]
         FROM #Targets
-        ORDER BY CASE [FieldKind] WHEN N'TabField' THEN 1 ELSE 2 END, [AppTableName];
+        ORDER BY CASE [FieldKind] WHEN N'TabField' THEN 1 ELSE 2 END, [AppTableName], [DwTableName];
     OPEN imp_cur;
     FETCH NEXT FROM imp_cur INTO @AppTableName, @FieldKind, @DwTableName, @GridIdFilter;
     WHILE @@FETCH_STATUS = 0
@@ -251,6 +258,11 @@ BEGIN TRY
             CONTINUE;
         END
 
+        SET @InsertCols = NULL;
+        SET @SelectExprs = NULL;
+        SET @UpdateSet = NULL;
+
+        -- Only columns mapped from THIS DwTableName (multi-source APP tables e.g. Fit_Summary hub).
         SET @sql = N'
         SELECT @ic = STRING_AGG(CAST(QUOTENAME(m.[AppColumnName]) AS NVARCHAR(MAX)), N'','')
                 WITHIN GROUP (ORDER BY m.[AppColumnName]),
@@ -267,13 +279,35 @@ BEGIN TRY
                          THEN CONVERT(bit,1) ELSE CONVERT(bit,0) END''
                     ELSE N''dw.''+QUOTENAME(m.[DwColumnName])
                 END AS NVARCHAR(MAX)), N'','')
+                WITHIN GROUP (ORDER BY m.[AppColumnName]),
+            @us = STRING_AGG(CAST(
+                N''t.''+QUOTENAME(m.[AppColumnName])+N''=''+
+                CASE
+                    WHEN ty.[name] IN (N''decimal'',N''numeric'') THEN
+                        N''TRY_CAST(dw.''+QUOTENAME(m.[DwColumnName])+N'' AS ''+ty.[name]
+                        +N''(''+CAST(c.[precision] AS NVARCHAR(10))+N'',''+CAST(c.[scale] AS NVARCHAR(10))+N''))''
+                    WHEN ty.[name] IN (N''int'',N''bigint'',N''smallint'',N''datetime'',N''datetime2'',N''date'') THEN
+                        N''TRY_CAST(dw.''+QUOTENAME(m.[DwColumnName])+N'' AS ''+ty.[name]+N'')''
+                    WHEN ty.[name]=N''bit'' THEN
+                        N''CASE WHEN TRY_CAST(dw.''+QUOTENAME(m.[DwColumnName])+N'' AS int)=1
+                            OR TRY_CAST(dw.''+QUOTENAME(m.[DwColumnName])+N'' AS nvarchar(50)) IN (N''''1'''',N''''true'''',N''''Y'''')
+                         THEN CONVERT(bit,1) ELSE CONVERT(bit,0) END''
+                    ELSE N''dw.''+QUOTENAME(m.[DwColumnName])
+                END AS NVARCHAR(MAX)), N'','')
                 WITHIN GROUP (ORDER BY m.[AppColumnName])
         FROM dbo.' + QUOTENAME(@MappingTable) + N' m
         INNER JOIN sys.columns c ON c.object_id=OBJECT_ID(N''dbo.' + REPLACE(@AppTableName, N'''', N'''''') + N''') AND c.name=m.[AppColumnName]
         INNER JOIN sys.types ty ON ty.user_type_id=c.user_type_id
-        WHERE m.[AppTableName]=@app AND m.[FieldKind]=@kind;';
-        EXEC sp_executesql @sql, N'@app nvarchar(128),@kind nvarchar(16),@ic nvarchar(max) OUTPUT,@sc nvarchar(max) OUTPUT',
-            @app=@AppTableName,@kind=@FieldKind,@ic=@InsertCols OUTPUT,@sc=@SelectExprs OUTPUT;
+        WHERE m.[AppTableName]=@app AND m.[FieldKind]=@kind AND m.[DwTableName]=@dw
+          AND (
+                @kind <> N''GridColumn''
+             OR (@grid IS NULL AND m.[PlmGridId] IS NULL)
+             OR m.[PlmGridId]=@grid
+          );';
+        EXEC sp_executesql @sql,
+            N'@app nvarchar(128),@kind nvarchar(16),@dw nvarchar(256),@grid int,@ic nvarchar(max) OUTPUT,@sc nvarchar(max) OUTPUT,@us nvarchar(max) OUTPUT',
+            @app=@AppTableName,@kind=@FieldKind,@dw=@DwTableName,@grid=@GridIdFilter,
+            @ic=@InsertCols OUTPUT,@sc=@SelectExprs OUTPUT,@us=@UpdateSet OUTPUT;
 
         IF @InsertCols IS NULL OR @SelectExprs IS NULL
         BEGIN
@@ -283,13 +317,22 @@ BEGIN TRY
 
         IF @FieldKind = N'TabField'
         BEGIN
-            SET @Step = N'INSERT Tab';
-            SET @sql = N'INSERT INTO dbo.' + QUOTENAME(@AppTableName) + N' ([ReferenceId],'+@InsertCols+N')
-            SELECT dw.[ProductReferenceID],'+@SelectExprs+N'
+            -- Multi-DW → one APP table: ensure row, then UPDATE columns from this DW source.
+            SET @Step = N'UPSERT Tab';
+            SET @sql = N'
+            INSERT INTO dbo.' + QUOTENAME(@AppTableName) + N' ([ReferenceId])
+            SELECT DISTINCT dw.[ProductReferenceID]
             FROM ' + QUOTENAME(@DwDatabase) + N'.dbo.' + QUOTENAME(@DwTableName) + N' dw
-            INNER JOIN #RefFilter rf ON rf.[ReferenceId]=dw.[ProductReferenceID]'
-            + CASE WHEN @ImportMode=N'APPEND' THEN N'
-            WHERE NOT EXISTS (SELECT 1 FROM dbo.'+QUOTENAME(@AppTableName)+N' t WHERE t.[ReferenceId]=dw.[ProductReferenceID])' ELSE N'' END + N';';
+            INNER JOIN #RefFilter rf ON rf.[ReferenceId]=dw.[ProductReferenceID]
+            WHERE NOT EXISTS (
+                SELECT 1 FROM dbo.' + QUOTENAME(@AppTableName) + N' t
+                WHERE t.[ReferenceId]=dw.[ProductReferenceID]);
+
+            UPDATE t SET ' + @UpdateSet + N'
+            FROM dbo.' + QUOTENAME(@AppTableName) + N' t
+            INNER JOIN ' + QUOTENAME(@DwDatabase) + N'.dbo.' + QUOTENAME(@DwTableName) + N' dw
+                ON dw.[ProductReferenceID]=t.[ReferenceId]
+            INNER JOIN #RefFilter rf ON rf.[ReferenceId]=t.[ReferenceId];';
         END
         ELSE
         BEGIN
@@ -305,7 +348,7 @@ BEGIN TRY
         END
 
         IF @DryRun = 0 EXEC sp_executesql @sql;
-        INSERT INTO #ImportLog VALUES (@Step, @AppTableName, CASE WHEN @DryRun=0 THEN @@ROWCOUNT ELSE 0 END);
+        INSERT INTO #ImportLog VALUES (@Step, @AppTableName + N' <= ' + @DwTableName, CASE WHEN @DryRun=0 THEN @@ROWCOUNT ELSE 0 END);
         FETCH NEXT FROM imp_cur INTO @AppTableName, @FieldKind, @DwTableName, @GridIdFilter;
     END
     CLOSE imp_cur; DEALLOCATE imp_cur;
