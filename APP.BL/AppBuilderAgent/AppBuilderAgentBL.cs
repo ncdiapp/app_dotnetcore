@@ -49,6 +49,17 @@ namespace App.BL.AppBuilderAgent
             }
         }
 
+        private static int MaxOutputTokens
+        {
+            get
+            {
+                var raw = AppConfig.Get("Agent.MaxOutputTokens");
+                if (int.TryParse(raw, out int v))
+                    return Math.Max(1024, Math.Min(32768, v));
+                return 8192;
+            }
+        }
+
         // ─────────────────────────────────────────────────────────────────────
         // Internal descriptor built from reflection
         // ─────────────────────────────────────────────────────────────────────
@@ -513,8 +524,11 @@ Only call search_memory when you need historical context — skip it for entirel
                     {
                         messages.Add((JObject)llmResponse.AssistantMessageRaw);
 
-                        // Run independent tool calls concurrently; results collected in LLM call order.
-                        var toolTasks = llmResponse.ToolCalls.Select(async toolCall =>
+                        // Gate tools (propose_plan, propose_schema, confirm_drop_tables) block on a
+                        // TaskCompletionSource awaiting user approval. Running them concurrently with
+                        // DB-mutating tools would let state changes happen before the user approves.
+                        // Serialize the entire batch whenever any gate tool appears in the response.
+                        async Task<(AgentToolCallDto toolCall, string toolResult, bool success)> ExecuteOneTool(AgentToolCallDto toolCall)
                         {
                             await SafeCallback(callbacks.OnStep, new AgentStepEvent
                             {
@@ -548,9 +562,23 @@ Only call search_memory when you need historical context — skip it for entirel
                             });
 
                             return (toolCall, toolResult, success);
-                        }).ToArray();
+                        }
 
-                        var outputs     = await Task.WhenAll(toolTasks);
+                        var hasGateTool = llmResponse.ToolCalls.Any(t =>
+                            GateToolNames.Any(g => string.Equals(g, t.Name, StringComparison.OrdinalIgnoreCase)));
+
+                        IEnumerable<(AgentToolCallDto toolCall, string toolResult, bool success)> outputs;
+                        if (hasGateTool)
+                        {
+                            var serial = new List<(AgentToolCallDto, string, bool)>();
+                            foreach (var tc in llmResponse.ToolCalls)
+                                serial.Add(await ExecuteOneTool(tc));
+                            outputs = serial;
+                        }
+                        else
+                        {
+                            outputs = await Task.WhenAll(llmResponse.ToolCalls.Select(ExecuteOneTool));
+                        }
                         var toolResults = new List<object>();
 
                         foreach (var (toolCall, toolResult, success) in outputs)
@@ -849,7 +877,7 @@ Only call search_memory when you need historical context — skip it for entirel
             var body = new JObject
             {
                 ["model"]      = model,
-                ["max_tokens"] = 8192,
+                ["max_tokens"] = MaxOutputTokens,
                 ["system"]     = systemPrompt,
                 ["messages"]   = JArray.FromObject(messages),
                 ["tools"]      = JArray.FromObject(tools)
@@ -918,7 +946,7 @@ Only call search_memory when you need historical context — skip it for entirel
                 ["messages"]    = allMsgs,
                 ["tools"]       = JArray.FromObject(tools),
                 ["tool_choice"] = "auto",
-                ["max_tokens"]  = 8192
+                ["max_tokens"]  = MaxOutputTokens
             };
 
             var req = new HttpRequestMessage(HttpMethod.Post, "https://api.openai.com/v1/chat/completions");
@@ -997,6 +1025,7 @@ Only call search_memory when you need historical context — skip it for entirel
             var textParts = new List<string>();
             var toolCalls = new List<AgentToolCallDto>();
 
+            int geminiCallIndex = 0;
             foreach (var part in parts)
             {
                 var text = part["text"]?.ToString();
@@ -1006,7 +1035,9 @@ Only call search_memory when you need historical context — skip it for entirel
                 if (fc != null)
                     toolCalls.Add(new AgentToolCallDto
                     {
-                        Id        = fc["name"]?.ToString(), // Gemini has no call ID; use name
+                        // Gemini has no call ID; append index so two calls to the same tool get distinct IDs.
+                        // Name stays unmodified — Gemini routes functionResponse by name, not by this ID.
+                        Id        = fc["name"]?.ToString() + "-" + geminiCallIndex++,
                         Name      = fc["name"]?.ToString(),
                         InputJson = fc["args"]?.ToString(Formatting.None) ?? "{}"
                     });
@@ -1138,6 +1169,7 @@ Only call search_memory when you need historical context — skip it for entirel
                 case "create_application":             return "Building application (schema + tables + forms)…";
                 case "create_search_view":             return "Creating search / list view…";
                 case "add_search_to_menu":             return "Adding search to navigation menu…";
+                case "add_transaction_to_menu":        return "Adding transaction to navigation menu…";
                 case "create_transaction_from_table":  return "Creating transaction from table…";
                 case "create_hierarchy_from_tables":   return "Building hierarchy transaction from existing tables…";
                 case "get_table_schema":               return "Inspecting table schema…";
@@ -1284,26 +1316,51 @@ Only call search_memory when you need historical context — skip it for entirel
         }
 
         /// <summary>
-        /// Returns true if any message in group [startIdx, startIdx+groupSize)
-        /// references a gate tool by name — the whole group must be kept intact.
-        /// Checking all messages in the group catches both the tool_use call (assistant)
-        /// and the Gemini function-response echo (user), preventing split-pair drops.
+        /// Returns true if any message in group [startIdx, startIdx+groupSize) contains an actual
+        /// gate tool invocation or response. Parses the JSON structure (tool_use blocks, tool_calls
+        /// arrays, functionCall/functionResponse parts) rather than raw string Contains, which would
+        /// false-positive on text that merely mentions a gate tool name in conversation.
         /// </summary>
         private static bool IsGateGroup(List<JObject> messages, int startIdx, int groupSize)
         {
             int end = Math.Min(startIdx + groupSize, messages.Count);
             for (int k = startIdx; k < end; k++)
             {
-                var msgStr = messages[k].ToString(Newtonsoft.Json.Formatting.None);
-                foreach (var name in GateToolNames)
-                    if (msgStr.Contains($"\"{name}\""))
-                        return true;
+                var msg = messages[k];
+
+                // Anthropic / Gemini: typed content/parts blocks
+                var contentArr = msg["content"] as JArray ?? msg["parts"] as JArray;
+                if (contentArr != null)
+                {
+                    foreach (var block in contentArr)
+                    {
+                        string n = null;
+                        if (block["type"]?.ToString() == "tool_use")
+                            n = block["name"]?.ToString();                              // Anthropic tool_use
+                        n = n
+                            ?? (block["functionCall"]    as JObject)?["name"]?.ToString()  // Gemini call
+                            ?? (block["functionResponse"] as JObject)?["name"]?.ToString(); // Gemini response
+                        if (n != null && GateToolNames.Any(g => string.Equals(g, n, StringComparison.OrdinalIgnoreCase)))
+                            return true;
+                    }
+                }
+
+                // OpenAI: tool_calls array on the assistant message
+                var toolCallsArr = msg["tool_calls"] as JArray;
+                if (toolCallsArr != null)
+                    foreach (var tc in toolCallsArr)
+                    {
+                        var n = tc["function"]?["name"]?.ToString();
+                        if (n != null && GateToolNames.Any(g => string.Equals(g, n, StringComparison.OrdinalIgnoreCase)))
+                            return true;
+                    }
             }
             return false;
         }
 
         /// <summary>
         /// Returns true if any message in the group references an ephemeral (re-runnable) tool.
+        /// Uses the same structural parsing as IsGateGroup to avoid text false-positives.
         /// These groups are dropped first during pruning — their results are cheap to re-fetch.
         /// </summary>
         private static bool IsEphemeralGroup(List<JObject> messages, int startIdx, int groupSize)
@@ -1311,10 +1368,32 @@ Only call search_memory when you need historical context — skip it for entirel
             int end = Math.Min(startIdx + groupSize, messages.Count);
             for (int k = startIdx; k < end; k++)
             {
-                var msgStr = messages[k].ToString(Newtonsoft.Json.Formatting.None);
-                foreach (var name in EphemeralToolNames)
-                    if (msgStr.Contains($"\"{name}\""))
-                        return true;
+                var msg = messages[k];
+
+                var contentArr = msg["content"] as JArray ?? msg["parts"] as JArray;
+                if (contentArr != null)
+                {
+                    foreach (var block in contentArr)
+                    {
+                        string n = null;
+                        if (block["type"]?.ToString() == "tool_use")
+                            n = block["name"]?.ToString();
+                        n = n
+                            ?? (block["functionCall"]    as JObject)?["name"]?.ToString()
+                            ?? (block["functionResponse"] as JObject)?["name"]?.ToString();
+                        if (n != null && EphemeralToolNames.Contains(n))
+                            return true;
+                    }
+                }
+
+                var toolCallsArr = msg["tool_calls"] as JArray;
+                if (toolCallsArr != null)
+                    foreach (var tc in toolCallsArr)
+                    {
+                        var n = tc["function"]?["name"]?.ToString();
+                        if (n != null && EphemeralToolNames.Contains(n))
+                            return true;
+                    }
             }
             return false;
         }
@@ -1370,8 +1449,17 @@ Only call search_memory when you need historical context — skip it for entirel
             if (result == null) return null;
             int max = MaxToolResultChars;
             if (result.Length <= max) return result;
-            int kept = max;
+            int kept    = max;
             int dropped = result.Length - kept;
+            var trimmed = result.TrimStart();
+            // When the result is JSON, a raw substring produces broken JSON.
+            // Wrap the truncation in a valid envelope so the LLM can still parse it.
+            if (trimmed.StartsWith("{", StringComparison.Ordinal) || trimmed.StartsWith("[", StringComparison.Ordinal))
+                return JsonConvert.SerializeObject(new
+                {
+                    note    = $"Result truncated ({dropped} chars omitted). Ask for specific details if needed.",
+                    preview = result.Substring(0, kept)
+                });
             return result.Substring(0, kept)
                 + $"\n[... {dropped} chars truncated — ask me to fetch specific details if needed ...]";
         }
