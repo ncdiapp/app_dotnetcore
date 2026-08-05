@@ -45,8 +45,7 @@ public sealed class PluginEntry : IAppPlugin
 
         GradeRuleService.ApplyRuleSetToSpec(connectionString, ruleSetId, styleSpecId);
 
-        formData.DictOneToOneFields["ruleSetId"] = ruleSetId;
-        formData.DictOneToOneFields["StyleSpecId"] = styleSpecId;
+        
         return new OperationCallResult<AppMasterDetailDto> { Object = formData };
     }
 
