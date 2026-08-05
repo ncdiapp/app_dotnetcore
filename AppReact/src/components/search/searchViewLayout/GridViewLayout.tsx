@@ -606,6 +606,7 @@ const GridViewLayoutInner: React.FC<GridViewLayoutProps> = ({
         openViewDto,
         viewDataList,
         dictDefaults,
+        dataModel?.searchid ?? dataModel?.searchDto?.Id ?? null,
       );
 
       cacheFormGroupSession(dispatch, sessionKey, sessionData);

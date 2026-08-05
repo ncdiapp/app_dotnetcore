@@ -12,6 +12,7 @@ import { SqlStatementSection } from './CommandEditorPart/SqlStatementSection';
 import { NoteSection } from './CommandEditorPart/NoteSection';
 import { IntegrationConfigSection } from './CommandEditorPart/IntegrationConfigSection';
 import { PluginWebApiCallSection } from './CommandEditorPart/PluginWebApiCallSection';
+import { ExternalMethodMasterDetailSection } from './CommandEditorPart/ExternalMethodMasterDetailSection';
 import { CallApiOperationSection } from './CommandEditorPart/CallApiOperationSection';
 import { OperationFileAndImportSection } from './CommandEditorPart/OperationFileAndImportSection';
 import { ExecuteDataTransferSection } from './CommandEditorPart/ExecuteDataTransferSection';
@@ -248,6 +249,17 @@ export function CommandEditor(props: {
                 onToggle={toggleSection}
               >
                 <PluginWebApiCallSection action={currentEditAction} onMarkChange={onMarkChange} />
+              </CollapsibleSection>
+            ) : null}
+
+            {Number(currentEditAction.ActionType) === 38 ? (
+              <CollapsibleSection
+                sectionId="externalMethodMasterDetail"
+                title="External Method MasterDetail"
+                collapsed={!!collapsedBySectionId['externalMethodMasterDetail']}
+                onToggle={toggleSection}
+              >
+                <ExternalMethodMasterDetailSection action={currentEditAction} onMarkChange={onMarkChange} />
               </CollapsibleSection>
             ) : null}
 

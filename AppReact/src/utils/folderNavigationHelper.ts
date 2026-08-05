@@ -88,6 +88,7 @@ export function buildFolderNavigationFormGroupCreatePayload(
   viewDto: any,
   folderId: number | string,
   searchResultRowList: any[] = [],
+  dataModelTemplateSearchId?: number | string | null,
 ) {
   const seedTarget = resolveFolderNavigationCreateLinkTarget(viewDto);
   if (!seedTarget) return null;
@@ -112,6 +113,7 @@ export function buildFolderNavigationFormGroupCreatePayload(
     viewDto,
     searchResultRowList,
     dictDefaults,
+    dataModelTemplateSearchId,
   );
 
   return {

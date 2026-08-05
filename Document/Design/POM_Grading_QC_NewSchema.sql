@@ -26,6 +26,10 @@
 --   TchpSizeRunDimension      Global mapping: size run size → dimension code
 --   TchpSizeSystemMapping     Multi-region size equivalence (US/EU/UK/JP)
 -- ============================================================
+-- Required for TchpQcResult persisted computed columns (run with -I in sqlcmd or SSMS defaults).
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
 
 -- ── TchpSizeRun ─────────────────────────────────────────────
 -- Named size range (e.g. SCHOOL GIRLS TOPS, WOMEN'S MISSES).

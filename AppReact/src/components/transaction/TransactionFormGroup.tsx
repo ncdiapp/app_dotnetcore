@@ -21,6 +21,7 @@ import {
   preferFormGroupMainItemLinkTarget,
   cacheFormGroupSession,
   repairFormGroupSession,
+  resolveDataModelTemplateSearchId,
   resolveFormGroupSession,
   viewHasTemplateTypedFormGroupItems,
   type TransactionFormGroupSessionData,
@@ -110,6 +111,7 @@ const TransactionFormGroup: React.FC = () => {
         selecedDataRow: param2Obj.selecedDataRow,
         linkTargetDto: param2Obj.linkTargetDto,
         searchResultRowList: param2Obj.searchResultRowList || [],
+        dataModelTemplateSearchId: param2Obj.dataModelTemplateSearchId ?? null,
       };
     }
     if (data) {
@@ -276,6 +278,10 @@ const TransactionFormGroup: React.FC = () => {
         isHeader,
         openFrom: param2Obj.openFrom ?? null,
         headerVisibility,
+        dataModelTemplateSearchId: resolveDataModelTemplateSearchId(
+          sessionData?.viewDto,
+          sessionData?.dataModelTemplateSearchId ?? param2Obj.dataModelTemplateSearchId ?? null,
+        ),
       });
       if (!built) return null;
 
@@ -288,7 +294,7 @@ const TransactionFormGroup: React.FC = () => {
         label: linkTarget.display || linkTarget.NavigationActionName || '',
       };
     },
-    [param2Obj.openFrom],
+    [param2Obj.dataModelTemplateSearchId, param2Obj.openFrom, sessionData?.dataModelTemplateSearchId, sessionData?.viewDto],
   );
 
   const buildSearchEmbedded = useCallback(

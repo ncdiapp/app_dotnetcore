@@ -125,6 +125,7 @@ export function useSearchViewRowLinkExecution(viewDto: any, viewDataList: any[] 
           effectiveViewDto,
           viewDataList,
           dictDefaults,
+          dataModel?.searchid ?? dataModel?.searchDto?.Id ?? null,
         );
         cacheFormGroupSession(dispatch, sessionKey, sessionData);
         const activeTab = getCurrentActiveTab();

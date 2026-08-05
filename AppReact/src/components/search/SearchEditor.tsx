@@ -178,7 +178,7 @@ const SearchEditor: React.FC<SearchEditorProps> = ({ ignoreRouteParam = false, s
   const [apiMenuOpen, setApiMenuOpen] = useState(false);
   const apiMenuRef = useRef<HTMLDivElement | null>(null);
   /** Sub-tabs when dataset is set: Filters vs Report Views (full-height each). */
-  const [editorSubTab, setEditorSubTab] = useState<'filters' | 'views'>('views');
+  const [editorSubTab, setEditorSubTab] = useState<'filters' | 'views'>('filters');
   /** Views list: which row's action menu is open (chevron). */
   const [viewRowMenuOpenId, setViewRowMenuOpenId] = useState<number | null>(null);
   const viewRowMenuWrapRef = useRef<HTMLDivElement | null>(null);

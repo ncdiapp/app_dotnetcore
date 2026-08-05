@@ -444,7 +444,12 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
     const folderId = currentFolderIdRef.current ?? currentFolderId;
     if (folderId == null || !currentViewDto) return;
     if (isTemplateMode) {
-      const payload = buildFolderNavigationFormGroupCreatePayload(currentViewDto, folderId, viewDataList);
+      const payload = buildFolderNavigationFormGroupCreatePayload(
+        currentViewDto,
+        folderId,
+        viewDataList,
+        runtimeContext?.TemplateSearchId ?? null,
+      );
       if (!payload) {
         window.alert('No Create link target configured on template view.');
         return;
@@ -477,6 +482,8 @@ const TransactionFolderNavigation: React.FC<TransactionFolderNavigationProps> = 
         row,
         currentViewDto,
         viewDataList,
+        {},
+        runtimeContext?.TemplateSearchId ?? null,
       );
       cacheFormGroupSession(dispatch, sessionKey, sessionData);
       addTabAndNavigate('TransactionFormGroup', tabTitle, {

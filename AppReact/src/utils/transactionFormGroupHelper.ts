@@ -67,6 +67,8 @@ export type TransactionFormGroupSessionData = {
   selecedDataRow: any;
   linkTargetDto: any;
   searchResultRowList: any[];
+  /** AppSearch Id of the Data Model Template (TransactionGroupEditor). */
+  dataModelTemplateSearchId?: number | null;
 };
 
 export type TransactionFormGroupOpenParam2 = {
@@ -77,12 +79,30 @@ export type TransactionFormGroupOpenParam2 = {
   tabTitle?: string;
   formGroupSessionKey?: string;
   openFrom?: string | null;
+  /** AppSearch Id of the Data Model Template (TransactionGroupEditor). */
+  dataModelTemplateSearchId?: number | null;
   /** Inline fallback when session cache is unavailable (e.g. page refresh). */
   viewDto?: any;
   linkTargetDto?: any;
   selecedDataRow?: any;
   searchResultRowList?: any[];
 };
+
+/** Resolve Data Model Template Search Id from explicit value or viewDto.SearchId. */
+export function resolveDataModelTemplateSearchId(
+  viewDto: any,
+  explicitId?: number | string | null,
+): number | null {
+  const fromExplicit = Number(explicitId);
+  if (explicitId != null && explicitId !== '' && Number.isFinite(fromExplicit) && fromExplicit > 0) {
+    return fromExplicit;
+  }
+  const fromView = Number(viewDto?.SearchId);
+  if (viewDto?.SearchId != null && viewDto.SearchId !== '' && Number.isFinite(fromView) && fromView > 0) {
+    return fromView;
+  }
+  return null;
+}
 
 export function persistFormGroupSession(sessionKey: string, sessionData: TransactionFormGroupSessionData): void {
   if (!sessionKey) return;
@@ -127,7 +147,7 @@ export function repairFormGroupSession(
   session: TransactionFormGroupSessionData,
   param2: TransactionFormGroupOpenParam2,
 ): TransactionFormGroupSessionData {
-  let { viewDto, selecedDataRow, linkTargetDto, searchResultRowList } = session;
+  let { viewDto, selecedDataRow, linkTargetDto, searchResultRowList, dataModelTemplateSearchId } = session;
 
   if (!linkTargetDto && param2.linkTargetId != null && Array.isArray(viewDto?.AppFormLinkTargetList)) {
     linkTargetDto =
@@ -143,7 +163,16 @@ export function repairFormGroupSession(
       }) ?? selecedDataRow;
   }
 
-  return { viewDto, selecedDataRow, linkTargetDto, searchResultRowList: searchResultRowList || [] };
+  const resolvedTemplateSearchId =
+    resolveDataModelTemplateSearchId(viewDto, dataModelTemplateSearchId ?? param2.dataModelTemplateSearchId);
+
+  return {
+    viewDto,
+    selecedDataRow,
+    linkTargetDto,
+    searchResultRowList: searchResultRowList || [],
+    dataModelTemplateSearchId: resolvedTemplateSearchId,
+  };
 }
 
 export function normalizeLinkTargetActionType(value: unknown): number | null {
@@ -594,6 +623,7 @@ export function buildFormGroupOpenPayload(
   viewDto: any,
   searchResultRowList: any[] = [],
   dictLinkTargetParameterDefaultValue: Record<string | number, unknown> = {},
+  dataModelTemplateSearchId?: number | string | null,
 ): { tabTitle: string; sessionKey: string; param2: TransactionFormGroupOpenParam2; sessionData: TransactionFormGroupSessionData } {
   const { targetPkValue } = resolveLinkTargetTargetPkValue(
     linkTarget,
@@ -602,12 +632,18 @@ export function buildFormGroupOpenPayload(
   );
   const tabTitle = buildFormGroupTabTitle(linkTarget, dataItem, targetPkValue);
   const sessionKey = `tfg_${linkTarget.Id}_${targetPkValue || dataItem?.Id || ''}`;
+  const templateSearchId = resolveDataModelTemplateSearchId(viewDto, dataModelTemplateSearchId);
+  const viewWithSearchId =
+    templateSearchId != null && viewDto && viewDto.SearchId == null
+      ? { ...viewDto, SearchId: templateSearchId }
+      : viewDto;
 
   const sessionData: TransactionFormGroupSessionData = {
-    viewDto,
+    viewDto: viewWithSearchId,
     selecedDataRow: dataItem,
     linkTargetDto: linkTarget,
     searchResultRowList: searchResultRowList || [],
+    dataModelTemplateSearchId: templateSearchId,
   };
 
   const param2: TransactionFormGroupOpenParam2 = {
@@ -617,6 +653,7 @@ export function buildFormGroupOpenPayload(
     targetPkValue: targetPkValue ?? null,
     tabTitle,
     formGroupSessionKey: sessionKey,
+    dataModelTemplateSearchId: templateSearchId,
   };
 
   return { tabTitle, sessionKey, param2, sessionData };
@@ -625,7 +662,12 @@ export function buildFormGroupOpenPayload(
 export function buildEmbeddedFormParam2(
   linkTarget: any,
   row: any,
-  options: { isHeader: boolean; openFrom?: string | null; headerVisibility?: number | null },
+  options: {
+    isHeader: boolean;
+    openFrom?: string | null;
+    headerVisibility?: number | null;
+    dataModelTemplateSearchId?: number | null;
+  },
 ): {
   transactionId: number | null;
   rootPrimaryKeyValue: string | null;
@@ -648,6 +690,7 @@ export function buildEmbeddedFormParam2(
 
   const transGroupId = linkTarget.LinkTargetTransactionGroupId ?? null;
   const label = linkTarget.display || linkTarget.NavigationActionName || 'Template Header';
+  const templateSearchId = resolveDataModelTemplateSearchId(null, options.dataModelTemplateSearchId);
 
   const param2: Record<string, unknown> = {
     linkTargetValueMapping,
@@ -656,6 +699,9 @@ export function buildEmbeddedFormParam2(
     transGroupId,
     LinkTargetTransactionGroupId: transGroupId,
     isEmbeddedByOtherPage: true,
+    /** True when hosted inside TransactionFormGroup (Data Model Template / Business Template runtime). */
+    isTransactionFormGroup: true,
+    dataModelTemplateSearchId: templateSearchId,
     isTemplateHeader: options.isHeader,
     TemplateHeaderName: label,
     selecedDataRow: row,

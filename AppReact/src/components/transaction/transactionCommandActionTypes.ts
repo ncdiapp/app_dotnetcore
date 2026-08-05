@@ -10,6 +10,7 @@ export type TransactionCommandActionTypeOption = { Id: number; Display: string }
 
 /** transactionCommandActionEditorCtrl.js — `masterDetailCommandActionTypeList` (Master–Detail transactions) */
 export const ANGULAR_MASTER_DETAIL_COMMAND_ACTION_TYPE_LIST: TransactionCommandActionTypeOption[] = [
+  { Id: 38, Display: 'External Method MasterDetail' },
   { Id: 40, Display: 'Call Plugin Web Api' },
   { Id: 42, Display: 'Execute SQL Statement' },
   { Id: 43, Display: 'Execute Data Transfer' },
@@ -132,6 +133,7 @@ export const WORKFLOW_AUTOMATION_COMMAND_ACTION_TYPE_OPTIONS_SORTED = sortComman
  * Embedded command editor inside Workflow Automation Editor right panel.
  */
 export const ANGULAR_WORKFLOW_EMBEDDED_COMMAND_ACTION_TYPE_LIST: TransactionCommandActionTypeOption[] = [
+  { Id: 38, Display: 'External Method MasterDetail' },
   { Id: 40, Display: 'Call Plugin Web Api' },
   { Id: 42, Display: 'Execute SQL Statement' },
   { Id: 43, Display: 'Execute Data Transfer' },

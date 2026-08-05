@@ -273,6 +273,7 @@ export const CardViewLayout: React.FC<CardViewLayoutProps> = ({ viewDto, viewDat
         viewDto,
         viewDataList,
         dictDefaults,
+        dataModel?.searchid ?? dataModel?.searchDto?.Id ?? null,
       );
       cacheFormGroupSession(dispatch, sessionKey, sessionData);
       const activeTab = getCurrentActiveTab();

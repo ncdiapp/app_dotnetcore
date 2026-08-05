@@ -9,6 +9,7 @@ import { setIsBusy, setIsNotBusy } from '../../../redux/features/ui/feedback/bus
 import { appTransactionService } from '../../../webapi/apptransactionsvc';
 import { buildRoutePathFromParamObj, getReactPathForRouteCode } from '../../../helper/navigationHelper';
 import { useErrorMessage } from '../../../redux/hooks/useErrorMessage';
+import { useTabNavigation } from '../../../redux/hooks/useTabNavigation';
 import ApplicationFormBuilder from '../../transaction/ApplicationFormBuilder';
 import { isAdminUserFromContext, isEnableConfigurationModeForUser } from '../../../helper/adminPermissionHelper';
 import AppSearch, { type AppSearchHandle } from '../../search/AppSearch';
@@ -154,6 +155,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { showError } = useErrorMessage();
+  const { addTabAndNavigate } = useTabNavigation();
   const isMobilePopup = layoutVariant === 'mobilePopup';
   const [configMenuOpen, setConfigMenuOpen] = useState(false);
   const [reportMenuOpen, setReportMenuOpen] = useState(false);
@@ -263,6 +265,14 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
     transactionDto?.BusinessScopeId != null &&
     transactionScopeEnum?.WorkflowAutomation != null &&
     transactionDto.BusinessScopeId === transactionScopeEnum.WorkflowAutomation;
+
+  // Hosted inside TransactionFormGroup (Data Model Template / Business Template runtime).
+  const isTransactionFormGroup = Boolean(controllerModel?.param2Obj?.isTransactionFormGroup);
+  const dataModelTemplateSearchId = (() => {
+    const raw = controllerModel?.param2Obj?.dataModelTemplateSearchId;
+    const n = Number(raw);
+    return raw != null && raw !== '' && Number.isFinite(n) && n > 0 ? n : null;
+  })();
   
   // Check if read-only
   const isReadOnly = transactionDto?.IsReadOnly === true;
@@ -1131,6 +1141,17 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
                 </button>
               ) : (
                 <>
+                  {isTransactionFormGroup && (
+                    <button
+                      type="button"
+                      className={`w-full min-w-0 px-3 py-2 text-left text-sm whitespace-nowrap ${theme.contextMenu}`}
+                      onClick={() => {
+                        void openDataModelTemplateEditor();
+                      }}
+                    >
+                      Edit Data Model Template
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={`w-full min-w-0 px-3 py-2 text-left text-sm whitespace-nowrap ${theme.contextMenu}`}
@@ -1291,6 +1312,24 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
     },
     [controllerModel?.transactionId, transactionDto?.TransactionOrganizedType, dispatch, showError]
   );
+
+  /** Open Data Model Template Editor (TransactionGroupEditor) for the hosting template search. */
+  const openDataModelTemplateEditor = useCallback(() => {
+    setConfigMenuOpen(false);
+    if (dataModelTemplateSearchId == null) {
+      showError(
+        'Data Model Template id is unavailable. Re-open this record from the Data Model Template search, then try again.',
+      );
+      return;
+    }
+    const label = transactionName || `Template ${dataModelTemplateSearchId}`;
+    addTabAndNavigate(
+      'transaction-group-editor',
+      `Data Model Template: ${label}`,
+      { id: dataModelTemplateSearchId },
+      true,
+    );
+  }, [addTabAndNavigate, dataModelTemplateSearchId, showError, transactionName]);
 
   /** Angular formMasterDetailCtrl.openWorkflowEditor — popup WorkflowAutomationEditor, then autoReopenCurrentFormPopup on close. */
   const closeWorkflowEditorPopup = useCallback(() => {
