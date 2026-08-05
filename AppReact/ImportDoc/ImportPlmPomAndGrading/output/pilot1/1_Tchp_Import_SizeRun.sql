@@ -1,8 +1,9 @@
 -- =============================================================================
--- 1_Tchp_Import_SizeRun.sql  | RunId: pilot1 | Decisions: S-A
+-- 1_Tchp_Import_SizeRun.sql  | RunId: pilot1 | Decisions: S-A, D6
 -- Connect to: TenantDB_PLM27
 -- Source: SourceERP (pdmEntity DataSourceFrom=2)
 -- Filter: tblSizeRun.isVisibleInPLM = 1; rotates under those runs only
+-- After MERGE: remount AppEntity SizeRun/SizeRunDetail → Tchp*; delete Tchp* entities
 -- =============================================================================
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
@@ -79,6 +80,95 @@ EXEC sp_executesql @sql, N'@Now datetime', @Now = @Now;
 
 DECLARE @n2 int = (SELECT COUNT(*) FROM dbo.TchpSizeRunSize);
 PRINT 'TchpSizeRunSize rows: ' + CAST(@n2 AS nvarchar(20));
+
+-- =============================================================================
+-- AppEntityInfo: repoint legacy SizeRun / SizeRunDetail to Tchp* tables.
+-- Do NOT create EntityCode TchpSizeRun / TchpSizeRunSize.
+-- Leave ALLSIZES / Sizes / SizeBreakDown on ERP unchanged.
+-- =============================================================================
+DECLARE @TenantDsId int =
+(
+    SELECT TOP (1) e.DataSourceFrom
+    FROM dbo.AppEntityInfo AS e
+    WHERE e.EntityCode IN (N'TchpSizeRun', N'TchpSizeRunSize')
+      AND e.DataSourceFrom IS NOT NULL
+    ORDER BY CASE e.EntityCode WHEN N'TchpSizeRun' THEN 0 ELSE 1 END
+);
+
+IF @TenantDsId IS NULL
+BEGIN
+    SELECT TOP (1) @TenantDsId = r.DataSourceID
+    FROM AppMasterDB.dbo.AppDataSourceRegister AS r
+    WHERE r.DatabaseName = DB_NAME()
+      AND ISNULL(r.IsCompanyMasterDB, 0) = 1
+    ORDER BY r.DataSourceID;
+END
+
+IF @TenantDsId IS NULL
+    THROW 50001, N'Cannot resolve tenant DataSourceFrom for SizeRun entity remapping.', 1;
+
+DECLARE @SizeRunEntityId int =
+    (SELECT TOP (1) EntityInfoID FROM dbo.AppEntityInfo WHERE EntityCode = N'SizeRun' ORDER BY EntityInfoID);
+DECLARE @SizeRunDetailEntityId int =
+    (SELECT TOP (1) EntityInfoID FROM dbo.AppEntityInfo WHERE EntityCode = N'SizeRunDetail' ORDER BY EntityInfoID);
+DECLARE @TchpSizeRunEntityId int =
+    (SELECT TOP (1) EntityInfoID FROM dbo.AppEntityInfo WHERE EntityCode = N'TchpSizeRun' ORDER BY EntityInfoID);
+DECLARE @TchpSizeRunSizeEntityId int =
+    (SELECT TOP (1) EntityInfoID FROM dbo.AppEntityInfo WHERE EntityCode = N'TchpSizeRunSize' ORDER BY EntityInfoID);
+
+IF @SizeRunEntityId IS NULL OR @SizeRunDetailEntityId IS NULL
+    THROW 50002, N'Legacy AppEntityInfo SizeRun / SizeRunDetail not found.', 1;
+
+-- Retarget fields that were bound to the temporary Tchp* entities.
+IF @TchpSizeRunEntityId IS NOT NULL
+BEGIN
+    UPDATE dbo.AppTransactionField
+    SET EntityId = @SizeRunEntityId
+    WHERE EntityId = @TchpSizeRunEntityId;
+    PRINT N'Repointed AppTransactionField from TchpSizeRun → SizeRun. Rows=' + CAST(@@ROWCOUNT AS nvarchar(20));
+END
+
+IF @TchpSizeRunSizeEntityId IS NOT NULL
+BEGIN
+    UPDATE dbo.AppTransactionField
+    SET EntityId = @SizeRunDetailEntityId
+    WHERE EntityId = @TchpSizeRunSizeEntityId;
+    PRINT N'Repointed AppTransactionField from TchpSizeRunSize → SizeRunDetail. Rows=' + CAST(@@ROWCOUNT AS nvarchar(20));
+END
+
+UPDATE dbo.AppEntityInfo
+SET
+    TableName = N'TchpSizeRun',
+    IdentityField = N'SizeRunId',
+    DisplayFiled1 = N'SizeRunCode',
+    DisplayFiled2 = N'SizeRunName',
+    DisplayFiled3 = NULL,
+    DataSourceFrom = @TenantDsId,
+    SchemaOwner = N'dbo',
+    QueryText = NULL,
+    AppModifiedDate = @Now
+WHERE EntityInfoID = @SizeRunEntityId;
+PRINT N'Updated AppEntityInfo SizeRun → TchpSizeRun. DataSourceFrom=' + CAST(@TenantDsId AS nvarchar(20));
+
+UPDATE dbo.AppEntityInfo
+SET
+    TableName = N'TchpSizeRunSize',
+    IdentityField = N'SizeRunSizeId',
+    DisplayFiled1 = N'SizeLabel',
+    DisplayFiled2 = NULL,
+    DisplayFiled3 = NULL,
+    DataSourceFrom = @TenantDsId,
+    SchemaOwner = N'dbo',
+    QueryText = NULL,
+    -- Keep SortByField=SizeOrder (column exists on TchpSizeRunSize)
+    AppModifiedDate = @Now
+WHERE EntityInfoID = @SizeRunDetailEntityId;
+PRINT N'Updated AppEntityInfo SizeRunDetail → TchpSizeRunSize. DataSourceFrom=' + CAST(@TenantDsId AS nvarchar(20));
+
+-- Remove temporary Tchp* entity rows (after field retarget).
+DELETE FROM dbo.AppEntityInfo
+WHERE EntityCode IN (N'TchpSizeRun', N'TchpSizeRunSize');
+PRINT N'Deleted AppEntityInfo TchpSizeRun / TchpSizeRunSize. Rows=' + CAST(@@ROWCOUNT AS nvarchar(20));
 
 COMMIT TRAN;
 PRINT '1_Tchp_Import_SizeRun.sql DONE';

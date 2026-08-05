@@ -18,6 +18,7 @@
 | **D3 TemplateCode** | Normalize `BodyTypeName` | Uppercase, non-alphanumeric → `_`, collapse `_`, trim, truncate to 50. On collision append `_{BodyTypeID}`. |
 | **D4 Delivery** | SQL + batch first | Preview report + executable SQL in this folder. **No** Migration UI / C# / WebAPI in this phase. |
 | **D5 Filter** | **IsActive = 1 only** | Discover active flag column name via probe; exclude inactive/deleted. |
+| **D6 SizeRun Entity** | **Reuse legacy LOV** | After SizeRun data MERGE: UPDATE `AppEntityInfo` `SizeRun` / `SizeRunDetail` to `TchpSizeRun` / `TchpSizeRunSize` (tenant DS). DELETE any `TchpSizeRun` / `TchpSizeRunSize` entity rows. Do **not** create those EntityCodes. Leave `ALLSIZES` / `Sizes` / `SizeBreakDown` on ERP. |
 
 ### Out of scope (this folder)
 
@@ -239,7 +240,7 @@ Ask user to confirm Preview before generating / running Phase B import SQL.
 
 | File | Content |
 |------|---------|
-| `1_Tchp_Import_SizeRun.sql` | SizeRun + Size (IDENTITY_INSERT) |
+| `1_Tchp_Import_SizeRun.sql` | SizeRun + Size (IDENTITY_INSERT) **+** remount legacy AppEntity `SizeRun` / `SizeRunDetail` onto `Tchp*` tables; delete `TchpSizeRun` / `TchpSizeRunSize` entities if present |
 | `2_Tchp_Import_BodyPart.sql` | POM |
 | `3_Tchp_Import_PomTemplate.sql` | Template + Part |
 | `4_Tchp_Import_GradeRules.sql` | GradeRuleSet + GradeRule (G-B) |
@@ -266,12 +267,28 @@ If cross-server: document OPENROWSET / linked server requirement in README (do n
 
 1. SizeRun  
 2. SizeRunSize  
-3. BodyPart  
-4. PomTemplate  
-5. PomTemplatePart  
-6. GradeRuleSet  
-7. GradeRule  
-8. Validate  
+3. **AppEntity remap (same script as SizeRun)** — see §B2b  
+4. BodyPart  
+5. PomTemplate  
+6. PomTemplatePart  
+7. GradeRuleSet  
+8. GradeRule  
+9. Validate  
+
+### B2b. SizeRun AppEntity policy (locked)
+
+After MERGE into `TchpSizeRun` / `TchpSizeRunSize`, `1_Tchp_Import_SizeRun.sql` **must**:
+
+| Step | Action |
+|------|--------|
+| 1 | **Do not** INSERT `AppEntityInfo` rows with `EntityCode` `TchpSizeRun` / `TchpSizeRunSize`. |
+| 2 | **UPDATE** existing `EntityCode = SizeRun` → `TableName=TchpSizeRun`, `IdentityField=SizeRunId`, `DisplayFiled1=SizeRunCode`, `DisplayFiled2=SizeRunName`, `DataSourceFrom` = tenant master DS (not ERP). |
+| 3 | **UPDATE** existing `EntityCode = SizeRunDetail` → `TableName=TchpSizeRunSize`, `IdentityField=SizeRunSizeId`, `DisplayFiled1=SizeLabel`, `DataSourceFrom` = tenant master DS. Keep `OtherSettings.SortByField=SizeOrder` when present. |
+| 4 | **UPDATE** `AppTransactionField.EntityId` from any `TchpSizeRun` / `TchpSizeRunSize` entity ids → `SizeRun` / `SizeRunDetail` entity ids. |
+| 5 | **DELETE** `AppEntityInfo` where `EntityCode IN (N'TchpSizeRun', N'TchpSizeRunSize')`. |
+| 6 | **Do not** change `ALLSIZES` / `Sizes` / `SizeBreakDown` (remain on ERP `tblSizeRunRotate`). |
+
+Preserve `EntityInfoID` / `IntegrationId` on `SizeRun` / `SizeRunDetail` so existing form bindings keep working (now reading Tchp data; scope = imported visible SizeRuns only).
 
 ### B3. TemplateCode function (D3)
 

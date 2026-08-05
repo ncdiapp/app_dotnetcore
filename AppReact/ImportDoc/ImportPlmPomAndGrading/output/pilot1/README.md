@@ -25,3 +25,4 @@ Uses same-server three-part names: `[SourceERP].dbo.*`, `[plm_live_20260602].dbo
 
 - `DefaultBaseSizeId` set only when that SizeRunRotate exists in imported (visible) sizes; Templates 18/19/21 keep NULL (base size 100 not visible).
 - ASTM seed RuleSets (Id 1–2) are left unchanged; custom RuleSets use BodyTypeID 17–21.
+- **Entity (D6):** `1_Tchp_Import_SizeRun.sql` remounts LOV `SizeRun` / `SizeRunDetail` onto `Tchp*` tables and deletes `TchpSizeRun` / `TchpSizeRunSize` entity rows. `ALLSIZES` / `Sizes` / `SizeBreakDown` stay on ERP.
