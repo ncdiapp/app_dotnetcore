@@ -130,6 +130,7 @@
                                                                           "isReadOnly":  true,
                                                                           "unitDisplayName":  "SizeRunSizes",
                                                                           "visibleFieldNames":  [
+                                                                                                    "SizeRunSizeId",
                                                                                                     "SizeLabel",
                                                                                                     "SizeOrder"
                                                                                                 ]
@@ -563,6 +564,18 @@
     "bomColorwayPivotBindings":  [
 
                                  ],
+    "techPackGradeValuePivotBindings":  [
+                                            {
+                                                "plmTabId":  4006,
+                                                "hostAppTableName":  "TchpPomSpecLine",
+                                                "grandchildAppTableName":  "TchpGradeValue",
+                                                "sourceAppTableName":  "View_TchpStyleActiveSizeRunSizes",
+                                                "sourcePivotKeyColumn":  "SizeRunSizeId",
+                                                "pivotColumnField":  "SizeRunSizeId",
+                                                "pivotValueField":  "GradingDelta",
+                                                "skipMatrixKeyVisibleFilter":  true
+                                            }
+                                        ],
     "blueprintFields":  [
                             {
                                 "appTableName":  "Plm_Style_Header_V2K_ERP",

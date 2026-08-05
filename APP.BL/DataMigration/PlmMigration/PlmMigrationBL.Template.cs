@@ -1236,6 +1236,8 @@ WHERE TransactionID = @TransactionId";
 
             ApplyTechPackChildUnitFlags(conn, tran, txId, plan, tablePrefix);
             ApplyTechPackStyleSpecFieldWiring(conn, tran, txId, plan, tablePrefix);
+            ApplyTechPackGradingGoldenFieldTemplate(conn, tran, txId, plan, tablePrefix);
+            ApplyTechPackGradeValuePivotBindingsSql(conn, tran, txId, tab.TabId, plan, tablePrefix);
 
             SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, transactionIntegrationId);
             return txId;
@@ -1414,7 +1416,9 @@ WHERE TransactionID = @TransactionId";
                 ? childDef.UnitDisplayName.Trim()
                 : AppTransactionBL.ConvertDbNameToDisplayName(tableName);
 
-            bool isReadOnly = childDef?.IsReadOnly == true;
+            bool isReadOnly = childDef?.IsReadOnly == true
+                || (!string.IsNullOrWhiteSpace(tableName)
+                    && tableName.IndexOf("View_TchpStyleActiveSizeRunSizes", StringComparison.OrdinalIgnoreCase) >= 0);
 
             int unitId;
             using (var cmd = conn.CreateCommand())
@@ -1461,7 +1465,7 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
                 {
                     var visible = childDef.VisibleFieldNames != null && childDef.VisibleFieldNames.Count > 0
                         ? childDef.VisibleFieldNames
-                        : new List<string> { "SizeLabel", "SizeOrder" };
+                        : new List<string> { "SizeRunSizeId", "SizeLabel", "SizeOrder" };
                     isVisible = visible.Any(v => string.Equals(v, col.Name, StringComparison.OrdinalIgnoreCase));
                 }
 
@@ -1497,6 +1501,7 @@ VALUES (
 
         /// <summary>
         /// Apply IsReadOnly / Add-Delete disable / field visibility for blueprint child units flagged IsReadOnly.
+        /// Always force read-only for View_TchpStyleActiveSizeRunSizes (locked V1 — pivot column source only).
         /// </summary>
         private static void ApplyTechPackChildUnitFlags(
             SqlConnection conn,
@@ -1510,7 +1515,14 @@ VALUES (
 
             foreach (var child in plan.ChildUnitDefs)
             {
-                if (child == null || !child.IsReadOnly || string.IsNullOrWhiteSpace(child.AppTableName))
+                if (child == null || string.IsNullOrWhiteSpace(child.AppTableName))
+                    continue;
+
+                bool isSizeRunSizesView = child.AppTableName.IndexOf(
+                    "View_TchpStyleActiveSizeRunSizes", StringComparison.OrdinalIgnoreCase) >= 0;
+                // V1 view unit must always be read-only (even if isReadOnly missing from JSON deserialize).
+                bool forceReadOnly = child.IsReadOnly || isSizeRunSizesView;
+                if (!forceReadOnly)
                     continue;
 
                 string childTable = QualifyBlueprintTableName(
@@ -1544,7 +1556,7 @@ WHERE TransactionUnitID = @UnitId";
 
                 var visible = child.VisibleFieldNames != null && child.VisibleFieldNames.Count > 0
                     ? child.VisibleFieldNames
-                    : new List<string> { "SizeLabel", "SizeOrder" };
+                    : new List<string> { "SizeRunSizeId", "SizeLabel", "SizeOrder" };
 
                 using (var hide = conn.CreateCommand())
                 {
@@ -1595,6 +1607,35 @@ WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'SizeOrder'";
                     ord.Parameters.AddWithValue("@UnitId", unitId.Value);
                     ord.ExecuteNonQuery();
                 }
+            }
+
+            // Safety net: any View_TchpStyleActiveSizeRunSizes unit on this txn (even without ChildUnitDefs flag).
+            ForceViewTchpStyleActiveSizeRunSizesReadOnly(conn, tran, transactionId);
+        }
+
+        private static void ForceViewTchpStyleActiveSizeRunSizesReadOnly(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit SET
+    IsReadOnly = 1,
+    IsDisableAddButton = 1,
+    IsDisableDeleteButton = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionID = @TransactionId
+  AND DataBaseTableName = N'View_TchpStyleActiveSizeRunSizes'
+  AND (
+        ISNULL(IsReadOnly, 0) = 0
+     OR ISNULL(IsDisableAddButton, 0) = 0
+     OR ISNULL(IsDisableDeleteButton, 0) = 0
+  )";
+                cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+                cmd.ExecuteNonQuery();
             }
         }
 

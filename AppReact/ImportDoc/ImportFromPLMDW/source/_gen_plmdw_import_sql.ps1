@@ -648,6 +648,7 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
         transactions          = $transactions
         gridBindings          = $gridBindings
         bomColorwayPivotBindings = Get-JsonArrayForSerialize @(if ($bomColorwayPivotBindings) { $bomColorwayPivotBindings } else { @() })
+        techPackGradeValuePivotBindings = Get-JsonArrayForSerialize @(Build-TechPackGradeValuePivotBindings $config $transactions)
         blueprintFields       = $blueprintFields
         searchView            = [ordered]@{
             search     = [ordered]@{
@@ -667,6 +668,38 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
             menuOrder                = 100
         }
     }
+}
+
+function Build-TechPackGradeValuePivotBindings($config, $transactions) {
+    # Grading tab only: GradeValue ChildUnitPivotColumns ← View_TchpStyleActiveSizeRunSizes (locked V1+pivot).
+    $list = [System.Collections.Generic.List[object]]::new()
+    if (-not $config.techPack -or -not $config.techPack.bindings) { return @($list.ToArray()) }
+
+    foreach ($b in @($config.techPack.bindings)) {
+        if (-not $b) { continue }
+        $role = [string]$b.role
+        if ($role -ne 'Grading') { continue }
+        $hasView = $false
+        $hasPom = $false
+        foreach ($cu in @($b.childUnits)) {
+            if (-not $cu -or -not $cu.appTableName) { continue }
+            $n = [string]$cu.appTableName
+            if ($n -eq 'View_TchpStyleActiveSizeRunSizes' -or $n.EndsWith('View_TchpStyleActiveSizeRunSizes')) { $hasView = $true }
+            if ($n -eq 'TchpPomSpecLine' -or $n.EndsWith('TchpPomSpecLine')) { $hasPom = $true }
+        }
+        if (-not ($hasView -and $hasPom)) { continue }
+        $list.Add([ordered]@{
+            plmTabId                    = [int]$b.plmTabId
+            hostAppTableName            = 'TchpPomSpecLine'
+            grandchildAppTableName      = 'TchpGradeValue'
+            sourceAppTableName          = 'View_TchpStyleActiveSizeRunSizes'
+            sourcePivotKeyColumn        = 'SizeRunSizeId'
+            pivotColumnField            = 'SizeRunSizeId'
+            pivotValueField             = 'GradingDelta'
+            skipMatrixKeyVisibleFilter  = $true
+        })
+    }
+    return @($list.ToArray())
 }
 
 function Get-DwTableColumns([string]$TableName) {

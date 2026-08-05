@@ -497,7 +497,7 @@ ImportFromPLMDW/
 [ ] Verify 3_PlmDw_ImportFromDW.sql has @PlmTemplateId + APPEND default
 [ ] Verify 4_PlmDw_ImportBlueprint.json includes bomColorwayPivotBindings when steps 5–6 exist
 [ ] TechPack: run 3b (includes View_TchpStyleActiveSizeRunSizes) before Phase D
-[ ] TechPack Grading blueprint: SizeRunSizes read-only view child + StyleSpec BaseSize cascade
+[ ] TechPack Grading: SizeRunSizes view child + GradeValue pivot (P1) + golden fields (G1) + BaseSize cascade (S2)
 [ ] Optional: pilot import with @ReferenceIdList
 ```
 
@@ -517,21 +517,66 @@ When `dwTabImportConfig` includes a `techPack` block (α bindings):
 | Import scope | **D1** — step `3b_Tchp_ImportFromDW.sql` writes Tchp now |
 | StyleSpec unit kind | **Sibling**; `StyleSpecId` = non-identity PK = `Root.ReferenceId` |
 | Link without DB FK | **L2** — sibling `StyleSpecId` → Root.`ReferenceId`; children **attachToRoot** with `StyleSpecId` → Root.`ReferenceId` |
-| SizeRunSizes grid | **V1** — **Grading tab only**: ROOT child on `View_TchpStyleActiveSizeRunSizes` (read-only). Link `StyleSpecId` → Root.`ReferenceId`. Do **not** attach under StyleSpec sibling. Do **not** add to Fit tabs. |
-| BaseSize cascade | **S2** — `TchpStyleSpec.BaseSizeDetailId` Depend On DDL (`DDLParentLevelID`) = `SizeRunId`; entities `SizeRun` / `SizeRunDetail` |
+| SizeRunSizes grid | **V1** — **Grading tab only**: ROOT child on `View_TchpStyleActiveSizeRunSizes`. Link `StyleSpecId` → Root.`ReferenceId`. **Not on Form layout** (pivot column source only). Do **not** add to Fit tabs. |
+| GradeValue pivot | **P1** — `TchpGradeValue.EmGridViewDisplayType = ChildUnitPivotColumns (7)`. `SizeRunSizeId` = IsPivotColumn + `MatrixForeignKeyFieldId` → View.`SizeRunSizeId`. `GradingDelta` = IsPivotValue. **No** `MatrixKeyTransactionFieldId`. |
+| BaseSize cascade | **S2** — `TchpStyleSpec.BaseSizeDetailId` Depend On DDL = `SizeRunId`; entities `SizeRun` / `SizeRunDetail` |
+| Grading field golden | **G1** — see §TechPack Grading golden field template (widths / sort / entities). `IsFixed` stays TextBox; `GradeRuleSetId` → DDL `TchpGradeRuleSet`; `UnitOfMeasure` stays TextBox (+ Entity ok). |
 | Fit Summary Fit grid | **F1** — all FitRounds; Fit1–4 filter by `fitRoundNumberFilter`; Comments do **not** host Fit grid |
 | SpecFit ActualValue | `COALESCE(ReviseN, SampleN)` |
 | POM_Template / Spec_Selected_Size | Stay on `Plm_Grading` / `Plm_Fit_Summary` |
 
-Phase D (`ExecuteDwBlueprintConfig`) applies L2 after `CreateHierarchyTransactionFromTables`: sibling + child `IsLinkToParentPrimaryKey` to Root only (never reparent under StyleSpec sibling). Then: EnsureMissing child units (Update), `IsReadOnly` flags for V1 view child, StyleSpec SizeRun/BaseSize DDL + S2 cascade.
+Phase D (`ExecuteDwBlueprintConfig`) applies L2 after `CreateHierarchyTransactionFromTables`: sibling + child `IsLinkToParentPrimaryKey` to Root only (never reparent under StyleSpec sibling). Then: EnsureMissing child units (Update), `IsReadOnly` flags for V1 view child, StyleSpec SizeRun/BaseSize DDL + S2 cascade, **G1 golden field template**, **P1 GradeValue pivot** (`techPackGradeValuePivotBindings` or auto-detect from ChildUnitDefs).
 
 **V1 view DDL** (keep identical in both places):
 
 1. `Document/Design/POM_Grading_QC_NewSchema.sql`
-2. Emitted in `output/{templateId}/3b_Tchp_ImportFromDW.sql` (`CREATE OR ALTER VIEW`) when `techPack` present
+2. Emitted in `output/{templateId}/3b_Tchp_ImportFromDW.sql` (`CREATE OR ALTER VIEW` after a `GO`) when `techPack` present
 
 Run **3b before Phase D** so the view exists when Blueprint Validate/Execute resolves child table `View_TchpStyleActiveSizeRunSizes`.
 
+### TechPack Grading golden field template (G1)
+
+Apply on tabs that have `TchpPomSpecLine` (+ GradeValue / SizeRunSizes view):
+
+**TchpStyleSpec**
+
+| Field | ControlType | Entity | Width | Sort | Visible | Notes |
+|-------|-------------|--------|-------|------|---------|-------|
+| SizeRunId | DDL (1) | SizeRun | 100 | 20 | 1 | |
+| BaseSizeDetailId | DDL (1) | SizeRunDetail | 100 | 30 | 1 | `DDLParentLevelID` = SizeRunId |
+| UnitOfMeasure | TextBox (2) | UnitOfMeasure | 100 | 40 | 1 | keep TextBox |
+
+**TchpPomSpecLine**
+
+| Field | ControlType | Entity | Width | Sort | Visible | Notes |
+|-------|-------------|--------|-------|------|---------|-------|
+| Sort | TextBox | — | 100 | 25 | 1 | `GroupByLevel=1` |
+| BodyPartId | DDL | TchpBodyPart | **200** | 30 | 1 | |
+| BodypartAliasName | TextBox | — | **200** | 35 | 1 | |
+| GradeRuleSetId | DDL | TchpGradeRuleSet | **150** | 40 | 1 | |
+| BaseValue | (schema) | — | **150** | 50 | 1 | |
+| Tolerance | (schema) | — | **150** | 60 | 1 | |
+| IsFixed | TextBox (2) | — | **150** | 70 | 1 | do **not** force CheckBox |
+
+**TchpGradeValue (P1)**
+
+| Setting | Value |
+|---------|-------|
+| Unit `EmGridViewDisplayType` | 7 ChildUnitPivotColumns |
+| SizeRunSizeId | IsPivotColumn; MatrixFK → View.SizeRunSizeId; DDL SizeRunDetail; width 150 |
+| GradingDelta | IsPivotValue; width 150 |
+| MatrixKey | **not set** |
+
+**View_TchpStyleActiveSizeRunSizes**
+
+| Setting | Value |
+|---------|-------|
+| Parent | ROOT; Link StyleSpecId → ReferenceId |
+| **Is Read-Only** | **必选** `IsReadOnly=1`；并 `IsDisableAddButton=1` / `IsDisableDeleteButton=1`（Phase D 对 `View_TchpStyleActiveSizeRunSizes` **强制**写入，不依赖 JSON 标志） |
+| Visible fields | SizeRunSizeId, SizeLabel, SizeOrder (`GroupByLevel=1` on SizeOrder) |
+| Form layout | **omit** (not a user-facing grid) |
+
+Blueprint JSON array: `techPackGradeValuePivotBindings` (generator emits for `role=Grading` when View + PomSpecLine present).
 ---
 
 ## Example session message

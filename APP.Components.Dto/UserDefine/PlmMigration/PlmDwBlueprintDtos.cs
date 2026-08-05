@@ -45,6 +45,13 @@ namespace APP.Components.EntityDto
         public List<PlmDwBlueprintBomColorwayPivotBindingDto> BomColorwayPivotBindings { get; set; } =
             new List<PlmDwBlueprintBomColorwayPivotBindingDto>();
 
+        /// <summary>
+        /// TechPack Grading: TchpGradeValue ChildUnitPivotColumns using View_TchpStyleActiveSizeRunSizes as column domain.
+        /// </summary>
+        [DataMember]
+        public List<PlmDwBlueprintTechPackGradeValuePivotDto> TechPackGradeValuePivotBindings { get; set; } =
+            new List<PlmDwBlueprintTechPackGradeValuePivotDto>();
+
         [DataMember]
         public PlmDwBlueprintSearchViewDto SearchView { get; set; }
 
@@ -281,6 +288,45 @@ namespace APP.Components.EntityDto
         /// </summary>
         [DataMember]
         public List<string> VisibleFieldNames { get; set; } = new List<string>();
+    }
+
+    /// <summary>
+    /// Grading tab only: project TchpGradeValue onto Pom Spec Line as ChildUnitPivotColumns,
+    /// column headers from View_TchpStyleActiveSizeRunSizes (filtered by StyleSpec SizeRun).
+    /// </summary>
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmDwBlueprintTechPackGradeValuePivotDto
+    {
+        [DataMember]
+        public int PlmTabId { get; set; }
+
+        /// <summary>Host child grid (Pom Spec Line).</summary>
+        [DataMember]
+        public string HostAppTableName { get; set; } = "TchpPomSpecLine";
+
+        /// <summary>Grandchild with EmGridViewDisplayType = ChildUnitPivotColumns.</summary>
+        [DataMember]
+        public string GrandchildAppTableName { get; set; } = "TchpGradeValue";
+
+        /// <summary>ROOT child view supplying pivot column domain (SizeRun sizes).</summary>
+        [DataMember]
+        public string SourceAppTableName { get; set; } = "View_TchpStyleActiveSizeRunSizes";
+
+        /// <summary>Field on source view used as MatrixForeignKeyFieldId target (default SizeRunSizeId).</summary>
+        [DataMember]
+        public string SourcePivotKeyColumn { get; set; } = "SizeRunSizeId";
+
+        /// <summary>Grandchild field marked IsPivotColumn (default SizeRunSizeId).</summary>
+        [DataMember]
+        public string PivotColumnField { get; set; } = "SizeRunSizeId";
+
+        /// <summary>Grandchild field marked IsPivotValue (default GradingDelta).</summary>
+        [DataMember]
+        public string PivotValueField { get; set; } = "GradingDelta";
+
+        /// <summary>When true (default), do not set MatrixKeyTransactionFieldId (no IsVisible filter).</summary>
+        [DataMember]
+        public bool SkipMatrixKeyVisibleFilter { get; set; } = true;
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

@@ -704,7 +704,7 @@
                   }
               ],
     "techPack":  {
-                     "_comment":  "L2: TchpStyleSpec.StyleSpecId (=ReferenceId, no identity) → Root.ReferenceId. Children attachToRoot only. SpecFit/SpecGrading → Tchp. Size_Run/Base_Size/Measure_Unit → TchpStyleSpec (S1 from Grading 4006). V1: Grading-only View_TchpStyleActiveSizeRunSizes read-only child. S2: BaseSizeDetailId Depend On SizeRunId.",
+                     "_comment":  "L2 + V1 SizeRunSizes view (Grading only, not on Form) + P1 GradeValue ChildUnitPivotColumns + S2 BaseSize Depend On SizeRun + G1 golden widths/entities. SpecFit/SpecGrading → Tchp. Size_Run/Base_Size/Measure_Unit → TchpStyleSpec (S1).",
                      "styleSpecShared":  true,
                      "styleSpecOwnedColumns":  [
                                                    "Size_Run",
@@ -762,6 +762,7 @@
                                                                  "isReadOnly":  true,
                                                                  "unitDisplayName":  "SizeRunSizes",
                                                                  "visibleFieldNames":  [
+                                                                                           "SizeRunSizeId",
                                                                                            "SizeLabel",
                                                                                            "SizeOrder"
                                                                                        ],

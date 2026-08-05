@@ -1387,12 +1387,27 @@ WHERE SearchId = @SearchId";
           }
 
           AttachBomColorwayPivotBindingsToPlan(plan, blueprint, prefix, mappingRows, fieldMetaByKey);
+          AttachTechPackGradeValuePivotBindingsToPlan(plan, blueprint);
 
           plans.Add(plan);
         }
 
         AttachOrphanGridTransactions(blueprint, prefix, mappingRows, fieldMetaByKey, plans);
         return plans;
+      }
+
+      private static void AttachTechPackGradeValuePivotBindingsToPlan(
+        TemplateTabExecutionPlan plan,
+        PlmDwImportBlueprintDto blueprint)
+      {
+        if (blueprint?.TechPackGradeValuePivotBindings == null || blueprint.TechPackGradeValuePivotBindings.Count == 0)
+          return;
+
+        foreach (var binding in blueprint.TechPackGradeValuePivotBindings
+                   .Where(b => b != null && b.PlmTabId == plan.Tab.TabId))
+        {
+          plan.TechPackGradeValuePivotBindings.Add(binding);
+        }
       }
 
       private static void AttachBomColorwayPivotBindingsToPlan(

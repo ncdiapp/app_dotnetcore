@@ -912,6 +912,8 @@ export interface PlmDwImportBlueprintDto {
   Transactions?: PlmDwBlueprintTransactionDto[] | null;
   GridBindings?: PlmDwBlueprintGridBindingDto[] | null;
   BlueprintFields?: PlmDwBlueprintFieldDto[] | null;
+  BomColorwayPivotBindings?: PlmDwBlueprintBomColorwayPivotBindingDto[] | null;
+  TechPackGradeValuePivotBindings?: PlmDwBlueprintTechPackGradeValuePivotDto[] | null;
   SearchView?: PlmDwBlueprintSearchViewDto | null;
   Navigation?: PlmDwBlueprintNavigationDto | null;
   PlmTemplate?: PlmDwBlueprintPlmTemplateDto | null;
@@ -995,6 +997,25 @@ export interface PlmDwBlueprintChildUnitDto {
   IsReadOnly?: boolean;
   UnitDisplayName?: string | null;
   VisibleFieldNames?: string[] | null;
+}
+
+export interface PlmDwBlueprintTechPackGradeValuePivotDto {
+  PlmTabId?: number;
+  HostAppTableName?: string | null;
+  GrandchildAppTableName?: string | null;
+  SourceAppTableName?: string | null;
+  SourcePivotKeyColumn?: string | null;
+  PivotColumnField?: string | null;
+  PivotValueField?: string | null;
+  SkipMatrixKeyVisibleFilter?: boolean;
+}
+
+export interface PlmDwBlueprintBomColorwayPivotBindingDto {
+  PlmTabId?: number;
+  HostAppTableName?: string | null;
+  GrandchildAppTableName?: string | null;
+  SourceAppTableName?: string | null;
+  SourcePivotKeyColumn?: string | null;
 }
 
 export interface PlmDwBlueprintGridBindingDto {

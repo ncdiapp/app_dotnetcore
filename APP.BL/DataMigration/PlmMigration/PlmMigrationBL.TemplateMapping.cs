@@ -33,6 +33,11 @@ namespace APP.BL.DataMigration.PlmMigration
             public List<PlmTemplateSubItemRow> RootSubItems { get; } = new List<PlmTemplateSubItemRow>();
             public List<PlmDwBlueprintBomColorwayPivotBindingDto> BomColorwayPivotBindings { get; } =
                 new List<PlmDwBlueprintBomColorwayPivotBindingDto>();
+
+            /// <summary>TechPack Grading: GradeValue ChildUnitPivotColumns ← SizeRunSizes view.</summary>
+            public List<PlmDwBlueprintTechPackGradeValuePivotDto> TechPackGradeValuePivotBindings { get; } =
+                new List<PlmDwBlueprintTechPackGradeValuePivotDto>();
+
             /// <summary>Grandchild pivot unit fields (visibility after transaction create).</summary>
             public Dictionary<string, List<PlmTemplateSubItemRow>> GrandchildColumnsByTable { get; } =
                 new Dictionary<string, List<PlmTemplateSubItemRow>>(StringComparer.OrdinalIgnoreCase);
