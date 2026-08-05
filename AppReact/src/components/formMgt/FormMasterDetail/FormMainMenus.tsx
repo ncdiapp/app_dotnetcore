@@ -106,7 +106,7 @@ interface FormMainMenusProps {
   layoutVariant?: 'toolbar' | 'mobilePopup';
   /** Called after successful save with server DTO (Angular: update rootPrimaryKeyValue from data.Object). */
   onSave?: (savedFormData: any) => void;
-  /** Workflow Start Run: apply server FormData in place (no route reload — keeps monitor popup open). */
+  /** Apply server FormData after command (Angular initLoadData) — in place, no GetFormData reload. */
   onApplyWorkflowCommandFormData?: (serverFormData: any) => void;
   /** Open workflow execution monitor popup (hosted on FormMasterDetail). */
   onOpenWorkflowExecutionMonitor?: () => void;
@@ -769,11 +769,13 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
         const obj = result?.Object ?? null;
         const serverFormData = obj?.FormData ?? null;
         if (serverFormData) {
-          if (isWorkflowAutomation) {
-            onApplyWorkflowCommandFormData?.(serverFormData);
+          // Angular executeServerCommandCallBack: initLoadData(FormData) — apply in place.
+          // Do NOT call onSave/handleAfterSave here: that clears caches and re-fetches via
+          // GetFormData ("Loading form data..."), wiping command result fields from memory.
+          if (onApplyWorkflowCommandFormData) {
+            onApplyWorkflowCommandFormData(serverFormData);
           } else {
             onDataModelChange?.({ ...dataModel, currentFormData: serverFormData });
-            onSave?.(serverFormData);
           }
         }
 

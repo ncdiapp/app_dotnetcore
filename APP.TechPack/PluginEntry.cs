@@ -40,19 +40,21 @@ public sealed class PluginEntry : IAppPlugin
     private static OperationCallResult<AppMasterDetailDto> ApplyGradeRuleSet(
         AppMasterDetailDto formData, string connectionString)
     {
-        int ruleSetId   = Convert.ToInt32(formData.DictOneToOneFields?["RuleSetId"]);
-        int styleSpecId = Convert.ToInt32(formData.DictOneToOneFields?["StyleSpecId"]);
+        int ruleSetId   = Convert.ToInt32(GetRootLevelFieldValueByName(formData, "RuleSetId"));
+        int styleSpecId = Convert.ToInt32(GetRootLevelFieldValueByName(formData, "StyleSpecId"));
 
         GradeRuleService.ApplyRuleSetToSpec(connectionString, ruleSetId, styleSpecId);
 
+        formData.DictOneToOneFields["ruleSetId"] = ruleSetId;
+        formData.DictOneToOneFields["StyleSpecId"] = styleSpecId;
         return new OperationCallResult<AppMasterDetailDto> { Object = formData };
     }
 
     private static OperationCallResult<AppMasterDetailDto> GetGradeRuleCoverage(
         AppMasterDetailDto formData, string connectionString)
     {
-        int ruleSetId   = Convert.ToInt32(formData.DictOneToOneFields?["RuleSetId"]);
-        int styleSpecId = Convert.ToInt32(formData.DictOneToOneFields?["StyleSpecId"]);
+        int ruleSetId   = Convert.ToInt32(GetRootLevelFieldValueByName(formData, "RuleSetId"));
+        int styleSpecId = Convert.ToInt32(GetRootLevelFieldValueByName(formData, "StyleSpecId"));
 
         var coverage = GradeRuleService.GetCoverage(connectionString, ruleSetId, styleSpecId);
 
@@ -62,5 +64,36 @@ public sealed class PluginEntry : IAppPlugin
         formData.DictOneToOneFields["UnmatchedCodes"] = string.Join(", ", coverage.UnmatchedBodyPartCodes);
 
         return new OperationCallResult<AppMasterDetailDto> { Object = formData };
+    }
+
+    /// <summary>
+    /// Looks up a root-level field by DB field name:
+    /// 1) RootMasterUnit — DictOneToOneFields
+    /// 2) Each sibling unit — DictSiblingOneToOneFields[siblingUnitId]
+    /// Returns the first match found, or null.
+    /// </summary>
+    private static object? GetRootLevelFieldValueByName(AppMasterDetailDto formData, string fieldName)
+    {
+        if (formData.DictOneToOneFields != null
+            && formData.DictOneToOneFields.TryGetValue(fieldName, out var rootValue)
+            && rootValue != null)
+        {
+            return rootValue;
+        }
+
+        if (formData.DictSiblingOneToOneFields != null)
+        {
+            foreach (var siblingFields in formData.DictSiblingOneToOneFields.Values)
+            {
+                if (siblingFields != null
+                    && siblingFields.TryGetValue(fieldName, out var siblingValue)
+                    && siblingValue != null)
+                {
+                    return siblingValue;
+                }
+            }
+        }
+
+        return null;
     }
 }

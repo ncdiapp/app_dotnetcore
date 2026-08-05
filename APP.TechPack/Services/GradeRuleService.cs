@@ -147,7 +147,7 @@ public static class GradeRuleService
         cmd.Parameters.Add(new SqlParameter("@styleSpecId", SqlDbType.Int) { Value = styleSpecId });
         var result = cmd.ExecuteScalar();
         if (result == null || result == DBNull.Value)
-            throw new InvalidOperationException($"No active dimension found for StyleSpec {styleSpecId}.");
+            return "";
         return (string)result;
     }
 
@@ -157,14 +157,29 @@ public static class GradeRuleService
     {
         var sizes = new List<SizeEntry>();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText =
-            "SELECT srs.SizeRunSizeId, srs.SizeLabel " +
-            "FROM TchpSizeRunSize srs " +
-            "JOIN TchpSizeRunDimension srd ON srd.SizeRunSizeId = srs.SizeRunSizeId " +
-            "WHERE srd.SizeRunId = @sizeRunId AND srd.DimensionCode = @dimensionCode " +
-            "ORDER BY srd.SortOrder";
+
         cmd.Parameters.Add(new SqlParameter("@sizeRunId", SqlDbType.Int) { Value = sizeRunId });
-        cmd.Parameters.Add(new SqlParameter("@dimensionCode", SqlDbType.NVarChar, 20) { Value = dimensionCode });
+
+        if (!string.IsNullOrWhiteSpace(dimensionCode))
+        {
+            cmd.CommandText =
+                "SELECT srs.SizeRunSizeId, srs.SizeLabel " +
+                "FROM TchpSizeRunSize srs " +
+                "JOIN TchpSizeRunDimension srd ON srd.SizeRunSizeId = srs.SizeRunSizeId " +
+                "WHERE srd.SizeRunId = @sizeRunId AND srd.DimensionCode = @dimensionCode " +
+                "ORDER BY srd.SortOrder";
+            
+            cmd.Parameters.Add(new SqlParameter("@dimensionCode", SqlDbType.NVarChar, 20) { Value = dimensionCode });
+        }
+        else
+        {
+            cmd.CommandText =
+                    "SELECT SizeRunSizeId, SizeLabel " +
+                    "FROM TchpSizeRunSize " +
+                    "ORDER BY SizeOrder";           
+           
+        }
+
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
             sizes.Add(new SizeEntry(reader.GetInt32(0), reader.GetString(1)));

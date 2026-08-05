@@ -739,7 +739,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
         [isEmbedded, dispatch, navigate, transactionId, rootPrimaryKeyValue]
     );
 
-    /** Workflow Start Run: Angular executeServerCommandCallBack initLoadData — update form in place, no route reload. */
+    /** Apply command FormData in place (Angular executeServerCommandCallBack initLoadData) — no route/GetFormData reload. */
     const applyWorkflowCommandFormData = useCallback(
         (serverFormData: any) => {
             if (!serverFormData) return;
