@@ -17,6 +17,8 @@ export type FormMasterDetailRuntimeConfigApi = {
     layoutItemId: string | number
   ) => void;
   openRootUnitsContextMenu: (e: React.MouseEvent) => void;
+  /** Angular: formMasterDetailCtrl.commandActionButtonClicked */
+  commandActionButtonClicked: (commandActionId: number, commandType?: number) => void;
 };
 
 const defaultApi: FormMasterDetailRuntimeConfigApi = {
@@ -24,6 +26,7 @@ const defaultApi: FormMasterDetailRuntimeConfigApi = {
   openTransactionUnitEditor: () => {},
   openUnitContextMenu: () => {},
   openRootUnitsContextMenu: () => {},
+  commandActionButtonClicked: () => {},
 };
 
 /** Use until FormMainMenus registers real handlers (no-op). */

@@ -384,7 +384,26 @@ const AddFieldToolbox: React.FC<AddFieldToolboxProps> = ({
                   .map((commandAction: any) => (
                     <button
                       key={commandAction.Id}
-                      className={`w-full px-2 py-1.5 text-xs border rounded ${theme.button_default} hover:shadow-sm flex items-center gap-1`}
+                      type="button"
+                      className={`w-full px-2 py-1.5 text-xs border rounded ${theme.button_default} hover:shadow-sm flex items-center gap-1 cursor-move`}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'copyMove';
+                        const dragData = {
+                          type: layoutItemTypeEnum?.CommandActionButton,
+                          commandActionId: commandAction.Id,
+                        };
+                        e.dataTransfer.setData('text/plain', JSON.stringify(dragData));
+                        try {
+                          e.dataTransfer.setData('application/drag-type', String(layoutItemTypeEnum?.CommandActionButton ?? ''));
+                          e.dataTransfer.setData('application/drag-command-action-id', String(commandAction.Id));
+                        } catch (err) {
+                          console.warn('Failed to set custom MIME type data:', err);
+                        }
+                        const buttonElement = e.currentTarget as HTMLElement;
+                        buttonElement.setAttribute('data-drag-type', String(layoutItemTypeEnum?.CommandActionButton ?? ''));
+                        buttonElement.setAttribute('data-drag-command-action-id', String(commandAction.Id));
+                      }}
                       onClick={() => layoutItemTypeEnum?.CommandActionButton && onAddLayoutItem(layoutItemTypeEnum.CommandActionButton, undefined, undefined, commandAction.Id)}
                       title={commandAction.Name}
                     >

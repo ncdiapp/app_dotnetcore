@@ -1568,12 +1568,21 @@ const OneLayoutItemDesign: React.FC<OneLayoutItemDesignProps> = ({
       );
     }
     
-    // Command Action Button
+    // Command Action Button — Angular: formDataModel.dictCommandActionIdAndDto[CommandActionId].Name
     if (displayType === layoutItemTypeEnum?.CommandActionButton) {
+      const cmdActionId = domAttribute.CommandActionId ?? (domAttribute as any).commandActionId;
+      const cmdAction =
+        layoutItemExDto.BindToCommandAction
+        || transactionExDto?.CommandActionList?.find((c: any) => String(c.Id) === String(cmdActionId));
+      const commandLabel =
+        cmdAction?.Name
+        || cmdAction?.name
+        || domAttribute.DisplayName
+        || 'Command Button';
       return (
         <div className="w-full p-2">
-          <button className="px-4 py-2 bg-blue-500 text-white rounded">
-            {domAttribute.DisplayName || 'Command Button'}
+          <button type="button" className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`} title={commandLabel}>
+            {commandLabel}
           </button>
         </div>
       );

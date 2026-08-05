@@ -2431,8 +2431,11 @@ const FormDesign: React.FC<FormDesignProps> = ({
         if (commandActionId && transactionData?.dictCommandActionIdAndDto) {
           const command = transactionData.dictCommandActionIdAndDto[commandActionId];
           if (command) {
-            newItem.ForeignAppCommandActionExDto = command;
-            newItem.DomAttribute.DisplayName = command.DisplayName;
+            // Angular: DomAttribute.CommandActionId + DisplayName '' (label resolved from command.Name at render)
+            newItem.DomAttribute.CommandActionId = commandActionId;
+            newItem.BindToCommandAction = command;
+            newItem.DomAttribute.DisplayName = '';
+            newItem.DomAttribute.IsBindingToDataField = false;
           }
         }
         
@@ -2440,7 +2443,8 @@ const FormDesign: React.FC<FormDesignProps> = ({
           const linkedSearch = transactionData.dictRootLevelUnitLinkedSearchIdAndDto[linkedSearchId];
           if (linkedSearch) {
             newItem.ForeignAppTransactionUnitLinkedSearchExDto = linkedSearch;
-            newItem.DomAttribute.DisplayName = linkedSearch.DisplayName;
+            newItem.DomAttribute.LinkedSearchId = linkedSearchId;
+            newItem.DomAttribute.DisplayName = linkedSearch.Name || linkedSearch.DisplayName || '';
           }
         }
         
@@ -2682,7 +2686,10 @@ const FormDesign: React.FC<FormDesignProps> = ({
         if (commandActionId && transactionData?.AppTransactionData?.CommandActionList) {
           const command = transactionData.AppTransactionData.CommandActionList.find((cmd: any) => cmd.Id === commandActionId);
           if (command) {
-            newItem.DomAttribute.DisplayName = command.Name;
+            newItem.DomAttribute.CommandActionId = commandActionId;
+            newItem.BindToCommandAction = command;
+            newItem.DomAttribute.DisplayName = '';
+            newItem.DomAttribute.IsBindingToDataField = false;
           }
         }
         
@@ -2693,6 +2700,7 @@ const FormDesign: React.FC<FormDesignProps> = ({
               if (unit.AppTransactionUnitLinkedSearchList) {
                 const linkedSearch = unit.AppTransactionUnitLinkedSearchList.find((ls: any) => ls.Id === linkedSearchId);
                 if (linkedSearch) {
+                  newItem.DomAttribute.LinkedSearchId = linkedSearchId;
                   newItem.DomAttribute.DisplayName = linkedSearch.Name;
                   break;
                 }
@@ -2768,7 +2776,10 @@ const FormDesign: React.FC<FormDesignProps> = ({
         if (commandActionId && transactionData?.AppTransactionData?.CommandActionList) {
           const command = transactionData.AppTransactionData.CommandActionList.find((cmd: any) => cmd.Id === commandActionId);
           if (command) {
-            newItem.DomAttribute.DisplayName = command.Name;
+            newItem.DomAttribute.CommandActionId = commandActionId;
+            newItem.BindToCommandAction = command;
+            newItem.DomAttribute.DisplayName = '';
+            newItem.DomAttribute.IsBindingToDataField = false;
           }
         }
         
@@ -2779,6 +2790,7 @@ const FormDesign: React.FC<FormDesignProps> = ({
               if (unit.AppTransactionUnitLinkedSearchList) {
                 const linkedSearch = unit.AppTransactionUnitLinkedSearchList.find((ls: any) => ls.Id === linkedSearchId);
                 if (linkedSearch) {
+                  newItem.DomAttribute.LinkedSearchId = linkedSearchId;
                   newItem.DomAttribute.DisplayName = linkedSearch.Name;
                   break;
                 }
@@ -3352,8 +3364,10 @@ const FormDesign: React.FC<FormDesignProps> = ({
       appendNewLayoutRow(layoutItem);
     } else if (itemType === layoutItemTypeEnum?.CommandActionButton) {
       if (commandActionId && transactionData?.dictCommandActionIdAndDto?.[commandActionId]) {
-        const _commandActionDto = transactionData.dictCommandActionIdAndDto[commandActionId];
+        const commandActionDto = transactionData.dictCommandActionIdAndDto[commandActionId];
+        // Angular: CommandActionId only; DisplayName left blank — UI shows command.Name
         layoutItem.DomAttribute.CommandActionId = commandActionId || null;
+        layoutItem.BindToCommandAction = commandActionDto;
         layoutItem.DomAttribute.DisplayName = '';
         layoutItem.AppFormLayoutItem_List = [];
         layoutItem.DomAttribute.IsBindingToDataField = false;
@@ -4067,8 +4081,11 @@ const FormDesign: React.FC<FormDesignProps> = ({
     if (commandActionId && transactionData?.dictCommandActionIdAndDto) {
       const command = transactionData.dictCommandActionIdAndDto[commandActionId];
       if (command) {
-        newItem.ForeignAppCommandActionExDto = command;
-        newItem.DomAttribute.DisplayName = command.DisplayName;
+        // Angular: DomAttribute.CommandActionId + DisplayName '' (label resolved from command.Name at render)
+        newItem.DomAttribute.CommandActionId = commandActionId;
+        newItem.BindToCommandAction = command;
+        newItem.DomAttribute.DisplayName = '';
+        newItem.DomAttribute.IsBindingToDataField = false;
       }
     }
 
@@ -4076,7 +4093,8 @@ const FormDesign: React.FC<FormDesignProps> = ({
       const linkedSearch = transactionData.dictRootLevelUnitLinkedSearchIdAndDto[linkedSearchId];
       if (linkedSearch) {
         newItem.ForeignAppTransactionUnitLinkedSearchExDto = linkedSearch;
-        newItem.DomAttribute.DisplayName = linkedSearch.DisplayName;
+        newItem.DomAttribute.LinkedSearchId = linkedSearchId;
+        newItem.DomAttribute.DisplayName = linkedSearch.Name || linkedSearch.DisplayName || '';
       }
     }
 

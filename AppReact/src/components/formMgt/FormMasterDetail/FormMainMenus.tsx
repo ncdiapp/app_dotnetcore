@@ -808,6 +808,8 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
       }
     })();
   };
+  const handleCommandActionRef = useRef(handleCommandAction);
+  handleCommandActionRef.current = handleCommandAction;
   
   // Handle Link Target
   const handleLinkTarget = (linkTarget: any) => {
@@ -1490,6 +1492,10 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
       openTransactionUnitEditor: openRuntimeTransactionUnitEditor,
       openUnitContextMenu: openRuntimeUnitContextMenu,
       openRootUnitsContextMenu: openRuntimeRootUnitsContextMenu,
+      // Angular: formMasterDetailCtrl.commandActionButtonClicked — used by in-form Command Action Buttons
+      commandActionButtonClicked: (commandActionId, commandType) => {
+        handleCommandActionRef.current(commandActionId, commandType ?? 0);
+      },
     };
     onRuntimeConfigApiReady(api);
   }, [

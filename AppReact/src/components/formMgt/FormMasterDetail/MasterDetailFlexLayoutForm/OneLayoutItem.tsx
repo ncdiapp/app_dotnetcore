@@ -663,22 +663,39 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
       );
     }
     
-    // Command Action Button
+    // Command Action Button — Angular: _CommandActionButton.cshtml (label = BindToCommandAction.Name)
     if (displayType === layoutItemTypeEnum?.CommandActionButton) {
       const cmdActionId = da.CommandActionId ?? (da as any).commandActionId;
-      const cmdAction = transactionExDto?.CommandActionList?.find(
-        (c: any) => String(c.Id) === String(cmdActionId)
-      );
+      const cmdAction =
+        layoutItemExDto.BindToCommandAction
+        || transactionExDto?.CommandActionList?.find(
+          (c: any) => String(c.Id) === String(cmdActionId)
+        );
 
-      const label = (da.DisplayName ?? (da as any).displayName)
-        || cmdAction?.DisplayName
-        || cmdAction?.displayName
+      // Angular shows BindToCommandAction.Name (not DomAttribute.DisplayName)
+      const label =
+        cmdAction?.Name
+        || cmdAction?.name
+        || (da.DisplayName ?? (da as any).displayName)
         || 'Command Button';
 
+      const restrictedCommands = transactionExDto?.RestrictedTransactionCommandIdList || [];
+      if (cmdAction && restrictedCommands.some((id: any) => String(id) === String(cmdAction.Id))) {
+        return null;
+      }
+
+      const conditionFieldDbName =
+        cmdAction?.CommandConditionFieldDbFieldName
+        ?? cmdAction?.commandConditionFieldDbFieldName
+        ?? null;
+      const conditionValue = conditionFieldDbName
+        ? dataModel?.currentFormData?.DictOneToOneFields?.[conditionFieldDbName]
+        : true;
+      const isConditionLocked = Boolean(conditionFieldDbName) && !conditionValue;
+
       // ActionType 56 = AI_ACTION — driven by AppAISkill + ActionAttribute config
-      const isAiAction = cmdAction && (
-        (cmdAction.ActionType ?? cmdAction.actionType) === 56
-      );
+      const actionType = cmdAction?.ActionType ?? cmdAction?.actionType;
+      const isAiAction = cmdAction && actionType === 56;
 
       const handleAiActionClick = async () => {
         if (!cmdAction) return;
@@ -765,14 +782,30 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
         }
       };
 
+      const handleCommandClick = () => {
+        if (!cmdAction || isConditionLocked || isAiActionLoading) return;
+        if (isAiAction) {
+          void handleAiActionClick();
+          return;
+        }
+        // Angular: ng-click="commandActionButtonClicked(Id, ActionType)"
+        const id = Number(cmdAction.Id ?? cmdActionId);
+        if (!id) return;
+        runtimeFieldConfig.commandActionButtonClicked(id, Number(actionType));
+      };
+
+      if (isConditionLocked) {
+        return null;
+      }
+
       return (
         <div className="w-full p-2">
           <button
             type="button"
             className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default} ${isAiActionLoading ? 'opacity-60 cursor-not-allowed' : ''}`}
-            onClick={isAiAction ? handleAiActionClick : undefined}
-            disabled={isAiActionLoading}
-            title={isAiAction ? `AI Action: ${cmdAction?.ActionAttribute ?? ''}` : label}
+            onClick={handleCommandClick}
+            disabled={isAiActionLoading || controllerModel?.isBusy}
+            title={label}
           >
             {isAiActionLoading ? (
               <span className="flex items-center gap-1">
