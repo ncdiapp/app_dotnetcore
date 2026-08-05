@@ -1120,14 +1120,17 @@ CREATE TABLE dbo.[{tableName}] (
                 if (string.IsNullOrWhiteSpace(childDef?.AppTableName))
                     continue;
                 string childTable = QualifyBlueprintTableName(childDef.AppTableName, tablePrefix,
-                    childDef.SkipTablePrefix || childDef.AppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase));
+                    childDef.SkipTablePrefix
+                    || childDef.AppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)
+                    || childDef.AppTableName.StartsWith("View_", StringComparison.OrdinalIgnoreCase));
                 if (siblingTableNames.Any(s => string.Equals(s, childTable, StringComparison.OrdinalIgnoreCase)))
                     continue;
 
                 var grands = (childDef.GrandChildAppTableNames ?? new List<string>())
                     .Where(n => !string.IsNullOrWhiteSpace(n))
                     .Select(n => QualifyBlueprintTableName(n, tablePrefix,
-                        n.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)))
+                        n.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)
+                        || n.StartsWith("View_", StringComparison.OrdinalIgnoreCase)))
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
                 foreach (var g in grands)
@@ -1225,6 +1228,15 @@ WHERE TransactionID = @TransactionId";
             // L2: sibling StyleSpecId → Root.ReferenceId; child StyleSpecId → Root.ReferenceId (ROOT-only children).
             ApplyDwBlueprintL2ParentLinks(conn, tran, txId, rootTable, plan, tablePrefix);
 
+            // TechPack: add missing ROOT children on Update (e.g. View_TchpStyleActiveSizeRunSizes).
+            EnsureMissingBlueprintChildUnits(conn, tran, txId, rootTable, plan, tablePrefix, tenantDataSourceId);
+
+            // Re-apply L2 for any units just created by EnsureMissing.
+            ApplyDwBlueprintL2ParentLinks(conn, tran, txId, rootTable, plan, tablePrefix);
+
+            ApplyTechPackChildUnitFlags(conn, tran, txId, plan, tablePrefix);
+            ApplyTechPackStyleSpecFieldWiring(conn, tran, txId, plan, tablePrefix);
+
             SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, transactionIntegrationId);
             return txId;
         }
@@ -1306,11 +1318,376 @@ WHERE TransactionID = @TransactionId";
                         continue;
                     string grandTable = QualifyBlueprintTableName(
                         grandName, tablePrefix,
-                        grandName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase));
+                        grandName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)
+                        || grandName.StartsWith("View_", StringComparison.OrdinalIgnoreCase));
                     int? grandUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, grandTable);
                     if (grandUnitId.HasValue)
                         EnsureChildUnitParentSql(conn, tran, grandUnitId.Value, childUnitId.Value);
                 }
+            }
+        }
+
+        /// <summary>
+        /// On Update, CreateHierarchy is skipped — add any ChildUnitDefs tables that are still missing
+        /// (e.g. View_TchpStyleActiveSizeRunSizes added after Grading txn already exists).
+        /// </summary>
+        private static void EnsureMissingBlueprintChildUnits(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            string rootTable,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix,
+            int tenantDataSourceId)
+        {
+            if (plan?.ChildUnitDefs == null || plan.ChildUnitDefs.Count == 0)
+                return;
+
+            int? rootUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, rootTable);
+            if (!rootUnitId.HasValue)
+                return;
+
+            foreach (var child in plan.ChildUnitDefs)
+            {
+                if (string.IsNullOrWhiteSpace(child?.AppTableName))
+                    continue;
+
+                string childTable = QualifyBlueprintTableName(
+                    child.AppTableName, tablePrefix,
+                    child.SkipTablePrefix
+                    || child.AppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)
+                    || child.AppTableName.StartsWith("View_", StringComparison.OrdinalIgnoreCase));
+
+                if (GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, childTable).HasValue)
+                    continue;
+
+                int? newUnitId = TryCreateChildUnitFromSchema(
+                    conn, tran, transactionId, rootUnitId.Value, childTable, child, tenantDataSourceId);
+                if (!newUnitId.HasValue)
+                    continue;
+
+                // Grandchildren under the new child (rare for view units).
+                foreach (var grandName in child.GrandChildAppTableNames ?? Enumerable.Empty<string>())
+                {
+                    if (string.IsNullOrWhiteSpace(grandName))
+                        continue;
+                    string grandTable = QualifyBlueprintTableName(
+                        grandName, tablePrefix,
+                        grandName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)
+                        || grandName.StartsWith("View_", StringComparison.OrdinalIgnoreCase));
+                    if (GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, grandTable).HasValue)
+                        continue;
+                    TryCreateChildUnitFromSchema(
+                        conn, tran, transactionId, newUnitId.Value, grandTable,
+                        new PlmDwBlueprintChildUnitDto
+                        {
+                            AppTableName = grandName,
+                            SkipTablePrefix = true,
+                            IsReadOnly = false
+                        },
+                        tenantDataSourceId);
+                }
+            }
+        }
+
+        private static int? TryCreateChildUnitFromSchema(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            int parentUnitId,
+            string tableName,
+            PlmDwBlueprintChildUnitDto childDef,
+            int tenantDataSourceId)
+        {
+            var ownerPairs = new List<KeyValuePair<string, string>>
+            {
+                new KeyValuePair<string, string>("dbo", tableName)
+            };
+            var dict = AppMetaDataBL.GetDatabaseTableSchemaDictionaryBySchemaOwnerTableNames(
+                ownerPairs, tenantDataSourceId);
+            string key = AppMetaDataBL.GetOwnerTableKey("dbo", tableName);
+            if (!dict.ContainsKey(key))
+                return null;
+
+            var dbTable = dict[key];
+            string displayName = !string.IsNullOrWhiteSpace(childDef?.UnitDisplayName)
+                ? childDef.UnitDisplayName.Trim()
+                : AppTransactionBL.ConvertDbNameToDisplayName(tableName);
+
+            bool isReadOnly = childDef?.IsReadOnly == true;
+
+            int unitId;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+INSERT INTO dbo.AppTransactionUnit (
+    TransactionID, UnitDisplayName, DataBaseTableName, ParentTransactionUnitID,
+    IsReadOnly, IsMasterSiblingUnit, SchemaOwner,
+    IsDisableAddButton, IsDisableDeleteButton, IsUsedForLoadingAvailableSource,
+    AppCreatedDate, AppModifiedDate)
+VALUES (
+    @TransactionId, @DisplayName, @TableName, @ParentUnitId,
+    @IsReadOnly, 0, N'dbo',
+    @DisableAdd, @DisableDelete, NULL,
+    GETDATE(), GETDATE());
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
+                cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+                cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                cmd.Parameters.AddWithValue("@TableName", tableName);
+                cmd.Parameters.AddWithValue("@ParentUnitId", parentUnitId);
+                cmd.Parameters.AddWithValue("@IsReadOnly", isReadOnly ? 1 : 0);
+                cmd.Parameters.AddWithValue("@DisableAdd", isReadOnly ? 1 : 0);
+                cmd.Parameters.AddWithValue("@DisableDelete", isReadOnly ? 1 : 0);
+                unitId = Convert.ToInt32(cmd.ExecuteScalar());
+            }
+
+            int sort = 10;
+            bool anyPk = dbTable.Columns.Any(c => c.IsPrimaryKey);
+            foreach (var col in dbTable.Columns)
+            {
+                if (col.Name.Equals("AppCreatedByID", StringComparison.OrdinalIgnoreCase)
+                    || col.Name.Equals("AppCreatedDate", StringComparison.OrdinalIgnoreCase)
+                    || col.Name.Equals("AppModifiedDate", StringComparison.OrdinalIgnoreCase)
+                    || col.Name.Equals("AppModifiedByID", StringComparison.OrdinalIgnoreCase)
+                    || col.Name.Equals("AppCreatedByCompanyID", StringComparison.OrdinalIgnoreCase)
+                    || col.Name.Equals("SystemTimeStamp", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                bool isPk = col.IsPrimaryKey
+                    || (!anyPk && col.Name.Equals("SizeRunSizeId", StringComparison.OrdinalIgnoreCase));
+                bool isVisible = !isPk && !isReadOnly;
+                if (isReadOnly)
+                {
+                    var visible = childDef.VisibleFieldNames != null && childDef.VisibleFieldNames.Count > 0
+                        ? childDef.VisibleFieldNames
+                        : new List<string> { "SizeLabel", "SizeOrder" };
+                    isVisible = visible.Any(v => string.Equals(v, col.Name, StringComparison.OrdinalIgnoreCase));
+                }
+
+                int? dataType = ControlTypeValueConverter.ConvertValueToInt(col.Tag);
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+INSERT INTO dbo.AppTransactionField (
+    TransactionUnitID, DisplayName, DataBaseFieldName, ControlType, DataType,
+    SortOrder, IsPrimaryKey, IsVisible, IsReadonly, IsAllowEmpty,
+    DisplayWidth, NBDecimal, IsLinkToParentPrimaryKey, AppCreatedDate, AppModifiedDate)
+VALUES (
+    @UnitId, @DisplayName, @DbName, @ControlType, @DataType,
+    @SortOrder, @IsPk, @IsVisible, @IsReadonly, 1,
+    N'100', 0, 0, GETDATE(), GETDATE());";
+                    cmd.Parameters.AddWithValue("@UnitId", unitId);
+                    cmd.Parameters.AddWithValue("@DisplayName", AppTransactionBL.ConvertDbNameToDisplayName(col.Name));
+                    cmd.Parameters.AddWithValue("@DbName", col.Name);
+                    cmd.Parameters.AddWithValue("@ControlType", isPk ? (int)EmAppControlType.Numeric : (int)EmAppControlType.TextBox);
+                    cmd.Parameters.AddWithValue("@DataType", (object)dataType ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SortOrder", sort);
+                    cmd.Parameters.AddWithValue("@IsPk", isPk ? 1 : 0);
+                    cmd.Parameters.AddWithValue("@IsVisible", isVisible ? 1 : 0);
+                    cmd.Parameters.AddWithValue("@IsReadonly", (isPk || isReadOnly) ? 1 : 0);
+                    cmd.ExecuteNonQuery();
+                }
+                sort += 10;
+            }
+
+            return unitId;
+        }
+
+        /// <summary>
+        /// Apply IsReadOnly / Add-Delete disable / field visibility for blueprint child units flagged IsReadOnly.
+        /// </summary>
+        private static void ApplyTechPackChildUnitFlags(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            if (plan?.ChildUnitDefs == null)
+                return;
+
+            foreach (var child in plan.ChildUnitDefs)
+            {
+                if (child == null || !child.IsReadOnly || string.IsNullOrWhiteSpace(child.AppTableName))
+                    continue;
+
+                string childTable = QualifyBlueprintTableName(
+                    child.AppTableName, tablePrefix,
+                    child.SkipTablePrefix
+                    || child.AppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)
+                    || child.AppTableName.StartsWith("View_", StringComparison.OrdinalIgnoreCase));
+                int? unitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, childTable);
+                if (!unitId.HasValue)
+                    continue;
+
+                string displayName = !string.IsNullOrWhiteSpace(child.UnitDisplayName)
+                    ? child.UnitDisplayName.Trim()
+                    : null;
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit SET
+    IsReadOnly = 1,
+    IsDisableAddButton = 1,
+    IsDisableDeleteButton = 1,
+    UnitDisplayName = COALESCE(@DisplayName, UnitDisplayName),
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId";
+                    cmd.Parameters.AddWithValue("@UnitId", unitId.Value);
+                    cmd.Parameters.AddWithValue("@DisplayName", (object)displayName ?? DBNull.Value);
+                    cmd.ExecuteNonQuery();
+                }
+
+                var visible = child.VisibleFieldNames != null && child.VisibleFieldNames.Count > 0
+                    ? child.VisibleFieldNames
+                    : new List<string> { "SizeLabel", "SizeOrder" };
+
+                using (var hide = conn.CreateCommand())
+                {
+                    hide.Transaction = tran;
+                    hide.CommandText = @"
+UPDATE dbo.AppTransactionField SET IsVisible = 0, IsReadonly = 1
+WHERE TransactionUnitID = @UnitId
+  AND ISNULL(IsLinkToParentPrimaryKey, 0) = 0";
+                    hide.Parameters.AddWithValue("@UnitId", unitId.Value);
+                    hide.ExecuteNonQuery();
+                }
+
+                foreach (var col in visible.Where(c => !string.IsNullOrWhiteSpace(c)))
+                {
+                    using (var show = conn.CreateCommand())
+                    {
+                        show.Transaction = tran;
+                        show.CommandText = @"
+UPDATE dbo.AppTransactionField SET IsVisible = 1, IsReadonly = 1
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @Col";
+                        show.Parameters.AddWithValue("@UnitId", unitId.Value);
+                        show.Parameters.AddWithValue("@Col", col.Trim());
+                        show.ExecuteNonQuery();
+                    }
+                }
+
+                // Prefer SizeRunSizeId as PK when view has no PK metadata.
+                using (var pk = conn.CreateCommand())
+                {
+                    pk.Transaction = tran;
+                    pk.CommandText = @"
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.AppTransactionField
+    WHERE TransactionUnitID = @UnitId AND ISNULL(IsPrimaryKey, 0) = 1)
+UPDATE dbo.AppTransactionField SET IsPrimaryKey = 1, IsVisible = 0, IsReadonly = 1
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'SizeRunSizeId'";
+                    pk.Parameters.AddWithValue("@UnitId", unitId.Value);
+                    pk.ExecuteNonQuery();
+                }
+
+                // ORDER BY SizeOrder via GroupByLevel (row-order convention).
+                using (var ord = conn.CreateCommand())
+                {
+                    ord.Transaction = tran;
+                    ord.CommandText = @"
+UPDATE dbo.AppTransactionField SET GroupByLevel = 1
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'SizeOrder'";
+                    ord.Parameters.AddWithValue("@UnitId", unitId.Value);
+                    ord.ExecuteNonQuery();
+                }
+            }
+        }
+
+        /// <summary>
+        /// StyleSpec sibling: SizeRunId / BaseSizeDetailId as DDL entities; BaseSize depends on SizeRun.
+        /// </summary>
+        private static void ApplyTechPackStyleSpecFieldWiring(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            if (plan?.SiblingUnitDefs == null)
+                return;
+
+            bool hasStyleSpec = plan.SiblingUnitDefs.Any(s =>
+                s != null
+                && !string.IsNullOrWhiteSpace(s.AppTableName)
+                && s.AppTableName.IndexOf("TchpStyleSpec", StringComparison.OrdinalIgnoreCase) >= 0);
+            if (!hasStyleSpec)
+                return;
+
+            string styleSpecTable = QualifyBlueprintTableName("TchpStyleSpec", tablePrefix, skipTablePrefix: true);
+            int? styleSpecUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, styleSpecTable);
+            if (!styleSpecUnitId.HasValue)
+                return;
+
+            int? sizeRunEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "SizeRun");
+            int? sizeRunDetailEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "SizeRunDetail");
+            int? sizeRunFieldId = ResolveTransactionFieldIdSql(conn, tran, styleSpecUnitId.Value, "SizeRunId");
+            int? baseSizeFieldId = ResolveTransactionFieldIdSql(conn, tran, styleSpecUnitId.Value, "BaseSizeDetailId");
+
+            if (sizeRunFieldId.HasValue && sizeRunEntityId.HasValue)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    ControlType = @Ddl,
+    EntityId = @EntityId,
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionFieldID = @FieldId";
+                    cmd.Parameters.AddWithValue("@Ddl", (int)EmAppControlType.DDL);
+                    cmd.Parameters.AddWithValue("@EntityId", sizeRunEntityId.Value);
+                    cmd.Parameters.AddWithValue("@FieldId", sizeRunFieldId.Value);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+
+            if (baseSizeFieldId.HasValue && sizeRunDetailEntityId.HasValue)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    ControlType = @Ddl,
+    EntityId = @EntityId,
+    DDLParentLevelID = @ParentFieldId,
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionFieldID = @FieldId";
+                    cmd.Parameters.AddWithValue("@Ddl", (int)EmAppControlType.DDL);
+                    cmd.Parameters.AddWithValue("@EntityId", sizeRunDetailEntityId.Value);
+                    cmd.Parameters.AddWithValue("@ParentFieldId",
+                        sizeRunFieldId.HasValue ? (object)sizeRunFieldId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@FieldId", baseSizeFieldId.Value);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        private static int? ResolveAppEntityInfoIdByCode(
+            SqlConnection conn,
+            SqlTransaction tran,
+            string entityCode)
+        {
+            if (string.IsNullOrWhiteSpace(entityCode))
+                return null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT TOP 1 EntityInfoID
+FROM dbo.AppEntityInfo
+WHERE EntityCode = @Code
+ORDER BY EntityInfoID";
+                cmd.Parameters.AddWithValue("@Code", entityCode.Trim());
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
             }
         }
 
@@ -1845,7 +2222,10 @@ WHERE TransactionID = @TransactionId";
             using (var cmd = conn.CreateCommand())
             {
                 cmd.Transaction = tran;
-                cmd.CommandText = "SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@Table";
+                // TABLES includes BASE TABLE and VIEW (needed for View_TchpStyleActiveSizeRunSizes).
+                cmd.CommandText = @"
+SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = @Table";
                 cmd.Parameters.AddWithValue("@Table", tableName);
                 return cmd.ExecuteScalar() != null;
             }

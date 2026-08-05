@@ -496,6 +496,8 @@ ImportFromPLMDW/
 [ ] Run _gen_plmdw_import_sql.ps1 → output/{templateId}/1_…6_ files
 [ ] Verify 3_PlmDw_ImportFromDW.sql has @PlmTemplateId + APPEND default
 [ ] Verify 4_PlmDw_ImportBlueprint.json includes bomColorwayPivotBindings when steps 5–6 exist
+[ ] TechPack: run 3b (includes View_TchpStyleActiveSizeRunSizes) before Phase D
+[ ] TechPack Grading blueprint: SizeRunSizes read-only view child + StyleSpec BaseSize cascade
 [ ] Optional: pilot import with @ReferenceIdList
 ```
 
@@ -515,11 +517,20 @@ When `dwTabImportConfig` includes a `techPack` block (α bindings):
 | Import scope | **D1** — step `3b_Tchp_ImportFromDW.sql` writes Tchp now |
 | StyleSpec unit kind | **Sibling**; `StyleSpecId` = non-identity PK = `Root.ReferenceId` |
 | Link without DB FK | **L2** — sibling `StyleSpecId` → Root.`ReferenceId`; children **attachToRoot** with `StyleSpecId` → Root.`ReferenceId` |
+| SizeRunSizes grid | **V1** — **Grading tab only**: ROOT child on `View_TchpStyleActiveSizeRunSizes` (read-only). Link `StyleSpecId` → Root.`ReferenceId`. Do **not** attach under StyleSpec sibling. Do **not** add to Fit tabs. |
+| BaseSize cascade | **S2** — `TchpStyleSpec.BaseSizeDetailId` Depend On DDL (`DDLParentLevelID`) = `SizeRunId`; entities `SizeRun` / `SizeRunDetail` |
 | Fit Summary Fit grid | **F1** — all FitRounds; Fit1–4 filter by `fitRoundNumberFilter`; Comments do **not** host Fit grid |
 | SpecFit ActualValue | `COALESCE(ReviseN, SampleN)` |
 | POM_Template / Spec_Selected_Size | Stay on `Plm_Grading` / `Plm_Fit_Summary` |
 
-Phase D (`ExecuteDwBlueprintConfig`) applies L2 after `CreateHierarchyTransactionFromTables`: sibling + child `IsLinkToParentPrimaryKey` to Root only (never reparent under StyleSpec sibling).
+Phase D (`ExecuteDwBlueprintConfig`) applies L2 after `CreateHierarchyTransactionFromTables`: sibling + child `IsLinkToParentPrimaryKey` to Root only (never reparent under StyleSpec sibling). Then: EnsureMissing child units (Update), `IsReadOnly` flags for V1 view child, StyleSpec SizeRun/BaseSize DDL + S2 cascade.
+
+**V1 view DDL** (keep identical in both places):
+
+1. `Document/Design/POM_Grading_QC_NewSchema.sql`
+2. Emitted in `output/{templateId}/3b_Tchp_ImportFromDW.sql` (`CREATE OR ALTER VIEW`) when `techPack` present
+
+Run **3b before Phase D** so the view exists when Blueprint Validate/Execute resolves child table `View_TchpStyleActiveSizeRunSizes`.
 
 ---
 

@@ -987,6 +987,14 @@ export interface PlmDwBlueprintSiblingUnitDto {
 export interface PlmDwBlueprintChildUnitDto {
   AppTableName?: string | null;
   AttachToRoot?: boolean;
+  SkipTablePrefix?: boolean;
+  LinkToParentField?: string | null;
+  ParentPrimaryKeyField?: string | null;
+  GrandChildAppTableNames?: string[] | null;
+  FitRoundNumberFilter?: number | null;
+  IsReadOnly?: boolean;
+  UnitDisplayName?: string | null;
+  VisibleFieldNames?: string[] | null;
 }
 
 export interface PlmDwBlueprintGridBindingDto {

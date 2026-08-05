@@ -117,6 +117,22 @@
                                                                           "grandChildAppTableNames":  [
                                                                                                           "TchpGradeValue"
                                                                                                       ]
+                                                                      },
+                                                                      {
+                                                                          "appTableName":  "View_TchpStyleActiveSizeRunSizes",
+                                                                          "attachToRoot":  true,
+                                                                          "skipTablePrefix":  true,
+                                                                          "linkToParentField":  "StyleSpecId",
+                                                                          "parentPrimaryKeyField":  "ReferenceId",
+                                                                          "grandChildAppTableNames":  [
+
+                                                                                                      ],
+                                                                          "isReadOnly":  true,
+                                                                          "unitDisplayName":  "SizeRunSizes",
+                                                                          "visibleFieldNames":  [
+                                                                                                    "SizeLabel",
+                                                                                                    "SizeOrder"
+                                                                                                ]
                                                                       }
                                                                   ]
                                                }

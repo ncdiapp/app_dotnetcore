@@ -507,6 +507,15 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
                 if ($null -ne $cu.fitRoundNumberFilter -and "$($cu.fitRoundNumberFilter)" -ne '') {
                     $childEntry.fitRoundNumberFilter = [int]$cu.fitRoundNumberFilter
                 }
+                if ($cu.isReadOnly -eq $true -or $cu.IsReadOnly -eq $true) {
+                    $childEntry.isReadOnly = $true
+                }
+                if ($cu.unitDisplayName) {
+                    $childEntry.unitDisplayName = [string]$cu.unitDisplayName
+                }
+                if ($cu.visibleFieldNames) {
+                    $childEntry.visibleFieldNames = @($cu.visibleFieldNames | ForEach-Object { [string]$_ })
+                }
                 $childUnits.Add($childEntry)
             }
         }

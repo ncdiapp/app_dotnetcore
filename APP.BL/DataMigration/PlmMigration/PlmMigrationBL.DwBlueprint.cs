@@ -757,6 +757,7 @@ WHERE object_id = OBJECT_ID(@Table) AND name = @Column";
       string name = appTableName.Trim();
       if (skipTablePrefix
           || name.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)
+          || name.StartsWith("View_", StringComparison.OrdinalIgnoreCase)
           || (!string.IsNullOrWhiteSpace(prefix)
               && name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
         return name;

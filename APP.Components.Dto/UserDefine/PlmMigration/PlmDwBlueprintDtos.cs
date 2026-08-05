@@ -264,6 +264,23 @@ namespace APP.Components.EntityDto
         /// <summary>Optional FitRound RoundNumber filter for Fit 1–4 tabs (UI filter hint).</summary>
         [DataMember]
         public int? FitRoundNumberFilter { get; set; }
+
+        /// <summary>
+        /// Read-only child (e.g. View_TchpStyleActiveSizeRunSizes). Phase D sets IsReadOnly + disables Add/Delete.
+        /// </summary>
+        [DataMember]
+        public bool IsReadOnly { get; set; }
+
+        /// <summary>Optional UnitDisplayName override (default = table display name).</summary>
+        [DataMember]
+        public string UnitDisplayName { get; set; }
+
+        /// <summary>
+        /// Field names kept visible on a read-only view child (others hidden except PK / link-to-parent).
+        /// Default when null/empty and IsReadOnly: SizeLabel, SizeOrder.
+        /// </summary>
+        [DataMember]
+        public List<string> VisibleFieldNames { get; set; } = new List<string>();
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

@@ -704,7 +704,7 @@
                   }
               ],
     "techPack":  {
-                     "_comment":  "L2: TchpStyleSpec.StyleSpecId (=ReferenceId, no identity) → Root.ReferenceId. Children attachToRoot only. SpecFit/SpecGrading → Tchp. Size_Run/Base_Size/Measure_Unit → TchpStyleSpec (S1 from Grading 4006).",
+                     "_comment":  "L2: TchpStyleSpec.StyleSpecId (=ReferenceId, no identity) → Root.ReferenceId. Children attachToRoot only. SpecFit/SpecGrading → Tchp. Size_Run/Base_Size/Measure_Unit → TchpStyleSpec (S1 from Grading 4006). V1: Grading-only View_TchpStyleActiveSizeRunSizes read-only child. S2: BaseSizeDetailId Depend On SizeRunId.",
                      "styleSpecShared":  true,
                      "styleSpecOwnedColumns":  [
                                                    "Size_Run",
@@ -752,6 +752,22 @@
                                                                                                  "TchpGradeValue"
                                                                                              ],
                                                                  "attachToRoot":  true
+                                                             },
+                                                             {
+                                                                 "appTableName":  "View_TchpStyleActiveSizeRunSizes",
+                                                                 "skipTablePrefix":  true,
+                                                                 "linkToParentField":  "StyleSpecId",
+                                                                 "parentPrimaryKeyField":  "ReferenceId",
+                                                                 "attachToRoot":  true,
+                                                                 "isReadOnly":  true,
+                                                                 "unitDisplayName":  "SizeRunSizes",
+                                                                 "visibleFieldNames":  [
+                                                                                           "SizeLabel",
+                                                                                           "SizeOrder"
+                                                                                       ],
+                                                                 "grandChildAppTableNames":  [
+
+                                                                                             ]
                                                              }
                                                          ]
                                       },

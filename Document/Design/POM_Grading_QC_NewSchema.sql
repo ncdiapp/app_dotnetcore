@@ -740,5 +740,31 @@ ELSE
     PRINT 'ASTM grade rule sets already seeded — skipped';
 GO
 
+-- ── View_TchpStyleActiveSizeRunSizes ─────────────────────────
+-- Read-only sizes for the StyleSpec's current SizeRun.
+-- Used as ROOT child unit (StyleSpecId → Root.ReferenceId); not under StyleSpec sibling.
+-- Keep in sync with ImportFromPLMDW 3b_Tchp_ImportFromDW.sql (CREATE OR ALTER).
+IF OBJECT_ID(N'dbo.View_TchpStyleActiveSizeRunSizes', N'V') IS NOT NULL
+    DROP VIEW [dbo].[View_TchpStyleActiveSizeRunSizes];
+GO
+
+CREATE VIEW [dbo].[View_TchpStyleActiveSizeRunSizes]
+AS
+SELECT
+    ss.StyleSpecId,
+    ss.SizeRunId,
+    srs.SizeRunSizeId,
+    srs.SizeLabel,
+    srs.SizeOrder,
+    srs.IsActive
+FROM dbo.TchpStyleSpec AS ss
+INNER JOIN dbo.TchpSizeRunSize AS srs
+    ON srs.SizeRunId = ss.SizeRunId
+WHERE ISNULL(srs.IsActive, 1) = 1;
+GO
+
+PRINT 'Created View_TchpStyleActiveSizeRunSizes';
+GO
+
 PRINT '=== POM_Grading_QC_NewSchema.sql completed ===';
 GO

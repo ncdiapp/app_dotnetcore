@@ -286,3 +286,26 @@ PRINT N'TchpFitMeasurement insert done. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20)
 
 PRINT N'TechPack Tchp import batch finished.';
 GO
+
+-- =============================================================================
+-- V1: View_TchpStyleActiveSizeRunSizes (Grading ROOT read-only SizeRunSizes child)
+-- Keep identical to Document/Design/POM_Grading_QC_NewSchema.sql
+-- Run this script BEFORE Phase D Blueprint Execute.
+-- CREATE VIEW must be first statement in its batch (GO above required).
+-- =============================================================================
+CREATE OR ALTER VIEW dbo.View_TchpStyleActiveSizeRunSizes
+AS
+SELECT
+    ss.StyleSpecId,
+    ss.SizeRunId,
+    srs.SizeRunSizeId,
+    srs.SizeLabel,
+    srs.SizeOrder,
+    srs.IsActive
+FROM dbo.TchpStyleSpec AS ss
+INNER JOIN dbo.TchpSizeRunSize AS srs
+    ON srs.SizeRunId = ss.SizeRunId
+WHERE ISNULL(srs.IsActive, 1) = 1;
+GO
+PRINT N'View_TchpStyleActiveSizeRunSizes created/altered.';
+GO
