@@ -74,6 +74,8 @@ interface DataGridLayoutProps {
   parentOneToManyUnitId?: number | string;
   /** Row index of `dictOneToManyHostRow` in `masterDetailFormData.DictOneToManyFields[parentOneToManyUnitId]` (fallback if reference identity fails). */
   parentHostRowIndex?: number;
+  /** Form layout DomAttribute for this grid item (Label Position / LabelWidth for MultipleSelectBox). */
+  layoutDomAttribute?: any;
 }
 
 /**
@@ -240,6 +242,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   masterDetailFormData,
   parentOneToManyUnitId,
   parentHostRowIndex,
+  layoutDomAttribute,
 }) => {
   const { theme, t } = useTheme();
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
@@ -262,6 +265,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const [availableDataBump, setAvailableDataBump] = useState(0);
   const emAppControlTypeEnum = useEnumValues('EmAppControlType');
   const emAppTransactionGridDisplayTypeEnum = useEnumValues('EmAppTransactionGridDisplayType');
+  const unitLabelPositionEnum = useEnumValues('EmAppUnitLabelPosition');
   const emAppGrandChildEditModeEnum = useEnumValues('EmAppGrandChildEditMode');
   const transactionOrganizedTypeEnum = useEnumValues('EmTransactionOrganizedType');
   const cascadingInitValueRef = useRef<any>(null);
@@ -1352,6 +1356,37 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
 
   const mappingSubscribeDb = mappingSubscribeField?.DataBaseFieldName ?? '';
   const mappingSourceDb = mappingSourceField?.DataBaseFieldName ?? '';
+
+  /** MultipleSelectBox tile width from subscribe unit mapping field DisplayWidth (e.g. DimensionCode). */
+  const multiSelectItemWidthPx = useMemo(() => {
+    const raw =
+      mappingSubscribeField?.DisplayWidth
+      ?? (mappingSubscribeField as any)?.displayWidth;
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
+    if (raw != null && raw !== '') {
+      const n = parseInt(String(raw), 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 100;
+  }, [mappingSubscribeField]);
+
+  const multiSelectLabelPosition = Number(
+    layoutDomAttribute?.EmUnitLabelPosition
+      ?? layoutDomAttribute?.emUnitLabelPosition
+      ?? unitLabelPositionEnum?.Top
+      ?? 1
+  );
+  const isMultiSelectLabelOnLeft =
+    multiSelectLabelPosition === Number(unitLabelPositionEnum?.Left ?? 2);
+  const multiSelectLabelWidthPx = useMemo(() => {
+    const raw = layoutDomAttribute?.LabelWidth ?? layoutDomAttribute?.labelWidth;
+    if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) return raw;
+    if (raw != null && raw !== '') {
+      const n = parseInt(String(raw), 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+    return 100;
+  }, [layoutDomAttribute?.LabelWidth, layoutDomAttribute?.labelWidth]);
 
   /** Display label on MultipleSelectBox tiles (Angular: first visible TextBox on source unit, else mapping field). */
   const sourceDisplayFieldDbName = useMemo(() => {
@@ -3289,7 +3324,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             : undefined
       }
     >
-      {/* Grid Header */}
+      {/* Grid Header — hide for MultipleSelectBox when label is on the left of items */}
+      {!(showMultipleSelectBoxUi && isMultiSelectLabelOnLeft) && (
       <div
         className={
           actionButtonsPosition === 'left'
@@ -3299,11 +3335,13 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       >
         <div className="flex items-center gap-2">
           <div className={`font-semibold ${theme.title}`}>{unitExDto?.UnitDisplayName || 'Data Grid'}</div>
+          {!showMultipleSelectBoxUi && (
           <FlexGridAddOn
             gridRef={flexGridRef}
             storageKey={`mdGrid:${unitId}`}
             title="Freeze / Show / Hide columns"
           />
+          )}
         </div>
 
         {( !isGridReadOnly || hasUnitNavigation) && (
@@ -3364,6 +3402,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           </div>
         )}
       </div>
+      )}
 
       {/* Grid Content — Available/Selected pair (EmGridViewDisplayType 5 / 6) or single grid */}
       <div
@@ -3371,7 +3410,9 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           showAvailableSelectPairSplit
             ? 'flex flex-row h-1 flex-auto min-h-0 items-stretch gap-6 overflow-hidden px-4 py-2'
             : showMultipleSelectBoxUi
-              ? 'flex h-1 flex-auto flex-col overflow-hidden px-4 py-2'
+              ? isMultiSelectLabelOnLeft
+                ? 'flex h-1 flex-auto flex-row items-start gap-2 overflow-hidden px-3 py-2'
+                : 'flex h-1 flex-auto flex-col overflow-hidden px-4 py-2'
               : showAvailableSelectConfigWarning
                 ? 'flex h-1 flex-auto flex-col gap-1 overflow-auto'
                 : ''
@@ -3465,45 +3506,56 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
         )}
 
         {showMultipleSelectBoxUi && (
-          <div className="h-1 w-full min-h-0 min-w-0 flex-auto flex flex-col overflow-hidden">
-            <div
-              className={`min-h-0 flex-auto overflow-auto rounded border px-3 py-3 ${theme.mainContentSection}`}
-              role="group"
-              aria-label={unitExDto?.UnitDisplayName ?? 'Multi select'}
-            >
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {allSourceRowsForMultiSelect.map((srcRow: any, idx: number) => {
-                  const srcKey = readTransactionRowField(srcRow, mappingSourceDb);
-                  const ks = srcKey != null && srcKey !== '' ? String(srcKey) : '';
-                  const checked = ks !== '' && selectedKeysAlreadyInSubscribeGrid.has(ks);
-                  const labelRaw = sourceDisplayFieldDbName
-                    ? readTransactionRowField(srcRow, sourceDisplayFieldDbName)
-                    : srcKey;
-                  const label = labelRaw != null && labelRaw !== '' ? String(labelRaw) : ks || '—';
-                  return (
-                    <label
-                      key={ks || `msb-${idx}`}
-                      className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 ${theme.inputBox}`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-3 w-3 shrink-0 accent-current"
-                        checked={checked}
-                        disabled={isGridReadOnly || !ks}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          toggleMultipleSelectSourceRow(srcRow, e.target.checked);
-                        }}
-                      />
-                      <span className={`min-w-0 flex-auto truncate text-[11px] font-normal leading-snug ${theme.label}`}>{label}</span>
-                    </label>
-                  );
-                })}
+          <>
+            {isMultiSelectLabelOnLeft && (
+              <div
+                className={`shrink-0 pt-1.5 text-xs font-semibold ${theme.title}`}
+                style={{ width: multiSelectLabelWidthPx }}
+              >
+                {unitExDto?.UnitDisplayName || 'Multiple Select'}
+              </div>
+            )}
+            <div className="h-1 w-1 min-h-0 min-w-0 flex-auto flex flex-col overflow-hidden">
+              <div
+                className={`min-h-0 flex-auto overflow-auto rounded border px-3 py-3 ${theme.mainContentSection}`}
+                role="group"
+                aria-label={unitExDto?.UnitDisplayName ?? 'Multi select'}
+              >
+                <div className="flex flex-wrap gap-2">
+                  {allSourceRowsForMultiSelect.map((srcRow: any, idx: number) => {
+                    const srcKey = readTransactionRowField(srcRow, mappingSourceDb);
+                    const ks = srcKey != null && srcKey !== '' ? String(srcKey) : '';
+                    const checked = ks !== '' && selectedKeysAlreadyInSubscribeGrid.has(ks);
+                    const labelRaw = sourceDisplayFieldDbName
+                      ? readTransactionRowField(srcRow, sourceDisplayFieldDbName)
+                      : srcKey;
+                    const label = labelRaw != null && labelRaw !== '' ? String(labelRaw) : ks || '—';
+                    return (
+                      <label
+                        key={ks || `msb-${idx}`}
+                        className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 ${theme.inputBox}`}
+                        style={{ width: multiSelectItemWidthPx, maxWidth: '100%' }}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-3 w-3 shrink-0 accent-current"
+                          checked={checked}
+                          disabled={isGridReadOnly || !ks}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleMultipleSelectSourceRow(srcRow, e.target.checked);
+                          }}
+                        />
+                        <span className={`min-w-0 flex-auto truncate text-[11px] font-normal leading-snug ${theme.label}`}>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             </div>
-          </div>
+          </>
         )}
 
         {/* Pivot edit grid — EmGridViewDisplayType = 3 */}

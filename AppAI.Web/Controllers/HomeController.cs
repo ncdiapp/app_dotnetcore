@@ -668,6 +668,9 @@ public class HomeController : ControllerBase
         type = typeof(EmAppTransactionGridDisplayType);
         SetupOneEnumType(type, dictEnumApp);
 
+        type = typeof(EmAppUnitLabelPosition);
+        SetupOneEnumType(type, dictEnumApp);
+
         type = typeof(EmAppBarCodeType);
         SetupOneEnumType(type, dictEnumApp);
 

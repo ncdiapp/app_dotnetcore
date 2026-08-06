@@ -24,6 +24,8 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
   const layoutItemTypeEnum = useEnumValues('EmAppFormLayoutItemType');
   const controlTypeEnum = useEnumValues('EmAppControlType');
   const aggTypeEnum = useEnumValues('EmAppAggregationFunctionType');
+  const gridDisplayTypeEnum = useEnumValues('EmAppTransactionGridDisplayType');
+  const unitLabelPositionEnum = useEnumValues('EmAppUnitLabelPosition');
   
   // CRITICAL: Use ref to store the latest currentLayoutItem to avoid stale closure issues
   const currentLayoutItemRef = useRef<any | null>(null);
@@ -272,6 +274,65 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
     });
     return controlTypes.sort((a, b) => a.value - b.value);
   }, [controlTypeEnum]);
+
+  const displayTypeForHooks = currentLayoutItem?.DomAttribute?.WidgetDisplayType;
+  const isGridForHooks = displayTypeForHooks === layoutItemTypeEnum?.Grid;
+
+  /** Child-unit MultipleSelectBox only — Form Design Label Position / Label Width. */
+  const multipleSelectBoxUnit = useMemo(() => {
+    if (!isGridForHooks || !currentLayoutItem) return null;
+    const unitId = currentLayoutItem.GridTransactionUnitId
+      ?? currentLayoutItem.ForeignAppTransactionUnitExDto?.Id;
+    if (unitId == null) return currentLayoutItem.ForeignAppTransactionUnitExDto ?? null;
+
+    const units = transactionData?.AppTransactionData?.AppTransactionUnitList
+      ?? transactionData?.AppTransactionUnitList
+      ?? [];
+    const findUnit = (list: any[]): any | null => {
+      for (const u of list || []) {
+        if (u?.Id === unitId || String(u?.Id) === String(unitId)) return u;
+        const found = findUnit(u?.Children ?? []);
+        if (found) return found;
+      }
+      return null;
+    };
+    return findUnit(units) ?? currentLayoutItem.ForeignAppTransactionUnitExDto ?? null;
+  }, [isGridForHooks, currentLayoutItem, transactionData]);
+
+  const isChildMultipleSelectBox = useMemo(() => {
+    if (!multipleSelectBoxUnit) return false;
+    const displayTypeVal = Number(
+      multipleSelectBoxUnit.EmGridViewDisplayType ?? multipleSelectBoxUnit.emGridViewDisplayType
+    );
+    const multiBoxVal = Number(gridDisplayTypeEnum?.MultipleSelectBox ?? 6);
+    if (displayTypeVal !== multiBoxVal) return false;
+    const parentId =
+      multipleSelectBoxUnit.ParentTransactionUnitId
+      ?? multipleSelectBoxUnit.parentTransactionUnitId;
+    const level = Number(
+      currentLayoutItem?.DomAttribute?.TranscationUnitLevel
+      ?? currentLayoutItem?.DomAttribute?.transcationUnitLevel
+      ?? 0
+    );
+    return parentId != null || level > 1;
+  }, [multipleSelectBoxUnit, gridDisplayTypeEnum?.MultipleSelectBox, currentLayoutItem]);
+
+  const unitLabelPositionOptions = useMemo(() => {
+    const top = Number(unitLabelPositionEnum?.Top ?? 1);
+    const left = Number(unitLabelPositionEnum?.Left ?? 2);
+    return [
+      { Id: top, Display: 'Top' },
+      { Id: left, Display: 'Left' },
+    ];
+  }, [unitLabelPositionEnum?.Top, unitLabelPositionEnum?.Left]);
+
+  const currentUnitLabelPosition = Number(
+    currentLayoutItem?.DomAttribute?.EmUnitLabelPosition
+      ?? unitLabelPositionEnum?.Top
+      ?? 1
+  );
+  const isUnitLabelOnLeft =
+    currentUnitLabelPosition === Number(unitLabelPositionEnum?.Left ?? 2);
 
   if (!currentLayoutItem) {
     return null;
@@ -656,6 +717,78 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
                       </div>
                     </td>
                   </tr>
+                </tbody>
+              </table>
+              <div className="border-t my-2" />
+            </div>
+          )}
+
+          {/* Child Unit MultipleSelectBox: Label Position (+ LabelWidth when Left) */}
+          {isChildMultipleSelectBox && !isGridColumn && (
+            <div className="mb-5">
+              <div className={`text-xs font-semibold ${theme.title} mb-2`}>Multiple Select Box</div>
+              <table className="w-full" style={{ tableLayout: 'fixed' }}>
+                <tbody>
+                  <tr>
+                    <td style={{ width: '125px', padding: '2px 0' }}>
+                      <label className={`text-xs ${theme.label}`}>Label Position</label>
+                    </td>
+                    <td style={{ width: '180px', padding: '2px 0' }}>
+                      <ComboBox
+                        itemsSource={unitLabelPositionOptions}
+                        displayMemberPath="Display"
+                        selectedValuePath="Id"
+                        selectedValue={currentUnitLabelPosition}
+                        isEditable={false}
+                        className={`w-full ${theme.inputBox} border`}
+                        style={{ height: '26px', borderRadius: '0' }}
+                        selectedIndexChanged={(sender: any) => {
+                          const next = sender.selectedValue;
+                          const latest = currentLayoutItemRef.current;
+                          if (next == null || !latest) return;
+                          const prev = Number(latest.DomAttribute?.EmUnitLabelPosition ?? unitLabelPositionEnum?.Top ?? 1);
+                          if (Number(next) === prev) return;
+                          onLayoutItemChange({
+                            ...latest,
+                            DomAttribute: {
+                              ...latest.DomAttribute,
+                              EmUnitLabelPosition: Number(next),
+                            },
+                          });
+                        }}
+                      />
+                    </td>
+                  </tr>
+                  {isUnitLabelOnLeft && (
+                    <tr>
+                      <td style={{ width: '125px', padding: '2px 0' }}>
+                        <label className={`text-xs ${theme.label}`}>Label Width</label>
+                      </td>
+                      <td style={{ width: '180px', padding: '2px 0' }}>
+                        <input
+                          type="number"
+                          min={40}
+                          max={400}
+                          step={10}
+                          className={`w-full px-2 py-0.5 text-xs border rounded ${theme.inputBox}`}
+                          style={{ height: '26px' }}
+                          value={currentLayoutItem.DomAttribute?.LabelWidth ?? 100}
+                          onChange={(e) => {
+                            const latest = currentLayoutItemRef.current;
+                            if (!latest) return;
+                            const n = parseInt(e.target.value, 10);
+                            onLayoutItemChange({
+                              ...latest,
+                              DomAttribute: {
+                                ...latest.DomAttribute,
+                                LabelWidth: Number.isFinite(n) ? n : 100,
+                              },
+                            });
+                          }}
+                        />
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
               <div className="border-t my-2" />

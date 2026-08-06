@@ -742,7 +742,12 @@ GO
 
 -- ── View_TchpStyleActiveSizeRunSizes ─────────────────────────
 -- Read-only sizes for the StyleSpec's current SizeRun.
--- Used as ROOT child unit (StyleSpecId → Root.ReferenceId); not under StyleSpec sibling.
+-- IsVisible: sizes whose DimensionCode matches the StyleSpec's selected
+--   dimension (TchpStyleSpecDimension.IsActive=1 via TchpSizeRunDimension).
+--   - No StyleSpecDimension rows → all sizes visible
+--   - No IsActive=1 yet → match any configured DimensionCode (legacy)
+--   - Active dimension set → only sizes mapped to that DimensionCode
+-- Used as ROOT child (StyleSpecId → Root.ReferenceId); pivot column domain.
 -- Keep in sync with ImportFromPLMDW 3b_Tchp_ImportFromDW.sql (CREATE OR ALTER).
 IF OBJECT_ID(N'dbo.View_TchpStyleActiveSizeRunSizes', N'V') IS NOT NULL
     DROP VIEW [dbo].[View_TchpStyleActiveSizeRunSizes];
@@ -756,7 +761,32 @@ SELECT
     srs.SizeRunSizeId,
     srs.SizeLabel,
     srs.SizeOrder,
-    srs.IsActive
+    srs.IsActive,
+    CASE
+        WHEN NOT EXISTS (
+            SELECT 1
+            FROM dbo.TchpStyleSpecDimension AS ssd
+            WHERE ssd.StyleSpecId = ss.StyleSpecId
+        ) THEN 1
+        WHEN EXISTS (
+            SELECT 1
+            FROM dbo.TchpSizeRunDimension AS srd
+            INNER JOIN dbo.TchpStyleSpecDimension AS ssd
+                ON ssd.StyleSpecId = ss.StyleSpecId
+               AND ssd.DimensionCode = srd.DimensionCode
+               AND (
+                    ssd.IsActive = 1
+                    OR NOT EXISTS (
+                        SELECT 1
+                        FROM dbo.TchpStyleSpecDimension AS x
+                        WHERE x.StyleSpecId = ss.StyleSpecId
+                          AND x.IsActive = 1
+                    )
+               )
+            WHERE srd.SizeRunSizeId = srs.SizeRunSizeId
+        ) THEN 1
+        ELSE 0
+    END AS IsVisible
 FROM dbo.TchpStyleSpec AS ss
 INNER JOIN dbo.TchpSizeRunSize AS srs
     ON srs.SizeRunId = ss.SizeRunId

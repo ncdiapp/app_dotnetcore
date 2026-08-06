@@ -143,37 +143,84 @@ export const GridDesignLayout: React.FC<GridDesignLayoutProps> = ({
   if (isMultipleSelectBox) {
     const title =
       unitExDto?.UnitDisplayName || layoutItemExDto?.DomAttribute?.DisplayName || 'Multiple Select';
+    const dom = layoutItemExDto?.DomAttribute ?? layoutItemExDto?.domAttribute;
+    const labelPos = Number(dom?.EmUnitLabelPosition ?? dom?.emUnitLabelPosition ?? 1);
+    const labelOnLeft = labelPos === 2;
+    const labelWidthRaw = dom?.LabelWidth ?? dom?.labelWidth;
+    const labelWidthPx =
+      typeof labelWidthRaw === 'number' && labelWidthRaw > 0
+        ? labelWidthRaw
+        : parseInt(String(labelWidthRaw ?? ''), 10) || 100;
+
+    // Prefer mapping field DisplayWidth on this (subscribe) unit
+    const fieldsSorted = [...(unitExDto?.AppTransactionFieldList ?? [])].sort(
+      (a: any, b: any) => (a.SortOrder || 0) - (b.SortOrder || 0)
+    );
+    const mappingField =
+      fieldsSorted.find((f: any) => f?.MappingToAvailableSourceUnitTransactionFieldId != null)
+      ?? fieldsSorted.find((f: any) => f?.IsVisible !== false && !f?.IsPrimaryKey);
+    const itemWidthRaw = mappingField?.DisplayWidth ?? mappingField?.displayWidth;
+    const itemWidthPx =
+      typeof itemWidthRaw === 'number' && itemWidthRaw > 0
+        ? itemWidthRaw
+        : parseInt(String(itemWidthRaw ?? ''), 10) || 100;
+
+    const tiles = (
+      <div className={`min-h-0 flex-auto overflow-auto rounded border px-3 py-3 ${theme.mainContentSection}`}>
+        <div className="flex flex-wrap gap-2">
+          {MULTI_SELECT_PLACEHOLDER_OPTIONS.map((opt) => (
+            <label
+              key={opt.label}
+              className={`flex cursor-default items-center gap-2 rounded px-2 py-1.5 pointer-events-none ${theme.inputBox}`}
+              style={{ width: itemWidthPx, maxWidth: '100%' }}
+            >
+              <input
+                type="checkbox"
+                className="h-3 w-3 shrink-0 accent-current"
+                checked={opt.checked}
+                readOnly
+                tabIndex={-1}
+                aria-hidden
+              />
+              <span className={`min-w-0 flex-auto truncate text-[11px] ${theme.label}`}>
+                {opt.label}
+              </span>
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+
     return (
       <div className="w-full h-full relative flex flex-col">
         {contextMenuButton}
         <div
-          className={`w-full h-full min-h-[120px] border rounded flex flex-col overflow-hidden ${theme.mainContentSection}`}
+          className={`w-full h-full min-h-[120px] border rounded flex overflow-hidden ${
+            labelOnLeft ? 'flex-row items-start gap-2' : 'flex-col'
+          } ${theme.mainContentSection}`}
         >
-          <div className={`px-2 py-1 border-b shrink-0 ${theme.mainContentSection}`}>
-            <div className={`text-xs font-semibold ${theme.title}`}>{title}</div>
-          </div>
-          <div className={`min-h-0 flex-auto overflow-auto px-3 py-3 ${theme.mainContentSection}`}>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              {MULTI_SELECT_PLACEHOLDER_OPTIONS.map((opt) => (
-                <label
-                  key={opt.label}
-                  className={`flex cursor-default items-center gap-2 rounded px-2 py-1.5 pointer-events-none ${theme.inputBox}`}
-                >
-                  <input
-                    type="checkbox"
-                    className="h-3 w-3 shrink-0 accent-current"
-                    checked={opt.checked}
-                    readOnly
-                    tabIndex={-1}
-                    aria-hidden
-                  />
-                  <span className={`min-w-0 flex-auto truncate text-[11px] ${theme.label}`}>
-                    {opt.label}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
+          {labelOnLeft ? (
+            <>
+              <div
+                className={`shrink-0 px-2 pt-3 text-xs font-semibold ${theme.title}`}
+                style={{ width: labelWidthPx }}
+              >
+                {title}
+              </div>
+              <div className="h-1 w-1 min-h-0 min-w-0 flex-auto flex flex-col overflow-hidden p-2">
+                {tiles}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className={`px-2 py-1 border-b shrink-0 ${theme.mainContentSection}`}>
+                <div className={`text-xs font-semibold ${theme.title}`}>{title}</div>
+              </div>
+              <div className={`min-h-0 flex-auto overflow-hidden p-2 ${theme.mainContentSection}`}>
+                {tiles}
+              </div>
+            </>
+          )}
         </div>
       </div>
     );

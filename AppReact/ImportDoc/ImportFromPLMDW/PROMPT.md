@@ -518,7 +518,7 @@ When `dwTabImportConfig` includes a `techPack` block (α bindings):
 | StyleSpec unit kind | **Sibling**; `StyleSpecId` = non-identity PK = `Root.ReferenceId` |
 | Link without DB FK | **L2** — sibling `StyleSpecId` → Root.`ReferenceId`; children **attachToRoot** with `StyleSpecId` → Root.`ReferenceId` |
 | SizeRunSizes grid | **V1** — **Grading tab only**: ROOT child on `View_TchpStyleActiveSizeRunSizes`. Link `StyleSpecId` → Root.`ReferenceId`. **Not on Form layout** (pivot column source only). Do **not** add to Fit tabs. |
-| GradeValue pivot | **P1** — `TchpGradeValue.EmGridViewDisplayType = ChildUnitPivotColumns (7)`. `SizeRunSizeId` = IsPivotColumn + `MatrixForeignKeyFieldId` → View.`SizeRunSizeId`. `GradingDelta` = IsPivotValue. **No** `MatrixKeyTransactionFieldId`. |
+| GradeValue pivot | **P1** — `TchpGradeValue.EmGridViewDisplayType = ChildUnitPivotColumns (7)`. `SizeRunSizeId` = IsPivotColumn + `MatrixForeignKeyFieldId` → View.`SizeRunSizeId`. `GradingDelta` = IsPivotValue. `MatrixKeyTransactionFieldId` → View.`IsVisible` (DimensionCode filter). |
 | BaseSize cascade | **S2** — `TchpStyleSpec.BaseSizeDetailId` Depend On DDL = `SizeRunId`; entities `SizeRun` / `SizeRunDetail` |
 | Grading field golden | **G1** — see §TechPack Grading golden field template (widths / sort / entities). `IsFixed` stays TextBox; `GradeRuleSetId` → DDL `TchpGradeRuleSet`; `UnitOfMeasure` stays TextBox (+ Entity ok). |
 | Fit Summary Fit grid | **F1** — all FitRounds; Fit1–4 filter by `fitRoundNumberFilter`; Comments do **not** host Fit grid |
@@ -563,9 +563,9 @@ Apply on tabs that have `TchpPomSpecLine` (+ GradeValue / SizeRunSizes view):
 | Setting | Value |
 |---------|-------|
 | Unit `EmGridViewDisplayType` | 7 ChildUnitPivotColumns |
-| SizeRunSizeId | IsPivotColumn; MatrixFK → View.SizeRunSizeId; DDL SizeRunDetail; width 150 |
+| SizeRunSizeId | IsPivotColumn; MatrixFK → View.SizeRunSizeId; MatrixKey → View.IsVisible; DDL SizeRunDetail; width 150 |
 | GradingDelta | IsPivotValue; width 150 |
-| MatrixKey | **not set** |
+| MatrixKey | View.`IsVisible` (selected DimensionCode) |
 
 **View_TchpStyleActiveSizeRunSizes**
 
@@ -573,7 +573,8 @@ Apply on tabs that have `TchpPomSpecLine` (+ GradeValue / SizeRunSizes view):
 |---------|-------|
 | Parent | ROOT; Link StyleSpecId → ReferenceId |
 | **Is Read-Only** | **必选** `IsReadOnly=1`；并 `IsDisableAddButton=1` / `IsDisableDeleteButton=1`（Phase D 对 `View_TchpStyleActiveSizeRunSizes` **强制**写入，不依赖 JSON 标志） |
-| Visible fields | SizeRunSizeId, SizeLabel, SizeOrder (`GroupByLevel=1` on SizeOrder) |
+| Columns | SizeRunSizeId, SizeLabel, SizeOrder, IsActive, **IsVisible** (CASE from StyleSpec DimensionCode ↔ SizeRunDimension; prefer `TchpStyleSpecDimension.IsActive=1`) |
+| Visible fields | SizeRunSizeId, SizeLabel, SizeOrder (`GroupByLevel=1` on SizeOrder); IsVisible hidden (MatrixKey only) |
 | Form layout | **omit** (not a user-facing grid) |
 
 Blueprint JSON array: `techPackGradeValuePivotBindings` (generator emits for `role=Grading` when View + PomSpecLine present).

@@ -573,7 +573,7 @@
                                                 "sourcePivotKeyColumn":  "SizeRunSizeId",
                                                 "pivotColumnField":  "SizeRunSizeId",
                                                 "pivotValueField":  "GradingDelta",
-                                                "skipMatrixKeyVisibleFilter":  true
+                                                "skipMatrixKeyVisibleFilter":  false
                                             }
                                         ],
     "blueprintFields":  [

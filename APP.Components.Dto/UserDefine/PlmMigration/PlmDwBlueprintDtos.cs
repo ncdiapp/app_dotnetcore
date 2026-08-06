@@ -324,9 +324,12 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string PivotValueField { get; set; } = "GradingDelta";
 
-        /// <summary>When true (default), do not set MatrixKeyTransactionFieldId (no IsVisible filter).</summary>
+        /// <summary>
+        /// When true, do not set MatrixKeyTransactionFieldId.
+        /// Default false: MatrixKey → View.IsVisible (DimensionCode filter, Style Spec 2298).
+        /// </summary>
         [DataMember]
-        public bool SkipMatrixKeyVisibleFilter { get; set; } = true;
+        public bool SkipMatrixKeyVisibleFilter { get; set; } = false;
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

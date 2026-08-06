@@ -1477,11 +1477,11 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
 INSERT INTO dbo.AppTransactionField (
     TransactionUnitID, DisplayName, DataBaseFieldName, ControlType, DataType,
     SortOrder, IsPrimaryKey, IsVisible, IsReadonly, IsAllowEmpty,
-    DisplayWidth, NBDecimal, IsLinkToParentPrimaryKey, AppCreatedDate, AppModifiedDate)
+    DisplayWidth, NBDecimal, IsLinkToParentPrimaryKey, RowIdentityGuid, AppCreatedDate, AppModifiedDate)
 VALUES (
     @UnitId, @DisplayName, @DbName, @ControlType, @DataType,
     @SortOrder, @IsPk, @IsVisible, @IsReadonly, 1,
-    N'100', 0, 0, GETDATE(), GETDATE());";
+    N'100', 0, 0, NEWID(), GETDATE(), GETDATE());";
                     cmd.Parameters.AddWithValue("@UnitId", unitId);
                     cmd.Parameters.AddWithValue("@DisplayName", AppTransactionBL.ConvertDbNameToDisplayName(col.Name));
                     cmd.Parameters.AddWithValue("@DbName", col.Name);

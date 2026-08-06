@@ -278,7 +278,7 @@ WHERE TransactionUnitID = @UnitId
 
         /// <summary>
         /// TechPack Grading: TchpGradeValue → ChildUnitPivotColumns; column domain = View_TchpStyleActiveSizeRunSizes.
-        /// No MatrixKey visible filter (locked decision 2A).
+        /// MatrixKey → View.IsVisible (DimensionCode filter), matching Style Spec 2298.
         /// </summary>
         private static void ApplyTechPackGradeValuePivotBindingsSql(
             SqlConnection conn,
@@ -315,7 +315,7 @@ WHERE TransactionUnitID = @UnitId
                         SourcePivotKeyColumn = "SizeRunSizeId",
                         PivotColumnField = "SizeRunSizeId",
                         PivotValueField = "GradingDelta",
-                        SkipMatrixKeyVisibleFilter = true
+                        SkipMatrixKeyVisibleFilter = false
                     });
                 }
             }
@@ -355,6 +355,11 @@ WHERE TransactionUnitID = @UnitId
                 if (!sourcePivotFieldId.HasValue)
                     continue;
 
+                // Dimension filter column (view CASE); required for MatrixKey like Style Spec 2298.
+                int? matrixKeyFieldId = EnsureViewIsVisibleTransactionField(conn, tran, sourceUnitId.Value);
+                if (binding.SkipMatrixKeyVisibleFilter)
+                    matrixKeyFieldId = null;
+
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.Transaction = tran;
@@ -378,7 +383,7 @@ UPDATE dbo.AppTransactionField SET
     IsPivotColumn = 1,
     IsPivotValue = 0,
     MatrixForeignKeyFieldId = @SourceFieldId,
-    MatrixKeyTransactionFieldId = NULL,
+    MatrixKeyTransactionFieldId = @MatrixKeyFieldId,
     ControlType = @Ddl,
     EntityId = COALESCE(@EntityId, EntityId),
     DisplayWidth = N'150',
@@ -387,6 +392,7 @@ UPDATE dbo.AppTransactionField SET
 WHERE TransactionUnitID = @UnitId
   AND DataBaseFieldName = @FieldName";
                     cmd.Parameters.AddWithValue("@SourceFieldId", sourcePivotFieldId.Value);
+                    cmd.Parameters.AddWithValue("@MatrixKeyFieldId", (object)matrixKeyFieldId ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Ddl", (int)EmAppControlType.DDL);
                     cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
@@ -411,6 +417,56 @@ WHERE TransactionUnitID = @UnitId
                     cmd.ExecuteNonQuery();
                 }
             }
+        }
+
+        /// <summary>
+        /// Ensure View_TchpStyleActiveSizeRunSizes.IsVisible exists as AppTransactionField (hidden filter key).
+        /// </summary>
+        private static int? EnsureViewIsVisibleTransactionField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int sourceUnitId)
+        {
+            int? existing = GetTransactionFieldId(conn, tran, sourceUnitId, "IsVisible");
+            if (existing.HasValue)
+                return existing;
+
+            int sortOrder = 80;
+            using (var max = conn.CreateCommand())
+            {
+                max.Transaction = tran;
+                max.CommandText = @"
+SELECT ISNULL(MAX(SortOrder), 0) + 10
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId";
+                max.Parameters.AddWithValue("@UnitId", sourceUnitId);
+                var val = max.ExecuteScalar();
+                if (val != null && val != DBNull.Value)
+                    sortOrder = Convert.ToInt32(val);
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+INSERT INTO dbo.AppTransactionField (
+    TransactionUnitID, DisplayName, DataBaseFieldName, ControlType, DataType,
+    SortOrder, IsPrimaryKey, IsVisible, IsReadonly, IsAllowEmpty,
+    DisplayWidth, NBDecimal, IsLinkToParentPrimaryKey, RowIdentityGuid,
+    AppCreatedDate, AppModifiedDate)
+VALUES (
+    @UnitId, N'Is Visible', N'IsVisible', @ControlType, @DataType,
+    @SortOrder, 0, 0, 1, 1,
+    N'150', 0, 0, NEWID(),
+    GETDATE(), GETDATE());";
+                cmd.Parameters.AddWithValue("@UnitId", sourceUnitId);
+                cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.CheckBox);
+                cmd.Parameters.AddWithValue("@DataType", 2);
+                cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                cmd.ExecuteNonQuery();
+            }
+
+            return GetTransactionFieldId(conn, tran, sourceUnitId, "IsVisible");
         }
 
         /// <summary>

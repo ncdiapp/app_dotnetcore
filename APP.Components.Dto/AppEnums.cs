@@ -2359,6 +2359,16 @@ namespace APP.Components.Dto
         ChildUnitPivotColumns = 7,
     }
 
+    /// <summary>
+    /// Form layout DomAttribute: unit title placement for Child Unit MultipleSelectBox.
+    /// Null / Top = title above items (default); Left = title to the left of items (uses LabelWidth).
+    /// </summary>
+    public enum EmAppUnitLabelPosition
+    {
+        Top = 1,
+        Left = 2,
+    }
+
 
     public enum EmAppBarCodeType
     {

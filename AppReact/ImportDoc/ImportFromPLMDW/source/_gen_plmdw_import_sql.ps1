@@ -696,7 +696,7 @@ function Build-TechPackGradeValuePivotBindings($config, $transactions) {
             sourcePivotKeyColumn        = 'SizeRunSizeId'
             pivotColumnField            = 'SizeRunSizeId'
             pivotValueField             = 'GradingDelta'
-            skipMatrixKeyVisibleFilter  = $true
+            skipMatrixKeyVisibleFilter  = $false
         })
     }
     return @($list.ToArray())

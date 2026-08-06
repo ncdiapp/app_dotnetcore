@@ -582,6 +582,7 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
                      controllerModel={controllerModel}
                      transactionExDto={transactionExDto}
                      onDataModelChange={onDataModelChange}
+                     layoutDomAttribute={layoutItemExDto.DomAttribute ?? layoutItemExDto.domAttribute}
                    />
             </div>
           {controllerModel.isEnableFormConfigButtons && (

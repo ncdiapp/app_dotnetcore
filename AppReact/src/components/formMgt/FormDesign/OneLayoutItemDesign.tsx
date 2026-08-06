@@ -1444,6 +1444,7 @@ const OneLayoutItemDesign: React.FC<OneLayoutItemDesignProps> = ({
             controllerModel={controllerModel}
             transactionExDto={transactionExDto}
             onDataModelChange={onDataModelChange}
+            layoutDomAttribute={layoutItemExDto.DomAttribute ?? layoutItemExDto.domAttribute}
           />
         </div>
       );

@@ -32,6 +32,12 @@ namespace APP.Components.EntityDto
 
         public int? LabelWidth { get; set; }
 
+        /// <summary>
+        /// EmAppUnitLabelPosition — used by Child Unit MultipleSelectBox only.
+        /// Null = Top (title above items). Left uses LabelWidth for the title column.
+        /// </summary>
+        public int? EmUnitLabelPosition { get; set; }
+
         public string DisplayName { get; set; }
 
         public int? NbDecimal { get; set; }
