@@ -529,6 +529,30 @@ namespace App.BL
                   deleteListOut,
                   ref ErrorEmssageRetrun);
 
+                // Delete before insert: MultipleSelectBox (and similar) can remove then re-add the same
+                // business unique key in one save (e.g. TchpStyleSpecDimension UQ StyleSpecId+DimensionCode).
+                // Insert-first would hit UNIQUE KEY while the old row still exists.
+                List<Dictionary<string, object>> deleteKeyList = new List<Dictionary<string, object>>();
+
+                foreach (AppChildDataDto appChildDataDto in deleteListOut)
+                {
+                    Dictionary<string, object> deleteKye = new Dictionary<string, object>();
+
+                    var dictOneToOne = appChildDataDto.DictOneToOneFields;
+
+                    foreach (string pk in childTransactionUnitExDto.PrimaryKeyDbfieldList)
+                    {
+                        deleteKye[pk] = dictOneToOne[pk];
+
+                    }
+
+                    deleteKeyList.Add(deleteKye);
+                }
+                if (deleteKeyList.Count > 0)
+                {
+                    DeleteOneChildUnitAndGrandChildUnit(databaseFixtureInstance,trans, childTransactionUnitExDto, deleteKeyList);
+                }
+
                 foreach (AppChildDataDto newAppChildDataDto in newAddedListOut)
                 {
                     InsertAppChildDataDto(databaseFixtureInstance,appTransactionExDto, rootPkValue, trans, childTransactionUnitExDto, newAppChildDataDto);
@@ -550,29 +574,6 @@ namespace App.BL
 
 
 
-                }
-
-                //
-
-                List<Dictionary<string, object>> deleteKeyList = new List<Dictionary<string, object>>();
-
-                foreach (AppChildDataDto appChildDataDto in deleteListOut)
-                {
-                    Dictionary<string, object> deleteKye = new Dictionary<string, object>();
-
-                    var dictOneToOne = appChildDataDto.DictOneToOneFields;
-
-                    foreach (string pk in childTransactionUnitExDto.PrimaryKeyDbfieldList)
-                    {
-                        deleteKye[pk] = dictOneToOne[pk];
-
-                    }
-
-                    deleteKeyList.Add(deleteKye);
-                }
-                if (deleteKeyList.Count > 0)
-                {
-                    DeleteOneChildUnitAndGrandChildUnit(databaseFixtureInstance,trans, childTransactionUnitExDto, deleteKeyList);
                 }
 
             }

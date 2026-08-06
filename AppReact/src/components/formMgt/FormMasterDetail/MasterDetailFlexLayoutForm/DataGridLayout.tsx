@@ -277,6 +277,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
    * would read the old row array. Keep last committed rows here until props catch up.
    */
   const optimisticUnitRowsRef = useRef<any[] | null>(null);
+  /** MultipleSelectBox: stash rows removed by uncheck so re-check restores PK (avoids delete+insert UNIQUE). */
+  const multiSelectRemovedRowsByKeyRef = useRef<Map<string, any>>(new Map());
   /** Bumps when optimisticUnitRowsRef changes so `gridData` useMemo recomputes before parent re-renders. */
   const [optimisticRowsBump, setOptimisticRowsBump] = useState(0);
   const isMountedRef = useRef<boolean>(true);
@@ -402,6 +404,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
 
   useEffect(() => {
     optimisticUnitRowsRef.current = null;
+    multiSelectRemovedRowsByKeyRef.current.clear();
     setOptimisticRowsBump(0);
   }, [unitId]);
 
@@ -2976,26 +2979,44 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           if (exists) return;
         }
 
-        const newRow: any = {
-          DictOneToOneFields: {},
-          DictOneToManyFields: {},
-          IsDirty: true,
-          IsNew: true,
-        };
-        grandChildUnitList.forEach((childUnit: any) => {
-          const childUnitId = childUnit?.Id ?? childUnit?.unitId;
-          if (childUnitId != null) {
-            newRow.DictOneToManyFields[String(childUnitId)] = [];
-          }
-        });
-        fields.forEach((field: any) => {
-          const hasDefault =
-            field.DefaultValue !== undefined && field.DefaultValue !== null && field.DefaultValue !== '';
-          newRow.DictOneToOneFields[field.DataBaseFieldName] = hasDefault ? field.DefaultValue : null;
-        });
-        newRow.DictOneToOneFields[mappingSubscribeDb] = srcKey;
-        gridDataArray = [...gridDataArray, newRow];
+        const recycled = multiSelectRemovedRowsByKeyRef.current.get(ks);
+        if (recycled) {
+          multiSelectRemovedRowsByKeyRef.current.delete(ks);
+          const restored = {
+            ...recycled,
+            DictOneToOneFields: { ...(recycled.DictOneToOneFields ?? {}) },
+            DictOneToManyFields: { ...(recycled.DictOneToManyFields ?? {}) },
+            IsDirty: true,
+            IsNew: recycled.IsNew === true,
+          };
+          restored.DictOneToOneFields[mappingSubscribeDb] = srcKey;
+          gridDataArray = [...gridDataArray, restored];
+        } else {
+          const newRow: any = {
+            DictOneToOneFields: {},
+            DictOneToManyFields: {},
+            IsDirty: true,
+            IsNew: true,
+          };
+          grandChildUnitList.forEach((childUnit: any) => {
+            const childUnitId = childUnit?.Id ?? childUnit?.unitId;
+            if (childUnitId != null) {
+              newRow.DictOneToManyFields[String(childUnitId)] = [];
+            }
+          });
+          fields.forEach((field: any) => {
+            const hasDefault =
+              field.DefaultValue !== undefined && field.DefaultValue !== null && field.DefaultValue !== '';
+            newRow.DictOneToOneFields[field.DataBaseFieldName] = hasDefault ? field.DefaultValue : null;
+          });
+          newRow.DictOneToOneFields[mappingSubscribeDb] = srcKey;
+          gridDataArray = [...gridDataArray, newRow];
+        }
       } else {
+        const removed = gridDataArray.filter(
+          (r: any) => String(readTransactionRowField(r, mappingSubscribeDb) ?? '') === ks
+        );
+        removed.forEach((r: any) => multiSelectRemovedRowsByKeyRef.current.set(ks, r));
         gridDataArray = gridDataArray.filter(
           (r: any) => String(readTransactionRowField(r, mappingSubscribeDb) ?? '') !== ks
         );
