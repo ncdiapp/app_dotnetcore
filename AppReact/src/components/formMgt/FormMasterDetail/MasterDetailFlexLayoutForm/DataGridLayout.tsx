@@ -3365,8 +3365,16 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           <div className={`font-semibold ${theme.title}`}>{unitExDto?.UnitDisplayName || 'Data Grid'}</div>
           {!showMultipleSelectBoxUi && (
           <FlexGridAddOn
-            gridRef={flexGridRef}
-            storageKey={`mdGrid:${unitId}`}
+            gridRef={
+              pivotProjectionModelReady
+                ? projectionFlexGridRef
+                : flexGridRef
+            }
+            storageKey={
+              pivotProjectionModelReady
+                ? `mdGrid:${unitId}:pivotProj`
+                : `mdGrid:${unitId}`
+            }
             title="Freeze / Show / Hide columns"
           />
           )}

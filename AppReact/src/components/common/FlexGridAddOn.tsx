@@ -167,7 +167,24 @@ const FlexGridAddOn: React.FC<FlexGridAddOnProps> = ({
         setView('menu');
         updatePosition();
         setOpen(true);
-    }, [refreshFromGrid, updatePosition]);
+        // Pivot / deferred grids may mount after the gear button; retry once columns appear.
+        let attempts = 0;
+        const retry = () => {
+            attempts += 1;
+            const g = getGrid();
+            const named =
+                g?.columns &&
+                Array.from({ length: g.columns.length }, (_, i) => g.columns[i]).some(
+                    (c: any) => ((c?.header ?? '') as string).toString().trim()
+                );
+            if (named || attempts >= 20) {
+                refreshFromGrid();
+                return;
+            }
+            setTimeout(retry, 50);
+        };
+        setTimeout(retry, 50);
+    }, [refreshFromGrid, updatePosition, getGrid]);
 
     useLayoutEffect(() => {
         if (open) updatePosition();
