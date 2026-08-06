@@ -18,6 +18,7 @@ namespace APP.TechPack;
 ///   AssemblyName = APP.TechPack
 ///   TypeName     = APP.TechPack.PluginEntry
 ///   MethodName   = ApplyGradeRuleSet | GetGradeRuleCoverage
+///                  | ConvertGradingSizeDeltaToSizeValues | ConvertGradingSizeValuesToSizeDelta
 /// </summary>
 public sealed class PluginEntry : IAppPlugin
 {
@@ -29,39 +30,65 @@ public sealed class PluginEntry : IAppPlugin
 
         return context.MethodName switch
         {
-            nameof(ApplyGradeRuleSet)    => ApplyGradeRuleSet(formData, context.ConnectionString),
+            nameof(ApplyGradeRuleSet) => ApplyGradeRuleSet(formData, context.ConnectionString),
             nameof(GetGradeRuleCoverage) => GetGradeRuleCoverage(formData, context.ConnectionString),
+            nameof(ConvertGradingSizeDeltaToSizeValues) => ConvertGradingSizeDeltaToSizeValues(formData),
+            nameof(ConvertGradingSizeValuesToSizeDelta) => ConvertGradingSizeValuesToSizeDelta(formData),
             _ => throw new InvalidOperationException(
                 $"APP.TechPack.PluginEntry: unknown method '{context.MethodName}'. " +
-                $"Valid values: {nameof(ApplyGradeRuleSet)}, {nameof(GetGradeRuleCoverage)}.")
+                $"Valid values: {nameof(ApplyGradeRuleSet)}, {nameof(GetGradeRuleCoverage)}, " +
+                $"{nameof(ConvertGradingSizeDeltaToSizeValues)}, {nameof(ConvertGradingSizeValuesToSizeDelta)}.")
         };
     }
 
     private static OperationCallResult<AppMasterDetailDto> ApplyGradeRuleSet(
         AppMasterDetailDto formData, string connectionString)
     {
-        int ruleSetId   = Convert.ToInt32(GetRootLevelFieldValueByName(formData, "RuleSetId"));
+        int ruleSetId = Convert.ToInt32(GetRootLevelFieldValueByName(formData, "RuleSetId"));
         int styleSpecId = Convert.ToInt32(GetRootLevelFieldValueByName(formData, "StyleSpecId"));
 
         GradeRuleService.ApplyRuleSetToSpec(connectionString, ruleSetId, styleSpecId);
 
-        
         return new OperationCallResult<AppMasterDetailDto> { Object = formData };
     }
 
     private static OperationCallResult<AppMasterDetailDto> GetGradeRuleCoverage(
         AppMasterDetailDto formData, string connectionString)
     {
-        int ruleSetId   = Convert.ToInt32(GetRootLevelFieldValueByName(formData, "RuleSetId"));
+        int ruleSetId = Convert.ToInt32(GetRootLevelFieldValueByName(formData, "RuleSetId"));
         int styleSpecId = Convert.ToInt32(GetRootLevelFieldValueByName(formData, "StyleSpecId"));
 
         var coverage = GradeRuleService.GetCoverage(connectionString, ruleSetId, styleSpecId);
 
         formData.DictOneToOneFields ??= new Dictionary<string, object>();
-        formData.DictOneToOneFields["MatchedCount"]   = coverage.MatchedSpecLines;
-        formData.DictOneToOneFields["TotalCount"]     = coverage.TotalSpecLines;
+        formData.DictOneToOneFields["MatchedCount"] = coverage.MatchedSpecLines;
+        formData.DictOneToOneFields["TotalCount"] = coverage.TotalSpecLines;
         formData.DictOneToOneFields["UnmatchedCodes"] = string.Join(", ", coverage.UnmatchedBodyPartCodes);
 
+        return new OperationCallResult<AppMasterDetailDto> { Object = formData };
+    }
+
+    /// <summary>
+    /// Display mode: DELTA → SIZEVALUE.
+    /// Mutates formData GradingDelta cells to absolute size values (does not write absolutes to DB).
+    /// Sets root field GradingDisplayMode = SIZEVALUE.
+    /// </summary>
+    private static OperationCallResult<AppMasterDetailDto> ConvertGradingSizeDeltaToSizeValues(
+        AppMasterDetailDto formData)
+    {
+        GradingDisplayConvertService.ConvertDeltasToSizeValues(formData);
+        return new OperationCallResult<AppMasterDetailDto> { Object = formData };
+    }
+
+    /// <summary>
+    /// Display mode: SIZEVALUE → DELTA.
+    /// Mutates formData GradingDelta cells back to adjacent-step deltas (DB-ready).
+    /// Sets root field GradingDisplayMode = DELTA.
+    /// </summary>
+    private static OperationCallResult<AppMasterDetailDto> ConvertGradingSizeValuesToSizeDelta(
+        AppMasterDetailDto formData)
+    {
+        GradingDisplayConvertService.ConvertSizeValuesToDeltas(formData);
         return new OperationCallResult<AppMasterDetailDto> { Object = formData };
     }
 
