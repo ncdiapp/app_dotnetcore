@@ -1385,7 +1385,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       const n = parseInt(String(raw), 10);
       if (Number.isFinite(n) && n > 0) return n;
     }
-    return 100;
+    // 0 = use same default as field labels (min-w-[120px]), no fixed width
+    return 0;
   }, [layoutDomAttribute?.LabelWidth, layoutDomAttribute?.labelWidth]);
 
   /** Display label on MultipleSelectBox tiles (Angular: first visible TextBox on source unit, else mapping field). */
@@ -3313,15 +3314,21 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
 
   return (
     <div
-      className={`w-full h-full border flex flex-col rounded ${theme.mainContentSection} ${
-        showAvailableSelectRuntime ? 'min-h-[100px]' : ''
-      }`}
+      className={
+        showMultipleSelectBoxUi && isMultiSelectLabelOnLeft
+          ? `w-full flex flex-col ${theme.mainContentSection}`
+          : `w-full h-full border flex flex-col rounded ${theme.mainContentSection} ${
+              showAvailableSelectRuntime ? 'min-h-[100px]' : ''
+            }`
+      }
       style={
-        gridContentMaxHeight
-          ? { height: gridContentMaxHeight, display: 'flex', flexDirection: 'column', minHeight: 0 }
-          : showAvailableSelectRuntime
-            ? { display: 'flex', flexDirection: 'column', minHeight: 0, flex: '1 1 auto', height: '100%' }
-            : undefined
+        showMultipleSelectBoxUi && isMultiSelectLabelOnLeft
+          ? undefined
+          : gridContentMaxHeight
+            ? { height: gridContentMaxHeight, display: 'flex', flexDirection: 'column', minHeight: 0 }
+            : showAvailableSelectRuntime
+              ? { display: 'flex', flexDirection: 'column', minHeight: 0, flex: '1 1 auto', height: '100%' }
+              : undefined
       }
     >
       {/* Grid Header — hide for MultipleSelectBox when label is on the left of items */}
@@ -3411,7 +3418,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             ? 'flex flex-row h-1 flex-auto min-h-0 items-stretch gap-6 overflow-hidden px-4 py-2'
             : showMultipleSelectBoxUi
               ? isMultiSelectLabelOnLeft
-                ? 'flex h-1 flex-auto flex-row items-start gap-2 overflow-hidden px-3 py-2'
+                ? 'flex w-full flex-row items-start gap-2'
                 : 'flex h-1 flex-auto flex-col overflow-hidden px-4 py-2'
               : showAvailableSelectConfigWarning
                 ? 'flex h-1 flex-auto flex-col gap-1 overflow-auto'
@@ -3509,19 +3516,35 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
           <>
             {isMultiSelectLabelOnLeft && (
               <div
-                className={`shrink-0 pt-1.5 text-xs font-semibold ${theme.title}`}
-                style={{ width: multiSelectLabelWidthPx }}
+                className="flex-shrink-0 min-w-[120px]"
+                style={
+                  multiSelectLabelWidthPx > 0
+                    ? { width: multiSelectLabelWidthPx, minWidth: multiSelectLabelWidthPx }
+                    : undefined
+                }
               >
-                {unitExDto?.UnitDisplayName || 'Multiple Select'}
+                <label className={`text-xs font-semibold ${theme.title}`}>
+                  {unitExDto?.UnitDisplayName || 'Multiple Select'}
+                </label>
               </div>
             )}
-            <div className="h-1 w-1 min-h-0 min-w-0 flex-auto flex flex-col overflow-hidden">
+            <div
+              className={
+                isMultiSelectLabelOnLeft
+                  ? 'w-1 min-w-0 flex-auto'
+                  : 'h-1 w-full min-h-0 min-w-0 flex-auto flex flex-col overflow-hidden'
+              }
+            >
               <div
-                className={`min-h-0 flex-auto overflow-auto rounded border px-3 py-3 ${theme.mainContentSection}`}
+                className={
+                  isMultiSelectLabelOnLeft
+                    ? 'w-full'
+                    : `min-h-0 h-1 flex-auto overflow-auto rounded border px-3 py-3 ${theme.mainContentSection}`
+                }
                 role="group"
                 aria-label={unitExDto?.UnitDisplayName ?? 'Multi select'}
               >
-                <div className="flex flex-wrap gap-2">
+                <div className={`flex flex-wrap items-center ${isMultiSelectLabelOnLeft ? 'gap-x-3 gap-y-1 min-h-[30px]' : 'gap-2'}`}>
                   {allSourceRowsForMultiSelect.map((srcRow: any, idx: number) => {
                     const srcKey = readTransactionRowField(srcRow, mappingSourceDb);
                     const ks = srcKey != null && srcKey !== '' ? String(srcKey) : '';
@@ -3533,12 +3556,22 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                     return (
                       <label
                         key={ks || `msb-${idx}`}
-                        className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 ${theme.inputBox}`}
-                        style={{ width: multiSelectItemWidthPx, maxWidth: '100%' }}
+                        className={
+                          isMultiSelectLabelOnLeft
+                            ? `inline-flex cursor-pointer items-center gap-1.5 text-xs !font-normal ${theme.label}`
+                            : `flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 ${theme.inputBox}`
+                        }
+                        style={
+                          isMultiSelectLabelOnLeft
+                            ? multiSelectItemWidthPx > 0
+                              ? { width: multiSelectItemWidthPx, maxWidth: '100%' }
+                              : undefined
+                            : { width: multiSelectItemWidthPx, maxWidth: '100%' }
+                        }
                       >
                         <input
                           type="checkbox"
-                          className="h-3 w-3 shrink-0 accent-current"
+                          className="h-3.5 w-3.5 shrink-0 accent-current"
                           checked={checked}
                           disabled={isGridReadOnly || !ks}
                           onMouseDown={(e) => e.stopPropagation()}
@@ -3548,7 +3581,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                             toggleMultipleSelectSourceRow(srcRow, e.target.checked);
                           }}
                         />
-                        <span className={`min-w-0 flex-auto truncate text-[11px] font-normal leading-snug ${theme.label}`}>{label}</span>
+                        <span className="min-w-0 truncate leading-normal !font-normal">{label}</span>
                       </label>
                     );
                   })}

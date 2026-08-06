@@ -372,7 +372,12 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
   // Build style from layout info (support PascalCase from API)
   let styleLayoutInfo = '';
   const heightVal = da.HeightValue ?? (da as any).heightValue;
-  if (heightVal) {
+  const multiSelectLabelPos = Number(da.EmUnitLabelPosition ?? (da as any).emUnitLabelPosition ?? 1);
+  const isMultiSelectBoxLeftLabel =
+    displayType === layoutItemTypeEnum?.Grid && multiSelectLabelPos === 2;
+  if (heightVal && !isMultiSelectBoxLeftLabel) {
+    // Left-label MultipleSelectBox sizes like a normal field row — don't force fixed HeightValue
+    // (that + overflow-hidden was clipping / squashing the label text).
     if (displayType === sectionType) {
       styleLayoutInfo += `min-height:${heightVal}px;`;
     } else {
@@ -570,11 +575,31 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
       const gridViewDisplayType = Number(rawGridDisplay);
       const isAvailableSelectRuntime =
         Number.isFinite(gridViewDisplayType) && (gridViewDisplayType === 5 || gridViewDisplayType === 6);
+      const isMultipleSelectBox =
+        Number.isFinite(gridViewDisplayType) && gridViewDisplayType === 6;
+      const labelPos = Number(
+        (layoutItemExDto.DomAttribute ?? layoutItemExDto.domAttribute)?.EmUnitLabelPosition
+          ?? (layoutItemExDto.DomAttribute ?? layoutItemExDto.domAttribute)?.emUnitLabelPosition
+          ?? 1
+      );
+      const isMultiSelectLabelOnLeft = isMultipleSelectBox && labelPos === 2;
       
       return (
-          <div className="w-full h-full flex flex-row items-start gap-1">
-              <div className={`w-1 flex-auto h-full overflow-hidden ${isAvailableSelectRuntime ? 'flex flex-col' : ''}`}
-                  style={{ position: 'relative' }}>
+          <div
+            className={
+              isMultiSelectLabelOnLeft
+                ? 'w-full flex flex-row items-center gap-1'
+                : 'w-full h-full flex flex-row items-start gap-1'
+            }
+          >
+              <div
+                className={
+                  isMultiSelectLabelOnLeft
+                    ? 'w-1 flex-auto min-w-0'
+                    : `w-1 flex-auto h-full overflow-hidden ${isAvailableSelectRuntime ? 'flex flex-col' : ''}`
+                }
+                style={{ position: 'relative' }}
+              >
                    <DataGridLayout
                      unitExDto={unitExDto}
                      unitId={unitExDto.Id}
@@ -586,7 +611,7 @@ const OneLayoutItem: React.FC<OneLayoutItemProps> = ({
                    />
             </div>
           {controllerModel.isEnableFormConfigButtons && (
-            <div className="flex-none self-start pt-9 shrink-0">
+            <div className={`flex-none self-start shrink-0 ${isMultiSelectLabelOnLeft ? 'pt-0' : 'pt-9'}`}>
               <button
                 type="button"
                 className={`flex h-7 w-7 items-center justify-center rounded-[4px] text-xs ${theme.button_default}`}

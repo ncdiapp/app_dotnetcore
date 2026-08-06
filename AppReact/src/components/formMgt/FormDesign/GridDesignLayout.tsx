@@ -150,7 +150,7 @@ export const GridDesignLayout: React.FC<GridDesignLayoutProps> = ({
     const labelWidthPx =
       typeof labelWidthRaw === 'number' && labelWidthRaw > 0
         ? labelWidthRaw
-        : parseInt(String(labelWidthRaw ?? ''), 10) || 100;
+        : parseInt(String(labelWidthRaw ?? ''), 10) || 0;
 
     // Prefer mapping field DisplayWidth on this (subscribe) unit
     const fieldsSorted = [...(unitExDto?.AppTransactionFieldList ?? [])].sort(
@@ -166,23 +166,39 @@ export const GridDesignLayout: React.FC<GridDesignLayoutProps> = ({
         : parseInt(String(itemWidthRaw ?? ''), 10) || 100;
 
     const tiles = (
-      <div className={`min-h-0 flex-auto overflow-auto rounded border px-3 py-3 ${theme.mainContentSection}`}>
-        <div className="flex flex-wrap gap-2">
+      <div
+        className={
+          labelOnLeft
+            ? 'w-full'
+            : `min-h-0 flex-auto overflow-auto rounded border px-3 py-3 ${theme.mainContentSection}`
+        }
+      >
+        <div className={`flex flex-wrap items-center ${labelOnLeft ? 'gap-x-3 gap-y-1 min-h-[30px]' : 'gap-2'}`}>
           {MULTI_SELECT_PLACEHOLDER_OPTIONS.map((opt) => (
             <label
               key={opt.label}
-              className={`flex cursor-default items-center gap-2 rounded px-2 py-1.5 pointer-events-none ${theme.inputBox}`}
-              style={{ width: itemWidthPx, maxWidth: '100%' }}
+              className={
+                labelOnLeft
+                  ? `inline-flex cursor-default items-center gap-1.5 text-xs !font-normal pointer-events-none ${theme.label}`
+                  : `flex cursor-default items-center gap-2 rounded px-2 py-1.5 pointer-events-none ${theme.inputBox}`
+              }
+              style={
+                labelOnLeft
+                  ? itemWidthPx > 0
+                    ? { width: itemWidthPx, maxWidth: '100%' }
+                    : undefined
+                  : { width: itemWidthPx, maxWidth: '100%' }
+              }
             >
               <input
                 type="checkbox"
-                className="h-3 w-3 shrink-0 accent-current"
+                className="h-3.5 w-3.5 shrink-0 accent-current"
                 checked={opt.checked}
                 readOnly
                 tabIndex={-1}
                 aria-hidden
               />
-              <span className={`min-w-0 flex-auto truncate text-[11px] ${theme.label}`}>
+              <span className="min-w-0 truncate leading-normal !font-normal">
                 {opt.label}
               </span>
             </label>
@@ -195,19 +211,25 @@ export const GridDesignLayout: React.FC<GridDesignLayoutProps> = ({
       <div className="w-full h-full relative flex flex-col">
         {contextMenuButton}
         <div
-          className={`w-full h-full min-h-[120px] border rounded flex overflow-hidden ${
-            labelOnLeft ? 'flex-row items-start gap-2' : 'flex-col'
-          } ${theme.mainContentSection}`}
+          className={
+            labelOnLeft
+              ? `w-full flex flex-row items-start gap-2 ${theme.mainContentSection}`
+              : `w-full h-full min-h-[120px] border rounded flex flex-col overflow-hidden ${theme.mainContentSection}`
+          }
         >
           {labelOnLeft ? (
             <>
               <div
-                className={`shrink-0 px-2 pt-3 text-xs font-semibold ${theme.title}`}
-                style={{ width: labelWidthPx }}
+                className="flex-shrink-0 min-w-[120px]"
+                style={
+                  labelWidthPx > 0
+                    ? { width: labelWidthPx, minWidth: labelWidthPx }
+                    : undefined
+                }
               >
-                {title}
+                <label className={`text-xs font-semibold ${theme.title}`}>{title}</label>
               </div>
-              <div className="h-1 w-1 min-h-0 min-w-0 flex-auto flex flex-col overflow-hidden p-2">
+              <div className="w-1 min-w-0 flex-auto">
                 {tiles}
               </div>
             </>

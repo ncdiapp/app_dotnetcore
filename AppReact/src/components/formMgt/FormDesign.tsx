@@ -1741,11 +1741,16 @@ const FormDesign: React.FC<FormDesignProps> = ({
           updatedLayoutItem.DomAttribute?.IsDefaultCollapsed !== existingItem.DomAttribute?.IsDefaultCollapsed;
         const defaultNbColumnsChanged =
           updatedLayoutItem.DomAttribute?.DefaultNbColumns !== existingItem.DomAttribute?.DefaultNbColumns;
+        const emUnitLabelPositionChanged =
+          updatedLayoutItem.DomAttribute?.EmUnitLabelPosition !== existingItem.DomAttribute?.EmUnitLabelPosition;
+        const labelWidthChanged =
+          updatedLayoutItem.DomAttribute?.LabelWidth !== existingItem.DomAttribute?.LabelWidth;
         
         const hasActualChange = controlTypeChanged || displayNameChanged || domAttributeDisplayNameChanged || colSpanChanged || heightChanged || 
                                 backgroundColorChanged || textColorChanged || formulaChanged || 
                                 visibleExpressionChanged || workflowTriggerChanged ||
-                                isCollapsibleChanged || isDefaultCollapsedChanged || defaultNbColumnsChanged;
+                                isCollapsibleChanged || isDefaultCollapsedChanged || defaultNbColumnsChanged ||
+                                emUnitLabelPositionChanged || labelWidthChanged;
         
         if (!hasActualChange) {
           appHelper.debugLog('handleLayoutItemChange: Early return - no actual changes detected (likely false trigger from ComboBox initialization)');
@@ -1765,7 +1770,9 @@ const FormDesign: React.FC<FormDesignProps> = ({
           workflowTriggerChanged,
           isCollapsibleChanged,
           isDefaultCollapsedChanged,
-          defaultNbColumnsChanged
+          defaultNbColumnsChanged,
+          emUnitLabelPositionChanged,
+          labelWidthChanged
         });
       }
     }

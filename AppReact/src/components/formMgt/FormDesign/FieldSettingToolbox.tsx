@@ -772,7 +772,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
                           step={10}
                           className={`w-full px-2 py-0.5 text-xs border rounded ${theme.inputBox}`}
                           style={{ height: '26px' }}
-                          value={currentLayoutItem.DomAttribute?.LabelWidth ?? 100}
+                          value={currentLayoutItem.DomAttribute?.LabelWidth ?? 120}
                           onChange={(e) => {
                             const latest = currentLayoutItemRef.current;
                             if (!latest) return;
@@ -781,7 +781,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
                               ...latest,
                               DomAttribute: {
                                 ...latest.DomAttribute,
-                                LabelWidth: Number.isFinite(n) ? n : 100,
+                                LabelWidth: Number.isFinite(n) ? n : 120,
                               },
                             });
                           }}
