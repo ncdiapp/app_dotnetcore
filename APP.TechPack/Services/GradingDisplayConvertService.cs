@@ -77,9 +77,20 @@ public static class GradingDisplayConvertService
             int baseSizeIndex = sizeKeys.Count == 0
                 ? -1
                 : IndexOfSizeKey(sizeKeys, baseSizeDetailId);
+
+            // Dimensions may have filtered ColumnGroups so BaseSize is missing. Prefer full
+            // source keys (already attempted in ResolveHostUnits); as a last resort rebuild
+            // from nested grade rows so conversion can still walk the adjacent-delta chain.
+            if (sizeKeys.Count > 0 && baseSizeIndex < 0)
+            {
+                sizeKeys = BuildSizeKeysFromGradeRows(childRows, host);
+                baseSizeIndex = IndexOfSizeKey(sizeKeys, baseSizeDetailId);
+            }
+
             if (sizeKeys.Count > 0 && baseSizeIndex < 0)
                 throw new InvalidOperationException(
-                    $"BaseSizeDetailId {baseSizeDetailId} not found in active size columns.");
+                    $"BaseSizeDetailId {baseSizeDetailId} not found in size run / grade values. " +
+                    "Ensure Base Size belongs to the Style Spec size run.");
 
             for (int rowIndex = 0; rowIndex < childRows.Count; rowIndex++)
             {
@@ -254,8 +265,11 @@ public static class GradingDisplayConvertService
                 if (model == null || !model.IsConfigured || model.GrandchildUnitId == null)
                     continue;
 
-                var sizeKeys = new List<string>();
-                if (model.ColumnGroups != null)
+                // Prefer the full column-source size run (all Dimension rows), not only the
+                // currently visible ColumnGroups. Adjacent-step deltas require BaseSize and every
+                // intermediate size even when Dimensions hide those pivot columns in the UI.
+                var sizeKeys = BuildFullSizeKeysFromColumnSource(formData, model);
+                if (sizeKeys.Count == 0 && model.ColumnGroups != null)
                 {
                     foreach (var g in model.ColumnGroups)
                     {
@@ -339,6 +353,71 @@ public static class GradingDisplayConvertService
         }
 
         return hosts;
+    }
+
+    /// <summary>
+    /// Size keys from the pivot column source grid in row order, ignoring the Dimensions
+    /// visibility flag (ColumnSourceVisibleFieldName). ColumnGroups may omit BaseSize when
+    /// its Dimension is unchecked; conversion still needs the full ordered size run.
+    /// </summary>
+    private static List<string> BuildFullSizeKeysFromColumnSource(
+        AppMasterDetailDto formData, ChildPivotProjectionModelDto model)
+    {
+        var sizeKeys = new List<string>();
+        if (model == null
+            || !model.ColumnSourceUnitId.HasValue
+            || string.IsNullOrWhiteSpace(model.ColumnSourceFieldName))
+            return sizeKeys;
+
+        string unitId = model.ColumnSourceUnitId.Value.ToString(CultureInfo.InvariantCulture);
+        var sourceRows = GetChildRows(formData, unitId);
+        if (sourceRows == null || sourceRows.Count == 0)
+            return sizeKeys;
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var sr in sourceRows)
+        {
+            var keyObj = GetField(sr?.DictOneToOneFields, model.ColumnSourceFieldName);
+            if (keyObj == null)
+                continue;
+            string key = keyObj.ToString() ?? "";
+            if (key.Length == 0 || !seen.Add(key))
+                continue;
+            sizeKeys.Add(key);
+        }
+
+        return sizeKeys;
+    }
+
+    /// <summary>
+    /// Collect distinct SizeRunSizeIds from nested grade rows across POM lines, preserving
+    /// first-seen order (typically size-run SortOrder from DB load).
+    /// </summary>
+    private static List<string> BuildSizeKeysFromGradeRows(
+        List<AppChildDataDto> childRows, HostUnitContext host)
+    {
+        var sizeKeys = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var child in childRows)
+        {
+            if (child?.DictOneToManyFields == null
+                || !child.DictOneToManyFields.TryGetValue(host.GrandchildUnitId, out var gradeRows)
+                || gradeRows == null)
+                continue;
+
+            foreach (var gc in gradeRows)
+            {
+                var keyObj = GetField(gc?.DictOneToOneFields, host.ColumnKeyFieldName);
+                if (keyObj == null)
+                    continue;
+                string key = keyObj.ToString() ?? "";
+                if (key.Length == 0 || !seen.Add(key))
+                    continue;
+                sizeKeys.Add(key);
+            }
+        }
+
+        return sizeKeys;
     }
 
     // ── Projection wide-row sync ─────────────────────────────────────────────
