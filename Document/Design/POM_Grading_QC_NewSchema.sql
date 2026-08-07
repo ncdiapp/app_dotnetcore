@@ -796,5 +796,37 @@ GO
 PRINT 'Created View_TchpStyleActiveSizeRunSizes';
 GO
 
+-- ── View_TchpSizeRunSize_DefaultDimension ────────────────────
+-- Size-run size list with DimensionCode from TchpSizeRunDimension.
+-- One row per SizeRunSizeId. If a size maps to multiple DimensionCodes,
+-- keep the first by SortOrder, SizeRunDimensionId. Missing map → ''.
+IF OBJECT_ID(N'dbo.View_TchpSizeRunSize', N'V') IS NOT NULL
+    DROP VIEW [dbo].[View_TchpSizeRunSize]; -- rename: old short name
+IF OBJECT_ID(N'dbo.View_TchpSizeRunSize_DefaultDimension', N'V') IS NOT NULL
+    DROP VIEW [dbo].[View_TchpSizeRunSize_DefaultDimension];
+GO
+
+CREATE VIEW [dbo].[View_TchpSizeRunSize_DefaultDimension]
+AS
+SELECT
+    srs.SizeRunSizeId,
+    srs.SizeRunId,
+    srs.SizeLabel,
+    srs.SizeOrder,
+    srs.IsActive,
+    ISNULL(dim.DimensionCode, N'') AS DimensionCode
+FROM dbo.TchpSizeRunSize AS srs
+OUTER APPLY (
+    SELECT TOP (1)
+        srd.DimensionCode
+    FROM dbo.TchpSizeRunDimension AS srd
+    WHERE srd.SizeRunSizeId = srs.SizeRunSizeId
+    ORDER BY srd.SortOrder ASC, srd.SizeRunDimensionId ASC
+) AS dim;
+GO
+
+PRINT 'Created View_TchpSizeRunSize_DefaultDimension';
+GO
+
 PRINT '=== POM_Grading_QC_NewSchema.sql completed ===';
 GO

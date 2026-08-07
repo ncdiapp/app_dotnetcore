@@ -335,3 +335,32 @@ WHERE ISNULL(srs.IsActive, 1) = 1;
 GO
 PRINT N'View_TchpStyleActiveSizeRunSizes created/altered.';
 GO
+
+-- =============================================================================
+-- View_TchpSizeRunSize_DefaultDimension: size + first DimensionCode
+-- One row per SizeRunSizeId; if multiple DimensionCodes, first by SortOrder.
+-- Keep identical to Document/Design/POM_Grading_QC_NewSchema.sql
+-- =============================================================================
+IF OBJECT_ID(N'dbo.View_TchpSizeRunSize', N'V') IS NOT NULL
+    DROP VIEW dbo.View_TchpSizeRunSize; -- rename: old short name
+GO
+CREATE OR ALTER VIEW dbo.View_TchpSizeRunSize_DefaultDimension
+AS
+SELECT
+    srs.SizeRunSizeId,
+    srs.SizeRunId,
+    srs.SizeLabel,
+    srs.SizeOrder,
+    srs.IsActive,
+    ISNULL(dim.DimensionCode, N'') AS DimensionCode
+FROM dbo.TchpSizeRunSize AS srs
+OUTER APPLY (
+    SELECT TOP (1)
+        srd.DimensionCode
+    FROM dbo.TchpSizeRunDimension AS srd
+    WHERE srd.SizeRunSizeId = srs.SizeRunSizeId
+    ORDER BY srd.SortOrder ASC, srd.SizeRunDimensionId ASC
+) AS dim;
+GO
+PRINT N'View_TchpSizeRunSize_DefaultDimension created/altered.';
+GO
