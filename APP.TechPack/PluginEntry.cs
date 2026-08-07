@@ -71,7 +71,7 @@ public sealed class PluginEntry : IAppPlugin
     /// <summary>
     /// Display mode: DELTA → SIZEVALUE.
     /// Mutates formData GradingDelta cells to absolute size values (does not write absolutes to DB).
-    /// Sets root field GradingDisplayMode = SIZEVALUE.
+    /// Sets DiffDisplayMode = SIZEVALUE.
     /// </summary>
     private static OperationCallResult<AppMasterDetailDto> ConvertGradingSizeDeltaToSizeValues(
         AppMasterDetailDto formData)
@@ -83,7 +83,7 @@ public sealed class PluginEntry : IAppPlugin
     /// <summary>
     /// Display mode: SIZEVALUE → DELTA.
     /// Mutates formData GradingDelta cells back to adjacent-step deltas (DB-ready).
-    /// Sets root field GradingDisplayMode = DELTA.
+    /// Sets DiffDisplayMode = DELTA.
     /// </summary>
     private static OperationCallResult<AppMasterDetailDto> ConvertGradingSizeValuesToSizeDelta(
         AppMasterDetailDto formData)

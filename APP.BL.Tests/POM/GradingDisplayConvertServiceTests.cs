@@ -53,6 +53,42 @@ public class GradingDisplayConvertServiceTests
     }
 
     [Fact]
+    public void ConvertDeltasToSizeValues_UsesSiblingDiffDisplayMode_AndIgnoresLegacySizeValueFlag()
+    {
+        // StyleSpec sibling holds DiffDisplayMode=DELTA; root still has stale GradingDisplayMode=SIZEVALUE
+        // from an older build — must not early-return.
+        var form = BuildForm(
+            visibleSizeIds: [237, 238],
+            allSizeIds: [237, 238],
+            baseValue: 10m,
+            deltasBySize: new Dictionary<int, decimal> { [237] = 0m, [238] = 1m });
+
+        form.DictOneToOneFields!.Remove(GradingDisplayConvertService.ModeFieldName);
+        form.DictOneToOneFields[GradingDisplayConvertService.LegacyModeFieldName] =
+            GradingDisplayConvertService.ModeSizeValue;
+        form.DictSiblingOneToOneFields = new Dictionary<string, Dictionary<string, object>>
+        {
+            ["900"] = new Dictionary<string, object>
+            {
+                ["BaseSizeDetailId"] = BaseSizeM,
+                [GradingDisplayConvertService.ModeFieldName] = GradingDisplayConvertService.ModeDelta,
+            },
+        };
+        form.DictOneToOneFields.Remove("BaseSizeDetailId");
+
+        GradingDisplayConvertService.ConvertDeltasToSizeValues(form);
+
+        Assert.Equal(
+            GradingDisplayConvertService.ModeSizeValue,
+            form.DictSiblingOneToOneFields["900"][GradingDisplayConvertService.ModeFieldName]?.ToString());
+        Assert.False(form.DictOneToOneFields.ContainsKey(GradingDisplayConvertService.LegacyModeFieldName));
+
+        var gradeBySize = IndexGradeRows(form);
+        Assert.Equal(10m, ToDec(gradeBySize[237]));
+        Assert.Equal(11m, ToDec(gradeBySize[238]));
+    }
+
+    [Fact]
     public void ConvertDeltasToSizeValues_WhenSourceMissing_FallsBackToGradeRowsIncludingHiddenBase()
     {
         var form = BuildForm(

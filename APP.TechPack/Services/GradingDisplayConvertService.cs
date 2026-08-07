@@ -9,11 +9,13 @@ namespace APP.TechPack.Services;
 /// <summary>
 /// In-memory display conversion between adjacent-step deltas and absolute size values.
 /// DB always stores deltas in TchpGradeValue.GradingDelta; this service only mutates formData
-/// for UI mode switching (GradingDisplayMode = DELTA | SIZEVALUE).
+/// for UI mode switching (DiffDisplayMode = DELTA | SIZEVALUE).
 /// </summary>
 public static class GradingDisplayConvertService
 {
-    public const string ModeFieldName = "GradingDisplayMode";
+    public const string ModeFieldName = "DiffDisplayMode";
+    /// <summary>Legacy alias written by earlier builds; still read for compatibility.</summary>
+    public const string LegacyModeFieldName = "GradingDisplayMode";
     public const string ModeDelta = "DELTA";
     public const string ModeSizeValue = "SIZEVALUE";
 
@@ -21,7 +23,7 @@ public static class GradingDisplayConvertService
 
     /// <summary>
     /// Assumes current GradingDelta cells hold deltas; replaces them with absolute size values
-    /// and sets GradingDisplayMode = SIZEVALUE.
+    /// and sets DiffDisplayMode = SIZEVALUE.
     /// </summary>
     public static void ConvertDeltasToSizeValues(AppMasterDetailDto formData)
     {
@@ -39,7 +41,7 @@ public static class GradingDisplayConvertService
 
     /// <summary>
     /// Assumes current GradingDelta cells hold absolute size values; replaces them with deltas,
-    /// syncs PomSpecLine.BaseValue from the base-size cell, and sets GradingDisplayMode = DELTA.
+    /// syncs PomSpecLine.BaseValue from the base-size cell, and sets DiffDisplayMode = DELTA.
     /// </summary>
     public static void ConvertSizeValuesToDeltas(AppMasterDetailDto formData)
     {
@@ -497,43 +499,90 @@ public static class GradingDisplayConvertService
         }
     }
 
-    // ── Mode / root fields ───────────────────────────────────────────────────
+    // ── Mode / root+sibling fields ───────────────────────────────────────────
 
     private static string? GetMode(AppMasterDetailDto formData)
     {
-        formData.DictOneToOneFields ??= new Dictionary<string, object>();
-        if (formData.DictOneToOneFields.TryGetValue(ModeFieldName, out var v) && v != null)
-            return v.ToString();
-        return null;
+        // Prefer DiffDisplayMode (TchpStyleSpec / form field). Fall back to legacy GradingDisplayMode.
+        object? raw = GetRootOrSiblingFieldValue(formData, ModeFieldName);
+        if (raw == null)
+            raw = GetRootOrSiblingFieldValue(formData, LegacyModeFieldName);
+        return raw?.ToString();
     }
 
     private static void SetMode(AppMasterDetailDto formData, string mode)
     {
-        formData.DictOneToOneFields ??= new Dictionary<string, object>();
-        formData.DictOneToOneFields[ModeFieldName] = mode;
+        // Write DiffDisplayMode wherever it already lives (sibling StyleSpec preferred).
+        if (!TrySetExistingRootOrSiblingField(formData, ModeFieldName, mode))
+        {
+            // Field missing from bags (tests / minimal payloads): keep on root for callers.
+            formData.DictOneToOneFields ??= new Dictionary<string, object>();
+            formData.DictOneToOneFields[ModeFieldName] = mode;
+        }
+
+        // Clear legacy phantom so GetMode cannot early-return on a stale SIZEVALUE
+        // while DiffDisplayMode still shows DELTA.
+        RemoveRootOrSiblingField(formData, LegacyModeFieldName);
     }
 
-    private static int RequireBaseSizeDetailId(AppMasterDetailDto formData)
+    private static object? GetRootOrSiblingFieldValue(AppMasterDetailDto formData, string fieldName)
     {
-        object? raw = null;
         if (formData.DictOneToOneFields != null
-            && formData.DictOneToOneFields.TryGetValue("BaseSizeDetailId", out var root)
+            && formData.DictOneToOneFields.TryGetValue(fieldName, out var root)
             && root != null)
-            raw = root;
+            return root;
 
-        if (raw == null && formData.DictSiblingOneToOneFields != null)
+        if (formData.DictSiblingOneToOneFields != null)
         {
             foreach (var sibling in formData.DictSiblingOneToOneFields.Values)
             {
                 if (sibling != null
-                    && sibling.TryGetValue("BaseSizeDetailId", out var sv)
+                    && sibling.TryGetValue(fieldName, out var sv)
                     && sv != null)
+                    return sv;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TrySetExistingRootOrSiblingField(
+        AppMasterDetailDto formData, string fieldName, object value)
+    {
+        if (formData.DictSiblingOneToOneFields != null)
+        {
+            foreach (var sibling in formData.DictSiblingOneToOneFields.Values)
+            {
+                if (sibling != null && sibling.ContainsKey(fieldName))
                 {
-                    raw = sv;
-                    break;
+                    sibling[fieldName] = value;
+                    return true;
                 }
             }
         }
+
+        if (formData.DictOneToOneFields != null
+            && formData.DictOneToOneFields.ContainsKey(fieldName))
+        {
+            formData.DictOneToOneFields[fieldName] = value;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static void RemoveRootOrSiblingField(AppMasterDetailDto formData, string fieldName)
+    {
+        formData.DictOneToOneFields?.Remove(fieldName);
+        if (formData.DictSiblingOneToOneFields == null)
+            return;
+        foreach (var sibling in formData.DictSiblingOneToOneFields.Values)
+            sibling?.Remove(fieldName);
+    }
+
+    private static int RequireBaseSizeDetailId(AppMasterDetailDto formData)
+    {
+        object? raw = GetRootOrSiblingFieldValue(formData, "BaseSizeDetailId");
 
         if (raw == null)
             throw new InvalidOperationException(

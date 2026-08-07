@@ -363,6 +363,16 @@ const DDLControl: React.FC<DDLControlProps> = ({
     const currentRaw = getOneToOneFieldValue(currentFormData, fieldDto, fieldName, undefined, layoutItemExDto);
     if (String(currentRaw ?? '') === String(newValue ?? '')) return;
 
+    // Cascading child: ignore Wijmo clearing selection while itemsSource is empty/reloading
+    // (e.g. after command formData apply). Otherwise BaseSizeDetailId is wiped and Show Size Values fails.
+    if ((newValue == null || newValue === '') && currentRaw != null && String(currentRaw) !== '') {
+      const items = ((sender as any)?.collectionView?.items ?? itemsSource?.items ?? []) as any[];
+      const hasLookupItems = items.some(
+        (i) => i != null && i.Id != null && String(i.Id) !== '',
+      );
+      if (!hasLookupItems) return;
+    }
+
     lastUserSelectedValueRef.current = newValue;
 
     // Angular parity: selecting a row should not trigger a follow-up auto-complete fetch
@@ -710,13 +720,16 @@ const DDLControl: React.FC<DDLControlProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fieldValue]);
 
-  // Apply any pending value after itemsSource updates/binds.
+  // Apply any pending value after itemsSource updates/binds; also re-assert fieldValue
+  // so Wijmo does not leave a blank after cascading items reload.
   useEffect(() => {
     const cb = comboBoxRef.current;
     if (!cb) return;
     if (!canApplySelection(cb)) return;
-    if (pendingSelectedValueRef.current === undefined) return;
-    const v = pendingSelectedValueRef.current;
+    const v =
+      pendingSelectedValueRef.current !== undefined
+        ? pendingSelectedValueRef.current
+        : fieldValue;
     pendingSelectedValueRef.current = undefined;
     applySelectedValue(cb, v);
     // eslint-disable-next-line react-hooks/exhaustive-deps

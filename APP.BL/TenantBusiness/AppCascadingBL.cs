@@ -802,19 +802,68 @@ namespace App.BL
 
             if (isCascadingFromUIOrCreationNew)
             {
-                if (currentRow.ContainsKey(cascadingChildFiledDto.DataBaseFieldName))
-                {
-                    currentRow[cascadingChildFiledDto.DataBaseFieldName] = null;
-                }
-
-
-                // need to check Ineer
+                // Preserve child value when it is still present in the new lookup list.
+                // Blind nulling broke BaseSizeDetailId after sibling SizeRunId re-cascade
+                // (e.g. formData round-trip from Show Size Values) even when SizeRun unchanged.
+                ClearOrPreserveCascadingChildValue(
+                    currentRow, cascadingChildFiledDto, childAllList);
             }
 
             //recursive to get all child cascading lookititem
             if (!cascadingChildFiledDto.CascadngChildren.IsEmpty())
                 SetupOneUnitCascadingDataSource(dictCascadingFiledDataSource, currentRow, cascadingTrigerUnitDto, cascadingChildFiledDto, isCascadingFromUIOrCreationNew, aAppformDataDto, triggerChildRowDataDto);
 
+        }
+
+        /// <summary>
+        /// On UI cascade: clear child only when current value is not in the refreshed lookup.
+        /// MultiSelectDDL keeps pipe-delimited tokens that remain valid.
+        /// </summary>
+        private static void ClearOrPreserveCascadingChildValue(
+            Dictionary<string, object> currentRow,
+            AppTransactionFieldExDto cascadingChildFiledDto,
+            List<LookupItemDto> childAllList)
+        {
+            if (currentRow == null
+                || cascadingChildFiledDto == null
+                || string.IsNullOrWhiteSpace(cascadingChildFiledDto.DataBaseFieldName)
+                || !currentRow.ContainsKey(cascadingChildFiledDto.DataBaseFieldName))
+            {
+                return;
+            }
+
+            object currentVal = currentRow[cascadingChildFiledDto.DataBaseFieldName];
+            if (currentVal == null || string.IsNullOrWhiteSpace(currentVal.ToString()))
+            {
+                currentRow[cascadingChildFiledDto.DataBaseFieldName] = null;
+                return;
+            }
+
+            childAllList ??= new List<LookupItemDto>();
+
+            if (cascadingChildFiledDto.ControlType == (int)EmAppControlType.MultiSelectDDL)
+            {
+                var kept = currentVal.ToString()
+                    .Split(new[] { '|', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(s => s.Trim())
+                    .Where(s => s.Length > 0)
+                    .Where(tok => childAllList.Any(i =>
+                        i?.Id != null
+                        && string.Equals(i.Id.ToString(), tok, StringComparison.OrdinalIgnoreCase)))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                currentRow[cascadingChildFiledDto.DataBaseFieldName] =
+                    kept.Count > 0 ? string.Join("|", kept) : null;
+                return;
+            }
+
+            bool stillValid = childAllList.Any(i =>
+                i?.Id != null
+                && string.Equals(i.Id.ToString(), currentVal.ToString(), StringComparison.OrdinalIgnoreCase));
+
+            if (!stillValid)
+                currentRow[cascadingChildFiledDto.DataBaseFieldName] = null;
         }
 
         private static DataTable GetChildDataTable(object parentFiledValue, string childUnitDBColumnName, AppTransactionUnitExDto aChildTransactionUnitExDto)
