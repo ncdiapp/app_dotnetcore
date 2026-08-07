@@ -98,7 +98,7 @@ namespace App.BL
                     foreach (var keyvalue in dictChildUnitvalueList)
                     {
                         var childUnitDto = appTransactionExDto.DictAllTransactionUnitIdExDto[keyvalue.Key];
-                        AppMasterDetailFormDataLoadBL.SetupStandAloneEntityDepedentFiled(keyvalue.Value, childUnitDto);
+                        AppMasterDetailFormDataLoadBL.SetupStandAloneEntityDepedentFiledForUnitAndGrandChildren(keyvalue.Value, childUnitDto);
                     }
                 }
 

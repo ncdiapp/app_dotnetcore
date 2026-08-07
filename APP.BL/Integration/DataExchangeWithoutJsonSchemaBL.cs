@@ -621,7 +621,7 @@ namespace ExchangeBL
                     childAppformChildDataDto = AppMasterDetailApiFormDataLoadBL.SetupOneChildAndGrandChildData(childUnitExDto, jObj, "");
 
 
-                    AppMasterDetailFormDataLoadBL.SetupStandAloneEntityDepedentFiled(childAppformChildDataDto, childUnitExDto);
+                    AppMasterDetailFormDataLoadBL.SetupStandAloneEntityDepedentFiledForUnitAndGrandChildren(childAppformChildDataDto, childUnitExDto);
 
 
                     formDataDto.DictOneToManyFields[childUnitExDto.Id.ToString()] = childAppformChildDataDto;

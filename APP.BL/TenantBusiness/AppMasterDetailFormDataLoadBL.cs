@@ -566,9 +566,59 @@ namespace App.BL
             return dictMasterEntityColumnValueList;
         }
 
+        /// <summary>
+        /// Fill standalone-entity dependent columns for a unit's rows, then for nested grandchild rows.
+        /// Form load historically only ran this for direct children; ChildUnitPivotColumns (and any
+        /// grandchild temp fields driven by DDL Entity dependent mapping) require the grandchild pass
+        /// so values like DimensionCode are stamped before pivot projection builds Column Group headers.
+        /// </summary>
+        internal static void SetupStandAloneEntityDepedentFiledForUnitAndGrandChildren(
+            List<AppChildDataDto> childRows,
+            AppTransactionUnitExDto unitExDto)
+        {
+            if (unitExDto == null) return;
+
+            SetupStandAloneEntityDepedentFiled(childRows, unitExDto);
+
+            if (childRows == null || childRows.Count == 0
+                || unitExDto.Children == null || unitExDto.Children.Count == 0)
+                return;
+
+            foreach (AppTransactionUnitExDto grandChildUnit in unitExDto.Children)
+            {
+                if (grandChildUnit == null) continue;
+
+                // Skip if this grandchild has no dependent-column config.
+                bool hasDependent = grandChildUnit.AppTransactionFieldList != null
+                    && grandChildUnit.AppTransactionFieldList.Any(o =>
+                        o.MasterEntityFieldlId.HasValue
+                        && !string.IsNullOrWhiteSpace(o.InnerEntitySubscribeFiled));
+                if (!hasDependent) continue;
+
+                var allGcRows = new List<AppChildDataDto>();
+                string gcId = grandChildUnit.Id.ToString();
+                foreach (AppChildDataDto child in childRows)
+                {
+                    if (child?.DictOneToManyFields == null) continue;
+                    if (!child.DictOneToManyFields.TryGetValue(gcId, out List<AppChildDataDto> gcList)
+                        || gcList == null)
+                        continue;
+                    allGcRows.AddRange(gcList);
+                }
+
+                if (allGcRows.Count > 0)
+                    SetupStandAloneEntityDepedentFiled(allGcRows, grandChildUnit);
+            }
+        }
+
         internal static void SetupStandAloneEntityDepedentFiled(List<AppChildDataDto> childAppformChildDataDto, AppTransactionUnitExDto unitExDto)
         {
+            if (childAppformChildDataDto == null || childAppformChildDataDto.Count == 0 || unitExDto == null)
+                return;
+            if (unitExDto.AppTransactionFieldList == null) return;
+
             List<int> masterEntiyColumnIds = unitExDto.AppTransactionFieldList.Where(o => o.MasterEntityFieldlId.HasValue).Select(o => o.MasterEntityFieldlId.Value).ToList();
+            if (masterEntiyColumnIds.Count == 0) return;
             var aasterEntityColumnList = unitExDto.AppTransactionFieldList.Where(
             o => masterEntiyColumnIds.Contains((int)o.Id)
             && o.EntityId.HasValue
@@ -1140,7 +1190,7 @@ namespace App.BL
 
                 }
 
-                SetupStandAloneEntityDepedentFiled(childAppformChildDataDto, aChildTransactionUnitExDto);
+                SetupStandAloneEntityDepedentFiledForUnitAndGrandChildren(childAppformChildDataDto, aChildTransactionUnitExDto);
 
 
                 masterDetailDto.DictOneToManyFields.Add(aChildTransactionUnitExDto.Id.ToString(), childAppformChildDataDto);

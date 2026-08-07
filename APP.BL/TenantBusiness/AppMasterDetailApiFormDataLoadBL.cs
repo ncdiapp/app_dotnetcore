@@ -258,7 +258,7 @@ namespace App.BL
 
 
 
-                        AppMasterDetailFormDataLoadBL.SetupStandAloneEntityDepedentFiled(childAppformChildDataDto, aChildTransactionUnitExDto);
+                        AppMasterDetailFormDataLoadBL.SetupStandAloneEntityDepedentFiledForUnitAndGrandChildren(childAppformChildDataDto, aChildTransactionUnitExDto);
 
 
                         masterDetailDto.DictOneToManyFields.Add(aChildTransactionUnitExDto.Id.ToString(), childAppformChildDataDto);
