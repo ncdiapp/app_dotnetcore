@@ -283,6 +283,9 @@ BEGIN
         [Version]               INT             NOT NULL CONSTRAINT DF_TchpStyleSpec_Version DEFAULT (1),
         -- DELTA | PERCENT — user preference for difference display
         [DiffDisplayMode]       NVARCHAR(10)    NOT NULL CONSTRAINT DF_TchpStyleSpec_DiffMode DEFAULT ('DELTA'),
+        -- Pipe-delimited SizeRunSizeId whitelist for grading pivot columns (MultiSelectDDL).
+        -- NULL / empty = no extra filter (all Dimension-visible sizes show).
+        [VisibleSizes]          NVARCHAR(4000)   NULL,
         [SystemTimeStamp]       ROWVERSION      NULL,
         [AppCreatedById]        INT             NULL,
         [AppCreatedDate]        DATETIME        NULL,
@@ -299,6 +302,15 @@ BEGIN
 END
 ELSE
     PRINT 'TchpStyleSpec already exists — skipped';
+GO
+
+-- VisibleSizes: pipe-delimited SizeRunSizeId list (MultiSelectDDL); add on existing tables.
+IF OBJECT_ID(N'dbo.TchpStyleSpec', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.TchpStyleSpec', N'VisibleSizes') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[TchpStyleSpec] ADD [VisibleSizes] NVARCHAR(4000) NULL;
+    PRINT 'Added TchpStyleSpec.VisibleSizes';
+END
 GO
 
 -- ── TchpStyleSpecDimension ────────────────────────────────────
@@ -742,11 +754,14 @@ GO
 
 -- ── View_TchpStyleActiveSizeRunSizes ─────────────────────────
 -- Read-only sizes for the StyleSpec's current SizeRun.
--- IsVisible: sizes whose DimensionCode matches the StyleSpec's selected
---   dimension (TchpStyleSpecDimension.IsActive=1 via TchpSizeRunDimension).
---   - No StyleSpecDimension rows → all sizes visible
---   - No IsActive=1 yet → match any configured DimensionCode (legacy)
---   - Active dimension set → only sizes mapped to that DimensionCode
+-- IsVisible:
+--   1) Dimension filter (TchpStyleSpecDimension.IsActive=1 via TchpSizeRunDimension).
+--      - No StyleSpecDimension rows → all sizes dimension-visible
+--      - No IsActive=1 yet → match any configured DimensionCode (legacy)
+--      - Active dimension set → only sizes mapped to that DimensionCode
+--   2) AND VisibleSizes whitelist (TchpStyleSpec.VisibleSizes = pipe-delimited SizeRunSizeId).
+--      - NULL / empty → no extra filter
+--      - Non-empty → SizeRunSizeId must appear in the list
 -- Used as ROOT child (StyleSpecId → Root.ReferenceId); pivot column domain.
 -- Keep in sync with ImportFromPLMDW 3b_Tchp_ImportFromDW.sql (CREATE OR ALTER).
 IF OBJECT_ID(N'dbo.View_TchpStyleActiveSizeRunSizes', N'V') IS NOT NULL
@@ -763,27 +778,38 @@ SELECT
     srs.SizeOrder,
     srs.IsActive,
     CASE
-        WHEN NOT EXISTS (
-            SELECT 1
-            FROM dbo.TchpStyleSpecDimension AS ssd
-            WHERE ssd.StyleSpecId = ss.StyleSpecId
-        ) THEN 1
+        WHEN (
+            CASE
+                WHEN NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.TchpStyleSpecDimension AS ssd
+                    WHERE ssd.StyleSpecId = ss.StyleSpecId
+                ) THEN 1
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM dbo.TchpSizeRunDimension AS srd
+                    INNER JOIN dbo.TchpStyleSpecDimension AS ssd
+                        ON ssd.StyleSpecId = ss.StyleSpecId
+                       AND ssd.DimensionCode = srd.DimensionCode
+                       AND (
+                            ssd.IsActive = 1
+                            OR NOT EXISTS (
+                                SELECT 1
+                                FROM dbo.TchpStyleSpecDimension AS x
+                                WHERE x.StyleSpecId = ss.StyleSpecId
+                                  AND x.IsActive = 1
+                            )
+                       )
+                    WHERE srd.SizeRunSizeId = srs.SizeRunSizeId
+                ) THEN 1
+                ELSE 0
+            END
+        ) = 0 THEN 0
+        WHEN NULLIF(LTRIM(RTRIM(ss.VisibleSizes)), N'') IS NULL THEN 1
         WHEN EXISTS (
             SELECT 1
-            FROM dbo.TchpSizeRunDimension AS srd
-            INNER JOIN dbo.TchpStyleSpecDimension AS ssd
-                ON ssd.StyleSpecId = ss.StyleSpecId
-               AND ssd.DimensionCode = srd.DimensionCode
-               AND (
-                    ssd.IsActive = 1
-                    OR NOT EXISTS (
-                        SELECT 1
-                        FROM dbo.TchpStyleSpecDimension AS x
-                        WHERE x.StyleSpecId = ss.StyleSpecId
-                          AND x.IsActive = 1
-                    )
-               )
-            WHERE srd.SizeRunSizeId = srs.SizeRunSizeId
+            FROM STRING_SPLIT(REPLACE(ss.VisibleSizes, N'|', N','), N',') AS tok
+            WHERE TRY_CONVERT(INT, LTRIM(RTRIM(tok.[value]))) = srs.SizeRunSizeId
         ) THEN 1
         ELSE 0
     END AS IsVisible

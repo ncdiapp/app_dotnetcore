@@ -289,7 +289,7 @@ GO
 
 -- =============================================================================
 -- V1: View_TchpStyleActiveSizeRunSizes (Grading ROOT read-only SizeRunSizes child)
--- IsVisible from StyleSpec DimensionCode (IsActive=1) via TchpSizeRunDimension.
+-- IsVisible: Dimension filter AND VisibleSizes whitelist (pipe-delimited SizeRunSizeId).
 -- Keep identical to Document/Design/POM_Grading_QC_NewSchema.sql
 -- Run this script BEFORE Phase D Blueprint Execute.
 -- CREATE VIEW must be first statement in its batch (GO above required).
@@ -304,27 +304,38 @@ SELECT
     srs.SizeOrder,
     srs.IsActive,
     CASE
-        WHEN NOT EXISTS (
-            SELECT 1
-            FROM dbo.TchpStyleSpecDimension AS ssd
-            WHERE ssd.StyleSpecId = ss.StyleSpecId
-        ) THEN 1
+        WHEN (
+            CASE
+                WHEN NOT EXISTS (
+                    SELECT 1
+                    FROM dbo.TchpStyleSpecDimension AS ssd
+                    WHERE ssd.StyleSpecId = ss.StyleSpecId
+                ) THEN 1
+                WHEN EXISTS (
+                    SELECT 1
+                    FROM dbo.TchpSizeRunDimension AS srd
+                    INNER JOIN dbo.TchpStyleSpecDimension AS ssd
+                        ON ssd.StyleSpecId = ss.StyleSpecId
+                       AND ssd.DimensionCode = srd.DimensionCode
+                       AND (
+                            ssd.IsActive = 1
+                            OR NOT EXISTS (
+                                SELECT 1
+                                FROM dbo.TchpStyleSpecDimension AS x
+                                WHERE x.StyleSpecId = ss.StyleSpecId
+                                  AND x.IsActive = 1
+                            )
+                       )
+                    WHERE srd.SizeRunSizeId = srs.SizeRunSizeId
+                ) THEN 1
+                ELSE 0
+            END
+        ) = 0 THEN 0
+        WHEN NULLIF(LTRIM(RTRIM(ss.VisibleSizes)), N'') IS NULL THEN 1
         WHEN EXISTS (
             SELECT 1
-            FROM dbo.TchpSizeRunDimension AS srd
-            INNER JOIN dbo.TchpStyleSpecDimension AS ssd
-                ON ssd.StyleSpecId = ss.StyleSpecId
-               AND ssd.DimensionCode = srd.DimensionCode
-               AND (
-                    ssd.IsActive = 1
-                    OR NOT EXISTS (
-                        SELECT 1
-                        FROM dbo.TchpStyleSpecDimension AS x
-                        WHERE x.StyleSpecId = ss.StyleSpecId
-                          AND x.IsActive = 1
-                    )
-               )
-            WHERE srd.SizeRunSizeId = srs.SizeRunSizeId
+            FROM STRING_SPLIT(REPLACE(ss.VisibleSizes, N'|', N','), N',') AS tok
+            WHERE TRY_CONVERT(INT, LTRIM(RTRIM(tok.[value]))) = srs.SizeRunSizeId
         ) THEN 1
         ELSE 0
     END AS IsVisible

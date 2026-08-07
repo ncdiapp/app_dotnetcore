@@ -545,6 +545,7 @@ Apply on tabs that have `TchpPomSpecLine` (+ GradeValue / SizeRunSizes view):
 | SizeRunId | DDL (1) | SizeRun | 100 | 20 | 1 | |
 | BaseSizeDetailId | DDL (1) | SizeRunDetail | 100 | 30 | 1 | `DDLParentLevelID` = SizeRunId |
 | UnitOfMeasure | TextBox (2) | UnitOfMeasure | 100 | 40 | 1 | keep TextBox |
+| VisibleSizes | **MultiSelectDDL (53)** | SizeRunDetail | 200 | 45 | 1 | `DDLParentLevelID` = SizeRunId; nvarchar pipe-delimited **SizeRunSizeId**; NULL/empty = show all Dimension-visible sizes |
 
 **TchpPomSpecLine**
 
@@ -573,7 +574,7 @@ Apply on tabs that have `TchpPomSpecLine` (+ GradeValue / SizeRunSizes view):
 |---------|-------|
 | Parent | ROOT; Link StyleSpecId → ReferenceId |
 | **Is Read-Only** | **必选** `IsReadOnly=1`；并 `IsDisableAddButton=1` / `IsDisableDeleteButton=1`（Phase D 对 `View_TchpStyleActiveSizeRunSizes` **强制**写入，不依赖 JSON 标志） |
-| Columns | SizeRunSizeId, SizeLabel, SizeOrder, IsActive, **IsVisible** (CASE from StyleSpec DimensionCode ↔ SizeRunDimension; prefer `TchpStyleSpecDimension.IsActive=1`) |
+| Columns | SizeRunSizeId, SizeLabel, SizeOrder, IsActive, **IsVisible** (Dimension AND `TchpStyleSpec.VisibleSizes` whitelist of SizeRunSizeId; empty VisibleSizes = no extra filter) |
 | Visible fields | SizeRunSizeId, SizeLabel, SizeOrder (`GroupByLevel=1` on SizeOrder); IsVisible hidden (MatrixKey only) |
 | Form layout | **omit** (not a user-facing grid) |
 

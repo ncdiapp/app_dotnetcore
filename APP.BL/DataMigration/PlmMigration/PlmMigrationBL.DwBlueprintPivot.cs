@@ -569,6 +569,107 @@ WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'UnitOfMeasure'";
                 cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId.Value);
                 cmd.ExecuteNonQuery();
             }
+
+            // VisibleSizes: MultiSelectDDL SizeRunDetail; Depend On SizeRunId; pipe-delimited SizeRunSizeId
+            EnsureTechPackStyleSpecVisibleSizesField(conn, tran, styleSpecUnitId.Value, sizeRunDetailEntityId, sizeRunFieldId);
+        }
+
+        /// <summary>
+        /// Ensure TchpStyleSpec.VisibleSizes exists as MultiSelectDDL (Entity SizeRunDetail, cascade from SizeRunId).
+        /// Collapses duplicate AppTransactionField rows for the same DbName (keep lowest Id).
+        /// </summary>
+        private static void EnsureTechPackStyleSpecVisibleSizesField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int styleSpecUnitId,
+            int? sizeRunDetailEntityId,
+            int? sizeRunFieldId)
+        {
+            // If Add-Existing + G1 both created rows, remove extras before meta update.
+            using (var del = conn.CreateCommand())
+            {
+                del.Transaction = tran;
+                del.CommandText = @"
+;WITH d AS (
+    SELECT TransactionFieldID,
+           ROW_NUMBER() OVER (ORDER BY TransactionFieldID) AS rn
+    FROM dbo.AppTransactionField
+    WHERE TransactionUnitID = @UnitId
+      AND DataBaseFieldName = N'VisibleSizes'
+)
+DELETE FROM dbo.AppTransactionField
+WHERE TransactionFieldID IN (SELECT TransactionFieldID FROM d WHERE rn > 1);";
+                del.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                del.ExecuteNonQuery();
+            }
+
+            int? existing = GetTransactionFieldId(conn, tran, styleSpecUnitId, "VisibleSizes");
+            if (!existing.HasValue)
+            {
+                int sortOrder = 45;
+                using (var max = conn.CreateCommand())
+                {
+                    max.Transaction = tran;
+                    max.CommandText = @"
+SELECT ISNULL(MAX(SortOrder), 0) + 5
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId";
+                    max.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                    var val = max.ExecuteScalar();
+                    if (val != null && val != DBNull.Value)
+                        sortOrder = Convert.ToInt32(val);
+                }
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+INSERT INTO dbo.AppTransactionField (
+    TransactionUnitID, DisplayName, DataBaseFieldName, ControlType, DataType,
+    EntityId, DDLParentLevelID, SortOrder, IsPrimaryKey, IsVisible, IsReadonly, IsAllowEmpty,
+    DisplayWidth, NBDecimal, IsLinkToParentPrimaryKey, RowIdentityGuid,
+    AppCreatedDate, AppModifiedDate)
+VALUES (
+    @UnitId, N'Visible Sizes', N'VisibleSizes', @ControlType, @DataType,
+    @EntityId, @ParentFieldId, @SortOrder, 0, 1, 0, 1,
+    N'200', 0, 0, NEWID(),
+    GETDATE(), GETDATE());";
+                    cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                    cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.MultiSelectDDL);
+                    cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.String);
+                    cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ParentFieldId",
+                        sizeRunFieldId.HasValue ? (object)sizeRunFieldId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                    cmd.ExecuteNonQuery();
+                }
+                return;
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    ControlType = @ControlType,
+    DataType = @DataType,
+    EntityId = COALESCE(@EntityId, EntityId),
+    DDLParentLevelID = @ParentFieldId,
+    DisplayWidth = N'200',
+    SortOrder = 45,
+    IsVisible = 1,
+    IsReadonly = 0,
+    IsAllowEmpty = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'VisibleSizes'";
+                cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.MultiSelectDDL);
+                cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.String);
+                cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@ParentFieldId",
+                    sizeRunFieldId.HasValue ? (object)sizeRunFieldId.Value : DBNull.Value);
+                cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                cmd.ExecuteNonQuery();
+            }
         }
 
         private static void UpdateTechPackFieldMeta(

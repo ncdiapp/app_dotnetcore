@@ -3000,12 +3000,15 @@ namespace App.BL
                     // new Field Item
                     foreach (var fieldDto in unitDto.AppTransactionFieldList.FindNewItems())
                     {
-                        //if ((fieldDto.IsTempVariable.HasValue && fieldDto.IsTempVariable.Value || fieldDto.IsStoreToExtendTable.HasValue && fieldDto.IsStoreToExtendTable.Value)
-                        //    && !fieldDto.DataBaseFieldName.HasValue()
-                        //    && !(aAppTransactionExDto.OtherOptions != null && aAppTransactionExDto.OtherOptions.IsApiIntegrationTransaction))
-                        //{
-                        //    fieldDto.DataBaseFieldName = fieldDto.DisplayName.Replace(" ", "");
-                        //}
+                        // Skip duplicate DbName already persisted on this unit (Unit Editor save +
+                        // Transaction Editor re-save of a stale no-Id field copy).
+                        if (!string.IsNullOrWhiteSpace(fieldDto.DataBaseFieldName)
+                            && aAppTransactionUnitEntity.AppTransactionField.Any(f =>
+                                f != null
+                                && string.Equals(f.DataBaseFieldName, fieldDto.DataBaseFieldName, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            continue;
+                        }
 
                         AppTransactionFieldEntity aAppTransactionFieldEntity = new AppTransactionFieldEntity();
                         AppTransactionFieldConverter.CopyDtoToEntity(aAppTransactionFieldEntity, fieldDto);

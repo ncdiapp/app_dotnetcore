@@ -35,7 +35,7 @@ interface TransactionUnitEditorProps {
     dataSourceRegisterId: number | null;
     applicationId: string | null;
     onClose: () => void;
-    onSave?: (updatedUnit: any, saveToServer?: boolean) => void;
+    onSave?: (updatedUnit: any, saveToServer?: boolean) => void | Promise<any | null | void>;
     onEditTable?: (unit: any) => void;
 }
 
@@ -62,6 +62,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     const flexGridRef = React.useRef<any>(null);
     const [fieldGridControl, setFieldGridControl] = useState<any>(null);
     const [tableColumnSelectorDialog, setTableColumnSelectorDialog] = useState<{ isOpen: boolean }>({ isOpen: false });
+    const addExistingFieldsInFlightRef = React.useRef(false);
     const [isDataLoadDialogOpen, setIsDataLoadDialogOpen] = useState(false);
     const [linkTargetEditor, setLinkTargetEditor] = useState<{ usageType: number; title: string } | null>(null);
     const [linkedSearchManagementOpen, setLinkedSearchManagementOpen] = useState(false);
@@ -307,6 +308,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                 DDL: 1,
                 AutoComplete: undefined as number | undefined,
                 SearchAbleDDL: undefined as number | undefined,
+                MultiSelectDDL: undefined as number | undefined,
                 RadioButtons: undefined as number | undefined,
                 Progress: undefined as number | undefined,
                 CheckBox: 13 as number | undefined
@@ -316,6 +318,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             DDL: emAppControlType.DDL ?? 1,
             AutoComplete: emAppControlType.AutoComplete,
             SearchAbleDDL: (emAppControlType as any).SearchAbleDDL,
+            MultiSelectDDL: (emAppControlType as any).MultiSelectDDL,
             RadioButtons: (emAppControlType as any).RadioButtons,
             Progress: (emAppControlType as any).Progress,
             CheckBox: emAppControlType.CheckBox ?? 13
@@ -2111,23 +2114,44 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
     // Handle table column selection
     const handleTableColumnsSelected = useCallback(async (selectedColumns: any[]) => {
         if (!unitData || !transactionData || selectedColumns.length === 0) return;
+        if (addExistingFieldsInFlightRef.current) return;
+        addExistingFieldsInFlightRef.current = true;
 
         try {
             dispatch(setIsBusy());
+            // Close immediately so a second OK/confirm cannot re-enter with the same selection.
+            setTableColumnSelectorDialog({ isOpen: false });
 
-            // Check for duplicates
+            // Deduplicate selection (dialog / double-click can pass the same column twice).
+            const selectedUnique: any[] = [];
+            const selectedSeen = new Set<string>();
+            for (const col of selectedColumns) {
+                const name = String(col?.Name ?? '').trim();
+                if (!name) continue;
+                const key = name.toLowerCase();
+                if (selectedSeen.has(key)) continue;
+                selectedSeen.add(key);
+                selectedUnique.push(col);
+            }
+            if (selectedUnique.length === 0) {
+                return;
+            }
+
+            // Snapshot current fields; use functional setState below so a double-fire
+            // (same stale closure) cannot append the same DbName twice.
+            const currentFields: any[] = unitData.AppTransactionFieldList || [];
             const existingFieldNames = new Set(
-                (unitData.AppTransactionFieldList || [])
+                currentFields
                     .filter((f: any) => f.DataBaseFieldName && !f.IsTempVariable)
-                    .map((f: any) => f.DataBaseFieldName)
+                    .map((f: any) => String(f.DataBaseFieldName).toLowerCase())
             );
 
-            const needToAddColumns = selectedColumns.filter((col: any) =>
-                !existingFieldNames.has(col.Name)
+            const needToAddColumns = selectedUnique.filter((col: any) =>
+                !existingFieldNames.has(String(col.Name ?? '').toLowerCase())
             );
 
-            const duplicateNames = selectedColumns
-                .filter((col: any) => existingFieldNames.has(col.Name))
+            const duplicateNames = selectedUnique
+                .filter((col: any) => existingFieldNames.has(String(col.Name ?? '').toLowerCase()))
                 .map((col: any) => col.Name);
 
             if (duplicateNames.length > 0) {
@@ -2135,7 +2159,6 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             }
 
             if (needToAddColumns.length === 0) {
-                setTableColumnSelectorDialog({ isOpen: false });
                 return;
             }
 
@@ -2155,57 +2178,87 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             const transFieldList = await appTransactionService.convertTableColumnsToTransactionFieldExDtoList(converterDto);
 
             if (transFieldList && transFieldList.length > 0) {
-                const maxSortOrder = getMaxSortOrder();
-                let nextSortOrder = Math.ceil(maxSortOrder / 10.0) * 10 + 10;
+                setUnitData((prev: any) => {
+                    if (!prev) return prev;
+                    const prevFields: any[] = prev.AppTransactionFieldList || [];
+                    const already = new Set(
+                        prevFields
+                            .filter((f: any) => f.DataBaseFieldName && !f.IsTempVariable)
+                            .map((f: any) => String(f.DataBaseFieldName).toLowerCase())
+                    );
 
-                const newFields = transFieldList.map((fieldDto: any) => {
-                    const newField = {
-                        ...fieldDto,
-                        SortOrder: nextSortOrder,
-                        uiId: generateGuid()
+                    const maxSort = prevFields.reduce((max: number, f: any) => {
+                        const s = Number(f?.SortOrder);
+                        return Number.isFinite(s) && s > max ? s : max;
+                    }, 0);
+                    let nextSortOrder = Math.ceil(maxSort / 10.0) * 10 + 10;
+
+                    const newFields = (transFieldList as any[])
+                        .filter((fieldDto: any) => {
+                            const db = String(fieldDto?.DataBaseFieldName ?? '').toLowerCase();
+                            return db && !already.has(db);
+                        })
+                        .map((fieldDto: any) => {
+                            const newField = {
+                                ...fieldDto,
+                                SortOrder: nextSortOrder,
+                                uiId: generateGuid()
+                            };
+                            nextSortOrder += 10;
+                            already.add(String(fieldDto.DataBaseFieldName).toLowerCase());
+                            return newField;
+                        });
+
+                    if (newFields.length === 0) return prev;
+
+                    if (transactionData.DictCurrentPKOrFKLinkToParentKeyGuidMap) {
+                        newFields.forEach((field: any) => {
+                            if (field.ParentPKFieldGuid && field.RowIdentityGuid) {
+                                transactionData.DictCurrentPKOrFKLinkToParentKeyGuidMap[field.RowIdentityGuid] =
+                                    field.ParentPKFieldGuid;
+                            }
+                        });
+                    }
+
+                    return {
+                        ...prev,
+                        AppTransactionFieldList: [...prevFields, ...newFields]
                     };
-                    nextSortOrder += 10;
-                    return newField;
                 });
-
-                const updatedFields = [...(unitData.AppTransactionFieldList || []), ...newFields];
-                setUnitData({ ...unitData, AppTransactionFieldList: updatedFields });
                 setIsModified(true);
                 isModifiedRef.current = true;
-
-                // Update DictCurrentPKOrFKLinkToParentKeyGuidMap if needed
-                if (transactionData.DictCurrentPKOrFKLinkToParentKeyGuidMap) {
-                    newFields.forEach((field: any) => {
-                        if (field.ParentPKFieldGuid && field.RowIdentityGuid) {
-                            transactionData.DictCurrentPKOrFKLinkToParentKeyGuidMap[field.RowIdentityGuid] = field.ParentPKFieldGuid;
-                        }
-                    });
-                }
             }
-
-            setTableColumnSelectorDialog({ isOpen: false });
         } catch (error: any) {
             showError(error.message || 'Failed to add table fields');
         } finally {
+            addExistingFieldsInFlightRef.current = false;
             dispatch(setIsNotBusy());
         }
-    }, [unitData, transactionData, dataSourceRegisterId, dispatch, showError, showInfo, getMaxSortOrder]);
+    }, [unitData, transactionData, dataSourceRegisterId, dispatch, showError, showInfo, getParentUnit]);
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!unitData) return;
 
+        let savedUnit: any = null;
         if (onSave) {
-            onSave(unitData, true);
+            savedUnit = await onSave(unitData, true);
+        }
+
+        // After server save, prefer reloaded unit (fields now have Ids) so a later
+        // Transaction Editor save does not re-insert the same DbName as IsNew.
+        if (savedUnit && Array.isArray(savedUnit.AppTransactionFieldList)) {
+            setUnitData(savedUnit);
+            originalUnitDataRef.current = JSON.parse(JSON.stringify(savedUnit));
+        } else {
+            originalUnitDataRef.current = JSON.parse(JSON.stringify(unitData));
         }
 
         setIsModified(false);
         isModifiedRef.current = false;
-        originalUnitDataRef.current = JSON.parse(JSON.stringify(unitData));
     };
 
-    const handleSaveAndClose = () => {
-        handleSave();
-        // Close after save
+    const handleSaveAndClose = async () => {
+        await handleSave();
         onClose();
     };
 
@@ -2228,9 +2281,11 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             return;
         }
 
-        // Unsaved changes: close without prompting (popup disabled). Update local state only.
+        // Unsaved changes: push to parent local state only (do not save to server).
+        // Prefer not to overwrite parent with no-Id field copies after a successful Save —
+        // only push when there are real unsaved edits.
         if (unitData && onSave) {
-            onSave(unitData, false); // false = don't save to server, just update local state
+            await onSave(unitData, false);
         }
         setIsModified(false);
         isModifiedRef.current = false;
@@ -2968,6 +3023,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                                 controlTypeIdsForDatasource.DDL,
                                                 controlTypeIdsForDatasource.AutoComplete!,
                                                 controlTypeIdsForDatasource.SearchAbleDDL!,
+                                                controlTypeIdsForDatasource.MultiSelectDDL!,
                                                 controlTypeIdsForDatasource.RadioButtons!,
                                                 controlTypeIdsForDatasource.Progress!
                                             ].filter((v) => typeof v === 'number') as number[];
@@ -3042,6 +3098,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                                 controlTypeIdsForDatasource.DDL,
                                                 controlTypeIdsForDatasource.AutoComplete!,
                                                 controlTypeIdsForDatasource.SearchAbleDDL!,
+                                                controlTypeIdsForDatasource.MultiSelectDDL!,
                                             ].filter((v) => typeof v === 'number') as number[];
                                             if (!allowed.includes(ctl)) {
                                                 return <span className="text-xs text-gray-500"> </span>;

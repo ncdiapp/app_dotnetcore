@@ -482,7 +482,10 @@ namespace App.BL
                 foreach (var field in unit.AppTransactionFieldList)
                 {
                     // dont add 
-                    if (field.ControlType == (int)EmAppControlType.DDL || field.ControlType == (int)EmAppControlType.RadioButtons || field.ControlType == (int)EmAppControlType.Progress)
+                    if (field.ControlType == (int)EmAppControlType.DDL
+                        || field.ControlType == (int)EmAppControlType.MultiSelectDDL
+                        || field.ControlType == (int)EmAppControlType.RadioButtons
+                        || field.ControlType == (int)EmAppControlType.Progress)
                     {
                         if (field.EntityId.HasValue)
                         {
@@ -669,7 +672,8 @@ namespace App.BL
             {
                 if ((field.ControlType == (int)EmAppControlType.DDL
                     || field.ControlType == (int)EmAppControlType.AutoComplete
-                    || field.ControlType == (int)EmAppControlType.SearchAbleDDL)
+                    || field.ControlType == (int)EmAppControlType.SearchAbleDDL
+                    || field.ControlType == (int)EmAppControlType.MultiSelectDDL)
                     && field.EntityId.HasValue)
                 {
                     //if (!isAdmin)

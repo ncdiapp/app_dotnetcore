@@ -685,6 +685,36 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
         }
 
         if (aUnit.AppTransactionFieldList && Array.isArray(aUnit.AppTransactionFieldList)) {
+            // Drop client-only duplicates of the same DbName (keep row that already has Id).
+            // Happens when Unit Editor saved (DB insert) but local unit still held a no-Id copy
+            // that later overwrote / merged into Transaction Editor state.
+            const seenDbNames = new Map<string, number>();
+            const deduped: any[] = [];
+            for (const transField of aUnit.AppTransactionFieldList) {
+                if (!transField) continue;
+                const dbName = String(transField.DataBaseFieldName ?? '').trim().toLowerCase();
+                const isTemp = transField.IsTempVariable === true;
+                if (!dbName || isTemp) {
+                    deduped.push(transField);
+                    continue;
+                }
+                const existingIdx = seenDbNames.get(dbName);
+                if (existingIdx === undefined) {
+                    seenDbNames.set(dbName, deduped.length);
+                    deduped.push(transField);
+                    continue;
+                }
+                const existing = deduped[existingIdx];
+                const preferNew =
+                    (transField.Id != null && existing?.Id == null) ||
+                    (transField.Id != null && existing?.Id != null && Number(transField.Id) === Number(existing.Id));
+                if (preferNew || (transField.Id != null && existing?.Id == null)) {
+                    deduped[existingIdx] = transField;
+                }
+                // else drop transField (duplicate without Id / worse copy)
+            }
+            aUnit.AppTransactionFieldList = deduped;
+
             aUnit.AppTransactionFieldList.forEach((transField: any) => {
                 if (transField) {
                     // Mark new fields
@@ -908,8 +938,8 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
         setUnitEditorDialog({ isOpen: false, unit: null });
     };
 
-    const handleUnitEditorSave = async (updatedUnit: any, saveToServer: boolean = true) => {
-        if (!transactionData) return;
+    const handleUnitEditorSave = async (updatedUnit: any, saveToServer: boolean = true): Promise<any | null> => {
+        if (!transactionData) return null;
 
         // Helper function to update unit in list
         const updateUnitInList = (unitList: any[], targetId: number, updatedData: any): any[] => {
@@ -922,6 +952,15 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                 }
                 return u;
             });
+        };
+
+        const findUnitInList = (unitList: any[], targetId: number): any | null => {
+            for (const u of unitList || []) {
+                if (u?.Id != null && Number(u.Id) === Number(targetId)) return u;
+                const hit = findUnitInList(u?.Children || [], targetId);
+                if (hit) return hit;
+            }
+            return null;
         };
 
         // Update unit in transaction data state
@@ -945,7 +984,7 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
 
         // Only save to server if saveToServer is true
         if (!saveToServer) {
-            return;
+            return updatedUnit;
         }
 
         // Save the entire transaction after updating the unit
@@ -1000,9 +1039,19 @@ const TransactionGraphicEditor: React.FC<TransactionGraphicEditorProps> = ({
                 if (savedId) {
                     await loadTransactionData(savedId);
                 }
+                // Return reloaded unit (with field Ids) so Unit Editor can replace stale no-Id copies.
+                const freshRoot = result.Object?.AppTransactionUnitList;
+                if (updatedUnit?.Id != null && Array.isArray(freshRoot)) {
+                    const freshUnit = findUnitInList(freshRoot, Number(updatedUnit.Id));
+                    if (freshUnit) return freshUnit;
+                }
+                // loadTransactionData updates state async; prefer result.Object tree above.
+                return updatedUnit;
             }
+            return null;
         } catch (error: any) {
             showError(error.message || 'Failed to save transaction');
+            return null;
         } finally {
             dispatch(setIsNotBusy());
         }

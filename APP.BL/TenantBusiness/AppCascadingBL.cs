@@ -417,7 +417,8 @@ namespace App.BL
                         (
                         filed.ControlType == (int)EmAppControlType.DDL
                         || filed.ControlType == (int)EmAppControlType.AutoComplete
-                        || filed.ControlType == (int)EmAppControlType.SearchAbleDDL))
+                        || filed.ControlType == (int)EmAppControlType.SearchAbleDDL
+                        || filed.ControlType == (int)EmAppControlType.MultiSelectDDL))
                     {
                         dictCascadedIdParentField[filed.Id.ToString()] = filed.DdlparentLevelId.ToString();
                         // parentFiedIdList.Add(filed.DdlparentLevelId.Value);

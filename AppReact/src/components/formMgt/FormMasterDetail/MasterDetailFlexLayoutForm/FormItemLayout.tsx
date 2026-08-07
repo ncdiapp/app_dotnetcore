@@ -3,6 +3,7 @@ import { useEnumValues } from '../../../../hooks/useEnumDictionary';
 import { useTheme } from '../../../../redux/hooks/useTheme';
 import TextBoxControl from './FormControls/TextBoxControl';
 import DDLControl from './FormControls/DDLControl';
+import MultiSelectDDLControl from './FormControls/MultiSelectDDLControl';
 import MemoControl from './FormControls/MemoControl';
 import ImageControl from './FormControls/ImageControl';
 import FileControl from './FormControls/FileControl';
@@ -76,6 +77,9 @@ const FormItemLayout: React.FC<FormItemLayoutProps> = ({
   switch (controlType) {
     case controlTypeEnum?.DDL:
       return <DDLControl {...commonProps} />;
+
+    case controlTypeEnum?.MultiSelectDDL:
+      return <MultiSelectDDLControl {...commonProps} />;
     
     case controlTypeEnum?.SearchAbleDDL:
       // TODO: Implement SearchableDDL

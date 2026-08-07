@@ -614,6 +614,11 @@ namespace APP.Components.Dto
         ExternalImageUrl = 50,
         HtmlContent = 51,
         JsonObject = 52,
+        /// <summary>
+        /// Multi-select DDL: stores pipe-delimited LookupItem Ids in an nvarchar column
+        /// (e.g. "12|34|56"). Root master / root sibling form fields only (phase 1).
+        /// </summary>
+        MultiSelectDDL = 53,
         InvalidControlType = 99,
 
     }

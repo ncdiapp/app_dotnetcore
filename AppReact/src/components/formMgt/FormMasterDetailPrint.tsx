@@ -191,7 +191,8 @@ function isDdLikeControlType(controlType: any, controlTypeEnum: any): boolean {
   return (
     ctl === Number(controlTypeEnum?.DDL) ||
     ctl === Number(controlTypeEnum?.SearchAbleDDL) ||
-    ctl === Number(controlTypeEnum?.AutoComplete)
+    ctl === Number(controlTypeEnum?.AutoComplete) ||
+    ctl === Number(controlTypeEnum?.MultiSelectDDL)
   );
 }
 
