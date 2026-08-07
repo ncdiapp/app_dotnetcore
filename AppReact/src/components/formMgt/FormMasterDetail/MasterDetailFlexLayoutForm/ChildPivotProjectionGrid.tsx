@@ -1,11 +1,17 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
+import { FlexGrid, FlexGridColumn, FlexGridColumnGroup, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
 import { CollectionView } from '@mescius/wijmo';
 import { DataMap } from '@mescius/wijmo.grid';
 import { useTheme } from '../../../../redux/hooks/useTheme';
 import { useEnumValues } from '../../../../hooks/useEnumDictionary';
 import { fileThumbnailUrl } from '../../../../webapi/fileEndpoints';
-import { ChildPivotProjectionModel } from './childPivotProjectionHelper';
+import {
+  ChildPivotProjectionModel,
+  ProjColumnGroup,
+  ProjLeafColumn,
+  countVisibleValueColumns,
+  enumerateLeafColumnGroups,
+} from './childPivotProjectionHelper';
 
 export type ProjectionImageCellContext = {
   rowIndex: number;
@@ -43,6 +49,10 @@ interface ChildPivotProjectionGridProps {
 /**
  * Pure renderer for the Child Unit Pivot Columns projection. All transform logic is server-side;
  * this component only renders the server model and emits edited wide rows back to the host.
+ *
+ * Two paths (engineering clarity):
+ * 1. Flat FlexGridColumn when IsNeedPivotColumnGroup is false
+ * 2. FlexGridColumnGroup hierarchy when IsNeedPivotColumnGroup is true (IsPivotRow parents)
  */
 const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
   model,
@@ -91,6 +101,7 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
   const hostColumns = useMemo(() => model?.HostColumns ?? [], [model]);
   const columnGroups = useMemo(() => model?.ColumnGroups ?? [], [model]);
   const wideRows = useMemo(() => model?.WideRows ?? [], [model]);
+  const useColumnGroups = Boolean(model?.IsNeedPivotColumnGroup);
 
   const [collectionView] = useState<CollectionView<any>>(() => new CollectionView<any>([]));
 
@@ -152,15 +163,18 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
   );
 
   const visibleValueColumnCount = useMemo(
-    () => columnGroups.reduce((n, g) => n + (g.Columns ?? []).filter((c) => c.Visible !== false).length, 0),
+    () => countVisibleValueColumns(columnGroups),
     [columnGroups],
   );
 
   // Resolve display text on each render so headers update when formStructure entity data loads.
+  // Parent Column Groups use FieldId + ColValue (grandchild field value); size leaves use ColumnSourceFieldId.
   const groupHeaderLabel = useCallback(
-    (group: { Header: string; ColValue?: any }): string => {
-      if (model?.ColumnSourceFieldId != null && group.ColValue != null) {
-        const sourceDataMap = resolveDataMap?.(model.ColumnSourceFieldId) ?? null;
+    (group: { Header: string; ColValue?: any; FieldId?: number | null }): string => {
+      const fieldIdForMap =
+        group.FieldId != null ? group.FieldId : model?.ColumnSourceFieldId ?? null;
+      if (fieldIdForMap != null && group.ColValue != null) {
+        const sourceDataMap = resolveDataMap?.(fieldIdForMap) ?? null;
         if (sourceDataMap) {
           for (const key of [group.ColValue, String(group.ColValue), Number(group.ColValue)]) {
             try {
@@ -175,6 +189,212 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
       return group.Header;
     },
     [model?.ColumnSourceFieldId, resolveDataMap],
+  );
+
+  const renderImageLeaf = useCallback(
+    (
+      leaf: ProjLeafColumn,
+      header: string,
+      colWidth: number,
+      colReadOnly: boolean,
+      asColumnGroup: boolean,
+    ) => {
+      const binding = leaf.Binding;
+      const dbFieldName = leaf.DataBaseFieldName ?? '';
+      const cellTemplate = (
+        <FlexGridCellTemplate
+          cellType="Cell"
+          template={(cell: any) => {
+            const item = cell?.item as Record<string, any> | undefined;
+            const raw = item?.[binding];
+            const fileId = parseFileId(raw);
+            const rowIndex =
+              typeof item?.__rowIndex === 'number' && item.__rowIndex >= 0
+                ? item.__rowIndex
+                : Number(cell?.row?.index ?? -1);
+            const thumbUrl = fileId ? fileThumbnailUrl(fileId) : null;
+            return (
+              <div className="flex items-center justify-between w-full h-full gap-1">
+                <div className="flex items-center gap-2 min-w-0 flex-auto">
+                  {thumbUrl ? (
+                    <img
+                      src={thumbUrl}
+                      alt=""
+                      className="max-h-[30px] max-w-[30px] object-contain cursor-pointer flex-shrink-0"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isReadOnly || !fileId) return;
+                        onImagePreview?.(fileId);
+                      }}
+                    />
+                  ) : (
+                    <div className="w-[30px] h-[30px]" />
+                  )}
+                </div>
+                {!isReadOnly && onImageCellMenu && (
+                  <button
+                    type="button"
+                    className={`${theme.button_default} w-7 h-6 rounded-[4px] text-xs flex items-center justify-center flex-shrink-0`}
+                    title="Actions"
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                      onImageCellMenu({
+                        rowIndex,
+                        binding,
+                        dbFieldName,
+                        fileId,
+                        clientX: rect.right,
+                        clientY: rect.top,
+                      });
+                    }}
+                  >
+                    <i className="fa-solid fa-bars" aria-hidden="true" />
+                  </button>
+                )}
+              </div>
+            );
+          }}
+        />
+      );
+
+      if (asColumnGroup) {
+        return (
+          <FlexGridColumnGroup
+            key={`val_${leaf.Binding}`}
+            name={leaf.FieldId != null ? String(leaf.FieldId) : ''}
+            binding={binding}
+            header={header}
+            width={colWidth}
+            isReadOnly={colReadOnly}
+            isRequired={false}
+          >
+            {cellTemplate}
+          </FlexGridColumnGroup>
+        );
+      }
+
+      return (
+        <FlexGridColumn
+          key={`val_${leaf.Binding}`}
+          name={leaf.FieldId != null ? String(leaf.FieldId) : ''}
+          binding={binding}
+          header={header}
+          width={colWidth}
+          isReadOnly={colReadOnly}
+          isRequired={false}
+        >
+          {cellTemplate}
+        </FlexGridColumn>
+      );
+    },
+    [isReadOnly, onImageCellMenu, onImagePreview, parseFileId, theme.button_default],
+  );
+
+  const renderValueLeaf = useCallback(
+    (leaf: ProjLeafColumn, header: string, asColumnGroup: boolean) => {
+      const isImageColumn = isImageControlType(leaf.ControlType);
+      const colWidth = resolveWidth?.(leaf.FieldId) ?? (isImageColumn ? 130 : 110);
+      const colReadOnly = isReadOnly || isImageColumn;
+
+      if (isImageColumn) {
+        return renderImageLeaf(leaf, header, colWidth, colReadOnly, asColumnGroup);
+      }
+
+      if (asColumnGroup) {
+        return (
+          <FlexGridColumnGroup
+            key={`val_${leaf.Binding}`}
+            name={leaf.FieldId != null ? String(leaf.FieldId) : ''}
+            binding={leaf.Binding}
+            header={header}
+            width={colWidth}
+            isReadOnly={colReadOnly}
+            isRequired={false}
+            dataType={dataTypeFor(leaf.ControlType)}
+            format={formatFor(leaf.ControlType)}
+            dataMap={resolveDataMap ? resolveDataMap(leaf.FieldId) ?? undefined : undefined}
+          />
+        );
+      }
+
+      return (
+        <FlexGridColumn
+          key={`val_${leaf.Binding}`}
+          name={leaf.FieldId != null ? String(leaf.FieldId) : ''}
+          binding={leaf.Binding}
+          header={header}
+          width={colWidth}
+          isReadOnly={colReadOnly}
+          isRequired={false}
+          dataType={dataTypeFor(leaf.ControlType)}
+          format={formatFor(leaf.ControlType)}
+          dataMap={resolveDataMap ? resolveDataMap(leaf.FieldId) ?? undefined : undefined}
+        />
+      );
+    },
+    [dataTypeFor, formatFor, isImageControlType, isReadOnly, renderImageLeaf, resolveDataMap, resolveWidth],
+  );
+
+  /** Flat path: one FlexGridColumn per leaf; header = size or size · value. */
+  const renderFlatValueColumns = useCallback(() => {
+    const leafGroups = enumerateLeafColumnGroups(columnGroups);
+    return leafGroups.flatMap((group) => {
+      const visibleLeaves = (group.Columns ?? []).filter((c) => c.Visible !== false);
+      const groupLabel = groupHeaderLabel(group);
+      return visibleLeaves.map((leaf) => {
+        const header = visibleLeaves.length > 1 ? `${groupLabel} · ${leaf.Header}` : groupLabel;
+        return renderValueLeaf(leaf, header, false);
+      });
+    });
+  }, [columnGroups, groupHeaderLabel, renderValueLeaf]);
+
+  /**
+   * ColumnGroup path: recursive FlexGridColumnGroup.
+   * IsPivotRow parents nest by grandchild field VALUES; comboId groups have Columns (leaves).
+   */
+  const renderColumnGroupTree = useCallback(
+    (groups: ProjColumnGroup[]): React.ReactNode[] => {
+      return groups.flatMap((group) => {
+        const children = group.ChildGroups ?? [];
+        if (children.length > 0) {
+          const parentLabel = groupHeaderLabel(group);
+          return [
+            <FlexGridColumnGroup
+              key={`grp_${group.FieldId ?? 'f'}_${group.ComboId ?? group.Header}`}
+              header={parentLabel}
+              align="center"
+            >
+              {renderColumnGroupTree(children)}
+            </FlexGridColumnGroup>,
+          ];
+        }
+
+        // Data-bearing comboId group → leaves under an optional size-level group header
+        const visibleLeaves = (group.Columns ?? []).filter((c) => c.Visible !== false);
+        if (visibleLeaves.length === 0) return [];
+
+        const groupLabel = groupHeaderLabel(group);
+
+        // Single visible value: leaf ColumnGroup with size as header (no extra nesting).
+        if (visibleLeaves.length === 1) {
+          return [renderValueLeaf(visibleLeaves[0], groupLabel, true)];
+        }
+
+        // Multiple values: nest under a size ColumnGroup.
+        return [
+          <FlexGridColumnGroup
+            key={`combo_${group.ComboId ?? group.Header}`}
+            header={groupLabel}
+            align="center"
+          >
+            {visibleLeaves.map((leaf) => renderValueLeaf(leaf, leaf.Header, true))}
+          </FlexGridColumnGroup>,
+        ];
+      });
+    },
+    [groupHeaderLabel, renderValueLeaf],
   );
 
   if (!model) {
@@ -194,6 +414,7 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
   }
 
   const nothingVisible = columnGroups.length > 0 && visibleValueColumnCount === 0;
+  const leafGroupsExist = enumerateLeafColumnGroups(columnGroups).length > 0;
 
   return (
     <div className="w-full h-full min-h-0 overflow-hidden flex flex-col">
@@ -203,138 +424,74 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
         </div>
       )}
       <div className="h-full w-full">
-      <FlexGrid
-        ref={setGridRef}
-        itemsSource={collectionView}
-        isReadOnly={isReadOnly}
-        allowSorting={false}
-        headersVisibility="All"
-        selectionMode="Cell"
-        className="w-full h-full"
-        style={{ height: '100%', width: '100%', border: 'none' }}
-        beginningEdit={handleCellEditBeginning}
-        cellEditEnding={handleCellEditEnding}
-        cellEditEnded={handleCellEditEnded}
-      >
-        {/* Host (child) descriptor columns */}
-        {hostColumns.map((hc) => (
-          <FlexGridColumn
-            key={`host_${hc.Binding}`}
-            name={hc.FieldId != null ? String(hc.FieldId) : ''}
-            binding={hc.Binding}
-            header={hc.Header}
-            width={resolveWidth?.(hc.FieldId) ?? 150}
-            isReadOnly={isReadOnly || hc.IsReadOnly}
-            isRequired={false}
-            dataType={dataTypeFor(hc.ControlType)}
-            format={formatFor(hc.ControlType)}
-            dataMap={resolveDataMap ? resolveDataMap(hc.FieldId) ?? undefined : undefined}
-          />
-        ))}
-
-        {/* Dynamic value columns — one per (source value × visible value field) */}
-        {columnGroups.flatMap((group) => {
-          const visibleLeaves = (group.Columns ?? []).filter((c) => c.Visible !== false);
-          const groupLabel = groupHeaderLabel(group);
-          return visibleLeaves.map((leaf) => {
-            const header =
-              visibleLeaves.length > 1 ? `${groupLabel} · ${leaf.Header}` : groupLabel;
-            const isImageColumn = isImageControlType(leaf.ControlType);
-            const colWidth = resolveWidth?.(leaf.FieldId) ?? (isImageColumn ? 130 : 110);
-            const colReadOnly = isReadOnly || isImageColumn;
-
-            if (isImageColumn) {
-              const binding = leaf.Binding;
-              const dbFieldName = leaf.DataBaseFieldName ?? '';
-              return (
-                <FlexGridColumn
-                  key={`val_${leaf.Binding}`}
-                  name={leaf.FieldId != null ? String(leaf.FieldId) : ''}
-                  binding={binding}
-                  header={header}
-                  width={colWidth}
-                  isReadOnly={colReadOnly}
-                  isRequired={false}
-                >
-                  <FlexGridCellTemplate
-                    cellType="Cell"
-                    template={(cell: any) => {
-                      const item = cell?.item as Record<string, any> | undefined;
-                      const raw = item?.[binding];
-                      const fileId = parseFileId(raw);
-                      const rowIndex =
-                        typeof item?.__rowIndex === 'number' && item.__rowIndex >= 0
-                          ? item.__rowIndex
-                          : Number(cell?.row?.index ?? -1);
-                      const thumbUrl = fileId ? fileThumbnailUrl(fileId) : null;
-                      return (
-                        <div className="flex items-center justify-between w-full h-full gap-1">
-                          <div className="flex items-center gap-2 min-w-0 flex-auto">
-                            {thumbUrl ? (
-                              <img
-                                src={thumbUrl}
-                                alt=""
-                                className="max-h-[30px] max-w-[30px] object-contain cursor-pointer flex-shrink-0"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (isReadOnly || !fileId) return;
-                                  onImagePreview?.(fileId);
-                                }}
-                              />
-                            ) : (
-                              <div className="w-[30px] h-[30px]" />
-                            )}
-                          </div>
-                          {!isReadOnly && onImageCellMenu && (
-                            <button
-                              type="button"
-                              className={`${theme.button_default} w-7 h-6 rounded-[4px] text-xs flex items-center justify-center flex-shrink-0`}
-                              title="Actions"
-                              onMouseDown={(e) => e.stopPropagation()}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const rect = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
-                                onImageCellMenu({
-                                  rowIndex,
-                                  binding,
-                                  dbFieldName,
-                                  fileId,
-                                  clientX: rect.right,
-                                  clientY: rect.top,
-                                });
-                              }}
-                            >
-                              <i className="fa-solid fa-bars" aria-hidden="true" />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    }}
-                  />
-                </FlexGridColumn>
-              );
-            }
-
-            return (
-              <FlexGridColumn
-                key={`val_${leaf.Binding}`}
-                name={leaf.FieldId != null ? String(leaf.FieldId) : ''}
-                binding={leaf.Binding}
-                header={header}
-                width={colWidth}
-                isReadOnly={colReadOnly}
+        {useColumnGroups ? (
+          <FlexGrid
+            ref={setGridRef}
+            itemsSource={collectionView}
+            isReadOnly={isReadOnly}
+            allowSorting={false}
+            headersVisibility="All"
+            selectionMode="Cell"
+            className="w-full h-full"
+            style={{ height: '100%', width: '100%', border: 'none' }}
+            beginningEdit={handleCellEditBeginning}
+            cellEditEnding={handleCellEditEnding}
+            cellEditEnded={handleCellEditEnded}
+          >
+            {/* Host leaves must also be ColumnGroup when any parent group exists */}
+            {hostColumns.map((hc) => (
+              <FlexGridColumnGroup
+                key={`host_${hc.Binding}`}
+                name={hc.FieldId != null ? String(hc.FieldId) : ''}
+                binding={hc.Binding}
+                header={hc.Header}
+                width={resolveWidth?.(hc.FieldId) ?? 150}
+                isReadOnly={isReadOnly || hc.IsReadOnly}
                 isRequired={false}
-                dataType={dataTypeFor(leaf.ControlType)}
-                format={formatFor(leaf.ControlType)}
-                dataMap={resolveDataMap ? resolveDataMap(leaf.FieldId) ?? undefined : undefined}
+                dataType={dataTypeFor(hc.ControlType)}
+                format={formatFor(hc.ControlType)}
+                dataMap={resolveDataMap ? resolveDataMap(hc.FieldId) ?? undefined : undefined}
               />
-            );
-          });
-        })}
+            ))}
 
-        {/* Spacer */}
-        <FlexGridColumn header="" binding="" width="*" isReadOnly={true} isRequired={false} />
-      </FlexGrid>
+            {leafGroupsExist && renderColumnGroupTree(columnGroups)}
+
+            <FlexGridColumnGroup header="" binding="" width="*" isReadOnly={true} isRequired={false} />
+          </FlexGrid>
+        ) : (
+          <FlexGrid
+            ref={setGridRef}
+            itemsSource={collectionView}
+            isReadOnly={isReadOnly}
+            allowSorting={false}
+            headersVisibility="All"
+            selectionMode="Cell"
+            className="w-full h-full"
+            style={{ height: '100%', width: '100%', border: 'none' }}
+            beginningEdit={handleCellEditBeginning}
+            cellEditEnding={handleCellEditEnding}
+            cellEditEnded={handleCellEditEnded}
+          >
+            {hostColumns.map((hc) => (
+              <FlexGridColumn
+                key={`host_${hc.Binding}`}
+                name={hc.FieldId != null ? String(hc.FieldId) : ''}
+                binding={hc.Binding}
+                header={hc.Header}
+                width={resolveWidth?.(hc.FieldId) ?? 150}
+                isReadOnly={isReadOnly || hc.IsReadOnly}
+                isRequired={false}
+                dataType={dataTypeFor(hc.ControlType)}
+                format={formatFor(hc.ControlType)}
+                dataMap={resolveDataMap ? resolveDataMap(hc.FieldId) ?? undefined : undefined}
+              />
+            ))}
+
+            {renderFlatValueColumns()}
+
+            <FlexGridColumn header="" binding="" width="*" isReadOnly={true} isRequired={false} />
+          </FlexGrid>
+        )}
       </div>
     </div>
   );

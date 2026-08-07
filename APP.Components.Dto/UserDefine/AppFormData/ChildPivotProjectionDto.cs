@@ -90,14 +90,23 @@ namespace APP.Components.EntityDto
         [DataMember(EmitDefaultValue = false)]
         public string Header { get; set; }
 
+        /// <summary>Optional: IsPivotRow Column Group field id (value-based parent headers).</summary>
+        [DataMember(EmitDefaultValue = false)]
+        public int? FieldId { get; set; }
+
         [DataMember(EmitDefaultValue = false)]
         public string ComboId { get; set; }
 
         [DataMember(EmitDefaultValue = false)]
         public object ColValue { get; set; }
 
+        /// <summary>Leaf value columns (data-bearing groups). Null/empty for static parent groups.</summary>
         [DataMember(EmitDefaultValue = false)]
         public List<ProjLeafColumnDto> Columns { get; set; }
+
+        /// <summary>Nested child groups (IsPivotRow parents and/or per-comboId groups).</summary>
+        [DataMember(EmitDefaultValue = false)]
+        public List<ProjColumnGroupDto> ChildGroups { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -140,6 +149,13 @@ namespace APP.Components.EntityDto
         // True when the host unit actually has a ChildUnitPivotColumns grandchild.
         [DataMember]
         public bool IsConfigured { get; set; }
+
+        /// <summary>
+        /// True when grandchild has at least one IsPivotRow field (not the IsPivotColumn field).
+        /// UI should render FlexGridColumnGroup hierarchy; otherwise flat FlexGridColumn.
+        /// </summary>
+        [DataMember]
+        public bool IsNeedPivotColumnGroup { get; set; }
 
         // Diagnostics for the empty-state UI.
         [DataMember(EmitDefaultValue = false)]

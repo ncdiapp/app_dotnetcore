@@ -271,7 +271,7 @@ public static class GradingDisplayConvertService
                 var sizeKeys = BuildFullSizeKeysFromColumnSource(formData, model);
                 if (sizeKeys.Count == 0 && model.ColumnGroups != null)
                 {
-                    foreach (var g in model.ColumnGroups)
+                    foreach (var g in EnumerateLeafColumnGroups(model.ColumnGroups))
                     {
                         if (!string.IsNullOrEmpty(g?.ComboId))
                             sizeKeys.Add(g.ComboId);
@@ -452,7 +452,7 @@ public static class GradingDisplayConvertService
         var gradeRows = EnsureGradeRowList(child, host.GrandchildUnitId);
         var bySize = IndexGradeRowsBySizeKey(gradeRows, host.ColumnKeyFieldName);
 
-        foreach (var g in model.ColumnGroups)
+        foreach (var g in EnumerateLeafColumnGroups(model.ColumnGroups))
         {
             if (g?.Columns == null || string.IsNullOrEmpty(g.ComboId))
                 continue;
@@ -468,6 +468,24 @@ public static class GradingDisplayConvertService
                 wide[leaf.Binding] = GetField(gc.DictOneToOneFields, "GradingDelta");
             }
         }
+    }
+
+    /// <summary>
+    /// Walk nested ColumnGroups (IsPivotRow value parents) and return data-bearing comboId groups.
+    /// </summary>
+    private static List<ProjColumnGroupDto> EnumerateLeafColumnGroups(IEnumerable<ProjColumnGroupDto>? groups)
+    {
+        var result = new List<ProjColumnGroupDto>();
+        if (groups == null) return result;
+        foreach (var g in groups)
+        {
+            if (g == null) continue;
+            if (g.ChildGroups != null && g.ChildGroups.Count > 0)
+                result.AddRange(EnumerateLeafColumnGroups(g.ChildGroups));
+            else if (g.Columns != null && g.Columns.Count > 0)
+                result.Add(g);
+        }
+        return result;
     }
 
     private static void RefreshProjectionToken(AppMasterDetailDto formData)

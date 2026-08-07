@@ -39,6 +39,11 @@ namespace App.BL
             public string ColumnSourceVisibleFieldName;
             public int? ColumnSourceVisibleFieldId;
             public List<AppTransactionFieldExDto> ValueFields;
+            /// <summary>
+            /// IsPivotRow fields whose grandchild VALUES become parent Column Group headers
+            /// (not the IsPivotColumn field). Ordered by SortOrder ascending (outermost first).
+            /// </summary>
+            public List<AppTransactionFieldExDto> ColumnGroupHeaderFields;
         }
 
         /// <summary>
@@ -98,7 +103,7 @@ namespace App.BL
                 : new List<AppChildDataDto>();
 
             List<ProjColumnDto> hostColumns = BuildHostColumns(ctx.HostUnit);
-            List<ProjColumnGroupDto> columnGroups = BuildColumnGroups(ctx, sourceRows);
+            List<ProjColumnGroupDto> columnGroups = BuildColumnGroups(ctx, sourceRows, childRows);
             List<Dictionary<string, object>> wideRows = BuildWideRows(childRows, ctx, hostColumns, columnGroups);
 
             model.IsConfigured = true;
@@ -112,6 +117,7 @@ namespace App.BL
             model.ColumnSourceVisibleFieldName = ctx.ColumnSourceVisibleFieldName;
             model.ColumnSourceVisibleFieldId = ctx.ColumnSourceVisibleFieldId;
             model.GrandchildUnitId = ToNullableInt(ctx.GrandchildUnitId);
+            model.IsNeedPivotColumnGroup = ctx.ColumnGroupHeaderFields != null && ctx.ColumnGroupHeaderFields.Count > 0;
             model.ChildRowCount = childRows.Count;
             model.SourceRowCount = sourceRows.Count;
             return model;
@@ -131,7 +137,7 @@ namespace App.BL
                 : new List<AppChildDataDto>();
 
             List<ProjColumnDto> hostColumns = BuildHostColumns(ctx.HostUnit);
-            List<ProjColumnGroupDto> columnGroups = BuildColumnGroups(ctx, sourceRows);
+            List<ProjColumnGroupDto> columnGroups = BuildColumnGroups(ctx, sourceRows, childRows);
 
             FoldWideRows(childRows, wideRows ?? new List<Dictionary<string, object>>(), ctx, hostColumns, columnGroups);
             return formData;
@@ -194,6 +200,14 @@ namespace App.BL
                 .Where(f => (f.IsPivotValue.HasValue && f.IsPivotValue.Value) || f.IsPrimaryKey || f.IsLinkToParentPrimaryKey)
                 .ToList();
 
+            // IsPivotRow → parent Column Group headers (must not be the IsPivotColumn field). SortOrder = outer→inner.
+            List<AppTransactionFieldExDto> columnGroupHeaderFields = grandchild.AppTransactionFieldList
+                .Where(f => f.IsPivotRow.HasValue && f.IsPivotRow.Value
+                    && !(f.IsPivotColumn.HasValue && f.IsPivotColumn.Value))
+                .OrderBy(f => f.SortOrder ?? 0)
+                .ThenBy(f => f.Id)
+                .ToList();
+
             return new ProjectionContext
             {
                 HostUnit = hostUnit,
@@ -207,6 +221,7 @@ namespace App.BL
                 ColumnSourceVisibleFieldName = sourceVisibleFieldName,
                 ColumnSourceVisibleFieldId = sourceVisibleFieldId,
                 ValueFields = valueFields,
+                ColumnGroupHeaderFields = columnGroupHeaderFields,
             };
         }
 
@@ -227,7 +242,19 @@ namespace App.BL
                 .ToList();
         }
 
-        private static List<ProjColumnGroupDto> BuildColumnGroups(ProjectionContext ctx, List<AppChildDataDto> sourceRows)
+        private static List<ProjColumnGroupDto> BuildColumnGroups(
+            ProjectionContext ctx,
+            List<AppChildDataDto> sourceRows,
+            List<AppChildDataDto> childRows)
+        {
+            List<ProjColumnGroupDto> leafGroups = BuildLeafColumnGroups(ctx, sourceRows);
+            return NestLeafGroupsByGrandchildFieldValues(leafGroups, ctx, childRows);
+        }
+
+        /// <summary>
+        /// One group per distinct IsPivotColumn source key, with IsPivotValue leaves.
+        /// </summary>
+        private static List<ProjColumnGroupDto> BuildLeafColumnGroups(ProjectionContext ctx, List<AppChildDataDto> sourceRows)
         {
             var groups = new List<ProjColumnGroupDto>();
             if (string.IsNullOrWhiteSpace(ctx.ColumnSourceFieldName)) return groups;
@@ -265,6 +292,136 @@ namespace App.BL
                 });
             }
             return groups;
+        }
+
+        /// <summary>
+        /// Nest leaf comboId groups under IsPivotRow field VALUES from grandchild rows
+        /// (SortOrder: outer→inner). Header text is the field value (entity display when available),
+        /// not the field DisplayName.
+        /// When no Column Group fields, returns leaf groups unchanged (flat path).
+        /// </summary>
+        private static List<ProjColumnGroupDto> NestLeafGroupsByGrandchildFieldValues(
+            List<ProjColumnGroupDto> leafGroups,
+            ProjectionContext ctx,
+            List<AppChildDataDto> childRows)
+        {
+            List<AppTransactionFieldExDto> headerFields = ctx.ColumnGroupHeaderFields;
+            if (headerFields == null || headerFields.Count == 0) return leafGroups;
+
+            var displayLookups = new Dictionary<int, Dictionary<string, string>>();
+            foreach (AppTransactionFieldExDto f in headerFields)
+            {
+                if (f.EntityId.HasValue && !displayLookups.ContainsKey(f.EntityId.Value))
+                    displayLookups[f.EntityId.Value] = BuildEntityDisplayLookup(f.EntityId);
+            }
+
+            // First-seen grandchild values per pivot column key (SizeRunSizeId → IsPivotRow field values).
+            var valuesByCombo = new Dictionary<string, object[]>(StringComparer.Ordinal);
+            foreach (AppChildDataDto cr in childRows ?? Enumerable.Empty<AppChildDataDto>())
+            {
+                foreach (AppChildDataDto gc in GetGrandchildRows(cr, ctx.GrandchildUnitId))
+                {
+                    string key = GetColKey(gc, ctx.ColumnKeyFieldName);
+                    if (key == null || valuesByCombo.ContainsKey(key)) continue;
+
+                    var vals = new object[headerFields.Count];
+                    for (int i = 0; i < headerFields.Count; i++)
+                    {
+                        string db = headerFields[i].DataBaseFieldName;
+                        if (!string.IsNullOrEmpty(db)
+                            && gc.DictOneToOneFields != null
+                            && gc.DictOneToOneFields.TryGetValue(db, out object v))
+                        {
+                            vals[i] = v;
+                        }
+                    }
+                    valuesByCombo[key] = vals;
+                }
+            }
+
+            var roots = new List<ProjColumnGroupDto>();
+            foreach (ProjColumnGroupDto leaf in leafGroups)
+            {
+                valuesByCombo.TryGetValue(leaf.ComboId ?? string.Empty, out object[] pathVals);
+
+                List<ProjColumnGroupDto> level = roots;
+                for (int depth = 0; depth < headerFields.Count; depth++)
+                {
+                    AppTransactionFieldExDto f = headerFields[depth];
+                    object raw = pathVals != null && depth < pathVals.Length ? pathVals[depth] : null;
+                    string segmentKey = raw?.ToString() ?? string.Empty;
+                    int? fieldId = ToNullableInt(f.Id);
+
+                    ProjColumnGroupDto existing = level.FirstOrDefault(g =>
+                        g != null
+                        && g.FieldId == fieldId
+                        && string.Equals(g.ComboId ?? string.Empty, segmentKey, StringComparison.Ordinal)
+                        && (g.Columns == null || g.Columns.Count == 0));
+
+                    if (existing == null)
+                    {
+                        existing = new ProjColumnGroupDto
+                        {
+                            Header = ResolveGroupFieldValueHeader(f, raw, displayLookups),
+                            FieldId = fieldId,
+                            // Reuse ComboId as the value-key for this parent segment (not a leaf size key).
+                            ComboId = segmentKey,
+                            ColValue = raw,
+                            ChildGroups = new List<ProjColumnGroupDto>(),
+                        };
+                        level.Add(existing);
+                    }
+
+                    if (existing.ChildGroups == null)
+                        existing.ChildGroups = new List<ProjColumnGroupDto>();
+                    level = existing.ChildGroups;
+                }
+
+                level.Add(leaf);
+            }
+
+            return roots;
+        }
+
+        private static string ResolveGroupFieldValueHeader(
+            AppTransactionFieldExDto field,
+            object rawValue,
+            Dictionary<int, Dictionary<string, string>> displayLookups)
+        {
+            if (rawValue == null) return string.Empty;
+            string key = rawValue.ToString();
+            if (string.IsNullOrEmpty(key)) return string.Empty;
+
+            if (field?.EntityId != null
+                && displayLookups != null
+                && displayLookups.TryGetValue(field.EntityId.Value, out Dictionary<string, string> map)
+                && map != null
+                && map.TryGetValue(key, out string display)
+                && !string.IsNullOrWhiteSpace(display))
+            {
+                return display;
+            }
+
+            return key;
+        }
+
+        /// <summary>
+        /// Walk nested ColumnGroups and return data-bearing groups (those with ComboId / Columns).
+        /// Parent IsPivotRow value nodes may also set ComboId to the value key — only nodes with Columns are leaves.
+        /// </summary>
+        public static List<ProjColumnGroupDto> EnumerateLeafColumnGroups(IEnumerable<ProjColumnGroupDto> groups)
+        {
+            var result = new List<ProjColumnGroupDto>();
+            if (groups == null) return result;
+            foreach (var g in groups)
+            {
+                if (g == null) continue;
+                if (g.ChildGroups != null && g.ChildGroups.Count > 0)
+                    result.AddRange(EnumerateLeafColumnGroups(g.ChildGroups));
+                else if (g.Columns != null && g.Columns.Count > 0)
+                    result.Add(g);
+            }
+            return result;
         }
 
         /// <summary>
@@ -323,11 +480,11 @@ namespace App.BL
                     if (key != null && !byCol.ContainsKey(key)) byCol[key] = gc;
                 }
 
-                foreach (var g in columnGroups)
+                foreach (var g in EnumerateLeafColumnGroups(columnGroups))
                 {
                     byCol.TryGetValue(g.ComboId, out AppChildDataDto gc);
                     var gcd = gc?.DictOneToOneFields;
-                    foreach (var leaf in g.Columns)
+                    foreach (var leaf in g.Columns ?? Enumerable.Empty<ProjLeafColumnDto>())
                         wide[leaf.Binding] = (gcd != null && gcd.TryGetValue(leaf.DataBaseFieldName, out object v)) ? v : null;
                 }
 
@@ -365,11 +522,11 @@ namespace App.BL
                     if (key != null && !byCol.ContainsKey(key)) byCol[key] = gc;
                 }
 
-                foreach (var g in columnGroups)
+                foreach (var g in EnumerateLeafColumnGroups(columnGroups))
                 {
                     var vals = new Dictionary<string, object>();
                     bool hasValue = false;
-                    foreach (var leaf in g.Columns)
+                    foreach (var leaf in g.Columns ?? Enumerable.Empty<ProjLeafColumnDto>())
                     {
                         object v = wide.TryGetValue(leaf.Binding, out object lv) ? lv : null;
                         vals[leaf.DataBaseFieldName] = v;

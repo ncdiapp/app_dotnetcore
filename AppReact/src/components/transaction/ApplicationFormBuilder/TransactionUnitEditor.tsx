@@ -1882,6 +1882,47 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         // Mark unit as modified when any cell is edited
         setIsModified(true);
         isModifiedRef.current = true;
+
+        // ChildUnitPivotColumns: IsPivotColumn (exactly one) and IsPivotRow (Column Group) must be different fields.
+        const childPivotColsVal = Number(emAppTransactionGridDisplayType?.ChildUnitPivotColumns ?? 7);
+        const isChildPivotColsMode = Number(unitData?.EmGridViewDisplayType) === childPivotColsVal;
+        if (!isChildPivotColsMode) return;
+        const flex = sender?.control ?? sender;
+        const col = flex?.columns?.[e?.col];
+        const binding = col?.binding;
+        const item = flex?.rows?.[e?.row]?.dataItem;
+        if (!item || (binding !== 'IsPivotColumn' && binding !== 'IsPivotRow')) return;
+
+        const fields = unitData?.AppTransactionFieldList;
+        if (!Array.isArray(fields)) return;
+
+        let changed = false;
+        if (binding === 'IsPivotColumn' && item.IsPivotColumn) {
+            if (item.IsPivotRow) {
+                item.IsPivotRow = false;
+                changed = true;
+            }
+            for (const f of fields) {
+                if (f === item) continue;
+                if (f?.IsPivotColumn) {
+                    f.IsPivotColumn = false;
+                    changed = true;
+                }
+            }
+        } else if (binding === 'IsPivotRow' && item.IsPivotRow) {
+            if (item.IsPivotColumn) {
+                item.IsPivotColumn = false;
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            try {
+                fieldCollectionView?.refresh?.();
+            } catch {
+                // ignore
+            }
+        }
     };
 
     // Helper to get max sort order
@@ -3303,13 +3344,18 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                         }}
                                     />
                                 </FlexGridColumn>
-                                {/* Pivot columns */}
+                                {/* Pivot columns — IsPivotRow UI label differs for ChildUnitPivotColumns (parent Column Group). */}
                                 <FlexGridColumn
                                     binding="IsPivotRow"
-                                    header="Is Pivot Row"
+                                    header={isChildUnitPivotColumns ? 'Is Pivot Column Group' : 'Is Pivot Row'}
                                     isReadOnly={false}
                                     dataType="Boolean"
-                                    visible={Boolean(unitData.EmGridViewDisplayType === 3 || unitData.EmGridViewDisplayType === 4)}
+                                    width={isChildUnitPivotColumns ? 200 : undefined}
+                                    visible={Boolean(
+                                        unitData.EmGridViewDisplayType === 3 ||
+                                        unitData.EmGridViewDisplayType === 4 ||
+                                        isChildUnitPivotColumns
+                                    )}
                                 />
                                 <FlexGridColumn
                                     binding="IsPivotColumn"

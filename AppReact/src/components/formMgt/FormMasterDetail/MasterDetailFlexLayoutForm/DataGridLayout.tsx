@@ -35,7 +35,7 @@ import {
 import PivotEditGridPanel from './PivotEditGridPanel';
 import MatrixPivotEditGrid from './MatrixPivotEditGrid';
 import ChildPivotProjectionGrid, { ProjectionImageCellContext } from './ChildPivotProjectionGrid';
-import { ChildPivotProjectionModel, foldWideRowsIntoChildRows } from './childPivotProjectionHelper';
+import { ChildPivotProjectionModel, foldWideRowsIntoChildRows, enumerateLeafColumnGroups } from './childPivotProjectionHelper';
 import {
   enrichTransactionFieldFromDict,
   isRuntimeTransactionFieldVisible,
@@ -2053,7 +2053,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       if (!binding) return null;
       const host = projectionModel?.HostColumns?.find((h) => h.Binding === binding);
       if (host) return host.Binding;
-      for (const g of projectionModel?.ColumnGroups ?? []) {
+      for (const g of enumerateLeafColumnGroups(projectionModel?.ColumnGroups)) {
         for (const leaf of g.Columns ?? []) {
           if (leaf.Binding === binding) return leaf.DataBaseFieldName;
         }

@@ -27,9 +27,14 @@ export interface ProjLeafColumn {
 
 export interface ProjColumnGroup {
   Header: string;
-  ComboId: string;
+  /** IsPivotRow (Column Group) field id for static parent headers. */
+  FieldId?: number | null;
+  ComboId?: string;
   ColValue?: any;
-  Columns: ProjLeafColumn[];
+  /** Leaf value columns (data-bearing groups). */
+  Columns?: ProjLeafColumn[];
+  /** Nested child groups (IsPivotRow parents and/or per-comboId groups). */
+  ChildGroups?: ProjColumnGroup[];
 }
 
 export interface ChildPivotProjectionModel {
@@ -45,6 +50,11 @@ export interface ChildPivotProjectionModel {
   ColumnSourceVisibleFieldId?: number | null;
   GrandchildUnitId?: number | null;
   IsConfigured?: boolean;
+  /**
+   * True when grandchild has at least one IsPivotRow field (not IsPivotColumn).
+   * UI should render FlexGridColumnGroup; otherwise flat FlexGridColumn.
+   */
+  IsNeedPivotColumnGroup?: boolean;
   ChildRowCount?: number;
   SourceRowCount?: number;
 }
@@ -52,6 +62,29 @@ export interface ChildPivotProjectionModel {
 export interface GrandchildFieldDefault {
   DataBaseFieldName?: string;
   DefaultValue?: string | null;
+}
+
+/** Walk nested ColumnGroups; return data-bearing groups (those with Columns / value leaves). */
+export function enumerateLeafColumnGroups(groups: ProjColumnGroup[] | null | undefined): ProjColumnGroup[] {
+  const result: ProjColumnGroup[] = [];
+  if (!groups?.length) return result;
+  for (const g of groups) {
+    if (!g) continue;
+    if (g.ChildGroups && g.ChildGroups.length > 0) {
+      result.push(...enumerateLeafColumnGroups(g.ChildGroups));
+    } else if (g.Columns && g.Columns.length > 0) {
+      result.push(g);
+    }
+  }
+  return result;
+}
+
+/** Count visible leaf value columns under a (possibly nested) group tree. */
+export function countVisibleValueColumns(groups: ProjColumnGroup[] | null | undefined): number {
+  return enumerateLeafColumnGroups(groups).reduce(
+    (n, g) => n + (g.Columns ?? []).filter((c) => c.Visible !== false).length,
+    0
+  );
 }
 
 function resolveRowIndex(wide: Record<string, any>, fallback: number): number {
@@ -104,7 +137,7 @@ export function foldWideRowsIntoChildRows(
   }
 
   const hostColumns = model.HostColumns ?? [];
-  const columnGroups = model.ColumnGroups ?? [];
+  const leafGroups = enumerateLeafColumnGroups(model.ColumnGroups);
   const grandchildUnitId = String(model.GrandchildUnitId);
   const columnKeyFieldName = model.ColumnKeyFieldName ?? '';
 
@@ -133,7 +166,7 @@ export function foldWideRowsIntoChildRows(
       if (key != null && !(key in byCol)) byCol[key] = gc;
     }
 
-    for (const g of columnGroups) {
+    for (const g of leafGroups) {
       const vals: Record<string, any> = {};
       let hasValue = false;
       for (const leaf of g.Columns ?? []) {
@@ -142,15 +175,16 @@ export function foldWideRowsIntoChildRows(
         if (hasNonEmptyValue(v)) hasValue = true;
       }
 
-      if (g.ComboId in byCol) {
-        const existing = byCol[g.ComboId];
+      const comboId = g.ComboId ?? '';
+      if (comboId in byCol) {
+        const existing = byCol[comboId];
         const nextGcFields = { ...(existing.DictOneToOneFields ?? {}) };
         for (const [k, v] of Object.entries(vals)) nextGcFields[k] = v;
         nextGcFields[columnKeyFieldName] = g.ColValue;
         const gcIdx = gcRows.indexOf(existing);
         const nextGc = { ...existing, DictOneToOneFields: nextGcFields, IsDirty: true };
         if (gcIdx >= 0) gcRows[gcIdx] = nextGc;
-        byCol[g.ComboId] = nextGc;
+        byCol[comboId] = nextGc;
       } else if (hasValue) {
         const blank = buildBlankGrandchildRow(grandchildFieldDefaults);
         for (const [k, v] of Object.entries(vals)) blank.DictOneToOneFields[k] = v;
@@ -158,7 +192,7 @@ export function foldWideRowsIntoChildRows(
         blank.IsDirty = true;
         blank.IsNew = true;
         gcRows.push(blank);
-        byCol[g.ComboId] = blank;
+        byCol[comboId] = blank;
       }
     }
 
