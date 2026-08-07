@@ -122,8 +122,23 @@ const DDLControl: React.FC<DDLControlProps> = ({
     return Array.isArray(items) ? items : null;
   }, [dataModel?.currentFormData?.DictCascadingFiledDataSource, fieldIdStr]);
 
+  const isCascadingChildField = useMemo(() => {
+    if (!fieldIdStr) return false;
+    const usedIds = dataModel?.currentFormData?.IsUsedCascadingDataSourceFiedIds;
+    if (Array.isArray(usedIds) && usedIds.map(String).includes(fieldIdStr)) return true;
+    // Structure map: child field Id → parent field Id
+    const parentMap = dataModel?.currentFormStructure?.DictCascadedIdParentField;
+    return parentMap != null && (parentMap[fieldIdStr] != null || parentMap[String(Number(fieldIdStr))] != null);
+  }, [
+    dataModel?.currentFormData?.IsUsedCascadingDataSourceFiedIds,
+    dataModel?.currentFormStructure?.DictCascadedIdParentField,
+    fieldIdStr,
+  ]);
+
   const standAloneItemsForThisField = useMemo(() => {
     if (!fieldIdStr) return null;
+    // Cascading children must not fall back to full entity lookup (all size runs, etc.).
+    if (isCascadingChildField) return null;
     const dictEntityItems = dataModel?.currentFormStructure?.DictStandAloneEntityDataSource;
     const dictFieldToEntityId = dataModel?.currentFormStructure?.DictStandAloneFiledIDMappingEntityID;
     const entityId = dictFieldToEntityId?.[fieldIdStr];
@@ -133,6 +148,7 @@ const DDLControl: React.FC<DDLControlProps> = ({
     dataModel?.currentFormStructure?.DictStandAloneEntityDataSource,
     dataModel?.currentFormStructure?.DictStandAloneFiledIDMappingEntityID,
     fieldIdStr,
+    isCascadingChildField,
   ]);
 
   useEffect(() => {

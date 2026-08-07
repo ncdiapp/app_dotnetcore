@@ -628,12 +628,24 @@ INSERT INTO dbo.AppTransactionField (
     TransactionUnitID, DisplayName, DataBaseFieldName, ControlType, DataType,
     EntityId, DDLParentLevelID, SortOrder, IsPrimaryKey, IsVisible, IsReadonly, IsAllowEmpty,
     DisplayWidth, NBDecimal, IsLinkToParentPrimaryKey, RowIdentityGuid,
+    DataRetrieveType, CascadingRelationTable, CascadingRelationTableSchemaOwner,
+    CascadingRelationTableParentKeyField, CascadingRelationTableChildKeyField,
     AppCreatedDate, AppModifiedDate)
-VALUES (
+SELECT
     @UnitId, N'Visible Sizes', N'VisibleSizes', @ControlType, @DataType,
     @EntityId, @ParentFieldId, @SortOrder, 0, 1, 0, 1,
     N'200', 0, 0, NEWID(),
-    GETDATE(), GETDATE());";
+    base.DataRetrieveType, base.CascadingRelationTable, base.CascadingRelationTableSchemaOwner,
+    base.CascadingRelationTableParentKeyField, base.CascadingRelationTableChildKeyField,
+    GETDATE(), GETDATE()
+FROM (SELECT 1 AS _) AS dummy
+OUTER APPLY (
+    SELECT TOP 1
+        DataRetrieveType, CascadingRelationTable, CascadingRelationTableSchemaOwner,
+        CascadingRelationTableParentKeyField, CascadingRelationTableChildKeyField
+    FROM dbo.AppTransactionField
+    WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'BaseSizeDetailId'
+) AS base;";
                     cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
                     cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.MultiSelectDDL);
                     cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.String);
@@ -650,18 +662,31 @@ VALUES (
             {
                 cmd.Transaction = tran;
                 cmd.CommandText = @"
-UPDATE dbo.AppTransactionField SET
+UPDATE vs SET
     ControlType = @ControlType,
     DataType = @DataType,
-    EntityId = COALESCE(@EntityId, EntityId),
+    EntityId = COALESCE(@EntityId, vs.EntityId),
     DDLParentLevelID = @ParentFieldId,
     DisplayWidth = N'200',
     SortOrder = 45,
     IsVisible = 1,
     IsReadonly = 0,
     IsAllowEmpty = 1,
+    DataRetrieveType = COALESCE(vs.DataRetrieveType, base.DataRetrieveType),
+    CascadingRelationTable = COALESCE(vs.CascadingRelationTable, base.CascadingRelationTable),
+    CascadingRelationTableSchemaOwner = COALESCE(vs.CascadingRelationTableSchemaOwner, base.CascadingRelationTableSchemaOwner),
+    CascadingRelationTableParentKeyField = COALESCE(vs.CascadingRelationTableParentKeyField, base.CascadingRelationTableParentKeyField),
+    CascadingRelationTableChildKeyField = COALESCE(vs.CascadingRelationTableChildKeyField, base.CascadingRelationTableChildKeyField),
     AppModifiedDate = GETDATE()
-WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'VisibleSizes'";
+FROM dbo.AppTransactionField AS vs
+OUTER APPLY (
+    SELECT TOP 1
+        DataRetrieveType, CascadingRelationTable, CascadingRelationTableSchemaOwner,
+        CascadingRelationTableParentKeyField, CascadingRelationTableChildKeyField
+    FROM dbo.AppTransactionField
+    WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'BaseSizeDetailId'
+) AS base
+WHERE vs.TransactionUnitID = @UnitId AND vs.DataBaseFieldName = N'VisibleSizes'";
                 cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.MultiSelectDDL);
                 cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.String);
                 cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);

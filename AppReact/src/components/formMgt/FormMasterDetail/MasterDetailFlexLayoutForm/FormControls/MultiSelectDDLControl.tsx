@@ -95,8 +95,22 @@ const MultiSelectDDLControl: React.FC<MultiSelectDDLControlProps> = ({
     return Array.isArray(items) ? items : null;
   }, [dataModel?.currentFormData?.DictCascadingFiledDataSource, fieldIdStr]);
 
+  const isCascadingChildField = useMemo(() => {
+    if (!fieldIdStr) return false;
+    const usedIds = dataModel?.currentFormData?.IsUsedCascadingDataSourceFiedIds;
+    if (Array.isArray(usedIds) && usedIds.map(String).includes(fieldIdStr)) return true;
+    const parentMap = dataModel?.currentFormStructure?.DictCascadedIdParentField;
+    return parentMap != null && (parentMap[fieldIdStr] != null || parentMap[String(Number(fieldIdStr))] != null);
+  }, [
+    dataModel?.currentFormData?.IsUsedCascadingDataSourceFiedIds,
+    dataModel?.currentFormStructure?.DictCascadedIdParentField,
+    fieldIdStr,
+  ]);
+
   const standAloneItemsForThisField = useMemo(() => {
     if (!fieldIdStr) return null;
+    // Cascading children must not fall back to full entity lookup.
+    if (isCascadingChildField) return null;
     const dictEntityItems = dataModel?.currentFormStructure?.DictStandAloneEntityDataSource;
     const dictFieldToEntityId = dataModel?.currentFormStructure?.DictStandAloneFiledIDMappingEntityID;
     const entityId = dictFieldToEntityId?.[fieldIdStr];
@@ -106,14 +120,17 @@ const MultiSelectDDLControl: React.FC<MultiSelectDDLControlProps> = ({
     dataModel?.currentFormStructure?.DictStandAloneEntityDataSource,
     dataModel?.currentFormStructure?.DictStandAloneFiledIDMappingEntityID,
     fieldIdStr,
+    isCascadingChildField,
   ]);
 
   const itemsSource = useMemo(() => {
+    // Prefer cascading bucket when present (including empty = parent cleared).
     const raw =
-      (Array.isArray(fieldDto?.ItemSource) ? fieldDto.ItemSource : null) ??
-      cascadedItemsForThisField ??
-      standAloneItemsForThisField ??
-      [];
+      cascadedItemsForThisField != null
+        ? cascadedItemsForThisField
+        : (Array.isArray(fieldDto?.ItemSource) ? fieldDto.ItemSource : null) ??
+          standAloneItemsForThisField ??
+          [];
     const items = raw
       .filter((x: any) => x != null && x.Id != null && String(x.Id) !== '')
       .map((item: any) => ({

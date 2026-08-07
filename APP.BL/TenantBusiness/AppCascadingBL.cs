@@ -47,7 +47,9 @@ namespace App.BL
             var rootMasterUnit = hierarchyTransactionExDto.RootMasterUnit;
             SetupRootUnitCascadingLookupItemsource(aAppformDataDto, isCascadingFromUIOrCreationNew, rootMasterUnit, dictAllUnitInitialLevelTriggerFieldList);
 
-
+            // Sibling one-to-one units (e.g. StyleSpec.SizeRunId → BaseSizeDetailId / VisibleSizes)
+            SetupSiblingUnitCascadingLookupItemsource(
+                hierarchyTransactionExDto, aAppformDataDto, isCascadingFromUIOrCreationNew, dictAllUnitInitialLevelTriggerFieldList);
 
             //Child and   GrandChild
             SetupChildAndGrandChildCascadingLookupItemsource(hierarchyTransactionExDto, aAppformDataDto, isCascadingFromUIOrCreationNew, dictAllUnitInitialLevelTriggerFieldList);
@@ -90,6 +92,57 @@ namespace App.BL
                             );
 
                     }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Cascading parents on master-sibling units read/write DictSiblingOneToOneFields[unitId],
+        /// not DictOneToOneFields. Without this, sibling child DDLs fall back to standalone (all items).
+        /// </summary>
+        private static void SetupSiblingUnitCascadingLookupItemsource(
+            AppTransactionExDto hierarchyTransactionExDto,
+            AppMasterDetailDto aAppformDataDto,
+            bool isCascadingFromUIOrCreationNew,
+            Dictionary<int, List<AppTransactionFieldExDto>> dictAllUnitInitialLevelTriggerFieldList)
+        {
+            if (aAppformDataDto?.DictSiblingOneToOneFields == null || aAppformDataDto.DictSiblingOneToOneFields.Count == 0)
+                return;
+
+            var siblingUnits = hierarchyTransactionExDto.SibLineTransactionUnitIdExDtoList;
+            if (siblingUnits == null || siblingUnits.Count == 0)
+            {
+                siblingUnits = hierarchyTransactionExDto.DictAllTransactionUnitIdExDto.Values
+                    .Where(u => u != null && u.IsMasterSiblingUnit.HasValue && u.IsMasterSiblingUnit.Value)
+                    .ToList();
+            }
+
+            foreach (AppTransactionUnitExDto siblingUnit in siblingUnits)
+            {
+                if (siblingUnit?.Id == null)
+                    continue;
+
+                int siblingUnitId = (int)siblingUnit.Id;
+                string siblingUnitKey = siblingUnitId.ToString();
+                if (!dictAllUnitInitialLevelTriggerFieldList.ContainsKey(siblingUnitId))
+                    continue;
+                if (!aAppformDataDto.DictSiblingOneToOneFields.ContainsKey(siblingUnitKey))
+                    continue;
+
+                Dictionary<string, object> siblingRow = aAppformDataDto.DictSiblingOneToOneFields[siblingUnitKey];
+                if (siblingRow == null)
+                    continue;
+
+                foreach (AppTransactionFieldExDto siblingTriggerField in dictAllUnitInitialLevelTriggerFieldList[siblingUnitId])
+                {
+                    SetupOneUnitCascadingDataSource(
+                        aAppformDataDto.DictCascadingFiledDataSource,
+                        siblingRow,
+                        siblingUnit,
+                        siblingTriggerField,
+                        isCascadingFromUIOrCreationNew,
+                        aAppformDataDto,
+                        null);
                 }
             }
         }
@@ -209,7 +262,49 @@ namespace App.BL
                     // var cascadingTrigerFieldExDto = dictTransField[cascadingTrigerFieldId.Value];//rootUnit.AppTransactionFieldList.FirstOrDefault(o => (int?)o.Id == cascadingTrigerFieldId);
                     aCascadingAppformDataDto.DictCascadingFiledDataSource = new Dictionary<string, List<LookupItemDto>>();
 
-                    SetupOneUnitCascadingDataSource(aCascadingAppformDataDto.DictCascadingFiledDataSource, aCascadingAppformDataDto.DictOneToOneFields, rootUnit, cascadingTrigerFieldExDto, true, aCascadingAppformDataDto, null);
+                    // Prefer CurrentCascadingUnitId (from UI); else field's unit; else root.
+                    // Sibling parents must use DictSiblingOneToOneFields — SetupOneUnitCascadingDataSource
+                    // returns immediately when trigger field unit != cascadingTrigerUnitDto.
+                    int triggerUnitId = unitId
+                        ?? cascadingTrigerFieldExDto.TransactionUnitId;
+                    if (triggerUnitId == 0 && rootUnit.Id != null)
+                        triggerUnitId = Convert.ToInt32(rootUnit.Id);
+                    string triggerUnitKey = triggerUnitId.ToString();
+
+                    AppTransactionUnitExDto cascadingTrigerUnitDto = rootUnit;
+                    Dictionary<string, object> currentRow = aCascadingAppformDataDto.DictOneToOneFields;
+
+                    if (hierarchyTransactionExDto.DictAllTransactionUnitIdExDto != null
+                        && hierarchyTransactionExDto.DictAllTransactionUnitIdExDto.ContainsKey(triggerUnitKey))
+                    {
+                        cascadingTrigerUnitDto = hierarchyTransactionExDto.DictAllTransactionUnitIdExDto[triggerUnitKey];
+                    }
+
+                    bool isSiblingTrigger = cascadingTrigerUnitDto != null
+                        && cascadingTrigerUnitDto.IsMasterSiblingUnit.HasValue
+                        && cascadingTrigerUnitDto.IsMasterSiblingUnit.Value;
+                    if (isSiblingTrigger
+                        && aCascadingAppformDataDto.DictSiblingOneToOneFields != null
+                        && aCascadingAppformDataDto.DictSiblingOneToOneFields.ContainsKey(triggerUnitKey)
+                        && aCascadingAppformDataDto.DictSiblingOneToOneFields[triggerUnitKey] != null)
+                    {
+                        currentRow = aCascadingAppformDataDto.DictSiblingOneToOneFields[triggerUnitKey];
+                    }
+                    else if (rootUnit.Id != null
+                        && cascadingTrigerFieldExDto.TransactionUnitId == Convert.ToInt32(rootUnit.Id))
+                    {
+                        cascadingTrigerUnitDto = rootUnit;
+                        currentRow = aCascadingAppformDataDto.DictOneToOneFields;
+                    }
+
+                    SetupOneUnitCascadingDataSource(
+                        aCascadingAppformDataDto.DictCascadingFiledDataSource,
+                        currentRow,
+                        cascadingTrigerUnitDto,
+                        cascadingTrigerFieldExDto,
+                        true,
+                        aCascadingAppformDataDto,
+                        null);
 
                     AppMasterDetailFormDataLoadBL.SetupDdlQueryLookItem(hierarchyTransactionExDto, aCascadingAppformDataDto);
 
