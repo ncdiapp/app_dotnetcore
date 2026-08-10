@@ -52,6 +52,13 @@ namespace APP.Components.EntityDto
         public List<PlmDwBlueprintTechPackGradeValuePivotDto> TechPackGradeValuePivotBindings { get; set; } =
             new List<PlmDwBlueprintTechPackGradeValuePivotDto>();
 
+        /// <summary>
+        /// TechPack Fit F3: View_TchpFitMeasurementByPom ChildUnitPivotColumns using TchpFitRound.RoundNumber as column domain.
+        /// </summary>
+        [DataMember]
+        public List<PlmDwBlueprintTechPackFitMeasurementPivotDto> TechPackFitMeasurementPivotBindings { get; set; } =
+            new List<PlmDwBlueprintTechPackFitMeasurementPivotDto>();
+
         [DataMember]
         public PlmDwBlueprintSearchViewDto SearchView { get; set; }
 
@@ -268,9 +275,16 @@ namespace APP.Components.EntityDto
         [DataMember]
         public List<string> GrandChildAppTableNames { get; set; } = new List<string>();
 
-        /// <summary>Optional FitRound RoundNumber filter for Fit 1–4 tabs (UI filter hint).</summary>
+        /// <summary>Optional FitRound RoundNumber filter for Fit 1–4 tabs (UI filter hint). Retired under F2.</summary>
         [DataMember]
         public int? FitRoundNumberFilter { get; set; }
+
+        /// <summary>
+        /// Optional Child Unit Link Target: integrationId of the transaction opened from this child row
+        /// (F2: TchpFitRound → TX_FitRound).
+        /// </summary>
+        [DataMember]
+        public string LinkTargetIntegrationId { get; set; }
 
         /// <summary>
         /// Read-only child (e.g. View_TchpStyleActiveSizeRunSizes). Phase D sets IsReadOnly + disables Add/Delete.
@@ -330,6 +344,45 @@ namespace APP.Components.EntityDto
         /// </summary>
         [DataMember]
         public bool SkipMatrixKeyVisibleFilter { get; set; } = false;
+    }
+
+    /// <summary>
+    /// Fit SUMMARY (F3): project View_TchpFitMeasurementByPom onto Pom Spec Line as ChildUnitPivotColumns,
+    /// column headers from TchpFitRound (RoundNumber). Read-only aggregate.
+    /// </summary>
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmDwBlueprintTechPackFitMeasurementPivotDto
+    {
+        [DataMember]
+        public int PlmTabId { get; set; }
+
+        /// <summary>Host child grid (Pom Spec Line).</summary>
+        [DataMember]
+        public string HostAppTableName { get; set; } = "TchpPomSpecLine";
+
+        /// <summary>Grandchild view with EmGridViewDisplayType = ChildUnitPivotColumns.</summary>
+        [DataMember]
+        public string GrandchildAppTableName { get; set; } = "View_TchpFitMeasurementByPom";
+
+        /// <summary>ROOT child supplying pivot column domain (Fit rounds).</summary>
+        [DataMember]
+        public string SourceAppTableName { get; set; } = "TchpFitRound";
+
+        /// <summary>Field on source used as MatrixForeignKeyFieldId target (default RoundNumber).</summary>
+        [DataMember]
+        public string SourcePivotKeyColumn { get; set; } = "RoundNumber";
+
+        /// <summary>Grandchild field marked IsPivotColumn (default RoundNumber).</summary>
+        [DataMember]
+        public string PivotColumnField { get; set; } = "RoundNumber";
+
+        /// <summary>Grandchild field marked IsPivotValue (default ActualValue).</summary>
+        [DataMember]
+        public string PivotValueField { get; set; } = "ActualValue";
+
+        /// <summary>Fit F3 has no IsVisible matrix key — default true.</summary>
+        [DataMember]
+        public bool SkipMatrixKeyVisibleFilter { get; set; } = true;
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

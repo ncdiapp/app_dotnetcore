@@ -60,7 +60,7 @@ function Generate-TchpImportSqlFile($config, [string]$outDir) {
         $sfCols = @(Get-DwTableColumns $sfDw)
         $c = Find-DwColumnByStem $sfCols 'BodyPartDetailIDWDimDetailID'; if (-not $c) { $c = Find-DwColumnByStem $sfCols 'BodyPart' }
         if ($c) { $sfBodyPartCol = $c.DwColumn }
-        for ($rn = 1; $rn -le 6; $rn++) {
+        for ($rn = 1; $rn -le 12; $rn++) {
             $sample = Find-DwColumnByStem $sfCols "Sample$rn"
             $revise = Find-DwColumnByStem $sfCols "Revise$rn"
             if ($sample -or $revise) {
@@ -206,9 +206,13 @@ WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
 "@.Trim())
         }
         $fitUnionSql = $fitUnions -join "`r`nUNION ALL`r`n"
-        & $add '-- 4. TchpFitRound + TchpFitMeasurement'
+        # RoundType: FIT for Fit-family SpecFit; override via techPack.fitDefaultRoundType if set.
+        $fitRoundType = 'FIT'
+        if ($config.techPack.fitDefaultRoundType) { $fitRoundType = [string]$config.techPack.fitDefaultRoundType }
+
+        & $add '-- 4. TchpFitRound + TchpFitMeasurement (R1: RoundNumber = N from SampleN/ReviseN)'
         & $add 'INSERT INTO dbo.TchpFitRound (StyleSpecId, RoundNumber, RoundType, RoundStatus, AppCreatedDate)'
-        & $add "SELECT DISTINCT ss.StyleSpecId, r.RoundNumber, N'INTERNAL', N'PENDING', GETDATE()"
+        & $add "SELECT DISTINCT ss.StyleSpecId, r.RoundNumber, N'$fitRoundType', N'PENDING', GETDATE()"
         & $add 'FROM ('
         & $add '  SELECT DISTINCT ProductReferenceID, RoundNumber FROM ('
         & $add $fitUnionSql
@@ -235,6 +239,32 @@ WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
         & $add '  WHERE fm.FitRoundId = fr.FitRoundId AND fm.PomSpecLineId = pl.PomSpecLineId'
         & $add ');'
         & $add 'PRINT N''TchpFitMeasurement insert done. Rows='' + CAST(@@ROWCOUNT AS NVARCHAR(20));'
+        & $add ''
+
+        # FX1: skeleton Plm_FitRoundInfo rows (1:1 FitRoundId). Semantic columns filled when fitRoundInfo.semanticColumns configured.
+        $friApp = 'FitRoundInfo'
+        if ($config.techPack.fitRoundInfo -and $config.techPack.fitRoundInfo.appTable) {
+            $friApp = [string]$config.techPack.fitRoundInfo.appTable
+        }
+        $friTable = 'Plm_' + $friApp
+        if ($config.tablePrefixDefault) {
+            $p = [string]$config.tablePrefixDefault
+            if (-not $p.EndsWith('_')) { $p += '_' }
+            $friTable = $p + $friApp
+        }
+        & $add ("-- 4b. FX1 skeleton {0} (FitRoundId = TchpFitRound.FitRoundId)" -f $friTable)
+        & $add ("IF OBJECT_ID(N'dbo.{0}', N'U') IS NOT NULL" -f $friTable)
+        & $add 'BEGIN'
+        & $add ("  INSERT INTO dbo.{0} (FitRoundId, StyleSpecId, AppCreatedDate)" -f $friTable)
+        & $add '  SELECT fr.FitRoundId, fr.StyleSpecId, GETDATE()'
+        & $add '  FROM dbo.TchpFitRound fr'
+        & $add '  WHERE NOT EXISTS ('
+        & $add ("    SELECT 1 FROM dbo.{0} i WHERE i.FitRoundId = fr.FitRoundId" -f $friTable)
+        & $add '  );'
+        & $add ("  PRINT N'{0} skeleton insert done. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));" -f $friTable)
+        & $add 'END'
+        & $add 'ELSE'
+        & $add ("  PRINT N'WARN: {0} missing - run step 1_ tables before 3b.';" -f $friTable)
         & $add ''
     }
     else {
@@ -332,6 +362,31 @@ WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
     & $add ') AS dim;'
     & $add 'GO'
     & $add 'PRINT N''View_TchpSizeRunSize_DefaultDimension created/altered.'';'
+    & $add 'GO'
+    & $add ''
+    & $add '-- ============================================================================='
+    & $add '-- F3: View_TchpFitMeasurementByPom (FIT SUMMARY POM × Round pivot, read-only)'
+    & $add '-- ChildUnitPivotColumns: IsPivotColumn=RoundNumber, IsPivotValue=ActualValue.'
+    & $add '-- Keep identical to Document/Design/POM_Grading_QC_NewSchema.sql'
+    & $add '-- ============================================================================='
+    & $add 'CREATE OR ALTER VIEW dbo.View_TchpFitMeasurementByPom'
+    & $add 'AS'
+    & $add 'SELECT'
+    & $add '    fm.FitMeasurementId,'
+    & $add '    fm.PomSpecLineId,'
+    & $add '    pl.StyleSpecId,'
+    & $add '    fr.FitRoundId,'
+    & $add '    fr.RoundNumber,'
+    & $add '    fr.RoundType,'
+    & $add '    CONCAT(N''Fit '', fr.RoundNumber) AS RoundLabel,'
+    & $add '    fm.ActualValue'
+    & $add 'FROM dbo.TchpFitMeasurement AS fm'
+    & $add 'INNER JOIN dbo.TchpFitRound AS fr'
+    & $add '    ON fr.FitRoundId = fm.FitRoundId'
+    & $add 'INNER JOIN dbo.TchpPomSpecLine AS pl'
+    & $add '    ON pl.PomSpecLineId = fm.PomSpecLineId;'
+    & $add 'GO'
+    & $add 'PRINT N''View_TchpFitMeasurementByPom created/altered.'';'
     & $add 'GO'
 
     $path = Join-Path $outDir '3b_Tchp_ImportFromDW.sql'

@@ -25,6 +25,11 @@
 --   TchpQcResult              QC measurement result per garment/POM/size
 --   TchpSizeRunDimension      Global mapping: size run size → dimension code
 --   TchpSizeSystemMapping     Multi-region size equivalence (US/EU/UK/JP)
+--
+-- Views (read-only / pivot domains):
+--   View_TchpStyleActiveSizeRunSizes   Grading pivot column domain (V1)
+--   View_TchpSizeRunSize_DefaultDimension
+--   View_TchpFitMeasurementByPom       Fit SUMMARY POM×Round pivot (F3)
 -- ============================================================
 -- Required for TchpQcResult persisted computed columns (run with -I in sqlcmd or SSMS defaults).
 SET ANSI_NULLS ON;
@@ -852,6 +857,37 @@ OUTER APPLY (
 GO
 
 PRINT 'Created View_TchpSizeRunSize_DefaultDimension';
+GO
+
+-- ── View_TchpFitMeasurementByPom ─────────────────────────────
+-- Read-only Fit measurements keyed by POM for SUMMARY pivot (F3).
+-- RoundNumber / RoundType come from TchpFitRound (not on TchpFitMeasurement).
+-- ChildUnitPivotColumns: IsPivotColumn=RoundNumber, IsPivotValue=ActualValue.
+-- Keep in sync with ImportFromPLMDW 3b_Tchp_ImportFromDW.sql (CREATE OR ALTER)
+-- and AppReact/ImportDoc/ImportFromPLMDW/PROMPT.md §TechPack Fit F3.
+IF OBJECT_ID(N'dbo.View_TchpFitMeasurementByPom', N'V') IS NOT NULL
+    DROP VIEW [dbo].[View_TchpFitMeasurementByPom];
+GO
+
+CREATE VIEW [dbo].[View_TchpFitMeasurementByPom]
+AS
+SELECT
+    fm.FitMeasurementId,
+    fm.PomSpecLineId,
+    pl.StyleSpecId,
+    fr.FitRoundId,
+    fr.RoundNumber,
+    fr.RoundType,
+    CONCAT(N'Fit ', fr.RoundNumber) AS RoundLabel,
+    fm.ActualValue
+FROM dbo.TchpFitMeasurement AS fm
+INNER JOIN dbo.TchpFitRound AS fr
+    ON fr.FitRoundId = fm.FitRoundId
+INNER JOIN dbo.TchpPomSpecLine AS pl
+    ON pl.PomSpecLineId = fm.PomSpecLineId;
+GO
+
+PRINT 'Created View_TchpFitMeasurementByPom';
 GO
 
 PRINT '=== POM_Grading_QC_NewSchema.sql completed ===';

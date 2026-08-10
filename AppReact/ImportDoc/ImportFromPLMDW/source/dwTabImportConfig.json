@@ -75,6 +75,14 @@
                      "isTemplateHeaderTab":  false,
                      "importStatus":  "Ready",
                      "mode":  "all",
+                     "fx1Slim":  true,
+                     "fx1KeepSubItemIds":  [
+                                               52,
+                                               118,
+                                               119,
+                                               138
+                                           ],
+                     "_fx1Comment":  "Slim FitSummary: Spec_Selected_Size/SpecSampleSize/SpecSampleColor/SpecFitStatus only. Round-specific SubItems → Plm_FitRoundInfo (FX1).",
                      "mergeSubItemsFrom":  [
                                                {
                                                    "dwTable":  "PLM_DW_Tab_Fit_1_4008",
@@ -209,7 +217,11 @@
                                                    4162,
                                                    4163,
                                                    4164
-                                               ]
+                                               ],
+                     "fx1Fold":  true,
+                     "fx1SkipAppTable":  true,
+                     "fx1SkipBlueprint":  true,
+                     "fx1RoundNumber":  1
                  },
                  {
                      "appTable":  "Fit_1_Comments",
@@ -267,7 +279,11 @@
                                                    4162,
                                                    4163,
                                                    4164
-                                               ]
+                                               ],
+                     "fx1Fold":  true,
+                     "fx1SkipAppTable":  true,
+                     "fx1SkipBlueprint":  true,
+                     "fx1RoundNumber":  1
                  },
                  {
                      "appTable":  "Fit_2",
@@ -325,7 +341,11 @@
                                                    4162,
                                                    4163,
                                                    4164
-                                               ]
+                                               ],
+                     "fx1Fold":  true,
+                     "fx1SkipAppTable":  true,
+                     "fx1SkipBlueprint":  true,
+                     "fx1RoundNumber":  2
                  },
                  {
                      "appTable":  "Fit_2_Comment",
@@ -383,7 +403,11 @@
                                                    4162,
                                                    4163,
                                                    4164
-                                               ]
+                                               ],
+                     "fx1Fold":  true,
+                     "fx1SkipAppTable":  true,
+                     "fx1SkipBlueprint":  true,
+                     "fx1RoundNumber":  2
                  },
                  {
                      "appTable":  "Fit_3",
@@ -441,7 +465,11 @@
                                                    4162,
                                                    4163,
                                                    4164
-                                               ]
+                                               ],
+                     "fx1Fold":  true,
+                     "fx1SkipAppTable":  true,
+                     "fx1SkipBlueprint":  true,
+                     "fx1RoundNumber":  3
                  },
                  {
                      "appTable":  "Fit_3_Comments",
@@ -499,7 +527,11 @@
                                                    4162,
                                                    4163,
                                                    4164
-                                               ]
+                                               ],
+                     "fx1Fold":  true,
+                     "fx1SkipAppTable":  true,
+                     "fx1SkipBlueprint":  true,
+                     "fx1RoundNumber":  3
                  },
                  {
                      "appTable":  "Fit_4",
@@ -557,7 +589,11 @@
                                                    4162,
                                                    4163,
                                                    4164
-                                               ]
+                                               ],
+                     "fx1Fold":  true,
+                     "fx1SkipAppTable":  true,
+                     "fx1SkipBlueprint":  true,
+                     "fx1RoundNumber":  4
                  },
                  {
                      "appTable":  "Fit_4_Comments",
@@ -615,7 +651,11 @@
                                                    4162,
                                                    4163,
                                                    4164
-                                               ]
+                                               ],
+                     "fx1Fold":  true,
+                     "fx1SkipAppTable":  true,
+                     "fx1SkipBlueprint":  true,
+                     "fx1RoundNumber":  4
                  },
                  {
                      "appTable":  "Tablet_Fit_Samples",
@@ -673,7 +713,10 @@
                                                    4162,
                                                    4163,
                                                    4164
-                                               ]
+                                               ],
+                     "fx1Fold":  true,
+                     "fx1SkipAppTable":  true,
+                     "fx1SkipBlueprint":  true
                  }
              ],
     "grids":  [
@@ -699,12 +742,12 @@
                       "dwTable":  "PLM_DW_Grid_Fit_Comment_Grid_reg_3004",
                       "gridSubItemId":  3219,
                       "gridId":  3004,
-                      "parentPlmTabId":  4009,
-                      "transactionIntegrationId":  "Tab_4009"
+                      "parentPlmTabId":  null,
+                      "transactionIntegrationId":  "TX_FitRound"
                   }
               ],
     "techPack":  {
-                     "_comment":  "L2 + V1 SizeRunSizes view (Grading only, not on Form) + P1 GradeValue ChildUnitPivotColumns + S2 BaseSize Depend On SizeRun + G1 golden widths/entities. SpecFit/SpecGrading → Tchp. Size_Run/Base_Size/Measure_Unit → TchpStyleSpec (S1).",
+                     "_comment":  "FX1/F2/F3 Fit: slim FitSummary + FitRoundInfo + SUMMARY/ROUND TX + F3 POM×Round pivot. Grading unchanged (V1/P1/G1/S2).",
                      "styleSpecShared":  true,
                      "styleSpecOwnedColumns":  [
                                                    "Size_Run",
@@ -783,86 +826,37 @@
                                                                  "linkToParentField":  "StyleSpecId",
                                                                  "parentPrimaryKeyField":  "ReferenceId",
                                                                  "grandChildAppTableNames":  [
-                                                                                                 "TchpFitMeasurement"
+
                                                                                              ],
-                                                                 "fitRoundNumberFilter":  null,
-                                                                 "attachToRoot":  true
-                                                             }
-                                                         ]
-                                      },
-                                      {
-                                          "plmTabId":  4008,
-                                          "role":  "Fit1",
-                                          "includeStyleSpec":  true,
-                                          "childUnits":  [
+                                                                 "attachToRoot":  true,
+                                                                 "linkTargetIntegrationId":  "TX_FitRound",
+                                                                 "unitDisplayName":  "Fit Rounds"
+                                                             },
                                                              {
-                                                                 "appTableName":  "TchpFitRound",
+                                                                 "appTableName":  "TchpPomSpecLine",
                                                                  "skipTablePrefix":  true,
                                                                  "linkToParentField":  "StyleSpecId",
                                                                  "parentPrimaryKeyField":  "ReferenceId",
                                                                  "grandChildAppTableNames":  [
-                                                                                                 "TchpFitMeasurement"
+                                                                                                 "View_TchpFitMeasurementByPom"
                                                                                              ],
-                                                                 "fitRoundNumberFilter":  1,
-                                                                 "attachToRoot":  true
-                                                             }
-                                                         ]
-                                      },
-                                      {
-                                          "plmTabId":  4010,
-                                          "role":  "Fit2",
-                                          "includeStyleSpec":  true,
-                                          "childUnits":  [
-                                                             {
-                                                                 "appTableName":  "TchpFitRound",
-                                                                 "skipTablePrefix":  true,
-                                                                 "linkToParentField":  "StyleSpecId",
-                                                                 "parentPrimaryKeyField":  "ReferenceId",
-                                                                 "grandChildAppTableNames":  [
-                                                                                                 "TchpFitMeasurement"
-                                                                                             ],
-                                                                 "fitRoundNumberFilter":  2,
-                                                                 "attachToRoot":  true
-                                                             }
-                                                         ]
-                                      },
-                                      {
-                                          "plmTabId":  4011,
-                                          "role":  "Fit3",
-                                          "includeStyleSpec":  true,
-                                          "childUnits":  [
-                                                             {
-                                                                 "appTableName":  "TchpFitRound",
-                                                                 "skipTablePrefix":  true,
-                                                                 "linkToParentField":  "StyleSpecId",
-                                                                 "parentPrimaryKeyField":  "ReferenceId",
-                                                                 "grandChildAppTableNames":  [
-                                                                                                 "TchpFitMeasurement"
-                                                                                             ],
-                                                                 "fitRoundNumberFilter":  3,
-                                                                 "attachToRoot":  true
-                                                             }
-                                                         ]
-                                      },
-                                      {
-                                          "plmTabId":  4012,
-                                          "role":  "Fit4",
-                                          "includeStyleSpec":  true,
-                                          "childUnits":  [
-                                                             {
-                                                                 "appTableName":  "TchpFitRound",
-                                                                 "skipTablePrefix":  true,
-                                                                 "linkToParentField":  "StyleSpecId",
-                                                                 "parentPrimaryKeyField":  "ReferenceId",
-                                                                 "grandChildAppTableNames":  [
-                                                                                                 "TchpFitMeasurement"
-                                                                                             ],
-                                                                 "fitRoundNumberFilter":  4,
-                                                                 "attachToRoot":  true
+                                                                 "attachToRoot":  true,
+                                                                 "isReadOnly":  true,
+                                                                 "unitDisplayName":  "Fit Measurements (all rounds)"
                                                              }
                                                          ]
                                       }
-                                  ]
+                                  ],
+                     "fitDefaultRoundType":  "FIT",
+                     "fitRoundInfo":  {
+                                          "appTable":  "FitRoundInfo",
+                                          "_comment":  "FX1: 1:1 TchpFitRound.FitRoundId. Skeleton + StyleSpecId; semantic columns TBD."
+                                      },
+                     "fitRoundTransaction":  {
+                                                 "integrationId":  "TX_FitRound",
+                                                 "transactionName":  "Fit Round",
+                                                 "includeFitCommentGrid":  true
+                                             }
                  },
     "blueprint":  {
                       "transactionGroupName":  "02a- Fit \u0026 Grading",

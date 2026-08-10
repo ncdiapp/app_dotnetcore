@@ -38,6 +38,10 @@ namespace APP.BL.DataMigration.PlmMigration
             public List<PlmDwBlueprintTechPackGradeValuePivotDto> TechPackGradeValuePivotBindings { get; } =
                 new List<PlmDwBlueprintTechPackGradeValuePivotDto>();
 
+            /// <summary>TechPack Fit F3: FitMeasurementByPom ChildUnitPivotColumns ← TchpFitRound.RoundNumber.</summary>
+            public List<PlmDwBlueprintTechPackFitMeasurementPivotDto> TechPackFitMeasurementPivotBindings { get; } =
+                new List<PlmDwBlueprintTechPackFitMeasurementPivotDto>();
+
             /// <summary>Grandchild pivot unit fields (visibility after transaction create).</summary>
             public Dictionary<string, List<PlmTemplateSubItemRow>> GrandchildColumnsByTable { get; } =
                 new Dictionary<string, List<PlmTemplateSubItemRow>>(StringComparer.OrdinalIgnoreCase);
@@ -49,6 +53,15 @@ namespace APP.BL.DataMigration.PlmMigration
             /// <summary>Original blueprint child defs (parent reparent + grandchildren).</summary>
             public List<PlmDwBlueprintChildUnitDto> ChildUnitDefs { get; set; } =
                 new List<PlmDwBlueprintChildUnitDto>();
+
+            /// <summary>Blueprint transaction IntegrationId (e.g. Tab_4007 or TX_FitRound).</summary>
+            public string IntegrationId { get; set; }
+
+            /// <summary>
+            /// When set, this transaction uses a non-default root table
+            /// (F2 Fit Round: TchpFitRound instead of ReferenceBasicInfo).
+            /// </summary>
+            public string RootTableNameOverride { get; set; }
         }
 
         public static OperationCallResult<PlmTemplateMappingGridDto> GetTemplateTabMappingGrid(int? sessionId)

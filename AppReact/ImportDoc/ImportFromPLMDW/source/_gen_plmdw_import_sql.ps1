@@ -432,6 +432,11 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
     $transactions = @()
     $sortedTabs = @($config.tabs | Sort-Object { if ($null -ne $_.tabSort) { $_.tabSort } else { 9999 } }, { $_.tabId })
     foreach ($tab in $sortedTabs) {
+        # FX1/F2: Fit1–N / Comments / folded member tabs are field sources only — no separate TX.
+        if ($tab.fx1SkipBlueprint -eq $true -or $tab.fx1Fold -eq $true) {
+            Write-Host "  Blueprint skip (FX1 fold): Tab_$($tab.tabId) $($tab.plmTabName)"
+            continue
+        }
         $tabName = if ($tab.plmTabName) { $tab.plmTabName } else { Format-TabDisplayName $tab.appTable }
         $importStatus = if ($tab.importStatus) { $tab.importStatus } else { 'Ready' }
         $siblingUnits = [System.Collections.Generic.List[object]]::new()
@@ -507,6 +512,9 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
                 if ($null -ne $cu.fitRoundNumberFilter -and "$($cu.fitRoundNumberFilter)" -ne '') {
                     $childEntry.fitRoundNumberFilter = [int]$cu.fitRoundNumberFilter
                 }
+                if ($cu.linkTargetIntegrationId) {
+                    $childEntry.linkTargetIntegrationId = [string]$cu.linkTargetIntegrationId
+                }
                 if ($cu.isReadOnly -eq $true -or $cu.IsReadOnly -eq $true) {
                     $childEntry.isReadOnly = $true
                 }
@@ -537,6 +545,50 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
         }
     }
 
+    # F2: emit FIT ROUND child transaction (Root = TchpFitRound) when techPack.fitRoundTransaction present.
+    if ($config.techPack -and $config.techPack.fitRoundTransaction) {
+        $frTx = $config.techPack.fitRoundTransaction
+        $frIntegration = if ($frTx.integrationId) { [string]$frTx.integrationId } else { 'TX_FitRound' }
+        $frName = if ($frTx.transactionName) { [string]$frTx.transactionName } else { 'Fit Round' }
+        $frSiblings = [System.Collections.Generic.List[object]]::new()
+        $frChildren = [System.Collections.Generic.List[object]]::new()
+        $friName = 'FitRoundInfo'
+        if ($config.techPack.fitRoundInfo -and $config.techPack.fitRoundInfo.appTable) {
+            $friName = [string]$config.techPack.fitRoundInfo.appTable
+        }
+        $frSiblings.Add([ordered]@{
+            appTableName    = $prefix + $friName
+            isMasterSibling = $true
+            fieldPolicy     = 'AllMappedColumns'
+            linkToParentField = 'FitRoundId'
+            parentPrimaryKeyField = 'FitRoundId'
+        })
+        $frChildren.Add([ordered]@{
+            appTableName            = 'TchpFitMeasurement'
+            attachToRoot            = $true
+            skipTablePrefix         = $true
+            linkToParentField       = 'FitRoundId'
+            parentPrimaryKeyField   = 'FitRoundId'
+            grandChildAppTableNames = @()
+        })
+        $transactions += [ordered]@{
+            plmTabId         = 0
+            plmTabName       = $frName
+            integrationId    = $frIntegration
+            transactionName  = $frName
+            importStatus     = 'Ready'
+            plmTabSort       = 9000
+            isTemplateHeaderTab = $false
+            unitStructure    = [ordered]@{
+                mode          = 'RootPlusMasterSibling'
+                rootTableName = 'TchpFitRound'
+                siblingUnits  = @($frSiblings.ToArray())
+                childUnits    = @($frChildren.ToArray())
+            }
+        }
+        Write-Host "  Blueprint F2 Fit Round TX: $frIntegration"
+    }
+
     $gridBindings = @()
     foreach ($grid in ($config.grids | ForEach-Object { $_ })) {
         $parentTabId = if ($grid.parentPlmTabId) { [int]$grid.parentPlmTabId } else { $null }
@@ -549,6 +601,16 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
         }
         else {
             "Grid_$($grid.gridId)"
+        }
+        # FX1: Fit comment grid parent tab folded — orphan under Grid_{id} (still ReferenceId-scoped).
+        if ($grid.appTable -match 'Fit_Comment') {
+            $foldedParent = @($config.tabs) | Where-Object {
+                $_.tabId -and [int]$_.tabId -eq [int]$parentTabId -and ($_.fx1SkipBlueprint -eq $true -or $_.fx1Fold -eq $true)
+            } | Select-Object -First 1
+            if ($foldedParent) {
+                $parentTabId = $null
+                $txIntegrationId = "Grid_$($grid.gridId)"
+            }
         }
         $gridBindings += [ordered]@{
             plmGridId                  = [int]$grid.gridId
@@ -649,6 +711,7 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
         gridBindings          = $gridBindings
         bomColorwayPivotBindings = Get-JsonArrayForSerialize @(if ($bomColorwayPivotBindings) { $bomColorwayPivotBindings } else { @() })
         techPackGradeValuePivotBindings = Get-JsonArrayForSerialize @(Build-TechPackGradeValuePivotBindings $config $transactions)
+        techPackFitMeasurementPivotBindings = Get-JsonArrayForSerialize @(Build-TechPackFitMeasurementPivotBindings $config $transactions)
         blueprintFields       = $blueprintFields
         searchView            = [ordered]@{
             search     = [ordered]@{
@@ -697,6 +760,41 @@ function Build-TechPackGradeValuePivotBindings($config, $transactions) {
             pivotColumnField            = 'SizeRunSizeId'
             pivotValueField             = 'GradingDelta'
             skipMatrixKeyVisibleFilter  = $false
+        })
+    }
+    return @($list.ToArray())
+}
+
+function Build-TechPackFitMeasurementPivotBindings($config, $transactions) {
+    # Fit SUMMARY (F3): FitMeasurementByPom ChildUnitPivotColumns ← TchpFitRound.RoundNumber.
+    $list = [System.Collections.Generic.List[object]]::new()
+    if (-not $config.techPack -or -not $config.techPack.bindings) { return @($list.ToArray()) }
+
+    foreach ($b in @($config.techPack.bindings)) {
+        if (-not $b) { continue }
+        $role = [string]$b.role
+        if ($role -ne 'FitSummary') { continue }
+        $hasRound = $false
+        $hasPomPivot = $false
+        foreach ($cu in @($b.childUnits)) {
+            if (-not $cu -or -not $cu.appTableName) { continue }
+            $n = [string]$cu.appTableName
+            if ($n -eq 'TchpFitRound' -or $n.EndsWith('TchpFitRound')) { $hasRound = $true }
+            if ($n -eq 'TchpPomSpecLine' -or $n.EndsWith('TchpPomSpecLine')) {
+                $gcs = @($cu.grandChildAppTableNames)
+                if ($gcs | Where-Object { $_ -match 'View_TchpFitMeasurementByPom' }) { $hasPomPivot = $true }
+            }
+        }
+        if (-not ($hasRound -and $hasPomPivot)) { continue }
+        $list.Add([ordered]@{
+            plmTabId                    = [int]$b.plmTabId
+            hostAppTableName            = 'TchpPomSpecLine'
+            grandchildAppTableName      = 'View_TchpFitMeasurementByPom'
+            sourceAppTableName          = 'TchpFitRound'
+            sourcePivotKeyColumn        = 'RoundNumber'
+            pivotColumnField            = 'RoundNumber'
+            pivotValueField             = 'ActualValue'
+            skipMatrixKeyVisibleFilter  = $true
         })
     }
     return @($list.ToArray())
@@ -920,6 +1018,13 @@ function Build-CreateTableBlock([string]$LogicalTable, $fieldRows, [string]$Unit
             [void]$colDefs.Add("[$pk] INT IDENTITY(1,1) NOT NULL")
             [void]$colDefs.Add('[ReferenceId] INT NOT NULL')
         }
+        'fitRoundInfo' {
+            # FX1: 1:1 with TchpFitRound; PK = FitRoundId (non-identity, from TchpFitRound).
+            [void]$colDefs.Add('[FitRoundId] INT NOT NULL')
+            [void]$colDefs.Add('[AppCreatedDate] DATETIME NULL')
+            [void]$colDefs.Add('[AppModifiedDate] DATETIME NULL')
+            $pk = 'FitRoundId'
+        }
         default {
             [void]$colDefs.Add('[ReferenceId] INT NOT NULL')
             $pk = 'ReferenceId'
@@ -944,18 +1049,10 @@ function Build-CreateTableBlock([string]$LogicalTable, $fieldRows, [string]$Unit
     $alterBlock = if ($alterLines.Count -gt 0) {
         "ELSE`r`nBEGIN`r`n" + ($alterLines -join "`r`n") + "`r`nEND`r`n`r`n"
     } else { '' }
-    return @"
--- $LogicalTable
-SET @TableName = @TablePrefix + N'$LogicalTable';
-SET @RootTable = @TablePrefix + @RootTableSuffix;
-SET @FkName = N'FK_' + @TableName + N'_Reference';
 
-IF OBJECT_ID(N'dbo.' + QUOTENAME(@TableName), N'U') IS NULL
-BEGIN
-    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@TableName) + N' ($innerCols );';
-    EXEC sp_executesql @sql;
-END
-$alterBlock
+    $fkBlock = ''
+    if ($UnitKind -ne 'fitRoundInfo') {
+        $fkBlock = @"
 IF OBJECT_ID(N'dbo.' + QUOTENAME(@RootTable), N'U') IS NOT NULL
    AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @FkName)
 BEGIN
@@ -969,6 +1066,25 @@ BEGIN
     PRINT N'Skipped FK ' + @FkName + N': root table dbo.' + @RootTable + N' does not exist.';
 END
 
+"@
+    }
+    else {
+        $fkBlock = "PRINT N'FX1 FitRoundInfo: no ReferenceId FK (PK = FitRoundId → TchpFitRound).';`r`n`r`n"
+    }
+
+    return @"
+-- $LogicalTable
+SET @TableName = @TablePrefix + N'$LogicalTable';
+SET @RootTable = @TablePrefix + @RootTableSuffix;
+SET @FkName = N'FK_' + @TableName + N'_Reference';
+
+IF OBJECT_ID(N'dbo.' + QUOTENAME(@TableName), N'U') IS NULL
+BEGIN
+    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@TableName) + N' ($innerCols );';
+    EXEC sp_executesql @sql;
+END
+$alterBlock
+$fkBlock
 "@
 }
 
@@ -1064,6 +1180,11 @@ $childTabIds = Get-PlmTabsWithGridSubItem $tabIdListForChild
 Write-Host "  Tabs hosting grid sub-item(s): $((@($childTabIds) | Sort-Object) -join ', ')"
 
 foreach ($tab in $config.tabs) {
+    # FX1: Fit1–N / Comments folded — no Plm_Fit_N APP table (sources only for RoundInfo later).
+    if ($tab.fx1SkipAppTable -eq $true) {
+        Write-Host "  DDL skip (FX1 fold): $($tab.appTable) Tab_$($tab.tabId)"
+        continue
+    }
     [void]$scopeAppTables.Add($tab.appTable)
     $dwCols = Get-DwTableColumns $tab.dwTable
     $fieldRows = @()
@@ -1084,13 +1205,30 @@ foreach ($tab in $config.tabs) {
     }
     else { throw "Unknown tab mode: $($tab.mode)" }
 
+    # FX1 slim FitSummary: keep only round-agnostic SubItems.
+    if ($tab.fx1KeepSubItemIds) {
+        $keep = [System.Collections.Generic.HashSet[int]]::new()
+        foreach ($id in @($tab.fx1KeepSubItemIds)) { [void]$keep.Add([int]$id) }
+        $fieldRows = @($fieldRows | Where-Object {
+            $sid = (Get-DwColumnMeta $_.DwColumn).SubItemId
+            ($null -ne $sid) -and $keep.Contains([int]$sid)
+        })
+        Write-Host "  FX1 slim $($tab.appTable): kept $($fieldRows.Count) column(s)"
+    }
+
     # Optional: pull shared SubItem columns from other DW tables onto this APP table (e.g. Fit Summary hub).
+    # Disabled when fx1Slim / fx1KeepSubItemIds (round-specific fields go to FitRoundInfo, not Summary).
     $existingDwColNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($r in $fieldRows) { if ($r.DwColumn) { [void]$existingDwColNames.Add([string]$r.DwColumn) } }
-    $mergedRows = Merge-FieldRowsFromDwSources $tab.appTable $tab.mergeSubItemsFrom $existingDwColNames
-    if ($mergedRows.Count -gt 0) {
-        $fieldRows = @($fieldRows) + @($mergedRows)
-        $fieldRows = Get-AppColumnNames $fieldRows
+    if ($tab.fx1KeepSubItemIds -or $tab.fx1Slim -eq $true) {
+        Write-Host "  FX1: skip mergeSubItemsFrom on $($tab.appTable)"
+    }
+    else {
+        $mergedRows = Merge-FieldRowsFromDwSources $tab.appTable $tab.mergeSubItemsFrom $existingDwColNames
+        if ($mergedRows.Count -gt 0) {
+            $fieldRows = @($fieldRows) + @($mergedRows)
+            $fieldRows = Get-AppColumnNames $fieldRows
+        }
     }
 
     # TechPack S1: Size_Run / Base_Size / Measure_Unit live on TchpStyleSpec only — strip from Plm_* DDL/mapping.
@@ -1108,6 +1246,32 @@ foreach ($tab in $config.tabs) {
     $tabUnitKind = Resolve-TabUnitKind $tab $childTabIds
     $ddlParts.Add((Build-CreateTableBlock $tab.appTable $fieldRows $tabUnitKind))
     foreach ($r in $fieldRows) { [void]$allFieldRows.Add($r) }
+}
+
+# FX1: Plm_FitRoundInfo (1:1 with TchpFitRound.FitRoundId) — skeleton columns; semantic map later.
+if ($config.techPack -and $config.techPack.fitRoundInfo) {
+    $friApp = [string]$config.techPack.fitRoundInfo.appTable
+    if (-not $friApp) { $friApp = 'FitRoundInfo' }
+    [void]$scopeAppTables.Add($friApp)
+    $friFieldRows = @(
+        [pscustomobject]@{ AppColumn = 'StyleSpecId'; SqlType = '[int]'; DwColumn = $null; DwTable = $null; PlmTabId = $null; FieldKind = 'FitRoundInfo'; AppTable = $friApp }
+    )
+    # Optional semantic columns from config (sqlType + appColumn only; DW fill in 3b later).
+    foreach ($sc in @($config.techPack.fitRoundInfo.semanticColumns)) {
+        if (-not $sc -or -not $sc.appColumn) { continue }
+        $sqlType = if ($sc.sqlType) { [string]$sc.sqlType } else { '[nvarchar](4000)' }
+        $friFieldRows += [pscustomobject]@{
+            AppColumn = [string]$sc.appColumn
+            SqlType   = $sqlType
+            DwColumn  = $null
+            DwTable   = $null
+            PlmTabId  = $null
+            FieldKind = 'FitRoundInfo'
+            AppTable  = $friApp
+        }
+    }
+    $ddlParts.Add((Build-CreateTableBlock $friApp $friFieldRows 'fitRoundInfo'))
+    Write-Host "  FX1 DDL: $friApp (FitRoundId PK + $($friFieldRows.Count) column(s))"
 }
 
 Write-Host "Probing PLM for BOM ProductDesignColor colorway grids..."

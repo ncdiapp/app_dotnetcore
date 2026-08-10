@@ -53,7 +53,7 @@ If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** i
 | **No server code** | **Default:** deliverables are **SQL + JSON + PowerShell in this folder only** — no C# / WebAPI edits, no `dotnet build`. **Exception (BOM colorway pivot):** `PlmMigrationBL` pivot/hierarchy support in `APP.BL` is required for Phase D; already in repo. Any *other* BL gap → **STOP**, explain, warn user. |
 | **Two phases** | **Phase A:** DW analysis + APP table proposal + **Blueprint draft** → **STOP for user confirmation**. **Phase B:** generate SQL + Blueprint JSON **after** confirm. **Phase D:** BL TOOLS apply Blueprint to APP config (separate step; user runs in app). |
 | **plmDW is truth** | Column names, SubItem IDs, TabIds from DW — not legacy PLM exports. |
-| **1 Tab → 1 sibling table + N grid tables** | Tab wide table (`PLM_DW_Tab_*_{TabId}`) = the tab's regular sub-items → **sibling** (PK `ReferenceId`). Each materialized grid sub-item (`PLM_DW_Grid_*`) = a **grid table** (PK `RowId` identity). A tab with both yields 1 sibling + 1 grid table per grid; the tab table is never a child. Grid-only tabs (no DW Tab table): true PLM `parentPlmTabId` or orphan `Grid_{id}` as **Root+Child** — never Master Sibling. |
+| **1 Tab → 1 sibling table + N grid tables** | Tab wide table (`PLM_DW_Tab_*_{TabId}`) = the tab's regular sub-items → **sibling** (PK `ReferenceId`). Each materialized grid sub-item (`PLM_DW_Grid_*`) = a **grid table** (PK `RowId` identity). A tab with both yields 1 sibling + 1 grid table per grid; the tab table is never a child. Grid-only tabs (no DW Tab table): true PLM `parentPlmTabId` or orphan `Grid_{id}` as **Root+Child** — never Master Sibling. **Exception FX1 (Fit family):** see §TechPack Fit — do not emit `Plm_Fit_1`…`Plm_Fit_N`; fold into `Plm_FitSummary` + `Plm_FitRoundInfo` + `TchpFitRound` / `TchpFitMeasurement`. |
 | **Mapping drives import** | `{prefix}FieldMapping` stores `DwTableName` + `DwColumnName` per APP column. |
 | **Prefix is parameter** | `@TablePrefix` in all three SQL scripts (default `Plm_`). |
 
@@ -496,8 +496,9 @@ ImportFromPLMDW/
 [ ] Run _gen_plmdw_import_sql.ps1 → output/{templateId}/1_…6_ files
 [ ] Verify 3_PlmDw_ImportFromDW.sql has @PlmTemplateId + APPEND default
 [ ] Verify 4_PlmDw_ImportBlueprint.json includes bomColorwayPivotBindings when steps 5–6 exist
-[ ] TechPack: run 3b (includes View_TchpStyleActiveSizeRunSizes) before Phase D
+[ ] TechPack: run 3b (includes View_TchpStyleActiveSizeRunSizes + View_TchpFitMeasurementByPom) before Phase D
 [ ] TechPack Grading: SizeRunSizes view child + GradeValue pivot (P1) + golden fields (G1) + BaseSize cascade (S2)
+[ ] TechPack Fit: FX1 tables (slim FitSummary + FitRoundInfo) + F2 SUMMARY/ROUND TX + F3 read-only POM×Round pivot
 [ ] Optional: pilot import with @ReferenceIdList
 ```
 
@@ -521,18 +522,113 @@ When `dwTabImportConfig` includes a `techPack` block (α bindings):
 | GradeValue pivot | **P1** — `TchpGradeValue.EmGridViewDisplayType = ChildUnitPivotColumns (7)`. `SizeRunSizeId` = IsPivotColumn + `MatrixForeignKeyFieldId` → View.`SizeRunSizeId`. `GradingDelta` = IsPivotValue. `MatrixKeyTransactionFieldId` → View.`IsVisible` (DimensionCode filter). |
 | BaseSize cascade | **S2** — `TchpStyleSpec.BaseSizeDetailId` Depend On DDL = `SizeRunId`; entities `SizeRun` / `SizeRunDetail` |
 | Grading field golden | **G1** — see §TechPack Grading golden field template (widths / sort / entities). `IsFixed` stays TextBox; `GradeRuleSetId` → DDL `TchpGradeRuleSet`; `UnitOfMeasure` stays TextBox (+ Entity ok). |
-| Fit Summary Fit grid | **F1** — all FitRounds; Fit1–4 filter by `fitRoundNumberFilter`; Comments do **not** host Fit grid |
-| SpecFit ActualValue | `COALESCE(ReviseN, SampleN)` |
-| POM_Template / Spec_Selected_Size | Stay on `Plm_Grading` / `Plm_Fit_Summary` |
+| SpecFit ActualValue | `COALESCE(ReviseN, SampleN)` → `TchpFitMeasurement.ActualValue` |
+| Fit RoundNumber source | **R1** — digit **N** in SpecFit columns `SampleN` / `ReviseN` (not Tab Sort). PLM Tab names (“Fit 1”, “Fit 2”, …) use the same N. |
+| FIT import exception | **FX1** — Fit-family tabs do **not** follow “1 Tab → 1 sibling”. See §TechPack Fit (FX1 / F2 / F3). |
+| Fit transactions | **F2** — one **FIT SUMMARY** master TX + one **FIT ROUND** child TX (Child Unit Link Target). No per-round TX / no `Plm_Fit_1`…`Plm_Fit_8`. |
+| Fit Summary aggregate grid | **F3** — read-only: Child `TchpPomSpecLine` + Grandchild `View_TchpFitMeasurementByPom` + `ChildUnitPivotColumns` (RoundNumber). |
+| POM_Template / Spec_Selected_Size | Stay on `Plm_Grading` / slim `Plm_FitSummary` (round-agnostic blocks only) |
 
-Phase D (`ExecuteDwBlueprintConfig`) applies L2 after `CreateHierarchyTransactionFromTables`: sibling + child `IsLinkToParentPrimaryKey` to Root only (never reparent under StyleSpec sibling). Then: EnsureMissing child units (Update), `IsReadOnly` flags for V1 view child, StyleSpec SizeRun/BaseSize DDL + S2 cascade, **G1 golden field template**, **P1 GradeValue pivot** (`techPackGradeValuePivotBindings` or auto-detect from ChildUnitDefs).
+Phase D (`ExecuteDwBlueprintConfig`) applies L2 after `CreateHierarchyTransactionFromTables`: sibling + child `IsLinkToParentPrimaryKey` to Root only (never reparent under StyleSpec sibling). Then: EnsureMissing child units (Update), `IsReadOnly` flags for V1/F3 view children, StyleSpec SizeRun/BaseSize DDL + S2 cascade, **G1 golden field template**, **P1 GradeValue pivot**, **F3 FitMeasurement pivot** (`techPackGradeValuePivotBindings` / Fit pivot bindings or auto-detect from ChildUnitDefs).
 
-**V1 view DDL** (keep identical in both places):
+**V1 / F3 view DDL** (keep identical in both places):
 
 1. `Document/Design/POM_Grading_QC_NewSchema.sql`
 2. Emitted in `output/{templateId}/3b_Tchp_ImportFromDW.sql` (`CREATE OR ALTER VIEW` after a `GO`) when `techPack` present
 
-Run **3b before Phase D** so the view exists when Blueprint Validate/Execute resolves child table `View_TchpStyleActiveSizeRunSizes`.
+Run **3b before Phase D** so views exist when Blueprint Validate/Execute resolves `View_TchpStyleActiveSizeRunSizes` and `View_TchpFitMeasurementByPom`.
+
+### TechPack Fit — FX1 import exception + F2/F3 units (locked)
+
+**Scope of exception:** tabs in `techPack.bindings` whose `role` is Fit-family (`FitSummary`, `Fit1`…`FitN`, `PP1`…, `TOP`, …) **and** their Comments companion tabs. All other tabs keep **1 Tab → 1 sibling**.
+
+**Does not apply to:** Grading, BOM, Header, non-Fit template tabs.
+
+#### FX1 — APP tables (instead of one sibling per Fit tab)
+
+| PLM source | APP target | Notes |
+|------------|------------|-------|
+| Fit Summary Tab — blocks **not** tied to a round | Sibling `Plm_FitSummary` (slim) | Round-specific SubItems (Fit1 Date, Fit2 Status, …) **out** of this table |
+| Fit1…N / PP… / Comments — per-round non-grid SubItems | Sibling `Plm_FitRoundInfo` (1:1 with `TchpFitRound`) | **Semantic normalize** to shared columns (e.g. FitDate, FitStatus, SampleType, ReceiveDate, ApproveDate, …). Map each PLM SubItem → column by round N from Tab name / binding |
+| SpecFit Grid `SampleN`/`ReviseN` | `TchpFitRound` + `TchpFitMeasurement` | Do **not** emit `Plm_SpecFitGrid`. Create round rows for each N that has data; `RoundType` from binding/role (FIT / PP1 / TOP / INTERNAL…) |
+| — | `TchpFitRound` | PK `FitRoundId` + `StyleSpecId` + **`RoundNumber`** + **`RoundType`**. Workflow columns may remain on table for APP; **PLM-imported** round header fields live on `Plm_FitRoundInfo` |
+| Comments tabs | Field source for `Plm_FitRoundInfo` only | **No** separate Comments transaction |
+
+#### F2 — Transaction shape
+
+**Master — FIT SUMMARY**
+
+| Unit | Table | Kind |
+|------|-------|------|
+| Root | `Plm_ReferenceBasicInfo` (or template root) | Master |
+| Sibling | `TchpStyleSpec` | Shared StyleSpec |
+| Sibling | `Plm_FitSummary` | Slim Summary blocks |
+| Child | `TchpFitRound` | One row per round; Link Target → FIT ROUND TX |
+| Child (F3, optional on Form) | `TchpPomSpecLine` | All POMs for StyleSpec |
+| Grandchild (F3) | `View_TchpFitMeasurementByPom` | Pivot measurements; **IsReadOnly** |
+| Child (pivot domain, Form omit) | `TchpFitRound` or thin round list view | RoundNumber column domain for F3 (same pattern as V1 sizes) |
+
+**Child TX — FIT ROUND** (opened via Child Unit Link Target from SUMMARY)
+
+| Unit | Table | Kind |
+|------|-------|------|
+| Root | `TchpFitRound` | This round |
+| Sibling | `Plm_FitRoundInfo` | Normalized PLM round header (`FitRoundId` PK/FK) |
+| Child | `TchpFitMeasurement` | POM actuals for this round only |
+
+Legacy `fitRoundNumberFilter` on **separate Fit1–4 transactions** is **retired** under F2 (one ROUND TX; filter = current `FitRoundId`).
+
+#### F3 — Read-only summary pivot (feasibility confirmed)
+
+Same pattern as P1 GradeValue ↔ `View_TchpStyleActiveSizeRunSizes`:
+
+| Setting | Value |
+|---------|-------|
+| Child | `TchpPomSpecLine` (StyleSpecId → Root.ReferenceId); user-facing POM list |
+| Grandchild | `View_TchpFitMeasurementByPom` |
+| Unit `EmGridViewDisplayType` | 7 ChildUnitPivotColumns |
+| IsPivotColumn | `RoundNumber` (MatrixFK → FitRound list unit / RoundNumber) |
+| IsPivotValue | `ActualValue` |
+| IsReadOnly | **required** on PomSpecLine (in this TX) + view grandchild; disable add/delete |
+| Form | Show POM + pivoted Fit columns; omit pure pivot-domain unit if unused on layout |
+
+**View_TchpFitMeasurementByPom** (keep in sync with schema + 3b):
+
+```sql
+CREATE OR ALTER VIEW dbo.View_TchpFitMeasurementByPom
+AS
+SELECT
+    fm.FitMeasurementId,
+    fm.PomSpecLineId,
+    pl.StyleSpecId,
+    fr.FitRoundId,
+    fr.RoundNumber,
+    fr.RoundType,
+    CONCAT(N'Fit ', fr.RoundNumber) AS RoundLabel,
+    fm.ActualValue
+FROM dbo.TchpFitMeasurement AS fm
+INNER JOIN dbo.TchpFitRound AS fr ON fr.FitRoundId = fm.FitRoundId
+INNER JOIN dbo.TchpPomSpecLine AS pl ON pl.PomSpecLineId = fm.PomSpecLineId;
+```
+
+Writable Fit edits stay on **FIT ROUND** TX (`TchpFitMeasurement` under that round). SUMMARY F3 is display-only.
+
+#### Round alignment (R1) — import sketch
+
+```
+SpecFit DW columns SampleN / ReviseN
+        │
+        ▼  RoundNumber = N
+TchpFitRound (StyleSpecId, RoundNumber, RoundType)
+        │
+        ▼  COALESCE(ReviseN, SampleN)
+TchpFitMeasurement (FitRoundId, PomSpecLineId ← BodyPart match)
+
+PLM Tab "Fit N" / "Fit N Comments" non-grid SubItems
+        │
+        ▼  RoundNumber = N (from Tab name digit = same N as SampleN)
+Plm_FitRoundInfo row for that FitRoundId (semantic columns)
+```
 
 ### TechPack Grading golden field template (G1)
 

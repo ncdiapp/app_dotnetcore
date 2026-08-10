@@ -1084,6 +1084,9 @@ CREATE TABLE dbo.[{tableName}] (
             bool isUpdate)
         {
             var tab = plan.Tab;
+            string effectiveRootTable = !string.IsNullOrWhiteSpace(plan.RootTableNameOverride)
+                ? plan.RootTableNameOverride
+                : rootTable;
             var siblingTableNames = plan.SiblingColumnsByTable.Keys
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -1160,7 +1163,7 @@ CREATE TABLE dbo.[{tableName}] (
 
             var setup = new HierarchyTableSetupDto
             {
-                MasterTableName = rootTable,
+                MasterTableName = effectiveRootTable,
                 SiblingTableNames = siblingTableNames,
                 ChildTables = rootChildTables,
                 DataSourceRegisterId = tenantDataSourceId,
@@ -1169,10 +1172,10 @@ CREATE TABLE dbo.[{tableName}] (
                 SaasApplicationId = saasApplicationId
             };
 
-            // Orphan DW grids use IntegrationId Grid_{plmGridId} with TabId = -plmGridId.
-            string transactionIntegrationId = tab.TabId < 0
-                ? $"Grid_{-tab.TabId}"
-                : $"Tab_{tab.TabId}";
+            // Prefer blueprint IntegrationId (F2 TX_FitRound); fallback Tab_{id} / Grid_{-id}.
+            string transactionIntegrationId = !string.IsNullOrWhiteSpace(plan.IntegrationId)
+                ? plan.IntegrationId.Trim()
+                : (tab.TabId < 0 ? $"Grid_{-tab.TabId}" : $"Tab_{tab.TabId}");
 
             OperationCallResult<AppTransactionExDto> saveResult;
             int txId;
@@ -1192,7 +1195,7 @@ CREATE TABLE dbo.[{tableName}] (
                         ?? $"Failed to create transaction for tab {tab.TabId}.");
 
                 txId = Convert.ToInt32(saveResult.Object.Id);
-                ApplyTransactionFieldSubsetSql(conn, tran, txId, rootTable, plan, tab);
+                ApplyTransactionFieldSubsetSql(conn, tran, txId, effectiveRootTable, plan, tab);
             }
             else
             {
@@ -1213,7 +1216,7 @@ WHERE TransactionID = @TransactionId";
                     cmd.ExecuteNonQuery();
                 }
 
-                ApplyTransactionFieldSubsetSql(conn, tran, txId, rootTable, plan, tab);
+                ApplyTransactionFieldSubsetSql(conn, tran, txId, effectiveRootTable, plan, tab);
             }
 
             ApplyTransactionFieldPlmMetadataSql(conn, tran, txId, plan, tab);
@@ -1221,23 +1224,25 @@ WHERE TransactionID = @TransactionId";
             ApplyBomColorwayPivotBindingsSql(conn, tran, txId, tab.TabId, plan.BomColorwayPivotBindings);
 
             FixTabTransactionUnitStructure(
-                conn, tran, txId, rootTable,
+                conn, tran, txId, effectiveRootTable,
                 siblingTableNames,
                 rootChildTables.Select(g => g.TableName).ToList());
 
             // L2: sibling StyleSpecId → Root.ReferenceId; child StyleSpecId → Root.ReferenceId (ROOT-only children).
-            ApplyDwBlueprintL2ParentLinks(conn, tran, txId, rootTable, plan, tablePrefix);
+            ApplyDwBlueprintL2ParentLinks(conn, tran, txId, effectiveRootTable, plan, tablePrefix);
 
             // TechPack: add missing ROOT children on Update (e.g. View_TchpStyleActiveSizeRunSizes).
-            EnsureMissingBlueprintChildUnits(conn, tran, txId, rootTable, plan, tablePrefix, tenantDataSourceId);
+            EnsureMissingBlueprintChildUnits(conn, tran, txId, effectiveRootTable, plan, tablePrefix, tenantDataSourceId);
 
             // Re-apply L2 for any units just created by EnsureMissing.
-            ApplyDwBlueprintL2ParentLinks(conn, tran, txId, rootTable, plan, tablePrefix);
+            ApplyDwBlueprintL2ParentLinks(conn, tran, txId, effectiveRootTable, plan, tablePrefix);
 
             ApplyTechPackChildUnitFlags(conn, tran, txId, plan, tablePrefix);
             ApplyTechPackStyleSpecFieldWiring(conn, tran, txId, plan, tablePrefix);
             ApplyTechPackGradingGoldenFieldTemplate(conn, tran, txId, plan, tablePrefix);
             ApplyTechPackGradeValuePivotBindingsSql(conn, tran, txId, tab.TabId, plan, tablePrefix);
+            ApplyTechPackFitMeasurementPivotBindingsSql(conn, tran, txId, tab.TabId, plan, tablePrefix);
+            ApplyTechPackFitRoundLinkTargetsSql(conn, tran, txId, plan, tablePrefix);
 
             SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, transactionIntegrationId);
             return txId;
@@ -1520,8 +1525,10 @@ VALUES (
 
                 bool isSizeRunSizesView = child.AppTableName.IndexOf(
                     "View_TchpStyleActiveSizeRunSizes", StringComparison.OrdinalIgnoreCase) >= 0;
-                // V1 view unit must always be read-only (even if isReadOnly missing from JSON deserialize).
-                bool forceReadOnly = child.IsReadOnly || isSizeRunSizesView;
+                bool isFitMeasurementView = child.AppTableName.IndexOf(
+                    "View_TchpFitMeasurementByPom", StringComparison.OrdinalIgnoreCase) >= 0;
+                // V1/F3 view units must always be read-only (even if isReadOnly missing from JSON deserialize).
+                bool forceReadOnly = child.IsReadOnly || isSizeRunSizesView || isFitMeasurementView;
                 if (!forceReadOnly)
                     continue;
 
@@ -1556,7 +1563,9 @@ WHERE TransactionUnitID = @UnitId";
 
                 var visible = child.VisibleFieldNames != null && child.VisibleFieldNames.Count > 0
                     ? child.VisibleFieldNames
-                    : new List<string> { "SizeRunSizeId", "SizeLabel", "SizeOrder" };
+                    : isFitMeasurementView
+                        ? new List<string> { "FitMeasurementId", "RoundNumber", "RoundLabel", "ActualValue" }
+                        : new List<string> { "SizeRunSizeId", "SizeLabel", "SizeOrder" };
 
                 using (var hide = conn.CreateCommand())
                 {
@@ -1583,7 +1592,8 @@ WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @Col";
                     }
                 }
 
-                // Prefer SizeRunSizeId as PK when view has no PK metadata.
+                // Prefer natural PK when view has no PK metadata.
+                string preferPk = isFitMeasurementView ? "FitMeasurementId" : "SizeRunSizeId";
                 using (var pk = conn.CreateCommand())
                 {
                     pk.Transaction = tran;
@@ -1592,25 +1602,56 @@ IF NOT EXISTS (
     SELECT 1 FROM dbo.AppTransactionField
     WHERE TransactionUnitID = @UnitId AND ISNULL(IsPrimaryKey, 0) = 1)
 UPDATE dbo.AppTransactionField SET IsPrimaryKey = 1, IsVisible = 0, IsReadonly = 1
-WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'SizeRunSizeId'";
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @PkCol";
                     pk.Parameters.AddWithValue("@UnitId", unitId.Value);
+                    pk.Parameters.AddWithValue("@PkCol", preferPk);
                     pk.ExecuteNonQuery();
                 }
 
-                // ORDER BY SizeOrder via GroupByLevel (row-order convention).
-                using (var ord = conn.CreateCommand())
+                // ORDER BY SizeOrder via GroupByLevel (row-order convention) — SizeRunSizes only.
+                if (!isFitMeasurementView)
                 {
-                    ord.Transaction = tran;
-                    ord.CommandText = @"
+                    using (var ord = conn.CreateCommand())
+                    {
+                        ord.Transaction = tran;
+                        ord.CommandText = @"
 UPDATE dbo.AppTransactionField SET GroupByLevel = 1
 WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'SizeOrder'";
-                    ord.Parameters.AddWithValue("@UnitId", unitId.Value);
-                    ord.ExecuteNonQuery();
+                        ord.Parameters.AddWithValue("@UnitId", unitId.Value);
+                        ord.ExecuteNonQuery();
+                    }
                 }
             }
 
-            // Safety net: any View_TchpStyleActiveSizeRunSizes unit on this txn (even without ChildUnitDefs flag).
+            // Safety net: any View_TchpStyleActiveSizeRunSizes / View_TchpFitMeasurementByPom unit on this txn.
             ForceViewTchpStyleActiveSizeRunSizesReadOnly(conn, tran, transactionId);
+            ForceViewTchpFitMeasurementByPomReadOnly(conn, tran, transactionId);
+        }
+
+        private static void ForceViewTchpFitMeasurementByPomReadOnly(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit SET
+    IsReadOnly = 1,
+    IsDisableAddButton = 1,
+    IsDisableDeleteButton = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionID = @TxId
+  AND DataBaseTableName = N'View_TchpFitMeasurementByPom'
+  AND (
+        ISNULL(IsReadOnly, 0) = 0
+     OR ISNULL(IsDisableAddButton, 0) = 0
+     OR ISNULL(IsDisableDeleteButton, 0) = 0
+  )";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.ExecuteNonQuery();
+            }
         }
 
         private static void ForceViewTchpStyleActiveSizeRunSizesReadOnly(

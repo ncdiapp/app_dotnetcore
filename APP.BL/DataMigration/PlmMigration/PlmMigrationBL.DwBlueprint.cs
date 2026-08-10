@@ -1244,8 +1244,24 @@ WHERE SearchId = @SearchId";
             Tab = tab,
             PrimarySiblingTable = primarySiblingTable,
             SiblingUnitDefs = siblings,
-            ChildUnitDefs = childUnits
+            ChildUnitDefs = childUnits,
+            IntegrationId = !string.IsNullOrWhiteSpace(tx.IntegrationId)
+              ? tx.IntegrationId.Trim()
+              : (tx.PlmTabId < 0 ? $"Grid_{-tx.PlmTabId}" : $"Tab_{tx.PlmTabId}")
           };
+
+          // F2 Fit Round: root is TchpFitRound (not ReferenceBasicInfo).
+          if (!string.IsNullOrWhiteSpace(tx.UnitStructure?.RootTableName)
+              && !string.Equals(
+                QualifyBlueprintTableName(tx.UnitStructure.RootTableName, prefix),
+                QualifyBlueprintTableName(blueprint.RootUnit?.AppTableName ?? "ReferenceBasicInfo", prefix),
+                StringComparison.OrdinalIgnoreCase))
+          {
+            bool skipPrefix = tx.UnitStructure.RootTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)
+              || tx.UnitStructure.RootTableName.StartsWith("View_", StringComparison.OrdinalIgnoreCase);
+            plan.RootTableNameOverride = QualifyBlueprintTableName(
+              tx.UnitStructure.RootTableName, prefix, skipPrefix);
+          }
 
           int sortOrder = 0;
           foreach (var sibling in siblings)
@@ -1388,6 +1404,7 @@ WHERE SearchId = @SearchId";
 
           AttachBomColorwayPivotBindingsToPlan(plan, blueprint, prefix, mappingRows, fieldMetaByKey);
           AttachTechPackGradeValuePivotBindingsToPlan(plan, blueprint);
+          AttachTechPackFitMeasurementPivotBindingsToPlan(plan, blueprint);
 
           plans.Add(plan);
         }
@@ -1407,6 +1424,20 @@ WHERE SearchId = @SearchId";
                    .Where(b => b != null && b.PlmTabId == plan.Tab.TabId))
         {
           plan.TechPackGradeValuePivotBindings.Add(binding);
+        }
+      }
+
+      private static void AttachTechPackFitMeasurementPivotBindingsToPlan(
+        TemplateTabExecutionPlan plan,
+        PlmDwImportBlueprintDto blueprint)
+      {
+        if (blueprint?.TechPackFitMeasurementPivotBindings == null || blueprint.TechPackFitMeasurementPivotBindings.Count == 0)
+          return;
+
+        foreach (var binding in blueprint.TechPackFitMeasurementPivotBindings
+                   .Where(b => b != null && b.PlmTabId == plan.Tab.TabId))
+        {
+          plan.TechPackFitMeasurementPivotBindings.Add(binding);
         }
       }
 
