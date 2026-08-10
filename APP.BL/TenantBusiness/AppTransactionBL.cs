@@ -2766,6 +2766,7 @@ namespace App.BL
 
             List<int> deleteUnitIds = new List<int>();
             List<int> deleteTransactionFieldIds = new List<int>();
+            List<int> deleteTransactionItemIds = new List<int>();
 
             try
             {
@@ -2797,6 +2798,13 @@ namespace App.BL
                     adapter.FetchEntityCollection(listTranscationField, icludeFiledFieldsList, fitlerField);
 
                     deleteTransactionFieldIds.AddRange(listTranscationField.Select(o => o.TransactionFieldId));
+
+                    EntityCollection<AppTransactionItemEntity> listTransactionItem = new EntityCollection<AppTransactionItemEntity>();
+                    IncludeFieldsList includeTransactionItemFields = new IncludeFieldsList();
+                    includeTransactionItemFields.Add(AppTransactionItemFields.AppTransactionItemId);
+                    adapter.FetchEntityCollection(listTransactionItem, includeTransactionItemFields,
+                        new RelationPredicateBucket(AppTransactionItemFields.TransactionId == transcactionId));
+                    deleteTransactionItemIds.AddRange(listTransactionItem.Select(o => o.AppTransactionItemId));
 
                 }
 
@@ -2843,6 +2851,13 @@ namespace App.BL
                         adapter.DeleteEntitiesDirectly(typeof(AppProjectWorkFlowActionEntity), new RelationPredicateBucket(AppProjectWorkFlowActionFields.TransactionId == transcactionId));
 
                         adapter.DeleteEntitiesDirectly(typeof(AppTransactionNavigationEntity), new RelationPredicateBucket(AppTransactionNavigationFields.TransactionId == transcactionId));
+
+                        // AppTransactionGroupItem.TransactionId maps to TransactionItemID → AppTransactionItem
+                        if (deleteTransactionItemIds.Count > 0)
+                        {
+                            adapter.DeleteEntitiesDirectly(typeof(AppTransactionGroupItemEntity), new RelationPredicateBucket(AppTransactionGroupItemFields.TransactionId == deleteTransactionItemIds));
+                        }
+                        adapter.DeleteEntitiesDirectly(typeof(AppTransactionItemEntity), new RelationPredicateBucket(AppTransactionItemFields.TransactionId == transcactionId));
 
                         adapter.DeleteEntitiesDirectly(typeof(AppTransactionEntity), new RelationPredicateBucket(AppTransactionFields.TransactionId == transcactionId));
 
