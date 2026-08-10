@@ -249,6 +249,23 @@ WHERE BlueprintKey = @BlueprintKey";
               result.Object.TransactionsInserted++;
           }
 
+          // F2: Fit Round Link Targets need TX_FitRound to exist first — SUMMARY upsert often runs earlier.
+          foreach (var plan in plans)
+          {
+            if (plan.Tab.ImportStatus == TemplateStatusSkipped)
+              continue;
+            if (plan.ChildUnitDefs == null
+                || !plan.ChildUnitDefs.Any(c => c != null && !string.IsNullOrWhiteSpace(c.LinkTargetIntegrationId)))
+              continue;
+
+            string integrationId = ResolveDwTransactionIntegrationId(request.Blueprint, plan);
+            int? summaryTxId = GetTransactionIdByIntegrationId(conn, null, integrationId);
+            if (!summaryTxId.HasValue)
+              continue;
+
+            ApplyTechPackFitRoundLinkTargetsSql(conn, null, summaryTxId.Value, plan, prefix);
+          }
+
           var tabRows = plans.Select(p => p.Tab).ToList();
           if (!string.Equals(mode, DwBlueprintModeRepair, StringComparison.OrdinalIgnoreCase))
             EnsureTabTransactionForms(conn, tabRows, null);
@@ -260,6 +277,8 @@ WHERE BlueprintKey = @BlueprintKey";
             foreach (var plan in plans)
             {
               if (plan.Tab.ImportStatus == TemplateStatusSkipped)
+                continue;
+              if (plan.Tab.ExcludeFromPeerNavigation)
                 continue;
 
               string integrationId = ResolveDwTransactionIntegrationId(request.Blueprint, plan);
@@ -1094,6 +1113,9 @@ WHERE SearchId = @SearchId";
       if (tab == null)
         return null;
 
+      if (!string.IsNullOrWhiteSpace(tab.IntegrationId))
+        return tab.IntegrationId.Trim();
+
       var txSpec = blueprint?.Transactions?
         .FirstOrDefault(t => t.PlmTabId == tab.TabId);
       if (!string.IsNullOrWhiteSpace(txSpec?.IntegrationId))
@@ -1141,6 +1163,9 @@ WHERE SearchId = @SearchId";
 
       foreach (var tab in readyTabs)
       {
+        if (tab.ExcludeFromPeerNavigation)
+          continue;
+
         sortFallback++;
         string integrationId = ResolveDwTabIntegrationId(blueprint, tab);
         int? transactionId = GetTransactionIdByIntegrationId(conn, null, integrationId);
@@ -1216,6 +1241,9 @@ WHERE SearchId = @SearchId";
             TemplateName = blueprint.PlmTemplate?.TemplateName ?? blueprint.TransactionGroup?.Name,
             TabId = tx.PlmTabId,
             TabName = tx.TransactionName ?? tx.PlmTabName ?? $"Tab_{tx.PlmTabId}",
+            IntegrationId = !string.IsNullOrWhiteSpace(tx.IntegrationId)
+              ? tx.IntegrationId.Trim()
+              : (tx.PlmTabId < 0 ? $"Grid_{-tx.PlmTabId}" : $"Tab_{tx.PlmTabId}"),
             TabSort = tabSort,
             ImportStatus = string.IsNullOrWhiteSpace(tx.ImportStatus) ? TemplateStatusReady : tx.ImportStatus
           };
@@ -1229,7 +1257,7 @@ WHERE SearchId = @SearchId";
             .ToList() ?? new List<PlmDwBlueprintChildUnitDto>();
           if (siblings.Count == 0 && childUnits.Count == 0)
           {
-            plans.Add(new TemplateTabExecutionPlan { Tab = tab });
+            plans.Add(new TemplateTabExecutionPlan { Tab = tab, IntegrationId = tab.IntegrationId });
             continue;
           }
 
@@ -1245,9 +1273,7 @@ WHERE SearchId = @SearchId";
             PrimarySiblingTable = primarySiblingTable,
             SiblingUnitDefs = siblings,
             ChildUnitDefs = childUnits,
-            IntegrationId = !string.IsNullOrWhiteSpace(tx.IntegrationId)
-              ? tx.IntegrationId.Trim()
-              : (tx.PlmTabId < 0 ? $"Grid_{-tx.PlmTabId}" : $"Tab_{tx.PlmTabId}")
+            IntegrationId = tab.IntegrationId
           };
 
           // F2 Fit Round: root is TchpFitRound (not ReferenceBasicInfo).
@@ -1261,6 +1287,8 @@ WHERE SearchId = @SearchId";
               || tx.UnitStructure.RootTableName.StartsWith("View_", StringComparison.OrdinalIgnoreCase);
             plan.RootTableNameOverride = QualifyBlueprintTableName(
               tx.UnitStructure.RootTableName, prefix, skipPrefix);
+            // Child TX (e.g. TX_FitRound): open only via unit Link Target with FitRoundId — not peer nav.
+            tab.ExcludeFromPeerNavigation = true;
           }
 
           int sortOrder = 0;
@@ -1521,13 +1549,19 @@ WHERE SearchId = @SearchId";
           {
             TabId = pseudoTabId,
             TabName = txName,
+            IntegrationId = gridIntegrationId,
             ImportStatus = TemplateStatusReady,
             SiblingTableName = null
           };
 
           // Root + Child only: no sibling table. Grid columns go on tab.GridColumns so
           // UpsertTabTransactionFromPlan places the table in ChildTables (RowId PK).
-          var plan = new TemplateTabExecutionPlan { Tab = tab, PrimarySiblingTable = null };
+          var plan = new TemplateTabExecutionPlan
+          {
+            Tab = tab,
+            PrimarySiblingTable = null,
+            IntegrationId = gridIntegrationId
+          };
           string gridTable = QualifyBlueprintTableName(grid.AppTableName, prefix);
           var gridMappings = mappingRows
             .Where(m => string.Equals(QualifyBlueprintTableName(m.AppTableName, prefix), gridTable, StringComparison.OrdinalIgnoreCase)

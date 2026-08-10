@@ -484,6 +484,21 @@ WHERE TransactionUnitID = @UnitId
                 if (!grandchildUnitId.HasValue)
                     continue;
 
+                // Views have no SQL FK — ensure PomSpecLineId (or FitRoundId) links to host child PK
+                // so GetFormData can filter grandchild rows (avoids empty "() OR" SQL).
+                foreach (string linkCol in new[] { "PomSpecLineId", "FitRoundId" })
+                {
+                    int? hostPkFieldId = GetTransactionFieldId(conn, tran, hostUnitId.Value, linkCol);
+                    if (!hostPkFieldId.HasValue)
+                        continue;
+                    if (GetTransactionFieldId(conn, tran, grandchildUnitId.Value, linkCol).HasValue)
+                    {
+                        SetFieldLinkToParentPrimaryKeySql(
+                            conn, tran, grandchildUnitId.Value, linkCol, hostPkFieldId.Value);
+                        break;
+                    }
+                }
+
                 string sourceKeyCol = string.IsNullOrWhiteSpace(binding.SourcePivotKeyColumn)
                     ? "RoundNumber"
                     : binding.SourcePivotKeyColumn.Trim();
@@ -577,6 +592,7 @@ WHERE TransactionUnitID = @UnitId";
 
         /// <summary>
         /// F2: wire Child Unit Link Target from SUMMARY TchpFitRound → FIT ROUND transaction.
+        /// Uses SourceColumn1 (field name) — not SourceViewColumnID1 (FK to AppSearchViewField).
         /// </summary>
         private static void ApplyTechPackFitRoundLinkTargetsSql(
             SqlConnection conn,
@@ -623,7 +639,6 @@ WHERE TransactionUnitId = @UnitId
                         continue;
                 }
 
-                int? pkFieldId = GetTransactionFieldId(conn, tran, unitId.Value, "FitRoundId");
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.Transaction = tran;
@@ -635,7 +650,7 @@ INSERT INTO dbo.AppFormLinkTarget (
     LinkTargetTransactionID,
     LinkTargetUsageType,
     SourceColumnType,
-    SourceViewColumnID1,
+    SourceColumn1,
     TargetColumn1,
     Sort,
     IsPopup,
@@ -648,7 +663,7 @@ VALUES (
     @LinkTargetTransactionId,
     @LinkTargetUsageType,
     @SourceColumnType,
-    @SourceViewColumnId1,
+    N'FitRoundId',
     N'FitRoundId',
     10,
     1,
@@ -659,7 +674,6 @@ VALUES (
                     cmd.Parameters.AddWithValue("@LinkTargetTransactionId", targetTxId.Value);
                     cmd.Parameters.AddWithValue("@LinkTargetUsageType", (int)EmAppLinkTargetUsageType.TransactionUnitLinkToForm);
                     cmd.Parameters.AddWithValue("@SourceColumnType", (int)EmAppLinkTargetSourceColumnType.TransactionField);
-                    cmd.Parameters.AddWithValue("@SourceViewColumnId1", (object)pkFieldId ?? DBNull.Value);
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -784,6 +798,11 @@ UPDATE dbo.AppTransactionField SET
     ControlType = @Ddl,
     EntityId = COALESCE(@EntityId, EntityId),
     DDLParentLevelID = @ParentFieldId,
+    DataRetrieveType = @DataRetrieveType,
+    CascadingRelationTable = N'TchpSizeRunSize',
+    CascadingRelationTableSchemaOwner = N'dbo',
+    CascadingRelationTableParentKeyField = N'SizeRunId',
+    CascadingRelationTableChildKeyField = N'SizeRunSizeId',
     DisplayWidth = N'100',
     SortOrder = 30,
     IsVisible = 1,
@@ -793,6 +812,7 @@ WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'BaseSizeDetailId'";
                 cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@ParentFieldId",
                     sizeRunFieldId.HasValue ? (object)sizeRunFieldId.Value : DBNull.Value);
+                cmd.Parameters.AddWithValue("@DataRetrieveType", (int)EmAppCascadingSourceType.RelationalTable);
                 cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId.Value);
                 cmd.ExecuteNonQuery();
             }

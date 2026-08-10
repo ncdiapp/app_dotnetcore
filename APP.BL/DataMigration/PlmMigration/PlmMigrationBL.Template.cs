@@ -44,6 +44,13 @@ namespace APP.BL.DataMigration.PlmMigration
             public string TemplateName { get; set; }
             public int TabId { get; set; }
             public string TabName { get; set; }
+            /// <summary>AppTransaction.IntegrationId when not Tab_{id}/Grid_{id} (e.g. TX_FitRound).</summary>
+            public string IntegrationId { get; set; }
+            /// <summary>
+            /// When true, omit from TransactionGroup peer tabs and Search ReferenceId link targets
+            /// (F2 Fit Round — opened only via child-unit Link Target with FitRoundId).
+            /// </summary>
+            public bool ExcludeFromPeerNavigation { get; set; }
             public short? TabSort { get; set; }
             public bool IsTemplateHeaderTab { get; set; }
             public bool IsMasterReferenceHeaderTab { get; set; }
@@ -1328,8 +1335,25 @@ WHERE TransactionID = @TransactionId";
                         grandName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase)
                         || grandName.StartsWith("View_", StringComparison.OrdinalIgnoreCase));
                     int? grandUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, grandTable);
-                    if (grandUnitId.HasValue)
-                        EnsureChildUnitParentSql(conn, tran, grandUnitId.Value, childUnitId.Value);
+                    if (!grandUnitId.HasValue)
+                        continue;
+
+                    EnsureChildUnitParentSql(conn, tran, grandUnitId.Value, childUnitId.Value);
+
+                    // Views have no DB FKs — wire grandchild.FK → child.PK when the same column exists
+                    // (e.g. View_TchpFitMeasurementByPom.PomSpecLineId → TchpPomSpecLine.PomSpecLineId).
+                    foreach (string linkCol in new[] { "PomSpecLineId", "FitRoundId", "GradeRuleId" })
+                    {
+                        int? childPkFieldId = ResolveTransactionFieldIdSql(conn, tran, childUnitId.Value, linkCol);
+                        if (!childPkFieldId.HasValue)
+                            continue;
+                        if (ResolveTransactionFieldIdSql(conn, tran, grandUnitId.Value, linkCol).HasValue)
+                        {
+                            SetFieldLinkToParentPrimaryKeySql(
+                                conn, tran, grandUnitId.Value, linkCol, childPkFieldId.Value);
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -1739,6 +1763,11 @@ UPDATE dbo.AppTransactionField SET
     ControlType = @Ddl,
     EntityId = @EntityId,
     DDLParentLevelID = @ParentFieldId,
+    DataRetrieveType = @DataRetrieveType,
+    CascadingRelationTable = N'TchpSizeRunSize',
+    CascadingRelationTableSchemaOwner = N'dbo',
+    CascadingRelationTableParentKeyField = N'SizeRunId',
+    CascadingRelationTableChildKeyField = N'SizeRunSizeId',
     IsVisible = 1,
     AppModifiedDate = GETDATE()
 WHERE TransactionFieldID = @FieldId";
@@ -1746,6 +1775,7 @@ WHERE TransactionFieldID = @FieldId";
                     cmd.Parameters.AddWithValue("@EntityId", sizeRunDetailEntityId.Value);
                     cmd.Parameters.AddWithValue("@ParentFieldId",
                         sizeRunFieldId.HasValue ? (object)sizeRunFieldId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@DataRetrieveType", (int)EmAppCascadingSourceType.RelationalTable);
                     cmd.Parameters.AddWithValue("@FieldId", baseSizeFieldId.Value);
                     cmd.ExecuteNonQuery();
                 }

@@ -59,30 +59,21 @@ namespace APP.BL.DataMigration.PlmMigration
                 .ToList();
 
             var formStatusByTabId = LoadTabTransactionFormStatus(conn);
+            var formStatusByIntegrationId = LoadTabTransactionFormStatusByIntegrationId(conn);
             int workTotal = readyTabs.Count(t =>
-                !formStatusByTabId.TryGetValue(t.TabId, out var status) || !status.HasCompleteLayout);
+                !HasCompleteTabFormLayout(formStatusByTabId, formStatusByIntegrationId, t));
             int workIndex = 0;
 
             foreach (var tab in readyTabs)
             {
-                if (formStatusByTabId.TryGetValue(tab.TabId, out var status) && status.HasCompleteLayout)
+                if (HasCompleteTabFormLayout(formStatusByTabId, formStatusByIntegrationId, tab))
                     continue;
 
                 workIndex++;
                 int pct = 78 + (int)(10.0 * workIndex / Math.Max(1, workTotal));
                 progressCallback?.Invoke(pct, $"Generating form layout for tab {tab.TabName} ({workIndex}/{workTotal})…");
 
-                int? transactionId = status?.TransactionId;
-                if (!transactionId.HasValue)
-                {
-                    // DW Blueprint orphan grids use IntegrationId Grid_{gridId} with TabId = -gridId.
-                    string integrationId = tab.TabId < 0
-                        ? (string.IsNullOrWhiteSpace(tab.TabName) ? $"Grid_{-tab.TabId}" : tab.TabName)
-                        : $"Tab_{tab.TabId}";
-                    transactionId = GetTransactionIdByIntegrationId(conn, null, integrationId);
-                    if (!transactionId.HasValue && tab.TabId < 0)
-                        transactionId = GetTransactionIdByIntegrationId(conn, null, $"Grid_{-tab.TabId}");
-                }
+                int? transactionId = ResolveTabTransactionIdForForm(conn, formStatusByTabId, formStatusByIntegrationId, tab);
                 if (!transactionId.HasValue)
                     throw new InvalidOperationException($"Transaction not found for tab {tab.TabId} ({tab.TabName}).");
 
@@ -96,9 +87,94 @@ namespace APP.BL.DataMigration.PlmMigration
             }
         }
 
+        private static bool HasCompleteTabFormLayout(
+            Dictionary<int, TabTransactionFormStatus> formStatusByTabId,
+            Dictionary<string, TabTransactionFormStatus> formStatusByIntegrationId,
+            PlmTemplateTabRow tab)
+        {
+            if (formStatusByTabId.TryGetValue(tab.TabId, out var byTabId) && byTabId.HasCompleteLayout)
+                return true;
+
+            if (!string.IsNullOrWhiteSpace(tab.IntegrationId)
+                && formStatusByIntegrationId.TryGetValue(tab.IntegrationId.Trim(), out var byIntegration)
+                && byIntegration.HasCompleteLayout)
+                return true;
+
+            return false;
+        }
+
+        private static int? ResolveTabTransactionIdForForm(
+            SqlConnection conn,
+            Dictionary<int, TabTransactionFormStatus> formStatusByTabId,
+            Dictionary<string, TabTransactionFormStatus> formStatusByIntegrationId,
+            PlmTemplateTabRow tab)
+        {
+            if (formStatusByTabId.TryGetValue(tab.TabId, out var status) && status.TransactionId > 0)
+                return status.TransactionId;
+
+            if (!string.IsNullOrWhiteSpace(tab.IntegrationId))
+            {
+                string integrationId = tab.IntegrationId.Trim();
+                if (formStatusByIntegrationId.TryGetValue(integrationId, out var byIntegration)
+                    && byIntegration.TransactionId > 0)
+                    return byIntegration.TransactionId;
+
+                int? byId = GetTransactionIdByIntegrationId(conn, null, integrationId);
+                if (byId.HasValue)
+                    return byId;
+            }
+
+            // DW Blueprint orphan grids use IntegrationId Grid_{gridId} with TabId = -gridId.
+            string fallbackIntegrationId = tab.TabId < 0
+                ? (string.IsNullOrWhiteSpace(tab.TabName) ? $"Grid_{-tab.TabId}" : tab.TabName)
+                : $"Tab_{tab.TabId}";
+            int? transactionId = GetTransactionIdByIntegrationId(conn, null, fallbackIntegrationId);
+            if (!transactionId.HasValue && tab.TabId < 0)
+                transactionId = GetTransactionIdByIntegrationId(conn, null, $"Grid_{-tab.TabId}");
+            return transactionId;
+        }
+
         private static Dictionary<int, TabTransactionFormStatus> LoadTabTransactionFormStatus(SqlConnection conn)
         {
             var dict = new Dictionary<int, TabTransactionFormStatus>();
+            foreach (var entry in LoadAllTabTransactionFormStatuses(conn))
+            {
+                string integrationId = entry.IntegrationId;
+                int tabId;
+                if (integrationId.StartsWith("Tab_", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!int.TryParse(integrationId.Substring(4), out tabId))
+                        continue;
+                }
+                else if (integrationId.StartsWith("Grid_", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Orphan DW grids are planned with TabId = -PlmGridId.
+                    if (!int.TryParse(integrationId.Substring(5), out int gridId) || gridId <= 0)
+                        continue;
+                    tabId = -gridId;
+                }
+                else
+                {
+                    continue;
+                }
+
+                dict[tabId] = entry.Status;
+            }
+
+            return dict;
+        }
+
+        private static Dictionary<string, TabTransactionFormStatus> LoadTabTransactionFormStatusByIntegrationId(SqlConnection conn)
+        {
+            var dict = new Dictionary<string, TabTransactionFormStatus>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in LoadAllTabTransactionFormStatuses(conn))
+                dict[entry.IntegrationId] = entry.Status;
+            return dict;
+        }
+
+        private static List<(string IntegrationId, TabTransactionFormStatus Status)> LoadAllTabTransactionFormStatuses(SqlConnection conn)
+        {
+            var list = new List<(string IntegrationId, TabTransactionFormStatus Status)>();
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText = @"
@@ -107,8 +183,7 @@ SELECT t.TransactionID, t.FormID, t.IntegrationId,
     f.LayoutType
 FROM dbo.AppTransaction t
 LEFT JOIN dbo.AppForm f ON f.FormID = t.FormID
-WHERE t.IntegrationId LIKE 'Tab[_]%'
-   OR t.IntegrationId LIKE 'Grid[_]%';";
+WHERE t.IntegrationId IS NOT NULL AND LTRIM(RTRIM(t.IntegrationId)) <> '';";
                 using (var reader = cmd.ExecuteReader())
                 {
                     while (reader.Read())
@@ -117,36 +192,18 @@ WHERE t.IntegrationId LIKE 'Tab[_]%'
                         if (string.IsNullOrWhiteSpace(integrationId))
                             continue;
 
-                        int tabId;
-                        if (integrationId.StartsWith("Tab_", StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (!int.TryParse(integrationId.Substring(4), out tabId))
-                                continue;
-                        }
-                        else if (integrationId.StartsWith("Grid_", StringComparison.OrdinalIgnoreCase))
-                        {
-                            // Orphan DW grids are planned with TabId = -PlmGridId.
-                            if (!int.TryParse(integrationId.Substring(5), out int gridId) || gridId <= 0)
-                                continue;
-                            tabId = -gridId;
-                        }
-                        else
-                        {
-                            continue;
-                        }
-
-                        dict[tabId] = new TabTransactionFormStatus
+                        list.Add((integrationId.Trim(), new TabTransactionFormStatus
                         {
                             TransactionId = reader.GetInt32(0),
                             FormId = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1),
                             LayoutItemCount = reader.IsDBNull(3) ? 0 : reader.GetInt32(3),
                             LayoutType = reader.IsDBNull(4) ? (int?)null : reader.GetInt32(4)
-                        };
+                        }));
                     }
                 }
             }
 
-            return dict;
+            return list;
         }
 
         private static void BuildCompleteDataModelTemplates(
