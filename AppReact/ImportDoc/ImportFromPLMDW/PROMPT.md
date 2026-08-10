@@ -524,8 +524,8 @@ When `dwTabImportConfig` includes a `techPack` block (α bindings):
 | Link without DB FK | **L2** — sibling `StyleSpecId` → Root.`ReferenceId`; children **attachToRoot** with `StyleSpecId` → Root.`ReferenceId` |
 | SizeRunSizes grid | **V1** — **Grading tab only**: ROOT child on `View_TchpStyleActiveSizeRunSizes`. Link `StyleSpecId` → Root.`ReferenceId`. **Not on Form layout** (pivot column source only). Do **not** add to Fit tabs. |
 | GradeValue pivot | **P1** — `TchpGradeValue.EmGridViewDisplayType = ChildUnitPivotColumns (7)`. `SizeRunSizeId` = IsPivotColumn + `MatrixForeignKeyFieldId` → View.`SizeRunSizeId`. `GradingDelta` = IsPivotValue. `MatrixKeyTransactionFieldId` → View.`IsVisible` (DimensionCode filter). |
-| BaseSize cascade | **S2** — `TchpStyleSpec.BaseSizeDetailId` Depend On DDL = `SizeRunId`; entities `SizeRun` / `SizeRunDetail` |
-| Grading field golden | **G1** — see §TechPack Grading golden field template (widths / sort / entities). `IsFixed` stays TextBox; `GradeRuleSetId` → DDL `TchpGradeRuleSet`; `UnitOfMeasure` stays TextBox (+ Entity ok). |
+| BaseSize cascade | **S2** — `TchpStyleSpec.BaseSizeDetailId` Depend On DDL = `SizeRunId`; entities `SizeRun` / `SizeRunDetail`; **RelationalTable** cascade: `CascadingRelationTable=TchpSizeRunSize`, Schema=`dbo`, ParentKey=`SizeRunId`, ChildKey=`SizeRunSizeId` (not only `DDLParentLevelID`) |
+| Grading field golden | **G1** — see §TechPack Grading golden field template (widths / sort / entities). `IsFixed` stays TextBox; `GradeRuleSetId` → DDL `TchpGradeRuleSet`; `UnitOfMeasure` stays TextBox (+ Entity ok). **`VisibleSizes` is Grading-only** (with V1 SizeRunSizes view) — do **not** add to Fit Summary / Fit Round StyleSpec. |
 | SpecFit ActualValue | `COALESCE(ReviseN, SampleN)` → `TchpFitMeasurement.ActualValue` |
 | Fit RoundNumber source | **R1** — digit **N** in SpecFit columns `SampleN` / `ReviseN` (not Tab Sort). PLM Tab names (“Fit 1”, “Fit 2”, …) use the same N. |
 | FIT import exception | **FX1** — Fit-family tabs do **not** follow “1 Tab → 1 sibling”. See §TechPack Fit (FX1 / F2 / F3). |
@@ -565,7 +565,7 @@ Run **3b before Phase D** so views exist when Blueprint Validate/Execute resolve
 | Unit | Table | Kind |
 |------|-------|------|
 | Root | `Plm_ReferenceBasicInfo` (or template root) | Master |
-| Sibling | `TchpStyleSpec` | Shared StyleSpec |
+| Sibling | `TchpStyleSpec` | Shared StyleSpec — SizeRun / BaseSize / UOM only; **no `VisibleSizes`** (Grading/V1 only) |
 | Sibling | `Plm_FitSummary` | Slim Summary blocks |
 | Child | `TchpFitRound` | One row per round; Link Target → FIT ROUND TX |
 | Child (F3, optional on Form) | `TchpPomSpecLine` | All POMs for StyleSpec |
@@ -645,7 +645,7 @@ Apply on tabs that have `TchpPomSpecLine` (+ GradeValue / SizeRunSizes view):
 | SizeRunId | DDL (1) | SizeRun | 100 | 20 | 1 | |
 | BaseSizeDetailId | DDL (1) | SizeRunDetail | 100 | 30 | 1 | `DDLParentLevelID` = SizeRunId |
 | UnitOfMeasure | TextBox (2) | UnitOfMeasure | 100 | 40 | 1 | keep TextBox |
-| VisibleSizes | **MultiSelectDDL (53)** | SizeRunDetail | 200 | 45 | 1 | `DDLParentLevelID` = SizeRunId; nvarchar pipe-delimited **SizeRunSizeId**; NULL/empty = show all Dimension-visible sizes |
+| VisibleSizes | **MultiSelectDDL (53)** | SizeRunDetail | 200 | 45 | 1 | **Grading TX only** (V1). `DDLParentLevelID` = SizeRunId; RelationalTable cascade to `TchpSizeRunSize`; nvarchar pipe-delimited **SizeRunSizeId**; NULL/empty = show all Dimension-visible sizes. **Omit on Fit Summary / Fit Round.** |
 
 **TchpPomSpecLine**
 

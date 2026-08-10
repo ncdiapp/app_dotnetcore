@@ -836,8 +836,75 @@ WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'UnitOfMeasure'";
                 cmd.ExecuteNonQuery();
             }
 
-            // VisibleSizes: MultiSelectDDL SizeRunDetail; Depend On SizeRunId; pipe-delimited SizeRunSizeId
-            EnsureTechPackStyleSpecVisibleSizesField(conn, tran, styleSpecUnitId.Value, sizeRunDetailEntityId, sizeRunFieldId);
+            // VisibleSizes: Grading / V1 only (SizeRunSizes pivot whitelist). Not on Fit Summary StyleSpec.
+            if (PlanUsesGradingVisibleSizes(plan))
+            {
+                EnsureTechPackStyleSpecVisibleSizesField(conn, tran, styleSpecUnitId.Value, sizeRunDetailEntityId, sizeRunFieldId);
+            }
+            else
+            {
+                RemoveTechPackStyleSpecVisibleSizesField(conn, tran, styleSpecUnitId.Value);
+            }
+        }
+
+        /// <summary>
+        /// VisibleSizes is only for Grading StyleSpec (feeds View_TchpStyleActiveSizeRunSizes.IsVisible).
+        /// Fit Summary / Fit Round StyleSpec siblings must not carry this field.
+        /// </summary>
+        private static bool PlanUsesGradingVisibleSizes(TemplateTabExecutionPlan plan)
+        {
+            if (plan == null)
+                return false;
+
+            if (plan.TechPackGradeValuePivotBindings != null && plan.TechPackGradeValuePivotBindings.Count > 0)
+                return true;
+
+            foreach (var child in plan.ChildUnitDefs ?? Enumerable.Empty<PlmDwBlueprintChildUnitDto>())
+            {
+                if (child?.AppTableName != null
+                    && (child.AppTableName.IndexOf("View_TchpStyleActiveSizeRunSizes", StringComparison.OrdinalIgnoreCase) >= 0
+                        || child.AppTableName.IndexOf("TchpGradeValue", StringComparison.OrdinalIgnoreCase) >= 0))
+                    return true;
+
+                if (child?.GrandChildAppTableNames == null)
+                    continue;
+                foreach (var grand in child.GrandChildAppTableNames)
+                {
+                    if (string.IsNullOrWhiteSpace(grand))
+                        continue;
+                    if (grand.IndexOf("View_TchpStyleActiveSizeRunSizes", StringComparison.OrdinalIgnoreCase) >= 0
+                        || grand.IndexOf("TchpGradeValue", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Drop StyleSpec.VisibleSizes (and layout refs) when not a Grading TX.
+        /// </summary>
+        private static void RemoveTechPackStyleSpecVisibleSizesField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int styleSpecUnitId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+DELETE li
+FROM dbo.AppFormLayoutItem li
+INNER JOIN dbo.AppTransactionField tf ON tf.TransactionFieldID = li.TransactionFieldID
+WHERE tf.TransactionUnitID = @UnitId
+  AND tf.DataBaseFieldName = N'VisibleSizes';
+
+DELETE FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = N'VisibleSizes';";
+                cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                cmd.ExecuteNonQuery();
+            }
         }
 
         /// <summary>
