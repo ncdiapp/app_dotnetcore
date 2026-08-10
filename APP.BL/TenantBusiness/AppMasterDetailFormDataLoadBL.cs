@@ -863,6 +863,9 @@ namespace App.BL
 
                 AppCascadingBL.SetupIntialCscadingFieldDataSource(transactionExDto, rootAppformDataDto, true);
                 AppCascadingBL.SetupIntialAutoCompleteFieldDataSource(transactionExDto, rootAppformDataDto, true);
+                // Query DDL (DdlQueryText, no EntityId) is not covered by cascading parents —
+                // load into DictCascadingFiledDataSource so grid DataMaps can display labels.
+                SetupDdlQueryLookItem(transactionExDto, rootAppformDataDto);
 
                 rootAppformDataDto.IsNew = true;
 

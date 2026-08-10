@@ -81,8 +81,8 @@ function Generate-TchpImportSqlFile($config, [string]$outDir) {
     & $add '-- L2: TchpStyleSpec.StyleSpecId = Root.ReferenceId (no identity; sibling PK = parent PK).'
     & $add "-- S1: SizeRun/BaseSize/UOM from Grading tab $sourceTabId ($gradingDw)."
     & $add '-- UOM: PLM tblUnitOfMeasure (not on tenant) -> CM|INCH; unmatched defaults to CM.'
-    & $add '-- SpecFit ActualValue = COALESCE(blank-safe ReviseN, SampleN). DW often stores '''' not NULL for empty Revise — NULLIF required.'
-    & $add '-- Comments tabs do not host Fit grid.'
+    & $add '-- SpecFit ActualValue = SampleN only (PLM Meas N). ReviseN is Rev.Spec — do not COALESCE into ActualValue.'
+    & $add '-- Blank-safe NULLIF on Sample; Comments tabs do not host Fit grid.'
     & $add '-- Prerequisites: Tchp foundation (ImportPlmPomAndGrading); Plm_* steps 1-3.'
     & $add "-- Size_Run=$sizeDwCol Base_Size=$baseDwCol Measure_Unit=$uomDwCol"
     & $add "-- SpecGrading=$sgDw SpecFit=$sfDw PlmUom=$plmRef.tblUnitOfMeasure"
@@ -195,20 +195,26 @@ WHERE TRY_CONVERT(DECIMAL(10,3), g.$($gc.DwColumn)) IS NOT NULL
     if ($sfDw -and $sfBodyPartCol -and $sfRoundPairs.Count -gt 0) {
         $fitUnions = New-Object System.Collections.Generic.List[string]
         foreach ($rp in $sfRoundPairs) {
-            # DW nvarchar cells are often '' (not NULL). COALESCE('', Sample) keeps '' and drops Sample —
-            # wrap both sides with NULLIF(LTRIM(RTRIM(...)), '') before COALESCE(Revise, Sample).
-            $sampleRaw = if ($rp.SampleCol) { "g.$($rp.SampleCol)" } else { 'NULL' }
-            $reviseRaw = if ($rp.ReviseCol) { "g.$($rp.ReviseCol)" } else { 'NULL' }
-            $sampleExpr = "NULLIF(LTRIM(RTRIM($sampleRaw)), N'')"
-            $reviseExpr = "NULLIF(LTRIM(RTRIM($reviseRaw)), N'')"
-            $actualExpr = "TRY_CONVERT(DECIMAL(10,3), COALESCE($reviseExpr, $sampleExpr))"
+            # PLM SpecFit: SampleN = Meas N (actual measurement); ReviseN = Rev.Spec N (revised target).
+            # ActualValue must be SampleN only — never COALESCE(Revise, Sample).
+            # DW nvarchar cells are often '' (not NULL) — NULLIF blank before TRY_CONVERT.
+            if (-not $rp.SampleCol) { continue }
+            $sampleExpr = "NULLIF(LTRIM(RTRIM(g.$($rp.SampleCol))), N'')"
+            $actualExpr = "TRY_CONVERT(DECIMAL(10,3), $sampleExpr)"
+            # Round discovery: also treat blank-safe Revise as evidence the round exists (header/spec only).
+            $roundPresentParts = @($actualExpr)
+            if ($rp.ReviseCol) {
+                $revisePresent = "TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.$($rp.ReviseCol))), N''))"
+                $roundPresentParts += $revisePresent
+            }
+            $roundPresentExpr = "(" + (($roundPresentParts | ForEach-Object { "$_ IS NOT NULL" }) -join ' OR ') + ")"
             [void]$fitUnions.Add(@"
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.$sfBodyPartCol) AS BodyPartRaw,
   $($rp.Round) AS RoundNumber,
   $actualExpr AS ActualValue
 FROM $dwRef.$sfDw g
 WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
-  AND $actualExpr IS NOT NULL
+  AND $roundPresentExpr
 "@.Trim())
         }
         $fitUnionSql = $fitUnions -join "`r`nUNION ALL`r`n"
@@ -240,11 +246,27 @@ WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
         & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, m.ProductReferenceID)'
         & $add 'INNER JOIN dbo.TchpFitRound fr ON fr.StyleSpecId = ss.StyleSpecId AND fr.RoundNumber = m.RoundNumber'
         & $add 'INNER JOIN dbo.TchpPomSpecLine pl ON pl.StyleSpecId = ss.StyleSpecId AND pl.BodyPartId = m.BodyPartRaw'
-        & $add 'WHERE NOT EXISTS ('
+        & $add 'WHERE m.ActualValue IS NOT NULL'
+        & $add '  AND NOT EXISTS ('
         & $add '  SELECT 1 FROM dbo.TchpFitMeasurement fm'
         & $add '  WHERE fm.FitRoundId = fr.FitRoundId AND fm.PomSpecLineId = pl.PomSpecLineId'
         & $add ');'
         & $add 'PRINT N''TchpFitMeasurement insert done. Rows='' + CAST(@@ROWCOUNT AS NVARCHAR(20));'
+        & $add ''
+        & $add ';WITH meas AS ('
+        & $add $fitUnionSql
+        & $add ')'
+        & $add 'UPDATE fm'
+        & $add 'SET fm.ActualValue = m.ActualValue'
+        & $add 'FROM dbo.TchpFitMeasurement fm'
+        & $add 'INNER JOIN dbo.TchpFitRound fr ON fr.FitRoundId = fm.FitRoundId'
+        & $add 'INNER JOIN dbo.TchpPomSpecLine pl ON pl.PomSpecLineId = fm.PomSpecLineId'
+        & $add 'INNER JOIN meas m ON TRY_CONVERT(INT, m.ProductReferenceID) = fr.StyleSpecId'
+        & $add '  AND m.RoundNumber = fr.RoundNumber'
+        & $add '  AND m.BodyPartRaw = pl.BodyPartId'
+        & $add 'WHERE m.ActualValue IS NOT NULL'
+        & $add '  AND (fm.ActualValue IS NULL OR fm.ActualValue <> m.ActualValue);'
+        & $add 'PRINT N''TchpFitMeasurement update done. Rows='' + CAST(@@ROWCOUNT AS NVARCHAR(20));'
         & $add ''
 
         # FX1: skeleton Plm_FitRoundInfo rows (1:1 FitRoundId). Semantic columns filled when fitRoundInfo.semanticColumns configured.

@@ -9,6 +9,8 @@ import TransactionReportEditor from './ApplicationFormBuilder/TransactionReportE
 import TransactionCommandActionEditor from './ApplicationFormBuilder/TransactionCommandMgt';
 import TransactionNavigationEditor from './TransactionNavigationEditor';
 import FormDesign from '../formMgt/FormDesign';
+import appHelper from '../../helper/appHelper';
+import { PopupStackLayer, usePopupZIndex } from '../formMgt/popupStack';
 
 // TransactionOrganizedType: 1 = Master Detail (Form Model), 3 = List Edit
 const EmTransactionOrganizedType = { MasterDetail: 1, List: 3 } as const;
@@ -94,6 +96,13 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
   initialSelectedCommandId = null,
 }) => {
   const { theme } = useTheme();
+  // Must stack above linked form popups (EmbeddedLinkedPopupFrame starts at 10000+).
+  // Hardcoded z-[9999] opened behind "Open Fit Round" / other form popups.
+  const popupFloorZ = useMemo(
+    () => (isOpen ? appHelper.getNextPopupZIndex() : undefined),
+    [isOpen]
+  );
+  const popupZIndex = usePopupZIndex(popupFloorZ);
   // IMPORTANT:
   // `onRefresh` is intended to refresh the *host page* after the popup closes.
   // Child pages within the popup may have their own Save/Refresh buttons; those must NOT
@@ -371,7 +380,11 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className={`fixed inset-0 ${theme.default} p-1 flex items-center justify-center z-[9999]`}>
+    <PopupStackLayer zIndex={popupZIndex}>
+      <div
+        className={`fixed inset-0 ${theme.default} p-1 flex items-center justify-center`}
+        style={{ zIndex: popupZIndex }}
+      >
       <div
         className={`w-full h-full flex flex-col gap-1 overflow-hidden rounded-lg border ${theme.default}`}       
         onClick={(e) => e.stopPropagation()}
@@ -421,7 +434,8 @@ const ApplicationFormBuilder: React.FC<ApplicationFormBuilderProps> = ({
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </PopupStackLayer>
   );
 };
 

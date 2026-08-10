@@ -41,6 +41,31 @@ import {
   isRuntimeTransactionFieldVisible,
 } from './flexLayoutItemHelper';
 
+/**
+ * Wijmo DataMap uses strict key equality. Grid cell values are often string ("1") while
+ * LookupItemDto.Id arrives as number (1) from JSON — display then shows raw Id until edit.
+ * Include both number and string keys so Query DDL / entity maps resolve in both modes.
+ */
+function createLookupDataMap(items: any[] | null | undefined): DataMap | null {
+  if (!Array.isArray(items) || items.length === 0) return null;
+  const dual: Array<{ Id: any; Display: string }> = [];
+  for (const it of items) {
+    if (!it || it.Id === undefined) continue;
+    const display = it.Display != null ? String(it.Display) : '';
+    const id = it.Id;
+    dual.push({ Id: id, Display: display });
+    if (id === null || id === '') continue;
+    const asStr = String(id);
+    if (asStr !== id) dual.push({ Id: asStr, Display: display });
+    const asNum = Number(id);
+    if (Number.isFinite(asNum) && asNum !== id && String(asNum) === asStr.trim()) {
+      dual.push({ Id: asNum, Display: display });
+    }
+  }
+  if (dual.length === 0) return null;
+  return new DataMap(dual, 'Id', 'Display');
+}
+
 interface DataGridLayoutProps {
   unitExDto: any;
   unitId: number | string;
@@ -1877,17 +1902,32 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     const dictEntity = model?.currentFormStructure?.DictStandAloneEntityDataSource ?? {};
     const dictMapping = model?.currentFormStructure?.DictStandAloneFiledIDMappingEntityID ?? {};
     const entityId = dictMapping[fieldIdStr];
-    if (entityId == null) return null;
+    if (entityId == null || entityId === '') return null;
     const items = dictEntity[String(entityId)] ?? dictEntity[entityId] ?? [];
     if (!Array.isArray(items)) return null;
-    return new DataMap(items, 'Id', 'Display');
+    return createLookupDataMap(items);
   }, []);
+
+  /** Entity standalone map, or Query DDL items from root DictCascadingFiledDataSource. */
+  const buildDisplayDataMapForFieldId = useCallback(
+    (model: any, fieldIdStr: string, formDataFallback?: any): DataMap | null => {
+      if (!fieldIdStr) return null;
+      const standalone = buildStandaloneDataMapFromFormStructure(model, fieldIdStr);
+      if (standalone) return standalone;
+      const queryItems =
+        model?.currentFormData?.DictCascadingFiledDataSource?.[fieldIdStr] ??
+        formDataFallback?.DictCascadingFiledDataSource?.[fieldIdStr] ??
+        masterDetailFormDataRef.current?.DictCascadingFiledDataSource?.[fieldIdStr];
+      return createLookupDataMap(queryItems);
+    },
+    [buildStandaloneDataMapFromFormStructure]
+  );
 
   // Stable callbacks for the projection grid so a fold-driven parent re-render (async) does NOT
   // re-render the (memoized) grid and disrupt the cell the user is currently editing.
   const resolveProjectionDataMap = useCallback(
-    (fieldId: any) => buildStandaloneDataMapFromFormStructure(dataModelRef.current, String(fieldId)),
-    [buildStandaloneDataMapFromFormStructure]
+    (fieldId: any) => buildDisplayDataMapForFieldId(dataModelRef.current, String(fieldId)),
+    [buildDisplayDataMapForFieldId]
   );
   const resolveProjectionWidth = useCallback(
     (fieldId: any) => projectionWidthByFieldId.get(String(fieldId)),
@@ -1915,13 +1955,15 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       if (!fieldIdStr) return;
       const field = fields.find((f: any) => String(f.Id) === fieldIdStr);
       if (!field || !isDdLikeControlType(field.ControlType)) return;
-      const dm = buildStandaloneDataMapFromFormStructure(dataModelRef.current, fieldIdStr);
+      // Query DDL (no EntityId) lives in DictCascadingFiledDataSource — must restore that too,
+      // otherwise React re-render leaves raw Id after closing the editor.
+      const dm = buildDisplayDataMapForFieldId(dataModelRef.current, fieldIdStr);
       if (dm) {
         col.dataMap = dm;
         flex.invalidate?.();
       }
     },
-    [buildStandaloneDataMapFromFormStructure, fields, isDdLikeControlType]
+    [buildDisplayDataMapForFieldId, fields, isDdLikeControlType]
   );
 
   // Bind grid data to a stable CollectionView instance. Replacing `itemsSource` with a new
@@ -1952,15 +1994,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     if (!isDdLikeControlType(field?.ControlType)) return null;
     const fieldIdStr = field.Id != null ? String(field.Id) : '';
     if (!fieldIdStr) return null;
-    const standalone = buildStandaloneDataMapFromFormStructure(dataModel, fieldIdStr);
-    if (standalone) return standalone;
-    const queryItems =
-      dataModel?.currentFormData?.DictCascadingFiledDataSource?.[fieldIdStr] ??
-      masterDetailFormDataRef.current?.DictCascadingFiledDataSource?.[fieldIdStr];
-    if (Array.isArray(queryItems) && queryItems.length > 0) {
-      return new DataMap(queryItems, 'Id', 'Display');
-    }
-    return null;
+    return buildDisplayDataMapForFieldId(dataModel, fieldIdStr, dataModel?.currentFormData);
   };
 
   const getDataMapForSourceField = (field: any): DataMap | null => {
@@ -2070,13 +2104,13 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       if (!col) return;
       const fieldIdStr = String(col.name ?? '');
       if (!fieldIdStr) return;
-      const dm = buildStandaloneDataMapFromFormStructure(dataModelRef.current, fieldIdStr);
+      const dm = buildDisplayDataMapForFieldId(dataModelRef.current, fieldIdStr);
       if (dm) {
         col.dataMap = dm;
         flex.invalidate?.();
       }
     },
-    [buildStandaloneDataMapFromFormStructure]
+    [buildDisplayDataMapForFieldId]
   );
 
   /** Refresh cascading lookup buckets on the child row (Angular grandchild: childRow.DictCascadingFiledDataSource). */
@@ -2179,7 +2213,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       }
 
       if (lookupItems && lookupItems.length > 0) {
-        col.dataMap = new DataMap(lookupItems, 'Id', 'Display');
+        col.dataMap = createLookupDataMap(lookupItems);
       }
     },
     [getProjectionFieldDbName, getGridRowsForThisUnit, isGridReadOnly, refreshProjectionRowCascading]
@@ -2285,7 +2319,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     const lookupItems = resolveCascadingLookupItemsForCellEdit(currentDataModel, rowData, fieldId);
 
     if (lookupItems) {
-      col.dataMap = new DataMap(lookupItems, 'Id', 'Display');
+      col.dataMap = createLookupDataMap(lookupItems);
     }
   };
 
