@@ -81,7 +81,8 @@ function Generate-TchpImportSqlFile($config, [string]$outDir) {
     & $add '-- L2: TchpStyleSpec.StyleSpecId = Root.ReferenceId (no identity; sibling PK = parent PK).'
     & $add "-- S1: SizeRun/BaseSize/UOM from Grading tab $sourceTabId ($gradingDw)."
     & $add '-- UOM: PLM tblUnitOfMeasure (not on tenant) -> CM|INCH; unmatched defaults to CM.'
-    & $add '-- SpecFit ActualValue = COALESCE(ReviseN, SampleN). Comments tabs do not host Fit grid.'
+    & $add '-- SpecFit ActualValue = COALESCE(blank-safe ReviseN, SampleN). DW often stores '''' not NULL for empty Revise — NULLIF required.'
+    & $add '-- Comments tabs do not host Fit grid.'
     & $add '-- Prerequisites: Tchp foundation (ImportPlmPomAndGrading); Plm_* steps 1-3.'
     & $add "-- Size_Run=$sizeDwCol Base_Size=$baseDwCol Measure_Unit=$uomDwCol"
     & $add "-- SpecGrading=$sgDw SpecFit=$sfDw PlmUom=$plmRef.tblUnitOfMeasure"
@@ -194,15 +195,20 @@ WHERE TRY_CONVERT(DECIMAL(10,3), g.$($gc.DwColumn)) IS NOT NULL
     if ($sfDw -and $sfBodyPartCol -and $sfRoundPairs.Count -gt 0) {
         $fitUnions = New-Object System.Collections.Generic.List[string]
         foreach ($rp in $sfRoundPairs) {
-            $sampleExpr = if ($rp.SampleCol) { "g.$($rp.SampleCol)" } else { 'NULL' }
-            $reviseExpr = if ($rp.ReviseCol) { "g.$($rp.ReviseCol)" } else { 'NULL' }
+            # DW nvarchar cells are often '' (not NULL). COALESCE('', Sample) keeps '' and drops Sample —
+            # wrap both sides with NULLIF(LTRIM(RTRIM(...)), '') before COALESCE(Revise, Sample).
+            $sampleRaw = if ($rp.SampleCol) { "g.$($rp.SampleCol)" } else { 'NULL' }
+            $reviseRaw = if ($rp.ReviseCol) { "g.$($rp.ReviseCol)" } else { 'NULL' }
+            $sampleExpr = "NULLIF(LTRIM(RTRIM($sampleRaw)), N'')"
+            $reviseExpr = "NULLIF(LTRIM(RTRIM($reviseRaw)), N'')"
+            $actualExpr = "TRY_CONVERT(DECIMAL(10,3), COALESCE($reviseExpr, $sampleExpr))"
             [void]$fitUnions.Add(@"
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.$sfBodyPartCol) AS BodyPartRaw,
   $($rp.Round) AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE($reviseExpr, $sampleExpr)) AS ActualValue
+  $actualExpr AS ActualValue
 FROM $dwRef.$sfDw g
 WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE($reviseExpr, $sampleExpr)) IS NOT NULL
+  AND $actualExpr IS NOT NULL
 "@.Trim())
         }
         $fitUnionSql = $fitUnions -join "`r`nUNION ALL`r`n"

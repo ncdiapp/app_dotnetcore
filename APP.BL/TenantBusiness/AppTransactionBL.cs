@@ -3635,42 +3635,38 @@ namespace App.BL
 
                 foreach (var aTableColumn in databaseTble.Columns)
                 {
-                    if (aTableColumn.Name.ToLower() != "AppCreatedByID".ToLower()
-                        && aTableColumn.Name.ToLower() != "AppCreatedDate".ToLower()
-                        && aTableColumn.Name.ToLower() != "AppModifiedDate".ToLower()
-                        && aTableColumn.Name.ToLower() != "AppModifiedByID".ToLower()
-                        && aTableColumn.Name.ToLower() != "AppCreatedByCompanyID".ToLower())
+                    if (ShouldExcludeDatabaseColumnFromTransactionField(aTableColumn))
+                        continue;
+
+                    AppTransactionFieldExDto aTransactionField = new AppTransactionFieldExDto();
+                    aTransactionField.SortOrder = (rootUnitDto.AppTransactionFieldList.Count + 1) * 10;
+                    aTransactionField.RowIdentityGuid = Guid.NewGuid();
+
+                    aTransactionField.DataBaseFieldName = aTableColumn.Name;
+                    aTransactionField.DisplayName = ConvertDbNameToDisplayName(aTableColumn.Name);
+
+                    aTransactionField.ControlType = (int)EmAppControlType.TextBox;
+
+                    int? dataType = ControlTypeValueConverter.ConvertValueToInt(aTableColumn.Tag);
+                    if (dataType.HasValue)
                     {
-                        AppTransactionFieldExDto aTransactionField = new AppTransactionFieldExDto();
-                        aTransactionField.SortOrder = (rootUnitDto.AppTransactionFieldList.Count + 1) * 10;
-                        aTransactionField.RowIdentityGuid = Guid.NewGuid();
-
-                        aTransactionField.DataBaseFieldName = aTableColumn.Name;
-                        aTransactionField.DisplayName = ConvertDbNameToDisplayName(aTableColumn.Name);
-
-                        aTransactionField.ControlType = (int)EmAppControlType.TextBox;
-
-                        int? dataType = ControlTypeValueConverter.ConvertValueToInt(aTableColumn.Tag);
-                        if (dataType.HasValue)
-                        {
-                            aTransactionField.DataType = dataType.Value;
-                        }
-
-                        aTransactionField.DisplayWidth = "100";
-                        aTransactionField.Nbdecimal = 0;
-                        aTransactionField.IsPrimaryKey = aTableColumn.IsPrimaryKey; ;
-                        aTransactionField.IsVisible = true;
-                        aTransactionField.IsReadonly = false;
-                        aTransactionField.IsGroupBy = false;
-                        aTransactionField.IsGridUseAvailableEntitySource = false;
-                        aTransactionField.IsNeedLog = false;
-                        aTransactionField.IsAllowEmpty = true;
-                        aTransactionField.IsConvertToUpperCase = false;
-                        aTransactionField.IsLinkToParentPrimaryKey = false;
-                        aTransactionField.DataRetrieveType = (int)EmAppCascadingSourceType.RelationalTable;
-
-                        rootUnitDto.AppTransactionFieldList.Add(aTransactionField);
+                        aTransactionField.DataType = dataType.Value;
                     }
+
+                    aTransactionField.DisplayWidth = "100";
+                    aTransactionField.Nbdecimal = 0;
+                    aTransactionField.IsPrimaryKey = aTableColumn.IsPrimaryKey; ;
+                    aTransactionField.IsVisible = true;
+                    aTransactionField.IsReadonly = false;
+                    aTransactionField.IsGroupBy = false;
+                    aTransactionField.IsGridUseAvailableEntitySource = false;
+                    aTransactionField.IsNeedLog = false;
+                    aTransactionField.IsAllowEmpty = true;
+                    aTransactionField.IsConvertToUpperCase = false;
+                    aTransactionField.IsLinkToParentPrimaryKey = false;
+                    aTransactionField.DataRetrieveType = (int)EmAppCascadingSourceType.RelationalTable;
+
+                    rootUnitDto.AppTransactionFieldList.Add(aTransactionField);
                 }
 
                 aHierarchyAppTransactionExDto.AppTransactionUnitList.Add(rootUnitDto);
@@ -3847,11 +3843,7 @@ namespace App.BL
 
             foreach (var col in dbTable.Columns)
             {
-                if (col.Name.Equals("AppCreatedByID", StringComparison.OrdinalIgnoreCase)
-                    || col.Name.Equals("AppCreatedDate", StringComparison.OrdinalIgnoreCase)
-                    || col.Name.Equals("AppModifiedDate", StringComparison.OrdinalIgnoreCase)
-                    || col.Name.Equals("AppModifiedByID", StringComparison.OrdinalIgnoreCase)
-                    || col.Name.Equals("AppCreatedByCompanyID", StringComparison.OrdinalIgnoreCase))
+                if (ShouldExcludeDatabaseColumnFromTransactionField(col))
                     continue;
 
                 AppTransactionFieldExDto field = new AppTransactionFieldExDto();
@@ -3881,6 +3873,33 @@ namespace App.BL
             }
 
             return unit;
+        }
+
+        /// <summary>
+        /// Columns that must never become AppTransactionField when building a transaction from table schema
+        /// (audit columns + SQL Server timestamp/rowversion such as SystemTimeStamp).
+        /// </summary>
+        public static bool ShouldExcludeDatabaseColumnFromTransactionField(DatabaseColumn column)
+        {
+            if (column == null || string.IsNullOrWhiteSpace(column.Name))
+                return true;
+
+            if (column.Name.Equals("AppCreatedByID", StringComparison.OrdinalIgnoreCase)
+                || column.Name.Equals("AppCreatedDate", StringComparison.OrdinalIgnoreCase)
+                || column.Name.Equals("AppModifiedDate", StringComparison.OrdinalIgnoreCase)
+                || column.Name.Equals("AppModifiedByID", StringComparison.OrdinalIgnoreCase)
+                || column.Name.Equals("AppCreatedByCompanyID", StringComparison.OrdinalIgnoreCase)
+                || column.Name.Equals("SystemTimeStamp", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (!string.IsNullOrEmpty(column.DbDataType))
+            {
+                string dbType = column.DbDataType.Trim().ToLowerInvariant();
+                if (dbType == "timestamp" || dbType == "rowversion")
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>

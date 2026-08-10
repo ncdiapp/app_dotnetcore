@@ -3198,6 +3198,8 @@ namespace App.BL
             {
                 foreach (var aColumn in tableDto.DictNewColumnNameAndDto.Values)
                 {
+                    if (AppTransactionBL.ShouldExcludeDatabaseColumnFromTransactionField(aColumn))
+                        continue;
 
                     int? entityId = ControlTypeValueConverter.ConvertValueToInt(aColumn.NetName);
 
@@ -3242,6 +3244,9 @@ namespace App.BL
 
                     foreach (var aColumn in dbTable.Columns)
                     {
+                        if (AppTransactionBL.ShouldExcludeDatabaseColumnFromTransactionField(aColumn))
+                            continue;
+
                         int? entityId = null;
 
                         if (converterDto.DictColumnNameAndEntityId != null)

@@ -526,7 +526,7 @@ When `dwTabImportConfig` includes a `techPack` block (α bindings):
 | GradeValue pivot | **P1** — `TchpGradeValue.EmGridViewDisplayType = ChildUnitPivotColumns (7)`. `SizeRunSizeId` = IsPivotColumn + `MatrixForeignKeyFieldId` → View.`SizeRunSizeId`. `GradingDelta` = IsPivotValue. `MatrixKeyTransactionFieldId` → View.`IsVisible` (DimensionCode filter). |
 | BaseSize cascade | **S2** — `TchpStyleSpec.BaseSizeDetailId` Depend On DDL = `SizeRunId`; entities `SizeRun` / `SizeRunDetail`; **RelationalTable** cascade: `CascadingRelationTable=TchpSizeRunSize`, Schema=`dbo`, ParentKey=`SizeRunId`, ChildKey=`SizeRunSizeId` (not only `DDLParentLevelID`) |
 | Grading field golden | **G1** — see §TechPack Grading golden field template (widths / sort / entities). `IsFixed` stays TextBox; `GradeRuleSetId` → DDL `TchpGradeRuleSet`; `UnitOfMeasure` stays TextBox (+ Entity ok). **`VisibleSizes` is Grading-only** (with V1 SizeRunSizes view) — do **not** add to Fit Summary / Fit Round StyleSpec. |
-| SpecFit ActualValue | `COALESCE(ReviseN, SampleN)` → `TchpFitMeasurement.ActualValue` |
+| SpecFit ActualValue | `COALESCE(NULLIF(trim(ReviseN),''), NULLIF(trim(SampleN),''))` → `TchpFitMeasurement.ActualValue`. DW often stores empty string (not NULL) for unused Revise — bare `COALESCE(Revise, Sample)` would keep `''` and drop Sample (missing Fit rounds). |
 | Fit RoundNumber source | **R1** — digit **N** in SpecFit columns `SampleN` / `ReviseN` (not Tab Sort). PLM Tab names (“Fit 1”, “Fit 2”, …) use the same N. |
 | FIT import exception | **FX1** — Fit-family tabs do **not** follow “1 Tab → 1 sibling”. See §TechPack Fit (FX1 / F2 / F3). |
 | Fit transactions | **F2** — one **FIT SUMMARY** master TX + one **FIT ROUND** child TX (Child Unit Link Target). No per-round TX / no `Plm_Fit_1`…`Plm_Fit_8`. |
@@ -625,7 +625,7 @@ SpecFit DW columns SampleN / ReviseN
         ▼  RoundNumber = N
 TchpFitRound (StyleSpecId, RoundNumber, RoundType)
         │
-        ▼  COALESCE(ReviseN, SampleN)
+        ▼  COALESCE(blank-safe ReviseN, SampleN)
 TchpFitMeasurement (FitRoundId, PomSpecLineId ← BodyPart match)
 
 PLM Tab "Fit N" / "Fit N Comments" non-grid SubItems

@@ -3,7 +3,8 @@
 -- L2: TchpStyleSpec.StyleSpecId = Root.ReferenceId (no identity; sibling PK = parent PK).
 -- S1: SizeRun/BaseSize/UOM from Grading tab 4006 (PLM_DW_Tab_Grading_4006).
 -- UOM: PLM tblUnitOfMeasure (not on tenant) -> CM|INCH; unmatched defaults to CM.
--- SpecFit ActualValue = COALESCE(ReviseN, SampleN). Comments tabs do not host Fit grid.
+-- SpecFit ActualValue = COALESCE(blank-safe ReviseN, SampleN). DW often stores '' not NULL for empty Revise — NULLIF required.
+-- Comments tabs do not host Fit grid.
 -- Prerequisites: Tchp foundation (ImportPlmPomAndGrading); Plm_* steps 1-3.
 -- Size_Run=Size_Run_43_FK_tblSizeRun Base_Size=Base_Size_44_FK_tblSizeRunRotate Measure_Unit=Measure_Unit_58_FK_
 -- SpecGrading=PLM_DW_Grid_SpecGradingGrid_10 SpecFit=PLM_DW_Grid_SpecFitGrid_5 PlmUom=[plm_live_20260602].dbo.tblUnitOfMeasure
@@ -181,52 +182,52 @@ FROM (
   SELECT DISTINCT ProductReferenceID, RoundNumber FROM (
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   1 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise1_31, g.Sample1_30)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise1_31)), N''), NULLIF(LTRIM(RTRIM(g.Sample1_30)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise1_31, g.Sample1_30)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise1_31)), N''), NULLIF(LTRIM(RTRIM(g.Sample1_30)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   2 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise2_33, g.Sample2_32)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise2_33)), N''), NULLIF(LTRIM(RTRIM(g.Sample2_32)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise2_33, g.Sample2_32)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise2_33)), N''), NULLIF(LTRIM(RTRIM(g.Sample2_32)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   3 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise3_35, g.Sample3_34)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise3_35)), N''), NULLIF(LTRIM(RTRIM(g.Sample3_34)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise3_35, g.Sample3_34)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise3_35)), N''), NULLIF(LTRIM(RTRIM(g.Sample3_34)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   4 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise4_37, g.Sample4_36)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise4_37)), N''), NULLIF(LTRIM(RTRIM(g.Sample4_36)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise4_37, g.Sample4_36)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise4_37)), N''), NULLIF(LTRIM(RTRIM(g.Sample4_36)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   5 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise5_328, g.Sample5_326)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise5_328)), N''), NULLIF(LTRIM(RTRIM(g.Sample5_326)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise5_328, g.Sample5_326)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise5_328)), N''), NULLIF(LTRIM(RTRIM(g.Sample5_326)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   6 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise6_331, g.Sample6_329)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise6_331)), N''), NULLIF(LTRIM(RTRIM(g.Sample6_329)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise6_331, g.Sample6_329)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise6_331)), N''), NULLIF(LTRIM(RTRIM(g.Sample6_329)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   11 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULL, g.Sample11_377)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(NULL)), N''), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULL, g.Sample11_377)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(NULL)), N''), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N''))) IS NOT NULL
   ) x
 ) r
 INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, r.ProductReferenceID)
@@ -239,52 +240,52 @@ PRINT N'TchpFitRound insert done. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
 ;WITH meas AS (
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   1 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise1_31, g.Sample1_30)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise1_31)), N''), NULLIF(LTRIM(RTRIM(g.Sample1_30)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise1_31, g.Sample1_30)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise1_31)), N''), NULLIF(LTRIM(RTRIM(g.Sample1_30)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   2 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise2_33, g.Sample2_32)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise2_33)), N''), NULLIF(LTRIM(RTRIM(g.Sample2_32)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise2_33, g.Sample2_32)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise2_33)), N''), NULLIF(LTRIM(RTRIM(g.Sample2_32)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   3 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise3_35, g.Sample3_34)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise3_35)), N''), NULLIF(LTRIM(RTRIM(g.Sample3_34)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise3_35, g.Sample3_34)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise3_35)), N''), NULLIF(LTRIM(RTRIM(g.Sample3_34)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   4 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise4_37, g.Sample4_36)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise4_37)), N''), NULLIF(LTRIM(RTRIM(g.Sample4_36)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise4_37, g.Sample4_36)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise4_37)), N''), NULLIF(LTRIM(RTRIM(g.Sample4_36)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   5 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise5_328, g.Sample5_326)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise5_328)), N''), NULLIF(LTRIM(RTRIM(g.Sample5_326)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise5_328, g.Sample5_326)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise5_328)), N''), NULLIF(LTRIM(RTRIM(g.Sample5_326)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   6 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise6_331, g.Sample6_329)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise6_331)), N''), NULLIF(LTRIM(RTRIM(g.Sample6_329)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise6_331, g.Sample6_329)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(g.Revise6_331)), N''), NULLIF(LTRIM(RTRIM(g.Sample6_329)), N''))) IS NOT NULL
 UNION ALL
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
   11 AS RoundNumber,
-  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULL, g.Sample11_377)) AS ActualValue
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(NULL)), N''), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N''))) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULL, g.Sample11_377)) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULLIF(LTRIM(RTRIM(NULL)), N''), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N''))) IS NOT NULL
 )
 INSERT INTO dbo.TchpFitMeasurement (FitRoundId, PomSpecLineId, ActualValue, AppCreatedDate)
 SELECT fr.FitRoundId, pl.PomSpecLineId, m.ActualValue, GETDATE()

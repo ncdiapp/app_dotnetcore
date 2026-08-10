@@ -1202,11 +1202,13 @@ CREATE TABLE dbo.[{tableName}] (
                         ?? $"Failed to create transaction for tab {tab.TabId}.");
 
                 txId = Convert.ToInt32(saveResult.Object.Id);
+                StripSystemTimeStampTransactionFieldsSql(conn, tran, txId);
                 ApplyTransactionFieldSubsetSql(conn, tran, txId, effectiveRootTable, plan, tab);
             }
             else
             {
                 txId = GetTransactionIdByIntegrationId(conn, tran, transactionIntegrationId).Value;
+                StripSystemTimeStampTransactionFieldsSql(conn, tran, txId);
                 using (var cmd = conn.CreateCommand())
                 {
                     cmd.Transaction = tran;
@@ -1479,12 +1481,7 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
             bool anyPk = dbTable.Columns.Any(c => c.IsPrimaryKey);
             foreach (var col in dbTable.Columns)
             {
-                if (col.Name.Equals("AppCreatedByID", StringComparison.OrdinalIgnoreCase)
-                    || col.Name.Equals("AppCreatedDate", StringComparison.OrdinalIgnoreCase)
-                    || col.Name.Equals("AppModifiedDate", StringComparison.OrdinalIgnoreCase)
-                    || col.Name.Equals("AppModifiedByID", StringComparison.OrdinalIgnoreCase)
-                    || col.Name.Equals("AppCreatedByCompanyID", StringComparison.OrdinalIgnoreCase)
-                    || col.Name.Equals("SystemTimeStamp", StringComparison.OrdinalIgnoreCase))
+                if (AppTransactionBL.ShouldExcludeDatabaseColumnFromTransactionField(col))
                     continue;
 
                 bool isPk = col.IsPrimaryKey
@@ -1699,6 +1696,35 @@ WHERE TransactionID = @TransactionId
      OR ISNULL(IsDisableAddButton, 0) = 0
      OR ISNULL(IsDisableDeleteButton, 0) = 0
   )";
+                cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>
+        /// SystemTimeStamp (SQL rowversion) must never be an AppTransactionField — strip leftovers on repair/update.
+        /// </summary>
+        private static void StripSystemTimeStampTransactionFieldsSql(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+DELETE li
+FROM dbo.AppFormLayoutItem li
+INNER JOIN dbo.AppTransactionField tf ON tf.TransactionFieldID = li.TransactionFieldID
+INNER JOIN dbo.AppTransactionUnit tu ON tu.TransactionUnitID = tf.TransactionUnitID
+WHERE tu.TransactionID = @TransactionId
+  AND tf.DataBaseFieldName = N'SystemTimeStamp';
+
+DELETE tf
+FROM dbo.AppTransactionField tf
+INNER JOIN dbo.AppTransactionUnit tu ON tu.TransactionUnitID = tf.TransactionUnitID
+WHERE tu.TransactionID = @TransactionId
+  AND tf.DataBaseFieldName = N'SystemTimeStamp';";
                 cmd.Parameters.AddWithValue("@TransactionId", transactionId);
                 cmd.ExecuteNonQuery();
             }

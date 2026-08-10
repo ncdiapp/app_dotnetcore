@@ -1715,16 +1715,26 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             }));
     }, [transactionData, collectAllUnits]);
 
-    const handleOpenMatrixFkPopup = useCallback((field: any) => {
-        if (!field || !field.Id) return;
-        // Angular: only DDL / AutoComplete / SearchAbleDDL fields with a unit can map a matrix FK.
+    // Hoisted for Matrix FK editor + grid columns (also used later for unit-level ChildUnitPivotColumns UI).
+    const childUnitPivotColumnsVal = Number(emAppTransactionGridDisplayType?.ChildUnitPivotColumns ?? 7);
+    const isChildUnitPivotColumns = Number(unitData?.EmGridViewDisplayType) === childUnitPivotColumnsVal;
+
+    /** Classic matrix units require DDL-like control; ChildUnitPivotColumns may use TextBox keys (e.g. RoundNumber). */
+    const canEditMatrixForeignKeyField = useCallback((field: any): boolean => {
+        if (!field) return false;
+        if (isChildUnitPivotColumns) return true;
         const ctl = Number(field.ControlType);
         const allowed: number[] = [
             controlTypeIdsForDatasource.DDL,
             controlTypeIdsForDatasource.AutoComplete!,
             controlTypeIdsForDatasource.SearchAbleDDL!
         ].filter((v) => typeof v === 'number') as number[];
-        if (!allowed.includes(ctl)) return;
+        return allowed.includes(ctl);
+    }, [isChildUnitPivotColumns, controlTypeIdsForDatasource]);
+
+    const handleOpenMatrixFkPopup = useCallback((field: any) => {
+        if (!field || !field.Id) return;
+        if (!canEditMatrixForeignKeyField(field)) return;
 
         // Pre-select the source unit from the existing FK field mapping, if any.
         let sourceUnitId: number | null = null;
@@ -1742,7 +1752,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             sourceUnitOptions: matrixFkSourceUnitOptions,
             sourceFieldOptions: buildMatrixFkSourceFieldOptions(sourceUnitId)
         });
-    }, [controlTypeIdsForDatasource, allFieldsById, matrixFkSourceUnitOptions, buildMatrixFkSourceFieldOptions]);
+    }, [canEditMatrixForeignKeyField, allFieldsById, matrixFkSourceUnitOptions, buildMatrixFkSourceFieldOptions]);
 
     const handleMatrixFkSourceUnitChange = useCallback((sourceUnitId: number | null) => {
         setMatrixFkPopupState((prev) => ({
@@ -2326,8 +2336,6 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         ? findParentOfUnitInTree(transactionData?.AppTransactionUnitList || [], parentUnit)
         : null;
     const isGrandChildUnit = hasParent && Boolean(grandParentUnit);
-    const childUnitPivotColumnsVal = Number(emAppTransactionGridDisplayType?.ChildUnitPivotColumns ?? 7);
-    const isChildUnitPivotColumns = Number(unitData.EmGridViewDisplayType) === childUnitPivotColumnsVal;
 
     const canOpenDataLoad =
         isMasterDetail &&
@@ -3333,13 +3341,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                         template={(cell: any) => {
                                             const item = cell.item;
                                             if (!item) return null;
-                                            const ctl = Number(item.ControlType);
-                                            const allowed: number[] = [
-                                                controlTypeIdsForDatasource.DDL,
-                                                controlTypeIdsForDatasource.AutoComplete!,
-                                                controlTypeIdsForDatasource.SearchAbleDDL!,
-                                            ].filter((v) => typeof v === 'number') as number[];
-                                            if (!allowed.includes(ctl)) {
+                                            if (!canEditMatrixForeignKeyField(item)) {
                                                 return <span className="text-xs text-gray-500"> </span>;
                                             }
                                             const fkName = item.MatrixForeignKeyFieldId
