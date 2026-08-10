@@ -345,9 +345,13 @@ Generator details:
 - Reads PLM `pdmBlockSubItem` (`ControlType`, `EntityId`) and `pdmGridMetaColumn` for grid columns — `plmEntityId` matches tenant `AppEntityInfo.IntegrationId`  
 - Visibility (`isVisible`) is resolved differently for tab fields vs grid columns:
   - **Tab fields (block sub-items)** — visible only when **both** layers pass:
-    1. Layer 1 `pdmTabBlockSubItemExtraInfo.Visible = 1` (keyed `TabID + SubItemID`; `AliasName` → `displayLabel`), AND
+    1. Layer 1 `pdmTabBlockSubItemExtraInfo.Visible = 1` (keyed `TabID + SubItemID`), AND
     2. Layer 2 placed on the **Tab Design** layout (`pdmTabLayout` → `pdmTabLayoutItem` → `pdmTabLayoutSubitem`, keyed `TabID + SubItemID`).
-  - **Grid columns** — visibility is **not** in `pdmTabBlockSubItemExtraInfo`. It is controlled at tab level by `pdmTabGridMetaColumn.Visible = 1` (keyed `TabID + GridColumnID`; `pdmTabGridMetaColumn.AliasName` → `displayLabel`). `pdmGridMetaColumn.Hidden` is only the grid-wide default and is overridden by the tab-level row.
+  - **`displayLabel` (Transaction field Display Name)** — for **all** SubItems and Grid columns:
+    1. Prefer tab-level Alias (`pdmTabBlockSubItemExtraInfo.AliasName` for tab fields; `pdmTabGridMetaColumn.AliasName` for grid columns) when non-empty,
+    2. Else use PLM name (`pdmBlockSubItem.SubItemName` / `pdmGridMetaColumn.ColumnName`),
+    3. Never fall back to the generated App column name (e.g. `How_to_Measure_3848`) when a PLM name exists.
+  - **Grid columns** — visibility is **not** in `pdmTabBlockSubItemExtraInfo`. It is controlled at tab level by `pdmTabGridMetaColumn.Visible = 1` (keyed `TabID + GridColumnID`). `pdmGridMetaColumn.Hidden` is only the grid-wide default and is overridden by the tab-level row.
   - **Grid-only / orphan grids** — the generator **must** load `pdmTabGridMetaColumn` for the **true PLM hosting TabId(s)** of each grid (from ExtraInfo / `parentPlmTabId`), even when that Tab has no `PLM_DW_Tab_*` and is **not** in `importTabIds`. If `parentPlmTabId` is null or wrong (e.g. template header), lookup fails and Blueprint marks every column `isVisible: false` → Phase D hides all child-grid fields. Fallback: any hosting tab with `Visible=1` for that `GridColumnID`. BL also falls back to “show all mapped columns” when the visible set is empty for a grid unit.
   - Anything not matching the rule above → `isVisible: false`.
 - APP column names: strip `_SubItemId` / `_FK_*`; suffix `_SubItemId` on collisions  

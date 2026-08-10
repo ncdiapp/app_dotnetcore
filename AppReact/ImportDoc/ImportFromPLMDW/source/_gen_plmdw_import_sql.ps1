@@ -91,7 +91,7 @@ WHERE ei.TabID IN ($inList)
         }
         $key = "$tabId|$subItemId"
         $map[$key] = [pscustomobject]@{
-            AliasName = if ([string]::IsNullOrWhiteSpace($alias)) { $null } else { $alias }
+            AliasName = if ([string]::IsNullOrWhiteSpace($alias) -or $alias -eq 'NULL') { $null } else { $alias }
             Visible   = $visible
         }
     }
@@ -109,7 +109,7 @@ function Get-PlmSubItemMetadataMap([int[]]$TabIds) {
     if (-not $TabIds -or $TabIds.Count -eq 0) { return $map }
     $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
     $q = @"
-SELECT tb.TabID, bsi.SubItemID, bsi.ControlType, bsi.EntityId, bsi.Nbdecimal
+SELECT tb.TabID, bsi.SubItemID, bsi.ControlType, bsi.EntityId, bsi.Nbdecimal, bsi.SubItemName
 FROM dbo.PdmTabBlock tb
 INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.BlockID = tb.BlockID
 WHERE tb.TabID IN ($inList)
@@ -122,10 +122,13 @@ ORDER BY tb.TabID, tb.OrderId, bsi.SortOrder, bsi.SubItemID
         $subItemId = [int]$parts[1].Trim()
         $key = "$tabId|$subItemId"
         if ($map.ContainsKey($key)) { continue }
+        $subItemName = if ($parts.Count -ge 6) { $parts[5].Trim() } else { '' }
+        if ([string]::IsNullOrWhiteSpace($subItemName) -or $subItemName -eq 'NULL') { $subItemName = $null }
         $map[$key] = [pscustomobject]@{
-            ControlType = [int]$parts[2].Trim()
-            EntityId    = Parse-SqlIntOrNull $parts[3]
-            Nbdecimal   = Parse-SqlIntOrNull $parts[4]
+            ControlType  = [int]$parts[2].Trim()
+            EntityId     = Parse-SqlIntOrNull $parts[3]
+            Nbdecimal    = Parse-SqlIntOrNull $parts[4]
+            SubItemName  = $subItemName
         }
     }
     return $map
@@ -136,7 +139,7 @@ function Get-PlmGridColumnMetadataMap([int[]]$GridIds) {
     if (-not $GridIds -or $GridIds.Count -eq 0) { return $map }
     $inList = ($GridIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
     $q = @"
-SELECT gmc.GridID, gmc.GridColumnID, gmc.ColumnTypeId, gmc.EntityId, gmc.Nbdecimal, gmc.ColumnOrder
+SELECT gmc.GridID, gmc.GridColumnID, gmc.ColumnTypeId, gmc.EntityId, gmc.Nbdecimal, gmc.ColumnOrder, gmc.ColumnName
 FROM dbo.pdmGridMetaColumn gmc
 WHERE gmc.GridID IN ($inList)
 ORDER BY gmc.GridID, gmc.ColumnOrder, gmc.GridColumnID
@@ -148,11 +151,14 @@ ORDER BY gmc.GridID, gmc.ColumnOrder, gmc.GridColumnID
         $gridColumnId = [int]$parts[1].Trim()
         $key = "$gridId|$gridColumnId"
         if ($map.ContainsKey($key)) { continue }
+        $columnName = if ($parts.Count -ge 7) { $parts[6].Trim() } else { '' }
+        if ([string]::IsNullOrWhiteSpace($columnName) -or $columnName -eq 'NULL') { $columnName = $null }
         $map[$key] = [pscustomobject]@{
             ControlType = [int]$parts[2].Trim()
             EntityId    = Parse-SqlIntOrNull $parts[3]
             Nbdecimal   = Parse-SqlIntOrNull $parts[4]
             ColumnOrder = if ($parts.Count -ge 6) { Parse-SqlIntOrNull $parts[5] } else { $null }
+            ColumnName  = $columnName
         }
     }
     return $map
@@ -181,7 +187,7 @@ WHERE tgc.TabID IN ($inList)
         }
         $map["$tabId|$gridColumnId"] = [pscustomobject]@{
             Visible   = $visible
-            AliasName = if ([string]::IsNullOrWhiteSpace($alias)) { $null } else { $alias }
+            AliasName = if ([string]::IsNullOrWhiteSpace($alias) -or $alias -eq 'NULL') { $null } else { $alias }
         }
     }
     return $map
@@ -274,12 +280,15 @@ function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap, $subItemMetaMap, $grid
     elseif ($null -ne $fieldRow.PlmSubItemId) { $subItemId = [int]$fieldRow.PlmSubItemId }
     elseif ($null -ne $fieldRow.PlmMetaColumnId) { $subItemId = [int]$fieldRow.PlmMetaColumnId }
 
-    $displayLabel = $fieldRow.AppColumn
+    # displayLabel: AliasName when set; else PLM SubItemName / ColumnName — never App column name.
+    $displayLabel = $null
     $isVisible = $false
     if ($fieldRow.FieldKind -eq 'GridColumn' -and $null -ne $fieldRow.PlmGridId -and $subItemId) {
         # GRID column visibility: pdmTabGridMetaColumn.Visible (TabID + GridColumnID). NOT pdmTabBlockSubItemExtraInfo.
         $gridKey = "$([int]$fieldRow.PlmGridId)|$subItemId"
+        $plmColumnName = $null
         if ($gridColMetaMap.ContainsKey($gridKey)) {
+            $plmColumnName = $gridColMetaMap[$gridKey].ColumnName
             $resolved = $false
             if ($tabId) {
                 $tgKey = "$tabId|$subItemId"
@@ -297,21 +306,27 @@ function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap, $subItemMetaMap, $grid
                     if (-not $k.EndsWith($suffix)) { continue }
                     $tg = $tabGridVisibleMap[$k]
                     if ($tg.AliasName -and -not $displayLabel) { $displayLabel = $tg.AliasName }
-                    elseif ($tg.AliasName -and $displayLabel -eq $fieldRow.AppColumn) { $displayLabel = $tg.AliasName }
                     if ($tg.Visible) { $isVisible = $true; break }
                 }
             }
         }
+        if (-not $displayLabel -and $plmColumnName) { $displayLabel = $plmColumnName }
     }
     elseif ($tabId -and $subItemId) {
         # TAB field visibility: Layer 1 = pdmTabBlockSubItemExtraInfo.Visible=1; Layer 2 = placed in Tab Design (pdmTabLayoutSubitem).
         $siKey = "$tabId|$subItemId"
+        $plmSubItemName = $null
+        if ($subItemMetaMap.ContainsKey($siKey)) {
+            $plmSubItemName = $subItemMetaMap[$siKey].SubItemName
+        }
         if ($subItemMetaMap.ContainsKey($siKey) -and $extraInfoMap.ContainsKey($siKey)) {
             $ei = $extraInfoMap[$siKey]
             if ($ei.AliasName) { $displayLabel = $ei.AliasName }
             if ($ei.Visible -and $layoutSubItemSet.Contains($siKey)) { $isVisible = $true }
         }
+        if (-not $displayLabel -and $plmSubItemName) { $displayLabel = $plmSubItemName }
     }
+    if (-not $displayLabel) { $displayLabel = $fieldRow.AppColumn }
     return [pscustomobject]@{ DisplayLabel = $displayLabel; IsVisible = $isVisible }
 }
 
