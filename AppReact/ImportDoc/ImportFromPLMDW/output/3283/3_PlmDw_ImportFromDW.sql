@@ -171,7 +171,7 @@ SELECT
     CASE WHEN m.[FieldKind] = N''GridColumn'' THEN m.[PlmGridId] ELSE NULL END
 FROM dbo.' + QUOTENAME(@MappingTable) + N' AS m
 WHERE m.[FieldKind] IN (N''TabField'', N''GridColumn'')
-  AND m.[AppTableName] IN (N''@P@Style_Header_V2K_ERP'', N''@P@Grading'', N''@P@How_to_Measure_Instructions'', N''@P@Fit_Summary'', N''@P@Fit_1'', N''@P@Fit_1_Comments'', N''@P@Fit_2'', N''@P@Fit_2_Comment'', N''@P@Fit_3'', N''@P@Fit_3_Comments'', N''@P@Fit_4'', N''@P@Fit_4_Comments'', N''@P@Tablet_Fit_Samples'', N''@P@SizeRunDetailGrid'', N''@P@DimensionDetailGrid'', N''@P@Fit_Comment_Grid_reg'')
+  AND m.[AppTableName] IN (N''@P@Style_Header_V2K_ERP'', N''@P@Grading'', N''@P@How_to_Measure_Instructions'', N''@P@Fit_Summary'', N''@P@FitRoundInfo'', N''@P@SizeRunDetailGrid'', N''@P@DimensionDetailGrid'', N''@P@Fit_Comment_Grid_reg'')
 GROUP BY
     m.[AppTableName],
     m.[FieldKind],

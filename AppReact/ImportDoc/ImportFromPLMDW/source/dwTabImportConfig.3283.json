@@ -743,7 +743,8 @@
                       "gridSubItemId":  3219,
                       "gridId":  3004,
                       "parentPlmTabId":  null,
-                      "transactionIntegrationId":  "TX_FitRound"
+                      "transactionIntegrationId":  null,
+                      "_fx1Comment":  "Parent Fit Comments tab folded (FX1); orphan Grid_{id} TX (ReferenceId-scoped)."
                   }
               ],
     "techPack":  {

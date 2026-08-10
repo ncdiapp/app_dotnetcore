@@ -602,10 +602,10 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
         else {
             "Grid_$($grid.gridId)"
         }
-        # FX1: Fit comment grid parent tab folded — orphan under Grid_{id} (still ReferenceId-scoped).
-        if ($grid.appTable -match 'Fit_Comment') {
+        # FX1: Fit comment / folded parent tab — always orphan Grid_{id} (grid is ReferenceId-scoped, not FitRoundId).
+        if ($parentTabId) {
             $foldedParent = @($config.tabs) | Where-Object {
-                $_.tabId -and [int]$_.tabId -eq [int]$parentTabId -and ($_.fx1SkipBlueprint -eq $true -or $_.fx1Fold -eq $true)
+                $_.tabId -and [int]$_.tabId -eq $parentTabId -and ($_.fx1SkipBlueprint -eq $true -or $_.fx1Fold -eq $true)
             } | Select-Object -First 1
             if ($foldedParent) {
                 $parentTabId = $null

@@ -1,5 +1,5 @@
 ﻿-- =============================================================================
--- TechPack Tchp* import from plmDW (D1) -- STATIC SQL (no dynamic @sql).
+-- TechPack Tchp* import from plmDW (D1) â€” STATIC SQL (no dynamic @sql).
 -- L2: TchpStyleSpec.StyleSpecId = Root.ReferenceId (no identity; sibling PK = parent PK).
 -- S1: SizeRun/BaseSize/UOM from Grading tab 4006 (PLM_DW_Tab_Grading_4006).
 -- UOM: PLM tblUnitOfMeasure (not on tenant) -> CM|INCH; unmatched defaults to CM.
@@ -174,9 +174,9 @@ WHERE NOT EXISTS (
 );
 PRINT N'TchpGradeValue insert done. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
 
--- 4. TchpFitRound + TchpFitMeasurement
+-- 4. TchpFitRound + TchpFitMeasurement (R1: RoundNumber = N from SampleN/ReviseN)
 INSERT INTO dbo.TchpFitRound (StyleSpecId, RoundNumber, RoundType, RoundStatus, AppCreatedDate)
-SELECT DISTINCT ss.StyleSpecId, r.RoundNumber, N'INTERNAL', N'PENDING', GETDATE()
+SELECT DISTINCT ss.StyleSpecId, r.RoundNumber, N'FIT', N'PENDING', GETDATE()
 FROM (
   SELECT DISTINCT ProductReferenceID, RoundNumber FROM (
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
@@ -220,6 +220,13 @@ SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28)
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
   AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise6_331, g.Sample6_329)) IS NOT NULL
+UNION ALL
+SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
+  11 AS RoundNumber,
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULL, g.Sample11_377)) AS ActualValue
+FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
+WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULL, g.Sample11_377)) IS NOT NULL
   ) x
 ) r
 INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, r.ProductReferenceID)
@@ -271,6 +278,13 @@ SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28)
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
   AND TRY_CONVERT(DECIMAL(10,3), COALESCE(g.Revise6_331, g.Sample6_329)) IS NOT NULL
+UNION ALL
+SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
+  11 AS RoundNumber,
+  TRY_CONVERT(DECIMAL(10,3), COALESCE(NULL, g.Sample11_377)) AS ActualValue
+FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
+WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
+  AND TRY_CONVERT(DECIMAL(10,3), COALESCE(NULL, g.Sample11_377)) IS NOT NULL
 )
 INSERT INTO dbo.TchpFitMeasurement (FitRoundId, PomSpecLineId, ActualValue, AppCreatedDate)
 SELECT fr.FitRoundId, pl.PomSpecLineId, m.ActualValue, GETDATE()
@@ -283,6 +297,20 @@ WHERE NOT EXISTS (
   WHERE fm.FitRoundId = fr.FitRoundId AND fm.PomSpecLineId = pl.PomSpecLineId
 );
 PRINT N'TchpFitMeasurement insert done. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
+
+-- 4b. FX1 skeleton Plm_FitRoundInfo (FitRoundId = TchpFitRound.FitRoundId)
+IF OBJECT_ID(N'dbo.Plm_FitRoundInfo', N'U') IS NOT NULL
+BEGIN
+  INSERT INTO dbo.Plm_FitRoundInfo (FitRoundId, StyleSpecId, AppCreatedDate)
+  SELECT fr.FitRoundId, fr.StyleSpecId, GETDATE()
+  FROM dbo.TchpFitRound fr
+  WHERE NOT EXISTS (
+    SELECT 1 FROM dbo.Plm_FitRoundInfo i WHERE i.FitRoundId = fr.FitRoundId
+  );
+  PRINT N'Plm_FitRoundInfo skeleton insert done. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
+END
+ELSE
+  PRINT N'WARN: Plm_FitRoundInfo missing - run step 1_ tables before 3b.';
 
 PRINT N'TechPack Tchp import batch finished.';
 GO
@@ -374,4 +402,29 @@ OUTER APPLY (
 ) AS dim;
 GO
 PRINT N'View_TchpSizeRunSize_DefaultDimension created/altered.';
+GO
+
+-- =============================================================================
+-- F3: View_TchpFitMeasurementByPom (FIT SUMMARY POM Ã— Round pivot, read-only)
+-- ChildUnitPivotColumns: IsPivotColumn=RoundNumber, IsPivotValue=ActualValue.
+-- Keep identical to Document/Design/POM_Grading_QC_NewSchema.sql
+-- =============================================================================
+CREATE OR ALTER VIEW dbo.View_TchpFitMeasurementByPom
+AS
+SELECT
+    fm.FitMeasurementId,
+    fm.PomSpecLineId,
+    pl.StyleSpecId,
+    fr.FitRoundId,
+    fr.RoundNumber,
+    fr.RoundType,
+    CONCAT(N'Fit ', fr.RoundNumber) AS RoundLabel,
+    fm.ActualValue
+FROM dbo.TchpFitMeasurement AS fm
+INNER JOIN dbo.TchpFitRound AS fr
+    ON fr.FitRoundId = fm.FitRoundId
+INNER JOIN dbo.TchpPomSpecLine AS pl
+    ON pl.PomSpecLineId = fm.PomSpecLineId;
+GO
+PRINT N'View_TchpFitMeasurementByPom created/altered.';
 GO
