@@ -1206,6 +1206,340 @@ WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @FieldName";
             }
         }
 
+        /// <summary>
+        /// F2 Fit Round measurement UX: PomSpecLine DDL entity (View_TchpPomSpecLine),
+        /// temp InitValue/Tol subscribed from BaseValue/Tolerance, Diff = Actual − Init,
+        /// and IsShowCalculateButton on TX_FitRound.
+        /// </summary>
+        private static void ApplyTechPackFitRoundMeasurementGoldenFieldTemplate(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            _ = plan;
+            _ = tablePrefix;
+
+            int? measUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, "TchpFitMeasurement");
+            if (!measUnitId.HasValue)
+                return;
+
+            EnsureTechPackPomSpecLineEntity(conn, tran);
+            int? pomSpecLineEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "PomSpecLine");
+
+            UpdateTechPackFieldMeta(conn, tran, measUnitId.Value, "PomSpecLineId",
+                controlType: (int)EmAppControlType.DDL,
+                entityId: pomSpecLineEntityId,
+                width: "200",
+                sortOrder: 30,
+                isVisible: true,
+                groupByLevel: null);
+
+            int? pomSpecLineFieldId = GetTransactionFieldId(conn, tran, measUnitId.Value, "PomSpecLineId");
+            if (!pomSpecLineFieldId.HasValue)
+                return;
+
+            int initFieldId = EnsureTechPackTempNumericField(
+                conn, tran, measUnitId.Value,
+                preferredName: "InitValue",
+                namePrefix: "InitValue",
+                displayName: "Init Value",
+                sortOrder: 35,
+                masterEntityFieldId: pomSpecLineFieldId.Value,
+                innerEntitySubscribeField: "BaseValue");
+
+            EnsureTechPackTempNumericField(
+                conn, tran, measUnitId.Value,
+                preferredName: "Tol",
+                namePrefix: "Tol",
+                displayName: "Tol",
+                sortOrder: 36,
+                masterEntityFieldId: pomSpecLineFieldId.Value,
+                innerEntitySubscribeField: "Tolerance");
+
+            UpdateTechPackFieldMeta(conn, tran, measUnitId.Value, "ActualValue",
+                controlType: (int)EmAppControlType.Numeric,
+                entityId: null,
+                width: "120",
+                sortOrder: 40,
+                isVisible: true,
+                groupByLevel: null);
+            SetTechPackFieldDecimalMeta(conn, tran, measUnitId.Value, "ActualValue", nbDecimal: 4);
+
+            int diffFieldId = EnsureTechPackTempNumericField(
+                conn, tran, measUnitId.Value,
+                preferredName: "Diff",
+                namePrefix: "Diff",
+                displayName: "Diff",
+                sortOrder: 60,
+                masterEntityFieldId: null,
+                innerEntitySubscribeField: null);
+
+            int? actualFieldId = GetTransactionFieldId(conn, tran, measUnitId.Value, "ActualValue");
+            if (actualFieldId.HasValue)
+            {
+                EnsureTechPackFitDiffAssignmentFormula(
+                    conn, tran, measUnitId.Value, diffFieldId, actualFieldId.Value, initFieldId);
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransaction
+SET IsShowCalculateButton = 1, AppModifiedDate = GETDATE()
+WHERE TransactionID = @TxId";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void EnsureTechPackPomSpecLineEntity(SqlConnection conn, SqlTransaction tran)
+        {
+            const string otherSettings =
+                "{\"IdentityColumnDataType\":\"Integer\",\"LogicKeyColumnNameList\":null,\"ListEditTransactionId\":null,\"ItemSimpleFormTransactionId\":null,\"ItemDetailFormTransactionId\":null,\"SortByField\":\"Sort\"}";
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+IF EXISTS (SELECT 1 FROM dbo.AppEntityInfo WHERE EntityCode = N'PomSpecLine')
+BEGIN
+    UPDATE dbo.AppEntityInfo SET
+        EntityType = 1,
+        TableName = N'View_TchpPomSpecLine',
+        SchemaOwner = N'dbo',
+        IdentityField = N'PomSpecLineId',
+        DisplayFiled1 = N'BodyPartName',
+        OtherSettings = @OtherSettings,
+        AppModifiedDate = GETDATE()
+    WHERE EntityCode = N'PomSpecLine';
+END
+ELSE
+BEGIN
+    INSERT INTO dbo.AppEntityInfo (
+        EntityCode, [Description], EntityType, TableName, SchemaOwner,
+        IdentityField, DisplayFiled1, OtherSettings, AppCreatedDate, AppModifiedDate)
+    VALUES (
+        N'PomSpecLine', N'TechPack POM Spec Line (Fit Round DDL)', 1, N'View_TchpPomSpecLine', N'dbo',
+        N'PomSpecLineId', N'BodyPartName', @OtherSettings, GETDATE(), GETDATE());
+END";
+                cmd.Parameters.AddWithValue("@OtherSettings", otherSettings);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static int EnsureTechPackTempNumericField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string preferredName,
+            string namePrefix,
+            string displayName,
+            int sortOrder,
+            int? masterEntityFieldId,
+            string innerEntitySubscribeField)
+        {
+            int? existing = GetTransactionFieldId(conn, tran, unitId, preferredName);
+            if (!existing.HasValue)
+                existing = GetTransactionFieldIdByNamePrefix(conn, tran, unitId, namePrefix);
+            if (!existing.HasValue)
+                existing = GetTransactionFieldIdByDisplayName(conn, tran, unitId, displayName);
+
+            if (!existing.HasValue)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+INSERT INTO dbo.AppTransactionField (
+    TransactionUnitID, DisplayName, DataBaseFieldName, ControlType, DataType,
+    SortOrder, IsPrimaryKey, IsVisible, IsReadonly, IsAllowEmpty,
+    DisplayWidth, NBDecimal, IsTempVariable, IsLinkToParentPrimaryKey, RowIdentityGuid,
+    MasterEntityFieldlID, InnerEntitySubscribeFiled,
+    AppCreatedDate, AppModifiedDate)
+VALUES (
+    @UnitId, @DisplayName, @FieldName, @ControlType, @DataType,
+    @SortOrder, 0, 1, 0, 1,
+    N'120', 4, 1, 0, NEWID(),
+    @MasterFieldId, @SubscribeField,
+    GETDATE(), GETDATE());
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
+                    cmd.Parameters.AddWithValue("@UnitId", unitId);
+                    cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                    cmd.Parameters.AddWithValue("@FieldName", preferredName);
+                    cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.Numeric);
+                    cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.Decimal);
+                    cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                    cmd.Parameters.AddWithValue("@MasterFieldId", (object)masterEntityFieldId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SubscribeField", (object)innerEntitySubscribeField ?? DBNull.Value);
+                    return Convert.ToInt32(cmd.ExecuteScalar());
+                }
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    DisplayName = @DisplayName,
+    ControlType = @ControlType,
+    DataType = @DataType,
+    NBDecimal = 4,
+    IsTempVariable = 1,
+    IsVisible = 1,
+    SortOrder = @SortOrder,
+    DisplayWidth = COALESCE(DisplayWidth, N'120'),
+    MasterEntityFieldlID = CASE WHEN @HasMaster = 1 THEN @MasterFieldId ELSE MasterEntityFieldlID END,
+    InnerEntitySubscribeFiled = CASE WHEN @HasSubscribe = 1 THEN @SubscribeField ELSE InnerEntitySubscribeFiled END,
+    AppModifiedDate = GETDATE()
+WHERE TransactionFieldID = @FieldId";
+                cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.Numeric);
+                cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.Decimal);
+                cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                cmd.Parameters.AddWithValue("@HasMaster", masterEntityFieldId.HasValue ? 1 : 0);
+                cmd.Parameters.AddWithValue("@MasterFieldId", (object)masterEntityFieldId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@HasSubscribe", !string.IsNullOrWhiteSpace(innerEntitySubscribeField) ? 1 : 0);
+                cmd.Parameters.AddWithValue("@SubscribeField", (object)innerEntitySubscribeField ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@FieldId", existing.Value);
+                cmd.ExecuteNonQuery();
+            }
+
+            return existing.Value;
+        }
+
+        private static void SetTechPackFieldDecimalMeta(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string fieldName,
+            int nbDecimal)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    DataType = @DataType,
+    NBDecimal = @NbDecimal,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @FieldName";
+                cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.Decimal);
+                cmd.Parameters.AddWithValue("@NbDecimal", nbDecimal);
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@FieldName", fieldName);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void EnsureTechPackFitDiffAssignmentFormula(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            int diffFieldId,
+            int actualFieldId,
+            int initFieldId)
+        {
+            string expression =
+                "transactionfieldid_" + diffFieldId
+                + " = transactionfieldid_" + actualFieldId
+                + " - transactionfieldid_" + initFieldId;
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+IF EXISTS (
+    SELECT 1 FROM dbo.AppTransactionUnitFormula
+    WHERE TransactionUnitID = @UnitId AND FormulaName = N'FitDiff_ActualMinusInit')
+BEGIN
+    UPDATE dbo.AppTransactionUnitFormula SET
+        FormulaExpression = @Expr,
+        OperationType = 1,
+        CaculationFlowSort = 1,
+        AppModifiedDate = GETDATE()
+    WHERE TransactionUnitID = @UnitId AND FormulaName = N'FitDiff_ActualMinusInit';
+END
+ELSE IF EXISTS (
+    SELECT 1 FROM dbo.AppTransactionUnitFormula
+    WHERE TransactionUnitID = @UnitId
+      AND FormulaExpression LIKE N'%transactionfieldid_' + CAST(@DiffId AS NVARCHAR(20)) + N'%')
+BEGIN
+    UPDATE dbo.AppTransactionUnitFormula SET
+        FormulaExpression = @Expr,
+        FormulaName = N'FitDiff_ActualMinusInit',
+        OperationType = 1,
+        CaculationFlowSort = 1,
+        AppModifiedDate = GETDATE()
+    WHERE TransactionUnitFormulaID = (
+        SELECT TOP 1 TransactionUnitFormulaID FROM dbo.AppTransactionUnitFormula
+        WHERE TransactionUnitID = @UnitId
+          AND FormulaExpression LIKE N'%transactionfieldid_' + CAST(@DiffId AS NVARCHAR(20)) + N'%'
+        ORDER BY TransactionUnitFormulaID);
+END
+ELSE
+BEGIN
+    INSERT INTO dbo.AppTransactionUnitFormula (
+        TransactionUnitID, CaculationFlowSort, FormulaExpression, OperationType,
+        FormulaName, AppCreatedDate, AppModifiedDate, AppCreatedByCompanyID)
+    SELECT
+        @UnitId, 1, @Expr, 1,
+        N'FitDiff_ActualMinusInit', GETDATE(), GETDATE(),
+        (SELECT TOP 1 AppCreatedByCompanyID FROM dbo.AppTransactionUnit WHERE TransactionUnitID = @UnitId);
+END";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@Expr", expression);
+                cmd.Parameters.AddWithValue("@DiffId", diffFieldId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static int? GetTransactionFieldIdByNamePrefix(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string namePrefix)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT TOP 1 TransactionFieldID
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId
+  AND (DataBaseFieldName = @Prefix OR DataBaseFieldName LIKE @PrefixLike)
+ORDER BY TransactionFieldID";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@Prefix", namePrefix);
+                cmd.Parameters.AddWithValue("@PrefixLike", namePrefix + "_%");
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        private static int? GetTransactionFieldIdByDisplayName(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string displayName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT TOP 1 TransactionFieldID
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId AND DisplayName = @DisplayName
+ORDER BY TransactionFieldID";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
         // Intentionally unused: inserting flat AppFormLayoutItem with a copied CurrentHostId
         // (e.g. sample.CurrentHostID) breaks Flex Save (duplicate dictionary key) and Reset trees.
         // Use Form Design → Reset & Auto Design Layout after field meta is applied.

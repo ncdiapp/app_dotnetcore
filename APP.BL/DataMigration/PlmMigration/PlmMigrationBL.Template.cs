@@ -1250,6 +1250,7 @@ WHERE TransactionID = @TransactionId";
             ApplyTechPackStyleSpecFieldWiring(conn, tran, txId, plan, tablePrefix);
             ApplyTechPackGradingGoldenFieldTemplate(conn, tran, txId, plan, tablePrefix);
             ApplyTechPackFitRoundInfoGoldenFieldTemplate(conn, tran, txId, plan, tablePrefix);
+            ApplyTechPackFitRoundMeasurementGoldenFieldTemplate(conn, tran, txId, plan, tablePrefix);
             ApplyTechPackGradeValuePivotBindingsSql(conn, tran, txId, tab.TabId, plan, tablePrefix);
             ApplyTechPackFitMeasurementPivotBindingsSql(conn, tran, txId, tab.TabId, plan, tablePrefix);
             ApplyTechPackFitRoundLinkTargetsSql(conn, tran, txId, plan, tablePrefix);

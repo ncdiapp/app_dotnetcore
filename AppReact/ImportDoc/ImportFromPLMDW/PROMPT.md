@@ -503,6 +503,7 @@ ImportFromPLMDW/
 [ ] TechPack: run 3b (includes View_TchpStyleActiveSizeRunSizes + View_TchpFitMeasurementByPom) before Phase D
 [ ] TechPack Grading: SizeRunSizes view child + GradeValue pivot (P1) + golden fields (G1) + BaseSize cascade (S2)
 [ ] TechPack Fit: FX1 tables (slim FitSummary + FitRoundInfo) + F2 SUMMARY/ROUND TX + F3 read-only POM×Round pivot
+[ ] F2 Fit Round measurement UX: View_TchpPomSpecLine + PomSpecLine entity + Init/Tol/Diff temp + Calc button
 [ ] Optional: pilot import with @ReferenceIdList
 ```
 
@@ -593,6 +594,55 @@ Template **3283** maps Fit1–4 only; **PROMPT + file shape must work for FitN /
 | Child | `TchpFitMeasurement` | POM actuals for this round only |
 
 Legacy `fitRoundNumberFilter` on **separate Fit1–4 transactions** is **retired** under F2 (one ROUND TX; filter = current `FitRoundId`).
+
+#### F2 — Fit Round measurement UX golden template (locked)
+
+Goal: on **TX_FitRound**, child grid `TchpFitMeasurement` shows POM label + Init/Tol from spec + Actual + computed Diff, with **Calculation** button enabled. Matches architecture §7.2 (`difference = actual − spec`); Init Value is the subscribed **BaseValue** snapshot from the POM line (not a DB column on `TchpFitMeasurement`).
+
+**1) View + Entity (system define)**
+
+| Object | Value |
+|--------|-------|
+| View | `dbo.View_TchpPomSpecLine` — `TchpPomSpecLine` ⋈ `TchpBodyPart` → `PomSpecLineId`, `BodyPartName`, `StyleSpecId`, `BaseValue`, `Tolerance`, `IsFixed`, `Sort`, `BodypartAliasName`, … |
+| EntityCode | `PomSpecLine` |
+| EntityType | SystemDefineTable (1) |
+| TableName | `View_TchpPomSpecLine` |
+| IdentityField | `PomSpecLineId` |
+| DisplayFiled1 | `BodyPartName` |
+| OtherSettings | `SortByField = Sort` |
+
+Keep view DDL identical in `POM_Grading_QC_NewSchema.sql` and `3b_Tchp_ImportFromDW.sql`.
+
+**2) `TchpFitMeasurement` unit fields**
+
+| Sort | DbName (stable) | Store | Control | Notes |
+|------|-----------------|-------|---------|-------|
+| 30 | `PomSpecLineId` | DatabaseTable | DDL (1) | Entity = `PomSpecLine` |
+| 35 | `InitValue` | **TemporaryField** (`IsTempVariable=1`) | Numeric (20), NBDecimal=4 | Subscribe from PomSpecLine DDL: `MasterEntityFieldlID` → PomSpecLineId field, `InnerEntitySubscribeFiled` = `BaseValue` |
+| 36 | `Tol` | TemporaryField | Numeric (20), NBDecimal=4 | Same master; `InnerEntitySubscribeFiled` = `Tolerance` |
+| 40 | `ActualValue` | DatabaseTable | Numeric (20), NBDecimal=4 | PLM Meas / user entry |
+| 60 | `Diff` | TemporaryField | Numeric (20), NBDecimal=4 | Formula result |
+
+PK / link columns (`FitMeasurementId`, `FitRoundId`) stay hidden.
+
+**3) Formula (unit = Fit Measurement)**
+
+| Setting | Value |
+|---------|-------|
+| OperationType | Assignment (1) |
+| FormulaName | `FitDiff_ActualMinusInit` |
+| Expression | `transactionfieldid_{DiffId} = transactionfieldid_{ActualValueId} - transactionfieldid_{InitValueId}` |
+| CaculationFlowSort | 1 |
+
+**4) Transaction flag**
+
+`AppTransaction.IsShowCalculateButton = 1` on **TX_FitRound** (Calculation toolbar button).
+
+**5) Phase D / Blueprint**
+
+`ApplyTechPackFitRoundMeasurementGoldenFieldTemplate` (after FitRoundInfo golden): ensure view entity, temp fields + subscribe, Diff assignment formula, Calculate button. Form layout still via Form Design Reset & Auto Design (do not insert orphan `AppFormLayoutItem`).
+
+Optional later: filter PomSpecLine DDL to current round’s `StyleSpecId` (not required for MVP if grid rows are already seeded by import).
 
 #### F3 — Read-only summary pivot (feasibility confirmed)
 

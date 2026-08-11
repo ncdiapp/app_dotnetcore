@@ -890,5 +890,33 @@ GO
 PRINT 'Created View_TchpFitMeasurementByPom';
 GO
 
+-- ── View_TchpPomSpecLine ─────────────────────────────────────
+-- DDL entity source for FIT ROUND grid: PomSpecLineId shows BodyPartName;
+-- BaseValue / Tolerance are subscribed into temp InitValue / Tol fields.
+-- Keep in sync with ImportFromPLMDW 3b + PROMPT.md §F2 Fit Round measurement UX.
+IF OBJECT_ID(N'dbo.View_TchpPomSpecLine', N'V') IS NOT NULL
+    DROP VIEW [dbo].[View_TchpPomSpecLine];
+GO
+
+CREATE VIEW [dbo].[View_TchpPomSpecLine]
+AS
+SELECT
+    pl.PomSpecLineId,
+    bp.BodyPartName,
+    pl.StyleSpecId,
+    pl.GradeRuleSetId,
+    pl.BaseValue,
+    pl.Tolerance,
+    pl.IsFixed,
+    pl.Sort,
+    pl.BodypartAliasName
+FROM dbo.TchpPomSpecLine AS pl
+INNER JOIN dbo.TchpBodyPart AS bp
+    ON bp.BodyPartId = pl.BodyPartId;
+GO
+
+PRINT 'Created View_TchpPomSpecLine';
+GO
+
 PRINT '=== POM_Grading_QC_NewSchema.sql completed ===';
 GO
