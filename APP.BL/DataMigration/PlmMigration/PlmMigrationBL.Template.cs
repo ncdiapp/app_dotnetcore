@@ -2083,6 +2083,7 @@ WHERE TransactionID = @TransactionId";
 
                     // TechPack schema-only units (no FieldMapping): empty visible set → show all
                     // schema columns (CreateHierarchy defaults), same as orphan-grid fallback.
+                    // Includes F2 root TchpFitRound (RootTableNameOverride) when RootSubItems is empty.
                     if (allowed != null && allowed.Count == 0 && schemaOnlyTables.Contains(unitTable))
                         allowed = null;
                 }

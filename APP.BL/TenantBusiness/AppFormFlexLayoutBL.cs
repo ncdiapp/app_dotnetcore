@@ -1076,7 +1076,12 @@ namespace App.BL
             AppFormEntity savedFormEntity = AppFormBL.RetrieveOneAppFormEntity(formId);
             if (savedFormEntity != null)
             {
-                Dictionary<string, int> dictLayoutItemHostIdAndId = savedFormEntity.AppFormLayoutItem.ToDictionary(o => o.CurrentHostId, o => o.FormLayoutItemId);
+                // CurrentHostId must be unique; corrupt imports can duplicate keys (e.g. PCPL57).
+                // Prefer lowest FormLayoutItemId when duplicates exist so parent wiring stays stable.
+                Dictionary<string, int> dictLayoutItemHostIdAndId = savedFormEntity.AppFormLayoutItem
+                    .Where(o => !string.IsNullOrWhiteSpace(o.CurrentHostId))
+                    .GroupBy(o => o.CurrentHostId)
+                    .ToDictionary(g => g.Key, g => g.OrderBy(x => x.FormLayoutItemId).First().FormLayoutItemId);
                 using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
                 {
                     try
@@ -1464,29 +1469,18 @@ namespace App.BL
 
         private static List<AppTransactionFieldExDto> GetVisibleRootAndSiblingFields(AppTransactionExDto transactionExDto)
         {
-            var fields = new List<AppTransactionFieldExDto>();
-            if (transactionExDto?.DictRootLevelUnitTransactionField != null)
-            {
-                fields.AddRange(
-                    transactionExDto.DictRootLevelUnitTransactionField.Values
-                        .Where(o => o.IsVisible.HasValue && o.IsVisible.Value));
-            }
+            // DictRootLevelUnitTransactionField already includes Master Sibling units
+            // (ParentTransactionUnitId is null for both root and siblings). Do not add
+            // SibLine fields again — duplicates fail Flex publish validation ("Duplicate label").
+            if (transactionExDto?.DictRootLevelUnitTransactionField == null)
+                return new List<AppTransactionFieldExDto>();
 
-            // Master Sibling fields render on the same Flex form surface as root (1:1).
-            if (transactionExDto?.SibLineTransactionUnitIdExDtoList != null)
-            {
-                foreach (var sib in transactionExDto.SibLineTransactionUnitIdExDtoList)
-                {
-                    if (sib?.AppTransactionFieldList == null)
-                        continue;
-                    fields.AddRange(
-                        sib.AppTransactionFieldList
-                            .Where(o => o.IsVisible.HasValue && o.IsVisible.Value)
-                            .OrderBy(o => o.SortOrder ?? 0));
-                }
-            }
-
-            return fields;
+            return transactionExDto.DictRootLevelUnitTransactionField.Values
+                .Where(o => o.IsVisible.HasValue && o.IsVisible.Value)
+                .OrderBy(o => o.IsSiblingField == true ? 1 : 0)
+                .ThenBy(o => o.SortOrder ?? 0)
+                .ThenBy(o => o.Id)
+                .ToList();
         }
 
         private static Dictionary<int, List<AppTransactionFieldExDto>> PrepareColumnAndFieldsDictionary(AppTransactionExDto transactionExDto, int columns)
@@ -1778,6 +1772,18 @@ namespace App.BL
         }
 
 
+        private static string NewUniqueLayoutHostId(Dictionary<string, AppFormLayoutItemExDto> dictUiIdAndLayoutItem)
+        {
+            // RandomId is only 4 letters + 2 digits; large Auto Design layouts can collide.
+            for (int attempt = 0; attempt < 64; attempt++)
+            {
+                string id = ExtensionMethodhelper.RandomId();
+                if (dictUiIdAndLayoutItem == null || !dictUiIdAndLayoutItem.ContainsKey(id))
+                    return id;
+            }
+            return ExtensionMethodhelper.RandomId() + Guid.NewGuid().ToString("N").Substring(0, 4);
+        }
+
         private static AppFormLayoutItemExDto AppdenDefaultLayoutItem(Dictionary<string, AppFormLayoutItemExDto> dictUiIdAndLayoutItem, AppFormExDto aAppFormExDto, AppFormLayoutItemExDto parentSection)
         {
             ObservableSet<AppFormLayoutItemExDto> parentlayoutItemList = GetParentLayoutItemList(aAppFormExDto, parentSection);
@@ -1786,7 +1792,7 @@ namespace App.BL
             layoutItem.FlowOrGridLayoutSortOrder = maxSort + 1;
 
             layoutItem.DomAttribute = new AppFormDomAttributeDto();
-            layoutItem.CurrentHostId = ExtensionMethodhelper.RandomId();
+            layoutItem.CurrentHostId = NewUniqueLayoutHostId(dictUiIdAndLayoutItem);
             layoutItem.ParentHostId = parentSection != null ? parentSection.CurrentHostId : null;
 
             layoutItem.AppFormLayoutItem_List = new ObservableSet<AppFormLayoutItemExDto>();

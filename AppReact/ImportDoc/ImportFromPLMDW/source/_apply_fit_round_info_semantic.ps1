@@ -124,7 +124,7 @@ foreach ($rn in ($roundNums | Sort-Object)) {
 }
 Invoke-Sql $TenantDb ($fill -join "`r`n")
 
-Write-Host '3) TX_FitRound Plm_FitRoundInfo fields + Form layout...'
+Write-Host '3) TX_FitRound Plm_FitRoundInfo fields (Entity/DDL) — layout via Form Design Reset & Auto Design only...'
 $ctrlMap = @{ DDL = 1; TextBox = 2; Memo = 4; Date = 7; Numeric = 20 }
 $entityCodes = @(
     $semCols | Where-Object { $_.entityCode } | ForEach-Object { [string]$_.entityCode } | Select-Object -Unique
@@ -137,14 +137,10 @@ $metaSql = New-Object System.Collections.Generic.List[string]
 [void]$metaSql.Add(@"
 DECLARE @TxId INT = (SELECT TOP 1 TransactionID FROM dbo.AppTransaction WHERE IntegrationId = N'TX_FitRound');
 IF @TxId IS NULL BEGIN RAISERROR(N'TX_FitRound not found', 16, 1); RETURN; END
-DECLARE @FormId INT = (SELECT FormID FROM dbo.AppTransaction WHERE TransactionID = @TxId);
 DECLARE @UnitId INT = (
   SELECT TOP 1 TransactionUnitID FROM dbo.AppTransactionUnit
   WHERE TransactionID = @TxId AND DataBaseTableName = N'$friTable');
 IF @UnitId IS NULL BEGIN RAISERROR(N'FitRoundInfo unit missing', 16, 1); RETURN; END
-
-DECLARE @LayoutJson NVARCHAR(MAX) = N'{"DefaultNbColumns":null,"ColSpanValue":24,"HeightValue":null,"IsUnlimitedHeight":false,"StyleClass":null,"StyleString":null,"IsHideLabel":false,"BackgroundColor":"#ffffff","TextColor":"#000000","LabelWidth":null,"EmUnitLabelPosition":null,"DisplayName":null}';
-DECLARE @LayoutSort INT = ISNULL((SELECT MAX(FlowOrGridLayoutSortOrder) FROM dbo.AppFormLayoutItem WHERE FormID = @FormId), 0);
 
 IF OBJECT_ID('tempdb..#Ent') IS NOT NULL DROP TABLE #Ent;
 SELECT EntityInfoID, EntityCode INTO #Ent FROM dbo.AppEntityInfo WHERE EntityCode IN ($entitySql);
@@ -183,28 +179,6 @@ BEGIN
   FROM dbo.AppTransactionField tf
   WHERE tf.TransactionUnitID = @UnitId AND tf.DataBaseFieldName = N'$col';
 END
-
-IF @FormId IS NOT NULL AND NOT EXISTS (
-  SELECT 1 FROM dbo.AppFormLayoutItem li
-  INNER JOIN dbo.AppTransactionField tf ON tf.TransactionFieldID = li.TransactionFieldID
-  WHERE li.FormID = @FormId AND tf.TransactionUnitID = @UnitId AND tf.DataBaseFieldName = N'$col')
-BEGIN
-  SET @LayoutSort = @LayoutSort + 1;
-  INSERT INTO dbo.AppFormLayoutItem (
-    FormID, FlowOrGridLayoutSortOrder, ParameterKeyValue, TransactionFieldID,
-    AppCreatedDate, AppModifiedDate, AppCreatedByCompanyID, CurrentHostID, ParentHostID)
-  SELECT @FormId, @LayoutSort, @LayoutJson, tf.TransactionFieldID,
-    GETDATE(), GETDATE(),
-    COALESCE(t.AppCreatedByCompanyID, sample.AppCreatedByCompanyID),
-    sample.CurrentHostID, sample.ParentHostID
-  FROM dbo.AppTransactionField tf
-  CROSS JOIN dbo.AppTransaction t
-  OUTER APPLY (
-    SELECT TOP 1 li.AppCreatedByCompanyID, li.CurrentHostID, li.ParentHostID
-    FROM dbo.AppFormLayoutItem li WHERE li.FormID = @FormId
-  ) sample
-  WHERE tf.TransactionUnitID = @UnitId AND tf.DataBaseFieldName = N'$col' AND t.TransactionID = @TxId;
-END
 "@)
 }
 
@@ -214,12 +188,9 @@ FROM dbo.AppTransactionField tf
 WHERE tf.TransactionUnitID = @UnitId AND tf.DataBaseFieldName = N'FitRoundId';
 
 SELECT COUNT(*) AS VisibleFields FROM dbo.AppTransactionField WHERE TransactionUnitID = @UnitId AND IsVisible = 1;
-SELECT COUNT(*) AS FriLayoutItems
-FROM dbo.AppFormLayoutItem li
-INNER JOIN dbo.AppTransactionField tf ON tf.TransactionFieldID = li.TransactionFieldID
-WHERE li.FormID = @FormId AND tf.TransactionUnitID = @UnitId;
 "@)
 Invoke-Sql $TenantDb ($metaSql -join "`r`n")
+Write-Host 'Note: do not insert AppFormLayoutItem here (duplicate CurrentHostID breaks Flex Save). Use Form Design Reset & Auto Design.'
 
 Write-Host '4) Verify StyleSpec 31614:'
 Invoke-Sql $TenantDb @"

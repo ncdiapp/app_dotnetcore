@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTheme } from '../../redux/hooks/useTheme';
+import appHelper from '../../helper/appHelper';
 
 interface AlertProps {
   isOpen: boolean;
@@ -22,7 +23,8 @@ const Alert: React.FC<AlertProps> = ({
 
   return (
     <div 
-      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[10002]"
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center"
+      style={{ zIndex: appHelper.getGlobalOverlayZIndex() }}
       onClick={(e) => e.stopPropagation()}
     >
       <div

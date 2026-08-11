@@ -345,6 +345,11 @@ WHERE TransactionFieldID = @FieldId";
                 }
             }
 
+            // F2 Fit Round (and similar): root is TchpFitRound with no FieldMapping / RootSubItems.
+            // Without this, ApplyTransactionFieldSubsetSql hides every non-PK root field.
+            if (!string.IsNullOrWhiteSpace(plan?.RootTableNameOverride))
+                Consider(plan.RootTableNameOverride);
+
             return schemaOnly;
         }
 

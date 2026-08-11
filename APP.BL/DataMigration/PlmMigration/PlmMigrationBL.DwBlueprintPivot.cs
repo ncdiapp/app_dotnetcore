@@ -1206,65 +1206,19 @@ WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @FieldName";
             }
         }
 
+        // Intentionally unused: inserting flat AppFormLayoutItem with a copied CurrentHostId
+        // (e.g. sample.CurrentHostID) breaks Flex Save (duplicate dictionary key) and Reset trees.
+        // Use Form Design → Reset & Auto Design Layout after field meta is applied.
         private static void EnsureTechPackFitRoundInfoFormLayout(
             SqlConnection conn,
             SqlTransaction tran,
             int transactionId,
             int friUnitId)
         {
-            int? formId;
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.Transaction = tran;
-                cmd.CommandText = "SELECT FormID FROM dbo.AppTransaction WHERE TransactionID = @TxId";
-                cmd.Parameters.AddWithValue("@TxId", transactionId);
-                var v = cmd.ExecuteScalar();
-                if (v == null || v == DBNull.Value)
-                    return;
-                formId = Convert.ToInt32(v);
-            }
-
-            const string layoutJson =
-                "{\"DefaultNbColumns\":null,\"ColSpanValue\":24,\"HeightValue\":null,\"IsUnlimitedHeight\":false,\"StyleClass\":null,\"StyleString\":null,\"IsHideLabel\":false,\"BackgroundColor\":\"#ffffff\",\"TextColor\":\"#000000\",\"LabelWidth\":null,\"EmUnitLabelPosition\":null,\"DisplayName\":null}";
-
-            using (var cmd = conn.CreateCommand())
-            {
-                cmd.Transaction = tran;
-                cmd.CommandText = @"
-DECLARE @LayoutSort INT = ISNULL((
-    SELECT MAX(FlowOrGridLayoutSortOrder) FROM dbo.AppFormLayoutItem WHERE FormID = @FormId), 0);
-
-INSERT INTO dbo.AppFormLayoutItem (
-    FormID, FlowOrGridLayoutSortOrder, ParameterKeyValue, TransactionFieldID,
-    AppCreatedDate, AppModifiedDate, AppCreatedByCompanyID, CurrentHostID, ParentHostID)
-SELECT
-    @FormId,
-    @LayoutSort + ROW_NUMBER() OVER (ORDER BY tf.SortOrder, tf.TransactionFieldID),
-    @LayoutJson,
-    tf.TransactionFieldID,
-    GETDATE(), GETDATE(),
-    COALESCE(t.AppCreatedByCompanyID, sample.AppCreatedByCompanyID),
-    sample.CurrentHostID,
-    sample.ParentHostID
-FROM dbo.AppTransactionField tf
-CROSS JOIN dbo.AppTransaction t
-OUTER APPLY (
-    SELECT TOP 1 li.AppCreatedByCompanyID, li.CurrentHostID, li.ParentHostID
-    FROM dbo.AppFormLayoutItem li
-    WHERE li.FormID = @FormId
-) sample
-WHERE t.TransactionID = @TxId
-  AND tf.TransactionUnitID = @UnitId
-  AND ISNULL(tf.IsVisible, 0) = 1
-  AND NOT EXISTS (
-        SELECT 1 FROM dbo.AppFormLayoutItem li
-        WHERE li.FormID = @FormId AND li.TransactionFieldID = tf.TransactionFieldID);";
-                cmd.Parameters.AddWithValue("@FormId", formId.Value);
-                cmd.Parameters.AddWithValue("@TxId", transactionId);
-                cmd.Parameters.AddWithValue("@UnitId", friUnitId);
-                cmd.Parameters.AddWithValue("@LayoutJson", layoutJson);
-                cmd.ExecuteNonQuery();
-            }
+            _ = conn;
+            _ = tran;
+            _ = transactionId;
+            _ = friUnitId;
         }
     }
 }

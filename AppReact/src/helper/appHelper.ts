@@ -303,6 +303,23 @@ const getNextPopupZIndex = (): number => {
   return modulePopupZCursor;
 };
 
+/**
+ * z-index for global overlays (BusyLoader / Confirm / Alert) that must sit above
+ * Application Builder and other stacked popups (popup stack starts ~10000 and climbs).
+ */
+const getGlobalOverlayZIndex = (): number => {
+  let current = POPUP_Z_INDEX_START;
+  if (typeof window !== 'undefined') {
+    const stored = (window as any).__APP_NEXT_POPUP_Z__;
+    if (typeof stored === 'number' && Number.isFinite(stored)) {
+      current = stored;
+    }
+  } else if (modulePopupZCursor >= POPUP_Z_INDEX_START) {
+    current = modulePopupZCursor;
+  }
+  return Math.max(10002, current + 100);
+};
+
 const clampMenuPositionToViewport = ({
   x,
   y,
@@ -346,6 +363,7 @@ const appHelper = {
   clampMenuPositionToViewport,
   POPUP_Z_INDEX_START,
   getNextPopupZIndex,
+  getGlobalOverlayZIndex,
   debugLog,
   setDebugEnabled,
   isDebugEnabled,

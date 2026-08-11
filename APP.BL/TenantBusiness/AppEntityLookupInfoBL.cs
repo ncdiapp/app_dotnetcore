@@ -700,7 +700,13 @@ namespace App.BL
                 IDataReader reader = adapter.FetchDataReader(new RetrievalQuery(new SqlCommand(selectStatment)), CommandBehavior.SingleResult);
                 while (reader.Read())
                 {
-                    toReturn.Add(new LookupItemDto() { Id = reader.GetValue(0), Display = reader.GetValue(1).ToString() });
+                    string code = reader.IsDBNull(1) ? string.Empty : Convert.ToString(reader.GetValue(1)) ?? string.Empty;
+                    string description = reader.IsDBNull(2) ? string.Empty : Convert.ToString(reader.GetValue(2)) ?? string.Empty;
+                    // If Description is present, show "Code Description"; otherwise Code only.
+                    string display = string.IsNullOrWhiteSpace(description)
+                        ? code
+                        : (string.IsNullOrWhiteSpace(code) ? description.Trim() : code.Trim() + " " + description.Trim());
+                    toReturn.Add(new LookupItemDto() { Id = reader.GetValue(0), Display = display });
                 }
 
 
