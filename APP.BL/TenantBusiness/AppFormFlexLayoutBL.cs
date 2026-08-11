@@ -135,6 +135,18 @@ namespace App.BL
                 AppFormLayoutItemExDto fields_MainStack = AppendNewStackContainer(dictUiIdAndLayoutItem, aAppFormExDto, fields_OuterContainerRow, 24, columns);
                 fields_MainStack.DomAttribute.IsCollapsible = true;
                 fields_MainStack.DomAttribute.DisplayName = transactionExDto.RootMasterUnit.UnitDisplayName;
+                if (transactionExDto.SibLineTransactionUnitIdExDtoList != null
+                    && transactionExDto.SibLineTransactionUnitIdExDtoList.Count > 0)
+                {
+                    var sibNames = string.Join(
+                        " / ",
+                        transactionExDto.SibLineTransactionUnitIdExDtoList
+                            .Select(s => s.UnitDisplayName)
+                            .Where(n => !string.IsNullOrWhiteSpace(n)));
+                    if (!string.IsNullOrWhiteSpace(sibNames))
+                        fields_MainStack.DomAttribute.DisplayName =
+                            transactionExDto.RootMasterUnit.UnitDisplayName + " / " + sibNames;
+                }
 
                 AppFormLayoutItemExDto fields_MainRow = AppendNewLayoutRow(dictUiIdAndLayoutItem, aAppFormExDto, fields_MainStack);
 
@@ -1450,13 +1462,40 @@ namespace App.BL
         }
 
 
+        private static List<AppTransactionFieldExDto> GetVisibleRootAndSiblingFields(AppTransactionExDto transactionExDto)
+        {
+            var fields = new List<AppTransactionFieldExDto>();
+            if (transactionExDto?.DictRootLevelUnitTransactionField != null)
+            {
+                fields.AddRange(
+                    transactionExDto.DictRootLevelUnitTransactionField.Values
+                        .Where(o => o.IsVisible.HasValue && o.IsVisible.Value));
+            }
+
+            // Master Sibling fields render on the same Flex form surface as root (1:1).
+            if (transactionExDto?.SibLineTransactionUnitIdExDtoList != null)
+            {
+                foreach (var sib in transactionExDto.SibLineTransactionUnitIdExDtoList)
+                {
+                    if (sib?.AppTransactionFieldList == null)
+                        continue;
+                    fields.AddRange(
+                        sib.AppTransactionFieldList
+                            .Where(o => o.IsVisible.HasValue && o.IsVisible.Value)
+                            .OrderBy(o => o.SortOrder ?? 0));
+                }
+            }
+
+            return fields;
+        }
+
         private static Dictionary<int, List<AppTransactionFieldExDto>> PrepareColumnAndFieldsDictionary(AppTransactionExDto transactionExDto, int columns)
         {
             Dictionary<int, List<AppTransactionFieldExDto>> dictColAndFieldList = new Dictionary<int, List<AppTransactionFieldExDto>>();
 
             Dictionary<int, int> dictColAndTotalHeight = new Dictionary<int, int>();
 
-            List<AppTransactionFieldExDto> rootLevelFields = transactionExDto.DictRootLevelUnitTransactionField.Values.Where(o => o.IsVisible.HasValue && o.IsVisible.Value).ToList();
+            List<AppTransactionFieldExDto> rootLevelFields = GetVisibleRootAndSiblingFields(transactionExDto);
 
             int nbRootField = rootLevelFields.Count;
 
@@ -1800,7 +1839,7 @@ namespace App.BL
 
         private static int BuildAppFormDefaultLayout_SetMainLayout(AppFormExDto aAppFormExDto, AppTransactionExDto transactionExDto, int? numberOfLayoutColumns = null)
         {
-            var rootFieldList = transactionExDto.DictRootLevelUnitTransactionField.Values.Where(o => o.IsVisible.HasValue && o.IsVisible.Value).ToList();
+            var rootFieldList = GetVisibleRootAndSiblingFields(transactionExDto);
             int nbRootField = rootFieldList.Count;
             int nbChildGrid = transactionExDto.AppTransactionUnitList.FirstOrDefault().Children.Count; ;
 

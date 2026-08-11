@@ -553,10 +553,22 @@ Run **3b before Phase D** so views exist when Blueprint Validate/Execute resolve
 | PLM source | APP target | Notes |
 |------------|------------|-------|
 | Fit Summary Tab — blocks **not** tied to a round | Sibling `Plm_FitSummary` (slim) | Round-specific SubItems (Fit1 Date, Fit2 Status, …) **out** of this table |
-| Fit1…N / PP… / Comments — per-round non-grid SubItems | Sibling `Plm_FitRoundInfo` (1:1 with `TchpFitRound`) | **Semantic normalize** to shared columns (e.g. FitDate, FitStatus, SampleType, ReceiveDate, ApproveDate, …). Map each PLM SubItem → column by round N from Tab name / binding |
-| SpecFit Grid `SampleN`/`ReviseN` | `TchpFitRound` + `TchpFitMeasurement` | Do **not** emit `Plm_SpecFitGrid`. Create round rows for each N that has data; `RoundType` from binding/role (FIT / PP1 / TOP / INTERNAL…) |
-| — | `TchpFitRound` | PK `FitRoundId` + `StyleSpecId` + **`RoundNumber`** + **`RoundType`**. Workflow columns may remain on table for APP; **PLM-imported** round header fields live on `Plm_FitRoundInfo` |
+| Fit1…N / PP… / Comments — per-round non-grid SubItems | Sibling `Plm_FitRoundInfo` (1:1 with `TchpFitRound`) | **Semantic normalize** to shared columns. Prefer **Fit N Tab + Fit N Comments Tab** as source (not Fit Summary flattened columns). Map SubItem → column by round N from Tab name / `roundSources` / `commentSources`. Calc columns (`blankdate_calc_*`, `dateisblank_calc_*`, `setdate_calc_*`, `patternstate_IB_*`, SampleStatusState CB, …) **are imported**. Shared Spec*/SizeRun/BaseSize/Measure_Unit stay on Fit Summary / StyleSpec. |
+| SpecFit Grid `SampleN`/`ReviseN` | `TchpFitRound` + `TchpFitMeasurement` | Do **not** emit `Plm_SpecFitGrid`. Create round rows for each N that has data; **`RoundType` = Sample \| PP \| Top** from PLM Fit block (`FitN`→Sample, `PPn`→PP, `TOPn`→Top). Config: `fitRoundTypeByRoundNumber` / `fitDefaultRoundType` / bindings `role` |
+| — | `TchpFitRound` | PK `FitRoundId` + `StyleSpecId` + **`RoundNumber`** + **`RoundType`**. Workflow columns may remain on table for APP; **PLM-imported** round header fields live **only** on `Plm_FitRoundInfo` (do not sync into TchpFitRound) |
 | Comments tabs | Field source for `Plm_FitRoundInfo` only | **No** separate Comments transaction |
+
+**`techPack.fitRoundInfo` config**
+
+| Key | Purpose |
+|-----|---------|
+| `appTable` | Logical name (`FitRoundInfo` → `Plm_FitRoundInfo`) |
+| `semanticColumnsFile` | External JSON (e.g. `fitRoundInfo.semanticColumns.{templateId}.json`) **or** inline `semanticColumns[]` |
+| `semanticColumns[].appColumn` / `sqlType` / `entityCode` / `controlType` / `displayName` / `sortOrder` | APP column + Entity/DDL wiring |
+| `roundSources[{roundNumber,dwTable,dwColumns[]}]` | Prefer round-specific DW cols; `COALESCE` when shared+specific (e.g. Approve_Date) |
+| `commentSources[...]` | FitComment / FitCommentImage / CommentDate from Comments tabs |
+
+Template **3283** maps Fit1–4 only; **PROMPT + file shape must work for FitN / PP / TOP** on other PLM DBs (add more `roundSources` entries). Step **1_** DDL adds columns; step **3b** fills by `TchpFitRound.RoundNumber`; Blueprint `ApplyTechPackFitRoundInfoGoldenFieldTemplate` wires Entity/DDL + Form layout on **FIT ROUND** sibling.
 
 #### F2 — Transaction shape
 

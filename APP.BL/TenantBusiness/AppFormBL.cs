@@ -644,14 +644,13 @@ namespace App.BL
             {
                 var formEntity = RetrieveOneAppFormEntity(formId);
 
-                int[] rootFormLayoutids = formEntity.AppFormLayoutItem.Select(o => o.FormLayoutItemId).ToArray();
-
                 try
                 {
                     adapter.StartTransaction(IsolationLevel.ReadCommitted, "StartTransaction");
 
-                    adapter.DeleteEntitiesDirectly(typeof(AppFormLayoutItemEntity), new RelationPredicateBucket(AppFormLayoutItemFields.UigridLayoutParentId == rootFormLayoutids));
-                    adapter.DeleteEntitiesDirectly(typeof(AppFormLayoutItemEntity), new RelationPredicateBucket(AppFormLayoutItemFields.FormId == formId));
+                    // Deep nested Flex trees cannot be deleted with a single parent-id pass —
+                    // FK_AppFormLayoutItem_AppFormLayoutItem (UIGridLayoutParentID) requires leaf-first deletes.
+                    ClearFormLayoutItemsDeep(adapter, formId);
 
                     if (resetToLayoutType.HasValue)
                     {
@@ -669,6 +668,11 @@ namespace App.BL
                 {
                     adapter.Rollback();
                     aValidationResult.Items.Add(new ValidationItem(null, "App_Form_Reset_Failed", ValidationItemType.Error, "Form Reset Failed: " + ex.ToString()));
+                }
+                catch (Exception ex)
+                {
+                    adapter.Rollback();
+                    aValidationResult.Items.Add(new ValidationItem(null, "App_Form_Reset_Failed", ValidationItemType.Error, "Form Reset Failed: " + ex.Message));
                 }
             }
 
@@ -703,6 +707,65 @@ namespace App.BL
             }
 
             return aOperationCallResult;
+        }
+
+        /// <summary>
+        /// Deletes all AppFormLayoutItem rows for a form in leaf-first order (self-FK safe),
+        /// and clears layout bind / HostFormLayoutItemId references first.
+        /// </summary>
+        private static void ClearFormLayoutItemsDeep(DataAccessAdapter adapter, int formId)
+        {
+            var remaining = new EntityCollection<AppFormLayoutItemEntity>();
+            adapter.FetchEntityCollection(
+                remaining,
+                new RelationPredicateBucket(AppFormLayoutItemFields.FormId == formId));
+            if (remaining.Count == 0)
+                return;
+
+            int[] layoutIds = remaining.Select(o => o.FormLayoutItemId).ToArray();
+
+            // Bind fields (grid column binders) reference layout items.
+            adapter.DeleteEntitiesDirectly(
+                typeof(AppFormGridLayoutItemBindFieldEntity),
+                new RelationPredicateBucket(AppFormGridLayoutItemBindFieldFields.FormLayoutId == layoutIds));
+
+            // Clear HostFormLayoutItemId (ON DELETE SET_NULL on newer DBs; still clear for safety).
+            var hostedFields = new EntityCollection<AppTransactionFieldEntity>();
+            adapter.FetchEntityCollection(
+                hostedFields,
+                new RelationPredicateBucket(AppTransactionFieldFields.HostFormLayoutItemId == layoutIds));
+            foreach (var field in hostedFields)
+            {
+                field.HostFormLayoutItemId = null;
+                adapter.SaveEntity(field, true);
+            }
+
+            for (int guard = 0; guard < 50; guard++)
+            {
+                remaining = new EntityCollection<AppFormLayoutItemEntity>();
+                adapter.FetchEntityCollection(
+                    remaining,
+                    new RelationPredicateBucket(AppFormLayoutItemFields.FormId == formId));
+                if (remaining.Count == 0)
+                    break;
+
+                var parentIds = new HashSet<int>(
+                    remaining
+                        .Where(o => o.UigridLayoutParentId.HasValue)
+                        .Select(o => o.UigridLayoutParentId.Value));
+
+                int[] leafIds = remaining
+                    .Where(o => !parentIds.Contains(o.FormLayoutItemId))
+                    .Select(o => o.FormLayoutItemId)
+                    .ToArray();
+
+                if (leafIds.Length == 0)
+                    leafIds = remaining.Select(o => o.FormLayoutItemId).ToArray();
+
+                adapter.DeleteEntitiesDirectly(
+                    typeof(AppFormLayoutItemEntity),
+                    new RelationPredicateBucket(AppFormLayoutItemFields.FormLayoutItemId == leafIds));
+            }
         }
 
 

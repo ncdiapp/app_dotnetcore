@@ -848,10 +848,17 @@
                                                          ]
                                       }
                                   ],
-                     "fitDefaultRoundType":  "FIT",
+                     "fitDefaultRoundType":  "Sample",
+                     "fitRoundTypeByRoundNumber":  {
+                                                      "1":  "Sample",
+                                                      "2":  "Sample",
+                                                      "3":  "Sample",
+                                                      "4":  "Sample"
+                                                  },
                      "fitRoundInfo":  {
                                           "appTable":  "FitRoundInfo",
-                                          "_comment":  "FX1: 1:1 TchpFitRound.FitRoundId. Skeleton + StyleSpecId; semantic columns TBD."
+                                          "semanticColumnsFile":  "fitRoundInfo.semanticColumns.3283.json",
+                                          "_comment":  "FX1: 1:1 TchpFitRound.FitRoundId. Semantic columns from Fit N + Fit N Comments tabs (not Fit Summary flatten). PLM-imported fields stay on FitRoundInfo only (not TchpFitRound). Template 3283 maps Fit1-4; file/PROMPT pattern covers FitN/PP/TOP for other DBs."
                                       },
                      "fitRoundTransaction":  {
                                                  "integrationId":  "TX_FitRound",

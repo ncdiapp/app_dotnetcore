@@ -1,5 +1,74 @@
 # Dot-sourced by _gen_plmdw_import_sql.ps1 — TechPack Tchp* step 3b emitter (static SQL).
 
+function Resolve-FitRoundInfoSemanticColumns($config, [string]$scriptRoot) {
+    if (-not $config.techPack -or -not $config.techPack.fitRoundInfo) { return @() }
+    $fri = $config.techPack.fitRoundInfo
+    $inline = @($fri.semanticColumns) | Where-Object { $_ -and $_.appColumn }
+    if ($inline.Count -gt 0) { return @($inline) }
+
+    $fileName = $null
+    if ($fri.semanticColumnsFile) { $fileName = [string]$fri.semanticColumnsFile }
+    if (-not $fileName) {
+        $tid = $null
+        if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) { $tid = [int]$config.plmTemplateId }
+        elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId) { $tid = [int]$config.plmTemplate.templateId }
+        if ($tid) { $fileName = "fitRoundInfo.semanticColumns.$tid.json" }
+    }
+    if (-not $fileName) { return @() }
+    $path = Join-Path $scriptRoot $fileName
+    if (-not (Test-Path $path)) { return @() }
+    $doc = Get-Content $path -Raw | ConvertFrom-Json
+    return @($doc.semanticColumns) | Where-Object { $_ -and $_.appColumn }
+}
+
+# Map SpecFit SampleN / Fit-family block → TchpFitRound.RoundType (Sample | PP | Top).
+function Resolve-FitRoundTypeByRoundNumber($config) {
+    $map = @{}
+    if (-not $config.techPack) { return $map }
+
+    # Explicit map wins (keys may be string or int).
+    if ($config.techPack.fitRoundTypeByRoundNumber) {
+        foreach ($p in $config.techPack.fitRoundTypeByRoundNumber.PSObject.Properties) {
+            $n = 0
+            if ([int]::TryParse([string]$p.Name, [ref]$n) -and $n -gt 0 -and $p.Value) {
+                $map[$n] = [string]$p.Value
+            }
+        }
+    }
+
+    # Derive from techPack.bindings roles: FitN→Sample, PPn→PP, TOPn→Top.
+    foreach ($b in @($config.techPack.bindings)) {
+        if (-not $b -or -not $b.role) { continue }
+        $role = [string]$b.role
+        $n = $null
+        $type = $null
+        if ($role -match '^(?i)Fit(\d+)$') { $n = [int]$Matches[1]; $type = 'Sample' }
+        elseif ($role -match '^(?i)PP(\d+)$') { $n = [int]$Matches[1]; $type = 'PP' }
+        elseif ($role -match '^(?i)TOP(\d+)$') { $n = [int]$Matches[1]; $type = 'Top' }
+        elseif ($role -match '^(?i)TOP$') { $n = 1; $type = 'Top' }
+        if ($n -and $type -and -not $map.ContainsKey($n)) { $map[$n] = $type }
+    }
+
+    # Template with folded Fit1–4 (no FitN bindings): default Sample1–4 → Sample when map empty.
+    if ($map.Count -eq 0) {
+        for ($i = 1; $i -le 4; $i++) { $map[$i] = 'Sample' }
+    }
+    return $map
+}
+
+function Build-FitRoundTypeCaseSql($roundTypeMap, [string]$defaultType, [string]$expr) {
+    if (-not $roundTypeMap -or $roundTypeMap.Count -eq 0) {
+        return ("N'{0}'" -f ($defaultType -replace "'", "''"))
+    }
+    $lines = New-Object System.Collections.Generic.List[string]
+    [void]$lines.Add("CASE $expr")
+    foreach ($k in ($roundTypeMap.Keys | Sort-Object)) {
+        [void]$lines.Add(("  WHEN {0} THEN N'{1}'" -f $k, ($roundTypeMap[$k] -replace "'", "''")))
+    }
+    [void]$lines.Add(("  ELSE N'{0}' END" -f ($defaultType -replace "'", "''")))
+    return ($lines -join "`r`n")
+}
+
 function Find-DwColumnByStem($dwCols, [string]$stem) {
     if (-not $dwCols) { return $null }
     $exact = @($dwCols | Where-Object {
@@ -218,13 +287,19 @@ WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
 "@.Trim())
         }
         $fitUnionSql = $fitUnions -join "`r`nUNION ALL`r`n"
-        # RoundType: FIT for Fit-family SpecFit; override via techPack.fitDefaultRoundType if set.
-        $fitRoundType = 'FIT'
-        if ($config.techPack.fitDefaultRoundType) { $fitRoundType = [string]$config.techPack.fitDefaultRoundType }
+        # RoundType from PLM FIT BLOCK: Fit* → Sample, PP* → PP, TOP* → Top (config overrides).
+        $roundTypeMap = Resolve-FitRoundTypeByRoundNumber $config
+        $fitRoundTypeDefault = 'Sample'
+        if ($config.techPack.fitDefaultRoundType) { $fitRoundTypeDefault = [string]$config.techPack.fitDefaultRoundType }
+        $roundTypeCaseR = Build-FitRoundTypeCaseSql $roundTypeMap $fitRoundTypeDefault 'r.RoundNumber'
+        $roundTypeCaseFr = Build-FitRoundTypeCaseSql $roundTypeMap $fitRoundTypeDefault 'fr.RoundNumber'
 
         & $add '-- 4. TchpFitRound + TchpFitMeasurement (R1: RoundNumber = N from SampleN/ReviseN)'
+        & $add '-- RoundType: Sample | PP | Top from PLM Fit block (FitN->Sample, PPn->PP, TOPn->Top).'
         & $add 'INSERT INTO dbo.TchpFitRound (StyleSpecId, RoundNumber, RoundType, RoundStatus, AppCreatedDate)'
-        & $add "SELECT DISTINCT ss.StyleSpecId, r.RoundNumber, N'$fitRoundType', N'PENDING', GETDATE()"
+        & $add 'SELECT DISTINCT ss.StyleSpecId, r.RoundNumber,'
+        & $add "  $roundTypeCaseR,"
+        & $add '  N''PENDING'', GETDATE()'
         & $add 'FROM ('
         & $add '  SELECT DISTINCT ProductReferenceID, RoundNumber FROM ('
         & $add $fitUnionSql
@@ -236,6 +311,19 @@ WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
         & $add '  WHERE fr.StyleSpecId = ss.StyleSpecId AND fr.RoundNumber = r.RoundNumber'
         & $add ');'
         & $add 'PRINT N''TchpFitRound insert done. Rows='' + CAST(@@ROWCOUNT AS NVARCHAR(20));'
+        & $add ''
+        & $add ';WITH roundSrc AS ('
+        & $add '  SELECT DISTINCT TRY_CONVERT(INT, ProductReferenceID) AS StyleSpecId, RoundNumber FROM ('
+        & $add $fitUnionSql
+        & $add '  ) x WHERE TRY_CONVERT(INT, ProductReferenceID) IS NOT NULL'
+        & $add ')'
+        & $add 'UPDATE fr SET'
+        & $add "  fr.RoundType = $roundTypeCaseFr,"
+        & $add '  fr.AppModifiedDate = GETDATE()'
+        & $add 'FROM dbo.TchpFitRound fr'
+        & $add 'INNER JOIN roundSrc s ON s.StyleSpecId = fr.StyleSpecId AND s.RoundNumber = fr.RoundNumber'
+        & $add "WHERE ISNULL(fr.RoundType, N'') <> ($roundTypeCaseFr);"
+        & $add 'PRINT N''TchpFitRound RoundType sync done. Rows='' + CAST(@@ROWCOUNT AS NVARCHAR(20));'
         & $add ''
         & $add ';WITH meas AS ('
         & $add $fitUnionSql
@@ -269,7 +357,7 @@ WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
         & $add 'PRINT N''TchpFitMeasurement update done. Rows='' + CAST(@@ROWCOUNT AS NVARCHAR(20));'
         & $add ''
 
-        # FX1: skeleton Plm_FitRoundInfo rows (1:1 FitRoundId). Semantic columns filled when fitRoundInfo.semanticColumns configured.
+        # FX1: skeleton Plm_FitRoundInfo + semantic fill from Fit N / Comments tabs (not Fit Summary flatten).
         $friApp = 'FitRoundInfo'
         if ($config.techPack.fitRoundInfo -and $config.techPack.fitRoundInfo.appTable) {
             $friApp = [string]$config.techPack.fitRoundInfo.appTable
@@ -280,6 +368,7 @@ WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
             if (-not $p.EndsWith('_')) { $p += '_' }
             $friTable = $p + $friApp
         }
+        $friSemCols = @(Resolve-FitRoundInfoSemanticColumns $config $PSScriptRoot)
         & $add ("-- 4b. FX1 skeleton {0} (FitRoundId = TchpFitRound.FitRoundId)" -f $friTable)
         & $add ("IF OBJECT_ID(N'dbo.{0}', N'U') IS NOT NULL" -f $friTable)
         & $add 'BEGIN'
@@ -294,6 +383,86 @@ WHERE TRY_CONVERT(INT, g.$sfBodyPartCol) IS NOT NULL
         & $add 'ELSE'
         & $add ("  PRINT N'WARN: {0} missing - run step 1_ tables before 3b.';" -f $friTable)
         & $add ''
+
+        if ($friSemCols.Count -gt 0) {
+            & $add ("-- 4c. FX1 {0} semantic columns from Fit N + Comments (per RoundNumber)" -f $friTable)
+            & $add ("IF OBJECT_ID(N'dbo.{0}', N'U') IS NOT NULL" -f $friTable)
+            & $add 'BEGIN'
+            $roundNums = New-Object System.Collections.Generic.HashSet[int]
+            foreach ($sc in $friSemCols) {
+                foreach ($src in @($sc.roundSources) + @($sc.commentSources)) {
+                    if ($src -and $null -ne $src.roundNumber) { [void]$roundNums.Add([int]$src.roundNumber) }
+                }
+            }
+            foreach ($rn in ($roundNums | Sort-Object)) {
+                $fitTbl = $null; $cmtTbl = $null
+                foreach ($sc in $friSemCols) {
+                    foreach ($rs in @($sc.roundSources)) {
+                        if ($rs -and [int]$rs.roundNumber -eq $rn -and $rs.dwTable) { $fitTbl = [string]$rs.dwTable; break }
+                    }
+                    if ($fitTbl) { break }
+                }
+                foreach ($sc in $friSemCols) {
+                    foreach ($cs in @($sc.commentSources)) {
+                        if ($cs -and [int]$cs.roundNumber -eq $rn -and $cs.dwTable) { $cmtTbl = [string]$cs.dwTable; break }
+                    }
+                    if ($cmtTbl) { break }
+                }
+                if (-not $fitTbl -and -not $cmtTbl) { continue }
+
+                $setParts = New-Object System.Collections.Generic.List[string]
+                $applyParts = New-Object System.Collections.Generic.List[string]
+                foreach ($sc in $friSemCols) {
+                    $appCol = [string]$sc.appColumn
+                    $exprs = New-Object System.Collections.Generic.List[string]
+                    foreach ($rs in @($sc.roundSources)) {
+                        if (-not $rs -or [int]$rs.roundNumber -ne $rn) { continue }
+                        $alias = 'f'
+                        foreach ($dc in @($rs.dwColumns)) {
+                            if (-not $dc) { continue }
+                            $exprs.Add(("$alias.{0}" -f $dc))
+                        }
+                    }
+                    foreach ($cs in @($sc.commentSources)) {
+                        if (-not $cs -or [int]$cs.roundNumber -ne $rn) { continue }
+                        $alias = 'c'
+                        foreach ($dc in @($cs.dwColumns)) {
+                            if (-not $dc) { continue }
+                            $exprs.Add(("$alias.{0}" -f $dc))
+                        }
+                    }
+                    if ($exprs.Count -eq 0) { continue }
+                    $coalesce = if ($exprs.Count -eq 1) { $exprs[0] } else { 'COALESCE(' + ($exprs -join ', ') + ')' }
+                    [void]$applyParts.Add(("    {0} AS [{1}]" -f $coalesce, $appCol))
+                    [void]$setParts.Add(("  i.[{0}] = src.[{0}]" -f $appCol))
+                }
+                if ($setParts.Count -eq 0) { continue }
+
+                & $add ("  -- Round {0}" -f $rn)
+                & $add '  UPDATE i SET'
+                & $add (($setParts -join ",`r`n") + ',')
+                & $add '  i.AppModifiedDate = GETDATE()'
+                & $add ("  FROM dbo.{0} i" -f $friTable)
+                & $add ("  INNER JOIN dbo.TchpFitRound fr ON fr.FitRoundId = i.FitRoundId AND fr.RoundNumber = {0}" -f $rn)
+                if ($fitTbl) {
+                    & $add ("  LEFT JOIN {0}.{1} f ON TRY_CONVERT(INT, f.ProductReferenceID) = fr.StyleSpecId" -f $dwRef, $fitTbl)
+                } else {
+                    & $add '  OUTER APPLY (SELECT CAST(NULL AS INT) AS _NoFit) f'
+                }
+                if ($cmtTbl) {
+                    & $add ("  LEFT JOIN {0}.{1} c ON TRY_CONVERT(INT, c.ProductReferenceID) = fr.StyleSpecId" -f $dwRef, $cmtTbl)
+                } else {
+                    & $add '  OUTER APPLY (SELECT CAST(NULL AS INT) AS _NoCmt) c'
+                }
+                & $add '  CROSS APPLY (SELECT'
+                & $add (($applyParts -join ",`r`n") )
+                & $add '  ) src;'
+                & $add ("  PRINT N'{0} semantic Round {1} update. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));" -f $friTable, $rn)
+                & $add ''
+            }
+            & $add 'END'
+            & $add ''
+        }
     }
     else {
         & $add 'PRINT N''WARN: FitRound/Measurement skipped — SpecFit not resolved.'';'

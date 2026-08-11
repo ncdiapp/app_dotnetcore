@@ -3,7 +3,7 @@
 -- L2: TchpStyleSpec.StyleSpecId = Root.ReferenceId (no identity; sibling PK = parent PK).
 -- S1: SizeRun/BaseSize/UOM from Grading tab 4006 (PLM_DW_Tab_Grading_4006).
 -- UOM: PLM tblUnitOfMeasure (not on tenant) -> CM|INCH; unmatched defaults to CM.
--- SpecFit ActualValue = SampleN only (PLM Meas N). ReviseN is Rev.Spec — do not COALESCE into ActualValue.
+-- SpecFit ActualValue = SampleN only (PLM Meas N). ReviseN is Rev.Spec â€” do not COALESCE into ActualValue.
 -- Blank-safe NULLIF on Sample; Comments tabs do not host Fit grid.
 -- Prerequisites: Tchp foundation (ImportPlmPomAndGrading); Plm_* steps 1-3.
 -- Size_Run=Size_Run_43_FK_tblSizeRun Base_Size=Base_Size_44_FK_tblSizeRunRotate Measure_Unit=Measure_Unit_58_FK_
@@ -176,9 +176,16 @@ WHERE NOT EXISTS (
 PRINT N'TchpGradeValue insert done. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
 
 -- 4. TchpFitRound + TchpFitMeasurement (R1: RoundNumber = N from SampleN/ReviseN)
--- ActualValue = SampleN (PLM Meas); ReviseN = Rev.Spec — not COALESCE'd into ActualValue.
+-- RoundType: Sample | PP | Top from PLM Fit block (FitN->Sample, PPn->PP, TOPn->Top).
 INSERT INTO dbo.TchpFitRound (StyleSpecId, RoundNumber, RoundType, RoundStatus, AppCreatedDate)
-SELECT DISTINCT ss.StyleSpecId, r.RoundNumber, N'FIT', N'PENDING', GETDATE()
+SELECT DISTINCT ss.StyleSpecId, r.RoundNumber,
+  CASE r.RoundNumber
+  WHEN 1 THEN N'Sample'
+  WHEN 2 THEN N'Sample'
+  WHEN 3 THEN N'Sample'
+  WHEN 4 THEN N'Sample'
+  ELSE N'Sample' END,
+  N'PENDING', GETDATE()
 FROM (
   SELECT DISTINCT ProductReferenceID, RoundNumber FROM (
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
@@ -228,7 +235,7 @@ SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28)
   TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N'')) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N'')) IS NOT NULL
+  AND (TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N'')) IS NOT NULL)
   ) x
 ) r
 INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = TRY_CONVERT(INT, r.ProductReferenceID)
@@ -237,6 +244,76 @@ WHERE NOT EXISTS (
   WHERE fr.StyleSpecId = ss.StyleSpecId AND fr.RoundNumber = r.RoundNumber
 );
 PRINT N'TchpFitRound insert done. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
+
+;WITH roundSrc AS (
+  SELECT DISTINCT TRY_CONVERT(INT, ProductReferenceID) AS StyleSpecId, RoundNumber FROM (
+SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
+  1 AS RoundNumber,
+  TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample1_30)), N'')) AS ActualValue
+FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
+WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
+  AND (TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample1_30)), N'')) IS NOT NULL OR TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Revise1_31)), N'')) IS NOT NULL)
+UNION ALL
+SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
+  2 AS RoundNumber,
+  TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample2_32)), N'')) AS ActualValue
+FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
+WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
+  AND (TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample2_32)), N'')) IS NOT NULL OR TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Revise2_33)), N'')) IS NOT NULL)
+UNION ALL
+SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
+  3 AS RoundNumber,
+  TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample3_34)), N'')) AS ActualValue
+FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
+WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
+  AND (TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample3_34)), N'')) IS NOT NULL OR TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Revise3_35)), N'')) IS NOT NULL)
+UNION ALL
+SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
+  4 AS RoundNumber,
+  TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample4_36)), N'')) AS ActualValue
+FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
+WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
+  AND (TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample4_36)), N'')) IS NOT NULL OR TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Revise4_37)), N'')) IS NOT NULL)
+UNION ALL
+SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
+  5 AS RoundNumber,
+  TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample5_326)), N'')) AS ActualValue
+FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
+WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
+  AND (TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample5_326)), N'')) IS NOT NULL OR TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Revise5_328)), N'')) IS NOT NULL)
+UNION ALL
+SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
+  6 AS RoundNumber,
+  TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample6_329)), N'')) AS ActualValue
+FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
+WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
+  AND (TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample6_329)), N'')) IS NOT NULL OR TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Revise6_331)), N'')) IS NOT NULL)
+UNION ALL
+SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
+  11 AS RoundNumber,
+  TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N'')) AS ActualValue
+FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
+WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
+  AND (TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N'')) IS NOT NULL)
+  ) x WHERE TRY_CONVERT(INT, ProductReferenceID) IS NOT NULL
+)
+UPDATE fr SET
+  fr.RoundType = CASE fr.RoundNumber
+  WHEN 1 THEN N'Sample'
+  WHEN 2 THEN N'Sample'
+  WHEN 3 THEN N'Sample'
+  WHEN 4 THEN N'Sample'
+  ELSE N'Sample' END,
+  fr.AppModifiedDate = GETDATE()
+FROM dbo.TchpFitRound fr
+INNER JOIN roundSrc s ON s.StyleSpecId = fr.StyleSpecId AND s.RoundNumber = fr.RoundNumber
+WHERE ISNULL(fr.RoundType, N'') <> (CASE fr.RoundNumber
+  WHEN 1 THEN N'Sample'
+  WHEN 2 THEN N'Sample'
+  WHEN 3 THEN N'Sample'
+  WHEN 4 THEN N'Sample'
+  ELSE N'Sample' END);
+PRINT N'TchpFitRound RoundType sync done. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
 
 ;WITH meas AS (
 SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) AS BodyPartRaw,
@@ -286,7 +363,7 @@ SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28)
   TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N'')) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N'')) IS NOT NULL
+  AND (TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N'')) IS NOT NULL)
 )
 INSERT INTO dbo.TchpFitMeasurement (FitRoundId, PomSpecLineId, ActualValue, AppCreatedDate)
 SELECT fr.FitRoundId, pl.PomSpecLineId, m.ActualValue, GETDATE()
@@ -349,7 +426,7 @@ SELECT g.ProductReferenceID, TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28)
   TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N'')) AS ActualValue
 FROM [plmDW].dbo.PLM_DW_Grid_SpecFitGrid_5 g
 WHERE TRY_CONVERT(INT, g.BodyPartDetailIDWDimDetailID_28) IS NOT NULL
-  AND TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N'')) IS NOT NULL
+  AND (TRY_CONVERT(DECIMAL(10,3), NULLIF(LTRIM(RTRIM(g.Sample11_377)), N'')) IS NOT NULL)
 )
 UPDATE fm
 SET fm.ActualValue = m.ActualValue
@@ -376,6 +453,263 @@ BEGIN
 END
 ELSE
   PRINT N'WARN: Plm_FitRoundInfo missing - run step 1_ tables before 3b.';
+
+-- 4c. FX1 Plm_FitRoundInfo semantic columns from Fit N + Comments (per RoundNumber)
+IF OBJECT_ID(N'dbo.Plm_FitRoundInfo', N'U') IS NOT NULL
+BEGIN
+  -- Round 1
+  UPDATE i SET
+  i.[SampleType] = src.[SampleType],
+  i.[SampleStatus] = src.[SampleStatus],
+  i.[State] = src.[State],
+  i.[ReceiveDate] = src.[ReceiveDate],
+  i.[RequestDate] = src.[RequestDate],
+  i.[ApproveDate] = src.[ApproveDate],
+  i.[MeasureDate] = src.[MeasureDate],
+  i.[Factory] = src.[Factory],
+  i.[FitTechnician] = src.[FitTechnician],
+  i.[Model] = src.[Model],
+  i.[FitFile] = src.[FitFile],
+  i.[PatternCode] = src.[PatternCode],
+  i.[PatternStatus] = src.[PatternStatus],
+  i.[PatternFile] = src.[PatternFile],
+  i.[PatternStateIb] = src.[PatternStateIb],
+  i.[SupplierMeasDate] = src.[SupplierMeasDate],
+  i.[SupplierMeasurer] = src.[SupplierMeasurer],
+  i.[SampleSent] = src.[SampleSent],
+  i.[CommentDate] = src.[CommentDate],
+  i.[SecurityGroup] = src.[SecurityGroup],
+  i.[BlankDateCalc] = src.[BlankDateCalc],
+  i.[DateIsBlankCalc] = src.[DateIsBlankCalc],
+  i.[SetDateCalc] = src.[SetDateCalc],
+  i.[SampleStatusStateCb] = src.[SampleStatusStateCb],
+  i.[FitComment] = src.[FitComment],
+  i.[FitCommentImage] = src.[FitCommentImage],
+  i.AppModifiedDate = GETDATE()
+  FROM dbo.Plm_FitRoundInfo i
+  INNER JOIN dbo.TchpFitRound fr ON fr.FitRoundId = i.FitRoundId AND fr.RoundNumber = 1
+  LEFT JOIN [plmDW].dbo.PLM_DW_Tab_Fit_1_4008 f ON TRY_CONVERT(INT, f.ProductReferenceID) = fr.StyleSpecId
+  LEFT JOIN [plmDW].dbo.PLM_DW_Tab_Fit_1_Comments_4009 c ON TRY_CONVERT(INT, c.ProductReferenceID) = fr.StyleSpecId
+  CROSS APPLY (SELECT
+    f.Sample_Type_3080_FK_PLM_DW_UD_Sample_Type_3458 AS [SampleType],
+    f.Sample_Status_3062_FK_PLM_DW_UD_Sample_Status_3459 AS [SampleStatus],
+    f.State_3063 AS [State],
+    f.Receive_Date_3171 AS [ReceiveDate],
+    f.Request_Date_3192 AS [RequestDate],
+    COALESCE(f.Approve_Date_4979, f.Approve_Date_3819) AS [ApproveDate],
+    f.Measure_Date_3227 AS [MeasureDate],
+    f.Factory_3191_FK_PLM_DW_UD_Factory_3471 AS [Factory],
+    f.Fit_Technician_3190_FK_pdmsecuritywebuser AS [FitTechnician],
+    f.Model_3222 AS [Model],
+    f.Fit_File_3221_FK_tblSketch AS [FitFile],
+    f.Pattern_Code_3755 AS [PatternCode],
+    f.Pattern_Status_3818_FK_PLM_DW_UD_Pattern_Status_3472 AS [PatternStatus],
+    f.Pattern_File_3756_FK_tblSketch AS [PatternFile],
+    f.patternstate_IB_3820 AS [PatternStateIb],
+    f.Supplier_Meas_Date_3228 AS [SupplierMeasDate],
+    f.Supplier_Measurer_3229 AS [SupplierMeasurer],
+    f.Sample_Sent_4161 AS [SampleSent],
+    COALESCE(f.Comment_Date_3210, c.Comment_Date_3210) AS [CommentDate],
+    f.Security_Group_3189_FK_pdmSecurityUserGroup AS [SecurityGroup],
+    COALESCE(f.blankdate_calc_4978, f.blankdate_calc_3822) AS [BlankDateCalc],
+    COALESCE(f.dateisblank_calc_4976, f.dateisblank_calc_3821) AS [DateIsBlankCalc],
+    COALESCE(f.setdate_calc_4977, f.setdate_calc_3823) AS [SetDateCalc],
+    f.Fit2SampleStatusState_CB_4975 AS [SampleStatusStateCb],
+    c.Fit_Comment_3201 AS [FitComment],
+    c.Fit_Comment_Image_3220_FK_tblSketch AS [FitCommentImage]
+  ) src;
+  PRINT N'Plm_FitRoundInfo semantic Round 1 update. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
+
+  -- Round 2
+  UPDATE i SET
+  i.[SampleType] = src.[SampleType],
+  i.[SampleStatus] = src.[SampleStatus],
+  i.[State] = src.[State],
+  i.[ReceiveDate] = src.[ReceiveDate],
+  i.[RequestDate] = src.[RequestDate],
+  i.[ApproveDate] = src.[ApproveDate],
+  i.[MeasureDate] = src.[MeasureDate],
+  i.[Factory] = src.[Factory],
+  i.[FitTechnician] = src.[FitTechnician],
+  i.[Model] = src.[Model],
+  i.[FitFile] = src.[FitFile],
+  i.[PatternCode] = src.[PatternCode],
+  i.[PatternStatus] = src.[PatternStatus],
+  i.[PatternFile] = src.[PatternFile],
+  i.[PatternStateIb] = src.[PatternStateIb],
+  i.[SupplierMeasDate] = src.[SupplierMeasDate],
+  i.[SupplierMeasurer] = src.[SupplierMeasurer],
+  i.[SampleSent] = src.[SampleSent],
+  i.[CommentDate] = src.[CommentDate],
+  i.[SecurityGroup] = src.[SecurityGroup],
+  i.[BlankDateCalc] = src.[BlankDateCalc],
+  i.[DateIsBlankCalc] = src.[DateIsBlankCalc],
+  i.[SetDateCalc] = src.[SetDateCalc],
+  i.[SampleStatusStateCb] = src.[SampleStatusStateCb],
+  i.[FitComment] = src.[FitComment],
+  i.[FitCommentImage] = src.[FitCommentImage],
+  i.AppModifiedDate = GETDATE()
+  FROM dbo.Plm_FitRoundInfo i
+  INNER JOIN dbo.TchpFitRound fr ON fr.FitRoundId = i.FitRoundId AND fr.RoundNumber = 2
+  LEFT JOIN [plmDW].dbo.PLM_DW_Tab_Fit_2_4010 f ON TRY_CONVERT(INT, f.ProductReferenceID) = fr.StyleSpecId
+  LEFT JOIN [plmDW].dbo.PLM_DW_Tab_Fit_2_Comment_4013 c ON TRY_CONVERT(INT, c.ProductReferenceID) = fr.StyleSpecId
+  CROSS APPLY (SELECT
+    f.Sample_Type_3081_FK_PLM_DW_UD_Sample_Type_3458 AS [SampleType],
+    f.Sample_Status_3064_FK_PLM_DW_UD_Sample_Status_3459 AS [SampleStatus],
+    f.State_3065 AS [State],
+    f.Receive_Date_3173 AS [ReceiveDate],
+    f.Request_Date_3193 AS [RequestDate],
+    COALESCE(f.Approve_Date_3616, f.Approve_Date_3819) AS [ApproveDate],
+    f.Measure_Date_3305 AS [MeasureDate],
+    f.Factory_3191_FK_PLM_DW_UD_Factory_3471 AS [Factory],
+    f.Fit_Technician_3190_FK_pdmsecuritywebuser AS [FitTechnician],
+    f.Model_3265 AS [Model],
+    f.Fit_File_3257_FK_tblSketch AS [FitFile],
+    f.Pattern_Code_3755 AS [PatternCode],
+    f.Pattern_Status_3818_FK_PLM_DW_UD_Pattern_Status_3472 AS [PatternStatus],
+    f.Pattern_File_3756_FK_tblSketch AS [PatternFile],
+    f.patternstate_IB_3820 AS [PatternStateIb],
+    f.Supplier_Meas_Date_3313 AS [SupplierMeasDate],
+    f.Supplier_Measurer_3321 AS [SupplierMeasurer],
+    f.Sample_Sent_4162 AS [SampleSent],
+    COALESCE(f.Comment_Date_3211, c.Comment_Date_3211) AS [CommentDate],
+    f.Security_Group_3189_FK_pdmSecurityUserGroup AS [SecurityGroup],
+    COALESCE(f.blankdate_calc_3617, f.blankdate_calc_3822) AS [BlankDateCalc],
+    COALESCE(f.dateisblank_calc_3615, f.dateisblank_calc_3821) AS [DateIsBlankCalc],
+    COALESCE(f.setdate_calc_3614, f.setdate_calc_3823) AS [SetDateCalc],
+    f.Fit2SampleStatusState_CB_3613 AS [SampleStatusStateCb],
+    c.Fit_Comment_3202 AS [FitComment],
+    c.Fit_Comment_Image_3249_FK_tblSketch AS [FitCommentImage]
+  ) src;
+  PRINT N'Plm_FitRoundInfo semantic Round 2 update. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
+
+  -- Round 3
+  UPDATE i SET
+  i.[SampleType] = src.[SampleType],
+  i.[SampleStatus] = src.[SampleStatus],
+  i.[State] = src.[State],
+  i.[ReceiveDate] = src.[ReceiveDate],
+  i.[RequestDate] = src.[RequestDate],
+  i.[ApproveDate] = src.[ApproveDate],
+  i.[MeasureDate] = src.[MeasureDate],
+  i.[Factory] = src.[Factory],
+  i.[FitTechnician] = src.[FitTechnician],
+  i.[Model] = src.[Model],
+  i.[FitFile] = src.[FitFile],
+  i.[PatternCode] = src.[PatternCode],
+  i.[PatternStatus] = src.[PatternStatus],
+  i.[PatternFile] = src.[PatternFile],
+  i.[PatternStateIb] = src.[PatternStateIb],
+  i.[SupplierMeasDate] = src.[SupplierMeasDate],
+  i.[SupplierMeasurer] = src.[SupplierMeasurer],
+  i.[SampleSent] = src.[SampleSent],
+  i.[CommentDate] = src.[CommentDate],
+  i.[SecurityGroup] = src.[SecurityGroup],
+  i.[BlankDateCalc] = src.[BlankDateCalc],
+  i.[DateIsBlankCalc] = src.[DateIsBlankCalc],
+  i.[SetDateCalc] = src.[SetDateCalc],
+  i.[SampleStatusStateCb] = src.[SampleStatusStateCb],
+  i.[FitComment] = src.[FitComment],
+  i.[FitCommentImage] = src.[FitCommentImage],
+  i.AppModifiedDate = GETDATE()
+  FROM dbo.Plm_FitRoundInfo i
+  INNER JOIN dbo.TchpFitRound fr ON fr.FitRoundId = i.FitRoundId AND fr.RoundNumber = 3
+  LEFT JOIN [plmDW].dbo.PLM_DW_Tab_Fit_3_4011 f ON TRY_CONVERT(INT, f.ProductReferenceID) = fr.StyleSpecId
+  LEFT JOIN [plmDW].dbo.PLM_DW_Tab_Fit_3_Comments_4014 c ON TRY_CONVERT(INT, c.ProductReferenceID) = fr.StyleSpecId
+  CROSS APPLY (SELECT
+    f.Sample_Type_3082_FK_PLM_DW_UD_Sample_Type_3458 AS [SampleType],
+    f.Sample_Status_3066_FK_PLM_DW_UD_Sample_Status_3459 AS [SampleStatus],
+    f.State_3067 AS [State],
+    f.Receive_Date_3174 AS [ReceiveDate],
+    f.Request_Date_3194 AS [RequestDate],
+    COALESCE(f.Approve_Date_3626, f.Approve_Date_3819) AS [ApproveDate],
+    f.Measure_Date_3306 AS [MeasureDate],
+    f.Factory_3191_FK_PLM_DW_UD_Factory_3471 AS [Factory],
+    f.Fit_Technician_3190_FK_pdmsecuritywebuser AS [FitTechnician],
+    f.Model_3266 AS [Model],
+    f.Fit_File_3258_FK_tblSketch AS [FitFile],
+    f.Pattern_Code_3755 AS [PatternCode],
+    f.Pattern_Status_3818_FK_PLM_DW_UD_Pattern_Status_3472 AS [PatternStatus],
+    f.Pattern_File_3756_FK_tblSketch AS [PatternFile],
+    f.patternstate_IB_3820 AS [PatternStateIb],
+    f.Supplier_Meas_Date_3314 AS [SupplierMeasDate],
+    f.Supplier_Measurer_3322 AS [SupplierMeasurer],
+    f.Sample_Sent_4163 AS [SampleSent],
+    COALESCE(f.Comment_Date_3212, c.Comment_Date_3212) AS [CommentDate],
+    f.Security_Group_3189_FK_pdmSecurityUserGroup AS [SecurityGroup],
+    COALESCE(f.blankddate_calc_3627, f.blankdate_calc_3822) AS [BlankDateCalc],
+    COALESCE(f.dateisblank_calc_3625, f.dateisblank_calc_3821) AS [DateIsBlankCalc],
+    COALESCE(f.setdate_calc_3624, f.setdate_calc_3823) AS [SetDateCalc],
+    f.Fit3SampleStatus_State_CB_3623 AS [SampleStatusStateCb],
+    c.Fit_Comment_3203 AS [FitComment],
+    c.Fit_Comment_Image_3250_FK_tblSketch AS [FitCommentImage]
+  ) src;
+  PRINT N'Plm_FitRoundInfo semantic Round 3 update. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
+
+  -- Round 4
+  UPDATE i SET
+  i.[SampleType] = src.[SampleType],
+  i.[SampleStatus] = src.[SampleStatus],
+  i.[State] = src.[State],
+  i.[ReceiveDate] = src.[ReceiveDate],
+  i.[RequestDate] = src.[RequestDate],
+  i.[ApproveDate] = src.[ApproveDate],
+  i.[MeasureDate] = src.[MeasureDate],
+  i.[Factory] = src.[Factory],
+  i.[FitTechnician] = src.[FitTechnician],
+  i.[Model] = src.[Model],
+  i.[FitFile] = src.[FitFile],
+  i.[PatternCode] = src.[PatternCode],
+  i.[PatternStatus] = src.[PatternStatus],
+  i.[PatternFile] = src.[PatternFile],
+  i.[PatternStateIb] = src.[PatternStateIb],
+  i.[SupplierMeasDate] = src.[SupplierMeasDate],
+  i.[SupplierMeasurer] = src.[SupplierMeasurer],
+  i.[SampleSent] = src.[SampleSent],
+  i.[CommentDate] = src.[CommentDate],
+  i.[SecurityGroup] = src.[SecurityGroup],
+  i.[BlankDateCalc] = src.[BlankDateCalc],
+  i.[DateIsBlankCalc] = src.[DateIsBlankCalc],
+  i.[SetDateCalc] = src.[SetDateCalc],
+  i.[SampleStatusStateCb] = src.[SampleStatusStateCb],
+  i.[FitComment] = src.[FitComment],
+  i.[FitCommentImage] = src.[FitCommentImage],
+  i.AppModifiedDate = GETDATE()
+  FROM dbo.Plm_FitRoundInfo i
+  INNER JOIN dbo.TchpFitRound fr ON fr.FitRoundId = i.FitRoundId AND fr.RoundNumber = 4
+  LEFT JOIN [plmDW].dbo.PLM_DW_Tab_Fit_4_4012 f ON TRY_CONVERT(INT, f.ProductReferenceID) = fr.StyleSpecId
+  LEFT JOIN [plmDW].dbo.PLM_DW_Tab_Fit_4_Comments_4015 c ON TRY_CONVERT(INT, c.ProductReferenceID) = fr.StyleSpecId
+  CROSS APPLY (SELECT
+    f.Sample_Type_3083_FK_PLM_DW_UD_Sample_Type_3458 AS [SampleType],
+    f.Sample_Status_3068_FK_PLM_DW_UD_Sample_Status_3459 AS [SampleStatus],
+    f.State_3069 AS [State],
+    f.Receive_Date_3175 AS [ReceiveDate],
+    f.Request_Date_3195 AS [RequestDate],
+    COALESCE(f.Approve_Date_3636, f.Approve_Date_3819) AS [ApproveDate],
+    f.Measure_Date_3307 AS [MeasureDate],
+    f.Factory_3191_FK_PLM_DW_UD_Factory_3471 AS [Factory],
+    f.Fit_Technician_3190_FK_pdmsecuritywebuser AS [FitTechnician],
+    f.Model_3267 AS [Model],
+    f.Fit_File_3259_FK_tblSketch AS [FitFile],
+    f.Pattern_Code_3755 AS [PatternCode],
+    f.Pattern_Status_3818_FK_PLM_DW_UD_Pattern_Status_3472 AS [PatternStatus],
+    f.Pattern_File_3756_FK_tblSketch AS [PatternFile],
+    f.patternstate_IB_3820 AS [PatternStateIb],
+    f.Supplier_Meas_Date_3315 AS [SupplierMeasDate],
+    f.Supplier_Measurer_3323 AS [SupplierMeasurer],
+    f.Sample_Sent_4164 AS [SampleSent],
+    COALESCE(f.Comment_Date_3213, c.Comment_Date_3213) AS [CommentDate],
+    f.Security_Group_3189_FK_pdmSecurityUserGroup AS [SecurityGroup],
+    COALESCE(f.blankdate_calc_3637, f.blankdate_calc_3822) AS [BlankDateCalc],
+    COALESCE(f.dateisblank_calc_3635, f.dateisblank_calc_3821) AS [DateIsBlankCalc],
+    COALESCE(f.setdate_calc_3634, f.setdate_calc_3823) AS [SetDateCalc],
+    f.Fit4SampleStatusState_CB_3633 AS [SampleStatusStateCb],
+    c.Fit_Comment_3204 AS [FitComment],
+    c.Fit_Comment_Image_3251_FK_tblSketch AS [FitCommentImage]
+  ) src;
+  PRINT N'Plm_FitRoundInfo semantic Round 4 update. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
+
+END
 
 PRINT N'TechPack Tchp import batch finished.';
 GO

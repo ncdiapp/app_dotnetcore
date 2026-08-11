@@ -1,0 +1,359 @@
+{
+  "_comment": "FX1 Plm_FitRoundInfo semantic map for template 3283. Prefer Fit N tab; Comments tabs supply FitComment*. Shared Spec*/SizeRun/BaseSize stay on FitSummary/StyleSpec. Calc columns included per product decision.",
+  "appTable": "FitRoundInfo",
+  "semanticColumns": [
+    {
+      "appColumn": "SampleType",
+      "displayName": "Sample Type",
+      "sqlType": "[int]",
+      "entityCode": "Sample_Type",
+      "controlType": "DDL",
+      "sortOrder": 30,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Sample_Type_3080_FK_PLM_DW_UD_Sample_Type_3458"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Sample_Type_3081_FK_PLM_DW_UD_Sample_Type_3458"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Sample_Type_3082_FK_PLM_DW_UD_Sample_Type_3458"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Sample_Type_3083_FK_PLM_DW_UD_Sample_Type_3458"] }
+      ]
+    },
+    {
+      "appColumn": "SampleStatus",
+      "displayName": "Sample Status",
+      "sqlType": "[int]",
+      "entityCode": "Sample_Status",
+      "controlType": "DDL",
+      "sortOrder": 40,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Sample_Status_3062_FK_PLM_DW_UD_Sample_Status_3459"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Sample_Status_3064_FK_PLM_DW_UD_Sample_Status_3459"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Sample_Status_3066_FK_PLM_DW_UD_Sample_Status_3459"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Sample_Status_3068_FK_PLM_DW_UD_Sample_Status_3459"] }
+      ]
+    },
+    {
+      "appColumn": "State",
+      "displayName": "State",
+      "sqlType": "[float]",
+      "controlType": "TextBox",
+      "sortOrder": 50,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["State_3063"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["State_3065"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["State_3067"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["State_3069"] }
+      ]
+    },
+    {
+      "appColumn": "ReceiveDate",
+      "displayName": "Receive Date",
+      "sqlType": "[datetime]",
+      "controlType": "Date",
+      "sortOrder": 60,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Receive_Date_3171"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Receive_Date_3173"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Receive_Date_3174"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Receive_Date_3175"] }
+      ]
+    },
+    {
+      "appColumn": "RequestDate",
+      "displayName": "Request Date",
+      "sqlType": "[datetime]",
+      "controlType": "Date",
+      "sortOrder": 70,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Request_Date_3192"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Request_Date_3193"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Request_Date_3194"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Request_Date_3195"] }
+      ]
+    },
+    {
+      "appColumn": "ApproveDate",
+      "displayName": "Approve Date",
+      "sqlType": "[datetime]",
+      "controlType": "Date",
+      "sortOrder": 80,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Approve_Date_4979", "Approve_Date_3819"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Approve_Date_3616", "Approve_Date_3819"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Approve_Date_3626", "Approve_Date_3819"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Approve_Date_3636", "Approve_Date_3819"] }
+      ]
+    },
+    {
+      "appColumn": "MeasureDate",
+      "displayName": "Measure Date",
+      "sqlType": "[datetime]",
+      "controlType": "Date",
+      "sortOrder": 90,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Measure_Date_3227"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Measure_Date_3305"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Measure_Date_3306"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Measure_Date_3307"] }
+      ]
+    },
+    {
+      "appColumn": "Factory",
+      "displayName": "Factory",
+      "sqlType": "[int]",
+      "entityCode": "Factory",
+      "controlType": "DDL",
+      "sortOrder": 100,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Factory_3191_FK_PLM_DW_UD_Factory_3471"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Factory_3191_FK_PLM_DW_UD_Factory_3471"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Factory_3191_FK_PLM_DW_UD_Factory_3471"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Factory_3191_FK_PLM_DW_UD_Factory_3471"] }
+      ]
+    },
+    {
+      "appColumn": "FitTechnician",
+      "displayName": "Fit Technician",
+      "sqlType": "[int]",
+      "entityCode": "PDMUser",
+      "controlType": "DDL",
+      "sortOrder": 110,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Fit_Technician_3190_FK_pdmsecuritywebuser"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Fit_Technician_3190_FK_pdmsecuritywebuser"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Fit_Technician_3190_FK_pdmsecuritywebuser"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Fit_Technician_3190_FK_pdmsecuritywebuser"] }
+      ]
+    },
+    {
+      "appColumn": "Model",
+      "displayName": "Model",
+      "sqlType": "[nvarchar](4000)",
+      "controlType": "TextBox",
+      "sortOrder": 120,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Model_3222"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Model_3265"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Model_3266"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Model_3267"] }
+      ]
+    },
+    {
+      "appColumn": "FitFile",
+      "displayName": "Fit File",
+      "sqlType": "[int]",
+      "entityCode": "Sketch",
+      "controlType": "DDL",
+      "sortOrder": 130,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Fit_File_3221_FK_tblSketch"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Fit_File_3257_FK_tblSketch"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Fit_File_3258_FK_tblSketch"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Fit_File_3259_FK_tblSketch"] }
+      ]
+    },
+    {
+      "appColumn": "PatternCode",
+      "displayName": "Pattern Code",
+      "sqlType": "[nvarchar](4000)",
+      "controlType": "TextBox",
+      "sortOrder": 140,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Pattern_Code_3755"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Pattern_Code_3755"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Pattern_Code_3755"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Pattern_Code_3755"] }
+      ]
+    },
+    {
+      "appColumn": "PatternStatus",
+      "displayName": "Pattern Status",
+      "sqlType": "[int]",
+      "entityCode": "Pattern_Status",
+      "controlType": "DDL",
+      "sortOrder": 150,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Pattern_Status_3818_FK_PLM_DW_UD_Pattern_Status_3472"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Pattern_Status_3818_FK_PLM_DW_UD_Pattern_Status_3472"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Pattern_Status_3818_FK_PLM_DW_UD_Pattern_Status_3472"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Pattern_Status_3818_FK_PLM_DW_UD_Pattern_Status_3472"] }
+      ]
+    },
+    {
+      "appColumn": "PatternFile",
+      "displayName": "Pattern File",
+      "sqlType": "[int]",
+      "entityCode": "Sketch",
+      "controlType": "DDL",
+      "sortOrder": 160,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Pattern_File_3756_FK_tblSketch"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Pattern_File_3756_FK_tblSketch"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Pattern_File_3756_FK_tblSketch"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Pattern_File_3756_FK_tblSketch"] }
+      ]
+    },
+    {
+      "appColumn": "PatternStateIb",
+      "displayName": "Pattern State",
+      "sqlType": "[float]",
+      "controlType": "TextBox",
+      "sortOrder": 170,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["patternstate_IB_3820"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["patternstate_IB_3820"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["patternstate_IB_3820"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["patternstate_IB_3820"] }
+      ]
+    },
+    {
+      "appColumn": "SupplierMeasDate",
+      "displayName": "Supplier Meas Date",
+      "sqlType": "[datetime]",
+      "controlType": "Date",
+      "sortOrder": 180,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Supplier_Meas_Date_3228"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Supplier_Meas_Date_3313"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Supplier_Meas_Date_3314"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Supplier_Meas_Date_3315"] }
+      ]
+    },
+    {
+      "appColumn": "SupplierMeasurer",
+      "displayName": "Supplier Measurer",
+      "sqlType": "[nvarchar](4000)",
+      "controlType": "TextBox",
+      "sortOrder": 190,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Supplier_Measurer_3229"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Supplier_Measurer_3321"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Supplier_Measurer_3322"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Supplier_Measurer_3323"] }
+      ]
+    },
+    {
+      "appColumn": "SampleSent",
+      "displayName": "Sample Sent",
+      "sqlType": "[nvarchar](4000)",
+      "controlType": "TextBox",
+      "sortOrder": 200,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Sample_Sent_4161"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Sample_Sent_4162"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Sample_Sent_4163"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Sample_Sent_4164"] }
+      ]
+    },
+    {
+      "appColumn": "CommentDate",
+      "displayName": "Comment Date",
+      "sqlType": "[datetime]",
+      "controlType": "Date",
+      "sortOrder": 210,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Comment_Date_3210"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Comment_Date_3211"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Comment_Date_3212"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Comment_Date_3213"] }
+      ],
+      "commentSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_Comments_4009", "dwColumns": ["Comment_Date_3210"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_Comment_4013", "dwColumns": ["Comment_Date_3211"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_Comments_4014", "dwColumns": ["Comment_Date_3212"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_Comments_4015", "dwColumns": ["Comment_Date_3213"] }
+      ]
+    },
+    {
+      "appColumn": "SecurityGroup",
+      "displayName": "Security Group",
+      "sqlType": "[int]",
+      "entityCode": "PDMSecurityGroup",
+      "controlType": "DDL",
+      "sortOrder": 220,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Security_Group_3189_FK_pdmSecurityUserGroup"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Security_Group_3189_FK_pdmSecurityUserGroup"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Security_Group_3189_FK_pdmSecurityUserGroup"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Security_Group_3189_FK_pdmSecurityUserGroup"] }
+      ]
+    },
+    {
+      "appColumn": "BlankDateCalc",
+      "displayName": "Blank Date Calc",
+      "sqlType": "[nvarchar](4000)",
+      "controlType": "TextBox",
+      "sortOrder": 230,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["blankdate_calc_4978", "blankdate_calc_3822"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["blankdate_calc_3617", "blankdate_calc_3822"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["blankddate_calc_3627", "blankdate_calc_3822"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["blankdate_calc_3637", "blankdate_calc_3822"] }
+      ]
+    },
+    {
+      "appColumn": "DateIsBlankCalc",
+      "displayName": "Date Is Blank Calc",
+      "sqlType": "[nvarchar](4000)",
+      "controlType": "TextBox",
+      "sortOrder": 240,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["dateisblank_calc_4976", "dateisblank_calc_3821"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["dateisblank_calc_3615", "dateisblank_calc_3821"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["dateisblank_calc_3625", "dateisblank_calc_3821"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["dateisblank_calc_3635", "dateisblank_calc_3821"] }
+      ]
+    },
+    {
+      "appColumn": "SetDateCalc",
+      "displayName": "Set Date Calc",
+      "sqlType": "[nvarchar](4000)",
+      "controlType": "TextBox",
+      "sortOrder": 250,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["setdate_calc_4977", "setdate_calc_3823"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["setdate_calc_3614", "setdate_calc_3823"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["setdate_calc_3624", "setdate_calc_3823"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["setdate_calc_3634", "setdate_calc_3823"] }
+      ]
+    },
+    {
+      "appColumn": "SampleStatusStateCb",
+      "displayName": "Sample Status State CB",
+      "sqlType": "[float]",
+      "controlType": "TextBox",
+      "sortOrder": 260,
+      "roundSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_4008", "dwColumns": ["Fit2SampleStatusState_CB_4975"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_4010", "dwColumns": ["Fit2SampleStatusState_CB_3613"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_4011", "dwColumns": ["Fit3SampleStatus_State_CB_3623"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_4012", "dwColumns": ["Fit4SampleStatusState_CB_3633"] }
+      ]
+    },
+    {
+      "appColumn": "FitComment",
+      "displayName": "Fit Comment",
+      "sqlType": "[nvarchar](4000)",
+      "controlType": "TextBox",
+      "sortOrder": 270,
+      "commentSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_Comments_4009", "dwColumns": ["Fit_Comment_3201"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_Comment_4013", "dwColumns": ["Fit_Comment_3202"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_Comments_4014", "dwColumns": ["Fit_Comment_3203"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_Comments_4015", "dwColumns": ["Fit_Comment_3204"] }
+      ]
+    },
+    {
+      "appColumn": "FitCommentImage",
+      "displayName": "Fit Comment Image",
+      "sqlType": "[int]",
+      "entityCode": "Sketch",
+      "controlType": "DDL",
+      "sortOrder": 280,
+      "commentSources": [
+        { "roundNumber": 1, "dwTable": "PLM_DW_Tab_Fit_1_Comments_4009", "dwColumns": ["Fit_Comment_Image_3220_FK_tblSketch"] },
+        { "roundNumber": 2, "dwTable": "PLM_DW_Tab_Fit_2_Comment_4013", "dwColumns": ["Fit_Comment_Image_3249_FK_tblSketch"] },
+        { "roundNumber": 3, "dwTable": "PLM_DW_Tab_Fit_3_Comments_4014", "dwColumns": ["Fit_Comment_Image_3250_FK_tblSketch"] },
+        { "roundNumber": 4, "dwTable": "PLM_DW_Tab_Fit_4_Comments_4015", "dwColumns": ["Fit_Comment_Image_3251_FK_tblSketch"] }
+      ]
+    }
+  ]
+}

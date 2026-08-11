@@ -1067,5 +1067,204 @@ WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @FieldName";
                 cmd.ExecuteNonQuery();
             }
         }
+
+        /// <summary>
+        /// FX1 Fit Round golden template: Plm_FitRoundInfo semantic columns as Entity/DDL (or Date/Text/Memo)
+        /// and ensure Form layout items so the sibling is visible on TX_FitRound.
+        /// PLM-imported round header fields stay on FitRoundInfo only (not TchpFitRound).
+        /// </summary>
+        private static void ApplyTechPackFitRoundInfoGoldenFieldTemplate(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            string friTable = QualifyBlueprintTableName("FitRoundInfo", tablePrefix, skipTablePrefix: false);
+            int? friUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, friTable);
+            if (!friUnitId.HasValue)
+                friUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, "Plm_FitRoundInfo");
+            if (!friUnitId.HasValue)
+                return;
+
+            // Only on Fit Round TX (or any TX that already hosts FitRoundInfo sibling).
+            _ = plan;
+
+            int? sampleTypeEntity = ResolveAppEntityInfoIdByCode(conn, tran, "Sample_Type");
+            int? sampleStatusEntity = ResolveAppEntityInfoIdByCode(conn, tran, "Sample_Status");
+            int? factoryEntity = ResolveAppEntityInfoIdByCode(conn, tran, "Factory");
+            int? pdmUserEntity = ResolveAppEntityInfoIdByCode(conn, tran, "PDMUser");
+            int? sketchEntity = ResolveAppEntityInfoIdByCode(conn, tran, "Sketch");
+            int? patternStatusEntity = ResolveAppEntityInfoIdByCode(conn, tran, "Pattern_Status");
+            int? securityGroupEntity = ResolveAppEntityInfoIdByCode(conn, tran, "PDMSecurityGroup");
+
+            var fields = new (string DbName, string Display, int ControlType, int? EntityId, int Sort, string Width)[]
+            {
+                ("SampleType", "Sample Type", (int)EmAppControlType.DDL, sampleTypeEntity, 30, "150"),
+                ("SampleStatus", "Sample Status", (int)EmAppControlType.DDL, sampleStatusEntity, 40, "150"),
+                ("State", "State", (int)EmAppControlType.TextBox, null, 50, "100"),
+                ("ReceiveDate", "Receive Date", (int)EmAppControlType.Date, null, 60, "150"),
+                ("RequestDate", "Request Date", (int)EmAppControlType.Date, null, 70, "150"),
+                ("ApproveDate", "Approve Date", (int)EmAppControlType.Date, null, 80, "150"),
+                ("MeasureDate", "Measure Date", (int)EmAppControlType.Date, null, 90, "150"),
+                ("Factory", "Factory", (int)EmAppControlType.DDL, factoryEntity, 100, "150"),
+                ("FitTechnician", "Fit Technician", (int)EmAppControlType.DDL, pdmUserEntity, 110, "150"),
+                ("Model", "Model", (int)EmAppControlType.TextBox, null, 120, "200"),
+                ("FitFile", "Fit File", (int)EmAppControlType.DDL, sketchEntity, 130, "150"),
+                ("PatternCode", "Pattern Code", (int)EmAppControlType.TextBox, null, 140, "150"),
+                ("PatternStatus", "Pattern Status", (int)EmAppControlType.DDL, patternStatusEntity, 150, "150"),
+                ("PatternFile", "Pattern File", (int)EmAppControlType.DDL, sketchEntity, 160, "150"),
+                ("PatternStateIb", "Pattern State", (int)EmAppControlType.TextBox, null, 170, "100"),
+                ("SupplierMeasDate", "Supplier Meas Date", (int)EmAppControlType.Date, null, 180, "150"),
+                ("SupplierMeasurer", "Supplier Measurer", (int)EmAppControlType.TextBox, null, 190, "150"),
+                ("SampleSent", "Sample Sent", (int)EmAppControlType.TextBox, null, 200, "150"),
+                ("CommentDate", "Comment Date", (int)EmAppControlType.Date, null, 210, "150"),
+                ("SecurityGroup", "Security Group", (int)EmAppControlType.DDL, securityGroupEntity, 220, "150"),
+                ("BlankDateCalc", "Blank Date Calc", (int)EmAppControlType.TextBox, null, 230, "100"),
+                ("DateIsBlankCalc", "Date Is Blank Calc", (int)EmAppControlType.TextBox, null, 240, "100"),
+                ("SetDateCalc", "Set Date Calc", (int)EmAppControlType.TextBox, null, 250, "100"),
+                ("SampleStatusStateCb", "Sample Status State CB", (int)EmAppControlType.TextBox, null, 260, "100"),
+                ("FitComment", "Fit Comment", (int)EmAppControlType.Memo, null, 270, "300"),
+                ("FitCommentImage", "Fit Comment Image", (int)EmAppControlType.DDL, sketchEntity, 280, "150"),
+            };
+
+            foreach (var f in fields)
+            {
+                EnsureTechPackFitRoundInfoField(conn, tran, friUnitId.Value, f.DbName, f.Display, f.ControlType, f.EntityId, f.Sort, f.Width);
+            }
+
+            UpdateTechPackFieldMeta(conn, tran, friUnitId.Value, "FitRoundId",
+                controlType: (int)EmAppControlType.TextBox, entityId: null, width: "100", sortOrder: 10, isVisible: false, groupByLevel: null);
+            UpdateTechPackFieldMeta(conn, tran, friUnitId.Value, "StyleSpecId",
+                controlType: (int)EmAppControlType.TextBox, entityId: null, width: "100", sortOrder: 20, isVisible: true, groupByLevel: null);
+
+            // Do not insert orphan flat AppFormLayoutItem rows (breaks Flex Reset / nested tree).
+            // Form Design → Reset & Auto Design Layout places root + Master Sibling fields.
+        }
+
+        private static void EnsureTechPackFitRoundInfoField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string databaseFieldName,
+            string displayName,
+            int controlType,
+            int? entityId,
+            int sortOrder,
+            string width)
+        {
+            int? existing = GetTransactionFieldId(conn, tran, unitId, databaseFieldName);
+            if (!existing.HasValue)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+INSERT INTO dbo.AppTransactionField (
+    TransactionUnitID, DisplayName, DataBaseFieldName, ControlType,
+    SortOrder, IsPrimaryKey, IsVisible, IsReadonly, IsAllowEmpty,
+    DisplayWidth, NBDecimal, IsLinkToParentPrimaryKey, RowIdentityGuid,
+    EntityId, AppCreatedDate, AppModifiedDate)
+VALUES (
+    @UnitId, @DisplayName, @FieldName, @ControlType,
+    @SortOrder, 0, 1, 0, 1,
+    @Width, 0, 0, NEWID(),
+    @EntityId, GETDATE(), GETDATE());";
+                    cmd.Parameters.AddWithValue("@UnitId", unitId);
+                    cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                    cmd.Parameters.AddWithValue("@FieldName", databaseFieldName);
+                    cmd.Parameters.AddWithValue("@ControlType", controlType);
+                    cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                    cmd.Parameters.AddWithValue("@Width", width ?? "150");
+                    cmd.Parameters.AddWithValue("@EntityId", (object)entityId ?? DBNull.Value);
+                    cmd.ExecuteNonQuery();
+                }
+                return;
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    DisplayName = @DisplayName,
+    ControlType = @ControlType,
+    EntityId = COALESCE(@EntityId, EntityId),
+    DisplayWidth = COALESCE(@Width, DisplayWidth),
+    SortOrder = @SortOrder,
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @FieldName";
+                cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                cmd.Parameters.AddWithValue("@ControlType", controlType);
+                cmd.Parameters.AddWithValue("@EntityId", (object)entityId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Width", (object)width ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@FieldName", databaseFieldName);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void EnsureTechPackFitRoundInfoFormLayout(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            int friUnitId)
+        {
+            int? formId;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = "SELECT FormID FROM dbo.AppTransaction WHERE TransactionID = @TxId";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                var v = cmd.ExecuteScalar();
+                if (v == null || v == DBNull.Value)
+                    return;
+                formId = Convert.ToInt32(v);
+            }
+
+            const string layoutJson =
+                "{\"DefaultNbColumns\":null,\"ColSpanValue\":24,\"HeightValue\":null,\"IsUnlimitedHeight\":false,\"StyleClass\":null,\"StyleString\":null,\"IsHideLabel\":false,\"BackgroundColor\":\"#ffffff\",\"TextColor\":\"#000000\",\"LabelWidth\":null,\"EmUnitLabelPosition\":null,\"DisplayName\":null}";
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+DECLARE @LayoutSort INT = ISNULL((
+    SELECT MAX(FlowOrGridLayoutSortOrder) FROM dbo.AppFormLayoutItem WHERE FormID = @FormId), 0);
+
+INSERT INTO dbo.AppFormLayoutItem (
+    FormID, FlowOrGridLayoutSortOrder, ParameterKeyValue, TransactionFieldID,
+    AppCreatedDate, AppModifiedDate, AppCreatedByCompanyID, CurrentHostID, ParentHostID)
+SELECT
+    @FormId,
+    @LayoutSort + ROW_NUMBER() OVER (ORDER BY tf.SortOrder, tf.TransactionFieldID),
+    @LayoutJson,
+    tf.TransactionFieldID,
+    GETDATE(), GETDATE(),
+    COALESCE(t.AppCreatedByCompanyID, sample.AppCreatedByCompanyID),
+    sample.CurrentHostID,
+    sample.ParentHostID
+FROM dbo.AppTransactionField tf
+CROSS JOIN dbo.AppTransaction t
+OUTER APPLY (
+    SELECT TOP 1 li.AppCreatedByCompanyID, li.CurrentHostID, li.ParentHostID
+    FROM dbo.AppFormLayoutItem li
+    WHERE li.FormID = @FormId
+) sample
+WHERE t.TransactionID = @TxId
+  AND tf.TransactionUnitID = @UnitId
+  AND ISNULL(tf.IsVisible, 0) = 1
+  AND NOT EXISTS (
+        SELECT 1 FROM dbo.AppFormLayoutItem li
+        WHERE li.FormID = @FormId AND li.TransactionFieldID = tf.TransactionFieldID);";
+                cmd.Parameters.AddWithValue("@FormId", formId.Value);
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.Parameters.AddWithValue("@UnitId", friUnitId);
+                cmd.Parameters.AddWithValue("@LayoutJson", layoutJson);
+                cmd.ExecuteNonQuery();
+            }
+        }
     }
 }

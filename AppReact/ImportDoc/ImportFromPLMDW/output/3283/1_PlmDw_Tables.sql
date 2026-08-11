@@ -771,13 +771,81 @@ SET @FkName = N'FK_' + @TableName + N'_Reference';
 
 IF OBJECT_ID(N'dbo.' + QUOTENAME(@TableName), N'U') IS NULL
 BEGIN
-    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@TableName) + N' ([FitRoundId] INT NOT NULL, [AppCreatedDate] DATETIME NULL, [AppModifiedDate] DATETIME NULL, [StyleSpecId] [int] NULL, CONSTRAINT [PK_FitRoundInfo] PRIMARY KEY CLUSTERED ([FitRoundId]) );';
+    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@TableName) + N' ([FitRoundId] INT NOT NULL, [AppCreatedDate] DATETIME NULL, [AppModifiedDate] DATETIME NULL, [StyleSpecId] [int] NULL, [SampleType] [int] NULL, [SampleStatus] [int] NULL, [State] [float] NULL, [ReceiveDate] [datetime] NULL, [RequestDate] [datetime] NULL, [ApproveDate] [datetime] NULL, [MeasureDate] [datetime] NULL, [Factory] [int] NULL, [FitTechnician] [int] NULL, [Model] [nvarchar](4000) NULL, [FitFile] [int] NULL, [PatternCode] [nvarchar](4000) NULL, [PatternStatus] [int] NULL, [PatternFile] [int] NULL, [PatternStateIb] [float] NULL, [SupplierMeasDate] [datetime] NULL, [SupplierMeasurer] [nvarchar](4000) NULL, [SampleSent] [nvarchar](4000) NULL, [CommentDate] [datetime] NULL, [SecurityGroup] [int] NULL, [BlankDateCalc] [nvarchar](4000) NULL, [DateIsBlankCalc] [nvarchar](4000) NULL, [SetDateCalc] [nvarchar](4000) NULL, [SampleStatusStateCb] [float] NULL, [FitComment] [nvarchar](4000) NULL, [FitCommentImage] [int] NULL, CONSTRAINT [PK_FitRoundInfo] PRIMARY KEY CLUSTERED ([FitRoundId]) );';
     EXEC sp_executesql @sql;
 END
 ELSE
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'StyleSpecId')
     BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [StyleSpecId] [int] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'SampleType')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [SampleType] [int] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'SampleStatus')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [SampleStatus] [int] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'State')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [State] [float] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'ReceiveDate')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [ReceiveDate] [datetime] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'RequestDate')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [RequestDate] [datetime] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'ApproveDate')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [ApproveDate] [datetime] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'MeasureDate')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [MeasureDate] [datetime] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'Factory')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [Factory] [int] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'FitTechnician')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [FitTechnician] [int] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'Model')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [Model] [nvarchar](4000) NULL;'; EXEC sp_executesql @sql; END
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [Model] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'FitFile')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [FitFile] [int] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'PatternCode')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [PatternCode] [nvarchar](4000) NULL;'; EXEC sp_executesql @sql; END
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [PatternCode] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'PatternStatus')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [PatternStatus] [int] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'PatternFile')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [PatternFile] [int] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'PatternStateIb')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [PatternStateIb] [float] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'SupplierMeasDate')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [SupplierMeasDate] [datetime] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'SupplierMeasurer')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [SupplierMeasurer] [nvarchar](4000) NULL;'; EXEC sp_executesql @sql; END
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [SupplierMeasurer] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'SampleSent')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [SampleSent] [nvarchar](4000) NULL;'; EXEC sp_executesql @sql; END
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [SampleSent] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'CommentDate')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [CommentDate] [datetime] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'SecurityGroup')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [SecurityGroup] [int] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'BlankDateCalc')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [BlankDateCalc] [nvarchar](4000) NULL;'; EXEC sp_executesql @sql; END
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [BlankDateCalc] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'DateIsBlankCalc')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [DateIsBlankCalc] [nvarchar](4000) NULL;'; EXEC sp_executesql @sql; END
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [DateIsBlankCalc] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'SetDateCalc')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [SetDateCalc] [nvarchar](4000) NULL;'; EXEC sp_executesql @sql; END
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [SetDateCalc] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'SampleStatusStateCb')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [SampleStatusStateCb] [float] NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'FitComment')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [FitComment] [nvarchar](4000) NULL;'; EXEC sp_executesql @sql; END
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [FitComment] [nvarchar](4000) NULL;';
+    EXEC sp_executesql @sql;
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'FitCommentImage')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [FitCommentImage] [int] NULL;'; EXEC sp_executesql @sql; END
 END
 
 

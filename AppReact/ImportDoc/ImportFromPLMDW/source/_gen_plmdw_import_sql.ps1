@@ -1263,7 +1263,7 @@ foreach ($tab in $config.tabs) {
     foreach ($r in $fieldRows) { [void]$allFieldRows.Add($r) }
 }
 
-# FX1: Plm_FitRoundInfo (1:1 with TchpFitRound.FitRoundId) — skeleton columns; semantic map later.
+# FX1: Plm_FitRoundInfo (1:1 with TchpFitRound.FitRoundId) — StyleSpecId + semantic columns (Fit N / Comments).
 if ($config.techPack -and $config.techPack.fitRoundInfo) {
     $friApp = [string]$config.techPack.fitRoundInfo.appTable
     if (-not $friApp) { $friApp = 'FitRoundInfo' }
@@ -1271,8 +1271,8 @@ if ($config.techPack -and $config.techPack.fitRoundInfo) {
     $friFieldRows = @(
         [pscustomobject]@{ AppColumn = 'StyleSpecId'; SqlType = '[int]'; DwColumn = $null; DwTable = $null; PlmTabId = $null; FieldKind = 'FitRoundInfo'; AppTable = $friApp }
     )
-    # Optional semantic columns from config (sqlType + appColumn only; DW fill in 3b later).
-    foreach ($sc in @($config.techPack.fitRoundInfo.semanticColumns)) {
+    $friSemCols = @(Resolve-FitRoundInfoSemanticColumns $config $PSScriptRoot)
+    foreach ($sc in $friSemCols) {
         if (-not $sc -or -not $sc.appColumn) { continue }
         $sqlType = if ($sc.sqlType) { [string]$sc.sqlType } else { '[nvarchar](4000)' }
         $friFieldRows += [pscustomobject]@{
@@ -1286,7 +1286,7 @@ if ($config.techPack -and $config.techPack.fitRoundInfo) {
         }
     }
     $ddlParts.Add((Build-CreateTableBlock $friApp $friFieldRows 'fitRoundInfo'))
-    Write-Host "  FX1 DDL: $friApp (FitRoundId PK + $($friFieldRows.Count) column(s))"
+    Write-Host "  FX1 DDL: $friApp (FitRoundId PK + $($friFieldRows.Count) column(s); semantic=$($friSemCols.Count))"
 }
 
 Write-Host "Probing PLM for BOM ProductDesignColor colorway grids..."
