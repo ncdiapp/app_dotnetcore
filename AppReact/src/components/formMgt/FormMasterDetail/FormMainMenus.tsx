@@ -352,10 +352,20 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
         const required = unitFields.filter((f: any) => f && f.IsFormLayoutVisible !== false && f.IsAllowEmpty === false && needValidateField(f));
         if (required.length === 0) return;
 
-        const rows = oneToManyDict?.[unitIdStr];
-        const isRowUnit = Array.isArray(rows);
-
-        if (isRowUnit) {
+        // Child: root.DictOneToManyFields[unitId]
+        // Grandchild: nested under each parent-child row (not at root) — must not fall through to root DictOneToOneFields.
+        let rows: any[] | undefined = Array.isArray(oneToManyDict?.[unitIdStr])
+          ? oneToManyDict[unitIdStr]
+          : undefined;
+        if (rows === undefined && unit.ParentTransactionUnitId != null) {
+          const parentRows = oneToManyDict?.[String(unit.ParentTransactionUnitId)];
+          rows = Array.isArray(parentRows)
+            ? parentRows.flatMap((pr: any) =>
+                Array.isArray(pr?.DictOneToManyFields?.[unitIdStr]) ? pr.DictOneToManyFields[unitIdStr] : []
+              )
+            : [];
+        }
+        if (Array.isArray(rows)) {
           // Child/grandchild: validate per row only if there are rows.
           if (rows.length === 0) return;
           rows.forEach((row: any, rowIndex: number) => {

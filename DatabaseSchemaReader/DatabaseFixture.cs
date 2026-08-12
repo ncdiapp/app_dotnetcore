@@ -426,6 +426,9 @@ namespace DatabaseSchemaMrg
                 if (ds.Tables.Contains(_schemaReader.IdentityColumnsCollectionName))
                     SchemaConstraintConverter.AddIdentity(ds.Tables[_schemaReader.IdentityColumnsCollectionName], table);
 
+                if (ds.Tables.Contains(_schemaReader.ComputedColumnsCollectionName))
+                    SchemaConstraintConverter.AddComputed(ds.Tables[_schemaReader.ComputedColumnsCollectionName], table);
+
                 _schemaReader.PostProcessing(table);
 
             }

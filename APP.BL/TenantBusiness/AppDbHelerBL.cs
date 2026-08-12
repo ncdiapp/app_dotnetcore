@@ -309,7 +309,12 @@ namespace App.BL
 
             sqlWriter.ExcluedColumnUpdate.Add(EmSystemDbTrackField.AppCreatedDate.ToString());
 
-
+            
+            foreach (var column in databaseTable.Columns)
+            {
+                if (column.IsComputed)
+                    sqlWriter.ExcluedColumnUpdate.Add(column.Name);
+            }
 
             Dictionary<string, object> dictPkValue = new Dictionary<string, object>();
             foreach (var column in sqlWriter.PrimaryKeys)
