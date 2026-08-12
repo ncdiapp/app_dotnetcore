@@ -1577,6 +1577,22 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         }
         pushFromUnit(resolvedCurrentUnit);
 
+        // Root master siblings (IsMasterSiblingUnit): allow Child DDL to cascade from sibling DDL
+        // (e.g. QC Orders.SampleSize ← Style Spec.SizeRunId). Not in tree parent.Children.
+        const siblingRefs: any[] = Array.isArray(transactionData?.SibLineTransactionUnitIdExDtoList)
+            && transactionData.SibLineTransactionUnitIdExDtoList.length > 0
+            ? transactionData.SibLineTransactionUnitIdExDtoList
+            : (unitList || []).filter((u: any) => Boolean(u?.IsMasterSiblingUnit));
+        const seenUnitIds = new Set<number>();
+        if (resolvedParentUnit?.Id != null) seenUnitIds.add(Number(resolvedParentUnit.Id));
+        if (resolvedCurrentUnit?.Id != null) seenUnitIds.add(Number(resolvedCurrentUnit.Id));
+        for (const sibRef of siblingRefs) {
+            if (sibRef?.Id == null || seenUnitIds.has(Number(sibRef.Id))) continue;
+            seenUnitIds.add(Number(sibRef.Id));
+            const loadedSib = await ensureUnitFieldsLoaded(sibRef);
+            pushFromUnit(loadedSib);
+        }
+
         // Runtime cascading uses the child field Entity DataSourceFrom — load tables from that DS.
         const relationDataSourceId = await resolveCascadingRelationDataSourceId(field);
         const relationTableOptions = await loadRelationTableOptionsForDataSource(relationDataSourceId);
@@ -1621,6 +1637,14 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         field.CascadingRelationTableParentKeyField = relationParentKey || null;
         field.CascadingRelationTableChildKeyField = relationChildKey || null;
 
+        // RelationalTable cascade requires DataRetrieveType = EmAppCascadingSourceType.RelationalTable (1).
+        // Without it, runtime skips the SizeRunId filter and falls back to standalone (all sizes).
+        if (parentFieldId && relationTable) {
+            field.DataRetrieveType = 1;
+        } else if (!parentFieldId) {
+            field.DataRetrieveType = null;
+        }
+
         const selectedOption = parentFieldId != null && parentFieldOptions?.length
             ? parentFieldOptions.find((o) => Number(o.Id) === Number(parentFieldId))
             : null;
@@ -1644,6 +1668,7 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
             field.CascadingRelationTableSchemaOwner = null;
             field.CascadingRelationTableParentKeyField = null;
             field.CascadingRelationTableChildKeyField = null;
+            field.DataRetrieveType = null;
             field.DdlparentLevelIdSelector = '';
         }
         if (fieldCollectionView) {

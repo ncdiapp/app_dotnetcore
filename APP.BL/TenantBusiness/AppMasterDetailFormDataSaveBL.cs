@@ -698,8 +698,8 @@ namespace App.BL
                     }
 
 
-                    //insert
-                    InsertGrandChild(databaseFixtureInstance,trans, updatechildDataDto, grandchildAppTransactionUnitExDto, newAddedList);
+                    //insert — must surface SQL errors (e.g. NOT NULL) or Save commits and grandchild rows vanish on reload
+                    ErrorEmssageRetrun = ErrorEmssageRetrun + InsertGrandChild(databaseFixtureInstance, trans, updatechildDataDto, grandchildAppTransactionUnitExDto, newAddedList);
 
                     //Update
                     foreach (Dictionary<string, object> updateGrandCildDataDto in updateList)
@@ -1832,6 +1832,7 @@ namespace App.BL
         internal static string InsertOneUnitChild(DatabaseFixture databaseFixtureInstance, AppTransactionUnitExDto childTransactionUnitExDto, Dictionary<string, object> childOneToOneFields, DbTransaction trans)
         {
             AppTransDataSystemTokenBL.AssignSystemTokenValueToUnitField(childOneToOneFields, childTransactionUnitExDto);
+            ApplyEmptyFieldDefaults(childOneToOneFields, childTransactionUnitExDto);
 
 
             string dataBaseTableName = childTransactionUnitExDto.DataBaseTableName;
@@ -1878,6 +1879,41 @@ namespace App.BL
             }
 
             return erroinsert;
+        }
+
+        /// <summary>
+        /// Fill null/empty DB fields from AppTransactionField.DefaultValue before INSERT
+        /// (matches Add-Row client defaults; needed when rows were created before DefaultValue was set).
+        /// </summary>
+        private static void ApplyEmptyFieldDefaults(Dictionary<string, object> dictOneToOneFields, AppTransactionUnitExDto unitExDto)
+        {
+            if (dictOneToOneFields == null || unitExDto?.AppTransactionFieldList == null) return;
+
+            foreach (var field in unitExDto.AppTransactionFieldList)
+            {
+                if (string.IsNullOrWhiteSpace(field.DataBaseFieldName) || string.IsNullOrWhiteSpace(field.DefaultValue))
+                    continue;
+                if (field.IsPrimaryKey || field.IsLinkToParentPrimaryKey)
+                    continue;
+
+                object current = null;
+                if (dictOneToOneFields.ContainsKey(field.DataBaseFieldName))
+                    current = dictOneToOneFields[field.DataBaseFieldName];
+                if (current != null && !(current is string s && string.IsNullOrWhiteSpace(s)))
+                    continue;
+
+                object converted = field.DefaultValue;
+                if (field.ControlType == (int)EmAppControlType.Numeric)
+                {
+                    if (decimal.TryParse(field.DefaultValue, out var d))
+                        converted = d;
+                }
+                else if (field.ControlType == (int)EmAppControlType.CheckBox)
+                {
+                    converted = ControlTypeValueConverter.ConvertValueToBoolean(field.DefaultValue);
+                }
+                dictOneToOneFields[field.DataBaseFieldName] = converted;
+            }
         }
 
         private static void PassChildLinkKeyValueToGrandChild(AppTransactionUnitExDto grandChildTransactionUnitExDto, Dictionary<string, object> gradnChildDataDto, Dictionary<string, object> childDictOneToOneFields)
@@ -1972,7 +2008,7 @@ namespace App.BL
                     List<AppChildDataDto> listGridnChildRow = appformChildDataDto.DictOneToManyFields[grandchildUnitid];
                     List<Dictionary<string, object>> grandchildAppformChildDataDtoList = listGridnChildRow.Select(o => o.DictOneToOneFields).ToList();
 
-                    InsertGrandChild(databaseFixtureInstance,trans, appformChildDataDto, grandChildTransactionUnitExDto, grandchildAppformChildDataDtoList);
+                    KeyFieldErrormessge = KeyFieldErrormessge + InsertGrandChild(databaseFixtureInstance, trans, appformChildDataDto, grandChildTransactionUnitExDto, grandchildAppformChildDataDtoList);
                 }
             }
 

@@ -25,6 +25,9 @@ namespace APP.Components.EntityDto
         public string SeededFromTemplate { get; set; }
 
         [DataMember]
+        public int? DataSourceId { get; set; }
+
+        [DataMember]
         public string ErrorMessage { get; set; }
     }
 }

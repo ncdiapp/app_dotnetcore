@@ -499,12 +499,12 @@ GO
 
 -- ── TchpQcOrder ──────────────────────────────────────────────
 -- QC order aggregate root — linked to a LOCKED StyleSpec version.
+-- Product scope is StyleSpecId only (StyleSpecId == Root.ReferenceId); no ProductReferenceId column.
 -- SampleSize is computed by AqlSamplingService (BL) and stored here.
 IF OBJECT_ID(N'dbo.TchpQcOrder', N'U') IS NULL
 BEGIN
     CREATE TABLE [dbo].[TchpQcOrder] (
         [QcOrderId]             INT             IDENTITY(1,1)   NOT NULL,
-        [ProductReferenceId]    INT             NOT NULL,
         [StyleSpecId]           INT             NOT NULL,
         [LotNumber]             NVARCHAR(50)    NOT NULL,
         -- FK to vendor/factory (FactoryId → existing vendor table)
@@ -526,9 +526,19 @@ BEGIN
         CONSTRAINT [FK_TchpQcOrder_TchpStyleSpec]
             FOREIGN KEY ([StyleSpecId]) REFERENCES [dbo].[TchpStyleSpec] ([StyleSpecId])
     );
-    CREATE NONCLUSTERED INDEX [IX_TchpQcOrder_ProductRef]
-        ON [dbo].[TchpQcOrder] ([ProductReferenceId] ASC);
+    CREATE NONCLUSTERED INDEX [IX_TchpQcOrder_StyleSpec]
+        ON [dbo].[TchpQcOrder] ([StyleSpecId] ASC);
     PRINT 'Created TchpQcOrder';
+END
+ELSE IF COL_LENGTH(N'dbo.TchpQcOrder', N'ProductReferenceId') IS NOT NULL
+BEGIN
+    IF EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.TchpQcOrder') AND name = N'IX_TchpQcOrder_ProductRef')
+        DROP INDEX [IX_TchpQcOrder_ProductRef] ON [dbo].[TchpQcOrder];
+    ALTER TABLE [dbo].[TchpQcOrder] DROP COLUMN [ProductReferenceId];
+    IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE object_id = OBJECT_ID(N'dbo.TchpQcOrder') AND name = N'IX_TchpQcOrder_StyleSpec')
+        CREATE NONCLUSTERED INDEX [IX_TchpQcOrder_StyleSpec]
+            ON [dbo].[TchpQcOrder] ([StyleSpecId] ASC);
+    PRINT 'TchpQcOrder: dropped ProductReferenceId; indexed StyleSpecId';
 END
 ELSE
     PRINT 'TchpQcOrder already exists — skipped';

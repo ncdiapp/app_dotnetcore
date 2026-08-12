@@ -44,26 +44,36 @@ import {
 /**
  * Wijmo DataMap uses strict key equality. Grid cell values are often string ("1") while
  * LookupItemDto.Id arrives as number (1) from JSON — display then shows raw Id until edit.
- * Include both number and string keys so Query DDL / entity maps resolve in both modes.
+ * Use one row per logical Id (string key) so the dropdown is not doubled; resolve display
+ * for both number and string cell values via getDisplayValue.
  */
 function createLookupDataMap(items: any[] | null | undefined): DataMap | null {
   if (!Array.isArray(items) || items.length === 0) return null;
-  const dual: Array<{ Id: any; Display: string }> = [];
+  const seen = new Set<string>();
+  const list: Array<{ Id: string; Display: string }> = [];
   for (const it of items) {
-    if (!it || it.Id === undefined) continue;
-    const display = it.Display != null ? String(it.Display) : '';
-    const id = it.Id;
-    dual.push({ Id: id, Display: display });
-    if (id === null || id === '') continue;
-    const asStr = String(id);
-    if (asStr !== id) dual.push({ Id: asStr, Display: display });
-    const asNum = Number(id);
-    if (Number.isFinite(asNum) && asNum !== id && String(asNum) === asStr.trim()) {
-      dual.push({ Id: asNum, Display: display });
-    }
+    if (!it || it.Id === undefined || it.Id === null || it.Id === '') continue;
+    const id = String(it.Id);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    list.push({ Id: id, Display: it.Display != null ? String(it.Display) : '' });
   }
-  if (dual.length === 0) return null;
-  return new DataMap(dual, 'Id', 'Display');
+  if (list.length === 0) return null;
+  const byId = new Map(list.map((x) => [x.Id, x.Display]));
+  const dm = new DataMap(list, 'Id', 'Display');
+  // Cell values may be number or string; map keys are always string.
+  dm.getDisplayValue = (key: any) => {
+    if (key === undefined || key === null || key === '') return '';
+    const hit = byId.get(String(key));
+    if (hit !== undefined) return hit;
+    const n = Number(key);
+    if (Number.isFinite(n)) {
+      const hitNum = byId.get(String(n));
+      if (hitNum !== undefined) return hitNum;
+    }
+    return String(key);
+  };
+  return dm;
 }
 
 interface DataGridLayoutProps {

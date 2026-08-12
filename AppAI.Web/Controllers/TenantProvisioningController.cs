@@ -41,6 +41,16 @@ public class TenantProvisioningController : SecureBaseController
         return Ok(new { RowsFixed = fixed_ });
     }
 
+    // POST /webapi/TenantProvisioning/RepairDataSourceIds?templateDataSourceId=1070
+    // Fills NULL DataSourceFrom in every company-master tenant DB with that tenant's
+    // AppDataSourceRegister.DataSourceId. Optionally also remaps templateDataSourceId.
+    [HttpPost]
+    public Dictionary<string, string> RepairDataSourceIds([FromQuery] int? templateDataSourceId = null)
+    {
+        RequireSysAdmin();
+        return AppTenantProvisioningBL.RepairDataSourceIdReferencesOnAllTenants(templateDataSourceId);
+    }
+
     private void RequireSysAdmin()
     {
         if (!AppSecurityUserBL.IsAdminUser())

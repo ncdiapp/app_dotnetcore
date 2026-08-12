@@ -131,8 +131,7 @@ erDiagram
     %% ── QC ───────────────────────────────────────────────────
     TchpQcOrder {
         int QcOrderId PK
-        int ProductReferenceId "external product ref"
-        int StyleSpecId FK
+        int StyleSpecId FK "also scopes product (StyleSpecId == ReferenceId)"
         nvarchar LotNumber
         int FactoryId "external vendor ref"
         nvarchar AqlLevel "CRITICAL_1|MAJOR_2_5|MINOR_4_0"

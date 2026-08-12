@@ -18,6 +18,7 @@ namespace App.BL
         private static readonly string MasterConnStr =
             AppCompanyBL.AppMasterDBConnectionString;
 
+       
         public static AppTenantProvisionResultDto ProvisionNewTenant(AppTenantProvisionRequestDto request)
         {
             var result = new AppTenantProvisionResultDto();
@@ -79,12 +80,18 @@ namespace App.BL
 
                 // ── Step 8: Register encrypted connection string in AppDataSourceRegister ──
                 int newDataSourceId = RegisterTenantDataSource(companyId, dbName, tenantConnStr, request.DomainToken);
+                result.DataSourceId = newDataSourceId;
 
-                // ── Step 9: Repoint DataSourceFrom from template ID → tenant ID ─────
-                // FK constraints on DataSourceFrom were dropped in V004 migration so
-                // no AppDataSourceRegister duplication into tenant DB is needed.
-                if (templateDataSourceId > 0 && newDataSourceId > 0)
-                    UpdateDataSourceFromReferences(tenantConnStr, templateDataSourceId, newDataSourceId);
+                // ── Step 9: Fill / repoint DataSource* FK columns → this tenant's DataSourceId ──
+                // V007 seeds Entity/DataSet/Transaction/etc. with DataSourceFrom = NULL; fill those
+                // with the new register id. Template seed may still copy a template DataSourceId —
+                // remap that separately. FK on DataSourceFrom dropped in V004.
+                if (newDataSourceId > 0)
+                {
+                    FillNullDataSourceFromReferences(tenantConnStr, newDataSourceId);
+                    if (templateDataSourceId > 0)
+                        UpdateDataSourceIdReferences(tenantConnStr, templateDataSourceId, newDataSourceId);
+                }
 
                 result.Success = true;
                 result.LoginUrl = $"{request.DomainToken}.appai.com";
@@ -274,15 +281,17 @@ namespace App.BL
             return newDataSourceId;
         }
 
-        // Finds every table in the tenant DB that has a DataSourceFrom column and
-        // rewrites old (template) data source ID → new (tenant) data source ID.
-        private static void UpdateDataSourceFromReferences(string tenantConnStr, int templateDataSourceId, int tenantDataSourceId)
+        // V007 seeds DataSourceFrom as NULL; after register, fill NULL → tenant DataSourceId.
+        private static void FillNullDataSourceFromReferences(string tenantConnStr, int newDataSourceId)
         {
+            if (newDataSourceId <= 0) return;
+
             const string findTablesSql = @"
                 SELECT TABLE_NAME
                 FROM   INFORMATION_SCHEMA.COLUMNS
                 WHERE  TABLE_SCHEMA = 'dbo'
-                  AND  COLUMN_NAME  = 'DataSourceFrom'";
+                  AND  COLUMN_NAME  = 'DataSourceFrom'
+                  AND  DATA_TYPE IN ('int', 'bigint', 'smallint')";
 
             using (var conn = new SqlConnection(tenantConnStr))
             {
@@ -295,11 +304,55 @@ namespace App.BL
                 foreach (var table in tables)
                 {
                     if (!Regex.IsMatch(table, @"^[A-Za-z][A-Za-z0-9_]{0,127}$")) continue;
-                    string updateSql = $"UPDATE [dbo].[{table}] SET DataSourceFrom = @newId WHERE DataSourceFrom = @oldId";
+                    string updateSql =
+                        $"UPDATE [dbo].[{table}] SET [DataSourceFrom] = @newId WHERE [DataSourceFrom] IS NULL";
                     using (var cmd = new SqlCommand(updateSql, conn))
                     {
-                        cmd.Parameters.AddWithValue("@oldId", templateDataSourceId);
-                        cmd.Parameters.AddWithValue("@newId", tenantDataSourceId);
+                        cmd.Parameters.AddWithValue("@newId", newDataSourceId);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+        }
+
+        // Finds every dbo table/column that stores an AppDataSourceRegister id and
+        // rewrites oldId → newId (e.g. template DataSourceId copied during seed).
+        private static void UpdateDataSourceIdReferences(string tenantConnStr, int oldDataSourceId, int newDataSourceId)
+        {
+            if (oldDataSourceId <= 0 || newDataSourceId <= 0 || oldDataSourceId == newDataSourceId)
+                return;
+
+            // Build a safe IN-list from the allowlist (names are code constants, not user input).
+            string inList = string.Join(", ", Array.ConvertAll(DataSourceIdColumnNames, c => $"N'{c}'"));
+            string findColumnsSql = $@"
+                SELECT TABLE_NAME, COLUMN_NAME
+                FROM   INFORMATION_SCHEMA.COLUMNS
+                WHERE  TABLE_SCHEMA = 'dbo'
+                  AND  DATA_TYPE IN ('int', 'bigint', 'smallint')
+                  AND  COLUMN_NAME IN ({inList})";
+
+            using (var conn = new SqlConnection(tenantConnStr))
+            {
+                conn.Open();
+                var targets = new List<(string Table, string Column)>();
+                using (var cmd = new SqlCommand(findColumnsSql, conn))
+                using (var rdr = cmd.ExecuteReader())
+                {
+                    while (rdr.Read())
+                        targets.Add((rdr.GetString(0), rdr.GetString(1)));
+                }
+
+                foreach (var (table, column) in targets)
+                {
+                    if (!Regex.IsMatch(table, @"^[A-Za-z][A-Za-z0-9_]{0,127}$")) continue;
+                    if (!Regex.IsMatch(column, @"^[A-Za-z][A-Za-z0-9_]{0,127}$")) continue;
+
+                    string updateSql =
+                        $"UPDATE [dbo].[{table}] SET [{column}] = @newId WHERE [{column}] = @oldId";
+                    using (var cmd = new SqlCommand(updateSql, conn))
+                    {
+                        cmd.Parameters.AddWithValue("@oldId", oldDataSourceId);
+                        cmd.Parameters.AddWithValue("@newId", newDataSourceId);
                         cmd.ExecuteNonQuery();
                     }
                 }
@@ -336,11 +389,63 @@ namespace App.BL
             }
         }
 
-        // Repairs existing tenants whose DataSourceFrom still points to the template DB.
-        // Pass the template DataSourceId (e.g. 51) and the tenant's DataSourceId.
+        // Repairs existing tenants: fill NULL DataSourceFrom, and optionally remap a
+        // leftover template/legacy DataSourceId. Safe to call repeatedly.
+        public static int RepairDataSourceIdReferences(
+            string tenantConnStr,
+            int tenantDataSourceId,
+            int? templateDataSourceId = null)
+        {
+            if (string.IsNullOrWhiteSpace(tenantConnStr) || tenantDataSourceId <= 0)
+                return 0;
+
+            FillNullDataSourceFromReferences(tenantConnStr, tenantDataSourceId);
+            if (templateDataSourceId.HasValue && templateDataSourceId.Value > 0)
+                UpdateDataSourceIdReferences(tenantConnStr, templateDataSourceId.Value, tenantDataSourceId);
+
+            return tenantDataSourceId;
+        }
+
+        // Backward-compatible wrapper (old name / signature).
         public static void RepairDataSourceFromReferences(string tenantConnStr, int templateDataSourceId, int tenantDataSourceId)
         {
-            UpdateDataSourceFromReferences(tenantConnStr, templateDataSourceId, tenantDataSourceId);
+            RepairDataSourceIdReferences(tenantConnStr, tenantDataSourceId, templateDataSourceId);
+        }
+
+        // Repairs every registered company-master tenant DB: fill NULL DataSourceFrom
+        // (and optionally remap templateDataSourceId) to that tenant's DataSourceId.
+        public static Dictionary<string, string> RepairDataSourceIdReferencesOnAllTenants(int? templateDataSourceId = null)
+        {
+            var results = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var tenants = AppDataSourceRegisterBL.RetrieveAllAppDataSourceRegisterEntity();
+
+            foreach (var tenant in tenants)
+            {
+                string key = tenant.DatabaseName ?? tenant.DataSourceName ?? tenant.DataSourceId.ToString();
+                if (tenant.IsCompanyMasterDb != true)
+                {
+                    results[key] = "skipped (not company master)";
+                    continue;
+                }
+                if (string.IsNullOrEmpty(tenant.ConnectionString))
+                {
+                    results[key] = "skipped (no connection string)";
+                    continue;
+                }
+
+                try
+                {
+                    string plain = AppConnectionStringEncryptionBL.Decrypt(tenant.ConnectionString);
+                    RepairDataSourceIdReferences(plain, tenant.DataSourceId, templateDataSourceId);
+                    results[key] = $"ok → DataSourceId={tenant.DataSourceId}";
+                }
+                catch (Exception ex)
+                {
+                    results[key] = $"error: {ex.Message}";
+                }
+            }
+
+            return results;
         }
 
         // Copies app-definition rows from a registered template DB into the freshly migrated tenant DB.
@@ -454,5 +559,17 @@ namespace App.BL
                 }
             }
         }
+
+         // Columns that store an AppDataSourceRegister.DataSourceId FK (not names/types/query text).
+        private static readonly string[] DataSourceIdColumnNames =
+        {
+            "DataSourceFrom",
+            "DataSourceFromId",
+            "DataSourceRegistrationId",
+            "DataSourceRegisterId",
+            "DataSourceRegisterID",
+            "DataSourceID",
+        };
+
     }
 }

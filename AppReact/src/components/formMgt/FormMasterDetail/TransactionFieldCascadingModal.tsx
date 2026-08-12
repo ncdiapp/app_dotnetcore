@@ -14,14 +14,14 @@ export type TransactionFieldCascadingModalProps = {
   appTransactionData: any;
 };
 
-function findUnitAndFields(
+function findUnitInTree(
   appTransactionUnitList: any[] | undefined,
   unitId: number | null | undefined
-): { unit: any | null; fields: any[] } {
-  if (!appTransactionUnitList || unitId == null) return { unit: null, fields: [] };
+): any | null {
+  if (!appTransactionUnitList || unitId == null) return null;
   const walk = (units: any[]): any => {
     for (const u of units) {
-      if (u?.Id === unitId) return u;
+      if (u?.Id === unitId || Number(u?.Id) === Number(unitId)) return u;
       if (u?.Children?.length) {
         const c = walk(u.Children);
         if (c) return c;
@@ -29,7 +29,32 @@ function findUnitAndFields(
     }
     return null;
   };
-  const unit = walk(appTransactionUnitList);
+  return walk(appTransactionUnitList);
+}
+
+function findParentUnitInTree(
+  appTransactionUnitList: any[] | undefined,
+  childId: number | null | undefined
+): any | null {
+  if (!appTransactionUnitList || childId == null) return null;
+  const walk = (units: any[]): any => {
+    for (const u of units) {
+      if (u?.Children?.some((c: any) => Number(c?.Id) === Number(childId))) return u;
+      if (u?.Children?.length) {
+        const inner = walk(u.Children);
+        if (inner) return inner;
+      }
+    }
+    return null;
+  };
+  return walk(appTransactionUnitList);
+}
+
+function findUnitAndFields(
+  appTransactionUnitList: any[] | undefined,
+  unitId: number | null | undefined
+): { unit: any | null; fields: any[] } {
+  const unit = findUnitInTree(appTransactionUnitList, unitId);
   return { unit, fields: unit?.AppTransactionFieldList ?? [] };
 }
 
@@ -64,7 +89,7 @@ const TransactionFieldCascadingModal: React.FC<TransactionFieldCascadingModalPro
   const [tableColumns, setTableColumns] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
 
-  const { unit, fields } = useMemo(
+  const { unit } = useMemo(
     () => findUnitAndFields(appTransactionData?.AppTransactionUnitList, currentField?.TransactionUnitId),
     [appTransactionData, currentField?.TransactionUnitId]
   );
@@ -73,14 +98,47 @@ const TransactionFieldCascadingModal: React.FC<TransactionFieldCascadingModalPro
     const Em = EmControl;
     const selfId = currentField?.Id;
     const out: Array<{ Id: number; Display: string }> = [];
-    for (const f of fields) {
-      if (!f || f.Id === selfId) continue;
-      if (ddlLike(f.ControlType, Em)) {
-        out.push({ Id: f.Id, Display: f.DataBaseFieldName || f.DisplayName || String(f.Id) });
+    const seen = new Set<number>();
+    const unitList = appTransactionData?.AppTransactionUnitList ?? [];
+
+    const pushFromUnit = (aUnit: any | null | undefined) => {
+      if (!aUnit?.AppTransactionFieldList) return;
+      const table = aUnit.DataBaseTableName || aUnit.UnitDisplayName || '';
+      for (const f of aUnit.AppTransactionFieldList as any[]) {
+        if (!f || f.Id == null || Number(f.Id) === Number(selfId)) continue;
+        if (!ddlLike(f.ControlType, Em)) continue;
+        if (seen.has(Number(f.Id))) continue;
+        seen.add(Number(f.Id));
+        out.push({
+          Id: Number(f.Id),
+          Display: table
+            ? `[${table}] . [${f.DataBaseFieldName || f.DisplayName || f.Id}]`
+            : f.DataBaseFieldName || f.DisplayName || String(f.Id),
+        });
       }
+    };
+
+    // Same unit (existing behavior)
+    pushFromUnit(unit);
+
+    // Tree parent unit
+    const parentUnit =
+      unit?.Id != null ? findParentUnitInTree(unitList, Number(unit.Id)) : null;
+    pushFromUnit(parentUnit);
+
+    // Root master siblings — Child DDL may cascade from sibling DDL (e.g. StyleSpec.SizeRunId)
+    const siblings: any[] = Array.isArray(appTransactionData?.SibLineTransactionUnitIdExDtoList)
+      && appTransactionData.SibLineTransactionUnitIdExDtoList.length > 0
+      ? appTransactionData.SibLineTransactionUnitIdExDtoList
+      : unitList.filter((u: any) => Boolean(u?.IsMasterSiblingUnit));
+    for (const sib of siblings) {
+      if (sib?.Id != null && Number(sib.Id) === Number(unit?.Id)) continue;
+      if (sib?.Id != null && Number(sib.Id) === Number(parentUnit?.Id)) continue;
+      pushFromUnit(sib);
     }
+
     return out;
-  }, [fields, currentField?.Id, EmControl]);
+  }, [unit, currentField?.Id, EmControl, appTransactionData]);
 
   const parentDllFieldCv = useMemo(() => new CollectionView(parentDllFieldList), [parentDllFieldList]);
 
