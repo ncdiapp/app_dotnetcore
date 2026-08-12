@@ -90,7 +90,7 @@ namespace App.BL
                 {
                     FillNullDataSourceFromReferences(tenantConnStr, newDataSourceId);
                     if (templateDataSourceId > 0)
-                        UpdateDataSourceIdReferences(tenantConnStr, templateDataSourceId, newDataSourceId);
+                        UpdateDataSourceFromReferences(tenantConnStr, templateDataSourceId, newDataSourceId);
                 }
 
                 result.Success = true;
@@ -281,29 +281,43 @@ namespace App.BL
             return newDataSourceId;
         }
 
-        // V007 seeds DataSourceFrom as NULL; after register, fill NULL → tenant DataSourceId.
-        private static void FillNullDataSourceFromReferences(string tenantConnStr, int newDataSourceId)
+        // Discovers every dbo table that has an int DataSourceFrom column (the column V007
+        // seeds as NULL / that template seed may copy with a foreign register id).
+        private static List<string> FindTablesWithDataSourceFrom(SqlConnection conn)
         {
-            if (newDataSourceId <= 0) return;
-
-            const string findTablesSql = @"
+            const string sql = @"
                 SELECT TABLE_NAME
                 FROM   INFORMATION_SCHEMA.COLUMNS
                 WHERE  TABLE_SCHEMA = 'dbo'
                   AND  COLUMN_NAME  = 'DataSourceFrom'
-                  AND  DATA_TYPE IN ('int', 'bigint', 'smallint')";
+                  AND  DATA_TYPE IN ('int', 'bigint', 'smallint')
+                ORDER BY TABLE_NAME";
+
+            var tables = new List<string>();
+            using (var cmd = new SqlCommand(sql, conn))
+            using (var rdr = cmd.ExecuteReader())
+            {
+                while (rdr.Read())
+                {
+                    string table = rdr.GetString(0);
+                    if (Regex.IsMatch(table, @"^[A-Za-z][A-Za-z0-9_]{0,127}$"))
+                        tables.Add(table);
+                }
+            }
+            return tables;
+        }
+
+        // V007 seeds DataSourceFrom as NULL; after register, fill NULL → tenant DataSourceId
+        // on every table that actually has that column.
+        private static void FillNullDataSourceFromReferences(string tenantConnStr, int newDataSourceId)
+        {
+            if (newDataSourceId <= 0) return;
 
             using (var conn = new SqlConnection(tenantConnStr))
             {
                 conn.Open();
-                var tables = new List<string>();
-                using (var cmd = new SqlCommand(findTablesSql, conn))
-                using (var rdr = cmd.ExecuteReader())
-                    while (rdr.Read()) tables.Add(rdr.GetString(0));
-
-                foreach (var table in tables)
+                foreach (var table in FindTablesWithDataSourceFrom(conn))
                 {
-                    if (!Regex.IsMatch(table, @"^[A-Za-z][A-Za-z0-9_]{0,127}$")) continue;
                     string updateSql =
                         $"UPDATE [dbo].[{table}] SET [DataSourceFrom] = @newId WHERE [DataSourceFrom] IS NULL";
                     using (var cmd = new SqlCommand(updateSql, conn))
@@ -315,40 +329,20 @@ namespace App.BL
             }
         }
 
-        // Finds every dbo table/column that stores an AppDataSourceRegister id and
-        // rewrites oldId → newId (e.g. template DataSourceId copied during seed).
-        private static void UpdateDataSourceIdReferences(string tenantConnStr, int oldDataSourceId, int newDataSourceId)
+        // Remaps DataSourceFrom oldId → newId on every table that has the column
+        // (e.g. template seed copied another tenant's register id).
+        private static void UpdateDataSourceFromReferences(string tenantConnStr, int oldDataSourceId, int newDataSourceId)
         {
             if (oldDataSourceId <= 0 || newDataSourceId <= 0 || oldDataSourceId == newDataSourceId)
                 return;
 
-            // Build a safe IN-list from the allowlist (names are code constants, not user input).
-            string inList = string.Join(", ", Array.ConvertAll(DataSourceIdColumnNames, c => $"N'{c}'"));
-            string findColumnsSql = $@"
-                SELECT TABLE_NAME, COLUMN_NAME
-                FROM   INFORMATION_SCHEMA.COLUMNS
-                WHERE  TABLE_SCHEMA = 'dbo'
-                  AND  DATA_TYPE IN ('int', 'bigint', 'smallint')
-                  AND  COLUMN_NAME IN ({inList})";
-
             using (var conn = new SqlConnection(tenantConnStr))
             {
                 conn.Open();
-                var targets = new List<(string Table, string Column)>();
-                using (var cmd = new SqlCommand(findColumnsSql, conn))
-                using (var rdr = cmd.ExecuteReader())
+                foreach (var table in FindTablesWithDataSourceFrom(conn))
                 {
-                    while (rdr.Read())
-                        targets.Add((rdr.GetString(0), rdr.GetString(1)));
-                }
-
-                foreach (var (table, column) in targets)
-                {
-                    if (!Regex.IsMatch(table, @"^[A-Za-z][A-Za-z0-9_]{0,127}$")) continue;
-                    if (!Regex.IsMatch(column, @"^[A-Za-z][A-Za-z0-9_]{0,127}$")) continue;
-
                     string updateSql =
-                        $"UPDATE [dbo].[{table}] SET [{column}] = @newId WHERE [{column}] = @oldId";
+                        $"UPDATE [dbo].[{table}] SET [DataSourceFrom] = @newId WHERE [DataSourceFrom] = @oldId";
                     using (var cmd = new SqlCommand(updateSql, conn))
                     {
                         cmd.Parameters.AddWithValue("@oldId", oldDataSourceId);
@@ -390,7 +384,7 @@ namespace App.BL
         }
 
         // Repairs existing tenants: fill NULL DataSourceFrom, and optionally remap a
-        // leftover template/legacy DataSourceId. Safe to call repeatedly.
+        // leftover template/legacy DataSourceFrom value. Safe to call repeatedly.
         public static int RepairDataSourceIdReferences(
             string tenantConnStr,
             int tenantDataSourceId,
@@ -401,7 +395,7 @@ namespace App.BL
 
             FillNullDataSourceFromReferences(tenantConnStr, tenantDataSourceId);
             if (templateDataSourceId.HasValue && templateDataSourceId.Value > 0)
-                UpdateDataSourceIdReferences(tenantConnStr, templateDataSourceId.Value, tenantDataSourceId);
+                UpdateDataSourceFromReferences(tenantConnStr, templateDataSourceId.Value, tenantDataSourceId);
 
             return tenantDataSourceId;
         }
@@ -559,17 +553,6 @@ namespace App.BL
                 }
             }
         }
-
-         // Columns that store an AppDataSourceRegister.DataSourceId FK (not names/types/query text).
-        private static readonly string[] DataSourceIdColumnNames =
-        {
-            "DataSourceFrom",
-            "DataSourceFromId",
-            "DataSourceRegistrationId",
-            "DataSourceRegisterId",
-            "DataSourceRegisterID",
-            "DataSourceID",
-        };
 
     }
 }

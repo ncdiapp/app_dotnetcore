@@ -238,6 +238,33 @@ SET IsLinkToParentPrimaryKey = 1,
 WHERE TransactionUnitID = @U_ListQcOrder AND DataBaseFieldName = N'StyleSpecId';
 
 ------------------------------------------------------------
+-- QC Results (grandchild): NOT NULL columns + computed columns
+------------------------------------------------------------
+-- SpecValue / Tolerance are NOT NULL snapshots — default 0 for draft entry until POM subscribe exists.
+UPDATE dbo.AppTransactionField
+SET DefaultValue = N'0', IsAllowEmpty = 0
+WHERE TransactionUnitID = @U_Result AND DataBaseFieldName IN (N'SpecValue', N'Tolerance');
+
+UPDATE dbo.AppTransactionField
+SET IsAllowEmpty = 0
+WHERE TransactionUnitID = @U_Result AND DataBaseFieldName IN (N'SizeRunSizeId', N'PomSpecLineId');
+
+-- Persisted computed columns — never edit / never send on INSERT
+UPDATE dbo.AppTransactionField
+SET IsReadonly = 1, IsVisible = 0
+WHERE TransactionUnitID = @U_Result AND DataBaseFieldName IN (N'Shrinkage', N'Recovery', N'FinalDiff');
+
+-- DDL entities (PomSpecLine view + SizeRunSize)
+DECLARE @E_PomSpecLine INT = (SELECT TOP 1 EntityInfoID FROM dbo.AppEntityInfo WHERE EntityCode = N'PomSpecLine');
+DECLARE @E_SizeRunDetail INT = (SELECT TOP 1 EntityInfoID FROM dbo.AppEntityInfo WHERE EntityCode = N'SizeRunDetail');
+IF @E_PomSpecLine IS NOT NULL
+    UPDATE dbo.AppTransactionField SET ControlType = 1, EntityId = @E_PomSpecLine
+    WHERE TransactionUnitID = @U_Result AND DataBaseFieldName = N'PomSpecLineId';
+IF @E_SizeRunDetail IS NOT NULL
+    UPDATE dbo.AppTransactionField SET ControlType = 1, EntityId = @E_SizeRunDetail
+    WHERE TransactionUnitID = @U_Result AND DataBaseFieldName = N'SizeRunSizeId';
+
+------------------------------------------------------------
 -- Link Target: List QcOrder grid → Spec Qc Order TX (popup)
 ------------------------------------------------------------
 INSERT INTO dbo.AppFormLinkTarget (
