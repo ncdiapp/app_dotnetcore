@@ -16,7 +16,7 @@ import AppSearch, { type AppSearchHandle } from '../../search/AppSearch';
 import FormMasterDetail from '../FormMasterDetail';
 import FormListEdit from '../FormListEdit';
 import appHelper from '../../../helper/appHelper';
-import { buildLinkTargetTabTitle } from '../../../utils/linkTargetTabTitle';
+import { buildLinkTargetTabTitle, buildLinkTargetValueMapping, sortBySortOrder } from '../../../utils/linkTargetTabTitle';
 import { EmbeddedLinkedPopupFrame } from '../EmbeddedLinkedPopupFrame';
 import WorkflowAutomationEditor from '../../workflow/WorkflowAutomationEditor';
 import {
@@ -304,8 +304,8 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
   
   // Get root unit for link targets
   const rootUnit = transactionDto?.AppTransactionUnitList?.[0];
-  const linkTargets = rootUnit?.AppFormLinkTargetList || [];
-  const linkedSearches = rootUnit?.AppTransactionUnitLinkedSearchList || [];
+  const linkTargets = sortBySortOrder(rootUnit?.AppFormLinkTargetList || []);
+  const linkedSearches = sortBySortOrder(rootUnit?.AppTransactionUnitLinkedSearchList || []);
   
   // Get command actions
   const commandActions = transactionDto?.CommandActionList?.filter((cmd: any) => 
@@ -826,6 +826,7 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
     if (isLocked) return;
 
     const rootDictOneToOneFields = dataModel.currentFormData?.DictOneToOneFields ?? {};
+    const siblingDictOneToOneFields = dataModel.currentFormData?.DictSiblingOneToOneFields ?? {};
 
     // Angular: SourceConditionColumn gates whether this menu item can execute.
     if (linkTarget?.SourceConditionColumn) {
@@ -932,17 +933,12 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
     // Regular transaction link target (FormMasterDetail / FormListEdit)
     const targetPkValue = linkTarget.SourceColumn1 ? rootDictOneToOneFields?.[linkTarget.SourceColumn1] : null;
 
-    const linkTargetValueMapping: Record<string, any> = {};
-    if (linkTarget.SourceColumn2 && linkTarget.TargetColumn2) {
-      let dbColumnName = linkTarget.SourceColumn2;
-      if (dbColumnName.indexOf('RootUnit.') >= 0) dbColumnName = dbColumnName.substring(9).trim();
-      linkTargetValueMapping[linkTarget.TargetColumn2] = rootDictOneToOneFields?.[dbColumnName];
-    }
-    if (linkTarget.SourceColumn3 && linkTarget.TargetColumn3) {
-      let dbColumnName = linkTarget.SourceColumn3;
-      if (dbColumnName.indexOf('RootUnit.') >= 0) dbColumnName = dbColumnName.substring(9).trim();
-      linkTargetValueMapping[linkTarget.TargetColumn3] = rootDictOneToOneFields?.[dbColumnName];
-    }
+    const linkTargetValueMapping = buildLinkTargetValueMapping({
+      linkTarget,
+      rowDict: rootDictOneToOneFields,
+      rootDict: rootDictOneToOneFields,
+      siblingDict: siblingDictOneToOneFields,
+    });
 
     const tabTitle = buildLinkTargetTabTitle(
       linkTarget.NavigationActionName,
@@ -992,7 +988,9 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
     if (linkTarget.ActionType === LINK_TARGET_ACTION.CreateBlank || linkTarget.ActionType === LINK_TARGET_ACTION.CreateFromExistingItem) {
       if (!linkTarget.LinkTargetTransactionId) return;
       const param2Obj: any = {};
-      if (linkTarget.ActionType === LINK_TARGET_ACTION.CreateFromExistingItem) {
+      // Create Blank and Create From Existing both honor Source→Target field mapping when configured
+      // (including RootUnit.* sources resolved from the host form root).
+      if (linkTargetValueMapping && Object.keys(linkTargetValueMapping).length > 0) {
         param2Obj.linkTargetValueMapping = linkTargetValueMapping;
       }
       if (linkTarget.DataTransferSettingId) {

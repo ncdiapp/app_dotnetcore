@@ -24,7 +24,7 @@ import FormMasterDetail from '../../FormMasterDetail';
 import FormListEdit from '../../FormListEdit';
 import appHelper from '../../../../helper/appHelper';
 import { clampContextMenuPosition, useRefineContextMenuField } from '../../../../hooks/useClampedContextMenuPosition';
-import { buildLinkTargetTabTitle } from '../../../../utils/linkTargetTabTitle';
+import { buildLinkTargetTabTitle, buildLinkTargetValueMapping, sortBySortOrder } from '../../../../utils/linkTargetTabTitle';
 import { EmbeddedLinkedPopupFrame } from '../../EmbeddedLinkedPopupFrame';
 import {
   applyLinkTargetMasterDataSelectionToRow,
@@ -477,11 +477,33 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const isUnitReadOnly = normalizeBool(unitExDto?.IsReadOnly) || isLockTransaction || isUnitLocked;
   const isGridReadOnly = Boolean(controllerModel?.isPreview) || isUnitReadOnly;
   const isEditMode = controllerModel?.formRequestMode === 'Edit';
+  // Angular _DataGridLayoutActionSection: IsDisableAddButton / IsDisableDeleteButton + RestrictedTransactionUnitUserActionList
+  const restrictedUnitActions = Array.isArray(unitExDto?.RestrictedTransactionUnitUserActionList)
+    ? unitExDto.RestrictedTransactionUnitUserActionList
+    : [];
+  const isDisableAddButton =
+    normalizeBool(unitExDto?.IsDisableAddButton) ||
+    restrictedUnitActions.includes(1) || // EmAppSysTransactionUnitActionCode.AddRow
+    restrictedUnitActions.includes('1');
+  const isDisableDeleteButton =
+    normalizeBool(unitExDto?.IsDisableDeleteButton) ||
+    restrictedUnitActions.includes(2) || // EmAppSysTransactionUnitActionCode.RemoveRow
+    restrictedUnitActions.includes('2');
   const [fetchedUnitLinkTargets, setFetchedUnitLinkTargets] = useState<any[]>([]);
   const [fetchedUnitLinkedSearches, setFetchedUnitLinkedSearches] = useState<any[]>([]);
-  const unitLinkTargets = (unitExDto?.AppFormLinkTargetList?.length ? unitExDto.AppFormLinkTargetList : fetchedUnitLinkTargets) || [];
-  const unitLinkedSearches =
-    (unitExDto?.AppTransactionUnitLinkedSearchList?.length ? unitExDto.AppTransactionUnitLinkedSearchList : fetchedUnitLinkedSearches) || [];
+  const unitLinkTargets = useMemo(() => {
+    const raw =
+      (unitExDto?.AppFormLinkTargetList?.length ? unitExDto.AppFormLinkTargetList : fetchedUnitLinkTargets) ||
+      [];
+    return sortBySortOrder(raw);
+  }, [unitExDto?.AppFormLinkTargetList, fetchedUnitLinkTargets]);
+  const unitLinkedSearches = useMemo(() => {
+    const raw =
+      (unitExDto?.AppTransactionUnitLinkedSearchList?.length
+        ? unitExDto.AppTransactionUnitLinkedSearchList
+        : fetchedUnitLinkedSearches) || [];
+    return sortBySortOrder(raw);
+  }, [unitExDto?.AppTransactionUnitLinkedSearchList, fetchedUnitLinkedSearches]);
   const hasUnitNavigation = unitLinkTargets.length > 0 || unitLinkedSearches.length > 0;
 
   useEffect(() => {
@@ -667,8 +689,15 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     Delete: 3,
   };
 
-  const executeUnitLinkTarget = (linkTarget: any, rowItem: any) => {
-    if (!linkTarget || !rowItem) return;
+  const executeUnitLinkTarget = (linkTarget: any, rowItem: any | null) => {
+    if (!linkTarget) return;
+
+    const actionType = Number(linkTarget.ActionType);
+    // Create Blank / Create From Existing can run with an empty child grid when mapping uses RootUnit / RootSibling fields.
+    const allowsEmptyRow =
+      actionType === LINK_TARGET_ACTION.CreateBlank ||
+      actionType === LINK_TARGET_ACTION.CreateFromExistingItem;
+    if (!rowItem && !allowsEmptyRow) return;
 
     const rootDictOneToOneFields =
       masterDetailFormDataRef.current?.DictOneToOneFields ??
@@ -676,8 +705,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
       {};
     const rowDictOneToOneFields = rowItem?.DictOneToOneFields ?? {};
 
-    // Angular: SourceConditionColumn gates whether this menu item can execute.
-    if (linkTarget?.SourceConditionColumn) {
+    // Angular: SourceConditionColumn gates whether this menu item can execute (row-based when a row exists).
+    if (linkTarget?.SourceConditionColumn && rowItem) {
       const v = rowDictOneToOneFields?.[linkTarget.SourceConditionColumn];
       if (v === false || v === 0 || v === '0' || v === 'false' || v === 'False' || v == null) return;
     }
@@ -739,23 +768,15 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     // Regular transaction link target (FormMasterDetail / FormListEdit)
     const targetPkValue = linkTarget.SourceColumn1 ? rowDictOneToOneFields?.[linkTarget.SourceColumn1] : null;
 
-    const linkTargetValueMapping: Record<string, any> = {};
-    if (linkTarget.SourceColumn2 && linkTarget.TargetColumn2) {
-      const sourceColumnStr = String(linkTarget.SourceColumn2);
-      const fromRoot = sourceColumnStr.indexOf('RootUnit.') >= 0;
-      const dbColumnName = fromRoot ? sourceColumnStr.substring(9).trim() : sourceColumnStr;
-      linkTargetValueMapping[linkTarget.TargetColumn2] = fromRoot
-        ? rootDictOneToOneFields?.[dbColumnName]
-        : rowDictOneToOneFields?.[dbColumnName];
-    }
-    if (linkTarget.SourceColumn3 && linkTarget.TargetColumn3) {
-      const sourceColumnStr = String(linkTarget.SourceColumn3);
-      const fromRoot = sourceColumnStr.indexOf('RootUnit.') >= 0;
-      const dbColumnName = fromRoot ? sourceColumnStr.substring(9).trim() : sourceColumnStr;
-      linkTargetValueMapping[linkTarget.TargetColumn3] = fromRoot
-        ? rootDictOneToOneFields?.[dbColumnName]
-        : rowDictOneToOneFields?.[dbColumnName];
-    }
+    const linkTargetValueMapping = buildLinkTargetValueMapping({
+      linkTarget,
+      rowDict: rowDictOneToOneFields,
+      rootDict: rootDictOneToOneFields,
+      siblingDict:
+        masterDetailFormDataRef.current?.DictSiblingOneToOneFields ??
+        dataModelRef.current?.currentFormData?.DictSiblingOneToOneFields ??
+        null,
+    });
 
     const tabTitle = buildLinkTargetTabTitle(
       tabTitleBase,
@@ -814,7 +835,9 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     ) {
       if (!linkTarget.LinkTargetTransactionId) return;
       const param2Obj: any = {};
-      if (linkTarget.ActionType === LINK_TARGET_ACTION.CreateFromExistingItem) {
+      // Create Blank and Create From Existing both honor Source→Target field mapping when configured
+      // (including RootUnit.* sources resolved from the host form root).
+      if (linkTargetValueMapping && Object.keys(linkTargetValueMapping).length > 0) {
         param2Obj.linkTargetValueMapping = linkTargetValueMapping;
       }
       if (linkTarget.DataTransferSettingId) {
@@ -1099,7 +1122,12 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             onClick={(e) => {
               e.stopPropagation();
               const rowItem = getSelectedUnitRowItem();
-              if (!rowItem) return;
+              const actionType = Number(lt?.ActionType);
+              // Create Blank / Create From Existing: allow when grid has no rows (RootUnit/RootSibling mapping).
+              const allowsEmptyRow =
+                actionType === LINK_TARGET_ACTION.CreateBlank ||
+                actionType === LINK_TARGET_ACTION.CreateFromExistingItem;
+              if (!rowItem && !allowsEmptyRow) return;
               executeUnitLinkTarget(lt, rowItem);
             }}
             title={lt?.NavigationActionName ?? 'Unit Navigate'}
@@ -3435,7 +3463,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             {!isGridReadOnly && (
               <>
                 {/* Matrix grid rows are (re)generated via Generate Matrix, not added/deleted manually. */}
-                {!showAvailableSelectRuntime && !isMatrixUnit && (
+                {!showAvailableSelectRuntime && !isMatrixUnit && !isDisableAddButton && (
                 <button
                   type="button"
                   onMouseDown={(e) => e.stopPropagation()}
@@ -3450,7 +3478,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                   Add Row
                 </button>
                 )}
-                {!showMultipleSelectBoxUi && !isMatrixUnit && (
+                {!showMultipleSelectBoxUi && !isMatrixUnit && !isDisableDeleteButton && (
                 <button
                   type="button"
                   onMouseDown={(e) => e.stopPropagation()}
@@ -3561,6 +3589,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
             </div>
 
             <div className="relative z-10 flex shrink-0 flex-col justify-center gap-3 px-3 py-4">
+              {!isDisableAddButton && (
               <button
                 type="button"
                 disabled={isGridReadOnly}
@@ -3574,6 +3603,8 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
               >
                 <i className="fa-solid fa-angle-right" aria-hidden />
               </button>
+              )}
+              {!isDisableDeleteButton && (
               <button
                 type="button"
                 disabled={isGridReadOnly}
@@ -3587,6 +3618,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
               >
                 <i className="fa-solid fa-angle-left" aria-hidden />
               </button>
+              )}
             </div>
           </>
         )}

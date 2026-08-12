@@ -44,7 +44,7 @@ import {
   isLinkedSearchPopupConfirmClose,
   type MasterDataPickerContext,
 } from './linkedSearchUtils';
-import { buildLinkTargetTabTitle } from '../../utils/linkTargetTabTitle';
+import { buildLinkTargetTabTitle, buildLinkTargetValueMapping, sortBySortOrder } from '../../utils/linkTargetTabTitle';
 
 /** Lazy avoids static circular import when opening List Edit inside List Edit popup. */
 const ListEditNavPopupLazy = lazy(() => import('./FormListEdit'));
@@ -800,14 +800,16 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
     return full ? { ...rootUnit, ...full } : rootUnit;
   }, [rootUnit, dataModel.transactionExDto, dataModel.currentFormStructure]);
 
-  const listRootLinkTargets =
+  const listRootLinkTargets = sortBySortOrder(
     (rootUnitMergedForNav?.AppFormLinkTargetList?.length
       ? rootUnitMergedForNav.AppFormLinkTargetList
-      : fetchedListRootLinkTargets) || [];
-  const listRootLinkedSearches =
+      : fetchedListRootLinkTargets) || []
+  );
+  const listRootLinkedSearches = sortBySortOrder(
     (rootUnitMergedForNav?.AppTransactionUnitLinkedSearchList?.length
       ? rootUnitMergedForNav.AppTransactionUnitLinkedSearchList
-      : fetchedListRootLinkedSearches) || [];
+      : fetchedListRootLinkedSearches) || []
+  );
   /** FormMainMenus parity: hide ViewSearchResult (Action === 1). */
   const listRootLinkedSearchesMenu = listRootLinkedSearches.filter((ls: any) => ls.Action !== 1);
   const hasListRootUnitNavigation =
@@ -861,6 +863,18 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
   const fields = hasUnitFieldDefinitions ? fieldsFromUnit : fieldsFromStructure;
 
   const isReadOnly = rootUnit?.IsReadOnly === true;
+  const restrictedRootUnitActions = Array.isArray(rootUnit?.RestrictedTransactionUnitUserActionList)
+    ? rootUnit.RestrictedTransactionUnitUserActionList
+    : [];
+  // Angular _ListEditLayoutForm: IsDisableAddButton / IsDisableDeleteButton
+  const isDisableAddButton =
+    rootUnit?.IsDisableAddButton === true ||
+    restrictedRootUnitActions.includes(1) ||
+    restrictedRootUnitActions.includes('1');
+  const isDisableDeleteButton =
+    rootUnit?.IsDisableDeleteButton === true ||
+    restrictedRootUnitActions.includes(2) ||
+    restrictedRootUnitActions.includes('2');
 
   const addChildNewRef = useRef(addChildNew);
   addChildNewRef.current = addChildNew;
@@ -1043,23 +1057,12 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
 
       const targetPkValue = linkTarget.SourceColumn1 ? rowDictOneToOneFields?.[linkTarget.SourceColumn1] : null;
 
-      const linkTargetValueMapping: Record<string, any> = {};
-      if (linkTarget.SourceColumn2 && linkTarget.TargetColumn2) {
-        let dbColumnName = linkTarget.SourceColumn2;
-        const fromRoot = String(dbColumnName).indexOf('RootUnit.') >= 0;
-        if (fromRoot) dbColumnName = dbColumnName.substring(9).trim();
-        linkTargetValueMapping[linkTarget.TargetColumn2] = fromRoot
-          ? rootDictOneToOneFields?.[dbColumnName]
-          : rowDictOneToOneFields?.[dbColumnName];
-      }
-      if (linkTarget.SourceColumn3 && linkTarget.TargetColumn3) {
-        let dbColumnName = linkTarget.SourceColumn3;
-        const fromRoot = String(dbColumnName).indexOf('RootUnit.') >= 0;
-        if (fromRoot) dbColumnName = dbColumnName.substring(9).trim();
-        linkTargetValueMapping[linkTarget.TargetColumn3] = fromRoot
-          ? rootDictOneToOneFields?.[dbColumnName]
-          : rowDictOneToOneFields?.[dbColumnName];
-      }
+      const linkTargetValueMapping = buildLinkTargetValueMapping({
+        linkTarget,
+        rowDict: rowDictOneToOneFields,
+        rootDict: rootDictOneToOneFields,
+        siblingDict: dataModelRef.current?.currentFormData?.DictSiblingOneToOneFields ?? null,
+      });
 
       const tabTitle = buildLinkTargetTabTitle(
         tabTitleBase,
@@ -1120,7 +1123,9 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
       ) {
         if (!linkTarget.LinkTargetTransactionId) return;
         const param2Obj: any = {};
-        if (linkTarget.ActionType === LIST_TARGET_ACTION_LIST_ROOT.CreateFromExistingItem) {
+        // Create Blank and Create From Existing both honor Source→Target field mapping when configured
+        // (including RootUnit.* sources resolved from the host form root).
+        if (linkTargetValueMapping && Object.keys(linkTargetValueMapping).length > 0) {
           param2Obj.linkTargetValueMapping = linkTargetValueMapping;
         }
         if (linkTarget.DataTransferSettingId) {
@@ -1495,6 +1500,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
           <FlexGridAddOn gridRef={flexGridRef} title="Freeze / Show / Hide columns" />
           {!isReadOnly && (
             <>
+              {!isDisableAddButton && (
               <button
                 type="button"
                 className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
@@ -1503,6 +1509,8 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
               >
                 <i className="fa-solid fa-plus-circle mr-1" aria-hidden /> Add
               </button>
+              )}
+              {!isDisableDeleteButton && (
               <button
                 type="button"
                 className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
@@ -1511,6 +1519,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
               >
                 <i className="fa-solid fa-minus-circle mr-1" aria-hidden /> Delete
               </button>
+              )}
               <button
                 type="button"
                 className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
@@ -1543,6 +1552,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
           )}
           {!isReadOnly && (
             <>
+              {!isDisableAddButton && (
               <button
                 type="button"
                 className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
@@ -1551,6 +1561,8 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
               >
                 <i className="fa-solid fa-plus-circle mr-1" aria-hidden /> Add
               </button>
+              )}
+              {!isDisableDeleteButton && (
               <button
                 type="button"
                 className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
@@ -1559,6 +1571,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
               >
                 <i className="fa-solid fa-minus-circle mr-1" aria-hidden /> Delete
               </button>
+              )}
             </>
           )}
           {!isReadOnly && (

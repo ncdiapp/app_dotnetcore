@@ -52,7 +52,11 @@ const TransactionUnitLinkTargetEditor: React.FC<TransactionUnitLinkTargetEditorP
   const [transactionList, setTransactionList] = useState<any[]>([]);
   const [routeStateList, setRouteStateList] = useState<any[]>([]);
   const [currentEditMenu, setCurrentEditMenu] = useState<any | null>(null);
+  // Bumps on in-place property edits so the right panel re-renders without replacing CollectionView.
+  const [, setEditTick] = useState(0);
   const [targetFieldList, setTargetFieldList] = useState<any[]>([]);
+  /** Root + master-sibling units of the same transaction — Source Field mapping. */
+  const [rootLevelUnits, setRootLevelUnits] = useState<any[]>([]);
   const gridRef = useRef<any>(null);
   const hasInitialSelection = useRef(false);
 
@@ -69,13 +73,81 @@ const TransactionUnitLinkTargetEditor: React.FC<TransactionUnitLinkTargetEditorP
     return new DataMap(routeStateList, 'StateCode', 'StateCode');
   }, [routeStateList]);
 
-  const linkTargetCV = useMemo(() => {
-    const cv = new CollectionView(linkTargetList);
+  // Stable CollectionView — recreating it on every keystroke resets grid selection to another row.
+  const [linkTargetCV] = useState(() => {
+    const cv = new CollectionView<any>([]);
     cv.sortDescriptions.push(new SortDescription('Sort', true));
     return cv;
-  }, [linkTargetList]);
+  });
+
+  useEffect(() => {
+    const selected = currentEditMenu;
+    linkTargetCV.sourceCollection = linkTargetList ?? [];
+    linkTargetCV.refresh();
+    // Restore selection after sourceCollection replace (Add / Delete / Reload).
+    if (!selected) return;
+    const t = setTimeout(() => {
+      const grid = gridRef.current?.control;
+      if (!grid?.rows?.length) return;
+      const rowIndex = grid.rows.findIndex((r: any) => r?.dataItem === selected);
+      if (rowIndex >= 0) grid.select(rowIndex, 0);
+    }, 0);
+    return () => clearTimeout(t);
+    // Intentionally omit currentEditMenu: only rebind when the list identity/membership changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linkTargetList, linkTargetCV]);
 
   const unitFields = unitData?.AppTransactionFieldList || [];
+
+  /**
+   * Field Mapping Source options:
+   * - RootUnit.Field (root master unit)
+   * - RootSibling.{unitId}.Field (root-level master sibling 1:1 units)
+   * - Field (current unit)
+   */
+  const sourceMappingFields = useMemo(() => {
+    const options: { value: string; label: string }[] = [];
+    const seen = new Set<string>();
+    const currentUnitId = unitData?.Id != null ? String(unitData.Id) : null;
+
+    const rootUnit =
+      (rootLevelUnits || []).find((u: any) => !u?.IsMasterSiblingUnit) || (rootLevelUnits || [])[0] || null;
+    const siblingUnits = (rootLevelUnits || []).filter((u: any) => Boolean(u?.IsMasterSiblingUnit));
+
+    if (rootUnit && (currentUnitId == null || String(rootUnit.Id) !== currentUnitId)) {
+      (rootUnit.AppTransactionFieldList || []).forEach((f: any) => {
+        const name = f?.DataBaseFieldName;
+        if (!name) return;
+        const value = `RootUnit.${name}`;
+        if (seen.has(value)) return;
+        seen.add(value);
+        options.push({ value, label: value });
+      });
+    }
+
+    siblingUnits.forEach((sib: any) => {
+      if (sib?.Id == null) return;
+      if (currentUnitId != null && String(sib.Id) === currentUnitId) return;
+      const tableOrName = String(sib.DataBaseTableName || sib.UnitDisplayName || sib.Id);
+      (sib.AppTransactionFieldList || []).forEach((f: any) => {
+        const name = f?.DataBaseFieldName;
+        if (!name) return;
+        const value = `RootSibling.${sib.Id}.${name}`;
+        if (seen.has(value)) return;
+        seen.add(value);
+        options.push({ value, label: `RootSibling.${tableOrName}.${name}` });
+      });
+    });
+
+    (unitFields || []).forEach((f: any) => {
+      const name = f?.DataBaseFieldName;
+      if (!name || seen.has(name)) return;
+      seen.add(name);
+      options.push({ value: name, label: name });
+    });
+
+    return options;
+  }, [rootLevelUnits, unitFields, unitData?.Id]);
 
   const loadData = useCallback(async () => {
     if (!isOpen || !transactionUnitId) {
@@ -92,6 +164,28 @@ const TransactionUnitLinkTargetEditor: React.FC<TransactionUnitLinkTargetEditorP
         appTransactionService.retrieveAllAppTransactions(null, 1, false),
       ]);
       setUnitData(unitExDto || null);
+
+      // Load root + master-sibling units for RootUnit.* / RootSibling.* source mapping.
+      let rootLevel: any[] = [];
+      const txnId = unitExDto?.TransactionId;
+      if (txnId != null) {
+        try {
+          const hierarchy = await appTransactionService.getOneHierarchyTransaction(
+            String(txnId),
+            false,
+            '',
+            '',
+            '',
+            false,
+            ''
+          );
+          rootLevel = Array.isArray(hierarchy?.AppTransactionUnitList) ? hierarchy.AppTransactionUnitList : [];
+        } catch {
+          rootLevel = [];
+        }
+      }
+      setRootLevelUnits(rootLevel);
+
       const allTargets = Array.isArray(linkTargetsRaw) ? linkTargetsRaw : [];
       const filtered = allTargets.filter((t: any) => Number(t.LinkTargetUsageType) === linkTargetUsageType);
       setLinkTargetList(filtered);
@@ -102,6 +196,7 @@ const TransactionUnitLinkTargetEditor: React.FC<TransactionUnitLinkTargetEditorP
       showError(e?.message || 'Failed to load link targets');
       setLinkTargetList([]);
       setUnitData(null);
+      setRootLevelUnits([]);
       setTransactionList([]);
       setRouteStateList([]);
     } finally {
@@ -247,9 +342,19 @@ const TransactionUnitLinkTargetEditor: React.FC<TransactionUnitLinkTargetEditorP
 
   const updateCurrent = useCallback((key: string, value: any) => {
     if (!currentEditMenu) return;
+    // Mutate the same object living in linkTargetList / CollectionView (keep selection stable).
     currentEditMenu[key] = value;
-    setLinkTargetList((prev) => [...prev]);
-  }, [currentEditMenu]);
+    linkTargetCV.refresh();
+    setEditTick((n) => n + 1);
+    // Changing Sort reorders the grid — keep the edited row selected.
+    if (key === 'Sort') {
+      const grid = gridRef.current?.control;
+      if (grid?.rows?.length) {
+        const rowIndex = grid.rows.findIndex((r: any) => r?.dataItem === currentEditMenu);
+        if (rowIndex >= 0) grid.select(rowIndex, 0);
+      }
+    }
+  }, [currentEditMenu, linkTargetCV]);
 
   if (!isOpen) return null;
 
@@ -520,8 +625,8 @@ const TransactionUnitLinkTargetEditor: React.FC<TransactionUnitLinkTargetEditorP
                               className={`w-1 flex-auto max-w-xs h-7 px-2 text-xs border rounded ${theme.inputBox}`}
                             >
                               <option value="">-- Select --</option>
-                              {unitFields.map((f: any) => (
-                                <option key={f.DataBaseFieldName} value={f.DataBaseFieldName}>{f.DataBaseFieldName}</option>
+                              {sourceMappingFields.map((f) => (
+                                <option key={f.value} value={f.value}>{f.label}</option>
                               ))}
                             </select>
                           </div>
@@ -546,8 +651,8 @@ const TransactionUnitLinkTargetEditor: React.FC<TransactionUnitLinkTargetEditorP
                               className={`w-1 flex-auto max-w-xs h-7 px-2 text-xs border rounded ${theme.inputBox}`}
                             >
                               <option value="">-- Select --</option>
-                              {unitFields.map((f: any) => (
-                                <option key={f.DataBaseFieldName} value={f.DataBaseFieldName}>{f.DataBaseFieldName}</option>
+                              {sourceMappingFields.map((f) => (
+                                <option key={f.value} value={f.value}>{f.label}</option>
                               ))}
                             </select>
                           </div>
@@ -572,8 +677,8 @@ const TransactionUnitLinkTargetEditor: React.FC<TransactionUnitLinkTargetEditorP
                               className={`w-1 flex-auto max-w-xs h-7 px-2 text-xs border rounded ${theme.inputBox}`}
                             >
                               <option value="">-- Select --</option>
-                              {unitFields.map((f: any) => (
-                                <option key={f.DataBaseFieldName} value={f.DataBaseFieldName}>{f.DataBaseFieldName}</option>
+                              {sourceMappingFields.map((f) => (
+                                <option key={f.value} value={f.value}>{f.label}</option>
                               ))}
                             </select>
                           </div>

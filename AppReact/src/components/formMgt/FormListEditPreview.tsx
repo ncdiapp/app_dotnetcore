@@ -21,7 +21,7 @@ import {
     isLinkedSearchPopupConfirmClose,
     type MasterDataPickerContext,
 } from './linkedSearchUtils';
-import { buildLinkTargetTabTitle } from '../../utils/linkTargetTabTitle';
+import { buildLinkTargetTabTitle, buildLinkTargetValueMapping, sortBySortOrder } from '../../utils/linkTargetTabTitle';
 
 interface FormListEditPreviewProps {
     transactionId: number;
@@ -295,11 +295,14 @@ const FormListEditPreview: React.FC<FormListEditPreviewProps> = ({ transactionId
         dataModel.transactionExDto?.AppTransactionUnitList?.[0] ??
         dataModel.currentFormStructure?.AppTransactionUnitList?.[0];
 
-    const linkTargets = (rootUnit?.AppFormLinkTargetList?.length ? rootUnit.AppFormLinkTargetList : fetchedRootLinkTargets) || [];
-    const linkedSearches =
+    const linkTargets = sortBySortOrder(
+        (rootUnit?.AppFormLinkTargetList?.length ? rootUnit.AppFormLinkTargetList : fetchedRootLinkTargets) || []
+    );
+    const linkedSearches = sortBySortOrder(
         (rootUnit?.AppTransactionUnitLinkedSearchList?.length
             ? rootUnit.AppTransactionUnitLinkedSearchList
-            : fetchedRootLinkedSearches) || [];
+            : fetchedRootLinkedSearches) || []
+    );
     const hasUnitNavigation = linkTargets.length > 0 || linkedSearches.length > 0;
 
     useEffect(() => {
@@ -348,6 +351,17 @@ const FormListEditPreview: React.FC<FormListEditPreviewProps> = ({ transactionId
     const fields = fieldsFromUnit.length > 0 ? fieldsFromUnit : fieldsFromStructure;
 
     const isReadOnly = rootUnit?.IsReadOnly === true;
+    const restrictedRootUnitActions = Array.isArray(rootUnit?.RestrictedTransactionUnitUserActionList)
+        ? rootUnit.RestrictedTransactionUnitUserActionList
+        : [];
+    const isDisableAddButton =
+        rootUnit?.IsDisableAddButton === true ||
+        restrictedRootUnitActions.includes(1) ||
+        restrictedRootUnitActions.includes('1');
+    const isDisableDeleteButton =
+        rootUnit?.IsDisableDeleteButton === true ||
+        restrictedRootUnitActions.includes(2) ||
+        restrictedRootUnitActions.includes('2');
     const isAllowAccess = dataModel.transactionExDto?.IsAllowAccess !== false;
 
     const normalizeMainPrefixRouteCode = (rc: string) => (rc || '').replace(/^main\./, '');
@@ -457,23 +471,12 @@ const FormListEditPreview: React.FC<FormListEditPreviewProps> = ({ transactionId
         // Regular transaction link target (FormMasterDetail / FormListEdit)
         const targetPkValue = linkTarget.SourceColumn1 ? rowDictOneToOneFields?.[linkTarget.SourceColumn1] : null;
 
-        const linkTargetValueMapping: Record<string, any> = {};
-        if (linkTarget.SourceColumn2 && linkTarget.TargetColumn2) {
-            let dbColumnName = linkTarget.SourceColumn2;
-            const fromRoot = String(dbColumnName).indexOf('RootUnit.') >= 0;
-            if (fromRoot) dbColumnName = dbColumnName.substring(9).trim();
-            linkTargetValueMapping[linkTarget.TargetColumn2] = fromRoot
-                ? rootDictOneToOneFields?.[dbColumnName]
-                : rowDictOneToOneFields?.[dbColumnName];
-        }
-        if (linkTarget.SourceColumn3 && linkTarget.TargetColumn3) {
-            let dbColumnName = linkTarget.SourceColumn3;
-            const fromRoot = String(dbColumnName).indexOf('RootUnit.') >= 0;
-            if (fromRoot) dbColumnName = dbColumnName.substring(9).trim();
-            linkTargetValueMapping[linkTarget.TargetColumn3] = fromRoot
-                ? rootDictOneToOneFields?.[dbColumnName]
-                : rowDictOneToOneFields?.[dbColumnName];
-        }
+        const linkTargetValueMapping = buildLinkTargetValueMapping({
+            linkTarget,
+            rowDict: rowDictOneToOneFields,
+            rootDict: rootDictOneToOneFields,
+            siblingDict: dataModel.currentFormData?.DictSiblingOneToOneFields ?? null,
+        });
 
         const tabTitle = buildLinkTargetTabTitle(
             tabTitleBase,
@@ -523,7 +526,9 @@ const FormListEditPreview: React.FC<FormListEditPreviewProps> = ({ transactionId
         if (linkTarget.ActionType === LINK_TARGET_ACTION.CreateBlank || linkTarget.ActionType === LINK_TARGET_ACTION.CreateFromExistingItem) {
             if (!linkTarget.LinkTargetTransactionId) return;
             const param2Obj: any = {};
-            if (linkTarget.ActionType === LINK_TARGET_ACTION.CreateFromExistingItem) {
+            // Create Blank and Create From Existing both honor Source→Target field mapping when configured
+            // (including RootUnit.* sources resolved from the host form root).
+            if (linkTargetValueMapping && Object.keys(linkTargetValueMapping).length > 0) {
                 param2Obj.linkTargetValueMapping = linkTargetValueMapping;
             }
             if (linkTarget.DataTransferSettingId) {
@@ -651,6 +656,7 @@ const FormListEditPreview: React.FC<FormListEditPreviewProps> = ({ transactionId
                 <div className="flex items-center gap-2">
                     {!isReadOnly && (
                         <>
+                            {!isDisableAddButton && (
                             <button
                                 type="button"
                                 className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
@@ -659,6 +665,8 @@ const FormListEditPreview: React.FC<FormListEditPreviewProps> = ({ transactionId
                             >
                                 <i className="fa-solid fa-plus-circle mr-1" aria-hidden /> Add
                             </button>
+                            )}
+                            {!isDisableDeleteButton && (
                             <button
                                 type="button"
                                 className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
@@ -667,6 +675,7 @@ const FormListEditPreview: React.FC<FormListEditPreviewProps> = ({ transactionId
                             >
                                 <i className="fa-solid fa-minus-circle mr-1" aria-hidden /> Delete
                             </button>
+                            )}
                         </>
                     )}
                     {!isReadOnly && (
