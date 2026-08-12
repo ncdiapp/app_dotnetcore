@@ -847,17 +847,21 @@ const FormMainMenus: React.FC<FormMainMenusProps> = ({
       showConfirmClose?: boolean;
       pickerContext?: MasterDataPickerContext | null;
     }) => {
-      // Unit navigation behavior: always open as in-page DIV popup.
-      setLinkTargetPopupState({
-        title: opts.title,
-        routeBasePath: opts.routeBasePath,
-        paramObj: opts.paramObj,
-        width: opts.popupWidth ?? null,
-        height: opts.popupHeight ?? null,
-        popupZIndex: appHelper.getNextPopupZIndex(),
-        showConfirmClose: opts.showConfirmClose === true,
-        pickerContext: opts.pickerContext ?? undefined,
-      });
+      // Honor Unit Link Target "Open as Popup": popup DIV when checked, otherwise app tab.
+      if (opts.isPopup) {
+        setLinkTargetPopupState({
+          title: opts.title,
+          routeBasePath: opts.routeBasePath,
+          paramObj: opts.paramObj,
+          width: opts.popupWidth ?? null,
+          height: opts.popupHeight ?? null,
+          popupZIndex: appHelper.getNextPopupZIndex(),
+          showConfirmClose: opts.showConfirmClose === true,
+          pickerContext: opts.pickerContext ?? undefined,
+        });
+        return;
+      }
+      addTabAndNavigate(opts.routeBasePath, opts.title, opts.paramObj);
     };
 
     // TransactionUnitLinkTargetEditor: ids

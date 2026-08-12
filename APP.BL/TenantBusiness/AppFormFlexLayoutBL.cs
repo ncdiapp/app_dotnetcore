@@ -1706,6 +1706,8 @@ namespace App.BL
             layoutItem.DomAttribute.TextColor = "#000000";
             layoutItem.DomAttribute.IsBindingToDataField = false;
             layoutItem.DomAttribute.DefaultNbColumns = innerCols;
+            // Required so Form Design Field Setting treats this as a Tab (Tab Name / Tab Order), not a Stack Container
+            layoutItem.DomAttribute.IsTab = true;
 
             dictUiIdAndLayoutItem.Add(layoutItem.CurrentHostId, layoutItem);
 

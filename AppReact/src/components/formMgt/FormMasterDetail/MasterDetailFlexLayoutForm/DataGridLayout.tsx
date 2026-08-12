@@ -7,6 +7,7 @@ import { FlexGridFilter } from '@mescius/wijmo.react.grid.filter';
 import { CollectionView } from '@mescius/wijmo';
 import { DataMap, GroupRow } from '@mescius/wijmo.grid';
 import { useTheme } from '../../../../redux/hooks/useTheme';
+import { useTabNavigation } from '../../../../redux/hooks/useTabNavigation';
 import FlexGridAddOn from '../../../common/FlexGridAddOn';
 import RgbColorSwatch from '../../../common/RgbColorSwatch';
 import { useEnumValues } from '../../../../hooks/useEnumDictionary';
@@ -280,6 +281,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   layoutDomAttribute,
 }) => {
   const { theme, t } = useTheme();
+  const { addTabAndNavigate } = useTabNavigation();
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
   const flexGridRef = useRef<any>(null);
   /** Left "available" grid when EmGridViewDisplayType is AvailableSelectGridPair / MultipleSelectBox */
@@ -639,17 +641,21 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     showConfirmClose?: boolean;
     pickerContext?: MasterDataPickerContext | null;
   }) => {
-    // NAVI button behavior: always use in-page DIV popup (never open a new tab).
-    setLinkTargetPopupState({
-      title: opts.title,
-      routeBasePath: opts.routeBasePath,
-      paramObj: opts.paramObj,
-      width: opts.popupWidth ?? null,
-      height: opts.popupHeight ?? null,
-      popupZIndex: appHelper.getNextPopupZIndex(),
-      showConfirmClose: opts.showConfirmClose === true,
-      pickerContext: opts.pickerContext ?? undefined,
-    });
+    // Honor Unit Link Target "Open as Popup": popup DIV when checked, otherwise app tab.
+    if (opts.isPopup) {
+      setLinkTargetPopupState({
+        title: opts.title,
+        routeBasePath: opts.routeBasePath,
+        paramObj: opts.paramObj,
+        width: opts.popupWidth ?? null,
+        height: opts.popupHeight ?? null,
+        popupZIndex: appHelper.getNextPopupZIndex(),
+        showConfirmClose: opts.showConfirmClose === true,
+        pickerContext: opts.pickerContext ?? undefined,
+      });
+      return;
+    }
+    addTabAndNavigate(opts.routeBasePath, opts.title, opts.paramObj);
   };
 
   // TransactionUnitLinkTargetEditor: ids

@@ -15,6 +15,7 @@ import ApplicationFormBuilder from '../transaction/ApplicationFormBuilder';
 import { updateCurrentTabLabel } from '../../redux/features/ui/navigation/tabnavSlice';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { useTheme } from '../../redux/hooks/useTheme';
+import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import FlexGridAddOn from '../common/FlexGridAddOn';
 import RgbColorSwatch from '../common/RgbColorSwatch';
 import { useEnumValues } from '../../hooks/useEnumDictionary';
@@ -179,6 +180,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
   const { theme, t } = useTheme();
   const dispatch = useDispatch();
   const { showError, getErrorMessage } = useErrorMessage();
+  const { addTabAndNavigate } = useTabNavigation();
   const { param } = useParams<{ param: string }>();
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
   const isEmbedded = embedded != null && embedded.embeddedTransactionId != null;
@@ -936,23 +938,29 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
       routeBasePath: string;
       title: string;
       paramObj: any;
+      isPopup?: boolean;
       popupWidth?: number | null;
       popupHeight?: number | null;
       showConfirmClose?: boolean;
       pickerContext?: MasterDataPickerContext | null;
     }) => {
-      setListRootLinkTargetPopupState({
-        title: opts.title,
-        routeBasePath: opts.routeBasePath,
-        paramObj: opts.paramObj,
-        width: opts.popupWidth ?? null,
-        height: opts.popupHeight ?? null,
-        popupZIndex: appHelper.getNextPopupZIndex(),
-        showConfirmClose: opts.showConfirmClose === true,
-        pickerContext: opts.pickerContext ?? undefined,
-      });
+      // Honor Unit Link Target "Open as Popup": popup DIV when checked, otherwise app tab.
+      if (opts.isPopup) {
+        setListRootLinkTargetPopupState({
+          title: opts.title,
+          routeBasePath: opts.routeBasePath,
+          paramObj: opts.paramObj,
+          width: opts.popupWidth ?? null,
+          height: opts.popupHeight ?? null,
+          popupZIndex: appHelper.getNextPopupZIndex(),
+          showConfirmClose: opts.showConfirmClose === true,
+          pickerContext: opts.pickerContext ?? undefined,
+        });
+        return;
+      }
+      addTabAndNavigate(opts.routeBasePath, opts.title, opts.paramObj);
     },
-    []
+    [addTabAndNavigate]
   );
 
   const LIST_TARGET_ACTION_LIST_ROOT = {
@@ -1024,6 +1032,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
           routeBasePath: routeCode,
           title: tabTitle,
           paramObj,
+          isPopup: Boolean(linkTarget.IsPopup),
           popupWidth: linkTarget.PopupWidth ?? null,
           popupHeight: linkTarget.PopupHeight ?? null,
           showConfirmClose: routeLower === 'masterdatamanagement',
@@ -1078,6 +1087,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
             param1: targetPkValue,
             param2: JSON.stringify(param2Obj),
           },
+          isPopup: Boolean(linkTarget.IsPopup),
           popupWidth: linkTarget.PopupWidth ?? null,
           popupHeight: linkTarget.PopupHeight ?? null,
           showConfirmClose: false,
@@ -1096,6 +1106,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
             param1: targetPkValue,
             param2: JSON.stringify(param2Obj),
           },
+          isPopup: Boolean(linkTarget.IsPopup),
           popupWidth: linkTarget.PopupWidth ?? null,
           popupHeight: linkTarget.PopupHeight ?? null,
           showConfirmClose: false,
@@ -1123,6 +1134,7 @@ const FormListEdit: React.FC<FormListEditProps> = ({ embedded = null }) => {
           routeBasePath,
           title: tabTitleBase,
           paramObj: { id: linkTarget.LinkTargetTransactionId, param1: null, param2: JSON.stringify(param2Obj) },
+          isPopup: Boolean(linkTarget.IsPopup),
           popupWidth: linkTarget.PopupWidth ?? null,
           popupHeight: linkTarget.PopupHeight ?? null,
           showConfirmClose: false,

@@ -13,6 +13,7 @@ import FormLayoutDesignArea from './FormDesign/FormLayoutDesignArea';
 import TableContainerDialog from './FormDesign/TableContainerDialog';
 import TransactionFormPreview from '../transaction/ApplicationFormBuilder/TransactionFormPreview';
 import appHelper from '../../helper/appHelper';
+import { normalizeTabItemsIsTabFlag, resolveTabContainerType, getLayoutWidgetDisplayType } from './FormMasterDetail/MasterDetailFlexLayoutForm/flexLayoutItemHelper';
 
 interface FormDesignProps {
   formId: number | null;
@@ -479,6 +480,9 @@ const FormDesign: React.FC<FormDesignProps> = ({
             appendNewLayoutRow(undefined, form);
           }
 
+          // Legacy / auto-gen tabs may omit DomAttribute.IsTab — normalize so Field Setting shows Tab Name / Tab Order
+          normalizeTabItemsIsTabFlag(form.AppFormLayoutItemList, layoutItemTypeEnum);
+
           // Create a deep copy to ensure React detects the changes
           // This is important because we mutated the form object during initialization
           appHelper.debugLog('Before JSON.parse(JSON.stringify), form row count:', form.AppFormLayoutItemList?.length || 0);
@@ -940,14 +944,34 @@ const FormDesign: React.FC<FormDesignProps> = ({
     const hostId = layoutItem.CurrentHostId;
     const itemId = layoutItem.Id;
     let itemToSelect = layoutItem;
-    
-    // For Tab items, use the passed layoutItem directly to avoid finding wrong tab
-    // (findLayoutItemByHostId might find the first tab in TabContainer instead of the correct one)
-    // CRITICAL: For Tab items, we must use the exact layoutItem passed in, not search in formData
-    // because Tabs are nested inside TabContainer, and findLayoutItemByHostId might return the wrong tab
-    if (layoutItem.DomAttribute?.IsTab) {
+
+    // Direct children of TabContainer are tab items (even when IsTab was never saved)
+    const parentOfClicked =
+      layoutItem.ParentHostId
+        ? findLayoutItemByHostId(layoutItem.ParentHostId, undefined, formData)
+        : null;
+    const isTabItem =
+      !!layoutItem.DomAttribute?.IsTab ||
+      (!!parentOfClicked &&
+        getLayoutWidgetDisplayType(parentOfClicked) === resolveTabContainerType(layoutItemTypeEnum));
+
+    if (isTabItem) {
+      // Ensure IsTab so Field Setting shows Tab Name / Tab Order
+      if (!layoutItem.DomAttribute) {
+        layoutItem.DomAttribute = {};
+      }
+      if (!layoutItem.DomAttribute.IsTab) {
+        layoutItem.DomAttribute.IsTab = true;
+        const foundInForm = hostId
+          ? findLayoutItemByHostId(hostId, undefined, formData)
+          : null;
+        if (foundInForm) {
+          if (!foundInForm.DomAttribute) foundInForm.DomAttribute = {};
+          foundInForm.DomAttribute.IsTab = true;
+        }
+      }
+      // Use the exact tab instance (avoid wrong tab from find-by-Id)
       itemToSelect = layoutItem;
-      // Don't try to find it in formData - use it directly to preserve the exact tab instance
     } else if (hostId) {
       const foundItem = findLayoutItemByHostId(hostId, undefined, formData);
       if (foundItem) {
@@ -1745,12 +1769,14 @@ const FormDesign: React.FC<FormDesignProps> = ({
           updatedLayoutItem.DomAttribute?.EmUnitLabelPosition !== existingItem.DomAttribute?.EmUnitLabelPosition;
         const labelWidthChanged =
           updatedLayoutItem.DomAttribute?.LabelWidth !== existingItem.DomAttribute?.LabelWidth;
+        const flowOrGridLayoutSortOrderChanged =
+          (updatedLayoutItem.FlowOrGridLayoutSortOrder ?? 0) !== (existingItem.FlowOrGridLayoutSortOrder ?? 0);
         
         const hasActualChange = controlTypeChanged || displayNameChanged || domAttributeDisplayNameChanged || colSpanChanged || heightChanged || 
                                 backgroundColorChanged || textColorChanged || formulaChanged || 
                                 visibleExpressionChanged || workflowTriggerChanged ||
                                 isCollapsibleChanged || isDefaultCollapsedChanged || defaultNbColumnsChanged ||
-                                emUnitLabelPositionChanged || labelWidthChanged;
+                                emUnitLabelPositionChanged || labelWidthChanged || flowOrGridLayoutSortOrderChanged;
         
         if (!hasActualChange) {
           appHelper.debugLog('handleLayoutItemChange: Early return - no actual changes detected (likely false trigger from ComboBox initialization)');
@@ -1772,7 +1798,8 @@ const FormDesign: React.FC<FormDesignProps> = ({
           isDefaultCollapsedChanged,
           defaultNbColumnsChanged,
           emUnitLabelPositionChanged,
-          labelWidthChanged
+          labelWidthChanged,
+          flowOrGridLayoutSortOrderChanged
         });
       }
     }

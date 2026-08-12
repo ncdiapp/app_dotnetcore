@@ -1040,6 +1040,13 @@ const OneLayoutItemDesign: React.FC<OneLayoutItemDesignProps> = ({
       const tabItems = layoutItemExDto.AppFormLayoutItem_List
         ? [...(layoutItemExDto.AppFormLayoutItem_List || [])].sort((a: any, b: any) => (a.FlowOrGridLayoutSortOrder || 0) - (b.FlowOrGridLayoutSortOrder || 0))
         : [];
+
+      // Legacy / auto-gen tabs may omit IsTab — mark them so tab content renders as Tab (not Stack header)
+      tabItems.forEach((tab: any) => {
+        if (!tab) return;
+        if (!tab.DomAttribute) tab.DomAttribute = {};
+        if (!tab.DomAttribute.IsTab) tab.DomAttribute.IsTab = true;
+      });
       
       if (tabItems.length === 0) return null;
       
@@ -1150,12 +1157,17 @@ const OneLayoutItemDesign: React.FC<OneLayoutItemDesignProps> = ({
             }}
             onClick={(e) => {
               const target = e.target as HTMLElement;
+              // Tab buttons select the tab item themselves — do not select TabContainer
+              if (target.closest('.FormTabButton')) {
+                e.stopPropagation();
+                return;
+              }
               const currentTarget = e.currentTarget as HTMLElement;
               const containerElement = currentTarget.closest('.LayoutItemContainer') as HTMLElement;
               
               if (!containerElement) return;
               
-              // Only handle click if clicked on header (tab buttons are part of header) or context button
+              // Only handle click if clicked on header (empty header area) or context button
               if (isClickOnHeader(target, containerElement) || isClickOnContextButton(target, containerElement)) {
                 // Allow click even when dragging - clicking will select the item and clear drag state
                 if (onLayoutItemClick) {

@@ -26,6 +26,61 @@ export function resolveTabContainerType(layoutItemTypeEnum: Record<string, numbe
   return layoutItemTypeEnum?.TabContainer ?? FLEX_LAYOUT_ITEM_TYPE.TabContainer;
 }
 
+/** True when DomAttribute.IsTab is set (legacy auto-gen tabs may omit this). */
+export function hasLayoutItemIsTabFlag(layoutItem: any): boolean {
+  const da = layoutItem?.DomAttribute ?? layoutItem?.domAttribute;
+  return !!(da?.IsTab ?? da?.isTab);
+}
+
+/**
+ * Direct children of a TabContainer are tab items even when IsTab was never persisted
+ * (e.g. AppFormFlexLayoutBL.AppendNewTab historically omitted IsTab).
+ */
+export function isLayoutTabItem(
+  layoutItem: any,
+  parentLayoutItem: any | null | undefined,
+  layoutItemTypeEnum?: Record<string, number> | null
+): boolean {
+  if (!layoutItem) return false;
+  if (hasLayoutItemIsTabFlag(layoutItem)) return true;
+  if (!parentLayoutItem) return false;
+  const tabContainerType = resolveTabContainerType(layoutItemTypeEnum);
+  return getLayoutWidgetDisplayType(parentLayoutItem) === tabContainerType;
+}
+
+/** Walk form layout tree and set IsTab=true on every direct child of TabContainer. */
+export function normalizeTabItemsIsTabFlag(
+  rootItems: any[] | null | undefined,
+  layoutItemTypeEnum?: Record<string, number> | null
+): boolean {
+  if (!Array.isArray(rootItems) || rootItems.length === 0) return false;
+  const tabContainerType = resolveTabContainerType(layoutItemTypeEnum);
+  let changed = false;
+
+  const walk = (items: any[]) => {
+    for (const item of items) {
+      if (!item) continue;
+      const children = item.AppFormLayoutItem_List ?? item.appFormLayoutItem_List;
+      if (!Array.isArray(children) || children.length === 0) continue;
+
+      if (getLayoutWidgetDisplayType(item) === tabContainerType) {
+        for (const tab of children) {
+          if (!tab) continue;
+          if (!tab.DomAttribute) tab.DomAttribute = {};
+          if (!tab.DomAttribute.IsTab) {
+            tab.DomAttribute.IsTab = true;
+            changed = true;
+          }
+        }
+      }
+      walk(children);
+    }
+  };
+
+  walk(rootItems);
+  return changed;
+}
+
 export function isLayoutRowItem(layoutItem: any, layoutRowType?: number | null): boolean {
   const rowType = layoutRowType ?? FLEX_LAYOUT_ITEM_TYPE.LayoutRow;
   return getLayoutWidgetDisplayType(layoutItem) === rowType;

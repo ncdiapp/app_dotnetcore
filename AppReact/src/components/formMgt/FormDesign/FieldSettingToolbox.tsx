@@ -4,6 +4,9 @@ import { useEnumValues } from '../../../hooks/useEnumDictionary';
 import { ComboBox } from '@mescius/wijmo.react.input';
 import appHelper from '../../../helper/appHelper';
 import FieldFormulaDialog from './FieldFormulaDialog';
+import {
+  isLayoutTabItem
+} from '../FormMasterDetail/MasterDetailFlexLayoutForm/flexLayoutItemHelper';
 
 interface FieldSettingToolboxProps {
   currentLayoutItem: any | null;
@@ -345,6 +348,29 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
   if (displayType === layoutItemTypeEnum?.NewItemAddButton) {
     return null;
   }
+
+  // Resolve parent so legacy TabContainer children (missing IsTab) still show Tab Name / Tab Order
+  const findParentByHostId = (hostId: any, items?: any[]): any => {
+    if (hostId == null || !items) return null;
+    for (const item of items) {
+      if (item?.CurrentHostId === hostId || item?.Id === hostId) return item;
+      const childList = item?.AppFormLayoutItem_List;
+      if (Array.isArray(childList) && childList.length > 0) {
+        const found = findParentByHostId(hostId, childList);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  const parentLayoutItem = currentLayoutItem.ParentHostId
+    ? findParentByHostId(currentLayoutItem.ParentHostId, formData?.AppFormLayoutItemList)
+    : null;
+  const isTabItem = isLayoutTabItem(currentLayoutItem, parentLayoutItem, layoutItemTypeEnum);
+  // Keep DomAttribute.IsTab in sync for downstream change handlers / save
+  if (isTabItem && currentLayoutItem.DomAttribute && !currentLayoutItem.DomAttribute.IsTab) {
+    currentLayoutItem.DomAttribute.IsTab = true;
+  }
+
   const isGrid = displayType === layoutItemTypeEnum?.Grid;
   const isBindingToDataField = currentLayoutItem.DomAttribute?.IsBindingToDataField;
   const isPhysicalModelTableCreated = formData?.IsPhysicalModelTableCreated;
@@ -804,7 +830,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
             }
 
             // Check if any property is visible
-            const hasLabelText = !isBindingToDataField && displayType !== layoutItemTypeEnum?.Space && !currentLayoutItem.DomAttribute?.IsTab;
+            const hasLabelText = !isBindingToDataField && displayType !== layoutItemTypeEnum?.Space && !isTabItem;
             const hasDatabaseTable = isPhysicalModelTableCreated && isBindingToDataField && !isGrid && currentLayoutItem.TransactionFieldId;
             const hasFieldDisplayName = isPhysicalModelTableCreated && isBindingToDataField && !isGrid;
             const hasControlType = isPhysicalModelTableCreated && isBindingToDataField && !isGrid && currentLayoutItem.ForeignAppTransactionFieldExDto;
@@ -825,7 +851,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
                 {/* Label Text (if not binding to data field or not Space) - hide for Tab */}
                 {!isBindingToDataField && 
                  displayType !== layoutItemTypeEnum?.Space &&
-                 !currentLayoutItem.DomAttribute?.IsTab && (
+                 !isTabItem && (
                   <tr>
                     <td style={{ width: '125px', verticalAlign: 'top', padding: '2px 0' }}>
                       <label className={`text-xs ${theme.label}`}>Label Text</label>
@@ -1130,7 +1156,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
             <table className="w-full" style={{ tableLayout: 'fixed' }}>
               <tbody>
                 {/* Tab Display Name (for Tab items) */}
-                {currentLayoutItem.DomAttribute?.IsTab && (
+                {isTabItem && (
                   <tr>
                     <td style={{ width: '125px', verticalAlign: 'top', padding: '2px 0' }}>
                       <label className={`text-xs ${theme.label}`}>Tab Name</label>
@@ -1161,9 +1187,51 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
                     </td>
                   </tr>
                 )}
+
+                {/* Tab Order — FlowOrGridLayoutSortOrder controls tab display order in container */}
+                {isTabItem && (
+                  <tr>
+                    <td style={{ width: '125px', verticalAlign: 'top', padding: '2px 0' }}>
+                      <label className={`text-xs ${theme.label}`}>Tab Order</label>
+                    </td>
+                    <td style={{ width: '180px', padding: '2px 0' }}>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        className={`w-full border ${theme.inputBox}`}
+                        style={{
+                          height: '26px',
+                          backgroundColor: 'white',
+                          fontSize: '12px',
+                          padding: '2px 4px',
+                          borderRadius: '0'
+                        }}
+                        placeholder="Tab Order"
+                        value={currentLayoutItem.FlowOrGridLayoutSortOrder ?? ''}
+                        onChange={(e) => {
+                          const raw = e.target.value;
+                          if (raw === '') {
+                            onLayoutItemChange({
+                              ...currentLayoutItem,
+                              FlowOrGridLayoutSortOrder: null
+                            });
+                            return;
+                          }
+                          const parsed = parseInt(raw, 10);
+                          if (!Number.isFinite(parsed)) return;
+                          onLayoutItemChange({
+                            ...currentLayoutItem,
+                            FlowOrGridLayoutSortOrder: parsed
+                          });
+                        }}
+                      />
+                    </td>
+                  </tr>
+                )}
                 
                 {/* Width (ColSpan) */}
-                {!currentLayoutItem.DomAttribute?.IsTab && (
+                {!isTabItem && (
                   <tr>
                     <td style={{ width: '125px', padding: '2px 0' }}>
                       <label className={`text-xs ${theme.label}`}>
@@ -1196,7 +1264,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
 
                 {/* Child Row Total Cells (for Section) - but not for Tab */}
                 {displayType === layoutItemTypeEnum?.Section && 
-                 !currentLayoutItem.DomAttribute?.IsTab &&
+                 !isTabItem &&
                  currentLayoutItem.DomAttribute?.DefaultNbColumns !== undefined && (
                   <tr>
                     <td style={{ width: '125px', padding: '2px 0' }}>
@@ -1233,7 +1301,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
 
                 {/* Height (if enabled for this type) - like AngularJS dictDisplayTypeAndUiPropertyOnOff */}
                 {/* Don't show height for Tab */}
-                {shouldShowHeight && !currentLayoutItem.DomAttribute?.IsTab && (
+                {shouldShowHeight && !isTabItem && (
                   <tr>
                     <td style={{ width: '125px', padding: '2px 0' }}>
                       <label className={`text-xs ${theme.label}`}>Height</label>
@@ -1266,7 +1334,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
                   displayType === layoutItemTypeEnum?.Image) &&
                  !isBindingToDataField &&
                  displayType !== layoutItemTypeEnum?.TabContainer &&
-                 !currentLayoutItem.DomAttribute?.IsTab && (
+                 !isTabItem && (
                   <tr>
                     <td style={{ width: '125px', padding: '2px 0' }}>
                       <label className={`text-xs ${theme.label}`}>Background Color</label>
@@ -1293,7 +1361,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
                  displayType !== layoutItemTypeEnum?.Content &&
                  !isBindingToDataField &&
                  displayType !== layoutItemTypeEnum?.TabContainer &&
-                 !currentLayoutItem.DomAttribute?.IsTab && (
+                 !isTabItem && (
                   <tr>
                     <td style={{ width: '125px', padding: '2px 0' }}>
                       <label className={`text-xs ${theme.label}`}>Text Color</label>
@@ -1316,7 +1384,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
                   displayType === layoutItemTypeEnum?.Content ||
                   displayType === layoutItemTypeEnum?.Space) &&
                  displayType !== layoutItemTypeEnum?.TabContainer &&
-                 !currentLayoutItem.DomAttribute?.IsTab && (
+                 !isTabItem && (
                   <tr>
                     <td style={{ width: '125px', verticalAlign: 'top', padding: '2px 0' }}>
                       <label className={`text-xs ${theme.label}`}>Visible Expression</label>
@@ -1335,7 +1403,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
                 )}
 
                 {/* Is Collapsible (for Section) - but not for Tab */}
-                {displayType === layoutItemTypeEnum?.Section && !currentLayoutItem.DomAttribute?.IsTab && (
+                {displayType === layoutItemTypeEnum?.Section && !isTabItem && (
                   <tr>
                     <td style={{ width: '125px', verticalAlign: 'top', padding: '2px 0' }}>
                       <label className={`text-xs ${theme.label}`}>Is Collapsible</label>
@@ -1361,7 +1429,7 @@ const FieldSettingToolbox: React.FC<FieldSettingToolboxProps> = ({
 
                 {/* Default Collapsed (for Section if collapsible) - but not for Tab */}
                 {displayType === layoutItemTypeEnum?.Section && 
-                 !currentLayoutItem.DomAttribute?.IsTab &&
+                 !isTabItem &&
                  currentLayoutItem.DomAttribute?.IsCollapsible && (
                   <tr>
                     <td style={{ width: '125px', verticalAlign: 'top', padding: '2px 0' }}>
