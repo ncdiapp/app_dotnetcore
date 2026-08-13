@@ -1433,7 +1433,7 @@ WHERE SearchId = @SearchId";
           AttachBomColorwayPivotBindingsToPlan(plan, blueprint, prefix, mappingRows, fieldMetaByKey);
           AttachTechPackGradeValuePivotBindingsToPlan(plan, blueprint);
           AttachTechPackFitMeasurementPivotBindingsToPlan(plan, blueprint);
-          AttachTechPackSimpleQcPivotBindingsToPlan(plan, blueprint);
+          AttachTechPackSimpleQcPivotBindingsToPlan(plan, blueprint, prefix);
 
           plans.Add(plan);
         }
@@ -1472,7 +1472,8 @@ WHERE SearchId = @SearchId";
 
       private static void AttachTechPackSimpleQcPivotBindingsToPlan(
         TemplateTabExecutionPlan plan,
-        PlmDwImportBlueprintDto blueprint)
+        PlmDwImportBlueprintDto blueprint,
+        string prefix)
       {
         if (blueprint?.TechPackSimpleQcPivotBindings == null || blueprint.TechPackSimpleQcPivotBindings.Count == 0)
           return;
@@ -1481,6 +1482,44 @@ WHERE SearchId = @SearchId";
                    .Where(b => b != null && b.PlmTabId == plan.Tab.TabId))
         {
           plan.TechPackSimpleQcPivotBindings.Add(binding);
+
+          string gcTable = QualifyBlueprintTableName(
+            binding.GrandchildAppTableName ?? "SimpleQCResult",
+            prefix,
+            skipTablePrefix: binding.SkipTablePrefixOnGrandchild);
+          if (string.IsNullOrWhiteSpace(gcTable))
+            continue;
+
+          var gcFields = (blueprint.BlueprintFields ?? Enumerable.Empty<PlmDwBlueprintFieldDto>())
+            .Where(f => f != null
+              && !string.IsNullOrWhiteSpace(f.AppColumnName)
+              && (string.Equals(f.AppTableName, gcTable, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(f.AppTableName, binding.GrandchildAppTableName, StringComparison.OrdinalIgnoreCase)
+                || (!string.IsNullOrWhiteSpace(f.AppTableName)
+                    && f.AppTableName.IndexOf("SimpleQCResult", StringComparison.OrdinalIgnoreCase) >= 0)))
+            .ToList();
+          if (gcFields.Count == 0)
+            continue;
+
+          if (!plan.GrandchildColumnsByTable.TryGetValue(gcTable, out var gcCols))
+          {
+            gcCols = new List<PlmTemplateSubItemRow>();
+            plan.GrandchildColumnsByTable[gcTable] = gcCols;
+          }
+
+          int order = 0;
+          foreach (var field in gcFields.OrderBy(f => f.DisplayOrder ?? int.MaxValue).ThenBy(f => f.AppColumnName))
+          {
+            order++;
+            gcCols.Add(new PlmTemplateSubItemRow
+            {
+              TabId = binding.PlmTabId,
+              SubItemName = field.DisplayLabel ?? field.AppColumnName,
+              SortOrder = field.DisplayOrder ?? order,
+              ColumnName = field.AppColumnName,
+              IsVisible = field.IsVisible
+            });
+          }
         }
       }
 

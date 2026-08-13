@@ -208,7 +208,39 @@ function Add-SimpleQcResultFieldRows($allFieldRows, [string]$AppTable, [string]$
     }
 }
 
-function Build-SimpleQcPivotBindings($config, $transactions) {
+function Get-SimpleQcMeasureStemMeta([string]$Stem, $GridId, $TabId, $gridColMetaMap, $tabGridVisibleMap) {
+    $visible = $false
+    $alias = $null
+    if ([string]::IsNullOrWhiteSpace($Stem) -or $null -eq $GridId -or $null -eq $TabId) {
+        return [pscustomobject]@{ IsVisible = $false; DisplayLabel = $Stem }
+    }
+    if (-not $gridColMetaMap -or -not $tabGridVisibleMap) {
+        return [pscustomobject]@{ IsVisible = $false; DisplayLabel = $Stem }
+    }
+    $rx = '^' + [regex]::Escape($Stem) + '\d+$'
+    $prefix = [string]$GridId + '|'
+    foreach ($k in @($gridColMetaMap.Keys)) {
+        $keyStr = [string]$k
+        if (-not $keyStr.StartsWith($prefix)) { continue }
+        $col = $gridColMetaMap[$k]
+        $code = [string]$col.ColumnName
+        if ([string]::IsNullOrWhiteSpace($code) -or $code -eq 'NULL') { continue }
+        if ($code -notmatch $rx) { continue }
+        $gridColumnId = [int]($keyStr.Substring($prefix.Length))
+        $tgKey = "$TabId|$gridColumnId"
+        if ($tabGridVisibleMap.ContainsKey($tgKey) -and $tabGridVisibleMap[$tgKey].Visible) {
+            $visible = $true
+            $a = $tabGridVisibleMap[$tgKey].AliasName
+            if ($a -and -not $alias) { $alias = ([string]$a).Trim() }
+        }
+    }
+    return [pscustomobject]@{
+        IsVisible    = $visible
+        DisplayLabel = if ($alias) { $alias } else { $Stem }
+    }
+}
+
+function Build-SimpleQcPivotBindings($config, $transactions, $gridColMetaMap, $tabGridVisibleMap) {
     $list = New-Object System.Collections.Generic.List[object]
     $binding = Get-SimpleQcBinding $config
     $sb = Get-SimpleQcSystemBlock $config
@@ -218,14 +250,36 @@ function Build-SimpleQcPivotBindings($config, $transactions) {
     $tx = @($transactions) | Where-Object { $_.integrationId -eq $txId -or [string]$_.plmTabId -eq [string]$binding.plmTabId } | Select-Object -First 1
     if (-not $tx) { return @($list.ToArray()) }
 
+    $gridId = [int]$sb.gridId
+    $tabId = [int]$binding.plmTabId
+    $visibleStems = New-Object System.Collections.Generic.List[string]
+    $labels = New-Object System.Collections.Generic.List[object]
+    foreach ($stem in $script:SimpleQcResultMeasureStems) {
+        $meta = Get-SimpleQcMeasureStemMeta $stem $gridId $tabId $gridColMetaMap $tabGridVisibleMap
+        if (-not $meta.IsVisible) { continue }
+        [void]$visibleStems.Add($stem)
+        [void]$labels.Add([pscustomobject]@{
+            fieldName    = $stem
+            displayLabel = $meta.DisplayLabel
+        })
+    }
+    if ($visibleStems.Count -eq 0) {
+        Write-Warning ('QX1: no pdmTabGridMetaColumn Visible=1 measure stems for Tab {0} Grid {1} - keeping all stems visible' -f $tabId, $gridId)
+        foreach ($stem in $script:SimpleQcResultMeasureStems) { [void]$visibleStems.Add($stem) }
+    }
+    else {
+        Write-Host ("  QX1 measure stems (Tab {0} Grid {1}): {2}" -f $tabId, $gridId, ($visibleStems -join ', '))
+    }
+
     [void]$list.Add([pscustomobject]@{
-        plmTabId                = [int]$binding.plmTabId
+        plmTabId                = $tabId
         hostAppTableName        = 'SimpleQC'
         grandchildAppTableName  = 'SimpleQCResult'
         sourceAppTableName      = 'View_TchpSimpleQcSelectedSizes'
         sourcePivotKeyColumn    = 'SizeRunSizeId'
         pivotColumnField        = 'SizeRunSizeId'
-        pivotValueFields        = @($script:SimpleQcResultMeasureStems)
+        pivotValueFields        = Get-JsonArrayForSerialize -Items @($visibleStems.ToArray())
+        pivotValueLabels        = Get-JsonArrayForSerialize -Items @($labels.ToArray())
         skipMatrixKeyVisibleFilter = $false
         skipTablePrefixOnHost   = $false
         skipTablePrefixOnGrandchild = $false
@@ -293,7 +347,7 @@ function Generate-SimpleQcImportSqlFile($config, [string]$outDir) {
     & $add '      AND q.SizeRunRotateID IS NOT NULL'
     & $add '    GROUP BY q.ProductReferenceID'
     & $add ') x ON x.ProductReferenceID = ss.StyleSpecId;'
-    & $add "PRINT N'TchpStyleSpec.QcSelectedSizes updated from PdmProductQcSize. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));"
+    & $add 'PRINT N''TchpStyleSpec.QcSelectedSizes updated from PdmProductQcSize. Rows='' + CAST(@@ROWCOUNT AS NVARCHAR(20));'
     & $add ''
 
     # Merge SimpleQC host rows
@@ -318,7 +372,7 @@ function Generate-SimpleQcImportSqlFile($config, [string]$outDir) {
     & $add ('  ' + ($selectCols -join ",`r`n  "))
     & $add "FROM $dwRef.$sgDw g"
     & $add 'WHERE TRY_CONVERT(INT, g.ProductReferenceID) IS NOT NULL;'
-    & $add "PRINT N'$hostPhys insert. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));"
+    & $add ('PRINT N''' + $hostPhys + ' insert. Rows='' + CAST(@@ROWCOUNT AS NVARCHAR(20));')
     & $add ''
 
     # UNPIVOT size slots
@@ -371,7 +425,7 @@ INNER JOIN dbo.[$hostPhys] h ON h.ReferenceId = TRY_CONVERT(INT, g.ProductRefere
     & $add "INNER JOIN dbo.[$hostPhys] h ON h.RowId = s.ParentRowId"
     & $add 'INNER JOIN dbo.TchpStyleSpec ss ON ss.StyleSpecId = h.ReferenceId'
     & $add 'INNER JOIN dbo.TchpSizeRunSize sz ON sz.SizeRunId = ss.SizeRunId AND ISNULL(sz.SizeOrder, 0) = s.SizeOrdinal;'
-    & $add "PRINT N'$resultPhys insert. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));"
+    & $add ('PRINT N''' + $resultPhys + ' insert. Rows='' + CAST(@@ROWCOUNT AS NVARCHAR(20));')
     & $add ''
     & $add 'PRINT N''Simple QC import finished.'';'
     & $add 'GO'

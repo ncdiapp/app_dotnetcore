@@ -655,7 +655,8 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
     foreach ($r in $allFieldRows) {
         if ($r.FieldKind -eq 'BomColorwaySlot') { continue }
         if ($r.FieldKind -eq 'BomColorwayDwSlot') { continue }
-        if ($r.FieldKind -eq 'GrandchildPivot') { continue }
+        $isSimpleQcMeasure = $r.FieldKind -eq 'GrandchildPivot' -and ($script:SimpleQcResultMeasureStems -contains $r.AppColumn)
+        if ($r.FieldKind -eq 'GrandchildPivot' -and -not $isSimpleQcMeasure) { continue }
         $appTableFull = if ($r.AppTable -eq $rootSuffix) { $prefix + $rootSuffix } else { $prefix + $r.AppTable }
         if (-not $orderByTable.ContainsKey($appTableFull)) { $orderByTable[$appTableFull] = 0 }
         $orderByTable[$appTableFull]++
@@ -664,6 +665,9 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
         $tabIds = @()
         if ($r.PlmTabId) { $tabIds = @([int]$r.PlmTabId) }
         $extra = Resolve-FieldExtraInfo $r $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet
+        if ($isSimpleQcMeasure) {
+            $extra = Get-SimpleQcMeasureStemMeta $r.AppColumn $r.PlmGridId $r.PlmTabId $gridColMetaMap $tabGridVisibleMap
+        }
         $fieldEntry = [ordered]@{
             appTableName   = $appTableFull
             appColumnName  = $r.AppColumn
@@ -740,7 +744,7 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
         bomColorwayPivotBindings = Get-JsonArrayForSerialize @(if ($bomColorwayPivotBindings) { $bomColorwayPivotBindings } else { @() })
         techPackGradeValuePivotBindings = Get-JsonArrayForSerialize @(Build-TechPackGradeValuePivotBindings $config $transactions)
         techPackFitMeasurementPivotBindings = Get-JsonArrayForSerialize @(Build-TechPackFitMeasurementPivotBindings $config $transactions)
-        techPackSimpleQcPivotBindings = Get-JsonArrayForSerialize @(Build-SimpleQcPivotBindings $config $transactions)
+        techPackSimpleQcPivotBindings = Get-JsonArrayForSerialize @(Build-SimpleQcPivotBindings $config $transactions $gridColMetaMap $tabGridVisibleMap)
         blueprintFields       = $blueprintFields
         searchView            = [ordered]@{
             search     = [ordered]@{

@@ -736,20 +736,48 @@ WHERE TransactionUnitID = @UnitId
                     cmd.ExecuteNonQuery();
                 }
 
-                foreach (string pivotValField in pivotValFields)
+                var labelByField = (binding.PivotValueLabels ?? new List<PlmDwBlueprintSimpleQcMeasureLabelDto>())
+                    .Where(l => l != null && !string.IsNullOrWhiteSpace(l.FieldName))
+                    .GroupBy(l => l.FieldName.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => (g.First().DisplayLabel ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase);
+
+                var allMeasureStems = new[]
                 {
+                    "GradingSize", "QCSize", "Difference",
+                    "QCSizeBeforeWash", "DiffBeforeWashAndGrading",
+                    "QCAfterWashIron", "DiffAfterIronAndGrading",
+                    "QCAfterIron"
+                };
+                var visibleMeasures = new HashSet<string>(pivotValFields, StringComparer.OrdinalIgnoreCase);
+                var measureStems = allMeasureStems
+                    .Concat(pivotValFields)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                foreach (string pivotValField in measureStems)
+                {
+                    bool isVisibleMeasure = visibleMeasures.Contains(pivotValField);
+                    string displayLabel = null;
+                    if (labelByField.TryGetValue(pivotValField, out var label) && !string.IsNullOrWhiteSpace(label))
+                        displayLabel = label;
+
                     using (var cmd = conn.CreateCommand())
                     {
                         cmd.Transaction = tran;
                         cmd.CommandText = @"
 UPDATE dbo.AppTransactionField SET
-    IsPivotValue = 1,
+    IsPivotValue = @IsPivotValue,
     IsPivotColumn = 0,
     DisplayWidth = N'120',
-    IsVisible = 1,
+    IsVisible = @IsVisible,
+    DisplayName = COALESCE(@DisplayName, DisplayName),
     AppModifiedDate = GETDATE()
 WHERE TransactionUnitID = @UnitId
   AND DataBaseFieldName = @FieldName";
+                        cmd.Parameters.AddWithValue("@IsPivotValue", isVisibleMeasure ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@IsVisible", isVisibleMeasure ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@DisplayName", (object)displayLabel ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
                         cmd.Parameters.AddWithValue("@FieldName", pivotValField);
                         cmd.ExecuteNonQuery();

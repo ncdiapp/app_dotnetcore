@@ -1,6 +1,6 @@
 ﻿{
     "schemaVersion":  1,
-    "generatedAt":  "2026-08-13T19:06:19.2780160Z",
+    "generatedAt":  "2026-08-13T20:04:14.8188688Z",
     "source":  {
                    "plmTemplateId":  3292,
                    "plmDatabase":  "plm_live_20260602",
@@ -185,12 +185,21 @@
                                               "pivotValueFields":  [
                                                                        "GradingSize",
                                                                        "QCSize",
-                                                                       "Difference",
-                                                                       "QCSizeBeforeWash",
-                                                                       "DiffBeforeWashAndGrading",
-                                                                       "QCAfterWashIron",
-                                                                       "DiffAfterIronAndGrading",
-                                                                       "QCAfterIron"
+                                                                       "Difference"
+                                                                   ],
+                                              "pivotValueLabels":  [
+                                                                       {
+                                                                           "fieldName":  "GradingSize",
+                                                                           "displayLabel":  "Size"
+                                                                       },
+                                                                       {
+                                                                           "fieldName":  "QCSize",
+                                                                           "displayLabel":  "Meas"
+                                                                       },
+                                                                       {
+                                                                           "fieldName":  "Difference",
+                                                                           "displayLabel":  "Delta"
+                                                                       }
                                                                    ],
                                               "skipMatrixKeyVisibleFilter":  false,
                                               "skipTablePrefixOnHost":  false,
@@ -2933,6 +2942,110 @@
                                 "includeInSearch":  false,
                                 "isVisible":  true,
                                 "entityIntegrationId":  "73"
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQCResult",
+                                "appColumnName":  "GradingSize",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Size",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQCResult",
+                                "appColumnName":  "QCSize",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Meas",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQCResult",
+                                "appColumnName":  "Difference",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Delta",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQCResult",
+                                "appColumnName":  "QCSizeBeforeWash",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "QCSizeBeforeWash",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQCResult",
+                                "appColumnName":  "DiffBeforeWashAndGrading",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "DiffBeforeWashAndGrading",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQCResult",
+                                "appColumnName":  "QCAfterWashIron",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "QCAfterWashIron",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQCResult",
+                                "appColumnName":  "DiffAfterIronAndGrading",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "DiffAfterIronAndGrading",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQCResult",
+                                "appColumnName":  "QCAfterIron",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "QCAfterIron",
+                                "displayOrder":  8,
+                                "includeInSearch":  false,
+                                "isVisible":  false
                             },
                             {
                                 "appTableName":  "Plm_Product_Test_Grid_reg",

@@ -352,6 +352,7 @@ Generator details:
     2. Else use PLM name (`pdmBlockSubItem.SubItemName` / `pdmGridMetaColumn.ColumnName`),
     3. Never fall back to the generated App column name (e.g. `How_to_Measure_3848`) when a PLM name exists.
   - **Grid columns** — visibility is **not** in `pdmTabBlockSubItemExtraInfo`. It is controlled at tab level by `pdmTabGridMetaColumn.Visible = 1` (keyed `TabID + GridColumnID`). `pdmGridMetaColumn.Hidden` is only the grid-wide default and is overridden by the tab-level row.
+  - **Simple QC size-measure stems** (`GradingSize` / `QCSize` / `Difference` / wash / iron on `Plm_SimpleQCResult`) — fold size slots `Stem1…N` into one APP field. Stem **visible** if any slot has `pdmTabGridMetaColumn.Visible=1` for the QC Tab; DisplayName = first non-empty tab `AliasName` (trimmed). Hidden stems are omitted from `pivotValueFields` / `IsPivotValue`. Do **not** hardcode Size/Meas/Delta — each QC Tab / PLM database can differ.
   - **Grid-only / orphan grids** — the generator **must** load `pdmTabGridMetaColumn` for the **true PLM hosting TabId(s)** of each grid (from ExtraInfo / `parentPlmTabId`), even when that Tab has no `PLM_DW_Tab_*` and is **not** in `importTabIds`. If `parentPlmTabId` is null or wrong (e.g. template header), lookup fails and Blueprint marks every column `isVisible: false` → Phase D hides all child-grid fields. Fallback: any hosting tab with `Visible=1` for that `GridColumnID`. BL also falls back to “show all mapped columns” when the visible set is empty for a grid unit.
   - Anything not matching the rule above → `isVisible: false`.
 - APP column names: strip `_SubItemId` / `_FK_*`; suffix `_SubItemId` on collisions  
@@ -826,7 +827,11 @@ FOR N = 1 .. Max:
       GradingSize = GradingSizeN, QCSize = QCSizeN, …)
 ```
 
-Pivot UI: Matrix column domain = `View_TchpSimpleQcSelectedSizes.SizeRunSizeId`; MatrixKey = `IsVisible` (QcSelectedSizes whitelist; empty = show all SizeRun sizes). Grandchild field `IsVisible` from PLM meta (same as other tabs).
+Pivot UI: Matrix column domain = `View_TchpSimpleQcSelectedSizes.SizeRunSizeId`; MatrixKey = `IsVisible` (QcSelectedSizes whitelist; empty = show all SizeRun sizes).
+
+**Size-related measure columns** (GradingSize / QCSize / Difference / wash / iron): visibility and **AliasName** come from PLM **`pdmTabGridMetaColumn`** for the QC Tab + SpecQCGrid (`TabID + GridColumnID`). Size slots `1…N` of the same stem are folded to one APP field: stem is **visible** if **any** slot has `Visible=1`; DisplayName = first non-empty `AliasName` (trimmed), e.g. `Size` / `Meas` / `Delta`. Hidden stems are not `IsPivotValue`. Different QC tabs / PLM databases can show a different measure set.
+
+Phase D: StyleSpec SizeRun/BaseSize/UOM **IsReadOnly** on Simple QC TX; **`QcSelectedSizes` MultiSelectDDL (53)** (same cascade as Grading VisibleSizes); strip leftover Plm_* Sizes fields; omit `View_TchpSimpleQcSelectedSizes` from Form layout; apply Simple QC pivot bindings (mirror P1 GradeValue ↔ size view); apply PLM tab grid **measure visibility + alias**.
 
 #### QX1 — `View_TchpSimpleQcSelectedSizes`
 
@@ -842,9 +847,9 @@ Keep identical in `POM_Grading_QC_NewSchema.sql` and emitted `3b_Tchp_ImportFrom
 |-----|---------|
 | `techPack.systemBlockGrids[]` `role=SpecQC` | Skip flat Plm_* SpecQCGrid DDL; source for UNPIVOT |
 | `techPack.bindings[]` `role=SimpleQC` | TX unit tree: StyleSpec + Plm tab sibling + size view + SimpleQC/Result |
-| `techPackSimpleQcPivotBindings` | Blueprint Phase D: Result unit → ChildUnitPivotColumns |
+| `techPackSimpleQcPivotBindings` | Blueprint Phase D: Result unit → ChildUnitPivotColumns; **`pivotValueFields`** = stems with any `pdmTabGridMetaColumn.Visible=1` on this QC Tab; **`pivotValueLabels`** = tab `AliasName` |
 
-Phase D: StyleSpec SizeRun/BaseSize/UOM **IsReadOnly** on Simple QC TX; **`QcSelectedSizes` MultiSelectDDL (53)** (same cascade as Grading VisibleSizes); strip leftover Plm_* Sizes fields; omit `View_TchpSimpleQcSelectedSizes` from Form layout; apply Simple QC pivot bindings (mirror P1 GradeValue ↔ size view).
+Phase D: StyleSpec SizeRun/BaseSize/UOM **IsReadOnly** on Simple QC TX; **`QcSelectedSizes` MultiSelectDDL (53)** (same cascade as Grading VisibleSizes); strip leftover Plm_* Sizes fields; omit `View_TchpSimpleQcSelectedSizes` from Form layout; apply Simple QC pivot bindings (mirror P1 GradeValue ↔ size view); apply PLM tab grid **measure visibility + alias**.
 ---
 
 ## Example session message

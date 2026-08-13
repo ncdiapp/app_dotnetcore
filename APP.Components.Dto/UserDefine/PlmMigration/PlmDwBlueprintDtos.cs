@@ -421,6 +421,11 @@ namespace APP.Components.EntityDto
         [DataMember]
         public List<string> PivotValueFields { get; set; } = new List<string>();
 
+        /// <summary>PLM tab AliasName for each visible measure stem (Size / Meas / Delta, …).</summary>
+        [DataMember]
+        public List<PlmDwBlueprintSimpleQcMeasureLabelDto> PivotValueLabels { get; set; } =
+            new List<PlmDwBlueprintSimpleQcMeasureLabelDto>();
+
         /// <summary>Fallback single value field when PivotValueFields empty.</summary>
         [DataMember]
         public string PivotValueField { get; set; } = "QCSize";
@@ -436,6 +441,16 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public bool SkipTablePrefixOnSource { get; set; } = true;
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmDwBlueprintSimpleQcMeasureLabelDto
+    {
+        [DataMember]
+        public string FieldName { get; set; }
+
+        [DataMember]
+        public string DisplayLabel { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
