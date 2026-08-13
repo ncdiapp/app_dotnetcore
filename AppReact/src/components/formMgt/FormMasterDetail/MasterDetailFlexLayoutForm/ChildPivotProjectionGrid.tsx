@@ -11,7 +11,11 @@ import {
   ProjLeafColumn,
   countVisibleValueColumns,
   enumerateLeafColumnGroups,
+  wijmoColumnTypeAndFormat,
+  coerceNumericWideRowsInPlace,
 } from './childPivotProjectionHelper';
+
+const EMPTY_WIDE_ROWS: any[] = [];
 
 export type ProjectionImageCellContext = {
   rowIndex: number;
@@ -32,6 +36,8 @@ interface ChildPivotProjectionGridProps {
   resolveDataMap?: (fieldId: any) => DataMap | null;
   /** Resolve the configured column width (DisplayWidth) for a field id. */
   resolveWidth?: (fieldId: any) => number | undefined;
+  /** Resolve Nbdecimal for a field id (grandchild / host AppTransactionField). */
+  resolveNbdecimal?: (fieldId: any) => number | undefined;
   /** Open image cell actions menu (upload / library / preview). */
   onImageCellMenu?: (ctx: ProjectionImageCellContext) => void;
   /** Open full-size image preview. */
@@ -60,6 +66,7 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
   gridRef,
   resolveDataMap,
   resolveWidth,
+  resolveNbdecimal,
   onImageCellMenu,
   onImagePreview,
   onCellEditBeginning,
@@ -100,16 +107,51 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
 
   const hostColumns = useMemo(() => model?.HostColumns ?? [], [model]);
   const columnGroups = useMemo(() => model?.ColumnGroups ?? [], [model]);
-  const wideRows = useMemo(() => model?.WideRows ?? [], [model]);
+  const wideRows = model?.WideRows ?? EMPTY_WIDE_ROWS;
   const useColumnGroups = Boolean(model?.IsNeedPivotColumnGroup);
 
+  const numericBindings = useMemo(() => {
+    const names: string[] = [];
+    const numericType = Number(emAppControlType?.Numeric);
+    const isNumeric = (ctl: unknown) =>
+      Number.isFinite(numericType) && ctl != null && Number(ctl) === numericType;
+    for (const hc of hostColumns) {
+      if (isNumeric(hc.ControlType)) names.push(hc.Binding);
+    }
+    for (const group of enumerateLeafColumnGroups(columnGroups)) {
+      for (const leaf of group.Columns ?? []) {
+        if (isNumeric(leaf.ControlType)) names.push(leaf.Binding);
+      }
+    }
+    return names;
+  }, [hostColumns, columnGroups, emAppControlType?.Numeric]);
+
+  const numericBindingKey = numericBindings.slice().sort().join('|');
+
   const [collectionView] = useState<CollectionView<any>>(() => new CollectionView<any>([]));
+  const boundWideRowsRef = useRef<any[] | null>(null);
+  const boundNumericKeyRef = useRef('');
 
   useEffect(() => {
+    const alreadyBound = boundWideRowsRef.current === wideRows;
+    const sameNumericKey = boundNumericKeyRef.current === numericBindingKey;
+
+    if (alreadyBound && sameNumericKey) return;
+
+    if (alreadyBound) {
+      coerceNumericWideRowsInPlace((collectionView as any).sourceCollection, numericBindings);
+      boundNumericKeyRef.current = numericBindingKey;
+      collectionView.refresh();
+      return;
+    }
+
+    coerceNumericWideRowsInPlace(wideRows, numericBindings);
     (collectionView as any).sourceCollection = wideRows;
+    boundWideRowsRef.current = wideRows;
+    boundNumericKeyRef.current = numericBindingKey;
     collectionView.sortDescriptions.clear();
     collectionView.refresh();
-  }, [wideRows, collectionView]);
+  }, [wideRows, numericBindingKey, numericBindings, collectionView]);
 
   const handleCellEditEnded = useCallback(
     (s: any, e: any) => {
@@ -140,25 +182,9 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
     [onCellEditEnding],
   );
 
-  const dataTypeFor = useCallback(
-    (controlType?: number | null): string | undefined => {
-      const ctl = controlType != null ? Number(controlType) : NaN;
-      if (ctl === Number(emAppControlType?.Numeric)) return 'Number';
-      if (ctl === Number(emAppControlType?.CheckBox)) return 'Boolean';
-      if (ctl === Number(emAppControlType?.Date) || ctl === Number(emAppControlType?.DateTimeDetail))
-        return 'Date';
-      return undefined;
-    },
-    [emAppControlType],
-  );
-
-  const formatFor = useCallback(
-    (controlType?: number | null): string | undefined => {
-      const ctl = controlType != null ? Number(controlType) : NaN;
-      if (ctl === Number(emAppControlType?.Date)) return 'd';
-      if (ctl === Number(emAppControlType?.DateTimeDetail)) return 'g';
-      return undefined;
-    },
+  const columnTypeAndFormat = useCallback(
+    (controlType?: number | null, nbdecimal?: unknown) =>
+      wijmoColumnTypeAndFormat(controlType, nbdecimal, emAppControlType),
     [emAppControlType],
   );
 
@@ -297,6 +323,8 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
       const isImageColumn = isImageControlType(leaf.ControlType);
       const colWidth = resolveWidth?.(leaf.FieldId) ?? (isImageColumn ? 130 : 110);
       const colReadOnly = isReadOnly || isImageColumn;
+      const nbdecimal = leaf.Nbdecimal ?? (leaf as any).nbdecimal ?? resolveNbdecimal?.(leaf.FieldId);
+      const { dataType, format } = columnTypeAndFormat(leaf.ControlType, nbdecimal);
 
       if (isImageColumn) {
         return renderImageLeaf(leaf, header, colWidth, colReadOnly, asColumnGroup);
@@ -312,8 +340,8 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
             width={colWidth}
             isReadOnly={colReadOnly}
             isRequired={false}
-            dataType={dataTypeFor(leaf.ControlType)}
-            format={formatFor(leaf.ControlType)}
+            dataType={dataType}
+            format={format}
             dataMap={resolveDataMap ? resolveDataMap(leaf.FieldId) ?? undefined : undefined}
           />
         );
@@ -328,13 +356,13 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
           width={colWidth}
           isReadOnly={colReadOnly}
           isRequired={false}
-          dataType={dataTypeFor(leaf.ControlType)}
-          format={formatFor(leaf.ControlType)}
+          dataType={dataType}
+          format={format}
           dataMap={resolveDataMap ? resolveDataMap(leaf.FieldId) ?? undefined : undefined}
         />
       );
     },
-    [dataTypeFor, formatFor, isImageControlType, isReadOnly, renderImageLeaf, resolveDataMap, resolveWidth],
+    [columnTypeAndFormat, isImageControlType, isReadOnly, renderImageLeaf, resolveDataMap, resolveNbdecimal, resolveWidth],
   );
 
   /** Flat path: one FlexGridColumn per leaf; header = size or size · value. */
@@ -439,7 +467,12 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
             cellEditEnded={handleCellEditEnded}
           >
             {/* Host leaves must also be ColumnGroup when any parent group exists */}
-            {hostColumns.map((hc) => (
+            {hostColumns.map((hc) => {
+              const { dataType, format } = columnTypeAndFormat(
+                hc.ControlType,
+                hc.Nbdecimal ?? resolveNbdecimal?.(hc.FieldId),
+              );
+              return (
               <FlexGridColumnGroup
                 key={`host_${hc.Binding}`}
                 name={hc.FieldId != null ? String(hc.FieldId) : ''}
@@ -448,11 +481,12 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
                 width={resolveWidth?.(hc.FieldId) ?? 150}
                 isReadOnly={isReadOnly || hc.IsReadOnly}
                 isRequired={false}
-                dataType={dataTypeFor(hc.ControlType)}
-                format={formatFor(hc.ControlType)}
+                dataType={dataType}
+                format={format}
                 dataMap={resolveDataMap ? resolveDataMap(hc.FieldId) ?? undefined : undefined}
               />
-            ))}
+              );
+            })}
 
             {leafGroupsExist && renderColumnGroupTree(columnGroups)}
 
@@ -472,7 +506,12 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
             cellEditEnding={handleCellEditEnding}
             cellEditEnded={handleCellEditEnded}
           >
-            {hostColumns.map((hc) => (
+            {hostColumns.map((hc) => {
+              const { dataType, format } = columnTypeAndFormat(
+                hc.ControlType,
+                hc.Nbdecimal ?? resolveNbdecimal?.(hc.FieldId),
+              );
+              return (
               <FlexGridColumn
                 key={`host_${hc.Binding}`}
                 name={hc.FieldId != null ? String(hc.FieldId) : ''}
@@ -481,11 +520,12 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
                 width={resolveWidth?.(hc.FieldId) ?? 150}
                 isReadOnly={isReadOnly || hc.IsReadOnly}
                 isRequired={false}
-                dataType={dataTypeFor(hc.ControlType)}
-                format={formatFor(hc.ControlType)}
+                dataType={dataType}
+                format={format}
                 dataMap={resolveDataMap ? resolveDataMap(hc.FieldId) ?? undefined : undefined}
               />
-            ))}
+              );
+            })}
 
             {renderFlatValueColumns()}
 

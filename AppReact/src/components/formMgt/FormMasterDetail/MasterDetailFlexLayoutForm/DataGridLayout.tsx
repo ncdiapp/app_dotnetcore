@@ -36,7 +36,7 @@ import {
 import PivotEditGridPanel from './PivotEditGridPanel';
 import MatrixPivotEditGrid from './MatrixPivotEditGrid';
 import ChildPivotProjectionGrid, { ProjectionImageCellContext } from './ChildPivotProjectionGrid';
-import { ChildPivotProjectionModel, foldWideRowsIntoChildRows, enumerateLeafColumnGroups } from './childPivotProjectionHelper';
+import { ChildPivotProjectionModel, foldWideRowsIntoChildRows, enumerateLeafColumnGroups, parseNbdecimal } from './childPivotProjectionHelper';
 import {
   enrichTransactionFieldFromDict,
   isRuntimeTransactionFieldVisible,
@@ -1366,6 +1366,20 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     }
     return m;
   }, [isPivotEditGrid, unitExDto, transactionExDto?.DictAllTransactionField]);
+  const pivotNbdecimalByFieldId = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!isPivotEditGrid) return m;
+    const dictAll = transactionExDto?.DictAllTransactionField as Record<string | number, any> | undefined;
+    const list = (unitExDto?.AppTransactionFieldList ?? []) as any[];
+    for (const f0 of list) {
+      const f = enrichTransactionFieldFromDict(f0, dictAll);
+      if (f?.Id == null) continue;
+      const fromDict = dictAll?.[String(f.Id)] ?? dictAll?.[Number(f.Id)] ?? dictAll?.[f.Id];
+      const n = parseNbdecimal(fromDict?.Nbdecimal ?? fromDict?.NbDecimal ?? f?.Nbdecimal ?? f?.NbDecimal);
+      if (n != null) m.set(String(f.Id), n);
+    }
+    return m;
+  }, [isPivotEditGrid, unitExDto, transactionExDto?.DictAllTransactionField]);
   // Base size comes from the parent spec header (DictOneToOneFields on master form)
   const pivotBaseSizeId = isPivotEditGrid
     ? (dataModel?.currentFormData?.DictOneToOneFields?.BaseSizeDetailId ?? null)
@@ -1675,6 +1689,24 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
     return m;
   }, [isChildPivotProjectionHost, transactionExDto?.DictAllTransactionField, unitExDto, childPivotProjection]);
 
+  const projectionNbdecimalByFieldId = useMemo(() => {
+    const m = new Map<string, number>();
+    if (!isChildPivotProjectionHost) return m;
+    const dictAll = transactionExDto?.DictAllTransactionField as Record<string | number, any> | undefined;
+    const collect = (list: any[]) => {
+      for (const f0 of list ?? []) {
+        const f = enrichTransactionFieldFromDict(f0, dictAll);
+        if (f?.Id == null) continue;
+        const fromDict = dictAll?.[String(f.Id)] ?? dictAll?.[Number(f.Id)] ?? dictAll?.[f.Id];
+        const n = parseNbdecimal(fromDict?.Nbdecimal ?? fromDict?.NbDecimal ?? f?.Nbdecimal ?? f?.NbDecimal);
+        if (n != null) m.set(String(f.Id), n);
+      }
+    };
+    collect(unitExDto?.AppTransactionFieldList ?? []);
+    collect(childPivotProjection?.grandchildUnit?.AppTransactionFieldList ?? []);
+    return m;
+  }, [isChildPivotProjectionHost, transactionExDto?.DictAllTransactionField, unitExDto, childPivotProjection]);
+
   // Server-built projection model (columns + wide rows). Build runs on server; fold-back on edit is client-side.
   const projectionFormData = masterDetailFormData ?? dataModel?.currentFormData;
   const presetProjectionLoadToken = projectionFormData?.ChildPivotProjectionLoadToken as string | undefined;
@@ -1976,6 +2008,10 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
   const resolveProjectionWidth = useCallback(
     (fieldId: any) => projectionWidthByFieldId.get(String(fieldId)),
     [projectionWidthByFieldId]
+  );
+  const resolveProjectionNbdecimal = useCallback(
+    (fieldId: any) => projectionNbdecimalByFieldId.get(String(fieldId)),
+    [projectionNbdecimalByFieldId]
   );
 
   const isDdLikeControlType = useCallback(
@@ -3725,6 +3761,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
                 buildStandaloneDataMapFromFormStructure(dataModelRef.current, String(fieldId))
               }
               resolveWidth={(fieldId: any) => pivotColumnWidthByFieldId.get(String(fieldId))}
+              resolveNbdecimal={(fieldId: any) => pivotNbdecimalByFieldId.get(String(fieldId))}
               onRowsChange={handlePivotRowsChange}
             />
           </div>
@@ -3746,6 +3783,7 @@ const DataGridLayout: React.FC<DataGridLayoutProps> = ({
               gridRef={projectionFlexGridRef}
               resolveDataMap={resolveProjectionDataMap}
               resolveWidth={resolveProjectionWidth}
+              resolveNbdecimal={resolveProjectionNbdecimal}
               onImageCellMenu={handleProjectionImageCellMenu}
               onImagePreview={(fileId) => setImagePreviewState({ open: true, fileId })}
               onCellEditBeginning={handleProjectionCellEditBeginning}

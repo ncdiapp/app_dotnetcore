@@ -52,6 +52,9 @@ namespace APP.Components.EntityDto
         [DataMember(EmitDefaultValue = false)]
         public int? ControlType { get; set; }
 
+        [DataMember(EmitDefaultValue = false)]
+        public int? Nbdecimal { get; set; }
+
         [DataMember]
         public bool IsReadOnly { get; set; }
 
@@ -79,6 +82,9 @@ namespace APP.Components.EntityDto
 
         [DataMember(EmitDefaultValue = false)]
         public int? ControlType { get; set; }
+
+        [DataMember(EmitDefaultValue = false)]
+        public int? Nbdecimal { get; set; }
 
         [DataMember]
         public bool Visible { get; set; }

@@ -10,6 +10,7 @@ import {
   PivotDtoLike,
   PivotFieldDef,
 } from './pivotGridHelper';
+import { wijmoColumnTypeAndFormat, coerceNumericWideRowsInPlace } from './childPivotProjectionHelper';
 
 interface MatrixPivotEditGridProps {
   /** AppPivotDto from transactionStructureDto.DictUnitIdPivotGrid[unitId]. */
@@ -21,6 +22,8 @@ interface MatrixPivotEditGridProps {
   resolveDataMap?: (fieldId: any) => DataMap | null;
   /** Resolve the configured column width (DisplayWidth) for a field id. */
   resolveWidth?: (fieldId: any) => number | undefined;
+  /** Resolve Nbdecimal for a field id when the slim pivot DTO omitted it. */
+  resolveNbdecimal?: (fieldId: any) => number | undefined;
   /** Called with the rebuilt flat rows after an edit so the parent can persist them. */
   onRowsChange?: (flatRows: any[]) => void;
   /**
@@ -46,6 +49,7 @@ const MatrixPivotEditGrid: React.FC<MatrixPivotEditGridProps> = ({
   isReadOnly = false,
   resolveDataMap,
   resolveWidth,
+  resolveNbdecimal,
   onRowsChange,
   primaryKeyFieldNames,
 }) => {
@@ -92,13 +96,49 @@ const MatrixPivotEditGrid: React.FC<MatrixPivotEditGridProps> = ({
     return m;
   }, [valueFields]);
 
+  const numericBindings = useMemo(() => {
+    const names: string[] = [];
+    const numericType = Number(emAppControlType?.Numeric);
+    const isNumeric = (ctl: unknown) =>
+      Number.isFinite(numericType) && ctl != null && Number(ctl) === numericType;
+    for (const rc of rowColumns) {
+      if (isNumeric(rc.controlType)) names.push(rc.binding);
+    }
+    for (const g of columnGroups) {
+      for (const leaf of g.columns) {
+        const vf = valueFieldByDb.get(leaf.dataBaseFieldName);
+        if (isNumeric(leaf.controlType ?? vf?.ControlType)) names.push(leaf.binding);
+      }
+    }
+    return names;
+  }, [rowColumns, columnGroups, valueFieldByDb, emAppControlType?.Numeric]);
+
+  const numericBindingKey = numericBindings.slice().sort().join('|');
+
   const [collectionView] = useState<CollectionView<any>>(() => new CollectionView<any>([]));
+  const boundRowsRef = useRef<any[] | null>(null);
+  const boundNumericKeyRef = useRef('');
 
   useEffect(() => {
+    const alreadyBound = boundRowsRef.current === rows;
+    const sameNumericKey = boundNumericKeyRef.current === numericBindingKey;
+
+    if (alreadyBound && sameNumericKey) return;
+
+    if (alreadyBound) {
+      coerceNumericWideRowsInPlace((collectionView as any).sourceCollection, numericBindings);
+      boundNumericKeyRef.current = numericBindingKey;
+      collectionView.refresh();
+      return;
+    }
+
+    coerceNumericWideRowsInPlace(wideRows, numericBindings);
     (collectionView as any).sourceCollection = wideRows;
+    boundRowsRef.current = rows;
+    boundNumericKeyRef.current = numericBindingKey;
     collectionView.sortDescriptions.clear();
     collectionView.refresh();
-  }, [wideRows, collectionView]);
+  }, [rows, wideRows, numericBindingKey, numericBindings, collectionView]);
 
   const handleCellEditEnded = useCallback(() => {
     if (isReadOnly || !onRowsChange) return;
@@ -107,28 +147,9 @@ const MatrixPivotEditGrid: React.FC<MatrixPivotEditGridProps> = ({
     onRowsChange(flat);
   }, [isReadOnly, onRowsChange, collectionView, wideRows, rowColumns, columnGroups]);
 
-  const dataTypeFor = useCallback(
-    (controlType?: number): string | undefined => {
-      const ctl = controlType != null ? Number(controlType) : NaN;
-      if (ctl === Number(emAppControlType?.Numeric)) return 'Number';
-      if (ctl === Number(emAppControlType?.CheckBox)) return 'Boolean';
-      if (
-        ctl === Number(emAppControlType?.Date) ||
-        ctl === Number(emAppControlType?.DateTimeDetail)
-      )
-        return 'Date';
-      return undefined;
-    },
-    [emAppControlType],
-  );
-
-  const formatFor = useCallback(
-    (controlType?: number): string | undefined => {
-      const ctl = controlType != null ? Number(controlType) : NaN;
-      if (ctl === Number(emAppControlType?.Date)) return 'd';
-      if (ctl === Number(emAppControlType?.DateTimeDetail)) return 'g';
-      return undefined;
-    },
+  const columnTypeAndFormat = useCallback(
+    (controlType?: number, nbdecimal?: unknown) =>
+      wijmoColumnTypeAndFormat(controlType, nbdecimal, emAppControlType),
     [emAppControlType],
   );
 
@@ -198,18 +219,24 @@ const MatrixPivotEditGrid: React.FC<MatrixPivotEditGridProps> = ({
       >
         {/* Fixed left descriptor columns (read-only). Hidden row fields (IsVisible=false)
             still group and round-trip, but are not rendered as columns. */}
-        {rowColumns.filter((rc) => rc.visible).map((rc) => (
+        {rowColumns.filter((rc) => rc.visible).map((rc) => {
+          const { dataType, format } = columnTypeAndFormat(
+            rc.controlType,
+            rc.nbdecimal ?? resolveNbdecimal?.(rc.fieldId),
+          );
+          return (
           <FlexGridColumn
             key={`row_${rc.binding}`}
             binding={rc.binding}
             header={rc.header}
             width={resolveWidth?.(rc.fieldId) ?? 130}
             isReadOnly={true}
-            dataType={dataTypeFor(rc.controlType)}
-            format={formatFor(rc.controlType)}
+            dataType={dataType}
+            format={format}
             dataMap={resolveDataMap ? resolveDataMap(rc.fieldId) ?? undefined : undefined}
           />
-        ))}
+          );
+        })}
 
         {/* Dynamic value columns — one per (column-key combination × visible value field) */}
         {columnGroups.flatMap((group) => {
@@ -218,6 +245,10 @@ const MatrixPivotEditGrid: React.FC<MatrixPivotEditGridProps> = ({
             const vf = valueFieldByDb.get(leaf.dataBaseFieldName);
             const header =
               visibleLeaves.length > 1 ? `${group.header} · ${leaf.header}` : group.header;
+            const { dataType, format } = columnTypeAndFormat(
+              leaf.controlType ?? vf?.ControlType,
+              leaf.nbdecimal ?? vf?.Nbdecimal ?? resolveNbdecimal?.(leaf.fieldId ?? vf?.Id),
+            );
             return (
               <FlexGridColumn
                 key={`val_${leaf.binding}`}
@@ -225,8 +256,8 @@ const MatrixPivotEditGrid: React.FC<MatrixPivotEditGridProps> = ({
                 header={header}
                 width={resolveWidth?.(leaf.fieldId) ?? 110}
                 isReadOnly={isReadOnly}
-                dataType={dataTypeFor(leaf.controlType)}
-                format={formatFor(leaf.controlType)}
+                dataType={dataType}
+                format={format}
                 dataMap={
                   vf && resolveDataMap ? resolveDataMap(vf.Id) ?? undefined : undefined
                 }

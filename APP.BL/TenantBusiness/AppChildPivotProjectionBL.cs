@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
@@ -236,6 +237,7 @@ namespace App.BL
                     Binding = f.DataBaseFieldName,
                     FieldId = ToNullableInt(f.Id),
                     ControlType = f.ControlType,
+                    Nbdecimal = f.Nbdecimal,
                     IsReadOnly = (f.IsReadonly.HasValue && f.IsReadonly.Value) || f.IsPrimaryKey,
                     Visible = true,
                 })
@@ -280,6 +282,7 @@ namespace App.BL
                     DataBaseFieldName = vf.DataBaseFieldName,
                     FieldId = ToNullableInt(vf.Id),
                     ControlType = vf.ControlType,
+                    Nbdecimal = vf.Nbdecimal,
                     Visible = IsVisible(vf.IsVisible),
                 }).ToList();
 
@@ -470,7 +473,9 @@ namespace App.BL
 
                 var cd = cr.DictOneToOneFields ?? new Dictionary<string, object>();
                 foreach (var hc in hostColumns)
-                    wide[hc.Binding] = cd.TryGetValue(hc.Binding, out object hv) ? hv : null;
+                    wide[hc.Binding] = CoercePivotNumericValue(
+                        cd.TryGetValue(hc.Binding, out object hv) ? hv : null,
+                        hc.ControlType);
 
                 List<AppChildDataDto> gcRows = GetGrandchildRows(cr, ctx.GrandchildUnitId);
                 var byCol = new Dictionary<string, AppChildDataDto>();
@@ -485,7 +490,10 @@ namespace App.BL
                     byCol.TryGetValue(g.ComboId, out AppChildDataDto gc);
                     var gcd = gc?.DictOneToOneFields;
                     foreach (var leaf in g.Columns ?? Enumerable.Empty<ProjLeafColumnDto>())
-                        wide[leaf.Binding] = (gcd != null && gcd.TryGetValue(leaf.DataBaseFieldName, out object v)) ? v : null;
+                    {
+                        object v = (gcd != null && gcd.TryGetValue(leaf.DataBaseFieldName, out object raw)) ? raw : null;
+                        wide[leaf.Binding] = CoercePivotNumericValue(v, leaf.ControlType);
+                    }
                 }
 
                 wideRows.Add(wide);
@@ -611,6 +619,29 @@ namespace App.BL
                 catch { return fallback; }
             }
             return fallback;
+        }
+
+        /// <summary>
+        /// Wijmo n{N} format only applies to JSON numbers. Coerce only when ControlType is Numeric.
+        /// </summary>
+        private static object CoercePivotNumericValue(object v, int? controlType)
+        {
+            if (controlType != (int)EmAppControlType.Numeric || v == null || v == DBNull.Value)
+                return v;
+            if (v is sbyte || v is byte || v is short || v is ushort || v is int || v is uint
+                || v is long || v is ulong || v is float || v is double || v is decimal)
+            {
+                try { return Convert.ToDouble(v, CultureInfo.InvariantCulture); }
+                catch { return v; }
+            }
+            string s = Convert.ToString(v, CultureInfo.InvariantCulture);
+            if (string.IsNullOrWhiteSpace(s))
+                return v;
+            s = s.Trim();
+            if (double.TryParse(s, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out double d)
+                || double.TryParse(s, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.CurrentCulture, out d))
+                return d;
+            return v;
         }
 
         private static bool IsVisible(bool? isVisible)

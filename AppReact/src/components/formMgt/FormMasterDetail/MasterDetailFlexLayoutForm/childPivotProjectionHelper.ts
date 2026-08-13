@@ -11,6 +11,7 @@ export interface ProjColumn {
   Binding: string; // host field DataBaseFieldName
   FieldId?: number | null;
   ControlType?: number | null;
+  Nbdecimal?: number | null;
   IsReadOnly?: boolean;
   Visible?: boolean;
 }
@@ -22,6 +23,7 @@ export interface ProjLeafColumn {
   DataBaseFieldName: string;
   FieldId?: number | null;
   ControlType?: number | null;
+  Nbdecimal?: number | null;
   Visible?: boolean;
 }
 
@@ -201,4 +203,66 @@ export function foldWideRowsIntoChildRows(
   }
 
   return nextChildRows;
+}
+
+/** Angular/DataGridLayout: format="n{Nbdecimal}" (keeps trailing zeros, e.g. 12.00). */
+export function parseNbdecimal(raw: unknown): number | undefined {
+  const n = typeof raw === 'number' ? raw : typeof raw === 'string' ? Number(raw) : NaN;
+  if (!Number.isFinite(n) || n < 0) return undefined;
+  return Math.min(10, Math.floor(n));
+}
+
+export function wijmoColumnTypeAndFormat(
+  controlType: number | null | undefined,
+  nbdecimal: unknown,
+  em?: {
+    Numeric?: any;
+    TextBox?: any;
+    Date?: any;
+    DateTimeDetail?: any;
+    CheckBox?: any;
+  } | null,
+): { dataType?: string; format?: string } {
+  const ctl = controlType != null ? Number(controlType) : NaN;
+  if (ctl === Number(em?.Date)) return { format: 'd' };
+  if (ctl === Number(em?.DateTimeDetail)) return { format: 'g' };
+  if (ctl === Number(em?.CheckBox)) return { dataType: 'Boolean' };
+
+  const digits = parseNbdecimal(nbdecimal);
+  if (ctl === Number(em?.Numeric)) {
+    return { dataType: 'Number', format: `n${digits ?? 0}` };
+  }
+  return {};
+}
+
+/** Wijmo `format="nN"` only applies to actual numbers. Used only for Numeric control type. */
+export function coerceNumericCellValue(raw: unknown): unknown {
+  if (raw == null || raw === '') return raw;
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : raw;
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (t.length === 0) return raw;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : raw;
+  }
+  return raw;
+}
+
+function numericBindingKeys(numericBindings: string[]): string[] {
+  return Array.from(new Set((numericBindings ?? []).filter(Boolean)));
+}
+
+/** Mutate Numeric cells to JS numbers so Wijmo n{N} applies. Keeps the same row objects (edits stay). */
+export function coerceNumericWideRowsInPlace(rows: any[] | undefined, numericBindings: string[]): any[] {
+  const list = rows ?? [];
+  const keys = numericBindingKeys(numericBindings);
+  if (list.length === 0 || keys.length === 0) return list;
+  for (const row of list) {
+    if (!row) continue;
+    for (const b of keys) {
+      if (!Object.prototype.hasOwnProperty.call(row, b)) continue;
+      row[b] = coerceNumericCellValue(row[b]);
+    }
+  }
+  return list;
 }

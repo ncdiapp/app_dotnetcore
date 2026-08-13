@@ -20,6 +20,7 @@ export interface PivotFieldDef {
   DisplayName?: string;
   EntityId?: any;
   ControlType?: number;
+  Nbdecimal?: number | null;
   IsVisible?: boolean;
 }
 
@@ -35,6 +36,7 @@ export interface PivotRowColumn {
   binding: string; // DataBaseFieldName
   fieldId?: any;
   controlType?: number;
+  nbdecimal?: number | null;
   visible: boolean; // display only; hidden row fields still group and round-trip
 }
 
@@ -45,6 +47,7 @@ export interface PivotLeafColumn {
   dataBaseFieldName: string;
   fieldId?: any;
   controlType?: number;
+  nbdecimal?: number | null;
   visible: boolean;
 }
 
@@ -122,6 +125,7 @@ export function buildPivotModel(
     binding: f.DataBaseFieldName,
     fieldId: f.Id,
     controlType: f.ControlType,
+    nbdecimal: f.Nbdecimal,
     visible: f.IsVisible !== false,
   }));
 
@@ -151,6 +155,7 @@ export function buildPivotModel(
       dataBaseFieldName: vf.DataBaseFieldName,
       fieldId: vf.Id,
       controlType: vf.ControlType,
+      nbdecimal: vf.Nbdecimal,
       visible: vf.IsVisible !== false,
     }));
 
