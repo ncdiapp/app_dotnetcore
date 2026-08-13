@@ -82,7 +82,7 @@ SET @sql = N'DELETE FROM dbo.' + QUOTENAME(@MappingTable)
 SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
 EXEC sp_executesql @sql;
 
--- FieldMapping INSERT batch 1 (224 row(s))
+-- FieldMapping INSERT batch 1 (223 row(s))
 SET @sql = N'
 INSERT INTO dbo.' + QUOTENAME(@MappingTable) + N' (
     [AppTableName],[AppColumnName],[DwTableName],[DwColumnName],
@@ -271,7 +271,6 @@ VALUES
         (N''@P@Style_Header_V2K_ERP'', N''Subcategory'', N''PLM_DW_Tab_Style_Header_V2K_ERP_3991'', N''Subcategory_7361_FK_PLM_DW_UD_Product_Class_Subcategories_4798'', 3991, 7361, NULL, NULL, NULL, NULL, N''PLM_DW_UD_Product_Class_Subcategories_4798'', N''TabField'', 1, 4798, N''int''),
         (N''@P@Style_Header_V2K_ERP'', N''ERP_Season'', N''PLM_DW_Tab_Style_Header_V2K_ERP_3991'', N''ERP_Season_7362_FK_tblSellingPeriod'', 3991, 7362, NULL, NULL, NULL, NULL, N''tblSellingPeriod'', N''TabField'', 1, 8, N''int''),
         (N''@P@Style_Header_V2K_ERP'', N''French_Name'', N''PLM_DW_Tab_Style_Header_V2K_ERP_3991'', N''French_Name_7366'', 3991, 7366, NULL, NULL, NULL, NULL, NULL, N''TabField'', 2, NULL, N''nvarchar''),
-        (N''@P@QC'', N''SelectedSizes'', N''PLM_DW_Tab_QC_4029'', N''Selected_Size_174'', 4029, 174, NULL, NULL, NULL, NULL, NULL, N''TabField'', 2, NULL, N''nvarchar''),
         (N''@P@QC'', N''QC_Color'', N''PLM_DW_Tab_QC_4029'', N''QC_Color_175_FK_PdmRGBColor'', 4029, 175, NULL, NULL, NULL, NULL, N''PdmRGBColor'', N''TabField'', 1, 172, N''int''),
         (N''@P@QC'', N''Comment_Date'', N''PLM_DW_Tab_QC_4029'', N''Comment_Date_3329'', 4029, 3329, NULL, NULL, NULL, NULL, NULL, N''TabField'', 7, NULL, N''datetime''),
         (N''@P@QC'', N''Colors___Sizes_Comments'', N''PLM_DW_Tab_QC_4029'', N''Colors___Sizes_Comments_3330'', 4029, 3330, NULL, NULL, NULL, NULL, NULL, N''TabField'', 4, NULL, N''nvarchar''),

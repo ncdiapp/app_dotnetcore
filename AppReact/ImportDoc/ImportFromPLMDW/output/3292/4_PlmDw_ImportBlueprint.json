@@ -1,6 +1,6 @@
 ﻿{
     "schemaVersion":  1,
-    "generatedAt":  "2026-08-13T16:55:33.2219040Z",
+    "generatedAt":  "2026-08-13T19:06:19.2780160Z",
     "source":  {
                    "plmTemplateId":  3292,
                    "plmDatabase":  "plm_live_20260602",
@@ -2618,19 +2618,6 @@
                             },
                             {
                                 "appTableName":  "Plm_QC",
-                                "appColumnName":  "SelectedSizes",
-                                "plmTabIds":  [
-                                                  4029
-                                              ],
-                                "plmControlType":  2,
-                                "plmEntityId":  null,
-                                "displayLabel":  "Sizes",
-                                "displayOrder":  1,
-                                "includeInSearch":  false,
-                                "isVisible":  true
-                            },
-                            {
-                                "appTableName":  "Plm_QC",
                                 "appColumnName":  "QC_Color",
                                 "plmTabIds":  [
                                                   4029
@@ -2638,7 +2625,7 @@
                                 "plmControlType":  1,
                                 "plmEntityId":  172,
                                 "displayLabel":  "Sample Color",
-                                "displayOrder":  2,
+                                "displayOrder":  1,
                                 "includeInSearch":  false,
                                 "isVisible":  true,
                                 "entityIntegrationId":  "172"
@@ -2652,7 +2639,7 @@
                                 "plmControlType":  7,
                                 "plmEntityId":  null,
                                 "displayLabel":  "Comment Date",
-                                "displayOrder":  3,
+                                "displayOrder":  2,
                                 "includeInSearch":  false,
                                 "isVisible":  true
                             },
@@ -2665,7 +2652,7 @@
                                 "plmControlType":  4,
                                 "plmEntityId":  null,
                                 "displayLabel":  "Colors \u0026 Sizes Comments",
-                                "displayOrder":  4,
+                                "displayOrder":  3,
                                 "includeInSearch":  false,
                                 "isVisible":  true
                             },
@@ -2678,7 +2665,7 @@
                                 "plmControlType":  4,
                                 "plmEntityId":  null,
                                 "displayLabel":  "Measurement Comments",
-                                "displayOrder":  5,
+                                "displayOrder":  4,
                                 "includeInSearch":  false,
                                 "isVisible":  true
                             },
@@ -2691,7 +2678,7 @@
                                 "plmControlType":  4,
                                 "plmEntityId":  null,
                                 "displayLabel":  "Make-up Fit Comments",
-                                "displayOrder":  6,
+                                "displayOrder":  5,
                                 "includeInSearch":  false,
                                 "isVisible":  true
                             },
@@ -2704,7 +2691,7 @@
                                 "plmControlType":  4,
                                 "plmEntityId":  null,
                                 "displayLabel":  "Conclusion",
-                                "displayOrder":  7,
+                                "displayOrder":  6,
                                 "includeInSearch":  false,
                                 "isVisible":  true
                             },

@@ -1452,7 +1452,8 @@ WHERE TransactionID = @TransactionId";
 
             bool isReadOnly = childDef?.IsReadOnly == true
                 || (!string.IsNullOrWhiteSpace(tableName)
-                    && tableName.IndexOf("View_TchpStyleActiveSizeRunSizes", StringComparison.OrdinalIgnoreCase) >= 0);
+                    && (tableName.IndexOf("View_TchpStyleActiveSizeRunSizes", StringComparison.OrdinalIgnoreCase) >= 0
+                        || tableName.IndexOf("View_TchpSimpleQcSelectedSizes", StringComparison.OrdinalIgnoreCase) >= 0));
 
             int unitId;
             using (var cmd = conn.CreateCommand())
@@ -1551,8 +1552,10 @@ VALUES (
                     "View_TchpStyleActiveSizeRunSizes", StringComparison.OrdinalIgnoreCase) >= 0;
                 bool isFitMeasurementView = child.AppTableName.IndexOf(
                     "View_TchpFitMeasurementByPom", StringComparison.OrdinalIgnoreCase) >= 0;
-                // V1/F3 view units must always be read-only (even if isReadOnly missing from JSON deserialize).
-                bool forceReadOnly = child.IsReadOnly || isSizeRunSizesView || isFitMeasurementView;
+                bool isSimpleQcSizeView = child.AppTableName.IndexOf(
+                    "View_TchpSimpleQcSelectedSizes", StringComparison.OrdinalIgnoreCase) >= 0;
+                // V1/F3/QX1 view units must always be read-only (even if isReadOnly missing from JSON deserialize).
+                bool forceReadOnly = child.IsReadOnly || isSizeRunSizesView || isFitMeasurementView || isSimpleQcSizeView;
                 if (!forceReadOnly)
                     continue;
 

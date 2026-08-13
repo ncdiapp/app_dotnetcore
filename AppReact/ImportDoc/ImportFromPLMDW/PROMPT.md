@@ -753,7 +753,7 @@ QC Order / Garment tables and transactions are a **separate APP configuration** 
 | PLM source | APP target | Notes |
 |------------|------------|-------|
 | QC Tab — non-grid SubItems (comments, color, etc.) | Sibling `Plm_{Tab…}` (auto name from TAB) | Same as normal tab sibling DDL/MAPPING |
-| QC Tab `Selected_Size` | `Plm_{Tab…}.SelectedSizes` **and** `TchpStyleSpec.QcSelectedSizes` | Pipe-delimited **SizeRunSizeId** (`SizeRunRotateId`). Dual-write: Plm_* for form; StyleSpec for size VIEW / pivot MatrixKey (parallel to Grading `VisibleSizes`, **separate** column so QC ≠ Grading whitelist) |
+| QC Tab Size Selector (checked sizes) | **`TchpStyleSpec.QcSelectedSizes` only** | Source of truth = PLM **`PdmProductQcSize`** (`ProductReferenceID` + QC `TabID`) → pipe-delimited **SizeRunRotateID** (= APP `SizeRunSizeId`). **Do not** use DW Tab `Selected_Size` — that column is the **full Size Run list**, not the checkbox selection. **Do not** emit `Plm_{Tab}.SelectedSizes` |
 | QC Tab Size_Run / Base_Size / Measure_Unit | `TchpStyleSpec` only | **S1** strip from `Plm_*`; on Simple QC TX these StyleSpec fields are **IsReadOnly** (filled by Grading import / shared StyleSpec) |
 | SpecQCGrid — size-**independent** columns | Child `Plm_SimpleQC` | One POM / CriticalPoint row; PK `RowId`; FK `ReferenceId` |
 | SpecQCGrid — size-**dependent** columns `*{N}` | Grandchild `Plm_SimpleQCResult` | One row per `(SimpleQC RowId, SizeRunSizeId)`; strip trailing size index from column names |
@@ -764,9 +764,9 @@ QC Order / Garment tables and transactions are a **separate APP configuration** 
 | Unit | Table | Kind |
 |------|-------|------|
 | Root | `Plm_ReferenceBasicInfo` (or template root) | Master |
-| Sibling | `TchpStyleSpec` | Shared; SizeRun / BaseSize / UOM **read-only** on this TX; `QcSelectedSizes` MultiSelectDDL (optional on Form) |
-| Sibling | `Plm_{QC Tab}` | Tab non-grid fields + `SelectedSizes` |
-| Child (pivot domain) | `View_TchpSimpleQcSelectedSizes` | Like V1 SizeRunSizes; Form **omit** |
+| Sibling | `TchpStyleSpec` | Shared; SizeRun / BaseSize / UOM **read-only** on this TX; **`QcSelectedSizes` MultiSelectDDL (53)** on Form (same cascade as Grading `VisibleSizes`: Entity SizeRunDetail, parent SizeRunId) |
+| Sibling | `Plm_{QC Tab}` | Tab non-grid fields only — **no** Sizes / SelectedSizes |
+| Child (pivot domain) | `View_TchpSimpleQcSelectedSizes` | Like V1 SizeRunSizes; Form **omit** (pivot column domain only; not a user-facing grid) |
 | Child | `Plm_SimpleQC` | POM list |
 | Grandchild | `Plm_SimpleQCResult` | `EmGridViewDisplayType = ChildUnitPivotColumns (7)`; pivot by Selected QC sizes |
 
@@ -813,7 +813,7 @@ Locked from `PomHelper.GetDictSortSizeRelatedRotateSizeId` + `SpecBlockControlHe
 
 1. Load SizeRun sizes ordered by **`SizeOrder`** (`TblSizeRunRotate` / `TchpSizeRunSize`).
 2. Column suffix **N** = **1-based position** in that full list (`QCSize{N}` ↔ sizes[N−1]).
-3. **Selected** sizes (`PdmProductQcSize` / `Selected_Size`) only control **column visibility** in PLM — they do **not** renumber slots (unselected sizes keep their N; columns hide).
+3. **Selected** sizes (`PdmProductQcSize` rows for the QC TabId) only control **column visibility** in PLM — they do **not** renumber slots (unselected sizes keep their N; columns hide). DW Tab `Selected_Size` is the Size Run member list and must **not** be copied to `QcSelectedSizes`.
 
 Import UNPIVOT:
 
@@ -844,7 +844,7 @@ Keep identical in `POM_Grading_QC_NewSchema.sql` and emitted `3b_Tchp_ImportFrom
 | `techPack.bindings[]` `role=SimpleQC` | TX unit tree: StyleSpec + Plm tab sibling + size view + SimpleQC/Result |
 | `techPackSimpleQcPivotBindings` | Blueprint Phase D: Result unit → ChildUnitPivotColumns |
 
-Phase D: StyleSpec SizeRun/BaseSize/UOM **IsReadOnly** on Simple QC TX; apply Simple QC pivot bindings (mirror P1 GradeValue ↔ size view).
+Phase D: StyleSpec SizeRun/BaseSize/UOM **IsReadOnly** on Simple QC TX; **`QcSelectedSizes` MultiSelectDDL (53)** (same cascade as Grading VisibleSizes); strip leftover Plm_* Sizes fields; omit `View_TchpSimpleQcSelectedSizes` from Form layout; apply Simple QC pivot bindings (mirror P1 GradeValue ↔ size view).
 ---
 
 ## Example session message

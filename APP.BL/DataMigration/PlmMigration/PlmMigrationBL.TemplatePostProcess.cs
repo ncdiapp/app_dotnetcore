@@ -66,24 +66,118 @@ namespace APP.BL.DataMigration.PlmMigration
 
             foreach (var tab in readyTabs)
             {
-                if (HasCompleteTabFormLayout(formStatusByTabId, formStatusByIntegrationId, tab))
-                    continue;
-
-                workIndex++;
-                int pct = 78 + (int)(10.0 * workIndex / Math.Max(1, workTotal));
-                progressCallback?.Invoke(pct, $"Generating form layout for tab {tab.TabName} ({workIndex}/{workTotal})…");
-
                 int? transactionId = ResolveTabTransactionIdForForm(conn, formStatusByTabId, formStatusByIntegrationId, tab);
                 if (!transactionId.HasValue)
                     throw new InvalidOperationException($"Transaction not found for tab {tab.TabId} ({tab.TabName}).");
 
-                var formResult = AppDatabaseViewBL.EnsureTransactionDefaultFlexFormLayout(transactionId.Value, migrationFastPath: true, numberOfLayoutColumns: 4);
-                if (!formResult.IsSuccessful)
+                if (!HasCompleteTabFormLayout(formStatusByTabId, formStatusByIntegrationId, tab))
                 {
-                    string msg = formResult.ValidationResult?.Items?.FirstOrDefault()?.Message
-                        ?? $"Failed to generate form for tab {tab.TabId}.";
-                    throw new InvalidOperationException(msg);
+                    workIndex++;
+                    int pct = 78 + (int)(10.0 * workIndex / Math.Max(1, workTotal));
+                    progressCallback?.Invoke(pct, $"Generating form layout for tab {tab.TabName} ({workIndex}/{workTotal})…");
+
+                    var formResult = AppDatabaseViewBL.EnsureTransactionDefaultFlexFormLayout(transactionId.Value, migrationFastPath: true, numberOfLayoutColumns: 4);
+                    if (!formResult.IsSuccessful)
+                    {
+                        string msg = formResult.ValidationResult?.Items?.FirstOrDefault()?.Message
+                            ?? $"Failed to generate form for tab {tab.TabId}.";
+                        throw new InvalidOperationException(msg);
+                    }
                 }
+
+                // Pivot-domain views stay as TX children (MatrixKey) but must not appear as Form grids.
+                OmitTechPackPivotDomainViewFromFormLayout(conn, null, transactionId.Value);
+            }
+        }
+
+        /// <summary>
+        /// Remove View_TchpSimpleQcSelectedSizes (and wrapping Tab) from the Form layout.
+        /// The unit remains on the transaction for pivot column domain / MatrixKey.
+        /// </summary>
+        private static void OmitTechPackPivotDomainViewFromFormLayout(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+IF OBJECT_ID(N'tempdb..#omitPivotViewLayout') IS NOT NULL DROP TABLE #omitPivotViewLayout;
+CREATE TABLE #omitPivotViewLayout (Id INT PRIMARY KEY);
+
+INSERT INTO #omitPivotViewLayout (Id)
+SELECT li.FormLayoutItemID
+FROM dbo.AppFormLayoutItem li
+INNER JOIN dbo.AppTransactionUnit tu ON tu.TransactionUnitID = li.GridTransactionUnitId
+WHERE tu.TransactionID = @TxId
+  AND tu.DataBaseTableName = N'View_TchpSimpleQcSelectedSizes';
+
+IF EXISTS (SELECT 1 FROM #omitPivotViewLayout)
+BEGIN
+    DECLARE @guard int = 0;
+    WHILE @guard < 30
+    BEGIN
+        SET @guard = @guard + 1;
+        INSERT INTO #omitPivotViewLayout (Id)
+        SELECT li.FormLayoutItemID
+        FROM dbo.AppFormLayoutItem li
+        WHERE li.UigridLayoutParentId IN (SELECT Id FROM #omitPivotViewLayout)
+          AND li.FormLayoutItemID NOT IN (SELECT Id FROM #omitPivotViewLayout);
+        IF @@ROWCOUNT = 0 BREAK;
+    END
+
+    SET @guard = 0;
+    WHILE @guard < 30
+    BEGIN
+        SET @guard = @guard + 1;
+        INSERT INTO #omitPivotViewLayout (Id)
+        SELECT p.FormLayoutItemID
+        FROM dbo.AppFormLayoutItem p
+        WHERE p.FormLayoutItemID NOT IN (SELECT Id FROM #omitPivotViewLayout)
+          AND EXISTS (
+              SELECT 1 FROM dbo.AppFormLayoutItem c
+              WHERE c.UigridLayoutParentId = p.FormLayoutItemID
+                AND c.FormLayoutItemID IN (SELECT Id FROM #omitPivotViewLayout)
+          )
+          AND NOT EXISTS (
+              SELECT 1 FROM dbo.AppFormLayoutItem sib
+              WHERE sib.UigridLayoutParentId = p.FormLayoutItemID
+                AND sib.FormLayoutItemID NOT IN (SELECT Id FROM #omitPivotViewLayout)
+          );
+        IF @@ROWCOUNT = 0 BREAK;
+    END
+
+    IF EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = N'dbo' AND TABLE_NAME = N'AppFormGridLayoutItemBindField')
+    BEGIN
+        DELETE b
+        FROM dbo.AppFormGridLayoutItemBindField b
+        WHERE b.FormLayoutId IN (SELECT Id FROM #omitPivotViewLayout);
+    END
+
+    UPDATE dbo.AppTransactionField
+    SET HostFormLayoutItemId = NULL
+    WHERE HostFormLayoutItemId IN (SELECT Id FROM #omitPivotViewLayout);
+
+    SET @guard = 0;
+    WHILE @guard < 50 AND EXISTS (
+        SELECT 1 FROM dbo.AppFormLayoutItem WHERE FormLayoutItemID IN (SELECT Id FROM #omitPivotViewLayout)
+    )
+    BEGIN
+        SET @guard = @guard + 1;
+        DELETE FROM dbo.AppFormLayoutItem
+        WHERE FormLayoutItemID IN (SELECT Id FROM #omitPivotViewLayout)
+          AND FormLayoutItemID NOT IN (
+              SELECT DISTINCT UigridLayoutParentId
+              FROM dbo.AppFormLayoutItem
+              WHERE UigridLayoutParentId IS NOT NULL
+          );
+    END
+END
+
+DROP TABLE #omitPivotViewLayout;";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.ExecuteNonQuery();
             }
         }
 

@@ -72,7 +72,7 @@
   "techPack": {
     "_comment": "Simple QC (QX1). StyleSpec SizeRun/BaseSize/UOM from Grading (3283); this template does not MERGE StyleSpec. SizeRunDetail/DimensionDetail grids stay on Tab_3991 (3283).",
     "styleSpecShared": true,
-    "styleSpecOwnedColumns": ["Size_Run", "Base_Size", "Measure_Unit"],
+    "styleSpecOwnedColumns": ["Size_Run", "Base_Size", "Measure_Unit", "Selected_Size"],
     "styleSpecSibling": {
       "appTableName": "TchpStyleSpec",
       "skipTablePrefix": true,

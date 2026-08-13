@@ -755,29 +755,41 @@ WHERE TransactionUnitID = @UnitId
                         cmd.ExecuteNonQuery();
                     }
                 }
+            }
 
-                // StyleSpec size fields read-only on Simple QC TX
-                int? styleSpecUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, "TchpStyleSpec");
-                if (styleSpecUnitId.HasValue)
+            if (bindings.Count == 0)
+                return;
+
+            // StyleSpec size fields read-only on Simple QC TX (QcSelectedSizes stays editable MultiSelect)
+            int? styleSpecUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, "TchpStyleSpec");
+            if (styleSpecUnitId.HasValue)
+            {
+                foreach (string roField in new[] { "SizeRunId", "BaseSizeDetailId", "UnitOfMeasure" })
                 {
-                    foreach (string roField in new[] { "SizeRunId", "BaseSizeDetailId", "UnitOfMeasure" })
+                    using (var cmd = conn.CreateCommand())
                     {
-                        using (var cmd = conn.CreateCommand())
-                        {
-                            cmd.Transaction = tran;
-                            cmd.CommandText = @"
+                        cmd.Transaction = tran;
+                        cmd.CommandText = @"
 UPDATE dbo.AppTransactionField SET
     IsReadonly = 1,
     AppModifiedDate = GETDATE()
 WHERE TransactionUnitID = @UnitId
   AND DataBaseFieldName = @FieldName";
-                            cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId.Value);
-                            cmd.Parameters.AddWithValue("@FieldName", roField);
-                            cmd.ExecuteNonQuery();
-                        }
+                        cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId.Value);
+                        cmd.Parameters.AddWithValue("@FieldName", roField);
+                        cmd.ExecuteNonQuery();
                     }
                 }
+
+                RemoveTechPackStyleSpecVisibleSizesField(conn, tran, styleSpecUnitId.Value);
+
+                int? sizeRunDetailEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "SizeRunDetail");
+                int? sizeRunFieldId = GetTransactionFieldId(conn, tran, styleSpecUnitId.Value, "SizeRunId");
+                EnsureTechPackStyleSpecQcSelectedSizesField(
+                    conn, tran, styleSpecUnitId.Value, sizeRunDetailEntityId, sizeRunFieldId);
             }
+
+            RemovePlmSiblingSelectedSizeFields(conn, tran, transactionId);
         }
 
         /// <summary>
@@ -1099,7 +1111,6 @@ WHERE TransactionUnitID = @UnitId
 
         /// <summary>
         /// Ensure TchpStyleSpec.VisibleSizes exists as MultiSelectDDL (Entity SizeRunDetail, cascade from SizeRunId).
-        /// Collapses duplicate AppTransactionField rows for the same DbName (keep lowest Id).
         /// </summary>
         private static void EnsureTechPackStyleSpecVisibleSizesField(
             SqlConnection conn,
@@ -1108,7 +1119,40 @@ WHERE TransactionUnitID = @UnitId
             int? sizeRunDetailEntityId,
             int? sizeRunFieldId)
         {
-            // If Add-Existing + G1 both created rows, remove extras before meta update.
+            EnsureTechPackStyleSpecMultiSelectSizeField(
+                conn, tran, styleSpecUnitId, "VisibleSizes", "Visible Sizes",
+                sizeRunDetailEntityId, sizeRunFieldId, preferredSortOrder: 45);
+        }
+
+        /// <summary>
+        /// Simple QC: TchpStyleSpec.QcSelectedSizes as MultiSelectDDL (same cascade as Grading VisibleSizes).
+        /// </summary>
+        private static void EnsureTechPackStyleSpecQcSelectedSizesField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int styleSpecUnitId,
+            int? sizeRunDetailEntityId,
+            int? sizeRunFieldId)
+        {
+            EnsureTechPackStyleSpecMultiSelectSizeField(
+                conn, tran, styleSpecUnitId, "QcSelectedSizes", "Qc Selected Sizes",
+                sizeRunDetailEntityId, sizeRunFieldId, preferredSortOrder: 50);
+        }
+
+        /// <summary>
+        /// Pipe-delimited SizeRunSizeId MultiSelectDDL (Entity SizeRunDetail, cascade from SizeRunId).
+        /// Collapses duplicate AppTransactionField rows for the same DbName (keep lowest Id).
+        /// </summary>
+        private static void EnsureTechPackStyleSpecMultiSelectSizeField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int styleSpecUnitId,
+            string databaseFieldName,
+            string displayName,
+            int? sizeRunDetailEntityId,
+            int? sizeRunFieldId,
+            int preferredSortOrder)
+        {
             using (var del = conn.CreateCommand())
             {
                 del.Transaction = tran;
@@ -1118,18 +1162,19 @@ WHERE TransactionUnitID = @UnitId
            ROW_NUMBER() OVER (ORDER BY TransactionFieldID) AS rn
     FROM dbo.AppTransactionField
     WHERE TransactionUnitID = @UnitId
-      AND DataBaseFieldName = N'VisibleSizes'
+      AND DataBaseFieldName = @FieldName
 )
 DELETE FROM dbo.AppTransactionField
 WHERE TransactionFieldID IN (SELECT TransactionFieldID FROM d WHERE rn > 1);";
                 del.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                del.Parameters.AddWithValue("@FieldName", databaseFieldName);
                 del.ExecuteNonQuery();
             }
 
-            int? existing = GetTransactionFieldId(conn, tran, styleSpecUnitId, "VisibleSizes");
+            int? existing = GetTransactionFieldId(conn, tran, styleSpecUnitId, databaseFieldName);
             if (!existing.HasValue)
             {
-                int sortOrder = 45;
+                int sortOrder = preferredSortOrder;
                 using (var max = conn.CreateCommand())
                 {
                     max.Transaction = tran;
@@ -1155,7 +1200,7 @@ INSERT INTO dbo.AppTransactionField (
     CascadingRelationTableParentKeyField, CascadingRelationTableChildKeyField,
     AppCreatedDate, AppModifiedDate)
 SELECT
-    @UnitId, N'Visible Sizes', N'VisibleSizes', @ControlType, @DataType,
+    @UnitId, @DisplayName, @FieldName, @ControlType, @DataType,
     @EntityId, @ParentFieldId, @SortOrder, 0, 1, 0, 1,
     N'200', 0, 0, NEWID(),
     base.DataRetrieveType, base.CascadingRelationTable, base.CascadingRelationTableSchemaOwner,
@@ -1170,6 +1215,8 @@ OUTER APPLY (
     WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'BaseSizeDetailId'
 ) AS base;";
                     cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                    cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                    cmd.Parameters.AddWithValue("@FieldName", databaseFieldName);
                     cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.MultiSelectDDL);
                     cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.String);
                     cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
@@ -1188,10 +1235,11 @@ OUTER APPLY (
 UPDATE vs SET
     ControlType = @ControlType,
     DataType = @DataType,
+    DisplayName = COALESCE(NULLIF(LTRIM(RTRIM(vs.DisplayName)), N''), @DisplayName),
     EntityId = COALESCE(@EntityId, vs.EntityId),
     DDLParentLevelID = @ParentFieldId,
     DisplayWidth = N'200',
-    SortOrder = 45,
+    SortOrder = @SortOrder,
     IsVisible = 1,
     IsReadonly = 0,
     IsAllowEmpty = 1,
@@ -1209,13 +1257,47 @@ OUTER APPLY (
     FROM dbo.AppTransactionField
     WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'BaseSizeDetailId'
 ) AS base
-WHERE vs.TransactionUnitID = @UnitId AND vs.DataBaseFieldName = N'VisibleSizes'";
+WHERE vs.TransactionUnitID = @UnitId AND vs.DataBaseFieldName = @FieldName";
                 cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.MultiSelectDDL);
                 cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.String);
+                cmd.Parameters.AddWithValue("@DisplayName", displayName);
                 cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("@ParentFieldId",
                     sizeRunFieldId.HasValue ? (object)sizeRunFieldId.Value : DBNull.Value);
+                cmd.Parameters.AddWithValue("@SortOrder", preferredSortOrder);
                 cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                cmd.Parameters.AddWithValue("@FieldName", databaseFieldName);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>
+        /// QX1: Selected_Size is StyleSpec.QcSelectedSizes only — drop leftover Plm_* Sizes fields from this TX.
+        /// </summary>
+        private static void RemovePlmSiblingSelectedSizeFields(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+DELETE li
+FROM dbo.AppFormLayoutItem li
+INNER JOIN dbo.AppTransactionField tf ON tf.TransactionFieldID = li.TransactionFieldID
+INNER JOIN dbo.AppTransactionUnit tu ON tu.TransactionUnitID = tf.TransactionUnitID
+WHERE tu.TransactionID = @TxId
+  AND tu.DataBaseTableName NOT LIKE N'TchpStyleSpec'
+  AND tf.DataBaseFieldName IN (N'SelectedSizes', N'Selected_Size', N'SelectedSize', N'Sizes');
+
+DELETE tf
+FROM dbo.AppTransactionField tf
+INNER JOIN dbo.AppTransactionUnit tu ON tu.TransactionUnitID = tf.TransactionUnitID
+WHERE tu.TransactionID = @TxId
+  AND tu.DataBaseTableName NOT LIKE N'TchpStyleSpec'
+  AND tf.DataBaseFieldName IN (N'SelectedSizes', N'Selected_Size', N'SelectedSize', N'Sizes');";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
                 cmd.ExecuteNonQuery();
             }
         }

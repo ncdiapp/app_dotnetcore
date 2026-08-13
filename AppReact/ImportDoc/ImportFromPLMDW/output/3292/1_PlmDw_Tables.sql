@@ -640,15 +640,11 @@ SET @FkName = N'FK_' + @TableName + N'_Reference';
 
 IF OBJECT_ID(N'dbo.' + QUOTENAME(@TableName), N'U') IS NULL
 BEGIN
-    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@TableName) + N' ([ReferenceId] INT NOT NULL, [SelectedSizes] [nvarchar](4000) NULL, [QC_Color] [int] NULL, [Comment_Date] [datetime] NULL, [Colors___Sizes_Comments] [nvarchar](4000) NULL, [Measurement_Comments] [nvarchar](4000) NULL, [Make_up_Fit_Comments] [nvarchar](4000) NULL, [Conclusion] [nvarchar](4000) NULL, CONSTRAINT [PK_QC] PRIMARY KEY CLUSTERED ([ReferenceId]) );';
+    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@TableName) + N' ([ReferenceId] INT NOT NULL, [QC_Color] [int] NULL, [Comment_Date] [datetime] NULL, [Colors___Sizes_Comments] [nvarchar](4000) NULL, [Measurement_Comments] [nvarchar](4000) NULL, [Make_up_Fit_Comments] [nvarchar](4000) NULL, [Conclusion] [nvarchar](4000) NULL, CONSTRAINT [PK_QC] PRIMARY KEY CLUSTERED ([ReferenceId]) );';
     EXEC sp_executesql @sql;
 END
 ELSE
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'SelectedSizes')
-    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [SelectedSizes] [nvarchar](4000) NULL;'; EXEC sp_executesql @sql; END
-    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [SelectedSizes] [nvarchar](4000) NULL;';
-    EXEC sp_executesql @sql;
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'QC_Color')
     BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [QC_Color] [int] NULL;'; EXEC sp_executesql @sql; END
     IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'Comment_Date')
@@ -797,7 +793,7 @@ BEGIN
     PRINT N'Skipped FK ' + @FkName + N': root table dbo.' + @RootTable + N' does not exist.';
 END
 
--- SimpleQCResult (QX1): one size row; SizeRunSizeId = SizeOrder position N
+-- SimpleQCResult (QX1): one size row under SimpleQCResult; SizeRunSizeId = SizeOrder position N
 SET @TableName = @TablePrefix + N'SimpleQCResult';
 SET @HostTable = @TablePrefix + N'SimpleQC';
 SET @ParentFkName = N'FK_' + @TableName + N'_Parent';
@@ -861,6 +857,7 @@ BEGIN
         + N' FOREIGN KEY ([ParentRowId]) REFERENCES dbo.' + QUOTENAME(@HostTable) + N' ([RowId]);';
     EXEC sp_executesql @sql;
 END
+
 
 -- Product_Test_Grid_reg
 SET @TableName = @TablePrefix + N'Product_Test_Grid_reg';

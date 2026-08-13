@@ -1235,16 +1235,21 @@ foreach ($tab in $config.tabs) {
     }
     else { throw "Unknown tab mode: $($tab.mode)" }
 
-    # QX1: Selected_Size → SelectedSizes on Simple QC tab sibling
+    # QX1: Selected_Size lives on TchpStyleSpec.QcSelectedSizes only — strip from Plm_* sibling.
     $sqcBinding = Get-SimpleQcBinding $config
     if ($sqcBinding -and [int]$sqcBinding.plmTabId -eq [int]$tab.tabId) {
-        foreach ($fr in @($fieldRows)) {
-            $stem = (Get-DwColumnMeta $fr.DwColumn).Stem
-            if ($stem -eq 'Selected_Size' -or $fr.AppColumn -eq 'Selected_Size' -or $fr.AppColumn -eq 'SelectedSize') {
-                $fr.AppColumn = 'SelectedSizes'
-                $fr.NamePart = 'SelectedSizes'
-                $fr.Stem = 'SelectedSizes'
-            }
+        $before = @($fieldRows).Count
+        $fieldRows = @($fieldRows | Where-Object {
+            $stem = if ($_.DwColumn) { (Get-DwColumnMeta $_.DwColumn).Stem } else { [string]$_.Stem }
+            $col = [string]$_.AppColumn
+            -not (
+                $stem -eq 'Selected_Size' -or $stem -eq 'SelectedSize' -or $stem -eq 'SelectedSizes' -or
+                $col -eq 'Selected_Size' -or $col -eq 'SelectedSize' -or $col -eq 'SelectedSizes'
+            )
+        })
+        $stripped = $before - @($fieldRows).Count
+        if ($stripped -gt 0) {
+            Write-Host "  QX1: stripped Selected_Size from $($tab.appTable) (import -> TchpStyleSpec.QcSelectedSizes only)"
         }
     }
 
@@ -1282,7 +1287,8 @@ foreach ($tab in $config.tabs) {
     if ($ownedCols.Count -gt 0) {
         $fieldRows = @($fieldRows | Where-Object {
             $col = [string]$_.AppColumn
-            -not ($ownedCols | Where-Object { $_ -eq $col })
+            $stem = [string]$_.Stem
+            -not ($ownedCols | Where-Object { $_ -eq $col -or $_ -eq $stem })
         })
     }
 

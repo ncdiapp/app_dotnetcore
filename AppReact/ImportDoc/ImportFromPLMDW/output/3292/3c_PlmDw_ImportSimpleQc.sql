@@ -6,17 +6,26 @@
 SET NOCOUNT ON;
 SET XACT_ABORT ON;
 
--- StyleSpec.QcSelectedSizes <- QC Tab Selected_Size (pipe SizeRunSizeId)
+-- StyleSpec.QcSelectedSizes <- PdmProductQcSize (checked sizes only; DW Selected_Size is the full Size Run)
 IF COL_LENGTH(N'dbo.TchpStyleSpec', N'QcSelectedSizes') IS NULL
     ALTER TABLE dbo.TchpStyleSpec ADD QcSelectedSizes NVARCHAR(4000) NULL;
 
 UPDATE ss SET
-  ss.QcSelectedSizes = CONVERT(NVARCHAR(4000), q.Selected_Size_174),
+  ss.QcSelectedSizes = x.SelectedCsv,
   ss.AppModifiedDate = GETDATE()
 FROM dbo.TchpStyleSpec ss
-INNER JOIN [plmDW].dbo.PLM_DW_Tab_QC_4029 q ON TRY_CONVERT(INT, q.ProductReferenceID) = ss.StyleSpecId
-WHERE NULLIF(LTRIM(RTRIM(CONVERT(NVARCHAR(4000), q.Selected_Size_174))), N'''') IS NOT NULL;
-PRINT N'TchpStyleSpec.QcSelectedSizes updated. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
+INNER JOIN (
+    SELECT
+        q.ProductReferenceID,
+        STRING_AGG(CONVERT(NVARCHAR(20), q.SizeRunRotateID), N'|')
+            WITHIN GROUP (ORDER BY q.SizeRunRotateID) AS SelectedCsv
+    FROM [plm_live_20260602].dbo.PdmProductQcSize q
+    WHERE q.TabID = 4029
+      AND q.ProductReferenceID IS NOT NULL
+      AND q.SizeRunRotateID IS NOT NULL
+    GROUP BY q.ProductReferenceID
+) x ON x.ProductReferenceID = ss.StyleSpecId;
+PRINT N'TchpStyleSpec.QcSelectedSizes updated from PdmProductQcSize. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));
 
 -- Host POM rows -> Plm_SimpleQC
 DELETE FROM dbo.[Plm_SimpleQCResult];

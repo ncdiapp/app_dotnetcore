@@ -248,14 +248,9 @@ function Generate-SimpleQcImportSqlFile($config, [string]$outDir) {
 
     $dwCols = @(Get-DwTableColumns $sgDw)
     $maxN = Get-SimpleQcMaxSizeSlotFromDwCols $dwCols
-    $sizeRunCol = $null
-    $selectedCol = $null
-    $qcTab = @($config.tabs) | Where-Object { [int]$_.tabId -eq [int]$sb.parentPlmTabId } | Select-Object -First 1
-    if ($qcTab -and $qcTab.dwTable) {
-        $tabCols = @(Get-DwTableColumns $qcTab.dwTable)
-        $c = Find-DwColumnByStem $tabCols 'Size_Run'; if ($c) { $sizeRunCol = $c.DwColumn }
-        $c = Find-DwColumnByStem $tabCols 'Selected_Size'; if ($c) { $selectedCol = $c.DwColumn }
-    }
+    $qcTabId = [int]$sb.parentPlmTabId
+    $plmDb = if ($config.plmDatabase) { [string]$config.plmDatabase } else { 'PLM' }
+    $plmRef = '[' + ($plmDb -replace ']', ']]') + '].dbo'
 
     $pomColMap = @{}
     foreach ($c in $dwCols) {
@@ -278,21 +273,28 @@ function Generate-SimpleQcImportSqlFile($config, [string]$outDir) {
     & $add 'SET XACT_ABORT ON;'
     & $add ''
 
-    # Dual-write QcSelectedSizes onto StyleSpec
-    if ($qcTab -and $selectedCol -and $qcTab.dwTable) {
-        & $add '-- StyleSpec.QcSelectedSizes <- QC Tab Selected_Size (pipe SizeRunSizeId)'
-        & $add 'IF COL_LENGTH(N''dbo.TchpStyleSpec'', N''QcSelectedSizes'') IS NULL'
-        & $add '    ALTER TABLE dbo.TchpStyleSpec ADD QcSelectedSizes NVARCHAR(4000) NULL;'
-        & $add ''
-        & $add 'UPDATE ss SET'
-        & $add "  ss.QcSelectedSizes = CONVERT(NVARCHAR(4000), q.$selectedCol),"
-        & $add '  ss.AppModifiedDate = GETDATE()'
-        & $add 'FROM dbo.TchpStyleSpec ss'
-        & $add "INNER JOIN $dwRef.$($qcTab.dwTable) q ON TRY_CONVERT(INT, q.ProductReferenceID) = ss.StyleSpecId"
-        & $add "WHERE NULLIF(LTRIM(RTRIM(CONVERT(NVARCHAR(4000), q.$selectedCol))), N'''') IS NOT NULL;"
-        & $add "PRINT N'TchpStyleSpec.QcSelectedSizes updated. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));"
-        & $add ''
-    }
+    # QcSelectedSizes from PLM PdmProductQcSize (Size Selector checkboxes), not DW Selected_Size (full Size Run).
+    & $add '-- StyleSpec.QcSelectedSizes <- PdmProductQcSize (checked sizes only; DW Selected_Size is the full Size Run)'
+    & $add 'IF COL_LENGTH(N''dbo.TchpStyleSpec'', N''QcSelectedSizes'') IS NULL'
+    & $add '    ALTER TABLE dbo.TchpStyleSpec ADD QcSelectedSizes NVARCHAR(4000) NULL;'
+    & $add ''
+    & $add 'UPDATE ss SET'
+    & $add '  ss.QcSelectedSizes = x.SelectedCsv,'
+    & $add '  ss.AppModifiedDate = GETDATE()'
+    & $add 'FROM dbo.TchpStyleSpec ss'
+    & $add 'INNER JOIN ('
+    & $add '    SELECT'
+    & $add '        q.ProductReferenceID,'
+    & $add "        STRING_AGG(CONVERT(NVARCHAR(20), q.SizeRunRotateID), N'|')"
+    & $add '            WITHIN GROUP (ORDER BY q.SizeRunRotateID) AS SelectedCsv'
+    & $add "    FROM $plmRef.PdmProductQcSize q"
+    & $add "    WHERE q.TabID = $qcTabId"
+    & $add '      AND q.ProductReferenceID IS NOT NULL'
+    & $add '      AND q.SizeRunRotateID IS NOT NULL'
+    & $add '    GROUP BY q.ProductReferenceID'
+    & $add ') x ON x.ProductReferenceID = ss.StyleSpecId;'
+    & $add "PRINT N'TchpStyleSpec.QcSelectedSizes updated from PdmProductQcSize. Rows=' + CAST(@@ROWCOUNT AS NVARCHAR(20));"
+    & $add ''
 
     # Merge SimpleQC host rows
     $insertCols = New-Object System.Collections.Generic.List[string]
