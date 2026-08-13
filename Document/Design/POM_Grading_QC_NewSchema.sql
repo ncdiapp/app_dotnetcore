@@ -318,6 +318,15 @@ BEGIN
 END
 GO
 
+-- QcSelectedSizes: pipe-delimited SizeRunSizeId whitelist for Simple QC pivot (separate from Grading VisibleSizes).
+IF OBJECT_ID(N'dbo.TchpStyleSpec', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.TchpStyleSpec', N'QcSelectedSizes') IS NULL
+BEGIN
+    ALTER TABLE [dbo].[TchpStyleSpec] ADD [QcSelectedSizes] NVARCHAR(4000) NULL;
+    PRINT 'Added TchpStyleSpec.QcSelectedSizes';
+END
+GO
+
 -- ── TchpStyleSpecDimension ────────────────────────────────────
 -- Dimensions configured for a StyleSpec (e.g. MA, UA, XA).
 -- A spec can have multiple dimensions; IsActive = 1 marks which one
@@ -835,6 +844,40 @@ WHERE ISNULL(srs.IsActive, 1) = 1;
 GO
 
 PRINT 'Created View_TchpStyleActiveSizeRunSizes';
+GO
+
+-- ── View_TchpSimpleQcSelectedSizes ───────────────────────────
+-- Simple QC pivot column domain (QX1). IsVisible from QcSelectedSizes only
+-- (not Grading VisibleSizes / Dimension). Keep in sync with ImportFromPLMDW 3b.
+IF OBJECT_ID(N'dbo.View_TchpSimpleQcSelectedSizes', N'V') IS NOT NULL
+    DROP VIEW [dbo].[View_TchpSimpleQcSelectedSizes];
+GO
+
+CREATE VIEW [dbo].[View_TchpSimpleQcSelectedSizes]
+AS
+SELECT
+    ss.StyleSpecId,
+    ss.SizeRunId,
+    srs.SizeRunSizeId,
+    srs.SizeLabel,
+    srs.SizeOrder,
+    srs.IsActive,
+    CASE
+        WHEN NULLIF(LTRIM(RTRIM(ss.QcSelectedSizes)), N'') IS NULL THEN 1
+        WHEN EXISTS (
+            SELECT 1
+            FROM STRING_SPLIT(REPLACE(ss.QcSelectedSizes, N'|', N','), N',') AS tok
+            WHERE TRY_CONVERT(INT, LTRIM(RTRIM(tok.[value]))) = srs.SizeRunSizeId
+        ) THEN 1
+        ELSE 0
+    END AS IsVisible
+FROM dbo.TchpStyleSpec AS ss
+INNER JOIN dbo.TchpSizeRunSize AS srs
+    ON srs.SizeRunId = ss.SizeRunId
+WHERE ISNULL(srs.IsActive, 1) = 1;
+GO
+
+PRINT 'Created View_TchpSimpleQcSelectedSizes';
 GO
 
 -- ── View_TchpSizeRunSize_DefaultDimension ────────────────────

@@ -1433,6 +1433,7 @@ WHERE SearchId = @SearchId";
           AttachBomColorwayPivotBindingsToPlan(plan, blueprint, prefix, mappingRows, fieldMetaByKey);
           AttachTechPackGradeValuePivotBindingsToPlan(plan, blueprint);
           AttachTechPackFitMeasurementPivotBindingsToPlan(plan, blueprint);
+          AttachTechPackSimpleQcPivotBindingsToPlan(plan, blueprint);
 
           plans.Add(plan);
         }
@@ -1466,6 +1467,20 @@ WHERE SearchId = @SearchId";
                    .Where(b => b != null && b.PlmTabId == plan.Tab.TabId))
         {
           plan.TechPackFitMeasurementPivotBindings.Add(binding);
+        }
+      }
+
+      private static void AttachTechPackSimpleQcPivotBindingsToPlan(
+        TemplateTabExecutionPlan plan,
+        PlmDwImportBlueprintDto blueprint)
+      {
+        if (blueprint?.TechPackSimpleQcPivotBindings == null || blueprint.TechPackSimpleQcPivotBindings.Count == 0)
+          return;
+
+        foreach (var binding in blueprint.TechPackSimpleQcPivotBindings
+                   .Where(b => b != null && b.PlmTabId == plan.Tab.TabId))
+        {
+          plan.TechPackSimpleQcPivotBindings.Add(binding);
         }
       }
 

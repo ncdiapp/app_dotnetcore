@@ -8,6 +8,7 @@ $config = Get-Content $configPath -Raw | ConvertFrom-Json
 
 . (Join-Path $PSScriptRoot '_gen_plmdw_bom_colorway.ps1')
 . (Join-Path $PSScriptRoot '_gen_tchp_import_sql.ps1')
+. (Join-Path $PSScriptRoot '_gen_simple_qc.ps1')
 
 $templateId = $null
 if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) {
@@ -516,13 +517,17 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
             foreach ($cu in @($tpBinding.childUnits)) {
                 if (-not $cu -or -not $cu.appTableName) { continue }
                 # Platform: only ROOT hosts CHILD. StyleSpecId → Root.ReferenceId (StyleSpecId == ReferenceId).
+                $skipPrefix = $true
+                if ($null -ne $cu.PSObject.Properties['skipTablePrefix'] -and $null -ne $cu.skipTablePrefix) {
+                    $skipPrefix = [bool]$cu.skipTablePrefix
+                }
                 $childEntry = [ordered]@{
                     appTableName            = [string]$cu.appTableName
                     attachToRoot            = $true
-                    skipTablePrefix         = $true
+                    skipTablePrefix         = $skipPrefix
                     linkToParentField       = if ($cu.linkToParentField) { [string]$cu.linkToParentField } else { 'StyleSpecId' }
                     parentPrimaryKeyField   = if ($cu.parentPrimaryKeyField) { [string]$cu.parentPrimaryKeyField } else { 'ReferenceId' }
-                    grandChildAppTableNames = @(if ($cu.grandChildAppTableNames) { $cu.grandChildAppTableNames } else { @() })
+                    grandChildAppTableNames = Get-JsonArrayForSerialize @(if ($cu.grandChildAppTableNames) { $cu.grandChildAppTableNames } else { @() })
                 }
                 if ($null -ne $cu.fitRoundNumberFilter -and "$($cu.fitRoundNumberFilter)" -ne '') {
                     $childEntry.fitRoundNumberFilter = [int]$cu.fitRoundNumberFilter
@@ -627,13 +632,21 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
                 $txIntegrationId = "Grid_$($grid.gridId)"
             }
         }
+        $gridAppLogical = [string]$grid.appTable
+        if ($config.techPack -and $config.techPack.systemBlockGrids) {
+            $sq = @($config.techPack.systemBlockGrids) | Where-Object {
+                $_.role -eq 'SpecQC' -and [string]$_.appTable -eq $gridAppLogical
+            } | Select-Object -First 1
+            if ($sq) { $gridAppLogical = 'SimpleQC' }
+        }
         $gridBindings += [ordered]@{
             plmGridId                  = [int]$grid.gridId
-            appTableName               = $prefix + $grid.appTable
+            appTableName               = $prefix + $gridAppLogical
             parentPlmTabId             = $parentTabId
             attachToRoot               = (-not $parentTabId)
             integrationId              = "Grid_$($grid.gridId)"
             transactionIntegrationId   = $txIntegrationId
+            grandChildAppTableNames    = if ($gridAppLogical -eq 'SimpleQC') { Get-JsonArrayForSerialize @($prefix + 'SimpleQCResult') } else { $null }
         }
     }
 
@@ -727,6 +740,7 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
         bomColorwayPivotBindings = Get-JsonArrayForSerialize @(if ($bomColorwayPivotBindings) { $bomColorwayPivotBindings } else { @() })
         techPackGradeValuePivotBindings = Get-JsonArrayForSerialize @(Build-TechPackGradeValuePivotBindings $config $transactions)
         techPackFitMeasurementPivotBindings = Get-JsonArrayForSerialize @(Build-TechPackFitMeasurementPivotBindings $config $transactions)
+        techPackSimpleQcPivotBindings = Get-JsonArrayForSerialize @(Build-SimpleQcPivotBindings $config $transactions)
         blueprintFields       = $blueprintFields
         searchView            = [ordered]@{
             search     = [ordered]@{
@@ -1127,6 +1141,7 @@ $ddlParts.Add(@"
 --   2. 2_PlmDw_FieldMapping.sql
 --   3. 3_PlmDw_ImportFromDW.sql
 --   3b. 3b_Tchp_ImportFromDW.sql   (when techPack config present — StyleSpec/Pom/Fit)
+--   3c. 3c_PlmDw_ImportSimpleQc.sql (when SpecQC / Simple QC QX1 present)
 --   4. 4_PlmDw_ImportBlueprint.json + Phase D Execute
 --   5. 5_PlmDw_ImportBomColorwayGrandchild.sql  (when BOM colorway grids detected)
 --   6. 6_PlmDw_CleanupBomColorwayStaging.sql
@@ -1135,7 +1150,7 @@ $ddlParts.Add(@"
 --   @RootTableSuffix root table name after prefix (default ReferenceBasicInfo)
 -- Source: plmDW Tab/Grid wide tables for user TabId set
 -- TechPack (optional techPack in dwTabImportConfig): SpecFit/SpecGrading → Tchp*;
---   Size_Run/Base_Size/Measure_Unit → TchpStyleSpec only (L2 Link-to-Parent, no DB FK).
+--   SpecQC → Plm_SimpleQC + Plm_SimpleQCResult (QX1); Size_Run/Base_Size/Measure_Unit → TchpStyleSpec.
 -- =============================================================================
 SET ANSI_NULLS ON
 GO
@@ -1220,6 +1235,19 @@ foreach ($tab in $config.tabs) {
     }
     else { throw "Unknown tab mode: $($tab.mode)" }
 
+    # QX1: Selected_Size → SelectedSizes on Simple QC tab sibling
+    $sqcBinding = Get-SimpleQcBinding $config
+    if ($sqcBinding -and [int]$sqcBinding.plmTabId -eq [int]$tab.tabId) {
+        foreach ($fr in @($fieldRows)) {
+            $stem = (Get-DwColumnMeta $fr.DwColumn).Stem
+            if ($stem -eq 'Selected_Size' -or $fr.AppColumn -eq 'Selected_Size' -or $fr.AppColumn -eq 'SelectedSize') {
+                $fr.AppColumn = 'SelectedSizes'
+                $fr.NamePart = 'SelectedSizes'
+                $fr.Stem = 'SelectedSizes'
+            }
+        }
+    }
+
     # FX1 slim FitSummary: keep only round-agnostic SubItems.
     if ($tab.fx1KeepSubItemIds) {
         $keep = [System.Collections.Generic.HashSet[int]]::new()
@@ -1299,16 +1327,37 @@ foreach ($bg in $bomColorwayGrids) {
 }
 
 # SpecFit / SpecGrading are TechPack system-block sources (Tchp*), not Plm_* grid children.
+# SpecQC (QX1) emits Plm_SimpleQC + Plm_SimpleQCResult instead of flat size-slot grid.
 $systemBlockAppTables = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$specQcBlockByAppTable = @{}
 if ($config.techPack -and $config.techPack.systemBlockGrids) {
     foreach ($sb in @($config.techPack.systemBlockGrids)) {
-        if ($sb.appTable) { [void]$systemBlockAppTables.Add([string]$sb.appTable) }
+        if ($sb.appTable) {
+            [void]$systemBlockAppTables.Add([string]$sb.appTable)
+            if ($sb.role -eq 'SpecQC') { $specQcBlockByAppTable[[string]$sb.appTable] = $sb }
+        }
     }
-    Write-Host "  TechPack systemBlockGrids (no Plm_* DDL): $($systemBlockAppTables -join ', ')"
+    Write-Host "  TechPack systemBlockGrids (no flat Plm_* grid DDL): $($systemBlockAppTables -join ', ')"
 }
 
 foreach ($grid in $config.grids) {
     if ($systemBlockAppTables.Contains([string]$grid.appTable)) {
+        if ($specQcBlockByAppTable.ContainsKey([string]$grid.appTable)) {
+            $sb = $specQcBlockByAppTable[[string]$grid.appTable]
+            Write-Host "  QX1 Simple QC: SpecQCGrid $($grid.appTable) -> SimpleQC + SimpleQCResult"
+            $hostApp = 'SimpleQC'
+            $resultApp = 'SimpleQCResult'
+            [void]$scopeAppTables.Add($hostApp)
+            [void]$scopeAppTables.Add($resultApp)
+            $dwCols = Get-DwTableColumns $grid.dwTable
+            $parentTabId = if ($grid.parentPlmTabId) { [int]$grid.parentPlmTabId } else { [int]$sb.parentPlmTabId }
+            $hostRows = Build-SimpleQcHostFieldRows $dwCols $grid.dwTable $parentTabId $hostApp $grid.gridSubItemId $grid.gridId
+            $ddlParts.Add((Build-CreateTableBlock $hostApp $hostRows 'grid'))
+            foreach ($r in $hostRows) { [void]$allFieldRows.Add($r) }
+            $ddlParts.Add((Build-SimpleQcResultTableBlock $resultApp $hostApp))
+            Add-SimpleQcResultFieldRows $allFieldRows $resultApp $hostApp $grid.dwTable $parentTabId $grid.gridSubItemId $grid.gridId
+            continue
+        }
         Write-Host "  Skip Plm_* grid DDL for TechPack system block: $($grid.appTable)"
         continue
     }
@@ -1618,6 +1667,11 @@ Set-Content -Path $importPath -Value $importContent -Encoding UTF8
 $tchpImportPath = Generate-TchpImportSqlFile $config $outDir
 if ($tchpImportPath) {
     Write-Host "Generated: $tchpImportPath"
+}
+
+$simpleQcImportPath = Generate-SimpleQcImportSqlFile $config $outDir
+if ($simpleQcImportPath) {
+    Write-Host "Generated: $simpleQcImportPath"
 }
 
 if (-not $config.blueprint) {

@@ -53,7 +53,7 @@ If the user **only** references this file (e.g. `@PROMPT.md`) and does **not** i
 | **No server code** | **Default:** deliverables are **SQL + JSON + PowerShell in this folder only** — no C# / WebAPI edits, no `dotnet build`. **Exception (BOM colorway pivot):** `PlmMigrationBL` pivot/hierarchy support in `APP.BL` is required for Phase D; already in repo. Any *other* BL gap → **STOP**, explain, warn user. |
 | **Two phases** | **Phase A:** DW analysis + APP table proposal + **Blueprint draft** → **STOP for user confirmation**. **Phase B:** generate SQL + Blueprint JSON **after** confirm. **Phase D:** BL TOOLS apply Blueprint to APP config (separate step; user runs in app). |
 | **plmDW is truth** | Column names, SubItem IDs, TabIds from DW — not legacy PLM exports. |
-| **1 Tab → 1 sibling table + N grid tables** | Tab wide table (`PLM_DW_Tab_*_{TabId}`) = the tab's regular sub-items → **sibling** (PK `ReferenceId`). Each materialized grid sub-item (`PLM_DW_Grid_*`) = a **grid table** (PK `RowId` identity). A tab with both yields 1 sibling + 1 grid table per grid; the tab table is never a child. Grid-only tabs (no DW Tab table): true PLM `parentPlmTabId` or orphan `Grid_{id}` as **Root+Child** — never Master Sibling. **Exception FX1 (Fit family):** see §TechPack Fit — do not emit `Plm_Fit_1`…`Plm_Fit_N`; fold into `Plm_FitSummary` + `Plm_FitRoundInfo` + `TchpFitRound` / `TchpFitMeasurement`. |
+| **1 Tab → 1 sibling table + N grid tables** | Tab wide table (`PLM_DW_Tab_*_{TabId}`) = the tab's regular sub-items → **sibling** (PK `ReferenceId`). Each materialized grid sub-item (`PLM_DW_Grid_*`) = a **grid table** (PK `RowId` identity). A tab with both yields 1 sibling + 1 grid table per grid; the tab table is never a child. Grid-only tabs (no DW Tab table): true PLM `parentPlmTabId` or orphan `Grid_{id}` as **Root+Child** — never Master Sibling. **Exception FX1 (Fit family):** see §TechPack Fit — do not emit `Plm_Fit_1`…`Plm_Fit_N`; fold into `Plm_FitSummary` + `Plm_FitRoundInfo` + `TchpFitRound` / `TchpFitMeasurement`. **Exception QX1 (Simple QC):** see §TechPack Simple QC — do not emit flat `Plm_SpecQCGrid` size slots; emit `Plm_SimpleQC` + `Plm_SimpleQCResult` (+ size VIEW). |
 | **Mapping drives import** | `{prefix}FieldMapping` stores `DwTableName` + `DwColumnName` per APP column. |
 | **Prefix is parameter** | `@TablePrefix` in all three SQL scripts (default `Plm_`). |
 
@@ -516,7 +516,7 @@ When `dwTabImportConfig` includes a `techPack` block (α bindings):
 | Decision | Choice |
 |----------|--------|
 | Flat SpecFit / SpecGrading grids | **A** — replace with `Tchp*` long-term; do **not** emit `Plm_SpecFitGrid` / `Plm_SpecGradingGrid` |
-| StyleSpec count | **A** — one `TchpStyleSpec` per product (shared by Grading + Fit + future QC) |
+| StyleSpec count | **A** — one `TchpStyleSpec` per product (shared by Grading + Fit + **Simple QC**) |
 | Fit rounds | `TchpFitRound.RoundNumber` = 1,2,3,4… |
 | Blueprint wiring | **α** — explicit `techPack.bindings` per `plmTabId` |
 | SizeRun / BaseSize / UOM | **S1** — from Grading DW only → `TchpStyleSpec` columns; stripped from `Plm_*` |
@@ -741,6 +741,110 @@ Apply on tabs that have `TchpPomSpecLine` (+ GradeValue / SizeRunSizes view):
 | Form layout | **omit** (not a user-facing grid) |
 
 Blueprint JSON array: `techPackGradeValuePivotBindings` (generator emits for `role=Grading` when View + PomSpecLine present).
+
+### TechPack Simple QC — QX1 import exception (locked)
+
+**Scope:** PLM Spec QC import is **Simple QC** only. When IMPORT detects a **Spec QC** system block / `SpecQCGrid` on the current tab (or `techPack.bindings` `role=SimpleQC` / `systemBlockGrids` `role=SpecQC`), take the Simple QC path — do **not** emit a flat `Plm_SpecQCGrid` with `QCSize1`…`QCSize20` columns.
+
+QC Order / Garment tables and transactions are a **separate APP configuration** (not imported from PLM). This path must **not** create or alter them.
+
+#### QX1 — APP tables
+
+| PLM source | APP target | Notes |
+|------------|------------|-------|
+| QC Tab — non-grid SubItems (comments, color, etc.) | Sibling `Plm_{Tab…}` (auto name from TAB) | Same as normal tab sibling DDL/MAPPING |
+| QC Tab `Selected_Size` | `Plm_{Tab…}.SelectedSizes` **and** `TchpStyleSpec.QcSelectedSizes` | Pipe-delimited **SizeRunSizeId** (`SizeRunRotateId`). Dual-write: Plm_* for form; StyleSpec for size VIEW / pivot MatrixKey (parallel to Grading `VisibleSizes`, **separate** column so QC ≠ Grading whitelist) |
+| QC Tab Size_Run / Base_Size / Measure_Unit | `TchpStyleSpec` only | **S1** strip from `Plm_*`; on Simple QC TX these StyleSpec fields are **IsReadOnly** (filled by Grading import / shared StyleSpec) |
+| SpecQCGrid — size-**independent** columns | Child `Plm_SimpleQC` | One POM / CriticalPoint row; PK `RowId`; FK `ReferenceId` |
+| SpecQCGrid — size-**dependent** columns `*{N}` | Grandchild `Plm_SimpleQCResult` | One row per `(SimpleQC RowId, SizeRunSizeId)`; strip trailing size index from column names |
+| — | Child `View_TchpSimpleQcSelectedSizes` | Pivot column domain (Form omit); link `StyleSpecId` → Root.`ReferenceId`; **IsReadOnly** |
+
+#### QX1 — Transaction shape: **Simple QC**
+
+| Unit | Table | Kind |
+|------|-------|------|
+| Root | `Plm_ReferenceBasicInfo` (or template root) | Master |
+| Sibling | `TchpStyleSpec` | Shared; SizeRun / BaseSize / UOM **read-only** on this TX; `QcSelectedSizes` MultiSelectDDL (optional on Form) |
+| Sibling | `Plm_{QC Tab}` | Tab non-grid fields + `SelectedSizes` |
+| Child (pivot domain) | `View_TchpSimpleQcSelectedSizes` | Like V1 SizeRunSizes; Form **omit** |
+| Child | `Plm_SimpleQC` | POM list |
+| Grandchild | `Plm_SimpleQCResult` | `EmGridViewDisplayType = ChildUnitPivotColumns (7)`; pivot by Selected QC sizes |
+
+#### QX1 — `Plm_SimpleQC` columns (SIZE-independent)
+
+| PLM SpecQCGrid InternalCode / stem | APP Column |
+|------------------------------------|------------|
+| CriticalPoint | CriticalPoint |
+| BodyPartDetailIDWDimDetailID | BodyPartDetailIDWDimDetailID |
+| Code | Code |
+| BodyPartName | BodyPartName |
+| BodyPartDesc | BodyPartDesc |
+| HowToMeasure | HowToMeasure |
+| Tolerance | Tolerance |
+| GradingBaseSize | GradingBaseSize |
+| Commtents | Commtents |
+| Add.Desc / Add_Desc / AddDesc | **AddDesc** |
+| DimensionDetail | DimensionDetail |
+| Dimension | Dimension |
+| NeedToApplyGradingRule | NeedToApplyGradingRule |
+
+Plus `RowId` (identity PK), `ReferenceId`, `Sort` when present on DW.
+
+#### QX1 — `Plm_SimpleQCResult` columns (SIZE-dependent; single series)
+
+PLM has slots `1…MaxiumGradingSizeCounter` (typically 20). **Not** dual-series (`QCSize11` is size slot 11, not a second measure for size 1).
+
+| PLM (Index=N) | APP Column |
+|---------------|------------|
+| GradingSize**N** | GradingSize |
+| QCSize**N** | QCSize |
+| Difference**N** | Difference |
+| QCSizeBeforeWash**N** | QCSizeBeforeWash |
+| DiffBeforeWashAndGrading**N** | DiffBeforeWashAndGrading |
+| QCAfterWashIron**N** | QCAfterWashIron |
+| DiffAfterIronAndGrading**N** | DiffAfterIronAndGrading |
+| QCAfterIron**N** | QCAfterIron |
+
+Plus: `RowId`, `ParentRowId` → `Plm_SimpleQC.RowId`, **`SizeRunSizeId`** (required).
+
+#### QX1 — Size Index N → `SizeRunSizeId` (from PLM source)
+
+Locked from `PomHelper.GetDictSortSizeRelatedRotateSizeId` + `SpecBlockControlHelper.SetupQCSizeDisplay`:
+
+1. Load SizeRun sizes ordered by **`SizeOrder`** (`TblSizeRunRotate` / `TchpSizeRunSize`).
+2. Column suffix **N** = **1-based position** in that full list (`QCSize{N}` ↔ sizes[N−1]).
+3. **Selected** sizes (`PdmProductQcSize` / `Selected_Size`) only control **column visibility** in PLM — they do **not** renumber slots (unselected sizes keep their N; columns hide).
+
+Import UNPIVOT:
+
+```
+SizeRunId = QC Tab Size_Run (or TchpStyleSpec.SizeRunId)
+sizes = TchpSizeRunSize WHERE SizeRunId ORDER BY SizeOrder
+FOR N = 1 .. Max:
+  IF sizes[N-1] exists:
+    INSERT Plm_SimpleQCResult (…, SizeRunSizeId = sizes[N-1].SizeRunSizeId,
+      GradingSize = GradingSizeN, QCSize = QCSizeN, …)
+```
+
+Pivot UI: Matrix column domain = `View_TchpSimpleQcSelectedSizes.SizeRunSizeId`; MatrixKey = `IsVisible` (QcSelectedSizes whitelist; empty = show all SizeRun sizes). Grandchild field `IsVisible` from PLM meta (same as other tabs).
+
+#### QX1 — `View_TchpSimpleQcSelectedSizes`
+
+Keep identical in `POM_Grading_QC_NewSchema.sql` and emitted `3b_Tchp_ImportFromDW.sql` when Simple QC present:
+
+- Columns: `SizeRunSizeId`, `SizeLabel`, `SizeOrder`, `StyleSpecId`, `IsVisible`
+- `IsVisible`: `TchpStyleSpec.QcSelectedSizes` pipe/comma whitelist of SizeRunSizeId; NULL/empty = all sizes visible (same semantics as Grading `VisibleSizes`)
+- Does **not** use Grading `VisibleSizes`
+
+#### QX1 — config / generator keys
+
+| Key | Purpose |
+|-----|---------|
+| `techPack.systemBlockGrids[]` `role=SpecQC` | Skip flat Plm_* SpecQCGrid DDL; source for UNPIVOT |
+| `techPack.bindings[]` `role=SimpleQC` | TX unit tree: StyleSpec + Plm tab sibling + size view + SimpleQC/Result |
+| `techPackSimpleQcPivotBindings` | Blueprint Phase D: Result unit → ChildUnitPivotColumns |
+
+Phase D: StyleSpec SizeRun/BaseSize/UOM **IsReadOnly** on Simple QC TX; apply Simple QC pivot bindings (mirror P1 GradeValue ↔ size view).
 ---
 
 ## Example session message

@@ -591,6 +591,196 @@ WHERE TransactionUnitID = @UnitId";
         }
 
         /// <summary>
+        /// TechPack Simple QC (QX1): Plm_SimpleQCResult → ChildUnitPivotColumns;
+        /// column domain = View_TchpSimpleQcSelectedSizes (QcSelectedSizes whitelist).
+        /// </summary>
+        private static void ApplyTechPackSimpleQcPivotBindingsSql(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            int plmTabId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            var bindings = plan?.TechPackSimpleQcPivotBindings?
+                .Where(b => b != null && b.PlmTabId == plmTabId)
+                .ToList() ?? new List<PlmDwBlueprintTechPackSimpleQcPivotDto>();
+
+            if (bindings.Count == 0 && plan?.ChildUnitDefs != null)
+            {
+                bool hasView = plan.ChildUnitDefs.Any(c =>
+                    c?.AppTableName != null
+                    && c.AppTableName.IndexOf("View_TchpSimpleQcSelectedSizes", StringComparison.OrdinalIgnoreCase) >= 0);
+                var host = plan.ChildUnitDefs.FirstOrDefault(c =>
+                    c?.AppTableName != null
+                    && c.AppTableName.IndexOf("SimpleQC", StringComparison.OrdinalIgnoreCase) >= 0
+                    && c.AppTableName.IndexOf("SimpleQCResult", StringComparison.OrdinalIgnoreCase) < 0
+                    && c.GrandChildAppTableNames != null
+                    && c.GrandChildAppTableNames.Any(g =>
+                        g != null && g.IndexOf("SimpleQCResult", StringComparison.OrdinalIgnoreCase) >= 0));
+                if (hasView && host != null)
+                {
+                    bindings.Add(new PlmDwBlueprintTechPackSimpleQcPivotDto
+                    {
+                        PlmTabId = plmTabId,
+                        HostAppTableName = "SimpleQC",
+                        GrandchildAppTableName = "SimpleQCResult",
+                        SourceAppTableName = "View_TchpSimpleQcSelectedSizes",
+                        SourcePivotKeyColumn = "SizeRunSizeId",
+                        PivotColumnField = "SizeRunSizeId",
+                        PivotValueFields = new List<string>
+                        {
+                            "GradingSize", "QCSize", "Difference",
+                            "QCSizeBeforeWash", "DiffBeforeWashAndGrading",
+                            "QCAfterWashIron", "DiffAfterIronAndGrading",
+                            "QCAfterIron"
+                        },
+                        SkipMatrixKeyVisibleFilter = false,
+                        SkipTablePrefixOnSource = true
+                    });
+                }
+            }
+
+            foreach (var binding in bindings)
+            {
+                string hostTable = QualifyBlueprintTableName(
+                    binding.HostAppTableName ?? "SimpleQC", tablePrefix, skipTablePrefix: binding.SkipTablePrefixOnHost);
+                string gcTable = QualifyBlueprintTableName(
+                    binding.GrandchildAppTableName ?? "SimpleQCResult", tablePrefix, skipTablePrefix: binding.SkipTablePrefixOnGrandchild);
+                string sourceTable = QualifyBlueprintTableName(
+                    binding.SourceAppTableName ?? "View_TchpSimpleQcSelectedSizes", tablePrefix, skipTablePrefix: binding.SkipTablePrefixOnSource);
+
+                int? hostUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, hostTable);
+                int? sourceUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, sourceTable);
+                if (!hostUnitId.HasValue || !sourceUnitId.HasValue)
+                    continue;
+
+                int? grandchildUnitId = GetChildTransactionUnitIdByTableName(
+                    conn, tran, transactionId, hostUnitId.Value, gcTable);
+                if (!grandchildUnitId.HasValue)
+                    grandchildUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, gcTable);
+                if (!grandchildUnitId.HasValue)
+                    continue;
+
+                // ParentRowId → host RowId for nested load
+                int? hostPkFieldId = GetTransactionFieldId(conn, tran, hostUnitId.Value, "RowId");
+                if (hostPkFieldId.HasValue
+                    && GetTransactionFieldId(conn, tran, grandchildUnitId.Value, "ParentRowId").HasValue)
+                {
+                    SetFieldLinkToParentPrimaryKeySql(
+                        conn, tran, grandchildUnitId.Value, "ParentRowId", hostPkFieldId.Value);
+                }
+
+                string sourceKeyCol = string.IsNullOrWhiteSpace(binding.SourcePivotKeyColumn)
+                    ? "SizeRunSizeId"
+                    : binding.SourcePivotKeyColumn.Trim();
+                string pivotColField = string.IsNullOrWhiteSpace(binding.PivotColumnField)
+                    ? "SizeRunSizeId"
+                    : binding.PivotColumnField.Trim();
+
+                var pivotValFields = (binding.PivotValueFields ?? new List<string>())
+                    .Where(f => !string.IsNullOrWhiteSpace(f))
+                    .Select(f => f.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (pivotValFields.Count == 0 && !string.IsNullOrWhiteSpace(binding.PivotValueField))
+                    pivotValFields.Add(binding.PivotValueField.Trim());
+                if (pivotValFields.Count == 0)
+                    pivotValFields.Add("QCSize");
+
+                int? sourcePivotFieldId = GetTransactionFieldId(conn, tran, sourceUnitId.Value, sourceKeyCol);
+                if (!sourcePivotFieldId.HasValue)
+                    continue;
+
+                int? matrixKeyFieldId = EnsureViewIsVisibleTransactionField(conn, tran, sourceUnitId.Value);
+                if (binding.SkipMatrixKeyVisibleFilter)
+                    matrixKeyFieldId = null;
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit
+SET EmGridViewDisplayType = @DisplayType,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId";
+                    cmd.Parameters.AddWithValue("@DisplayType", (int)EmAppTransactionGridDisplayType.ChildUnitPivotColumns);
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.ExecuteNonQuery();
+                }
+
+                int? sizeRunDetailEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "SizeRunDetail");
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    IsPivotColumn = 1,
+    IsPivotValue = 0,
+    MatrixForeignKeyFieldId = @SourceFieldId,
+    MatrixKeyTransactionFieldId = @MatrixKeyFieldId,
+    ControlType = @Ddl,
+    EntityId = COALESCE(@EntityId, EntityId),
+    DisplayWidth = N'150',
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                    cmd.Parameters.AddWithValue("@SourceFieldId", sourcePivotFieldId.Value);
+                    cmd.Parameters.AddWithValue("@MatrixKeyFieldId", (object)matrixKeyFieldId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Ddl", (int)EmAppControlType.DDL);
+                    cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.Parameters.AddWithValue("@FieldName", pivotColField);
+                    cmd.ExecuteNonQuery();
+                }
+
+                foreach (string pivotValField in pivotValFields)
+                {
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.Transaction = tran;
+                        cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    IsPivotValue = 1,
+    IsPivotColumn = 0,
+    DisplayWidth = N'120',
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                        cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                        cmd.Parameters.AddWithValue("@FieldName", pivotValField);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+
+                // StyleSpec size fields read-only on Simple QC TX
+                int? styleSpecUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, "TchpStyleSpec");
+                if (styleSpecUnitId.HasValue)
+                {
+                    foreach (string roField in new[] { "SizeRunId", "BaseSizeDetailId", "UnitOfMeasure" })
+                    {
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.Transaction = tran;
+                            cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    IsReadonly = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                            cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId.Value);
+                            cmd.Parameters.AddWithValue("@FieldName", roField);
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                }
+            }
+        }
+
+        /// <summary>
         /// F2: wire Child Unit Link Target from SUMMARY TchpFitRound → FIT ROUND transaction.
         /// Uses SourceColumn1 (field name) — not SourceViewColumnID1 (FK to AppSearchViewField).
         /// </summary>

@@ -42,6 +42,10 @@ namespace APP.BL.DataMigration.PlmMigration
             public List<PlmDwBlueprintTechPackFitMeasurementPivotDto> TechPackFitMeasurementPivotBindings { get; } =
                 new List<PlmDwBlueprintTechPackFitMeasurementPivotDto>();
 
+            /// <summary>TechPack Simple QC QX1: SimpleQCResult ChildUnitPivotColumns ← View_TchpSimpleQcSelectedSizes.</summary>
+            public List<PlmDwBlueprintTechPackSimpleQcPivotDto> TechPackSimpleQcPivotBindings { get; } =
+                new List<PlmDwBlueprintTechPackSimpleQcPivotDto>();
+
             /// <summary>Grandchild pivot unit fields (visibility after transaction create).</summary>
             public Dictionary<string, List<PlmTemplateSubItemRow>> GrandchildColumnsByTable { get; } =
                 new Dictionary<string, List<PlmTemplateSubItemRow>>(StringComparer.OrdinalIgnoreCase);

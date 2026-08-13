@@ -1,0 +1,3074 @@
+﻿{
+    "schemaVersion":  1,
+    "generatedAt":  "2026-08-13T16:55:33.2219040Z",
+    "source":  {
+                   "plmTemplateId":  3292,
+                   "plmDatabase":  "plm_live_20260602",
+                   "dwDatabase":  "plmDW",
+                   "importTabIds":  [
+                                        3991,
+                                        4029,
+                                        4030
+                                    ],
+                   "tablePrefix":  "Plm_",
+                   "configFile":  "source/dwTabImportConfig.json",
+                   "outputFolder":  "output/3292"
+               },
+    "plmTemplate":  {
+                        "templateId":  3292,
+                        "templateName":  "02d- QC \u0026 Testing",
+                        "templateHeaderTabIds":  [
+                                                     3991
+                                                 ]
+                    },
+    "transactionGroup":  {
+                             "name":  "02d- QC \u0026 Testing",
+                             "integrationId":  "TG_02dQcTesting",
+                             "saasApplicationId":  null
+                         },
+    "rootUnit":  {
+                     "appTableName":  "Plm_ReferenceBasicInfo",
+                     "integrationId":  "Unit_ReferenceBasicInfo",
+                     "referenceScope":  {
+                                            "dwTable":  "PLM_DW_Tab_Style_Header_V2K_ERP_3991",
+                                            "dwColumn":  "Product_Code_5021",
+                                            "plmTabId":  3991,
+                                            "plmSubItemId":  5021
+                                        }
+                 },
+    "tabSharedTableGroups":  [
+
+                             ],
+    "transactions":  [
+                         {
+                             "plmTabId":  3991,
+                             "plmTabName":  "Style Header_V2K ERP",
+                             "integrationId":  "Tab_3991",
+                             "transactionName":  "Style Header_V2K ERP",
+                             "importStatus":  "Skipped",
+                             "plmTabSort":  1,
+                             "isTemplateHeaderTab":  true,
+                             "unitStructure":  {
+                                                   "mode":  "RootPlusMasterSibling",
+                                                   "rootTableName":  "Plm_ReferenceBasicInfo",
+                                                   "siblingUnits":  [
+                                                                        {
+                                                                            "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                                                            "isMasterSibling":  true,
+                                                                            "fieldPolicy":  "AllMappedColumns"
+                                                                        }
+                                                                    ],
+                                                   "childUnits":  [
+
+                                                                  ]
+                                               }
+                         },
+                         {
+                             "plmTabId":  4029,
+                             "plmTabName":  "QC",
+                             "integrationId":  "Tab_4029",
+                             "transactionName":  "QC",
+                             "importStatus":  "Ready",
+                             "plmTabSort":  2,
+                             "isTemplateHeaderTab":  false,
+                             "unitStructure":  {
+                                                   "mode":  "RootPlusMasterSibling",
+                                                   "rootTableName":  "Plm_ReferenceBasicInfo",
+                                                   "siblingUnits":  [
+                                                                        {
+                                                                            "appTableName":  "Plm_QC",
+                                                                            "isMasterSibling":  true,
+                                                                            "fieldPolicy":  "AllMappedColumns"
+                                                                        },
+                                                                        {
+                                                                            "appTableName":  "TchpStyleSpec",
+                                                                            "isMasterSibling":  false,
+                                                                            "fieldPolicy":  "AllMappedColumns",
+                                                                            "skipTablePrefix":  true,
+                                                                            "linkToParentField":  "StyleSpecId",
+                                                                            "parentPrimaryKeyField":  "ReferenceId"
+                                                                        }
+                                                                    ],
+                                                   "childUnits":  [
+                                                                      {
+                                                                          "appTableName":  "View_TchpSimpleQcSelectedSizes",
+                                                                          "attachToRoot":  true,
+                                                                          "skipTablePrefix":  true,
+                                                                          "linkToParentField":  "StyleSpecId",
+                                                                          "parentPrimaryKeyField":  "ReferenceId",
+                                                                          "grandChildAppTableNames":  [
+
+                                                                                                      ],
+                                                                          "isReadOnly":  true,
+                                                                          "unitDisplayName":  "QcSelectedSizes",
+                                                                          "visibleFieldNames":  [
+                                                                                                    "SizeRunSizeId",
+                                                                                                    "SizeLabel",
+                                                                                                    "SizeOrder"
+                                                                                                ]
+                                                                      },
+                                                                      {
+                                                                          "appTableName":  "SimpleQC",
+                                                                          "attachToRoot":  true,
+                                                                          "skipTablePrefix":  false,
+                                                                          "linkToParentField":  "ReferenceId",
+                                                                          "parentPrimaryKeyField":  "ReferenceId",
+                                                                          "grandChildAppTableNames":  [
+                                                                                                          "SimpleQCResult"
+                                                                                                      ],
+                                                                          "unitDisplayName":  "Simple QC"
+                                                                      }
+                                                                  ]
+                                               }
+                         },
+                         {
+                             "plmTabId":  4030,
+                             "plmTabName":  "Testing",
+                             "integrationId":  "Tab_4030",
+                             "transactionName":  "Testing",
+                             "importStatus":  "Ready",
+                             "plmTabSort":  3,
+                             "isTemplateHeaderTab":  false,
+                             "unitStructure":  {
+                                                   "mode":  "RootPlusMasterSibling",
+                                                   "rootTableName":  "Plm_ReferenceBasicInfo",
+                                                   "siblingUnits":  [
+                                                                        {
+                                                                            "appTableName":  "Plm_Testing",
+                                                                            "isMasterSibling":  true,
+                                                                            "fieldPolicy":  "AllMappedColumns"
+                                                                        }
+                                                                    ],
+                                                   "childUnits":  [
+
+                                                                  ]
+                                               }
+                         }
+                     ],
+    "gridBindings":  [
+                         {
+                             "plmGridId":  22,
+                             "appTableName":  "Plm_SimpleQC",
+                             "parentPlmTabId":  4029,
+                             "attachToRoot":  false,
+                             "integrationId":  "Grid_22",
+                             "transactionIntegrationId":  "Tab_4029",
+                             "grandChildAppTableNames":  [
+                                                             "Plm_SimpleQCResult"
+                                                         ]
+                         },
+                         {
+                             "plmGridId":  3005,
+                             "appTableName":  "Plm_Product_Test_Grid_reg",
+                             "parentPlmTabId":  4030,
+                             "attachToRoot":  false,
+                             "integrationId":  "Grid_3005",
+                             "transactionIntegrationId":  "Tab_4030",
+                             "grandChildAppTableNames":  null
+                         }
+                     ],
+    "bomColorwayPivotBindings":  [],
+    "techPackGradeValuePivotBindings":  [
+
+                                        ],
+    "techPackFitMeasurementPivotBindings":  [
+
+                                            ],
+    "techPackSimpleQcPivotBindings":  [
+                                          {
+                                              "plmTabId":  4029,
+                                              "hostAppTableName":  "SimpleQC",
+                                              "grandchildAppTableName":  "SimpleQCResult",
+                                              "sourceAppTableName":  "View_TchpSimpleQcSelectedSizes",
+                                              "sourcePivotKeyColumn":  "SizeRunSizeId",
+                                              "pivotColumnField":  "SizeRunSizeId",
+                                              "pivotValueFields":  [
+                                                                       "GradingSize",
+                                                                       "QCSize",
+                                                                       "Difference",
+                                                                       "QCSizeBeforeWash",
+                                                                       "DiffBeforeWashAndGrading",
+                                                                       "QCAfterWashIron",
+                                                                       "DiffAfterIronAndGrading",
+                                                                       "QCAfterIron"
+                                                                   ],
+                                              "skipMatrixKeyVisibleFilter":  false,
+                                              "skipTablePrefixOnHost":  false,
+                                              "skipTablePrefixOnGrandchild":  false,
+                                              "skipTablePrefixOnSource":  true
+                                          }
+                                      ],
+    "blueprintFields":  [
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Classification",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  1,
+                                "displayLabel":  "Product Class",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "1"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Product_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4,
+                                "displayLabel":  "Product Type",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "4"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Season_3",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  8,
+                                "displayLabel":  "Season",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "8"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Collection",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  6,
+                                "displayLabel":  "Collection",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "6"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Group",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  7,
+                                "displayLabel":  "Group",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "7"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Sketch",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Sketch",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Division_8",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  5,
+                                "displayLabel":  "Division",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "5"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Size_Range_10",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  10,
+                                "displayLabel":  "Size Range",
+                                "displayOrder":  8,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "10"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Dimension_11",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  9,
+                                "displayLabel":  "Dimension",
+                                "displayOrder":  9,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "9"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Article",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Style #",
+                                "displayOrder":  10,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Description",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Description",
+                                "displayOrder":  11,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Composition",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  12,
+                                "displayLabel":  "Composition",
+                                "displayOrder":  12,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "12"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Made_in_Country",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  59,
+                                "displayLabel":  "Made in Country",
+                                "displayOrder":  13,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "59"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Vendor",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  42,
+                                "displayLabel":  "Supplier",
+                                "displayOrder":  14,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "42"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Country_Of_Origin",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  59,
+                                "displayLabel":  "Country Of Origin",
+                                "displayOrder":  15,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "59"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Product_Manager",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  80,
+                                "displayLabel":  "Product Manager",
+                                "displayOrder":  16,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "80"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Long_Description",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Description 2",
+                                "displayOrder":  17,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Sample_Size_Detail",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  63,
+                                "displayLabel":  "Sample Size",
+                                "displayOrder":  18,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "63"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Date_Shipping_1",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Ship Date 1",
+                                "displayOrder":  19,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Date_Shipping_2",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Ship Date 2",
+                                "displayOrder":  20,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CancelByDate",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Cancel by Date",
+                                "displayOrder":  21,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "ProductTypeGroup",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  95,
+                                "displayLabel":  "Type Group",
+                                "displayOrder":  22,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "95"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Size_Detail_Dispaly",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  63,
+                                "displayLabel":  "Size Detail Dispaly",
+                                "displayOrder":  23,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "63"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Division_186",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  5,
+                                "displayLabel":  "Division",
+                                "displayOrder":  24,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "5"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Created_By",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Created By",
+                                "displayOrder":  25,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Last_Revised_By",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Revised By",
+                                "displayOrder":  26,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "ProductReferenceId",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ProductReferenceId",
+                                "displayOrder":  27,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Style_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3501,
+                                "displayLabel":  "Style Status",
+                                "displayOrder":  28,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "3501"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "State_3005",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "State",
+                                "displayOrder":  29,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Sample_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Sample Status",
+                                "displayOrder":  30,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_Fit_1_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3459,
+                                "displayLabel":  "CB_Fit 1 Status",
+                                "displayOrder":  31,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3459"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "IN_Fit_1_State",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "IN_Fit 1 State",
+                                "displayOrder":  32,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_Fit_2_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3459,
+                                "displayLabel":  "CB_Fit 2 Status",
+                                "displayOrder":  33,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3459"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "IN_Fit_2_State",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "IN_Fit 2 State",
+                                "displayOrder":  34,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_Fit_3_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3459,
+                                "displayLabel":  "CB_Fit 3 Status",
+                                "displayOrder":  35,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3459"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "IN_Fit_3_State",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "IN_Fit 3 State",
+                                "displayOrder":  36,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_Fit_4_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3459,
+                                "displayLabel":  "CB_Fit 4 Status",
+                                "displayOrder":  37,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3459"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "IN_Fit_4_State",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "IN_Fit 4 State",
+                                "displayOrder":  38,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_PP_1_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3459,
+                                "displayLabel":  "CB_PP 1 Status",
+                                "displayOrder":  39,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3459"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "IN_PP_1_State",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "IN_PP 1 State",
+                                "displayOrder":  40,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_PP_2_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3459,
+                                "displayLabel":  "CB_PP 2 Status",
+                                "displayOrder":  41,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3459"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "IN_PP_2_State",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "IN_PP 2 State",
+                                "displayOrder":  42,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_PP_3_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3459,
+                                "displayLabel":  "CB_PP 3 Status",
+                                "displayOrder":  43,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3459"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "IN_PP_3_State",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "IN_PP 3 State",
+                                "displayOrder":  44,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_TOP_1_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3459,
+                                "displayLabel":  "CB_TOP 1 Status",
+                                "displayOrder":  45,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3459"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "IN_TOP_1_State",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "IN_TOP 1 State",
+                                "displayOrder":  46,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_TOP_2_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3459,
+                                "displayLabel":  "CB_TOP 2 Status",
+                                "displayOrder":  47,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3459"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "IN_TOP_2_State",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "IN_TOP 2 State",
+                                "displayOrder":  48,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CHK_Fit_1_Latest",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CHK_Fit 1 Latest",
+                                "displayOrder":  49,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CHK_Fit_2_Latest",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CHK_Fit 2 Latest",
+                                "displayOrder":  50,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CHK_Fit_3_Latest",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CHK_Fit 3 Latest",
+                                "displayOrder":  51,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CHK_Fit_4_Latest",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CHK_Fit 4 Latest",
+                                "displayOrder":  52,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CHK_PP_1_Latest",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CHK_PP 1 Latest",
+                                "displayOrder":  53,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CHK_PP_2_Latest",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CHK_PP 2 Latest",
+                                "displayOrder":  54,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CHK_PP_3_Latest",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CHK_PP 3 Latest",
+                                "displayOrder":  55,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CHK_TOP_1_Latest",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CHK_TOP 1 Latest",
+                                "displayOrder":  56,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CHK_TOP_2_Latest",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CHK_TOP 2 Latest",
+                                "displayOrder":  57,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "fit1status_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "fit1status_IB",
+                                "displayOrder":  58,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "fit2status_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "fit2status_IB",
+                                "displayOrder":  59,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "fit3status_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "fit3status_IB",
+                                "displayOrder":  60,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "fit4status_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "fit4status_IB",
+                                "displayOrder":  61,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "pp1status_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "pp1status_IB",
+                                "displayOrder":  62,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "pp2status_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "pp2status_IB",
+                                "displayOrder":  63,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "pp3status_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "pp3status_IB",
+                                "displayOrder":  64,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "top1status_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "top1status_IB",
+                                "displayOrder":  65,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "top2status_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "top2status_IB",
+                                "displayOrder":  66,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_Fit_1_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3458,
+                                "displayLabel":  "CB_Fit 1 Type",
+                                "displayOrder":  67,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3458"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "fit1type_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "fit1type_IB",
+                                "displayOrder":  68,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_Fit_2_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3458,
+                                "displayLabel":  "CB_Fit 2 Type",
+                                "displayOrder":  69,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3458"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "fit2type_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "fit2type_IB",
+                                "displayOrder":  70,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_Fit_3_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3458,
+                                "displayLabel":  "CB_Fit 3 Type",
+                                "displayOrder":  71,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3458"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "fit3type_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "fit3type_IB",
+                                "displayOrder":  72,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_Fit_4_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3458,
+                                "displayLabel":  "CB_Fit 4 Type",
+                                "displayOrder":  73,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3458"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "fit4type_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "fit4type_IB",
+                                "displayOrder":  74,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_PP_1_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3458,
+                                "displayLabel":  "CB_PP 1 Type",
+                                "displayOrder":  75,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3458"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "pp1type_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "pp1type_IB",
+                                "displayOrder":  76,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_PP_2_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3458,
+                                "displayLabel":  "CB_PP 2 Type",
+                                "displayOrder":  77,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3458"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "pp2type_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "pp2type_IB",
+                                "displayOrder":  78,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_PP_3_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3458,
+                                "displayLabel":  "CB_PP 3 Type",
+                                "displayOrder":  79,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3458"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "pp3type_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "pp3type_IB",
+                                "displayOrder":  80,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_TOP_1_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3458,
+                                "displayLabel":  "CB_TOP 1 Type",
+                                "displayOrder":  81,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3458"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "top1type_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "top1type_IB",
+                                "displayOrder":  82,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CB_TOP_2_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3458,
+                                "displayLabel":  "CB_TOP 2 Type",
+                                "displayOrder":  83,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3458"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "top2type_IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "top2type_IB",
+                                "displayOrder":  84,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Calc_Fit_Status",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Calc_Fit Status",
+                                "displayOrder":  85,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Item_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  123,
+                                "displayLabel":  "Item Type",
+                                "displayOrder":  86,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "123"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Supplier_Number",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Supplier Number",
+                                "displayOrder":  87,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Publish_to_ERP",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Publish to ERP",
+                                "displayOrder":  88,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Published_to_ERP",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Published to ERP",
+                                "displayOrder":  89,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Supplier_Article_Number",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Supplier Art.No",
+                                "displayOrder":  90,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Global_ID",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Global ID",
+                                "displayOrder":  91,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Publish_Failed_to_ERP",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Publish Failed to ERP",
+                                "displayOrder":  92,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Composition_txt",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Composition_txt",
+                                "displayOrder":  93,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Sizerun",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  10,
+                                "displayLabel":  "Sizerun",
+                                "displayOrder":  94,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "10"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "NumberSize",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NumberSize",
+                                "displayOrder":  95,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Composition1",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Composition1%",
+                                "displayOrder":  96,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Compositionfiber1",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3626,
+                                "displayLabel":  "Compositionfiber1",
+                                "displayOrder":  97,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "3626"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Composition2",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Composition2%",
+                                "displayOrder":  98,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Compositionfiber2",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3626,
+                                "displayLabel":  "Compositionfiber2",
+                                "displayOrder":  99,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "3626"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Composition3",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Composition3%",
+                                "displayOrder":  100,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Compositionfiber3",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3626,
+                                "displayLabel":  "Compositionfiber3",
+                                "displayOrder":  101,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "3626"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp1",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp1%",
+                                "displayOrder":  102,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp2",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp2%",
+                                "displayOrder":  103,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp3",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp3%",
+                                "displayOrder":  104,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber1CB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3626,
+                                "displayLabel":  "Fiber1CB",
+                                "displayOrder":  105,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3626"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber2CB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3626,
+                                "displayLabel":  "Fiber2CB",
+                                "displayOrder":  106,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3626"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber3CB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3626,
+                                "displayLabel":  "Fiber3CB",
+                                "displayOrder":  107,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3626"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber1IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Fiber1IB",
+                                "displayOrder":  108,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber2IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Fiber2IB",
+                                "displayOrder":  109,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber3IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Fiber3IB",
+                                "displayOrder":  110,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp_ok",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp%ok",
+                                "displayOrder":  111,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Total_Composition",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Total Composition",
+                                "displayOrder":  112,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Image1",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image1",
+                                "displayOrder":  113,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Image2",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  5,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Image2",
+                                "displayOrder":  114,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Image1Link",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Image1Link",
+                                "displayOrder":  115,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Image2Link",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Image2Link",
+                                "displayOrder":  116,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "style_size",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  63,
+                                "displayLabel":  "Size Break",
+                                "displayOrder":  117,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "63"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "sizeorder",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "sizeorder",
+                                "displayOrder":  118,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CompositionDDL",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  12,
+                                "displayLabel":  "CompositionDDL",
+                                "displayOrder":  119,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "12"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Valid_Selection",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Valid Selection",
+                                "displayOrder":  120,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "CompositionTXT",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "CompositionTXT",
+                                "displayOrder":  121,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "comp1ok",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "comp1ok",
+                                "displayOrder":  122,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "comp2ok",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "comp2ok",
+                                "displayOrder":  123,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "comp3ok",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "comp3ok",
+                                "displayOrder":  124,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Product_Code",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Product Code",
+                                "displayOrder":  125,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Size_Range_5022",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  10,
+                                "displayLabel":  "Size Range",
+                                "displayOrder":  126,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "10"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "DivisionBlock",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  5,
+                                "displayLabel":  "DivisionBlock",
+                                "displayOrder":  127,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "5"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Product_Class",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  1,
+                                "displayLabel":  "Product Class",
+                                "displayOrder":  128,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "1"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Dimension_5025",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  9,
+                                "displayLabel":  "Dimension",
+                                "displayOrder":  129,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "9"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Season_5026",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  8,
+                                "displayLabel":  "Season",
+                                "displayOrder":  130,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "8"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Price_Type",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  84,
+                                "displayLabel":  "Price Type",
+                                "displayOrder":  131,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "84"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "First_Cost_Currency",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  68,
+                                "displayLabel":  "First Cost Currency",
+                                "displayOrder":  132,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "68"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Valid_Size_Selection",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Valid Size Selection",
+                                "displayOrder":  133,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Valid_Product_Code_Selection",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Valid Product Code Selection",
+                                "displayOrder":  134,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Valid_DivisionBlock_Selection",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Valid DivisionBlock Selection",
+                                "displayOrder":  135,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Valid_Product_Class_Selection",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Valid Product Class Selection",
+                                "displayOrder":  136,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Valid_Dimension_Selection",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Valid Dimension Selection",
+                                "displayOrder":  137,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Valid_Season_Selection",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Valid Season Selection",
+                                "displayOrder":  138,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Valid_Price_Type_Selection",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Valid Price Type Selection",
+                                "displayOrder":  139,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Valid_First_Cost_Currency_Selection",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Valid First Cost Currency Selection",
+                                "displayOrder":  140,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Color",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Color",
+                                "displayOrder":  141,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Valid_Color_Selection",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Valid Color Selection",
+                                "displayOrder":  142,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Active_Count",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Active Count",
+                                "displayOrder":  143,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "DimensionColorSizeActiveBooleanSum",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "DimensionColorSizeActiveBooleanSum",
+                                "displayOrder":  144,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Style",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  1,
+                                "displayLabel":  "Style",
+                                "displayOrder":  145,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "1"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Article_gen",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Article#_gen",
+                                "displayOrder":  146,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Styleautogencalc",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  1,
+                                "displayLabel":  "Styleautogencalc",
+                                "displayOrder":  147,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "1"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "EmptyPC",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "EmptyPC",
+                                "displayOrder":  148,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "test",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "test",
+                                "displayOrder":  149,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp1_Tx",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp1%Tx",
+                                "displayOrder":  150,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp2_Tx",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp2%Tx",
+                                "displayOrder":  151,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp3_Tx",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp3%Tx",
+                                "displayOrder":  152,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "state_5078",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "state",
+                                "displayOrder":  153,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "state_5079",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "state",
+                                "displayOrder":  154,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "state_5080",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "state",
+                                "displayOrder":  155,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Percent_Chk",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Percent Chk",
+                                "displayOrder":  156,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp4",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp4%",
+                                "displayOrder":  157,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp5",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp5%",
+                                "displayOrder":  158,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber4CB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3626,
+                                "displayLabel":  "Fiber4CB",
+                                "displayOrder":  159,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3626"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber5CB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3626,
+                                "displayLabel":  "Fiber5CB",
+                                "displayOrder":  160,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3626"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber4IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Fiber4IB",
+                                "displayOrder":  161,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber5IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Fiber5IB",
+                                "displayOrder":  162,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "comp4ok",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "comp4ok",
+                                "displayOrder":  163,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "comp5ok",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "comp5ok",
+                                "displayOrder":  164,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp4_Tx",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp4%Tx",
+                                "displayOrder":  165,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp5_Tx",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp5%Tx",
+                                "displayOrder":  166,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "French",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "French",
+                                "displayOrder":  167,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Name",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Name",
+                                "displayOrder":  168,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Product_Type_txt",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Product Type_txt",
+                                "displayOrder":  169,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "sketch_id",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "sketch id",
+                                "displayOrder":  170,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "ddl",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  11,
+                                "displayLabel":  "ddl",
+                                "displayOrder":  171,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Collection_txt",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Collection_txt",
+                                "displayOrder":  172,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp6",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp6%",
+                                "displayOrder":  173,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber6CB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3626,
+                                "displayLabel":  "Fiber6CB",
+                                "displayOrder":  174,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "3626"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Fiber6IB",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Fiber6IB",
+                                "displayOrder":  175,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "comp6ok",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "comp6ok",
+                                "displayOrder":  176,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Comp6_Tx",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comp6%Tx",
+                                "displayOrder":  177,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "ProductTypeGroup_txt",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "ProductTypeGroup_txt",
+                                "displayOrder":  178,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "Subcategory",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  4798,
+                                "displayLabel":  "Subcategory",
+                                "displayOrder":  179,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "4798"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "ERP_Season",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  8,
+                                "displayLabel":  "ERP Season",
+                                "displayOrder":  180,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "8"
+                            },
+                            {
+                                "appTableName":  "Plm_Style_Header_V2K_ERP",
+                                "appColumnName":  "French_Name",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "French Name",
+                                "displayOrder":  181,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_QC",
+                                "appColumnName":  "SelectedSizes",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Sizes",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_QC",
+                                "appColumnName":  "QC_Color",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  172,
+                                "displayLabel":  "Sample Color",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "172"
+                            },
+                            {
+                                "appTableName":  "Plm_QC",
+                                "appColumnName":  "Comment_Date",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comment Date",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_QC",
+                                "appColumnName":  "Colors___Sizes_Comments",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Colors \u0026 Sizes Comments",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_QC",
+                                "appColumnName":  "Measurement_Comments",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Measurement Comments",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_QC",
+                                "appColumnName":  "Make_up_Fit_Comments",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Make-up Fit Comments",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_QC",
+                                "appColumnName":  "Conclusion",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Conclusion",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Testing",
+                                "appColumnName":  "Security_Group",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  96,
+                                "displayLabel":  "Security Group",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "96"
+                            },
+                            {
+                                "appTableName":  "Plm_Testing",
+                                "appColumnName":  "Created_by",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  80,
+                                "displayLabel":  "Created by",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "80"
+                            },
+                            {
+                                "appTableName":  "Plm_Testing",
+                                "appColumnName":  "Testing_Status",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3461,
+                                "displayLabel":  "Testing Status",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "3461"
+                            },
+                            {
+                                "appTableName":  "Plm_Testing",
+                                "appColumnName":  "State",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "State",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Testing",
+                                "appColumnName":  "Test_Date_Needed",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Test Date Needed",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "CriticalPoint",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "!",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "BodyPartDetailIDWDimDetailID",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  null,
+                                "displayLabel":  "BodyPartDetailIDWDimDetailID",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "Code",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Code",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "BodyPartName",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Point of Measure",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "BodyPartDesc",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Description",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "HowToMeasure",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "How to Measure",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "Tolerance",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Tol",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "GradingBaseSize",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Base Size",
+                                "displayOrder":  8,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "Commtents",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Comments",
+                                "displayOrder":  9,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "AddDesc",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "HTM #",
+                                "displayOrder":  10,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "NeedToApplyGradingRule",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  13,
+                                "plmEntityId":  null,
+                                "displayLabel":  "NeedToApplyGradingRule",
+                                "displayOrder":  11,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "Dimension",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  9,
+                                "displayLabel":  "Dimension",
+                                "displayOrder":  12,
+                                "includeInSearch":  false,
+                                "isVisible":  false,
+                                "entityIntegrationId":  "9"
+                            },
+                            {
+                                "appTableName":  "Plm_SimpleQC",
+                                "appColumnName":  "DimensionDetail",
+                                "plmTabIds":  [
+                                                  4029
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  73,
+                                "displayLabel":  "Dim",
+                                "displayOrder":  13,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "73"
+                            },
+                            {
+                                "appTableName":  "Plm_Product_Test_Grid_reg",
+                                "appColumnName":  "Test",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  20,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Test #",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Product_Test_Grid_reg",
+                                "appColumnName":  "Test_Req",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Test Req.",
+                                "displayOrder":  2,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Product_Test_Grid_reg",
+                                "appColumnName":  "Needed_By",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Needed By",
+                                "displayOrder":  3,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Product_Test_Grid_reg",
+                                "appColumnName":  "Status",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  1,
+                                "plmEntityId":  3507,
+                                "displayLabel":  "Status",
+                                "displayOrder":  4,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "3507"
+                            },
+                            {
+                                "appTableName":  "Plm_Product_Test_Grid_reg",
+                                "appColumnName":  "Completed",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  7,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Completed",
+                                "displayOrder":  5,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_Product_Test_Grid_reg",
+                                "appColumnName":  "Test_File",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  9,
+                                "plmEntityId":  11,
+                                "displayLabel":  "Test File",
+                                "displayOrder":  6,
+                                "includeInSearch":  false,
+                                "isVisible":  true,
+                                "entityIntegrationId":  "11"
+                            },
+                            {
+                                "appTableName":  "Plm_Product_Test_Grid_reg",
+                                "appColumnName":  "Test_Comments",
+                                "plmTabIds":  [
+                                                  4030
+                                              ],
+                                "plmControlType":  4,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Test Comments",
+                                "displayOrder":  7,
+                                "includeInSearch":  false,
+                                "isVisible":  true
+                            },
+                            {
+                                "appTableName":  "Plm_ReferenceBasicInfo",
+                                "appColumnName":  "ReferenceCode",
+                                "plmTabIds":  [
+                                                  3991
+                                              ],
+                                "plmControlType":  2,
+                                "plmEntityId":  null,
+                                "displayLabel":  "Product Code",
+                                "displayOrder":  1,
+                                "includeInSearch":  false,
+                                "isVisible":  false
+                            }
+                        ],
+    "searchView":  {
+                       "search":  {
+                                      "name":  "02d- QC \u0026 Testing References",
+                                      "integrationId":  "Search_02dQcTesting",
+                                      "usageType":  "DataModelTemplate",
+                                      "rootTableName":  "Plm_ReferenceBasicInfo"
+                                  },
+                       "searchView":  {
+                                          "integrationId":  "Search_02dQcTesting_View",
+                                          "fields":  "DefaultReferenceBasicInfo"
+                                      }
+                   },
+    "navigation":  {
+                       "folderName":  "02d- QC \u0026 Testing",
+                       "parentFolderIntegrationId":  null,
+                       "menuOrder":  100
+                   }
+}

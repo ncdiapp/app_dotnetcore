@@ -1253,6 +1253,7 @@ WHERE TransactionID = @TransactionId";
             ApplyTechPackFitRoundMeasurementGoldenFieldTemplate(conn, tran, txId, plan, tablePrefix);
             ApplyTechPackGradeValuePivotBindingsSql(conn, tran, txId, tab.TabId, plan, tablePrefix);
             ApplyTechPackFitMeasurementPivotBindingsSql(conn, tran, txId, tab.TabId, plan, tablePrefix);
+            ApplyTechPackSimpleQcPivotBindingsSql(conn, tran, txId, tab.TabId, plan, tablePrefix);
             ApplyTechPackFitRoundLinkTargetsSql(conn, tran, txId, plan, tablePrefix);
 
             SetIntegrationId(conn, tran, "AppTransaction", "TransactionID", txId, transactionIntegrationId);
@@ -1646,9 +1647,36 @@ WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'SizeOrder'";
                 }
             }
 
-            // Safety net: any View_TchpStyleActiveSizeRunSizes / View_TchpFitMeasurementByPom unit on this txn.
+            // Safety net: any View_TchpStyleActiveSizeRunSizes / View_TchpFitMeasurementByPom / SimpleQc size view on this txn.
             ForceViewTchpStyleActiveSizeRunSizesReadOnly(conn, tran, transactionId);
             ForceViewTchpFitMeasurementByPomReadOnly(conn, tran, transactionId);
+            ForceViewTchpSimpleQcSelectedSizesReadOnly(conn, tran, transactionId);
+        }
+
+        private static void ForceViewTchpSimpleQcSelectedSizesReadOnly(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit SET
+    IsReadOnly = 1,
+    IsDisableAddButton = 1,
+    IsDisableDeleteButton = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionID = @TxId
+  AND DataBaseTableName = N'View_TchpSimpleQcSelectedSizes'
+  AND (
+        ISNULL(IsReadOnly, 0) = 0
+     OR ISNULL(IsDisableAddButton, 0) = 0
+     OR ISNULL(IsDisableDeleteButton, 0) = 0
+  )";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.ExecuteNonQuery();
+            }
         }
 
         private static void ForceViewTchpFitMeasurementByPomReadOnly(

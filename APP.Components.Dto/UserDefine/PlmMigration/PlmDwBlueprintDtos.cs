@@ -59,6 +59,13 @@ namespace APP.Components.EntityDto
         public List<PlmDwBlueprintTechPackFitMeasurementPivotDto> TechPackFitMeasurementPivotBindings { get; set; } =
             new List<PlmDwBlueprintTechPackFitMeasurementPivotDto>();
 
+        /// <summary>
+        /// TechPack Simple QC (QX1): Plm_SimpleQCResult ChildUnitPivotColumns using View_TchpSimpleQcSelectedSizes.
+        /// </summary>
+        [DataMember]
+        public List<PlmDwBlueprintTechPackSimpleQcPivotDto> TechPackSimpleQcPivotBindings { get; set; } =
+            new List<PlmDwBlueprintTechPackSimpleQcPivotDto>();
+
         [DataMember]
         public PlmDwBlueprintSearchViewDto SearchView { get; set; }
 
@@ -383,6 +390,52 @@ namespace APP.Components.EntityDto
         /// <summary>Fit F3 has no IsVisible matrix key — default true.</summary>
         [DataMember]
         public bool SkipMatrixKeyVisibleFilter { get; set; } = true;
+    }
+
+    /// <summary>
+    /// Simple QC (QX1): project Plm_SimpleQCResult onto Plm_SimpleQC as ChildUnitPivotColumns,
+    /// column headers from View_TchpSimpleQcSelectedSizes (QcSelectedSizes whitelist).
+    /// </summary>
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmDwBlueprintTechPackSimpleQcPivotDto
+    {
+        [DataMember]
+        public int PlmTabId { get; set; }
+
+        [DataMember]
+        public string HostAppTableName { get; set; } = "SimpleQC";
+
+        [DataMember]
+        public string GrandchildAppTableName { get; set; } = "SimpleQCResult";
+
+        [DataMember]
+        public string SourceAppTableName { get; set; } = "View_TchpSimpleQcSelectedSizes";
+
+        [DataMember]
+        public string SourcePivotKeyColumn { get; set; } = "SizeRunSizeId";
+
+        [DataMember]
+        public string PivotColumnField { get; set; } = "SizeRunSizeId";
+
+        /// <summary>When set, all listed fields are IsPivotValue (multi-measure QC cells).</summary>
+        [DataMember]
+        public List<string> PivotValueFields { get; set; } = new List<string>();
+
+        /// <summary>Fallback single value field when PivotValueFields empty.</summary>
+        [DataMember]
+        public string PivotValueField { get; set; } = "QCSize";
+
+        [DataMember]
+        public bool SkipMatrixKeyVisibleFilter { get; set; } = false;
+
+        [DataMember]
+        public bool SkipTablePrefixOnHost { get; set; }
+
+        [DataMember]
+        public bool SkipTablePrefixOnGrandchild { get; set; }
+
+        [DataMember]
+        public bool SkipTablePrefixOnSource { get; set; } = true;
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
