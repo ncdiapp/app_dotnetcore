@@ -6,6 +6,7 @@ using App.BL;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using DatabaseSchemaMrg.DataSchema;
+using Newtonsoft.Json;
 
 namespace APP.BL.AppConfigPack
 {
@@ -147,7 +148,15 @@ namespace APP.BL.AppConfigPack
             foreach (var sib in exported.UnitStructure.SiblingTableNames)
                 CollectTableOrView(conn, sib, tableNames, viewNames);
 
+            int? formId = GetTransactionFormId(conn, txId);
+            if (formId.HasValue && exported.UnitStructure.ChildUnits != null)
+            {
+                foreach (var child in exported.UnitStructure.ChildUnits)
+                    ApplyExportedLayoutTab(conn, formId.Value, child);
+            }
+
             exported.Fields = ExportTransactionFields(conn, hierarchy);
+            exported.Commands = ExportTransactionCommands(conn, txId, formId);
             return exported;
         }
 
@@ -349,7 +358,7 @@ ORDER BY ISNULL(Sort, 0), LinkTargetID";
                         ColumnName = field.DataBaseFieldName,
                         DisplayName = field.DisplayName,
                         ControlType = field.ControlType,
-                        EntityCode = GetEntityCodeById(conn, field.EntityId),
+                        EntityCode = string.IsNullOrWhiteSpace(field.DdlQueryText) ? GetEntityCodeById(conn, field.EntityId) : null,
                         IsVisible = field.IsVisible,
                         IsReadOnly = field.IsReadonly,
                         IsPivotRow = field.IsPivotRow,
@@ -363,12 +372,201 @@ ORDER BY ISNULL(Sort, 0), LinkTargetID";
                         CascadingRelationSchemaOwner = field.CascadingRelationTableSchemaOwner,
                         CascadingParentKey = field.CascadingRelationTableParentKeyField,
                         CascadingChildKey = field.CascadingRelationTableChildKeyField,
-                        SortOrder = field.SortOrder
+                        SortOrder = field.SortOrder,
+                        DdlQueryText = string.IsNullOrWhiteSpace(field.DdlQueryText) ? null : field.DdlQueryText,
+                        DdlQueryParameterColumns = ExportDdlQueryParameterColumns(conn, field.WhereClauseExpress)
                     });
                 }
             }
 
             return fields;
+        }
+
+        private static List<string> ExportDdlQueryParameterColumns(SqlConnection conn, string whereClauseExpress)
+        {
+            if (string.IsNullOrWhiteSpace(whereClauseExpress))
+                return null;
+            var cols = new List<string>();
+            foreach (var part in whereClauseExpress.Split(new[] { '|', ',' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (!int.TryParse(part.Trim(), out int fieldId))
+                    continue;
+                var loc = ResolveFieldTableColumn(conn, fieldId);
+                if (string.IsNullOrWhiteSpace(loc.Table) || string.IsNullOrWhiteSpace(loc.Column))
+                    continue;
+                cols.Add(loc.Table + "." + loc.Column);
+            }
+            return cols.Count == 0 ? null : cols;
+        }
+
+        private static int? GetTransactionFormId(SqlConnection conn, int transactionId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT FormID FROM dbo.AppTransaction WHERE TransactionID = @Id";
+                cmd.Parameters.AddWithValue("@Id", transactionId);
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        private static void ApplyExportedLayoutTab(SqlConnection conn, int formId, AppConfigPackChildUnitDto child)
+        {
+            if (child == null || string.IsNullOrWhiteSpace(child.TableName))
+                return;
+            child.LayoutTab = ExportUnitLayoutTab(conn, formId, child.TableName);
+            foreach (var grand in child.GrandChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())
+                ApplyExportedLayoutTab(conn, formId, grand);
+        }
+
+        private static string ExportUnitLayoutTab(SqlConnection conn, int formId, string tableName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+WITH walk AS (
+    SELECT i.FormLayoutItemID, i.UIGridLayoutParentID, i.ParameterKeyValue, i.DisplayTitle, 0 AS Lvl
+    FROM dbo.AppFormLayoutItem i
+    INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = i.GridTransactionUnitID
+    WHERE i.FormID = @FormId AND u.DataBaseTableName = @TableName
+    UNION ALL
+    SELECT p.FormLayoutItemID, p.UIGridLayoutParentID, p.ParameterKeyValue, p.DisplayTitle, w.Lvl + 1
+    FROM dbo.AppFormLayoutItem p
+    INNER JOIN walk w ON p.FormLayoutItemID = w.UIGridLayoutParentID
+)
+SELECT TOP 1 COALESCE(JSON_VALUE(ParameterKeyValue, '$.DisplayName'), DisplayTitle)
+FROM walk
+WHERE JSON_VALUE(ParameterKeyValue, '$.IsTab') = 'true'
+ORDER BY Lvl";
+                cmd.Parameters.AddWithValue("@FormId", formId);
+                cmd.Parameters.AddWithValue("@TableName", tableName);
+                var val = cmd.ExecuteScalar() as string;
+                return string.IsNullOrWhiteSpace(val) ? null : val.Trim();
+            }
+        }
+
+        private static List<AppConfigPackCommandDto> ExportTransactionCommands(SqlConnection conn, int transactionId, int? formId)
+        {
+            var raw = new List<(int Id, string Name, int? ActionType, string Formula, string Sql, int? Order)>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT WorkFlowActionID, Name, ActionType, FormulaExpression, NotificationMessage, ActionFlowOrder
+FROM dbo.AppProjectWorkFlowAction
+WHERE CommandTransactionID = @TxId
+ORDER BY ISNULL(ActionFlowOrder, 9999), WorkFlowActionID";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (reader.IsDBNull(1) || string.IsNullOrWhiteSpace(reader.GetString(1)))
+                            continue;
+                        raw.Add((
+                            reader.GetInt32(0),
+                            reader.GetString(1),
+                            reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2),
+                            reader.IsDBNull(3) ? null : reader.GetString(3),
+                            reader.IsDBNull(4) ? null : reader.GetString(4),
+                            reader.IsDBNull(5) ? (int?)null : reader.GetInt32(5)));
+                    }
+                }
+            }
+
+            if (raw.Count == 0)
+                return null;
+
+            var idToIntegration = raw.ToDictionary(r => r.Id, r => SlugCommandIntegrationId(r.Name));
+            var list = new List<AppConfigPackCommandDto>();
+            foreach (var row in raw)
+            {
+                AppActionAttributeDto attr = null;
+                if (!string.IsNullOrWhiteSpace(row.Formula))
+                {
+                    try { attr = JsonConvert.DeserializeObject<AppActionAttributeDto>(row.Formula); }
+                    catch { attr = null; }
+                }
+
+                var children = new List<string>();
+                if (attr?.ChildActionList != null)
+                {
+                    foreach (var child in attr.ChildActionList.OrderBy(c => c.Sort ?? 0))
+                    {
+                        if (!child.CommandId.HasValue)
+                            continue;
+                        if (idToIntegration.TryGetValue(child.CommandId.Value, out string childKey))
+                            children.Add(childKey);
+                    }
+                }
+
+                string sql = null;
+                if (row.ActionType == (int)EmAppTransactionCommandType.ExecuteSQLStatement
+                    && !string.IsNullOrWhiteSpace(row.Sql))
+                {
+                    sql = RewriteRuntimeSqlTokensToPack(conn, transactionId, row.Sql);
+                }
+
+                list.Add(new AppConfigPackCommandDto
+                {
+                    IntegrationId = idToIntegration[row.Id],
+                    Name = row.Name,
+                    ActionType = row.ActionType ?? 0,
+                    SqlStatement = sql,
+                    ChildCommandIntegrationIds = children.Count == 0 ? null : children,
+                    IsShowOnTopMenu = attr?.IsShowOnTopMenu,
+                    LinkToUI = attr?.LinkToUI,
+                    LayoutHostTable = formId.HasValue
+                        ? ExportCommandLayoutHostTable(conn, formId.Value, row.Id)
+                        : null
+                });
+            }
+
+            return list;
+        }
+
+        private static string ExportCommandLayoutHostTable(SqlConnection conn, int formId, int actionId)
+        {
+            int? buttonParentId = null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 UIGridLayoutParentID
+FROM dbo.AppFormLayoutItem
+WHERE FormID = @FormId
+  AND JSON_VALUE(ParameterKeyValue, '$.WidgetDisplayType') = '106'
+  AND JSON_VALUE(ParameterKeyValue, '$.CommandActionId') = @ActionId";
+                cmd.Parameters.AddWithValue("@FormId", formId);
+                cmd.Parameters.AddWithValue("@ActionId", actionId.ToString());
+                var val = cmd.ExecuteScalar();
+                buttonParentId = val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+            if (!buttonParentId.HasValue)
+                return null;
+
+            int? stackId;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT UIGridLayoutParentID FROM dbo.AppFormLayoutItem WHERE FormLayoutItemID = @Id";
+                cmd.Parameters.AddWithValue("@Id", buttonParentId.Value);
+                var val = cmd.ExecuteScalar();
+                stackId = val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+            if (!stackId.HasValue)
+                return null;
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 u.DataBaseTableName
+FROM dbo.AppFormLayoutItem rowItem
+INNER JOIN dbo.AppFormLayoutItem grid ON grid.UIGridLayoutParentID = rowItem.FormLayoutItemID
+INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = grid.GridTransactionUnitID
+WHERE rowItem.UIGridLayoutParentID = @StackId
+  AND JSON_VALUE(grid.ParameterKeyValue, '$.WidgetDisplayType') = '6'
+ORDER BY ISNULL(rowItem.FlowOrGridLayoutSortOrder, 9999), rowItem.FormLayoutItemID";
+                cmd.Parameters.AddWithValue("@StackId", stackId.Value);
+                return cmd.ExecuteScalar() as string;
+            }
         }
 
         private static void CollectUnitsRecursive(AppTransactionUnitExDto unit, List<AppTransactionUnitExDto> sink)

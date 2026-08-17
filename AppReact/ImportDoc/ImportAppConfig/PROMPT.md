@@ -14,26 +14,27 @@ Runtime APIs live under `/webapi/AppConfigPack/` (not PLM Migration). No FieldMa
 1. **DDL** — create missing tables; **ADD** missing columns only; `CREATE OR ALTER VIEW`
 2. Refresh tenant schema cache
 3. **Transactions** — upsert by `integrationId` via table hierarchy (Root / Sibling / Child / Grandchild)
-4. Overlay field metadata (control type, entity/LOV, visibility, pivot flags, cascading DDL, PK / parent-link)
+4. Overlay field metadata (control type, entity/LOV, **query datasource**, visibility, pivot flags, cascading DDL, PK / parent-link)
 5. Overlay unit display names, grid display type, Available Select pairing (`AvailableSourceUnitId` + field mapping)
 6. Auto-wire child/sibling **Link To Parent PK** (DB FK, same column name, or StyleSpecId↔ReferenceId). VIEW units without a SQL PK get a logical PK.
 7. Default Form layout (v1 does **not** round-trip Flex layout)
-8. Child-grid **Link Targets** (Create/Edit/Delete) — after all transaction ids exist
-9. Transaction Group (Data Model Template)
-10. **Searches** — DataSet SQL, criteria, SearchView fields, linkTargets, optional main menu
-11. Attach TX + Search as Application assets
+8. **Commands** — upsert by `name` on the transaction (Execute SQL / Refresh / Composition); rewrite `[TF:Table.Column]` tokens; optional CommandActionButton above a child grid
+9. Child-grid **Link Targets** (Create/Edit/Delete) — after all transaction ids exist
+10. Transaction Group (Data Model Template)
+11. **Searches** — DataSet SQL, criteria, SearchView fields, linkTargets, optional main menu
+12. Attach TX + Search as Application assets
 
 ## Matching / safety
 
 | Rule | Behavior |
 |------|----------|
 | Stable key | `integrationId` (required on each transaction and search) |
-| Exists | **Update** name + field overlay + form-if-missing. Does not rebuild unit tree. |
+| Exists | **Update** name + field overlay (incl. query datasource) + commands + form-if-missing. Does not rebuild unit tree. |
 | Missing | **Insert** |
 | DROP | Never drop tables or columns |
 | Type change | Warning only; existing column types are not altered |
 | Views | Always `CREATE OR ALTER VIEW` |
-| IDs | Never put numeric TransactionId / SearchId / FieldId in the pack. Use names + integrationId |
+| IDs | Never put numeric TransactionId / SearchId / FieldId / CommandId in the pack. Use names + integrationId. SQL tokens are `[TF:Table.Column]`. |
 
 ## Top-level shape
 
@@ -110,6 +111,7 @@ Views run **after** tables so they can select from newly created tables.
   "fields": [
     { "tableName": "Demo_Order", "columnName": "StatusId", "controlType": 1, "entityCode": "OrderStatus", "isVisible": true }
   ],
+  "commands": [],
   "formMode": "Default"
 }
 ```
@@ -123,11 +125,41 @@ Views run **after** tables so they can select from newly created tables.
 - **Child grid Link Targets:** `linkTargets[]` on a child unit — `actionType` `Create` / `Edit` / `Delete`, `transactionIntegrationId`, `sourceColumn`, optional `targetColumn` (defaults to `sourceColumn`). Applied after all transactions exist. `null` = leave existing links; `[]` = clear.
 - `fields[]` overlay after create. `controlType` uses `EmAppControlType` (1=DDL, 2=TextBox, 7=Date, 13=CheckBox, 20=Numeric). Optional `sortOrder` sets field sequence (and default form field order).
 - `entityCode` resolves `AppEntityInfo.EntityCode` (LOV). Unknown codes become warnings.
+- **Query Datasource:** on a DDL field set `ddlQueryText` (first column = id, second = display; `@p0`… parameters) and `ddlQueryParameterColumns` as `["Table.Column", …]`. Import writes `DdlQueryText` + `WhereClauseExpress` (pipe-separated field ids) and **clears EntityId**. Omit `entityCode` when using a query.
 - Pivot: `isPivotRow` / `isPivotColumn` / `isPivotValue`; optional `matrixSourceTable` + `matrixSourceColumn` to set `MatrixForeignKeyFieldId`.
 - Cascading DDL: `dependsOnTable` + `dependsOnColumn` (resolves `DDLParentLevelID`); optional `cascadingRelationTable`, `cascadingRelationSchemaOwner`, `cascadingParentKey`, `cascadingChildKey`.
 - VIEW units: set `isPrimaryKey` on the unique key column and `isLinkToParentPrimaryKey` on the parent key column (views have no SQL PK/FK). Import also **auto-wires** child/sibling links without a database FK: same column name as the parent PK, or the StyleSpecId ↔ ReferenceId product/spec alias. Pack `fields[]` flags still win when present.
 
 Physical tables/views named in `unitStructure` must exist after the DDL step.
+
+## Commands
+
+Optional `commands[]` on a transaction. Matched on import by **Name** within that transaction (AppProjectWorkFlowAction has no IntegrationId column). `integrationId` is pack-local only, for composition children.
+
+| Field | Notes |
+|-------|--------|
+| `integrationId` | Pack-local key, e.g. `CMD_ReloadPOMFromGrading` |
+| `name` | Stored command name (match key) |
+| `actionType` | `42` Execute SQL Statement, `50` Refresh, `200` Composition |
+| `sqlStatement` | Required for 42. Use `[TF:Table.Column]` (never numeric FieldId). `[CurrentUserId]` is left as-is. SQL is stored in `NotificationMessage`. |
+| `childCommandIntegrationIds` | Composition children, in order |
+| `linkToUI` / `isShowOnTopMenu` | Written into `FormulaExpression` (ActionAttribute JSON) |
+| `layoutHostTable` | After default form create, insert a CommandActionButton **above** this unit's grid if missing |
+
+Helpers that should not appear on the toolbar: `isShowOnTopMenu: false`, `linkToUI: false`. Put the user-facing composition on the form with `linkToUI: true` + `layoutHostTable`.
+
+Query Datasource example (Size filtered to QC Order selected sizes):
+
+```json
+{
+  "tableName": "TchpQcGarment",
+  "columnName": "SizeRunSizeId",
+  "displayName": "Size",
+  "controlType": 1,
+  "ddlQueryText": "SELECT srs.SizeRunSizeId, srs.SizeLabel FROM dbo.TchpQcOrderSize AS os INNER JOIN dbo.TchpSizeRunSize AS srs ON srs.SizeRunSizeId = os.SizeRunSizeId WHERE os.QcOrderId = @p0 ORDER BY srs.SizeOrder, srs.SizeLabel",
+  "ddlQueryParameterColumns": ["TchpQcGarment.QcOrderId"]
+}
+```
 
 Available Select example (source VIEW + selected table):
 
@@ -181,6 +213,6 @@ See [`sample.appConfigPack.json`](sample.appConfigPack.json) for a minimal runna
 ## Out of scope (v1)
 
 - Reports
-- Full Flex Form layout round-trip
+- Full Flex Form layout round-trip (e.g. moving Selected QC Sizes out of the tab container)
 - DROP / column type changes
 - PLM TabId / FieldMapping / TechPack pivots

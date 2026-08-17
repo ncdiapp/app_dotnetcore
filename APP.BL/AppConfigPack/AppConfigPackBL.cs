@@ -272,6 +272,42 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
 
                 if (tx.UnitStructure == null || string.IsNullOrWhiteSpace(tx.UnitStructure.RootTableName))
                     validation.Errors.Add($"Transaction '{tx.IntegrationId}' is missing unitStructure.rootTableName.");
+
+                var commandIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var command in tx.Commands ?? Enumerable.Empty<AppConfigPackCommandDto>())
+                {
+                    if (command == null)
+                        continue;
+                    if (string.IsNullOrWhiteSpace(command.Name))
+                    {
+                        validation.Errors.Add($"Transaction '{tx.IntegrationId}' has a command with no name.");
+                        continue;
+                    }
+                    string cmdKey = string.IsNullOrWhiteSpace(command.IntegrationId) ? command.Name.Trim() : command.IntegrationId.Trim();
+                    if (!commandIds.Add(cmdKey))
+                        validation.Errors.Add($"Transaction '{tx.IntegrationId}' has duplicate command '{cmdKey}'.");
+                    if (command.ActionType == (int)EmAppTransactionCommandType.ExecuteSQLStatement
+                        && string.IsNullOrWhiteSpace(command.SqlStatement))
+                    {
+                        validation.Errors.Add($"Command '{command.Name}' on '{tx.IntegrationId}' is Execute SQL (42) but sqlStatement is empty.");
+                    }
+                }
+
+                foreach (var command in tx.Commands ?? Enumerable.Empty<AppConfigPackCommandDto>())
+                {
+                    foreach (var childKey in command?.ChildCommandIntegrationIds ?? Enumerable.Empty<string>())
+                    {
+                        if (string.IsNullOrWhiteSpace(childKey))
+                            continue;
+                        if (!commandIds.Contains(childKey.Trim())
+                            && !(tx.Commands ?? new List<AppConfigPackCommandDto>()).Any(c =>
+                                c != null && string.Equals(c.Name, childKey.Trim(), StringComparison.OrdinalIgnoreCase)))
+                        {
+                            validation.Errors.Add(
+                                $"Command '{command.Name}' on '{tx.IntegrationId}' references unknown child '{childKey}'.");
+                        }
+                    }
+                }
             }
 
             foreach (var tx in pack.Transactions)
@@ -417,7 +453,7 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                         IntegrationId = tx.IntegrationId,
                         Action = existing.HasValue ? ActionUpdate : ActionInsert,
                         ExistingId = existing,
-                        Detail = $"Root {tx.UnitStructure?.RootTableName}; fields {tx.Fields?.Count ?? 0}"
+                        Detail = $"Root {tx.UnitStructure?.RootTableName}; fields {tx.Fields?.Count ?? 0}; commands {tx.Commands?.Count ?? 0}"
                     });
 
                     foreach (var child in tx.UnitStructure?.ChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())

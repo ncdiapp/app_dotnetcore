@@ -146,9 +146,48 @@ namespace APP.Components.EntityDto
         [DataMember]
         public List<AppConfigPackFieldDto> Fields { get; set; } = new List<AppConfigPackFieldDto>();
 
+        /// <summary>Transaction commands (Execute SQL, Refresh, Composition). Matched by Name within the transaction.</summary>
+        [DataMember]
+        public List<AppConfigPackCommandDto> Commands { get; set; } = new List<AppConfigPackCommandDto>();
+
         /// <summary>Default (v1). Flex layout round-trip is Phase 2.</summary>
         [DataMember]
         public string FormMode { get; set; } = "Default";
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackCommandDto
+    {
+        /// <summary>Pack-local id for composition childCommandIntegrationIds. Not stored on AppProjectWorkFlowAction.</summary>
+        [DataMember]
+        public string IntegrationId { get; set; }
+
+        [DataMember]
+        public string Name { get; set; }
+
+        /// <summary>EmAppTransactionCommandType: 42 ExecuteSQLStatement, 50 refresh, 200 CompositionCommand.</summary>
+        [DataMember]
+        public int ActionType { get; set; }
+
+        /// <summary>
+        /// SQL for actionType 42. Use portable tokens [TF:Table.Column] (rewritten to [TF_{FieldId}_{Column}] on import).
+        /// [CurrentUserId] is left as-is.
+        /// </summary>
+        [DataMember]
+        public string SqlStatement { get; set; }
+
+        [DataMember]
+        public List<string> ChildCommandIntegrationIds { get; set; }
+
+        [DataMember]
+        public bool? IsShowOnTopMenu { get; set; }
+
+        [DataMember]
+        public bool? LinkToUI { get; set; }
+
+        /// <summary>Place a CommandActionButton on the default Flex form, above this unit's grid.</summary>
+        [DataMember]
+        public string LayoutHostTable { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -291,6 +330,17 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public int? SortOrder { get; set; }
+
+        /// <summary>
+        /// Query Datasource SQL (AppTransactionField.DdlQueryText). First column = id, second = display.
+        /// When set, EntityId is cleared. Use @p0, @p1... with ddlQueryParameterColumns.
+        /// </summary>
+        [DataMember]
+        public string DdlQueryText { get; set; }
+
+        /// <summary>Table.Column (or Column) for each @pN in ddlQueryText. Stored as pipe-separated field ids in WhereClauseExpress.</summary>
+        [DataMember]
+        public List<string> DdlQueryParameterColumns { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

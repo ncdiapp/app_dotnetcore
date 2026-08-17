@@ -1,0 +1,6 @@
+SET NOCOUNT ON;
+SELECT CONVERT(NVARCHAR(MAX), ParameterKeyValue) AS Params FROM dbo.AppFormLayoutItem WHERE FormLayoutItemID = 4994;
+SELECT CONVERT(NVARCHAR(MAX), ParameterKeyValue) AS Params493 FROM dbo.AppFormLayoutItem WHERE FormLayoutItemID = 4993;
+SELECT CONVERT(NVARCHAR(MAX), ParameterKeyValue) AS Params946 FROM dbo.AppFormLayoutItem WHERE FormLayoutItemID = 4946;
+SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME='AppFormLayoutItem' ORDER BY ORDINAL_POSITION;
+SELECT CONVERT(NVARCHAR(MAX), NotificationMessage) FROM dbo.AppProjectWorkFlowAction WHERE WorkFlowActionID = 10;

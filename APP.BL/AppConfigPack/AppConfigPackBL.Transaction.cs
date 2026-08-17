@@ -3,9 +3,12 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using App.BL;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
+using Newtonsoft.Json;
 
 namespace APP.BL.AppConfigPack
 {
@@ -92,6 +95,7 @@ WHERE TransactionID = @Id";
                 AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
                 EnsureDefaultForm(transactionId);
                 ApplyFormTabNames(transactionId, tx);
+                UpsertTransactionCommands(transactionId, tx);
 
                 map[integrationId] = transactionId;
                 if (inserted)
@@ -149,12 +153,44 @@ WHERE TransactionID = @Id";
                         parentPkFieldId = GetParentPrimaryKeyFieldId(conn, transactionId, field.TableName);
                     }
 
+                    bool hasQueryOverlay = field.DdlQueryText != null;
+                    string whereClauseExpress = null;
+                    if (hasQueryOverlay)
+                    {
+                        if (!string.IsNullOrWhiteSpace(field.DdlQueryText) && field.DdlQueryText.Length > 4000)
+                        {
+                            throw new InvalidOperationException(
+                                $"ddlQueryText for '{field.TableName}.{field.ColumnName}' exceeds 4000 characters.");
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(field.DdlQueryText)
+                            && field.DdlQueryParameterColumns != null
+                            && field.DdlQueryParameterColumns.Count > 0)
+                        {
+                            var paramIds = new List<string>();
+                            foreach (var spec in field.DdlQueryParameterColumns)
+                            {
+                                if (string.IsNullOrWhiteSpace(spec))
+                                    continue;
+                                ParseTableColumnSpec(spec, field.TableName, out string paramTable, out string paramColumn);
+                                int? paramFieldId = GetTransactionFieldId(conn, transactionId, paramTable, paramColumn);
+                                if (!paramFieldId.HasValue)
+                                {
+                                    throw new InvalidOperationException(
+                                        $"Query datasource parameter '{spec}' was not found for '{field.TableName}.{field.ColumnName}'.");
+                                }
+                                paramIds.Add(paramFieldId.Value.ToString());
+                            }
+                            whereClauseExpress = string.Join("|", paramIds);
+                        }
+                    }
+
                     using (var cmd = conn.CreateCommand())
                     {
                         cmd.CommandText = @"
 UPDATE f SET
     ControlType = COALESCE(@ControlType, f.ControlType),
-    EntityId = COALESCE(@EntityId, f.EntityId),
+    EntityId = CASE WHEN @HasQuery = 1 AND LEN(ISNULL(@DdlQueryText, N'')) > 0 THEN NULL ELSE COALESCE(@EntityId, f.EntityId) END,
     IsVisible = CASE WHEN @IsVisible IS NULL THEN f.IsVisible ELSE @IsVisible END,
     IsReadonly = CASE WHEN @IsReadOnly IS NULL THEN f.IsReadonly ELSE @IsReadOnly END,
     IsPrimaryKey = CASE WHEN @IsPrimaryKey IS NULL THEN f.IsPrimaryKey ELSE @IsPrimaryKey END,
@@ -171,6 +207,8 @@ UPDATE f SET
     CascadingRelationTableParentKeyField = COALESCE(@CascadingParent, f.CascadingRelationTableParentKeyField),
     CascadingRelationTableChildKeyField = COALESCE(@CascadingChild, f.CascadingRelationTableChildKeyField),
     SortOrder = COALESCE(@SortOrder, f.SortOrder),
+    DdlQueryText = CASE WHEN @HasQuery = 1 THEN @DdlQueryText ELSE f.DdlQueryText END,
+    WhereClauseExpress = CASE WHEN @HasQuery = 1 THEN @WhereClause ELSE f.WhereClauseExpress END,
     AppModifiedDate = GETDATE()
 FROM dbo.AppTransactionField f
 INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
@@ -179,6 +217,15 @@ WHERE u.TransactionID = @TxId
   AND (@TableName IS NULL OR u.DataBaseTableName = @TableName)";
                         cmd.Parameters.AddWithValue("@ControlType", (object)field.ControlType ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@EntityId", (object)entityId ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@HasQuery", hasQueryOverlay ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@DdlQueryText",
+                            hasQueryOverlay
+                                ? (string.IsNullOrWhiteSpace(field.DdlQueryText) ? (object)DBNull.Value : field.DdlQueryText)
+                                : (object)DBNull.Value);
+                        cmd.Parameters.AddWithValue("@WhereClause",
+                            hasQueryOverlay
+                                ? (string.IsNullOrWhiteSpace(whereClauseExpress) ? (object)DBNull.Value : whereClauseExpress)
+                                : (object)DBNull.Value);
                         AddNullableBit(cmd, "@IsVisible", field.IsVisible);
                         AddNullableBit(cmd, "@IsReadOnly", field.IsReadOnly);
                         AddNullableBit(cmd, "@IsPrimaryKey", field.IsPrimaryKey);
@@ -648,6 +695,441 @@ WHERE FormLayoutItemID = @ItemId";
                     }
                 }
             }
+        }
+
+        private static void UpsertTransactionCommands(int transactionId, AppConfigPackTransactionDto tx)
+        {
+            var commands = (tx.Commands ?? new List<AppConfigPackCommandDto>())
+                .Where(c => c != null && !string.IsNullOrWhiteSpace(c.Name))
+                .ToList();
+            if (commands.Count == 0)
+                return;
+
+            using (var conn = OpenTenantConnection())
+            {
+                var idByIntegration = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                int order = 0;
+                foreach (var command in commands)
+                {
+                    order++;
+                    string sql = null;
+                    if (command.ActionType == (int)EmAppTransactionCommandType.ExecuteSQLStatement
+                        && !string.IsNullOrWhiteSpace(command.SqlStatement))
+                    {
+                        sql = RewritePackSqlTokensToRuntime(conn, transactionId, command.SqlStatement);
+                    }
+
+                    int actionId = UpsertOneCommand(conn, transactionId, command, sql, order);
+                    if (!string.IsNullOrWhiteSpace(command.IntegrationId))
+                        idByIntegration[command.IntegrationId.Trim()] = actionId;
+                    idByIntegration[command.Name.Trim()] = actionId;
+                }
+
+                foreach (var command in commands)
+                {
+                    var childKeys = command.ChildCommandIntegrationIds ?? new List<string>();
+                    if (childKeys.Count == 0 && command.ActionType != (int)EmAppTransactionCommandType.CompositionCommand)
+                        continue;
+
+                    if (!idByIntegration.TryGetValue(
+                            string.IsNullOrWhiteSpace(command.IntegrationId) ? command.Name.Trim() : command.IntegrationId.Trim(),
+                            out int parentId))
+                        continue;
+
+                    var children = new List<ChildTransactionCommandDto>();
+                    int sort = 0;
+                    foreach (var childKey in childKeys.Where(k => !string.IsNullOrWhiteSpace(k)))
+                    {
+                        if (!idByIntegration.TryGetValue(childKey.Trim(), out int childId))
+                        {
+                            throw new InvalidOperationException(
+                                $"Command '{command.Name}' child '{childKey}' was not found in this transaction's commands.");
+                        }
+                        sort++;
+                        string childName = commands.FirstOrDefault(c =>
+                            string.Equals(c.IntegrationId, childKey.Trim(), StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(c.Name, childKey.Trim(), StringComparison.OrdinalIgnoreCase))?.Name;
+                        children.Add(new ChildTransactionCommandDto
+                        {
+                            Sort = sort,
+                            CommandId = childId,
+                            CommandDisplay = "User Defined: " + (childName ?? childKey.Trim()),
+                            IsBatchCommand = false,
+                            IsSkip = false
+                        });
+                    }
+
+                    PatchCommandAttribute(conn, parentId, command, children);
+                }
+
+                foreach (var command in commands.Where(c => !string.IsNullOrWhiteSpace(c.LayoutHostTable)))
+                {
+                    string key = string.IsNullOrWhiteSpace(command.IntegrationId) ? command.Name.Trim() : command.IntegrationId.Trim();
+                    if (!idByIntegration.TryGetValue(key, out int actionId))
+                        continue;
+                    EnsureFormCommandButton(conn, transactionId, command.LayoutHostTable.Trim(), actionId, command.Name);
+                }
+            }
+
+            AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
+        }
+
+        private static int UpsertOneCommand(
+            SqlConnection conn,
+            int transactionId,
+            AppConfigPackCommandDto command,
+            string sqlStatement,
+            int actionFlowOrder)
+        {
+            int? existingId;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 WorkFlowActionID
+FROM dbo.AppProjectWorkFlowAction
+WHERE CommandTransactionID = @TxId AND Name = @Name
+ORDER BY WorkFlowActionID";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.Parameters.AddWithValue("@Name", command.Name.Trim());
+                var val = cmd.ExecuteScalar();
+                existingId = val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+
+            var attr = existingId.HasValue
+                ? LoadCommandAttribute(conn, existingId.Value)
+                : new AppActionAttributeDto { ChildActionList = new List<ChildTransactionCommandDto>() };
+            if (attr.ChildActionList == null)
+                attr.ChildActionList = new List<ChildTransactionCommandDto>();
+            attr.LinkToUI = command.LinkToUI;
+            attr.IsShowOnTopMenu = command.IsShowOnTopMenu ?? false;
+            attr.IsAutoExecuteOnFormOpen = attr.IsAutoExecuteOnFormOpen ?? false;
+            string formula = JsonConvert.SerializeObject(attr);
+
+            if (existingId.HasValue)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+UPDATE dbo.AppProjectWorkFlowAction SET
+    ActionType = @ActionType,
+    FormulaExpression = @Formula,
+    NotificationMessage = CASE WHEN @HasSql = 1 THEN @Sql ELSE NotificationMessage END,
+    ActionFlowOrder = @Order,
+    AppModifiedDate = GETDATE()
+WHERE WorkFlowActionID = @Id";
+                    cmd.Parameters.AddWithValue("@ActionType", command.ActionType);
+                    cmd.Parameters.AddWithValue("@Formula", formula);
+                    cmd.Parameters.AddWithValue("@HasSql", sqlStatement != null ? 1 : 0);
+                    cmd.Parameters.AddWithValue("@Sql", (object)sqlStatement ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Order", actionFlowOrder);
+                    cmd.Parameters.AddWithValue("@Id", existingId.Value);
+                    cmd.ExecuteNonQuery();
+                }
+                return existingId.Value;
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+INSERT INTO dbo.AppProjectWorkFlowAction
+    (Name, Description, ActionType, FormulaExpression, NotificationMessage, RowIdentity, ActionGUID,
+     ActionFlowOrder, CommandTransactionID, AppCreatedDate, AppModifiedDate)
+VALUES
+    (@Name, @Name, @ActionType, @Formula, @Sql, NEWID(), NEWID(),
+     @Order, @TxId, GETDATE(), GETDATE());
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
+                cmd.Parameters.AddWithValue("@Name", TruncateName(command.Name.Trim(), 500, command.Name.Trim()));
+                cmd.Parameters.AddWithValue("@ActionType", command.ActionType);
+                cmd.Parameters.AddWithValue("@Formula", formula);
+                cmd.Parameters.AddWithValue("@Sql", (object)sqlStatement ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Order", actionFlowOrder);
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+        }
+
+        private static AppActionAttributeDto LoadCommandAttribute(SqlConnection conn, int actionId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT FormulaExpression FROM dbo.AppProjectWorkFlowAction WHERE WorkFlowActionID = @Id";
+                cmd.Parameters.AddWithValue("@Id", actionId);
+                var json = cmd.ExecuteScalar() as string;
+                if (string.IsNullOrWhiteSpace(json))
+                    return new AppActionAttributeDto { ChildActionList = new List<ChildTransactionCommandDto>() };
+                try
+                {
+                    return JsonConvert.DeserializeObject<AppActionAttributeDto>(json)
+                        ?? new AppActionAttributeDto { ChildActionList = new List<ChildTransactionCommandDto>() };
+                }
+                catch
+                {
+                    return new AppActionAttributeDto { ChildActionList = new List<ChildTransactionCommandDto>() };
+                }
+            }
+        }
+
+        private static void PatchCommandAttribute(
+            SqlConnection conn,
+            int actionId,
+            AppConfigPackCommandDto command,
+            List<ChildTransactionCommandDto> children)
+        {
+            var attr = LoadCommandAttribute(conn, actionId);
+            attr.ChildActionList = children;
+            attr.LinkToUI = command.LinkToUI;
+            attr.IsShowOnTopMenu = command.IsShowOnTopMenu ?? attr.IsShowOnTopMenu ?? false;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE dbo.AppProjectWorkFlowAction
+SET FormulaExpression = @Formula, AppModifiedDate = GETDATE()
+WHERE WorkFlowActionID = @Id";
+                cmd.Parameters.AddWithValue("@Formula", JsonConvert.SerializeObject(attr));
+                cmd.Parameters.AddWithValue("@Id", actionId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void EnsureFormCommandButton(
+            SqlConnection conn,
+            int transactionId,
+            string hostTable,
+            int actionId,
+            string commandName)
+        {
+            int? formId;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT FormID FROM dbo.AppTransaction WHERE TransactionID = @TxId";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                var val = cmd.ExecuteScalar();
+                formId = val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+            if (!formId.HasValue)
+                return;
+
+            int? unitId = GetTransactionUnitId(conn, transactionId, hostTable);
+            if (!unitId.HasValue)
+            {
+                throw new InvalidOperationException(
+                    $"layoutHostTable '{hostTable}' was not found for command '{commandName}'.");
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 FormLayoutItemID
+FROM dbo.AppFormLayoutItem
+WHERE FormID = @FormId
+  AND JSON_VALUE(ParameterKeyValue, '$.CommandActionId') = @ActionId
+  AND JSON_VALUE(ParameterKeyValue, '$.WidgetDisplayType') = '106'";
+                cmd.Parameters.AddWithValue("@FormId", formId.Value);
+                cmd.Parameters.AddWithValue("@ActionId", actionId.ToString());
+                var existing = cmd.ExecuteScalar();
+                if (existing != null && existing != DBNull.Value)
+                    return;
+            }
+
+            int? gridId = null;
+            int? gridParentId = null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 FormLayoutItemID, UIGridLayoutParentID
+FROM dbo.AppFormLayoutItem
+WHERE FormID = @FormId
+  AND GridTransactionUnitID = @UnitId
+  AND JSON_VALUE(ParameterKeyValue, '$.WidgetDisplayType') = '6'
+ORDER BY FormLayoutItemID";
+                cmd.Parameters.AddWithValue("@FormId", formId.Value);
+                cmd.Parameters.AddWithValue("@UnitId", unitId.Value);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        gridId = reader.GetInt32(0);
+                        gridParentId = reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1);
+                    }
+                }
+            }
+            if (!gridId.HasValue || !gridParentId.HasValue)
+                return;
+
+            int stackId = gridParentId.Value;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT UIGridLayoutParentID, JSON_VALUE(ParameterKeyValue, '$.WidgetDisplayType')
+FROM dbo.AppFormLayoutItem
+WHERE FormLayoutItemID = @Id";
+                cmd.Parameters.AddWithValue("@Id", gridParentId.Value);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        string widget = reader.IsDBNull(1) ? null : reader.GetString(1);
+                        if (widget == "101" && !reader.IsDBNull(0))
+                            stackId = reader.GetInt32(0);
+                    }
+                }
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE dbo.AppFormLayoutItem
+SET FlowOrGridLayoutSortOrder = ISNULL(FlowOrGridLayoutSortOrder, 0) + 1
+WHERE UIGridLayoutParentID = @StackId";
+                cmd.Parameters.AddWithValue("@StackId", stackId);
+                cmd.ExecuteNonQuery();
+            }
+
+            const string rowJson =
+                "{\"WidgetDisplayType\":101,\"IsBindingToDataField\":false,\"IsTab\":false,\"CommandActionId\":null}";
+            int rowId;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+INSERT INTO dbo.AppFormLayoutItem
+    (FormID, ParameterKeyValue, UIGridLayoutParentID, FlowOrGridLayoutSortOrder, AppCreatedDate, AppModifiedDate)
+VALUES
+    (@FormId, @Json, @ParentId, 1, GETDATE(), GETDATE());
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
+                cmd.Parameters.AddWithValue("@FormId", formId.Value);
+                cmd.Parameters.AddWithValue("@Json", rowJson);
+                cmd.Parameters.AddWithValue("@ParentId", stackId);
+                rowId = Convert.ToInt32(cmd.ExecuteScalar());
+            }
+
+            string buttonJson =
+                "{\"ColSpanValue\":4,\"BackgroundColor\":\"#ffffff\",\"TextColor\":\"#000000\",\"DisplayName\":\"\"," +
+                "\"WidgetDisplayType\":106,\"IsBindingToDataField\":false,\"CommandActionId\":" + actionId +
+                ",\"IsShowSearchCriterias\":false,\"IsTab\":false}";
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+INSERT INTO dbo.AppFormLayoutItem
+    (FormID, ParameterKeyValue, DisplayTitle, UIGridLayoutParentID, FlowOrGridLayoutSortOrder, AppCreatedDate, AppModifiedDate)
+VALUES
+    (@FormId, @Json, @Title, @ParentId, 1, GETDATE(), GETDATE());";
+                cmd.Parameters.AddWithValue("@FormId", formId.Value);
+                cmd.Parameters.AddWithValue("@Json", buttonJson);
+                cmd.Parameters.AddWithValue("@Title", string.IsNullOrWhiteSpace(commandName) ? (object)DBNull.Value : commandName.Trim());
+                cmd.Parameters.AddWithValue("@ParentId", rowId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static readonly Regex PackFieldTokenRegex = new Regex(@"\[TF:([^\]\s]+)\]", RegexOptions.Compiled);
+        private static readonly Regex RuntimeFieldTokenRegex = new Regex(@"\[TF_(\d+)_([^\]]+)\]", RegexOptions.Compiled);
+
+        internal static string RewritePackSqlTokensToRuntime(SqlConnection conn, int transactionId, string sql)
+        {
+            if (string.IsNullOrEmpty(sql))
+                return sql;
+            return PackFieldTokenRegex.Replace(sql, match =>
+            {
+                ParseTableColumnSpec(match.Groups[1].Value, null, out string table, out string column);
+                int? fieldId = string.IsNullOrWhiteSpace(table)
+                    ? GetTransactionFieldIdByColumn(conn, transactionId, column)
+                    : GetTransactionFieldId(conn, transactionId, table, column);
+                if (!fieldId.HasValue)
+                {
+                    throw new InvalidOperationException(
+                        $"SQL token '{match.Value}' did not match a transaction field.");
+                }
+                return $"[TF_{fieldId.Value}_{column}]";
+            });
+        }
+
+        internal static string RewriteRuntimeSqlTokensToPack(SqlConnection conn, int transactionId, string sql)
+        {
+            if (string.IsNullOrEmpty(sql))
+                return sql;
+            var fields = LoadTransactionFieldLookup(conn, transactionId);
+            return RuntimeFieldTokenRegex.Replace(sql, match =>
+            {
+                int fieldId = int.Parse(match.Groups[1].Value);
+                if (!fields.TryGetValue(fieldId, out var loc) || string.IsNullOrWhiteSpace(loc.Table) || string.IsNullOrWhiteSpace(loc.Column))
+                    return match.Value;
+                return $"[TF:{loc.Table}.{loc.Column}]";
+            });
+        }
+
+        private static Dictionary<int, (string Table, string Column)> LoadTransactionFieldLookup(SqlConnection conn, int transactionId)
+        {
+            var map = new Dictionary<int, (string Table, string Column)>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT f.TransactionFieldID, u.DataBaseTableName, f.DataBaseFieldName
+FROM dbo.AppTransactionField f
+INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
+WHERE u.TransactionID = @TxId";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2))
+                            continue;
+                        map[reader.GetInt32(0)] = (reader.GetString(1), reader.GetString(2));
+                    }
+                }
+            }
+            return map;
+        }
+
+        private static int? GetTransactionFieldIdByColumn(SqlConnection conn, int transactionId, string columnName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 f.TransactionFieldID
+FROM dbo.AppTransactionField f
+INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
+WHERE u.TransactionID = @TxId AND f.DataBaseFieldName = @ColumnName
+ORDER BY CASE WHEN u.ParentTransactionUnitID IS NULL THEN 0 ELSE 1 END, f.TransactionFieldID";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.Parameters.AddWithValue("@ColumnName", columnName);
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        internal static void ParseTableColumnSpec(string spec, string defaultTable, out string table, out string column)
+        {
+            table = defaultTable;
+            column = spec?.Trim();
+            if (string.IsNullOrWhiteSpace(column))
+                return;
+            int dot = column.LastIndexOf('.');
+            if (dot <= 0 || dot >= column.Length - 1)
+                return;
+            table = column.Substring(0, dot).Trim();
+            column = column.Substring(dot + 1).Trim();
+        }
+
+        internal static string SlugCommandIntegrationId(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return null;
+            var sb = new StringBuilder("CMD_");
+            bool capNext = true;
+            foreach (char c in name)
+            {
+                if (char.IsLetterOrDigit(c))
+                {
+                    sb.Append(capNext ? char.ToUpperInvariant(c) : c);
+                    capNext = false;
+                }
+                else
+                {
+                    capNext = true;
+                }
+            }
+            return sb.ToString();
         }
 
         private static int? UpsertTransactionGroup(

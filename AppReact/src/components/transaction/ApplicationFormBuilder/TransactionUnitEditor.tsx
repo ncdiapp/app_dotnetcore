@@ -1116,6 +1116,32 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
         return new DataMap(list, 'DataBaseFieldName', 'Display');
     }, []);
 
+    // Query Datasource @pN bindings: grandparent + parent + current unit fields.
+    const buildParameterTransFieldDataMap = useCallback((): DataMap => {
+        const items: Array<{ Id: number; Display: string }> = [];
+        const seen = new Set<number>();
+        const addUnit = (aUnit: any | null | undefined) => {
+            if (!aUnit?.AppTransactionFieldList) return;
+            (aUnit.AppTransactionFieldList as any[]).forEach((aField: any) => {
+                if (aField?.Id == null) return;
+                const id = Number(aField.Id);
+                if (!Number.isFinite(id) || seen.has(id)) return;
+                seen.add(id);
+                items.push({
+                    Id: id,
+                    Display: `[${aUnit.UnitDisplayName || aUnit.UnitName || ''}] . [${aField.DataBaseFieldName ?? ''}] (${id})`
+                });
+            });
+        };
+        const parent = parentUnit;
+        if (parent) {
+            if ((parent as any).parent) addUnit((parent as any).parent);
+            addUnit(parent);
+        }
+        addUnit(unitData);
+        return new DataMap(items, 'Id', 'Display');
+    }, [parentUnit, unitData]);
+
     // Datasource selector (Standalone + Tab 2 Foreign Unit + Tab 3 Query) helpers
     const handleOpenDatasourceSelector = async (field: any) => {
         if (!field) return;
@@ -1221,11 +1247,11 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                 }));
             const mappingCv = new CollectionView(existingMappings);
 
-            // Tab 3: Query Datasource - reconstruct selection/condition text and parameters
+            // Tab 3: Query Datasource - reconstruct selection/condition text and parameters.
+            // Field lookup is always built so switching Standalone → Query still has Data Model Field options.
             let selectionQueryText = '';
             let conditionQueryText = '';
             const conditionParameterList: Array<{ parameterName: string; transactionFieldId: number | null }> = [];
-            let parameterTransFieldItems: Array<{ Id: number; Display: string }> = [];
 
             if (initialTab === 3) {
                 const queryText: string = field.DdlQueryText || '';
@@ -1250,35 +1276,10 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                         }
                     });
                 }
-
-                // Build parameterTransFieldList from grandparent, parent, and current unit fields (same as Angular)
-                const currentEditUnit = unitData;
-                if (currentEditUnit) {
-                    const buildLookupFromUnit = (aUnit: any | null | undefined) => {
-                        if (!aUnit || !aUnit.AppTransactionFieldList) return;
-                        (aUnit.AppTransactionFieldList as any[]).forEach((aField: any) => {
-                            if (aField && aField.Id != null) {
-                                parameterTransFieldItems.push({
-                                    Id: Number(aField.Id),
-                                    Display: `[${aUnit.UnitDisplayName || aUnit.UnitName || ''}] . [${aField.DataBaseFieldName ?? ''}] (${aField.Id})`
-                                });
-                            }
-                        });
-                    };
-
-                    const parent = parentUnit;
-                    if (parent) {
-                        if ((parent as any).parent) {
-                            buildLookupFromUnit((parent as any).parent);
-                        }
-                        buildLookupFromUnit(parent);
-                    }
-                    buildLookupFromUnit(currentEditUnit);
-                }
             }
 
             const conditionParameterCV = new CollectionView(conditionParameterList);
-            const parameterTransFieldDataMap = new DataMap(parameterTransFieldItems, 'Id', 'Display');
+            const parameterTransFieldDataMap = buildParameterTransFieldDataMap();
 
             setDatasourceSelectorState({
                 activeTab: initialTab,
@@ -3658,14 +3659,15 @@ const TransactionUnitEditor: React.FC<TransactionUnitEditorProps> = ({
                                                     parameterTransFieldDataMap: new DataMap([], 'Id', 'Display')
                                                 };
                                             }
-                                            // tab === 3
+                                            // tab === 3 — keep query text if already typed; fill Data Model Field list
                                             return {
                                                 ...base,
                                                 selectedEntityId: null,
                                                 selectedEntityDisplay: '',
                                                 selectedForeignUnitId: null,
                                                 selectedForeignUnitDisplay: '',
-                                                foreignUnitFieldDataMap: new DataMap([], 'DataBaseFieldName', 'Display')
+                                                foreignUnitFieldDataMap: new DataMap([], 'DataBaseFieldName', 'Display'),
+                                                parameterTransFieldDataMap: buildParameterTransFieldDataMap()
                                             };
                                         });
                                     }}
