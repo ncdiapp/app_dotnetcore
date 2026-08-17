@@ -1,0 +1,617 @@
+using System;
+using System.Collections.Generic;
+using System.Data.SqlClient;
+using System.Linq;
+using App.BL;
+using APP.Components.Dto;
+using APP.Components.EntityDto;
+using DatabaseSchemaMrg.DataSchema;
+
+namespace APP.BL.AppConfigPack
+{
+    public static partial class AppConfigPackBL
+    {
+        private static AppConfigPackDto BuildExportPack(int saasApplicationId, List<int> transactionIds, List<int> searchIds, bool exportAll)
+        {
+            var pack = new AppConfigPackDto
+            {
+                SchemaVersion = 1,
+                GeneratedAt = DateTime.UtcNow.ToString("o"),
+                Source = new AppConfigPackSourceDto
+                {
+                    GeneratedBy = "export",
+                    SaasApplicationId = saasApplicationId
+                }
+            };
+
+            var txList = AppTransactionBL.RetrieveSaasApplicationTransactionList(saasApplicationId) ?? new List<AppTransactionDto>();
+            var searchList = AppSearchConfigBL.RetrieveSaasApplicationSearchList(saasApplicationId) ?? new List<AppSearchDto>();
+            if (!exportAll)
+            {
+                var txIdSet = new HashSet<int>(transactionIds ?? new List<int>());
+                txList = txList.Where(t => txIdSet.Contains(Convert.ToInt32(t.Id))).ToList();
+
+                var searchIdSet = new HashSet<int>(searchIds ?? new List<int>());
+                searchList = searchList.Where(s => searchIdSet.Contains(Convert.ToInt32(s.Id))).ToList();
+            }
+
+            int tenantDataSourceId = GetTenantDataSourceId();
+            var tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var viewNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var txIdToIntegration = new Dictionary<int, string>();
+
+            using (var conn = OpenTenantConnection())
+            {
+                foreach (var txDto in txList)
+                {
+                    int txId = Convert.ToInt32(txDto.Id);
+                    var exported = ExportOneTransaction(conn, tenantDataSourceId, txDto, tableNames, viewNames);
+                    if (exported != null)
+                    {
+                        pack.Transactions.Add(exported);
+                        txIdToIntegration[txId] = exported.IntegrationId;
+                    }
+                }
+
+                pack.TransactionGroup = ExportTransactionGroup(conn, saasApplicationId, txIdToIntegration);
+
+                foreach (var searchDto in searchList)
+                {
+                    var exported = ExportOneSearch(conn, searchDto, txIdToIntegration);
+                    if (exported != null)
+                        pack.Searches.Add(exported);
+                }
+
+                foreach (var tableName in tableNames.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+                {
+                    var table = ExportOneTable(conn, tenantDataSourceId, tableName);
+                    if (table != null)
+                        pack.Tables.Add(table);
+                }
+
+                foreach (var viewName in viewNames.OrderBy(n => n, StringComparer.OrdinalIgnoreCase))
+                {
+                    var view = ExportOneView(conn, viewName);
+                    if (view != null)
+                        pack.Views.Add(view);
+                }
+            }
+
+            return pack;
+        }
+
+        private static AppConfigPackTransactionDto ExportOneTransaction(
+            SqlConnection conn,
+            int tenantDataSourceId,
+            AppTransactionDto txDto,
+            HashSet<string> tableNames,
+            HashSet<string> viewNames)
+        {
+            int txId = Convert.ToInt32(txDto.Id);
+            AppTransactionExDto hierarchy;
+            try
+            {
+                hierarchy = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(txId);
+            }
+            catch
+            {
+                return null;
+            }
+
+            if (hierarchy?.AppTransactionUnitList == null)
+                return null;
+
+            string integrationId = GetOrCreateTransactionIntegrationId(conn, txId, txDto.TransactionName);
+            var root = hierarchy.AppTransactionUnitList.FirstOrDefault(u => !(u.IsMasterSiblingUnit.HasValue && u.IsMasterSiblingUnit.Value));
+            if (root == null)
+                root = hierarchy.AppTransactionUnitList.FirstOrDefault();
+            if (root == null || string.IsNullOrWhiteSpace(root.DataBaseTableName))
+                return null;
+
+            CollectTableOrView(conn, root.DataBaseTableName, tableNames, viewNames);
+
+            var exported = new AppConfigPackTransactionDto
+            {
+                IntegrationId = integrationId,
+                Name = txDto.TransactionName,
+                Description = txDto.Description,
+                FormMode = "Default",
+                UnitStructure = new AppConfigPackUnitStructureDto
+                {
+                    RootTableName = root.DataBaseTableName,
+                    SiblingTableNames = hierarchy.AppTransactionUnitList
+                        .Where(u => u.IsMasterSiblingUnit.HasValue && u.IsMasterSiblingUnit.Value && !string.IsNullOrWhiteSpace(u.DataBaseTableName))
+                        .Select(u => u.DataBaseTableName)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList(),
+                    ChildUnits = (root.Children ?? new List<AppTransactionUnitExDto>())
+                        .Where(c => c != null && !string.IsNullOrWhiteSpace(c.DataBaseTableName))
+                        .Select(c =>
+                        {
+                            CollectTableOrView(conn, c.DataBaseTableName, tableNames, viewNames);
+                            foreach (var gc in c.Children ?? Enumerable.Empty<AppTransactionUnitExDto>())
+                            {
+                                if (!string.IsNullOrWhiteSpace(gc?.DataBaseTableName))
+                                    CollectTableOrView(conn, gc.DataBaseTableName, tableNames, viewNames);
+                            }
+
+                            return new AppConfigPackChildUnitDto
+                            {
+                                TableName = c.DataBaseTableName,
+                                GrandChildTableNames = (c.Children ?? new List<AppTransactionUnitExDto>())
+                                    .Where(g => !string.IsNullOrWhiteSpace(g?.DataBaseTableName))
+                                    .Select(g => g.DataBaseTableName)
+                                    .ToList(),
+                                GridDisplayType = c.EmGridViewDisplayType
+                            };
+                        })
+                        .ToList()
+                }
+            };
+
+            foreach (var sib in exported.UnitStructure.SiblingTableNames)
+                CollectTableOrView(conn, sib, tableNames, viewNames);
+
+            exported.Fields = ExportTransactionFields(conn, hierarchy);
+            return exported;
+        }
+
+        private static void CollectTableOrView(
+            SqlConnection conn,
+            string name,
+            HashSet<string> tableNames,
+            HashSet<string> viewNames)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return;
+            if (IsView(conn, name, "dbo"))
+                viewNames.Add(name.Trim());
+            else
+                tableNames.Add(name.Trim());
+        }
+
+        private static List<AppConfigPackFieldDto> ExportTransactionFields(SqlConnection conn, AppTransactionExDto hierarchy)
+        {
+            var fields = new List<AppConfigPackFieldDto>();
+            var units = new List<AppTransactionUnitExDto>();
+            foreach (var unit in hierarchy.AppTransactionUnitList ?? Enumerable.Empty<AppTransactionUnitExDto>())
+            {
+                CollectUnitsRecursive(unit, units);
+            }
+
+            foreach (var unit in units)
+            {
+                if (string.IsNullOrWhiteSpace(unit.DataBaseTableName) || unit.AppTransactionFieldList == null)
+                    continue;
+
+                foreach (var field in unit.AppTransactionFieldList)
+                {
+                    if (field == null || string.IsNullOrWhiteSpace(field.DataBaseFieldName))
+                        continue;
+                    if (field.IsPrimaryKey == true || field.IsLinkToParentPrimaryKey)
+                        continue;
+
+                    string matrixTable = null;
+                    string matrixColumn = null;
+                    if (field.MatrixForeignKeyFieldId.HasValue)
+                    {
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.CommandText = @"
+SELECT TOP 1 u.DataBaseTableName, f.DataBaseFieldName
+FROM dbo.AppTransactionField f
+INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
+WHERE f.TransactionFieldID = @Id";
+                            cmd.Parameters.AddWithValue("@Id", field.MatrixForeignKeyFieldId.Value);
+                            using (var reader = cmd.ExecuteReader())
+                            {
+                                if (reader.Read())
+                                {
+                                    matrixTable = reader.IsDBNull(0) ? null : reader.GetString(0);
+                                    matrixColumn = reader.IsDBNull(1) ? null : reader.GetString(1);
+                                }
+                            }
+                        }
+                    }
+
+                    fields.Add(new AppConfigPackFieldDto
+                    {
+                        TableName = unit.DataBaseTableName,
+                        ColumnName = field.DataBaseFieldName,
+                        DisplayName = field.DisplayName,
+                        ControlType = field.ControlType,
+                        EntityCode = GetEntityCodeById(conn, field.EntityId),
+                        IsVisible = field.IsVisible,
+                        IsReadOnly = field.IsReadonly,
+                        IsPivotColumn = field.IsPivotColumn,
+                        IsPivotValue = field.IsPivotValue,
+                        MatrixSourceTable = matrixTable,
+                        MatrixSourceColumn = matrixColumn
+                    });
+                }
+            }
+
+            return fields;
+        }
+
+        private static void CollectUnitsRecursive(AppTransactionUnitExDto unit, List<AppTransactionUnitExDto> sink)
+        {
+            if (unit == null)
+                return;
+            sink.Add(unit);
+            foreach (var child in unit.Children ?? Enumerable.Empty<AppTransactionUnitExDto>())
+                CollectUnitsRecursive(child, sink);
+        }
+
+        private static AppConfigPackTableDto ExportOneTable(SqlConnection conn, int tenantDataSourceId, string tableName)
+        {
+            DatabaseTable schema = AppMetaDataBL.GetOneDatabaseTableSchema(tableName, tenantDataSourceId, "dbo");
+            if (schema == null)
+                return null;
+
+            var table = new AppConfigPackTableDto
+            {
+                Name = tableName,
+                SchemaOwner = "dbo",
+                Description = schema.Description
+            };
+
+            foreach (var col in schema.Columns ?? new List<DatabaseColumn>())
+            {
+                table.Columns.Add(new AppConfigPackColumnDto
+                {
+                    Name = col.Name,
+                    DataType = col.DbDataType,
+                    Length = col.Length,
+                    Precision = col.Precision,
+                    Scale = col.Scale,
+                    IsPrimaryKey = col.IsPrimaryKey,
+                    IsNullable = col.Nullable,
+                    IsAutoIncrement = col.IsAutoNumber,
+                    DefaultValue = col.DefaultValue
+                });
+            }
+
+            if (schema.ForeignKeys != null)
+            {
+                foreach (var fk in schema.ForeignKeys)
+                {
+                    if (fk == null || string.IsNullOrWhiteSpace(fk.RefersToTable) || fk.Columns == null || fk.Columns.Count == 0)
+                        continue;
+                    table.Relationships.Add(new AppConfigPackRelationshipDto
+                    {
+                        Type = "MANY_TO_ONE",
+                        TargetTable = fk.RefersToTable,
+                        ForeignKeyColumn = fk.Columns[0],
+                        ReferencedColumn = string.IsNullOrWhiteSpace(fk.RefersToConstraint) ? fk.Columns[0] : null
+                    });
+                    if (table.Relationships[table.Relationships.Count - 1].ReferencedColumn == null)
+                        table.Relationships[table.Relationships.Count - 1].ReferencedColumn = fk.Columns[0];
+                }
+            }
+
+            return table;
+        }
+
+        private static AppConfigPackViewDto ExportOneView(SqlConnection conn, string viewName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT m.definition
+FROM sys.sql_modules m
+INNER JOIN sys.views v ON v.object_id = m.object_id
+WHERE v.name = @Name AND SCHEMA_NAME(v.schema_id) = N'dbo'";
+                cmd.Parameters.AddWithValue("@Name", viewName);
+                var def = cmd.ExecuteScalar() as string;
+                if (string.IsNullOrWhiteSpace(def))
+                    return null;
+
+                string sql = def.Trim();
+                if (sql.StartsWith("CREATE VIEW", StringComparison.OrdinalIgnoreCase)
+                    && sql.IndexOf("CREATE OR ALTER", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    sql = "CREATE OR ALTER VIEW" + sql.Substring("CREATE VIEW".Length);
+                }
+
+                return new AppConfigPackViewDto
+                {
+                    Name = viewName,
+                    SchemaOwner = "dbo",
+                    CreateOrAlterSql = sql
+                };
+            }
+        }
+
+        private static AppConfigPackTransactionGroupDto ExportTransactionGroup(
+            SqlConnection conn,
+            int saasApplicationId,
+            Dictionary<int, string> txIdToIntegration)
+        {
+            if (txIdToIntegration.Count == 0)
+                return null;
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 g.TransactionGroupID, g.GroupName
+FROM dbo.AppTransactionGroup g
+INNER JOIN dbo.AppTransactionGroupItem i ON i.TransactionGroupID = g.TransactionGroupID
+WHERE ISNULL(g.SaasApplicationID, 0) IN (0, @AppId)
+  AND i.TransID IN (" + string.Join(",", txIdToIntegration.Keys.Select(id => id.ToString())) + @")
+ORDER BY CASE WHEN g.SaasApplicationID = @AppId THEN 0 ELSE 1 END, g.TransactionGroupID";
+                cmd.Parameters.AddWithValue("@AppId", saasApplicationId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (!reader.Read())
+                        return null;
+
+                    int groupId = reader.GetInt32(0);
+                    string groupName = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    reader.Close();
+
+                    var members = new List<string>();
+                    string primary = null;
+                    using (var itemCmd = conn.CreateCommand())
+                    {
+                        itemCmd.CommandText = @"
+SELECT TransID, ISNULL(IsGroupSharedHeader, 0)
+FROM dbo.AppTransactionGroupItem
+WHERE TransactionGroupID = @GroupId
+ORDER BY ISNULL(TransactionLayoutOrder, 0), TransID";
+                        itemCmd.Parameters.AddWithValue("@GroupId", groupId);
+                        using (var itemReader = itemCmd.ExecuteReader())
+                        {
+                            while (itemReader.Read())
+                            {
+                                if (itemReader.IsDBNull(0))
+                                    continue;
+                                int txId = itemReader.GetInt32(0);
+                                if (!txIdToIntegration.TryGetValue(txId, out string integrationId))
+                                    continue;
+                                members.Add(integrationId);
+                                if (!itemReader.IsDBNull(1) && itemReader.GetBoolean(1) && primary == null)
+                                    primary = integrationId;
+                            }
+                        }
+                    }
+
+                    if (members.Count == 0)
+                        return null;
+
+                    return new AppConfigPackTransactionGroupDto
+                    {
+                        Name = groupName,
+                        IntegrationId = SlugIntegrationId("TG_", groupName ?? "Group"),
+                        PrimaryTransactionIntegrationId = primary ?? members[0],
+                        MemberTransactionIntegrationIds = members
+                    };
+                }
+            }
+        }
+
+        private static AppConfigPackSearchDto ExportOneSearch(
+            SqlConnection conn,
+            AppSearchDto searchDto,
+            Dictionary<int, string> txIdToIntegration)
+        {
+            int searchId = Convert.ToInt32(searchDto.Id);
+            AppSearchExDto full;
+            try
+            {
+                full = AppSearchConfigBL.RetrieveOneAppSearchExDto(searchId);
+            }
+            catch
+            {
+                return null;
+            }
+
+            if (full == null)
+                return null;
+
+            string integrationId = GetOrCreateSearchIntegrationId(conn, searchId, full.Name);
+            var exported = new AppConfigPackSearchDto
+            {
+                IntegrationId = integrationId,
+                Name = full.Name,
+                Description = full.Description,
+                UsageType = full.Type == (int)EmAppSearchUsageType.DataModelTemplate ? "DataModelTemplate" : "Management",
+                AutoExecute = full.IsAutoExecute
+            };
+
+            if (full.DataSetId.HasValue)
+            {
+                try
+                {
+                    var dataSet = AppDataSetBL.RetrieveOneAppDataSetExDto(full.DataSetId.Value);
+                    exported.DataSet = new AppConfigPackDataSetDto
+                    {
+                        Name = dataSet?.Name,
+                        QueryText = dataSet?.QueryText
+                    };
+                }
+                catch
+                {
+                    exported.DataSet = new AppConfigPackDataSetDto { Name = full.Name };
+                }
+            }
+
+            if (full.AppSearchFieldList != null)
+            {
+                int sort = 10;
+                foreach (var field in full.AppSearchFieldList.Where(f => f != null && !string.IsNullOrWhiteSpace(f.SysTableFiledPath)))
+                {
+                    exported.CriteriaFields.Add(new AppConfigPackCriteriaFieldDto
+                    {
+                        DisplayText = field.DisplayText,
+                        SysTableFiledPath = field.SysTableFiledPath,
+                        ControlType = field.ControlType,
+                        EntityCode = GetEntityCodeById(conn, field.EntityId),
+                        OperationId = field.OperationId,
+                        PositionRow = field.PositionRow,
+                        PositionColumn = field.PositionColumn,
+                        IsVisible = field.IsVisible,
+                        Sort = field.Sort ?? sort,
+                        DefaultValue = field.DefaultValue
+                    });
+                    sort += 10;
+                }
+            }
+
+            if (full.SearchViewId.HasValue)
+            {
+                var view = AppSearchViewConfigBL.RetrieveOneAppSearchViewExDto(full.SearchViewId.Value);
+                exported.SearchView = new AppConfigPackSearchViewDto
+                {
+                    Name = view?.Name,
+                    IntegrationId = integrationId + "_View",
+                    GridOutputMode = view?.GridOutputMode > 0 ? view.GridOutputMode : 1
+                };
+
+                if (view?.AppSearchViewFieldList != null)
+                {
+                    int sort = 10;
+                    foreach (var field in view.AppSearchViewFieldList.Where(f => f != null && !string.IsNullOrWhiteSpace(f.SysTableFiledPath)))
+                    {
+                        exported.SearchView.Fields.Add(new AppConfigPackSearchViewFieldDto
+                        {
+                            DisplayText = field.DisplayText,
+                            SysTableFiledPath = field.SysTableFiledPath,
+                            ControlType = field.ControlType,
+                            EntityCode = GetEntityCodeById(conn, field.EntityId),
+                            IsTransRootId = field.IsTransRootId == true,
+                            IsVisible = field.IsVisible,
+                            Sort = field.Sort ?? sort
+                        });
+                        sort += 10;
+                    }
+                }
+
+                exported.LinkTargets = ExportLinkTargets(conn, full.SearchViewId.Value, txIdToIntegration);
+            }
+
+            exported.Menu = ExportSearchMenu(conn, searchId, full.Name);
+            return exported;
+        }
+
+        private static List<AppConfigPackLinkTargetDto> ExportLinkTargets(
+            SqlConnection conn,
+            int searchViewId,
+            Dictionary<int, string> txIdToIntegration)
+        {
+            var raw = new List<(string Name, int? ActionType, int TxId, string SourceCol, int? Sort)>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT NavigationActionName, ActionType, LinkTargetTransactionID, TargetColumn1, Sort
+FROM dbo.AppFormLinkTarget
+WHERE SearchViewID = @SearchViewId
+ORDER BY ISNULL(Sort, 0), LinkTargetID";
+                cmd.Parameters.AddWithValue("@SearchViewId", searchViewId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (reader.IsDBNull(2))
+                            continue;
+                        raw.Add((
+                            reader.IsDBNull(0) ? null : reader.GetString(0),
+                            reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1),
+                            reader.GetInt32(2),
+                            reader.IsDBNull(3) ? null : reader.GetString(3),
+                            reader.IsDBNull(4) ? (int?)null : Convert.ToInt32(reader.GetValue(4))));
+                    }
+                }
+            }
+
+            var list = new List<AppConfigPackLinkTargetDto>();
+            foreach (var row in raw)
+            {
+                string integrationId;
+                if (!txIdToIntegration.TryGetValue(row.TxId, out integrationId))
+                    integrationId = GetTransactionIntegrationId(conn, row.TxId);
+                if (string.IsNullOrWhiteSpace(integrationId))
+                    continue;
+
+                string action = "Edit";
+                if (row.ActionType == (int)EmAppLinkTargetActionType.Create)
+                    action = "Create";
+                else if (row.ActionType == (int)EmAppLinkTargetActionType.Delete)
+                    action = "Delete";
+
+                list.Add(new AppConfigPackLinkTargetDto
+                {
+                    Name = row.Name,
+                    ActionType = action,
+                    TransactionIntegrationId = integrationId,
+                    SourceColumn = row.SourceCol,
+                    Sort = row.Sort
+                });
+            }
+
+            return list;
+        }
+
+        private static AppConfigPackMenuDto ExportSearchMenu(SqlConnection conn, int searchId, string searchName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 Name, Sort
+FROM dbo.AppListMenu
+WHERE RouteCode = N'MasterDataManagement' AND Link = @Link
+ORDER BY MenuID";
+                cmd.Parameters.AddWithValue("@Link", searchId.ToString());
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (!reader.Read())
+                        return new AppConfigPackMenuDto { RegisterInMainMenu = false };
+
+                    return new AppConfigPackMenuDto
+                    {
+                        RegisterInMainMenu = true,
+                        MenuTitle = reader.IsDBNull(0) ? searchName : reader.GetString(0),
+                        MenuOrder = reader.IsDBNull(1) ? (int?)null : Convert.ToInt32(reader.GetValue(1))
+                    };
+                }
+            }
+        }
+
+        private static string GetOrCreateTransactionIntegrationId(SqlConnection conn, int transactionId, string name)
+        {
+            string existing = GetTransactionIntegrationId(conn, transactionId);
+            if (!string.IsNullOrWhiteSpace(existing))
+                return existing;
+
+            string generated = SlugIntegrationId("TX_", name ?? ("Transaction" + transactionId));
+            SetIntegrationId(conn, "AppTransaction", "TransactionID", transactionId, generated);
+            return generated;
+        }
+
+        private static string GetTransactionIntegrationId(SqlConnection conn, int transactionId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT IntegrationId FROM dbo.AppTransaction WHERE TransactionID = @Id";
+                cmd.Parameters.AddWithValue("@Id", transactionId);
+                return cmd.ExecuteScalar() as string;
+            }
+        }
+
+        private static string GetOrCreateSearchIntegrationId(SqlConnection conn, int searchId, string name)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT IntegrationId FROM dbo.AppSearch WHERE SearchID = @Id";
+                cmd.Parameters.AddWithValue("@Id", searchId);
+                var existing = cmd.ExecuteScalar() as string;
+                if (!string.IsNullOrWhiteSpace(existing))
+                    return existing;
+            }
+
+            string generated = SlugIntegrationId("Search_", name ?? ("Search" + searchId));
+            SetIntegrationId(conn, "AppSearch", "SearchID", searchId, generated);
+            return generated;
+        }
+    }
+}

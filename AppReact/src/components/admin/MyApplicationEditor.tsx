@@ -15,6 +15,7 @@ import DataModelTemplate from './MyApplicationEditor/DataModelTemplate';
 import FormManagement from './MyApplicationEditor/FormManagement';
 import EntityManagement from './MyApplicationEditor/EntityManagement';
 import SearchManagement from './MyApplicationEditor/SearchManagement';
+import ImportAppConfig from './MyApplicationEditor/ImportAppConfig';
 import DatabaseDesignManagement from '../dbmgt/DatabaseDesignManagement';
 import WorkflowAutomation from './MyApplicationEditor/WorkflowAutomation';
 
@@ -26,6 +27,7 @@ const ApplicationBuilderSection = {
   TransactionGroup: 17, // Data Model Template
   ListOfValue: 15, // Entity List Of Value
   DataPresentation: 12, // Report & View
+  ImportConfig: 18, // Import App Config From JSON
   Database: 9, // Database Management
   Workflow: 3, // Workflow Automation
   MenuSetting: 11
@@ -38,6 +40,7 @@ const VALID_SECTION_IDS = [
   ApplicationBuilderSection.Form,
   ApplicationBuilderSection.ListOfValue,
   ApplicationBuilderSection.DataPresentation,
+  ApplicationBuilderSection.ImportConfig,
   ApplicationBuilderSection.Database,
   ApplicationBuilderSection.Workflow,
   ApplicationBuilderSection.MenuSetting
@@ -135,7 +138,8 @@ const MyApplicationEditor: React.FC = () => {
     { id: ApplicationBuilderSection.TransactionGroup, name: 'Data Model Template', icon: 'fa-table' },
     //{ id: ApplicationBuilderSection.Form, name: 'UX Design', icon: 'fa-palette' },
     { id: ApplicationBuilderSection.ListOfValue, name: 'Entity List Of Value', icon: 'fa-list' },
-    { id: ApplicationBuilderSection.DataPresentation, name: 'Report & View', icon: 'fa-chart-bar' }
+    { id: ApplicationBuilderSection.DataPresentation, name: 'Report & View', icon: 'fa-chart-bar' },
+    { id: ApplicationBuilderSection.ImportConfig, name: 'Import Config', icon: 'fa-file-import' }
   ];
 
   const getSectionName = (sectionId: number): string => {
@@ -166,6 +170,9 @@ const MyApplicationEditor: React.FC = () => {
       
       case ApplicationBuilderSection.DataPresentation:
         return <SearchManagement menuId={menuId} />;
+
+      case ApplicationBuilderSection.ImportConfig:
+        return <ImportAppConfig menuId={menuId} />;
       
       case ApplicationBuilderSection.Database:
         return <DatabaseDesignManagement />;

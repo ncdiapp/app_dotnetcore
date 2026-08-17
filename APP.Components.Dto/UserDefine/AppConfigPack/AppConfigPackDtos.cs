@@ -1,0 +1,523 @@
+using System.Collections.Generic;
+using System.Runtime.Serialization;
+using APP.Components.Dto;
+
+namespace APP.Components.EntityDto
+{
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackDto
+    {
+        [DataMember]
+        public int SchemaVersion { get; set; } = 1;
+
+        [DataMember]
+        public string GeneratedAt { get; set; }
+
+        [DataMember]
+        public AppConfigPackSourceDto Source { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackTableDto> Tables { get; set; } = new List<AppConfigPackTableDto>();
+
+        [DataMember]
+        public List<AppConfigPackViewDto> Views { get; set; } = new List<AppConfigPackViewDto>();
+
+        [DataMember]
+        public List<AppConfigPackTransactionDto> Transactions { get; set; } = new List<AppConfigPackTransactionDto>();
+
+        [DataMember]
+        public AppConfigPackTransactionGroupDto TransactionGroup { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackSearchDto> Searches { get; set; } = new List<AppConfigPackSearchDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackSourceDto
+    {
+        /// <summary>export | ai | manual</summary>
+        [DataMember]
+        public string GeneratedBy { get; set; }
+
+        [DataMember]
+        public string ApplicationName { get; set; }
+
+        [DataMember]
+        public int? SaasApplicationId { get; set; }
+
+        [DataMember]
+        public string Notes { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackTableDto
+    {
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string SchemaOwner { get; set; } = "dbo";
+
+        [DataMember]
+        public string Description { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackColumnDto> Columns { get; set; } = new List<AppConfigPackColumnDto>();
+
+        [DataMember]
+        public List<AppConfigPackRelationshipDto> Relationships { get; set; } = new List<AppConfigPackRelationshipDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackColumnDto
+    {
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string DataType { get; set; }
+
+        [DataMember]
+        public int? Length { get; set; }
+
+        [DataMember]
+        public int? Precision { get; set; }
+
+        [DataMember]
+        public int? Scale { get; set; }
+
+        [DataMember]
+        public bool IsPrimaryKey { get; set; }
+
+        [DataMember]
+        public bool IsNullable { get; set; } = true;
+
+        [DataMember]
+        public bool IsAutoIncrement { get; set; }
+
+        [DataMember]
+        public string DefaultValue { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackRelationshipDto
+    {
+        [DataMember]
+        public string Type { get; set; }
+
+        [DataMember]
+        public string TargetTable { get; set; }
+
+        [DataMember]
+        public string ForeignKeyColumn { get; set; }
+
+        [DataMember]
+        public string ReferencedColumn { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackViewDto
+    {
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string SchemaOwner { get; set; } = "dbo";
+
+        [DataMember]
+        public string CreateOrAlterSql { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackTransactionDto
+    {
+        [DataMember]
+        public string IntegrationId { get; set; }
+
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string Description { get; set; }
+
+        [DataMember]
+        public AppConfigPackUnitStructureDto UnitStructure { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackFieldDto> Fields { get; set; } = new List<AppConfigPackFieldDto>();
+
+        /// <summary>Default (v1). Flex layout round-trip is Phase 2.</summary>
+        [DataMember]
+        public string FormMode { get; set; } = "Default";
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackUnitStructureDto
+    {
+        [DataMember]
+        public string RootTableName { get; set; }
+
+        [DataMember]
+        public List<string> SiblingTableNames { get; set; } = new List<string>();
+
+        [DataMember]
+        public List<AppConfigPackChildUnitDto> ChildUnits { get; set; } = new List<AppConfigPackChildUnitDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackChildUnitDto
+    {
+        [DataMember]
+        public string TableName { get; set; }
+
+        [DataMember]
+        public List<string> GrandChildTableNames { get; set; } = new List<string>();
+
+        [DataMember]
+        public int? GridDisplayType { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackFieldDto
+    {
+        [DataMember]
+        public string TableName { get; set; }
+
+        [DataMember]
+        public string ColumnName { get; set; }
+
+        [DataMember]
+        public string DisplayName { get; set; }
+
+        [DataMember]
+        public int? ControlType { get; set; }
+
+        [DataMember]
+        public string EntityCode { get; set; }
+
+        [DataMember]
+        public bool? IsVisible { get; set; }
+
+        [DataMember]
+        public bool? IsReadOnly { get; set; }
+
+        [DataMember]
+        public bool? IsPivotColumn { get; set; }
+
+        [DataMember]
+        public bool? IsPivotValue { get; set; }
+
+        [DataMember]
+        public string MatrixSourceTable { get; set; }
+
+        [DataMember]
+        public string MatrixSourceColumn { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackTransactionGroupDto
+    {
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string IntegrationId { get; set; }
+
+        [DataMember]
+        public string PrimaryTransactionIntegrationId { get; set; }
+
+        [DataMember]
+        public List<string> MemberTransactionIntegrationIds { get; set; } = new List<string>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackSearchDto
+    {
+        [DataMember]
+        public string IntegrationId { get; set; }
+
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string Description { get; set; }
+
+        /// <summary>Management | DataModelTemplate</summary>
+        [DataMember]
+        public string UsageType { get; set; } = "Management";
+
+        [DataMember]
+        public bool AutoExecute { get; set; } = true;
+
+        [DataMember]
+        public AppConfigPackDataSetDto DataSet { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackCriteriaFieldDto> CriteriaFields { get; set; } =
+            new List<AppConfigPackCriteriaFieldDto>();
+
+        [DataMember]
+        public AppConfigPackSearchViewDto SearchView { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackLinkTargetDto> LinkTargets { get; set; } =
+            new List<AppConfigPackLinkTargetDto>();
+
+        [DataMember]
+        public AppConfigPackMenuDto Menu { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackDataSetDto
+    {
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string PrimaryTableName { get; set; }
+
+        [DataMember]
+        public string QueryText { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackCriteriaFieldDto
+    {
+        [DataMember]
+        public string DisplayText { get; set; }
+
+        [DataMember]
+        public string SysTableFiledPath { get; set; }
+
+        [DataMember]
+        public int? ControlType { get; set; }
+
+        [DataMember]
+        public string EntityCode { get; set; }
+
+        [DataMember]
+        public int? OperationId { get; set; }
+
+        [DataMember]
+        public int? PositionRow { get; set; }
+
+        [DataMember]
+        public int? PositionColumn { get; set; }
+
+        [DataMember]
+        public bool IsVisible { get; set; } = true;
+
+        [DataMember]
+        public int? Sort { get; set; }
+
+        [DataMember]
+        public string DefaultValue { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackSearchViewDto
+    {
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string IntegrationId { get; set; }
+
+        [DataMember]
+        public int GridOutputMode { get; set; } = 1;
+
+        [DataMember]
+        public List<AppConfigPackSearchViewFieldDto> Fields { get; set; } =
+            new List<AppConfigPackSearchViewFieldDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackSearchViewFieldDto
+    {
+        [DataMember]
+        public string DisplayText { get; set; }
+
+        [DataMember]
+        public string SysTableFiledPath { get; set; }
+
+        [DataMember]
+        public int? ControlType { get; set; }
+
+        [DataMember]
+        public string EntityCode { get; set; }
+
+        [DataMember]
+        public bool IsTransRootId { get; set; }
+
+        [DataMember]
+        public bool IsVisible { get; set; } = true;
+
+        [DataMember]
+        public int? Sort { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackLinkTargetDto
+    {
+        [DataMember]
+        public string Name { get; set; }
+
+        /// <summary>Create | Edit | Delete</summary>
+        [DataMember]
+        public string ActionType { get; set; } = "Edit";
+
+        [DataMember]
+        public string TransactionIntegrationId { get; set; }
+
+        [DataMember]
+        public string SourceColumn { get; set; }
+
+        [DataMember]
+        public int? Sort { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackMenuDto
+    {
+        [DataMember]
+        public bool RegisterInMainMenu { get; set; }
+
+        [DataMember]
+        public string MenuTitle { get; set; }
+
+        [DataMember]
+        public int? MenuOrder { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackLoadRequestDto
+    {
+        [DataMember]
+        public string PackJson { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackExecuteRequestDto
+    {
+        [DataMember]
+        public AppConfigPackDto Pack { get; set; }
+
+        [DataMember]
+        public int? SaasApplicationId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackExportRequestDto
+    {
+        [DataMember]
+        public int? SaasApplicationId { get; set; }
+
+        /// <summary>
+        /// When true, export the whole application. Empty TransactionIds/SearchIds then mean "all", not "none".
+        /// When false, each id list is an inclusive filter; an empty list exports none of that kind.
+        /// </summary>
+        [DataMember]
+        public bool ExportAll { get; set; }
+
+        [DataMember]
+        public List<int> TransactionIds { get; set; } = new List<int>();
+
+        [DataMember]
+        public List<int> SearchIds { get; set; } = new List<int>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackExportResultDto
+    {
+        [DataMember]
+        public AppConfigPackDto Pack { get; set; }
+
+        [DataMember]
+        public string JsonText { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackValidationDto
+    {
+        [DataMember]
+        public bool IsValid { get; set; }
+
+        [DataMember]
+        public List<string> Errors { get; set; } = new List<string>();
+
+        [DataMember]
+        public List<string> Warnings { get; set; } = new List<string>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackPreviewDto
+    {
+        [DataMember]
+        public bool IsSuccess { get; set; } = true;
+
+        [DataMember]
+        public string ErrorMessage { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackPreviewItemDto> Items { get; set; } = new List<AppConfigPackPreviewItemDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackPreviewItemDto
+    {
+        [DataMember]
+        public string ObjectType { get; set; }
+
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string IntegrationId { get; set; }
+
+        [DataMember]
+        public string Action { get; set; }
+
+        [DataMember]
+        public int? ExistingId { get; set; }
+
+        [DataMember]
+        public string Detail { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackExecuteResultDto
+    {
+        [DataMember]
+        public bool IsSuccess { get; set; }
+
+        [DataMember]
+        public string ErrorMessage { get; set; }
+
+        [DataMember]
+        public List<string> Messages { get; set; } = new List<string>();
+
+        [DataMember]
+        public int TablesCreated { get; set; }
+
+        [DataMember]
+        public int ColumnsAdded { get; set; }
+
+        [DataMember]
+        public int ViewsApplied { get; set; }
+
+        [DataMember]
+        public int TransactionsInserted { get; set; }
+
+        [DataMember]
+        public int TransactionsUpdated { get; set; }
+
+        [DataMember]
+        public int SearchesInserted { get; set; }
+
+        [DataMember]
+        public int SearchesUpdated { get; set; }
+
+        [DataMember]
+        public int? TransactionGroupId { get; set; }
+    }
+}

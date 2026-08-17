@@ -2324,6 +2324,7 @@ namespace APP.Components.Dto
         ListOfValue = 15,
         Website = 16,
         TransactionGroup = 17,
+        ImportConfig = 18,
 
 
         SearchManagement = 121,
