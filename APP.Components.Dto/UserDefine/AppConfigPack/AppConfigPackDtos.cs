@@ -218,6 +218,10 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public List<AppConfigPackLinkTargetDto> LinkTargets { get; set; }
+
+        /// <summary>Form tab title for this child grid when the default layout uses a Tab Container.</summary>
+        [DataMember]
+        public string LayoutTab { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -284,6 +288,9 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public string CascadingChildKey { get; set; }
+
+        [DataMember]
+        public int? SortOrder { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

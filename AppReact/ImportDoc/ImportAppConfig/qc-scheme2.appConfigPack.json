@@ -19,7 +19,8 @@
         { "name": "AqlLevel", "dataType": "NVARCHAR", "length": 20, "isNullable": false, "defaultValue": "N'MAJOR_2_5'" },
         { "name": "LotQuantity", "dataType": "INT", "isNullable": false, "defaultValue": "0" },
         { "name": "SampleSize", "dataType": "INT", "isNullable": false, "defaultValue": "0" },
-        { "name": "OrderStatus", "dataType": "NVARCHAR", "length": 20, "isNullable": false, "defaultValue": "N'OPEN'" }
+        { "name": "OrderStatus", "dataType": "NVARCHAR", "length": 20, "isNullable": false, "defaultValue": "N'OPEN'" },
+        { "name": "ColorwayId", "dataType": "INT", "isNullable": true }
       ],
       "relationships": [
         { "type": "MANY_TO_ONE", "targetTable": "TchpStyleSpec", "foreignKeyColumn": "StyleSpecId", "referencedColumn": "StyleSpecId" }
@@ -118,7 +119,7 @@
           {
             "tableName": "TchpQcOrderSize",
             "displayName": "Selected QC Sizes",
-            "gridDisplayType": 5,
+            "gridDisplayType": 6,
             "availableSourceTableName": "View_TchpQcOrderAvailableSize",
             "availableSelectSelectedColumn": "SizeRunSizeId",
             "availableSelectSourceColumn": "SizeRunSizeId"
@@ -127,6 +128,7 @@
             "tableName": "TchpQcGarment",
             "displayName": "Sampled Garments",
             "gridDisplayType": 1,
+            "layoutTab": "QC Garments",
             "linkTargets": [
               {
                 "name": "Create QC Garment",
@@ -149,6 +151,7 @@
           {
             "tableName": "View_TchpQcOrderPom",
             "displayName": "QC Results by POM",
+            "layoutTab": "QC Results Preview",
             "isReadOnly": true,
             "isSynchToDatabaseTable": false,
             "grandChildTableNames": ["View_TchpQcOrderPomSizeResult"],
@@ -165,28 +168,29 @@
         ]
       },
       "fields": [
-        { "tableName": "TchpQcOrder", "columnName": "StyleSpecId", "displayName": "Style Spec", "isVisible": false, "isReadOnly": true },
+        { "tableName": "TchpQcOrder", "columnName": "StyleSpecId", "displayName": "Style Spec", "isVisible": true, "isReadOnly": true },
         { "tableName": "TchpQcOrder", "columnName": "LotNumber", "displayName": "Lot Number", "controlType": 2, "isVisible": true },
         { "tableName": "TchpQcOrder", "columnName": "FactoryId", "displayName": "Factory", "controlType": 20, "isVisible": true },
         { "tableName": "TchpQcOrder", "columnName": "AqlLevel", "displayName": "AQL Level", "controlType": 2, "isVisible": true },
         { "tableName": "TchpQcOrder", "columnName": "LotQuantity", "displayName": "Lot Quantity", "controlType": 20, "isVisible": true },
         { "tableName": "TchpQcOrder", "columnName": "SampleSize", "displayName": "Sample Size", "controlType": 20, "isVisible": true, "isReadOnly": true },
         { "tableName": "TchpQcOrder", "columnName": "OrderStatus", "displayName": "Status", "controlType": 2, "isVisible": true },
+        { "tableName": "TchpQcOrder", "columnName": "ColorwayId", "displayName": "Colorway Id", "controlType": 2, "isVisible": true },
 
         { "tableName": "View_TchpQcOrderAvailableSize", "columnName": "QcOrderAvailableSizeId", "isPrimaryKey": true, "isVisible": false, "isReadOnly": true },
         { "tableName": "View_TchpQcOrderAvailableSize", "columnName": "QcOrderId", "isLinkToParentPrimaryKey": true, "isVisible": false, "isReadOnly": true },
-        { "tableName": "View_TchpQcOrderAvailableSize", "columnName": "SizeRunSizeId", "displayName": "Size", "controlType": 1, "entityCode": "SizeRunDetail", "isVisible": true },
+        { "tableName": "View_TchpQcOrderAvailableSize", "columnName": "SizeRunSizeId", "displayName": "Size", "controlType": 1, "entityCode": "SizeRunDetail", "isVisible": false },
         { "tableName": "View_TchpQcOrderAvailableSize", "columnName": "SizeLabel", "displayName": "Size Label", "controlType": 2, "isVisible": true },
-        { "tableName": "View_TchpQcOrderAvailableSize", "columnName": "SizeOrder", "displayName": "Order", "controlType": 20, "isVisible": true },
+        { "tableName": "View_TchpQcOrderAvailableSize", "columnName": "SizeOrder", "displayName": "Order", "controlType": 20, "isVisible": false },
         { "tableName": "View_TchpQcOrderAvailableSize", "columnName": "StyleSpecId", "isVisible": false },
         { "tableName": "View_TchpQcOrderAvailableSize", "columnName": "SizeRunId", "isVisible": false },
         { "tableName": "View_TchpQcOrderAvailableSize", "columnName": "IsActive", "isVisible": false },
 
         { "tableName": "TchpQcOrderSize", "columnName": "SizeRunSizeId", "displayName": "Size", "controlType": 1, "entityCode": "SizeRunDetail", "isVisible": true },
 
-        { "tableName": "TchpQcGarment", "columnName": "GarmentSerial", "displayName": "Garment Serial", "controlType": 2, "isVisible": true },
-        { "tableName": "TchpQcGarment", "columnName": "SizeRunSizeId", "displayName": "Size", "controlType": 1, "entityCode": "SizeRunDetail", "isVisible": true },
-        { "tableName": "TchpQcGarment", "columnName": "GarmentPassStatus", "displayName": "Pass", "controlType": 13, "isVisible": true, "isReadOnly": true },
+        { "tableName": "TchpQcGarment", "columnName": "GarmentSerial", "displayName": "Garment Serial", "controlType": 2, "isVisible": true, "sortOrder": 30 },
+        { "tableName": "TchpQcGarment", "columnName": "GarmentPassStatus", "displayName": "Pass", "controlType": 13, "isVisible": true, "isReadOnly": true, "sortOrder": 40 },
+        { "tableName": "TchpQcGarment", "columnName": "SizeRunSizeId", "displayName": "Size", "controlType": 1, "entityCode": "SizeRunDetail", "isVisible": true, "sortOrder": 50 },
 
         { "tableName": "View_TchpQcOrderPom", "columnName": "QcOrderPomId", "isPrimaryKey": true, "isVisible": false, "isReadOnly": true },
         { "tableName": "View_TchpQcOrderPom", "columnName": "QcOrderId", "isLinkToParentPrimaryKey": true, "isVisible": false, "isReadOnly": true },
@@ -231,24 +235,24 @@
         ]
       },
       "fields": [
-        { "tableName": "TchpQcGarment", "columnName": "QcOrderId", "displayName": "QC Order", "isVisible": false, "isReadOnly": true },
-        { "tableName": "TchpQcGarment", "columnName": "GarmentSerial", "displayName": "Garment Serial", "controlType": 2, "isVisible": true },
-        { "tableName": "TchpQcGarment", "columnName": "SizeRunSizeId", "displayName": "Size", "controlType": 1, "entityCode": "SizeRunDetail", "isVisible": true },
-        { "tableName": "TchpQcGarment", "columnName": "GarmentPassStatus", "displayName": "Pass", "controlType": 13, "isVisible": true, "isReadOnly": true },
+        { "tableName": "TchpQcGarment", "columnName": "QcOrderId", "displayName": "QC Order", "isVisible": false, "isReadOnly": true, "sortOrder": 20 },
+        { "tableName": "TchpQcGarment", "columnName": "GarmentSerial", "displayName": "Garment Serial", "controlType": 2, "isVisible": true, "sortOrder": 30 },
+        { "tableName": "TchpQcGarment", "columnName": "GarmentPassStatus", "displayName": "Pass", "controlType": 13, "isVisible": true, "isReadOnly": true, "sortOrder": 40 },
+        { "tableName": "TchpQcGarment", "columnName": "SizeRunSizeId", "displayName": "Size", "controlType": 1, "entityCode": "SizeRunDetail", "isVisible": true, "sortOrder": 50 },
 
-        { "tableName": "TchpQcResult", "columnName": "PomSpecLineId", "displayName": "POM", "controlType": 1, "entityCode": "PomSpecLine", "isVisible": true },
-        { "tableName": "TchpQcResult", "columnName": "SizeRunSizeId", "displayName": "Size Snapshot", "controlType": 1, "entityCode": "SizeRunDetail", "isVisible": false, "isReadOnly": true },
-        { "tableName": "TchpQcResult", "columnName": "ProductionValue", "displayName": "Production", "controlType": 20, "isVisible": true },
-        { "tableName": "TchpQcResult", "columnName": "BeforeWashValue", "displayName": "Before Wash", "controlType": 20, "isVisible": true },
-        { "tableName": "TchpQcResult", "columnName": "AfterWashValue", "displayName": "After Wash", "controlType": 20, "isVisible": true },
-        { "tableName": "TchpQcResult", "columnName": "AfterIronValue", "displayName": "After Iron", "controlType": 20, "isVisible": true },
-        { "tableName": "TchpQcResult", "columnName": "SpecValue", "displayName": "Spec", "controlType": 20, "isVisible": true, "isReadOnly": true },
-        { "tableName": "TchpQcResult", "columnName": "Tolerance", "displayName": "Tol", "controlType": 20, "isVisible": true, "isReadOnly": true },
-        { "tableName": "TchpQcResult", "columnName": "Pass", "displayName": "Pass", "controlType": 13, "isVisible": true, "isReadOnly": true },
-        { "tableName": "TchpQcResult", "columnName": "DefectClass", "isVisible": false },
-        { "tableName": "TchpQcResult", "columnName": "Shrinkage", "isVisible": false, "isReadOnly": true },
-        { "tableName": "TchpQcResult", "columnName": "Recovery", "isVisible": false, "isReadOnly": true },
-        { "tableName": "TchpQcResult", "columnName": "FinalDiff", "displayName": "Final Diff", "controlType": 20, "isVisible": true, "isReadOnly": true }
+        { "tableName": "TchpQcResult", "columnName": "PomSpecLineId", "displayName": "POM", "controlType": 1, "entityCode": "PomSpecLine", "isVisible": true, "sortOrder": 30 },
+        { "tableName": "TchpQcResult", "columnName": "SizeRunSizeId", "displayName": "Size Snapshot", "controlType": 1, "entityCode": "SizeRunDetail", "isVisible": false, "isReadOnly": true, "sortOrder": 40 },
+        { "tableName": "TchpQcResult", "columnName": "ProductionValue", "displayName": "Production", "controlType": 20, "isVisible": true, "sortOrder": 50 },
+        { "tableName": "TchpQcResult", "columnName": "BeforeWashValue", "displayName": "Before Wash", "controlType": 20, "isVisible": true, "sortOrder": 60 },
+        { "tableName": "TchpQcResult", "columnName": "AfterWashValue", "displayName": "After Wash", "controlType": 20, "isVisible": true, "sortOrder": 70 },
+        { "tableName": "TchpQcResult", "columnName": "AfterIronValue", "displayName": "After Iron", "controlType": 20, "isVisible": true, "sortOrder": 80 },
+        { "tableName": "TchpQcResult", "columnName": "SpecValue", "displayName": "Spec", "controlType": 20, "isVisible": true, "isReadOnly": true, "sortOrder": 90 },
+        { "tableName": "TchpQcResult", "columnName": "Tolerance", "displayName": "Tol", "controlType": 20, "isVisible": true, "isReadOnly": true, "sortOrder": 100 },
+        { "tableName": "TchpQcResult", "columnName": "Shrinkage", "isVisible": false, "isReadOnly": true, "sortOrder": 110 },
+        { "tableName": "TchpQcResult", "columnName": "Recovery", "isVisible": false, "isReadOnly": true, "sortOrder": 120 },
+        { "tableName": "TchpQcResult", "columnName": "FinalDiff", "displayName": "Final Diff", "controlType": 20, "isVisible": true, "isReadOnly": true, "sortOrder": 130 },
+        { "tableName": "TchpQcResult", "columnName": "Pass", "displayName": "Pass", "controlType": 13, "isVisible": true, "isReadOnly": true, "sortOrder": 140 },
+        { "tableName": "TchpQcResult", "columnName": "DefectClass", "isVisible": false, "sortOrder": 150 }
       ]
     },
     {
@@ -296,7 +300,8 @@
         { "tableName": "TchpQcOrder", "columnName": "LotQuantity", "displayName": "Lot Qty", "controlType": 20, "isVisible": true },
         { "tableName": "TchpQcOrder", "columnName": "SampleSize", "displayName": "Sample", "controlType": 20, "isVisible": true, "isReadOnly": true },
         { "tableName": "TchpQcOrder", "columnName": "AqlLevel", "displayName": "AQL", "controlType": 2, "isVisible": true },
-        { "tableName": "TchpQcOrder", "columnName": "OrderStatus", "displayName": "Status", "controlType": 2, "isVisible": true }
+        { "tableName": "TchpQcOrder", "columnName": "OrderStatus", "displayName": "Status", "controlType": 2, "isVisible": true },
+        { "tableName": "TchpQcOrder", "columnName": "ColorwayId", "displayName": "Colorway Id", "controlType": 2, "isVisible": true }
       ]
     }
   ],

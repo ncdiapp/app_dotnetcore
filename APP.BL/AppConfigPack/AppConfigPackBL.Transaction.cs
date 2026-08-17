@@ -91,6 +91,7 @@ WHERE TransactionID = @Id";
                 WireLogicalParentKeys(transactionId, tx, pack.Tables);
                 AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
                 EnsureDefaultForm(transactionId);
+                ApplyFormTabNames(transactionId, tx);
 
                 map[integrationId] = transactionId;
                 if (inserted)
@@ -169,6 +170,7 @@ UPDATE f SET
     CascadingRelationTableSchemaOwner = COALESCE(@CascadingSchema, f.CascadingRelationTableSchemaOwner),
     CascadingRelationTableParentKeyField = COALESCE(@CascadingParent, f.CascadingRelationTableParentKeyField),
     CascadingRelationTableChildKeyField = COALESCE(@CascadingChild, f.CascadingRelationTableChildKeyField),
+    SortOrder = COALESCE(@SortOrder, f.SortOrder),
     AppModifiedDate = GETDATE()
 FROM dbo.AppTransactionField f
 INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
@@ -192,6 +194,7 @@ WHERE u.TransactionID = @TxId
                         cmd.Parameters.AddWithValue("@CascadingSchema", string.IsNullOrWhiteSpace(field.CascadingRelationSchemaOwner) ? (object)DBNull.Value : field.CascadingRelationSchemaOwner.Trim());
                         cmd.Parameters.AddWithValue("@CascadingParent", string.IsNullOrWhiteSpace(field.CascadingParentKey) ? (object)DBNull.Value : field.CascadingParentKey.Trim());
                         cmd.Parameters.AddWithValue("@CascadingChild", string.IsNullOrWhiteSpace(field.CascadingChildKey) ? (object)DBNull.Value : field.CascadingChildKey.Trim());
+                        cmd.Parameters.AddWithValue("@SortOrder", (object)field.SortOrder ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@TxId", transactionId);
                         cmd.Parameters.AddWithValue("@ColumnName", field.ColumnName.Trim());
                         cmd.Parameters.AddWithValue("@TableName", string.IsNullOrWhiteSpace(field.TableName) ? (object)DBNull.Value : field.TableName.Trim());
@@ -573,6 +576,77 @@ WHERE u.TransactionID = @TxId
                 throw new InvalidOperationException(
                     formResult.ValidationResult.Items?.FirstOrDefault()?.Message
                     ?? $"Failed to create default form for transaction {transactionId}.");
+            }
+        }
+
+        private static void ApplyFormTabNames(int transactionId, AppConfigPackTransactionDto tx)
+        {
+            var tabs = new List<(string TableName, string TabName)>();
+            foreach (var child in tx?.UnitStructure?.ChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.TableName) || string.IsNullOrWhiteSpace(child.LayoutTab))
+                    continue;
+                tabs.Add((child.TableName.Trim(), child.LayoutTab.Trim()));
+            }
+            if (tabs.Count == 0)
+                return;
+
+            using (var conn = OpenTenantConnection())
+            {
+                int? formId;
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = "SELECT FormID FROM dbo.AppTransaction WHERE TransactionID = @TxId";
+                    cmd.Parameters.AddWithValue("@TxId", transactionId);
+                    var val = cmd.ExecuteScalar();
+                    formId = val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+                }
+                if (!formId.HasValue)
+                    return;
+
+                foreach (var tab in tabs)
+                {
+                    int? unitId = GetTransactionUnitId(conn, transactionId, tab.TableName);
+                    if (!unitId.HasValue)
+                        continue;
+
+                    int? tabItemId;
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = @"
+WITH walk AS (
+    SELECT FormLayoutItemID, UIGridLayoutParentID, ParameterKeyValue, 0 AS Lvl
+    FROM dbo.AppFormLayoutItem
+    WHERE FormID = @FormId AND GridTransactionUnitID = @UnitId
+    UNION ALL
+    SELECT p.FormLayoutItemID, p.UIGridLayoutParentID, p.ParameterKeyValue, w.Lvl + 1
+    FROM dbo.AppFormLayoutItem p
+    INNER JOIN walk w ON p.FormLayoutItemID = w.UIGridLayoutParentID
+)
+SELECT TOP 1 FormLayoutItemID
+FROM walk
+WHERE JSON_VALUE(ParameterKeyValue, '$.IsTab') = 'true'
+ORDER BY Lvl";
+                        cmd.Parameters.AddWithValue("@FormId", formId.Value);
+                        cmd.Parameters.AddWithValue("@UnitId", unitId.Value);
+                        var val = cmd.ExecuteScalar();
+                        tabItemId = val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+                    }
+                    if (!tabItemId.HasValue)
+                        continue;
+
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.CommandText = @"
+UPDATE dbo.AppFormLayoutItem
+SET ParameterKeyValue = JSON_MODIFY(ParameterKeyValue, '$.DisplayName', @TabName),
+    DisplayTitle = @TabName
+WHERE FormLayoutItemID = @ItemId";
+                        cmd.Parameters.AddWithValue("@TabName", tab.TabName);
+                        cmd.Parameters.AddWithValue("@ItemId", tabItemId.Value);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
             }
         }
 

@@ -139,14 +139,15 @@ const ChildPivotProjectionGrid: React.FC<ChildPivotProjectionGridProps> = ({
     if (alreadyBound && sameNumericKey) return;
 
     if (alreadyBound) {
-      coerceNumericWideRowsInPlace((collectionView as any).sourceCollection, numericBindings);
+      const coerced = coerceNumericWideRowsInPlace((collectionView as any).sourceCollection, numericBindings);
+      (collectionView as any).sourceCollection = coerced;
       boundNumericKeyRef.current = numericBindingKey;
       collectionView.refresh();
       return;
     }
 
-    coerceNumericWideRowsInPlace(wideRows, numericBindings);
-    (collectionView as any).sourceCollection = wideRows;
+    const coerced = coerceNumericWideRowsInPlace(wideRows, numericBindings);
+    (collectionView as any).sourceCollection = coerced;
     boundWideRowsRef.current = wideRows;
     boundNumericKeyRef.current = numericBindingKey;
     collectionView.sortDescriptions.clear();

@@ -362,7 +362,8 @@ ORDER BY ISNULL(Sort, 0), LinkTargetID";
                         CascadingRelationTable = field.CascadingRelationTable,
                         CascadingRelationSchemaOwner = field.CascadingRelationTableSchemaOwner,
                         CascadingParentKey = field.CascadingRelationTableParentKeyField,
-                        CascadingChildKey = field.CascadingRelationTableChildKeyField
+                        CascadingChildKey = field.CascadingRelationTableChildKeyField,
+                        SortOrder = field.SortOrder
                     });
                 }
             }

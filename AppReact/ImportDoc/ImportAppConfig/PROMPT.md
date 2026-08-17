@@ -116,11 +116,12 @@ Views run **after** tables so they can select from newly created tables.
 
 - Root = master table. Optional `rootDisplayName`. Siblings share the root PK (`ReferenceId` pattern when present).
 - `siblingUnits[]` overlays sibling display names. `siblingTableNames` still creates the sibling units.
-- Child / grandchild = grids. Optional `gridDisplayType` (`1` RegularGrid, `5` AvailableSelectGridPair, `7` ChildUnitPivotColumns).
+- Child / grandchild = grids. Optional `gridDisplayType` (`1` RegularGrid, `5` AvailableSelectGridPair, `6` MultipleSelectBox, `7` ChildUnitPivotColumns).
+- Optional `layoutTab` on a child unit: after default form create, rename that unit's form Tab to this title (e.g. `"QC Results Preview"`). Full Flex layout (moving a grid out of the tab container) is not round-tripped.
 - Optional child flags: `isReadOnly`, `isSynchToDatabaseTable` (set `false` for VIEW units).
 - **Available Select pair:** on the *selected* child set `availableSourceTableName` (the pool unit in the same TX), `availableSelectSelectedColumn`, and optional `availableSelectSourceColumn` (defaults to the selected column). Import sets `AvailableSourceUnitId` + field mapping. The source unit is marked `IsUsedForLoadingAvailableSource`.
 - **Child grid Link Targets:** `linkTargets[]` on a child unit — `actionType` `Create` / `Edit` / `Delete`, `transactionIntegrationId`, `sourceColumn`, optional `targetColumn` (defaults to `sourceColumn`). Applied after all transactions exist. `null` = leave existing links; `[]` = clear.
-- `fields[]` overlay after create. `controlType` uses `EmAppControlType` (1=DDL, 2=TextBox, 7=Date, 13=CheckBox, 20=Numeric).
+- `fields[]` overlay after create. `controlType` uses `EmAppControlType` (1=DDL, 2=TextBox, 7=Date, 13=CheckBox, 20=Numeric). Optional `sortOrder` sets field sequence (and default form field order).
 - `entityCode` resolves `AppEntityInfo.EntityCode` (LOV). Unknown codes become warnings.
 - Pivot: `isPivotRow` / `isPivotColumn` / `isPivotValue`; optional `matrixSourceTable` + `matrixSourceColumn` to set `MatrixForeignKeyFieldId`.
 - Cascading DDL: `dependsOnTable` + `dependsOnColumn` (resolves `DDLParentLevelID`); optional `cascadingRelationTable`, `cascadingRelationSchemaOwner`, `cascadingParentKey`, `cascadingChildKey`.

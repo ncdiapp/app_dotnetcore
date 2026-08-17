@@ -252,15 +252,20 @@ function numericBindingKeys(numericBindings: string[]): string[] {
   return Array.from(new Set((numericBindings ?? []).filter(Boolean)));
 }
 
-/** Mutate Numeric cells to JS numbers so Wijmo n{N} applies. Keeps the same row objects (edits stay). */
+/**
+ * Coerce Numeric cells to JS numbers so Wijmo n{N} applies.
+ * Always returns a shallow copy: form WideRows are often Immer/RTK-frozen
+ * (assigning Sort / other numeric host columns would throw).
+ */
 export function coerceNumericWideRowsInPlace(rows: any[] | undefined, numericBindings: string[]): any[] {
-  const list = rows ?? [];
+  const source = rows ?? [];
   const keys = numericBindingKeys(numericBindings);
+  const list = source.map((row) => (row && typeof row === 'object' ? { ...row } : row));
   if (list.length === 0 || keys.length === 0) return list;
   for (const row of list) {
     if (!row) continue;
     for (const b of keys) {
-      if (!Object.prototype.hasOwnProperty.call(row, b)) continue;
+      if (!Object.prototype.hasOwnProperty.call(row, b) && !(b in row)) continue;
       row[b] = coerceNumericCellValue(row[b]);
     }
   }
