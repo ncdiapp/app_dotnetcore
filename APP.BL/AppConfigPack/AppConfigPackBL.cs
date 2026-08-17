@@ -272,7 +272,12 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
 
                 if (tx.UnitStructure == null || string.IsNullOrWhiteSpace(tx.UnitStructure.RootTableName))
                     validation.Errors.Add($"Transaction '{tx.IntegrationId}' is missing unitStructure.rootTableName.");
+            }
 
+            foreach (var tx in pack.Transactions)
+            {
+                if (tx == null || string.IsNullOrWhiteSpace(tx.IntegrationId))
+                    continue;
                 foreach (var child in tx.UnitStructure?.ChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())
                     ValidateChildUnit(tx.IntegrationId, child, txIds, validation);
             }
@@ -340,8 +345,12 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                     validation.Errors.Add(
                         $"Transaction '{txIntegrationId}' unit '{child.TableName}' link target '{link.Name ?? link.ActionType}' is missing sourceColumn.");
                 if (!txIds.Contains(link.TransactionIntegrationId.Trim()))
-                    validation.Warnings.Add(
-                        $"Transaction '{txIntegrationId}' unit '{child.TableName}' link target '{link.TransactionIntegrationId}' is not in this pack — it must already exist in the tenant.");
+                {
+                    string warn =
+                        $"Transaction '{txIntegrationId}' unit '{child.TableName}' link target '{link.TransactionIntegrationId}' ({link.Name ?? link.ActionType ?? "Edit"}) is not in this pack — it must already exist in the tenant.";
+                    if (!validation.Warnings.Contains(warn))
+                        validation.Warnings.Add(warn);
+                }
             }
 
             foreach (var grand in child.GrandChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())

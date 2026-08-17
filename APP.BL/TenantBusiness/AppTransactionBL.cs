@@ -585,6 +585,8 @@ namespace App.BL
                 aAppTransactionExDto.AppProjectWorkFlowActionList.Add(AppProjectWorkFlowActionConverter.ConvertEntityToExDto(commandEntity));
             }
 
+            AssignParentPkFieldGuids(dictTransFieldIdAndDto);
+
             PrepareTransFieldCrossRelationSettingDictionary(aAppTransactionExDto, dictTransFieldIdAndDto, dictAggFuncIdAndDto);
 
             if (aAppTransactionExDto.TransactionFileStorageRootFolderId.HasValue)
@@ -600,6 +602,29 @@ namespace App.BL
 
 
             return aAppTransactionExDto;
+        }
+
+        /// <summary>
+        /// Unit Editor dropdown binds to ParentPKFieldGuid, which is not a DB column.
+        /// Copy it from LinkToParentPrimaryKeyFieldId so child/sibling links show after reload.
+        /// </summary>
+        private static void AssignParentPkFieldGuids(Dictionary<int, AppTransactionFieldExDto> dictTransFieldIdAndDto)
+        {
+            if (dictTransFieldIdAndDto == null || dictTransFieldIdAndDto.Count == 0)
+                return;
+
+            foreach (var fieldDto in dictTransFieldIdAndDto.Values)
+            {
+                if (fieldDto == null || !fieldDto.LinkToParentPrimaryKeyFieldId.HasValue)
+                    continue;
+                if (!dictTransFieldIdAndDto.TryGetValue(fieldDto.LinkToParentPrimaryKeyFieldId.Value, out var parentPkField))
+                    continue;
+                if (parentPkField?.RowIdentityGuid == null)
+                    continue;
+
+                fieldDto.ParentPKFieldGuid = parentPkField.RowIdentityGuid;
+                fieldDto.IsLinkToParentPrimaryKey = true;
+            }
         }
 
 
@@ -3770,10 +3795,6 @@ namespace App.BL
             AppTransactionUnitExDto rootUnit = BuildHierarchyUnitWithFields(dictDBTables[masterKey]);
             transactionDto.AppTransactionUnitList.Add(rootUnit);
 
-            Guid? rootPkGuid = rootUnit.AppTransactionFieldList
-                .FirstOrDefault(f => f.IsPrimaryKey == true && f.RowIdentityGuid.HasValue)
-                ?.RowIdentityGuid;
-
             if (setupDto.SiblingTableNames != null)
             {
                 foreach (string siblingTableName in setupDto.SiblingTableNames
@@ -3786,8 +3807,9 @@ namespace App.BL
 
                     AppTransactionUnitExDto siblingUnit = BuildHierarchyUnitWithFields(dictDBTables[siblingKey]);
                     siblingUnit.IsMasterSiblingUnit = true;
-                    MarkFkField(siblingUnit, dictDBTables[siblingKey], setupDto.MasterTableName,
-                                rootPkGuid, transactionDto.DictCurrentPKOrFKLinkToParentKeyGuidMap);
+                    MarkLogicalPrimaryKeyIfMissing(siblingUnit, rootUnit);
+                    MarkParentLinkField(siblingUnit, dictDBTables[siblingKey], rootUnit,
+                                transactionDto.DictCurrentPKOrFKLinkToParentKeyGuidMap);
                     transactionDto.AppTransactionUnitList.Add(siblingUnit);
                 }
             }
@@ -3804,13 +3826,10 @@ namespace App.BL
                         continue;
 
                     AppTransactionUnitExDto childUnit = BuildHierarchyUnitWithFields(dictDBTables[childKey]);
-                    MarkFkField(childUnit, dictDBTables[childKey], setupDto.MasterTableName,
-                                rootPkGuid, transactionDto.DictCurrentPKOrFKLinkToParentKeyGuidMap);
+                    MarkLogicalPrimaryKeyIfMissing(childUnit, rootUnit);
+                    MarkParentLinkField(childUnit, dictDBTables[childKey], rootUnit,
+                                transactionDto.DictCurrentPKOrFKLinkToParentKeyGuidMap);
                     rootUnit.Children.Add(childUnit);
-
-                    Guid? childPkGuid = childUnit.AppTransactionFieldList
-                        .FirstOrDefault(f => f.IsPrimaryKey == true && f.RowIdentityGuid.HasValue)
-                        ?.RowIdentityGuid;
 
                     if (childTableDef.GrandChildTableNames != null)
                     {
@@ -3824,8 +3843,9 @@ namespace App.BL
                                 continue;
 
                             AppTransactionUnitExDto grandChildUnit = BuildHierarchyUnitWithFields(dictDBTables[grandChildKey]);
-                            MarkFkField(grandChildUnit, dictDBTables[grandChildKey], childTableDef.TableName,
-                                        childPkGuid, transactionDto.DictCurrentPKOrFKLinkToParentKeyGuidMap);
+                            MarkLogicalPrimaryKeyIfMissing(grandChildUnit, childUnit);
+                            MarkParentLinkField(grandChildUnit, dictDBTables[grandChildKey], childUnit,
+                                        transactionDto.DictCurrentPKOrFKLinkToParentKeyGuidMap);
                             childUnit.Children.Add(grandChildUnit);
                         }
                     }
@@ -3903,50 +3923,116 @@ namespace App.BL
         }
 
         /// <summary>
-        /// Finds the FK column in <paramref name="unit"/> that references <paramref name="parentTableName"/>
-        /// and marks it as IsLinkToParentPrimaryKey = true (hidden, readonly).
-        /// Also sets ParentPKFieldGuid (required by field validator) and registers the mapping
-        /// in <paramref name="dictPkFkMap"/> so SaveAppTransactionExDto can resolve LinkToParentPrimaryKeyFieldId.
+        /// VIEW / logical units often have no SQL PK. Mark the first *Id column that is not the
+        /// parent PK column so grandchild links can resolve ParentPKFieldGuid.
         /// </summary>
-        private static void MarkFkField(
-            AppTransactionUnitExDto         unit,
-            DatabaseTable                   dbTable,
-            string                          parentTableName,
-            Guid?                           parentPkGuid,
-            Dictionary<Guid, Guid>          dictPkFkMap)
+        private static void MarkLogicalPrimaryKeyIfMissing(AppTransactionUnitExDto unit, AppTransactionUnitExDto parentUnit)
         {
-            if (dbTable.ForeignKeys == null) return;
+            if (unit?.AppTransactionFieldList == null || unit.AppTransactionFieldList.Any(f => f.IsPrimaryKey))
+                return;
 
-            foreach (var fk in dbTable.ForeignKeys)
+            string parentPkCol = parentUnit?.AppTransactionFieldList
+                ?.FirstOrDefault(f => f.IsPrimaryKey && !string.IsNullOrWhiteSpace(f.DataBaseFieldName))
+                ?.DataBaseFieldName;
+
+            var candidate = unit.AppTransactionFieldList
+                .Where(f => !string.IsNullOrWhiteSpace(f.DataBaseFieldName)
+                    && f.DataBaseFieldName.EndsWith("Id", StringComparison.OrdinalIgnoreCase)
+                    && (parentPkCol == null || !f.DataBaseFieldName.Equals(parentPkCol, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(f => f.SortOrder)
+                .FirstOrDefault();
+
+            if (candidate == null)
+                return;
+
+            candidate.IsPrimaryKey = true;
+            candidate.IsVisible = false;
+            candidate.IsReadonly = true;
+        }
+
+        /// <summary>
+        /// Wires the child/sibling field that points at the parent unit PK.
+        /// DB FK is preferred; if none exists (VIEWs, StyleSpecId↔ReferenceId), match by column name or alias.
+        /// Sets ParentPKFieldGuid and registers <paramref name="dictPkFkMap"/> so save can persist LinkToParentPrimaryKeyFieldId.
+        /// </summary>
+        private static void MarkParentLinkField(
+            AppTransactionUnitExDto unit,
+            DatabaseTable dbTable,
+            AppTransactionUnitExDto parentUnit,
+            Dictionary<Guid, Guid> dictPkFkMap)
+        {
+            if (unit?.AppTransactionFieldList == null || parentUnit?.AppTransactionFieldList == null)
+                return;
+            if (unit.AppTransactionFieldList.Any(f => f.IsLinkToParentPrimaryKey))
+                return;
+
+            var parentPkField = parentUnit.AppTransactionFieldList
+                .FirstOrDefault(f => f.IsPrimaryKey && f.RowIdentityGuid.HasValue);
+            Guid? parentPkGuid = parentPkField?.RowIdentityGuid;
+            string parentTableName = parentUnit.DataBaseTableName;
+            string parentPkCol = parentPkField?.DataBaseFieldName;
+
+            AppTransactionFieldExDto linkField = null;
+
+            if (dbTable?.ForeignKeys != null && !string.IsNullOrWhiteSpace(parentTableName))
             {
-                if (!string.IsNullOrEmpty(fk.RefersToTable) &&
-                    fk.RefersToTable.Equals(parentTableName, StringComparison.OrdinalIgnoreCase) &&
-                    fk.Columns != null && fk.Columns.Count > 0)
+                foreach (var fk in dbTable.ForeignKeys)
                 {
-                    var fkField = unit.AppTransactionFieldList
+                    if (string.IsNullOrEmpty(fk.RefersToTable) ||
+                        !fk.RefersToTable.Equals(parentTableName, StringComparison.OrdinalIgnoreCase) ||
+                        fk.Columns == null || fk.Columns.Count == 0)
+                        continue;
+
+                    linkField = unit.AppTransactionFieldList
                         .FirstOrDefault(f => f.DataBaseFieldName != null &&
                             f.DataBaseFieldName.Equals(fk.Columns[0], StringComparison.OrdinalIgnoreCase));
-
-                    if (fkField != null)
-                    {
-                        fkField.IsLinkToParentPrimaryKey = true;
-                        fkField.IsReadonly  = true;
-                        fkField.IsVisible   = false;
-
-                        // ParentPKFieldGuid is required by the field validator when IsLinkToParentPrimaryKey=true
-                        if (parentPkGuid.HasValue)
-                        {
-                            fkField.ParentPKFieldGuid = parentPkGuid;
-
-                            // Register in the transaction-level map so the save step can convert the GUID
-                            // reference into the persisted LinkToParentPrimaryKeyFieldId integer FK
-                            if (fkField.RowIdentityGuid.HasValue && dictPkFkMap != null)
-                                dictPkFkMap[fkField.RowIdentityGuid.Value] = parentPkGuid.Value;
-                        }
-                    }
-                    break;
+                    if (linkField != null)
+                        break;
                 }
             }
+
+            if (linkField == null && !string.IsNullOrWhiteSpace(parentPkCol))
+            {
+                linkField = unit.AppTransactionFieldList.FirstOrDefault(f =>
+                    f.DataBaseFieldName != null &&
+                    f.DataBaseFieldName.Equals(parentPkCol, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (linkField == null && !string.IsNullOrWhiteSpace(parentPkCol))
+            {
+                string aliasCol = ResolveLogicalParentLinkAlias(parentPkCol);
+                if (!string.IsNullOrWhiteSpace(aliasCol))
+                {
+                    linkField = unit.AppTransactionFieldList.FirstOrDefault(f =>
+                        f.DataBaseFieldName != null &&
+                        f.DataBaseFieldName.Equals(aliasCol, StringComparison.OrdinalIgnoreCase));
+                }
+            }
+
+            if (linkField == null)
+                return;
+
+            linkField.IsLinkToParentPrimaryKey = true;
+            linkField.IsReadonly = true;
+            linkField.IsVisible = false;
+
+            if (parentPkGuid.HasValue)
+            {
+                linkField.ParentPKFieldGuid = parentPkGuid;
+                if (linkField.RowIdentityGuid.HasValue && dictPkFkMap != null)
+                    dictPkFkMap[linkField.RowIdentityGuid.Value] = parentPkGuid.Value;
+            }
+        }
+
+        internal static string ResolveLogicalParentLinkAlias(string parentPkColumn)
+        {
+            if (string.IsNullOrWhiteSpace(parentPkColumn))
+                return null;
+            if (parentPkColumn.Equals("ReferenceId", StringComparison.OrdinalIgnoreCase))
+                return "StyleSpecId";
+            if (parentPkColumn.Equals("StyleSpecId", StringComparison.OrdinalIgnoreCase))
+                return "ReferenceId";
+            return null;
         }
 
         public static AppTransactionUnitExDto CreateTransactionUnitFromDatabaseTable(DatabaseTable tableData)
@@ -4282,12 +4368,13 @@ namespace App.BL
             {
                 foreach (var fieldDto in unitDtoEx.AppTransactionFieldList)
                 {
-                    if (fieldDto.LinkToParentPrimaryKeyFieldId.HasValue)
+                    if (fieldDto.LinkToParentPrimaryKeyFieldId.HasValue
+                        && dictIdRowGuid.TryGetValue(fieldDto.LinkToParentPrimaryKeyFieldId.Value, out Guid parentGuid))
                     {
                         Guid curentUid = fieldDto.RowIdentityGuid.Value;
-                        Guid parentGuid = dictIdRowGuid[fieldDto.LinkToParentPrimaryKeyFieldId.Value];
-
                         appTransactionExDto.DictCurrentPKOrFKLinkToParentKeyGuidMap[curentUid] = parentGuid;
+                        fieldDto.ParentPKFieldGuid = parentGuid;
+                        fieldDto.IsLinkToParentPrimaryKey = true;
                     }
                 }
 

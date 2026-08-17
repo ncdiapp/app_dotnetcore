@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Data.SqlClient;
 using System.Linq;
 using App.BL;
@@ -87,6 +88,8 @@ WHERE TransactionID = @Id";
 
                 OverlayTransactionFields(transactionId, tx);
                 ApplyUnitOverlays(transactionId, tx);
+                WireLogicalParentKeys(transactionId, tx, pack.Tables);
+                AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
                 EnsureDefaultForm(transactionId);
 
                 map[integrationId] = transactionId;
@@ -143,11 +146,6 @@ WHERE TransactionID = @Id";
                     if (field.IsLinkToParentPrimaryKey == true && !string.IsNullOrWhiteSpace(field.TableName))
                     {
                         parentPkFieldId = GetParentPrimaryKeyFieldId(conn, transactionId, field.TableName);
-                        if (!parentPkFieldId.HasValue)
-                        {
-                            throw new InvalidOperationException(
-                                $"Parent primary key was not found for '{field.TableName}.{field.ColumnName}' (isLinkToParentPrimaryKey). Mark the parent unit PK first.");
-                        }
                     }
 
                     using (var cmd = conn.CreateCommand())
@@ -156,14 +154,14 @@ WHERE TransactionID = @Id";
 UPDATE f SET
     ControlType = COALESCE(@ControlType, f.ControlType),
     EntityId = COALESCE(@EntityId, f.EntityId),
-    IsVisible = COALESCE(@IsVisible, f.IsVisible),
-    IsReadonly = COALESCE(@IsReadOnly, f.IsReadonly),
-    IsPrimaryKey = COALESCE(@IsPrimaryKey, f.IsPrimaryKey),
-    IsLinkToParentPrimaryKey = COALESCE(@IsLinkToParent, f.IsLinkToParentPrimaryKey),
+    IsVisible = CASE WHEN @IsVisible IS NULL THEN f.IsVisible ELSE @IsVisible END,
+    IsReadonly = CASE WHEN @IsReadOnly IS NULL THEN f.IsReadonly ELSE @IsReadOnly END,
+    IsPrimaryKey = CASE WHEN @IsPrimaryKey IS NULL THEN f.IsPrimaryKey ELSE @IsPrimaryKey END,
+    IsLinkToParentPrimaryKey = CASE WHEN @IsLinkToParent IS NULL THEN f.IsLinkToParentPrimaryKey ELSE @IsLinkToParent END,
     LinkToParentPrimaryKeyFieldID = COALESCE(@ParentPkFieldId, f.LinkToParentPrimaryKeyFieldID),
-    IsPivotRow = COALESCE(@IsPivotRow, f.IsPivotRow),
-    IsPivotColumn = COALESCE(@IsPivotColumn, f.IsPivotColumn),
-    IsPivotValue = COALESCE(@IsPivotValue, f.IsPivotValue),
+    IsPivotRow = CASE WHEN @IsPivotRow IS NULL THEN f.IsPivotRow ELSE @IsPivotRow END,
+    IsPivotColumn = CASE WHEN @IsPivotColumn IS NULL THEN f.IsPivotColumn ELSE @IsPivotColumn END,
+    IsPivotValue = CASE WHEN @IsPivotValue IS NULL THEN f.IsPivotValue ELSE @IsPivotValue END,
     MatrixForeignKeyFieldId = COALESCE(@MatrixFieldId, f.MatrixForeignKeyFieldId),
     DisplayName = COALESCE(@DisplayName, f.DisplayName),
     DDLParentLevelID = COALESCE(@DependsOnFieldId, f.DDLParentLevelID),
@@ -179,14 +177,14 @@ WHERE u.TransactionID = @TxId
   AND (@TableName IS NULL OR u.DataBaseTableName = @TableName)";
                         cmd.Parameters.AddWithValue("@ControlType", (object)field.ControlType ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@EntityId", (object)entityId ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@IsVisible", field.IsVisible.HasValue ? (object)field.IsVisible.Value : DBNull.Value);
-                        cmd.Parameters.AddWithValue("@IsReadOnly", field.IsReadOnly.HasValue ? (object)field.IsReadOnly.Value : DBNull.Value);
-                        cmd.Parameters.AddWithValue("@IsPrimaryKey", field.IsPrimaryKey.HasValue ? (object)field.IsPrimaryKey.Value : DBNull.Value);
-                        cmd.Parameters.AddWithValue("@IsLinkToParent", field.IsLinkToParentPrimaryKey.HasValue ? (object)field.IsLinkToParentPrimaryKey.Value : DBNull.Value);
+                        AddNullableBit(cmd, "@IsVisible", field.IsVisible);
+                        AddNullableBit(cmd, "@IsReadOnly", field.IsReadOnly);
+                        AddNullableBit(cmd, "@IsPrimaryKey", field.IsPrimaryKey);
+                        AddNullableBit(cmd, "@IsLinkToParent", field.IsLinkToParentPrimaryKey);
                         cmd.Parameters.AddWithValue("@ParentPkFieldId", (object)parentPkFieldId ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@IsPivotRow", field.IsPivotRow.HasValue ? (object)field.IsPivotRow.Value : DBNull.Value);
-                        cmd.Parameters.AddWithValue("@IsPivotColumn", field.IsPivotColumn.HasValue ? (object)field.IsPivotColumn.Value : DBNull.Value);
-                        cmd.Parameters.AddWithValue("@IsPivotValue", field.IsPivotValue.HasValue ? (object)field.IsPivotValue.Value : DBNull.Value);
+                        AddNullableBit(cmd, "@IsPivotRow", field.IsPivotRow);
+                        AddNullableBit(cmd, "@IsPivotColumn", field.IsPivotColumn);
+                        AddNullableBit(cmd, "@IsPivotValue", field.IsPivotValue);
                         cmd.Parameters.AddWithValue("@MatrixFieldId", (object)matrixFieldId ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@DisplayName", string.IsNullOrWhiteSpace(field.DisplayName) ? (object)DBNull.Value : field.DisplayName.Trim());
                         cmd.Parameters.AddWithValue("@DependsOnFieldId", (object)dependsOnFieldId ?? DBNull.Value);
@@ -289,13 +287,13 @@ WHERE u.TransactionID = @TxId
                     cmd.CommandText = @"
 UPDATE dbo.AppTransactionUnit SET
     EmGridViewDisplayType = COALESCE(@DisplayType, EmGridViewDisplayType),
-    IsReadOnly = COALESCE(@IsReadOnly, IsReadOnly),
-    IsSynchToDatabaseTable = COALESCE(@IsSynch, IsSynchToDatabaseTable),
+    IsReadOnly = CASE WHEN @IsReadOnly IS NULL THEN IsReadOnly ELSE @IsReadOnly END,
+    IsSynchToDatabaseTable = CASE WHEN @IsSynch IS NULL THEN IsSynchToDatabaseTable ELSE @IsSynch END,
     AppModifiedDate = GETDATE()
 WHERE TransactionUnitID = @UnitId";
                     cmd.Parameters.AddWithValue("@DisplayType", (object)child.GridDisplayType ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@IsReadOnly", child.IsReadOnly.HasValue ? (object)child.IsReadOnly.Value : DBNull.Value);
-                    cmd.Parameters.AddWithValue("@IsSynch", child.IsSynchToDatabaseTable.HasValue ? (object)child.IsSynchToDatabaseTable.Value : DBNull.Value);
+                    AddNullableBit(cmd, "@IsReadOnly", child.IsReadOnly);
+                    AddNullableBit(cmd, "@IsSynch", child.IsSynchToDatabaseTable);
                     cmd.Parameters.AddWithValue("@UnitId", unitId.Value);
                     cmd.ExecuteNonQuery();
                 }
@@ -736,6 +734,320 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
             {
                 executeResult.Messages.Add($"Attached {transactionIds.Distinct().Count()} transaction(s) to application {saasApplicationId.Value}.");
             }
+        }
+
+        private static void AddNullableBit(SqlCommand cmd, string name, bool? value)
+        {
+            var p = cmd.Parameters.Add(name, SqlDbType.Bit);
+            p.IsNullable = true;
+            p.Value = value.HasValue ? (object)value.Value : DBNull.Value;
+        }
+
+        private sealed class PackUnitRow
+        {
+            public int UnitId { get; set; }
+            public string TableName { get; set; }
+            public int? ParentUnitId { get; set; }
+            public bool IsSibling { get; set; }
+        }
+
+        /// <summary>
+        /// After field/unit overlay: mark VIEW PKs, then wire child/sibling Link-To-Parent even when there is no DB FK.
+        /// Same column name as parent PK wins; StyleSpecId ↔ ReferenceId is the product/spec alias.
+        /// </summary>
+        private static void WireLogicalParentKeys(
+            int transactionId,
+            AppConfigPackTransactionDto tx,
+            List<AppConfigPackTableDto> tables)
+        {
+            using (var conn = OpenTenantConnection())
+            {
+                var units = LoadPackUnits(conn, transactionId);
+                var root = units.FirstOrDefault(u => !u.ParentUnitId.HasValue && !u.IsSibling);
+                if (root == null)
+                    return;
+
+                foreach (var field in tx.Fields ?? Enumerable.Empty<AppConfigPackFieldDto>())
+                {
+                    if (field?.IsPrimaryKey != true
+                        || string.IsNullOrWhiteSpace(field.TableName)
+                        || string.IsNullOrWhiteSpace(field.ColumnName))
+                        continue;
+                    SetFieldPrimaryKey(conn, transactionId, field.TableName.Trim(), field.ColumnName.Trim());
+                }
+
+                foreach (var unit in units)
+                {
+                    if (UnitHasFlag(conn, unit.UnitId, "IsPrimaryKey"))
+                        continue;
+                    int parentUnitId = ResolveParentUnitId(unit, root);
+                    string parentPkCol = GetUnitPrimaryKeyColumn(conn, parentUnitId);
+                    MarkHeuristicPrimaryKey(conn, unit.UnitId, parentPkCol);
+                }
+
+                foreach (var field in tx.Fields ?? Enumerable.Empty<AppConfigPackFieldDto>())
+                {
+                    if (field?.IsLinkToParentPrimaryKey != true
+                        || string.IsNullOrWhiteSpace(field.TableName)
+                        || string.IsNullOrWhiteSpace(field.ColumnName))
+                        continue;
+
+                    var unit = units.FirstOrDefault(u =>
+                        string.Equals(u.TableName, field.TableName, StringComparison.OrdinalIgnoreCase));
+                    if (unit == null)
+                        continue;
+                    int parentUnitId = ResolveParentUnitId(unit, root);
+                    int? parentPkId = GetUnitPrimaryKeyFieldId(conn, parentUnitId);
+                    if (!parentPkId.HasValue)
+                    {
+                        throw new InvalidOperationException(
+                            $"Parent primary key was not found for '{field.TableName}.{field.ColumnName}' (isLinkToParentPrimaryKey).");
+                    }
+                    SetFieldParentLink(conn, transactionId, field.TableName.Trim(), field.ColumnName.Trim(), parentPkId.Value);
+                }
+
+                var relationshipHints = BuildRelationshipHints(tables);
+                foreach (var unit in units)
+                {
+                    if (unit.UnitId == root.UnitId)
+                        continue;
+                    if (UnitHasFlag(conn, unit.UnitId, "IsLinkToParentPrimaryKey"))
+                        continue;
+
+                    int parentUnitId = ResolveParentUnitId(unit, root);
+                    int? parentPkId = GetUnitPrimaryKeyFieldId(conn, parentUnitId);
+                    string parentPkCol = GetUnitPrimaryKeyColumn(conn, parentUnitId);
+                    if (!parentPkId.HasValue || string.IsNullOrWhiteSpace(parentPkCol) || string.IsNullOrWhiteSpace(unit.TableName))
+                        continue;
+
+                    string childCol = FindLogicalChildLinkColumn(conn, unit, parentPkCol, parentUnitId, units, relationshipHints);
+                    if (string.IsNullOrWhiteSpace(childCol))
+                        continue;
+                    SetFieldParentLink(conn, transactionId, unit.TableName, childCol, parentPkId.Value);
+                }
+            }
+        }
+
+        private static List<PackUnitRow> LoadPackUnits(SqlConnection conn, int transactionId)
+        {
+            var units = new List<PackUnitRow>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TransactionUnitID, DataBaseTableName, ParentTransactionUnitID, ISNULL(IsMasterSiblingUnit, 0)
+FROM dbo.AppTransactionUnit
+WHERE TransactionID = @TxId
+ORDER BY TransactionUnitID";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        units.Add(new PackUnitRow
+                        {
+                            UnitId = reader.GetInt32(0),
+                            TableName = reader.IsDBNull(1) ? null : reader.GetString(1),
+                            ParentUnitId = reader.IsDBNull(2) ? (int?)null : reader.GetInt32(2),
+                            IsSibling = Convert.ToBoolean(reader.GetValue(3))
+                        });
+                    }
+                }
+            }
+            return units;
+        }
+
+        private static int ResolveParentUnitId(PackUnitRow unit, PackUnitRow root)
+        {
+            if (unit.IsSibling || !unit.ParentUnitId.HasValue)
+                return root.UnitId;
+            return unit.ParentUnitId.Value;
+        }
+
+        private static Dictionary<string, List<AppConfigPackRelationshipDto>> BuildRelationshipHints(
+            List<AppConfigPackTableDto> tables)
+        {
+            var map = new Dictionary<string, List<AppConfigPackRelationshipDto>>(StringComparer.OrdinalIgnoreCase);
+            foreach (var table in tables ?? Enumerable.Empty<AppConfigPackTableDto>())
+            {
+                if (table == null || string.IsNullOrWhiteSpace(table.Name) || table.Relationships == null)
+                    continue;
+                map[table.Name.Trim()] = table.Relationships
+                    .Where(r => r != null && !string.IsNullOrWhiteSpace(r.ForeignKeyColumn))
+                    .ToList();
+            }
+            return map;
+        }
+
+        private static bool UnitHasFlag(SqlConnection conn, int unitId, string columnName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = $"SELECT TOP 1 1 FROM dbo.AppTransactionField WHERE TransactionUnitID = @UnitId AND {columnName} = 1";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                var val = cmd.ExecuteScalar();
+                return val != null && val != DBNull.Value;
+            }
+        }
+
+        private static int? GetUnitPrimaryKeyFieldId(SqlConnection conn, int unitId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 TransactionFieldID
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId AND IsPrimaryKey = 1
+ORDER BY TransactionFieldID";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        private static string GetUnitPrimaryKeyColumn(SqlConnection conn, int unitId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 DataBaseFieldName
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId AND IsPrimaryKey = 1
+ORDER BY TransactionFieldID";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? null : Convert.ToString(val);
+            }
+        }
+
+        private static void SetFieldPrimaryKey(SqlConnection conn, int transactionId, string tableName, string columnName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE f SET
+    IsPrimaryKey = 1,
+    IsReadonly = 1,
+    IsVisible = 0,
+    AppModifiedDate = GETDATE()
+FROM dbo.AppTransactionField f
+INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
+WHERE u.TransactionID = @TxId
+  AND u.DataBaseTableName = @TableName
+  AND f.DataBaseFieldName = @ColumnName";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.Parameters.AddWithValue("@TableName", tableName);
+                cmd.Parameters.AddWithValue("@ColumnName", columnName);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void MarkHeuristicPrimaryKey(SqlConnection conn, int unitId, string parentPkColumn)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE f SET
+    IsPrimaryKey = 1,
+    IsReadonly = 1,
+    IsVisible = 0,
+    AppModifiedDate = GETDATE()
+FROM dbo.AppTransactionField f
+WHERE f.TransactionFieldID = (
+    SELECT TOP 1 TransactionFieldID
+    FROM dbo.AppTransactionField
+    WHERE TransactionUnitID = @UnitId
+      AND RIGHT(DataBaseFieldName, 2) = 'Id'
+      AND (@ParentPkCol IS NULL OR DataBaseFieldName <> @ParentPkCol)
+    ORDER BY SortOrder, TransactionFieldID)";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@ParentPkCol", (object)parentPkColumn ?? DBNull.Value);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void SetFieldParentLink(
+            SqlConnection conn,
+            int transactionId,
+            string tableName,
+            string columnName,
+            int parentPkFieldId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE f SET
+    IsLinkToParentPrimaryKey = 1,
+    LinkToParentPrimaryKeyFieldID = @ParentPkFieldId,
+    IsReadonly = 1,
+    IsVisible = 0,
+    AppModifiedDate = GETDATE()
+FROM dbo.AppTransactionField f
+INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
+WHERE u.TransactionID = @TxId
+  AND u.DataBaseTableName = @TableName
+  AND f.DataBaseFieldName = @ColumnName";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.Parameters.AddWithValue("@TableName", tableName);
+                cmd.Parameters.AddWithValue("@ColumnName", columnName);
+                cmd.Parameters.AddWithValue("@ParentPkFieldId", parentPkFieldId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static string FindLogicalChildLinkColumn(
+            SqlConnection conn,
+            PackUnitRow unit,
+            string parentPkColumn,
+            int parentUnitId,
+            List<PackUnitRow> units,
+            Dictionary<string, List<AppConfigPackRelationshipDto>> relationshipHints)
+        {
+            var childColumns = new List<string>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT DataBaseFieldName
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId
+ORDER BY SortOrder, TransactionFieldID";
+                cmd.Parameters.AddWithValue("@UnitId", unit.UnitId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (!reader.IsDBNull(0))
+                            childColumns.Add(reader.GetString(0));
+                    }
+                }
+            }
+
+            string sameName = childColumns.FirstOrDefault(c =>
+                c.Equals(parentPkColumn, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(sameName))
+                return sameName;
+
+            var parent = units.FirstOrDefault(u => u.UnitId == parentUnitId);
+            if (parent != null
+                && relationshipHints.TryGetValue(unit.TableName ?? string.Empty, out var rels))
+            {
+                var rel = rels.FirstOrDefault(r =>
+                    !string.IsNullOrWhiteSpace(r.TargetTable)
+                    && r.TargetTable.Equals(parent.TableName, StringComparison.OrdinalIgnoreCase)
+                    && childColumns.Any(c => c.Equals(r.ForeignKeyColumn, StringComparison.OrdinalIgnoreCase)));
+                if (rel != null)
+                    return childColumns.First(c => c.Equals(rel.ForeignKeyColumn, StringComparison.OrdinalIgnoreCase));
+            }
+
+            string alias = AppTransactionBL.ResolveLogicalParentLinkAlias(parentPkColumn);
+            if (!string.IsNullOrWhiteSpace(alias))
+            {
+                string aliasMatch = childColumns.FirstOrDefault(c =>
+                    c.Equals(alias, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrWhiteSpace(aliasMatch))
+                    return aliasMatch;
+            }
+
+            return null;
         }
     }
 }

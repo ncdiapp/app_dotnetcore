@@ -14,13 +14,14 @@ Runtime APIs live under `/webapi/AppConfigPack/` (not PLM Migration). No FieldMa
 1. **DDL** — create missing tables; **ADD** missing columns only; `CREATE OR ALTER VIEW`
 2. Refresh tenant schema cache
 3. **Transactions** — upsert by `integrationId` via table hierarchy (Root / Sibling / Child / Grandchild)
-4. Overlay field metadata (control type, entity/LOV, visibility, pivot flags, cascading DDL)
+4. Overlay field metadata (control type, entity/LOV, visibility, pivot flags, cascading DDL, PK / parent-link)
 5. Overlay unit display names, grid display type, Available Select pairing (`AvailableSourceUnitId` + field mapping)
-6. Default Form layout (v1 does **not** round-trip Flex layout)
-7. Child-grid **Link Targets** (Create/Edit/Delete) — after all transaction ids exist
-8. Transaction Group (Data Model Template)
-9. **Searches** — DataSet SQL, criteria, SearchView fields, linkTargets, optional main menu
-10. Attach TX + Search as Application assets
+6. Auto-wire child/sibling **Link To Parent PK** (DB FK, same column name, or StyleSpecId↔ReferenceId). VIEW units without a SQL PK get a logical PK.
+7. Default Form layout (v1 does **not** round-trip Flex layout)
+8. Child-grid **Link Targets** (Create/Edit/Delete) — after all transaction ids exist
+9. Transaction Group (Data Model Template)
+10. **Searches** — DataSet SQL, criteria, SearchView fields, linkTargets, optional main menu
+11. Attach TX + Search as Application assets
 
 ## Matching / safety
 
@@ -123,7 +124,7 @@ Views run **after** tables so they can select from newly created tables.
 - `entityCode` resolves `AppEntityInfo.EntityCode` (LOV). Unknown codes become warnings.
 - Pivot: `isPivotRow` / `isPivotColumn` / `isPivotValue`; optional `matrixSourceTable` + `matrixSourceColumn` to set `MatrixForeignKeyFieldId`.
 - Cascading DDL: `dependsOnTable` + `dependsOnColumn` (resolves `DDLParentLevelID`); optional `cascadingRelationTable`, `cascadingRelationSchemaOwner`, `cascadingParentKey`, `cascadingChildKey`.
-- VIEW units: set `isPrimaryKey` on the unique key column and `isLinkToParentPrimaryKey` on the parent FK column (views have no SQL PK/FK). Put PK overlays before parent-link overlays in `fields[]`.
+- VIEW units: set `isPrimaryKey` on the unique key column and `isLinkToParentPrimaryKey` on the parent key column (views have no SQL PK/FK). Import also **auto-wires** child/sibling links without a database FK: same column name as the parent PK, or the StyleSpecId ↔ ReferenceId product/spec alias. Pack `fields[]` flags still win when present.
 
 Physical tables/views named in `unitStructure` must exist after the DDL step.
 
