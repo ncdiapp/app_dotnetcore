@@ -112,6 +112,23 @@ export function isTransactionFolderNavigationPath(path: string): boolean {
   );
 }
 
+/**
+ * Master-detail / list-edit forms: many different transactions share the same route
+ * (e.g. QC Order and QC Garment both use /FormMasterDetail). Reusing by base path
+ * would replace the current tab instead of opening a new one.
+ */
+export function isTransactionFormInstancePath(path: string): boolean {
+  if (!path) return false;
+  const normalized = (path.startsWith('/') ? path : `/${path}`).toLowerCase();
+  const base = extractRouteBasePath(normalized).toLowerCase();
+  return (
+    base === '/formmasterdetail' ||
+    base === '/form-master-detail' ||
+    base === '/formlistedit' ||
+    base === '/form-list-edit'
+  );
+}
+
 export const buildRoutePathFromParamObj = (baseRoutePath: string, paramObj: any) => {
 
     // Convert to JSON string and encode for URL

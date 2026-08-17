@@ -864,6 +864,8 @@
             "tableName": "TchpQcOrder",
             "displayName": "QC Orders",
             "gridDisplayType": 1,
+            "isDisableAddButton": true,
+            "isDisableDeleteButton": true,
             "linkTargets": [
               {
                 "name": "Create QC Order",
@@ -871,7 +873,8 @@
                 "transactionIntegrationId": "TX_QcOrder",
                 "sourceColumn": "StyleSpecId",
                 "targetColumn": "StyleSpecId",
-                "sort": 10
+                "sort": 10,
+                "isPopup": false
               },
               {
                 "name": "Edit QC Order",
@@ -879,7 +882,8 @@
                 "transactionIntegrationId": "TX_QcOrder",
                 "sourceColumn": "QcOrderId",
                 "targetColumn": "QcOrderId",
-                "sort": 20
+                "sort": 20,
+                "isPopup": false
               }
             ]
           }

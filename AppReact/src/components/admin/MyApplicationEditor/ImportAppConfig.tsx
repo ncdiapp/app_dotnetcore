@@ -12,6 +12,7 @@ import {
 } from '../../../webapi/appConfigPackSvc';
 import { appTransactionService } from '../../../webapi/apptransactionsvc';
 import appHelper from '../../../helper/appHelper';
+import appConfigPackTemplate from './appConfigPackTemplate';
 
 interface ImportAppConfigProps {
   menuId: string | null;
@@ -47,6 +48,18 @@ const stripUnselectedSearchesFromPackJson = (jsonText: string, selectedSearchIds
     return jsonText;
   }
   return jsonText;
+};
+
+const downloadJsonFile = (jsonText: string, fileName: string) => {
+  const blob = new Blob([jsonText], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
 const ImportAppConfig: React.FC<ImportAppConfigProps> = ({ menuId }) => {
@@ -161,7 +174,16 @@ const ImportAppConfig: React.FC<ImportAppConfigProps> = ({ menuId }) => {
     } finally {
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  }, [showError, showInfo]);
+  }, [fileInputRef, showError, showInfo]);
+
+  const downloadImportTemplate = useCallback(() => {
+    const template = {
+      ...appConfigPackTemplate,
+      generatedAt: new Date().toISOString()
+    };
+    downloadJsonFile(JSON.stringify(template, null, 2), 'appConfigPack.template.json');
+    showInfo('Template downloaded. Edit the JSON, then Upload JSON to import.', true);
+  }, [showInfo]);
 
   const runValidateAndPreview = useCallback(async () => {
     if (!pack) {
@@ -342,15 +364,7 @@ const ImportAppConfig: React.FC<ImportAppConfigProps> = ({ menuId }) => {
         jsonText = stripUnselectedSearchesFromPackJson(jsonText, selectedSearch);
       }
 
-      const blob = new Blob([jsonText], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `appConfigPack.${saasApplicationId}.json`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
+      downloadJsonFile(jsonText, `appConfigPack.${saasApplicationId}.json`);
 
       setProgressPercent(100);
       setProgressMessage('Export downloaded.');
@@ -425,6 +439,16 @@ const ImportAppConfig: React.FC<ImportAppConfigProps> = ({ menuId }) => {
               >
                 <i className="fa-solid fa-upload mr-1" />
                 Upload JSON
+              </button>
+              <button
+                type="button"
+                className={actionBtnClass(isBusy)}
+                disabled={isBusy}
+                title="Download a sample App Config Pack JSON to fill in"
+                onClick={downloadImportTemplate}
+              >
+                <i className="fa-solid fa-file-arrow-down mr-1" />
+                Download Template
               </button>
               <button
                 type="button"

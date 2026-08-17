@@ -1881,7 +1881,7 @@ namespace App.BL
 
                 List<DbParameter> sqlParamterList = new List<DbParameter>();
 
-                string sqlStateMent = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictFiedIdValue, transactionUnitFormula.RightSideExpression, sqlParamterList);
+                string sqlStateMent = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictFiedIdValue, transactionUnitFormula.RightSideExpression, sqlParamterList, appTransactionExDto);
 
 
                 try

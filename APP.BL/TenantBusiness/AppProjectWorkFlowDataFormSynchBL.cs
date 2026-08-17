@@ -629,7 +629,7 @@ namespace App.BL
         }
 
         internal static string ReplaceSQlParamterWithActualValue(Dictionary<int, object> allFreshRootValue, string messageTempalte,
-             List<DbParameter> sqlParamterList)
+             List<DbParameter> sqlParamterList, AppTransactionExDto transactionExDto = null)
         {
             if (string.IsNullOrWhiteSpace(messageTempalte))
             {
@@ -665,8 +665,9 @@ namespace App.BL
 
 
             int count = 0;
+            string tfPrefix = "[" + EmAppTransactionCommandSystemParameterToken.TF.ToString();
 
-            while (messageTempalte.Contains("[" + EmAppTransactionCommandSystemParameterToken.TF.ToString()))
+            while (messageTempalte.Contains(tfPrefix))
             {
                 count++;
 
@@ -676,87 +677,51 @@ namespace App.BL
                         + "Query With Error: " + messageTempalte);
                 }
 
-                int startIndex = messageTempalte.IndexOf("[" + EmAppTransactionCommandSystemParameterToken.TF.ToString());
+                int startIndex = messageTempalte.IndexOf(tfPrefix);
                 int endIndex = messageTempalte.IndexOf("]", startIndex);
-
-                if (startIndex >= 0 && endIndex >= 0)
+                if (endIndex < 0)
                 {
-                    int tokenLength = EmAppTransactionCommandSystemParameterToken.TF.ToString().Length + 2;
+                    throw new Exception("Unclosed SQL transaction field token.\nQuery With Error: " + messageTempalte);
+                }
 
-                    int transFieldStringLength = endIndex - startIndex - tokenLength;
-                    if (transFieldStringLength > 0)
-                    {
-                        string needToReplaceString = messageTempalte.Substring(startIndex, endIndex - startIndex + 1);
+                string needToReplaceString = messageTempalte.Substring(startIndex, endIndex - startIndex + 1);
+                int? transFiledId = ResolveSqlTfTokenFieldId(needToReplaceString, transactionExDto);
+                if (!transFiledId.HasValue)
+                {
+                    throw new Exception(
+                        "Cannot replace SQL token '" + needToReplaceString + "'. "
+                        + "Use [TF_{FieldId}_{ColumnName}] from the SQL field token picker "
+                        + "(example: [TF_123_QcGarmentId]), not [TF_QcGarmentId].");
+                }
 
-                        string transFieldIdString = messageTempalte.Substring(startIndex + tokenLength, transFieldStringLength);
+                object fiedValue = null;
+                if (allFreshRootValue != null && allFreshRootValue.ContainsKey(transFiledId.Value))
+                {
+                    fiedValue = allFreshRootValue[transFiledId.Value];
+                }
 
-                        if (transFieldIdString.IndexOf("_") > 0)
-                        {
-                            transFieldIdString = transFieldIdString.Substring(0, transFieldIdString.IndexOf("_"));
-                        }
-
-                        int? transFiledId = ControlTypeValueConverter.ConvertValueToInt(transFieldIdString);
-
-                        if (transFiledId.HasValue)
-                        {
-                            if (allFreshRootValue.ContainsKey(transFiledId.Value))
-                            {
-                                object fiedValue = allFreshRootValue[transFiledId.Value];
-                                //string oBjectStringValeu = ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(fiedValue);
-
-                                if (sqlParamterList != null)
-                                {
-
-                                    string paraterName = "@Parameter" + count;
-
-                                    SqlParameter parater;
-
-                                    if (fiedValue == null)
-                                    {
-                                        parater = new SqlParameter(paraterName, DBNull.Value);
-                                    }
-                                    else
-                                    {
-                                        parater = new SqlParameter(paraterName, fiedValue);
-                                    }
-
-
-                                    sqlParamterList.Add(parater);
-
-                                    messageTempalte = messageTempalte.Replace(needToReplaceString, paraterName);
-                                }
-                                else
-                                {
-                                    messageTempalte = messageTempalte.Replace(needToReplaceString,  ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(fiedValue));
-                                }
-
-                                //  BUG , if the onject is 
-                                //if (! string.IsNullOrWhiteSpace(oBjectStringValeu))
-                                //{
-
-                                //    string paraterName = "@Parameter" + count;
-
-                                //    SqlParameter parater = new SqlParameter(paraterName, fiedValue);
-
-                                //    sqlParamterList.Add(parater);
-                                //    messageTempalte = messageTempalte.Replace(needToReplaceString, paraterName);
-                                //}
-                                //else
-                                //{
-                                //    return string.Empty;
-                                //}
-                            }
-
-                        }
-
-                    }
+                if (sqlParamterList != null)
+                {
+                    string paraterName = "@Parameter" + count;
+                    SqlParameter parater = fiedValue == null
+                        ? new SqlParameter(paraterName, DBNull.Value)
+                        : new SqlParameter(paraterName, fiedValue);
+                    sqlParamterList.Add(parater);
+                    messageTempalte = messageTempalte.Replace(needToReplaceString, paraterName);
+                }
+                else
+                {
+                    messageTempalte = messageTempalte.Replace(
+                        needToReplaceString,
+                        ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(fiedValue));
                 }
             }
 
 
             count = 0;
+            string globalTfPrefix = "[" + EmAppTransactionCommandSystemParameterToken.GlobalTF.ToString();
 
-            while (messageTempalte.Contains("[" + EmAppTransactionCommandSystemParameterToken.GlobalTF.ToString()))
+            while (messageTempalte.Contains(globalTfPrefix))
             {
                 count++;
 
@@ -766,68 +731,129 @@ namespace App.BL
                         + "Query With Error: " + messageTempalte);
                 }
 
-                int startIndex = messageTempalte.IndexOf("[" + EmAppTransactionCommandSystemParameterToken.GlobalTF.ToString());
+                int startIndex = messageTempalte.IndexOf(globalTfPrefix);
                 int endIndex = messageTempalte.IndexOf("]", startIndex);
-
-                if (startIndex >= 0 && endIndex >= 0)
+                if (endIndex < 0)
                 {
-                    int tokenLength = EmAppTransactionCommandSystemParameterToken.GlobalTF.ToString().Length + 2;
+                    throw new Exception("Unclosed SQL global field token.\nQuery With Error: " + messageTempalte);
+                }
 
-                    int transFieldStringLength = endIndex - startIndex - tokenLength;
-                    if (transFieldStringLength > 0)
-                    {
-                        string needToReplaceString = messageTempalte.Substring(startIndex, endIndex - startIndex + 1);
+                string needToReplaceString = messageTempalte.Substring(startIndex, endIndex - startIndex + 1);
+                int tokenLength = EmAppTransactionCommandSystemParameterToken.GlobalTF.ToString().Length + 2;
+                string transFieldIdString = needToReplaceString.Length > tokenLength + 1
+                    ? needToReplaceString.Substring(tokenLength, needToReplaceString.Length - tokenLength - 1)
+                    : string.Empty;
+                if (transFieldIdString.IndexOf("_") > 0)
+                {
+                    transFieldIdString = transFieldIdString.Substring(0, transFieldIdString.IndexOf("_"));
+                }
 
-                        string transFieldIdString = messageTempalte.Substring(startIndex + tokenLength, transFieldStringLength);
+                int? transFiledId = ControlTypeValueConverter.ConvertValueToInt(transFieldIdString);
+                if (!transFiledId.HasValue)
+                {
+                    throw new Exception("Cannot replace SQL token '" + needToReplaceString + "'.");
+                }
 
-                        if (transFieldIdString.IndexOf("_") > 0)
-                        {
-                            transFieldIdString = transFieldIdString.Substring(0, transFieldIdString.IndexOf("_"));
-                        }
+                object fiedValue = null;
+                if (allFreshRootValue != null && allFreshRootValue.ContainsKey(transFiledId.Value))
+                {
+                    fiedValue = allFreshRootValue[transFiledId.Value];
+                }
 
-                        int? transFiledId = ControlTypeValueConverter.ConvertValueToInt(transFieldIdString);
-
-                        if (transFiledId.HasValue)
-                        {
-                            if (allFreshRootValue.ContainsKey(transFiledId.Value))
-                            {
-                                object fiedValue = allFreshRootValue[transFiledId.Value];
-                                //string oBjectStringValeu = ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(fiedValue);
-
-                                
-
-                                if (sqlParamterList != null)
-                                {
-                                    string paraterName = "@Parameter" + count;
-                                    SqlParameter parater;
-
-                                    if (fiedValue == null)
-                                    {
-                                        parater = new SqlParameter(paraterName, DBNull.Value);
-                                    }
-                                    else
-                                    {
-                                        parater = new SqlParameter(paraterName, fiedValue);
-                                    }
-
-
-                                    sqlParamterList.Add(parater);
-
-                                    messageTempalte = messageTempalte.Replace(needToReplaceString, paraterName);
-
-                                }
-                                else
-                                {
-                                    messageTempalte = messageTempalte.Replace(needToReplaceString, ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(fiedValue));
-                                }
-                            }
-
-                        }
-
-                    }
+                if (sqlParamterList != null)
+                {
+                    string paraterName = "@ParameterG" + count;
+                    SqlParameter parater = fiedValue == null
+                        ? new SqlParameter(paraterName, DBNull.Value)
+                        : new SqlParameter(paraterName, fiedValue);
+                    sqlParamterList.Add(parater);
+                    messageTempalte = messageTempalte.Replace(needToReplaceString, paraterName);
+                }
+                else
+                {
+                    messageTempalte = messageTempalte.Replace(
+                        needToReplaceString,
+                        ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(fiedValue));
                 }
             }
             return messageTempalte;
+        }
+
+        private static int? ResolveSqlTfTokenFieldId(string token, AppTransactionExDto transactionExDto)
+        {
+            if (string.IsNullOrEmpty(token) || token.Length < 5 || token[0] != '[' || token[token.Length - 1] != ']')
+                return null;
+
+            string inner = token.Substring(1, token.Length - 2);
+            if (!inner.StartsWith("TF", StringComparison.OrdinalIgnoreCase) || inner.Length < 3)
+                return null;
+
+            if (inner[2] == ':')
+            {
+                string spec = inner.Substring(3);
+                string table = null;
+                string column = spec;
+                int dot = spec.LastIndexOf('.');
+                if (dot > 0 && dot < spec.Length - 1)
+                {
+                    table = spec.Substring(0, dot);
+                    column = spec.Substring(dot + 1);
+                }
+                return FindTransactionFieldIdForSqlToken(transactionExDto, table, column);
+            }
+
+            if (inner[2] != '_')
+                return null;
+
+            string body = inner.Substring(3);
+            int underscore = body.IndexOf('_');
+            if (underscore > 0)
+            {
+                int? fieldId = ControlTypeValueConverter.ConvertValueToInt(body.Substring(0, underscore));
+                if (fieldId.HasValue)
+                    return fieldId;
+            }
+
+            return FindTransactionFieldIdForSqlToken(transactionExDto, null, body);
+        }
+
+        private static int? FindTransactionFieldIdForSqlToken(AppTransactionExDto transactionExDto, string tableName, string columnName)
+        {
+            if (transactionExDto == null || string.IsNullOrWhiteSpace(columnName) || transactionExDto.DictAllTransactionField == null)
+                return null;
+
+            int? rootUnitId = transactionExDto.RootMasterUnit != null ? transactionExDto.RootMasterUnit.Id : null;
+            AppTransactionFieldExDto fallback = null;
+
+            foreach (var field in transactionExDto.DictAllTransactionField.Values)
+            {
+                if (field == null || !field.Id.HasValue)
+                    continue;
+                if (!string.Equals(field.DataBaseFieldName, columnName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                string fieldTable = null;
+                if (transactionExDto.DictAllTransactionUnitIdExDto != null)
+                {
+                    string unitKey = field.TransactionUnitId.ToString();
+                    if (transactionExDto.DictAllTransactionUnitIdExDto.ContainsKey(unitKey))
+                        fieldTable = transactionExDto.DictAllTransactionUnitIdExDto[unitKey].DataBaseTableName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(tableName)
+                    && !string.Equals(fieldTable, tableName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (rootUnitId.HasValue && field.TransactionUnitId == rootUnitId.Value)
+                    return (int)field.Id;
+
+                if (fallback == null || field.Id.Value < fallback.Id.Value)
+                    fallback = field;
+            }
+
+            return fallback != null ? (int?)fallback.Id : null;
         }
 
 

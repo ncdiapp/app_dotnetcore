@@ -330,7 +330,11 @@ WHERE u.TransactionID = @TxId
             if (!string.IsNullOrWhiteSpace(child.DisplayName))
                 UpdateUnitDisplayNameById(conn, unitId.Value, child.DisplayName.Trim());
 
-            if (child.GridDisplayType.HasValue || child.IsReadOnly.HasValue || child.IsSynchToDatabaseTable.HasValue)
+            if (child.GridDisplayType.HasValue
+                || child.IsReadOnly.HasValue
+                || child.IsSynchToDatabaseTable.HasValue
+                || child.IsDisableAddButton.HasValue
+                || child.IsDisableDeleteButton.HasValue)
             {
                 using (var cmd = conn.CreateCommand())
                 {
@@ -339,11 +343,15 @@ UPDATE dbo.AppTransactionUnit SET
     EmGridViewDisplayType = COALESCE(@DisplayType, EmGridViewDisplayType),
     IsReadOnly = CASE WHEN @IsReadOnly IS NULL THEN IsReadOnly ELSE @IsReadOnly END,
     IsSynchToDatabaseTable = CASE WHEN @IsSynch IS NULL THEN IsSynchToDatabaseTable ELSE @IsSynch END,
+    IsDisableAddButton = CASE WHEN @DisableAdd IS NULL THEN IsDisableAddButton ELSE @DisableAdd END,
+    IsDisableDeleteButton = CASE WHEN @DisableDelete IS NULL THEN IsDisableDeleteButton ELSE @DisableDelete END,
     AppModifiedDate = GETDATE()
 WHERE TransactionUnitID = @UnitId";
                     cmd.Parameters.AddWithValue("@DisplayType", (object)child.GridDisplayType ?? DBNull.Value);
                     AddNullableBit(cmd, "@IsReadOnly", child.IsReadOnly);
                     AddNullableBit(cmd, "@IsSynch", child.IsSynchToDatabaseTable);
+                    AddNullableBit(cmd, "@DisableAdd", child.IsDisableAddButton);
+                    AddNullableBit(cmd, "@DisableDelete", child.IsDisableDeleteButton);
                     cmd.Parameters.AddWithValue("@UnitId", unitId.Value);
                     cmd.ExecuteNonQuery();
                 }
@@ -1022,18 +1030,32 @@ VALUES
         }
 
         private static readonly Regex PackFieldTokenRegex = new Regex(@"\[TF:([^\]\s]+)\]", RegexOptions.Compiled);
+        private static readonly Regex PackNameOnlyFieldTokenRegex = new Regex(@"\[TF_([A-Za-z][A-Za-z0-9_]*)\]", RegexOptions.Compiled);
         private static readonly Regex RuntimeFieldTokenRegex = new Regex(@"\[TF_(\d+)_([^\]]+)\]", RegexOptions.Compiled);
 
         internal static string RewritePackSqlTokensToRuntime(SqlConnection conn, int transactionId, string sql)
         {
             if (string.IsNullOrEmpty(sql))
                 return sql;
-            return PackFieldTokenRegex.Replace(sql, match =>
+
+            sql = PackFieldTokenRegex.Replace(sql, match =>
             {
                 ParseTableColumnSpec(match.Groups[1].Value, null, out string table, out string column);
                 int? fieldId = string.IsNullOrWhiteSpace(table)
                     ? GetTransactionFieldIdByColumn(conn, transactionId, column)
                     : GetTransactionFieldId(conn, transactionId, table, column);
+                if (!fieldId.HasValue)
+                {
+                    throw new InvalidOperationException(
+                        $"SQL token '{match.Value}' did not match a transaction field.");
+                }
+                return $"[TF_{fieldId.Value}_{column}]";
+            });
+
+            return PackNameOnlyFieldTokenRegex.Replace(sql, match =>
+            {
+                string column = match.Groups[1].Value;
+                int? fieldId = GetTransactionFieldIdByColumn(conn, transactionId, column);
                 if (!fieldId.HasValue)
                 {
                     throw new InvalidOperationException(

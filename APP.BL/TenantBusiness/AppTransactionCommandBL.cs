@@ -4411,11 +4411,11 @@ namespace App.BL
             toReturn.Object.FormData = aInputFormData;
 
 
-            actionDto.ActionAttribute.FilePath = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictOneRowFiedIdValue, actionDto.ActionAttribute.FilePath, null); ;
-            actionDto.ActionAttribute.DistinationFilePath = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictOneRowFiedIdValue, actionDto.ActionAttribute.DistinationFilePath, null);
-            actionDto.ActionAttribute.FtpUserName = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictOneRowFiedIdValue, actionDto.ActionAttribute.FtpUserName, null);
-            actionDto.ActionAttribute.FtpPassword = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictOneRowFiedIdValue, actionDto.ActionAttribute.FtpPassword, null);
-            actionDto.ActionAttribute.Arguments = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictOneRowFiedIdValue, actionDto.ActionAttribute.Arguments, null);
+            actionDto.ActionAttribute.FilePath = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictOneRowFiedIdValue, actionDto.ActionAttribute.FilePath, null, transactionExDto);
+            actionDto.ActionAttribute.DistinationFilePath = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictOneRowFiedIdValue, actionDto.ActionAttribute.DistinationFilePath, null, transactionExDto);
+            actionDto.ActionAttribute.FtpUserName = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictOneRowFiedIdValue, actionDto.ActionAttribute.FtpUserName, null, transactionExDto);
+            actionDto.ActionAttribute.FtpPassword = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictOneRowFiedIdValue, actionDto.ActionAttribute.FtpPassword, null, transactionExDto);
+            actionDto.ActionAttribute.Arguments = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(dictOneRowFiedIdValue, actionDto.ActionAttribute.Arguments, null, transactionExDto);
 
 
             if (actionDto.ActionType.Value == (int)EmAppTransactionCommandType.ExecuteSQLStatement)
@@ -4758,7 +4758,7 @@ namespace App.BL
 
                 List<DbParameter> sqlParamterList = new List<DbParameter>();
 
-                string sqlStateMent = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(allFreshRootValue, action.NotificationMessage, sqlParamterList);
+                string sqlStateMent = AppProjectWorkFlowDataFormSynchBL.ReplaceSQlParamterWithActualValue(allFreshRootValue, action.NotificationMessage, sqlParamterList, transactionExDto);
 
                 if (string.IsNullOrWhiteSpace(sqlStateMent))
                 {

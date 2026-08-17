@@ -243,6 +243,14 @@ namespace APP.Components.EntityDto
         [DataMember]
         public bool? IsSynchToDatabaseTable { get; set; }
 
+        /// <summary>Hide the child grid Add row button (AppTransactionUnit.IsDisableAddButton).</summary>
+        [DataMember]
+        public bool? IsDisableAddButton { get; set; }
+
+        /// <summary>Hide the child grid Delete row button (AppTransactionUnit.IsDisableDeleteButton).</summary>
+        [DataMember]
+        public bool? IsDisableDeleteButton { get; set; }
+
         /// <summary>Available Select source unit table/view name (same transaction).</summary>
         [DataMember]
         public string AvailableSourceTableName { get; set; }

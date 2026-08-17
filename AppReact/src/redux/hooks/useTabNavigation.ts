@@ -8,6 +8,7 @@ import {
   getReactPathForRouteCode,
   isTransactionFormGroupPath,
   isTransactionFolderNavigationPath,
+  isTransactionFormInstancePath,
   resolveTabNavigationPath,
   tabRoutePathsMatch,
 } from '../../helper/navigationHelper';
@@ -165,12 +166,22 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
       ? tabs.find((tab) => extractBaseRoutePath(tab.path) === targetBasePath)
       : undefined;
     if (existingByBase) {
-      dispatch(activateTab(existingByBase.tabKey));
-      if (existingByBase.path !== routePath) {
-        dispatch(updateTabPath({ tabKey: existingByBase.tabKey, path: routePath }));
+      const isFormRoute = isTransactionFormInstancePath(targetBasePath);
+      const existingParams = isFormRoute ? extractParamsFromPath(existingByBase.path) : null;
+      const sameFormInstance =
+        !isFormRoute ||
+        (String(existingParams?.id ?? '') === String(originalParamObj?.id ?? '') &&
+          String(existingParams?.param1 ?? '') === String(originalParamObj?.param1 ?? '') &&
+          String(originalParamObj?.id ?? '') !== '');
+      if (sameFormInstance) {
+        dispatch(activateTab(existingByBase.tabKey));
+        if (existingByBase.path !== routePath) {
+          dispatch(updateTabPath({ tabKey: existingByBase.tabKey, path: routePath }));
+        }
+        navigate(routePath);
+        return;
       }
-      navigate(routePath);
-      return;
+      // Different FormMasterDetail transaction/record — open a new tab below.
     }
 
     // First, check if a tab with this exact path already exists
