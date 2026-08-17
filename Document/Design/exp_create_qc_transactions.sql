@@ -2,6 +2,8 @@
 -- EXPERIMENTAL: Spec QC Order List + Spec Qc Order transactions
 -- Target: TenantDB_PLM27 (AppAI metadata only — does NOT alter Tchp* tables)
 -- Safe to discard by restoring APP DB or deleting IntegrationId TX_QcOrder*
+-- TchpQcGarment.SizeRunSizeId is required (one physical size per garment).
+-- TchpQcResult.SizeRunSizeId is a snapshot copied from the parent garment.
 -- =============================================================================
 SET NOCOUNT ON;
 SET XACT_ABORT ON;

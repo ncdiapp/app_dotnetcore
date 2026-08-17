@@ -14,11 +14,13 @@ Runtime APIs live under `/webapi/AppConfigPack/` (not PLM Migration). No FieldMa
 1. **DDL** — create missing tables; **ADD** missing columns only; `CREATE OR ALTER VIEW`
 2. Refresh tenant schema cache
 3. **Transactions** — upsert by `integrationId` via table hierarchy (Root / Sibling / Child / Grandchild)
-4. Overlay field metadata (control type, entity/LOV, visibility, pivot flags)
-5. Default Form layout (v1 does **not** round-trip Flex layout)
-6. Transaction Group (Data Model Template)
-7. **Searches** — DataSet SQL, criteria, SearchView fields, linkTargets, optional main menu
-8. Attach TX + Search as Application assets
+4. Overlay field metadata (control type, entity/LOV, visibility, pivot flags, cascading DDL)
+5. Overlay unit display names, grid display type, Available Select pairing (`AvailableSourceUnitId` + field mapping)
+6. Default Form layout (v1 does **not** round-trip Flex layout)
+7. Child-grid **Link Targets** (Create/Edit/Delete) — after all transaction ids exist
+8. Transaction Group (Data Model Template)
+9. **Searches** — DataSet SQL, criteria, SearchView fields, linkTargets, optional main menu
+10. Attach TX + Search as Application assets
 
 ## Matching / safety
 
@@ -81,9 +83,27 @@ Views run **after** tables so they can select from newly created tables.
   "name": "Demo Order",
   "unitStructure": {
     "rootTableName": "Demo_Order",
+    "rootDisplayName": "Order",
     "siblingTableNames": ["Demo_OrderHeader"],
+    "siblingUnits": [
+      { "tableName": "Demo_OrderHeader", "displayName": "Order Header" }
+    ],
     "childUnits": [
-      { "tableName": "Demo_OrderLine", "grandChildTableNames": ["Demo_OrderLineNote"], "gridDisplayType": 1 }
+      {
+        "tableName": "Demo_OrderLine",
+        "displayName": "Order Lines",
+        "grandChildTableNames": ["Demo_OrderLineNote"],
+        "gridDisplayType": 1,
+        "linkTargets": [
+          {
+            "name": "Edit Line",
+            "actionType": "Edit",
+            "transactionIntegrationId": "TX_DemoOrderLine",
+            "sourceColumn": "OrderLineId",
+            "targetColumn": "OrderLineId"
+          }
+        ]
+      }
     ]
   },
   "fields": [
@@ -93,13 +113,38 @@ Views run **after** tables so they can select from newly created tables.
 }
 ```
 
-- Root = master table. Siblings share the root PK (`ReferenceId` pattern when present).
-- Child / grandchild = grids. Optional `gridDisplayType` (`1` RegularGrid, `7` ChildUnitPivotColumns).
+- Root = master table. Optional `rootDisplayName`. Siblings share the root PK (`ReferenceId` pattern when present).
+- `siblingUnits[]` overlays sibling display names. `siblingTableNames` still creates the sibling units.
+- Child / grandchild = grids. Optional `gridDisplayType` (`1` RegularGrid, `5` AvailableSelectGridPair, `7` ChildUnitPivotColumns).
+- Optional child flags: `isReadOnly`, `isSynchToDatabaseTable` (set `false` for VIEW units).
+- **Available Select pair:** on the *selected* child set `availableSourceTableName` (the pool unit in the same TX), `availableSelectSelectedColumn`, and optional `availableSelectSourceColumn` (defaults to the selected column). Import sets `AvailableSourceUnitId` + field mapping. The source unit is marked `IsUsedForLoadingAvailableSource`.
+- **Child grid Link Targets:** `linkTargets[]` on a child unit — `actionType` `Create` / `Edit` / `Delete`, `transactionIntegrationId`, `sourceColumn`, optional `targetColumn` (defaults to `sourceColumn`). Applied after all transactions exist. `null` = leave existing links; `[]` = clear.
 - `fields[]` overlay after create. `controlType` uses `EmAppControlType` (1=DDL, 2=TextBox, 7=Date, 13=CheckBox, 20=Numeric).
 - `entityCode` resolves `AppEntityInfo.EntityCode` (LOV). Unknown codes become warnings.
-- Pivot: `isPivotColumn` / `isPivotValue`; optional `matrixSourceTable` + `matrixSourceColumn` to set `MatrixForeignKeyFieldId`.
+- Pivot: `isPivotRow` / `isPivotColumn` / `isPivotValue`; optional `matrixSourceTable` + `matrixSourceColumn` to set `MatrixForeignKeyFieldId`.
+- Cascading DDL: `dependsOnTable` + `dependsOnColumn` (resolves `DDLParentLevelID`); optional `cascadingRelationTable`, `cascadingRelationSchemaOwner`, `cascadingParentKey`, `cascadingChildKey`.
+- VIEW units: set `isPrimaryKey` on the unique key column and `isLinkToParentPrimaryKey` on the parent FK column (views have no SQL PK/FK). Put PK overlays before parent-link overlays in `fields[]`.
 
 Physical tables/views named in `unitStructure` must exist after the DDL step.
+
+Available Select example (source VIEW + selected table):
+
+```json
+{
+  "tableName": "View_TchpQcOrderAvailableSize",
+  "displayName": "Available QC Sizes",
+  "isReadOnly": true,
+  "isSynchToDatabaseTable": false
+},
+{
+  "tableName": "TchpQcOrderSize",
+  "displayName": "Selected QC Sizes",
+  "gridDisplayType": 5,
+  "availableSourceTableName": "View_TchpQcOrderAvailableSize",
+  "availableSelectSelectedColumn": "SizeRunSizeId",
+  "availableSelectSourceColumn": "SizeRunSizeId"
+}
+```
 
 ## Transaction group
 

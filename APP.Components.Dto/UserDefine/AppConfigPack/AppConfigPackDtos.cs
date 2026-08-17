@@ -158,10 +158,26 @@ namespace APP.Components.EntityDto
         public string RootTableName { get; set; }
 
         [DataMember]
+        public string RootDisplayName { get; set; }
+
+        [DataMember]
         public List<string> SiblingTableNames { get; set; } = new List<string>();
 
         [DataMember]
+        public List<AppConfigPackSiblingUnitDto> SiblingUnits { get; set; } = new List<AppConfigPackSiblingUnitDto>();
+
+        [DataMember]
         public List<AppConfigPackChildUnitDto> ChildUnits { get; set; } = new List<AppConfigPackChildUnitDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackSiblingUnitDto
+    {
+        [DataMember]
+        public string TableName { get; set; }
+
+        [DataMember]
+        public string DisplayName { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -171,10 +187,37 @@ namespace APP.Components.EntityDto
         public string TableName { get; set; }
 
         [DataMember]
+        public string DisplayName { get; set; }
+
+        [DataMember]
         public List<string> GrandChildTableNames { get; set; } = new List<string>();
 
         [DataMember]
+        public List<AppConfigPackChildUnitDto> GrandChildUnits { get; set; } = new List<AppConfigPackChildUnitDto>();
+
+        [DataMember]
         public int? GridDisplayType { get; set; }
+
+        [DataMember]
+        public bool? IsReadOnly { get; set; }
+
+        [DataMember]
+        public bool? IsSynchToDatabaseTable { get; set; }
+
+        /// <summary>Available Select source unit table/view name (same transaction).</summary>
+        [DataMember]
+        public string AvailableSourceTableName { get; set; }
+
+        /// <summary>Column on this (selected) unit mapped to the available source.</summary>
+        [DataMember]
+        public string AvailableSelectSelectedColumn { get; set; }
+
+        /// <summary>Column on the available source unit. Defaults to AvailableSelectSelectedColumn.</summary>
+        [DataMember]
+        public string AvailableSelectSourceColumn { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackLinkTargetDto> LinkTargets { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -202,6 +245,15 @@ namespace APP.Components.EntityDto
         public bool? IsReadOnly { get; set; }
 
         [DataMember]
+        public bool? IsPrimaryKey { get; set; }
+
+        [DataMember]
+        public bool? IsLinkToParentPrimaryKey { get; set; }
+
+        [DataMember]
+        public bool? IsPivotRow { get; set; }
+
+        [DataMember]
         public bool? IsPivotColumn { get; set; }
 
         [DataMember]
@@ -212,6 +264,26 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public string MatrixSourceColumn { get; set; }
+
+        /// <summary>DDL parent field table (resolves DDLParentLevelID).</summary>
+        [DataMember]
+        public string DependsOnTable { get; set; }
+
+        /// <summary>DDL parent field column (resolves DDLParentLevelID).</summary>
+        [DataMember]
+        public string DependsOnColumn { get; set; }
+
+        [DataMember]
+        public string CascadingRelationTable { get; set; }
+
+        [DataMember]
+        public string CascadingRelationSchemaOwner { get; set; }
+
+        [DataMember]
+        public string CascadingParentKey { get; set; }
+
+        [DataMember]
+        public string CascadingChildKey { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -371,6 +443,18 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public string SourceColumn { get; set; }
+
+        [DataMember]
+        public string TargetColumn { get; set; }
+
+        [DataMember]
+        public bool? IsPopup { get; set; }
+
+        [DataMember]
+        public int? PopupWidth { get; set; }
+
+        [DataMember]
+        public int? PopupHeight { get; set; }
 
         [DataMember]
         public int? Sort { get; set; }

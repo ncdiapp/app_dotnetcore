@@ -55,17 +55,13 @@ WHERE TransactionID = @Id";
                         var setup = new HierarchyTableSetupDto
                         {
                             MasterTableName = tx.UnitStructure.RootTableName,
-                            SiblingTableNames = (tx.UnitStructure.SiblingTableNames ?? new List<string>())
-                                .Where(n => !string.IsNullOrWhiteSpace(n))
-                                .ToList(),
+                            SiblingTableNames = MergeSiblingTableNames(tx.UnitStructure),
                             ChildTables = (tx.UnitStructure.ChildUnits ?? new List<AppConfigPackChildUnitDto>())
                                 .Where(c => c != null && !string.IsNullOrWhiteSpace(c.TableName))
                                 .Select(c => new HierarchyChildTableDto
                                 {
                                     TableName = c.TableName,
-                                    GrandChildTableNames = (c.GrandChildTableNames ?? new List<string>())
-                                        .Where(g => !string.IsNullOrWhiteSpace(g))
-                                        .ToList()
+                                    GrandChildTableNames = MergeGrandChildTableNames(c)
                                 })
                                 .ToList(),
                             DataSourceRegisterId = tenantDataSourceId,
@@ -90,7 +86,7 @@ WHERE TransactionID = @Id";
                 }
 
                 OverlayTransactionFields(transactionId, tx);
-                ApplyChildGridDisplayTypes(transactionId, tx);
+                ApplyUnitOverlays(transactionId, tx);
                 EnsureDefaultForm(transactionId);
 
                 map[integrationId] = transactionId;
@@ -116,7 +112,10 @@ WHERE TransactionID = @Id";
 
             using (var conn = OpenTenantConnection())
             {
-                foreach (var field in tx.Fields.Where(f => f != null && !string.IsNullOrWhiteSpace(f.ColumnName)))
+                foreach (var field in tx.Fields
+                    .Where(f => f != null && !string.IsNullOrWhiteSpace(f.ColumnName))
+                    .OrderByDescending(f => f.IsPrimaryKey == true)
+                    .ThenBy(f => f.IsLinkToParentPrimaryKey == true))
                 {
                     int? entityId = ResolveEntityIdByCode(conn, field.EntityCode);
                     int? matrixFieldId = null;
@@ -127,6 +126,30 @@ WHERE TransactionID = @Id";
                             conn, transactionId, field.MatrixSourceTable, field.MatrixSourceColumn);
                     }
 
+                    int? dependsOnFieldId = null;
+                    if (!string.IsNullOrWhiteSpace(field.DependsOnTable)
+                        && !string.IsNullOrWhiteSpace(field.DependsOnColumn))
+                    {
+                        dependsOnFieldId = GetTransactionFieldId(
+                            conn, transactionId, field.DependsOnTable, field.DependsOnColumn);
+                        if (!dependsOnFieldId.HasValue)
+                        {
+                            throw new InvalidOperationException(
+                                $"Depends-on field '{field.DependsOnTable}.{field.DependsOnColumn}' was not found for '{field.TableName}.{field.ColumnName}'.");
+                        }
+                    }
+
+                    int? parentPkFieldId = null;
+                    if (field.IsLinkToParentPrimaryKey == true && !string.IsNullOrWhiteSpace(field.TableName))
+                    {
+                        parentPkFieldId = GetParentPrimaryKeyFieldId(conn, transactionId, field.TableName);
+                        if (!parentPkFieldId.HasValue)
+                        {
+                            throw new InvalidOperationException(
+                                $"Parent primary key was not found for '{field.TableName}.{field.ColumnName}' (isLinkToParentPrimaryKey). Mark the parent unit PK first.");
+                        }
+                    }
+
                     using (var cmd = conn.CreateCommand())
                     {
                         cmd.CommandText = @"
@@ -135,10 +158,19 @@ UPDATE f SET
     EntityId = COALESCE(@EntityId, f.EntityId),
     IsVisible = COALESCE(@IsVisible, f.IsVisible),
     IsReadonly = COALESCE(@IsReadOnly, f.IsReadonly),
+    IsPrimaryKey = COALESCE(@IsPrimaryKey, f.IsPrimaryKey),
+    IsLinkToParentPrimaryKey = COALESCE(@IsLinkToParent, f.IsLinkToParentPrimaryKey),
+    LinkToParentPrimaryKeyFieldID = COALESCE(@ParentPkFieldId, f.LinkToParentPrimaryKeyFieldID),
+    IsPivotRow = COALESCE(@IsPivotRow, f.IsPivotRow),
     IsPivotColumn = COALESCE(@IsPivotColumn, f.IsPivotColumn),
     IsPivotValue = COALESCE(@IsPivotValue, f.IsPivotValue),
     MatrixForeignKeyFieldId = COALESCE(@MatrixFieldId, f.MatrixForeignKeyFieldId),
     DisplayName = COALESCE(@DisplayName, f.DisplayName),
+    DDLParentLevelID = COALESCE(@DependsOnFieldId, f.DDLParentLevelID),
+    CascadingRelationTable = COALESCE(@CascadingTable, f.CascadingRelationTable),
+    CascadingRelationTableSchemaOwner = COALESCE(@CascadingSchema, f.CascadingRelationTableSchemaOwner),
+    CascadingRelationTableParentKeyField = COALESCE(@CascadingParent, f.CascadingRelationTableParentKeyField),
+    CascadingRelationTableChildKeyField = COALESCE(@CascadingChild, f.CascadingRelationTableChildKeyField),
     AppModifiedDate = GETDATE()
 FROM dbo.AppTransactionField f
 INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
@@ -149,10 +181,19 @@ WHERE u.TransactionID = @TxId
                         cmd.Parameters.AddWithValue("@EntityId", (object)entityId ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@IsVisible", field.IsVisible.HasValue ? (object)field.IsVisible.Value : DBNull.Value);
                         cmd.Parameters.AddWithValue("@IsReadOnly", field.IsReadOnly.HasValue ? (object)field.IsReadOnly.Value : DBNull.Value);
+                        cmd.Parameters.AddWithValue("@IsPrimaryKey", field.IsPrimaryKey.HasValue ? (object)field.IsPrimaryKey.Value : DBNull.Value);
+                        cmd.Parameters.AddWithValue("@IsLinkToParent", field.IsLinkToParentPrimaryKey.HasValue ? (object)field.IsLinkToParentPrimaryKey.Value : DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ParentPkFieldId", (object)parentPkFieldId ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@IsPivotRow", field.IsPivotRow.HasValue ? (object)field.IsPivotRow.Value : DBNull.Value);
                         cmd.Parameters.AddWithValue("@IsPivotColumn", field.IsPivotColumn.HasValue ? (object)field.IsPivotColumn.Value : DBNull.Value);
                         cmd.Parameters.AddWithValue("@IsPivotValue", field.IsPivotValue.HasValue ? (object)field.IsPivotValue.Value : DBNull.Value);
                         cmd.Parameters.AddWithValue("@MatrixFieldId", (object)matrixFieldId ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@DisplayName", string.IsNullOrWhiteSpace(field.DisplayName) ? (object)DBNull.Value : field.DisplayName.Trim());
+                        cmd.Parameters.AddWithValue("@DependsOnFieldId", (object)dependsOnFieldId ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@CascadingTable", string.IsNullOrWhiteSpace(field.CascadingRelationTable) ? (object)DBNull.Value : field.CascadingRelationTable.Trim());
+                        cmd.Parameters.AddWithValue("@CascadingSchema", string.IsNullOrWhiteSpace(field.CascadingRelationSchemaOwner) ? (object)DBNull.Value : field.CascadingRelationSchemaOwner.Trim());
+                        cmd.Parameters.AddWithValue("@CascadingParent", string.IsNullOrWhiteSpace(field.CascadingParentKey) ? (object)DBNull.Value : field.CascadingParentKey.Trim());
+                        cmd.Parameters.AddWithValue("@CascadingChild", string.IsNullOrWhiteSpace(field.CascadingChildKey) ? (object)DBNull.Value : field.CascadingChildKey.Trim());
                         cmd.Parameters.AddWithValue("@TxId", transactionId);
                         cmd.Parameters.AddWithValue("@ColumnName", field.ColumnName.Trim());
                         cmd.Parameters.AddWithValue("@TableName", string.IsNullOrWhiteSpace(field.TableName) ? (object)DBNull.Value : field.TableName.Trim());
@@ -162,27 +203,347 @@ WHERE u.TransactionID = @TxId
             }
         }
 
-        private static void ApplyChildGridDisplayTypes(int transactionId, AppConfigPackTransactionDto tx)
+        private static List<string> MergeSiblingTableNames(AppConfigPackUnitStructureDto structure)
         {
-            if (tx.UnitStructure?.ChildUnits == null)
+            var names = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void Add(string name)
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                    return;
+                if (seen.Add(name.Trim()))
+                    names.Add(name.Trim());
+            }
+
+            foreach (var name in structure?.SiblingTableNames ?? new List<string>())
+                Add(name);
+            foreach (var sibling in structure?.SiblingUnits ?? new List<AppConfigPackSiblingUnitDto>())
+                Add(sibling?.TableName);
+            return names;
+        }
+
+        private static List<string> MergeGrandChildTableNames(AppConfigPackChildUnitDto child)
+        {
+            var names = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            void Add(string name)
+            {
+                if (string.IsNullOrWhiteSpace(name))
+                    return;
+                if (seen.Add(name.Trim()))
+                    names.Add(name.Trim());
+            }
+
+            foreach (var name in child?.GrandChildTableNames ?? new List<string>())
+                Add(name);
+            foreach (var grand in child?.GrandChildUnits ?? new List<AppConfigPackChildUnitDto>())
+                Add(grand?.TableName);
+            return names;
+        }
+
+        private static void ApplyUnitOverlays(int transactionId, AppConfigPackTransactionDto tx)
+        {
+            if (tx?.UnitStructure == null)
                 return;
 
             using (var conn = OpenTenantConnection())
             {
-                foreach (var child in tx.UnitStructure.ChildUnits.Where(c => c != null && c.GridDisplayType.HasValue && !string.IsNullOrWhiteSpace(c.TableName)))
+                if (!string.IsNullOrWhiteSpace(tx.UnitStructure.RootDisplayName)
+                    && !string.IsNullOrWhiteSpace(tx.UnitStructure.RootTableName))
                 {
-                    using (var cmd = conn.CreateCommand())
-                    {
-                        cmd.CommandText = @"
+                    UpdateUnitDisplayName(conn, transactionId, tx.UnitStructure.RootTableName, tx.UnitStructure.RootDisplayName);
+                }
+
+                foreach (var sibling in tx.UnitStructure.SiblingUnits ?? Enumerable.Empty<AppConfigPackSiblingUnitDto>())
+                {
+                    if (sibling == null || string.IsNullOrWhiteSpace(sibling.TableName) || string.IsNullOrWhiteSpace(sibling.DisplayName))
+                        continue;
+                    UpdateUnitDisplayName(conn, transactionId, sibling.TableName, sibling.DisplayName);
+                }
+
+                foreach (var child in tx.UnitStructure.ChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())
+                {
+                    ApplyOneChildUnitOverlay(conn, transactionId, child);
+                    foreach (var grand in child.GrandChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())
+                        ApplyOneChildUnitOverlay(conn, transactionId, grand);
+                }
+            }
+        }
+
+        private static void ApplyOneChildUnitOverlay(SqlConnection conn, int transactionId, AppConfigPackChildUnitDto child)
+        {
+            if (child == null || string.IsNullOrWhiteSpace(child.TableName))
+                return;
+
+            int? unitId = GetTransactionUnitId(conn, transactionId, child.TableName);
+            if (!unitId.HasValue)
+                throw new InvalidOperationException($"Transaction unit '{child.TableName}' was not found.");
+
+            if (!string.IsNullOrWhiteSpace(child.DisplayName))
+                UpdateUnitDisplayNameById(conn, unitId.Value, child.DisplayName.Trim());
+
+            if (child.GridDisplayType.HasValue || child.IsReadOnly.HasValue || child.IsSynchToDatabaseTable.HasValue)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit SET
+    EmGridViewDisplayType = COALESCE(@DisplayType, EmGridViewDisplayType),
+    IsReadOnly = COALESCE(@IsReadOnly, IsReadOnly),
+    IsSynchToDatabaseTable = COALESCE(@IsSynch, IsSynchToDatabaseTable),
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId";
+                    cmd.Parameters.AddWithValue("@DisplayType", (object)child.GridDisplayType ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@IsReadOnly", child.IsReadOnly.HasValue ? (object)child.IsReadOnly.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@IsSynch", child.IsSynchToDatabaseTable.HasValue ? (object)child.IsSynchToDatabaseTable.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@UnitId", unitId.Value);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(child.AvailableSourceTableName))
+                return;
+
+            int? sourceUnitId = GetTransactionUnitId(conn, transactionId, child.AvailableSourceTableName);
+            if (!sourceUnitId.HasValue)
+            {
+                throw new InvalidOperationException(
+                    $"Available source unit '{child.AvailableSourceTableName}' was not found for '{child.TableName}'.");
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
 UPDATE dbo.AppTransactionUnit
-SET EmGridViewDisplayType = @DisplayType, AppModifiedDate = GETDATE()
-WHERE TransactionID = @TxId AND DataBaseTableName = @TableName";
-                        cmd.Parameters.AddWithValue("@DisplayType", child.GridDisplayType.Value);
-                        cmd.Parameters.AddWithValue("@TxId", transactionId);
-                        cmd.Parameters.AddWithValue("@TableName", child.TableName.Trim());
-                        cmd.ExecuteNonQuery();
+SET AvailableSourceUnitID = @SourceUnitId, AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId";
+                cmd.Parameters.AddWithValue("@SourceUnitId", sourceUnitId.Value);
+                cmd.Parameters.AddWithValue("@UnitId", unitId.Value);
+                cmd.ExecuteNonQuery();
+            }
+
+            using (var srcFlag = conn.CreateCommand())
+            {
+                srcFlag.CommandText = @"
+UPDATE dbo.AppTransactionUnit
+SET IsUsedForLoadingAvailableSource = 1, AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @SourceUnitId";
+                srcFlag.Parameters.AddWithValue("@SourceUnitId", sourceUnitId.Value);
+                srcFlag.ExecuteNonQuery();
+            }
+
+            string selectedColumn = child.AvailableSelectSelectedColumn;
+            if (string.IsNullOrWhiteSpace(selectedColumn))
+            {
+                throw new InvalidOperationException(
+                    $"availableSelectSelectedColumn is required when availableSourceTableName is set on '{child.TableName}'.");
+            }
+
+            string sourceColumn = string.IsNullOrWhiteSpace(child.AvailableSelectSourceColumn)
+                ? selectedColumn
+                : child.AvailableSelectSourceColumn;
+            int? selectedFieldId = GetTransactionFieldId(conn, transactionId, child.TableName, selectedColumn);
+            int? sourceFieldId = GetTransactionFieldId(conn, transactionId, child.AvailableSourceTableName, sourceColumn);
+            if (!selectedFieldId.HasValue || !sourceFieldId.HasValue)
+            {
+                throw new InvalidOperationException(
+                    $"Available Select mapping {child.TableName}.{selectedColumn} → {child.AvailableSourceTableName}.{sourceColumn} was not found.");
+            }
+
+            using (var mapCmd = conn.CreateCommand())
+            {
+                mapCmd.CommandText = @"
+UPDATE dbo.AppTransactionField
+SET MappingToAvailableSourceUnitTransactionFieldID = @SourceFieldId, AppModifiedDate = GETDATE()
+WHERE TransactionFieldID = @SelectedFieldId";
+                mapCmd.Parameters.AddWithValue("@SourceFieldId", sourceFieldId.Value);
+                mapCmd.Parameters.AddWithValue("@SelectedFieldId", selectedFieldId.Value);
+                mapCmd.ExecuteNonQuery();
+            }
+        }
+
+        internal static void ApplyTransactionChildLinkTargets(
+            AppConfigPackDto pack,
+            Dictionary<string, int> txIdsByIntegration)
+        {
+            foreach (var tx in pack?.Transactions ?? Enumerable.Empty<AppConfigPackTransactionDto>())
+            {
+                if (tx == null || string.IsNullOrWhiteSpace(tx.IntegrationId) || tx.UnitStructure?.ChildUnits == null)
+                    continue;
+                if (!txIdsByIntegration.TryGetValue(tx.IntegrationId.Trim(), out int transactionId))
+                    continue;
+
+                using (var conn = OpenTenantConnection())
+                {
+                    foreach (var child in tx.UnitStructure.ChildUnits)
+                    {
+                        ApplyChildLinkTargets(conn, transactionId, child, txIdsByIntegration);
+                        foreach (var grand in child?.GrandChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())
+                            ApplyChildLinkTargets(conn, transactionId, grand, txIdsByIntegration);
                     }
                 }
+            }
+        }
+
+        private static void ApplyChildLinkTargets(
+            SqlConnection conn,
+            int transactionId,
+            AppConfigPackChildUnitDto child,
+            Dictionary<string, int> txIdsByIntegration)
+        {
+            if (child == null || string.IsNullOrWhiteSpace(child.TableName) || child.LinkTargets == null)
+                return;
+
+            int? unitId = GetTransactionUnitId(conn, transactionId, child.TableName);
+            if (!unitId.HasValue)
+                throw new InvalidOperationException($"Transaction unit '{child.TableName}' was not found for link targets.");
+
+            using (var del = conn.CreateCommand())
+            {
+                del.CommandText = "DELETE FROM dbo.AppFormLinkTarget WHERE TransactionUnitID = @UnitId";
+                del.Parameters.AddWithValue("@UnitId", unitId.Value);
+                del.ExecuteNonQuery();
+            }
+
+            int sort = 10;
+            foreach (var link in child.LinkTargets)
+            {
+                if (link == null || string.IsNullOrWhiteSpace(link.TransactionIntegrationId))
+                    continue;
+
+                int? targetTxId;
+                if (!txIdsByIntegration.TryGetValue(link.TransactionIntegrationId.Trim(), out int mappedId))
+                    targetTxId = GetTransactionIdByIntegrationId(conn, link.TransactionIntegrationId);
+                else
+                    targetTxId = mappedId;
+
+                if (!targetTxId.HasValue)
+                {
+                    throw new InvalidOperationException(
+                        $"Link target transaction '{link.TransactionIntegrationId}' was not found for unit '{child.TableName}'.");
+                }
+
+                string sourceColumn = string.IsNullOrWhiteSpace(link.SourceColumn) ? null : link.SourceColumn.Trim();
+                if (string.IsNullOrWhiteSpace(sourceColumn))
+                {
+                    throw new InvalidOperationException(
+                        $"Link target '{link.Name ?? link.ActionType}' on '{child.TableName}' is missing sourceColumn.");
+                }
+
+                string targetColumn = string.IsNullOrWhiteSpace(link.TargetColumn) ? sourceColumn : link.TargetColumn.Trim();
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+INSERT INTO dbo.AppFormLinkTarget (
+    TransactionUnitID,
+    NavigationActionName,
+    ActionType,
+    LinkTargetTransactionID,
+    LinkTargetUsageType,
+    SourceColumnType,
+    SourceColumn1,
+    TargetColumn1,
+    Sort,
+    IsPopup,
+    PopupWidth,
+    PopupHeight)
+VALUES (
+    @UnitId,
+    @Name,
+    @ActionType,
+    @LinkTargetTransactionId,
+    @UsageType,
+    @SourceColumnType,
+    @SourceColumn,
+    @TargetColumn,
+    @Sort,
+    @IsPopup,
+    @PopupWidth,
+    @PopupHeight)";
+                    cmd.Parameters.AddWithValue("@UnitId", unitId.Value);
+                    cmd.Parameters.AddWithValue("@Name", string.IsNullOrWhiteSpace(link.Name) ? (link.ActionType ?? "Edit") : link.Name.Trim());
+                    cmd.Parameters.AddWithValue("@ActionType", ResolveLinkTargetActionType(link.ActionType));
+                    cmd.Parameters.AddWithValue("@LinkTargetTransactionId", targetTxId.Value);
+                    cmd.Parameters.AddWithValue("@UsageType", (int)EmAppLinkTargetUsageType.TransactionUnitLinkToForm);
+                    cmd.Parameters.AddWithValue("@SourceColumnType", (int)EmAppLinkTargetSourceColumnType.TransactionField);
+                    cmd.Parameters.AddWithValue("@SourceColumn", sourceColumn);
+                    cmd.Parameters.AddWithValue("@TargetColumn", targetColumn);
+                    cmd.Parameters.AddWithValue("@Sort", link.Sort ?? sort);
+                    cmd.Parameters.AddWithValue("@IsPopup", link.IsPopup ?? true);
+                    cmd.Parameters.AddWithValue("@PopupWidth", link.PopupWidth ?? 1200);
+                    cmd.Parameters.AddWithValue("@PopupHeight", link.PopupHeight ?? 700);
+                    cmd.ExecuteNonQuery();
+                }
+
+                sort += 10;
+            }
+        }
+
+        private static void UpdateUnitDisplayName(SqlConnection conn, int transactionId, string tableName, string displayName)
+        {
+            int? unitId = GetTransactionUnitId(conn, transactionId, tableName);
+            if (!unitId.HasValue)
+                throw new InvalidOperationException($"Transaction unit '{tableName}' was not found.");
+            UpdateUnitDisplayNameById(conn, unitId.Value, displayName);
+        }
+
+        private static void UpdateUnitDisplayNameById(SqlConnection conn, int unitId, string displayName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit
+SET UnitDisplayName = @DisplayName, AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId";
+                cmd.Parameters.AddWithValue("@DisplayName", TruncateName(displayName, 200, displayName));
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static int? GetTransactionUnitId(SqlConnection conn, int transactionId, string tableName)
+        {
+            if (string.IsNullOrWhiteSpace(tableName))
+                return null;
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 TransactionUnitID
+FROM dbo.AppTransactionUnit
+WHERE TransactionID = @TxId AND DataBaseTableName = @TableName
+ORDER BY TransactionUnitID";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.Parameters.AddWithValue("@TableName", tableName.Trim());
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        private static int? GetParentPrimaryKeyFieldId(SqlConnection conn, int transactionId, string childTableName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 pk.TransactionFieldID
+FROM dbo.AppTransactionUnit child
+INNER JOIN dbo.AppTransactionUnit parent
+    ON parent.TransactionUnitID = COALESCE(child.ParentTransactionUnitID,
+        (SELECT TOP 1 r.TransactionUnitID
+         FROM dbo.AppTransactionUnit r
+         WHERE r.TransactionID = child.TransactionID
+           AND r.ParentTransactionUnitID IS NULL
+           AND ISNULL(r.IsMasterSiblingUnit, 0) = 0
+         ORDER BY r.TransactionUnitID))
+INNER JOIN dbo.AppTransactionField pk
+    ON pk.TransactionUnitID = parent.TransactionUnitID
+   AND pk.IsPrimaryKey = 1
+WHERE child.TransactionID = @TxId
+  AND child.DataBaseTableName = @TableName
+ORDER BY pk.TransactionFieldID";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.Parameters.AddWithValue("@TableName", childTableName.Trim());
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
             }
         }
 

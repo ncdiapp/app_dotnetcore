@@ -102,8 +102,9 @@ TchpStyleSpec             Spec aggregate root per style (DRAFT → APPROVED → 
 
 TchpQcOrder               QC order (linked to LOCKED StyleSpec)
   ├── TchpQcOrderSize     Selected sizes for QC inspection
-  └── TchpQcGarment       Individual sampled garment
+  └── TchpQcGarment       Individual sampled garment (one SizeRunSizeId per garment)
         └── TchpQcResult  Measurement: 4 wash stages + computed Shrinkage/Recovery/FinalDiff
+                          SizeRunSizeId is a snapshot copied from parent TchpQcGarment
 
 TchpSizeRunDimension      Global mapping: TchpSizeRunSize → DimensionCode (one size : one dimension)
 TchpSizeSystemMapping     Regional size equivalence per size. SystemCode values: US | EU | UK | JP | CN | INTL

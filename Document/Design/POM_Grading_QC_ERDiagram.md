@@ -148,13 +148,14 @@ erDiagram
         int QcGarmentId PK
         int QcOrderId FK
         nvarchar GarmentSerial
+        int SizeRunSizeId FK "one physical size per garment"
         bit GarmentPassStatus "null=not evaluated"
     }
     TchpQcResult {
         int QcResultId PK
         int QcGarmentId FK
         int PomSpecLineId FK
-        int SizeRunSizeId FK
+        int SizeRunSizeId FK "snapshot from parent garment"
         decimal ProductionValue "stage 1"
         decimal BeforeWashValue "stage 2"
         decimal AfterWashValue "stage 3"
@@ -197,9 +198,10 @@ erDiagram
     TchpQcOrder ||--o{ TchpQcOrderSize : "selected sizes"
     TchpSizeRunSize ||--o{ TchpQcOrderSize : "size"
     TchpQcOrder ||--o{ TchpQcGarment : "sampled garments"
+    TchpSizeRunSize ||--o{ TchpQcGarment : "garment size"
     TchpQcGarment ||--o{ TchpQcResult : "measurement results"
     TchpPomSpecLine ||--o{ TchpQcResult : "POM measured"
-    TchpSizeRunSize ||--o{ TchpQcResult : "size measured"
+    TchpSizeRunSize ||--o{ TchpQcResult : "size snapshot"
 ```
 
 ## Table Groups

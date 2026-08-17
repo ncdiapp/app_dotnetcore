@@ -58,7 +58,7 @@
         "rootTableName": "Demo_Order",
         "siblingTableNames": [],
         "childUnits": [
-          { "tableName": "Demo_OrderLine", "grandChildTableNames": [], "gridDisplayType": 1 }
+          { "tableName": "Demo_OrderLine", "displayName": "Order Lines", "grandChildTableNames": [], "gridDisplayType": 1 }
         ]
       },
       "fields": [

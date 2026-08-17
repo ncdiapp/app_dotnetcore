@@ -149,6 +149,7 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
 
                 var txIdsByIntegration = UpsertTransactions(
                     request.Pack, tenantDataSourceId, saasApplicationId, result.Object);
+                ApplyTransactionChildLinkTargets(request.Pack, txIdsByIntegration);
 
                 int? groupId = UpsertTransactionGroup(request.Pack, txIdsByIntegration, saasApplicationId);
                 if (groupId.HasValue && groupId.Value > 0)
@@ -271,6 +272,9 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
 
                 if (tx.UnitStructure == null || string.IsNullOrWhiteSpace(tx.UnitStructure.RootTableName))
                     validation.Errors.Add($"Transaction '{tx.IntegrationId}' is missing unitStructure.rootTableName.");
+
+                foreach (var child in tx.UnitStructure?.ChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())
+                    ValidateChildUnit(tx.IntegrationId, child, txIds, validation);
             }
 
             var searchIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -305,6 +309,43 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
 
             if (pack.Tables.Count == 0 && pack.Views.Count == 0 && pack.Transactions.Count == 0 && pack.Searches.Count == 0)
                 validation.Errors.Add("Pack contains no tables, views, transactions, or searches.");
+        }
+
+        private static void ValidateChildUnit(
+            string txIntegrationId,
+            AppConfigPackChildUnitDto child,
+            HashSet<string> txIds,
+            AppConfigPackValidationDto validation)
+        {
+            if (child == null)
+                return;
+            if (string.IsNullOrWhiteSpace(child.TableName))
+            {
+                validation.Errors.Add($"Transaction '{txIntegrationId}' has a child unit without tableName.");
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(child.AvailableSourceTableName)
+                && string.IsNullOrWhiteSpace(child.AvailableSelectSelectedColumn))
+            {
+                validation.Errors.Add(
+                    $"Transaction '{txIntegrationId}' unit '{child.TableName}' has availableSourceTableName but no availableSelectSelectedColumn.");
+            }
+
+            foreach (var link in child.LinkTargets ?? Enumerable.Empty<AppConfigPackLinkTargetDto>())
+            {
+                if (string.IsNullOrWhiteSpace(link?.TransactionIntegrationId))
+                    continue;
+                if (string.IsNullOrWhiteSpace(link.SourceColumn))
+                    validation.Errors.Add(
+                        $"Transaction '{txIntegrationId}' unit '{child.TableName}' link target '{link.Name ?? link.ActionType}' is missing sourceColumn.");
+                if (!txIds.Contains(link.TransactionIntegrationId.Trim()))
+                    validation.Warnings.Add(
+                        $"Transaction '{txIntegrationId}' unit '{child.TableName}' link target '{link.TransactionIntegrationId}' is not in this pack — it must already exist in the tenant.");
+            }
+
+            foreach (var grand in child.GrandChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())
+                ValidateChildUnit(txIntegrationId, grand, txIds, validation);
         }
 
         private static List<AppConfigPackPreviewItemDto> BuildPreviewItems(AppConfigPackDto pack)
@@ -369,6 +410,25 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                         ExistingId = existing,
                         Detail = $"Root {tx.UnitStructure?.RootTableName}; fields {tx.Fields?.Count ?? 0}"
                     });
+
+                    foreach (var child in tx.UnitStructure?.ChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())
+                    {
+                        foreach (var link in child?.LinkTargets ?? Enumerable.Empty<AppConfigPackLinkTargetDto>())
+                        {
+                            if (string.IsNullOrWhiteSpace(link?.TransactionIntegrationId))
+                                continue;
+                            int? txId = GetTransactionIdByIntegrationId(conn, link.TransactionIntegrationId);
+                            items.Add(new AppConfigPackPreviewItemDto
+                            {
+                                ObjectType = "LinkTarget",
+                                Name = $"{child.TableName}: {link.Name ?? link.ActionType}",
+                                IntegrationId = link.TransactionIntegrationId,
+                                Action = ActionInsert,
+                                ExistingId = txId,
+                                Detail = link.ActionType
+                            });
+                        }
+                    }
                 }
 
                 if (pack.TransactionGroup != null && !string.IsNullOrWhiteSpace(pack.TransactionGroup.Name))

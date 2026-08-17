@@ -294,8 +294,10 @@ QcOrder (Aggregate Root)
 │
 └── QcGarments[]       one per sampled garment
     ├── garmentSerial  string
+    ├── sizeRunSizeId  FK → SizeRunSize (one physical size per garment)
     └── QcMeasurements[]
         ├── pomSpecLineId
+        ├── sizeRunSizeId  snapshot from parent garment
         ├── beforeWash   decimal?
         ├── afterWash    decimal?
         ├── afterIron    decimal?
@@ -562,7 +564,7 @@ QcResult
 ├── qcOrderId
 ├── qcGarmentId
 ├── pomSpecLineId
-├── sizeRotateId
+├── sizeRunSizeId      snapshot from parent QcGarment
 ├── productionValue    decimal?
 ├── beforeWashValue    decimal?
 ├── afterWashValue     decimal?
@@ -738,12 +740,13 @@ Rules:
                        │   QcGarment      │
                        │   id             │
                        │   garmentSerial  │
+                       │   sizeRunSizeId  │
                        └────────┬─────────┘
                                 │ 1:N
                        ┌────────▼─────────┐
                        │   QcResult       │
                        │   pomSpecLineId  │
-                       │   sizeRotateId   │
+                       │   sizeRunSizeId  │
                        │   beforeWash     │
                        │   afterWash      │
                        │   afterIron      │

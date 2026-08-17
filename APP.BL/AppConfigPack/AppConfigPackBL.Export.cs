@@ -110,6 +110,10 @@ namespace APP.BL.AppConfigPack
 
             CollectTableOrView(conn, root.DataBaseTableName, tableNames, viewNames);
 
+            var siblingUnits = hierarchy.AppTransactionUnitList
+                .Where(u => u.IsMasterSiblingUnit.HasValue && u.IsMasterSiblingUnit.Value && !string.IsNullOrWhiteSpace(u.DataBaseTableName))
+                .ToList();
+
             var exported = new AppConfigPackTransactionDto
             {
                 IntegrationId = integrationId,
@@ -119,32 +123,23 @@ namespace APP.BL.AppConfigPack
                 UnitStructure = new AppConfigPackUnitStructureDto
                 {
                     RootTableName = root.DataBaseTableName,
-                    SiblingTableNames = hierarchy.AppTransactionUnitList
-                        .Where(u => u.IsMasterSiblingUnit.HasValue && u.IsMasterSiblingUnit.Value && !string.IsNullOrWhiteSpace(u.DataBaseTableName))
+                    RootDisplayName = root.UnitDisplayName,
+                    SiblingTableNames = siblingUnits
                         .Select(u => u.DataBaseTableName)
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList(),
+                    SiblingUnits = siblingUnits
+                        .GroupBy(u => u.DataBaseTableName, StringComparer.OrdinalIgnoreCase)
+                        .Select(g => g.First())
+                        .Select(u => new AppConfigPackSiblingUnitDto
+                        {
+                            TableName = u.DataBaseTableName,
+                            DisplayName = u.UnitDisplayName
+                        })
+                        .ToList(),
                     ChildUnits = (root.Children ?? new List<AppTransactionUnitExDto>())
                         .Where(c => c != null && !string.IsNullOrWhiteSpace(c.DataBaseTableName))
-                        .Select(c =>
-                        {
-                            CollectTableOrView(conn, c.DataBaseTableName, tableNames, viewNames);
-                            foreach (var gc in c.Children ?? Enumerable.Empty<AppTransactionUnitExDto>())
-                            {
-                                if (!string.IsNullOrWhiteSpace(gc?.DataBaseTableName))
-                                    CollectTableOrView(conn, gc.DataBaseTableName, tableNames, viewNames);
-                            }
-
-                            return new AppConfigPackChildUnitDto
-                            {
-                                TableName = c.DataBaseTableName,
-                                GrandChildTableNames = (c.Children ?? new List<AppTransactionUnitExDto>())
-                                    .Where(g => !string.IsNullOrWhiteSpace(g?.DataBaseTableName))
-                                    .Select(g => g.DataBaseTableName)
-                                    .ToList(),
-                                GridDisplayType = c.EmGridViewDisplayType
-                            };
-                        })
+                        .Select(c => ExportChildUnit(conn, c, tableNames, viewNames))
                         .ToList()
                 }
             };
@@ -154,6 +149,145 @@ namespace APP.BL.AppConfigPack
 
             exported.Fields = ExportTransactionFields(conn, hierarchy);
             return exported;
+        }
+
+        private static AppConfigPackChildUnitDto ExportChildUnit(
+            SqlConnection conn,
+            AppTransactionUnitExDto unit,
+            HashSet<string> tableNames,
+            HashSet<string> viewNames)
+        {
+            CollectTableOrView(conn, unit.DataBaseTableName, tableNames, viewNames);
+            var grandChildren = (unit.Children ?? new List<AppTransactionUnitExDto>())
+                .Where(g => g != null && !string.IsNullOrWhiteSpace(g.DataBaseTableName))
+                .ToList();
+            foreach (var gc in grandChildren)
+                CollectTableOrView(conn, gc.DataBaseTableName, tableNames, viewNames);
+
+            string availableSourceTable = null;
+            string selectedColumn = null;
+            string sourceColumn = null;
+            if (unit.AvailableSourceUnitId.HasValue)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+SELECT TOP 1 DataBaseTableName
+FROM dbo.AppTransactionUnit
+WHERE TransactionUnitID = @Id";
+                    cmd.Parameters.AddWithValue("@Id", unit.AvailableSourceUnitId.Value);
+                    availableSourceTable = cmd.ExecuteScalar() as string;
+                }
+
+                var mappedField = unit.AppTransactionFieldList?
+                    .FirstOrDefault(f => f != null && f.MappingToAvailableSourceUnitTransactionFieldId.HasValue);
+                if (mappedField != null)
+                {
+                    selectedColumn = mappedField.DataBaseFieldName;
+                    sourceColumn = ResolveFieldTableColumn(conn, mappedField.MappingToAvailableSourceUnitTransactionFieldId.Value).Column;
+                }
+            }
+
+            return new AppConfigPackChildUnitDto
+            {
+                TableName = unit.DataBaseTableName,
+                DisplayName = unit.UnitDisplayName,
+                GrandChildTableNames = grandChildren.Select(g => g.DataBaseTableName).ToList(),
+                GrandChildUnits = grandChildren.Select(g => ExportChildUnit(conn, g, tableNames, viewNames)).ToList(),
+                GridDisplayType = unit.EmGridViewDisplayType,
+                IsReadOnly = unit.IsReadOnly,
+                IsSynchToDatabaseTable = unit.IsSynchToDatabaseTable,
+                AvailableSourceTableName = availableSourceTable,
+                AvailableSelectSelectedColumn = selectedColumn,
+                AvailableSelectSourceColumn = sourceColumn,
+                LinkTargets = ExportUnitLinkTargets(conn, Convert.ToInt32(unit.Id))
+            };
+        }
+
+        private static (string Table, string Column) ResolveFieldTableColumn(SqlConnection conn, int fieldId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 u.DataBaseTableName, f.DataBaseFieldName
+FROM dbo.AppTransactionField f
+INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
+WHERE f.TransactionFieldID = @Id";
+                cmd.Parameters.AddWithValue("@Id", fieldId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (reader.Read())
+                    {
+                        return (
+                            reader.IsDBNull(0) ? null : reader.GetString(0),
+                            reader.IsDBNull(1) ? null : reader.GetString(1));
+                    }
+                }
+            }
+
+            return (null, null);
+        }
+
+        private static List<AppConfigPackLinkTargetDto> ExportUnitLinkTargets(SqlConnection conn, int unitId)
+        {
+            var raw = new List<(string Name, int? ActionType, int TxId, string SourceCol, string TargetCol, int? Sort, bool? IsPopup, int? Width, int? Height)>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT NavigationActionName, ActionType, LinkTargetTransactionID, SourceColumn1, TargetColumn1,
+       Sort, IsPopup, PopupWidth, PopupHeight
+FROM dbo.AppFormLinkTarget
+WHERE TransactionUnitID = @UnitId
+ORDER BY ISNULL(Sort, 0), LinkTargetID";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (reader.IsDBNull(2))
+                            continue;
+                        raw.Add((
+                            reader.IsDBNull(0) ? null : reader.GetString(0),
+                            reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1),
+                            reader.GetInt32(2),
+                            reader.IsDBNull(3) ? null : reader.GetString(3),
+                            reader.IsDBNull(4) ? null : reader.GetString(4),
+                            reader.IsDBNull(5) ? (int?)null : Convert.ToInt32(reader.GetValue(5)),
+                            reader.IsDBNull(6) ? (bool?)null : reader.GetBoolean(6),
+                            reader.IsDBNull(7) ? (int?)null : Convert.ToInt32(reader.GetValue(7)),
+                            reader.IsDBNull(8) ? (int?)null : Convert.ToInt32(reader.GetValue(8))));
+                    }
+                }
+            }
+
+            var list = new List<AppConfigPackLinkTargetDto>();
+            foreach (var row in raw)
+            {
+                string integrationId = GetTransactionIntegrationId(conn, row.TxId);
+                if (string.IsNullOrWhiteSpace(integrationId))
+                    continue;
+
+                string action = "Edit";
+                if (row.ActionType == (int)EmAppLinkTargetActionType.Create)
+                    action = "Create";
+                else if (row.ActionType == (int)EmAppLinkTargetActionType.Delete)
+                    action = "Delete";
+
+                list.Add(new AppConfigPackLinkTargetDto
+                {
+                    Name = row.Name,
+                    ActionType = action,
+                    TransactionIntegrationId = integrationId,
+                    SourceColumn = row.SourceCol,
+                    TargetColumn = row.TargetCol,
+                    Sort = row.Sort,
+                    IsPopup = row.IsPopup,
+                    PopupWidth = row.Width,
+                    PopupHeight = row.Height
+                });
+            }
+
+            return list.Count == 0 ? null : list;
         }
 
         private static void CollectTableOrView(
@@ -195,23 +329,18 @@ namespace APP.BL.AppConfigPack
                     string matrixColumn = null;
                     if (field.MatrixForeignKeyFieldId.HasValue)
                     {
-                        using (var cmd = conn.CreateCommand())
-                        {
-                            cmd.CommandText = @"
-SELECT TOP 1 u.DataBaseTableName, f.DataBaseFieldName
-FROM dbo.AppTransactionField f
-INNER JOIN dbo.AppTransactionUnit u ON u.TransactionUnitID = f.TransactionUnitID
-WHERE f.TransactionFieldID = @Id";
-                            cmd.Parameters.AddWithValue("@Id", field.MatrixForeignKeyFieldId.Value);
-                            using (var reader = cmd.ExecuteReader())
-                            {
-                                if (reader.Read())
-                                {
-                                    matrixTable = reader.IsDBNull(0) ? null : reader.GetString(0);
-                                    matrixColumn = reader.IsDBNull(1) ? null : reader.GetString(1);
-                                }
-                            }
-                        }
+                        var matrix = ResolveFieldTableColumn(conn, field.MatrixForeignKeyFieldId.Value);
+                        matrixTable = matrix.Table;
+                        matrixColumn = matrix.Column;
+                    }
+
+                    string dependsOnTable = null;
+                    string dependsOnColumn = null;
+                    if (field.DdlparentLevelId.HasValue)
+                    {
+                        var parent = ResolveFieldTableColumn(conn, field.DdlparentLevelId.Value);
+                        dependsOnTable = parent.Table;
+                        dependsOnColumn = parent.Column;
                     }
 
                     fields.Add(new AppConfigPackFieldDto
@@ -223,10 +352,17 @@ WHERE f.TransactionFieldID = @Id";
                         EntityCode = GetEntityCodeById(conn, field.EntityId),
                         IsVisible = field.IsVisible,
                         IsReadOnly = field.IsReadonly,
+                        IsPivotRow = field.IsPivotRow,
                         IsPivotColumn = field.IsPivotColumn,
                         IsPivotValue = field.IsPivotValue,
                         MatrixSourceTable = matrixTable,
-                        MatrixSourceColumn = matrixColumn
+                        MatrixSourceColumn = matrixColumn,
+                        DependsOnTable = dependsOnTable,
+                        DependsOnColumn = dependsOnColumn,
+                        CascadingRelationTable = field.CascadingRelationTable,
+                        CascadingRelationSchemaOwner = field.CascadingRelationTableSchemaOwner,
+                        CascadingParentKey = field.CascadingRelationTableParentKeyField,
+                        CascadingChildKey = field.CascadingRelationTableChildKeyField
                     });
                 }
             }

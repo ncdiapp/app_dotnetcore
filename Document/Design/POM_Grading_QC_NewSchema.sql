@@ -21,8 +21,8 @@
 --   TchpFitMeasurement        Actual measurements per fit round
 --   TchpQcOrder               QC order aggregate root
 --   TchpQcOrderSize           Selected sizes for a QC order
---   TchpQcGarment             Individual sampled garment
---   TchpQcResult              QC measurement result per garment/POM/size
+--   TchpQcGarment             Individual sampled garment (one SizeRunSizeId)
+--   TchpQcResult              QC measurement result per garment/POM (SizeRunSizeId snapshot)
 --   TchpSizeRunDimension      Global mapping: size run size → dimension code
 --   TchpSizeSystemMapping     Multi-region size equivalence (US/EU/UK/JP)
 --
@@ -30,6 +30,9 @@
 --   View_TchpStyleActiveSizeRunSizes   Grading pivot column domain (V1)
 --   View_TchpSizeRunSize_DefaultDimension
 --   View_TchpFitMeasurementByPom       Fit SUMMARY POM×Round pivot (F3)
+--   View_TchpQcOrderAvailableSize      QC Order Available Select source
+--   View_TchpQcOrderPom                QC Order results host (one row per POM)
+--   View_TchpQcOrderPomSizeResult      QC Order results grandchild (POM×Size)
 -- ============================================================
 -- Required for TchpQcResult persisted computed columns (run with -I in sqlcmd or SSMS defaults).
 SET ANSI_NULLS ON;
@@ -578,6 +581,8 @@ GO
 
 -- ── TchpQcGarment ────────────────────────────────────────────
 -- One row per sampled garment within a QC order.
+-- Each garment has exactly one SizeRunSizeId (the physical size of that piece).
+-- TchpQcResult.SizeRunSizeId is a redundant snapshot copied from this column.
 -- GarmentPassStatus: NULL = not yet evaluated, 1 = pass, 0 = fail.
 IF OBJECT_ID(N'dbo.TchpQcGarment', N'U') IS NULL
 BEGIN
@@ -585,6 +590,7 @@ BEGIN
         [QcGarmentId]           INT             IDENTITY(1,1)   NOT NULL,
         [QcOrderId]             INT             NOT NULL,
         [GarmentSerial]         NVARCHAR(50)    NOT NULL,
+        [SizeRunSizeId]         INT             NOT NULL,
         -- Set by QcAggregateService after all measurements are entered
         [GarmentPassStatus]     BIT             NULL,
         [SystemTimeStamp]       ROWVERSION      NULL,
@@ -595,18 +601,63 @@ BEGIN
         [AppCreatedByCompanyId] INT             NULL,
         CONSTRAINT [PK_TchpQcGarment] PRIMARY KEY CLUSTERED ([QcGarmentId] ASC),
         CONSTRAINT [FK_TchpQcGarment_TchpQcOrder]
-            FOREIGN KEY ([QcOrderId]) REFERENCES [dbo].[TchpQcOrder] ([QcOrderId])
+            FOREIGN KEY ([QcOrderId]) REFERENCES [dbo].[TchpQcOrder] ([QcOrderId]),
+        CONSTRAINT [FK_TchpQcGarment_TchpSizeRunSize]
+            FOREIGN KEY ([SizeRunSizeId]) REFERENCES [dbo].[TchpSizeRunSize] ([SizeRunSizeId])
     );
     CREATE NONCLUSTERED INDEX [IX_TchpQcGarment_Order]
         ON [dbo].[TchpQcGarment] ([QcOrderId] ASC);
+    CREATE NONCLUSTERED INDEX [IX_TchpQcGarment_Size]
+        ON [dbo].[TchpQcGarment] ([SizeRunSizeId] ASC);
     PRINT 'Created TchpQcGarment';
 END
 ELSE
-    PRINT 'TchpQcGarment already exists — skipped';
+BEGIN
+    IF COL_LENGTH(N'dbo.TchpQcGarment', N'SizeRunSizeId') IS NULL
+    BEGIN
+        ALTER TABLE [dbo].[TchpQcGarment] ADD [SizeRunSizeId] INT NULL;
+        IF OBJECT_ID(N'dbo.TchpQcResult', N'U') IS NOT NULL
+        BEGIN
+            UPDATE g
+            SET g.SizeRunSizeId = r.SizeRunSizeId
+            FROM [dbo].[TchpQcGarment] g
+            CROSS APPLY (
+                SELECT TOP 1 r0.SizeRunSizeId
+                FROM [dbo].[TchpQcResult] r0
+                WHERE r0.QcGarmentId = g.QcGarmentId
+                  AND r0.SizeRunSizeId IS NOT NULL
+                ORDER BY r0.QcResultId
+            ) r;
+        END
+        PRINT 'TchpQcGarment: added SizeRunSizeId (nullable until backfilled)';
+    END
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.foreign_keys
+        WHERE name = N'FK_TchpQcGarment_TchpSizeRunSize'
+          AND parent_object_id = OBJECT_ID(N'dbo.TchpQcGarment'))
+       AND COL_LENGTH(N'dbo.TchpQcGarment', N'SizeRunSizeId') IS NOT NULL
+    BEGIN
+        ALTER TABLE [dbo].[TchpQcGarment] WITH NOCHECK
+            ADD CONSTRAINT [FK_TchpQcGarment_TchpSizeRunSize]
+            FOREIGN KEY ([SizeRunSizeId]) REFERENCES [dbo].[TchpSizeRunSize] ([SizeRunSizeId]);
+        PRINT 'TchpQcGarment: added FK to TchpSizeRunSize';
+    END
+
+    IF NOT EXISTS (
+        SELECT 1 FROM sys.indexes
+        WHERE object_id = OBJECT_ID(N'dbo.TchpQcGarment')
+          AND name = N'IX_TchpQcGarment_Size')
+    BEGIN
+        CREATE NONCLUSTERED INDEX [IX_TchpQcGarment_Size]
+            ON [dbo].[TchpQcGarment] ([SizeRunSizeId] ASC);
+    END
+END
 GO
 
 -- ── TchpQcResult ─────────────────────────────────────────────
--- QC measurement per garment × POM × size, all four wash stages.
+-- QC measurement per garment × POM. SizeRunSizeId is a snapshot copied from
+-- parent TchpQcGarment.SizeRunSizeId (one physical size per garment).
 -- SpecValue and Tolerance are snapshots from the locked StyleSpec at QC time.
 -- Shrinkage, Recovery, FinalDiff are PERSISTED computed columns (pure arithmetic).
 -- Pass and DefectClass are stored (updated by QcAggregateService after each stage).
@@ -969,6 +1020,102 @@ INNER JOIN dbo.TchpBodyPart AS bp
 GO
 
 PRINT 'Created View_TchpPomSpecLine';
+GO
+
+-- ── View_TchpQcOrderAvailableSize ────────────────────────────
+-- Available Select SOURCE for QC Order selected sizes.
+-- Parent link: QcOrderId. Mapping key: SizeRunSizeId.
+CREATE OR ALTER VIEW [dbo].[View_TchpQcOrderAvailableSize]
+AS
+SELECT
+    CAST(o.QcOrderId AS BIGINT) * 1000000000 + CAST(srs.SizeRunSizeId AS BIGINT) AS QcOrderAvailableSizeId,
+    o.QcOrderId,
+    o.StyleSpecId,
+    srs.SizeRunId,
+    srs.SizeRunSizeId,
+    srs.SizeLabel,
+    srs.SizeOrder,
+    srs.IsActive
+FROM dbo.TchpQcOrder AS o
+INNER JOIN dbo.TchpStyleSpec AS ss
+    ON ss.StyleSpecId = o.StyleSpecId
+INNER JOIN dbo.TchpSizeRunSize AS srs
+    ON srs.SizeRunId = ss.SizeRunId
+WHERE ISNULL(srs.IsActive, 1) = 1;
+GO
+
+PRINT 'Created View_TchpQcOrderAvailableSize';
+GO
+
+-- ── View_TchpQcOrderPom ──────────────────────────────────────
+-- QC Order Child4 host: one row per POM on the order's StyleSpec.
+-- PK QcOrderPomId is unique per (QcOrderId, PomSpecLineId).
+CREATE OR ALTER VIEW [dbo].[View_TchpQcOrderPom]
+AS
+SELECT
+    CAST(o.QcOrderId AS BIGINT) * 1000000000 + CAST(psl.PomSpecLineId AS BIGINT) AS QcOrderPomId,
+    o.QcOrderId,
+    psl.PomSpecLineId,
+    psl.StyleSpecId,
+    ISNULL(NULLIF(LTRIM(RTRIM(psl.BodypartAliasName)), N''), bp.BodyPartName) AS PomName,
+    bp.BodyPartName,
+    psl.BodypartAliasName,
+    psl.Sort,
+    psl.BaseValue,
+    psl.Tolerance
+FROM dbo.TchpQcOrder AS o
+INNER JOIN dbo.TchpPomSpecLine AS psl
+    ON psl.StyleSpecId = o.StyleSpecId
+INNER JOIN dbo.TchpBodyPart AS bp
+    ON bp.BodyPartId = psl.BodyPartId;
+GO
+
+PRINT 'Created View_TchpQcOrderPom';
+GO
+
+-- ── View_TchpQcOrderPomSizeResult ────────────────────────────
+-- QC Order Child4 grandchild: POM × selected Size aggregates.
+-- ChildUnitPivotColumns: SizeRunSizeId = pivot column; FailCount / AvgFinalDiff = values.
+-- Rows exist for every selected size even when no garments have been measured yet.
+CREATE OR ALTER VIEW [dbo].[View_TchpQcOrderPomSizeResult]
+AS
+SELECT
+    CAST(o.QcOrderId AS BIGINT) * 1000000000000
+        + CAST(psl.PomSpecLineId AS BIGINT) * 1000000
+        + CAST(os.SizeRunSizeId AS BIGINT) AS QcOrderPomSizeId,
+    CAST(o.QcOrderId AS BIGINT) * 1000000000 + CAST(psl.PomSpecLineId AS BIGINT) AS QcOrderPomId,
+    o.QcOrderId,
+    psl.PomSpecLineId,
+    os.SizeRunSizeId,
+    srs.SizeLabel,
+    srs.SizeOrder,
+    COUNT(r.QcResultId) AS SampleCount,
+    SUM(CASE WHEN r.[Pass] = 0 THEN 1 ELSE 0 END) AS FailCount,
+    SUM(CASE WHEN r.[Pass] = 1 THEN 1 ELSE 0 END) AS PassCount,
+    SUM(CASE WHEN r.[Pass] IS NULL AND r.QcResultId IS NOT NULL THEN 1 ELSE 0 END) AS PendingCount,
+    AVG(r.FinalDiff) AS AvgFinalDiff
+FROM dbo.TchpQcOrder AS o
+INNER JOIN dbo.TchpQcOrderSize AS os
+    ON os.QcOrderId = o.QcOrderId
+INNER JOIN dbo.TchpSizeRunSize AS srs
+    ON srs.SizeRunSizeId = os.SizeRunSizeId
+INNER JOIN dbo.TchpPomSpecLine AS psl
+    ON psl.StyleSpecId = o.StyleSpecId
+LEFT JOIN dbo.TchpQcGarment AS g
+    ON g.QcOrderId = o.QcOrderId
+   AND g.SizeRunSizeId = os.SizeRunSizeId
+LEFT JOIN dbo.TchpQcResult AS r
+    ON r.QcGarmentId = g.QcGarmentId
+   AND r.PomSpecLineId = psl.PomSpecLineId
+GROUP BY
+    o.QcOrderId,
+    psl.PomSpecLineId,
+    os.SizeRunSizeId,
+    srs.SizeLabel,
+    srs.SizeOrder;
+GO
+
+PRINT 'Created View_TchpQcOrderPomSizeResult';
 GO
 
 PRINT '=== POM_Grading_QC_NewSchema.sql completed ===';
