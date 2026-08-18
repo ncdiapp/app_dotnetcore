@@ -815,7 +815,7 @@
       "commands": [
         {
           "integrationId": "CMD_SyncPOMListFromGrading",
-          "name": "_Sync POM List From Grading",
+          "name": "_Sync POM From Grading",
           "actionType": 42,
           "isShowOnTopMenu": false,
           "linkToUI": false,

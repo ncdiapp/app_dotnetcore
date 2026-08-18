@@ -29,11 +29,13 @@ export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
   onMount,
   monacoTheme = 'vs',
   enableTriggerSuggestions = false,
+  placeholder: _placeholder,
 }) => {
   const [localValue, setLocalValue] = useState<string>(value ?? '');
   const latestOnChangeRef = useRef(onChange);
   const debounceTimerRef = useRef<number | null>(null);
   const localValueRef = useRef<string>(value ?? '');
+  const parentValueRef = useRef<string>(value ?? '');
 
   useEffect(() => {
     latestOnChangeRef.current = onChange;
@@ -46,6 +48,7 @@ export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
   // Sync from parent only when it actually changes (e.g., load/reset/regenerate).
   useEffect(() => {
     const next = value ?? '';
+    parentValueRef.current = next;
     setLocalValue((prev) => (prev === next ? prev : next));
   }, [value]);
 
@@ -64,13 +67,17 @@ export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
       if (debounceTimerRef.current) {
         window.clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
-      }
-      // Ensure we don't lose the last buffered edits on unmount (e.g., switching rows/commands).
-      // Safe to call even if parent already has this value.
-      try {
-        latestOnChangeRef.current(localValueRef.current ?? '');
-      } catch {
-        // ignore
+        // Only flush pending typed edits. Always flushing on unmount overwrites parent SQL
+        // with Monaco's empty init value when the SQL section collapses or the command remounts.
+        try {
+          const pending = localValueRef.current ?? '';
+          const parent = parentValueRef.current ?? '';
+          if (pending.trim() || !parent.trim()) {
+            latestOnChangeRef.current(pending);
+          }
+        } catch {
+          // ignore
+        }
       }
     };
   }, []);
@@ -85,23 +92,37 @@ export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
     debounceTimerRef.current = window.setTimeout(() => flush(next), debounceMs) as unknown as number;
   };
 
+  const applyEditorChange = (next: string | undefined, ev?: { isFlush?: boolean }) => {
+    if (readOnly) return;
+    if (next == null) return;
+
+    const current = localValueRef.current || parentValueRef.current || '';
+    // Monaco resets the model (isFlush) to empty while applying the controlled value.
+    // Accept a user clearing the editor (isFlush !== true).
+    if (next === '' && current.trim() && ev?.isFlush) {
+      return;
+    }
+
+    scheduleChange(next);
+  };
+
   return (
     <div className={className ?? 'w-full h-full'}>
       <Suspense fallback={<div className="p-2 text-xs text-gray-500">Loading editor...</div>}>
         <MonacoEditor
           language={language}
-          value={localValue || placeholder || ''}
+          value={localValue}
           theme={monacoTheme}
           onMount={(editor, monaco) => {
             editor.onDidBlurEditorText(() => {
-              flush(editor.getValue());
+              const editorValue = editor.getValue() ?? '';
+              const parent = parentValueRef.current ?? '';
+              if (!editorValue.trim() && parent.trim()) return;
+              flush(editorValue);
             });
             onMount?.(editor, monaco);
           }}
-          onChange={(v) => {
-            if (readOnly) return;
-            scheduleChange(v ?? '');
-          }}
+          onChange={(v, ev) => applyEditorChange(v, ev)}
           options={{
             readOnly,
             minimap: { enabled: false },
@@ -124,4 +145,3 @@ export const JsonCodeEditor: React.FC<JsonCodeEditorProps> = ({
     </div>
   );
 };
-

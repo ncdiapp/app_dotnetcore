@@ -25,7 +25,15 @@ export function restoreCommand(cache: CommandEditCache, cmd: any): boolean {
   if (cmd?.Id == null) return false;
   const cached = cache.get(Number(cmd.Id));
   if (!cached) return false;
+  const listNotificationMessage = cmd.NotificationMessage;
   copyCommandInPlace(cmd, cached);
+  const listSql = listNotificationMessage != null ? String(listNotificationMessage).trim() : '';
+  const cachedSql = cached.NotificationMessage != null ? String(cached.NotificationMessage).trim() : '';
+  if (listSql && !cachedSql) {
+    cmd.NotificationMessage = listNotificationMessage;
+  } else if (!listSql && cachedSql) {
+    cmd.NotificationMessage = cached.NotificationMessage;
+  }
   return true;
 }
 

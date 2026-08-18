@@ -1112,6 +1112,18 @@ namespace App.BL
 
                     foreach (var dto in needToSaveCommandList)
                     {
+                        if (dto.Id != null
+                            && dto.ActionType.HasValue
+                            && dto.ActionType.Value == (int)EmAppTransactionCommandType.ExecuteSQLStatement
+                            && string.IsNullOrWhiteSpace(dto.NotificationMessage))
+                        {
+                            var orgAction = orgCommandActionList.FirstOrDefault(o => o.Id != null && (int)o.Id == (int)dto.Id);
+                            if (orgAction != null && !string.IsNullOrWhiteSpace(orgAction.NotificationMessage))
+                            {
+                                dto.NotificationMessage = orgAction.NotificationMessage;
+                            }
+                        }
+
                         if (!dto.CommandTransactionId.HasValue)
                         {
                             dto.CommandTransactionId = ControlTypeValueConverter.ConvertValueToInt(aAppTransactionExDto.Id);

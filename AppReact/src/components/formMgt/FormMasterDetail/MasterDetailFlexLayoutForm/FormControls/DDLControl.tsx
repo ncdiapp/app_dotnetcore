@@ -53,6 +53,21 @@ const DDLControl: React.FC<DDLControlProps> = ({
   const fieldName = fieldDto.DataBaseFieldName;
   const fieldValue = getOneToOneFieldValue(dataModel.currentFormData, fieldDto, fieldName, undefined, layoutItemExDto);
 
+  const lookupItemId = (item: any) => item?.Id ?? item?.id;
+  const lookupItemDisplay = (item: any) => item?.Display ?? item?.display ?? '';
+  const lookupListSignature = (items: any[] | null | undefined) =>
+    (Array.isArray(items) ? items : [])
+      .filter((x) => x != null && lookupItemId(x) != null && String(lookupItemId(x)) !== '')
+      .map((x) => `${String(lookupItemId(x))}\0${String(lookupItemDisplay(x))}`)
+      .join('|');
+  const findLookupItemByValue = (items: any[] | null | undefined, value: any) => {
+    if (value == null || value === '') return null;
+    const want = String(value);
+    return (Array.isArray(items) ? items : []).find(
+      (x) => x != null && lookupItemId(x) != null && String(lookupItemId(x)) === want,
+    ) ?? null;
+  };
+
   const selectedDisplay = useMemo(() => {
     const idStr = String(fieldValue ?? '');
     if (!idStr) return '';
@@ -61,8 +76,8 @@ const DDLControl: React.FC<DDLControlProps> = ({
       ...(Array.isArray(itemsSource?.items) ? itemsSource.items : []),
       ...(Array.isArray(selectorItemsCv?.items) ? selectorItemsCv.items : []),
     ];
-    const hit = candidates.find((x) => x != null && String(x.Id ?? '') === idStr);
-    return hit?.Display ?? '';
+    const hit = candidates.find((x) => x != null && String(lookupItemId(x) ?? '') === idStr);
+    return lookupItemDisplay(hit);
   }, [fieldValue, itemsSource, selectorItemsCv]);
   
   // Check if field is read-only
@@ -307,9 +322,16 @@ const DDLControl: React.FC<DDLControlProps> = ({
       return;
     }
 
-    // Cascading datasource (Angular parity): if server already provided DictCascadingFiledDataSource for this field, use it directly.
+    // Cascading / Query DDL items live in DictCascadingFiledDataSource. Command Refresh
+    // returns a new array instance even when Ids are unchanged; replacing CollectionView
+    // makes Wijmo ComboBox clear its display while selectedValue stays the same.
     if (cascadedItemsForThisField) {
-      setItemsSource(buildLookupItemsCv(cascadedItemsForThisField));
+      setItemsSource((prev) => {
+        const prevSig = lookupListSignature(prev?.items);
+        const nextSig = lookupListSignature(cascadedItemsForThisField);
+        if (prevSig === nextSig && (prev?.items?.length ?? 0) > 0) return prev;
+        return buildLookupItemsCv(cascadedItemsForThisField);
+      });
       return;
     }
 
@@ -602,7 +624,24 @@ const DDLControl: React.FC<DDLControlProps> = ({
       if (!canApplySelection(sender)) return;
       isProgrammaticSelectionRef.current = true;
       try {
-        sender.selectedValue = value ?? null;
+        if (value == null || value === '') {
+          sender.selectedValue = null;
+          return;
+        }
+        const items = ((sender as any).collectionView?.items ?? []) as any[];
+        const match = findLookupItemByValue(items, value);
+        if (match) {
+          const textEmpty = !String(sender.text ?? '').trim();
+          const currentId = lookupItemId(sender.selectedItem) ?? sender.selectedValue;
+          if (!textEmpty && String(currentId ?? '') === String(lookupItemId(match) ?? '')) {
+            return;
+          }
+          // selectedValue no-ops when the Id is already set but display was cleared
+          // after itemsSource rebuild (command Refresh). selectedItem forces the label.
+          sender.selectedItem = match;
+        } else {
+          sender.selectedValue = value;
+        }
       } finally {
         window.setTimeout(() => {
           isProgrammaticSelectionRef.current = false;

@@ -167,7 +167,11 @@ export function SqlStatementSection(props: {
                 sqlEditorRef.current = editor;
               }}
               onChange={(next) => {
-                action.NotificationMessage = next;
+                const incoming = next ?? '';
+                const current = action.NotificationMessage ?? '';
+                if (incoming === current) return;
+                if (!incoming.trim() && current.trim()) return;
+                action.NotificationMessage = incoming;
                 onMarkChange();
               }}
             />
@@ -199,8 +203,12 @@ export function SqlStatementSection(props: {
                 type="button"
                 className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
                 onClick={() => {
-                  action.NotificationMessage = sqlTokenBuilderDraft ?? '';
-                  onMarkChange();
+                  const next = sqlTokenBuilderDraft ?? '';
+                  const current = action.NotificationMessage ?? '';
+                  if (next.trim() || !current.trim()) {
+                    action.NotificationMessage = next;
+                    onMarkChange();
+                  }
                   setIsSqlTokenBuilderOpen(false);
                 }}
                 title="Apply and close"
