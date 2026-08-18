@@ -157,6 +157,12 @@ namespace APP.BL.AppConfigPack
 
             exported.Fields = ExportTransactionFields(conn, hierarchy);
             exported.Commands = ExportTransactionCommands(conn, txId, formId);
+            if (formId.HasValue)
+            {
+                exported.FormLayout = ExportFormLayout(conn, formId.Value, txId);
+                if (exported.FormLayout != null)
+                    exported.FormMode = "Flex";
+            }
             return exported;
         }
 
@@ -375,6 +381,7 @@ ORDER BY ISNULL(Sort, 0), LinkTargetID";
                         CascadingParentKey = field.CascadingRelationTableParentKeyField,
                         CascadingChildKey = field.CascadingRelationTableChildKeyField,
                         SortOrder = field.SortOrder,
+                        NbDecimal = field.Nbdecimal.HasValue && field.Nbdecimal.Value > 0 ? field.Nbdecimal : null,
                         DdlQueryText = string.IsNullOrWhiteSpace(field.DdlQueryText) ? null : field.DdlQueryText,
                         DdlQueryParameterColumns = ExportDdlQueryParameterColumns(conn, field.WhereClauseExpress)
                     });

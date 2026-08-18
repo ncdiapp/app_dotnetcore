@@ -93,9 +93,10 @@ WHERE TransactionID = @Id";
                 ApplyUnitOverlays(transactionId, tx);
                 WireLogicalParentKeys(transactionId, tx, pack.Tables);
                 AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
-                EnsureDefaultForm(transactionId);
-                ApplyFormTabNames(transactionId, tx);
-                UpsertTransactionCommands(transactionId, tx);
+                UpsertTransactionCommands(transactionId, tx, applyLayoutHostButtons: false);
+                ApplyTransactionFormLayout(transactionId, tx);
+                if (!HasPortableFormLayout(tx))
+                    ApplyCommandLayoutButtons(transactionId, tx);
 
                 map[integrationId] = transactionId;
                 if (inserted)
@@ -207,6 +208,7 @@ UPDATE f SET
     CascadingRelationTableParentKeyField = COALESCE(@CascadingParent, f.CascadingRelationTableParentKeyField),
     CascadingRelationTableChildKeyField = COALESCE(@CascadingChild, f.CascadingRelationTableChildKeyField),
     SortOrder = COALESCE(@SortOrder, f.SortOrder),
+    NBDecimal = COALESCE(@NbDecimal, f.NBDecimal),
     DdlQueryText = CASE WHEN @HasQuery = 1 THEN @DdlQueryText ELSE f.DdlQueryText END,
     WhereClauseExpress = CASE WHEN @HasQuery = 1 THEN @WhereClause ELSE f.WhereClauseExpress END,
     AppModifiedDate = GETDATE()
@@ -242,6 +244,7 @@ WHERE u.TransactionID = @TxId
                         cmd.Parameters.AddWithValue("@CascadingParent", string.IsNullOrWhiteSpace(field.CascadingParentKey) ? (object)DBNull.Value : field.CascadingParentKey.Trim());
                         cmd.Parameters.AddWithValue("@CascadingChild", string.IsNullOrWhiteSpace(field.CascadingChildKey) ? (object)DBNull.Value : field.CascadingChildKey.Trim());
                         cmd.Parameters.AddWithValue("@SortOrder", (object)field.SortOrder ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@NbDecimal", (object)field.NbDecimal ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@TxId", transactionId);
                         cmd.Parameters.AddWithValue("@ColumnName", field.ColumnName.Trim());
                         cmd.Parameters.AddWithValue("@TableName", string.IsNullOrWhiteSpace(field.TableName) ? (object)DBNull.Value : field.TableName.Trim());
@@ -705,7 +708,7 @@ WHERE FormLayoutItemID = @ItemId";
             }
         }
 
-        private static void UpsertTransactionCommands(int transactionId, AppConfigPackTransactionDto tx)
+        private static void UpsertTransactionCommands(int transactionId, AppConfigPackTransactionDto tx, bool applyLayoutHostButtons = true)
         {
             var commands = (tx.Commands ?? new List<AppConfigPackCommandDto>())
                 .Where(c => c != null && !string.IsNullOrWhiteSpace(c.Name))
@@ -772,6 +775,8 @@ WHERE FormLayoutItemID = @ItemId";
 
                 foreach (var command in commands.Where(c => !string.IsNullOrWhiteSpace(c.LayoutHostTable)))
                 {
+                    if (!applyLayoutHostButtons)
+                        break;
                     string key = string.IsNullOrWhiteSpace(command.IntegrationId) ? command.Name.Trim() : command.IntegrationId.Trim();
                     if (!idByIntegration.TryGetValue(key, out int actionId))
                         continue;
@@ -780,6 +785,21 @@ WHERE FormLayoutItemID = @ItemId";
             }
 
             AppCacheManagerBL.RefreshOneHierarchyTransaction(transactionId);
+        }
+
+        private static void ApplyCommandLayoutButtons(int transactionId, AppConfigPackTransactionDto tx)
+        {
+            using (var conn = OpenTenantConnection())
+            {
+                foreach (var command in (tx.Commands ?? new List<AppConfigPackCommandDto>())
+                    .Where(c => c != null && !string.IsNullOrWhiteSpace(c.Name) && !string.IsNullOrWhiteSpace(c.LayoutHostTable)))
+                {
+                    int? actionId = GetCommandIdByName(conn, transactionId, command.Name);
+                    if (!actionId.HasValue)
+                        continue;
+                    EnsureFormCommandButton(conn, transactionId, command.LayoutHostTable.Trim(), actionId.Value, command.Name);
+                }
+            }
         }
 
         private static int UpsertOneCommand(

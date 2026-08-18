@@ -348,8 +348,55 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                 }
             }
 
+            foreach (var tx in pack.Transactions)
+            {
+                if (tx == null || string.IsNullOrWhiteSpace(tx.IntegrationId) || !HasPortableFormLayout(tx))
+                    continue;
+                var commandNames = new HashSet<string>(
+                    (tx.Commands ?? new List<AppConfigPackCommandDto>())
+                        .Where(c => c != null && !string.IsNullOrWhiteSpace(c.Name))
+                        .Select(c => c.Name.Trim()),
+                    StringComparer.OrdinalIgnoreCase);
+                ValidateFormLayoutNodes(tx.IntegrationId, tx.FormLayout.Items, commandNames, searchIds, validation);
+            }
+
             if (pack.Tables.Count == 0 && pack.Views.Count == 0 && pack.Transactions.Count == 0 && pack.Searches.Count == 0)
                 validation.Errors.Add("Pack contains no tables, views, transactions, or searches.");
+        }
+
+        private static void ValidateFormLayoutNodes(
+            string txIntegrationId,
+            List<AppConfigPackFormLayoutItemDto> nodes,
+            HashSet<string> commandNames,
+            HashSet<string> searchIds,
+            AppConfigPackValidationDto validation)
+        {
+            foreach (var node in nodes ?? Enumerable.Empty<AppConfigPackFormLayoutItemDto>())
+            {
+                if (node == null)
+                    continue;
+                string type = (node.Type ?? string.Empty).Trim();
+                bool isField = string.Equals(type, "field", StringComparison.OrdinalIgnoreCase)
+                    || !string.IsNullOrWhiteSpace(node.ColumnName);
+                bool isGrid = string.Equals(type, "grid", StringComparison.OrdinalIgnoreCase);
+                bool isCommand = string.Equals(type, "commandButton", StringComparison.OrdinalIgnoreCase);
+                bool isSearch = string.Equals(type, "linkedSearch", StringComparison.OrdinalIgnoreCase);
+
+                if (isField && (string.IsNullOrWhiteSpace(node.TableName) || string.IsNullOrWhiteSpace(node.ColumnName)))
+                    validation.Errors.Add($"Transaction '{txIntegrationId}' formLayout field is missing tableName/columnName.");
+                if (isGrid && string.IsNullOrWhiteSpace(node.TableName))
+                    validation.Errors.Add($"Transaction '{txIntegrationId}' formLayout grid is missing tableName.");
+                if (isCommand && string.IsNullOrWhiteSpace(node.CommandName))
+                    validation.Errors.Add($"Transaction '{txIntegrationId}' formLayout commandButton is missing commandName.");
+                if (isCommand && !string.IsNullOrWhiteSpace(node.CommandName) && !commandNames.Contains(node.CommandName.Trim()))
+                    validation.Errors.Add($"Transaction '{txIntegrationId}' formLayout commandButton '{node.CommandName}' is not in commands[].");
+                if (isSearch && string.IsNullOrWhiteSpace(node.SearchIntegrationId))
+                    validation.Errors.Add($"Transaction '{txIntegrationId}' formLayout linkedSearch is missing searchIntegrationId.");
+                if (isSearch && !string.IsNullOrWhiteSpace(node.SearchIntegrationId) && !searchIds.Contains(node.SearchIntegrationId.Trim()))
+                    validation.Warnings.Add($"Transaction '{txIntegrationId}' formLayout linkedSearch '{node.SearchIntegrationId}' is not in this pack — it must already exist in the tenant.");
+
+                ValidateFormLayoutNodes(txIntegrationId, node.Children, commandNames, searchIds, validation);
+            }
         }
 
         private static void ValidateChildUnit(
@@ -454,6 +501,7 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                         Action = existing.HasValue ? ActionUpdate : ActionInsert,
                         ExistingId = existing,
                         Detail = $"Root {tx.UnitStructure?.RootTableName}; fields {tx.Fields?.Count ?? 0}; commands {tx.Commands?.Count ?? 0}"
+                            + (HasPortableFormLayout(tx) ? "; formLayout replace" : string.Empty)
                     });
 
                     foreach (var child in tx.UnitStructure?.ChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())

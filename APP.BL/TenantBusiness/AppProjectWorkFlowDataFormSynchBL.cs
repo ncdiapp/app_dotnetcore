@@ -822,12 +822,15 @@ namespace App.BL
             if (transactionExDto == null || string.IsNullOrWhiteSpace(columnName) || transactionExDto.DictAllTransactionField == null)
                 return null;
 
-            int? rootUnitId = transactionExDto.RootMasterUnit != null ? transactionExDto.RootMasterUnit.Id : null;
+            int? rootUnitId = transactionExDto.RootMasterUnit != null
+                ? ControlTypeValueConverter.ConvertValueToInt(transactionExDto.RootMasterUnit.Id)
+                : null;
             AppTransactionFieldExDto fallback = null;
 
             foreach (var field in transactionExDto.DictAllTransactionField.Values)
             {
-                if (field == null || !field.Id.HasValue)
+                int? fieldId = field == null ? null : ControlTypeValueConverter.ConvertValueToInt(field.Id);
+                if (!fieldId.HasValue)
                     continue;
                 if (!string.Equals(field.DataBaseFieldName, columnName, StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -847,13 +850,14 @@ namespace App.BL
                 }
 
                 if (rootUnitId.HasValue && field.TransactionUnitId == rootUnitId.Value)
-                    return (int)field.Id;
+                    return fieldId.Value;
 
-                if (fallback == null || field.Id.Value < fallback.Id.Value)
+                int? fallbackId = fallback == null ? null : ControlTypeValueConverter.ConvertValueToInt(fallback.Id);
+                if (fallback == null || fieldId.Value < (fallbackId ?? int.MaxValue))
                     fallback = field;
             }
 
-            return fallback != null ? (int?)fallback.Id : null;
+            return fallback != null ? ControlTypeValueConverter.ConvertValueToInt(fallback.Id) : null;
         }
 
 

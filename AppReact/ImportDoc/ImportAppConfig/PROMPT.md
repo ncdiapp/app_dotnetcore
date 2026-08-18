@@ -14,10 +14,10 @@ Runtime APIs live under `/webapi/AppConfigPack/` (not PLM Migration). No FieldMa
 1. **DDL** — create missing tables; **ADD** missing columns only; `CREATE OR ALTER VIEW`
 2. Refresh tenant schema cache
 3. **Transactions** — upsert by `integrationId` via table hierarchy (Root / Sibling / Child / Grandchild)
-4. Overlay field metadata (control type, entity/LOV, **query datasource**, visibility, pivot flags, cascading DDL, PK / parent-link)
+4. Overlay field metadata (control type, entity/LOV, **query datasource**, visibility, pivot flags, cascading DDL, PK / parent-link, **decimal places**)
 5. Overlay unit display names, grid display type, Available Select pairing (`AvailableSourceUnitId` + field mapping)
 6. Auto-wire child/sibling **Link To Parent PK** (DB FK, same column name, or StyleSpecId↔ReferenceId). VIEW units without a SQL PK get a logical PK.
-7. Default Form layout (v1 does **not** round-trip Flex layout)
+7. **Form layout** — if `formLayout.items` is present, delete the existing Flex tree and rebuild it (portable widget names, bind by table/column/command). If omitted, create the default Flex form when missing, then apply `layoutTab` / `layoutHostTable`
 8. **Commands** — upsert by `name` on the transaction (Execute SQL / Refresh / Composition); rewrite `[TF:Table.Column]` tokens; optional CommandActionButton above a child grid
 9. Child-grid **Link Targets** (Create/Edit/Delete) — after all transaction ids exist
 10. Transaction Group (Data Model Template)
@@ -112,18 +112,19 @@ Views run **after** tables so they can select from newly created tables.
     { "tableName": "Demo_Order", "columnName": "StatusId", "controlType": 1, "entityCode": "OrderStatus", "isVisible": true }
   ],
   "commands": [],
-  "formMode": "Default"
+  "formMode": "Flex",
+  "formLayout": { "defaultNbColumns": 4, "items": [] }
 }
 ```
 
 - Root = master table. Optional `rootDisplayName`. Siblings share the root PK (`ReferenceId` pattern when present).
 - `siblingUnits[]` overlays sibling display names. `siblingTableNames` still creates the sibling units.
 - Child / grandchild = grids. Optional `gridDisplayType` (`1` RegularGrid, `5` AvailableSelectGridPair, `6` MultipleSelectBox, `7` ChildUnitPivotColumns).
-- Optional `layoutTab` on a child unit: after default form create, rename that unit's form Tab to this title (e.g. `"QC Results Preview"`). Full Flex layout (moving a grid out of the tab container) is not round-tripped.
+- Optional `layoutTab` on a child unit: after default form create, rename that unit's form Tab to this title. Ignored when `formLayout` is present (tab titles live on tab nodes).
 - Optional child flags: `isReadOnly`, `isSynchToDatabaseTable` (set `false` for VIEW units), `isDisableAddButton`, `isDisableDeleteButton` (hide the child grid Add / Delete row buttons; use Link Targets to open the child form instead).
 - **Available Select pair:** on the *selected* child set `availableSourceTableName` (the pool unit in the same TX), `availableSelectSelectedColumn`, and optional `availableSelectSourceColumn` (defaults to the selected column). Import sets `AvailableSourceUnitId` + field mapping. The source unit is marked `IsUsedForLoadingAvailableSource`.
 - **Child grid Link Targets:** `linkTargets[]` on a child unit — `actionType` `Create` / `Edit` / `Delete`, `transactionIntegrationId`, `sourceColumn`, optional `targetColumn` (defaults to `sourceColumn`). `isPopup` defaults to `true`; set `false` to open in a full tab. Applied after all transactions exist. `null` = leave existing links; `[]` = clear.
-- `fields[]` overlay after create. `controlType` uses `EmAppControlType` (1=DDL, 2=TextBox, 7=Date, 13=CheckBox, 20=Numeric). Optional `sortOrder` sets field sequence (and default form field order).
+- `fields[]` overlay after create. `controlType` uses `EmAppControlType` (1=DDL, 2=TextBox, 7=Date, 13=CheckBox, 20=Numeric). Optional `sortOrder` sets field sequence (and default form field order). Optional `nbDecimal` sets numeric decimal places (`AppTransactionField.NBDecimal`).
 - `entityCode` resolves `AppEntityInfo.EntityCode` (LOV). Unknown codes become warnings.
 - **Query Datasource:** on a DDL field set `ddlQueryText` (first column = id, second = display; `@p0`… parameters) and `ddlQueryParameterColumns` as `["Table.Column", …]`. Import writes `DdlQueryText` + `WhereClauseExpress` (pipe-separated field ids) and **clears EntityId**. Omit `entityCode` when using a query.
 - Pivot: `isPivotRow` / `isPivotColumn` / `isPivotValue`; optional `matrixSourceTable` + `matrixSourceColumn` to set `MatrixForeignKeyFieldId`.
@@ -140,13 +141,96 @@ Optional `commands[]` on a transaction. Matched on import by **Name** within tha
 |-------|--------|
 | `integrationId` | Pack-local key, e.g. `CMD_ReloadPOMFromGrading` |
 | `name` | Stored command name (match key) |
-| `actionType` | `42` Execute SQL Statement, `50` Refresh, `200` Composition |
+| `actionType` | `42` Execute SQL Statement, `49` Save, `50` Refresh, `200` Composition |
 | `sqlStatement` | Required for 42. Use `[TF:Table.Column]` (never numeric FieldId). `[CurrentUserId]` is left as-is. SQL is stored in `NotificationMessage`. |
-| `childCommandIntegrationIds` | Composition children, in order |
+| `childCommandIntegrationIds` | Composition children, in order (e.g. Save → Execute SQL → Refresh) |
 | `linkToUI` / `isShowOnTopMenu` | Written into `FormulaExpression` (ActionAttribute JSON) |
-| `layoutHostTable` | After default form create, insert a CommandActionButton **above** this unit's grid if missing |
+| `layoutHostTable` | After **default** form create, insert a CommandActionButton **above** this unit's grid if missing. Skipped when `formLayout` is present (put a `commandButton` node in the tree instead). |
 
-Helpers that should not appear on the toolbar: `isShowOnTopMenu: false`, `linkToUI: false`. Put the user-facing composition on the form with `linkToUI: true` + `layoutHostTable`.
+Helpers that should not appear on the toolbar: `isShowOnTopMenu: false`, `linkToUI: false`. Put the user-facing composition on the form with `linkToUI: true` plus either `layoutHostTable` (default form) or a `formLayout` `commandButton`.
+
+## Form layout
+
+Optional `formLayout` on a transaction. When `items` is non-empty, Import **replaces** the Flex tree (delete + rebuild). Export always writes the current tree.
+
+Do **not** put FormLayoutItemID / FieldId / UnitId / CommandId in the pack.
+
+```json
+{
+  "formMode": "Flex",
+  "formLayout": {
+    "defaultNbColumns": 4,
+    "items": [
+      {
+        "type": "row",
+        "children": [
+          {
+            "type": "stack",
+            "displayName": "Order",
+            "colSpan": 24,
+            "defaultNbColumns": 4,
+            "children": [
+              {
+                "type": "row",
+                "children": [
+                  {
+                    "type": "field",
+                    "tableName": "Demo_Order",
+                    "columnName": "StatusId",
+                    "displayName": "Status",
+                    "widgetDisplayType": 1,
+                    "colSpan": 24
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "children": [
+          {
+            "type": "commandButton",
+            "commandName": "Reload POM From Grading",
+            "colSpan": 4
+          }
+        ]
+      },
+      {
+        "type": "row",
+        "children": [
+          {
+            "type": "grid",
+            "tableName": "Demo_OrderLine",
+            "displayName": "Order Lines",
+            "colSpan": 24,
+            "height": 400,
+            "transcationUnitLevel": 2
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+| `type` | Widget | Bind with |
+|--------|--------|-----------|
+| `row` | 101 LayoutRow | — |
+| `stack` | 102 Section | — |
+| `tabContainer` | 107 | — |
+| `tab` | 102 Section + `isTab: true` | — |
+| `field` | control type (1/2/13/20/…) | `tableName` + `columnName` |
+| `grid` | 6 | `tableName` |
+| `commandButton` | 106 | `commandName` (must exist in `commands[]`) |
+| `linkedSearch` | 109 | `searchIntegrationId` |
+| `content` / `space` / `addButton` / `tableContainer` / `htmlContentContainer` | 103/105/104/110/111 | optional `htmlContent` |
+| `widget` | uncommon `widgetDisplayType` | as needed |
+
+Style overlay (all optional): `displayName`, `sort`, `colSpan`, `defaultNbColumns`, `height`, `backgroundColor`, `textColor`, `isCollapsible`, `isTab`, `emUnitLabelPosition`, `transcationUnitLevel`, `htmlContent`, `visibleExpression`.
+
+Commands must be upserted **before** formLayout so `commandButton` can resolve `commandName`. If `formLayout` is omitted, Import still creates the default Flex form and applies `layoutTab` / `layoutHostTable`.
 
 Query Datasource example (Size filtered to QC Order selected sizes):
 
@@ -213,6 +297,5 @@ See [`sample.appConfigPack.json`](sample.appConfigPack.json) for a minimal runna
 ## Out of scope (v1)
 
 - Reports
-- Full Flex Form layout round-trip (e.g. moving Selected QC Sizes out of the tab container)
 - DROP / column type changes
 - PLM TabId / FieldMapping / TechPack pivots

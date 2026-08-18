@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-17T00:00:00Z",
+  "generatedAt": "2026-08-18T00:00:00Z",
   "source": {
     "generatedBy": "ai",
     "applicationName": "QC Scheme 2",
-    "notes": "Measurement QC three transactions. Child4 = View_TchpQcOrderPom + grandchild View_TchpQcOrderPomSizeResult (ChildUnitPivotColumns). Prefer running Document/Design/POM_Grading_QC_NewSchema.sql first so TchpQcResult computed columns exist. TchpQcResult.SizeRunSizeId is a snapshot from TchpQcGarment.SizeRunSizeId. QC Garment Size uses Query Datasource filtered to TchpQcOrderSize. Reload POM From Grading is an Execute SQL + Refresh composition with a form button above POM Results."
+    "notes": "Measurement QC three transactions with portable Flex formLayout. Child4 = View_TchpQcOrderPom + grandchild View_TchpQcOrderPomSizeResult. QC Garment Size uses Query Datasource. Reload POM From Grading saves, then Execute SQL + Refresh. Numeric QC fields use nbDecimal 4. Create QC Order maps RootUnit.ReferenceId to StyleSpecId."
   },
   "tables": [
     {
@@ -288,7 +288,7 @@
       "integrationId": "TX_QcOrder",
       "name": "QC Order",
       "description": "QC order header, selected sizes, sampled garments, POM×Size result pivot",
-      "formMode": "Default",
+      "formMode": "Flex",
       "unitStructure": {
         "rootTableName": "TchpQcOrder",
         "rootDisplayName": "QC Order",
@@ -321,7 +321,10 @@
                 "transactionIntegrationId": "TX_QcGarment",
                 "sourceColumn": "QcOrderId",
                 "targetColumn": "QcOrderId",
-                "sort": 10
+                "sort": 10,
+                "isPopup": false,
+                "popupWidth": 1200,
+                "popupHeight": 700
               },
               {
                 "name": "Edit QC Garment",
@@ -329,9 +332,13 @@
                 "transactionIntegrationId": "TX_QcGarment",
                 "sourceColumn": "QcGarmentId",
                 "targetColumn": "QcGarmentId",
-                "sort": 20
+                "sort": 20,
+                "isPopup": false,
+                "popupWidth": 1200,
+                "popupHeight": 700
               }
-            ]
+            ],
+            "isDisableAddButton": true
           },
           {
             "tableName": "View_TchpQcOrderPom",
@@ -350,45 +357,63 @@
                 "isReadOnly": true,
                 "isSynchToDatabaseTable": false
               }
-            ]
+            ],
+            "isDisableAddButton": true,
+            "isDisableDeleteButton": false
           }
         ]
       },
       "fields": [
         {
           "tableName": "TchpQcOrder",
+          "columnName": "QcOrderId",
+          "displayName": "Qc Order Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "TchpQcOrder",
           "columnName": "StyleSpecId",
           "displayName": "Style Spec",
+          "controlType": 2,
           "isVisible": true,
-          "isReadOnly": true
+          "isReadOnly": true,
+          "sortOrder": 20
         },
         {
           "tableName": "TchpQcOrder",
           "columnName": "LotNumber",
           "displayName": "Lot Number",
           "controlType": 2,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 30
         },
         {
           "tableName": "TchpQcOrder",
           "columnName": "FactoryId",
           "displayName": "Factory",
           "controlType": 20,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 40
         },
         {
           "tableName": "TchpQcOrder",
           "columnName": "AqlLevel",
           "displayName": "AQL Level",
           "controlType": 2,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 50
         },
         {
           "tableName": "TchpQcOrder",
           "columnName": "LotQuantity",
           "displayName": "Lot Quantity",
           "controlType": 20,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 60
         },
         {
           "tableName": "TchpQcOrder",
@@ -396,35 +421,60 @@
           "displayName": "Sample Size",
           "controlType": 20,
           "isVisible": true,
-          "isReadOnly": true
+          "isReadOnly": true,
+          "sortOrder": 70
         },
         {
           "tableName": "TchpQcOrder",
           "columnName": "OrderStatus",
           "displayName": "Status",
           "controlType": 2,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 80
         },
         {
           "tableName": "TchpQcOrder",
           "columnName": "ColorwayId",
           "displayName": "Colorway Id",
           "controlType": 2,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 90
         },
         {
           "tableName": "View_TchpQcOrderAvailableSize",
           "columnName": "QcOrderAvailableSizeId",
-          "isPrimaryKey": true,
+          "displayName": "Qc Order Available Size Id",
+          "controlType": 2,
           "isVisible": false,
-          "isReadOnly": true
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
         },
         {
           "tableName": "View_TchpQcOrderAvailableSize",
           "columnName": "QcOrderId",
-          "isLinkToParentPrimaryKey": true,
+          "displayName": "Qc Order Id",
+          "controlType": 2,
           "isVisible": false,
-          "isReadOnly": true
+          "isReadOnly": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 20
+        },
+        {
+          "tableName": "View_TchpQcOrderAvailableSize",
+          "columnName": "StyleSpecId",
+          "displayName": "Style Spec Id",
+          "controlType": 2,
+          "isVisible": false,
+          "sortOrder": 30
+        },
+        {
+          "tableName": "View_TchpQcOrderAvailableSize",
+          "columnName": "SizeRunId",
+          "displayName": "Size Run Id",
+          "controlType": 2,
+          "isVisible": false,
+          "sortOrder": 40
         },
         {
           "tableName": "View_TchpQcOrderAvailableSize",
@@ -432,36 +482,52 @@
           "displayName": "Size",
           "controlType": 1,
           "entityCode": "SizeRunDetail",
-          "isVisible": false
+          "isVisible": false,
+          "sortOrder": 50
         },
         {
           "tableName": "View_TchpQcOrderAvailableSize",
           "columnName": "SizeLabel",
           "displayName": "Size Label",
           "controlType": 2,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 60
         },
         {
           "tableName": "View_TchpQcOrderAvailableSize",
           "columnName": "SizeOrder",
           "displayName": "Order",
           "controlType": 20,
-          "isVisible": false
-        },
-        {
-          "tableName": "View_TchpQcOrderAvailableSize",
-          "columnName": "StyleSpecId",
-          "isVisible": false
-        },
-        {
-          "tableName": "View_TchpQcOrderAvailableSize",
-          "columnName": "SizeRunId",
-          "isVisible": false
+          "isVisible": false,
+          "sortOrder": 70
         },
         {
           "tableName": "View_TchpQcOrderAvailableSize",
           "columnName": "IsActive",
-          "isVisible": false
+          "displayName": "Is Active",
+          "controlType": 2,
+          "isVisible": false,
+          "sortOrder": 80
+        },
+        {
+          "tableName": "TchpQcOrderSize",
+          "columnName": "QcOrderSizeId",
+          "displayName": "Qc Order Size Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "TchpQcOrderSize",
+          "columnName": "QcOrderId",
+          "displayName": "Qc Order Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 20
         },
         {
           "tableName": "TchpQcOrderSize",
@@ -469,7 +535,28 @@
           "displayName": "Size",
           "controlType": 1,
           "entityCode": "SizeRunDetail",
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 30
+        },
+        {
+          "tableName": "TchpQcGarment",
+          "columnName": "QcGarmentId",
+          "displayName": "Qc Garment Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "TchpQcGarment",
+          "columnName": "QcOrderId",
+          "displayName": "Qc Order Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 20
         },
         {
           "tableName": "TchpQcGarment",
@@ -500,26 +587,38 @@
         {
           "tableName": "View_TchpQcOrderPom",
           "columnName": "QcOrderPomId",
-          "isPrimaryKey": true,
+          "displayName": "Qc Order Pom Id",
+          "controlType": 2,
           "isVisible": false,
-          "isReadOnly": true
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
         },
         {
           "tableName": "View_TchpQcOrderPom",
           "columnName": "QcOrderId",
-          "isLinkToParentPrimaryKey": true,
+          "displayName": "Qc Order Id",
+          "controlType": 2,
           "isVisible": false,
-          "isReadOnly": true
+          "isReadOnly": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 20
         },
         {
           "tableName": "View_TchpQcOrderPom",
           "columnName": "PomSpecLineId",
-          "isVisible": false
+          "displayName": "Pom Spec Line Id",
+          "controlType": 2,
+          "isVisible": false,
+          "sortOrder": 30
         },
         {
           "tableName": "View_TchpQcOrderPom",
           "columnName": "StyleSpecId",
-          "isVisible": false
+          "displayName": "Style Spec Id",
+          "controlType": 2,
+          "isVisible": false,
+          "sortOrder": 40
         },
         {
           "tableName": "View_TchpQcOrderPom",
@@ -527,7 +626,8 @@
           "displayName": "POM",
           "controlType": 2,
           "isVisible": true,
-          "isPivotRow": true
+          "isPivotRow": true,
+          "sortOrder": 50
         },
         {
           "tableName": "View_TchpQcOrderPom",
@@ -535,7 +635,16 @@
           "displayName": "Body Part",
           "controlType": 2,
           "isVisible": true,
-          "isPivotRow": true
+          "isPivotRow": true,
+          "sortOrder": 60
+        },
+        {
+          "tableName": "View_TchpQcOrderPom",
+          "columnName": "BodypartAliasName",
+          "displayName": "Bodypart Alias Name",
+          "controlType": 2,
+          "isVisible": false,
+          "sortOrder": 70
         },
         {
           "tableName": "View_TchpQcOrderPom",
@@ -543,50 +652,62 @@
           "displayName": "Sort",
           "controlType": 20,
           "isVisible": true,
-          "isPivotRow": true
+          "isPivotRow": true,
+          "sortOrder": 80
         },
         {
           "tableName": "View_TchpQcOrderPom",
           "columnName": "BaseValue",
           "displayName": "Spec",
           "controlType": 20,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 90,
+          "nbDecimal": 4
         },
         {
           "tableName": "View_TchpQcOrderPom",
           "columnName": "Tolerance",
           "displayName": "Tol",
           "controlType": 20,
-          "isVisible": true
-        },
-        {
-          "tableName": "View_TchpQcOrderPom",
-          "columnName": "BodypartAliasName",
-          "isVisible": false
+          "isVisible": true,
+          "sortOrder": 100,
+          "nbDecimal": 4
         },
         {
           "tableName": "View_TchpQcOrderPomSizeResult",
           "columnName": "QcOrderPomSizeId",
-          "isPrimaryKey": true,
+          "displayName": "Qc Order Pom Size Id",
+          "controlType": 2,
           "isVisible": false,
-          "isReadOnly": true
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
         },
         {
           "tableName": "View_TchpQcOrderPomSizeResult",
           "columnName": "QcOrderPomId",
-          "isLinkToParentPrimaryKey": true,
+          "displayName": "Qc Order Pom Id",
+          "controlType": 2,
           "isVisible": false,
-          "isReadOnly": true
+          "isReadOnly": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 20
         },
         {
           "tableName": "View_TchpQcOrderPomSizeResult",
           "columnName": "QcOrderId",
-          "isVisible": false
+          "displayName": "Qc Order Id",
+          "controlType": 2,
+          "isVisible": false,
+          "sortOrder": 30
         },
         {
           "tableName": "View_TchpQcOrderPomSizeResult",
           "columnName": "PomSpecLineId",
-          "isVisible": false
+          "displayName": "Pom Spec Line Id",
+          "controlType": 2,
+          "isVisible": false,
+          "sortOrder": 40
         },
         {
           "tableName": "View_TchpQcOrderPomSizeResult",
@@ -597,33 +718,24 @@
           "isVisible": false,
           "isPivotColumn": true,
           "matrixSourceTable": "TchpQcOrderSize",
-          "matrixSourceColumn": "SizeRunSizeId"
+          "matrixSourceColumn": "SizeRunSizeId",
+          "sortOrder": 50
         },
         {
           "tableName": "View_TchpQcOrderPomSizeResult",
           "columnName": "SizeLabel",
-          "isVisible": false
+          "displayName": "Size Label",
+          "controlType": 2,
+          "isVisible": false,
+          "sortOrder": 60
         },
         {
           "tableName": "View_TchpQcOrderPomSizeResult",
           "columnName": "SizeOrder",
-          "isVisible": false
-        },
-        {
-          "tableName": "View_TchpQcOrderPomSizeResult",
-          "columnName": "FailCount",
-          "displayName": "Fail",
-          "controlType": 20,
-          "isVisible": true,
-          "isPivotValue": true
-        },
-        {
-          "tableName": "View_TchpQcOrderPomSizeResult",
-          "columnName": "AvgFinalDiff",
-          "displayName": "Avg Diff",
-          "controlType": 20,
-          "isVisible": true,
-          "isPivotValue": true
+          "displayName": "Size Order",
+          "controlType": 2,
+          "isVisible": false,
+          "sortOrder": 70
         },
         {
           "tableName": "View_TchpQcOrderPomSizeResult",
@@ -631,29 +743,447 @@
           "displayName": "Sampled",
           "controlType": 20,
           "isVisible": true,
-          "isPivotValue": true
+          "isPivotValue": true,
+          "sortOrder": 80
+        },
+        {
+          "tableName": "View_TchpQcOrderPomSizeResult",
+          "columnName": "FailCount",
+          "displayName": "Fail",
+          "controlType": 20,
+          "isVisible": true,
+          "isPivotValue": true,
+          "sortOrder": 90
         },
         {
           "tableName": "View_TchpQcOrderPomSizeResult",
           "columnName": "PassCount",
           "displayName": "Pass",
           "controlType": 20,
-          "isVisible": false
+          "isVisible": false,
+          "sortOrder": 100
         },
         {
           "tableName": "View_TchpQcOrderPomSizeResult",
           "columnName": "PendingCount",
           "displayName": "Pending",
           "controlType": 20,
-          "isVisible": false
+          "isVisible": false,
+          "sortOrder": 110
+        },
+        {
+          "tableName": "View_TchpQcOrderPomSizeResult",
+          "columnName": "AvgFinalDiff",
+          "displayName": "Avg Diff",
+          "controlType": 20,
+          "isVisible": true,
+          "isPivotValue": true,
+          "sortOrder": 120,
+          "nbDecimal": 4
         }
-      ]
+      ],
+      "formLayout": {
+        "defaultNbColumns": 4,
+        "items": [
+          {
+            "type": "row",
+            "sort": 1,
+            "children": [
+              {
+                "type": "stack",
+                "displayName": "Stack Container",
+                "sort": 1,
+                "defaultNbColumns": 4,
+                "colSpan": 24,
+                "backgroundColor": "#ffffff",
+                "textColor": "#000000",
+                "children": [
+                  {
+                    "type": "row",
+                    "sort": 1,
+                    "children": [
+                      {
+                        "type": "stack",
+                        "displayName": "QC Order",
+                        "sort": 1,
+                        "defaultNbColumns": 4,
+                        "colSpan": 24,
+                        "backgroundColor": "#ffffff",
+                        "textColor": "#000000",
+                        "isCollapsible": true,
+                        "children": [
+                          {
+                            "type": "row",
+                            "sort": 1,
+                            "children": [
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 1,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Style Spec",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpQcOrder",
+                                        "columnName": "StyleSpecId"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Lot Number",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpQcOrder",
+                                        "columnName": "LotNumber"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 2,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Factory",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 20,
+                                        "tableName": "TchpQcOrder",
+                                        "columnName": "FactoryId"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "AQL Level",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpQcOrder",
+                                        "columnName": "AqlLevel"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 3,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Lot Quantity",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 20,
+                                        "tableName": "TchpQcOrder",
+                                        "columnName": "LotQuantity"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Sample Size",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 20,
+                                        "tableName": "TchpQcOrder",
+                                        "columnName": "SampleSize"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 4,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Status",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpQcOrder",
+                                        "columnName": "OrderStatus"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Colorway Id",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpQcOrder",
+                                        "columnName": "ColorwayId"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "type": "row",
+                            "sort": 2,
+                            "children": [
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 1,
+                                "defaultNbColumns": 1,
+                                "colSpan": 24,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "grid",
+                                        "displayName": "Selected QC Sizes",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "height": 115,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "emUnitLabelPosition": 2,
+                                        "isBindingToDataField": true,
+                                        "transcationUnitLevel": 2,
+                                        "tableName": "TchpQcOrderSize"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "row",
+                    "sort": 2,
+                    "children": [
+                      {
+                        "type": "stack",
+                        "displayName": "Stack Container",
+                        "sort": 1,
+                        "defaultNbColumns": 1,
+                        "colSpan": 24,
+                        "backgroundColor": "#ffffff",
+                        "textColor": "#000000",
+                        "children": [
+                          {
+                            "type": "row",
+                            "sort": 1,
+                            "children": [
+                              {
+                                "type": "tabContainer",
+                                "displayName": "Tab Container",
+                                "sort": 1,
+                                "defaultNbColumns": 1,
+                                "colSpan": 24,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "tab",
+                                    "displayName": "Sampled Garments",
+                                    "sort": 3,
+                                    "defaultNbColumns": 1,
+                                    "backgroundColor": "#ffffff",
+                                    "textColor": "#000000",
+                                    "isTab": true,
+                                    "children": [
+                                      {
+                                        "type": "row",
+                                        "sort": 1,
+                                        "children": [
+                                          {
+                                            "type": "stack",
+                                            "displayName": "Stack Container",
+                                            "sort": 1,
+                                            "defaultNbColumns": 1,
+                                            "colSpan": 24,
+                                            "backgroundColor": "#ffffff",
+                                            "textColor": "#000000",
+                                            "children": [
+                                              {
+                                                "type": "row",
+                                                "sort": 1,
+                                                "children": [
+                                                  {
+                                                    "type": "grid",
+                                                    "displayName": "Sampled Garments",
+                                                    "sort": 1,
+                                                    "colSpan": 24,
+                                                    "height": 400,
+                                                    "backgroundColor": "#ffffff",
+                                                    "textColor": "#000000",
+                                                    "isBindingToDataField": true,
+                                                    "transcationUnitLevel": 2,
+                                                    "tableName": "TchpQcGarment"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "tab",
+                                    "displayName": "QC Results",
+                                    "sort": 4,
+                                    "defaultNbColumns": 1,
+                                    "backgroundColor": "#ffffff",
+                                    "textColor": "#000000",
+                                    "isTab": true,
+                                    "children": [
+                                      {
+                                        "type": "row",
+                                        "sort": 1,
+                                        "children": [
+                                          {
+                                            "type": "stack",
+                                            "displayName": "Stack Container",
+                                            "sort": 1,
+                                            "defaultNbColumns": 1,
+                                            "colSpan": 24,
+                                            "backgroundColor": "#ffffff",
+                                            "textColor": "#000000",
+                                            "children": [
+                                              {
+                                                "type": "row",
+                                                "sort": 1,
+                                                "children": [
+                                                  {
+                                                    "type": "grid",
+                                                    "displayName": "QC Results by POM",
+                                                    "sort": 1,
+                                                    "colSpan": 24,
+                                                    "height": 400,
+                                                    "backgroundColor": "#ffffff",
+                                                    "textColor": "#000000",
+                                                    "isBindingToDataField": true,
+                                                    "transcationUnitLevel": 2,
+                                                    "tableName": "View_TchpQcOrderPom"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "integrationId": "TX_QcGarment",
       "name": "QC Garment Result",
       "description": "One garment (one size) and POM measurement rows",
-      "formMode": "Default",
+      "formMode": "Flex",
       "unitStructure": {
         "rootTableName": "TchpQcGarment",
         "rootDisplayName": "QC Garment",
@@ -662,15 +1192,28 @@
           {
             "tableName": "TchpQcResult",
             "displayName": "POM Results",
-            "gridDisplayType": 1
+            "gridDisplayType": 1,
+            "isDisableAddButton": true,
+            "isDisableDeleteButton": true
           }
         ]
       },
       "fields": [
         {
           "tableName": "TchpQcGarment",
+          "columnName": "QcGarmentId",
+          "displayName": "Qc Garment Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "TchpQcGarment",
           "columnName": "QcOrderId",
           "displayName": "QC Order",
+          "controlType": 2,
           "isVisible": false,
           "isReadOnly": true,
           "sortOrder": 20
@@ -706,6 +1249,26 @@
         },
         {
           "tableName": "TchpQcResult",
+          "columnName": "QcResultId",
+          "displayName": "Qc Result Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "TchpQcResult",
+          "columnName": "QcGarmentId",
+          "displayName": "Qc Garment Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 20
+        },
+        {
+          "tableName": "TchpQcResult",
           "columnName": "PomSpecLineId",
           "displayName": "POM",
           "controlType": 1,
@@ -730,7 +1293,8 @@
           "controlType": 20,
           "isVisible": true,
           "isReadOnly": true,
-          "sortOrder": 45
+          "sortOrder": 45,
+          "nbDecimal": 4
         },
         {
           "tableName": "TchpQcResult",
@@ -739,7 +1303,8 @@
           "controlType": 20,
           "isVisible": true,
           "isReadOnly": true,
-          "sortOrder": 46
+          "sortOrder": 46,
+          "nbDecimal": 4
         },
         {
           "tableName": "TchpQcResult",
@@ -747,7 +1312,8 @@
           "displayName": "Production",
           "controlType": 20,
           "isVisible": true,
-          "sortOrder": 50
+          "sortOrder": 50,
+          "nbDecimal": 4
         },
         {
           "tableName": "TchpQcResult",
@@ -755,7 +1321,8 @@
           "displayName": "Before Wash",
           "controlType": 20,
           "isVisible": true,
-          "sortOrder": 60
+          "sortOrder": 60,
+          "nbDecimal": 4
         },
         {
           "tableName": "TchpQcResult",
@@ -763,7 +1330,8 @@
           "displayName": "After Wash",
           "controlType": 20,
           "isVisible": true,
-          "sortOrder": 70
+          "sortOrder": 70,
+          "nbDecimal": 4
         },
         {
           "tableName": "TchpQcResult",
@@ -771,21 +1339,28 @@
           "displayName": "After Iron",
           "controlType": 20,
           "isVisible": true,
-          "sortOrder": 80
+          "sortOrder": 80,
+          "nbDecimal": 4
         },
         {
           "tableName": "TchpQcResult",
           "columnName": "Shrinkage",
+          "displayName": "Shrinkage",
+          "controlType": 20,
           "isVisible": false,
           "isReadOnly": true,
-          "sortOrder": 110
+          "sortOrder": 110,
+          "nbDecimal": 4
         },
         {
           "tableName": "TchpQcResult",
           "columnName": "Recovery",
+          "displayName": "Recovery",
+          "controlType": 20,
           "isVisible": false,
           "isReadOnly": true,
-          "sortOrder": 120
+          "sortOrder": 120,
+          "nbDecimal": 4
         },
         {
           "tableName": "TchpQcResult",
@@ -794,7 +1369,8 @@
           "controlType": 20,
           "isVisible": true,
           "isReadOnly": true,
-          "sortOrder": 130
+          "sortOrder": 130,
+          "nbDecimal": 4
         },
         {
           "tableName": "TchpQcResult",
@@ -808,11 +1384,20 @@
         {
           "tableName": "TchpQcResult",
           "columnName": "DefectClass",
+          "displayName": "Defect Class",
+          "controlType": 2,
           "isVisible": false,
           "sortOrder": 150
         }
       ],
       "commands": [
+        {
+          "integrationId": "CMD_Save",
+          "name": "_save",
+          "actionType": 49,
+          "isShowOnTopMenu": false,
+          "linkToUI": false
+        },
         {
           "integrationId": "CMD_SyncPOMListFromGrading",
           "name": "_Sync POM From Grading",
@@ -832,21 +1417,214 @@
           "integrationId": "CMD_ReloadPOMFromGrading",
           "name": "Reload POM From Grading",
           "actionType": 200,
-          "isShowOnTopMenu": false,
+          "isShowOnTopMenu": true,
           "linkToUI": true,
           "layoutHostTable": "TchpQcResult",
           "childCommandIntegrationIds": [
+            "CMD_Save",
             "CMD_SyncPOMListFromGrading",
             "CMD_Refresh"
           ]
         }
-      ]
+      ],
+      "formLayout": {
+        "defaultNbColumns": 4,
+        "items": [
+          {
+            "type": "row",
+            "sort": 1,
+            "children": [
+              {
+                "type": "stack",
+                "displayName": "Stack Container",
+                "sort": 1,
+                "defaultNbColumns": 4,
+                "colSpan": 24,
+                "backgroundColor": "#ffffff",
+                "textColor": "#000000",
+                "children": [
+                  {
+                    "type": "row",
+                    "sort": 1,
+                    "children": [
+                      {
+                        "type": "stack",
+                        "displayName": "QC Garment",
+                        "sort": 1,
+                        "defaultNbColumns": 4,
+                        "colSpan": 24,
+                        "backgroundColor": "#ffffff",
+                        "textColor": "#000000",
+                        "isCollapsible": true,
+                        "children": [
+                          {
+                            "type": "row",
+                            "sort": 1,
+                            "children": [
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 1,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Garment Serial",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpQcGarment",
+                                        "columnName": "GarmentSerial"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 2,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Size",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 1,
+                                        "tableName": "TchpQcGarment",
+                                        "columnName": "SizeRunSizeId"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 3,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Pass",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 13,
+                                        "tableName": "TchpQcGarment",
+                                        "columnName": "GarmentPassStatus"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 4,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "row",
+                    "sort": 2,
+                    "children": [
+                      {
+                        "type": "stack",
+                        "displayName": "Stack Container",
+                        "sort": 1,
+                        "defaultNbColumns": 1,
+                        "colSpan": 24,
+                        "backgroundColor": "#ffffff",
+                        "textColor": "#000000",
+                        "children": [
+                          {
+                            "type": "row",
+                            "sort": 1,
+                            "children": [
+                              {
+                                "type": "commandButton",
+                                "displayName": "Reload POM From Grading",
+                                "sort": 1,
+                                "colSpan": 4,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "commandName": "Reload POM From Grading"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "row",
+                            "sort": 2,
+                            "children": [
+                              {
+                                "type": "grid",
+                                "displayName": "POM Results",
+                                "sort": 1,
+                                "colSpan": 24,
+                                "height": 400,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "isBindingToDataField": true,
+                                "transcationUnitLevel": 2,
+                                "tableName": "TchpQcResult"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
     },
     {
       "integrationId": "TX_QcOrderList",
       "name": "QC Order List",
       "description": "Product + Style Spec + QC orders for the current product",
-      "formMode": "Default",
+      "formMode": "Flex",
       "unitStructure": {
         "rootTableName": "Plm_ReferenceBasicInfo",
         "rootDisplayName": "Product",
@@ -865,16 +1643,18 @@
             "displayName": "QC Orders",
             "gridDisplayType": 1,
             "isDisableAddButton": true,
-            "isDisableDeleteButton": true,
+            "isDisableDeleteButton": false,
             "linkTargets": [
               {
                 "name": "Create QC Order",
                 "actionType": "Create",
                 "transactionIntegrationId": "TX_QcOrder",
-                "sourceColumn": "StyleSpecId",
+                "sourceColumn": "RootUnit.ReferenceId",
                 "targetColumn": "StyleSpecId",
                 "sort": 10,
-                "isPopup": false
+                "isPopup": false,
+                "popupWidth": 1200,
+                "popupHeight": 700
               },
               {
                 "name": "Edit QC Order",
@@ -883,7 +1663,9 @@
                 "sourceColumn": "QcOrderId",
                 "targetColumn": "QcOrderId",
                 "sort": 20,
-                "isPopup": false
+                "isPopup": false,
+                "popupWidth": 1200,
+                "popupHeight": 700
               }
             ]
           }
@@ -891,30 +1673,90 @@
       },
       "fields": [
         {
-          "tableName": "TchpStyleSpec",
-          "columnName": "StyleSpecId",
-          "isLinkToParentPrimaryKey": true,
-          "isVisible": false
+          "tableName": "Plm_ReferenceBasicInfo",
+          "columnName": "ReferenceId",
+          "displayName": "Reference Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "Plm_ReferenceBasicInfo",
+          "columnName": "ReferenceCode",
+          "displayName": "Reference Code",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 20
+        },
+        {
+          "tableName": "Plm_ReferenceBasicInfo",
+          "columnName": "MasterReferenceId",
+          "displayName": "Master Reference Id",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 30
+        },
+        {
+          "tableName": "Plm_ReferenceBasicInfo",
+          "columnName": "FolderId",
+          "displayName": "Folder Id",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 40
+        },
+        {
+          "tableName": "TchpQcOrder",
+          "columnName": "QcOrderId",
+          "displayName": "Qc Order Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
         },
         {
           "tableName": "TchpQcOrder",
           "columnName": "StyleSpecId",
+          "displayName": "Style Spec Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
           "isLinkToParentPrimaryKey": true,
-          "isVisible": false
+          "sortOrder": 20
         },
         {
           "tableName": "TchpQcOrder",
           "columnName": "LotNumber",
           "displayName": "Lot Number",
           "controlType": 2,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 30
+        },
+        {
+          "tableName": "TchpQcOrder",
+          "columnName": "FactoryId",
+          "displayName": "Factory Id",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 40
+        },
+        {
+          "tableName": "TchpQcOrder",
+          "columnName": "AqlLevel",
+          "displayName": "AQL",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 50
         },
         {
           "tableName": "TchpQcOrder",
           "columnName": "LotQuantity",
           "displayName": "Lot Qty",
           "controlType": 20,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 60
         },
         {
           "tableName": "TchpQcOrder",
@@ -922,30 +1764,450 @@
           "displayName": "Sample",
           "controlType": 20,
           "isVisible": true,
-          "isReadOnly": true
-        },
-        {
-          "tableName": "TchpQcOrder",
-          "columnName": "AqlLevel",
-          "displayName": "AQL",
-          "controlType": 2,
-          "isVisible": true
+          "isReadOnly": true,
+          "sortOrder": 70
         },
         {
           "tableName": "TchpQcOrder",
           "columnName": "OrderStatus",
           "displayName": "Status",
           "controlType": 2,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 80
         },
         {
           "tableName": "TchpQcOrder",
           "columnName": "ColorwayId",
           "displayName": "Colorway Id",
           "controlType": 2,
-          "isVisible": true
+          "isVisible": true,
+          "sortOrder": 90
+        },
+        {
+          "tableName": "TchpStyleSpec",
+          "columnName": "StyleSpecId",
+          "displayName": "Style Spec Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "TchpStyleSpec",
+          "columnName": "SizeRunId",
+          "displayName": "Size Run Id",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 20
+        },
+        {
+          "tableName": "TchpStyleSpec",
+          "columnName": "BaseSizeDetailId",
+          "displayName": "Base Size Detail Id",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 30
+        },
+        {
+          "tableName": "TchpStyleSpec",
+          "columnName": "UnitOfMeasure",
+          "displayName": "Unit Of Measure",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 40
+        },
+        {
+          "tableName": "TchpStyleSpec",
+          "columnName": "SpecStatus",
+          "displayName": "Spec Status",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 50
+        },
+        {
+          "tableName": "TchpStyleSpec",
+          "columnName": "Version",
+          "displayName": "Version",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 60
+        },
+        {
+          "tableName": "TchpStyleSpec",
+          "columnName": "DiffDisplayMode",
+          "displayName": "Diff Display Mode",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 70
+        },
+        {
+          "tableName": "TchpStyleSpec",
+          "columnName": "RuleSetId",
+          "displayName": "Rule Set Id",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 80
+        },
+        {
+          "tableName": "TchpStyleSpec",
+          "columnName": "VisibleSizes",
+          "displayName": "Visible Sizes",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 90
+        },
+        {
+          "tableName": "TchpStyleSpec",
+          "columnName": "QcSelectedSizes",
+          "displayName": "Qc Selected Sizes",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 100
         }
-      ]
+      ],
+      "formLayout": {
+        "defaultNbColumns": 4,
+        "items": [
+          {
+            "type": "row",
+            "sort": 1,
+            "children": [
+              {
+                "type": "stack",
+                "displayName": "Stack Container",
+                "sort": 1,
+                "defaultNbColumns": 4,
+                "colSpan": 24,
+                "backgroundColor": "#ffffff",
+                "textColor": "#000000",
+                "children": [
+                  {
+                    "type": "row",
+                    "sort": 1,
+                    "children": [
+                      {
+                        "type": "stack",
+                        "displayName": "Product / Style Spec",
+                        "sort": 1,
+                        "defaultNbColumns": 4,
+                        "colSpan": 24,
+                        "backgroundColor": "#ffffff",
+                        "textColor": "#000000",
+                        "isCollapsible": true,
+                        "children": [
+                          {
+                            "type": "row",
+                            "sort": 1,
+                            "children": [
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 1,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Reference Code",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "Plm_ReferenceBasicInfo",
+                                        "columnName": "ReferenceCode"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Master Reference Id",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "Plm_ReferenceBasicInfo",
+                                        "columnName": "MasterReferenceId"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 3,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Folder Id",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "Plm_ReferenceBasicInfo",
+                                        "columnName": "FolderId"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 2,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Size Run Id",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpStyleSpec",
+                                        "columnName": "SizeRunId"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Base Size Detail Id",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpStyleSpec",
+                                        "columnName": "BaseSizeDetailId"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 3,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Unit Of Measure",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpStyleSpec",
+                                        "columnName": "UnitOfMeasure"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 3,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Spec Status",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpStyleSpec",
+                                        "columnName": "SpecStatus"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Version",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpStyleSpec",
+                                        "columnName": "Version"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 3,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Diff Display Mode",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpStyleSpec",
+                                        "columnName": "DiffDisplayMode"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "stack",
+                                "displayName": "Stack Container",
+                                "sort": 4,
+                                "defaultNbColumns": 1,
+                                "colSpan": 6,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Rule Set Id",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpStyleSpec",
+                                        "columnName": "RuleSetId"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Visible Sizes",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpStyleSpec",
+                                        "columnName": "VisibleSizes"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 3,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Qc Selected Sizes",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpStyleSpec",
+                                        "columnName": "QcSelectedSizes"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "row",
+                    "sort": 2,
+                    "children": [
+                      {
+                        "type": "stack",
+                        "displayName": "Stack Container",
+                        "sort": 1,
+                        "defaultNbColumns": 1,
+                        "colSpan": 24,
+                        "backgroundColor": "#ffffff",
+                        "textColor": "#000000",
+                        "children": [
+                          {
+                            "type": "row",
+                            "sort": 1,
+                            "children": [
+                              {
+                                "type": "grid",
+                                "displayName": "QC Orders",
+                                "sort": 1,
+                                "colSpan": 24,
+                                "height": 400,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "isBindingToDataField": true,
+                                "transcationUnitLevel": 2,
+                                "tableName": "TchpQcOrder"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "transactionGroup": {

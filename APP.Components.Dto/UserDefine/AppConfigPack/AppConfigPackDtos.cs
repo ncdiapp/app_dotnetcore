@@ -150,9 +150,134 @@ namespace APP.Components.EntityDto
         [DataMember]
         public List<AppConfigPackCommandDto> Commands { get; set; } = new List<AppConfigPackCommandDto>();
 
-        /// <summary>Default (v1). Flex layout round-trip is Phase 2.</summary>
+        /// <summary>
+        /// Portable Flex form tree. When Items is non-empty, import deletes the existing layout and rebuilds it.
+        /// When omitted, import still creates the default Flex form (form-if-missing) and applies layoutTab / layoutHostTable.
+        /// </summary>
+        [DataMember]
+        public AppConfigPackFormLayoutDto FormLayout { get; set; }
+
+        /// <summary>Default | Flex. Flex is set on export when formLayout is present.</summary>
         [DataMember]
         public string FormMode { get; set; } = "Default";
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackFormLayoutDto
+    {
+        [DataMember]
+        public int? DefaultNbColumns { get; set; }
+
+        [DataMember]
+        public string DefaultWidth { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackFormLayoutItemDto> Items { get; set; } = new List<AppConfigPackFormLayoutItemDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackFormLayoutItemDto
+    {
+        /// <summary>
+        /// row | stack | tabContainer | tab | field | grid | commandButton | content | space |
+        /// addButton | linkedSearch | tableContainer | htmlContentContainer | widget
+        /// </summary>
+        [DataMember]
+        public string Type { get; set; }
+
+        /// <summary>EmAppFormLayoutItemType. Required when Type is field or an uncommon widget.</summary>
+        [DataMember]
+        public int? WidgetDisplayType { get; set; }
+
+        [DataMember]
+        public string DisplayName { get; set; }
+
+        [DataMember]
+        public int? Sort { get; set; }
+
+        [DataMember]
+        public int? DefaultNbColumns { get; set; }
+
+        [DataMember]
+        public int? ColSpan { get; set; }
+
+        [DataMember]
+        public int? Height { get; set; }
+
+        [DataMember]
+        public bool? IsUnlimitedHeight { get; set; }
+
+        [DataMember]
+        public string BackgroundColor { get; set; }
+
+        [DataMember]
+        public string TextColor { get; set; }
+
+        [DataMember]
+        public bool? IsHideLabel { get; set; }
+
+        [DataMember]
+        public int? LabelWidth { get; set; }
+
+        [DataMember]
+        public int? EmUnitLabelPosition { get; set; }
+
+        [DataMember]
+        public bool? IsCollapsible { get; set; }
+
+        [DataMember]
+        public bool? IsDefaultCollapsed { get; set; }
+
+        [DataMember]
+        public bool? IsTab { get; set; }
+
+        [DataMember]
+        public bool? IsBindingToDataField { get; set; }
+
+        [DataMember]
+        public int? TranscationUnitLevel { get; set; }
+
+        [DataMember]
+        public int? ColumnWidth { get; set; }
+
+        [DataMember]
+        public string HtmlContent { get; set; }
+
+        [DataMember]
+        public string VisibleExpression { get; set; }
+
+        [DataMember]
+        public string InlineStyle { get; set; }
+
+        [DataMember]
+        public bool? IsShowSearchCriterias { get; set; }
+
+        [DataMember]
+        public bool? IsDisplayGridAsCardList { get; set; }
+
+        [DataMember]
+        public bool? IsDisplayAsSlider { get; set; }
+
+        [DataMember]
+        public int? NbDecimal { get; set; }
+
+        [DataMember]
+        public string TableName { get; set; }
+
+        [DataMember]
+        public string ColumnName { get; set; }
+
+        [DataMember]
+        public string CommandName { get; set; }
+
+        [DataMember]
+        public string SearchIntegrationId { get; set; }
+
+        [DataMember]
+        public string EntityCode { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackFormLayoutItemDto> Children { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -338,6 +463,10 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public int? SortOrder { get; set; }
+
+        /// <summary>Decimal places for numeric fields (AppTransactionField.NBDecimal).</summary>
+        [DataMember]
+        public int? NbDecimal { get; set; }
 
         /// <summary>
         /// Query Datasource SQL (AppTransactionField.DdlQueryText). First column = id, second = display.
