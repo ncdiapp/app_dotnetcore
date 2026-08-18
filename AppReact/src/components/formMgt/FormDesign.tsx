@@ -1549,10 +1549,13 @@ const FormDesign: React.FC<FormDesignProps> = ({
     handleCloseRowItemContextMenu();
   };
 
-  // Handle delete row item
-  const handleDeleteRowItem = () => {
-    if (!rowItemContextMenu.item || !formData) return;
-    const layoutItem = rowItemContextMenu.item;
+  // Handle delete row item (context menu Delete, or Delete key on the selected item)
+  const handleDeleteRowItem = (layoutItemFromCaller?: any) => {
+    const layoutItem = layoutItemFromCaller || rowItemContextMenu.item;
+    if (!layoutItem || !formData) {
+      handleCloseRowItemContextMenu();
+      return;
+    }
     const parentRow = findLayoutItemByHostId(layoutItem.ParentHostId);
     
     if (parentRow && parentRow.AppFormLayoutItem_List) {
@@ -2092,6 +2095,59 @@ const FormDesign: React.FC<FormDesignProps> = ({
     setFormData({ ...formData });
     setIsModified(true);
   };
+
+  // Same action as the selected item's context-menu Delete (Angular deleteCurrentLayoutItem).
+  const handleDeleteSelectedLayoutItem = () => {
+    if (!currentLayoutItem || !formData) return;
+
+    const displayType = currentLayoutItem.DomAttribute?.WidgetDisplayType;
+    if (displayType === layoutItemTypeEnum?.NewItemAddButton) return;
+    if (displayType === layoutItemTypeEnum?.LayoutRow) return;
+
+    const isTab = !!currentLayoutItem.DomAttribute?.IsTab;
+    const isTabOrTableContainer =
+      displayType === layoutItemTypeEnum?.TabContainer ||
+      displayType === layoutItemTypeEnum?.TableContainer;
+
+    // Tab / TabContainer / TableContainer use the container menu's Delete
+    if (isTab || isTabOrTableContainer) {
+      handleRemoveLayoutItem(currentLayoutItem);
+      handleCloseContainerContextMenu();
+      return;
+    }
+
+    handleDeleteRowItem(currentLayoutItem);
+  };
+
+  const handleDeleteSelectedLayoutItemRef = useRef(handleDeleteSelectedLayoutItem);
+  handleDeleteSelectedLayoutItemRef.current = handleDeleteSelectedLayoutItem;
+  const currentLayoutItemRef = useRef(currentLayoutItem);
+  currentLayoutItemRef.current = currentLayoutItem;
+  const formDesignOverlayOpenRef = useRef(false);
+  formDesignOverlayOpenRef.current = showTableContainerDialog || showRunTestPopup;
+
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null): boolean => {
+      if (!(target instanceof HTMLElement)) return false;
+      const tag = target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
+      if (target.isContentEditable) return true;
+      return !!target.closest('input, textarea, select, [contenteditable="true"], .monaco-editor, .wj-input');
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (formDesignOverlayOpenRef.current) return;
+      if (!currentLayoutItemRef.current) return;
+      if (isTypingTarget(e.target)) return;
+
+      e.preventDefault();
+      handleDeleteSelectedLayoutItemRef.current();
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // Helper function to get layout row child items col span info (like AngularJS getLayoutRowChildItemsColSpanInfo)
   const getLayoutRowChildItemsColSpanInfo = (layoutRow: any) => {

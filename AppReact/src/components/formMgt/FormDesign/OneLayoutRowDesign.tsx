@@ -144,7 +144,7 @@ const OneLayoutRowDesign: React.FC<OneLayoutRowDesignProps> = ({
     
     const rowRect = rowRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rowRect.left;
-    const BOUNDARY_THRESHOLD = 6; // Half of 12px boundary width for easier detection
+    const BOUNDARY_THRESHOLD = 12; // Match the 24px insert strip (centered 12px each side)
     
     // Find which non-placeholder items the mouse is between
     const itemElements = Array.from(rowRef.current.querySelectorAll('.LayoutItemContainer')) as HTMLElement[];
@@ -576,8 +576,10 @@ const InsertBoundaryMarker: React.FC<{
     return null;
   }
   
-  // Keep the top of the strip click-through so it cannot cover the item ⋮ menu (right-1 top-2).
-  const menuClearancePx = 40;
+  // ⋮ menu is 20×20 at right-1 top-2. Only right-edge strips overlap it.
+  // Left boundary has no menu. Keep the hole small so short field items still have a click target.
+  const menuClearancePx = isLeftBoundary ? 0 : 24;
+  const buttonCenterY = Math.max(position.height / 2, menuClearancePx + 14);
 
   return (
     <div
@@ -647,7 +649,7 @@ const InsertBoundaryMarker: React.FC<{
         }
       }}
     >
-      {/* Click/drop target starts below the item ⋮ menu so the menu stays clickable. */}
+      {/* Always clickable below the ⋮ menu. Gating this on hover made the insert button unreachable. */}
       <div
         className="InsertBoundaryHitArea"
         style={{
@@ -656,7 +658,7 @@ const InsertBoundaryMarker: React.FC<{
           bottom: 0,
           left: 0,
           right: 0,
-          pointerEvents: isHovered ? 'auto' : 'none',
+          pointerEvents: 'auto',
           zIndex: 1
         }}
         onMouseEnter={(e) => {
@@ -730,12 +732,12 @@ const InsertBoundaryMarker: React.FC<{
           }}
         />
       </div>
-      {/* Insert button — vertical center, below the ⋮ menu hit box */}
+      {/* Insert button sits in the hit area (below ⋮), not in the menu hole. */}
       <button
         className="InsertBoundaryButton"
         style={{
           position: 'absolute',
-          top: '50%',
+          top: `${buttonCenterY}px`,
           left: isLeftBoundary 
             ? '6px' 
             : isRightBoundary 
