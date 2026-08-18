@@ -74,8 +74,8 @@ BEGIN
     CREATE TABLE [dbo].[TchpQcOrderCert] (
         [QcOrderCertId]         INT             IDENTITY(1,1)   NOT NULL,
         [QcOrderId]             INT             NOT NULL,
-        [CertType]              NVARCHAR(30)    NOT NULL,  -- CPC | GPSR_RP | OEKOTEX | AFIRM | FLAM_1610 | FLAM_1615
-        [Result]                NVARCHAR(20)    NOT NULL CONSTRAINT DF_TchpQcOrderCert_Result DEFAULT (N'PENDING'), -- PASS | FAIL | NA | MISSING | PENDING
+        [CertType]              NVARCHAR(30)    NOT NULL,  -- DDL QcCertType stores InternalKey; Code = CPC|GPSR_RP|OEKOTEX|AFIRM|FLAM_1610|FLAM_1615
+        [Result]                NVARCHAR(20)    NOT NULL CONSTRAINT DF_TchpQcOrderCert_Result DEFAULT (N'PENDING'), -- DDL QcCertResult stores InternalKey; Code = PASS|FAIL|NA|MISSING|PENDING
         [IsRequired]            BIT             NOT NULL CONSTRAINT DF_TchpQcOrderCert_Req DEFAULT (0),
         [DocumentRef]           NVARCHAR(100)   NULL,
         [Notes]                 NVARCHAR(500)   NULL,

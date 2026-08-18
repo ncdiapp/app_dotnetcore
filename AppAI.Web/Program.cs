@@ -373,6 +373,13 @@ try
 
     app.UseSession();
     app.UseStaticFiles();
+    var fileRepository = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "FileRepository");
+    Directory.CreateDirectory(fileRepository);
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(fileRepository),
+        RequestPath = "/FileRepository"
+    });
     app.UseAuthentication();
     app.UseAuthorization();
 

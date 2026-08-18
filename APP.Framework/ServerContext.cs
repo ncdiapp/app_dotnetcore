@@ -287,7 +287,16 @@ namespace APP.Framework
         // only for interface 
         public AppClientIdentity? ProvideIdentity()
         {
-            return WinContext[IdentityKey];
+            AppClientIdentity? identity;
+            if (WinContext is ConcurrentDictionary<object, AppClientIdentity?> concurrent)
+            {
+                if (concurrent.TryGetValue(IdentityKey, out identity))
+                    return identity;
+                return null;
+            }
+            if (WinContext.ContainsKey(IdentityKey))
+                return WinContext[IdentityKey];
+            return null;
         }
 
         //public AppClientIdentity? ProvideIdentity( object sessionId)

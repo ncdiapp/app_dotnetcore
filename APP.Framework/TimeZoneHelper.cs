@@ -37,6 +37,29 @@ namespace APP.Framework
 			return toReturnIdList;
 		}
 
+        /// <summary>
+        /// FindSystemTimeZoneById throws TimeZoneNotFoundException for null/empty/unknown IDs.
+        /// Callers already treat a missing zone as "leave the datetime unchanged".
+        /// </summary>
+        private static TimeZoneInfo TryFindTimeZone(string clientTimeZonekey)
+        {
+            if (string.IsNullOrWhiteSpace(clientTimeZonekey))
+                return null;
+
+            try
+            {
+                return TimeZoneInfo.FindSystemTimeZoneById(clientTimeZonekey);
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                return null;
+            }
+            catch (InvalidTimeZoneException)
+            {
+                return null;
+            }
+        }
+
 		public static DateTime? ConvertClientToUTCDateTime(DateTime? clientDateTime, string clientTimeZonekey)
         {
             if (!clientDateTime.HasValue)
@@ -44,7 +67,7 @@ namespace APP.Framework
                 return null;
             }
 
-            TimeZoneInfo zone = TimeZoneInfo.FindSystemTimeZoneById(clientTimeZonekey);
+            TimeZoneInfo zone = TryFindTimeZone(clientTimeZonekey);
 
             if (zone == null || zone == TimeZoneInfo.Utc)
             {
@@ -54,21 +77,6 @@ namespace APP.Framework
             clientDateTime = DateTime.SpecifyKind(clientDateTime.Value, DateTimeKind.Unspecified);
 
             return TimeZoneInfo.ConvertTime(clientDateTime.Value, zone, TimeZoneInfo.Utc);
-
-
-            //try
-            //{
-
-               
-
-            //    clientDateTime = DateTime.SpecifyKind(clientDateTime.Value, DateTimeKind.Unspecified);
-
-            //    return TimeZoneInfo.ConvertTime(clientDateTime.Value, zone, TimeZoneInfo.Utc);
-            //}
-            //catch (ArgumentException exception)
-            //{
-            //    return TimeZoneInfo.ConvertTime(clientDateTime.Value.AddHours(1), zone, TimeZoneInfo.Utc);
-            //}
         }
 
         public static DateTime? ConvertUTCToClientDateTime(DateTime? utcDateTime, string clientTimeZonekey)
@@ -76,7 +84,7 @@ namespace APP.Framework
             if (!utcDateTime.HasValue)
                 return null;
 
-            TimeZoneInfo zone = TimeZoneInfo.FindSystemTimeZoneById(clientTimeZonekey);
+            TimeZoneInfo zone = TryFindTimeZone(clientTimeZonekey);
 
             if (zone == null || zone == TimeZoneInfo.Utc)
             {
@@ -93,7 +101,7 @@ namespace APP.Framework
                 return default(DateTime);
             }
 
-            TimeZoneInfo zone = TimeZoneInfo.FindSystemTimeZoneById(clientTimeZonekey);
+            TimeZoneInfo zone = TryFindTimeZone(clientTimeZonekey);
 
             // Cannot find zone or input date is Utc
             if (zone == null || zone == TimeZoneInfo.Utc  )
@@ -115,7 +123,7 @@ namespace APP.Framework
 
             clientDateTime = DateTime.SpecifyKind(clientDateTime, DateTimeKind.Unspecified);
 
-            TimeZoneInfo zone = TimeZoneInfo.FindSystemTimeZoneById(clientTimeZonekey);
+            TimeZoneInfo zone = TryFindTimeZone(clientTimeZonekey);
 
             // Cannot find zone or input date is Utc
             if (zone == null || zone == TimeZoneInfo.Utc)

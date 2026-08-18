@@ -533,6 +533,10 @@ namespace APP.Components.EntityDto
         [DataMember]
         public int? NbDecimal { get; set; }
 
+        /// <summary>Grid/form field width (AppTransactionField.DisplayWidth).</summary>
+        [DataMember]
+        public string DisplayWidth { get; set; }
+
         /// <summary>
         /// Query Datasource SQL (AppTransactionField.DdlQueryText). First column = id, second = display.
         /// When set, EntityId is cleared. Use @p0, @p1... with ddlQueryParameterColumns.

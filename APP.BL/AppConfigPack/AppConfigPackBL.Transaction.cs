@@ -218,6 +218,7 @@ UPDATE f SET
     CascadingRelationTableChildKeyField = COALESCE(@CascadingChild, f.CascadingRelationTableChildKeyField),
     SortOrder = COALESCE(@SortOrder, f.SortOrder),
     NBDecimal = COALESCE(@NbDecimal, f.NBDecimal),
+    DisplayWidth = CASE WHEN @DisplayWidth IS NULL THEN f.DisplayWidth ELSE @DisplayWidth END,
     DdlQueryText = CASE WHEN @HasQuery = 1 THEN @DdlQueryText ELSE f.DdlQueryText END,
     WhereClauseExpress = CASE WHEN @HasQuery = 1 THEN @WhereClause ELSE f.WhereClauseExpress END,
     AppModifiedDate = GETDATE()
@@ -254,6 +255,8 @@ WHERE u.TransactionID = @TxId
                         cmd.Parameters.AddWithValue("@CascadingChild", string.IsNullOrWhiteSpace(field.CascadingChildKey) ? (object)DBNull.Value : field.CascadingChildKey.Trim());
                         cmd.Parameters.AddWithValue("@SortOrder", (object)field.SortOrder ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@NbDecimal", (object)field.NbDecimal ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@DisplayWidth",
+                            string.IsNullOrWhiteSpace(field.DisplayWidth) ? (object)DBNull.Value : field.DisplayWidth.Trim());
                         cmd.Parameters.AddWithValue("@TxId", transactionId);
                         cmd.Parameters.AddWithValue("@ColumnName", field.ColumnName.Trim());
                         cmd.Parameters.AddWithValue("@TableName", string.IsNullOrWhiteSpace(field.TableName) ? (object)DBNull.Value : field.TableName.Trim());

@@ -149,6 +149,7 @@ const Sidebar: React.FC = () => {
       AppListMenu_List: [
         { Id: 'ai-agent-dba', Name: 'DBA Agent', RouteCode: '/DbaGenie' },
         { Id: 'ai-agent-app-builder', Name: 'App Builder Agent', RouteCode: '/app-builder-agent' },
+        { Id: 'ai-agent-cursor', Name: 'Cursor Agent', RouteCode: '/cursor-agent' },
         { Id: 'ai-agent-app-report', Name: 'App Report Agent', RouteCode: '/app-report-agent' },
 
         { Id: 'ai-agent-skill-mgt', Name: 'AI Skill Management', RouteCode: '/ai-skill-management' },

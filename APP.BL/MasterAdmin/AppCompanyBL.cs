@@ -1067,6 +1067,7 @@ namespace App.BL
             System.IO.Directory.CreateDirectory(root + @"\Image\thumbnail\");
             System.IO.Directory.CreateDirectory(root + @"\Report\");
             System.IO.Directory.CreateDirectory(root + @"\temp\");
+            System.IO.Directory.CreateDirectory(root + @"\AgentOutput\");
         }
 
 

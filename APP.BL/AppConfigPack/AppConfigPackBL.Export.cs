@@ -392,6 +392,7 @@ ORDER BY ISNULL(Sort, 0), LinkTargetID";
                         CascadingChildKey = field.CascadingRelationTableChildKeyField,
                         SortOrder = field.SortOrder,
                         NbDecimal = field.Nbdecimal.HasValue && field.Nbdecimal.Value > 0 ? field.Nbdecimal : null,
+                        DisplayWidth = string.IsNullOrWhiteSpace(field.DisplayWidth) ? null : field.DisplayWidth.Trim(),
                         DdlQueryText = string.IsNullOrWhiteSpace(field.DdlQueryText) ? null : field.DdlQueryText,
                         DdlQueryParameterColumns = ExportDdlQueryParameterColumns(conn, field.WhereClauseExpress)
                     });
