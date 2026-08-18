@@ -22,14 +22,15 @@ Runtime APIs live under `/webapi/AppConfigPack/` (not PLM Migration). No FieldMa
 9. Child-grid **Link Targets** (Create/Edit/Delete) — after all transaction ids exist
 10. Transaction Group (Data Model Template)
 11. **Searches** — DataSet SQL, criteria, SearchView fields, linkTargets, optional main menu
-12. Attach TX + Search as Application assets
+12. **Transaction extras** (omit = keep default / existing; `[]` = clear): header buttons + read-only, Data Load, Unit Formula, Conditional Action, Linked Search mappings
+13. Attach TX + Search as Application assets
 
 ## Matching / safety
 
 | Rule | Behavior |
 |------|----------|
 | Stable key | `integrationId` (required on each transaction and search) |
-| Exists | **Update** name + field overlay (incl. query datasource) + commands + form-if-missing. Does not rebuild unit tree. |
+| Exists | **Update** name + header flags (when set) + field overlay (incl. query datasource) + commands + form-if-missing. Does not rebuild unit tree. Optional extras (`dataLoads` / `unitFormulas` / `conditionalActions` / `linkedSearches`): omit = leave existing; `[]` = clear; otherwise replace. |
 | Missing | **Insert** |
 | DROP | Never drop tables or columns |
 | Type change | Warning only; existing column types are not altered |
@@ -132,6 +133,21 @@ Views run **after** tables so they can select from newly created tables.
 - VIEW units: set `isPrimaryKey` on the unique key column and `isLinkToParentPrimaryKey` on the parent key column (views have no SQL PK/FK). Import also **auto-wires** child/sibling links without a database FK: same column name as the parent PK, or the StyleSpecId ↔ ReferenceId product/spec alias. Pack `fields[]` flags still win when present.
 
 Physical tables/views named in `unitStructure` must exist after the DDL step.
+
+## Transaction header / extras
+
+All of the following are **optional**. **Omit or null** → import keeps the current default (new TX from hierarchy create, existing TX unchanged). **`[]`** on a list → **clear** that collection. Export always writes the live values (empty arrays when none).
+
+| Field | Notes |
+|-------|--------|
+| `isShowSaveButton` / `isShowPrintButton` / `isShowCalculateButton` | Form toolbar buttons (`AppTransaction`) |
+| `isReadOnly` | Whole-transaction read-only |
+| `dataLoads[]` | Data Load definitions + dataset SQL + field mappings. Bind unit with `tableName`; mappings use `tableName`/`columnName` + `dataSetColumn`. |
+| `unitFormulas[]` | Unit formulas. `tableName` = host unit. Expression tokens are `[TF:Table.Column]` (never numeric FieldId). |
+| `conditionalActions[]` | Conditional lock/hide. Field/unit refs by table + column name. Formula tokens `[TF:Table.Column]`. |
+| `linkedSearches[]` | Unit linked-search + criteria/result mappings. `searchIntegrationId` required. `fieldMappings` / `viewFieldMappings` bind TX fields to Search / SearchView columns by name. |
+
+Data Load / Linked Search run **after** Searches so `searchIntegrationId` can resolve. Hand-written packs may omit every extras key.
 
 ## Commands
 

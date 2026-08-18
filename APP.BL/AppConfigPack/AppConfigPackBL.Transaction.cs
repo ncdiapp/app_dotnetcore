@@ -45,11 +45,19 @@ UPDATE dbo.AppTransaction
 SET TransactionName = @Name,
     Description = @Description,
     SaasApplicationID = COALESCE(@SaasApplicationId, SaasApplicationID),
+    IsShowSaveButton = CASE WHEN @ShowSave IS NULL THEN IsShowSaveButton ELSE @ShowSave END,
+    IsShowPrintButton = CASE WHEN @ShowPrint IS NULL THEN IsShowPrintButton ELSE @ShowPrint END,
+    IsShowCalculateButton = CASE WHEN @ShowCalc IS NULL THEN IsShowCalculateButton ELSE @ShowCalc END,
+    IsReadOnly = CASE WHEN @IsReadOnly IS NULL THEN IsReadOnly ELSE @IsReadOnly END,
     AppModifiedDate = GETDATE()
 WHERE TransactionID = @Id";
                             cmd.Parameters.AddWithValue("@Name", TruncateName(tx.Name ?? integrationId, 200, integrationId));
                             cmd.Parameters.AddWithValue("@Description", (object)(tx.Description ?? tx.Name) ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@SaasApplicationId", (object)saasApplicationId ?? DBNull.Value);
+                            AddNullableBit(cmd, "@ShowSave", tx.IsShowSaveButton);
+                            AddNullableBit(cmd, "@ShowPrint", tx.IsShowPrintButton);
+                            AddNullableBit(cmd, "@ShowCalc", tx.IsShowCalculateButton);
+                            AddNullableBit(cmd, "@IsReadOnly", tx.IsReadOnly);
                             cmd.Parameters.AddWithValue("@Id", transactionId);
                             cmd.ExecuteNonQuery();
                         }
@@ -86,6 +94,7 @@ WHERE TransactionID = @Id";
                         transactionId = Convert.ToInt32(saveResult.Object.Id);
                         SetIntegrationId(conn, "AppTransaction", "TransactionID", transactionId, integrationId);
                         inserted = true;
+                        OverlayTransactionHeaderFlags(conn, transactionId, tx);
                     }
                 }
 

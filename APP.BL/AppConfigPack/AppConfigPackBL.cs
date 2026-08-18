@@ -161,6 +161,9 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                 UpsertSearches(
                     request.Pack, tenantDataSourceId, saasApplicationId, txIdsByIntegration, groupId, result.Object);
 
+                ApplyTransactionRuntimeExtras(
+                    request.Pack, txIdsByIntegration, tenantDataSourceId, saasApplicationId);
+
                 AttachApplicationAssets(saasApplicationId, txIdsByIntegration.Values.ToList(), result.Object);
 
                 result.Object.IsSuccess = true;
@@ -502,6 +505,7 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                         ExistingId = existing,
                         Detail = $"Root {tx.UnitStructure?.RootTableName}; fields {tx.Fields?.Count ?? 0}; commands {tx.Commands?.Count ?? 0}"
                             + (HasPortableFormLayout(tx) ? "; formLayout replace" : string.Empty)
+                            + PreviewExtrasDetail(tx)
                     });
 
                     foreach (var child in tx.UnitStructure?.ChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())

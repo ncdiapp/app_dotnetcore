@@ -160,6 +160,38 @@ namespace APP.Components.EntityDto
         /// <summary>Default | Flex. Flex is set on export when formLayout is present.</summary>
         [DataMember]
         public string FormMode { get; set; } = "Default";
+
+        /// <summary>AppTransaction.IsShowSaveButton. Null/omit = keep current default.</summary>
+        [DataMember]
+        public bool? IsShowSaveButton { get; set; }
+
+        /// <summary>AppTransaction.IsShowPrintButton. Null/omit = keep current default.</summary>
+        [DataMember]
+        public bool? IsShowPrintButton { get; set; }
+
+        /// <summary>AppTransaction.IsShowCalculateButton. Null/omit = keep current default.</summary>
+        [DataMember]
+        public bool? IsShowCalculateButton { get; set; }
+
+        /// <summary>Whole-transaction read-only (AppTransaction.IsReadOnly). Null/omit = keep current default.</summary>
+        [DataMember]
+        public bool? IsReadOnly { get; set; }
+
+        /// <summary>Null/omit = leave existing. [] = clear. Otherwise replace all data loads on this transaction.</summary>
+        [DataMember]
+        public List<AppConfigPackDataLoadDto> DataLoads { get; set; }
+
+        /// <summary>Null/omit = leave existing. [] = clear. Otherwise replace all unit formulas on this transaction.</summary>
+        [DataMember]
+        public List<AppConfigPackUnitFormulaDto> UnitFormulas { get; set; }
+
+        /// <summary>Null/omit = leave existing. [] = clear. Otherwise replace all conditional actions on this transaction.</summary>
+        [DataMember]
+        public List<AppConfigPackConditionalActionDto> ConditionalActions { get; set; }
+
+        /// <summary>Null/omit = leave existing. [] = clear. Otherwise replace all unit linked-search mappings on this transaction.</summary>
+        [DataMember]
+        public List<AppConfigPackLinkedSearchDto> LinkedSearches { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -478,6 +510,275 @@ namespace APP.Components.EntityDto
         /// <summary>Table.Column (or Column) for each @pN in ddlQueryText. Stored as pipe-separated field ids in WhereClauseExpress.</summary>
         [DataMember]
         public List<string> DdlQueryParameterColumns { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackDataLoadDto
+    {
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string Description { get; set; }
+
+        [DataMember]
+        public string TableName { get; set; }
+
+        [DataMember]
+        public int? LoadOrder { get; set; }
+
+        [DataMember]
+        public bool? IsAutoExecutedWhenOpenEditForm { get; set; }
+
+        [DataMember]
+        public bool? IsAutoExecuteBeforeInitialCascading { get; set; }
+
+        [DataMember]
+        public AppConfigPackDataSetDto DataSet { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackDataLoadMappingDto> Mappings { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackDataLoadMappingDto
+    {
+        [DataMember]
+        public string TableName { get; set; }
+
+        [DataMember]
+        public string ColumnName { get; set; }
+
+        [DataMember]
+        public string DataSetColumn { get; set; }
+
+        [DataMember]
+        public bool? IsConditionMapping { get; set; }
+
+        [DataMember]
+        public string WhereClause { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackUnitFormulaDto
+    {
+        [DataMember]
+        public string TableName { get; set; }
+
+        [DataMember]
+        public string FormulaName { get; set; }
+
+        /// <summary>Use [TF:Table.Column] tokens. Rewritten to transactionfieldid_{FieldId} on import.</summary>
+        [DataMember]
+        public string FormulaExpression { get; set; }
+
+        [DataMember]
+        public string WarningMessage { get; set; }
+
+        [DataMember]
+        public int? CalculationFlowSort { get; set; }
+
+        [DataMember]
+        public int? FunctionType { get; set; }
+
+        [DataMember]
+        public int? OperationType { get; set; }
+
+        [DataMember]
+        public int? ApplyToScope { get; set; }
+
+        [DataMember]
+        public string ConditionTableName { get; set; }
+
+        [DataMember]
+        public string ConditionColumnName { get; set; }
+
+        [DataMember]
+        public bool? SwitchTrueFalseType { get; set; }
+
+        [DataMember]
+        public string ChildTableName { get; set; }
+
+        [DataMember]
+        public string HighlightTableName { get; set; }
+
+        [DataMember]
+        public string HighlightColumnName { get; set; }
+
+        [DataMember]
+        public int? WarningHighlightStyleId { get; set; }
+
+        [DataMember]
+        public string SearchIntegrationId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackConditionalActionDto
+    {
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string ConditionTableName { get; set; }
+
+        [DataMember]
+        public string BooleanConditionTableName { get; set; }
+
+        [DataMember]
+        public string BooleanConditionColumnName { get; set; }
+
+        [DataMember]
+        public string UiTriggerTableName { get; set; }
+
+        [DataMember]
+        public string UiTriggerColumnName { get; set; }
+
+        /// <summary>Use [TF:Table.Column] tokens.</summary>
+        [DataMember]
+        public string BooleanConditionFormula { get; set; }
+
+        [DataMember]
+        public string LockingTableName { get; set; }
+
+        [DataMember]
+        public string LockingColumnName { get; set; }
+
+        [DataMember]
+        public string LockingFieldUnitTableName { get; set; }
+
+        [DataMember]
+        public bool? IsLockingTransaction { get; set; }
+
+        [DataMember]
+        public string LockingTransactionUnitTableName { get; set; }
+
+        [DataMember]
+        public bool? IsLockForSpecialEditPrivilege { get; set; }
+
+        [DataMember]
+        public string HideTableName { get; set; }
+
+        [DataMember]
+        public string HideColumnName { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackLinkedSearchDto
+    {
+        [DataMember]
+        public string TableName { get; set; }
+
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string Description { get; set; }
+
+        [DataMember]
+        public string SearchIntegrationId { get; set; }
+
+        [DataMember]
+        public int? Action { get; set; }
+
+        [DataMember]
+        public int? UsageType { get; set; }
+
+        [DataMember]
+        public string GroupName { get; set; }
+
+        [DataMember]
+        public bool? IsSingleSelectedRow { get; set; }
+
+        [DataMember]
+        public bool? IsNeedPreValidation { get; set; }
+
+        [DataMember]
+        public bool? IsNeedPostValidation { get; set; }
+
+        [DataMember]
+        public string CallbackRestResourceUri { get; set; }
+
+        [DataMember]
+        public string TargetTransactionIntegrationId { get; set; }
+
+        [DataMember]
+        public string ConditionTableName { get; set; }
+
+        [DataMember]
+        public string ConditionColumnName { get; set; }
+
+        [DataMember]
+        public string CallbackCommandName { get; set; }
+
+        [DataMember]
+        public int? Sort { get; set; }
+
+        [DataMember]
+        public bool? IsPopup { get; set; }
+
+        [DataMember]
+        public int? PopupWidth { get; set; }
+
+        [DataMember]
+        public int? PopupHeight { get; set; }
+
+        [DataMember]
+        public string IconName { get; set; }
+
+        [DataMember]
+        public string OtherSettings { get; set; }
+
+        /// <summary>Criteria / search-field mappings (AppTransactionUnitSearchFieldMapping).</summary>
+        [DataMember]
+        public List<AppConfigPackLinkedSearchFieldMappingDto> FieldMappings { get; set; }
+
+        /// <summary>Result-column mappings (AppTransactionUnitSearchViewFieldMapping).</summary>
+        [DataMember]
+        public List<AppConfigPackLinkedSearchViewMappingDto> ViewFieldMappings { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackLinkedSearchFieldMappingDto
+    {
+        [DataMember]
+        public string TableName { get; set; }
+
+        [DataMember]
+        public string ColumnName { get; set; }
+
+        [DataMember]
+        public string SearchFieldColumn { get; set; }
+
+        [DataMember]
+        public string TargetTableName { get; set; }
+
+        [DataMember]
+        public string TargetColumnName { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackLinkedSearchViewMappingDto
+    {
+        [DataMember]
+        public string TableName { get; set; }
+
+        [DataMember]
+        public string ColumnName { get; set; }
+
+        [DataMember]
+        public string SearchViewFieldColumn { get; set; }
+
+        [DataMember]
+        public string TargetTableName { get; set; }
+
+        [DataMember]
+        public string TargetColumnName { get; set; }
+
+        [DataMember]
+        public string ExternalAppFieldMappingCode { get; set; }
+
+        [DataMember]
+        public bool? IsUnique { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

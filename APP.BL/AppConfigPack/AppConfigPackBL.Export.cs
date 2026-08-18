@@ -155,8 +155,16 @@ namespace APP.BL.AppConfigPack
                     ApplyExportedLayoutTab(conn, formId.Value, child);
             }
 
+            exported.IsShowSaveButton = txDto.IsShowSaveButton;
+            exported.IsShowPrintButton = txDto.IsShowPrintButton;
+            exported.IsShowCalculateButton = txDto.IsShowCalculateButton;
+            exported.IsReadOnly = txDto.IsReadOnly;
             exported.Fields = ExportTransactionFields(conn, hierarchy);
             exported.Commands = ExportTransactionCommands(conn, txId, formId);
+            exported.DataLoads = ExportTransactionDataLoads(conn, txId);
+            exported.UnitFormulas = ExportTransactionUnitFormulas(conn, txId);
+            exported.ConditionalActions = ExportTransactionConditionalActions(conn, txId);
+            exported.LinkedSearches = ExportTransactionLinkedSearches(conn, txId);
             if (formId.HasValue)
             {
                 exported.FormLayout = ExportFormLayout(conn, formId.Value, txId);
