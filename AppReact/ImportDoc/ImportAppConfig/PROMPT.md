@@ -13,17 +13,18 @@ Runtime APIs live under `/webapi/AppConfigPack/` (not PLM Migration). No FieldMa
 
 1. **DDL** — create missing tables; **ADD** missing columns only; `CREATE OR ALTER VIEW`
 2. Refresh tenant schema cache
-3. **Transactions** — upsert by `integrationId` via table hierarchy (Root / Sibling / Child / Grandchild)
-4. Overlay field metadata (control type, entity/LOV, **query datasource**, visibility, pivot flags, cascading DDL, PK / parent-link, **decimal places**)
-5. Overlay unit display names, grid display type, Available Select pairing (`AvailableSourceUnitId` + field mapping)
-6. Auto-wire child/sibling **Link To Parent PK** (DB FK, same column name, or StyleSpecId↔ReferenceId). VIEW units without a SQL PK get a logical PK.
-7. **Form layout** — if `formLayout.items` is present, delete the existing Flex tree and rebuild it (portable widget names, bind by table/column/command). If omitted, create the default Flex form when missing, then apply `layoutTab` / `layoutHostTable`
-8. **Commands** — upsert by `name` on the transaction (Execute SQL / Refresh / Composition); rewrite `[TF:Table.Column]` tokens; optional CommandActionButton above a child grid
-9. Child-grid **Link Targets** (Create/Edit/Delete) — after all transaction ids exist
-10. Transaction Group (Data Model Template)
-11. **Searches** — DataSet SQL, criteria, SearchView fields, linkTargets, optional main menu
-12. **Transaction extras** (omit = keep default / existing; `[]` = clear): header buttons + read-only, Data Load, Unit Formula, Conditional Action, Linked Search mappings
-13. Attach TX + Search as Application assets
+3. **Simple list entities** — upsert by `entityCode` (`EmAppEntityType.SimpleValueList` = 4); replace values by `code`
+4. **Transactions** — upsert by `integrationId` via table hierarchy (Root / Sibling / Child / Grandchild)
+5. Overlay field metadata (control type, entity/LOV, **query datasource**, visibility, pivot flags, cascading DDL, PK / parent-link, **decimal places**)
+6. Overlay unit display names, grid display type, Available Select pairing (`AvailableSourceUnitId` + field mapping)
+7. Auto-wire child/sibling **Link To Parent PK** (DB FK, same column name, or StyleSpecId↔ReferenceId). VIEW units without a SQL PK get a logical PK.
+8. **Form layout** — if `formLayout.items` is present, delete the existing Flex tree and rebuild it (portable widget names, bind by table/column/command). If omitted, create the default Flex form when missing, then apply `layoutTab` / `layoutHostTable`
+9. **Commands** — upsert by `name` on the transaction (Execute SQL / Refresh / Composition); rewrite `[TF:Table.Column]` tokens; optional CommandActionButton above a child grid
+10. Child-grid **Link Targets** (Create/Edit/Delete) — after all transaction ids exist
+11. Transaction Group (Data Model Template)
+12. **Searches** — DataSet SQL, criteria, SearchView fields, linkTargets, optional main menu
+13. **Transaction extras** (omit = keep default / existing; `[]` = clear): header buttons + read-only, Data Load, Unit Formula, Conditional Action, Linked Search mappings
+14. Attach TX + Search as Application assets
 
 ## Matching / safety
 
@@ -46,6 +47,7 @@ Runtime APIs live under `/webapi/AppConfigPack/` (not PLM Migration). No FieldMa
   "source": { "generatedBy": "manual", "applicationName": "Demo", "notes": "" },
   "tables": [ ],
   "views": [ ],
+  "simpleListEntities": [ ],
   "transactions": [ ],
   "transactionGroup": { },
   "searches": [ ]
@@ -77,6 +79,27 @@ On import: `IF NOT EXISTS` → `CREATE TABLE`; existing table → `ALTER TABLE .
 - `createOrAlterSql` — full statement beginning with `CREATE OR ALTER VIEW` (or `CREATE VIEW`, importer wraps it)
 
 Views run **after** tables so they can select from newly created tables.
+
+## Simple list entities
+
+Top-level `simpleListEntities[]`. Upserted **before** transactions so `fields[].entityCode` can resolve.
+
+```json
+{
+  "entityCode": "QcTargetMarket",
+  "description": "QC Target Market",
+  "values": [
+    { "internalKey": 1, "code": "US", "description": "United States", "sort": 10 },
+    { "internalKey": 2, "code": "EU", "description": "European Union", "sort": 20 }
+  ]
+}
+```
+
+- `entityCode` (required) — `AppEntityInfo.EntityCode`. Existing rows are updated; missing rows are inserted (`EntityType` = 4).
+- `values[]` are matched by `code`. Import updates existing values, inserts missing ones, and **deletes** values whose code is no longer in the pack.
+- `internalKey` is the DDL lookup **Id**. Simple-list dropdowns **store InternalKey** (as a string in NVARCHAR columns), not `code`. SQL that compares codes (e.g. `TargetMarket = N'US'`) must join `AppEntitySimpleListValue` and accept either InternalKey or leftover Code.
+
+Wire a field with `"controlType": 1` and `"entityCode": "QcTargetMarket"`. Do **not** set `ddlQueryText` on that field (query datasource clears `EntityId`).
 
 ## Transactions
 

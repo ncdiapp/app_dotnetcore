@@ -30,6 +30,10 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public List<AppConfigPackSearchDto> Searches { get; set; } = new List<AppConfigPackSearchDto>();
+
+        /// <summary>Simple Value List (EmAppEntityType.SimpleValueList = 4) entities, upserted by entityCode before transactions.</summary>
+        [DataMember]
+        public List<AppConfigPackSimpleListEntityDto> SimpleListEntities { get; set; } = new List<AppConfigPackSimpleListEntityDto>();
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -47,6 +51,35 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public string Notes { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackSimpleListEntityDto
+    {
+        [DataMember]
+        public string EntityCode { get; set; }
+
+        [DataMember]
+        public string Description { get; set; }
+
+        [DataMember]
+        public List<AppConfigPackSimpleListValueDto> Values { get; set; } = new List<AppConfigPackSimpleListValueDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class AppConfigPackSimpleListValueDto
+    {
+        [DataMember]
+        public int? InternalKey { get; set; }
+
+        [DataMember]
+        public string Code { get; set; }
+
+        [DataMember]
+        public string Description { get; set; }
+
+        [DataMember]
+        public int? Sort { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

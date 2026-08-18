@@ -1768,31 +1768,24 @@ namespace App.BL
 
             PassRootKeyValueToSiblingOrChildUnit(siblingUnitOneToOneFields, rootPkValue, siblingTransactionUnitExDto);
 
-
-            string dataBaseTableName = siblingTransactionUnitExDto.DataBaseTableName;
-
-
-            if (!string.IsNullOrWhiteSpace(siblingTransactionUnitExDto.BaseDataBaseTableName))
-            {
-                dataBaseTableName = siblingTransactionUnitExDto.BaseDataBaseTableName;
-
-            }
-
-            var sqlDto = AppDbHelerBL.GetOneToOneInsertSqlCmdDto(siblingUnitOneToOneFields, dataBaseTableName, siblingTransactionUnitExDto.DataSourceFrom, siblingTransactionUnitExDto.SchemaOwner);
-
-            string InsertChildUnit = sqlDto.CmdText;
-            List<DbParameter> listChildtParamters = sqlDto.ListParamters;
-
-
-
             try
             {
+                if (SiblingUnitRowExists(databaseFixtureInstance, siblingTransactionUnitExDto, siblingUnitOneToOneFields, rootPkValue, trans))
+                {
+                    UpdateOneUnitRecord(databaseFixtureInstance, siblingUnitOneToOneFields, siblingTransactionUnitExDto, trans);
+                    return errormessge;
+                }
 
-                //adpater.ExecuteScalarQuery (InsertChildUnit, listChildtParamters);
+                string dataBaseTableName = siblingTransactionUnitExDto.DataBaseTableName;
 
-                databaseFixtureInstance.ExecuteTransScalar(InsertChildUnit, listChildtParamters, trans);
+                if (!string.IsNullOrWhiteSpace(siblingTransactionUnitExDto.BaseDataBaseTableName))
+                {
+                    dataBaseTableName = siblingTransactionUnitExDto.BaseDataBaseTableName;
+                }
 
+                var sqlDto = AppDbHelerBL.GetOneToOneInsertSqlCmdDto(siblingUnitOneToOneFields, dataBaseTableName, siblingTransactionUnitExDto.DataSourceFrom, siblingTransactionUnitExDto.SchemaOwner);
 
+                databaseFixtureInstance.ExecuteTransScalar(sqlDto.CmdText, sqlDto.ListParamters, trans);
             }
             catch (Exception ex)
             {
@@ -1800,6 +1793,59 @@ namespace App.BL
             }
 
             return errormessge;
+        }
+
+        private static bool SiblingUnitRowExists(
+            DatabaseFixture databaseFixtureInstance,
+            AppTransactionUnitExDto siblingTransactionUnitExDto,
+            Dictionary<string, object> siblingUnitOneToOneFields,
+            object rootPkValue,
+            DbTransaction trans)
+        {
+            if (siblingTransactionUnitExDto?.PrimaryKeyDbfieldList == null
+                || siblingTransactionUnitExDto.PrimaryKeyDbfieldList.Count == 0)
+            {
+                return false;
+            }
+
+            string pkField = siblingTransactionUnitExDto.PrimaryKeyDbfieldList[0];
+            object pkValue = null;
+            if (siblingUnitOneToOneFields != null && siblingUnitOneToOneFields.ContainsKey(pkField))
+                pkValue = siblingUnitOneToOneFields[pkField];
+
+            if (pkValue == null || pkValue == DBNull.Value
+                || (pkValue is string pkText && string.IsNullOrWhiteSpace(pkText)))
+            {
+                pkValue = rootPkValue;
+            }
+
+            if (pkValue == null || pkValue == DBNull.Value)
+                return false;
+
+            string dataBaseTableName = siblingTransactionUnitExDto.DataBaseTableName;
+            if (!string.IsNullOrWhiteSpace(siblingTransactionUnitExDto.BaseDataBaseTableName))
+                dataBaseTableName = siblingTransactionUnitExDto.BaseDataBaseTableName;
+            if (string.IsNullOrWhiteSpace(dataBaseTableName))
+                return false;
+
+            string schema = string.IsNullOrWhiteSpace(siblingTransactionUnitExDto.SchemaOwner)
+                ? "dbo"
+                : siblingTransactionUnitExDto.SchemaOwner.Trim();
+
+            string paramName = pkField.Replace(" ", "");
+            DbParameter pkParameter = databaseFixtureInstance.CreateParameter(paramName);
+            pkParameter.Value = pkValue;
+
+            string sql = string.Format(
+                "SELECT TOP 1 1 FROM [{0}].[{1}] WHERE [{2}] = @{3}",
+                schema.Replace("]", "]]"),
+                dataBaseTableName.Replace("]", "]]"),
+                pkField.Replace("]", "]]"),
+                paramName);
+
+            object found = databaseFixtureInstance.ExecuteTransScalar(
+                sql, new List<DbParameter> { pkParameter }, trans);
+            return found != null && found != DBNull.Value;
         }
 
         internal static void PassRootKeyValueToSiblingOrChildUnit(Dictionary<string, object> unitOneToOneFields, object rootPkValue, AppTransactionUnitExDto childOrsiblingUnitExDto)

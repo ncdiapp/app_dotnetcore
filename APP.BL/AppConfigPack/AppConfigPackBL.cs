@@ -53,6 +53,7 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                 pack.Views = pack.Views ?? new List<AppConfigPackViewDto>();
                 pack.Transactions = pack.Transactions ?? new List<AppConfigPackTransactionDto>();
                 pack.Searches = pack.Searches ?? new List<AppConfigPackSearchDto>();
+                pack.SimpleListEntities = pack.SimpleListEntities ?? new List<AppConfigPackSimpleListEntityDto>();
 
                 result.Object = pack;
             }
@@ -147,6 +148,8 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                 ApplyDdl(request.Pack, tenantDataSourceId, result.Object);
                 AppCacheManagerBL.RefreshOneCustomerDbRegAndFixtureCache(tenantDataSourceId);
 
+                UpsertSimpleListEntities(request.Pack, saasApplicationId, result.Object);
+
                 var txIdsByIntegration = UpsertTransactions(
                     request.Pack, tenantDataSourceId, saasApplicationId, result.Object);
                 ApplyTransactionChildLinkTargets(request.Pack, txIdsByIntegration);
@@ -230,6 +233,21 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
             pack.Views = pack.Views ?? new List<AppConfigPackViewDto>();
             pack.Transactions = pack.Transactions ?? new List<AppConfigPackTransactionDto>();
             pack.Searches = pack.Searches ?? new List<AppConfigPackSearchDto>();
+            pack.SimpleListEntities = pack.SimpleListEntities ?? new List<AppConfigPackSimpleListEntityDto>();
+
+            var entityCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entity in pack.SimpleListEntities)
+            {
+                if (entity == null || string.IsNullOrWhiteSpace(entity.EntityCode))
+                {
+                    validation.Errors.Add("simpleListEntities[].entityCode is required.");
+                    continue;
+                }
+                if (!entityCodes.Add(entity.EntityCode.Trim()))
+                    validation.Errors.Add($"Duplicate simple list entityCode '{entity.EntityCode}'.");
+                if (entity.Values == null || entity.Values.Count == 0)
+                    validation.Warnings.Add($"Simple list '{entity.EntityCode}' has no values.");
+            }
 
             var tableNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var table in pack.Tables)
@@ -487,6 +505,22 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                         Name = view.Name,
                         Action = exists ? ActionUpdate : ActionInsert,
                         Detail = "CREATE OR ALTER VIEW"
+                    });
+                }
+
+                foreach (var entity in pack.SimpleListEntities ?? Enumerable.Empty<AppConfigPackSimpleListEntityDto>())
+                {
+                    if (entity == null || string.IsNullOrWhiteSpace(entity.EntityCode))
+                        continue;
+
+                    int? existing = ResolveEntityIdByCode(conn, entity.EntityCode);
+                    items.Add(new AppConfigPackPreviewItemDto
+                    {
+                        ObjectType = "SimpleListEntity",
+                        Name = entity.EntityCode,
+                        Action = existing.HasValue ? ActionUpdate : ActionInsert,
+                        ExistingId = existing,
+                        Detail = $"{entity.Values?.Count(v => v != null && !string.IsNullOrWhiteSpace(v.Code)) ?? 0} value(s)"
                     });
                 }
 

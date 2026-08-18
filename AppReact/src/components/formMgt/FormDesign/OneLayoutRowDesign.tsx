@@ -132,6 +132,15 @@ const OneLayoutRowDesign: React.FC<OneLayoutRowDesignProps> = ({
       setHoveredRightBoundary(false);
       return;
     }
+
+    // Item ⋮ menu sits on the right edge; do not treat that hit target as an insert boundary.
+    const moveTarget = e.target as HTMLElement | null;
+    if (moveTarget?.closest?.('.ContainerContextMenuButton')) {
+      setHoveredInsertIndex(null);
+      setHoveredLeftBoundary(false);
+      setHoveredRightBoundary(false);
+      return;
+    }
     
     const rowRect = rowRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rowRect.left;
@@ -567,6 +576,9 @@ const InsertBoundaryMarker: React.FC<{
     return null;
   }
   
+  // Keep the top of the strip click-through so it cannot cover the item ⋮ menu (right-1 top-2).
+  const menuClearancePx = 40;
+
   return (
     <div
       className="InsertBoundary"
@@ -579,7 +591,7 @@ const InsertBoundaryMarker: React.FC<{
         left: `${position.left}px`,
         width: '24px', // Wider hit area so drop lands on boundary when user aims at insert line
         zIndex: baseZIndex, // Level 2 (200) for top-level rows, Level 3 (300) for rows inside Section
-        pointerEvents: 'auto',
+        pointerEvents: 'none',
         opacity: isHovered ? 1 : 0, // Only show when hovered
         display: 'flex',
         alignItems: 'center',
@@ -635,6 +647,54 @@ const InsertBoundaryMarker: React.FC<{
         }
       }}
     >
+      {/* Click/drop target starts below the item ⋮ menu so the menu stays clickable. */}
+      <div
+        className="InsertBoundaryHitArea"
+        style={{
+          position: 'absolute',
+          top: `${menuClearancePx}px`,
+          bottom: 0,
+          left: 0,
+          right: 0,
+          pointerEvents: isHovered ? 'auto' : 'none',
+          zIndex: 1
+        }}
+        onMouseEnter={(e) => {
+          e.stopPropagation();
+          if (onLayoutItemHover) {
+            onLayoutItemHover(null);
+          }
+          onMouseEnter();
+        }}
+        onMouseLeave={(e) => {
+          e.stopPropagation();
+          onMouseLeave();
+        }}
+        onMouseMove={(e) => {
+          e.stopPropagation();
+          if (onLayoutItemHover) {
+            onLayoutItemHover(null);
+          }
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+          onDragOver(e);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          onDrop(e);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          if (onClick) {
+            onClick();
+          }
+        }}
+      />
       {/* Vertical double lines */}
       <div
         style={{
@@ -670,22 +730,22 @@ const InsertBoundaryMarker: React.FC<{
           }}
         />
       </div>
-      {/* Insert button - positioned at top for vertical boundaries */}
+      {/* Insert button — vertical center, below the ⋮ menu hit box */}
       <button
         className="InsertBoundaryButton"
         style={{
           position: 'absolute',
-          top: '25px',
+          top: '50%',
           left: isLeftBoundary 
             ? '6px' 
             : isRightBoundary 
             ? '6px' 
             : '50%',
           transform: isLeftBoundary 
-            ? 'translate(-14px, -14px)' 
+            ? 'translate(-14px, -50%)' 
             : isRightBoundary 
-            ? 'translate(-14px, -14px)' 
-            : 'translate(-50%, -14px)',
+            ? 'translate(-14px, -50%)' 
+            : 'translate(-50%, -50%)',
           zIndex: baseZIndex + 2, // Button on top
           width: '28px', // Increased from 24px to accommodate index text
           height: '28px', // Increased from 24px to accommodate index text
@@ -698,7 +758,7 @@ const InsertBoundaryMarker: React.FC<{
           justifyContent: 'center',
           cursor: 'pointer',
           boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-          pointerEvents: 'auto',
+          pointerEvents: isHovered ? 'auto' : 'none',
           fontSize: '11px',
           fontWeight: 'bold',
           lineHeight: '1'

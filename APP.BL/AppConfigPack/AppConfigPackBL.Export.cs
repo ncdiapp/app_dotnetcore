@@ -76,6 +76,8 @@ namespace APP.BL.AppConfigPack
                     if (view != null)
                         pack.Views.Add(view);
                 }
+
+                ExportSimpleListEntities(conn, pack);
             }
 
             return pack;

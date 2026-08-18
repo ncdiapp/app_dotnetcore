@@ -33,6 +33,9 @@
 --   View_TchpQcOrderAvailableSize      QC Order Available Select source
 --   View_TchpQcOrderPom                QC Order results host (one row per POM)
 --   View_TchpQcOrderPomSizeResult      QC Order results grandchild (POM×Size)
+--
+-- Inspection add-on (new tables only — never ALTER TchpQcOrder/Garment/Result):
+--   Run POM_Grading_QC_InspectionAddon.sql after this script (or rely on App Config Pack DDL).
 -- ============================================================
 -- Required for TchpQcResult persisted computed columns (run with -I in sqlcmd or SSMS defaults).
 SET ANSI_NULLS ON;
@@ -263,6 +266,11 @@ IF OBJECT_ID(N'dbo.TchpStyleSpec', N'U') IS NOT NULL
 BEGIN
     PRINT 'Rebuilding TchpStyleSpec (drop ProductReferenceId / IDENTITY StyleSpecId)...';
     -- Leaf → root (FK-safe). Children recreated by later IF NOT EXISTS blocks.
+    -- Inspection add-on tables (do not ALTER existing QC tables; drop add-on first).
+    IF OBJECT_ID(N'dbo.TchpQcDefectRecord', N'U') IS NOT NULL DROP TABLE [dbo].[TchpQcDefectRecord];
+    IF OBJECT_ID(N'dbo.TchpQcGarmentInspection', N'U') IS NOT NULL DROP TABLE [dbo].[TchpQcGarmentInspection];
+    IF OBJECT_ID(N'dbo.TchpQcOrderCert', N'U') IS NOT NULL DROP TABLE [dbo].[TchpQcOrderCert];
+    IF OBJECT_ID(N'dbo.TchpQcOrderAql', N'U') IS NOT NULL DROP TABLE [dbo].[TchpQcOrderAql];
     IF OBJECT_ID(N'dbo.TchpQcResult', N'U') IS NOT NULL DROP TABLE [dbo].[TchpQcResult];
     IF OBJECT_ID(N'dbo.TchpQcGarment', N'U') IS NOT NULL DROP TABLE [dbo].[TchpQcGarment];
     IF OBJECT_ID(N'dbo.TchpQcOrderSize', N'U') IS NOT NULL DROP TABLE [dbo].[TchpQcOrderSize];

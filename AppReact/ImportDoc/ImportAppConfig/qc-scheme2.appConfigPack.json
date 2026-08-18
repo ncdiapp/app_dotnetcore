@@ -4,8 +4,30 @@
   "source": {
     "generatedBy": "ai",
     "applicationName": "QC Scheme 2",
-    "notes": "Measurement QC three transactions with portable Flex formLayout. Child4 = View_TchpQcOrderPom + grandchild View_TchpQcOrderPomSizeResult. QC Garment Size uses Query Datasource. Reload POM From Grading saves, then Execute SQL + Refresh. Numeric QC fields use nbDecimal 4. Create QC Order maps RootUnit.ReferenceId to StyleSpecId."
+    "notes": "QC three transactions. Existing TchpQcOrder/Garment/Result tables are unchanged. New sibling TchpQcOrderAql + TchpQcGarmentInspection and children TchpQcOrderCert / TchpQcDefectRecord hold safety, AQL rollup, and visual defects. Floor flow: safety defects first (Critical stops the garment), then visual + 4-stage measurements (stages optional). Re-import after deleting TX_QcOrder* if units are missing (pack does not rebuild the unit tree on update). TargetMarket / AgeCategory are DDL fields bound to simple list entities QcTargetMarket / QcAgeCategory (stored InternalKey)."
   },
+  "simpleListEntities": [
+    {
+      "entityCode": "QcTargetMarket",
+      "description": "QC Target Market",
+      "values": [
+        { "internalKey": 1, "code": "US", "description": "United States", "sort": 10 },
+        { "internalKey": 2, "code": "EU", "description": "European Union", "sort": 20 },
+        { "internalKey": 3, "code": "US_EU", "description": "US and EU", "sort": 30 },
+        { "internalKey": 4, "code": "OTHER", "description": "Other", "sort": 40 }
+      ]
+    },
+    {
+      "entityCode": "QcAgeCategory",
+      "description": "QC Age Category",
+      "values": [
+        { "internalKey": 1, "code": "ADULT", "description": "Adult", "sort": 10 },
+        { "internalKey": 2, "code": "INFANT", "description": "Infant", "sort": 20 },
+        { "internalKey": 3, "code": "CHILD", "description": "Child", "sort": 30 },
+        { "internalKey": 4, "code": "SLEEPWEAR", "description": "Sleepwear", "sort": 40 }
+      ]
+    }
+  ],
   "tables": [
     {
       "name": "TchpQcOrder",
@@ -264,6 +286,97 @@
           "referencedColumn": "SizeRunSizeId"
         }
       ]
+    },
+    {
+      "name": "TchpQcDefectCode",
+      "schemaOwner": "dbo",
+      "description": "Floor/lab defect catalog (market + age applicability)",
+      "columns": [
+        { "name": "DefectCode", "dataType": "NVARCHAR", "length": 30, "isPrimaryKey": true, "isNullable": false },
+        { "name": "DisplayName", "dataType": "NVARCHAR", "length": 200, "isNullable": false },
+        { "name": "DefectClass", "dataType": "NVARCHAR", "length": 10, "isNullable": false },
+        { "name": "InspectionTrack", "dataType": "NVARCHAR", "length": 20, "isNullable": false },
+        { "name": "AppliesMarket", "dataType": "NVARCHAR", "length": 20, "isNullable": false, "defaultValue": "N'ALL'" },
+        { "name": "AppliesAge", "dataType": "NVARCHAR", "length": 20, "isNullable": false, "defaultValue": "N'ALL'" },
+        { "name": "Regulation", "dataType": "NVARCHAR", "length": 100, "isNullable": true },
+        { "name": "IsActive", "dataType": "BIT", "isNullable": false, "defaultValue": "1" }
+      ]
+    },
+    {
+      "name": "TchpQcOrderAql",
+      "schemaOwner": "dbo",
+      "description": "1:1 sibling of TchpQcOrder — market/age, Ac, fail counts. PK = QcOrderId.",
+      "columns": [
+        { "name": "QcOrderId", "dataType": "INT", "isPrimaryKey": true, "isNullable": false, "isAutoIncrement": false },
+        { "name": "TargetMarket", "dataType": "NVARCHAR", "length": 20, "isNullable": true },
+        { "name": "AgeCategory", "dataType": "NVARCHAR", "length": 20, "isNullable": true },
+        { "name": "AcCritical", "dataType": "INT", "isNullable": false, "defaultValue": "0" },
+        { "name": "AcMajor", "dataType": "INT", "isNullable": false, "defaultValue": "0" },
+        { "name": "AcMinor", "dataType": "INT", "isNullable": false, "defaultValue": "0" },
+        { "name": "FailCriticalCount", "dataType": "INT", "isNullable": false, "defaultValue": "0" },
+        { "name": "FailMajorCount", "dataType": "INT", "isNullable": false, "defaultValue": "0" },
+        { "name": "FailMinorCount", "dataType": "INT", "isNullable": false, "defaultValue": "0" },
+        { "name": "SampledCount", "dataType": "INT", "isNullable": false, "defaultValue": "0" },
+        { "name": "CompletedCount", "dataType": "INT", "isNullable": false, "defaultValue": "0" },
+        { "name": "CertFail", "dataType": "BIT", "isNullable": true },
+        { "name": "AqlPassStatus", "dataType": "NVARCHAR", "length": 20, "isNullable": true }
+      ],
+      "relationships": [
+        { "type": "MANY_TO_ONE", "targetTable": "TchpQcOrder", "foreignKeyColumn": "QcOrderId", "referencedColumn": "QcOrderId" }
+      ]
+    },
+    {
+      "name": "TchpQcOrderCert",
+      "schemaOwner": "dbo",
+      "description": "Order-level certificates / lab reports (CPC, GPSR, flammability, OEKO-TEX)",
+      "columns": [
+        { "name": "QcOrderCertId", "dataType": "INT", "isPrimaryKey": true, "isNullable": false, "isAutoIncrement": true },
+        { "name": "QcOrderId", "dataType": "INT", "isNullable": false },
+        { "name": "CertType", "dataType": "NVARCHAR", "length": 30, "isNullable": false },
+        { "name": "Result", "dataType": "NVARCHAR", "length": 20, "isNullable": false, "defaultValue": "N'PENDING'" },
+        { "name": "IsRequired", "dataType": "BIT", "isNullable": false, "defaultValue": "0" },
+        { "name": "DocumentRef", "dataType": "NVARCHAR", "length": 100, "isNullable": true },
+        { "name": "Notes", "dataType": "NVARCHAR", "length": 500, "isNullable": true }
+      ],
+      "relationships": [
+        { "type": "MANY_TO_ONE", "targetTable": "TchpQcOrder", "foreignKeyColumn": "QcOrderId", "referencedColumn": "QcOrderId" }
+      ]
+    },
+    {
+      "name": "TchpQcGarmentInspection",
+      "schemaOwner": "dbo",
+      "description": "1:1 sibling of TchpQcGarment — inspection status and Critical/Major/Minor flags. PK = QcGarmentId.",
+      "columns": [
+        { "name": "QcGarmentId", "dataType": "INT", "isPrimaryKey": true, "isNullable": false, "isAutoIncrement": false },
+        { "name": "InspectionStatus", "dataType": "NVARCHAR", "length": 20, "isNullable": false, "defaultValue": "N'OPEN'" },
+        { "name": "CriticalFail", "dataType": "BIT", "isNullable": true },
+        { "name": "MajorFail", "dataType": "BIT", "isNullable": true },
+        { "name": "MinorFail", "dataType": "BIT", "isNullable": true },
+        { "name": "StopReason", "dataType": "NVARCHAR", "length": 200, "isNullable": true },
+        { "name": "InspectedAt", "dataType": "DATETIME", "isNullable": true },
+        { "name": "InspectorId", "dataType": "INT", "isNullable": true }
+      ],
+      "relationships": [
+        { "type": "MANY_TO_ONE", "targetTable": "TchpQcGarment", "foreignKeyColumn": "QcGarmentId", "referencedColumn": "QcGarmentId" }
+      ]
+    },
+    {
+      "name": "TchpQcDefectRecord",
+      "schemaOwner": "dbo",
+      "description": "Floor safety and visual defects per sampled garment (fail-only; no checklist rows)",
+      "columns": [
+        { "name": "QcDefectRecordId", "dataType": "INT", "isPrimaryKey": true, "isNullable": false, "isAutoIncrement": true },
+        { "name": "QcGarmentId", "dataType": "INT", "isNullable": false },
+        { "name": "DefectClass", "dataType": "NVARCHAR", "length": 10, "isNullable": true },
+        { "name": "DefectCode", "dataType": "NVARCHAR", "length": 30, "isNullable": false },
+        { "name": "DefectLocation", "dataType": "NVARCHAR", "length": 50, "isNullable": true },
+        { "name": "Description", "dataType": "NVARCHAR", "length": 500, "isNullable": true },
+        { "name": "Quantity", "dataType": "INT", "isNullable": false, "defaultValue": "1" },
+        { "name": "InspectionTrack", "dataType": "NVARCHAR", "length": 20, "isNullable": true }
+      ],
+      "relationships": [
+        { "type": "MANY_TO_ONE", "targetTable": "TchpQcGarment", "foreignKeyColumn": "QcGarmentId", "referencedColumn": "QcGarmentId" }
+      ]
     }
   ],
   "views": [
@@ -281,18 +394,36 @@
       "name": "View_TchpQcOrderPomSizeResult",
       "schemaOwner": "dbo",
       "createOrAlterSql": "CREATE OR ALTER VIEW dbo.View_TchpQcOrderPomSizeResult AS SELECT CAST(o.QcOrderId AS BIGINT) * 1000000000000 + CAST(psl.PomSpecLineId AS BIGINT) * 1000000 + CAST(os.SizeRunSizeId AS BIGINT) AS QcOrderPomSizeId, CAST(o.QcOrderId AS BIGINT) * 1000000000 + CAST(psl.PomSpecLineId AS BIGINT) AS QcOrderPomId, o.QcOrderId, psl.PomSpecLineId, os.SizeRunSizeId, srs.SizeLabel, srs.SizeOrder, COUNT(r.QcResultId) AS SampleCount, SUM(CASE WHEN r.[Pass] = 0 THEN 1 ELSE 0 END) AS FailCount, SUM(CASE WHEN r.[Pass] = 1 THEN 1 ELSE 0 END) AS PassCount, SUM(CASE WHEN r.[Pass] IS NULL AND r.QcResultId IS NOT NULL THEN 1 ELSE 0 END) AS PendingCount, AVG(r.FinalDiff) AS AvgFinalDiff FROM dbo.TchpQcOrder AS o INNER JOIN dbo.TchpQcOrderSize AS os ON os.QcOrderId = o.QcOrderId INNER JOIN dbo.TchpSizeRunSize AS srs ON srs.SizeRunSizeId = os.SizeRunSizeId INNER JOIN dbo.TchpPomSpecLine AS psl ON psl.StyleSpecId = o.StyleSpecId LEFT JOIN dbo.TchpQcGarment AS g ON g.QcOrderId = o.QcOrderId AND g.SizeRunSizeId = os.SizeRunSizeId LEFT JOIN dbo.TchpQcResult AS r ON r.QcGarmentId = g.QcGarmentId AND r.PomSpecLineId = psl.PomSpecLineId GROUP BY o.QcOrderId, psl.PomSpecLineId, os.SizeRunSizeId, srs.SizeLabel, srs.SizeOrder"
+    },
+    {
+      "name": "View_TchpQcOrderDefectSummary",
+      "schemaOwner": "dbo",
+      "createOrAlterSql": "CREATE OR ALTER VIEW dbo.View_TchpQcOrderDefectSummary AS SELECT CAST(g.QcOrderId AS BIGINT) * 1000000000 + CAST(d.QcDefectRecordId AS BIGINT) AS QcOrderDefectId, g.QcOrderId, d.QcDefectRecordId, g.QcGarmentId, g.GarmentSerial, d.DefectClass, d.DefectCode, d.DefectLocation, d.Quantity, d.Description, d.InspectionTrack FROM dbo.TchpQcDefectRecord AS d INNER JOIN dbo.TchpQcGarment AS g ON g.QcGarmentId = d.QcGarmentId"
+    },
+    {
+      "name": "View_TchpProductQcSummary",
+      "schemaOwner": "dbo",
+      "createOrAlterSql": "CREATE OR ALTER VIEW dbo.View_TchpProductQcSummary AS SELECT ss.StyleSpecId, COUNT(o.QcOrderId) AS OrderCount, SUM(CASE WHEN o.OrderStatus = N'PASSED' THEN 1 ELSE 0 END) AS PassedOrderCount, SUM(CASE WHEN o.OrderStatus = N'FAILED' THEN 1 ELSE 0 END) AS FailedOrderCount, SUM(CASE WHEN o.OrderStatus IN (N'OPEN', N'IN_PROGRESS') THEN 1 ELSE 0 END) AS OpenOrderCount, SUM(ISNULL(a.FailCriticalCount, 0)) AS FailCriticalCount, SUM(ISNULL(a.FailMajorCount, 0)) AS FailMajorCount, SUM(ISNULL(a.FailMinorCount, 0)) AS FailMinorCount FROM dbo.TchpStyleSpec AS ss LEFT JOIN dbo.TchpQcOrder AS o ON o.StyleSpecId = ss.StyleSpecId LEFT JOIN dbo.TchpQcOrderAql AS a ON a.QcOrderId = o.QcOrderId GROUP BY ss.StyleSpecId"
     }
   ],
   "transactions": [
     {
       "integrationId": "TX_QcOrder",
       "name": "QC Order",
-      "description": "QC order header, selected sizes, sampled garments, POM×Size result pivot",
+      "description": "QC order header + AQL sibling, certs, sampled garments, defect rollup, POM×Size pivot",
       "formMode": "Flex",
       "unitStructure": {
         "rootTableName": "TchpQcOrder",
         "rootDisplayName": "QC Order",
-        "siblingTableNames": [],
+        "siblingTableNames": [
+          "TchpQcOrderAql"
+        ],
+        "siblingUnits": [
+          {
+            "tableName": "TchpQcOrderAql",
+            "displayName": "AQL / Market"
+          }
+        ],
         "childUnits": [
           {
             "tableName": "View_TchpQcOrderAvailableSize",
@@ -339,6 +470,22 @@
               }
             ],
             "isDisableAddButton": true
+          },
+          {
+            "tableName": "TchpQcOrderCert",
+            "displayName": "Certificates / Lab Reports",
+            "gridDisplayType": 1,
+            "layoutTab": "Certificates"
+          },
+          {
+            "tableName": "View_TchpQcOrderDefectSummary",
+            "displayName": "Defects (all garments)",
+            "gridDisplayType": 1,
+            "layoutTab": "Defects",
+            "isReadOnly": true,
+            "isSynchToDatabaseTable": false,
+            "isDisableAddButton": true,
+            "isDisableDeleteButton": true
           },
           {
             "tableName": "View_TchpQcOrderPom",
@@ -780,6 +927,324 @@
           "isPivotValue": true,
           "sortOrder": 120,
           "nbDecimal": 4
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "QcOrderId",
+          "displayName": "Qc Order Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "TargetMarket",
+          "displayName": "Target Market",
+          "controlType": 1,
+          "entityCode": "QcTargetMarket",
+          "isVisible": true,
+          "sortOrder": 20
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "AgeCategory",
+          "displayName": "Age Category",
+          "controlType": 1,
+          "entityCode": "QcAgeCategory",
+          "isVisible": true,
+          "sortOrder": 30
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "AcCritical",
+          "displayName": "Ac Critical",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 40
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "AcMajor",
+          "displayName": "Ac Major",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 50
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "AcMinor",
+          "displayName": "Ac Minor",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 60
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "FailCriticalCount",
+          "displayName": "Fail Critical",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 70
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "FailMajorCount",
+          "displayName": "Fail Major",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 80
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "FailMinorCount",
+          "displayName": "Fail Minor",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 90
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "SampledCount",
+          "displayName": "Sampled",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 100
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "CompletedCount",
+          "displayName": "Completed",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 110
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "CertFail",
+          "displayName": "Cert Fail",
+          "controlType": 13,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 120
+        },
+        {
+          "tableName": "TchpQcOrderAql",
+          "columnName": "AqlPassStatus",
+          "displayName": "AQL Result",
+          "controlType": 2,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 130
+        },
+        {
+          "tableName": "TchpQcOrderCert",
+          "columnName": "QcOrderCertId",
+          "displayName": "Cert Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "TchpQcOrderCert",
+          "columnName": "QcOrderId",
+          "displayName": "Qc Order Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 20
+        },
+        {
+          "tableName": "TchpQcOrderCert",
+          "columnName": "CertType",
+          "displayName": "Cert Type (CPC|GPSR_RP|OEKOTEX|AFIRM|FLAM_1610|FLAM_1615)",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 30
+        },
+        {
+          "tableName": "TchpQcOrderCert",
+          "columnName": "Result",
+          "displayName": "Result (PASS|FAIL|NA|MISSING|PENDING)",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 40
+        },
+        {
+          "tableName": "TchpQcOrderCert",
+          "columnName": "IsRequired",
+          "displayName": "Required",
+          "controlType": 13,
+          "isVisible": true,
+          "sortOrder": 50
+        },
+        {
+          "tableName": "TchpQcOrderCert",
+          "columnName": "DocumentRef",
+          "displayName": "Document Ref",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 60
+        },
+        {
+          "tableName": "TchpQcOrderCert",
+          "columnName": "Notes",
+          "displayName": "Notes",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 70
+        },
+        {
+          "tableName": "View_TchpQcOrderDefectSummary",
+          "columnName": "QcOrderDefectId",
+          "displayName": "Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "View_TchpQcOrderDefectSummary",
+          "columnName": "QcOrderId",
+          "displayName": "Qc Order Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 20
+        },
+        {
+          "tableName": "View_TchpQcOrderDefectSummary",
+          "columnName": "GarmentSerial",
+          "displayName": "Garment",
+          "controlType": 2,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 30
+        },
+        {
+          "tableName": "View_TchpQcOrderDefectSummary",
+          "columnName": "DefectClass",
+          "displayName": "Class",
+          "controlType": 2,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 40
+        },
+        {
+          "tableName": "View_TchpQcOrderDefectSummary",
+          "columnName": "DefectCode",
+          "displayName": "Code",
+          "controlType": 2,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 50
+        },
+        {
+          "tableName": "View_TchpQcOrderDefectSummary",
+          "columnName": "DefectLocation",
+          "displayName": "Location",
+          "controlType": 2,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 60
+        },
+        {
+          "tableName": "View_TchpQcOrderDefectSummary",
+          "columnName": "Quantity",
+          "displayName": "Qty",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 70
+        },
+        {
+          "tableName": "View_TchpQcOrderDefectSummary",
+          "columnName": "Description",
+          "displayName": "Description",
+          "controlType": 2,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 80
+        },
+        {
+          "tableName": "View_TchpQcOrderDefectSummary",
+          "columnName": "InspectionTrack",
+          "displayName": "Track",
+          "controlType": 2,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 90
+        }
+      ],
+      "commands": [
+        {
+          "integrationId": "CMD_QcOrder_Save",
+          "name": "_save",
+          "actionType": 49,
+          "isShowOnTopMenu": false,
+          "linkToUI": false
+        },
+        {
+          "integrationId": "CMD_QcOrder_Refresh",
+          "name": "_Refresh Order",
+          "actionType": 50,
+          "isShowOnTopMenu": false,
+          "linkToUI": false
+        },
+        {
+          "integrationId": "CMD_QcOrder_RecalcAql",
+          "name": "_Recalc AQL Status",
+          "actionType": 42,
+          "isShowOnTopMenu": false,
+          "linkToUI": false,
+          "sqlStatement": "IF CAST([TF:TchpQcOrder.QcOrderId] AS INT) IS NULL\nBEGIN\n    RAISERROR(N'Save the QC Order first.', 16, 1);\n    RETURN;\nEND\n\nDECLARE @Oid INT = CAST([TF:TchpQcOrder.QcOrderId] AS INT);\nDECLARE @Lot INT = ISNULL((SELECT LotQuantity FROM dbo.TchpQcOrder WHERE QcOrderId = @Oid), 0);\nDECLARE @Sample INT;\nDECLARE @AcC INT = 0;\nDECLARE @AcM INT;\nDECLARE @AcN INT;\n\nSET @Sample = CASE\n    WHEN @Lot <= 50 THEN 8\n    WHEN @Lot <= 90 THEN 13\n    WHEN @Lot <= 150 THEN 20\n    WHEN @Lot <= 280 THEN 32\n    WHEN @Lot <= 500 THEN 50\n    WHEN @Lot <= 1200 THEN 80\n    WHEN @Lot <= 3200 THEN 125\n    ELSE 200\nEND;\nSET @AcM = CASE\n    WHEN @Lot <= 90 THEN 0\n    WHEN @Lot <= 280 THEN 1\n    WHEN @Lot <= 1200 THEN 3\n    WHEN @Lot <= 3200 THEN 5\n    ELSE 7\nEND;\nSET @AcN = CASE\n    WHEN @Lot <= 50 THEN 0\n    WHEN @Lot <= 150 THEN 1\n    WHEN @Lot <= 280 THEN 2\n    WHEN @Lot <= 1200 THEN 5\n    WHEN @Lot <= 3200 THEN 7\n    ELSE 10\nEND;\n\nIF NOT EXISTS (SELECT 1 FROM dbo.TchpQcOrderAql WHERE QcOrderId = @Oid)\n    INSERT INTO dbo.TchpQcOrderAql (QcOrderId, AcCritical, AppCreatedDate, AppCreatedById)\n    VALUES (@Oid, 0, GETDATE(), [CurrentUserId]);\n\nUPDATE dbo.TchpQcOrder\nSET SampleSize = @Sample, AppModifiedDate = GETDATE(), AppModifiedById = [CurrentUserId]\nWHERE QcOrderId = @Oid;\n\nDECLARE @FailC INT, @FailM INT, @FailN INT, @Sampled INT, @Completed INT, @CertFail BIT;\n\nSELECT\n    @Sampled = COUNT(*),\n    @Completed = SUM(CASE WHEN i.InspectionStatus IN (N'COMPLETE', N'STOPPED_CRITICAL') THEN 1 ELSE 0 END),\n    @FailC = SUM(CASE WHEN i.CriticalFail = 1 THEN 1 ELSE 0 END),\n    @FailM = SUM(CASE WHEN i.MajorFail = 1 THEN 1 ELSE 0 END),\n    @FailN = SUM(CASE WHEN i.MinorFail = 1 THEN 1 ELSE 0 END)\nFROM dbo.TchpQcGarment AS g\nLEFT JOIN dbo.TchpQcGarmentInspection AS i ON i.QcGarmentId = g.QcGarmentId\nWHERE g.QcOrderId = @Oid;\n\nSET @Sampled = ISNULL(@Sampled, 0);\nSET @Completed = ISNULL(@Completed, 0);\nSET @FailC = ISNULL(@FailC, 0);\nSET @FailM = ISNULL(@FailM, 0);\nSET @FailN = ISNULL(@FailN, 0);\nSET @CertFail = CASE WHEN EXISTS (\n    SELECT 1 FROM dbo.TchpQcOrderCert\n    WHERE QcOrderId = @Oid AND IsRequired = 1 AND ISNULL(Result, N'PENDING') NOT IN (N'PASS', N'NA')\n) THEN 1 ELSE 0 END;\n\nDECLARE @Status NVARCHAR(20);\nDECLARE @Aql NVARCHAR(20);\nIF @CertFail = 1 OR @FailC > @AcC OR @FailM > @AcM OR @FailN > @AcN\nBEGIN SET @Status = N'FAILED'; SET @Aql = N'FAILED'; END\nELSE IF @Completed >= @Sample AND @Sample > 0\nBEGIN SET @Status = N'PASSED'; SET @Aql = N'PASSED'; END\nELSE IF @Sampled > 0\nBEGIN SET @Status = N'IN_PROGRESS'; SET @Aql = N'PENDING'; END\nELSE\nBEGIN SET @Status = N'OPEN'; SET @Aql = N'PENDING'; END\n\nUPDATE dbo.TchpQcOrderAql\nSET AcCritical = @AcC, AcMajor = @AcM, AcMinor = @AcN,\n    FailCriticalCount = @FailC, FailMajorCount = @FailM, FailMinorCount = @FailN,\n    SampledCount = @Sampled, CompletedCount = @Completed,\n    CertFail = @CertFail, AqlPassStatus = @Aql,\n    AppModifiedDate = GETDATE(), AppModifiedById = [CurrentUserId]\nWHERE QcOrderId = @Oid;\n\nUPDATE dbo.TchpQcOrder\nSET OrderStatus = @Status, AppModifiedDate = GETDATE(), AppModifiedById = [CurrentUserId]\nWHERE QcOrderId = @Oid;"
+        },
+        {
+          "integrationId": "CMD_QcOrder_SeedCerts",
+          "name": "_Seed Required Certs",
+          "actionType": 42,
+          "isShowOnTopMenu": false,
+          "linkToUI": false,
+          "sqlStatement": "IF CAST([TF:TchpQcOrder.QcOrderId] AS INT) IS NULL\nBEGIN\n    RAISERROR(N'Save the QC Order first.', 16, 1);\n    RETURN;\nEND\n\nDECLARE @Oid INT = CAST([TF:TchpQcOrder.QcOrderId] AS INT);\nDECLARE @Mkt NVARCHAR(20);\nDECLARE @Age NVARCHAR(20);\nSELECT\n    @Mkt = COALESCE(mkt.Code, a.TargetMarket),\n    @Age = COALESCE(age.Code, a.AgeCategory)\nFROM dbo.TchpQcOrderAql AS a\nLEFT JOIN dbo.AppEntityInfo AS eiM ON eiM.EntityCode = N'QcTargetMarket'\nLEFT JOIN dbo.AppEntitySimpleListValue AS mkt\n    ON mkt.EntityInfoID = eiM.EntityInfoID\n   AND (CAST(mkt.InternalKey AS NVARCHAR(20)) = a.TargetMarket OR mkt.Code = a.TargetMarket)\nLEFT JOIN dbo.AppEntityInfo AS eiA ON eiA.EntityCode = N'QcAgeCategory'\nLEFT JOIN dbo.AppEntitySimpleListValue AS age\n    ON age.EntityInfoID = eiA.EntityInfoID\n   AND (CAST(age.InternalKey AS NVARCHAR(20)) = a.AgeCategory OR age.Code = a.AgeCategory)\nWHERE a.QcOrderId = @Oid;\n\nIF NOT EXISTS (SELECT 1 FROM dbo.TchpQcOrderAql WHERE QcOrderId = @Oid)\n    INSERT INTO dbo.TchpQcOrderAql (QcOrderId, AcCritical, AppCreatedDate) VALUES (@Oid, 0, GETDATE());\n\n;WITH req AS (\n    SELECT N'CPC' AS CertType, CAST(CASE WHEN @Age IN (N'INFANT', N'CHILD', N'SLEEPWEAR') AND @Mkt IN (N'US', N'US_EU') THEN 1 ELSE 0 END AS BIT) AS IsRequired\n    UNION ALL SELECT N'GPSR_RP', CAST(CASE WHEN @Mkt IN (N'EU', N'US_EU') THEN 1 ELSE 0 END AS BIT)\n    UNION ALL SELECT N'FLAM_1615', CAST(CASE WHEN @Age = N'SLEEPWEAR' THEN 1 ELSE 0 END AS BIT)\n    UNION ALL SELECT N'FLAM_1610', CAST(0 AS BIT)\n    UNION ALL SELECT N'OEKOTEX', CAST(0 AS BIT)\n)\nMERGE dbo.TchpQcOrderCert AS t\nUSING req AS s\n    ON t.QcOrderId = @Oid AND t.CertType = s.CertType\nWHEN MATCHED THEN\n    UPDATE SET IsRequired = s.IsRequired,\n               Result = CASE WHEN s.IsRequired = 1 AND t.Result = N'NA' THEN N'PENDING' WHEN s.IsRequired = 0 AND t.Result IN (N'PENDING', N'MISSING') THEN N'NA' ELSE t.Result END,\n               AppModifiedDate = GETDATE(), AppModifiedById = [CurrentUserId]\nWHEN NOT MATCHED THEN\n    INSERT (QcOrderId, CertType, Result, IsRequired, AppCreatedById, AppCreatedDate)\n    VALUES (@Oid, s.CertType, CASE WHEN s.IsRequired = 1 THEN N'PENDING' ELSE N'NA' END, s.IsRequired, [CurrentUserId], GETDATE());"
+        },
+        {
+          "integrationId": "CMD_QcOrder_RecalcAqlAndRefresh",
+          "name": "Recalc AQL & Status",
+          "actionType": 200,
+          "isShowOnTopMenu": true,
+          "linkToUI": true,
+          "childCommandIntegrationIds": [
+            "CMD_QcOrder_Save",
+            "CMD_QcOrder_RecalcAql",
+            "CMD_QcOrder_Refresh"
+          ]
+        },
+        {
+          "integrationId": "CMD_QcOrder_SeedCertsAndRefresh",
+          "name": "Seed Required Certs",
+          "actionType": 200,
+          "isShowOnTopMenu": true,
+          "linkToUI": true,
+          "childCommandIntegrationIds": [
+            "CMD_QcOrder_Save",
+            "CMD_QcOrder_SeedCerts",
+            "CMD_QcOrder_Refresh"
+          ]
         }
       ],
       "formLayout": {
@@ -1008,6 +1473,280 @@
                           },
                           {
                             "type": "row",
+                            "sort": 15,
+                            "children": [
+                              {
+                                "type": "stack",
+                                "displayName": "AQL / Market",
+                                "sort": 1,
+                                "defaultNbColumns": 4,
+                                "colSpan": 24,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "isCollapsible": true,
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "stack",
+                                        "displayName": "Stack Container",
+                                        "sort": 1,
+                                        "defaultNbColumns": 1,
+                                        "colSpan": 6,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "children": [
+                                          {
+                                            "type": "row",
+                                            "sort": 1,
+                                            "children": [
+                                              {
+                                                "type": "field",
+                                                "displayName": "Target Market",
+                                                "sort": 1,
+                                                "colSpan": 24,
+                                                "backgroundColor": "#ffffff",
+                                                "textColor": "#000000",
+                                                "isBindingToDataField": true,
+                                                "widgetDisplayType": 1,
+                                                "tableName": "TchpQcOrderAql",
+                                                "columnName": "TargetMarket",
+                                                "entityCode": "QcTargetMarket"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "row",
+                                            "sort": 2,
+                                            "children": [
+                                              {
+                                                "type": "field",
+                                                "displayName": "Age Category",
+                                                "sort": 1,
+                                                "colSpan": 24,
+                                                "backgroundColor": "#ffffff",
+                                                "textColor": "#000000",
+                                                "isBindingToDataField": true,
+                                                "widgetDisplayType": 1,
+                                                "tableName": "TchpQcOrderAql",
+                                                "columnName": "AgeCategory",
+                                                "entityCode": "QcAgeCategory"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "stack",
+                                        "displayName": "Stack Container",
+                                        "sort": 2,
+                                        "defaultNbColumns": 1,
+                                        "colSpan": 6,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "children": [
+                                          {
+                                            "type": "row",
+                                            "sort": 1,
+                                            "children": [
+                                              {
+                                                "type": "field",
+                                                "displayName": "Ac Major",
+                                                "sort": 1,
+                                                "colSpan": 24,
+                                                "backgroundColor": "#ffffff",
+                                                "textColor": "#000000",
+                                                "isBindingToDataField": true,
+                                                "widgetDisplayType": 20,
+                                                "tableName": "TchpQcOrderAql",
+                                                "columnName": "AcMajor"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "row",
+                                            "sort": 2,
+                                            "children": [
+                                              {
+                                                "type": "field",
+                                                "displayName": "Ac Minor",
+                                                "sort": 1,
+                                                "colSpan": 24,
+                                                "backgroundColor": "#ffffff",
+                                                "textColor": "#000000",
+                                                "isBindingToDataField": true,
+                                                "widgetDisplayType": 20,
+                                                "tableName": "TchpQcOrderAql",
+                                                "columnName": "AcMinor"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "stack",
+                                        "displayName": "Stack Container",
+                                        "sort": 3,
+                                        "defaultNbColumns": 1,
+                                        "colSpan": 6,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "children": [
+                                          {
+                                            "type": "row",
+                                            "sort": 1,
+                                            "children": [
+                                              {
+                                                "type": "field",
+                                                "displayName": "Fail Critical",
+                                                "sort": 1,
+                                                "colSpan": 24,
+                                                "backgroundColor": "#ffffff",
+                                                "textColor": "#000000",
+                                                "isBindingToDataField": true,
+                                                "widgetDisplayType": 20,
+                                                "tableName": "TchpQcOrderAql",
+                                                "columnName": "FailCriticalCount"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "row",
+                                            "sort": 2,
+                                            "children": [
+                                              {
+                                                "type": "field",
+                                                "displayName": "Fail Major",
+                                                "sort": 1,
+                                                "colSpan": 24,
+                                                "backgroundColor": "#ffffff",
+                                                "textColor": "#000000",
+                                                "isBindingToDataField": true,
+                                                "widgetDisplayType": 20,
+                                                "tableName": "TchpQcOrderAql",
+                                                "columnName": "FailMajorCount"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "row",
+                                            "sort": 3,
+                                            "children": [
+                                              {
+                                                "type": "field",
+                                                "displayName": "Fail Minor",
+                                                "sort": 1,
+                                                "colSpan": 24,
+                                                "backgroundColor": "#ffffff",
+                                                "textColor": "#000000",
+                                                "isBindingToDataField": true,
+                                                "widgetDisplayType": 20,
+                                                "tableName": "TchpQcOrderAql",
+                                                "columnName": "FailMinorCount"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      },
+                                      {
+                                        "type": "stack",
+                                        "displayName": "Stack Container",
+                                        "sort": 4,
+                                        "defaultNbColumns": 1,
+                                        "colSpan": 6,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "children": [
+                                          {
+                                            "type": "row",
+                                            "sort": 1,
+                                            "children": [
+                                              {
+                                                "type": "field",
+                                                "displayName": "AQL Result",
+                                                "sort": 1,
+                                                "colSpan": 24,
+                                                "backgroundColor": "#ffffff",
+                                                "textColor": "#000000",
+                                                "isBindingToDataField": true,
+                                                "widgetDisplayType": 2,
+                                                "tableName": "TchpQcOrderAql",
+                                                "columnName": "AqlPassStatus"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "row",
+                                            "sort": 2,
+                                            "children": [
+                                              {
+                                                "type": "field",
+                                                "displayName": "Completed",
+                                                "sort": 1,
+                                                "colSpan": 24,
+                                                "backgroundColor": "#ffffff",
+                                                "textColor": "#000000",
+                                                "isBindingToDataField": true,
+                                                "widgetDisplayType": 20,
+                                                "tableName": "TchpQcOrderAql",
+                                                "columnName": "CompletedCount"
+                                              }
+                                            ]
+                                          },
+                                          {
+                                            "type": "row",
+                                            "sort": 3,
+                                            "children": [
+                                              {
+                                                "type": "field",
+                                                "displayName": "Cert Fail",
+                                                "sort": 1,
+                                                "colSpan": 24,
+                                                "backgroundColor": "#ffffff",
+                                                "textColor": "#000000",
+                                                "isBindingToDataField": true,
+                                                "widgetDisplayType": 13,
+                                                "tableName": "TchpQcOrderAql",
+                                                "columnName": "CertFail"
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "commandButton",
+                                        "displayName": "Recalc AQL & Status",
+                                        "sort": 1,
+                                        "colSpan": 4,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "commandName": "Recalc AQL & Status"
+                                      },
+                                      {
+                                        "type": "commandButton",
+                                        "displayName": "Seed Required Certs",
+                                        "sort": 2,
+                                        "colSpan": 4,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "commandName": "Seed Required Certs"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              }
+                            ]
+                          },
+                          {
+                            "type": "row",
                             "sort": 2,
                             "children": [
                               {
@@ -1120,6 +1859,98 @@
                                   },
                                   {
                                     "type": "tab",
+                                    "displayName": "Certificates",
+                                    "sort": 2,
+                                    "defaultNbColumns": 1,
+                                    "backgroundColor": "#ffffff",
+                                    "textColor": "#000000",
+                                    "isTab": true,
+                                    "children": [
+                                      {
+                                        "type": "row",
+                                        "sort": 1,
+                                        "children": [
+                                          {
+                                            "type": "stack",
+                                            "displayName": "Stack Container",
+                                            "sort": 1,
+                                            "defaultNbColumns": 1,
+                                            "colSpan": 24,
+                                            "backgroundColor": "#ffffff",
+                                            "textColor": "#000000",
+                                            "children": [
+                                              {
+                                                "type": "row",
+                                                "sort": 1,
+                                                "children": [
+                                                  {
+                                                    "type": "grid",
+                                                    "displayName": "Certificates / Lab Reports",
+                                                    "sort": 1,
+                                                    "colSpan": 24,
+                                                    "height": 280,
+                                                    "backgroundColor": "#ffffff",
+                                                    "textColor": "#000000",
+                                                    "isBindingToDataField": true,
+                                                    "transcationUnitLevel": 2,
+                                                    "tableName": "TchpQcOrderCert"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "tab",
+                                    "displayName": "Defects",
+                                    "sort": 5,
+                                    "defaultNbColumns": 1,
+                                    "backgroundColor": "#ffffff",
+                                    "textColor": "#000000",
+                                    "isTab": true,
+                                    "children": [
+                                      {
+                                        "type": "row",
+                                        "sort": 1,
+                                        "children": [
+                                          {
+                                            "type": "stack",
+                                            "displayName": "Stack Container",
+                                            "sort": 1,
+                                            "defaultNbColumns": 1,
+                                            "colSpan": 24,
+                                            "backgroundColor": "#ffffff",
+                                            "textColor": "#000000",
+                                            "children": [
+                                              {
+                                                "type": "row",
+                                                "sort": 1,
+                                                "children": [
+                                                  {
+                                                    "type": "grid",
+                                                    "displayName": "Defects (all garments)",
+                                                    "sort": 1,
+                                                    "colSpan": 24,
+                                                    "height": 320,
+                                                    "backgroundColor": "#ffffff",
+                                                    "textColor": "#000000",
+                                                    "isBindingToDataField": true,
+                                                    "transcationUnitLevel": 2,
+                                                    "tableName": "View_TchpQcOrderDefectSummary"
+                                                  }
+                                                ]
+                                              }
+                                            ]
+                                          }
+                                        ]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "tab",
                                     "displayName": "QC Results",
                                     "sort": 4,
                                     "defaultNbColumns": 1,
@@ -1182,13 +2013,26 @@
     {
       "integrationId": "TX_QcGarment",
       "name": "QC Garment Result",
-      "description": "One garment (one size) and POM measurement rows",
+      "description": "One garment: safety/visual defects first, then 4-stage POM measurements. Critical stops remaining checks.",
       "formMode": "Flex",
       "unitStructure": {
         "rootTableName": "TchpQcGarment",
         "rootDisplayName": "QC Garment",
-        "siblingTableNames": [],
+        "siblingTableNames": [
+          "TchpQcGarmentInspection"
+        ],
+        "siblingUnits": [
+          {
+            "tableName": "TchpQcGarmentInspection",
+            "displayName": "Inspection Status"
+          }
+        ],
         "childUnits": [
+          {
+            "tableName": "TchpQcDefectRecord",
+            "displayName": "Safety & Visual Defects",
+            "gridDisplayType": 1
+          },
           {
             "tableName": "TchpQcResult",
             "displayName": "POM Results",
@@ -1246,6 +2090,136 @@
           "ddlQueryParameterColumns": [
             "TchpQcGarment.QcOrderId"
           ]
+        },
+        {
+          "tableName": "TchpQcGarmentInspection",
+          "columnName": "QcGarmentId",
+          "displayName": "Qc Garment Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "TchpQcGarmentInspection",
+          "columnName": "InspectionStatus",
+          "displayName": "Inspection Status",
+          "controlType": 2,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 20
+        },
+        {
+          "tableName": "TchpQcGarmentInspection",
+          "columnName": "CriticalFail",
+          "displayName": "Critical",
+          "controlType": 13,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 30
+        },
+        {
+          "tableName": "TchpQcGarmentInspection",
+          "columnName": "MajorFail",
+          "displayName": "Major",
+          "controlType": 13,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 40
+        },
+        {
+          "tableName": "TchpQcGarmentInspection",
+          "columnName": "MinorFail",
+          "displayName": "Minor",
+          "controlType": 13,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 50
+        },
+        {
+          "tableName": "TchpQcGarmentInspection",
+          "columnName": "StopReason",
+          "displayName": "Stop Reason",
+          "controlType": 2,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 60
+        },
+        {
+          "tableName": "TchpQcDefectRecord",
+          "columnName": "QcDefectRecordId",
+          "displayName": "Defect Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "TchpQcDefectRecord",
+          "columnName": "QcGarmentId",
+          "displayName": "Qc Garment Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 20
+        },
+        {
+          "tableName": "TchpQcDefectRecord",
+          "columnName": "DefectCode",
+          "displayName": "Defect Code",
+          "controlType": 1,
+          "isVisible": true,
+          "sortOrder": 30,
+          "ddlQueryText": "SELECT c.DefectCode, c.DisplayName FROM dbo.TchpQcDefectCode AS c INNER JOIN dbo.TchpQcGarment AS g ON g.QcGarmentId = @p0 LEFT JOIN dbo.TchpQcOrderAql AS a ON a.QcOrderId = g.QcOrderId LEFT JOIN dbo.AppEntityInfo AS eiM ON eiM.EntityCode = N'QcTargetMarket' LEFT JOIN dbo.AppEntitySimpleListValue AS mkt ON mkt.EntityInfoID = eiM.EntityInfoID AND (CAST(mkt.InternalKey AS NVARCHAR(20)) = a.TargetMarket OR mkt.Code = a.TargetMarket) LEFT JOIN dbo.AppEntityInfo AS eiA ON eiA.EntityCode = N'QcAgeCategory' LEFT JOIN dbo.AppEntitySimpleListValue AS age ON age.EntityInfoID = eiA.EntityInfoID AND (CAST(age.InternalKey AS NVARCHAR(20)) = a.AgeCategory OR age.Code = a.AgeCategory) WHERE ISNULL(c.IsActive, 1) = 1 AND c.InspectionTrack IN (N'SAFETY', N'VISUAL') AND (c.AppliesMarket = N'ALL' OR c.AppliesMarket = ISNULL(COALESCE(mkt.Code, a.TargetMarket), N'ALL') OR (ISNULL(COALESCE(mkt.Code, a.TargetMarket), N'') = N'US_EU' AND c.AppliesMarket IN (N'US', N'EU'))) AND (c.AppliesAge = N'ALL' OR c.AppliesAge = ISNULL(COALESCE(age.Code, a.AgeCategory), N'ALL') OR (c.AppliesAge = N'CHILD' AND ISNULL(COALESCE(age.Code, a.AgeCategory), N'') IN (N'INFANT', N'CHILD', N'SLEEPWEAR'))) ORDER BY c.DefectClass, c.DefectCode",
+          "ddlQueryParameterColumns": [
+            "TchpQcGarment.QcGarmentId"
+          ]
+        },
+        {
+          "tableName": "TchpQcDefectRecord",
+          "columnName": "DefectClass",
+          "displayName": "Class",
+          "controlType": 2,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 40
+        },
+        {
+          "tableName": "TchpQcDefectRecord",
+          "columnName": "InspectionTrack",
+          "displayName": "Track",
+          "controlType": 2,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 50
+        },
+        {
+          "tableName": "TchpQcDefectRecord",
+          "columnName": "DefectLocation",
+          "displayName": "Location",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 60
+        },
+        {
+          "tableName": "TchpQcDefectRecord",
+          "columnName": "Quantity",
+          "displayName": "Qty",
+          "controlType": 20,
+          "isVisible": true,
+          "sortOrder": 70
+        },
+        {
+          "tableName": "TchpQcDefectRecord",
+          "columnName": "Description",
+          "displayName": "Notes",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 80
         },
         {
           "tableName": "TchpQcResult",
@@ -1404,7 +2378,7 @@
           "actionType": 42,
           "isShowOnTopMenu": false,
           "linkToUI": false,
-          "sqlStatement": "IF CAST([TF:TchpQcGarment.QcGarmentId] AS INT) IS NULL\nBEGIN\n    RAISERROR(N'Save the garment first.', 16, 1);\n    RETURN;\nEND\n\nIF CAST([TF:TchpQcGarment.SizeRunSizeId] AS INT) IS NULL\nBEGIN\n    RAISERROR(N'Select Size before reloading POM list.', 16, 1);\n    RETURN;\nEND\n\n;WITH src AS (\n    SELECT\n        CAST([TF:TchpQcGarment.QcGarmentId] AS INT) AS QcGarmentId,\n        psl.PomSpecLineId,\n        CAST([TF:TchpQcGarment.SizeRunSizeId] AS INT) AS SizeRunSizeId,\n        CAST(\n            CASE\n                WHEN ISNULL(psl.IsFixed, 0) = 1 THEN psl.BaseValue\n                ELSE psl.BaseValue + ISNULL((\n                    SELECT SUM(gv.GradingDelta)\n                    FROM dbo.TchpGradeValue AS gv\n                    INNER JOIN dbo.TchpSizeRunSize AS srs\n                        ON srs.SizeRunSizeId = gv.SizeRunSizeId\n                    WHERE gv.PomSpecLineId = psl.PomSpecLineId\n                      AND srs.SizeRunId = ss.SizeRunId\n                      AND (\n                            (tgt.SizeOrder > baseSz.SizeOrder\n                             AND srs.SizeOrder > baseSz.SizeOrder\n                             AND srs.SizeOrder <= tgt.SizeOrder)\n                         OR (tgt.SizeOrder < baseSz.SizeOrder\n                             AND srs.SizeOrder >= tgt.SizeOrder\n                             AND srs.SizeOrder < baseSz.SizeOrder)\n                      )\n                ), 0)\n            END AS DECIMAL(10,3)\n        ) AS SpecValue,\n        CAST(COALESCE(psl.Tolerance, bp.Tolerance, 0) AS DECIMAL(10,3)) AS Tolerance\n    FROM dbo.TchpQcOrder AS o\n    INNER JOIN dbo.TchpStyleSpec AS ss\n        ON ss.StyleSpecId = o.StyleSpecId\n    INNER JOIN dbo.TchpPomSpecLine AS psl\n        ON psl.StyleSpecId = ss.StyleSpecId\n    INNER JOIN dbo.TchpSizeRunSize AS baseSz\n        ON baseSz.SizeRunSizeId = ss.BaseSizeDetailId\n    INNER JOIN dbo.TchpSizeRunSize AS tgt\n        ON tgt.SizeRunSizeId = CAST([TF:TchpQcGarment.SizeRunSizeId] AS INT)\n    LEFT JOIN dbo.TchpBodyPart AS bp\n        ON bp.BodyPartId = psl.BodyPartId\n    WHERE o.QcOrderId = CAST([TF:TchpQcGarment.QcOrderId] AS INT)\n      AND psl.BaseValue IS NOT NULL\n)\nMERGE dbo.TchpQcResult AS t\nUSING src\n    ON t.QcGarmentId = src.QcGarmentId\n   AND t.PomSpecLineId = src.PomSpecLineId\nWHEN MATCHED THEN\n    UPDATE SET\n        SizeRunSizeId = src.SizeRunSizeId,\n        SpecValue = src.SpecValue,\n        Tolerance = src.Tolerance,\n        AppModifiedDate = GETDATE(),\n        AppModifiedById = [CurrentUserId]\nWHEN NOT MATCHED THEN\n    INSERT (\n        QcGarmentId, PomSpecLineId, SizeRunSizeId,\n        SpecValue, Tolerance,\n        AppCreatedById, AppCreatedDate\n    )\n    VALUES (\n        src.QcGarmentId, src.PomSpecLineId, src.SizeRunSizeId,\n        src.SpecValue, src.Tolerance,\n        [CurrentUserId], GETDATE()\n    );\n\nDELETE r\nFROM dbo.TchpQcResult AS r\nWHERE r.QcGarmentId = CAST([TF:TchpQcGarment.QcGarmentId] AS INT)\n  AND (\n        r.SizeRunSizeId <> CAST([TF:TchpQcGarment.SizeRunSizeId] AS INT)\n     OR NOT EXISTS (\n            SELECT 1\n            FROM dbo.TchpQcOrder AS o\n            INNER JOIN dbo.TchpPomSpecLine AS psl\n                ON psl.StyleSpecId = o.StyleSpecId\n            WHERE o.QcOrderId = CAST([TF:TchpQcGarment.QcOrderId] AS INT)\n              AND psl.PomSpecLineId = r.PomSpecLineId\n              AND psl.BaseValue IS NOT NULL\n        )\n  );"
+          "sqlStatement": "IF CAST([TF:TchpQcGarment.QcGarmentId] AS INT) IS NULL\nBEGIN\n    RAISERROR(N'Save the garment first.', 16, 1);\n    RETURN;\nEND\n\nIF CAST([TF:TchpQcGarment.SizeRunSizeId] AS INT) IS NULL\nBEGIN\n    RAISERROR(N'Select Size before reloading POM list.', 16, 1);\n    RETURN;\nEND\n\nIF EXISTS (\n    SELECT 1 FROM dbo.TchpQcGarmentInspection\n    WHERE QcGarmentId = CAST([TF:TchpQcGarment.QcGarmentId] AS INT)\n      AND InspectionStatus = N'STOPPED_CRITICAL'\n)\nBEGIN\n    RAISERROR(N'Critical defect recorded — measurement skipped.', 16, 1);\n    RETURN;\nEND\n\n;WITH src AS (\n    SELECT\n        CAST([TF:TchpQcGarment.QcGarmentId] AS INT) AS QcGarmentId,\n        psl.PomSpecLineId,\n        CAST([TF:TchpQcGarment.SizeRunSizeId] AS INT) AS SizeRunSizeId,\n        CAST(\n            CASE\n                WHEN ISNULL(psl.IsFixed, 0) = 1 THEN psl.BaseValue\n                ELSE psl.BaseValue + ISNULL((\n                    SELECT SUM(gv.GradingDelta)\n                    FROM dbo.TchpGradeValue AS gv\n                    INNER JOIN dbo.TchpSizeRunSize AS srs\n                        ON srs.SizeRunSizeId = gv.SizeRunSizeId\n                    WHERE gv.PomSpecLineId = psl.PomSpecLineId\n                      AND srs.SizeRunId = ss.SizeRunId\n                      AND (\n                            (tgt.SizeOrder > baseSz.SizeOrder\n                             AND srs.SizeOrder > baseSz.SizeOrder\n                             AND srs.SizeOrder <= tgt.SizeOrder)\n                         OR (tgt.SizeOrder < baseSz.SizeOrder\n                             AND srs.SizeOrder >= tgt.SizeOrder\n                             AND srs.SizeOrder < baseSz.SizeOrder)\n                      )\n                ), 0)\n            END AS DECIMAL(10,3)\n        ) AS SpecValue,\n        CAST(COALESCE(psl.Tolerance, bp.Tolerance, 0) AS DECIMAL(10,3)) AS Tolerance\n    FROM dbo.TchpQcOrder AS o\n    INNER JOIN dbo.TchpStyleSpec AS ss\n        ON ss.StyleSpecId = o.StyleSpecId\n    INNER JOIN dbo.TchpPomSpecLine AS psl\n        ON psl.StyleSpecId = ss.StyleSpecId\n    INNER JOIN dbo.TchpSizeRunSize AS baseSz\n        ON baseSz.SizeRunSizeId = ss.BaseSizeDetailId\n    INNER JOIN dbo.TchpSizeRunSize AS tgt\n        ON tgt.SizeRunSizeId = CAST([TF:TchpQcGarment.SizeRunSizeId] AS INT)\n    LEFT JOIN dbo.TchpBodyPart AS bp\n        ON bp.BodyPartId = psl.BodyPartId\n    WHERE o.QcOrderId = CAST([TF:TchpQcGarment.QcOrderId] AS INT)\n      AND psl.BaseValue IS NOT NULL\n)\nMERGE dbo.TchpQcResult AS t\nUSING src\n    ON t.QcGarmentId = src.QcGarmentId\n   AND t.PomSpecLineId = src.PomSpecLineId\nWHEN MATCHED THEN\n    UPDATE SET\n        SizeRunSizeId = src.SizeRunSizeId,\n        SpecValue = src.SpecValue,\n        Tolerance = src.Tolerance,\n        AppModifiedDate = GETDATE(),\n        AppModifiedById = [CurrentUserId]\nWHEN NOT MATCHED THEN\n    INSERT (\n        QcGarmentId, PomSpecLineId, SizeRunSizeId,\n        SpecValue, Tolerance,\n        AppCreatedById, AppCreatedDate\n    )\n    VALUES (\n        src.QcGarmentId, src.PomSpecLineId, src.SizeRunSizeId,\n        src.SpecValue, src.Tolerance,\n        [CurrentUserId], GETDATE()\n    );\n\nDELETE r\nFROM dbo.TchpQcResult AS r\nWHERE r.QcGarmentId = CAST([TF:TchpQcGarment.QcGarmentId] AS INT)\n  AND (\n        r.SizeRunSizeId <> CAST([TF:TchpQcGarment.SizeRunSizeId] AS INT)\n     OR NOT EXISTS (\n            SELECT 1\n            FROM dbo.TchpQcOrder AS o\n            INNER JOIN dbo.TchpPomSpecLine AS psl\n                ON psl.StyleSpecId = o.StyleSpecId\n            WHERE o.QcOrderId = CAST([TF:TchpQcGarment.QcOrderId] AS INT)\n              AND psl.PomSpecLineId = r.PomSpecLineId\n              AND psl.BaseValue IS NOT NULL\n        )\n  );"
         },
         {
           "integrationId": "CMD_Refresh",
@@ -1423,6 +2397,26 @@
           "childCommandIntegrationIds": [
             "CMD_Save",
             "CMD_SyncPOMListFromGrading",
+            "CMD_Refresh"
+          ]
+        },
+        {
+          "integrationId": "CMD_RecalcGarmentInspection",
+          "name": "_Recalc Garment Inspection",
+          "actionType": 42,
+          "isShowOnTopMenu": false,
+          "linkToUI": false,
+          "sqlStatement": "IF CAST([TF:TchpQcGarment.QcGarmentId] AS INT) IS NULL\nBEGIN\n    RAISERROR(N'Save the garment first.', 16, 1);\n    RETURN;\nEND\n\nDECLARE @Gid INT = CAST([TF:TchpQcGarment.QcGarmentId] AS INT);\nDECLARE @Oid INT = CAST([TF:TchpQcGarment.QcOrderId] AS INT);\n\nIF NOT EXISTS (SELECT 1 FROM dbo.TchpQcGarmentInspection WHERE QcGarmentId = @Gid)\n    INSERT INTO dbo.TchpQcGarmentInspection (QcGarmentId, InspectionStatus, AppCreatedDate, AppCreatedById)\n    VALUES (@Gid, N'OPEN', GETDATE(), [CurrentUserId]);\n\nUPDATE d\nSET DefectClass = ISNULL(c.DefectClass, ISNULL(d.DefectClass, N'MINOR')),\n    InspectionTrack = ISNULL(c.InspectionTrack, d.InspectionTrack),\n    AppModifiedDate = GETDATE(),\n    AppModifiedById = [CurrentUserId]\nFROM dbo.TchpQcDefectRecord AS d\nLEFT JOIN dbo.TchpQcDefectCode AS c ON c.DefectCode = d.DefectCode\nWHERE d.QcGarmentId = @Gid;\n\nUPDATE r\nSET Pass = CASE\n        WHEN COALESCE(r.AfterIronValue, r.AfterWashValue, r.BeforeWashValue, r.ProductionValue) IS NULL THEN NULL\n        WHEN ABS(COALESCE(r.AfterIronValue, r.AfterWashValue, r.BeforeWashValue, r.ProductionValue) - r.SpecValue) <= r.Tolerance THEN 1\n        ELSE 0\n    END,\n    DefectClass = CASE\n        WHEN COALESCE(r.AfterIronValue, r.AfterWashValue, r.BeforeWashValue, r.ProductionValue) IS NULL THEN r.DefectClass\n        WHEN ABS(COALESCE(r.AfterIronValue, r.AfterWashValue, r.BeforeWashValue, r.ProductionValue) - r.SpecValue) <= r.Tolerance THEN NULL\n        ELSE N'MAJOR'\n    END,\n    AppModifiedDate = GETDATE(),\n    AppModifiedById = [CurrentUserId]\nFROM dbo.TchpQcResult AS r\nWHERE r.QcGarmentId = @Gid;\n\nDECLARE @Crit BIT = CASE WHEN EXISTS (SELECT 1 FROM dbo.TchpQcDefectRecord WHERE QcGarmentId = @Gid AND DefectClass = N'CRITICAL') THEN 1 ELSE 0 END;\nDECLARE @Maj BIT = CASE WHEN EXISTS (SELECT 1 FROM dbo.TchpQcDefectRecord WHERE QcGarmentId = @Gid AND DefectClass = N'MAJOR')\n    OR EXISTS (SELECT 1 FROM dbo.TchpQcResult WHERE QcGarmentId = @Gid AND Pass = 0) THEN 1 ELSE 0 END;\nDECLARE @Min BIT = CASE WHEN EXISTS (SELECT 1 FROM dbo.TchpQcDefectRecord WHERE QcGarmentId = @Gid AND DefectClass = N'MINOR') THEN 1 ELSE 0 END;\nDECLARE @PomTotal INT, @PomMeasured INT;\nSELECT @PomTotal = COUNT(*), @PomMeasured = SUM(CASE WHEN Pass IS NOT NULL THEN 1 ELSE 0 END)\nFROM dbo.TchpQcResult WHERE QcGarmentId = @Gid;\nSET @PomTotal = ISNULL(@PomTotal, 0);\nSET @PomMeasured = ISNULL(@PomMeasured, 0);\n\nDECLARE @Status NVARCHAR(20);\nDECLARE @Pass BIT;\nDECLARE @Stop NVARCHAR(200);\nIF @Crit = 1\nBEGIN\n    SET @Status = N'STOPPED_CRITICAL';\n    SET @Pass = 0;\n    SET @Stop = N'Critical safety defect — remaining checks skipped';\nEND\nELSE IF @PomTotal > 0 AND @PomMeasured >= @PomTotal\nBEGIN\n    SET @Status = N'COMPLETE';\n    SET @Pass = CASE WHEN @Maj = 1 OR @Min = 1 THEN 0 ELSE 1 END;\n    SET @Stop = NULL;\nEND\nELSE\nBEGIN\n    SET @Status = N'OPEN';\n    SET @Pass = CASE WHEN @Maj = 1 OR @Min = 1 THEN 0 ELSE NULL END;\n    SET @Stop = NULL;\nEND\n\nUPDATE dbo.TchpQcGarmentInspection\nSET InspectionStatus = @Status, CriticalFail = @Crit, MajorFail = @Maj, MinorFail = @Min,\n    StopReason = @Stop, InspectedAt = GETDATE(), InspectorId = [CurrentUserId],\n    AppModifiedDate = GETDATE(), AppModifiedById = [CurrentUserId]\nWHERE QcGarmentId = @Gid;\n\nUPDATE dbo.TchpQcGarment\nSET GarmentPassStatus = @Pass, AppModifiedDate = GETDATE(), AppModifiedById = [CurrentUserId]\nWHERE QcGarmentId = @Gid;\n\nIF @Oid IS NULL RETURN;\n\nDECLARE @Lot INT = ISNULL((SELECT LotQuantity FROM dbo.TchpQcOrder WHERE QcOrderId = @Oid), 0);\nDECLARE @Sample INT = CASE WHEN @Lot <= 50 THEN 8 WHEN @Lot <= 90 THEN 13 WHEN @Lot <= 150 THEN 20 WHEN @Lot <= 280 THEN 32 WHEN @Lot <= 500 THEN 50 WHEN @Lot <= 1200 THEN 80 WHEN @Lot <= 3200 THEN 125 ELSE 200 END;\nDECLARE @AcC INT = 0;\nDECLARE @AcM INT = CASE WHEN @Lot <= 90 THEN 0 WHEN @Lot <= 280 THEN 1 WHEN @Lot <= 1200 THEN 3 WHEN @Lot <= 3200 THEN 5 ELSE 7 END;\nDECLARE @AcN INT = CASE WHEN @Lot <= 50 THEN 0 WHEN @Lot <= 150 THEN 1 WHEN @Lot <= 280 THEN 2 WHEN @Lot <= 1200 THEN 5 WHEN @Lot <= 3200 THEN 7 ELSE 10 END;\nIF NOT EXISTS (SELECT 1 FROM dbo.TchpQcOrderAql WHERE QcOrderId = @Oid)\n    INSERT INTO dbo.TchpQcOrderAql (QcOrderId, AcCritical, AppCreatedDate) VALUES (@Oid, 0, GETDATE());\n\nDECLARE @FailC INT, @FailM INT, @FailN INT, @Sampled INT, @Completed INT, @CertFail BIT;\nSELECT @Sampled = COUNT(*),\n    @Completed = SUM(CASE WHEN i.InspectionStatus IN (N'COMPLETE', N'STOPPED_CRITICAL') THEN 1 ELSE 0 END),\n    @FailC = SUM(CASE WHEN i.CriticalFail = 1 THEN 1 ELSE 0 END),\n    @FailM = SUM(CASE WHEN i.MajorFail = 1 THEN 1 ELSE 0 END),\n    @FailN = SUM(CASE WHEN i.MinorFail = 1 THEN 1 ELSE 0 END)\nFROM dbo.TchpQcGarment AS g\nLEFT JOIN dbo.TchpQcGarmentInspection AS i ON i.QcGarmentId = g.QcGarmentId\nWHERE g.QcOrderId = @Oid;\nSET @Sampled = ISNULL(@Sampled, 0); SET @Completed = ISNULL(@Completed, 0);\nSET @FailC = ISNULL(@FailC, 0); SET @FailM = ISNULL(@FailM, 0); SET @FailN = ISNULL(@FailN, 0);\nSET @CertFail = CASE WHEN EXISTS (SELECT 1 FROM dbo.TchpQcOrderCert WHERE QcOrderId = @Oid AND IsRequired = 1 AND ISNULL(Result, N'PENDING') NOT IN (N'PASS', N'NA')) THEN 1 ELSE 0 END;\nDECLARE @OStatus NVARCHAR(20); DECLARE @Aql NVARCHAR(20);\nIF @CertFail = 1 OR @FailC > @AcC OR @FailM > @AcM OR @FailN > @AcN BEGIN SET @OStatus = N'FAILED'; SET @Aql = N'FAILED'; END\nELSE IF @Completed >= @Sample AND @Sample > 0 BEGIN SET @OStatus = N'PASSED'; SET @Aql = N'PASSED'; END\nELSE IF @Sampled > 0 BEGIN SET @OStatus = N'IN_PROGRESS'; SET @Aql = N'PENDING'; END\nELSE BEGIN SET @OStatus = N'OPEN'; SET @Aql = N'PENDING'; END\nUPDATE dbo.TchpQcOrderAql SET AcCritical = @AcC, AcMajor = @AcM, AcMinor = @AcN, FailCriticalCount = @FailC, FailMajorCount = @FailM, FailMinorCount = @FailN, SampledCount = @Sampled, CompletedCount = @Completed, CertFail = @CertFail, AqlPassStatus = @Aql, AppModifiedDate = GETDATE(), AppModifiedById = [CurrentUserId] WHERE QcOrderId = @Oid;\nUPDATE dbo.TchpQcOrder SET SampleSize = @Sample, OrderStatus = @OStatus, AppModifiedDate = GETDATE(), AppModifiedById = [CurrentUserId] WHERE QcOrderId = @Oid;"
+        },
+        {
+          "integrationId": "CMD_CompleteInspection",
+          "name": "Complete Inspection",
+          "actionType": 200,
+          "isShowOnTopMenu": true,
+          "linkToUI": true,
+          "childCommandIntegrationIds": [
+            "CMD_Save",
+            "CMD_RecalcGarmentInspection",
             "CMD_Refresh"
           ]
         }
@@ -1530,7 +2524,7 @@
                                 "children": [
                                   {
                                     "type": "row",
-                                    "sort": 2,
+                                    "sort": 1,
                                     "children": [
                                       {
                                         "type": "field",
@@ -1545,6 +2539,42 @@
                                         "columnName": "GarmentPassStatus"
                                       }
                                     ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Major",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 13,
+                                        "tableName": "TchpQcGarmentInspection",
+                                        "columnName": "MajorFail"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 3,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Minor",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 13,
+                                        "tableName": "TchpQcGarmentInspection",
+                                        "columnName": "MinorFail"
+                                      }
+                                    ]
                                   }
                                 ]
                               },
@@ -1555,7 +2585,63 @@
                                 "defaultNbColumns": 1,
                                 "colSpan": 6,
                                 "backgroundColor": "#ffffff",
-                                "textColor": "#000000"
+                                "textColor": "#000000",
+                                "children": [
+                                  {
+                                    "type": "row",
+                                    "sort": 1,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Inspection Status",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpQcGarmentInspection",
+                                        "columnName": "InspectionStatus"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 2,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Critical",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 13,
+                                        "tableName": "TchpQcGarmentInspection",
+                                        "columnName": "CriticalFail"
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "row",
+                                    "sort": 3,
+                                    "children": [
+                                      {
+                                        "type": "field",
+                                        "displayName": "Stop Reason",
+                                        "sort": 1,
+                                        "colSpan": 24,
+                                        "backgroundColor": "#ffffff",
+                                        "textColor": "#000000",
+                                        "isBindingToDataField": true,
+                                        "widgetDisplayType": 2,
+                                        "tableName": "TchpQcGarmentInspection",
+                                        "columnName": "StopReason"
+                                      }
+                                    ]
+                                  }
+                                ]
                               }
                             ]
                           }
@@ -1582,8 +2668,17 @@
                             "children": [
                               {
                                 "type": "commandButton",
-                                "displayName": "Reload POM From Grading",
+                                "displayName": "Complete Inspection",
                                 "sort": 1,
+                                "colSpan": 4,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "commandName": "Complete Inspection"
+                              },
+                              {
+                                "type": "commandButton",
+                                "displayName": "Reload POM From Grading",
+                                "sort": 2,
                                 "colSpan": 4,
                                 "backgroundColor": "#ffffff",
                                 "textColor": "#000000",
@@ -1597,10 +2692,28 @@
                             "children": [
                               {
                                 "type": "grid",
+                                "displayName": "Safety & Visual Defects",
+                                "sort": 1,
+                                "colSpan": 24,
+                                "height": 220,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "isBindingToDataField": true,
+                                "transcationUnitLevel": 2,
+                                "tableName": "TchpQcDefectRecord"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "row",
+                            "sort": 3,
+                            "children": [
+                              {
+                                "type": "grid",
                                 "displayName": "POM Results",
                                 "sort": 1,
                                 "colSpan": 24,
-                                "height": 400,
+                                "height": 360,
                                 "backgroundColor": "#ffffff",
                                 "textColor": "#000000",
                                 "isBindingToDataField": true,
@@ -1638,6 +2751,15 @@
           }
         ],
         "childUnits": [
+          {
+            "tableName": "View_TchpProductQcSummary",
+            "displayName": "QC Summary",
+            "gridDisplayType": 1,
+            "isReadOnly": true,
+            "isSynchToDatabaseTable": false,
+            "isDisableAddButton": true,
+            "isDisableDeleteButton": true
+          },
           {
             "tableName": "TchpQcOrder",
             "displayName": "QC Orders",
@@ -1705,6 +2827,80 @@
           "controlType": 2,
           "isVisible": true,
           "sortOrder": 40
+        },
+        {
+          "tableName": "View_TchpProductQcSummary",
+          "columnName": "StyleSpecId",
+          "displayName": "Style Spec Id",
+          "controlType": 2,
+          "isVisible": false,
+          "isReadOnly": true,
+          "isPrimaryKey": true,
+          "isLinkToParentPrimaryKey": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "View_TchpProductQcSummary",
+          "columnName": "OrderCount",
+          "displayName": "QC Orders",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 20
+        },
+        {
+          "tableName": "View_TchpProductQcSummary",
+          "columnName": "PassedOrderCount",
+          "displayName": "Passed",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 30
+        },
+        {
+          "tableName": "View_TchpProductQcSummary",
+          "columnName": "FailedOrderCount",
+          "displayName": "Failed",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 40
+        },
+        {
+          "tableName": "View_TchpProductQcSummary",
+          "columnName": "OpenOrderCount",
+          "displayName": "Open",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 50
+        },
+        {
+          "tableName": "View_TchpProductQcSummary",
+          "columnName": "FailCriticalCount",
+          "displayName": "Fail Critical",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 60
+        },
+        {
+          "tableName": "View_TchpProductQcSummary",
+          "columnName": "FailMajorCount",
+          "displayName": "Fail Major",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 70
+        },
+        {
+          "tableName": "View_TchpProductQcSummary",
+          "columnName": "FailMinorCount",
+          "displayName": "Fail Minor",
+          "controlType": 20,
+          "isVisible": true,
+          "isReadOnly": true,
+          "sortOrder": 80
         },
         {
           "tableName": "TchpQcOrder",
@@ -2183,6 +3379,24 @@
                           {
                             "type": "row",
                             "sort": 1,
+                            "children": [
+                              {
+                                "type": "grid",
+                                "displayName": "QC Summary",
+                                "sort": 1,
+                                "colSpan": 24,
+                                "height": 90,
+                                "backgroundColor": "#ffffff",
+                                "textColor": "#000000",
+                                "isBindingToDataField": true,
+                                "transcationUnitLevel": 2,
+                                "tableName": "View_TchpProductQcSummary"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "row",
+                            "sort": 2,
                             "children": [
                               {
                                 "type": "grid",
