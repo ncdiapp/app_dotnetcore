@@ -54,12 +54,21 @@ export interface CursorAgentSessionSummary {
   CreatedAt: string;
   UpdatedAt: string;
   UserRequest: string;
+  DisplayTitle?: string;
   Status: string;
   CursorAgentId?: string;
   SaasApplicationId?: number;
   DataSourceRegisterId?: number;
+  SkillKey?: string;
   WorkspaceRelativePath?: string;
   FinalResponse?: string;
+  IsArchived?: boolean;
+  SortOrder?: number;
+}
+
+export function cursorChatTitle(item?: { DisplayTitle?: string; UserRequest?: string } | null): string {
+  const text = (item?.DisplayTitle || item?.UserRequest || '').trim();
+  return text || 'Untitled chat';
 }
 
 export interface CursorAgentWorkspaceFile {
@@ -89,7 +98,7 @@ class CursorAgentService {
       headers: getHeaders(),
       body: JSON.stringify({ userMessage, saasApplicationId, dataSourceRegisterId, conversationHistory, skillKey }),
     });
-    if (!response.ok) throw new Error(`Failed to start Cursor Agent: ${response.status}`);
+    if (!response.ok) throw new Error(`Failed to start App Data Integration Agent: ${response.status}`);
     const result = await response.json();
     const err = result?.ValidationResult?.Items?.find((i: any) => i.Type === 'Error' || i.ItemType === 1);
     if (err?.Message) throw new Error(err.Message);
@@ -100,14 +109,20 @@ class CursorAgentService {
     return sessionId;
   }
 
-  async followUp(userMessage: string, handlers: CursorAgentEventHandlers): Promise<void> {
+  async followUp(
+    userMessage: string,
+    handlers: CursorAgentEventHandlers,
+    skillKey?: string,
+    saasApplicationId?: number,
+    dataSourceRegisterId?: number
+  ): Promise<void> {
     if (!this.currentSessionId) throw new Error('No active session');
     this.stopPolling();
     const url = `${endpoints.BASE_URL}/webapi/CursorAgent/FollowUp`;
     const response = await fetch(url, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ sessionId: this.currentSessionId, userMessage }),
+      body: JSON.stringify({ sessionId: this.currentSessionId, userMessage, skillKey, saasApplicationId, dataSourceRegisterId }),
     });
     if (!response.ok) throw new Error(`Follow-up failed: ${response.status}`);
     const result = await response.json();
@@ -158,9 +173,13 @@ class CursorAgentService {
   }
 
   private startPolling(sessionId: string, handlers: CursorAgentEventHandlers): void {
+    this.stopPolling();
     let consecutiveFailures = 0;
     const MAX_FAILURES = 10;
-    this.pollTimer = setInterval(async () => {
+    let inFlight = false;
+    const tick = async () => {
+      if (inFlight) return;
+      inFlight = true;
       try {
         const url = `${endpoints.BASE_URL}/webapi/CursorAgent/PollEvents?sessionId=${sessionId || ''}`;
         const resp = await fetch(url, { headers: getHeaders() });
@@ -179,19 +198,27 @@ class CursorAgentService {
           handlers.onError('Session not found on server. The server may have restarted — try Resume from history.');
           return;
         }
-        for (const evt of (data?.Events ?? [])) {
-          if (evt.EventType === 'step' && evt.Step) handlers.onStep(evt.Step);
-          if (evt.EventType === 'token' && evt.Token) handlers.onToken(evt.Token);
-          if (evt.EventType === 'file' && evt.File) handlers.onFile?.(evt.File);
-          if (evt.EventType === 'gate' && evt.Gate) handlers.onGate(evt.Gate);
-          if (evt.EventType === 'done') {
+        for (const evt of (data?.Events ?? data?.events ?? [])) {
+          const eventType = evt.EventType ?? evt.eventType;
+          const token = evt.Token ?? evt.token;
+          const step = evt.Step ?? evt.step;
+          const file = evt.File ?? evt.file;
+          const gate = evt.Gate ?? evt.gate;
+          const done = evt.Done ?? evt.done;
+          const error = evt.Error ?? evt.error;
+          if (eventType === 'step' && step) handlers.onStep(step);
+          if (eventType === 'token' && token) handlers.onToken(token);
+          if (eventType === 'file' && file) handlers.onFile?.(file);
+          if (eventType === 'gate' && gate) handlers.onGate(gate);
+          if (eventType === 'done') {
             this.stopPolling();
-            handlers.onDone(evt.Done ?? { FinalResponse: '', UpdatedHistory: [], WorkspaceFiles: [] });
+            const final = done?.FinalResponse ?? done?.finalResponse ?? '';
+            handlers.onDone(done ?? { FinalResponse: final, UpdatedHistory: [], WorkspaceFiles: [] });
             return;
           }
-          if (evt.EventType === 'error') {
+          if (eventType === 'error') {
             this.stopPolling();
-            handlers.onError(evt.Error ?? 'Unknown error');
+            handlers.onError(error ?? 'Unknown error');
             return;
           }
         }
@@ -201,8 +228,12 @@ class CursorAgentService {
           this.stopPolling();
           handlers.onError('Lost connection to server after multiple retries.');
         }
+      } finally {
+        inFlight = false;
       }
-    }, 500);
+    };
+    this.pollTimer = setInterval(tick, 500);
+    void tick();
   }
 
   private stopPolling(): void {
@@ -241,6 +272,54 @@ export async function getRecentCursorSessions(limit = 30): Promise<CursorAgentSe
   if (!resp.ok) return [];
   const data = await resp.json();
   return data?.Object ?? [];
+}
+
+export async function listAllCursorSessions(): Promise<CursorAgentSessionSummary[]> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorAgent/ListAllSessions`;
+  const resp = await fetch(url, { headers: getHeaders() });
+  if (!resp.ok) return [];
+  const data = await resp.json();
+  return data?.Object ?? [];
+}
+
+export async function renameCursorSession(sessionId: string, title: string): Promise<void> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorAgent/RenameSession`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ sessionId, title }),
+  });
+  if (!response.ok) throw new Error('Failed to rename chat');
+}
+
+export async function archiveCursorSessions(sessionIds: string[], archived: boolean): Promise<void> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorAgent/ArchiveSessions`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ sessionIds, archived }),
+  });
+  if (!response.ok) throw new Error('Failed to archive chats');
+}
+
+export async function deleteCursorSessions(sessionIds: string[]): Promise<void> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorAgent/DeleteSessions`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ sessionIds }),
+  });
+  if (!response.ok) throw new Error('Failed to delete chats');
+}
+
+export async function reorderCursorSessions(sessionIds: string[]): Promise<void> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorAgent/ReorderSessions`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ sessionIds }),
+  });
+  if (!response.ok) throw new Error('Failed to reorder chats');
 }
 
 export async function getCursorSession(sessionId: string): Promise<any> {

@@ -141,6 +141,19 @@ namespace App.BL.CursorAgent
                 McpTokenToSession[data.McpToken] = data.SessionId;
         }
 
+        public static void Remove(string sessionId)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId)) return;
+            SessionData removed;
+            if (!Sessions.TryRemove(sessionId, out removed) || removed == null) return;
+            try { removed.RunCts?.Cancel(); } catch { }
+            if (!string.IsNullOrWhiteSpace(removed.McpToken))
+            {
+                string ignored;
+                McpTokenToSession.TryRemove(removed.McpToken, out ignored);
+            }
+        }
+
         private static void CleanExpired()
         {
             var cutoff = DateTime.UtcNow.AddHours(-6);

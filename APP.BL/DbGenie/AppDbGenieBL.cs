@@ -55,7 +55,10 @@ namespace App.BL.DbGenie
         /// <summary>
         /// Returns the SQL skill prompt: DB-stored version (editable via AI Skill Mgt) takes priority;
         /// falls back to the embedded sqlskill.md if no active DB record is found.
+        /// Shared with App Data Integration Agent (Other skills).
         /// </summary>
+        public static string GetComposedSqlSkillPrompt() => GetSqlSkillPrompt();
+
         private static string GetSqlSkillPrompt()
         {
             try

@@ -30,6 +30,9 @@ namespace APP.Components.EntityDto
     {
         public string SessionId { get; set; }
         public string UserMessage { get; set; }
+        public string SkillKey { get; set; }
+        public int? SaasApplicationId { get; set; }
+        public int? DataSourceRegisterId { get; set; }
     }
 
     public class CursorAgentCancelRequestDto
@@ -61,6 +64,7 @@ namespace APP.Components.EntityDto
     {
         public string Role { get; set; }
         public string Content { get; set; }
+        public string Timestamp { get; set; }
     }
 
     public class CursorAgentStartResultDto
@@ -133,6 +137,7 @@ namespace APP.Components.EntityDto
         public DateTime CreatedAt { get; set; }
         public DateTime UpdatedAt { get; set; }
         public string UserRequest { get; set; }
+        public string DisplayTitle { get; set; }
         public string Status { get; set; }
         public string CursorAgentId { get; set; }
         public int? SaasApplicationId { get; set; }
@@ -140,6 +145,30 @@ namespace APP.Components.EntityDto
         public string SkillKey { get; set; }
         public string WorkspaceRelativePath { get; set; }
         public string FinalResponse { get; set; }
+        public bool IsArchived { get; set; }
+        public int SortOrder { get; set; }
+    }
+
+    public class CursorAgentRenameSessionRequestDto
+    {
+        public string SessionId { get; set; }
+        public string Title { get; set; }
+    }
+
+    public class CursorAgentArchiveSessionsRequestDto
+    {
+        public List<string> SessionIds { get; set; }
+        public bool Archived { get; set; }
+    }
+
+    public class CursorAgentDeleteSessionsRequestDto
+    {
+        public List<string> SessionIds { get; set; }
+    }
+
+    public class CursorAgentReorderSessionsRequestDto
+    {
+        public List<string> SessionIds { get; set; }
     }
 
     public class CursorAgentSessionFullDto : CursorAgentSessionSummaryDto

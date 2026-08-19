@@ -178,11 +178,57 @@ public class CursorAgentController : SecureBaseController
     {
         var result = new OperationCallResult<System.Collections.Generic.List<CursorAgentSessionSummaryDto>>();
         if (!EnsureAdmin(result)) return result;
-        int? userId = null;
-        var identity = CurrentIdentity();
-        if (identity.HasValue && identity.Value.UserId != null)
-            userId = Convert.ToInt32(identity.Value.UserId);
-        result.Object = CursorAgentSessionBL.ListRecent(limit, userId);
+        result.Object = CursorAgentSessionBL.ListRecent(limit, CurrentUserId());
+        return result;
+    }
+
+    [HttpGet]
+    public OperationCallResult<System.Collections.Generic.List<CursorAgentSessionSummaryDto>> ListAllSessions()
+    {
+        var result = new OperationCallResult<System.Collections.Generic.List<CursorAgentSessionSummaryDto>>();
+        if (!EnsureAdmin(result)) return result;
+        result.Object = CursorAgentSessionBL.ListAll(CurrentUserId());
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<bool> RenameSession([FromBody] CursorAgentRenameSessionRequestDto request)
+    {
+        var result = new OperationCallResult<bool>();
+        if (!EnsureAdmin(result)) return result;
+        if (request == null || string.IsNullOrWhiteSpace(request.SessionId))
+        {
+            Fail(result, "CursorAgent_Rename", "SessionId is required.");
+            return result;
+        }
+        result.Object = CursorAgentSessionBL.Rename(request.SessionId, request.Title);
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<int> ArchiveSessions([FromBody] CursorAgentArchiveSessionsRequestDto request)
+    {
+        var result = new OperationCallResult<int>();
+        if (!EnsureAdmin(result)) return result;
+        result.Object = CursorAgentSessionBL.SetArchived(request?.SessionIds, request != null && request.Archived);
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<int> DeleteSessions([FromBody] CursorAgentDeleteSessionsRequestDto request)
+    {
+        var result = new OperationCallResult<int>();
+        if (!EnsureAdmin(result)) return result;
+        result.Object = CursorAgentSessionBL.DeleteMany(request?.SessionIds);
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<bool> ReorderSessions([FromBody] CursorAgentReorderSessionsRequestDto request)
+    {
+        var result = new OperationCallResult<bool>();
+        if (!EnsureAdmin(result)) return result;
+        result.Object = CursorAgentSessionBL.Reorder(request?.SessionIds);
         return result;
     }
 
@@ -276,6 +322,14 @@ public class CursorAgentController : SecureBaseController
         var current = ServerContext.Instance.CurrnetClientIdentity;
         if (current is AppClientIdentity)
             return (AppClientIdentity)current;
+        return null;
+    }
+
+    private static int? CurrentUserId()
+    {
+        var identity = CurrentIdentity();
+        if (identity.HasValue && identity.Value.UserId != null)
+            return Convert.ToInt32(identity.Value.UserId);
         return null;
     }
 

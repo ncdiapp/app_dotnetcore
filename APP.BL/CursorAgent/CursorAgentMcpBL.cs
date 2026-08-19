@@ -93,7 +93,7 @@ namespace App.BL.CursorAgent
             var args = p?["arguments"] as JObject ?? new JObject();
             var session = CursorAgentContext.Current;
             if (session == null)
-                return ToolText("No Cursor Agent session is bound to this MCP token.", true);
+                return ToolText("No App Data Integration Agent session is bound to this MCP token.", true);
 
             RestoreIdentity(session);
 
@@ -357,7 +357,7 @@ namespace App.BL.CursorAgent
             var tools = new List<object>
             {
                 Tool("get_session_context", "Current Application, DataSource, skill, and workspace path."),
-                Tool("list_skills", "List Cursor Agent catalog and saved skills."),
+                Tool("list_skills", "List App Data Integration Agent catalog and other skills."),
                 Tool("get_skill", "Load a composed saved skill by name.", Prop("name", "string", true)),
                 Tool("list_datasources", "List tenant registered databases."),
                 Tool("get_table_schema", "Columns/PK for a table.",

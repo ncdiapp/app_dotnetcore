@@ -162,6 +162,8 @@ export const AUTHENTICATED_ROUTES: SharedRouteDef[] = [
   { path: 'app-builder-agent/:param', element: <AppBuilderAgent /> },
   { path: 'app-builder-agent', element: <AppBuilderAgent /> },
 
+  { path: 'app-data-integration-agent/:param', element: <CursorAgent /> },
+  { path: 'app-data-integration-agent', element: <CursorAgent /> },
   { path: 'cursor-agent/:param', element: <CursorAgent /> },
   { path: 'cursor-agent', element: <CursorAgent /> },
 

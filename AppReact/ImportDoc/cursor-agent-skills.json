@@ -23,7 +23,7 @@
       "exampleFiles": [
         "ImportAppConfig/sample.appConfigPack.json"
       ],
-      "extraPrompt": "Mode: App Config Builder. Follow PROMPT.md as the contract. Write packs/<name>.appConfigPack.json via write_workspace_file. You may call validate_config_pack / preview_config_pack. Do not call propose_import_pack — the user will apply the pack in Import Config. Never invent numeric TransactionId / SearchId / EntityId. sample.appConfigPack.json is EXAMPLE only."
+      "extraPrompt": "Mode: App Config Builder.\nConversation first: do NOT write an AppConfigPack on the first reply. Ask 5–10 clarifying questions (Erp_ table names, Order vs OrderLine vs Product, list vs detail screens, required fields, menus, whether to create DDL now) and wait for answers.\nAfter the user confirms: Follow PROMPT.md, write packs/<name>.appConfigPack.json via write_workspace_file, then validate_config_pack / preview_config_pack.\nDo not call propose_import_pack and do not import. End with the pack path so the user can click Start Build in this chat.\nNever invent numeric TransactionId / SearchId / EntityId. sample.appConfigPack.json is EXAMPLE only."
     },
     {
       "id": "plm-dw",

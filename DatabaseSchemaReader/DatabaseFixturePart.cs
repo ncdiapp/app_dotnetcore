@@ -295,6 +295,29 @@ namespace DatabaseSchemaMrg
             return Regex.IsMatch(queryText, pattern, RegexOptions.IgnoreCase);
         }
 
+        /// <summary>
+        /// Dataset / DDL queries often use @p0, @p1 as runtime placeholders.
+        /// Validation runs the SQL without those values, so declare dummy parameters.
+        /// </summary>
+        private List<DbParameter> CreateDummyParametersForQuery(string queryText)
+        {
+            var list = new List<DbParameter>();
+            if (string.IsNullOrWhiteSpace(queryText))
+                return list;
+
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (Match match in Regex.Matches(queryText, @"(?<!@)@([A-Za-z_][A-Za-z0-9_]*)"))
+            {
+                var name = match.Groups[1].Value;
+                if (string.IsNullOrEmpty(name) || !names.Add(name))
+                    continue;
+                var parameter = CreateParameter(name);
+                parameter.Value = DBNull.Value;
+                list.Add(parameter);
+            }
+            return list;
+        }
+
         public string ValidateQueryText(string queryText)
         {
             string errorMessage = string.Empty;
@@ -381,7 +404,7 @@ namespace DatabaseSchemaMrg
 
 
 
-                    this.ExecuteNonQueryResult(queryText, new List<System.Data.Common.DbParameter>());
+                    this.ExecuteNonQueryResult(queryText, CreateDummyParametersForQuery(queryText));
 
                 }
                 catch (Exception ex)

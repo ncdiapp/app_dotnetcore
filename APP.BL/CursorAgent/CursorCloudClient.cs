@@ -86,9 +86,22 @@ namespace App.BL.CursorAgent
             return new CreateResult
             {
                 AgentId = agentId,
-                RunId = (string)(parsed["run"]?["id"] ?? parsed["id"]),
+                RunId = ParseRunId(parsed),
                 Raw = json
             };
+        }
+
+        private static string ParseRunId(JObject parsed)
+        {
+            if (parsed == null) return null;
+            var id = (string)(parsed["run"]?["id"]
+                ?? parsed["runId"]
+                ?? parsed["latestRunId"]
+                ?? parsed["id"]);
+            if (string.IsNullOrWhiteSpace(id)) return null;
+            if (id.StartsWith("bc-", StringComparison.OrdinalIgnoreCase))
+                return (string)(parsed["run"]?["id"] ?? parsed["latestRunId"] ?? parsed["runId"]);
+            return id;
         }
 
         public static async Task CancelAsync(string agentId, string runId, CancellationToken ct)
@@ -145,7 +158,7 @@ namespace App.BL.CursorAgent
         public static async Task EnsureIdleAsync(string agentId, string latestRunId, CancellationToken ct)
         {
             if (string.IsNullOrWhiteSpace(agentId)) return;
-            await CancelAsync(agentId, latestRunId, ct).ConfigureAwait(false);
+            _ = latestRunId;
             var runs = await ListRunsAsync(agentId, ct).ConfigureAwait(false);
             foreach (var run in runs)
             {
@@ -231,23 +244,28 @@ namespace App.BL.CursorAgent
                             }
                             if (line.Length == 0)
                             {
-                                if (eventName != null && data.Length > 0)
-                                {
-                                    JObject payload;
-                                    try { payload = JObject.Parse(data.ToString()); }
-                                    catch { payload = new JObject { ["raw"] = data.ToString() }; }
-                                    onEvent(eventName, payload);
-                                    if (string.Equals(eventName, "done", StringComparison.OrdinalIgnoreCase) ||
-                                        string.Equals(eventName, "error", StringComparison.OrdinalIgnoreCase))
-                                        return;
-                                }
+                                if (DispatchSse(eventName, data.ToString(), onEvent))
+                                    return;
                                 eventName = null;
                                 data.Clear();
                             }
                         }
+                        DispatchSse(eventName, data.ToString(), onEvent);
                     }
                 }
             }
+        }
+
+        private static bool DispatchSse(string eventName, string data, Action<string, JObject> onEvent)
+        {
+            if (string.IsNullOrWhiteSpace(eventName) || string.IsNullOrWhiteSpace(data) || onEvent == null)
+                return false;
+            JObject payload;
+            try { payload = JObject.Parse(data); }
+            catch { payload = new JObject { ["raw"] = data }; }
+            onEvent(eventName, payload);
+            return string.Equals(eventName, "done", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(eventName, "error", StringComparison.OrdinalIgnoreCase);
         }
 
         private static async Task<string> SendAsync(HttpMethod method, string path, JObject body, CancellationToken ct)

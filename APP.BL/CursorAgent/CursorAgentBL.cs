@@ -27,7 +27,7 @@ namespace App.BL.CursorAgent
             CursorAgentIdentity.Capture(live, identity);
             live.WorkspaceRelativePath = live.SessionId;
             live.ConversationHistory = request.ConversationHistory ?? new List<CursorAgentMessageDto>();
-            live.ConversationHistory.Add(new CursorAgentMessageDto { Role = "user", Content = request.UserMessage });
+            live.ConversationHistory.Add(new CursorAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
             CursorWorkspaceBL.EnsureSessionDir(live.WorkspaceRelativePath, live.CompanyId);
             CursorAgentSessionBL.SaveNew(live, request.UserMessage);
 
@@ -57,8 +57,18 @@ namespace App.BL.CursorAgent
             if (string.IsNullOrWhiteSpace(live.CursorAgentId))
                 throw new InvalidOperationException("Cursor agent has not been created for this session yet.");
 
-            live.ConversationHistory.Add(new CursorAgentMessageDto { Role = "user", Content = request.UserMessage });
-            live.RunCts?.Cancel();
+            if (!string.IsNullOrWhiteSpace(request.SkillKey))
+                CursorAgentSkillCatalogBL.ApplyToSession(live, request.SkillKey);
+            if (request.SaasApplicationId.HasValue && request.SaasApplicationId.Value > 0)
+                live.SaasApplicationId = request.SaasApplicationId;
+            if (request.DataSourceRegisterId.HasValue)
+                live.DataSourceRegisterId = request.DataSourceRegisterId > 0 ? request.DataSourceRegisterId : null;
+
+            live.ConversationHistory.Add(new CursorAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
+            if (live.RunCts != null && !live.RunCts.IsCancellationRequested)
+            {
+                try { live.RunCts.Cancel(); } catch { }
+            }
             live.RunCts = new CancellationTokenSource();
             var ct = live.RunCts.Token;
             var sessionId = live.SessionId;
@@ -133,24 +143,37 @@ namespace App.BL.CursorAgent
             try
             {
                 CursorAgentSessionStore.SessionData live;
-                if (!CursorAgentSessionStore.TryGet(sessionId, out live)) return;
+                if (!CursorAgentSessionStore.TryGet(sessionId, out live))
+                {
+                    CursorAgentSessionStore.Enqueue(sessionId, new CursorAgentEventDto
+                    {
+                        EventType = "error",
+                        Error = "Session not found on server. Try Resume or start a new chat."
+                    });
+                    return;
+                }
                 CursorAgentIdentity.Restore(live);
                 await CursorCloudClient.EnsureIdleAsync(live.CursorAgentId, live.LatestRunId, ct).ConfigureAwait(false);
                 var mcp = CursorAgentMcpBL.McpServerSpec(CursorAgentConfig.McpPublicBaseUrl, live.McpToken);
+                var prompt = userMessage;
+                if (!string.IsNullOrWhiteSpace(live.SkillKey))
+                    prompt = "Active skill: " + live.SkillKey + "\n\n" + userMessage;
                 CursorCloudClient.CreateResult created;
                 try
                 {
-                    created = await CursorCloudClient.FollowUpAsync(live.CursorAgentId, userMessage, mcp, ct)
+                    created = await CursorCloudClient.FollowUpAsync(live.CursorAgentId, prompt, mcp, ct)
                         .ConfigureAwait(false);
                 }
                 catch (Exception ex) when (CursorCloudClient.IsBusyError(ex))
                 {
                     await CursorCloudClient.EnsureIdleAsync(live.CursorAgentId, live.LatestRunId, ct).ConfigureAwait(false);
                     await Task.Delay(2000, ct).ConfigureAwait(false);
-                    created = await CursorCloudClient.FollowUpAsync(live.CursorAgentId, userMessage, mcp, ct)
+                    created = await CursorCloudClient.FollowUpAsync(live.CursorAgentId, prompt, mcp, ct)
                         .ConfigureAwait(false);
                 }
                 live.LatestRunId = created.RunId;
+                if (string.IsNullOrWhiteSpace(live.LatestRunId))
+                    throw new InvalidOperationException("Follow-up did not return a run id.");
                 CursorAgentSessionBL.Update(live, "InProgress", null, null);
                 await StreamAsync(live, ct).ConfigureAwait(false);
             }
@@ -164,22 +187,36 @@ namespace App.BL.CursorAgent
             }
         }
 
+        private class StreamCapture
+        {
+            public string Error;
+            public bool SawSimplifiedText;
+        }
+
         private static async Task StreamAsync(CursorAgentSessionStore.SessionData live, CancellationToken ct)
         {
             var assistant = new System.Text.StringBuilder();
+            var capture = new StreamCapture();
             try
             {
                 await CursorCloudClient.StreamRunAsync(live.CursorAgentId, live.LatestRunId, (evt, payload) =>
                 {
-                    HandleStreamEvent(live, assistant, evt, payload);
+                    HandleStreamEvent(live, assistant, evt, payload, capture);
                 }, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (CursorCloudClient.IsStreamGone(ex) && !ct.IsCancellationRequested)
             {
+            }
+
+            if (assistant.Length == 0 && !ct.IsCancellationRequested)
+            {
                 var recovered = await RecoverFinishedRunTextAsync(live, ct).ConfigureAwait(false);
-                if (!string.IsNullOrEmpty(recovered) && assistant.Length == 0)
+                if (!string.IsNullOrEmpty(recovered))
                     assistant.Append(recovered);
             }
+
+            if (!string.IsNullOrEmpty(capture.Error) && assistant.Length == 0)
+                throw new InvalidOperationException(capture.Error);
 
             try
             {
@@ -188,7 +225,7 @@ namespace App.BL.CursorAgent
             catch { }
 
             var final = CursorWorkspaceBL.RewriteCloudPaths(assistant.ToString(), live.WorkspaceRelativePath, live.CompanyId);
-            live.ConversationHistory.Add(new CursorAgentMessageDto { Role = "assistant", Content = final });
+            live.ConversationHistory.Add(new CursorAgentMessageDto { Role = "assistant", Content = final, Timestamp = DateTime.UtcNow.ToString("o") });
             var files = CursorWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
                 .Where(f => !f.IsDirectory)
                 .Select(f => f.RelativePath)
@@ -210,29 +247,44 @@ namespace App.BL.CursorAgent
             CursorAgentSessionStore.SessionData live,
             System.Text.StringBuilder assistant,
             string evt,
-            Newtonsoft.Json.Linq.JObject payload)
+            Newtonsoft.Json.Linq.JObject payload,
+            StreamCapture capture)
         {
-            if (string.Equals(evt, "assistant", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(evt, "error", StringComparison.OrdinalIgnoreCase))
             {
-                var text = (string)payload["text"];
-                if (!string.IsNullOrEmpty(text))
+                capture.Error = (string)payload?["message"] ?? (string)payload?["code"] ?? "Cursor run error";
+                return;
+            }
+            if (string.Equals(evt, "interaction_update", StringComparison.OrdinalIgnoreCase))
+            {
+                var type = (string)payload?["type"];
+                if (string.Equals(type, "thinking-delta", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(type, "thinking", StringComparison.OrdinalIgnoreCase))
                 {
-                    assistant.Append(text);
-                    CursorAgentSessionStore.Enqueue(live.SessionId, new CursorAgentEventDto { EventType = "token", Token = text });
+                    if (!capture.SawSimplifiedText)
+                        EnqueueThinking(live, PayloadText(payload) ?? (string)payload?["text"]);
+                    return;
                 }
+                if (capture.SawSimplifiedText) return;
+                if (string.Equals(type, "text-delta", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(type, "token-delta", StringComparison.OrdinalIgnoreCase))
+                {
+                    AppendAssistant(live, assistant, PayloadText(payload));
+                }
+                return;
+            }
+            if (string.Equals(evt, "assistant", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(evt, "delta", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(evt, "message", StringComparison.OrdinalIgnoreCase))
+            {
+                capture.SawSimplifiedText = true;
+                AppendAssistant(live, assistant, PayloadText(payload));
                 return;
             }
             if (string.Equals(evt, "thinking", StringComparison.OrdinalIgnoreCase))
             {
-                var text = (string)payload["text"];
-                if (!string.IsNullOrEmpty(text))
-                {
-                    CursorAgentSessionStore.Enqueue(live.SessionId, new CursorAgentEventDto
-                    {
-                        EventType = "step",
-                        Step = new CursorAgentStepEvent { Type = "thinking", Description = Trim(text, 200), Details = text }
-                    });
-                }
+                capture.SawSimplifiedText = true;
+                EnqueueThinking(live, (string)payload?["text"] ?? PayloadText(payload));
                 return;
             }
             if (string.Equals(evt, "tool_call", StringComparison.OrdinalIgnoreCase))
@@ -253,12 +305,69 @@ namespace App.BL.CursorAgent
                 });
                 return;
             }
-            if (string.Equals(evt, "result", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(evt, "result", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(evt, "status", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(evt, "done", StringComparison.OrdinalIgnoreCase))
             {
-                var text = (string)payload["text"];
+                var status = (string)payload?["status"];
+                if (string.Equals(status, "ERROR", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(status, "CANCELLED", StringComparison.OrdinalIgnoreCase))
+                {
+                    capture.Error = PayloadText(payload)
+                        ?? (string)payload?["message"]
+                        ?? ("Cursor run " + status);
+                }
+                var text = PayloadText(payload);
+                if (string.IsNullOrEmpty(text))
+                    text = RunResultText(payload["result"]);
                 if (!string.IsNullOrEmpty(text) && assistant.Length == 0)
                     assistant.Append(text);
             }
+        }
+
+        private static void AppendAssistant(
+            CursorAgentSessionStore.SessionData live,
+            System.Text.StringBuilder assistant,
+            string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            assistant.Append(text);
+            CursorAgentSessionStore.Enqueue(live.SessionId, new CursorAgentEventDto { EventType = "token", Token = text });
+        }
+
+        private static void EnqueueThinking(CursorAgentSessionStore.SessionData live, string text)
+        {
+            if (string.IsNullOrEmpty(text)) return;
+            CursorAgentSessionStore.Enqueue(live.SessionId, new CursorAgentEventDto
+            {
+                EventType = "step",
+                Step = new CursorAgentStepEvent { Type = "thinking", Description = Trim(text, 200), Details = text }
+            });
+        }
+
+        private static string PayloadText(Newtonsoft.Json.Linq.JObject payload)
+        {
+            if (payload == null) return null;
+            var text = (string)payload["text"]
+                ?? (string)payload["content"]
+                ?? (string)payload["delta"]
+                ?? (string)payload["message"];
+            if (!string.IsNullOrEmpty(text)) return text;
+            var nested = payload["delta"] as Newtonsoft.Json.Linq.JObject
+                ?? payload["message"] as Newtonsoft.Json.Linq.JObject;
+            if (nested != null)
+                return (string)nested["text"] ?? (string)nested["content"];
+            return null;
+        }
+
+        private static string RunResultText(Newtonsoft.Json.Linq.JToken token)
+        {
+            if (token == null || token.Type == Newtonsoft.Json.Linq.JTokenType.Null) return null;
+            if (token.Type == Newtonsoft.Json.Linq.JTokenType.String) return (string)token;
+            var obj = token as Newtonsoft.Json.Linq.JObject;
+            if (obj != null)
+                return (string)(obj["text"] ?? obj["content"] ?? obj["message"]);
+            return token.ToString();
         }
 
         private static async Task<string> RecoverFinishedRunTextAsync(
@@ -274,7 +383,7 @@ namespace App.BL.CursorAgent
                     await Task.Delay(2000, ct).ConfigureAwait(false);
                     continue;
                 }
-                return (string)(run?["result"] ?? run?["text"] ?? "");
+                return RunResultText(run?["result"]) ?? (string)run?["text"] ?? (string)run?["message"];
             }
             return null;
         }

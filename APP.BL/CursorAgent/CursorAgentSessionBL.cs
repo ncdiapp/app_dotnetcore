@@ -46,11 +46,26 @@ IF COL_LENGTH('dbo.CursorAgentSession', 'IdentityJson') IS NULL
 IF COL_LENGTH('dbo.CursorAgentSession', 'SkillKey') IS NULL
     ALTER TABLE dbo.CursorAgentSession ADD SkillKey NVARCHAR(80) NULL";
 
+        private const string MigrateChatTitleSql = @"
+IF COL_LENGTH('dbo.CursorAgentSession', 'DisplayTitle') IS NULL
+    ALTER TABLE dbo.CursorAgentSession ADD DisplayTitle NVARCHAR(200) NULL";
+
+        private const string MigrateChatArchivedSql = @"
+IF COL_LENGTH('dbo.CursorAgentSession', 'IsArchived') IS NULL
+    ALTER TABLE dbo.CursorAgentSession ADD IsArchived BIT NOT NULL CONSTRAINT DF_CursorAgentSession_IsArchived DEFAULT(0)";
+
+        private const string MigrateChatSortSql = @"
+IF COL_LENGTH('dbo.CursorAgentSession', 'SortOrder') IS NULL
+    ALTER TABLE dbo.CursorAgentSession ADD SortOrder INT NOT NULL CONSTRAINT DF_CursorAgentSession_SortOrder DEFAULT(0)";
+
         private static void EnsureSchema(DatabaseSchemaMrg.DatabaseFixture fixture)
         {
             fixture.ExecuteNonQueryResult(CreateTableSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(MigrateIdentityJsonSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(MigrateSkillKeySql, new List<DbParameter>());
+            fixture.ExecuteNonQueryResult(MigrateChatTitleSql, new List<DbParameter>());
+            fixture.ExecuteNonQueryResult(MigrateChatArchivedSql, new List<DbParameter>());
+            fixture.ExecuteNonQueryResult(MigrateChatSortSql, new List<DbParameter>());
         }
 
         public static void SaveNew(CursorAgentSessionStore.SessionData session, string userRequest)
@@ -65,11 +80,11 @@ IF COL_LENGTH('dbo.CursorAgentSession', 'SkillKey') IS NULL
 INSERT INTO dbo.CursorAgentSession
     (SessionGuid, CreatedAt, UpdatedAt, UserRequest, Status, CursorAgentId, LatestRunId, McpToken,
      AppSessionId, SaasApplicationId, DataSourceRegisterId, CreatedById, WorkspaceRelativePath,
-     ConversationHistoryJson, IdentityJson, SkillKey)
+     ConversationHistoryJson, IdentityJson, SkillKey, DisplayTitle, IsArchived, SortOrder)
 VALUES
     (@SessionGuid, @CreatedAt, @UpdatedAt, @UserRequest, 'InProgress', @CursorAgentId, @LatestRunId, @McpToken,
      @AppSessionId, @SaasApplicationId, @DataSourceRegisterId, @CreatedById, @WorkspaceRelativePath,
-     @ConversationHistoryJson, @IdentityJson, @SkillKey)";
+     @ConversationHistoryJson, @IdentityJson, @SkillKey, NULL, 0, 0)";
 
                 var now = DateTime.UtcNow;
                 fixture.ExecuteNonQueryResult(sql, new List<DbParameter>
@@ -151,11 +166,13 @@ WHERE SessionGuid = @SessionGuid";
 
                 var take = limit <= 0 ? 30 : Math.Min(limit, 100);
                 var dt = fixture.RetriveDataTable(@"
-SELECT TOP (@Take) SessionGuid, CreatedAt, UpdatedAt, UserRequest, Status, CursorAgentId,
-       SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath, FinalResponse
+SELECT TOP (@Take) SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CursorAgentId,
+       SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath, FinalResponse,
+       IsArchived, SortOrder
 FROM dbo.CursorAgentSession
 WHERE (@CreatedById IS NULL OR CreatedById = @CreatedById)
-ORDER BY UpdatedAt DESC",
+  AND ISNULL(IsArchived, 0) = 0
+ORDER BY SortOrder ASC, UpdatedAt DESC",
                     new List<DbParameter>
                     {
                         P(fixture, "@Take", take),
@@ -163,22 +180,7 @@ ORDER BY UpdatedAt DESC",
                     });
                 if (dt == null) return list;
                 foreach (DataRow row in dt.Rows)
-                {
-                    list.Add(new CursorAgentSessionSummaryDto
-                    {
-                        SessionGuid = row["SessionGuid"] as string,
-                        CreatedAt = row["CreatedAt"] is DateTime c ? c : DateTime.MinValue,
-                        UpdatedAt = row["UpdatedAt"] is DateTime u ? u : DateTime.MinValue,
-                        UserRequest = row["UserRequest"] as string,
-                        Status = row["Status"] as string,
-                        CursorAgentId = row["CursorAgentId"] as string,
-                        SaasApplicationId = row["SaasApplicationId"] is int sa ? sa : (int?)null,
-                        DataSourceRegisterId = row["DataSourceRegisterId"] is int ds ? ds : (int?)null,
-                        SkillKey = ColStr(row, "SkillKey"),
-                        WorkspaceRelativePath = row["WorkspaceRelativePath"] as string,
-                        FinalResponse = row["FinalResponse"] as string
-                    });
-                }
+                    list.Add(MapSummary(row));
             }
             catch { }
             return list;
@@ -193,9 +195,9 @@ ORDER BY UpdatedAt DESC",
                 EnsureSchema(fixture);
 
                 var dt = fixture.RetriveDataTable(@"
-SELECT SessionGuid, CreatedAt, UpdatedAt, UserRequest, Status, CursorAgentId, LatestRunId,
+SELECT SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CursorAgentId, LatestRunId,
        SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath,
-       ConversationHistoryJson, PendingGateJson, FinalResponse
+       ConversationHistoryJson, PendingGateJson, FinalResponse, IsArchived, SortOrder
 FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter> { P(fixture, "@SessionGuid", sessionGuid) });
                 if (dt == null || dt.Rows.Count == 0) return null;
@@ -206,14 +208,17 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                     CreatedAt = row["CreatedAt"] is DateTime c ? c : DateTime.MinValue,
                     UpdatedAt = row["UpdatedAt"] is DateTime u ? u : DateTime.MinValue,
                     UserRequest = row["UserRequest"] as string,
+                    DisplayTitle = ColStr(row, "DisplayTitle"),
                     Status = row["Status"] as string,
                     CursorAgentId = row["CursorAgentId"] as string,
                     LatestRunId = row["LatestRunId"] as string,
-                    SaasApplicationId = row["SaasApplicationId"] is int sa ? sa : (int?)null,
-                    DataSourceRegisterId = row["DataSourceRegisterId"] is int ds ? ds : (int?)null,
+                    SaasApplicationId = ColInt(row, "SaasApplicationId"),
+                    DataSourceRegisterId = ColInt(row, "DataSourceRegisterId"),
                     SkillKey = ColStr(row, "SkillKey"),
                     WorkspaceRelativePath = row["WorkspaceRelativePath"] as string,
                     FinalResponse = row["FinalResponse"] as string,
+                    IsArchived = ColBool(row, "IsArchived"),
+                    SortOrder = ColInt(row, "SortOrder") ?? 0,
                     PendingGateJson = row["PendingGateJson"] as string
                 };
                 var hist = row["ConversationHistoryJson"] as string;
@@ -246,10 +251,10 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                     LatestRunId = row["LatestRunId"] as string,
                     McpToken = row["McpToken"] as string,
                     AppSessionId = row["AppSessionId"] as string,
-                    SaasApplicationId = row["SaasApplicationId"] is int sa ? sa : (int?)null,
-                    DataSourceRegisterId = row["DataSourceRegisterId"] is int ds ? ds : (int?)null,
+                    SaasApplicationId = ColInt(row, "SaasApplicationId"),
+                    DataSourceRegisterId = ColInt(row, "DataSourceRegisterId"),
                     SkillKey = ColStr(row, "SkillKey"),
-                    CreatedById = row["CreatedById"] is int cb ? cb : (int?)null,
+                    CreatedById = ColInt(row, "CreatedById"),
                     WorkspaceRelativePath = row["WorkspaceRelativePath"] as string,
                     IdentityJson = row.Table.Columns.Contains("IdentityJson") ? row["IdentityJson"] as string : null
                 };
@@ -265,6 +270,145 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                 return data;
             }
             catch { return null; }
+        }
+
+        public static List<CursorAgentSessionSummaryDto> ListAll(int? createdById)
+        {
+            var list = new List<CursorAgentSessionSummaryDto>();
+            try
+            {
+                var fixture = GetFixture();
+                if (fixture == null) return list;
+                EnsureSchema(fixture);
+                var dt = fixture.RetriveDataTable(@"
+SELECT SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CursorAgentId,
+       SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath, FinalResponse,
+       IsArchived, SortOrder
+FROM dbo.CursorAgentSession
+WHERE (@CreatedById IS NULL OR CreatedById = @CreatedById)
+ORDER BY SortOrder ASC, UpdatedAt DESC",
+                    new List<DbParameter> { P(fixture, "@CreatedById", createdById) });
+                if (dt == null) return list;
+                foreach (DataRow row in dt.Rows)
+                    list.Add(MapSummary(row));
+            }
+            catch { }
+            return list;
+        }
+
+        public static bool Rename(string sessionGuid, string title)
+        {
+            try
+            {
+                var fixture = GetFixture();
+                if (fixture == null || string.IsNullOrWhiteSpace(sessionGuid)) return false;
+                EnsureSchema(fixture);
+                fixture.ExecuteNonQueryResult(@"
+UPDATE dbo.CursorAgentSession SET DisplayTitle = @DisplayTitle WHERE SessionGuid = @SessionGuid",
+                    new List<DbParameter>
+                    {
+                        P(fixture, "@DisplayTitle", string.IsNullOrWhiteSpace(title) ? null : Trunc(title.Trim(), 200)),
+                        P(fixture, "@SessionGuid", sessionGuid)
+                    });
+                return true;
+            }
+            catch { return false; }
+        }
+
+        public static int SetArchived(IList<string> sessionGuids, bool archived)
+        {
+            var n = 0;
+            if (sessionGuids == null) return 0;
+            foreach (var guid in sessionGuids)
+            {
+                if (string.IsNullOrWhiteSpace(guid)) continue;
+                try
+                {
+                    var fixture = GetFixture();
+                    if (fixture == null) return n;
+                    EnsureSchema(fixture);
+                    fixture.ExecuteNonQueryResult(@"
+UPDATE dbo.CursorAgentSession SET IsArchived = @IsArchived WHERE SessionGuid = @SessionGuid",
+                        new List<DbParameter>
+                        {
+                            P(fixture, "@IsArchived", archived ? 1 : 0),
+                            P(fixture, "@SessionGuid", guid)
+                        });
+                    n++;
+                }
+                catch { }
+            }
+            return n;
+        }
+
+        public static int DeleteMany(IList<string> sessionGuids)
+        {
+            var n = 0;
+            if (sessionGuids == null) return 0;
+            foreach (var guid in sessionGuids)
+            {
+                if (string.IsNullOrWhiteSpace(guid)) continue;
+                try
+                {
+                    var fixture = GetFixture();
+                    if (fixture == null) return n;
+                    EnsureSchema(fixture);
+                    fixture.ExecuteNonQueryResult(
+                        "DELETE FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
+                        new List<DbParameter> { P(fixture, "@SessionGuid", guid) });
+                    CursorAgentSessionStore.Remove(guid);
+                    n++;
+                }
+                catch { }
+            }
+            return n;
+        }
+
+        public static bool Reorder(IList<string> sessionGuids)
+        {
+            if (sessionGuids == null) return false;
+            try
+            {
+                var fixture = GetFixture();
+                if (fixture == null) return false;
+                EnsureSchema(fixture);
+                var order = 1;
+                foreach (var guid in sessionGuids)
+                {
+                    if (string.IsNullOrWhiteSpace(guid)) continue;
+                    fixture.ExecuteNonQueryResult(@"
+UPDATE dbo.CursorAgentSession SET SortOrder = @SortOrder WHERE SessionGuid = @SessionGuid",
+                        new List<DbParameter>
+                        {
+                            P(fixture, "@SortOrder", order),
+                            P(fixture, "@SessionGuid", guid)
+                        });
+                    order++;
+                }
+                return true;
+            }
+            catch { return false; }
+        }
+
+        private static CursorAgentSessionSummaryDto MapSummary(DataRow row)
+        {
+            return new CursorAgentSessionSummaryDto
+            {
+                SessionGuid = row["SessionGuid"] as string,
+                CreatedAt = row["CreatedAt"] is DateTime c ? c : DateTime.MinValue,
+                UpdatedAt = row["UpdatedAt"] is DateTime u ? u : DateTime.MinValue,
+                UserRequest = row["UserRequest"] as string,
+                DisplayTitle = ColStr(row, "DisplayTitle"),
+                Status = row["Status"] as string,
+                CursorAgentId = row["CursorAgentId"] as string,
+                SaasApplicationId = ColInt(row, "SaasApplicationId"),
+                DataSourceRegisterId = ColInt(row, "DataSourceRegisterId"),
+                SkillKey = ColStr(row, "SkillKey"),
+                WorkspaceRelativePath = row["WorkspaceRelativePath"] as string,
+                FinalResponse = row["FinalResponse"] as string,
+                IsArchived = ColBool(row, "IsArchived"),
+                SortOrder = ColInt(row, "SortOrder") ?? 0
+            };
         }
 
         private static DbParameter P(DatabaseSchemaMrg.DatabaseFixture fixture, string name, object value)
@@ -292,6 +436,23 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
             if (row == null || row.Table == null || !row.Table.Columns.Contains(column)) return null;
             var v = row[column];
             return v == null || v == DBNull.Value ? null : v.ToString();
+        }
+
+        private static int? ColInt(DataRow row, string column)
+        {
+            if (row == null || row.Table == null || !row.Table.Columns.Contains(column)) return null;
+            var v = row[column];
+            if (v == null || v == DBNull.Value) return null;
+            return Convert.ToInt32(v);
+        }
+
+        private static bool ColBool(DataRow row, string column)
+        {
+            if (row == null || row.Table == null || !row.Table.Columns.Contains(column)) return false;
+            var v = row[column];
+            if (v == null || v == DBNull.Value) return false;
+            if (v is bool b) return b;
+            return Convert.ToInt32(v) != 0;
         }
     }
 }

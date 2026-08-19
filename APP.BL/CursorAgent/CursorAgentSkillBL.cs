@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using App.BL.AppMgr.AiSkill;
+using App.BL.AppReportAgent;
+using App.BL.DbGenie;
 using APP.Components.EntityDto;
 
 namespace App.BL.CursorAgent
@@ -50,6 +52,12 @@ namespace App.BL.CursorAgent
         public static string GetSkill(int? skillDataSourceId, string name)
         {
             EnsureSeeded(skillDataSourceId);
+            if (string.Equals(name, CursorAgentSkillCatalogBL.SqlSkillName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "SqlSkill", StringComparison.OrdinalIgnoreCase))
+                return AppDbGenieBL.GetComposedSqlSkillPrompt();
+            if (string.Equals(name, CursorAgentSkillCatalogBL.ReportSkillName, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(name, "ReportSkill", StringComparison.OrdinalIgnoreCase))
+                return AppReportAgentBL.GetComposedReportSkillPrompt();
             return LoadComposed(skillDataSourceId, name);
         }
 
@@ -58,7 +66,7 @@ namespace App.BL.CursorAgent
             if (!skillDataSourceId.HasValue) return;
             try
             {
-                SeedOne(skillDataSourceId.Value, Policy, "Always-on Cursor Agent policy (read-only source, gated import/SQL).", PolicyContent);
+                SeedOne(skillDataSourceId.Value, Policy, "Always-on App Data Integration Agent policy (read-only source, gated import/SQL).", PolicyContent);
                 SeedOne(skillDataSourceId.Value, ImportPack, "Write AppConfigPack JSON and import after user confirmation.", ImportContent);
                 SeedOne(skillDataSourceId.Value, GatedSql, "Read schema / SELECT immediately; write SQL after user confirmation.", SqlContent);
                 SeedOne(skillDataSourceId.Value, Workspace, "Read/write the per-session server workspace folders.", WorkspaceContent);
@@ -123,7 +131,7 @@ namespace App.BL.CursorAgent
             return PolicyContent;
         }
 
-        private const string PolicyContent = @"You are the AppAI Cursor Agent.
+        private const string PolicyContent = @"You are the AppAI App Data Integration Agent.
 
 Hard rules:
 1. The cloned git repo is READ-ONLY knowledge. Do not edit .cs/.tsx/.csproj or open a PR.
@@ -135,11 +143,12 @@ Hard rules:
 
         private const string ImportContent = @"When the user wants Transaction / Form / SearchView / Entity configuration:
 
-1. Call get_skill('cursor-agent-import-pack') if you need the JSON contract (PROMPT.md is attached as a skill ref).
-2. Write the pack to packs/<name>.appConfigPack.json via write_workspace_file.
-3. Call validate_config_pack then preview_config_pack.
-4. Call propose_import_pack and WAIT. The user confirms in the AppAI chat.
-5. source.generatedBy must be ""ai"". Use integrationId, never numeric TransactionId/SearchId.";
+1. On a new request, ask clarifying questions first and WAIT. Do not write JSON until the user confirms table names, screens, and fields.
+2. Call get_skill('cursor-agent-import-pack') if you need the JSON contract (PROMPT.md is attached as a skill ref).
+3. Write the pack to packs/<name>.appConfigPack.json via write_workspace_file.
+4. Call validate_config_pack then preview_config_pack.
+5. Do not call propose_import_pack. Tell the user the workspace file is ready so they can click Start Build in this chat.
+6. source.generatedBy must be ""ai"". Use integrationId, never numeric TransactionId/SearchId.";
 
         private const string SqlContent = @"Database access:
 - list_datasources then get_table_schema for structure.

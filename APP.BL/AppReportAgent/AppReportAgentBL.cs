@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using App.BL.AppBuilderAgent;
 using App.BL.AppBuilderAgent.Plugins;
+using App.BL.AppMgr.AiSkill;
 using App.BL.DbGenie;
 using App.BL.AppReportAgent.Plugins;
 using APP.Components.Dto;
@@ -87,6 +88,32 @@ namespace App.BL.AppReportAgent
         // ─────────────────────────────────────────────────────────────────────
         // System prompt
         // ─────────────────────────────────────────────────────────────────────
+
+        public const string REPORT_SKILL_NAME = "AppReport.ReportSkill";
+
+        /// <summary>
+        /// Report skill prompt: DB-stored AppAISkill takes priority; otherwise the built-in system prompt.
+        /// Shared with App Data Integration Agent (Other skills).
+        /// </summary>
+        public static string GetComposedReportSkillPrompt()
+        {
+            try
+            {
+                var dsId = AppAISkillBL.GetDefaultDataSourceId();
+                if (dsId.HasValue)
+                {
+                    var skill = AppAISkillBL.GetSkillByName(dsId.Value, REPORT_SKILL_NAME);
+                    if (skill != null)
+                    {
+                        var dbPrompt = AppAISkillBL.GetComposedSkillPrompt(dsId.Value, skill.SkillId);
+                        if (!string.IsNullOrWhiteSpace(dbPrompt))
+                            return dbPrompt;
+                    }
+                }
+            }
+            catch { }
+            return SystemPrompt;
+        }
 
         private const string SystemPrompt = @"You are AppReport AI, an intelligent reporting assistant embedded in the AppAI low-code/no-code platform.
 Your goal is to find and display data for the user using the platform's existing search screens.

@@ -323,6 +323,8 @@ Each search:
 
 ## How to generate this JSON (AI / user)
 
+**In App Data Integration Agent (App Config Builder):** ask clarifying questions on the first reply and wait. Only write the pack after the user confirms. Then stop — the chat UI offers **Start Build** to import. Do not import from tools.
+
 1. List physical tables and views the app needs (columns + PK + FKs).
 2. Assign a stable `integrationId` per transaction and search (`TX_...`, `Search_...`). Do not reuse ids across packs unless you intend Update.
 3. For each transaction, describe Root / Sibling / Child tables that already exist or are included in `tables`/`views`.
