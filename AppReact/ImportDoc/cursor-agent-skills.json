@@ -1,0 +1,76 @@
+{
+  "defaultKey": "app-config-builder",
+  "skills": [
+    {
+      "id": "general",
+      "group": "general",
+      "groupLabel": "General",
+      "label": "General",
+      "allowProposeImport": false,
+      "injectFiles": [],
+      "extraPrompt": "Mode: General. Answer questions about the tenant, schema, and AppAI docs. Do not generate an AppConfigPack unless the user asks. Do not call propose_import_pack."
+    },
+    {
+      "id": "app-config-builder",
+      "group": "app",
+      "groupLabel": "App Config Builder",
+      "label": "App Config Builder",
+      "allowProposeImport": false,
+      "injectFiles": [
+        "ImportAppConfig/PROMPT.md",
+        "ImportAppConfig/sample.appConfigPack.json"
+      ],
+      "exampleFiles": [
+        "ImportAppConfig/sample.appConfigPack.json"
+      ],
+      "extraPrompt": "Mode: App Config Builder. Follow PROMPT.md as the contract. Write packs/<name>.appConfigPack.json via write_workspace_file. You may call validate_config_pack / preview_config_pack. Do not call propose_import_pack — the user will apply the pack in Import Config. Never invent numeric TransactionId / SearchId / EntityId. sample.appConfigPack.json is EXAMPLE only."
+    },
+    {
+      "id": "plm-dw",
+      "group": "plm",
+      "groupLabel": "PLM Integration",
+      "label": "Import from PLM Data Warehouse",
+      "allowProposeImport": true,
+      "injectFiles": [
+        "ImportFromPLMDW/PROMPT.md",
+        "ImportFromPLMDW/source/dwTabImportConfig.example.json",
+        "ImportFromPLMDW/source/bomColorwayImportConfig.example.json",
+        "ImportFromPLMDW/source/_plm_probe_template.sql",
+        "ImportFromPLMDW/source/_dw_probe_by_tabids.sql"
+      ],
+      "extraPrompt": "Mode: Import from PLM Data Warehouse. Follow PROMPT.md. Do not use files under output/. Do not stack App Config Builder in this chat."
+    },
+    {
+      "id": "plm-pom-grading",
+      "group": "plm",
+      "groupLabel": "PLM Integration",
+      "label": "Import PLM POM and Grading",
+      "allowProposeImport": true,
+      "injectFiles": [
+        "ImportPlmPomAndGrading/PROMPT.md",
+        "ImportPlmPomAndGrading/source/_plm_probe_tables.sql",
+        "ImportPlmPomAndGrading/source/_plm_probe_counts.sql",
+        "ImportPlmPomAndGrading/source/_plm_probe_grade_link.sql",
+        "ImportPlmPomAndGrading/source/_plm_probe_sizerun_entity.sql",
+        "ImportPlmPomAndGrading/source/_probe_sizerun_tables.sql",
+        "ImportPlmPomAndGrading/source/_app_probe_tchp_ready.sql"
+      ],
+      "extraPrompt": "Mode: Import PLM POM and Grading. Follow PROMPT.md. Do not use files under output/pilot1. Do not stack App Config Builder in this chat."
+    },
+    {
+      "id": "plm-search-view",
+      "group": "plm",
+      "groupLabel": "PLM Integration",
+      "label": "Import PLM Search View",
+      "allowProposeImport": true,
+      "injectFiles": [
+        "ImportPLMSearchView/PROMPT.md",
+        "ImportPLMSearchView/source/plmSearchImportConfig.example.json",
+        "ImportPLMSearchView/source/7_PlmSearch_ImportBlueprint.example.json",
+        "ImportPLMSearchView/source/8_PlmSearch_SiblingView.example.json",
+        "ImportPLMSearchView/source/9_PlmSearch_MassUpdateView.example.json"
+      ],
+      "extraPrompt": "Mode: Import PLM Search View. Follow PROMPT.md. Example JSON under source/ is EXAMPLE only. Do not use files under output/. Sibling / Mass Update extra PROMPTs are not in this skill unless a dedicated sub-skill is selected."
+    }
+  ]
+}

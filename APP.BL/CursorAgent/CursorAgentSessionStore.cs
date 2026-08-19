@@ -29,6 +29,8 @@ namespace App.BL.CursorAgent
             public int? CompanyId { get; set; }
             public int? SaasApplicationId { get; set; }
             public int? DataSourceRegisterId { get; set; }
+            public string SkillKey { get; set; }
+            public bool AllowProposeImport { get; set; }
             public string WorkspaceRelativePath { get; set; }
             public List<CursorAgentMessageDto> ConversationHistory { get; set; }
                 = new List<CursorAgentMessageDto>();

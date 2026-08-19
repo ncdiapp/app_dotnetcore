@@ -42,10 +42,15 @@ END";
 IF COL_LENGTH('dbo.CursorAgentSession', 'IdentityJson') IS NULL
     ALTER TABLE dbo.CursorAgentSession ADD IdentityJson NVARCHAR(MAX) NULL";
 
+        private const string MigrateSkillKeySql = @"
+IF COL_LENGTH('dbo.CursorAgentSession', 'SkillKey') IS NULL
+    ALTER TABLE dbo.CursorAgentSession ADD SkillKey NVARCHAR(80) NULL";
+
         private static void EnsureSchema(DatabaseSchemaMrg.DatabaseFixture fixture)
         {
             fixture.ExecuteNonQueryResult(CreateTableSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(MigrateIdentityJsonSql, new List<DbParameter>());
+            fixture.ExecuteNonQueryResult(MigrateSkillKeySql, new List<DbParameter>());
         }
 
         public static void SaveNew(CursorAgentSessionStore.SessionData session, string userRequest)
@@ -60,11 +65,11 @@ IF COL_LENGTH('dbo.CursorAgentSession', 'IdentityJson') IS NULL
 INSERT INTO dbo.CursorAgentSession
     (SessionGuid, CreatedAt, UpdatedAt, UserRequest, Status, CursorAgentId, LatestRunId, McpToken,
      AppSessionId, SaasApplicationId, DataSourceRegisterId, CreatedById, WorkspaceRelativePath,
-     ConversationHistoryJson, IdentityJson)
+     ConversationHistoryJson, IdentityJson, SkillKey)
 VALUES
     (@SessionGuid, @CreatedAt, @UpdatedAt, @UserRequest, 'InProgress', @CursorAgentId, @LatestRunId, @McpToken,
      @AppSessionId, @SaasApplicationId, @DataSourceRegisterId, @CreatedById, @WorkspaceRelativePath,
-     @ConversationHistoryJson, @IdentityJson)";
+     @ConversationHistoryJson, @IdentityJson, @SkillKey)";
 
                 var now = DateTime.UtcNow;
                 fixture.ExecuteNonQueryResult(sql, new List<DbParameter>
@@ -82,7 +87,8 @@ VALUES
                     P(fixture, "@CreatedById", session.CreatedById),
                     P(fixture, "@WorkspaceRelativePath", session.WorkspaceRelativePath),
                     P(fixture, "@ConversationHistoryJson", JsonConvert.SerializeObject(session.ConversationHistory ?? new List<CursorAgentMessageDto>())),
-                    P(fixture, "@IdentityJson", session.IdentityJson ?? CursorAgentIdentity.Serialize(session.Identity))
+                    P(fixture, "@IdentityJson", session.IdentityJson ?? CursorAgentIdentity.Serialize(session.Identity)),
+                    P(fixture, "@SkillKey", session.SkillKey)
                 });
             }
             catch { }
@@ -105,6 +111,7 @@ UPDATE dbo.CursorAgentSession SET
     McpToken = @McpToken,
     SaasApplicationId = @SaasApplicationId,
     DataSourceRegisterId = @DataSourceRegisterId,
+    SkillKey = @SkillKey,
     WorkspaceRelativePath = @WorkspaceRelativePath,
     ConversationHistoryJson = @ConversationHistoryJson,
     IdentityJson = @IdentityJson,
@@ -121,6 +128,7 @@ WHERE SessionGuid = @SessionGuid";
                     P(fixture, "@McpToken", session.McpToken),
                     P(fixture, "@SaasApplicationId", session.SaasApplicationId),
                     P(fixture, "@DataSourceRegisterId", session.DataSourceRegisterId),
+                    P(fixture, "@SkillKey", session.SkillKey),
                     P(fixture, "@WorkspaceRelativePath", session.WorkspaceRelativePath),
                     P(fixture, "@ConversationHistoryJson", JsonConvert.SerializeObject(session.ConversationHistory ?? new List<CursorAgentMessageDto>())),
                     P(fixture, "@IdentityJson", session.IdentityJson ?? CursorAgentIdentity.Serialize(session.Identity)),
@@ -144,7 +152,7 @@ WHERE SessionGuid = @SessionGuid";
                 var take = limit <= 0 ? 30 : Math.Min(limit, 100);
                 var dt = fixture.RetriveDataTable(@"
 SELECT TOP (@Take) SessionGuid, CreatedAt, UpdatedAt, UserRequest, Status, CursorAgentId,
-       SaasApplicationId, DataSourceRegisterId, WorkspaceRelativePath, FinalResponse
+       SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath, FinalResponse
 FROM dbo.CursorAgentSession
 WHERE (@CreatedById IS NULL OR CreatedById = @CreatedById)
 ORDER BY UpdatedAt DESC",
@@ -166,6 +174,7 @@ ORDER BY UpdatedAt DESC",
                         CursorAgentId = row["CursorAgentId"] as string,
                         SaasApplicationId = row["SaasApplicationId"] is int sa ? sa : (int?)null,
                         DataSourceRegisterId = row["DataSourceRegisterId"] is int ds ? ds : (int?)null,
+                        SkillKey = ColStr(row, "SkillKey"),
                         WorkspaceRelativePath = row["WorkspaceRelativePath"] as string,
                         FinalResponse = row["FinalResponse"] as string
                     });
@@ -185,7 +194,7 @@ ORDER BY UpdatedAt DESC",
 
                 var dt = fixture.RetriveDataTable(@"
 SELECT SessionGuid, CreatedAt, UpdatedAt, UserRequest, Status, CursorAgentId, LatestRunId,
-       SaasApplicationId, DataSourceRegisterId, WorkspaceRelativePath,
+       SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath,
        ConversationHistoryJson, PendingGateJson, FinalResponse
 FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter> { P(fixture, "@SessionGuid", sessionGuid) });
@@ -202,6 +211,7 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                     LatestRunId = row["LatestRunId"] as string,
                     SaasApplicationId = row["SaasApplicationId"] is int sa ? sa : (int?)null,
                     DataSourceRegisterId = row["DataSourceRegisterId"] is int ds ? ds : (int?)null,
+                    SkillKey = ColStr(row, "SkillKey"),
                     WorkspaceRelativePath = row["WorkspaceRelativePath"] as string,
                     FinalResponse = row["FinalResponse"] as string,
                     PendingGateJson = row["PendingGateJson"] as string
@@ -224,7 +234,7 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
 
                 var dt = fixture.RetriveDataTable(@"
 SELECT SessionGuid, CursorAgentId, LatestRunId, McpToken, AppSessionId, SaasApplicationId,
-       DataSourceRegisterId, CreatedById, WorkspaceRelativePath, ConversationHistoryJson, IdentityJson
+       DataSourceRegisterId, SkillKey, CreatedById, WorkspaceRelativePath, ConversationHistoryJson, IdentityJson
 FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter> { P(fixture, "@SessionGuid", sessionGuid) });
                 if (dt == null || dt.Rows.Count == 0) return null;
@@ -238,11 +248,13 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                     AppSessionId = row["AppSessionId"] as string,
                     SaasApplicationId = row["SaasApplicationId"] is int sa ? sa : (int?)null,
                     DataSourceRegisterId = row["DataSourceRegisterId"] is int ds ? ds : (int?)null,
+                    SkillKey = ColStr(row, "SkillKey"),
                     CreatedById = row["CreatedById"] is int cb ? cb : (int?)null,
                     WorkspaceRelativePath = row["WorkspaceRelativePath"] as string,
                     IdentityJson = row.Table.Columns.Contains("IdentityJson") ? row["IdentityJson"] as string : null
                 };
                 data.Identity = CursorAgentIdentity.Deserialize(data.IdentityJson);
+                CursorAgentSkillCatalogBL.ApplyToSession(data, data.SkillKey);
                 if (data.CompanyId == null && data.Identity.HasValue && data.Identity.Value.CurrentWorkingCompanyId != null)
                     data.CompanyId = Convert.ToInt32(data.Identity.Value.CurrentWorkingCompanyId);
                 var hist = row["ConversationHistoryJson"] as string;
@@ -273,6 +285,13 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
         {
             if (string.IsNullOrEmpty(value)) return value;
             return value.Length <= max ? value : value.Substring(0, max);
+        }
+
+        private static string ColStr(DataRow row, string column)
+        {
+            if (row == null || row.Table == null || !row.Table.Columns.Contains(column)) return null;
+            var v = row[column];
+            return v == null || v == DBNull.Value ? null : v.ToString();
         }
     }
 }

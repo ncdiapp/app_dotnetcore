@@ -8,7 +8,22 @@ namespace APP.Components.EntityDto
         public string UserMessage { get; set; }
         public int? SaasApplicationId { get; set; }
         public int? DataSourceRegisterId { get; set; }
+        public string SkillKey { get; set; }
         public List<CursorAgentMessageDto> ConversationHistory { get; set; }
+    }
+
+    public class CursorAgentSkillMenuItemDto
+    {
+        public string Key { get; set; }
+        public string Label { get; set; }
+        public string Group { get; set; }
+        public string GroupLabel { get; set; }
+    }
+
+    public class CursorAgentSkillMenuDto
+    {
+        public string DefaultKey { get; set; }
+        public List<CursorAgentSkillMenuItemDto> Items { get; set; } = new List<CursorAgentSkillMenuItemDto>();
     }
 
     public class CursorAgentFollowUpRequestDto
@@ -122,6 +137,7 @@ namespace APP.Components.EntityDto
         public string CursorAgentId { get; set; }
         public int? SaasApplicationId { get; set; }
         public int? DataSourceRegisterId { get; set; }
+        public string SkillKey { get; set; }
         public string WorkspaceRelativePath { get; set; }
         public string FinalResponse { get; set; }
     }

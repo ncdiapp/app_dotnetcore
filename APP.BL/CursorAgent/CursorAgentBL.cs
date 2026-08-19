@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using App.BL.AppMgr.AiSkill;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework;
@@ -24,6 +23,7 @@ namespace App.BL.CursorAgent
             var live = CursorAgentSessionStore.CreateSession();
             live.SaasApplicationId = request.SaasApplicationId;
             live.DataSourceRegisterId = request.DataSourceRegisterId;
+            CursorAgentSkillCatalogBL.ApplyToSession(live, request.SkillKey);
             CursorAgentIdentity.Capture(live, identity);
             live.WorkspaceRelativePath = live.SessionId;
             live.ConversationHistory = request.ConversationHistory ?? new List<CursorAgentMessageDto>();
@@ -279,12 +279,14 @@ namespace App.BL.CursorAgent
             return null;
         }
 
+        public static CursorAgentSkillMenuDto ListSkillMenu()
+        {
+            return CursorAgentSkillCatalogBL.ListMenu();
+        }
+
         private static string BuildPrompt(CursorAgentSessionStore.SessionData live, string userMessage)
         {
-            var skillDs = AppAISkillBL.GetDefaultDataSourceId();
-            CursorAgentSkillBL.EnsureSeeded(skillDs);
-            var policy = CursorAgentSkillBL.BuildAlwaysOnPolicy(skillDs, live.SaasApplicationId ?? 0, live.DataSourceRegisterId);
-            return policy + Environment.NewLine + Environment.NewLine + "## User request" + Environment.NewLine + userMessage;
+            return CursorAgentSkillCatalogBL.BuildInjectedPrompt(live, userMessage);
         }
 
         private static CursorAgentSessionStore.SessionData GetOrHydrate(string sessionId)

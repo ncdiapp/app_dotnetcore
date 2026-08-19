@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { RootState } from '../../redux/store';
@@ -8,11 +9,13 @@ import {
   CursorAgentGateEvent,
   CursorAgentMessage,
   CursorAgentSessionSummary,
+  CursorAgentSkillMenuItem,
   CursorAgentStepEvent,
   CursorAgentWorkspaceFile,
   cursorAgentService,
   getCursorSession,
   getRecentCursorSessions,
+  listCursorSkillMenu,
   listCursorWorkspaceFiles,
   readCursorWorkspaceFile,
 } from '../../webapi/cursoragentsvc';
@@ -55,6 +58,150 @@ const AssistantBody: React.FC<{ text: string }> = ({ text }) => {
   );
 };
 
+const SUBMENU_CLOSE_DELAY_MS = 350;
+
+const SkillPicker: React.FC<{
+  items: CursorAgentSkillMenuItem[];
+  value: string;
+  disabled: boolean;
+  onChange: (key: string) => void;
+}> = ({ items, value, disabled, onChange }) => {
+  const { theme } = useTheme();
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+  const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const selected = items.find(i => i.Key === value);
+  const label = selected?.Label ?? 'App Config Builder';
+
+  const categories: { id: string; label: string; leafKey?: string; children: CursorAgentSkillMenuItem[] }[] = [
+    { id: 'general', label: 'General', leafKey: 'general', children: [] },
+    { id: 'app', label: 'App Config Builder', leafKey: 'app-config-builder', children: [] },
+    { id: 'plm', label: 'PLM Integration', children: items.filter(i => i.Group === 'plm') },
+    { id: 'saved', label: 'Saved skills', children: items.filter(i => i.Group === 'saved') },
+  ];
+
+  const close = () => {
+    setOpen(false);
+    setPosition(null);
+    setHoveredGroup(null);
+  };
+
+  const pick = (key: string) => {
+    onChange(key);
+    close();
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t)) return;
+      const portal = document.getElementById('cursor-agent-skill-menu');
+      if (portal?.contains(t)) return;
+      close();
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  return (
+    <div ref={triggerRef} className="relative shrink-0">
+      <button
+        type="button"
+        disabled={disabled}
+        className={`h-7 px-2 text-xs border rounded-[4px] min-w-[180px] max-w-[240px] flex items-center justify-between gap-2 ${theme.inputBox}`}
+        onClick={() => {
+          if (disabled) return;
+          if (!open) {
+            const rect = triggerRef.current?.getBoundingClientRect();
+            if (rect) setPosition({ top: rect.bottom + 4, left: rect.left });
+            setOpen(true);
+          } else {
+            close();
+          }
+        }}
+        title={label}
+      >
+        <span className="truncate min-w-0">{label}</span>
+        <i className="fa-solid fa-chevron-down text-[10px] shrink-0" />
+      </button>
+      {open && position && createPortal(
+        <div
+          id="cursor-agent-skill-menu"
+          className={`fixed z-[9999] flex flex-row items-start overflow-visible ${theme.mainContentSection}`}
+          style={{ top: position.top, left: position.left }}
+          onMouseLeave={() => {
+            closeTimerRef.current = setTimeout(() => {
+              setHoveredGroup(null);
+              closeTimerRef.current = null;
+            }, SUBMENU_CLOSE_DELAY_MS);
+          }}
+        >
+          <div className={`min-w-[200px] max-h-96 overflow-y-auto border rounded-l shadow-lg py-1 ${theme.mainContentSection}`}>
+            {categories.map(cat => {
+              const hasChildren = cat.children.length > 0 || cat.id === 'plm' || cat.id === 'saved';
+              const isHovered = hoveredGroup === cat.id;
+              return (
+                <div
+                  key={cat.id}
+                  className={`w-full px-3 py-2 text-left text-sm flex items-center justify-between ${theme.contextMenu} ${isHovered ? (theme.tab_active ?? 'bg-gray-100') : ''}`}
+                  onMouseEnter={() => {
+                    if (closeTimerRef.current) {
+                      clearTimeout(closeTimerRef.current);
+                      closeTimerRef.current = null;
+                    }
+                    setHoveredGroup(hasChildren ? cat.id : null);
+                  }}
+                  onClick={() => {
+                    if (cat.leafKey) pick(cat.leafKey);
+                  }}
+                >
+                  <span className="truncate">{cat.label}</span>
+                  {hasChildren && <i className="fa-solid fa-chevron-right text-xs ml-1 shrink-0" />}
+                </div>
+              );
+            })}
+          </div>
+          {hoveredGroup === 'plm' && (
+            <div className={`min-w-[240px] max-w-[320px] max-h-96 overflow-y-auto border border-l-0 rounded-r shadow-lg py-1 ${theme.mainContentSection}`}>
+              {categories.find(c => c.id === 'plm')!.children.map(item => (
+                <button
+                  key={item.Key}
+                  type="button"
+                  onClick={() => pick(item.Key)}
+                  className={`w-full px-3 py-2 text-left text-sm truncate ${theme.contextMenu} hover:opacity-90`}
+                >
+                  {item.Label}
+                </button>
+              ))}
+            </div>
+          )}
+          {hoveredGroup === 'saved' && (
+            <div className={`min-w-[240px] max-w-[320px] max-h-96 overflow-y-auto border border-l-0 rounded-r shadow-lg py-1 ${theme.mainContentSection}`}>
+              {categories.find(c => c.id === 'saved')!.children.length === 0 ? (
+                <div className={`px-3 py-2 text-sm ${theme.label}`}>No saved skills</div>
+              ) : categories.find(c => c.id === 'saved')!.children.map(item => (
+                <button
+                  key={item.Key}
+                  type="button"
+                  onClick={() => pick(item.Key)}
+                  className={`w-full px-3 py-2 text-left text-sm truncate ${theme.contextMenu} hover:opacity-90`}
+                >
+                  {item.Label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+    </div>
+  );
+};
+
 const CursorAgent: React.FC = () => {
   const { theme } = useTheme();
   const userContext = useSelector((s: RootState) => s.userSession.userContext);
@@ -64,6 +211,8 @@ const CursorAgent: React.FC = () => {
   const [dataSources, setDataSources] = useState<{ id: number; name: string }[]>([]);
   const [saasApplicationId, setSaasApplicationId] = useState<number | undefined>();
   const [dataSourceId, setDataSourceId] = useState<number | undefined>();
+  const [skillKey, setSkillKey] = useState('app-config-builder');
+  const [skillItems, setSkillItems] = useState<CursorAgentSkillMenuItem[]>([]);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [hasAgent, setHasAgent] = useState(false);
@@ -108,6 +257,10 @@ const CursorAgent: React.FC = () => {
       }
     }).catch(() => {});
     refreshHistory();
+    listCursorSkillMenu().then(menu => {
+      setSkillItems(menu.Items ?? []);
+      if (menu.DefaultKey) setSkillKey(prev => prev || menu.DefaultKey);
+    }).catch(() => {});
   }, [refreshHistory]);
 
   useEffect(() => {
@@ -175,7 +328,7 @@ const CursorAgent: React.FC = () => {
     try {
       if (!hasAgent || !sessionId) {
         const sid = await cursorAgentService.startSession(
-          text, saasApplicationId, dataSourceId, [], makeHandlers());
+          text, saasApplicationId, dataSourceId, [], makeHandlers(), skillKey);
         setSessionId(sid);
         setHasAgent(true);
         refreshFiles(sid);
@@ -188,7 +341,7 @@ const CursorAgent: React.FC = () => {
       updateLastAssistant(msg => ({ ...msg, content: `Failed: ${errMsg}`, isStreaming: false }));
       setIsRunning(false);
     }
-  }, [dataSourceId, hasAgent, isRunning, makeHandlers, refreshFiles, saasApplicationId, sessionId, updateLastAssistant]);
+  }, [dataSourceId, hasAgent, isRunning, makeHandlers, refreshFiles, saasApplicationId, sessionId, skillKey, updateLastAssistant]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -218,6 +371,7 @@ const CursorAgent: React.FC = () => {
     setHasAgent(!!(session.CursorAgentId || summary.CursorAgentId));
     if (session.SaasApplicationId) setSaasApplicationId(session.SaasApplicationId);
     if (session.DataSourceRegisterId) setDataSourceId(session.DataSourceRegisterId);
+    if (session.SkillKey) setSkillKey(session.SkillKey);
     const hist = session.ConversationHistory ?? [];
     setMessages(hist.map((m: CursorAgentMessage) => ({
       role: ((m.role ?? m.Role ?? 'assistant') as 'user' | 'assistant'),
@@ -298,6 +452,12 @@ const CursorAgent: React.FC = () => {
           <div className="flex items-center justify-between px-3 py-2 mb-1 gap-2">
             <div className={`text-md font-semibold ${theme.title}`}>Cursor Agent</div>
             <div className="flex items-center gap-2">
+              <SkillPicker
+                items={skillItems}
+                value={skillKey}
+                disabled={isRunning || hasAgent}
+                onChange={setSkillKey}
+              />
               <select
                 className={`h-7 px-2 text-xs border ${theme.inputBox}`}
                 value={saasApplicationId ?? ''}
@@ -335,7 +495,7 @@ const CursorAgent: React.FC = () => {
             <div className="w-1 flex-auto overflow-auto px-5 py-5 space-y-3">
               {messages.length === 0 && (
                 <div className={`text-xs ${theme.label}`}>
-                  Ask Cursor to inspect schema, write an AppConfigPack JSON, or run gated SQL. Source code is read-only.
+                  Ask Cursor to inspect schema, write an AppConfigPack JSON, or run gated SQL. Source code is read-only. Skill is injected when you start a chat.
                 </div>
               )}
               {messages.map((msg, i) => (

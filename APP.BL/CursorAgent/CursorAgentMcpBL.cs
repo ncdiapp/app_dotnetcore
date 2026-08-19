@@ -108,10 +108,12 @@ namespace App.BL.CursorAgent
                             session.SaasApplicationId,
                             session.DataSourceRegisterId,
                             session.WorkspaceRelativePath,
+                            session.SkillKey,
+                            session.AllowProposeImport,
                             CursorAgentId = session.CursorAgentId
                         }));
                     case "list_skills":
-                        return ToolText(JsonConvert.SerializeObject(CursorAgentSkillBL.ListSkills(SkillDs())));
+                        return ToolText(JsonConvert.SerializeObject(CursorAgentSkillCatalogBL.ListMenu()));
                     case "get_skill":
                         return ToolText(CursorAgentSkillBL.GetSkill(SkillDs(), Str(args, "name")));
                     case "list_datasources":
@@ -158,6 +160,8 @@ namespace App.BL.CursorAgent
                             Str(args, "sql"),
                             CursorAgentConfig.SqlPreviewRowLimit));
                     case "propose_import_pack":
+                        if (!session.AllowProposeImport)
+                            return ToolText("propose_import_pack is disabled for this skill. Write the pack to packs/ instead.", true);
                         return ToolText(await ProposeImportAsync(session, Str(args, "relativePath"), ct).ConfigureAwait(false));
                     case "propose_sql":
                         return ToolText(await ProposeSqlAsync(session, Str(args, "sql"), RequireDs(args, session), ct).ConfigureAwait(false));
@@ -350,11 +354,11 @@ namespace App.BL.CursorAgent
 
         private static object[] ToolDescriptors()
         {
-            return new object[]
+            var tools = new List<object>
             {
-                Tool("get_session_context", "Current Application, DataSource, and workspace path."),
-                Tool("list_skills", "List Cursor Agent skills stored in AppAISkill."),
-                Tool("get_skill", "Load a composed skill by name.", Prop("name", "string", true)),
+                Tool("get_session_context", "Current Application, DataSource, skill, and workspace path."),
+                Tool("list_skills", "List Cursor Agent catalog and saved skills."),
+                Tool("get_skill", "Load a composed saved skill by name.", Prop("name", "string", true)),
                 Tool("list_datasources", "List tenant registered databases."),
                 Tool("get_table_schema", "Columns/PK for a table.",
                     Prop("tableName", "string", true), Prop("schemaOwner", "string", false), Prop("dataSourceRegisterId", "integer", false)),
@@ -365,10 +369,15 @@ namespace App.BL.CursorAgent
                 Tool("delete_workspace_file", "Delete a workspace file.", Prop("relativePath", "string", true)),
                 Tool("validate_config_pack", "Validate an AppConfigPack JSON file.", Prop("relativePath", "string", true)),
                 Tool("preview_config_pack", "Preview import actions without applying.", Prop("relativePath", "string", true)),
-                Tool("propose_import_pack", "Ask the user to confirm importing a pack. Blocks until they confirm.", Prop("relativePath", "string", true)),
                 Tool("run_select", "Run a SELECT (row-capped).", Prop("sql", "string", true), Prop("dataSourceRegisterId", "integer", false)),
                 Tool("propose_sql", "Ask the user to confirm INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD.", Prop("sql", "string", true), Prop("dataSourceRegisterId", "integer", false))
             };
+            var session = CursorAgentContext.Current;
+            if (session == null || session.AllowProposeImport)
+            {
+                tools.Add(Tool("propose_import_pack", "Ask the user to confirm importing a pack. Blocks until they confirm.", Prop("relativePath", "string", true)));
+            }
+            return tools.ToArray();
         }
 
         private static object Tool(string name, string description, params ToolProp[] props)

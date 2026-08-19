@@ -149,6 +149,22 @@ public class CursorAgentController : SecureBaseController
     }
 
     [HttpGet]
+    public OperationCallResult<CursorAgentSkillMenuDto> ListSkillMenu()
+    {
+        var result = new OperationCallResult<CursorAgentSkillMenuDto>();
+        if (!EnsureAdmin(result)) return result;
+        try
+        {
+            result.Object = CursorAgentBL.ListSkillMenu();
+        }
+        catch (Exception ex)
+        {
+            Fail(result, "CursorAgent_ListSkillMenu", ex.Message);
+        }
+        return result;
+    }
+
+    [HttpGet]
     public OperationCallResult<CursorAgentSessionFullDto> GetSession(string sessionId)
     {
         var result = new OperationCallResult<CursorAgentSessionFullDto>();

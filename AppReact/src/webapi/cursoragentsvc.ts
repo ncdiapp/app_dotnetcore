@@ -79,14 +79,15 @@ class CursorAgentService {
     saasApplicationId: number,
     dataSourceRegisterId: number | undefined,
     conversationHistory: CursorAgentMessage[],
-    handlers: CursorAgentEventHandlers
+    handlers: CursorAgentEventHandlers,
+    skillKey?: string
   ): Promise<string> {
     this.stopPolling();
     const url = `${endpoints.BASE_URL}/webapi/CursorAgent/StartSession`;
     const response = await fetch(url, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify({ userMessage, saasApplicationId, dataSourceRegisterId, conversationHistory }),
+      body: JSON.stringify({ userMessage, saasApplicationId, dataSourceRegisterId, conversationHistory, skillKey }),
     });
     if (!response.ok) throw new Error(`Failed to start Cursor Agent: ${response.status}`);
     const result = await response.json();
@@ -213,6 +214,26 @@ class CursorAgentService {
 }
 
 export const cursorAgentService = new CursorAgentService();
+
+export interface CursorAgentSkillMenuItem {
+  Key: string;
+  Label: string;
+  Group: string;
+  GroupLabel: string;
+}
+
+export interface CursorAgentSkillMenu {
+  DefaultKey: string;
+  Items: CursorAgentSkillMenuItem[];
+}
+
+export async function listCursorSkillMenu(): Promise<CursorAgentSkillMenu> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorAgent/ListSkillMenu`;
+  const resp = await fetch(url, { headers: getHeaders() });
+  if (!resp.ok) return { DefaultKey: 'app-config-builder', Items: [] };
+  const data = await resp.json();
+  return data?.Object ?? { DefaultKey: 'app-config-builder', Items: [] };
+}
 
 export async function getRecentCursorSessions(limit = 30): Promise<CursorAgentSessionSummary[]> {
   const url = `${endpoints.BASE_URL}/webapi/CursorAgent/RecentSessions?limit=${limit || ''}`;
