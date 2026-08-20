@@ -143,12 +143,12 @@ Hard rules:
 
         private const string ImportContent = @"When the user wants Transaction / Form / SearchView / Entity configuration:
 
-1. On a new request, ask clarifying questions first and WAIT. Do not write JSON until the user confirms table names, screens, and fields.
+1. On a new request, ask clarifying questions first and WAIT. Establish screen pattern first: Search+MasterDetail vs ListEdit (organizedType List). If the user said List Edit / ListEdit, use ListEdit only — no Search pair.
 2. Call get_skill('cursor-agent-import-pack') if you need the JSON contract (PROMPT.md is attached as a skill ref).
 3. Write the pack to packs/<name>.appConfigPack.json via write_workspace_file.
 4. Call validate_config_pack then preview_config_pack.
 5. Do not call propose_import_pack. Tell the user the workspace file is ready so they can click Start Build in this chat.
-6. source.generatedBy must be ""ai"". Use integrationId, never numeric TransactionId/SearchId.";
+6. source.generatedBy must be ""ai"". Use integrationId, never numeric TransactionId/SearchId. ListEdit uses organizedType List and transactions[].menu for the main menu.";
 
         private const string SqlContent = @"Database access:
 - list_datasources then get_table_schema for structure.

@@ -101,12 +101,55 @@ Top-level `simpleListEntities[]`. Upserted **before** transactions so `fields[].
 
 Wire a field with `"controlType": 1` and `"entityCode": "QcTargetMarket"`. Do **not** set `ddlQueryText` on that field (query datasource clears `EntityId`).
 
+## Screen patterns (choose first)
+
+Before writing JSON, pick **one** pattern. Do not invent a Search when the user asked for List Edit.
+
+| Pattern | When | Pack shape | Main menu |
+|---------|------|------------|-----------|
+| **A. Search + MasterDetail** | Complex form (tabs, siblings, create/edit dialog from a query list) | `organizedType: "MasterDetail"` (or omit) + `searches[]` with `linkTargets` | `searches[].menu` |
+| **B. ListEdit Transaction** | Simple grid CRUD on one table (or hierarchical List root+children). User says **List Edit / ListEdit / LIST EDIT TRANSACTION** | **One** transaction: `organizedType: "List"` (alias `ListEdit`). **No** Search, **no** Create/Edit `linkTargets` | `transactions[].menu` |
+
+**Default when ambiguous:** ask which pattern.  
+**When user says List Edit / ListEdit:** always **B** — never split into Search + MasterDetail.
+
+ListEdit example (single table + main menu):
+
+```json
+{
+  "integrationId": "ListEdit_ErpCustomer",
+  "name": "Customers",
+  "organizedType": "List",
+  "unitStructure": {
+    "rootTableName": "Erp_Customer",
+    "rootDisplayName": "Customer",
+    "siblingTableNames": [],
+    "childUnits": []
+  },
+  "fields": [
+    { "tableName": "Erp_Customer", "columnName": "CustomerId", "isVisible": false, "isPrimaryKey": true },
+    { "tableName": "Erp_Customer", "columnName": "CustomerCode", "controlType": 2, "isVisible": true },
+    { "tableName": "Erp_Customer", "columnName": "CustomerName", "controlType": 2, "isVisible": true },
+    { "tableName": "Erp_Customer", "columnName": "IsActive", "controlType": 13, "isVisible": true }
+  ],
+  "menu": {
+    "registerInMainMenu": true,
+    "menuTitle": "Customers",
+    "menuOrder": 100
+  }
+}
+```
+
+- `organizedType`: `MasterDetail` (1, default) | `List` / `ListEdit` (3). Import creates hierarchy then sets `TransactionOrganizedType`.
+- `transactions[].menu` only for **List** — opens `FormListEdit`. For MasterDetail list screens use a Search menu instead.
+
 ## Transactions
 
 ```json
 {
   "integrationId": "TX_DemoOrder",
   "name": "Demo Order",
+  "organizedType": "MasterDetail",
   "unitStructure": {
     "rootTableName": "Demo_Order",
     "rootDisplayName": "Order",
@@ -142,6 +185,8 @@ Wire a field with `"controlType": 1` and `"entityCode": "QcTargetMarket"`. Do **
 ```
 
 - Root = master table. Optional `rootDisplayName`. Siblings share the root PK (`ReferenceId` pattern when present).
+- Optional `organizedType`: `MasterDetail` (default) or `List` / `ListEdit` (editable grid). See **Screen patterns** above.
+- Optional `menu` on a **List** transaction: `registerInMainMenu`, `menuTitle`, `menuOrder` — same shape as search menu; adds a FormListEdit shortcut.
 - `siblingUnits[]` overlays sibling display names. `siblingTableNames` still creates the sibling units.
 - Child / grandchild = grids. Optional `gridDisplayType` (`1` RegularGrid, `5` AvailableSelectGridPair, `6` MultipleSelectBox, `7` ChildUnitPivotColumns).
 - Optional `layoutTab` on a child unit: after default form create, rename that unit's form Tab to this title. Ignored when `formLayout` is present (tab titles live on tab nodes).
@@ -325,15 +370,16 @@ Each search:
 
 **In App Data Integration Agent (App Config Builder):** ask clarifying questions on the first reply and wait. Only write the pack after the user confirms. Then stop — the chat UI offers **Start Build** to import. Do not import from tools.
 
-1. List physical tables and views the app needs (columns + PK + FKs).
-2. Assign a stable `integrationId` per transaction and search (`TX_...`, `Search_...`). Do not reuse ids across packs unless you intend Update.
-3. For each transaction, describe Root / Sibling / Child tables that already exist or are included in `tables`/`views`.
-4. Add field overlays only where the default TextBox is wrong (DDL, date, numeric, hidden, pivot).
-5. Write one Search per list screen: SQL that returns a unique root id column, mark that column `isTransRootId`.
-6. Point `linkTargets` at transaction `integrationId`s in the same file (or already in the tenant).
-7. Validate mentally: every `unitStructure` table appears in `tables` or `views` (or already exists in the tenant DB).
+1. **Pick the screen pattern** (A Search+MasterDetail vs B ListEdit). If the user said List Edit / ListEdit / LIST EDIT TRANSACTION → **B only**.
+2. List physical tables and views the app needs (columns + PK + FKs).
+3. Assign a stable `integrationId` per transaction and search (`TX_...`, `ListEdit_...`, `Search_...`). Do not reuse ids across packs unless you intend Update.
+4. For each transaction, set `organizedType` and describe Root / Sibling / Child tables that already exist or are included in `tables`/`views`.
+5. Add field overlays only where the default TextBox is wrong (DDL, date, numeric, hidden, pivot).
+6. **Pattern A only:** write one Search per list screen: SQL that returns a unique root id column, mark that column `isTransRootId`; point `linkTargets` at transaction `integrationId`s; put main menu on the Search.
+7. **Pattern B only:** put main menu on the List transaction (`transactions[].menu`). Do **not** add a Search for the same screen.
+8. Validate mentally: every `unitStructure` table appears in `tables` or `views` (or already exists in the tenant DB).
 
-See [`sample.appConfigPack.json`](sample.appConfigPack.json) for a minimal runnable pack.
+See [`sample.appConfigPack.json`](sample.appConfigPack.json) for Pattern A (Search + MasterDetail). See [`sample-listedit.appConfigPack.json`](sample-listedit.appConfigPack.json) for Pattern B (ListEdit).
 
 ## Out of scope (v1)
 

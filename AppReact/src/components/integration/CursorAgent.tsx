@@ -29,8 +29,7 @@ import Confirm from '../common/Confirm';
 import appHelper from '../../helper/appHelper';
 import { useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
 import CursorAgentChatManagement, { RenameChatDialog } from './CursorAgentChatManagement';
-import { appConfigPackSvc } from '../../webapi/appConfigPackSvc';
-import { refreshUserTreeMenu } from '../../helper/userMenuHelper';
+import CursorAgentStartBuildDialog from './CursorAgentStartBuildDialog';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -218,26 +217,34 @@ const CHAT_LIST_MAX_PX = 420;
 const WORKSPACE_DEFAULT_PX = 256;
 const WORKSPACE_MIN_PX = 180;
 const WORKSPACE_MAX_PX = 560;
+const PREVIEW_DEFAULT_PX = 160;
+const PREVIEW_MIN_PX = 80;
+const PREVIEW_MAX_PX = 480;
 const CENTER_MIN_PX = 280;
 
 interface PanelResizeHandleProps {
   label: string;
-  edge: 'right' | 'left';
+  edge: 'right' | 'left' | 'top';
   onMouseDown: (e: React.MouseEvent) => void;
 }
 
-const PanelResizeHandle: React.FC<PanelResizeHandleProps> = ({ label, edge, onMouseDown }) => (
-  <div
-    role="separator"
-    aria-orientation="vertical"
-    aria-label={label}
-    title="Drag to resize"
-    onMouseDown={onMouseDown}
-    className={`absolute top-0 bottom-0 z-10 w-2 cursor-col-resize select-none ${
-      edge === 'right' ? 'right-0 -mr-1' : 'left-0 -ml-1'
-    }`}
-  />
-);
+const PanelResizeHandle: React.FC<PanelResizeHandleProps> = ({ label, edge, onMouseDown }) => {
+  const isHorizontal = edge === 'top';
+  return (
+    <div
+      role="separator"
+      aria-orientation={isHorizontal ? 'horizontal' : 'vertical'}
+      aria-label={label}
+      title="Drag to resize"
+      onMouseDown={onMouseDown}
+      className={`absolute z-10 select-none ${
+        isHorizontal
+          ? 'left-0 right-0 top-0 -mt-1 h-2 cursor-row-resize'
+          : `top-0 bottom-0 w-2 cursor-col-resize ${edge === 'right' ? 'right-0 -mr-1' : 'left-0 -ml-1'}`
+      }`}
+    />
+  );
+};
 
 const itemKey = (i: CursorAgentSkillMenuItem) => i.Key;
 const itemLabel = (i: CursorAgentSkillMenuItem) => i.Label;
@@ -471,13 +478,17 @@ const CursorAgent: React.FC = () => {
   const [files, setFiles] = useState<CursorAgentWorkspaceFile[]>([]);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [previewContent, setPreviewContent] = useState('');
+  const [previewHeight, setPreviewHeight] = useState(PREVIEW_DEFAULT_PX);
+  const [previewCopyHint, setPreviewCopyHint] = useState<string | null>(null);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [chatListWidth, setChatListWidth] = useState(CHAT_LIST_DEFAULT_PX);
   const [workspaceWidth, setWorkspaceWidth] = useState(WORKSPACE_DEFAULT_PX);
   const layoutRef = useRef<HTMLDivElement | null>(null);
-  const panelDragRef = useRef<'chat' | 'workspace' | null>(null);
+  const workspacePanelRef = useRef<HTMLDivElement | null>(null);
+  const panelDragRef = useRef<'chat' | 'workspace' | 'preview' | null>(null);
   const chatListWidthRef = useRef(CHAT_LIST_DEFAULT_PX);
   const workspaceWidthRef = useRef(WORKSPACE_DEFAULT_PX);
+  const previewHeightRef = useRef(PREVIEW_DEFAULT_PX);
   const workspaceOpenRef = useRef(false);
   const [chatMenu, setChatMenu] = useState<{ visible: boolean; x: number; y: number; item: CursorAgentSessionSummary | null }>({
     visible: false, x: 0, y: 0, item: null,
@@ -487,9 +498,7 @@ const CursorAgent: React.FC = () => {
   const [manageOpen, setManageOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
-  const [isBuildingPack, setIsBuildingPack] = useState(false);
-  const [buildResult, setBuildResult] = useState<string | null>(null);
-  const [confirmPackPath, setConfirmPackPath] = useState<string | null>(null);
+  const [buildPackPath, setBuildPackPath] = useState<string | null>(null);
   const chatMenuRef = useRef<HTMLDivElement | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -497,13 +506,25 @@ const CursorAgent: React.FC = () => {
 
   chatListWidthRef.current = chatListWidth;
   workspaceWidthRef.current = workspaceWidth;
+  previewHeightRef.current = previewHeight;
   workspaceOpenRef.current = workspaceOpen;
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       const kind = panelDragRef.current;
+      if (!kind) return;
+      if (kind === 'preview') {
+        const panelRect = workspacePanelRef.current?.getBoundingClientRect();
+        if (!panelRect) return;
+        const next = Math.min(
+          PREVIEW_MAX_PX,
+          Math.max(PREVIEW_MIN_PX, panelRect.bottom - e.clientY)
+        );
+        setPreviewHeight(next);
+        return;
+      }
       const rect = layoutRef.current?.getBoundingClientRect();
-      if (!kind || !rect) return;
+      if (!rect) return;
       const gap = 4;
       const wsOpen = workspaceOpenRef.current;
       const wsW = wsOpen ? workspaceWidthRef.current : 0;
@@ -538,10 +559,10 @@ const CursorAgent: React.FC = () => {
     };
   }, []);
 
-  const startResize = useCallback((kind: 'chat' | 'workspace') => (e: React.MouseEvent) => {
+  const startResize = useCallback((kind: 'chat' | 'workspace' | 'preview') => (e: React.MouseEvent) => {
     e.preventDefault();
     panelDragRef.current = kind;
-    document.body.style.cursor = 'col-resize';
+    document.body.style.cursor = kind === 'preview' ? 'row-resize' : 'col-resize';
     document.body.style.userSelect = 'none';
   }, []);
 
@@ -684,6 +705,7 @@ const CursorAgent: React.FC = () => {
         setSessionId(sid);
         setHasAgent(true);
         refreshFiles(sid);
+        refreshHistory();
       } else {
         await cursorAgentService.followUp(text, makeHandlers(), skillKey, saasApplicationId, dataSourceId);
       }
@@ -694,7 +716,7 @@ const CursorAgent: React.FC = () => {
       setIsRunning(false);
       isRunningRef.current = false;
     }
-  }, [dataSourceId, hasAgent, makeHandlers, refreshFiles, saasApplicationId, sessionId, skillKey, updateLastAssistant]);
+  }, [dataSourceId, hasAgent, makeHandlers, refreshFiles, refreshHistory, saasApplicationId, sessionId, skillKey, updateLastAssistant]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -731,9 +753,8 @@ const CursorAgent: React.FC = () => {
     setSkillKey('app-config-builder');
     setSaasApplicationId(pickDefaultApplicationId(applications));
     setDataSourceId(dataSources[0]?.id);
-    setIsBuildingPack(false);
-    setBuildResult(null);
-    setConfirmPackPath(null);
+    setBuildPackPath(null);
+    setPreviewCopyHint(null);
   }, [applications, dataSources]);
 
   const handleDeletedSessions = useCallback((ids?: string[]) => {
@@ -791,56 +812,37 @@ const CursorAgent: React.FC = () => {
       const content = await readCursorWorkspaceFile(sessionId, relativePath);
       setPreviewPath(relativePath);
       setPreviewContent(content);
+      setPreviewCopyHint(null);
       setWorkspaceOpen(true);
     } catch (err: any) {
       setError(err?.message ?? 'Failed to read file');
     }
   }, [sessionId]);
 
-  const runStartBuild = useCallback(async (relativePath: string) => {
-    if (!sessionId || !saasApplicationId || isBuildingPack) return;
-    setIsBuildingPack(true);
-    setBuildResult(null);
-    setError(null);
+  const copyPreview = useCallback(async () => {
+    if (!previewPath) return;
     try {
-      const text = await readCursorWorkspaceFile(sessionId, relativePath);
-      const loaded = await appConfigPackSvc.Load(text);
-      const pack = loaded?.Object;
-      if (!loaded?.IsSuccessful || !pack) {
-        const msg = loaded?.ValidationResult?.Items?.map(i => i.Message).join('; ') || 'Could not load the config pack.';
-        setBuildResult(msg);
-        setError(msg);
-        return;
+      if (isImagePath(previewPath)) {
+        const file = files.find(f => workspaceFilePath(f) === previewPath || f.RelativePath === previewPath);
+        const url = toAppFileUrl(file?.PublicUrl);
+        if (!url) throw new Error('Image URL not available');
+        const resp = await fetch(url);
+        const blob = await resp.blob();
+        if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+          await navigator.clipboard.write([new ClipboardItem({ [blob.type || 'image/png']: blob })]);
+        } else {
+          await navigator.clipboard.writeText(url);
+        }
+      } else {
+        await navigator.clipboard.writeText(previewContent || '');
       }
-      const validated = await appConfigPackSvc.Validate(pack);
-      const errors = validated?.Object?.Errors ?? [];
-      if (validated?.Object && validated.Object.IsValid === false && errors.length) {
-        const msg = errors.join('; ');
-        setBuildResult(msg);
-        setError(msg);
-        return;
-      }
-      const result = await appConfigPackSvc.Execute(pack, saasApplicationId);
-      const exec = result.Object;
-      if (!result.IsSuccessful || !exec?.IsSuccess) {
-        const msg = exec?.ErrorMessage
-          || result.ValidationResult?.Items?.map(i => i.Message).join('; ')
-          || 'Start Build failed.';
-        setBuildResult(msg);
-        setError(msg);
-        return;
-      }
-      try { await refreshUserTreeMenu(); } catch { /* non-blocking */ }
-      const summary = `Import completed. Tables created: ${exec.TablesCreated ?? 0}, columns added: ${exec.ColumnsAdded ?? 0}, TX inserted: ${exec.TransactionsInserted ?? 0}, TX updated: ${exec.TransactionsUpdated ?? 0}, searches inserted: ${exec.SearchesInserted ?? 0}.`;
-      setBuildResult(summary);
+      setPreviewCopyHint('Copied');
+      window.setTimeout(() => setPreviewCopyHint(null), 1500);
     } catch (err: any) {
-      const msg = err?.message ?? 'Start Build failed.';
-      setBuildResult(msg);
-      setError(msg);
-    } finally {
-      setIsBuildingPack(false);
+      setPreviewCopyHint(err?.message || 'Copy failed');
+      window.setTimeout(() => setPreviewCopyHint(null), 2000);
     }
-  }, [isBuildingPack, saasApplicationId, sessionId]);
+  }, [files, previewContent, previewPath]);
 
   const chatTitle = (() => {
     const fromList = chatHistory.find(c => c.SessionGuid === sessionId);
@@ -874,8 +876,8 @@ const CursorAgent: React.FC = () => {
 
       <div ref={layoutRef} className="w-full h-[200px] flex-auto overflow-hidden flex gap-1">
           <div className="relative shrink-0 flex flex-col" style={{ width: chatListWidth }}>
-            <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
-              <span className={`text-xs font-semibold ${theme.title}`}>Chats</span>
+            <div className={`flex items-center justify-between px-3 h-10 shrink-0 mb-1 ${theme.mainContentSection}`}>
+              <span className={`text-sm font-semibold truncate ${theme.title}`}>Chats</span>
               <button
                 type="button"
                 onClick={handleNewChat}
@@ -931,8 +933,8 @@ const CursorAgent: React.FC = () => {
           </div>
 
           <div className="w-1 flex-auto flex flex-col overflow-hidden min-w-0">
-            <div className={`flex items-center justify-between px-3 py-2 mb-1 shrink-0 ${theme.mainContentSection}`}>
-              <div className={`text-md font-semibold truncate ${theme.title}`} title={chatTitle}>
+            <div className={`flex items-center justify-between px-3 h-10 shrink-0 mb-1 ${theme.mainContentSection}`}>
+              <div className={`text-sm font-semibold truncate ${theme.title}`} title={chatTitle}>
                 {chatTitle}
               </div>
               <div className="flex items-center space-x-2 shrink-0 ml-2">
@@ -941,14 +943,14 @@ const CursorAgent: React.FC = () => {
                     type="button"
                     onClick={handleResume}
                     disabled={isRunning}
-                    className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}
+                    className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_default}`}
                     title="Continue this chat from where it stopped (failed, cancelled, or interrupted)."
                   >
                     Resume
                   </button>
                 )}
                 {isRunning && (
-                  <button type="button" onClick={() => cursorAgentService.cancel()} className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`}>
+                  <button type="button" onClick={() => cursorAgentService.cancel()} className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_default}`}>
                     Cancel
                   </button>
                 )}
@@ -956,7 +958,7 @@ const CursorAgent: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setWorkspaceOpen(v => !v)}
-                    className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_secondary}`}
+                    className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_secondary}`}
                     title="Workspace"
                   >
                     <i className="fa-solid fa-folder-open mr-1" />Workspace
@@ -1016,12 +1018,12 @@ const CursorAgent: React.FC = () => {
                             <div className={`mt-4 px-3 py-3 rounded-[4px] border text-xs ${theme.inputBox}`}>
                               <div className={`font-semibold mb-1 ${theme.title}`}>Config file completed</div>
                               <div className={`mb-2 ${theme.label}`}>
-                                A draft pack is ready in the workspace. Review it, then click Start Build to import into the selected Application.
+                                Draft pack(s) are ready in the workspace. Open a file to review, then Start Build on that file to validate and import.
                               </div>
                               {packFiles.map(f => {
                                 const path = workspaceFilePath(f);
                                 return (
-                                  <div key={path} className="flex items-center mb-1">
+                                  <div key={path} className="flex items-center gap-2 mb-1">
                                     <button
                                       type="button"
                                       className={`text-left w-1 flex-auto truncate underline ${theme.label}`}
@@ -1030,22 +1032,17 @@ const CursorAgent: React.FC = () => {
                                     >
                                       {path}
                                     </button>
+                                    <button
+                                      type="button"
+                                      disabled={isRunning || !saasApplicationId}
+                                      className={`px-3 py-1.5 text-sm rounded-[4px] shrink-0 ${theme.button_secondary} disabled:opacity-50 disabled:cursor-not-allowed`}
+                                      onClick={() => setBuildPackPath(path)}
+                                    >
+                                      Start Build
+                                    </button>
                                   </div>
                                 );
                               })}
-                              {buildResult && (
-                                <div className={`mt-2 ${theme.label}`}>{buildResult}</div>
-                              )}
-                              <div className="flex items-center mt-2">
-                                <button
-                                  type="button"
-                                  disabled={isBuildingPack || isRunning || !saasApplicationId}
-                                  className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_secondary} disabled:opacity-50 disabled:cursor-not-allowed`}
-                                  onClick={() => setConfirmPackPath(workspaceFilePath(packFiles[packFiles.length - 1]))}
-                                >
-                                  {isBuildingPack ? 'Building…' : 'Start Build'}
-                                </button>
-                              </div>
                             </div>
                           )}
                         </div>
@@ -1150,10 +1147,10 @@ const CursorAgent: React.FC = () => {
           </div>
 
           {workspaceOpen && workspaceFiles.length > 0 && (
-            <div className="relative shrink-0 flex flex-col" style={{ width: workspaceWidth }}>
+            <div ref={workspacePanelRef} className="relative shrink-0 flex flex-col" style={{ width: workspaceWidth }}>
               <PanelResizeHandle edge="left" label="Resize workspace" onMouseDown={startResize('workspace')} />
-              <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
-                  <span className={`text-xs font-semibold ${theme.title}`}>Workspace</span>
+              <div className={`flex items-center justify-between px-3 h-10 shrink-0 mb-1 ${theme.mainContentSection}`}>
+                  <span className={`text-sm font-semibold truncate ${theme.title}`}>Workspace</span>
                   <button
                     type="button"
                     onClick={() => setWorkspaceOpen(false)}
@@ -1177,17 +1174,40 @@ const CursorAgent: React.FC = () => {
                   ))}
                 </div>
                 {previewPath && (
-                  <div className={`h-40 overflow-auto mt-1 px-2 py-1 ${theme.mainContentSection}`}>
-                    <div className={`text-[10px] ${theme.label}`}>{previewPath}</div>
-                    {isImagePath(previewPath) && files.find(f => f.RelativePath === previewPath)?.PublicUrl ? (
-                      <img
-                        src={toAppFileUrl(files.find(f => f.RelativePath === previewPath)?.PublicUrl)}
-                        alt={previewPath}
-                        className="max-w-full mt-1"
-                      />
-                    ) : (
-                      <pre className="text-[10px] whitespace-pre-wrap">{previewContent}</pre>
-                    )}
+                  <div
+                    className={`relative shrink-0 overflow-hidden mt-1 flex flex-col ${theme.mainContentSection}`}
+                    style={{ height: previewHeight }}
+                  >
+                    <PanelResizeHandle edge="top" label="Resize preview" onMouseDown={startResize('preview')} />
+                    <div className="flex items-center justify-between px-2 py-1 shrink-0">
+                      <div className={`text-[10px] truncate w-1 flex-auto mr-2 ${theme.label}`} title={previewPath}>
+                        {previewPath}
+                      </div>
+                      <div className="flex items-center shrink-0 space-x-1">
+                        {previewCopyHint && (
+                          <span className={`text-[10px] ${theme.label}`}>{previewCopyHint}</span>
+                        )}
+                        <button
+                          type="button"
+                          className={`w-8 h-6 ${theme.button_default} rounded-[4px] text-xs`}
+                          title="Copy preview"
+                          onClick={() => void copyPreview()}
+                        >
+                          <i className="fa-solid fa-copy" />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="h-1 flex-auto overflow-auto px-2 pb-1">
+                      {isImagePath(previewPath) && files.find(f => f.RelativePath === previewPath || workspaceFilePath(f) === previewPath)?.PublicUrl ? (
+                        <img
+                          src={toAppFileUrl(files.find(f => f.RelativePath === previewPath || workspaceFilePath(f) === previewPath)?.PublicUrl)}
+                          alt={previewPath}
+                          className="max-w-full mt-1"
+                        />
+                      ) : (
+                        <pre className="text-[10px] whitespace-pre-wrap">{previewContent}</pre>
+                      )}
+                    </div>
                   </div>
                 )}
             </div>
@@ -1265,18 +1285,12 @@ const CursorAgent: React.FC = () => {
           handleDeletedSessions([guid]);
         }}
       />
-      <Confirm
-        isOpen={!!confirmPackPath}
-        title="Start Build"
-        message={`Import ${confirmPackPath || 'this config pack'} into the selected Application? This creates or updates tables, transactions, and searches.`}
-        confirmLabel="Start Build"
-        confirmButtonStyle={theme.button_secondary}
-        onCancel={() => setConfirmPackPath(null)}
-        onConfirm={() => {
-          const path = confirmPackPath;
-          setConfirmPackPath(null);
-          if (path) void runStartBuild(path);
-        }}
+      <CursorAgentStartBuildDialog
+        isOpen={!!buildPackPath}
+        sessionId={sessionId}
+        packPath={buildPackPath}
+        saasApplicationId={saasApplicationId}
+        onClose={() => setBuildPackPath(null)}
       />
       <CursorAgentChatManagement
         isOpen={manageOpen}

@@ -122,6 +122,7 @@ namespace APP.BL.AppConfigPack
                 IntegrationId = integrationId,
                 Name = txDto.TransactionName,
                 Description = txDto.Description,
+                OrganizedType = FormatOrganizedTypeName(txDto.TransactionOrganizedType) ?? "MasterDetail",
                 FormMode = "Default",
                 UnitStructure = new AppConfigPackUnitStructureDto
                 {
@@ -167,6 +168,7 @@ namespace APP.BL.AppConfigPack
             exported.UnitFormulas = ExportTransactionUnitFormulas(conn, txId);
             exported.ConditionalActions = ExportTransactionConditionalActions(conn, txId);
             exported.LinkedSearches = ExportTransactionLinkedSearches(conn, txId);
+            exported.Menu = ExportTransactionMenu(conn, txId, txDto.TransactionName);
             if (formId.HasValue)
             {
                 exported.FormLayout = ExportFormLayout(conn, formId.Value, txId);
@@ -926,6 +928,31 @@ ORDER BY MenuID";
                     {
                         RegisterInMainMenu = true,
                         MenuTitle = reader.IsDBNull(0) ? searchName : reader.GetString(0),
+                        MenuOrder = reader.IsDBNull(1) ? (int?)null : Convert.ToInt32(reader.GetValue(1))
+                    };
+                }
+            }
+        }
+
+        private static AppConfigPackMenuDto ExportTransactionMenu(SqlConnection conn, int transactionId, string transactionName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TOP 1 Name, Sort
+FROM dbo.AppListMenu
+WHERE RouteCode = N'FormListEdit' AND Link = @Link
+ORDER BY MenuID";
+                cmd.Parameters.AddWithValue("@Link", transactionId.ToString());
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (!reader.Read())
+                        return null;
+
+                    return new AppConfigPackMenuDto
+                    {
+                        RegisterInMainMenu = true,
+                        MenuTitle = reader.IsDBNull(0) ? transactionName : reader.GetString(0),
                         MenuOrder = reader.IsDBNull(1) ? (int?)null : Convert.ToInt32(reader.GetValue(1))
                     };
                 }

@@ -173,6 +173,14 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string Description { get; set; }
 
+        /// <summary>
+        /// Screen pattern: MasterDetail (default) | List (ListEdit grid).
+        /// List aliases: ListEdit. Maps to EmTransactionOrganizedType (1 / 3).
+        /// Null/omit on insert = MasterDetail; on update = leave existing.
+        /// </summary>
+        [DataMember]
+        public string OrganizedType { get; set; }
+
         [DataMember]
         public AppConfigPackUnitStructureDto UnitStructure { get; set; }
 
@@ -209,6 +217,13 @@ namespace APP.Components.EntityDto
         /// <summary>Whole-transaction read-only (AppTransaction.IsReadOnly). Null/omit = keep current default.</summary>
         [DataMember]
         public bool? IsReadOnly { get; set; }
+
+        /// <summary>
+        /// Register this transaction on the Application main menu (FormListEdit route).
+        /// Requires organizedType List / ListEdit. Prefer this over a Search menu for simple grid CRUD.
+        /// </summary>
+        [DataMember]
+        public AppConfigPackMenuDto Menu { get; set; }
 
         /// <summary>Null/omit = leave existing. [] = clear. Otherwise replace all data loads on this transaction.</summary>
         [DataMember]

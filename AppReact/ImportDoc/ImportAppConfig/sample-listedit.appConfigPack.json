@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-20T00:00:00Z",
+  "source": {
+    "generatedBy": "manual",
+    "applicationName": "Demo",
+    "notes": "Pattern B — ListEdit Transaction only. No Search. Main menu on the transaction."
+  },
+  "tables": [],
+  "views": [],
+  "simpleListEntities": [],
+  "transactions": [
+    {
+      "integrationId": "ListEdit_ErpCustomer",
+      "name": "Customers",
+      "description": "Editable customer grid",
+      "organizedType": "List",
+      "formMode": "Default",
+      "isShowSaveButton": true,
+      "unitStructure": {
+        "rootTableName": "Erp_Customer",
+        "rootDisplayName": "Customer",
+        "siblingTableNames": [],
+        "childUnits": []
+      },
+      "fields": [
+        {
+          "tableName": "Erp_Customer",
+          "columnName": "CustomerId",
+          "displayName": "Id",
+          "controlType": 20,
+          "isVisible": false,
+          "isPrimaryKey": true
+        },
+        {
+          "tableName": "Erp_Customer",
+          "columnName": "CustomerCode",
+          "displayName": "Code",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 10
+        },
+        {
+          "tableName": "Erp_Customer",
+          "columnName": "CustomerName",
+          "displayName": "Name",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 20
+        },
+        {
+          "tableName": "Erp_Customer",
+          "columnName": "ContactEmail",
+          "displayName": "Email",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 30
+        },
+        {
+          "tableName": "Erp_Customer",
+          "columnName": "ContactPhone",
+          "displayName": "Phone",
+          "controlType": 2,
+          "isVisible": true,
+          "sortOrder": 40
+        },
+        {
+          "tableName": "Erp_Customer",
+          "columnName": "IsActive",
+          "displayName": "Active",
+          "controlType": 13,
+          "isVisible": true,
+          "sortOrder": 50
+        }
+      ],
+      "menu": {
+        "registerInMainMenu": true,
+        "menuTitle": "Customers",
+        "menuOrder": 100
+      }
+    }
+  ],
+  "searches": []
+}

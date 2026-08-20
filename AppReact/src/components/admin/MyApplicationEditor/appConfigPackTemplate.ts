@@ -4,7 +4,7 @@ const appConfigPackTemplate: Record<string, unknown> = {
   source: {
     generatedBy: 'manual',
     applicationName: 'Demo Order',
-    notes: 'Minimal App Config Pack: one root+child transaction, one view, one search.'
+    notes: 'Pattern A — Search + MasterDetail. See sample-listedit.appConfigPack.json for ListEdit.'
   },
   tables: [
     {
@@ -54,6 +54,7 @@ const appConfigPackTemplate: Record<string, unknown> = {
       integrationId: 'TX_DemoOrder',
       name: 'Demo Order',
       description: 'Demo order edit',
+      organizedType: 'MasterDetail',
       formMode: 'Default',
       unitStructure: {
         rootTableName: 'Demo_Order',

@@ -96,6 +96,8 @@ WHERE TransactionID = @Id";
                         inserted = true;
                         OverlayTransactionHeaderFlags(conn, transactionId, tx);
                     }
+
+                    ApplyTransactionOrganizedType(conn, transactionId, tx);
                 }
 
                 OverlayTransactionFields(transactionId, tx);
@@ -106,6 +108,8 @@ WHERE TransactionID = @Id";
                 ApplyTransactionFormLayout(transactionId, tx);
                 if (!HasPortableFormLayout(tx))
                     ApplyCommandLayoutButtons(transactionId, tx);
+
+                RegisterTransactionMainMenu(transactionId, tx, saasApplicationId, executeResult);
 
                 map[integrationId] = transactionId;
                 if (inserted)
@@ -121,6 +125,115 @@ WHERE TransactionID = @Id";
             }
 
             return map;
+        }
+
+        /// <summary>
+        /// Pack organizedType: MasterDetail | List | ListEdit.
+        /// Insert omit → leave CreateHierarchy default (MasterDetail).
+        /// Update omit → leave existing. Explicit value always written.
+        /// </summary>
+        private static void ApplyTransactionOrganizedType(
+            SqlConnection conn,
+            int transactionId,
+            AppConfigPackTransactionDto tx)
+        {
+            int? organizedType = ResolveOrganizedTypeId(tx?.OrganizedType);
+            if (!organizedType.HasValue)
+                return;
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText =
+                    "UPDATE dbo.AppTransaction SET TransactionOrganizedType = @Type, AppModifiedDate = GETDATE() WHERE TransactionID = @Id";
+                cmd.Parameters.AddWithValue("@Type", organizedType.Value);
+                cmd.Parameters.AddWithValue("@Id", transactionId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>Returns enum id, or null when omit / unknown (unknown should be caught in Validate).</summary>
+        internal static int? ResolveOrganizedTypeId(string organizedType)
+        {
+            if (string.IsNullOrWhiteSpace(organizedType))
+                return null;
+            if (string.Equals(organizedType, "List", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(organizedType, "ListEdit", StringComparison.OrdinalIgnoreCase))
+                return (int)EmTransactionOrganizedType.List;
+            if (string.Equals(organizedType, "MasterDetail", StringComparison.OrdinalIgnoreCase))
+                return (int)EmTransactionOrganizedType.MasterDetail;
+            return null;
+        }
+
+        internal static bool IsListOrganizedType(string organizedType)
+        {
+            int? id = ResolveOrganizedTypeId(organizedType);
+            return id == (int)EmTransactionOrganizedType.List;
+        }
+
+        internal static string FormatOrganizedTypeName(int? organizedTypeId)
+        {
+            if (organizedTypeId == (int)EmTransactionOrganizedType.List)
+                return "List";
+            if (organizedTypeId == (int)EmTransactionOrganizedType.MasterDetail)
+                return "MasterDetail";
+            return organizedTypeId?.ToString();
+        }
+
+        private static void RegisterTransactionMainMenu(
+            int transactionId,
+            AppConfigPackTransactionDto tx,
+            int? saasApplicationId,
+            AppConfigPackExecuteResultDto executeResult)
+        {
+            if (tx?.Menu == null || !tx.Menu.RegisterInMainMenu)
+                return;
+
+            if (!IsListOrganizedType(tx.OrganizedType))
+            {
+                executeResult?.Messages.Add(
+                    $"Skipped main menu for transaction {transactionId}: menu.registerInMainMenu requires organizedType List (ListEdit).");
+                return;
+            }
+
+            if (!saasApplicationId.HasValue)
+            {
+                executeResult?.Messages.Add(
+                    $"Skipped main menu for transaction {transactionId}: SaasApplicationId is required.");
+                return;
+            }
+
+            string menuTitle = !string.IsNullOrWhiteSpace(tx.Menu.MenuTitle)
+                ? tx.Menu.MenuTitle.Trim()
+                : (tx.Name ?? tx.IntegrationId);
+
+            var menuResult = AppTreeListMenuBL.AddListTransactionToMainMenu(transactionId, menuTitle);
+            if (menuResult.ValidationResult != null && menuResult.ValidationResult.HasErrors)
+            {
+                executeResult?.Messages.Add(
+                    menuResult.ValidationResult.Items?.FirstOrDefault()?.Message
+                    ?? $"Menu registration failed for transaction {transactionId}.");
+                return;
+            }
+
+            if (tx.Menu.MenuOrder.HasValue || !string.IsNullOrWhiteSpace(tx.Menu.MenuTitle))
+            {
+                using (var conn = OpenTenantConnection())
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+UPDATE dbo.AppListMenu
+SET Name = COALESCE(@Name, Name),
+    Sort = CASE WHEN @Sort IS NULL THEN Sort ELSE @Sort END
+WHERE RouteCode = N'FormListEdit' AND Link = @Link";
+                    cmd.Parameters.AddWithValue("@Name", (object)menuTitle ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Sort", (object)tx.Menu.MenuOrder ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Link", transactionId.ToString());
+                    cmd.ExecuteNonQuery();
+                }
+            }
+
+            executeResult?.Messages.Add(
+                $"Registered ListEdit transaction {transactionId} on main menu as '{menuTitle}'.");
         }
 
         private static void OverlayTransactionFields(int transactionId, AppConfigPackTransactionDto tx)

@@ -18,12 +18,14 @@
       "allowProposeImport": false,
       "injectFiles": [
         "ImportAppConfig/PROMPT.md",
-        "ImportAppConfig/sample.appConfigPack.json"
+        "ImportAppConfig/sample.appConfigPack.json",
+        "ImportAppConfig/sample-listedit.appConfigPack.json"
       ],
       "exampleFiles": [
-        "ImportAppConfig/sample.appConfigPack.json"
+        "ImportAppConfig/sample.appConfigPack.json",
+        "ImportAppConfig/sample-listedit.appConfigPack.json"
       ],
-      "extraPrompt": "Mode: App Config Builder.\nConversation first: do NOT write an AppConfigPack on the first reply. Ask 5–10 clarifying questions (Erp_ table names, Order vs OrderLine vs Product, list vs detail screens, required fields, menus, whether to create DDL now) and wait for answers.\nAfter the user confirms: Follow PROMPT.md, write packs/<name>.appConfigPack.json via write_workspace_file, then validate_config_pack / preview_config_pack.\nDo not call propose_import_pack and do not import. End with the pack path so the user can click Start Build in this chat.\nNever invent numeric TransactionId / SearchId / EntityId. sample.appConfigPack.json is EXAMPLE only."
+      "extraPrompt": "Mode: App Config Builder.\nConversation first: do NOT write an AppConfigPack on the first reply. Ask clarifying questions and wait.\nFirst question must establish SCREEN PATTERN:\n- A) Search + MasterDetail (query list opens create/edit form)\n- B) ListEdit Transaction (one editable grid; organizedType List)\nIf the user said List Edit / ListEdit / LIST EDIT TRANSACTION → choose B; do NOT propose a Search or MasterDetail pair.\nOther questions: Erp_ table names, fields/required, menus, whether to create DDL now.\nAfter the user confirms: Follow PROMPT.md Screen patterns, write packs/<name>.appConfigPack.json via write_workspace_file, then validate_config_pack / preview_config_pack.\nDo not call propose_import_pack and do not import. End with the pack path so the user can click Start Build in this chat.\nNever invent numeric TransactionId / SearchId / EntityId. sample.appConfigPack.json is EXAMPLE for pattern A only."
     },
     {
       "id": "plm-dw",

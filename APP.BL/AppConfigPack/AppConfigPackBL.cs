@@ -294,6 +294,19 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                 if (tx.UnitStructure == null || string.IsNullOrWhiteSpace(tx.UnitStructure.RootTableName))
                     validation.Errors.Add($"Transaction '{tx.IntegrationId}' is missing unitStructure.rootTableName.");
 
+                if (!string.IsNullOrWhiteSpace(tx.OrganizedType)
+                    && !ResolveOrganizedTypeId(tx.OrganizedType).HasValue)
+                {
+                    validation.Errors.Add(
+                        $"Transaction '{tx.IntegrationId}' has invalid organizedType '{tx.OrganizedType}' (use MasterDetail or List / ListEdit).");
+                }
+
+                if (tx.Menu?.RegisterInMainMenu == true && !IsListOrganizedType(tx.OrganizedType))
+                {
+                    validation.Errors.Add(
+                        $"Transaction '{tx.IntegrationId}' menu.registerInMainMenu requires organizedType List (ListEdit). Use a Search menu for MasterDetail list screens.");
+                }
+
                 var commandIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var command in tx.Commands ?? Enumerable.Empty<AppConfigPackCommandDto>())
                 {
@@ -537,8 +550,9 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                         IntegrationId = tx.IntegrationId,
                         Action = existing.HasValue ? ActionUpdate : ActionInsert,
                         ExistingId = existing,
-                        Detail = $"Root {tx.UnitStructure?.RootTableName}; fields {tx.Fields?.Count ?? 0}; commands {tx.Commands?.Count ?? 0}"
+                        Detail = $"{FormatOrganizedTypeName(ResolveOrganizedTypeId(tx.OrganizedType)) ?? "MasterDetail"}; Root {tx.UnitStructure?.RootTableName}; fields {tx.Fields?.Count ?? 0}; commands {tx.Commands?.Count ?? 0}"
                             + (HasPortableFormLayout(tx) ? "; formLayout replace" : string.Empty)
+                            + (tx.Menu?.RegisterInMainMenu == true ? "; main menu" : string.Empty)
                             + PreviewExtrasDetail(tx)
                     });
 
