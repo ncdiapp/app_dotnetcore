@@ -78,7 +78,18 @@ namespace App.BL.CursorAgent
         private static void SeedOne(int dsId, string name, string description, string content)
         {
             var existing = AppAISkillBL.GetSkillByName(dsId, name);
-            if (existing != null) return;
+            if (existing != null)
+            {
+                // Keep managed cursor-agent-* skills in sync with code (Seed used to insert-only).
+                if (!string.Equals(existing.SkillContent ?? "", content ?? "", StringComparison.Ordinal))
+                {
+                    existing.Description = description;
+                    existing.SkillContent = content;
+                    existing.IsActive = true;
+                    AppAISkillBL.UpdateSkill(dsId, existing);
+                }
+                return;
+            }
             AppAISkillBL.CreateSkill(dsId, new AppAISkillDto
             {
                 Name = name,
@@ -139,20 +150,23 @@ Hard rules:
 3. Creating Transaction/Form/SearchView/Entity is done by writing an AppConfigPack JSON then propose_import_pack. Never invent numeric TransactionId values.
 4. SELECT may run via run_select. INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD must go through propose_sql and wait for the user.
 5. Stay on the SaasApplicationId given in this session. Do not create a new Application.
-6. Call get_skill when you need the import-pack, gated-sql, or workspace procedure.";
+6. Call get_skill when you need the import-pack, gated-sql, or workspace procedure.
+7. You CAN request App UI (Open button in chat). Never refuse with ""cannot open"". Explicit open / Table Preview → preview_tables_data. For QUERY RESULT answers: in the SAME turn show the result text AND call open_query_result (do not ask first). Never say click Open unless you called the tool.";
 
         private const string ImportContent = @"When the user wants Transaction / Form / SearchView / Entity configuration:
 
 1. On a new request, ask clarifying questions first and WAIT. Establish screen pattern first: Search+MasterDetail vs ListEdit (organizedType List). If the user said List Edit / ListEdit, use ListEdit only — no Search pair.
-2. Call get_skill('cursor-agent-import-pack') if you need the JSON contract (PROMPT.md is attached as a skill ref).
-3. Write the pack to packs/<name>.appConfigPack.json via write_workspace_file.
-4. Call validate_config_pack then preview_config_pack.
-5. Do not call propose_import_pack. Tell the user the workspace file is ready so they can click Start Build in this chat.
-6. source.generatedBy must be ""ai"". Use integrationId, never numeric TransactionId/SearchId. ListEdit uses organizedType List and transactions[].menu for the main menu.";
+2. If the user only wants to see table data / open DB Table/View Data Preview — call preview_tables_data (chat shows Open); do NOT generate Search or AppConfigPack. For a custom SELECT grid use open_query_result.
+3. Call get_skill('cursor-agent-import-pack') if you need the JSON contract (PROMPT.md is attached as a skill ref).
+4. Write the pack to packs/<name>.appConfigPack.json via write_workspace_file.
+5. Call validate_config_pack then preview_config_pack.
+6. Do not call propose_import_pack. Tell the user the workspace file is ready so they can click Start Build in this chat.
+7. source.generatedBy must be ""ai"". Use integrationId, never numeric TransactionId/SearchId. ListEdit uses organizedType List and transactions[].menu for the main menu.";
 
         private const string SqlContent = @"Database access:
 - list_datasources then get_table_schema for structure.
 - run_select for SELECT/WITH (row-capped).
+- When answering with a query result: in the SAME turn call open_query_result with that SQL so the chat shows an Open box for SQL Workbench. Do not ask first.
 - propose_sql for INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE ... ADD. Wait for the user.
 - Forbidden: DROP, TRUNCATE, ALTER DROP, EXEC, multiple statements.";
 

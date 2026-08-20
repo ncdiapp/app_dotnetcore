@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using APP.Components.Dto;
@@ -34,6 +35,12 @@ namespace App.BL.CursorAgent
             public string WorkspaceRelativePath { get; set; }
             public List<CursorAgentMessageDto> ConversationHistory { get; set; }
                 = new List<CursorAgentMessageDto>();
+            /// <summary>Pack paths touched during the in-flight assistant turn (cleared at run start).</summary>
+            public List<string> CurrentTurnPackPaths { get; set; }
+                = new List<string>();
+            /// <summary>Open UI offers from navigate / table_preview tools this turn.</summary>
+            public List<CursorAgentOpenUiOfferDto> CurrentTurnOpenOffers { get; set; }
+                = new List<CursorAgentOpenUiOfferDto>();
             public ConcurrentQueue<CursorAgentEventDto> Events { get; set; }
                 = new ConcurrentQueue<CursorAgentEventDto>();
             public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -131,6 +138,63 @@ namespace App.BL.CursorAgent
                 Confirmed = confirmed,
                 Feedback = feedback
             });
+        }
+
+        public static void BeginAssistantTurn(SessionData session)
+        {
+            if (session == null) return;
+            session.CurrentTurnPackPaths = new List<string>();
+            session.CurrentTurnOpenOffers = new List<CursorAgentOpenUiOfferDto>();
+        }
+
+        public static void NotePackPath(SessionData session, string relativePath)
+        {
+            if (session == null || string.IsNullOrWhiteSpace(relativePath)) return;
+            var path = relativePath.Trim().Replace('\\', '/');
+            if (!path.EndsWith(".appConfigPack.json", StringComparison.OrdinalIgnoreCase))
+                return;
+            if (session.CurrentTurnPackPaths == null)
+                session.CurrentTurnPackPaths = new List<string>();
+            if (session.CurrentTurnPackPaths.Any(p =>
+                string.Equals(p, path, StringComparison.OrdinalIgnoreCase)))
+                return;
+            session.CurrentTurnPackPaths.Add(path);
+        }
+
+        public static List<string> TakeTurnPackPaths(SessionData session)
+        {
+            if (session?.CurrentTurnPackPaths == null || session.CurrentTurnPackPaths.Count == 0)
+                return null;
+            var list = session.CurrentTurnPackPaths
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            session.CurrentTurnPackPaths = new List<string>();
+            return list.Count == 0 ? null : list;
+        }
+
+        public static void NoteOpenUiOffer(SessionData session, CursorAgentOpenUiOfferDto offer)
+        {
+            if (session == null || offer == null) return;
+            if (session.CurrentTurnOpenOffers == null)
+                session.CurrentTurnOpenOffers = new List<CursorAgentOpenUiOfferDto>();
+            session.CurrentTurnOpenOffers.Add(offer);
+        }
+
+        public static List<CursorAgentOpenUiOfferDto> TakeTurnOpenOffers(SessionData session)
+        {
+            if (session?.CurrentTurnOpenOffers == null || session.CurrentTurnOpenOffers.Count == 0)
+                return null;
+            var list = session.CurrentTurnOpenOffers.ToList();
+            session.CurrentTurnOpenOffers = new List<CursorAgentOpenUiOfferDto>();
+            return list.Count == 0 ? null : list;
+        }
+
+        public static List<CursorAgentOpenUiOfferDto> PeekTurnOpenOffers(SessionData session)
+        {
+            if (session?.CurrentTurnOpenOffers == null || session.CurrentTurnOpenOffers.Count == 0)
+                return null;
+            return session.CurrentTurnOpenOffers.ToList();
         }
 
         public static void AttachLive(SessionData data)

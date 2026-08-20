@@ -196,11 +196,12 @@ namespace App.BL.CursorAgent
             var sb = new StringBuilder();
             sb.AppendLine("You are the AppAI App Data Integration Agent.");
             sb.AppendLine();
+            AppendOpenUiCapability(sb);
             sb.AppendLine("## This session");
             sb.AppendLine("- Target Application (SaasApplicationId): " + (live?.SaasApplicationId ?? 0));
             if (live?.DataSourceRegisterId != null)
                 sb.AppendLine("- Default DataSourceRegisterId: " + live.DataSourceRegisterId.Value);
-            sb.AppendLine("- Use MCP tools on server \"appai\" for schema, files, and SQL.");
+            sb.AppendLine("- Use MCP tools on server \"appai\" for schema, files, SQL, and opening App UI pages.");
             sb.AppendLine("- Writable disk is the MCP workspace (packs/, scripts/, output/, notes/).");
             sb.AppendLine("- Do not modify cloned application source (.cs/.tsx). Do not open a pull request.");
             sb.AppendLine("- SELECT may run via run_select. INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD must go through propose_sql and wait.");
@@ -250,6 +251,41 @@ namespace App.BL.CursorAgent
             sb.AppendLine("## User request");
             sb.AppendLine(userMessage ?? "");
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Follow-up turns do not re-send the full create prompt; restate UI open capability so the
+        /// model does not refuse with "I cannot open App pages".
+        /// </summary>
+        public static string BuildFollowUpPrompt(CursorAgentSessionStore.SessionData live, string userMessage)
+        {
+            var sb = new StringBuilder();
+            if (!string.IsNullOrWhiteSpace(live?.SkillKey))
+                sb.AppendLine("Active skill: " + live.SkillKey);
+            AppendOpenUiCapability(sb);
+            sb.AppendLine("## User follow-up");
+            sb.AppendLine(userMessage ?? "");
+            return sb.ToString();
+        }
+
+        private static void AppendOpenUiCapability(StringBuilder sb)
+        {
+            sb.AppendLine("## Open App UI");
+            sb.AppendLine("You CAN request App UI via MCP tools on server \"appai\". Never say you cannot open App pages.");
+            sb.AppendLine("Calling open_* / preview_tables_data / open_query_result does NOT open immediately — the chat shows an Open button for the user.");
+            sb.AppendLine();
+            sb.AppendLine("### When user already asked to open UI");
+            sb.AppendLine("- DB Table/View Data Preview / browse Erp_* rows → call preview_tables_data (tableName + DataSourceRegisterId). Do NOT build Search/Config.");
+            sb.AppendLine("- Free-form SELECT / query result grid → call open_query_result with the same sql (SQL Workbench).");
+            sb.AppendLine("- Search / ListEdit / MasterDetail / editors → open_search, open_list_edit_form, open_master_detail_form, open_* editors, or list_application_menus + open_app_page.");
+            sb.AppendLine();
+            sb.AppendLine("### After SQL / query-result answers (important)");
+            sb.AppendLine("- Answer with run_select and a short markdown/table summary in the same turn.");
+            sb.AppendLine("- In that SAME turn, also call open_query_result with the exact SQL (and DataSourceRegisterId). Do NOT wait for the user to say yes.");
+            sb.AppendLine("- End the reply with one short line, e.g. Chinese: 「也可在 SQL Workbench 打开这条 Query 查看结果（点下方 Open）。」");
+            sb.AppendLine("- Prefer open_query_result for custom SELECT / joins; use preview_tables_data only for simple single-table browse when the user asked for Table Preview.");
+            sb.AppendLine("- Never say \"click Open\" unless you actually called the tool that creates the Open box.");
+            sb.AppendLine();
         }
 
         private static void AppendInjectFiles(StringBuilder sb, CatalogSkill skill)

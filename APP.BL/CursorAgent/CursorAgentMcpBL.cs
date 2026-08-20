@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Data.Common;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -7,6 +8,7 @@ using App.BL;
 using App.BL.AppMgr.AiSkill;
 using APP.BL.AppConfigPack;
 using APP.Components.EntityDto;
+using APP.Framework;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -128,6 +130,34 @@ namespace App.BL.CursorAgent
                             Str(args, "tableName")));
                     case "list_application_assets":
                         return ToolText(ListAssets(session.SaasApplicationId));
+                    case "list_application_menus":
+                        return ToolText(ListApplicationMenus(session.SaasApplicationId));
+                    case "open_app_page":
+                        return ToolText(EnqueueNavigate(session, args));
+                    case "open_search":
+                        return ToolText(OpenSearch(session, args));
+                    case "open_list_edit_form":
+                        return ToolText(OpenTransactionForm(session, args, listEdit: true));
+                    case "open_master_detail_form":
+                        return ToolText(OpenTransactionForm(session, args, listEdit: false));
+                    case "open_transaction_editor":
+                        return ToolText(OpenTransactionEditor(session, args, "TransactionGraphicEditor"));
+                    case "open_form_design":
+                        return ToolText(OpenTransactionEditor(session, args, "Form"));
+                    case "open_search_editor":
+                        return ToolText(OpenSearchEditor(session, args));
+                    case "open_entity_editor":
+                        return ToolText(OpenSimplePage(session, "entity-info-edit", "Entity Editor",
+                            ResolveEntityId(args), "entityId"));
+                    case "open_er_diagram":
+                        return ToolText(OpenSimplePage(session, "er-diagram-editor", "ER Diagram",
+                            ResolveIntId(args, "diagramId", "id", "erDiagramId"), "id"));
+                    case "open_database_design":
+                        return ToolText(OpenDatabaseDesign(session, args));
+                    case "open_query_result":
+                        return ToolText(OpenQueryResult(session, args));
+                    case "preview_tables_data":
+                        return ToolText(EnqueueTablePreview(session, args));
                     case "list_workspace_files":
                         return ToolText(JsonConvert.SerializeObject(CursorWorkspaceBL.ListFiles(session.WorkspaceRelativePath, session.CompanyId)));
                     case "read_workspace_file":
@@ -135,6 +165,7 @@ namespace App.BL.CursorAgent
                     case "write_workspace_file":
                         {
                             var rel = CursorWorkspaceBL.WriteFile(session.WorkspaceRelativePath, Str(args, "relativePath"), Str(args, "content") ?? "", session.CompanyId);
+                            CursorAgentSessionStore.NotePackPath(session, rel);
                             CursorAgentSessionStore.Enqueue(session.SessionId, new CursorAgentEventDto
                             {
                                 EventType = "file",
@@ -151,9 +182,17 @@ namespace App.BL.CursorAgent
                         });
                         return ToolText("Deleted " + Str(args, "relativePath"));
                     case "validate_config_pack":
-                        return ToolText(ValidatePack(session, Str(args, "relativePath")));
+                        {
+                            var rel = Str(args, "relativePath");
+                            CursorAgentSessionStore.NotePackPath(session, rel);
+                            return ToolText(ValidatePack(session, rel));
+                        }
                     case "preview_config_pack":
-                        return ToolText(PreviewPack(session, Str(args, "relativePath")));
+                        {
+                            var rel = Str(args, "relativePath");
+                            CursorAgentSessionStore.NotePackPath(session, rel);
+                            return ToolText(PreviewPack(session, rel));
+                        }
                     case "run_select":
                         return ToolText(CursorSqlGateBL.RunSelect(
                             RequireDs(args, session),
@@ -283,12 +322,406 @@ namespace App.BL.CursorAgent
             if (!saasApplicationId.HasValue)
                 return JsonConvert.SerializeObject(new { Error = "SaasApplicationId is required." });
             var txs = AppTransactionBL.RetrieveSaasApplicationTransactionList(saasApplicationId.Value)
-                .Select(t => new { t.Id, Name = t.TransactionName })
+                .Select(t => new
+                {
+                    t.Id,
+                    Name = t.TransactionName,
+                    OrganizedType = t.TransactionOrganizedType
+                })
                 .ToList();
             var searches = AppSearchConfigBL.RetrieveSaasApplicationSearchList(saasApplicationId.Value)
                 .Select(s => new { s.Id, s.Name })
                 .ToList();
             return JsonConvert.SerializeObject(new { Transactions = txs, Searches = searches });
+        }
+
+        private static string ListApplicationMenus(int? saasApplicationId)
+        {
+            if (!saasApplicationId.HasValue)
+                return JsonConvert.SerializeObject(new { Error = "SaasApplicationId is required." });
+            var root = AppTreeListMenuBL.RetrieveListMenuHairarchyDto(false, saasApplicationId.Value);
+            var flat = new List<object>();
+            void Walk(IEnumerable<AppListMenuExDto> nodes)
+            {
+                if (nodes == null) return;
+                foreach (var n in nodes)
+                {
+                    if (n == null) continue;
+                    if (!string.IsNullOrWhiteSpace(n.RouteCode))
+                    {
+                        flat.Add(new
+                        {
+                            n.Id,
+                            n.Name,
+                            n.RouteCode,
+                            n.Link,
+                            ParentId = n.ParentId
+                        });
+                    }
+                    Walk(n.AppListMenu_List);
+                }
+            }
+            Walk(root);
+            return JsonConvert.SerializeObject(new { Menus = flat });
+        }
+
+        private static string EnqueueNavigate(CursorAgentSessionStore.SessionData session, JObject args)
+        {
+            var routeCode = Str(args, "routeCode") ?? Str(args, "route");
+            if (string.IsNullOrWhiteSpace(routeCode))
+                return "routeCode is required.";
+            var label = Str(args, "label") ?? routeCode;
+            var link = Str(args, "link");
+            Dictionary<string, object> paramObj = null;
+            var rawParams = args?["paramObj"];
+            if (rawParams != null && rawParams.Type != JTokenType.Null)
+            {
+                paramObj = rawParams.ToObject<Dictionary<string, object>>()
+                    ?? new Dictionary<string, object>();
+            }
+
+            CursorAgentSessionStore.NoteOpenUiOffer(session, new CursorAgentOpenUiOfferDto
+            {
+                Kind = "navigate",
+                Label = label,
+                RouteCode = routeCode.Trim(),
+                Link = link,
+                ParamObj = paramObj
+            });
+            CursorAgentSessionStore.Enqueue(session.SessionId, new CursorAgentEventDto
+            {
+                EventType = "navigate",
+                Navigate = new CursorAgentNavigateEvent
+                {
+                    RouteCode = routeCode.Trim(),
+                    Label = label,
+                    Link = link,
+                    ParamObj = paramObj
+                }
+            });
+            return JsonConvert.SerializeObject(new
+            {
+                Ok = true,
+                Message = "Open page offered in chat. The user must click Open — do not assume the page is already open.",
+                RouteCode = routeCode,
+                Label = label,
+                Link = link,
+                ParamObj = paramObj
+            });
+        }
+
+        private static string OpenSearch(CursorAgentSessionStore.SessionData session, JObject args)
+        {
+            int? searchId = ResolveSearchId(session, args);
+            if (!searchId.HasValue)
+                return "Could not resolve search. Pass searchId, integrationId, or name.";
+            var name = Str(args, "label") ?? ("Search #" + searchId);
+            return EnqueueNavigate(session, JObject.FromObject(new
+            {
+                routeCode = "MasterDataManagement",
+                label = name,
+                link = searchId.Value.ToString(),
+                paramObj = new { searchId = searchId.Value }
+            }));
+        }
+
+        private static string OpenTransactionForm(
+            CursorAgentSessionStore.SessionData session,
+            JObject args,
+            bool listEdit)
+        {
+            int? txId = ResolveTransactionId(session, args);
+            if (!txId.HasValue)
+                return "Could not resolve transaction. Pass transactionId, integrationId, or name.";
+            var route = listEdit ? "FormListEdit" : "FormMasterDetail";
+            var label = Str(args, "label") ?? ((listEdit ? "ListEdit #" : "Form #") + txId);
+            var paramObj = new Dictionary<string, object> { ["id"] = txId.Value.ToString() };
+            var rootPk = Str(args, "rootPrimaryKey") ?? Str(args, "param1");
+            if (!string.IsNullOrWhiteSpace(rootPk))
+                paramObj["param1"] = rootPk;
+            var param2 = Str(args, "param2");
+            if (!string.IsNullOrWhiteSpace(param2))
+                paramObj["param2"] = param2;
+            return EnqueueNavigate(session, JObject.FromObject(new
+            {
+                routeCode = route,
+                label,
+                link = txId.Value.ToString(),
+                paramObj
+            }));
+        }
+
+        private static string OpenTransactionEditor(
+            CursorAgentSessionStore.SessionData session,
+            JObject args,
+            string defaultSectionCode)
+        {
+            int? txId = ResolveTransactionId(session, args);
+            if (!txId.HasValue)
+                return "Could not resolve transaction. Pass transactionId, integrationId, or name.";
+            if (!session.SaasApplicationId.HasValue)
+                return "SaasApplicationId is required on the session.";
+            var label = Str(args, "label") ?? ("Transaction #" + txId);
+            var section = Str(args, "defaultSectionCode") ?? defaultSectionCode;
+            return EnqueueNavigate(session, JObject.FromObject(new
+            {
+                routeCode = "application-form-builder",
+                label,
+                paramObj = new Dictionary<string, object>
+                {
+                    ["id"] = session.SaasApplicationId.Value.ToString(),
+                    ["transactionId"] = txId.Value,
+                    ["defaultSectionCode"] = section,
+                    ["isCreateNewItem"] = false
+                }
+            }));
+        }
+
+        private static string OpenSearchEditor(CursorAgentSessionStore.SessionData session, JObject args)
+        {
+            int? searchId = ResolveSearchId(session, args);
+            if (!searchId.HasValue)
+                return "Could not resolve search. Pass searchId, integrationId, or name.";
+            var label = Str(args, "label") ?? ("Search Editor #" + searchId);
+            return EnqueueNavigate(session, JObject.FromObject(new
+            {
+                routeCode = "search-editor",
+                label,
+                link = searchId.Value.ToString(),
+                paramObj = new { id = searchId.Value.ToString() }
+            }));
+        }
+
+        private static string OpenSimplePage(
+            CursorAgentSessionStore.SessionData session,
+            string routeCode,
+            string defaultLabel,
+            int? id,
+            string idKey)
+        {
+            if (!id.HasValue)
+                return "id is required for " + routeCode + ".";
+            var paramObj = new Dictionary<string, object> { [idKey] = id.Value };
+            if (!string.Equals(idKey, "id", StringComparison.OrdinalIgnoreCase))
+                paramObj["id"] = id.Value.ToString();
+            return EnqueueNavigate(session, JObject.FromObject(new
+            {
+                routeCode,
+                label = defaultLabel + " #" + id.Value,
+                link = id.Value.ToString(),
+                paramObj
+            }));
+        }
+
+        private static string OpenDatabaseDesign(CursorAgentSessionStore.SessionData session, JObject args)
+        {
+            var appId = ResolveIntId(args, "applicationId", "saasApplicationId", "id")
+                ?? session.SaasApplicationId;
+            var dsId = ResolveIntId(args, "dataSourceRegisterId", "dataSourceId")
+                ?? session.DataSourceRegisterId;
+            var paramObj = new Dictionary<string, object>();
+            if (appId.HasValue) paramObj["id"] = appId.Value.ToString();
+            if (dsId.HasValue) paramObj["dataSourceRegisterId"] = dsId.Value;
+            return EnqueueNavigate(session, JObject.FromObject(new
+            {
+                routeCode = "database-design-management",
+                label = "Database Design",
+                paramObj
+            }));
+        }
+
+        /// <summary>
+        /// Offer Open → SQL Workbench with queryText (+ optional DS). Page auto-runs SELECT when opened.
+        /// </summary>
+        private static string OpenQueryResult(CursorAgentSessionStore.SessionData session, JObject args)
+        {
+            var sql = Str(args, "sql") ?? Str(args, "queryText") ?? Str(args, "query");
+            if (string.IsNullOrWhiteSpace(sql))
+                return "sql (or queryText) is required.";
+            sql = sql.Trim();
+            if (sql.Length > 12000)
+                return "sql is too long for the Open URL (max ~12000 chars). Shorten the query or ask the user to run it in SQL Workbench manually.";
+
+            var dsId = ResolveIntId(args, "dataSourceRegisterId", "dataSourceId")
+                ?? session.DataSourceRegisterId;
+            var autoExecute = true;
+            var autoTok = args?["autoExecute"];
+            if (autoTok != null && autoTok.Type != JTokenType.Null)
+            {
+                if (autoTok.Type == JTokenType.Boolean) autoExecute = autoTok.Value<bool>();
+                else if (string.Equals(autoTok.ToString(), "false", StringComparison.OrdinalIgnoreCase))
+                    autoExecute = false;
+            }
+
+            var paramObj = new Dictionary<string, object>
+            {
+                ["queryText"] = sql,
+                ["autoExecute"] = autoExecute
+            };
+            if (dsId.HasValue) paramObj["dataSourceRegisterId"] = dsId.Value;
+
+            var label = Str(args, "label");
+            if (string.IsNullOrWhiteSpace(label))
+            {
+                var oneLine = sql.Replace("\r", " ").Replace("\n", " ").Trim();
+                if (oneLine.Length > 48) oneLine = oneLine.Substring(0, 45) + "...";
+                label = "SQL Workbench — " + oneLine;
+            }
+
+            return EnqueueNavigate(session, JObject.FromObject(new
+            {
+                routeCode = "database-design-management",
+                label,
+                paramObj
+            }));
+        }
+
+        private static string EnqueueTablePreview(CursorAgentSessionStore.SessionData session, JObject args)
+        {
+            var tables = new List<CursorAgentTablePreviewItemDto>();
+            var arr = args?["tables"] as JArray;
+            if (arr != null)
+            {
+                foreach (var t in arr)
+                {
+                    if (t == null || t.Type == JTokenType.Null) continue;
+                    var name = (string)t["tableName"] ?? (string)t["name"];
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    int? ds = null;
+                    var dsTok = t["dataSourceId"] ?? t["dataSourceRegisterId"];
+                    if (dsTok != null && dsTok.Type != JTokenType.Null)
+                        ds = dsTok.Value<int>();
+                    if (!ds.HasValue)
+                        ds = session.DataSourceRegisterId;
+                    tables.Add(new CursorAgentTablePreviewItemDto
+                    {
+                        TableName = name.Trim(),
+                        DataSourceId = ds,
+                        SchemaOwner = (string)t["schemaOwner"] ?? "dbo"
+                    });
+                }
+            }
+
+            // Convenience: single table via top-level args
+            if (tables.Count == 0)
+            {
+                var one = Str(args, "tableName");
+                if (!string.IsNullOrWhiteSpace(one))
+                {
+                    tables.Add(new CursorAgentTablePreviewItemDto
+                    {
+                        TableName = one.Trim(),
+                        DataSourceId = ResolveIntId(args, "dataSourceRegisterId", "dataSourceId")
+                            ?? session.DataSourceRegisterId,
+                        SchemaOwner = Str(args, "schemaOwner") ?? "dbo"
+                    });
+                }
+            }
+
+            if (tables.Count == 0)
+                return "tables[] (or tableName) is required.";
+
+            var names = string.Join(", ", tables.Select(t => t.TableName).Where(n => !string.IsNullOrWhiteSpace(n)));
+            CursorAgentSessionStore.NoteOpenUiOffer(session, new CursorAgentOpenUiOfferDto
+            {
+                Kind = "table_preview",
+                Label = string.IsNullOrWhiteSpace(names) ? "Table Preview" : names,
+                Tables = tables
+            });
+            CursorAgentSessionStore.Enqueue(session.SessionId, new CursorAgentEventDto
+            {
+                EventType = "table_preview",
+                TablePreview = new CursorAgentTablePreviewEvent { Tables = tables }
+            });
+            return JsonConvert.SerializeObject(new
+            {
+                Ok = true,
+                Message = "Table Preview offered in chat (Open button). The user must click Open — the modal does not open by itself.",
+                Tables = tables
+            });
+        }
+
+        private static int? ResolveTransactionId(CursorAgentSessionStore.SessionData session, JObject args)
+        {
+            var id = ResolveIntId(args, "transactionId", "id");
+            if (id.HasValue) return id;
+            var integrationId = Str(args, "integrationId");
+            if (!string.IsNullOrWhiteSpace(integrationId))
+            {
+                var byIntegration = LookupIdByIntegration("AppTransaction", "TransactionID", integrationId);
+                if (byIntegration.HasValue) return byIntegration;
+            }
+            var name = Str(args, "name") ?? Str(args, "transactionName");
+            if (!string.IsNullOrWhiteSpace(name) && session.SaasApplicationId.HasValue)
+            {
+                var match = AppTransactionBL.RetrieveSaasApplicationTransactionList(session.SaasApplicationId.Value)
+                    .FirstOrDefault(t => string.Equals(t.TransactionName, name.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (match?.Id != null) return Convert.ToInt32(match.Id);
+            }
+            return null;
+        }
+
+        private static int? ResolveSearchId(CursorAgentSessionStore.SessionData session, JObject args)
+        {
+            var id = ResolveIntId(args, "searchId", "id");
+            if (id.HasValue) return id;
+            var integrationId = Str(args, "integrationId");
+            if (!string.IsNullOrWhiteSpace(integrationId))
+            {
+                var byIntegration = LookupIdByIntegration("AppSearch", "SearchID", integrationId);
+                if (byIntegration.HasValue) return byIntegration;
+            }
+            var name = Str(args, "name") ?? Str(args, "searchName");
+            if (!string.IsNullOrWhiteSpace(name) && session.SaasApplicationId.HasValue)
+            {
+                var match = AppSearchConfigBL.RetrieveSaasApplicationSearchList(session.SaasApplicationId.Value)
+                    .FirstOrDefault(s => string.Equals(s.Name, name.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (match?.Id != null) return Convert.ToInt32(match.Id);
+            }
+            return null;
+        }
+
+        private static int? LookupIdByIntegration(string table, string idColumn, string integrationId)
+        {
+            if (string.IsNullOrWhiteSpace(integrationId)) return null;
+            try
+            {
+                // AppTransaction / AppSearch live on the tenant metadata DB (ServerContext.DataSourceId),
+                // not the session business DataSourceRegisterId.
+                int dsId = ServerContext.Instance != null && ServerContext.Instance.DataSourceId > 0
+                    ? ServerContext.Instance.DataSourceId
+                    : AppDataSourceRegisterBL.GetDefaultDataSourceRegId() ?? 0;
+                if (dsId <= 0) return null;
+                var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dsId);
+                var p = fixture.CreateParameter("@IntegrationId");
+                p.Value = integrationId.Trim();
+                var dt = fixture.RetriveDataTable(
+                    "SELECT TOP 1 " + idColumn + " FROM dbo." + table + " WHERE IntegrationId = @IntegrationId",
+                    new List<DbParameter> { p });
+                if (dt != null && dt.Rows.Count > 0)
+                    return Convert.ToInt32(dt.Rows[0][0]);
+            }
+            catch { }
+            return null;
+        }
+
+        private static int? ResolveEntityId(JObject args)
+        {
+            return ResolveIntId(args, "entityId", "id");
+        }
+
+        private static int? ResolveIntId(JObject args, params string[] names)
+        {
+            if (args == null || names == null) return null;
+            foreach (var name in names)
+            {
+                var tok = args[name];
+                if (tok == null || tok.Type == JTokenType.Null) continue;
+                if (tok.Type == JTokenType.Integer) return tok.Value<int>();
+                int parsed;
+                if (int.TryParse(tok.ToString(), out parsed)) return parsed;
+            }
+            return null;
         }
 
         private static void TryWriteOutput(CursorAgentSessionStore.SessionData session, string path, string content)
@@ -363,6 +796,32 @@ namespace App.BL.CursorAgent
                 Tool("get_table_schema", "Columns/PK for a table.",
                     Prop("tableName", "string", true), Prop("schemaOwner", "string", false), Prop("dataSourceRegisterId", "integer", false)),
                 Tool("list_application_assets", "Existing transactions and searches on the selected Application."),
+                Tool("list_application_menus", "Flat list of main-menu items (RouteCode/Link) for the Application."),
+                Tool("open_app_page", "Offer an Open button in chat to open an App tab (routeCode + optional paramObj). Does not open until the user clicks Open.",
+                    Prop("routeCode", "string", true), Prop("label", "string", false), Prop("link", "string", false), Prop("paramObj", "object", false)),
+                Tool("open_search", "Offer Open for Search runtime (MasterDataManagement).",
+                    Prop("searchId", "integer", false), Prop("integrationId", "string", false), Prop("name", "string", false), Prop("label", "string", false)),
+                Tool("open_list_edit_form", "Offer Open for ListEdit form runtime (FormListEdit).",
+                    Prop("transactionId", "integer", false), Prop("integrationId", "string", false), Prop("name", "string", false), Prop("label", "string", false)),
+                Tool("open_master_detail_form", "Offer Open for MasterDetail form runtime (FormMasterDetail).",
+                    Prop("transactionId", "integer", false), Prop("integrationId", "string", false), Prop("name", "string", false),
+                    Prop("rootPrimaryKey", "string", false), Prop("param2", "string", false), Prop("label", "string", false)),
+                Tool("open_transaction_editor", "Offer Open for Application Form Builder (Transaction Graphic Editor).",
+                    Prop("transactionId", "integer", false), Prop("integrationId", "string", false), Prop("name", "string", false), Prop("label", "string", false)),
+                Tool("open_form_design", "Offer Open for Application Form Builder (Form design).",
+                    Prop("transactionId", "integer", false), Prop("integrationId", "string", false), Prop("name", "string", false), Prop("label", "string", false)),
+                Tool("open_search_editor", "Offer Open for Search editor.",
+                    Prop("searchId", "integer", false), Prop("integrationId", "string", false), Prop("name", "string", false), Prop("label", "string", false)),
+                Tool("open_entity_editor", "Offer Open for Entity Info editor.", Prop("entityId", "integer", true)),
+                Tool("open_er_diagram", "Offer Open for ER Diagram editor.", Prop("diagramId", "integer", true)),
+                Tool("open_database_design", "Offer Open for Database Design management.",
+                    Prop("applicationId", "integer", false), Prop("dataSourceRegisterId", "integer", false)),
+                Tool("open_query_result", "Offer Open for SQL Workbench with a SELECT (queryText). Page fills the editor and auto-runs. Use after SQL answers when user wants to see the query grid, or after they say yes to opening query results.",
+                    Prop("sql", "string", true), Prop("dataSourceRegisterId", "integer", false),
+                    Prop("autoExecute", "boolean", false), Prop("label", "string", false)),
+                Tool("preview_tables_data", "Offer an Open button for DB Table/View Data Preview (multi-tab modal). Does not open until the user clicks Open. Call after the user agrees, or when they explicitly asked to open preview.",
+                    Prop("tables", "array", false), Prop("tableName", "string", false),
+                    Prop("dataSourceRegisterId", "integer", false), Prop("schemaOwner", "string", false)),
                 Tool("list_workspace_files", "List files in the session workspace."),
                 Tool("read_workspace_file", "Read a workspace file.", Prop("relativePath", "string", true)),
                 Tool("write_workspace_file", "Write a workspace file.", Prop("relativePath", "string", true), Prop("content", "string", true)),

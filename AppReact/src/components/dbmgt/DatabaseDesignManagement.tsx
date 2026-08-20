@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams } from 'react-router-dom';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useTabDataAutoCache } from '../../redux/hooks/useTabNavigation';
 import { getDataModelFromCache, getCurrentActiveTab } from '../../redux/features/ui/navigation/tabnavSlice';
@@ -28,12 +28,53 @@ const EmSectionCode = {
   PlmDataImportManagement: 'PlmDataImportManagement',
 };
 
+type SqlWorkbenchSeed = {
+  queryText?: string;
+  dataSourceRegisterId?: number | null;
+  autoExecute?: boolean;
+};
+
+function parseRouteParamObj(param?: string): Record<string, unknown> {
+  if (!param) return {};
+  try {
+    return JSON.parse(decodeURIComponent(param)) as Record<string, unknown>;
+  } catch {
+    try {
+      return JSON.parse(param) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
+  }
+}
+
+function sqlWorkbenchSeedFromParam(paramObj: Record<string, unknown>): SqlWorkbenchSeed {
+  const queryRaw = paramObj.queryText ?? paramObj.sql ?? paramObj.query;
+  const queryText = typeof queryRaw === 'string' ? queryRaw.trim() : '';
+  const dsRaw =
+    paramObj.dataSourceRegisterId ?? paramObj.dataSourceId ?? paramObj.initDataSourceRegId;
+  let dataSourceRegisterId: number | null = null;
+  if (typeof dsRaw === 'number' && Number.isFinite(dsRaw)) dataSourceRegisterId = dsRaw;
+  else if (dsRaw != null && dsRaw !== '') {
+    const n = Number(dsRaw);
+    if (Number.isFinite(n)) dataSourceRegisterId = n;
+  }
+  const autoExecute =
+    paramObj.autoExecute === false || paramObj.autoExecute === 'false'
+      ? false
+      : !!queryText;
+  return {
+    queryText: queryText || undefined,
+    dataSourceRegisterId,
+    autoExecute,
+  };
+}
+
 // Section configuration
 interface SectionConfig {
   code: string;
   label: string;
   icon: string;
-  component: React.FC;
+  component: React.FC<any>;
   hidden?: boolean;
 }
 
@@ -96,7 +137,8 @@ const SECTIONS: SectionConfig[] = [
 ];
 
 // Helper: get initial section from tab cache (when re-selecting tab) or URL or default
-function getInitialSectionCode(searchParams: URLSearchParams): string {
+function getInitialSectionCode(searchParams: URLSearchParams, forceSqlWorkbench: boolean): string {
+  if (forceSqlWorkbench) return EmSectionCode.DatabaseManagement;
   const tabKey = getCurrentActiveTab()?.tabKey ?? null;
   if (tabKey) {
     const cached = getDataModelFromCache(tabKey);
@@ -109,18 +151,26 @@ function getInitialSectionCode(searchParams: URLSearchParams): string {
 
 const DatabaseDesignManagement: React.FC = () => {
   const { theme } = useTheme();
+  const { param } = useParams<{ param?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Initial section: prefer tab cache (so re-selecting tab restores selection), then URL param1, then default
+  const routeParamObj = useMemo(() => parseRouteParamObj(param), [param]);
+  const sqlSeed = useMemo(() => sqlWorkbenchSeedFromParam(routeParamObj), [routeParamObj]);
+  const forceSqlWorkbench = !!sqlSeed.queryText;
+
   const [currentSectionCode, setCurrentSectionCode] = useState<string>(() =>
-    getInitialSectionCode(searchParams)
+    getInitialSectionCode(searchParams, forceSqlWorkbench)
   );
 
-  // Data model for tab cache (persist left-side selection when user switches section or leaves tab)
+  useEffect(() => {
+    if (forceSqlWorkbench) {
+      setCurrentSectionCode(EmSectionCode.DatabaseManagement);
+    }
+  }, [forceSqlWorkbench, sqlSeed.queryText, sqlSeed.dataSourceRegisterId]);
+
   const dataModel = useMemo(() => ({ currentSectionCode }), [currentSectionCode]);
   useTabDataAutoCache(dataModel);
 
-  // Sync URL when section changes
   useEffect(() => {
     const currentParam1 = searchParams.get('param1');
     if (currentParam1 !== currentSectionCode) {
@@ -130,29 +180,41 @@ const DatabaseDesignManagement: React.FC = () => {
     }
   }, [currentSectionCode, searchParams, setSearchParams]);
 
-  // Handle section selection
   const handleSelectSection = (sectionCode: string) => {
     setCurrentSectionCode(sectionCode);
   };
 
-  // Section button class (match MyApplicationEditor: theme.tab_active / theme.tab)
   const getSectionClass = (sectionCode: string): string => {
     return currentSectionCode === sectionCode ? `${theme.tab_active}` : `${theme.tab}`;
   };
 
-  // Get the current section component
+  const sqlWorkbenchKey = [
+    sqlSeed.queryText || '',
+    sqlSeed.dataSourceRegisterId ?? '',
+    sqlSeed.autoExecute ? '1' : '0',
+  ].join('|');
+
   const renderSectionPanels = (): React.ReactNode => (
     <>
       {SECTIONS.filter(s => !s.hidden).map((section) => {
         const SectionComponent = section.component;
         const isActive = currentSectionCode === section.code;
+        const isSqlWorkbench = section.code === EmSectionCode.DatabaseManagement;
         return (
           <div
-            key={section.code}
+            key={isSqlWorkbench ? `sql-${sqlWorkbenchKey}` : section.code}
             className={`h-full w-full overflow-hidden ${isActive ? '' : 'hidden'}`}
             aria-hidden={!isActive}
           >
-            <SectionComponent />
+            {isSqlWorkbench ? (
+              <DatabaseManagement
+                initialQueryText={sqlSeed.queryText}
+                initialDataSourceId={sqlSeed.dataSourceRegisterId}
+                autoExecute={sqlSeed.autoExecute}
+              />
+            ) : (
+              <SectionComponent />
+            )}
           </div>
         );
       })}
@@ -160,11 +222,8 @@ const DatabaseDesignManagement: React.FC = () => {
   );
 
   return (
-    <div className="w-full h-full rounded-t-md rounded-b-md overflow-hidden">    
-
-      {/* Main Content Area */}
+    <div className="w-full h-full rounded-t-md rounded-b-md overflow-hidden">
       <div className="w-full h-full overflow-hidden flex gap-1">
-        {/* Left Sidebar Navigation (match MyApplicationEditor) */}
         <div className={`w-[90px] flex-none ${theme.mainContentSection} overflow-y-auto rounded-l-md`}>
           <div className="py-5">
             {SECTIONS.filter(s => !s.hidden).map((section) => (
@@ -186,7 +245,6 @@ const DatabaseDesignManagement: React.FC = () => {
           </div>
         </div>
 
-        {/* Content Area */}
         <div className={`w-1 flex-auto h-full overflow-hidden rounded-r-md ${theme.mainContentSection}`}>
           {renderSectionPanels()}
         </div>

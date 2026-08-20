@@ -65,6 +65,28 @@ namespace APP.Components.EntityDto
         public string Role { get; set; }
         public string Content { get; set; }
         public string Timestamp { get; set; }
+
+        /// <summary>
+        /// AppConfigPack paths written/validated in this assistant turn (for Start Build UI after reload).
+        /// </summary>
+        public List<string> WrittenPackPaths { get; set; }
+
+        /// <summary>
+        /// Open-page / table-preview offers for this assistant turn (Open button after reload).
+        /// </summary>
+        public List<CursorAgentOpenUiOfferDto> OpenUiOffers { get; set; }
+    }
+
+    /// <summary>Persisted Open box payload (navigate or table_preview).</summary>
+    public class CursorAgentOpenUiOfferDto
+    {
+        /// <summary>navigate | table_preview</summary>
+        public string Kind { get; set; }
+        public string Label { get; set; }
+        public string RouteCode { get; set; }
+        public string Link { get; set; }
+        public Dictionary<string, object> ParamObj { get; set; }
+        public List<CursorAgentTablePreviewItemDto> Tables { get; set; }
     }
 
     public class CursorAgentStartResultDto
@@ -93,6 +115,32 @@ namespace APP.Components.EntityDto
         public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");
     }
 
+    /// <summary>Ask the browser UI to open an App tab (RouteCode + paramObj).</summary>
+    public class CursorAgentNavigateEvent
+    {
+        public string RouteCode { get; set; }
+        public string Label { get; set; }
+        public string Link { get; set; }
+        /// <summary>Optional full param object; when null, UI builds from RouteCode + Link.</summary>
+        public Dictionary<string, object> ParamObj { get; set; }
+        public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");
+    }
+
+    /// <summary>Ask the browser UI to open TablesDataPreviewModal (multi-table header tabs).</summary>
+    public class CursorAgentTablePreviewEvent
+    {
+        public List<CursorAgentTablePreviewItemDto> Tables { get; set; }
+            = new List<CursorAgentTablePreviewItemDto>();
+        public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");
+    }
+
+    public class CursorAgentTablePreviewItemDto
+    {
+        public string TableName { get; set; }
+        public int? DataSourceId { get; set; }
+        public string SchemaOwner { get; set; }
+    }
+
     public class CursorAgentGateEvent
     {
         public string GateId { get; set; }
@@ -111,16 +159,20 @@ namespace APP.Components.EntityDto
         public string FinalResponse { get; set; }
         public List<CursorAgentMessageDto> UpdatedHistory { get; set; } = new List<CursorAgentMessageDto>();
         public List<string> WorkspaceFiles { get; set; } = new List<string>();
+        /// <summary>Open offers from this turn (in case navigate events were polled after done).</summary>
+        public List<CursorAgentOpenUiOfferDto> OpenUiOffers { get; set; }
     }
 
     public class CursorAgentEventDto
     {
-        /// <summary>step | token | file | gate | done | error</summary>
+        /// <summary>step | token | file | gate | navigate | table_preview | done | error</summary>
         public string EventType { get; set; }
         public CursorAgentStepEvent Step { get; set; }
         public string Token { get; set; }
         public CursorAgentFileEvent File { get; set; }
         public CursorAgentGateEvent Gate { get; set; }
+        public CursorAgentNavigateEvent Navigate { get; set; }
+        public CursorAgentTablePreviewEvent TablePreview { get; set; }
         public CursorAgentDoneEvent Done { get; set; }
         public string Error { get; set; }
     }

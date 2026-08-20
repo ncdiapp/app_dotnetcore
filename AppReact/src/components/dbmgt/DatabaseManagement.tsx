@@ -22,7 +22,19 @@ import TableDataPreview from '../transaction/TableDataPreview';
 const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
 const CONTEXT_MENU_ESTIMATED_HEIGHT = 320;
 
-const DatabaseManagement: React.FC = () => {
+export type DatabaseManagementProps = {
+  /** Prefill SQL Workbench editor (e.g. from Agent Open). */
+  initialQueryText?: string | null;
+  initialDataSourceId?: number | null;
+  /** When true and initialQueryText is set, run the query once DS is ready. */
+  autoExecute?: boolean;
+};
+
+const DatabaseManagement: React.FC<DatabaseManagementProps> = ({
+  initialQueryText = null,
+  initialDataSourceId = null,
+  autoExecute = false,
+}) => {
   const { theme, t } = useTheme();
   const dispatch = useDispatch();
   const { showError } = useErrorMessage();
@@ -31,7 +43,9 @@ const DatabaseManagement: React.FC = () => {
 
   // Data source selection
   const [dataSourceRegisterList, setDataSourceRegisterList] = useState<any[]>([]);
-  const [selectedDataSourceId, setSelectedDataSourceId] = useState<number | null>(null);
+  const [selectedDataSourceId, setSelectedDataSourceId] = useState<number | null>(
+    initialDataSourceId ?? null
+  );
   const datasourceRegisterDataMapRef = useRef<DataMap | null>(null);
   const dataSourceComboBoxRef = useRef<wjInput.ComboBox | null>(null);
 
@@ -42,8 +56,9 @@ const DatabaseManagement: React.FC = () => {
   const [tableViewNameFilter, setTableViewNameFilter] = useState<string>('');
 
   // Query editor
-  const [queryText, setQueryText] = useState<string>('');
+  const [queryText, setQueryText] = useState<string>(initialQueryText || '');
   const queryTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const autoExecutedRef = useRef(false);
 
   // Query results
   const [queryResults, setQueryResults] = useState<any[]>([]);
@@ -82,8 +97,9 @@ const DatabaseManagement: React.FC = () => {
         const dataMap = new DataMap(filtered, 'Id', 'DataSourceName');
         datasourceRegisterDataMapRef.current = dataMap;
 
-        // Auto-select first data source if available
-        if (filtered.length > 0 && !selectedDataSourceId) {
+        if (initialDataSourceId != null && filtered.some((ds: any) => ds.Id === initialDataSourceId)) {
+          setSelectedDataSourceId(initialDataSourceId);
+        } else if (filtered.length > 0 && selectedDataSourceId == null) {
           setSelectedDataSourceId(filtered[0].Id);
         }
       } catch (error) {
@@ -93,7 +109,19 @@ const DatabaseManagement: React.FC = () => {
     };
     
     loadDataSources();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- seed once on mount / remount via parent key
   }, []);
+
+  // Prefill from Agent Open (parent remounts with new key when seed changes)
+  useEffect(() => {
+    if (initialQueryText) {
+      setQueryText(initialQueryText);
+      autoExecutedRef.current = false;
+    }
+    if (initialDataSourceId != null) {
+      setSelectedDataSourceId(initialDataSourceId);
+    }
+  }, [initialQueryText, initialDataSourceId]);
 
   // Load tables and views when data source changes (use cache when available)
   useEffect(() => {
@@ -139,16 +167,22 @@ const DatabaseManagement: React.FC = () => {
   const handleDataSourceChange = (combo: wjInput.ComboBox) => {
     const selectedItem = combo.selectedItem;
     if (selectedItem) {
-      setSelectedDataSourceId(selectedItem.Id);
+      const nextId = selectedItem.Id as number;
+      setSelectedDataSourceId((prev) => {
+        // Only clear SQL when the user switches between two real data sources.
+        // ComboBox init sets '' then restores selectedValue — must not wipe Agent-seeded query.
+        if (prev != null && nextId != null && prev !== nextId) {
+          setQueryText('');
+          setQueryResults([]);
+          setQueryResultsCV(null);
+          setQueryRowCount(0);
+        }
+        return nextId;
+      });
       setSelectedTable(null);
       setTableViewNameFilter('');
-      setQueryText('');
-      setQueryResults([]);
-      setQueryResultsCV(null);
-      setQueryRowCount(0);
-    } else {
-      setSelectedDataSourceId(null);
     }
+    // Do not set selectedDataSourceId to null on transient ComboBox clear (selectedValue = '').
   };
 
   // Handle table/view selection
@@ -328,7 +362,7 @@ const DatabaseManagement: React.FC = () => {
   };
 
   // Execute query
-  const handleExecuteQuery = async () => {
+  const handleExecuteQuery = useCallback(async () => {
     if (!queryText.trim()) {
       showError('Please enter a SQL query');
       return;
@@ -373,7 +407,15 @@ const DatabaseManagement: React.FC = () => {
     } finally {
       dispatch(setIsNotBusy());
     }
-  };
+  }, [dispatch, queryText, selectedDataSourceId, showError]);
+
+  // Agent Open: run seeded query once when DS is ready
+  useEffect(() => {
+    if (!autoExecute || autoExecutedRef.current) return;
+    if (!queryText.trim() || selectedDataSourceId == null) return;
+    autoExecutedRef.current = true;
+    void handleExecuteQuery();
+  }, [autoExecute, queryText, selectedDataSourceId, handleExecuteQuery]);
 
   // Filter tables/views by object type and name
   const filteredTablesAndViews = tablesAndViews.filter((item: any) => {

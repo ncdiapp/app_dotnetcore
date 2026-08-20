@@ -6,11 +6,14 @@ import { RootState } from '../../redux/store';
 import { adminSvc } from '../../webapi/adminsvc';
 import {
   CursorAgentDoneEvent,
+  CursorAgentFileEvent,
   CursorAgentGateEvent,
   CursorAgentMessage,
+  CursorAgentNavigateEvent,
   CursorAgentSessionSummary,
   CursorAgentSkillMenuItem,
   CursorAgentStepEvent,
+  CursorAgentTablePreviewEvent,
   CursorAgentWorkspaceFile,
   archiveCursorSessions,
   cursorAgentService,
@@ -25,9 +28,15 @@ import {
 } from '../../webapi/cursoragentsvc';
 import { endpoints } from '../../webapi/endpoints';
 import { isAdminUserFromContext } from '../../helper/adminPermissionHelper';
+import {
+  buildParamObjFromRouteCodeAndLink,
+  getReactPathForRouteCode,
+} from '../../helper/navigationHelper';
+import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import Confirm from '../common/Confirm';
 import appHelper from '../../helper/appHelper';
 import { useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
+import TablesDataPreviewModal, { type TablePreviewItem } from '../transaction/TablesDataPreviewModal';
 import CursorAgentChatManagement, { RenameChatDialog } from './CursorAgentChatManagement';
 import CursorAgentStartBuildDialog from './CursorAgentStartBuildDialog';
 
@@ -38,7 +47,27 @@ interface ChatMessage {
   streamingContent: string;
   isStreaming: boolean;
   timestamp?: string;
+  /** Pack paths written during this assistant turn (for Start Build UI). */
+  writtenPackPaths?: string[];
+  /** Open-page / table-preview offers (user must click Open — never auto-open). */
+  openUiOffers?: OpenUiOffer[];
 }
+
+type OpenUiOffer =
+  | {
+      id: string;
+      kind: 'table_preview';
+      label: string;
+      tables: TablePreviewItem[];
+    }
+  | {
+      id: string;
+      kind: 'navigate';
+      label: string;
+      routeCode: string;
+      link?: string | null;
+      paramObj: Record<string, unknown>;
+    };
 
 const isImagePath = (path: string) => /\.(png|jpe?g|gif|webp|svg)$/i.test(path || '');
 
@@ -100,6 +129,154 @@ function isAppConfigPackPath(path: string): boolean {
   return /\.appConfigPack\.json$/i.test(path || '');
 }
 
+function normalizeWorkspacePath(path: string): string {
+  return String(path || '').trim().replace(/\\/g, '/');
+}
+
+function extractRelativePathFromJsonish(text: string): string | null {
+  if (!text) return null;
+  const m = text.match(/"relativePath"\s*:\s*"([^"]+)"/i)
+    || text.match(/'relativePath'\s*:\s*'([^']+)'/i);
+  return m ? normalizeWorkspacePath(m[1]) : null;
+}
+
+function extractAppConfigPackPathsFromText(text: string): string[] {
+  if (!text) return [];
+  const found: string[] = [];
+  const re = /[A-Za-z0-9_./-]+\.appConfigPack\.json/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) != null) {
+    const p = normalizeWorkspacePath(m[0]);
+    if (isAppConfigPackPath(p)) found.push(p);
+  }
+  return found;
+}
+
+/**
+ * Packs actually touched this turn via tools — NOT free-text mentions.
+ * write = generated; validate/preview = ready for Start Build.
+ */
+function extractAppConfigPackPathsFromSteps(steps: CursorAgentStepEvent[]): string[] {
+  const found: string[] = [];
+  for (const s of steps || []) {
+    const tool = String(s.ToolName ?? (s as any).toolName ?? '').toLowerCase();
+    const desc = String(s.Description ?? (s as any).description ?? '').toLowerCase();
+    const details = String(s.Details ?? (s as any).details ?? '');
+    const isWrite = tool.includes('write_workspace_file') || desc.includes('write_workspace_file');
+    const isValidate = tool.includes('validate_config_pack') || desc.includes('validate_config_pack');
+    const isPreview = tool.includes('preview_config_pack') || desc.includes('preview_config_pack');
+    const isPropose = tool.includes('propose_import_pack') || desc.includes('propose_import_pack');
+    if (!isWrite && !isValidate && !isPreview && !isPropose) continue;
+    if (s.IsSuccess === false) continue;
+
+    const fromArg = extractRelativePathFromJsonish(details)
+      || extractRelativePathFromJsonish(String(s.Description ?? (s as any).description ?? ''));
+    if (fromArg && isAppConfigPackPath(fromArg)) found.push(fromArg);
+    // Only parse pack paths out of tool args/details for these tools — never from thinking text.
+    found.push(...extractAppConfigPackPathsFromText(details));
+  }
+  return found;
+}
+
+function uniquePackPaths(paths: string[]): string[] {
+  const map = new Map<string, string>();
+  for (const raw of paths) {
+    const p = normalizeWorkspacePath(raw);
+    if (!isAppConfigPackPath(p)) continue;
+    map.set(p.toLowerCase(), p);
+  }
+  return Array.from(map.values());
+}
+
+/** Start Build only when this turn wrote/validated/previewed a pack (not when text merely mentions a path). */
+function packPathsForStartBuild(
+  msg: ChatMessage,
+  workspacePackPathSet: Set<string>
+): string[] {
+  const fromTools = uniquePackPaths([
+    ...(msg.writtenPackPaths ?? []),
+    ...extractAppConfigPackPathsFromSteps(msg.steps),
+  ]);
+  const candidates = fromTools.length > 0
+    ? fromTools
+    : inferLegacyReadyPackPaths(msg.content || '', workspacePackPathSet);
+
+  return candidates.filter(p => {
+    const key = p.toLowerCase();
+    if (workspacePackPathSet.has(key)) return true;
+    return (msg.writtenPackPaths ?? []).some(w => normalizeWorkspacePath(w).toLowerCase() === key);
+  });
+}
+
+/**
+ * Old chats have no WrittenPackPaths. Infer only when the reply looks like a finished pack
+ * (not "I'll update after you confirm").
+ */
+function inferLegacyReadyPackPaths(content: string, workspacePackPathSet: Set<string>): string[] {
+  const paths = uniquePackPaths(extractAppConfigPackPathsFromText(content));
+  if (paths.length === 0) return [];
+  if (looksLikePackPlanningOnly(content)) return [];
+  if (!looksLikePackReadyForBuild(content)) return [];
+  return paths.filter(p => workspacePackPathSet.has(p.toLowerCase()));
+}
+
+function looksLikePackPlanningOnly(content: string): boolean {
+  return /确认后我会|确认后我再|确认后再|after\s+confirmation|after\s+you\s+confirm|i('?ll| will)\s+update|i('?ll| will)\s+write|before\s+i\s+write|请先确认|先确认以下|是否加|是否创建|or just (a )?read-only/i
+    .test(content || '');
+}
+
+function looksLikePackReadyForBuild(content: string): boolean {
+  return /pack\s+is\s+ready|click\s+start\s+build|点\s*start\s*build|validate\s*:\s*ok|preview\s*:\s*insert|可以导入|已就绪|config\s+file\s+completed|start\s+build\s+in\s+this\s+chat|validate\s*[&＆]\s*preview|wrote\s+packs\//i
+    .test(content || '');
+}
+
+function mapOpenUiOffersFromHistory(raw: any): OpenUiOffer[] {
+  const list = raw?.OpenUiOffers ?? raw?.openUiOffers;
+  if (!Array.isArray(list) || list.length === 0) return [];
+  const offers: OpenUiOffer[] = [];
+  list.forEach((o: any, idx: number) => {
+    const kind = String(o?.Kind ?? o?.kind ?? '').toLowerCase();
+    const label = String(o?.Label ?? o?.label ?? '');
+    if (kind === 'table_preview' || kind === 'tablepreview') {
+      const tablesRaw = o?.Tables ?? o?.tables ?? [];
+      const tables: TablePreviewItem[] = (Array.isArray(tablesRaw) ? tablesRaw : [])
+        .map((t: any) => ({
+          tableName: String(t?.TableName ?? t?.tableName ?? '').trim(),
+          dataSourceId: (t?.DataSourceId ?? t?.dataSourceId ?? null) as number | null,
+          schemaOwner: (t?.SchemaOwner ?? t?.schemaOwner ?? 'dbo') as string | null,
+        }))
+        .filter((t: TablePreviewItem) => !!t.tableName);
+      if (tables.length === 0) return;
+      offers.push({
+        id: `hist-preview-${idx}-${tables.map(t => t.tableName).join(',')}`,
+        kind: 'table_preview',
+        label: label || tables.map(t => t.tableName).join(', '),
+        tables,
+      });
+      return;
+    }
+    if (kind === 'navigate' || kind === 'page') {
+      const routeCode = String(o?.RouteCode ?? o?.routeCode ?? '').trim();
+      if (!routeCode) return;
+      const link = o?.Link ?? o?.link;
+      const rawParams = (o?.ParamObj ?? o?.paramObj) as Record<string, unknown> | undefined;
+      const paramObj =
+        rawParams && typeof rawParams === 'object'
+          ? rawParams
+          : buildParamObjFromRouteCodeAndLink(routeCode, link != null ? String(link) : '');
+      offers.push({
+        id: `hist-nav-${idx}-${routeCode}`,
+        kind: 'navigate',
+        label: label || routeCode,
+        routeCode,
+        link: link != null ? String(link) : null,
+        paramObj,
+      });
+    }
+  });
+  return offers;
+}
+
 function mapHistoryMessages(hist: any[]): ChatMessage[] {
   return (hist || []).map((m: any) => ({
     role: historyRole(m),
@@ -108,6 +285,10 @@ function mapHistoryMessages(hist: any[]): ChatMessage[] {
     streamingContent: '',
     isStreaming: false,
     timestamp: historyTimestamp(m),
+    writtenPackPaths: uniquePackPaths(
+      (m?.WrittenPackPaths ?? m?.writtenPackPaths ?? []) as string[]
+    ),
+    openUiOffers: mapOpenUiOffersFromHistory(m),
   }));
 }
 
@@ -221,6 +402,25 @@ const PREVIEW_DEFAULT_PX = 160;
 const PREVIEW_MIN_PX = 80;
 const PREVIEW_MAX_PX = 480;
 const CENTER_MIN_PX = 280;
+
+/** Remember last selected chat so reopening the page restores it (not New Chat). */
+const LAST_SESSION_STORAGE_KEY = 'appai.cursorAgent.lastSessionGuid';
+
+function readLastSessionGuid(): string | null {
+  try {
+    const v = localStorage.getItem(LAST_SESSION_STORAGE_KEY);
+    return v && v.trim() ? v.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastSessionGuid(sessionGuid: string | null) {
+  try {
+    if (!sessionGuid) localStorage.removeItem(LAST_SESSION_STORAGE_KEY);
+    else localStorage.setItem(LAST_SESSION_STORAGE_KEY, sessionGuid);
+  } catch { /* ignore */ }
+}
 
 interface PanelResizeHandleProps {
   label: string;
@@ -457,6 +657,7 @@ const CursorAgent: React.FC = () => {
   const { theme, t } = useTheme();
   const userContext = useSelector((s: RootState) => s.userSession.userContext);
   const isAdmin = isAdminUserFromContext(userContext);
+  const { addTabAndNavigate } = useTabNavigation();
 
   const [applications, setApplications] = useState<{ id: number; name: string }[]>([]);
   const [dataSources, setDataSources] = useState<{ id: number; name: string }[]>([]);
@@ -474,6 +675,8 @@ const CursorAgent: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [pendingGate, setPendingGate] = useState<CursorAgentGateEvent | null>(null);
   const [gateFeedback, setGateFeedback] = useState('');
+  const [tablePreviewOpen, setTablePreviewOpen] = useState(false);
+  const [tablePreviewTables, setTablePreviewTables] = useState<TablePreviewItem[]>([]);
   const [chatHistory, setChatHistory] = useState<CursorAgentSessionSummary[]>([]);
   const [files, setFiles] = useState<CursorAgentWorkspaceFile[]>([]);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
@@ -503,6 +706,7 @@ const CursorAgent: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const didAutoRestoreRef = useRef(false);
 
   chatListWidthRef.current = chatListWidth;
   workspaceWidthRef.current = workspaceWidth;
@@ -567,7 +771,13 @@ const CursorAgent: React.FC = () => {
   }, []);
 
   const refreshHistory = useCallback(() => {
-    getRecentCursorSessions(30).then(setChatHistory).catch(() => {});
+    return getRecentCursorSessions(30).then(list => {
+      setChatHistory(list);
+      return list;
+    }).catch(() => {
+      setChatHistory([]);
+      return [] as CursorAgentSessionSummary[];
+    });
   }, []);
 
   const refreshFiles = useCallback((sid: string | null) => {
@@ -577,6 +787,49 @@ const CursorAgent: React.FC = () => {
       if (list.some(f => !f.IsDirectory)) setWorkspaceOpen(true);
     }).catch(() => setFiles([]));
   }, []);
+
+  const resetChatUi = useCallback(() => {
+    cursorAgentService.disconnect();
+    cursorAgentService.currentSessionId = null;
+    setSessionId(null);
+    setHasAgent(false);
+    setMessages([]);
+    setPendingGate(null);
+    setError(null);
+    setIsRunning(false);
+    isRunningRef.current = false;
+    setFiles([]);
+    setPreviewPath(null);
+    setWorkspaceOpen(false);
+    setEditingIndex(null);
+    setEditText('');
+    setBuildPackPath(null);
+    setPreviewCopyHint(null);
+  }, []);
+
+  const applyLoadedSession = useCallback(async (summary: CursorAgentSessionSummary) => {
+    resetChatUi();
+    const session = await getCursorSession(summary.SessionGuid);
+    if (!session) return false;
+    setSessionId(summary.SessionGuid);
+    cursorAgentService.currentSessionId = summary.SessionGuid;
+    writeLastSessionGuid(summary.SessionGuid);
+    setHasAgent(!!(session.CursorAgentId || summary.CursorAgentId));
+    const appId = Number(session.SaasApplicationId ?? session.saasApplicationId ?? 0);
+    const dsId = Number(session.DataSourceRegisterId ?? session.dataSourceRegisterId ?? 0);
+    const loadedSkill = session.SkillKey ?? session.skillKey;
+    if (appId > 0) setSaasApplicationId(appId);
+    if (dsId > 0) setDataSourceId(dsId);
+    if (loadedSkill) setSkillKey(loadedSkill);
+    const hist = session.ConversationHistory ?? session.conversationHistory ?? [];
+    const mapped = mapHistoryMessages(hist);
+    const final = String(session.FinalResponse ?? session.finalResponse ?? '').trim();
+    const last = mapped[mapped.length - 1];
+    if (last?.role === 'assistant' && !last.content && final) last.content = final;
+    setMessages(mapped);
+    refreshFiles(summary.SessionGuid);
+    return true;
+  }, [refreshFiles, resetChatUi]);
 
   useEffect(() => {
     adminSvc.retrieveSelectedApplicationPackages(true).then((list: any) => {
@@ -595,12 +848,27 @@ const CursorAgent: React.FC = () => {
         setDataSourceId(prev => prev ?? mapped[0]?.id);
       }
     }).catch(() => {});
-    refreshHistory();
     listCursorSkillMenu().then(menu => {
       setSkillItems(menu.Items ?? []);
       if (menu.DefaultKey) setSkillKey(prev => prev || menu.DefaultKey);
     }).catch(() => {});
-  }, [refreshHistory]);
+
+    void (async () => {
+      const list = await refreshHistory();
+      if (didAutoRestoreRef.current) return;
+      didAutoRestoreRef.current = true;
+      if (!list.length) return;
+      const lastId = readLastSessionGuid();
+      const target =
+        (lastId ? list.find(s => s.SessionGuid === lastId) : null)
+        ?? list[0];
+      if (target) await applyLoadedSession(target);
+    })();
+  }, [applyLoadedSession, refreshHistory]);
+
+  useEffect(() => {
+    if (sessionId) writeLastSessionGuid(sessionId);
+  }, [sessionId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -643,8 +911,73 @@ const CursorAgent: React.FC = () => {
     onToken: (token: string) => {
       updateLastAssistant(msg => ({ ...msg, streamingContent: (msg.streamingContent || '') + token }));
     },
-    onFile: () => refreshFiles(cursorAgentService.currentSessionId),
+    onFile: (file: CursorAgentFileEvent) => {
+      refreshFiles(cursorAgentService.currentSessionId);
+      const path = normalizeWorkspacePath(file?.RelativePath ?? (file as any)?.relativePath ?? '');
+      const action = String(file?.Action ?? (file as any)?.action ?? '').toLowerCase();
+      if (!path || !isAppConfigPackPath(path)) return;
+      if (action === 'delete') {
+        updateLastAssistant(msg => ({
+          ...msg,
+          writtenPackPaths: (msg.writtenPackPaths ?? []).filter(
+            p => normalizeWorkspacePath(p).toLowerCase() !== path.toLowerCase()
+          ),
+        }));
+        return;
+      }
+      // write | artifact | empty — any non-delete pack event counts for Start Build
+      updateLastAssistant(msg => {
+        const existing = msg.writtenPackPaths ?? [];
+        if (existing.some(p => normalizeWorkspacePath(p).toLowerCase() === path.toLowerCase())) return msg;
+        return { ...msg, writtenPackPaths: [...existing, path] };
+      });
+    },
     onGate: (gate: CursorAgentGateEvent) => setPendingGate(gate),
+    onNavigate: (nav: CursorAgentNavigateEvent) => {
+      const routeCode = String(nav?.RouteCode ?? nav?.routeCode ?? '').trim();
+      if (!routeCode) return;
+      const label = String(nav?.Label ?? nav?.label ?? routeCode);
+      const link = nav?.Link ?? nav?.link;
+      const rawParams = (nav?.ParamObj ?? nav?.paramObj) as Record<string, unknown> | undefined;
+      const paramObj =
+        rawParams && typeof rawParams === 'object'
+          ? rawParams
+          : buildParamObjFromRouteCodeAndLink(routeCode, link != null ? String(link) : '');
+      const offer: OpenUiOffer = {
+        id: `nav-${Date.now()}-${routeCode}`,
+        kind: 'navigate',
+        label,
+        routeCode,
+        link: link != null ? String(link) : null,
+        paramObj,
+      };
+      updateLastAssistant(msg => ({
+        ...msg,
+        openUiOffers: [...(msg.openUiOffers ?? []), offer],
+      }));
+    },
+    onTablePreview: (preview: CursorAgentTablePreviewEvent) => {
+      const raw = preview?.Tables ?? preview?.tables ?? [];
+      const tables: TablePreviewItem[] = (Array.isArray(raw) ? raw : [])
+        .map((t) => ({
+          tableName: String(t?.TableName ?? t?.tableName ?? '').trim(),
+          dataSourceId: (t?.DataSourceId ?? t?.dataSourceId ?? null) as number | null,
+          schemaOwner: (t?.SchemaOwner ?? t?.schemaOwner ?? 'dbo') as string | null,
+        }))
+        .filter((t) => !!t.tableName);
+      if (tables.length === 0) return;
+      const names = tables.map(t => t.tableName).join(', ');
+      const offer: OpenUiOffer = {
+        id: `preview-${Date.now()}-${names}`,
+        kind: 'table_preview',
+        label: names || 'Table Preview',
+        tables,
+      };
+      updateLastAssistant(msg => ({
+        ...msg,
+        openUiOffers: [...(msg.openUiOffers ?? []), offer],
+      }));
+    },
     onDone: (result: CursorAgentDoneEvent) => {
       try {
         setPendingGate(null);
@@ -655,11 +988,29 @@ const CursorAgent: React.FC = () => {
           : '';
         updateLastAssistant(msg => {
           const content = final || msg.streamingContent || fromHist || msg.content || '';
+          const fromHistMsg = Array.isArray(hist) && hist.length ? hist[hist.length - 1] : null;
+          const histPacks = (fromHistMsg?.WrittenPackPaths ?? fromHistMsg?.writtenPackPaths ?? []) as string[];
+          const touched = uniquePackPaths([
+            ...(msg.writtenPackPaths ?? []),
+            ...extractAppConfigPackPathsFromSteps(msg.steps),
+            ...histPacks,
+          ]);
+          const fromDone = mapOpenUiOffersFromHistory({
+            OpenUiOffers: (result as any)?.OpenUiOffers ?? (result as any)?.openUiOffers,
+          });
+          const fromHistOffers = mapOpenUiOffersFromHistory(fromHistMsg);
+          const openUiOffers =
+            (msg.openUiOffers?.length ? msg.openUiOffers : null)
+            ?? (fromDone.length ? fromDone : null)
+            ?? (fromHistOffers.length ? fromHistOffers : null)
+            ?? [];
           return {
             ...msg,
             content: content || 'No reply received.',
             streamingContent: '',
             isStreaming: false,
+            writtenPackPaths: touched,
+            openUiOffers,
           };
         });
         refreshHistory();
@@ -679,7 +1030,7 @@ const CursorAgent: React.FC = () => {
         isRunningRef.current = false;
       }
     },
-  }), [refreshFiles, refreshHistory, updateLastAssistant]);
+  }), [addTabAndNavigate, refreshFiles, refreshHistory, updateLastAssistant]);
 
   const sendFirstOrFollowUp = useCallback(async (text: string, truncateFrom?: number) => {
     if (!text || isRunningRef.current) return;
@@ -736,26 +1087,12 @@ const CursorAgent: React.FC = () => {
   }, [editText, editingIndex, isRunning, sendFirstOrFollowUp]);
 
   const handleNewChat = useCallback(() => {
-    cursorAgentService.disconnect();
-    cursorAgentService.currentSessionId = null;
-    setSessionId(null);
-    setHasAgent(false);
-    setMessages([]);
-    setPendingGate(null);
-    setError(null);
-    setIsRunning(false);
-    isRunningRef.current = false;
-    setFiles([]);
-    setPreviewPath(null);
-    setWorkspaceOpen(false);
-    setEditingIndex(null);
-    setEditText('');
+    writeLastSessionGuid(null);
+    resetChatUi();
     setSkillKey('app-config-builder');
     setSaasApplicationId(pickDefaultApplicationId(applications));
     setDataSourceId(dataSources[0]?.id);
-    setBuildPackPath(null);
-    setPreviewCopyHint(null);
-  }, [applications, dataSources]);
+  }, [applications, dataSources, resetChatUi]);
 
   const handleDeletedSessions = useCallback((ids?: string[]) => {
     refreshHistory();
@@ -765,26 +1102,8 @@ const CursorAgent: React.FC = () => {
   }, [handleNewChat, refreshHistory, sessionId]);
 
   const handleLoadSession = useCallback(async (summary: CursorAgentSessionSummary) => {
-    handleNewChat();
-    const session = await getCursorSession(summary.SessionGuid);
-    if (!session) return;
-    setSessionId(summary.SessionGuid);
-    cursorAgentService.currentSessionId = summary.SessionGuid;
-    setHasAgent(!!(session.CursorAgentId || summary.CursorAgentId));
-    const appId = Number(session.SaasApplicationId ?? session.saasApplicationId ?? 0);
-    const dsId = Number(session.DataSourceRegisterId ?? session.dataSourceRegisterId ?? 0);
-    const loadedSkill = session.SkillKey ?? session.skillKey;
-    if (appId > 0) setSaasApplicationId(appId);
-    if (dsId > 0) setDataSourceId(dsId);
-    if (loadedSkill) setSkillKey(loadedSkill);
-    const hist = session.ConversationHistory ?? session.conversationHistory ?? [];
-    const mapped = mapHistoryMessages(hist);
-    const final = String(session.FinalResponse ?? session.finalResponse ?? '').trim();
-    const last = mapped[mapped.length - 1];
-    if (last?.role === 'assistant' && !last.content && final) last.content = final;
-    setMessages(mapped);
-    refreshFiles(summary.SessionGuid);
-  }, [handleNewChat, refreshFiles]);
+    await applyLoadedSession(summary);
+  }, [applyLoadedSession]);
 
   const handleResume = useCallback(async () => {
     if (!sessionId || isRunning) return;
@@ -805,6 +1124,19 @@ const CursorAgent: React.FC = () => {
     setPendingGate(null);
     setGateFeedback('');
   }, [gateFeedback, pendingGate]);
+
+  const handleOpenUiOffer = useCallback((offer: OpenUiOffer) => {
+    if (offer.kind === 'table_preview') {
+      setTablePreviewTables(offer.tables);
+      setTablePreviewOpen(true);
+      return;
+    }
+    addTabAndNavigate(
+      getReactPathForRouteCode(offer.routeCode),
+      offer.label,
+      offer.paramObj
+    );
+  }, [addTabAndNavigate]);
 
   const openPreview = useCallback(async (relativePath: string) => {
     if (!sessionId) return;
@@ -861,8 +1193,12 @@ const CursorAgent: React.FC = () => {
   }
 
   const workspaceFiles = files.filter(f => !f.IsDirectory);
-  const packFiles = workspaceFiles.filter(f => isAppConfigPackPath(workspaceFilePath(f)));
-  const lastAssistantIndex = messages.reduce((acc, m, idx) => (m.role === 'assistant' ? idx : acc), -1);
+  const workspacePackPathSet = new Set(
+    workspaceFiles
+      .map(f => normalizeWorkspacePath(workspaceFilePath(f)))
+      .filter(isAppConfigPackPath)
+      .map(p => p.toLowerCase())
+  );
   const contextLocked = isRunning;
   const currentStatus = chatHistory.find(c => c.SessionGuid === sessionId)?.Status ?? '';
   const canResume = hasAgent && !isRunning && !!sessionId
@@ -1014,15 +1350,17 @@ const CursorAgent: React.FC = () => {
                           {!msg.isStreaming && !(msg.content || msg.streamingContent) && (
                             <div className={theme.label}>No reply received.</div>
                           )}
-                          {!msg.isStreaming && i === lastAssistantIndex && packFiles.length > 0 && (
+                          {(() => {
+                            if (msg.isStreaming) return null;
+                            const startBuildPacks = packPathsForStartBuild(msg, workspacePackPathSet);
+                            if (startBuildPacks.length === 0) return null;
+                            return (
                             <div className={`mt-4 px-3 py-3 rounded-[4px] border text-xs ${theme.inputBox}`}>
                               <div className={`font-semibold mb-1 ${theme.title}`}>Config file completed</div>
                               <div className={`mb-2 ${theme.label}`}>
                                 Draft pack(s) are ready in the workspace. Open a file to review, then Start Build on that file to validate and import.
                               </div>
-                              {packFiles.map(f => {
-                                const path = workspaceFilePath(f);
-                                return (
+                              {startBuildPacks.map(path => (
                                   <div key={path} className="flex items-center gap-2 mb-1">
                                     <button
                                       type="button"
@@ -1041,10 +1379,41 @@ const CursorAgent: React.FC = () => {
                                       Start Build
                                     </button>
                                   </div>
-                                );
-                              })}
+                              ))}
                             </div>
-                          )}
+                            );
+                          })()}
+                          {(() => {
+                            if (msg.isStreaming) return null;
+                            const offers = msg.openUiOffers ?? [];
+                            if (offers.length === 0) return null;
+                            return (
+                              <div className="mt-4 space-y-2">
+                                {offers.map(offer => (
+                                  <div
+                                    key={offer.id}
+                                    className={`px-3 py-3 rounded-[4px] border text-xs ${theme.inputBox}`}
+                                  >
+                                    <div className={`font-semibold mb-1 ${theme.title}`}>
+                                      {offer.kind === 'table_preview' ? 'Table Preview ready' : 'Page ready to open'}
+                                    </div>
+                                    <div className={`mb-2 ${theme.label}`}>
+                                      {offer.kind === 'table_preview'
+                                        ? `Preview: ${offer.label}`
+                                        : offer.label}
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_secondary}`}
+                                      onClick={() => handleOpenUiOffer(offer)}
+                                    >
+                                      Open
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
@@ -1291,6 +1660,11 @@ const CursorAgent: React.FC = () => {
         packPath={buildPackPath}
         saasApplicationId={saasApplicationId}
         onClose={() => setBuildPackPath(null)}
+      />
+      <TablesDataPreviewModal
+        isOpen={tablePreviewOpen}
+        onClose={() => setTablePreviewOpen(false)}
+        tables={tablePreviewTables}
       />
       <CursorAgentChatManagement
         isOpen={manageOpen}

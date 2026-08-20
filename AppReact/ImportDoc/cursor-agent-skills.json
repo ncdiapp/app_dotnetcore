@@ -8,7 +8,7 @@
       "label": "General",
       "allowProposeImport": false,
       "injectFiles": [],
-      "extraPrompt": "Mode: General. Answer questions about the tenant, schema, and AppAI docs. Do not generate an AppConfigPack unless the user asks. Do not call propose_import_pack."
+      "extraPrompt": "Mode: General. Answer questions about the tenant, schema, and AppAI docs. Do not generate an AppConfigPack unless the user asks. Do not call propose_import_pack.\nWhen answering with a SQL/query result: in the SAME turn call open_query_result with that SQL (Open box under the reply). Do not ask first. Never say click Open unless you called the tool."
     },
     {
       "id": "app-config-builder",
@@ -25,7 +25,7 @@
         "ImportAppConfig/sample.appConfigPack.json",
         "ImportAppConfig/sample-listedit.appConfigPack.json"
       ],
-      "extraPrompt": "Mode: App Config Builder.\nConversation first: do NOT write an AppConfigPack on the first reply. Ask clarifying questions and wait.\nFirst question must establish SCREEN PATTERN:\n- A) Search + MasterDetail (query list opens create/edit form)\n- B) ListEdit Transaction (one editable grid; organizedType List)\nIf the user said List Edit / ListEdit / LIST EDIT TRANSACTION → choose B; do NOT propose a Search or MasterDetail pair.\nOther questions: Erp_ table names, fields/required, menus, whether to create DDL now.\nAfter the user confirms: Follow PROMPT.md Screen patterns, write packs/<name>.appConfigPack.json via write_workspace_file, then validate_config_pack / preview_config_pack.\nDo not call propose_import_pack and do not import. End with the pack path so the user can click Start Build in this chat.\nNever invent numeric TransactionId / SearchId / EntityId. sample.appConfigPack.json is EXAMPLE for pattern A only."
+      "extraPrompt": "Mode: App Config Builder.\nIntent override: if the user only wants to browse/preview table data or open DB Table/View Data Preview (and explicitly does NOT want Search/Config) → call preview_tables_data (chat shows Open); do not propose Search/MasterDetail/ListEdit. For a custom SELECT result: show the result AND call open_query_result in the SAME turn (do not ask first).\nConversation first for CONFIG requests: do NOT write an AppConfigPack on the first reply. Ask clarifying questions and wait.\nFirst question must establish SCREEN PATTERN:\n- A) Search + MasterDetail (query list opens create/edit form)\n- B) ListEdit Transaction (one editable grid; organizedType List)\nIf the user said List Edit / ListEdit / LIST EDIT TRANSACTION → choose B; do NOT propose a Search or MasterDetail pair.\nOther questions: Erp_ table names, fields/required, menus, whether to create DDL now.\nAfter the user confirms: Follow PROMPT.md Screen patterns, write packs/<name>.appConfigPack.json via write_workspace_file, then validate_config_pack / preview_config_pack.\nDo not call propose_import_pack and do not import. End with the pack path so the user can click Start Build in this chat.\nNever invent numeric TransactionId / SearchId / EntityId. sample.appConfigPack.json is EXAMPLE for pattern A only.\nopen_* / preview_tables_data / open_query_result only offer an Open button in chat — never refuse; never say click Open unless you called the tool."
     },
     {
       "id": "plm-dw",

@@ -4,8 +4,12 @@ import { endpoints } from './endpoints';
 export interface CursorAgentMessage {
   Role?: string;
   Content?: string;
+  Timestamp?: string;
+  WrittenPackPaths?: string[];
   role?: string;
   content?: string;
+  timestamp?: string;
+  writtenPackPaths?: string[];
 }
 
 export interface CursorAgentStepEvent {
@@ -34,10 +38,37 @@ export interface CursorAgentFileEvent {
   RelativePath: string;
 }
 
+export interface CursorAgentNavigateEvent {
+  RouteCode?: string;
+  Label?: string;
+  Link?: string;
+  ParamObj?: Record<string, unknown>;
+  routeCode?: string;
+  label?: string;
+  link?: string;
+  paramObj?: Record<string, unknown>;
+}
+
+export interface CursorAgentTablePreviewItem {
+  TableName?: string;
+  DataSourceId?: number | null;
+  SchemaOwner?: string | null;
+  tableName?: string;
+  dataSourceId?: number | null;
+  schemaOwner?: string | null;
+}
+
+export interface CursorAgentTablePreviewEvent {
+  Tables?: CursorAgentTablePreviewItem[];
+  tables?: CursorAgentTablePreviewItem[];
+}
+
 export interface CursorAgentDoneEvent {
   FinalResponse: string;
   UpdatedHistory: CursorAgentMessage[];
   WorkspaceFiles: string[];
+  OpenUiOffers?: any[];
+  openUiOffers?: any[];
 }
 
 export interface CursorAgentEventHandlers {
@@ -45,6 +76,8 @@ export interface CursorAgentEventHandlers {
   onToken: (text: string) => void;
   onFile?: (file: CursorAgentFileEvent) => void;
   onGate: (gate: CursorAgentGateEvent) => void;
+  onNavigate?: (nav: CursorAgentNavigateEvent) => void;
+  onTablePreview?: (preview: CursorAgentTablePreviewEvent) => void;
   onDone: (result: CursorAgentDoneEvent) => void;
   onError: (message: string) => void;
 }
@@ -204,23 +237,38 @@ class CursorAgentService {
           const step = evt.Step ?? evt.step;
           const file = evt.File ?? evt.file;
           const gate = evt.Gate ?? evt.gate;
+          const navigate = evt.Navigate ?? evt.navigate;
+          const tablePreview = evt.TablePreview ?? evt.tablePreview;
           const done = evt.Done ?? evt.done;
           const error = evt.Error ?? evt.error;
+          // Process open offers before done so they attach to the assistant turn.
           if (eventType === 'step' && step) handlers.onStep(step);
           if (eventType === 'token' && token) handlers.onToken(token);
           if (eventType === 'file' && file) handlers.onFile?.(file);
           if (eventType === 'gate' && gate) handlers.onGate(gate);
-          if (eventType === 'done') {
-            this.stopPolling();
-            const final = done?.FinalResponse ?? done?.finalResponse ?? '';
-            handlers.onDone(done ?? { FinalResponse: final, UpdatedHistory: [], WorkspaceFiles: [] });
-            return;
+          if (eventType === 'navigate' && navigate) handlers.onNavigate?.(navigate);
+          if ((eventType === 'table_preview' || eventType === 'tablePreview') && tablePreview) {
+            handlers.onTablePreview?.(tablePreview);
           }
           if (eventType === 'error') {
             this.stopPolling();
             handlers.onError(error ?? 'Unknown error');
             return;
           }
+          if (eventType === 'done') {
+            // Keep scanning the same batch for any late navigate/table_preview after done.
+            continue;
+          }
+        }
+        const doneEvt = (data?.Events ?? data?.events ?? []).find((e: any) => {
+          const t = e.EventType ?? e.eventType;
+          return t === 'done';
+        });
+        if (doneEvt) {
+          this.stopPolling();
+          const done = doneEvt.Done ?? doneEvt.done;
+          const final = done?.FinalResponse ?? done?.finalResponse ?? '';
+          handlers.onDone(done ?? { FinalResponse: final, UpdatedHistory: [], WorkspaceFiles: [] });
         }
       } catch {
         consecutiveFailures++;

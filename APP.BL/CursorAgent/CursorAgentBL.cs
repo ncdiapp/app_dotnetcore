@@ -116,6 +116,7 @@ namespace App.BL.CursorAgent
                 CursorAgentSessionStore.SessionData live;
                 if (!CursorAgentSessionStore.TryGet(sessionId, out live)) return;
                 CursorAgentIdentity.Restore(live);
+                CursorAgentSessionStore.BeginAssistantTurn(live);
 
                 var prompt = BuildPrompt(live, userMessage);
                 var mcp = CursorAgentMcpBL.McpServerSpec(CursorAgentConfig.McpPublicBaseUrl, live.McpToken);
@@ -153,11 +154,10 @@ namespace App.BL.CursorAgent
                     return;
                 }
                 CursorAgentIdentity.Restore(live);
+                CursorAgentSessionStore.BeginAssistantTurn(live);
                 await CursorCloudClient.EnsureIdleAsync(live.CursorAgentId, live.LatestRunId, ct).ConfigureAwait(false);
                 var mcp = CursorAgentMcpBL.McpServerSpec(CursorAgentConfig.McpPublicBaseUrl, live.McpToken);
-                var prompt = userMessage;
-                if (!string.IsNullOrWhiteSpace(live.SkillKey))
-                    prompt = "Active skill: " + live.SkillKey + "\n\n" + userMessage;
+                var prompt = CursorAgentSkillCatalogBL.BuildFollowUpPrompt(live, userMessage);
                 CursorCloudClient.CreateResult created;
                 try
                 {
@@ -225,7 +225,15 @@ namespace App.BL.CursorAgent
             catch { }
 
             var final = CursorWorkspaceBL.RewriteCloudPaths(assistant.ToString(), live.WorkspaceRelativePath, live.CompanyId);
-            live.ConversationHistory.Add(new CursorAgentMessageDto { Role = "assistant", Content = final, Timestamp = DateTime.UtcNow.ToString("o") });
+            var openOffers = CursorAgentSessionStore.TakeTurnOpenOffers(live);
+            live.ConversationHistory.Add(new CursorAgentMessageDto
+            {
+                Role = "assistant",
+                Content = final,
+                Timestamp = DateTime.UtcNow.ToString("o"),
+                WrittenPackPaths = CursorAgentSessionStore.TakeTurnPackPaths(live),
+                OpenUiOffers = openOffers
+            });
             var files = CursorWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
                 .Where(f => !f.IsDirectory)
                 .Select(f => f.RelativePath)
@@ -237,7 +245,8 @@ namespace App.BL.CursorAgent
                 {
                     FinalResponse = final,
                     UpdatedHistory = live.ConversationHistory.ToList(),
-                    WorkspaceFiles = files
+                    WorkspaceFiles = files,
+                    OpenUiOffers = openOffers
                 }
             });
             CursorAgentSessionBL.Update(live, "Completed", final, null);
@@ -420,6 +429,7 @@ namespace App.BL.CursorAgent
                 if (bytes == null || bytes.Length == 0) continue;
                 var rel = NormalizeArtifactPath(path);
                 CursorWorkspaceBL.WriteBytes(live.WorkspaceRelativePath, rel, bytes, live.CompanyId);
+                CursorAgentSessionStore.NotePackPath(live, rel);
                 CursorAgentSessionStore.Enqueue(live.SessionId, new CursorAgentEventDto
                 {
                     EventType = "file",
