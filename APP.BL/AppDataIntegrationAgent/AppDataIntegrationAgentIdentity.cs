@@ -4,17 +4,17 @@ using APP.Components.Dto;
 using APP.Framework;
 using Newtonsoft.Json;
 
-namespace App.BL.CursorAgent
+namespace App.BL.AppDataIntegrationAgent
 {
     /// <summary>
     /// Background Task.Run has no HttpContext, so ServerContext falls through to
     /// WindowsIdentityProvider. App Builder Agent registers the captured identity there;
-    /// Cursor Agent must do the same. MCP requests do have HttpContext, so identity
+    /// App Data Integration Agent must do the same. MCP requests do have HttpContext, so identity
     /// must also be written to HttpIdentityProvider or CurrnetClientIdentity is null.
     /// </summary>
-    internal static class CursorAgentIdentity
+    internal static class AppDataIntegrationAgentIdentity
     {
-        public static void Capture(CursorAgentSessionStore.SessionData live, AppClientIdentity? identity)
+        public static void Capture(AppDataIntegrationAgentSessionStore.SessionData live, AppClientIdentity? identity)
         {
             if (live == null) return;
             if (!identity.HasValue && ServerContext.Instance.CurrnetClientIdentity is AppClientIdentity current)
@@ -31,7 +31,7 @@ namespace App.BL.CursorAgent
                 live.CompanyId = Convert.ToInt32(identity.Value.CurrentWorkingCompanyId);
         }
 
-        public static void Restore(CursorAgentSessionStore.SessionData live)
+        public static void Restore(AppDataIntegrationAgentSessionStore.SessionData live)
         {
             if (live == null) return;
 

@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 
-namespace App.BL.CursorAgent
+namespace App.BL.AppDataIntegrationAgent
 {
-    public static class CursorAgentSessionStore
+    public static class AppDataIntegrationAgentSessionStore
     {
         private static readonly ConcurrentDictionary<string, SessionData> Sessions
             = new ConcurrentDictionary<string, SessionData>(StringComparer.OrdinalIgnoreCase);
@@ -20,7 +20,7 @@ namespace App.BL.CursorAgent
         public class SessionData
         {
             public string SessionId { get; set; }
-            public string CursorAgentId { get; set; }
+            public string CloudAgentId { get; set; }
             public string LatestRunId { get; set; }
             public string McpToken { get; set; }
             public string AppSessionId { get; set; }
@@ -33,20 +33,20 @@ namespace App.BL.CursorAgent
             public string SkillKey { get; set; }
             public bool AllowProposeImport { get; set; }
             public string WorkspaceRelativePath { get; set; }
-            public List<CursorAgentMessageDto> ConversationHistory { get; set; }
-                = new List<CursorAgentMessageDto>();
+            public List<AppDataIntegrationAgentMessageDto> ConversationHistory { get; set; }
+                = new List<AppDataIntegrationAgentMessageDto>();
             /// <summary>Pack paths touched during the in-flight assistant turn (cleared at run start).</summary>
             public List<string> CurrentTurnPackPaths { get; set; }
                 = new List<string>();
             /// <summary>Open UI offers from navigate / table_preview tools this turn.</summary>
-            public List<CursorAgentOpenUiOfferDto> CurrentTurnOpenOffers { get; set; }
-                = new List<CursorAgentOpenUiOfferDto>();
-            public ConcurrentQueue<CursorAgentEventDto> Events { get; set; }
-                = new ConcurrentQueue<CursorAgentEventDto>();
+            public List<AppDataIntegrationAgentOpenUiOfferDto> CurrentTurnOpenOffers { get; set; }
+                = new List<AppDataIntegrationAgentOpenUiOfferDto>();
+            public ConcurrentQueue<AppDataIntegrationAgentEventDto> Events { get; set; }
+                = new ConcurrentQueue<AppDataIntegrationAgentEventDto>();
             public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
             public SemaphoreSlim EventReady { get; set; } = new SemaphoreSlim(0, int.MaxValue);
-            public CursorAgentGateEvent PendingGate { get; set; }
-            public TaskCompletionSource<CursorAgentGateResult> PendingGateTcs { get; set; }
+            public AppDataIntegrationAgentGateEvent PendingGate { get; set; }
+            public TaskCompletionSource<AppDataIntegrationAgentGateResult> PendingGateTcs { get; set; }
             public CancellationTokenSource RunCts { get; set; }
         }
 
@@ -79,7 +79,7 @@ namespace App.BL.CursorAgent
             return Sessions.TryGetValue(sessionId, out data) ? data : null;
         }
 
-        public static void Enqueue(string sessionId, CursorAgentEventDto evt)
+        public static void Enqueue(string sessionId, AppDataIntegrationAgentEventDto evt)
         {
             SessionData session;
             if (!Sessions.TryGetValue(sessionId ?? "", out session)) return;
@@ -95,27 +95,27 @@ namespace App.BL.CursorAgent
             catch (OperationCanceledException) { return false; }
         }
 
-        public static CursorAgentPollResponseDto DequeueAll(string sessionId)
+        public static AppDataIntegrationAgentPollResponseDto DequeueAll(string sessionId)
         {
             SessionData session;
             if (!Sessions.TryGetValue(sessionId ?? "", out session))
-                return new CursorAgentPollResponseDto { SessionExists = false };
+                return new AppDataIntegrationAgentPollResponseDto { SessionExists = false };
 
-            var list = new List<CursorAgentEventDto>();
-            CursorAgentEventDto evt;
+            var list = new List<AppDataIntegrationAgentEventDto>();
+            AppDataIntegrationAgentEventDto evt;
             while (session.Events.TryDequeue(out evt))
                 list.Add(evt);
 
-            return new CursorAgentPollResponseDto { Events = list, SessionExists = true };
+            return new AppDataIntegrationAgentPollResponseDto { Events = list, SessionExists = true };
         }
 
-        public static TaskCompletionSource<CursorAgentGateResult> RegisterGate(string sessionId, CursorAgentGateEvent gate)
+        public static TaskCompletionSource<AppDataIntegrationAgentGateResult> RegisterGate(string sessionId, AppDataIntegrationAgentGateEvent gate)
         {
             SessionData session;
             if (!Sessions.TryGetValue(sessionId ?? "", out session))
                 return null;
 
-            var tcs = new TaskCompletionSource<CursorAgentGateResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tcs = new TaskCompletionSource<AppDataIntegrationAgentGateResult>(TaskCreationOptions.RunContinuationsAsynchronously);
             session.PendingGate = gate;
             session.PendingGateTcs = tcs;
             return tcs;
@@ -133,7 +133,7 @@ namespace App.BL.CursorAgent
             var tcs = session.PendingGateTcs;
             session.PendingGateTcs = null;
             session.PendingGate = null;
-            return tcs.TrySetResult(new CursorAgentGateResult
+            return tcs.TrySetResult(new AppDataIntegrationAgentGateResult
             {
                 Confirmed = confirmed,
                 Feedback = feedback
@@ -144,7 +144,7 @@ namespace App.BL.CursorAgent
         {
             if (session == null) return;
             session.CurrentTurnPackPaths = new List<string>();
-            session.CurrentTurnOpenOffers = new List<CursorAgentOpenUiOfferDto>();
+            session.CurrentTurnOpenOffers = new List<AppDataIntegrationAgentOpenUiOfferDto>();
         }
 
         public static void NotePackPath(SessionData session, string relativePath)
@@ -173,24 +173,24 @@ namespace App.BL.CursorAgent
             return list.Count == 0 ? null : list;
         }
 
-        public static void NoteOpenUiOffer(SessionData session, CursorAgentOpenUiOfferDto offer)
+        public static void NoteOpenUiOffer(SessionData session, AppDataIntegrationAgentOpenUiOfferDto offer)
         {
             if (session == null || offer == null) return;
             if (session.CurrentTurnOpenOffers == null)
-                session.CurrentTurnOpenOffers = new List<CursorAgentOpenUiOfferDto>();
+                session.CurrentTurnOpenOffers = new List<AppDataIntegrationAgentOpenUiOfferDto>();
             session.CurrentTurnOpenOffers.Add(offer);
         }
 
-        public static List<CursorAgentOpenUiOfferDto> TakeTurnOpenOffers(SessionData session)
+        public static List<AppDataIntegrationAgentOpenUiOfferDto> TakeTurnOpenOffers(SessionData session)
         {
             if (session?.CurrentTurnOpenOffers == null || session.CurrentTurnOpenOffers.Count == 0)
                 return null;
             var list = session.CurrentTurnOpenOffers.ToList();
-            session.CurrentTurnOpenOffers = new List<CursorAgentOpenUiOfferDto>();
+            session.CurrentTurnOpenOffers = new List<AppDataIntegrationAgentOpenUiOfferDto>();
             return list.Count == 0 ? null : list;
         }
 
-        public static List<CursorAgentOpenUiOfferDto> PeekTurnOpenOffers(SessionData session)
+        public static List<AppDataIntegrationAgentOpenUiOfferDto> PeekTurnOpenOffers(SessionData session)
         {
             if (session?.CurrentTurnOpenOffers == null || session.CurrentTurnOpenOffers.Count == 0)
                 return null;

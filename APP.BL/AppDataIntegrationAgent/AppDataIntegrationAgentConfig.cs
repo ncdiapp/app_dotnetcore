@@ -2,9 +2,9 @@ using System;
 using System.IO;
 using APP.Framework;
 
-namespace App.BL.CursorAgent
+namespace App.BL.AppDataIntegrationAgent
 {
-    public static class CursorAgentConfig
+    public static class AppDataIntegrationAgentConfig
     {
         public static string ApiKey => AppConfig.Get("Cursor.ApiKey")?.Trim() ?? "";
         public static string ApiBaseUrl => (AppConfig.Get("Cursor.ApiBaseUrl") ?? "https://api.cursor.com").TrimEnd('/');
@@ -31,10 +31,34 @@ namespace App.BL.CursorAgent
         {
             get
             {
-                var root = AppConfig.Get("Cursor.WorkspaceRoot") ?? "App_Data/CursorWorkspace";
+                var root = AppConfig.Get("Cursor.WorkspaceRoot") ?? "App_Data/AiAgentWorkspace";
                 if (!Path.IsPathRooted(root))
                     root = Path.GetFullPath(Path.Combine(Directory.GetCurrentDirectory(), root));
+                TryMigrateLegacyWorkspaceRoot(root);
                 return root;
+            }
+        }
+
+        /// <summary>
+        /// Renames App_Data/CursorWorkspace → AiAgentWorkspace when the configured path
+        /// is the new default and the legacy folder still exists beside it.
+        /// </summary>
+        private static void TryMigrateLegacyWorkspaceRoot(string configuredRoot)
+        {
+            try
+            {
+                if (Directory.Exists(configuredRoot)) return;
+                var parent = Path.GetDirectoryName(configuredRoot);
+                if (string.IsNullOrEmpty(parent)) return;
+                var legacy = Path.Combine(parent, "CursorWorkspace");
+                if (!Directory.Exists(legacy)) return;
+                if (!string.Equals(Path.GetFileName(configuredRoot), "AiAgentWorkspace", StringComparison.OrdinalIgnoreCase))
+                    return;
+                Directory.Move(legacy, configuredRoot);
+            }
+            catch
+            {
+                // Best-effort; callers create the folder if missing.
             }
         }
 

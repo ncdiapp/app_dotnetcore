@@ -6,26 +6,26 @@ import Confirm from '../common/Confirm';
 import appHelper from '../../helper/appHelper';
 import { useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
 import {
-  CursorAgentSessionSummary,
-  archiveCursorSessions,
-  cursorChatTitle,
-  deleteCursorSessions,
-  listAllCursorSessions,
-  renameCursorSession,
-  reorderCursorSessions,
-} from '../../webapi/cursoragentsvc';
+  AppDataIntegrationAgentSessionSummary,
+  archiveAppDataIntegrationAgentSessions,
+  appDataIntegrationAgentChatTitle,
+  deleteAppDataIntegrationAgentSessions,
+  listAllAppDataIntegrationAgentSessions,
+  renameAppDataIntegrationAgentSession,
+  reorderAppDataIntegrationAgentSessions,
+} from '../../webapi/appDataIntegrationAgentSvc';
 
-export interface CursorAgentChatManagementProps {
+export interface DataIntegrationAgentChatManagementProps {
   isOpen: boolean;
   onClose: () => void;
   onChanged: (deletedSessionIds?: string[]) => void;
 }
 
-type ChatRow = CursorAgentSessionSummary & { Title: string; ArchivedText: string };
+type ChatRow = AppDataIntegrationAgentSessionSummary & { Title: string; ArchivedText: string };
 
-const toRow = (item: CursorAgentSessionSummary): ChatRow => ({
+const toRow = (item: AppDataIntegrationAgentSessionSummary): ChatRow => ({
   ...item,
-  Title: cursorChatTitle(item),
+  Title: appDataIntegrationAgentChatTitle(item),
   ArchivedText: item.IsArchived ? 'Yes' : 'No',
 });
 
@@ -95,7 +95,7 @@ export const RenameChatDialog: React.FC<{
   );
 };
 
-const CursorAgentChatManagement: React.FC<CursorAgentChatManagementProps> = ({ isOpen, onClose, onChanged }) => {
+const DataIntegrationAgentChatManagement: React.FC<DataIntegrationAgentChatManagementProps> = ({ isOpen, onClose, onChanged }) => {
   const { theme } = useTheme();
   const gridRef = useRef<any>(null);
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
@@ -111,7 +111,7 @@ const CursorAgentChatManagement: React.FC<CursorAgentChatManagementProps> = ({ i
   }, []);
 
   const load = useCallback(async () => {
-    const list = await listAllCursorSessions();
+    const list = await listAllAppDataIntegrationAgentSessions();
     setCv(new CollectionView<ChatRow>((list || []).map(toRow)));
   }, []);
 
@@ -161,7 +161,7 @@ const CursorAgentChatManagement: React.FC<CursorAgentChatManagementProps> = ({ i
 
   const handleRename = useCallback(async (title: string) => {
     if (!renameItem) return;
-    await renameCursorSession(renameItem.SessionGuid, title);
+    await renameAppDataIntegrationAgentSession(renameItem.SessionGuid, title);
     setRenameItem(null);
     await afterChange();
   }, [afterChange, renameItem]);
@@ -169,7 +169,7 @@ const CursorAgentChatManagement: React.FC<CursorAgentChatManagementProps> = ({ i
   const handleArchive = useCallback(async (archived: boolean, guids?: string[]) => {
     const ids = guids ?? selectedGuids();
     if (!ids.length) return;
-    await archiveCursorSessions(ids, archived);
+    await archiveAppDataIntegrationAgentSessions(ids, archived);
     closeContextMenu();
     await afterChange();
   }, [afterChange, closeContextMenu, selectedGuids]);
@@ -178,7 +178,7 @@ const CursorAgentChatManagement: React.FC<CursorAgentChatManagementProps> = ({ i
     const ids = deleteIds ?? [];
     setDeleteIds(null);
     if (!ids.length) return;
-    await deleteCursorSessions(ids);
+    await deleteAppDataIntegrationAgentSessions(ids);
     closeContextMenu();
     await afterChange(ids);
   }, [afterChange, closeContextMenu, deleteIds]);
@@ -193,7 +193,7 @@ const CursorAgentChatManagement: React.FC<CursorAgentChatManagementProps> = ({ i
     const tmp = items[idx];
     items[idx] = items[next];
     items[next] = tmp;
-    await reorderCursorSessions(items.map(i => i.SessionGuid));
+    await reorderAppDataIntegrationAgentSessions(items.map(i => i.SessionGuid));
     await afterChange();
   }, [afterChange, cv.items, selectedGuids]);
 
@@ -309,7 +309,7 @@ const CursorAgentChatManagement: React.FC<CursorAgentChatManagementProps> = ({ i
 
       <RenameChatDialog
         isOpen={!!renameItem}
-        initialTitle={renameItem ? cursorChatTitle(renameItem) : ''}
+        initialTitle={renameItem ? appDataIntegrationAgentChatTitle(renameItem) : ''}
         onCancel={() => setRenameItem(null)}
         onSave={handleRename}
       />
@@ -326,4 +326,4 @@ const CursorAgentChatManagement: React.FC<CursorAgentChatManagementProps> = ({ i
   );
 };
 
-export default CursorAgentChatManagement;
+export default DataIntegrationAgentChatManagement;

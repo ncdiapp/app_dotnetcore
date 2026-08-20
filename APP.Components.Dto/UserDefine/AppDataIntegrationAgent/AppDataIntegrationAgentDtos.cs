@@ -3,16 +3,16 @@ using System.Collections.Generic;
 
 namespace APP.Components.EntityDto
 {
-    public class CursorAgentStartRequestDto
+    public class AppDataIntegrationAgentStartRequestDto
     {
         public string UserMessage { get; set; }
         public int? SaasApplicationId { get; set; }
         public int? DataSourceRegisterId { get; set; }
         public string SkillKey { get; set; }
-        public List<CursorAgentMessageDto> ConversationHistory { get; set; }
+        public List<AppDataIntegrationAgentMessageDto> ConversationHistory { get; set; }
     }
 
-    public class CursorAgentSkillMenuItemDto
+    public class AppDataIntegrationAgentSkillMenuItemDto
     {
         public string Key { get; set; }
         public string Label { get; set; }
@@ -20,13 +20,13 @@ namespace APP.Components.EntityDto
         public string GroupLabel { get; set; }
     }
 
-    public class CursorAgentSkillMenuDto
+    public class AppDataIntegrationAgentSkillMenuDto
     {
         public string DefaultKey { get; set; }
-        public List<CursorAgentSkillMenuItemDto> Items { get; set; } = new List<CursorAgentSkillMenuItemDto>();
+        public List<AppDataIntegrationAgentSkillMenuItemDto> Items { get; set; } = new List<AppDataIntegrationAgentSkillMenuItemDto>();
     }
 
-    public class CursorAgentFollowUpRequestDto
+    public class AppDataIntegrationAgentFollowUpRequestDto
     {
         public string SessionId { get; set; }
         public string UserMessage { get; set; }
@@ -35,12 +35,12 @@ namespace APP.Components.EntityDto
         public int? DataSourceRegisterId { get; set; }
     }
 
-    public class CursorAgentCancelRequestDto
+    public class AppDataIntegrationAgentCancelRequestDto
     {
         public string SessionId { get; set; }
     }
 
-    public class CursorAgentConfirmGateRequestDto
+    public class AppDataIntegrationAgentConfirmGateRequestDto
     {
         public string SessionId { get; set; }
         public string GateId { get; set; }
@@ -48,19 +48,19 @@ namespace APP.Components.EntityDto
         public string Feedback { get; set; }
     }
 
-    public class CursorAgentResumeRequestDto
+    public class AppDataIntegrationAgentResumeRequestDto
     {
         public string SessionId { get; set; }
         public string UserMessage { get; set; }
     }
 
-    public class CursorAgentFileRequestDto
+    public class AppDataIntegrationAgentFileRequestDto
     {
         public string SessionId { get; set; }
         public string RelativePath { get; set; }
     }
 
-    public class CursorAgentMessageDto
+    public class AppDataIntegrationAgentMessageDto
     {
         public string Role { get; set; }
         public string Content { get; set; }
@@ -74,11 +74,11 @@ namespace APP.Components.EntityDto
         /// <summary>
         /// Open-page / table-preview offers for this assistant turn (Open button after reload).
         /// </summary>
-        public List<CursorAgentOpenUiOfferDto> OpenUiOffers { get; set; }
+        public List<AppDataIntegrationAgentOpenUiOfferDto> OpenUiOffers { get; set; }
     }
 
     /// <summary>Persisted Open box payload (navigate or table_preview).</summary>
-    public class CursorAgentOpenUiOfferDto
+    public class AppDataIntegrationAgentOpenUiOfferDto
     {
         /// <summary>navigate | table_preview</summary>
         public string Kind { get; set; }
@@ -86,19 +86,19 @@ namespace APP.Components.EntityDto
         public string RouteCode { get; set; }
         public string Link { get; set; }
         public Dictionary<string, object> ParamObj { get; set; }
-        public List<CursorAgentTablePreviewItemDto> Tables { get; set; }
+        public List<AppDataIntegrationAgentTablePreviewItemDto> Tables { get; set; }
     }
 
-    public class CursorAgentStartResultDto
+    public class AppDataIntegrationAgentStartResultDto
     {
         public bool IsStarted { get; set; }
         public string SessionId { get; set; }
-        public string CursorAgentId { get; set; }
+        public string CloudAgentId { get; set; }
         public string WorkspaceRelativePath { get; set; }
         public string Error { get; set; }
     }
 
-    public class CursorAgentStepEvent
+    public class AppDataIntegrationAgentStepEvent
     {
         public string Type { get; set; }
         public string ToolName { get; set; }
@@ -108,7 +108,7 @@ namespace APP.Components.EntityDto
         public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");
     }
 
-    public class CursorAgentFileEvent
+    public class AppDataIntegrationAgentFileEvent
     {
         public string Action { get; set; }
         public string RelativePath { get; set; }
@@ -116,7 +116,7 @@ namespace APP.Components.EntityDto
     }
 
     /// <summary>Ask the browser UI to open an App tab (RouteCode + paramObj).</summary>
-    public class CursorAgentNavigateEvent
+    public class AppDataIntegrationAgentNavigateEvent
     {
         public string RouteCode { get; set; }
         public string Label { get; set; }
@@ -127,21 +127,21 @@ namespace APP.Components.EntityDto
     }
 
     /// <summary>Ask the browser UI to open TablesDataPreviewModal (multi-table header tabs).</summary>
-    public class CursorAgentTablePreviewEvent
+    public class AppDataIntegrationAgentTablePreviewEvent
     {
-        public List<CursorAgentTablePreviewItemDto> Tables { get; set; }
-            = new List<CursorAgentTablePreviewItemDto>();
+        public List<AppDataIntegrationAgentTablePreviewItemDto> Tables { get; set; }
+            = new List<AppDataIntegrationAgentTablePreviewItemDto>();
         public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");
     }
 
-    public class CursorAgentTablePreviewItemDto
+    public class AppDataIntegrationAgentTablePreviewItemDto
     {
         public string TableName { get; set; }
         public int? DataSourceId { get; set; }
         public string SchemaOwner { get; set; }
     }
 
-    public class CursorAgentGateEvent
+    public class AppDataIntegrationAgentGateEvent
     {
         public string GateId { get; set; }
         public string Kind { get; set; }
@@ -154,36 +154,36 @@ namespace APP.Components.EntityDto
         public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");
     }
 
-    public class CursorAgentDoneEvent
+    public class AppDataIntegrationAgentDoneEvent
     {
         public string FinalResponse { get; set; }
-        public List<CursorAgentMessageDto> UpdatedHistory { get; set; } = new List<CursorAgentMessageDto>();
+        public List<AppDataIntegrationAgentMessageDto> UpdatedHistory { get; set; } = new List<AppDataIntegrationAgentMessageDto>();
         public List<string> WorkspaceFiles { get; set; } = new List<string>();
         /// <summary>Open offers from this turn (in case navigate events were polled after done).</summary>
-        public List<CursorAgentOpenUiOfferDto> OpenUiOffers { get; set; }
+        public List<AppDataIntegrationAgentOpenUiOfferDto> OpenUiOffers { get; set; }
     }
 
-    public class CursorAgentEventDto
+    public class AppDataIntegrationAgentEventDto
     {
         /// <summary>step | token | file | gate | navigate | table_preview | done | error</summary>
         public string EventType { get; set; }
-        public CursorAgentStepEvent Step { get; set; }
+        public AppDataIntegrationAgentStepEvent Step { get; set; }
         public string Token { get; set; }
-        public CursorAgentFileEvent File { get; set; }
-        public CursorAgentGateEvent Gate { get; set; }
-        public CursorAgentNavigateEvent Navigate { get; set; }
-        public CursorAgentTablePreviewEvent TablePreview { get; set; }
-        public CursorAgentDoneEvent Done { get; set; }
+        public AppDataIntegrationAgentFileEvent File { get; set; }
+        public AppDataIntegrationAgentGateEvent Gate { get; set; }
+        public AppDataIntegrationAgentNavigateEvent Navigate { get; set; }
+        public AppDataIntegrationAgentTablePreviewEvent TablePreview { get; set; }
+        public AppDataIntegrationAgentDoneEvent Done { get; set; }
         public string Error { get; set; }
     }
 
-    public class CursorAgentPollResponseDto
+    public class AppDataIntegrationAgentPollResponseDto
     {
-        public List<CursorAgentEventDto> Events { get; set; } = new List<CursorAgentEventDto>();
+        public List<AppDataIntegrationAgentEventDto> Events { get; set; } = new List<AppDataIntegrationAgentEventDto>();
         public bool SessionExists { get; set; }
     }
 
-    public class CursorAgentSessionSummaryDto
+    public class AppDataIntegrationAgentSessionSummaryDto
     {
         public string SessionGuid { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -191,7 +191,7 @@ namespace APP.Components.EntityDto
         public string UserRequest { get; set; }
         public string DisplayTitle { get; set; }
         public string Status { get; set; }
-        public string CursorAgentId { get; set; }
+        public string CloudAgentId { get; set; }
         public int? SaasApplicationId { get; set; }
         public int? DataSourceRegisterId { get; set; }
         public string SkillKey { get; set; }
@@ -201,36 +201,36 @@ namespace APP.Components.EntityDto
         public int SortOrder { get; set; }
     }
 
-    public class CursorAgentRenameSessionRequestDto
+    public class AppDataIntegrationAgentRenameSessionRequestDto
     {
         public string SessionId { get; set; }
         public string Title { get; set; }
     }
 
-    public class CursorAgentArchiveSessionsRequestDto
+    public class AppDataIntegrationAgentArchiveSessionsRequestDto
     {
         public List<string> SessionIds { get; set; }
         public bool Archived { get; set; }
     }
 
-    public class CursorAgentDeleteSessionsRequestDto
+    public class AppDataIntegrationAgentDeleteSessionsRequestDto
     {
         public List<string> SessionIds { get; set; }
     }
 
-    public class CursorAgentReorderSessionsRequestDto
+    public class AppDataIntegrationAgentReorderSessionsRequestDto
     {
         public List<string> SessionIds { get; set; }
     }
 
-    public class CursorAgentSessionFullDto : CursorAgentSessionSummaryDto
+    public class AppDataIntegrationAgentSessionFullDto : AppDataIntegrationAgentSessionSummaryDto
     {
-        public List<CursorAgentMessageDto> ConversationHistory { get; set; }
+        public List<AppDataIntegrationAgentMessageDto> ConversationHistory { get; set; }
         public string LatestRunId { get; set; }
         public string PendingGateJson { get; set; }
     }
 
-    public class CursorAgentWorkspaceFileDto
+    public class AppDataIntegrationAgentWorkspaceFileDto
     {
         public string RelativePath { get; set; }
         public long SizeBytes { get; set; }
@@ -239,14 +239,14 @@ namespace APP.Components.EntityDto
         public string PublicUrl { get; set; }
     }
 
-    public class CursorAgentFileContentDto
+    public class AppDataIntegrationAgentFileContentDto
     {
         public string RelativePath { get; set; }
         public string Content { get; set; }
         public bool Truncated { get; set; }
     }
 
-    public class CursorAgentGateResult
+    public class AppDataIntegrationAgentGateResult
     {
         public bool Confirmed { get; set; }
         public string Feedback { get; set; }

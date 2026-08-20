@@ -4,9 +4,9 @@ using System.IO;
 using APP.Components.EntityDto;
 using APP.Framework;
 
-namespace App.BL.CursorAgent
+namespace App.BL.AppDataIntegrationAgent
 {
-    public static class CursorWorkspaceBL
+    public static class AppDataIntegrationWorkspaceBL
     {
         public const string FolderName = "AgentOutput";
 
@@ -45,16 +45,16 @@ namespace App.BL.CursorAgent
             return combined;
         }
 
-        public static List<CursorAgentWorkspaceFileDto> ListFiles(string workspaceRelativePath, int? companyId = null)
+        public static List<AppDataIntegrationAgentWorkspaceFileDto> ListFiles(string workspaceRelativePath, int? companyId = null)
         {
             var dir = EnsureSessionDir(workspaceRelativePath, companyId);
-            var list = new List<CursorAgentWorkspaceFileDto>();
+            var list = new List<AppDataIntegrationAgentWorkspaceFileDto>();
             foreach (var path in Directory.GetFileSystemEntries(dir, "*", SearchOption.AllDirectories))
             {
                 var info = new FileInfo(path);
                 var isDir = Directory.Exists(path);
                 var rel = ToRelative(dir, path).Replace('\\', '/');
-                list.Add(new CursorAgentWorkspaceFileDto
+                list.Add(new AppDataIntegrationAgentWorkspaceFileDto
                 {
                     RelativePath = rel,
                     SizeBytes = isDir ? 0 : info.Exists ? info.Length : 0,
@@ -66,13 +66,13 @@ namespace App.BL.CursorAgent
             return list;
         }
 
-        public static CursorAgentFileContentDto ReadFile(string workspaceRelativePath, string relativePath, int? companyId = null)
+        public static AppDataIntegrationAgentFileContentDto ReadFile(string workspaceRelativePath, string relativePath, int? companyId = null)
         {
             var bytes = ReadBytes(workspaceRelativePath, relativePath, companyId);
-            var maxBytes = CursorAgentConfig.MaxWorkspaceFileMb * 1024L * 1024L;
+            var maxBytes = AppDataIntegrationAgentConfig.MaxWorkspaceFileMb * 1024L * 1024L;
             var truncated = bytes.Length > maxBytes;
             var take = truncated ? (int)Math.Min(maxBytes, bytes.Length) : bytes.Length;
-            return new CursorAgentFileContentDto
+            return new AppDataIntegrationAgentFileContentDto
             {
                 RelativePath = relativePath,
                 Content = System.Text.Encoding.UTF8.GetString(bytes, 0, take),
@@ -101,7 +101,7 @@ namespace App.BL.CursorAgent
             EnsureSessionDir(workspaceRelativePath, companyId);
             var full = Resolve(workspaceRelativePath, relativePath, companyId);
             Directory.CreateDirectory(Path.GetDirectoryName(full) ?? full);
-            var maxBytes = Math.Max(CursorAgentConfig.MaxWorkspaceFileMb, 20) * 1024L * 1024L;
+            var maxBytes = Math.Max(AppDataIntegrationAgentConfig.MaxWorkspaceFileMb, 20) * 1024L * 1024L;
             if (bytes != null && bytes.Length > maxBytes)
                 throw new InvalidOperationException("File exceeds AgentOutput size limit.");
             File.WriteAllBytes(full, bytes ?? Array.Empty<byte>());

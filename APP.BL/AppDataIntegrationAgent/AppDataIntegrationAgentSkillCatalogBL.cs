@@ -9,9 +9,9 @@ using App.BL.DbGenie;
 using APP.Components.EntityDto;
 using Newtonsoft.Json;
 
-namespace App.BL.CursorAgent
+namespace App.BL.AppDataIntegrationAgent
 {
-    public static class CursorAgentSkillCatalogBL
+    public static class AppDataIntegrationAgentSkillCatalogBL
     {
         public const string DefaultKey = "app-config-builder";
         public const string GeneralKey = "general";
@@ -24,10 +24,10 @@ namespace App.BL.CursorAgent
 
         private static readonly string[] HiddenSavedNames =
         {
-            CursorAgentSkillBL.Policy,
-            CursorAgentSkillBL.ImportPack,
-            CursorAgentSkillBL.GatedSql,
-            CursorAgentSkillBL.Workspace
+            AppDataIntegrationAgentSkillBL.Policy,
+            AppDataIntegrationAgentSkillBL.ImportPack,
+            AppDataIntegrationAgentSkillBL.GatedSql,
+            AppDataIntegrationAgentSkillBL.Workspace
         };
 
         public static string FindImportDocRoot()
@@ -49,20 +49,20 @@ namespace App.BL.CursorAgent
                 };
                 foreach (var dir in candidates)
                 {
-                    if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, "cursor-agent-skills.json")))
+                    if (Directory.Exists(dir) && File.Exists(Path.Combine(dir, "app-data-integration-agent-skills.json")))
                         return dir;
                 }
             }
             return null;
         }
 
-        public static CursorAgentSkillMenuDto ListMenu()
+        public static AppDataIntegrationAgentSkillMenuDto ListMenu()
         {
-            var menu = new CursorAgentSkillMenuDto { DefaultKey = DefaultKey };
+            var menu = new AppDataIntegrationAgentSkillMenuDto { DefaultKey = DefaultKey };
             var catalog = LoadCatalog();
             foreach (var skill in catalog.Skills ?? new List<CatalogSkill>())
             {
-                menu.Items.Add(new CursorAgentSkillMenuItemDto
+                menu.Items.Add(new AppDataIntegrationAgentSkillMenuItemDto
                 {
                     Key = skill.Id,
                     Label = skill.Label,
@@ -92,7 +92,7 @@ namespace App.BL.CursorAgent
                 if (skill == null || !skill.IsActive) continue;
                 if (IsHiddenSavedName(skill.Name)) continue;
                 if (!addedNames.Add(skill.Name)) continue;
-                menu.Items.Add(new CursorAgentSkillMenuItemDto
+                menu.Items.Add(new AppDataIntegrationAgentSkillMenuItemDto
                 {
                     Key = SavedPrefix + skill.SkillId,
                     Label = skill.Name,
@@ -122,7 +122,7 @@ namespace App.BL.CursorAgent
         }
 
         private static void AddOtherSkill(
-            CursorAgentSkillMenuDto menu,
+            AppDataIntegrationAgentSkillMenuDto menu,
             List<AppAISkillDto> all,
             string name,
             string label,
@@ -131,7 +131,7 @@ namespace App.BL.CursorAgent
             addedNames.Add(name);
             var found = all.FirstOrDefault(s =>
                 s != null && s.IsActive && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
-            menu.Items.Add(new CursorAgentSkillMenuItemDto
+            menu.Items.Add(new AppDataIntegrationAgentSkillMenuItemDto
             {
                 Key = found != null && found.SkillId > 0 ? SavedPrefix + found.SkillId : NamedPrefix + name,
                 Label = label,
@@ -140,7 +140,7 @@ namespace App.BL.CursorAgent
             });
         }
 
-        public static void ApplyToSession(CursorAgentSessionStore.SessionData live, string skillKey)
+        public static void ApplyToSession(AppDataIntegrationAgentSessionStore.SessionData live, string skillKey)
         {
             if (live == null) return;
             live.SkillKey = NormalizeKey(skillKey);
@@ -191,7 +191,7 @@ namespace App.BL.CursorAgent
             return catalogSkill != null && catalogSkill.AllowProposeImport;
         }
 
-        public static string BuildInjectedPrompt(CursorAgentSessionStore.SessionData live, string userMessage)
+        public static string BuildInjectedPrompt(AppDataIntegrationAgentSessionStore.SessionData live, string userMessage)
         {
             var sb = new StringBuilder();
             sb.AppendLine("You are the AppAI App Data Integration Agent.");
@@ -257,7 +257,7 @@ namespace App.BL.CursorAgent
         /// Follow-up turns do not re-send the full create prompt; restate UI open capability so the
         /// model does not refuse with "I cannot open App pages".
         /// </summary>
-        public static string BuildFollowUpPrompt(CursorAgentSessionStore.SessionData live, string userMessage)
+        public static string BuildFollowUpPrompt(AppDataIntegrationAgentSessionStore.SessionData live, string userMessage)
         {
             var sb = new StringBuilder();
             if (!string.IsNullOrWhiteSpace(live?.SkillKey))
@@ -386,7 +386,8 @@ Use list_application_assets, get_table_schema, and run_select. Summarize results
         private static bool IsHiddenSavedName(string name)
         {
             if (string.IsNullOrWhiteSpace(name)) return true;
-            if (name.StartsWith("cursor-agent-", StringComparison.OrdinalIgnoreCase)) return true;
+            if (name.StartsWith("app-data-integration-agent-", StringComparison.OrdinalIgnoreCase)) return true;
+            if (name.StartsWith("cursor-agent-", StringComparison.OrdinalIgnoreCase)) return true; // legacy seeded names
             return HiddenSavedNames.Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -401,7 +402,7 @@ Use list_application_assets, get_table_schema, and run_select. Summarize results
             var root = FindImportDocRoot();
             if (string.IsNullOrWhiteSpace(root))
                 return BuiltInCatalog();
-            var path = Path.Combine(root, "cursor-agent-skills.json");
+            var path = Path.Combine(root, "app-data-integration-agent-skills.json");
             try
             {
                 var json = File.ReadAllText(path);

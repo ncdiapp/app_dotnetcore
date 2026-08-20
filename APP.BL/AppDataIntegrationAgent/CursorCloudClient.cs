@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace App.BL.CursorAgent
+namespace App.BL.AppDataIntegrationAgent
 {
     public static class CursorCloudClient
     {
@@ -37,19 +37,19 @@ namespace App.BL.CursorAgent
             var body = new JObject
             {
                 ["prompt"] = new JObject { ["text"] = promptText ?? "" },
-                ["model"] = new JObject { ["id"] = CursorAgentConfig.ModelId },
-                ["autoCreatePR"] = CursorAgentConfig.AutoCreatePr,
+                ["model"] = new JObject { ["id"] = AppDataIntegrationAgentConfig.ModelId },
+                ["autoCreatePR"] = AppDataIntegrationAgentConfig.AutoCreatePr,
                 ["mode"] = "agent"
             };
 
-            if (CursorAgentConfig.AttachRepo && !string.IsNullOrWhiteSpace(CursorAgentConfig.RepoUrl))
+            if (AppDataIntegrationAgentConfig.AttachRepo && !string.IsNullOrWhiteSpace(AppDataIntegrationAgentConfig.RepoUrl))
             {
                 body["repos"] = new JArray
                 {
                     new JObject
                     {
-                        ["url"] = CursorAgentConfig.RepoUrl,
-                        ["startingRef"] = CursorAgentConfig.RepoRef
+                        ["url"] = AppDataIntegrationAgentConfig.RepoUrl,
+                        ["startingRef"] = AppDataIntegrationAgentConfig.RepoRef
                     }
                 };
                 body["workOnCurrentBranch"] = false;
@@ -205,11 +205,11 @@ namespace App.BL.CursorAgent
             Action<string, JObject> onEvent,
             CancellationToken ct)
         {
-            var key = CursorAgentConfig.ApiKey;
+            var key = AppDataIntegrationAgentConfig.ApiKey;
             if (string.IsNullOrWhiteSpace(key))
                 throw new InvalidOperationException("Cursor:ApiKey is not configured.");
 
-            var url = CursorAgentConfig.ApiBaseUrl + "/v1/agents/" + agentId + "/runs/" + runId + "/stream";
+            var url = AppDataIntegrationAgentConfig.ApiBaseUrl + "/v1/agents/" + agentId + "/runs/" + runId + "/stream";
             using (var req = new HttpRequestMessage(HttpMethod.Get, url))
             {
                 ApplyAuth(req, key);
@@ -270,11 +270,11 @@ namespace App.BL.CursorAgent
 
         private static async Task<string> SendAsync(HttpMethod method, string path, JObject body, CancellationToken ct)
         {
-            var key = CursorAgentConfig.ApiKey;
+            var key = AppDataIntegrationAgentConfig.ApiKey;
             if (string.IsNullOrWhiteSpace(key))
                 throw new InvalidOperationException("Cursor:ApiKey is not configured. Set Cursor:ApiKey in appsettings.");
 
-            using (var req = new HttpRequestMessage(method, CursorAgentConfig.ApiBaseUrl + path))
+            using (var req = new HttpRequestMessage(method, AppDataIntegrationAgentConfig.ApiBaseUrl + path))
             {
                 ApplyAuth(req, key);
                 if (body != null)

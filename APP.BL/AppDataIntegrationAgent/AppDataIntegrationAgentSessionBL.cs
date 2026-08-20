@@ -6,23 +6,28 @@ using App.BL;
 using APP.Components.EntityDto;
 using Newtonsoft.Json;
 
-namespace App.BL.CursorAgent
+namespace App.BL.AppDataIntegrationAgent
 {
-    public static class CursorAgentSessionBL
+    public static class AppDataIntegrationAgentSessionBL
     {
+        private const string MigrateRenameTableSql = @"
+IF OBJECT_ID(N'dbo.CursorAgentSession', N'U') IS NOT NULL
+   AND OBJECT_ID(N'dbo.AppDataIntegrationAgentSession', N'U') IS NULL
+    EXEC sp_rename N'dbo.CursorAgentSession', N'AppDataIntegrationAgentSession'";
+
         private const string CreateTableSql = @"
 IF NOT EXISTS (
     SELECT 1 FROM INFORMATION_SCHEMA.TABLES
-    WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'CursorAgentSession'
+    WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'AppDataIntegrationAgentSession'
 )
 BEGIN
-    CREATE TABLE dbo.CursorAgentSession (
+    CREATE TABLE dbo.AppDataIntegrationAgentSession (
         SessionGuid             NVARCHAR(50)   NOT NULL,
         CreatedAt               DATETIME       NOT NULL,
         UpdatedAt               DATETIME       NOT NULL,
         UserRequest             NVARCHAR(2000) NULL,
         Status                  NVARCHAR(20)   NOT NULL,
-        CursorAgentId           NVARCHAR(80)   NULL,
+        CloudAgentId            NVARCHAR(80)   NULL,
         LatestRunId             NVARCHAR(80)   NULL,
         McpToken                NVARCHAR(80)   NULL,
         AppSessionId            NVARCHAR(100)  NULL,
@@ -34,33 +39,58 @@ BEGIN
         IdentityJson            NVARCHAR(MAX)  NULL,
         PendingGateJson         NVARCHAR(MAX)  NULL,
         FinalResponse           NVARCHAR(4000) NULL,
-        CONSTRAINT PK_CursorAgentSession PRIMARY KEY (SessionGuid)
+        CONSTRAINT PK_AppDataIntegrationAgentSession PRIMARY KEY (SessionGuid)
     )
 END";
 
+        private const string MigrateRenameColumnSql = @"
+IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'CursorAgentId') IS NOT NULL
+   AND COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'CloudAgentId') IS NULL
+    EXEC sp_rename N'dbo.AppDataIntegrationAgentSession.CursorAgentId', N'CloudAgentId', N'COLUMN'";
+
+        private const string MigrateRenamePkSql = @"
+IF OBJECT_ID(N'dbo.PK_CursorAgentSession', N'PK') IS NOT NULL
+   AND OBJECT_ID(N'dbo.PK_AppDataIntegrationAgentSession', N'PK') IS NULL
+    EXEC sp_rename N'dbo.PK_CursorAgentSession', N'PK_AppDataIntegrationAgentSession'";
+
+        private const string MigrateRenameDfArchivedSql = @"
+IF OBJECT_ID(N'dbo.DF_CursorAgentSession_IsArchived', N'D') IS NOT NULL
+   AND OBJECT_ID(N'dbo.DF_AppDataIntegrationAgentSession_IsArchived', N'D') IS NULL
+    EXEC sp_rename N'dbo.DF_CursorAgentSession_IsArchived', N'DF_AppDataIntegrationAgentSession_IsArchived'";
+
+        private const string MigrateRenameDfSortSql = @"
+IF OBJECT_ID(N'dbo.DF_CursorAgentSession_SortOrder', N'D') IS NOT NULL
+   AND OBJECT_ID(N'dbo.DF_AppDataIntegrationAgentSession_SortOrder', N'D') IS NULL
+    EXEC sp_rename N'dbo.DF_CursorAgentSession_SortOrder', N'DF_AppDataIntegrationAgentSession_SortOrder'";
+
         private const string MigrateIdentityJsonSql = @"
-IF COL_LENGTH('dbo.CursorAgentSession', 'IdentityJson') IS NULL
-    ALTER TABLE dbo.CursorAgentSession ADD IdentityJson NVARCHAR(MAX) NULL";
+IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'IdentityJson') IS NULL
+    ALTER TABLE dbo.AppDataIntegrationAgentSession ADD IdentityJson NVARCHAR(MAX) NULL";
 
         private const string MigrateSkillKeySql = @"
-IF COL_LENGTH('dbo.CursorAgentSession', 'SkillKey') IS NULL
-    ALTER TABLE dbo.CursorAgentSession ADD SkillKey NVARCHAR(80) NULL";
+IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'SkillKey') IS NULL
+    ALTER TABLE dbo.AppDataIntegrationAgentSession ADD SkillKey NVARCHAR(80) NULL";
 
         private const string MigrateChatTitleSql = @"
-IF COL_LENGTH('dbo.CursorAgentSession', 'DisplayTitle') IS NULL
-    ALTER TABLE dbo.CursorAgentSession ADD DisplayTitle NVARCHAR(200) NULL";
+IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'DisplayTitle') IS NULL
+    ALTER TABLE dbo.AppDataIntegrationAgentSession ADD DisplayTitle NVARCHAR(200) NULL";
 
         private const string MigrateChatArchivedSql = @"
-IF COL_LENGTH('dbo.CursorAgentSession', 'IsArchived') IS NULL
-    ALTER TABLE dbo.CursorAgentSession ADD IsArchived BIT NOT NULL CONSTRAINT DF_CursorAgentSession_IsArchived DEFAULT(0)";
+IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'IsArchived') IS NULL
+    ALTER TABLE dbo.AppDataIntegrationAgentSession ADD IsArchived BIT NOT NULL CONSTRAINT DF_AppDataIntegrationAgentSession_IsArchived DEFAULT(0)";
 
         private const string MigrateChatSortSql = @"
-IF COL_LENGTH('dbo.CursorAgentSession', 'SortOrder') IS NULL
-    ALTER TABLE dbo.CursorAgentSession ADD SortOrder INT NOT NULL CONSTRAINT DF_CursorAgentSession_SortOrder DEFAULT(0)";
+IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'SortOrder') IS NULL
+    ALTER TABLE dbo.AppDataIntegrationAgentSession ADD SortOrder INT NOT NULL CONSTRAINT DF_AppDataIntegrationAgentSession_SortOrder DEFAULT(0)";
 
         private static void EnsureSchema(DatabaseSchemaMrg.DatabaseFixture fixture)
         {
+            fixture.ExecuteNonQueryResult(MigrateRenameTableSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(CreateTableSql, new List<DbParameter>());
+            fixture.ExecuteNonQueryResult(MigrateRenameColumnSql, new List<DbParameter>());
+            fixture.ExecuteNonQueryResult(MigrateRenamePkSql, new List<DbParameter>());
+            fixture.ExecuteNonQueryResult(MigrateRenameDfArchivedSql, new List<DbParameter>());
+            fixture.ExecuteNonQueryResult(MigrateRenameDfSortSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(MigrateIdentityJsonSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(MigrateSkillKeySql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(MigrateChatTitleSql, new List<DbParameter>());
@@ -68,7 +98,7 @@ IF COL_LENGTH('dbo.CursorAgentSession', 'SortOrder') IS NULL
             fixture.ExecuteNonQueryResult(MigrateChatSortSql, new List<DbParameter>());
         }
 
-        public static void SaveNew(CursorAgentSessionStore.SessionData session, string userRequest)
+        public static void SaveNew(AppDataIntegrationAgentSessionStore.SessionData session, string userRequest)
         {
             try
             {
@@ -77,12 +107,12 @@ IF COL_LENGTH('dbo.CursorAgentSession', 'SortOrder') IS NULL
                 EnsureSchema(fixture);
 
                 const string sql = @"
-INSERT INTO dbo.CursorAgentSession
-    (SessionGuid, CreatedAt, UpdatedAt, UserRequest, Status, CursorAgentId, LatestRunId, McpToken,
+INSERT INTO dbo.AppDataIntegrationAgentSession
+    (SessionGuid, CreatedAt, UpdatedAt, UserRequest, Status, CloudAgentId, LatestRunId, McpToken,
      AppSessionId, SaasApplicationId, DataSourceRegisterId, CreatedById, WorkspaceRelativePath,
      ConversationHistoryJson, IdentityJson, SkillKey, DisplayTitle, IsArchived, SortOrder)
 VALUES
-    (@SessionGuid, @CreatedAt, @UpdatedAt, @UserRequest, 'InProgress', @CursorAgentId, @LatestRunId, @McpToken,
+    (@SessionGuid, @CreatedAt, @UpdatedAt, @UserRequest, 'InProgress', @CloudAgentId, @LatestRunId, @McpToken,
      @AppSessionId, @SaasApplicationId, @DataSourceRegisterId, @CreatedById, @WorkspaceRelativePath,
      @ConversationHistoryJson, @IdentityJson, @SkillKey, NULL, 0, 0)";
 
@@ -93,7 +123,7 @@ VALUES
                     P(fixture, "@CreatedAt", now),
                     P(fixture, "@UpdatedAt", now),
                     P(fixture, "@UserRequest", Trunc(userRequest, 2000)),
-                    P(fixture, "@CursorAgentId", session.CursorAgentId),
+                    P(fixture, "@CloudAgentId", session.CloudAgentId),
                     P(fixture, "@LatestRunId", session.LatestRunId),
                     P(fixture, "@McpToken", session.McpToken),
                     P(fixture, "@AppSessionId", session.AppSessionId),
@@ -101,15 +131,15 @@ VALUES
                     P(fixture, "@DataSourceRegisterId", session.DataSourceRegisterId),
                     P(fixture, "@CreatedById", session.CreatedById),
                     P(fixture, "@WorkspaceRelativePath", session.WorkspaceRelativePath),
-                    P(fixture, "@ConversationHistoryJson", JsonConvert.SerializeObject(session.ConversationHistory ?? new List<CursorAgentMessageDto>())),
-                    P(fixture, "@IdentityJson", session.IdentityJson ?? CursorAgentIdentity.Serialize(session.Identity)),
+                    P(fixture, "@ConversationHistoryJson", JsonConvert.SerializeObject(session.ConversationHistory ?? new List<AppDataIntegrationAgentMessageDto>())),
+                    P(fixture, "@IdentityJson", session.IdentityJson ?? AppDataIntegrationAgentIdentity.Serialize(session.Identity)),
                     P(fixture, "@SkillKey", session.SkillKey)
                 });
             }
             catch { }
         }
 
-        public static void Update(CursorAgentSessionStore.SessionData session, string status, string finalResponse, CursorAgentGateEvent pendingGate)
+        public static void Update(AppDataIntegrationAgentSessionStore.SessionData session, string status, string finalResponse, AppDataIntegrationAgentGateEvent pendingGate)
         {
             try
             {
@@ -118,10 +148,10 @@ VALUES
                 EnsureSchema(fixture);
 
                 const string sql = @"
-UPDATE dbo.CursorAgentSession SET
+UPDATE dbo.AppDataIntegrationAgentSession SET
     UpdatedAt = @UpdatedAt,
     Status = @Status,
-    CursorAgentId = @CursorAgentId,
+    CloudAgentId = @CloudAgentId,
     LatestRunId = @LatestRunId,
     McpToken = @McpToken,
     SaasApplicationId = @SaasApplicationId,
@@ -138,15 +168,15 @@ WHERE SessionGuid = @SessionGuid";
                 {
                     P(fixture, "@UpdatedAt", DateTime.UtcNow),
                     P(fixture, "@Status", status ?? "InProgress"),
-                    P(fixture, "@CursorAgentId", session.CursorAgentId),
+                    P(fixture, "@CloudAgentId", session.CloudAgentId),
                     P(fixture, "@LatestRunId", session.LatestRunId),
                     P(fixture, "@McpToken", session.McpToken),
                     P(fixture, "@SaasApplicationId", session.SaasApplicationId),
                     P(fixture, "@DataSourceRegisterId", session.DataSourceRegisterId),
                     P(fixture, "@SkillKey", session.SkillKey),
                     P(fixture, "@WorkspaceRelativePath", session.WorkspaceRelativePath),
-                    P(fixture, "@ConversationHistoryJson", JsonConvert.SerializeObject(session.ConversationHistory ?? new List<CursorAgentMessageDto>())),
-                    P(fixture, "@IdentityJson", session.IdentityJson ?? CursorAgentIdentity.Serialize(session.Identity)),
+                    P(fixture, "@ConversationHistoryJson", JsonConvert.SerializeObject(session.ConversationHistory ?? new List<AppDataIntegrationAgentMessageDto>())),
+                    P(fixture, "@IdentityJson", session.IdentityJson ?? AppDataIntegrationAgentIdentity.Serialize(session.Identity)),
                     P(fixture, "@PendingGateJson", pendingGate == null ? null : JsonConvert.SerializeObject(pendingGate)),
                     P(fixture, "@FinalResponse", Trunc(finalResponse, 4000)),
                     P(fixture, "@SessionGuid", session.SessionId)
@@ -155,9 +185,9 @@ WHERE SessionGuid = @SessionGuid";
             catch { }
         }
 
-        public static List<CursorAgentSessionSummaryDto> ListRecent(int limit, int? createdById)
+        public static List<AppDataIntegrationAgentSessionSummaryDto> ListRecent(int limit, int? createdById)
         {
-            var list = new List<CursorAgentSessionSummaryDto>();
+            var list = new List<AppDataIntegrationAgentSessionSummaryDto>();
             try
             {
                 var fixture = GetFixture();
@@ -166,10 +196,10 @@ WHERE SessionGuid = @SessionGuid";
 
                 var take = limit <= 0 ? 30 : Math.Min(limit, 100);
                 var dt = fixture.RetriveDataTable(@"
-SELECT TOP (@Take) SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CursorAgentId,
+SELECT TOP (@Take) SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CloudAgentId,
        SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath, FinalResponse,
        IsArchived, SortOrder
-FROM dbo.CursorAgentSession
+FROM dbo.AppDataIntegrationAgentSession
 WHERE (@CreatedById IS NULL OR CreatedById = @CreatedById)
   AND ISNULL(IsArchived, 0) = 0
 ORDER BY SortOrder ASC, UpdatedAt DESC",
@@ -186,7 +216,7 @@ ORDER BY SortOrder ASC, UpdatedAt DESC",
             return list;
         }
 
-        public static CursorAgentSessionFullDto Get(string sessionGuid)
+        public static AppDataIntegrationAgentSessionFullDto Get(string sessionGuid)
         {
             try
             {
@@ -195,14 +225,14 @@ ORDER BY SortOrder ASC, UpdatedAt DESC",
                 EnsureSchema(fixture);
 
                 var dt = fixture.RetriveDataTable(@"
-SELECT SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CursorAgentId, LatestRunId,
+SELECT SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CloudAgentId, LatestRunId,
        SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath,
        ConversationHistoryJson, PendingGateJson, FinalResponse, IsArchived, SortOrder
-FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
+FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter> { P(fixture, "@SessionGuid", sessionGuid) });
                 if (dt == null || dt.Rows.Count == 0) return null;
                 var row = dt.Rows[0];
-                var full = new CursorAgentSessionFullDto
+                var full = new AppDataIntegrationAgentSessionFullDto
                 {
                     SessionGuid = row["SessionGuid"] as string,
                     CreatedAt = row["CreatedAt"] is DateTime c ? c : DateTime.MinValue,
@@ -210,7 +240,7 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                     UserRequest = row["UserRequest"] as string,
                     DisplayTitle = ColStr(row, "DisplayTitle"),
                     Status = row["Status"] as string,
-                    CursorAgentId = row["CursorAgentId"] as string,
+                    CloudAgentId = row["CloudAgentId"] as string,
                     LatestRunId = row["LatestRunId"] as string,
                     SaasApplicationId = ColInt(row, "SaasApplicationId"),
                     DataSourceRegisterId = ColInt(row, "DataSourceRegisterId"),
@@ -223,13 +253,13 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                 };
                 var hist = row["ConversationHistoryJson"] as string;
                 if (!string.IsNullOrWhiteSpace(hist))
-                    full.ConversationHistory = JsonConvert.DeserializeObject<List<CursorAgentMessageDto>>(hist);
+                    full.ConversationHistory = JsonConvert.DeserializeObject<List<AppDataIntegrationAgentMessageDto>>(hist);
                 return full;
             }
             catch { return null; }
         }
 
-        public static CursorAgentSessionStore.SessionData HydrateLive(string sessionGuid)
+        public static AppDataIntegrationAgentSessionStore.SessionData HydrateLive(string sessionGuid)
         {
             try
             {
@@ -238,16 +268,16 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                 EnsureSchema(fixture);
 
                 var dt = fixture.RetriveDataTable(@"
-SELECT SessionGuid, CursorAgentId, LatestRunId, McpToken, AppSessionId, SaasApplicationId,
+SELECT SessionGuid, CloudAgentId, LatestRunId, McpToken, AppSessionId, SaasApplicationId,
        DataSourceRegisterId, SkillKey, CreatedById, WorkspaceRelativePath, ConversationHistoryJson, IdentityJson
-FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
+FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter> { P(fixture, "@SessionGuid", sessionGuid) });
                 if (dt == null || dt.Rows.Count == 0) return null;
                 var row = dt.Rows[0];
-                var data = new CursorAgentSessionStore.SessionData
+                var data = new AppDataIntegrationAgentSessionStore.SessionData
                 {
                     SessionId = row["SessionGuid"] as string,
-                    CursorAgentId = row["CursorAgentId"] as string,
+                    CloudAgentId = row["CloudAgentId"] as string,
                     LatestRunId = row["LatestRunId"] as string,
                     McpToken = row["McpToken"] as string,
                     AppSessionId = row["AppSessionId"] as string,
@@ -258,33 +288,33 @@ FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
                     WorkspaceRelativePath = row["WorkspaceRelativePath"] as string,
                     IdentityJson = row.Table.Columns.Contains("IdentityJson") ? row["IdentityJson"] as string : null
                 };
-                data.Identity = CursorAgentIdentity.Deserialize(data.IdentityJson);
-                CursorAgentSkillCatalogBL.ApplyToSession(data, data.SkillKey);
+                data.Identity = AppDataIntegrationAgentIdentity.Deserialize(data.IdentityJson);
+                AppDataIntegrationAgentSkillCatalogBL.ApplyToSession(data, data.SkillKey);
                 if (data.CompanyId == null && data.Identity.HasValue && data.Identity.Value.CurrentWorkingCompanyId != null)
                     data.CompanyId = Convert.ToInt32(data.Identity.Value.CurrentWorkingCompanyId);
                 var hist = row["ConversationHistoryJson"] as string;
                 if (!string.IsNullOrWhiteSpace(hist))
-                    data.ConversationHistory = JsonConvert.DeserializeObject<List<CursorAgentMessageDto>>(hist)
-                        ?? new List<CursorAgentMessageDto>();
-                CursorAgentSessionStore.AttachLive(data);
+                    data.ConversationHistory = JsonConvert.DeserializeObject<List<AppDataIntegrationAgentMessageDto>>(hist)
+                        ?? new List<AppDataIntegrationAgentMessageDto>();
+                AppDataIntegrationAgentSessionStore.AttachLive(data);
                 return data;
             }
             catch { return null; }
         }
 
-        public static List<CursorAgentSessionSummaryDto> ListAll(int? createdById)
+        public static List<AppDataIntegrationAgentSessionSummaryDto> ListAll(int? createdById)
         {
-            var list = new List<CursorAgentSessionSummaryDto>();
+            var list = new List<AppDataIntegrationAgentSessionSummaryDto>();
             try
             {
                 var fixture = GetFixture();
                 if (fixture == null) return list;
                 EnsureSchema(fixture);
                 var dt = fixture.RetriveDataTable(@"
-SELECT SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CursorAgentId,
+SELECT SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CloudAgentId,
        SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath, FinalResponse,
        IsArchived, SortOrder
-FROM dbo.CursorAgentSession
+FROM dbo.AppDataIntegrationAgentSession
 WHERE (@CreatedById IS NULL OR CreatedById = @CreatedById)
 ORDER BY SortOrder ASC, UpdatedAt DESC",
                     new List<DbParameter> { P(fixture, "@CreatedById", createdById) });
@@ -304,7 +334,7 @@ ORDER BY SortOrder ASC, UpdatedAt DESC",
                 if (fixture == null || string.IsNullOrWhiteSpace(sessionGuid)) return false;
                 EnsureSchema(fixture);
                 fixture.ExecuteNonQueryResult(@"
-UPDATE dbo.CursorAgentSession SET DisplayTitle = @DisplayTitle WHERE SessionGuid = @SessionGuid",
+UPDATE dbo.AppDataIntegrationAgentSession SET DisplayTitle = @DisplayTitle WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter>
                     {
                         P(fixture, "@DisplayTitle", string.IsNullOrWhiteSpace(title) ? null : Trunc(title.Trim(), 200)),
@@ -328,7 +358,7 @@ UPDATE dbo.CursorAgentSession SET DisplayTitle = @DisplayTitle WHERE SessionGuid
                     if (fixture == null) return n;
                     EnsureSchema(fixture);
                     fixture.ExecuteNonQueryResult(@"
-UPDATE dbo.CursorAgentSession SET IsArchived = @IsArchived WHERE SessionGuid = @SessionGuid",
+UPDATE dbo.AppDataIntegrationAgentSession SET IsArchived = @IsArchived WHERE SessionGuid = @SessionGuid",
                         new List<DbParameter>
                         {
                             P(fixture, "@IsArchived", archived ? 1 : 0),
@@ -354,9 +384,9 @@ UPDATE dbo.CursorAgentSession SET IsArchived = @IsArchived WHERE SessionGuid = @
                     if (fixture == null) return n;
                     EnsureSchema(fixture);
                     fixture.ExecuteNonQueryResult(
-                        "DELETE FROM dbo.CursorAgentSession WHERE SessionGuid = @SessionGuid",
+                        "DELETE FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
                         new List<DbParameter> { P(fixture, "@SessionGuid", guid) });
-                    CursorAgentSessionStore.Remove(guid);
+                    AppDataIntegrationAgentSessionStore.Remove(guid);
                     n++;
                 }
                 catch { }
@@ -377,7 +407,7 @@ UPDATE dbo.CursorAgentSession SET IsArchived = @IsArchived WHERE SessionGuid = @
                 {
                     if (string.IsNullOrWhiteSpace(guid)) continue;
                     fixture.ExecuteNonQueryResult(@"
-UPDATE dbo.CursorAgentSession SET SortOrder = @SortOrder WHERE SessionGuid = @SessionGuid",
+UPDATE dbo.AppDataIntegrationAgentSession SET SortOrder = @SortOrder WHERE SessionGuid = @SessionGuid",
                         new List<DbParameter>
                         {
                             P(fixture, "@SortOrder", order),
@@ -390,9 +420,9 @@ UPDATE dbo.CursorAgentSession SET SortOrder = @SortOrder WHERE SessionGuid = @Se
             catch { return false; }
         }
 
-        private static CursorAgentSessionSummaryDto MapSummary(DataRow row)
+        private static AppDataIntegrationAgentSessionSummaryDto MapSummary(DataRow row)
         {
-            return new CursorAgentSessionSummaryDto
+            return new AppDataIntegrationAgentSessionSummaryDto
             {
                 SessionGuid = row["SessionGuid"] as string,
                 CreatedAt = row["CreatedAt"] is DateTime c ? c : DateTime.MinValue,
@@ -400,7 +430,7 @@ UPDATE dbo.CursorAgentSession SET SortOrder = @SortOrder WHERE SessionGuid = @Se
                 UserRequest = row["UserRequest"] as string,
                 DisplayTitle = ColStr(row, "DisplayTitle"),
                 Status = row["Status"] as string,
-                CursorAgentId = row["CursorAgentId"] as string,
+                CloudAgentId = row["CloudAgentId"] as string,
                 SaasApplicationId = ColInt(row, "SaasApplicationId"),
                 DataSourceRegisterId = ColInt(row, "DataSourceRegisterId"),
                 SkillKey = ColStr(row, "SkillKey"),

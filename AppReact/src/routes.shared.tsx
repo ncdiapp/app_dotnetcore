@@ -60,7 +60,7 @@ import {
 import { DbaGenie } from './components/dbgenie';
 import AISkillManagement from './components/aiskill/AISkillManagement';
 import AppBuilderAgent from './components/integration/AppBuilderAgent';
-import CursorAgent from './components/integration/CursorAgent';
+import DataIntegrationAgent from './components/integration/DataIntegrationAgent';
 import AppReportAgent from './components/search/AppReportAgent';
 import ReportManagement from './components/admin/ReportManagement';
 import MessageManagement from './components/message/MessageManagement';
@@ -162,10 +162,8 @@ export const AUTHENTICATED_ROUTES: SharedRouteDef[] = [
   { path: 'app-builder-agent/:param', element: <AppBuilderAgent /> },
   { path: 'app-builder-agent', element: <AppBuilderAgent /> },
 
-  { path: 'app-data-integration-agent/:param', element: <CursorAgent /> },
-  { path: 'app-data-integration-agent', element: <CursorAgent /> },
-  { path: 'cursor-agent/:param', element: <CursorAgent /> },
-  { path: 'cursor-agent', element: <CursorAgent /> },
+  { path: 'app-data-integration-agent/:param', element: <DataIntegrationAgent /> },
+  { path: 'app-data-integration-agent', element: <DataIntegrationAgent /> },
 
   // AppReport AI Agent
   { path: 'app-report-agent/:param', element: <AppReportAgent /> },

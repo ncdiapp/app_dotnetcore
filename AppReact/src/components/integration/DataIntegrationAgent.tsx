@@ -5,27 +5,27 @@ import { useTheme } from '../../redux/hooks/useTheme';
 import { RootState } from '../../redux/store';
 import { adminSvc } from '../../webapi/adminsvc';
 import {
-  CursorAgentDoneEvent,
-  CursorAgentFileEvent,
-  CursorAgentGateEvent,
-  CursorAgentMessage,
-  CursorAgentNavigateEvent,
-  CursorAgentSessionSummary,
-  CursorAgentSkillMenuItem,
-  CursorAgentStepEvent,
-  CursorAgentTablePreviewEvent,
-  CursorAgentWorkspaceFile,
-  archiveCursorSessions,
-  cursorAgentService,
-  cursorChatTitle,
-  deleteCursorSessions,
-  getCursorSession,
-  getRecentCursorSessions,
-  listCursorSkillMenu,
-  listCursorWorkspaceFiles,
-  readCursorWorkspaceFile,
-  renameCursorSession,
-} from '../../webapi/cursoragentsvc';
+  AppDataIntegrationAgentDoneEvent,
+  AppDataIntegrationAgentFileEvent,
+  AppDataIntegrationAgentGateEvent,
+  AppDataIntegrationAgentMessage,
+  AppDataIntegrationAgentNavigateEvent,
+  AppDataIntegrationAgentSessionSummary,
+  AppDataIntegrationAgentSkillMenuItem,
+  AppDataIntegrationAgentStepEvent,
+  AppDataIntegrationAgentTablePreviewEvent,
+  AppDataIntegrationAgentWorkspaceFile,
+  archiveAppDataIntegrationAgentSessions,
+  appDataIntegrationAgentService,
+  appDataIntegrationAgentChatTitle,
+  deleteAppDataIntegrationAgentSessions,
+  getAppDataIntegrationAgentSession,
+  getRecentAppDataIntegrationAgentSessions,
+  listAppDataIntegrationAgentSkillMenu,
+  listAppDataIntegrationAgentWorkspaceFiles,
+  readAppDataIntegrationAgentWorkspaceFile,
+  renameAppDataIntegrationAgentSession,
+} from '../../webapi/appDataIntegrationAgentSvc';
 import { endpoints } from '../../webapi/endpoints';
 import { isAdminUserFromContext } from '../../helper/adminPermissionHelper';
 import {
@@ -37,13 +37,13 @@ import Confirm from '../common/Confirm';
 import appHelper from '../../helper/appHelper';
 import { useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
 import TablesDataPreviewModal, { type TablePreviewItem } from '../transaction/TablesDataPreviewModal';
-import CursorAgentChatManagement, { RenameChatDialog } from './CursorAgentChatManagement';
-import CursorAgentStartBuildDialog from './CursorAgentStartBuildDialog';
+import DataIntegrationAgentChatManagement, { RenameChatDialog } from './DataIntegrationAgentChatManagement';
+import DataIntegrationAgentStartBuildDialog from './DataIntegrationAgentStartBuildDialog';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
-  steps: CursorAgentStepEvent[];
+  steps: AppDataIntegrationAgentStepEvent[];
   streamingContent: string;
   isStreaming: boolean;
   timestamp?: string;
@@ -121,7 +121,7 @@ function formatMessageTime(iso?: string): string {
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-function workspaceFilePath(f: CursorAgentWorkspaceFile): string {
+function workspaceFilePath(f: AppDataIntegrationAgentWorkspaceFile): string {
   return String(f?.RelativePath ?? (f as any)?.relativePath ?? '');
 }
 
@@ -156,7 +156,7 @@ function extractAppConfigPackPathsFromText(text: string): string[] {
  * Packs actually touched this turn via tools — NOT free-text mentions.
  * write = generated; validate/preview = ready for Start Build.
  */
-function extractAppConfigPackPathsFromSteps(steps: CursorAgentStepEvent[]): string[] {
+function extractAppConfigPackPathsFromSteps(steps: AppDataIntegrationAgentStepEvent[]): string[] {
   const found: string[] = [];
   for (const s of steps || []) {
     const tool = String(s.ToolName ?? (s as any).toolName ?? '').toLowerCase();
@@ -404,7 +404,7 @@ const PREVIEW_MAX_PX = 480;
 const CENTER_MIN_PX = 280;
 
 /** Remember last selected chat so reopening the page restores it (not New Chat). */
-const LAST_SESSION_STORAGE_KEY = 'appai.cursorAgent.lastSessionGuid';
+const LAST_SESSION_STORAGE_KEY = 'appai.appDataIntegrationAgent.lastSessionGuid';
 
 function readLastSessionGuid(): string | null {
   try {
@@ -446,9 +446,9 @@ const PanelResizeHandle: React.FC<PanelResizeHandleProps> = ({ label, edge, onMo
   );
 };
 
-const itemKey = (i: CursorAgentSkillMenuItem) => i.Key;
-const itemLabel = (i: CursorAgentSkillMenuItem) => i.Label;
-const itemGroup = (i: CursorAgentSkillMenuItem) => i.Group;
+const itemKey = (i: AppDataIntegrationAgentSkillMenuItem) => i.Key;
+const itemLabel = (i: AppDataIntegrationAgentSkillMenuItem) => i.Label;
+const itemGroup = (i: AppDataIntegrationAgentSkillMenuItem) => i.Group;
 
 const ToolbarField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => {
   const { theme } = useTheme();
@@ -461,7 +461,7 @@ const ToolbarField: React.FC<{ label: string; children: React.ReactNode }> = ({ 
 };
 
 const SkillPicker: React.FC<{
-  items: CursorAgentSkillMenuItem[];
+  items: AppDataIntegrationAgentSkillMenuItem[];
   value: string;
   disabled: boolean;
   lockSelection: boolean;
@@ -483,7 +483,7 @@ const SkillPicker: React.FC<{
   const selected = items.find(i => itemKey(i) === value);
   const label = selected ? itemLabel(selected) : 'App Config Builder';
 
-  const categories: { id: string; label: string; leafKey?: string; children: CursorAgentSkillMenuItem[] }[] = [
+  const categories: { id: string; label: string; leafKey?: string; children: AppDataIntegrationAgentSkillMenuItem[] }[] = [
     { id: 'general', label: 'General', leafKey: 'general', children: [] },
     { id: 'app', label: 'App Config Builder', leafKey: 'app-config-builder', children: [] },
     { id: 'plm', label: 'PLM Integration', children: items.filter(i => itemGroup(i) === 'plm') },
@@ -531,7 +531,7 @@ const SkillPicker: React.FC<{
     const onDoc = (e: MouseEvent) => {
       const t = e.target as Node;
       if (triggerRef.current?.contains(t)) return;
-      const portal = document.getElementById('cursor-agent-skill-menu');
+      const portal = document.getElementById('data-integration-agent-skill-menu');
       if (portal?.contains(t)) return;
       close();
     };
@@ -558,7 +558,7 @@ const SkillPicker: React.FC<{
       </button>
       {open && position && createPortal(
         <div
-          id="cursor-agent-skill-menu"
+          id="data-integration-agent-skill-menu"
           className={`fixed z-[9999] flex flex-row overflow-visible ${position.openUp ? 'items-end' : 'items-start'} ${theme.mainContentSection}`}
           style={position.openUp
             ? { bottom: position.bottom, left: position.left }
@@ -653,7 +653,7 @@ const SkillPicker: React.FC<{
   );
 };
 
-const CursorAgent: React.FC = () => {
+const DataIntegrationAgent: React.FC = () => {
   const { theme, t } = useTheme();
   const userContext = useSelector((s: RootState) => s.userSession.userContext);
   const isAdmin = isAdminUserFromContext(userContext);
@@ -664,7 +664,7 @@ const CursorAgent: React.FC = () => {
   const [saasApplicationId, setSaasApplicationId] = useState<number | undefined>();
   const [dataSourceId, setDataSourceId] = useState<number | undefined>();
   const [skillKey, setSkillKey] = useState('app-config-builder');
-  const [skillItems, setSkillItems] = useState<CursorAgentSkillMenuItem[]>([]);
+  const [skillItems, setSkillItems] = useState<AppDataIntegrationAgentSkillMenuItem[]>([]);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [hasAgent, setHasAgent] = useState(false);
@@ -673,12 +673,12 @@ const CursorAgent: React.FC = () => {
   const [isRunning, setIsRunning] = useState(false);
   const isRunningRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingGate, setPendingGate] = useState<CursorAgentGateEvent | null>(null);
+  const [pendingGate, setPendingGate] = useState<AppDataIntegrationAgentGateEvent | null>(null);
   const [gateFeedback, setGateFeedback] = useState('');
   const [tablePreviewOpen, setTablePreviewOpen] = useState(false);
   const [tablePreviewTables, setTablePreviewTables] = useState<TablePreviewItem[]>([]);
-  const [chatHistory, setChatHistory] = useState<CursorAgentSessionSummary[]>([]);
-  const [files, setFiles] = useState<CursorAgentWorkspaceFile[]>([]);
+  const [chatHistory, setChatHistory] = useState<AppDataIntegrationAgentSessionSummary[]>([]);
+  const [files, setFiles] = useState<AppDataIntegrationAgentWorkspaceFile[]>([]);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [previewContent, setPreviewContent] = useState('');
   const [previewHeight, setPreviewHeight] = useState(PREVIEW_DEFAULT_PX);
@@ -693,11 +693,11 @@ const CursorAgent: React.FC = () => {
   const workspaceWidthRef = useRef(WORKSPACE_DEFAULT_PX);
   const previewHeightRef = useRef(PREVIEW_DEFAULT_PX);
   const workspaceOpenRef = useRef(false);
-  const [chatMenu, setChatMenu] = useState<{ visible: boolean; x: number; y: number; item: CursorAgentSessionSummary | null }>({
+  const [chatMenu, setChatMenu] = useState<{ visible: boolean; x: number; y: number; item: AppDataIntegrationAgentSessionSummary | null }>({
     visible: false, x: 0, y: 0, item: null,
   });
-  const [renameItem, setRenameItem] = useState<CursorAgentSessionSummary | null>(null);
-  const [deleteItem, setDeleteItem] = useState<CursorAgentSessionSummary | null>(null);
+  const [renameItem, setRenameItem] = useState<AppDataIntegrationAgentSessionSummary | null>(null);
+  const [deleteItem, setDeleteItem] = useState<AppDataIntegrationAgentSessionSummary | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
@@ -771,26 +771,26 @@ const CursorAgent: React.FC = () => {
   }, []);
 
   const refreshHistory = useCallback(() => {
-    return getRecentCursorSessions(30).then(list => {
+    return getRecentAppDataIntegrationAgentSessions(30).then(list => {
       setChatHistory(list);
       return list;
     }).catch(() => {
       setChatHistory([]);
-      return [] as CursorAgentSessionSummary[];
+      return [] as AppDataIntegrationAgentSessionSummary[];
     });
   }, []);
 
   const refreshFiles = useCallback((sid: string | null) => {
     if (!sid) { setFiles([]); return; }
-    listCursorWorkspaceFiles(sid).then(list => {
+    listAppDataIntegrationAgentWorkspaceFiles(sid).then(list => {
       setFiles(list);
       if (list.some(f => !f.IsDirectory)) setWorkspaceOpen(true);
     }).catch(() => setFiles([]));
   }, []);
 
   const resetChatUi = useCallback(() => {
-    cursorAgentService.disconnect();
-    cursorAgentService.currentSessionId = null;
+    appDataIntegrationAgentService.disconnect();
+    appDataIntegrationAgentService.currentSessionId = null;
     setSessionId(null);
     setHasAgent(false);
     setMessages([]);
@@ -807,14 +807,14 @@ const CursorAgent: React.FC = () => {
     setPreviewCopyHint(null);
   }, []);
 
-  const applyLoadedSession = useCallback(async (summary: CursorAgentSessionSummary) => {
+  const applyLoadedSession = useCallback(async (summary: AppDataIntegrationAgentSessionSummary) => {
     resetChatUi();
-    const session = await getCursorSession(summary.SessionGuid);
+    const session = await getAppDataIntegrationAgentSession(summary.SessionGuid);
     if (!session) return false;
     setSessionId(summary.SessionGuid);
-    cursorAgentService.currentSessionId = summary.SessionGuid;
+    appDataIntegrationAgentService.currentSessionId = summary.SessionGuid;
     writeLastSessionGuid(summary.SessionGuid);
-    setHasAgent(!!(session.CursorAgentId || summary.CursorAgentId));
+    setHasAgent(!!(session.CloudAgentId || summary.CloudAgentId));
     const appId = Number(session.SaasApplicationId ?? session.saasApplicationId ?? 0);
     const dsId = Number(session.DataSourceRegisterId ?? session.dataSourceRegisterId ?? 0);
     const loadedSkill = session.SkillKey ?? session.skillKey;
@@ -848,7 +848,7 @@ const CursorAgent: React.FC = () => {
         setDataSourceId(prev => prev ?? mapped[0]?.id);
       }
     }).catch(() => {});
-    listCursorSkillMenu().then(menu => {
+    listAppDataIntegrationAgentSkillMenu().then(menu => {
       setSkillItems(menu.Items ?? []);
       if (menu.DefaultKey) setSkillKey(prev => prev || menu.DefaultKey);
     }).catch(() => {});
@@ -874,7 +874,7 @@ const CursorAgent: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, pendingGate]);
 
-  useEffect(() => () => { cursorAgentService.disconnect(); }, []);
+  useEffect(() => () => { appDataIntegrationAgentService.disconnect(); }, []);
 
   const closeChatMenu = useCallback(() => {
     setChatMenu({ visible: false, x: 0, y: 0, item: null });
@@ -905,14 +905,14 @@ const CursorAgent: React.FC = () => {
   }, []);
 
   const makeHandlers = useCallback(() => ({
-    onStep: (step: CursorAgentStepEvent) => {
+    onStep: (step: AppDataIntegrationAgentStepEvent) => {
       updateLastAssistant(msg => ({ ...msg, steps: [...msg.steps, step] }));
     },
     onToken: (token: string) => {
       updateLastAssistant(msg => ({ ...msg, streamingContent: (msg.streamingContent || '') + token }));
     },
-    onFile: (file: CursorAgentFileEvent) => {
-      refreshFiles(cursorAgentService.currentSessionId);
+    onFile: (file: AppDataIntegrationAgentFileEvent) => {
+      refreshFiles(appDataIntegrationAgentService.currentSessionId);
       const path = normalizeWorkspacePath(file?.RelativePath ?? (file as any)?.relativePath ?? '');
       const action = String(file?.Action ?? (file as any)?.action ?? '').toLowerCase();
       if (!path || !isAppConfigPackPath(path)) return;
@@ -932,8 +932,8 @@ const CursorAgent: React.FC = () => {
         return { ...msg, writtenPackPaths: [...existing, path] };
       });
     },
-    onGate: (gate: CursorAgentGateEvent) => setPendingGate(gate),
-    onNavigate: (nav: CursorAgentNavigateEvent) => {
+    onGate: (gate: AppDataIntegrationAgentGateEvent) => setPendingGate(gate),
+    onNavigate: (nav: AppDataIntegrationAgentNavigateEvent) => {
       const routeCode = String(nav?.RouteCode ?? nav?.routeCode ?? '').trim();
       if (!routeCode) return;
       const label = String(nav?.Label ?? nav?.label ?? routeCode);
@@ -956,7 +956,7 @@ const CursorAgent: React.FC = () => {
         openUiOffers: [...(msg.openUiOffers ?? []), offer],
       }));
     },
-    onTablePreview: (preview: CursorAgentTablePreviewEvent) => {
+    onTablePreview: (preview: AppDataIntegrationAgentTablePreviewEvent) => {
       const raw = preview?.Tables ?? preview?.tables ?? [];
       const tables: TablePreviewItem[] = (Array.isArray(raw) ? raw : [])
         .map((t) => ({
@@ -978,7 +978,7 @@ const CursorAgent: React.FC = () => {
         openUiOffers: [...(msg.openUiOffers ?? []), offer],
       }));
     },
-    onDone: (result: CursorAgentDoneEvent) => {
+    onDone: (result: AppDataIntegrationAgentDoneEvent) => {
       try {
         setPendingGate(null);
         const final = String((result as any)?.FinalResponse ?? (result as any)?.finalResponse ?? '').trim();
@@ -1014,7 +1014,7 @@ const CursorAgent: React.FC = () => {
           };
         });
         refreshHistory();
-        refreshFiles(cursorAgentService.currentSessionId);
+        refreshFiles(appDataIntegrationAgentService.currentSessionId);
       } finally {
         setIsRunning(false);
         isRunningRef.current = false;
@@ -1051,14 +1051,14 @@ const CursorAgent: React.FC = () => {
     });
     try {
       if (!hasAgent || !sessionId) {
-        const sid = await cursorAgentService.startSession(
+        const sid = await appDataIntegrationAgentService.startSession(
           text, saasApplicationId, dataSourceId, [], makeHandlers(), skillKey);
         setSessionId(sid);
         setHasAgent(true);
         refreshFiles(sid);
         refreshHistory();
       } else {
-        await cursorAgentService.followUp(text, makeHandlers(), skillKey, saasApplicationId, dataSourceId);
+        await appDataIntegrationAgentService.followUp(text, makeHandlers(), skillKey, saasApplicationId, dataSourceId);
       }
     } catch (err: any) {
       const errMsg = err?.message ?? 'Unknown error';
@@ -1101,7 +1101,7 @@ const CursorAgent: React.FC = () => {
     }
   }, [handleNewChat, refreshHistory, sessionId]);
 
-  const handleLoadSession = useCallback(async (summary: CursorAgentSessionSummary) => {
+  const handleLoadSession = useCallback(async (summary: AppDataIntegrationAgentSessionSummary) => {
     await applyLoadedSession(summary);
   }, [applyLoadedSession]);
 
@@ -1111,7 +1111,7 @@ const CursorAgent: React.FC = () => {
     const assistantMsg: ChatMessage = { role: 'assistant', content: '', steps: [], streamingContent: '', isStreaming: true };
     setMessages(prev => [...prev, assistantMsg]);
     try {
-      await cursorAgentService.resume(sessionId, 'Continue from where we left off.', makeHandlers());
+      await appDataIntegrationAgentService.resume(sessionId, 'Continue from where we left off.', makeHandlers());
     } catch (err: any) {
       setError(err?.message ?? 'Resume failed');
       setIsRunning(false);
@@ -1120,7 +1120,7 @@ const CursorAgent: React.FC = () => {
 
   const handleConfirmGate = useCallback((confirmed: boolean) => {
     if (!pendingGate) return;
-    cursorAgentService.confirmGate(pendingGate.GateId, confirmed, confirmed ? undefined : gateFeedback);
+    appDataIntegrationAgentService.confirmGate(pendingGate.GateId, confirmed, confirmed ? undefined : gateFeedback);
     setPendingGate(null);
     setGateFeedback('');
   }, [gateFeedback, pendingGate]);
@@ -1141,7 +1141,7 @@ const CursorAgent: React.FC = () => {
   const openPreview = useCallback(async (relativePath: string) => {
     if (!sessionId) return;
     try {
-      const content = await readCursorWorkspaceFile(sessionId, relativePath);
+      const content = await readAppDataIntegrationAgentWorkspaceFile(sessionId, relativePath);
       setPreviewPath(relativePath);
       setPreviewContent(content);
       setPreviewCopyHint(null);
@@ -1179,7 +1179,7 @@ const CursorAgent: React.FC = () => {
   const chatTitle = (() => {
     const fromList = chatHistory.find(c => c.SessionGuid === sessionId);
     const fromMessages = messages.find(m => m.role === 'user')?.content;
-    const text = (fromList ? cursorChatTitle(fromList) : fromMessages || '').trim();
+    const text = (fromList ? appDataIntegrationAgentChatTitle(fromList) : fromMessages || '').trim();
     if (!text) return 'New Chat';
     return text;
   })();
@@ -1242,7 +1242,7 @@ const CursorAgent: React.FC = () => {
                   }`}
                 >
                   <div className="w-1 flex-auto min-w-0">
-                    <div className="text-xs font-medium truncate">{cursorChatTitle(item).slice(0, 55)}</div>
+                    <div className="text-xs font-medium truncate">{appDataIntegrationAgentChatTitle(item).slice(0, 55)}</div>
                     <div className={`text-[10px] ${theme.label}`}>{item.Status}</div>
                   </div>
                   <button
@@ -1286,7 +1286,7 @@ const CursorAgent: React.FC = () => {
                   </button>
                 )}
                 {isRunning && (
-                  <button type="button" onClick={() => cursorAgentService.cancel()} className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_default}`}>
+                  <button type="button" onClick={() => appDataIntegrationAgentService.cancel()} className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_default}`}>
                     Cancel
                   </button>
                 )}
@@ -1604,7 +1604,7 @@ const CursorAgent: React.FC = () => {
               const guid = chatMenu.item?.SessionGuid;
               closeChatMenu();
               if (!guid) return;
-              await archiveCursorSessions([guid], true);
+              await archiveAppDataIntegrationAgentSessions([guid], true);
               refreshHistory();
             }}
           >
@@ -1630,11 +1630,11 @@ const CursorAgent: React.FC = () => {
 
       <RenameChatDialog
         isOpen={!!renameItem}
-        initialTitle={renameItem ? cursorChatTitle(renameItem) : ''}
+        initialTitle={renameItem ? appDataIntegrationAgentChatTitle(renameItem) : ''}
         onCancel={() => setRenameItem(null)}
         onSave={async title => {
           if (!renameItem) return;
-          await renameCursorSession(renameItem.SessionGuid, title);
+          await renameAppDataIntegrationAgentSession(renameItem.SessionGuid, title);
           setRenameItem(null);
           refreshHistory();
         }}
@@ -1650,11 +1650,11 @@ const CursorAgent: React.FC = () => {
           const guid = deleteItem?.SessionGuid;
           setDeleteItem(null);
           if (!guid) return;
-          await deleteCursorSessions([guid]);
+          await deleteAppDataIntegrationAgentSessions([guid]);
           handleDeletedSessions([guid]);
         }}
       />
-      <CursorAgentStartBuildDialog
+      <DataIntegrationAgentStartBuildDialog
         isOpen={!!buildPackPath}
         sessionId={sessionId}
         packPath={buildPackPath}
@@ -1666,7 +1666,7 @@ const CursorAgent: React.FC = () => {
         onClose={() => setTablePreviewOpen(false)}
         tables={tablePreviewTables}
       />
-      <CursorAgentChatManagement
+      <DataIntegrationAgentChatManagement
         isOpen={manageOpen}
         onClose={() => setManageOpen(false)}
         onChanged={handleDeletedSessions}
@@ -1675,4 +1675,4 @@ const CursorAgent: React.FC = () => {
   );
 };
 
-export default CursorAgent;
+export default DataIntegrationAgent;

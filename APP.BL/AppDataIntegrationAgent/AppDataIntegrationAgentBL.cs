@@ -7,29 +7,29 @@ using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework;
 
-namespace App.BL.CursorAgent
+namespace App.BL.AppDataIntegrationAgent
 {
-    public static class CursorAgentBL
+    public static class AppDataIntegrationAgentBL
     {
-        public static CursorAgentStartResultDto StartSession(CursorAgentStartRequestDto request, AppClientIdentity? identity)
+        public static AppDataIntegrationAgentStartResultDto StartSession(AppDataIntegrationAgentStartRequestDto request, AppClientIdentity? identity)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.UserMessage))
                 throw new ArgumentException("UserMessage is required.");
             if (!request.SaasApplicationId.HasValue || request.SaasApplicationId.Value <= 0)
                 throw new ArgumentException("SaasApplicationId is required.");
-            if (string.IsNullOrWhiteSpace(CursorAgentConfig.ApiKey))
+            if (string.IsNullOrWhiteSpace(AppDataIntegrationAgentConfig.ApiKey))
                 throw new InvalidOperationException("Cursor:ApiKey is not configured.");
 
-            var live = CursorAgentSessionStore.CreateSession();
+            var live = AppDataIntegrationAgentSessionStore.CreateSession();
             live.SaasApplicationId = request.SaasApplicationId;
             live.DataSourceRegisterId = request.DataSourceRegisterId;
-            CursorAgentSkillCatalogBL.ApplyToSession(live, request.SkillKey);
-            CursorAgentIdentity.Capture(live, identity);
+            AppDataIntegrationAgentSkillCatalogBL.ApplyToSession(live, request.SkillKey);
+            AppDataIntegrationAgentIdentity.Capture(live, identity);
             live.WorkspaceRelativePath = live.SessionId;
-            live.ConversationHistory = request.ConversationHistory ?? new List<CursorAgentMessageDto>();
-            live.ConversationHistory.Add(new CursorAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
-            CursorWorkspaceBL.EnsureSessionDir(live.WorkspaceRelativePath, live.CompanyId);
-            CursorAgentSessionBL.SaveNew(live, request.UserMessage);
+            live.ConversationHistory = request.ConversationHistory ?? new List<AppDataIntegrationAgentMessageDto>();
+            live.ConversationHistory.Add(new AppDataIntegrationAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
+            AppDataIntegrationWorkspaceBL.EnsureSessionDir(live.WorkspaceRelativePath, live.CompanyId);
+            AppDataIntegrationAgentSessionBL.SaveNew(live, request.UserMessage);
 
             live.RunCts = new CancellationTokenSource();
             var ct = live.RunCts.Token;
@@ -37,7 +37,7 @@ namespace App.BL.CursorAgent
             var userMessage = request.UserMessage;
             Task.Run(() => RunCreateAsync(sessionId, userMessage, ct));
 
-            return new CursorAgentStartResultDto
+            return new AppDataIntegrationAgentStartResultDto
             {
                 IsStarted = true,
                 SessionId = live.SessionId,
@@ -45,7 +45,7 @@ namespace App.BL.CursorAgent
             };
         }
 
-        public static void FollowUp(CursorAgentFollowUpRequestDto request, AppClientIdentity? identity = null)
+        public static void FollowUp(AppDataIntegrationAgentFollowUpRequestDto request, AppClientIdentity? identity = null)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.SessionId))
                 throw new ArgumentException("SessionId is required.");
@@ -53,18 +53,18 @@ namespace App.BL.CursorAgent
                 throw new ArgumentException("UserMessage is required.");
 
             var live = GetOrHydrate(request.SessionId);
-            CursorAgentIdentity.Capture(live, identity);
-            if (string.IsNullOrWhiteSpace(live.CursorAgentId))
+            AppDataIntegrationAgentIdentity.Capture(live, identity);
+            if (string.IsNullOrWhiteSpace(live.CloudAgentId))
                 throw new InvalidOperationException("Cursor agent has not been created for this session yet.");
 
             if (!string.IsNullOrWhiteSpace(request.SkillKey))
-                CursorAgentSkillCatalogBL.ApplyToSession(live, request.SkillKey);
+                AppDataIntegrationAgentSkillCatalogBL.ApplyToSession(live, request.SkillKey);
             if (request.SaasApplicationId.HasValue && request.SaasApplicationId.Value > 0)
                 live.SaasApplicationId = request.SaasApplicationId;
             if (request.DataSourceRegisterId.HasValue)
                 live.DataSourceRegisterId = request.DataSourceRegisterId > 0 ? request.DataSourceRegisterId : null;
 
-            live.ConversationHistory.Add(new CursorAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
+            live.ConversationHistory.Add(new AppDataIntegrationAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
             if (live.RunCts != null && !live.RunCts.IsCancellationRequested)
             {
                 try { live.RunCts.Cancel(); } catch { }
@@ -76,33 +76,33 @@ namespace App.BL.CursorAgent
             Task.Run(() => RunFollowUpAsync(sessionId, text, ct));
         }
 
-        public static void Resume(CursorAgentResumeRequestDto request, AppClientIdentity? identity = null)
+        public static void Resume(AppDataIntegrationAgentResumeRequestDto request, AppClientIdentity? identity = null)
         {
             var live = GetOrHydrate(request?.SessionId);
-            CursorAgentIdentity.Capture(live, identity);
-            if (string.IsNullOrWhiteSpace(live.CursorAgentId))
-                throw new InvalidOperationException("Cannot resume: CursorAgentId is missing.");
+            AppDataIntegrationAgentIdentity.Capture(live, identity);
+            if (string.IsNullOrWhiteSpace(live.CloudAgentId))
+                throw new InvalidOperationException("Cannot resume: CloudAgentId is missing.");
 
             var text = string.IsNullOrWhiteSpace(request.UserMessage)
                 ? "Continue from where we left off."
                 : request.UserMessage;
-            FollowUp(new CursorAgentFollowUpRequestDto { SessionId = live.SessionId, UserMessage = text }, identity);
+            FollowUp(new AppDataIntegrationAgentFollowUpRequestDto { SessionId = live.SessionId, UserMessage = text }, identity);
         }
 
         public static async Task CancelAsync(string sessionId)
         {
-            CursorAgentSessionStore.SessionData live;
-            if (!CursorAgentSessionStore.TryGet(sessionId, out live) || live == null)
-                live = CursorAgentSessionBL.HydrateLive(sessionId);
+            AppDataIntegrationAgentSessionStore.SessionData live;
+            if (!AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live) || live == null)
+                live = AppDataIntegrationAgentSessionBL.HydrateLive(sessionId);
             if (live == null) return;
             try { live.RunCts?.Cancel(); } catch { }
             try
             {
-                await CursorCloudClient.CancelAsync(live.CursorAgentId, live.LatestRunId, CancellationToken.None)
+                await CursorCloudClient.CancelAsync(live.CloudAgentId, live.LatestRunId, CancellationToken.None)
                     .ConfigureAwait(false);
             }
             catch { }
-            CursorAgentSessionStore.Enqueue(sessionId, new CursorAgentEventDto
+            AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto
             {
                 EventType = "error",
                 Error = "Cancelled."
@@ -113,29 +113,29 @@ namespace App.BL.CursorAgent
         {
             try
             {
-                CursorAgentSessionStore.SessionData live;
-                if (!CursorAgentSessionStore.TryGet(sessionId, out live)) return;
-                CursorAgentIdentity.Restore(live);
-                CursorAgentSessionStore.BeginAssistantTurn(live);
+                AppDataIntegrationAgentSessionStore.SessionData live;
+                if (!AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live)) return;
+                AppDataIntegrationAgentIdentity.Restore(live);
+                AppDataIntegrationAgentSessionStore.BeginAssistantTurn(live);
 
                 var prompt = BuildPrompt(live, userMessage);
-                var mcp = CursorAgentMcpBL.McpServerSpec(CursorAgentConfig.McpPublicBaseUrl, live.McpToken);
+                var mcp = AppDataIntegrationAgentMcpBL.McpServerSpec(AppDataIntegrationAgentConfig.McpPublicBaseUrl, live.McpToken);
                 var created = await CursorCloudClient.CreateAgentAsync(prompt, mcp, ct).ConfigureAwait(false);
-                live.CursorAgentId = created.AgentId;
+                live.CloudAgentId = created.AgentId;
                 live.LatestRunId = created.RunId;
-                CursorAgentSessionBL.Update(live, "InProgress", null, null);
+                AppDataIntegrationAgentSessionBL.Update(live, "InProgress", null, null);
                 await StreamAsync(live, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
-                CursorAgentSessionStore.Enqueue(sessionId, new CursorAgentEventDto { EventType = "error", Error = "Cancelled." });
+                AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto { EventType = "error", Error = "Cancelled." });
             }
             catch (Exception ex)
             {
-                CursorAgentSessionStore.Enqueue(sessionId, new CursorAgentEventDto { EventType = "error", Error = FormatError(ex) });
-                CursorAgentSessionStore.SessionData live;
-                if (CursorAgentSessionStore.TryGet(sessionId, out live))
-                    CursorAgentSessionBL.Update(live, "Failed", FormatError(ex), null);
+                AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto { EventType = "error", Error = FormatError(ex) });
+                AppDataIntegrationAgentSessionStore.SessionData live;
+                if (AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live))
+                    AppDataIntegrationAgentSessionBL.Update(live, "Failed", FormatError(ex), null);
             }
         }
 
@@ -143,47 +143,47 @@ namespace App.BL.CursorAgent
         {
             try
             {
-                CursorAgentSessionStore.SessionData live;
-                if (!CursorAgentSessionStore.TryGet(sessionId, out live))
+                AppDataIntegrationAgentSessionStore.SessionData live;
+                if (!AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live))
                 {
-                    CursorAgentSessionStore.Enqueue(sessionId, new CursorAgentEventDto
+                    AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto
                     {
                         EventType = "error",
                         Error = "Session not found on server. Try Resume or start a new chat."
                     });
                     return;
                 }
-                CursorAgentIdentity.Restore(live);
-                CursorAgentSessionStore.BeginAssistantTurn(live);
-                await CursorCloudClient.EnsureIdleAsync(live.CursorAgentId, live.LatestRunId, ct).ConfigureAwait(false);
-                var mcp = CursorAgentMcpBL.McpServerSpec(CursorAgentConfig.McpPublicBaseUrl, live.McpToken);
-                var prompt = CursorAgentSkillCatalogBL.BuildFollowUpPrompt(live, userMessage);
+                AppDataIntegrationAgentIdentity.Restore(live);
+                AppDataIntegrationAgentSessionStore.BeginAssistantTurn(live);
+                await CursorCloudClient.EnsureIdleAsync(live.CloudAgentId, live.LatestRunId, ct).ConfigureAwait(false);
+                var mcp = AppDataIntegrationAgentMcpBL.McpServerSpec(AppDataIntegrationAgentConfig.McpPublicBaseUrl, live.McpToken);
+                var prompt = AppDataIntegrationAgentSkillCatalogBL.BuildFollowUpPrompt(live, userMessage);
                 CursorCloudClient.CreateResult created;
                 try
                 {
-                    created = await CursorCloudClient.FollowUpAsync(live.CursorAgentId, prompt, mcp, ct)
+                    created = await CursorCloudClient.FollowUpAsync(live.CloudAgentId, prompt, mcp, ct)
                         .ConfigureAwait(false);
                 }
                 catch (Exception ex) when (CursorCloudClient.IsBusyError(ex))
                 {
-                    await CursorCloudClient.EnsureIdleAsync(live.CursorAgentId, live.LatestRunId, ct).ConfigureAwait(false);
+                    await CursorCloudClient.EnsureIdleAsync(live.CloudAgentId, live.LatestRunId, ct).ConfigureAwait(false);
                     await Task.Delay(2000, ct).ConfigureAwait(false);
-                    created = await CursorCloudClient.FollowUpAsync(live.CursorAgentId, prompt, mcp, ct)
+                    created = await CursorCloudClient.FollowUpAsync(live.CloudAgentId, prompt, mcp, ct)
                         .ConfigureAwait(false);
                 }
                 live.LatestRunId = created.RunId;
                 if (string.IsNullOrWhiteSpace(live.LatestRunId))
                     throw new InvalidOperationException("Follow-up did not return a run id.");
-                CursorAgentSessionBL.Update(live, "InProgress", null, null);
+                AppDataIntegrationAgentSessionBL.Update(live, "InProgress", null, null);
                 await StreamAsync(live, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
-                CursorAgentSessionStore.Enqueue(sessionId, new CursorAgentEventDto { EventType = "error", Error = "Cancelled." });
+                AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto { EventType = "error", Error = "Cancelled." });
             }
             catch (Exception ex)
             {
-                CursorAgentSessionStore.Enqueue(sessionId, new CursorAgentEventDto { EventType = "error", Error = FormatError(ex) });
+                AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto { EventType = "error", Error = FormatError(ex) });
             }
         }
 
@@ -193,13 +193,13 @@ namespace App.BL.CursorAgent
             public bool SawSimplifiedText;
         }
 
-        private static async Task StreamAsync(CursorAgentSessionStore.SessionData live, CancellationToken ct)
+        private static async Task StreamAsync(AppDataIntegrationAgentSessionStore.SessionData live, CancellationToken ct)
         {
             var assistant = new System.Text.StringBuilder();
             var capture = new StreamCapture();
             try
             {
-                await CursorCloudClient.StreamRunAsync(live.CursorAgentId, live.LatestRunId, (evt, payload) =>
+                await CursorCloudClient.StreamRunAsync(live.CloudAgentId, live.LatestRunId, (evt, payload) =>
                 {
                     HandleStreamEvent(live, assistant, evt, payload, capture);
                 }, ct).ConfigureAwait(false);
@@ -224,24 +224,24 @@ namespace App.BL.CursorAgent
             }
             catch { }
 
-            var final = CursorWorkspaceBL.RewriteCloudPaths(assistant.ToString(), live.WorkspaceRelativePath, live.CompanyId);
-            var openOffers = CursorAgentSessionStore.TakeTurnOpenOffers(live);
-            live.ConversationHistory.Add(new CursorAgentMessageDto
+            var final = AppDataIntegrationWorkspaceBL.RewriteCloudPaths(assistant.ToString(), live.WorkspaceRelativePath, live.CompanyId);
+            var openOffers = AppDataIntegrationAgentSessionStore.TakeTurnOpenOffers(live);
+            live.ConversationHistory.Add(new AppDataIntegrationAgentMessageDto
             {
                 Role = "assistant",
                 Content = final,
                 Timestamp = DateTime.UtcNow.ToString("o"),
-                WrittenPackPaths = CursorAgentSessionStore.TakeTurnPackPaths(live),
+                WrittenPackPaths = AppDataIntegrationAgentSessionStore.TakeTurnPackPaths(live),
                 OpenUiOffers = openOffers
             });
-            var files = CursorWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
+            var files = AppDataIntegrationWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
                 .Where(f => !f.IsDirectory)
                 .Select(f => f.RelativePath)
                 .ToList();
-            CursorAgentSessionStore.Enqueue(live.SessionId, new CursorAgentEventDto
+            AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto
             {
                 EventType = "done",
-                Done = new CursorAgentDoneEvent
+                Done = new AppDataIntegrationAgentDoneEvent
                 {
                     FinalResponse = final,
                     UpdatedHistory = live.ConversationHistory.ToList(),
@@ -249,11 +249,11 @@ namespace App.BL.CursorAgent
                     OpenUiOffers = openOffers
                 }
             });
-            CursorAgentSessionBL.Update(live, "Completed", final, null);
+            AppDataIntegrationAgentSessionBL.Update(live, "Completed", final, null);
         }
 
         private static void HandleStreamEvent(
-            CursorAgentSessionStore.SessionData live,
+            AppDataIntegrationAgentSessionStore.SessionData live,
             System.Text.StringBuilder assistant,
             string evt,
             Newtonsoft.Json.Linq.JObject payload,
@@ -300,10 +300,10 @@ namespace App.BL.CursorAgent
             {
                 var name = (string)payload["name"];
                 var status = (string)payload["status"];
-                CursorAgentSessionStore.Enqueue(live.SessionId, new CursorAgentEventDto
+                AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto
                 {
                     EventType = "step",
-                    Step = new CursorAgentStepEvent
+                    Step = new AppDataIntegrationAgentStepEvent
                     {
                         Type = "tool_call",
                         ToolName = name,
@@ -335,22 +335,22 @@ namespace App.BL.CursorAgent
         }
 
         private static void AppendAssistant(
-            CursorAgentSessionStore.SessionData live,
+            AppDataIntegrationAgentSessionStore.SessionData live,
             System.Text.StringBuilder assistant,
             string text)
         {
             if (string.IsNullOrEmpty(text)) return;
             assistant.Append(text);
-            CursorAgentSessionStore.Enqueue(live.SessionId, new CursorAgentEventDto { EventType = "token", Token = text });
+            AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto { EventType = "token", Token = text });
         }
 
-        private static void EnqueueThinking(CursorAgentSessionStore.SessionData live, string text)
+        private static void EnqueueThinking(AppDataIntegrationAgentSessionStore.SessionData live, string text)
         {
             if (string.IsNullOrEmpty(text)) return;
-            CursorAgentSessionStore.Enqueue(live.SessionId, new CursorAgentEventDto
+            AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto
             {
                 EventType = "step",
-                Step = new CursorAgentStepEvent { Type = "thinking", Description = Trim(text, 200), Details = text }
+                Step = new AppDataIntegrationAgentStepEvent { Type = "thinking", Description = Trim(text, 200), Details = text }
             });
         }
 
@@ -380,11 +380,11 @@ namespace App.BL.CursorAgent
         }
 
         private static async Task<string> RecoverFinishedRunTextAsync(
-            CursorAgentSessionStore.SessionData live, CancellationToken ct)
+            AppDataIntegrationAgentSessionStore.SessionData live, CancellationToken ct)
         {
             for (var i = 0; i < 30 && !ct.IsCancellationRequested; i++)
             {
-                var run = await CursorCloudClient.GetRunAsync(live.CursorAgentId, live.LatestRunId, ct)
+                var run = await CursorCloudClient.GetRunAsync(live.CloudAgentId, live.LatestRunId, ct)
                     .ConfigureAwait(false);
                 var status = ((string)run?["status"] ?? "").ToUpperInvariant();
                 if (CursorCloudClient.IsActiveStatus(status))
@@ -397,43 +397,43 @@ namespace App.BL.CursorAgent
             return null;
         }
 
-        public static CursorAgentSkillMenuDto ListSkillMenu()
+        public static AppDataIntegrationAgentSkillMenuDto ListSkillMenu()
         {
-            return CursorAgentSkillCatalogBL.ListMenu();
+            return AppDataIntegrationAgentSkillCatalogBL.ListMenu();
         }
 
-        private static string BuildPrompt(CursorAgentSessionStore.SessionData live, string userMessage)
+        private static string BuildPrompt(AppDataIntegrationAgentSessionStore.SessionData live, string userMessage)
         {
-            return CursorAgentSkillCatalogBL.BuildInjectedPrompt(live, userMessage);
+            return AppDataIntegrationAgentSkillCatalogBL.BuildInjectedPrompt(live, userMessage);
         }
 
-        private static CursorAgentSessionStore.SessionData GetOrHydrate(string sessionId)
+        private static AppDataIntegrationAgentSessionStore.SessionData GetOrHydrate(string sessionId)
         {
-            CursorAgentSessionStore.SessionData live;
-            if (CursorAgentSessionStore.TryGet(sessionId, out live) && live != null)
+            AppDataIntegrationAgentSessionStore.SessionData live;
+            if (AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live) && live != null)
                 return live;
-            live = CursorAgentSessionBL.HydrateLive(sessionId);
+            live = AppDataIntegrationAgentSessionBL.HydrateLive(sessionId);
             if (live == null)
                 throw new InvalidOperationException("Session not found.");
             return live;
         }
 
-        private static async Task PullCloudArtifactsAsync(CursorAgentSessionStore.SessionData live, CancellationToken ct)
+        private static async Task PullCloudArtifactsAsync(AppDataIntegrationAgentSessionStore.SessionData live, CancellationToken ct)
         {
-            if (live == null || string.IsNullOrWhiteSpace(live.CursorAgentId)) return;
-            var paths = await CursorCloudClient.ListArtifactPathsAsync(live.CursorAgentId, ct).ConfigureAwait(false);
+            if (live == null || string.IsNullOrWhiteSpace(live.CloudAgentId)) return;
+            var paths = await CursorCloudClient.ListArtifactPathsAsync(live.CloudAgentId, ct).ConfigureAwait(false);
             foreach (var path in paths)
             {
-                var bytes = await CursorCloudClient.DownloadArtifactBytesAsync(live.CursorAgentId, path, ct)
+                var bytes = await CursorCloudClient.DownloadArtifactBytesAsync(live.CloudAgentId, path, ct)
                     .ConfigureAwait(false);
                 if (bytes == null || bytes.Length == 0) continue;
                 var rel = NormalizeArtifactPath(path);
-                CursorWorkspaceBL.WriteBytes(live.WorkspaceRelativePath, rel, bytes, live.CompanyId);
-                CursorAgentSessionStore.NotePackPath(live, rel);
-                CursorAgentSessionStore.Enqueue(live.SessionId, new CursorAgentEventDto
+                AppDataIntegrationWorkspaceBL.WriteBytes(live.WorkspaceRelativePath, rel, bytes, live.CompanyId);
+                AppDataIntegrationAgentSessionStore.NotePackPath(live, rel);
+                AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto
                 {
                     EventType = "file",
-                    File = new CursorAgentFileEvent { Action = "artifact", RelativePath = rel }
+                    File = new AppDataIntegrationAgentFileEvent { Action = "artifact", RelativePath = rel }
                 });
             }
         }

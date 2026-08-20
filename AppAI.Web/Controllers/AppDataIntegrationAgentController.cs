@@ -3,7 +3,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using App.BL;
-using App.BL.CursorAgent;
+using App.BL.AppDataIntegrationAgent;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework;
@@ -16,81 +16,81 @@ using Newtonsoft.Json;
 namespace AppAI.Web.Controllers;
 
 [Route("webapi/[controller]/[action]")]
-public class CursorAgentController : SecureBaseController
+public class AppDataIntegrationAgentController : SecureBaseController
 {
     [HttpPost]
-    public OperationCallResult<CursorAgentStartResultDto> StartSession([FromBody] CursorAgentStartRequestDto request)
+    public OperationCallResult<AppDataIntegrationAgentStartResultDto> StartSession([FromBody] AppDataIntegrationAgentStartRequestDto request)
     {
-        var result = new OperationCallResult<CursorAgentStartResultDto>();
+        var result = new OperationCallResult<AppDataIntegrationAgentStartResultDto>();
         if (!EnsureAdmin(result)) return result;
         try
         {
-            result.Object = CursorAgentBL.StartSession(request, CurrentIdentity());
+            result.Object = AppDataIntegrationAgentBL.StartSession(request, CurrentIdentity());
         }
         catch (Exception ex)
         {
-            Fail(result, "CursorAgent_Start", ex.Message);
+            Fail(result, "AppDataIntegrationAgent_Start", ex.Message);
         }
         return result;
     }
 
     [HttpPost]
-    public OperationCallResult<bool> FollowUp([FromBody] CursorAgentFollowUpRequestDto request)
+    public OperationCallResult<bool> FollowUp([FromBody] AppDataIntegrationAgentFollowUpRequestDto request)
     {
         var result = new OperationCallResult<bool>();
         if (!EnsureAdmin(result)) return result;
         try
         {
-            CursorAgentBL.FollowUp(request, CurrentIdentity());
+            AppDataIntegrationAgentBL.FollowUp(request, CurrentIdentity());
             result.Object = true;
         }
         catch (Exception ex)
         {
-            Fail(result, "CursorAgent_FollowUp", ex.Message);
+            Fail(result, "AppDataIntegrationAgent_FollowUp", ex.Message);
         }
         return result;
     }
 
     [HttpPost]
-    public OperationCallResult<bool> ResumeSession([FromBody] CursorAgentResumeRequestDto request)
+    public OperationCallResult<bool> ResumeSession([FromBody] AppDataIntegrationAgentResumeRequestDto request)
     {
         var result = new OperationCallResult<bool>();
         if (!EnsureAdmin(result)) return result;
         try
         {
-            CursorAgentBL.Resume(request, CurrentIdentity());
+            AppDataIntegrationAgentBL.Resume(request, CurrentIdentity());
             result.Object = true;
         }
         catch (Exception ex)
         {
-            Fail(result, "CursorAgent_Resume", ex.Message);
+            Fail(result, "AppDataIntegrationAgent_Resume", ex.Message);
         }
         return result;
     }
 
     [HttpPost]
-    public async Task<OperationCallResult<bool>> Cancel([FromBody] CursorAgentCancelRequestDto request)
+    public async Task<OperationCallResult<bool>> Cancel([FromBody] AppDataIntegrationAgentCancelRequestDto request)
     {
         var result = new OperationCallResult<bool>();
         if (!EnsureAdmin(result)) return result;
         try
         {
-            await CursorAgentBL.CancelAsync(request?.SessionId).ConfigureAwait(false);
+            await AppDataIntegrationAgentBL.CancelAsync(request?.SessionId).ConfigureAwait(false);
             result.Object = true;
         }
         catch (Exception ex)
         {
-            Fail(result, "CursorAgent_Cancel", ex.Message);
+            Fail(result, "AppDataIntegrationAgent_Cancel", ex.Message);
         }
         return result;
     }
 
     [HttpGet]
-    public CursorAgentPollResponseDto PollEvents(string sessionId)
+    public AppDataIntegrationAgentPollResponseDto PollEvents(string sessionId)
     {
-        if (CursorAgentConfig.AdminOnly && !AppSecurityUserBL.IsAdminUser())
-            return new CursorAgentPollResponseDto { SessionExists = false };
-        return CursorAgentSessionStore.DequeueAll(sessionId);
+        if (AppDataIntegrationAgentConfig.AdminOnly && !AppSecurityUserBL.IsAdminUser())
+            return new AppDataIntegrationAgentPollResponseDto { SessionExists = false };
+        return AppDataIntegrationAgentSessionStore.DequeueAll(sessionId);
     }
 
     [HttpGet]
@@ -105,9 +105,9 @@ public class CursorAgentController : SecureBaseController
         var done = false;
         while (!done && !cancellationToken.IsCancellationRequested)
         {
-            await CursorAgentSessionStore.WaitForEventAsync(sessionId, TimeSpan.FromSeconds(30), cancellationToken);
+            await AppDataIntegrationAgentSessionStore.WaitForEventAsync(sessionId, TimeSpan.FromSeconds(30), cancellationToken);
             if (cancellationToken.IsCancellationRequested) break;
-            var poll = CursorAgentSessionStore.DequeueAll(sessionId);
+            var poll = AppDataIntegrationAgentSessionStore.DequeueAll(sessionId);
             if (!poll.SessionExists)
             {
                 var err = Encoding.UTF8.GetBytes("event: error\ndata: {\"Error\":\"Session not found\"}\n\n");
@@ -133,135 +133,135 @@ public class CursorAgentController : SecureBaseController
     }
 
     [HttpPost]
-    public OperationCallResult<bool> ConfirmGate([FromBody] CursorAgentConfirmGateRequestDto request)
+    public OperationCallResult<bool> ConfirmGate([FromBody] AppDataIntegrationAgentConfirmGateRequestDto request)
     {
         var result = new OperationCallResult<bool>();
         if (!EnsureAdmin(result)) return result;
         if (request == null || string.IsNullOrWhiteSpace(request.SessionId))
         {
-            Fail(result, "CursorAgent_ConfirmGate", "SessionId is required.");
+            Fail(result, "AppDataIntegrationAgent_ConfirmGate", "SessionId is required.");
             return result;
         }
-        result.Object = CursorAgentSessionStore.ConfirmGate(request.SessionId, request.GateId, request.Confirmed, request.Feedback);
+        result.Object = AppDataIntegrationAgentSessionStore.ConfirmGate(request.SessionId, request.GateId, request.Confirmed, request.Feedback);
         if (!result.Object)
-            Fail(result, "CursorAgent_ConfirmGate", "No pending gate for this session.");
+            Fail(result, "AppDataIntegrationAgent_ConfirmGate", "No pending gate for this session.");
         return result;
     }
 
     [HttpGet]
-    public OperationCallResult<CursorAgentSkillMenuDto> ListSkillMenu()
+    public OperationCallResult<AppDataIntegrationAgentSkillMenuDto> ListSkillMenu()
     {
-        var result = new OperationCallResult<CursorAgentSkillMenuDto>();
+        var result = new OperationCallResult<AppDataIntegrationAgentSkillMenuDto>();
         if (!EnsureAdmin(result)) return result;
         try
         {
-            result.Object = CursorAgentBL.ListSkillMenu();
+            result.Object = AppDataIntegrationAgentBL.ListSkillMenu();
         }
         catch (Exception ex)
         {
-            Fail(result, "CursorAgent_ListSkillMenu", ex.Message);
+            Fail(result, "AppDataIntegrationAgent_ListSkillMenu", ex.Message);
         }
         return result;
     }
 
     [HttpGet]
-    public OperationCallResult<CursorAgentSessionFullDto> GetSession(string sessionId)
+    public OperationCallResult<AppDataIntegrationAgentSessionFullDto> GetSession(string sessionId)
     {
-        var result = new OperationCallResult<CursorAgentSessionFullDto>();
+        var result = new OperationCallResult<AppDataIntegrationAgentSessionFullDto>();
         if (!EnsureAdmin(result)) return result;
-        result.Object = CursorAgentSessionBL.Get(sessionId);
+        result.Object = AppDataIntegrationAgentSessionBL.Get(sessionId);
         return result;
     }
 
     [HttpGet]
-    public OperationCallResult<System.Collections.Generic.List<CursorAgentSessionSummaryDto>> RecentSessions(int limit = 30)
+    public OperationCallResult<System.Collections.Generic.List<AppDataIntegrationAgentSessionSummaryDto>> RecentSessions(int limit = 30)
     {
-        var result = new OperationCallResult<System.Collections.Generic.List<CursorAgentSessionSummaryDto>>();
+        var result = new OperationCallResult<System.Collections.Generic.List<AppDataIntegrationAgentSessionSummaryDto>>();
         if (!EnsureAdmin(result)) return result;
-        result.Object = CursorAgentSessionBL.ListRecent(limit, CurrentUserId());
+        result.Object = AppDataIntegrationAgentSessionBL.ListRecent(limit, CurrentUserId());
         return result;
     }
 
     [HttpGet]
-    public OperationCallResult<System.Collections.Generic.List<CursorAgentSessionSummaryDto>> ListAllSessions()
+    public OperationCallResult<System.Collections.Generic.List<AppDataIntegrationAgentSessionSummaryDto>> ListAllSessions()
     {
-        var result = new OperationCallResult<System.Collections.Generic.List<CursorAgentSessionSummaryDto>>();
+        var result = new OperationCallResult<System.Collections.Generic.List<AppDataIntegrationAgentSessionSummaryDto>>();
         if (!EnsureAdmin(result)) return result;
-        result.Object = CursorAgentSessionBL.ListAll(CurrentUserId());
+        result.Object = AppDataIntegrationAgentSessionBL.ListAll(CurrentUserId());
         return result;
     }
 
     [HttpPost]
-    public OperationCallResult<bool> RenameSession([FromBody] CursorAgentRenameSessionRequestDto request)
+    public OperationCallResult<bool> RenameSession([FromBody] AppDataIntegrationAgentRenameSessionRequestDto request)
     {
         var result = new OperationCallResult<bool>();
         if (!EnsureAdmin(result)) return result;
         if (request == null || string.IsNullOrWhiteSpace(request.SessionId))
         {
-            Fail(result, "CursorAgent_Rename", "SessionId is required.");
+            Fail(result, "AppDataIntegrationAgent_Rename", "SessionId is required.");
             return result;
         }
-        result.Object = CursorAgentSessionBL.Rename(request.SessionId, request.Title);
+        result.Object = AppDataIntegrationAgentSessionBL.Rename(request.SessionId, request.Title);
         return result;
     }
 
     [HttpPost]
-    public OperationCallResult<int> ArchiveSessions([FromBody] CursorAgentArchiveSessionsRequestDto request)
+    public OperationCallResult<int> ArchiveSessions([FromBody] AppDataIntegrationAgentArchiveSessionsRequestDto request)
     {
         var result = new OperationCallResult<int>();
         if (!EnsureAdmin(result)) return result;
-        result.Object = CursorAgentSessionBL.SetArchived(request?.SessionIds, request != null && request.Archived);
+        result.Object = AppDataIntegrationAgentSessionBL.SetArchived(request?.SessionIds, request != null && request.Archived);
         return result;
     }
 
     [HttpPost]
-    public OperationCallResult<int> DeleteSessions([FromBody] CursorAgentDeleteSessionsRequestDto request)
+    public OperationCallResult<int> DeleteSessions([FromBody] AppDataIntegrationAgentDeleteSessionsRequestDto request)
     {
         var result = new OperationCallResult<int>();
         if (!EnsureAdmin(result)) return result;
-        result.Object = CursorAgentSessionBL.DeleteMany(request?.SessionIds);
+        result.Object = AppDataIntegrationAgentSessionBL.DeleteMany(request?.SessionIds);
         return result;
     }
 
     [HttpPost]
-    public OperationCallResult<bool> ReorderSessions([FromBody] CursorAgentReorderSessionsRequestDto request)
+    public OperationCallResult<bool> ReorderSessions([FromBody] AppDataIntegrationAgentReorderSessionsRequestDto request)
     {
         var result = new OperationCallResult<bool>();
         if (!EnsureAdmin(result)) return result;
-        result.Object = CursorAgentSessionBL.Reorder(request?.SessionIds);
+        result.Object = AppDataIntegrationAgentSessionBL.Reorder(request?.SessionIds);
         return result;
     }
 
     [HttpGet]
-    public OperationCallResult<System.Collections.Generic.List<CursorAgentWorkspaceFileDto>> ListWorkspaceFiles(string sessionId)
+    public OperationCallResult<System.Collections.Generic.List<AppDataIntegrationAgentWorkspaceFileDto>> ListWorkspaceFiles(string sessionId)
     {
-        var result = new OperationCallResult<System.Collections.Generic.List<CursorAgentWorkspaceFileDto>>();
+        var result = new OperationCallResult<System.Collections.Generic.List<AppDataIntegrationAgentWorkspaceFileDto>>();
         if (!EnsureAdmin(result)) return result;
         try
         {
             var live = RequireLive(sessionId);
-            result.Object = CursorWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId);
+            result.Object = AppDataIntegrationWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId);
         }
         catch (Exception ex)
         {
-            Fail(result, "CursorAgent_ListFiles", ex.Message);
+            Fail(result, "AppDataIntegrationAgent_ListFiles", ex.Message);
         }
         return result;
     }
 
     [HttpGet]
-    public OperationCallResult<CursorAgentFileContentDto> ReadWorkspaceFile(string sessionId, string relativePath)
+    public OperationCallResult<AppDataIntegrationAgentFileContentDto> ReadWorkspaceFile(string sessionId, string relativePath)
     {
-        var result = new OperationCallResult<CursorAgentFileContentDto>();
+        var result = new OperationCallResult<AppDataIntegrationAgentFileContentDto>();
         if (!EnsureAdmin(result)) return result;
         try
         {
             var live = RequireLive(sessionId);
-            result.Object = CursorWorkspaceBL.ReadFile(live.WorkspaceRelativePath, relativePath, live.CompanyId);
+            result.Object = AppDataIntegrationWorkspaceBL.ReadFile(live.WorkspaceRelativePath, relativePath, live.CompanyId);
         }
         catch (Exception ex)
         {
-            Fail(result, "CursorAgent_ReadFile", ex.Message);
+            Fail(result, "AppDataIntegrationAgent_ReadFile", ex.Message);
         }
         return result;
     }
@@ -269,12 +269,12 @@ public class CursorAgentController : SecureBaseController
     [HttpGet]
     public IActionResult DownloadWorkspaceFile(string sessionId, string relativePath)
     {
-        if (CursorAgentConfig.AdminOnly && !AppSecurityUserBL.IsAdminUser())
+        if (AppDataIntegrationAgentConfig.AdminOnly && !AppSecurityUserBL.IsAdminUser())
             return StatusCode(403);
         try
         {
             var live = RequireLive(sessionId);
-            var bytes = CursorWorkspaceBL.ReadBytes(live.WorkspaceRelativePath, relativePath, live.CompanyId);
+            var bytes = AppDataIntegrationWorkspaceBL.ReadBytes(live.WorkspaceRelativePath, relativePath, live.CompanyId);
             var ext = System.IO.Path.GetExtension(relativePath ?? "");
             var contentType = string.Equals(ext, ".png", StringComparison.OrdinalIgnoreCase) ? "image/png"
                 : string.Equals(ext, ".jpg", StringComparison.OrdinalIgnoreCase) || string.Equals(ext, ".jpeg", StringComparison.OrdinalIgnoreCase) ? "image/jpeg"
@@ -290,29 +290,29 @@ public class CursorAgentController : SecureBaseController
     }
 
     [HttpPost]
-    public OperationCallResult<bool> DeleteWorkspaceFile([FromBody] CursorAgentFileRequestDto request)
+    public OperationCallResult<bool> DeleteWorkspaceFile([FromBody] AppDataIntegrationAgentFileRequestDto request)
     {
         var result = new OperationCallResult<bool>();
         if (!EnsureAdmin(result)) return result;
         try
         {
             var live = RequireLive(request?.SessionId);
-            CursorWorkspaceBL.DeleteFile(live.WorkspaceRelativePath, request.RelativePath, live.CompanyId);
+            AppDataIntegrationWorkspaceBL.DeleteFile(live.WorkspaceRelativePath, request.RelativePath, live.CompanyId);
             result.Object = true;
         }
         catch (Exception ex)
         {
-            Fail(result, "CursorAgent_DeleteFile", ex.Message);
+            Fail(result, "AppDataIntegrationAgent_DeleteFile", ex.Message);
         }
         return result;
     }
 
-    private static CursorAgentSessionStore.SessionData RequireLive(string sessionId)
+    private static AppDataIntegrationAgentSessionStore.SessionData RequireLive(string sessionId)
     {
-        CursorAgentSessionStore.SessionData live;
-        if (CursorAgentSessionStore.TryGet(sessionId, out live) && live != null)
+        AppDataIntegrationAgentSessionStore.SessionData live;
+        if (AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live) && live != null)
             return live;
-        live = CursorAgentSessionBL.HydrateLive(sessionId);
+        live = AppDataIntegrationAgentSessionBL.HydrateLive(sessionId);
         if (live == null) throw new InvalidOperationException("Session not found.");
         return live;
     }
@@ -335,15 +335,15 @@ public class CursorAgentController : SecureBaseController
 
     private static bool EnsureAdmin<T>(OperationCallResult<T> result)
     {
-        if (!CursorAgentConfig.AdminOnly || AppSecurityUserBL.IsAdminUser())
+        if (!AppDataIntegrationAgentConfig.AdminOnly || AppSecurityUserBL.IsAdminUser())
             return true;
-        Fail(result, "CursorAgent_Forbidden", "Administrator access is required.");
+        Fail(result, "AppDataIntegrationAgent_Forbidden", "Administrator access is required.");
         return false;
     }
 
     private static void Fail<T>(OperationCallResult<T> result, string code, string message)
     {
         result.ValidationResult.Items.Add(new ValidationItem(
-            typeof(CursorAgentController), code, ValidationItemType.Error, message));
+            typeof(AppDataIntegrationAgentController), code, ValidationItemType.Error, message));
     }
 }

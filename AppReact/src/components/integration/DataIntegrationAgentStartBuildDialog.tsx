@@ -9,9 +9,9 @@ import {
   AppConfigPackExecuteResultDto,
   AppConfigPackPreviewItemDto,
 } from '../../webapi/appConfigPackSvc';
-import { readCursorWorkspaceFile } from '../../webapi/cursoragentsvc';
+import { readAppDataIntegrationAgentWorkspaceFile } from '../../webapi/appDataIntegrationAgentSvc';
 
-export interface CursorAgentStartBuildDialogProps {
+export interface DataIntegrationAgentStartBuildDialogProps {
   isOpen: boolean;
   sessionId: string | null;
   packPath: string | null;
@@ -19,7 +19,7 @@ export interface CursorAgentStartBuildDialogProps {
   onClose: () => void;
 }
 
-const CursorAgentStartBuildDialog: React.FC<CursorAgentStartBuildDialogProps> = ({
+const DataIntegrationAgentStartBuildDialog: React.FC<DataIntegrationAgentStartBuildDialogProps> = ({
   isOpen,
   sessionId,
   packPath,
@@ -147,7 +147,7 @@ const CursorAgentStartBuildDialog: React.FC<CursorAgentStartBuildDialogProps> = 
       setProgressPercent(10);
       setProgressMessage('Loading pack…');
       try {
-        const text = await readCursorWorkspaceFile(sessionId, packPath);
+        const text = await readAppDataIntegrationAgentWorkspaceFile(sessionId, packPath);
         const loaded = await appConfigPackSvc.Load(text);
         if (cancelled) return;
         const next = loaded?.Object;
@@ -359,4 +359,4 @@ const CursorAgentStartBuildDialog: React.FC<CursorAgentStartBuildDialogProps> = 
   );
 };
 
-export default CursorAgentStartBuildDialog;
+export default DataIntegrationAgentStartBuildDialog;

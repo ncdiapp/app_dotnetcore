@@ -8,14 +8,14 @@ using App.BL.AppReportAgent;
 using App.BL.DbGenie;
 using APP.Components.EntityDto;
 
-namespace App.BL.CursorAgent
+namespace App.BL.AppDataIntegrationAgent
 {
-    public static class CursorAgentSkillBL
+    public static class AppDataIntegrationAgentSkillBL
     {
-        public const string Policy = "cursor-agent-policy";
-        public const string ImportPack = "cursor-agent-import-pack";
-        public const string GatedSql = "cursor-agent-gated-sql";
-        public const string Workspace = "cursor-agent-workspace";
+        public const string Policy = "app-data-integration-agent-policy";
+        public const string ImportPack = "app-data-integration-agent-import-pack";
+        public const string GatedSql = "app-data-integration-agent-gated-sql";
+        public const string Workspace = "app-data-integration-agent-workspace";
 
         public static string BuildAlwaysOnPolicy(int? skillDataSourceId, int saasApplicationId, int? dataSourceRegisterId)
         {
@@ -52,10 +52,10 @@ namespace App.BL.CursorAgent
         public static string GetSkill(int? skillDataSourceId, string name)
         {
             EnsureSeeded(skillDataSourceId);
-            if (string.Equals(name, CursorAgentSkillCatalogBL.SqlSkillName, StringComparison.OrdinalIgnoreCase)
+            if (string.Equals(name, AppDataIntegrationAgentSkillCatalogBL.SqlSkillName, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(name, "SqlSkill", StringComparison.OrdinalIgnoreCase))
                 return AppDbGenieBL.GetComposedSqlSkillPrompt();
-            if (string.Equals(name, CursorAgentSkillCatalogBL.ReportSkillName, StringComparison.OrdinalIgnoreCase)
+            if (string.Equals(name, AppDataIntegrationAgentSkillCatalogBL.ReportSkillName, StringComparison.OrdinalIgnoreCase)
                 || string.Equals(name, "ReportSkill", StringComparison.OrdinalIgnoreCase))
                 return AppReportAgentBL.GetComposedReportSkillPrompt();
             return LoadComposed(skillDataSourceId, name);
@@ -80,7 +80,7 @@ namespace App.BL.CursorAgent
             var existing = AppAISkillBL.GetSkillByName(dsId, name);
             if (existing != null)
             {
-                // Keep managed cursor-agent-* skills in sync with code (Seed used to insert-only).
+                // Keep managed app-data-integration-agent-* skills in sync with code (Seed used to insert-only).
                 if (!string.Equals(existing.SkillContent ?? "", content ?? "", StringComparison.Ordinal))
                 {
                     existing.Description = description;
@@ -157,7 +157,7 @@ Hard rules:
 
 1. On a new request, ask clarifying questions first and WAIT. Establish screen pattern first: Search+MasterDetail vs ListEdit (organizedType List). If the user said List Edit / ListEdit, use ListEdit only — no Search pair.
 2. If the user only wants to see table data / open DB Table/View Data Preview — call preview_tables_data (chat shows Open); do NOT generate Search or AppConfigPack. For a custom SELECT grid use open_query_result.
-3. Call get_skill('cursor-agent-import-pack') if you need the JSON contract (PROMPT.md is attached as a skill ref).
+3. Call get_skill('app-data-integration-agent-import-pack') if you need the JSON contract (PROMPT.md is attached as a skill ref).
 4. Write the pack to packs/<name>.appConfigPack.json via write_workspace_file.
 5. Call validate_config_pack then preview_config_pack.
 6. Do not call propose_import_pack. Tell the user the workspace file is ready so they can click Start Build in this chat.

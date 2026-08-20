@@ -8,9 +8,9 @@ using System.Text.RegularExpressions;
 using App.BL;
 using Newtonsoft.Json;
 
-namespace App.BL.CursorAgent
+namespace App.BL.AppDataIntegrationAgent
 {
-    public static class CursorSqlGateBL
+    public static class AppDataIntegrationSqlGateBL
     {
         public enum SqlKind
         {
