@@ -18,7 +18,7 @@ namespace App.BL.AppDataIntegrationAgent
 
         private static HttpClient CreateClient()
         {
-            var client = new HttpClient { Timeout = TimeSpan.FromMinutes(15) };
+            var client = new HttpClient { Timeout = TimeSpan.FromMinutes(AppDataIntegrationAgentConfig.HttpClientTimeoutMinutes) };
             return client;
         }
 
@@ -193,7 +193,13 @@ namespace App.BL.AppDataIntegrationAgent
 
         public static bool IsStreamGone(Exception ex)
         {
-            var msg = ex?.Message ?? "";
+            return IsRecoverableStreamMessage(ex?.Message);
+        }
+
+        public static bool IsRecoverableStreamMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return false;
+            var msg = message;
             return msg.IndexOf("no longer available", StringComparison.OrdinalIgnoreCase) >= 0
                 || msg.IndexOf("stream_expired", StringComparison.OrdinalIgnoreCase) >= 0
                 || msg.IndexOf("stream expired", StringComparison.OrdinalIgnoreCase) >= 0;

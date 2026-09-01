@@ -24,6 +24,8 @@ import {
   listAppDataIntegrationAgentSkillMenu,
   listAppDataIntegrationAgentWorkspaceFiles,
   readAppDataIntegrationAgentWorkspaceFile,
+  downloadAppDataIntegrationAgentWorkspaceFile,
+  deleteAppDataIntegrationAgentWorkspaceFile,
   renameAppDataIntegrationAgentSession,
 } from '../../webapi/appDataIntegrationAgentSvc';
 import { endpoints } from '../../webapi/endpoints';
@@ -231,6 +233,87 @@ function looksLikePackReadyForBuild(content: string): boolean {
     .test(content || '');
 }
 
+/** Session may still need re-attach even when DB status is Completed (e.g. timed-out Phase B). */
+function sessionLooksIncomplete(status: string, finalResponse: string, lastAssistantContent?: string): boolean {
+  const st = (status || '').toLowerCase();
+  if (st === 'inprogress' || st === 'failed') return true;
+  const text = `${finalResponse || ''}\n${lastAssistantContent || ''}`.toLowerCase();
+  if (text.includes('task may be incomplete')) return true;
+  if (text.includes('cursor did not return a text reply, but workspace')) return true;
+  if (/uploading\s+phase\s+b/.test(text) && !/phase\s+b\s+(complete|done|finished)/.test(text)) return true;
+  if (/next step:\s*send\s+continue/.test(text)) return true;
+  return false;
+}
+
+function stepTypeOf(s: AppDataIntegrationAgentStepEvent): string {
+  return String(s?.Type ?? (s as any)?.type ?? '').toLowerCase();
+}
+
+function isThinkingStep(s: AppDataIntegrationAgentStepEvent): boolean {
+  const t = stepTypeOf(s);
+  return t === 'thinking' || t === 'thinking-delta';
+}
+
+/** Cursor streams thinking as many small deltas; merge for readable UI. */
+function mergeThinkingSteps(steps: AppDataIntegrationAgentStepEvent[]): AppDataIntegrationAgentStepEvent[] {
+  const out: AppDataIntegrationAgentStepEvent[] = [];
+  for (const s of steps || []) {
+    if (isThinkingStep(s)) {
+      const last = out[out.length - 1];
+      if (last && isThinkingStep(last)) {
+        const prevDesc = String(last.Description ?? (last as any).description ?? '');
+        const chunk = String(s.Description ?? (s as any).description ?? '');
+        last.Description = prevDesc + chunk;
+        const prevDetails = String(last.Details ?? (last as any).details ?? '');
+        const chunkDetails = String(s.Details ?? (s as any).details ?? '');
+        (last as any).Details = prevDetails + chunkDetails;
+        continue;
+      }
+    }
+    out.push({ ...s });
+  }
+  return out;
+}
+
+function stepDisplayText(s: AppDataIntegrationAgentStepEvent): string {
+  const t = stepTypeOf(s);
+  const desc = String(s.Description ?? (s as any).description ?? '');
+  if (t === 'tool_call') {
+    const tool = String(s.ToolName ?? (s as any).toolName ?? '').trim();
+    if (desc) return desc;
+    return tool || 'tool';
+  }
+  const details = String(s.Details ?? (s as any).details ?? '');
+  if (isThinkingStep(s)) {
+    return details.length > desc.length ? details : desc;
+  }
+  const trimmed = details.trim();
+  if (trimmed.startsWith('{') && trimmed.length > 120) return desc;
+  return details.length > desc.length ? details : desc;
+}
+
+/** Steps shown while streaming — hide tool_call JSON; collapse thinking into one block. */
+function stepsForStreamingDisplay(steps: AppDataIntegrationAgentStepEvent[]): AppDataIntegrationAgentStepEvent[] {
+  const merged = mergeThinkingSteps(steps).filter(s => stepTypeOf(s) !== 'tool_call');
+  const thinkingParts: string[] = [];
+  const other: AppDataIntegrationAgentStepEvent[] = [];
+  for (const s of merged) {
+    if (isThinkingStep(s)) thinkingParts.push(stepDisplayText(s));
+    else other.push(s);
+  }
+  const display: AppDataIntegrationAgentStepEvent[] = [...other];
+  if (thinkingParts.length > 0) {
+    display.push({
+      Type: 'thinking',
+      Description: thinkingParts.join('\n\n'),
+      Details: thinkingParts.join('\n\n'),
+      IsSuccess: true,
+      Timestamp: new Date().toISOString(),
+    });
+  }
+  return display.slice(-3);
+}
+
 function mapOpenUiOffersFromHistory(raw: any): OpenUiOffer[] {
   const list = raw?.OpenUiOffers ?? raw?.openUiOffers;
   if (!Array.isArray(list) || list.length === 0) return [];
@@ -299,7 +382,7 @@ const formatElapsed = (seconds: number) => {
   return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
-const WorkingStatus: React.FC<{ label: string }> = ({ label }) => {
+const WorkingStatus: React.FC<{ label: string; onStop?: () => void }> = ({ label, onStop }) => {
   const { theme } = useTheme();
   const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
@@ -308,10 +391,26 @@ const WorkingStatus: React.FC<{ label: string }> = ({ label }) => {
     const id = window.setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 250);
     return () => window.clearInterval(id);
   }, []);
+  const longRun = elapsed >= 600;
   return (
-    <div className={`flex items-center text-xs mb-2 ${theme.label}`}>
-      <i className="fa-solid fa-circle-notch animate-spin mr-2" />
+    <div className={`flex items-center flex-wrap gap-2 text-xs mb-2 ${theme.label}`}>
+      <i className="fa-solid fa-circle-notch animate-spin" />
       <span>{label} {formatElapsed(elapsed)}</span>
+      {longRun && (
+        <span className="text-amber-700 dark:text-amber-300">
+          Long run — often MCP upload retries, not file size. You can Stop and use workspace files.
+        </span>
+      )}
+      {onStop && (
+        <button
+          type="button"
+          onClick={onStop}
+          className={`px-2 h-6 text-xs rounded-[4px] shrink-0 ${theme.button_default}`}
+          title="Stop waiting (keeps files already in workspace)"
+        >
+          <i className="fa-solid fa-stop mr-1" />Stop
+        </button>
+      )}
     </div>
   );
 };
@@ -673,7 +772,9 @@ const DataIntegrationAgent: React.FC = () => {
   const [input, setInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const isRunningRef = useRef(false);
+  const [workingLabel, setWorkingLabel] = useState('Thinking');
   const [error, setError] = useState<string | null>(null);
+  const [incompleteWarning, setIncompleteWarning] = useState<string | null>(null);
   const [pendingGate, setPendingGate] = useState<AppDataIntegrationAgentGateEvent | null>(null);
   const [gateFeedback, setGateFeedback] = useState('');
   const [tablePreviewOpen, setTablePreviewOpen] = useState(false);
@@ -682,9 +783,11 @@ const DataIntegrationAgent: React.FC = () => {
   const [files, setFiles] = useState<AppDataIntegrationAgentWorkspaceFile[]>([]);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [previewContent, setPreviewContent] = useState('');
+  const [previewTruncated, setPreviewTruncated] = useState(false);
   const [previewHeight, setPreviewHeight] = useState(PREVIEW_DEFAULT_PX);
   const [previewCopyHint, setPreviewCopyHint] = useState<string | null>(null);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [selectedWorkspacePaths, setSelectedWorkspacePaths] = useState<Set<string>>(() => new Set());
   const [chatListWidth, setChatListWidth] = useState(CHAT_LIST_DEFAULT_PX);
   const [workspaceWidth, setWorkspaceWidth] = useState(WORKSPACE_DEFAULT_PX);
   const layoutRef = useRef<HTMLDivElement | null>(null);
@@ -806,6 +909,7 @@ const DataIntegrationAgent: React.FC = () => {
     setEditText('');
     setBuildPackPath(null);
     setPreviewCopyHint(null);
+    setSelectedWorkspacePaths(new Set());
   }, []);
 
   const applyLoadedSession = useCallback(async (summary: AppDataIntegrationAgentSessionSummary) => {
@@ -828,9 +932,23 @@ const DataIntegrationAgent: React.FC = () => {
     const last = mapped[mapped.length - 1];
     if (last?.role === 'assistant' && !last.content && final) last.content = final;
     setMessages(mapped);
+    const status = String(summary.Status ?? session.Status ?? session.status ?? '');
+    if (sessionLooksIncomplete(status, final, last?.role === 'assistant' ? last.content : '')) {
+      setIncompleteWarning(
+        'This chat may be incomplete. Click Continue above or type Continue below and send.'
+      );
+    }
     refreshFiles(summary.SessionGuid);
     return true;
   }, [refreshFiles, resetChatUi]);
+
+  useEffect(() => {
+    const existing = new Set(files.filter(f => !f.IsDirectory).map(f => workspaceFilePath(f)));
+    setSelectedWorkspacePaths(prev => {
+      const next = new Set(Array.from(prev).filter(p => existing.has(p)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [files]);
 
   useEffect(() => {
     adminSvc.retrieveSelectedApplicationPackages(true).then((list: any) => {
@@ -907,7 +1025,27 @@ const DataIntegrationAgent: React.FC = () => {
 
   const makeHandlers = useCallback(() => ({
     onStep: (step: AppDataIntegrationAgentStepEvent) => {
-      updateLastAssistant(msg => ({ ...msg, steps: [...msg.steps, step] }));
+      const stepType = stepTypeOf(step);
+      if (stepType === 'still_working')
+        setWorkingLabel('Agent still working…');
+      updateLastAssistant(msg => {
+        const steps = [...msg.steps];
+        if (isThinkingStep(step)) {
+          const last = steps[steps.length - 1];
+          if (last && isThinkingStep(last)) {
+            const prevDesc = String(last.Description ?? (last as any).description ?? '');
+            const chunk = String(step.Description ?? (step as any).description ?? '');
+            steps[steps.length - 1] = {
+              ...last,
+              Description: prevDesc + chunk,
+              Details: String(last.Details ?? (last as any).details ?? '')
+                + String(step.Details ?? (step as any).details ?? ''),
+            };
+            return { ...msg, steps };
+          }
+        }
+        return { ...msg, steps: [...steps, step] };
+      });
     },
     onToken: (token: string) => {
       updateLastAssistant(msg => ({ ...msg, streamingContent: (msg.streamingContent || '') + token }));
@@ -983,6 +1121,14 @@ const DataIntegrationAgent: React.FC = () => {
       try {
         setPendingGate(null);
         const final = String((result as any)?.FinalResponse ?? (result as any)?.finalResponse ?? '').trim();
+        const isIncomplete = !!(result?.IsIncomplete ?? (result as any)?.isIncomplete);
+        if (isIncomplete) {
+          setIncompleteWarning(
+            'Task may be incomplete — workspace files may be partial. Click Continue above or type Continue below and send.'
+          );
+        } else {
+          setIncompleteWarning(null);
+        }
         const hist = (result as any)?.UpdatedHistory ?? (result as any)?.updatedHistory ?? [];
         const fromHist = Array.isArray(hist) && hist.length
           ? historyText(hist[hist.length - 1])
@@ -1019,16 +1165,24 @@ const DataIntegrationAgent: React.FC = () => {
       } finally {
         setIsRunning(false);
         isRunningRef.current = false;
+        setWorkingLabel('Thinking');
       }
     },
     onError: (message: string) => {
       try {
         setPendingGate(null);
-        updateLastAssistant(msg => ({ ...msg, content: `Error: ${message}`, isStreaming: false }));
-        setError(message);
+        const cancelled = /cancelled/i.test(message || '');
+        updateLastAssistant(msg => ({
+          ...msg,
+          content: cancelled ? (msg.content || msg.streamingContent || 'Stopped.') : `Error: ${message}`,
+          streamingContent: '',
+          isStreaming: false,
+        }));
+        if (!cancelled) setError(message);
       } finally {
         setIsRunning(false);
         isRunningRef.current = false;
+        setWorkingLabel('Thinking');
       }
     },
   }), [addTabAndNavigate, refreshFiles, refreshHistory, updateLastAssistant]);
@@ -1041,6 +1195,8 @@ const DataIntegrationAgent: React.FC = () => {
     }
     isRunningRef.current = true;
     setError(null);
+    setIncompleteWarning(null);
+    setWorkingLabel('Thinking');
     setIsRunning(true);
     setPendingGate(null);
     const now = new Date().toISOString();
@@ -1119,6 +1275,10 @@ const DataIntegrationAgent: React.FC = () => {
     }
   }, [isRunning, makeHandlers, sessionId]);
 
+  const handleStop = useCallback(() => {
+    void appDataIntegrationAgentService.cancel();
+  }, []);
+
   const handleConfirmGate = useCallback((confirmed: boolean) => {
     if (!pendingGate) return;
     appDataIntegrationAgentService.confirmGate(pendingGate.GateId, confirmed, confirmed ? undefined : gateFeedback);
@@ -1139,12 +1299,46 @@ const DataIntegrationAgent: React.FC = () => {
     );
   }, [addTabAndNavigate]);
 
+  const toggleWorkspaceSelection = useCallback((relativePath: string) => {
+    const path = normalizeWorkspacePath(relativePath);
+    if (!path) return;
+    setSelectedWorkspacePaths(prev => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+  }, []);
+
+  const handleDeleteSelectedWorkspaceFiles = useCallback(async () => {
+    if (!sessionId || selectedWorkspacePaths.size === 0) return;
+    const paths = Array.from(selectedWorkspacePaths);
+    const n = paths.length;
+    if (!window.confirm(`Delete ${n} workspace file(s)? This cannot be undone.`)) return;
+    setError(null);
+    try {
+      for (const path of paths) {
+        await deleteAppDataIntegrationAgentWorkspaceFile(sessionId, path);
+      }
+      setSelectedWorkspacePaths(new Set());
+      if (previewPath && paths.some(p => normalizeWorkspacePath(p) === normalizeWorkspacePath(previewPath))) {
+        setPreviewPath(null);
+        setPreviewContent('');
+        setPreviewTruncated(false);
+      }
+      refreshFiles(sessionId);
+    } catch (err: any) {
+      setError(err?.message ?? 'Failed to delete workspace file(s)');
+    }
+  }, [previewPath, refreshFiles, selectedWorkspacePaths, sessionId]);
+
   const openPreview = useCallback(async (relativePath: string) => {
     if (!sessionId) return;
     try {
-      const content = await readAppDataIntegrationAgentWorkspaceFile(sessionId, relativePath);
+      const { content, truncated } = await readAppDataIntegrationAgentWorkspaceFile(sessionId, relativePath);
       setPreviewPath(relativePath);
       setPreviewContent(content);
+      setPreviewTruncated(truncated);
       setPreviewCopyHint(null);
       setWorkspaceOpen(true);
     } catch (err: any) {
@@ -1177,6 +1371,18 @@ const DataIntegrationAgent: React.FC = () => {
     }
   }, [files, previewContent, previewPath]);
 
+  const downloadPreview = useCallback(async () => {
+    if (!sessionId || !previewPath) return;
+    try {
+      await downloadAppDataIntegrationAgentWorkspaceFile(sessionId, previewPath);
+      setPreviewCopyHint('Downloaded');
+      window.setTimeout(() => setPreviewCopyHint(null), 1500);
+    } catch (err: any) {
+      setPreviewCopyHint(err?.message || 'Download failed');
+      window.setTimeout(() => setPreviewCopyHint(null), 2000);
+    }
+  }, [previewPath, sessionId]);
+
   const chatTitle = (() => {
     const fromList = chatHistory.find(c => c.SessionGuid === sessionId);
     const fromMessages = messages.find(m => m.role === 'user')?.content;
@@ -1201,12 +1407,24 @@ const DataIntegrationAgent: React.FC = () => {
       .map(p => p.toLowerCase())
   );
   const contextLocked = isRunning;
-  const currentStatus = chatHistory.find(c => c.SessionGuid === sessionId)?.Status ?? '';
-  const canResume = hasAgent && !isRunning && !!sessionId
-    && currentStatus.toLowerCase() !== 'completed';
+  const currentSession = chatHistory.find(c => c.SessionGuid === sessionId);
+  const currentStatus = currentSession?.Status ?? '';
+  const lastAssistantMsg = messages.filter(m => m.role === 'assistant').pop();
+  const looksIncomplete = sessionLooksIncomplete(
+    currentStatus,
+    currentSession?.FinalResponse ?? '',
+    lastAssistantMsg?.content
+  );
+  const canContinue = hasAgent && !isRunning && !!sessionId
+    && (currentStatus.toLowerCase() !== 'completed' || looksIncomplete || !!incompleteWarning);
 
   return (
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
+      {incompleteWarning && (
+        <div className={`px-3 py-1 text-xs mb-1 ${theme.mainContentSection} text-amber-700 dark:text-amber-300`}>
+          {incompleteWarning}
+        </div>
+      )}
       {error && (
         <div className={`px-3 py-1 text-xs mb-1 ${theme.mainContentSection} ${theme.label}`}>{error}</div>
       )}
@@ -1275,20 +1493,25 @@ const DataIntegrationAgent: React.FC = () => {
                 {chatTitle}
               </div>
               <div className="flex items-center space-x-2 shrink-0 ml-2">
-                {canResume && (
+                {canContinue && (
                   <button
                     type="button"
                     onClick={handleResume}
                     disabled={isRunning}
                     className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_default}`}
-                    title="Continue this chat from where it stopped (failed, cancelled, or interrupted)."
+                    title="Re-attach to the Cursor cloud run and finish unfinished work (no need to repeat your checklist)."
                   >
-                    Resume
+                    Continue
                   </button>
                 )}
                 {isRunning && (
-                  <button type="button" onClick={() => appDataIntegrationAgentService.cancel()} className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_default}`}>
-                    Cancel
+                  <button
+                    type="button"
+                    onClick={handleStop}
+                    className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_default}`}
+                    title="Stop waiting (keeps workspace files)"
+                  >
+                    <i className="fa-solid fa-stop mr-1" />Stop
                   </button>
                 )}
                 {workspaceFiles.length > 0 && (
@@ -1334,15 +1557,29 @@ const DataIntegrationAgent: React.FC = () => {
                         <div className={`w-full text-sm leading-relaxed whitespace-pre-wrap ${t('text_title')}`}>
                           {msg.isStreaming && (
                             <>
-                              <WorkingStatus label={pendingGate ? 'Waiting for confirmation' : 'Thinking'} />
+                              <WorkingStatus
+                                label={pendingGate ? 'Waiting for confirmation' : workingLabel}
+                                onStop={handleStop}
+                              />
                               {msg.steps.length > 0 && (
                                 <div className={`mb-3 text-xs ${theme.label}`}>
-                                  {msg.steps.slice(-8).map((s, idx) => (
-                                    <div key={idx} className="truncate">
-                                      <i className="fa-solid fa-gear mr-1" />
-                                      {s.Description || (s as any).description}
-                                    </div>
-                                  ))}
+                                  {stepsForStreamingDisplay(msg.steps).map((s, idx) => {
+                                    const t = stepTypeOf(s);
+                                    const icon = t === 'tool_call'
+                                      ? 'fa-wrench'
+                                      : t === 'still_working'
+                                        ? 'fa-hourglass-half'
+                                        : isThinkingStep(s)
+                                          ? 'fa-brain'
+                                          : 'fa-gear';
+                                    const label = isThinkingStep(s) ? 'Thinking: ' : '';
+                                    return (
+                                      <div key={idx} className="break-words whitespace-pre-wrap mb-1">
+                                        <i className={`fa-solid ${icon} mr-1`} />
+                                        {label}{stepDisplayText(s)}
+                                      </div>
+                                    );
+                                  })}
                                 </div>
                               )}
                             </>
@@ -1530,21 +1767,43 @@ const DataIntegrationAgent: React.FC = () => {
                       }
                     }}
                     disabled={isRunning}
-                    placeholder="Message App Data Integration Agent…"
+                    placeholder={looksIncomplete
+                      ? 'Type Continue and send to finish unfinished work…'
+                      : 'Message App Data Integration Agent…'}
                     rows={3}
                     className="w-1 flex-auto px-2 py-1 text-xs resize-none border-0 focus:outline-none bg-transparent"
                   />
-                  <button
-                    type="button"
-                    onClick={handleSend}
-                    disabled={isRunning || !input.trim()}
-                    className={`w-8 h-6 ml-2 shrink-0 ${theme.button_default} rounded-[4px] text-xs`}
-                    title="Send"
-                  >
-                    {isRunning
-                      ? <i className="fa-solid fa-circle-notch animate-spin" />
-                      : <i className="fa-solid fa-paper-plane" />}
-                  </button>
+                  {isRunning ? (
+                    <button
+                      type="button"
+                      onClick={handleStop}
+                      className={`px-3 h-7 ml-2 shrink-0 text-xs rounded-[4px] ${theme.button_default}`}
+                      title="Stop waiting (keeps workspace files)"
+                    >
+                      <i className="fa-solid fa-stop mr-1" />Stop
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleSend}
+                      disabled={!input.trim()}
+                      className={`w-8 h-6 ml-2 shrink-0 ${theme.button_default} rounded-[4px] text-xs`}
+                      title="Send"
+                    >
+                      <i className="fa-solid fa-paper-plane" />
+                    </button>
+                  )}
+                  {canContinue && !input.trim() && (
+                    <button
+                      type="button"
+                      onClick={() => void handleResume()}
+                      disabled={isRunning}
+                      className={`px-2 h-6 ml-2 shrink-0 text-xs rounded-[4px] ${theme.button_default}`}
+                      title="Continue without retyping your checklist"
+                    >
+                      Continue
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1555,27 +1814,59 @@ const DataIntegrationAgent: React.FC = () => {
               <PanelResizeHandle edge="left" label="Resize workspace" onMouseDown={startResize('workspace')} />
               <div className={`flex items-center justify-between px-3 h-10 shrink-0 mb-1 ${theme.mainContentSection}`}>
                   <span className={`text-sm font-semibold truncate ${theme.title}`}>Workspace</span>
-                  <button
-                    type="button"
-                    onClick={() => setWorkspaceOpen(false)}
-                    className={`w-8 h-6 ${theme.button_default} rounded-[4px] text-xs`}
-                    title="Close workspace"
-                  >
-                    <i className="fa-solid fa-xmark" />
-                  </button>
-                </div>
-                <div className={`h-1 flex-auto overflow-auto px-2 py-2 ${theme.mainContentSection}`}>
-                  {workspaceFiles.map(f => (
+                  <div className="flex items-center shrink-0 space-x-1">
+                    {selectedWorkspacePaths.size > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteSelectedWorkspaceFiles()}
+                        disabled={isRunning}
+                        className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_default}`}
+                        title="Delete selected files"
+                      >
+                        <i className="fa-solid fa-trash mr-1" />
+                        Delete ({selectedWorkspacePaths.size})
+                      </button>
+                    )}
                     <button
                       type="button"
-                      key={workspaceFilePath(f)}
-                      className={`block w-full text-left text-xs px-2 py-1 mb-0.5 rounded-[4px] truncate ${theme.button_default}`}
-                      onClick={() => openPreview(workspaceFilePath(f))}
-                      title={workspaceFilePath(f)}
+                      onClick={() => setWorkspaceOpen(false)}
+                      className={`w-8 h-6 ${theme.button_default} rounded-[4px] text-xs`}
+                      title="Close workspace"
                     >
-                      {workspaceFilePath(f)}
+                      <i className="fa-solid fa-xmark" />
                     </button>
-                  ))}
+                  </div>
+                </div>
+                <div className={`h-1 flex-auto overflow-auto px-2 py-2 ${theme.mainContentSection}`}>
+                  {workspaceFiles.map(f => {
+                    const path = workspaceFilePath(f);
+                    const selected = selectedWorkspacePaths.has(path);
+                    return (
+                      <div
+                        key={path}
+                        className={`flex items-center gap-1 mb-0.5 rounded-[4px] px-1 py-0.5 ${
+                          selected ? theme.inputBox : ''
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="shrink-0"
+                          checked={selected}
+                          disabled={isRunning}
+                          onChange={() => toggleWorkspaceSelection(path)}
+                          title="Select for delete"
+                        />
+                        <button
+                          type="button"
+                          className={`block w-1 flex-auto text-left text-xs px-1 py-1 truncate ${theme.button_default} rounded-[4px]`}
+                          onClick={() => openPreview(path)}
+                          title={path}
+                        >
+                          {path}
+                        </button>
+                      </div>
+                    );
+                  })}
                 </div>
                 {previewPath && (
                   <div
@@ -1599,9 +1890,22 @@ const DataIntegrationAgent: React.FC = () => {
                         >
                           <i className="fa-solid fa-copy" />
                         </button>
+                        <button
+                          type="button"
+                          className={`w-8 h-6 ${theme.button_default} rounded-[4px] text-xs`}
+                          title="Download"
+                          onClick={() => void downloadPreview()}
+                        >
+                          <i className="fa-solid fa-download" />
+                        </button>
                       </div>
                     </div>
                     <div className="h-1 flex-auto overflow-auto px-2 pb-1">
+                      {previewTruncated && !isImagePath(previewPath) && (
+                        <div className="text-[10px] text-amber-700 dark:text-amber-300 mb-1">
+                          Preview truncated — use Download for the full file.
+                        </div>
+                      )}
                       {isImagePath(previewPath) && files.find(f => f.RelativePath === previewPath || workspaceFilePath(f) === previewPath)?.PublicUrl ? (
                         <img
                           src={toAppFileUrl(files.find(f => f.RelativePath === previewPath || workspaceFilePath(f) === previewPath)?.PublicUrl)}

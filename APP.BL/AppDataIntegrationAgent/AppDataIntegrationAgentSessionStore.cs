@@ -176,6 +176,16 @@ namespace App.BL.AppDataIntegrationAgent
             return list.Count == 0 ? null : list;
         }
 
+        public static List<string> PeekTurnPackPaths(SessionData session)
+        {
+            if (session?.CurrentTurnPackPaths == null || session.CurrentTurnPackPaths.Count == 0)
+                return null;
+            return session.CurrentTurnPackPaths
+                .Where(p => !string.IsNullOrWhiteSpace(p))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
         public static void NoteOpenUiOffer(SessionData session, AppDataIntegrationAgentOpenUiOfferDto offer)
         {
             if (session == null || offer == null) return;

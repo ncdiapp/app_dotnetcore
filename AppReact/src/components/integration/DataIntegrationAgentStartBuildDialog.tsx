@@ -147,8 +147,8 @@ const DataIntegrationAgentStartBuildDialog: React.FC<DataIntegrationAgentStartBu
       setProgressPercent(10);
       setProgressMessage('Loading pack…');
       try {
-        const text = await readAppDataIntegrationAgentWorkspaceFile(sessionId, packPath);
-        const loaded = await appConfigPackSvc.Load(text);
+        const { content } = await readAppDataIntegrationAgentWorkspaceFile(sessionId, packPath);
+        const loaded = await appConfigPackSvc.Load(content);
         if (cancelled) return;
         const next = loaded?.Object;
         if (!loaded?.IsSuccessful || !next) {

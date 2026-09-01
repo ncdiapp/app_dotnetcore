@@ -161,6 +161,8 @@ namespace APP.Components.EntityDto
         public List<string> WorkspaceFiles { get; set; } = new List<string>();
         /// <summary>Open offers from this turn (in case navigate events were polled after done).</summary>
         public List<AppDataIntegrationAgentOpenUiOfferDto> OpenUiOffers { get; set; }
+        /// <summary>Run timed out or Cursor cloud run still active — workspace files may be partial.</summary>
+        public bool IsIncomplete { get; set; }
     }
 
     public class AppDataIntegrationAgentEventDto

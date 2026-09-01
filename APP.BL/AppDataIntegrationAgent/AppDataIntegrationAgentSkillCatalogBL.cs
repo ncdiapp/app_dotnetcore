@@ -349,7 +349,7 @@ namespace App.BL.AppDataIntegrationAgent
 
         private static string PlmSkillLabel(string hintKey)
         {
-            if (hintKey == "plm-dw") return "Import from PLM Data Warehouse";
+            if (hintKey == "plm-dw") return "Import Data Model and Reference Data";
             if (hintKey == "plm-pom-grading") return "Import PLM POM and Grading";
             if (hintKey == "plm-search-view") return "Import PLM Search View";
             if (hintKey == "plm") return "PLM Integration";
@@ -366,7 +366,7 @@ namespace App.BL.AppDataIntegrationAgent
                 if (IsPlmCatalogSkill(activeSkillKey)) return;
                 sb.AppendLine("## PLM Integration skill mismatch");
                 sb.AppendLine("The user message targets PLM Integration, but the active skill is not a PLM Integration skill.");
-                sb.AppendLine("Briefly recommend switching Skill to one of: Import from PLM Data Warehouse, Import PLM POM and Grading, or Import PLM Search View.");
+                sb.AppendLine("Briefly recommend switching Skill to one of: Import Data Model and Reference Data, Import PLM POM and Grading, or Import PLM Search View.");
                 sb.AppendLine("The chat UI shows clickable skill buttons below your reply — mention that the user can click them (or switch Skill at the top and send again / start a new chat).");
                 sb.AppendLine("Do not proceed with App Config Builder workflows until the user switches skill.");
                 sb.AppendLine();

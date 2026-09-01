@@ -69,6 +69,17 @@ export interface AppDataIntegrationAgentDoneEvent {
   WorkspaceFiles: string[];
   OpenUiOffers?: any[];
   openUiOffers?: any[];
+  IsIncomplete?: boolean;
+  isIncomplete?: boolean;
+}
+
+export interface AppDataIntegrationAgentFileContent {
+  Content?: string;
+  content?: string;
+  Truncated?: boolean;
+  truncated?: boolean;
+  RelativePath?: string;
+  relativePath?: string;
 }
 
 export interface AppDataIntegrationAgentEventHandlers {
@@ -386,10 +397,68 @@ export async function listAppDataIntegrationAgentWorkspaceFiles(sessionId: strin
   return data?.Object ?? [];
 }
 
-export async function readAppDataIntegrationAgentWorkspaceFile(sessionId: string, relativePath: string): Promise<string> {
+export async function readAppDataIntegrationAgentWorkspaceFile(
+  sessionId: string,
+  relativePath: string
+): Promise<{ content: string; truncated: boolean }> {
   const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/ReadWorkspaceFile?sessionId=${sessionId || ''}&relativePath=${encodeURIComponent(relativePath || '')}`;
   const resp = await fetch(url, { headers: getHeaders() });
   if (!resp.ok) throw new Error('Failed to read workspace file');
   const data = await resp.json();
-  return data?.Object?.Content ?? '';
+  const obj = (data?.Object ?? {}) as AppDataIntegrationAgentFileContent;
+  return {
+    content: obj.Content ?? obj.content ?? '',
+    truncated: !!(obj.Truncated ?? obj.truncated),
+  };
+}
+
+function parseFileNameFromContentDisposition(header: string | null): string | null {
+  if (!header) return null;
+  const utf8 = /filename\*=(?:UTF-8'')?([^;]+)/i.exec(header);
+  if (utf8?.[1]) {
+    try { return decodeURIComponent(utf8[1].replace(/"/g, '').trim()); } catch { /* ignore */ }
+  }
+  const plain = /filename="?([^";]+)"?/i.exec(header);
+  return plain?.[1]?.trim() ?? null;
+}
+
+export async function downloadAppDataIntegrationAgentWorkspaceFile(
+  sessionId: string,
+  relativePath: string
+): Promise<void> {
+  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/DownloadWorkspaceFile?sessionId=${sessionId || ''}&relativePath=${encodeURIComponent(relativePath || '')}`;
+  const resp = await fetch(url, { headers: getHeaders() });
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => '');
+    throw new Error(errText || `Download failed (${resp.status})`);
+  }
+  const blob = await resp.blob();
+  const fallbackName = (relativePath || '').split(/[/\\]/).pop() || 'workspace-file';
+  const name =
+    parseFileNameFromContentDisposition(resp.headers.get('Content-Disposition')) ||
+    fallbackName;
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+}
+
+export async function deleteAppDataIntegrationAgentWorkspaceFile(
+  sessionId: string,
+  relativePath: string
+): Promise<void> {
+  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/DeleteWorkspaceFile`;
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ sessionId, relativePath }),
+  });
+  if (!resp.ok) throw new Error('Failed to delete workspace file');
+  const data = await resp.json();
+  const err = data?.ValidationResult?.Items?.find((i: any) => i.Type === 'Error' || i.ItemType === 1);
+  if (err?.Message) throw new Error(err.Message);
 }

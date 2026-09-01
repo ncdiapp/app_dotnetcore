@@ -9,9 +9,9 @@ export type PlmSkillSuggestion = {
 };
 
 const PLM_SKILLS: PlmSkillSuggestion[] = [
-  { key: 'plm-dw', label: 'Import from PLM Data Warehouse' },
-  { key: 'plm-pom-grading', label: 'Import PLM POM and Grading' },
-  { key: 'plm-search-view', label: 'Import PLM Search View' },
+  { key: 'plm-dw', label: 'Import Data Model and Reference Data' },
+  { key: 'plm-pom-grading', label: 'Import POM and Grading' },
+  { key: 'plm-search-view', label: 'Import Search View' },
 ];
 
 type Scored = PlmSkillSuggestion & { score: number };
@@ -23,7 +23,7 @@ function scorePlmSkills(text: string): Scored[] {
   const scores: Scored[] = [
     {
       key: 'plm-dw',
-      label: 'Import from PLM Data Warehouse',
+      label: 'Import Data Model and Reference Data',
       score: 0,
     },
     {
