@@ -39,6 +39,7 @@ import { useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosi
 import TablesDataPreviewModal, { type TablePreviewItem } from '../transaction/TablesDataPreviewModal';
 import DataIntegrationAgentChatManagement, { RenameChatDialog } from './DataIntegrationAgentChatManagement';
 import DataIntegrationAgentStartBuildDialog from './DataIntegrationAgentStartBuildDialog';
+import { suggestPlmSkills, type PlmSkillSuggestion } from './plmSkillSuggestionHelper';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
@@ -1350,6 +1351,40 @@ const DataIntegrationAgent: React.FC = () => {
                           {!msg.isStreaming && !(msg.content || msg.streamingContent) && (
                             <div className={theme.label}>No reply received.</div>
                           )}
+                          {(() => {
+                            if (msg.isStreaming) return null;
+                            const prev = messages[i - 1];
+                            const plmSuggestions: PlmSkillSuggestion[] =
+                              prev?.role === 'user'
+                                ? suggestPlmSkills(prev.content || prev.streamingContent || '', skillKey)
+                                : [];
+                            if (plmSuggestions.length === 0) return null;
+                            const currentSkillLabel =
+                              skillItems.find(s => itemKey(s) === skillKey)?.Label ?? skillKey;
+                            return (
+                              <div className={`mt-4 px-3 py-3 rounded-[4px] border text-xs ${theme.inputBox}`}>
+                                <div className={`font-semibold mb-1 ${theme.title}`}>
+                                  Switch to PLM Integration skill
+                                </div>
+                                <div className={`mb-2 ${theme.label}`}>
+                                  当前 Skill 是「{currentSkillLabel}」。您的问题属于 PLM Integration，建议切换到下方推荐 Skill 后再继续（或新开 Chat）。
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {plmSuggestions.map(s => (
+                                    <button
+                                      key={s.key}
+                                      type="button"
+                                      disabled={isRunning}
+                                      className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_secondary} disabled:opacity-50`}
+                                      onClick={() => setSkillKey(s.key)}
+                                    >
+                                      {s.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
                           {(() => {
                             if (msg.isStreaming) return null;
                             const startBuildPacks = packPathsForStartBuild(msg, workspacePackPathSet);

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using App.BL.AppMgr.AiSkill;
 using App.BL.AppReportAgent;
 using App.BL.DbGenie;
@@ -197,6 +198,7 @@ namespace App.BL.AppDataIntegrationAgent
             sb.AppendLine("You are the AppAI App Data Integration Agent.");
             sb.AppendLine();
             AppendOpenUiCapability(sb);
+            AppendDataSourceScopeGuidance(sb, live);
             sb.AppendLine("## This session");
             sb.AppendLine("- Target Application (SaasApplicationId): " + (live?.SaasApplicationId ?? 0));
             if (live?.DataSourceRegisterId != null)
@@ -207,9 +209,10 @@ namespace App.BL.AppDataIntegrationAgent
             sb.AppendLine("- SELECT may run via run_select. INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD must go through propose_sql and wait.");
             if (live != null && !live.AllowProposeImport)
                 sb.AppendLine("- propose_import_pack is disabled for this skill. Do not call it.");
-            sb.AppendLine();
 
             var key = NormalizeKey(live?.SkillKey);
+            AppendPlmSkillMismatchGuidance(sb, key, userMessage);
+            sb.AppendLine();
             if (key.StartsWith(NamedPrefix, StringComparison.OrdinalIgnoreCase))
             {
                 var name = key.Substring(NamedPrefix.Length);
@@ -263,9 +266,142 @@ namespace App.BL.AppDataIntegrationAgent
             if (!string.IsNullOrWhiteSpace(live?.SkillKey))
                 sb.AppendLine("Active skill: " + live.SkillKey);
             AppendOpenUiCapability(sb);
+            AppendDataSourceScopeGuidance(sb, live);
+            AppendPlmSkillMismatchGuidance(sb, NormalizeKey(live?.SkillKey), userMessage);
             sb.AppendLine("## User follow-up");
             sb.AppendLine(userMessage ?? "");
             return sb.ToString();
+        }
+
+        private static bool IsPlmCatalogSkill(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key)) return false;
+            return key.Equals("plm-dw", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("plm-pom-grading", StringComparison.OrdinalIgnoreCase)
+                || key.Equals("plm-search-view", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string DetectPlmSkillHint(string userMessage)
+        {
+            var t = (userMessage ?? "").Trim();
+            if (string.IsNullOrEmpty(t)) return null;
+
+            int ScoreDw()
+            {
+                var s = 0;
+                if (Regex.IsMatch(t, @"\bplm\s*data\s*warehouse\b", RegexOptions.IgnoreCase)) s += 3;
+                if (Regex.IsMatch(t, @"\bplm\s*dw\b", RegexOptions.IgnoreCase)) s += 3;
+                if (Regex.IsMatch(t, @"data\s*warehouse\s*import", RegexOptions.IgnoreCase)) s += 2;
+                if (Regex.IsMatch(t, @"importfromplmdw", RegexOptions.IgnoreCase)) s += 3;
+                if (Regex.IsMatch(t, @"dw\s*tab", RegexOptions.IgnoreCase)) s += 2;
+                if (Regex.IsMatch(t, @"bom\s*colorway", RegexOptions.IgnoreCase)) s += 2;
+                if (Regex.IsMatch(t, @"plm\s*数据仓库", RegexOptions.IgnoreCase)) s += 3;
+                if (Regex.IsMatch(t, @"从\s*plm.*数据仓库", RegexOptions.IgnoreCase)) s += 3;
+                return s;
+            }
+
+            int ScorePom()
+            {
+                var s = 0;
+                if (Regex.IsMatch(t, @"\bpom\s*(and\s*)?grading\b", RegexOptions.IgnoreCase)) s += 3;
+                if (Regex.IsMatch(t, @"import\s*plm\s*pom", RegexOptions.IgnoreCase)) s += 3;
+                if (Regex.IsMatch(t, @"importplmpom", RegexOptions.IgnoreCase)) s += 3;
+                if (Regex.IsMatch(t, @"\bsize\s*run\b", RegexOptions.IgnoreCase)) s += 2;
+                if (Regex.IsMatch(t, @"grading\s*import", RegexOptions.IgnoreCase)) s += 2;
+                if (Regex.IsMatch(t, @"pom\s*评分", RegexOptions.IgnoreCase)) s += 2;
+                if (Regex.IsMatch(t, @"导入.*pom", RegexOptions.IgnoreCase)) s += 2;
+                if (Regex.IsMatch(t, @"\bgrading\b", RegexOptions.IgnoreCase) && Regex.IsMatch(t, @"\bpom\b", RegexOptions.IgnoreCase)) s += 2;
+                return s;
+            }
+
+            int ScoreSearchView()
+            {
+                var s = 0;
+                if (Regex.IsMatch(t, @"\bplm\s*search\s*view\b", RegexOptions.IgnoreCase)) s += 3;
+                if (Regex.IsMatch(t, @"importplmsearchview", RegexOptions.IgnoreCase)) s += 3;
+                if (Regex.IsMatch(t, @"plm\s*搜索视图", RegexOptions.IgnoreCase)) s += 3;
+                if (Regex.IsMatch(t, @"search\s*view\s*import", RegexOptions.IgnoreCase)) s += 2;
+                if (Regex.IsMatch(t, @"mass\s*update\s*view", RegexOptions.IgnoreCase)) s += 2;
+                if (Regex.IsMatch(t, @"sibling\s*view", RegexOptions.IgnoreCase)) s += 2;
+                return s;
+            }
+
+            var dw = ScoreDw();
+            var pom = ScorePom();
+            var sv = ScoreSearchView();
+            var max = Math.Max(dw, Math.Max(pom, sv));
+            if (max > 0)
+            {
+                if (dw >= pom && dw >= sv) return "plm-dw";
+                if (pom >= dw && pom >= sv) return "plm-pom-grading";
+                return "plm-search-view";
+            }
+
+            if (Regex.IsMatch(t, @"\bplm\s*integration\b", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(t, @"plm\s*集成", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(t, @"\bimport\s*from\s*plm\b", RegexOptions.IgnoreCase)
+                || Regex.IsMatch(t, @"\b从\s*plm\s*导入", RegexOptions.IgnoreCase)
+                || (Regex.IsMatch(t, @"\bplm\b", RegexOptions.IgnoreCase) && Regex.IsMatch(t, @"\bimport\b", RegexOptions.IgnoreCase)))
+                return "plm";
+
+            return null;
+        }
+
+        private static string PlmSkillLabel(string hintKey)
+        {
+            if (hintKey == "plm-dw") return "Import from PLM Data Warehouse";
+            if (hintKey == "plm-pom-grading") return "Import PLM POM and Grading";
+            if (hintKey == "plm-search-view") return "Import PLM Search View";
+            if (hintKey == "plm") return "PLM Integration";
+            return hintKey;
+        }
+
+        private static void AppendPlmSkillMismatchGuidance(StringBuilder sb, string activeSkillKey, string userMessage)
+        {
+            var hint = DetectPlmSkillHint(userMessage);
+            if (string.IsNullOrEmpty(hint)) return;
+
+            if (hint == "plm")
+            {
+                if (IsPlmCatalogSkill(activeSkillKey)) return;
+                sb.AppendLine("## PLM Integration skill mismatch");
+                sb.AppendLine("The user message targets PLM Integration, but the active skill is not a PLM Integration skill.");
+                sb.AppendLine("Briefly recommend switching Skill to one of: Import from PLM Data Warehouse, Import PLM POM and Grading, or Import PLM Search View.");
+                sb.AppendLine("The chat UI shows clickable skill buttons below your reply — mention that the user can click them (or switch Skill at the top and send again / start a new chat).");
+                sb.AppendLine("Do not proceed with App Config Builder workflows until the user switches skill.");
+                sb.AppendLine();
+                return;
+            }
+
+            if (activeSkillKey != null && activeSkillKey.Equals(hint, StringComparison.OrdinalIgnoreCase)) return;
+
+            sb.AppendLine("## PLM Integration skill mismatch");
+            sb.AppendLine("The user message targets: " + PlmSkillLabel(hint) + " (skill key: " + hint + ").");
+            sb.AppendLine("Active skill key: " + (activeSkillKey ?? "(none)") + ".");
+            sb.AppendLine("Briefly recommend switching Skill to \"" + PlmSkillLabel(hint) + "\".");
+            sb.AppendLine("The chat UI shows a clickable skill button below your reply — point the user to it (or the Skill picker at the top).");
+            sb.AppendLine("Do not stack App Config Builder or unrelated skills for this PLM task.");
+            sb.AppendLine();
+        }
+
+        private static void AppendDataSourceScopeGuidance(StringBuilder sb, AppDataIntegrationAgentSessionStore.SessionData live)
+        {
+            if (live == null) return;
+            var allowed = AppDataIntegrationAgentDataSourceBL.ListTenantCompanyDataSources();
+            sb.AppendLine("## Data sources (tenant company scope)");
+            sb.AppendLine("1) If the user gives an explicit database **connectionString**, pass it to run_select / get_table_schema / propose_sql (direct access; validated).");
+            sb.AppendLine("   - After connectionString run_select: show results in chat only. Do NOT call open_query_result and do NOT mention an Open / SQL Workbench button.");
+            sb.AppendLine("2) Tenant boundary: MasterDB AppDataSourceRegister where DataSourceOwnerCompanyId = CurrentCompanyId — same as System Settings → Database Registration. Call list_datasources; do not scan other tenants.");
+            sb.AppendLine("- Default UI DataSourceRegisterId: " + (live.DataSourceRegisterId?.ToString() ?? "(not set)") + ".");
+            if (allowed != null && allowed.Count > 0)
+            {
+                sb.AppendLine("- Tenant-accessible register ids:");
+                foreach (var d in allowed)
+                    sb.AppendLine("  - " + d.Id + ": " + (d.Name ?? ""));
+            }
+            else
+                sb.AppendLine("- No data sources registered for this tenant company yet.");
+            sb.AppendLine();
         }
 
         private static void AppendOpenUiCapability(StringBuilder sb)
@@ -280,9 +416,10 @@ namespace App.BL.AppDataIntegrationAgent
             sb.AppendLine("- Search / ListEdit / MasterDetail / editors → open_search, open_list_edit_form, open_master_detail_form, open_* editors, or list_application_menus + open_app_page.");
             sb.AppendLine();
             sb.AppendLine("### After SQL / query-result answers (important)");
-            sb.AppendLine("- Answer with run_select and a short markdown/table summary in the same turn.");
-            sb.AppendLine("- In that SAME turn, also call open_query_result with the exact SQL (and DataSourceRegisterId). Do NOT wait for the user to say yes.");
-            sb.AppendLine("- End the reply with one short line, e.g. Chinese: 「也可在 SQL Workbench 打开这条 Query 查看结果（点下方 Open）。」");
+            sb.AppendLine("- Registered tenant DataSource: answer with run_select and a short markdown/table summary in the same turn.");
+            sb.AppendLine("- In that SAME turn, also call open_query_result with the exact SQL and dataSourceRegisterId (SQL Workbench Open box).");
+            sb.AppendLine("- User-supplied connectionString (unregistered DB): run_select with connectionString only; summarize in chat; never open_query_result or mention Open.");
+            sb.AppendLine("- End registered-DS replies with one short line, e.g. Chinese: 「也可在 SQL Workbench 打开这条 Query 查看结果（点下方 Open）。」");
             sb.AppendLine("- Prefer open_query_result for custom SELECT / joins; use preview_tables_data only for simple single-table browse when the user asked for Table Preview.");
             sb.AppendLine("- Never say \"click Open\" unless you actually called the tool that creates the Open box.");
             sb.AppendLine();

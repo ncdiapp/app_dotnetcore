@@ -151,7 +151,7 @@ Hard rules:
 4. SELECT may run via run_select. INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD must go through propose_sql and wait for the user.
 5. Stay on the SaasApplicationId given in this session. Do not create a new Application.
 6. Call get_skill when you need the import-pack, gated-sql, or workspace procedure.
-7. You CAN request App UI (Open button in chat). Never refuse with ""cannot open"". Explicit open / Table Preview → preview_tables_data. For QUERY RESULT answers: in the SAME turn show the result text AND call open_query_result (do not ask first). Never say click Open unless you called the tool.";
+7. You CAN request App UI (Open button in chat). Never refuse with ""cannot open"". Explicit open / Table Preview → preview_tables_data. For QUERY RESULT on a registered tenant DataSource: same turn show result AND call open_query_result. connectionString queries: chat summary only, no open_query_result. Never say click Open unless you called the tool.";
 
         private const string ImportContent = @"When the user wants Transaction / Form / SearchView / Entity configuration:
 
@@ -166,7 +166,9 @@ Hard rules:
         private const string SqlContent = @"Database access:
 - list_datasources then get_table_schema for structure.
 - run_select for SELECT/WITH (row-capped).
-- When answering with a query result: in the SAME turn call open_query_result with that SQL so the chat shows an Open box for SQL Workbench. Do not ask first.
+- run_select for SELECT/WITH (row-capped); optional connectionString when user supplied one.
+- Registered tenant DataSource: same turn call open_query_result for SQL Workbench Open box.
+- connectionString (unregistered DB): summarize in chat only; do not call open_query_result or mention Open.
 - propose_sql for INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE ... ADD. Wait for the user.
 - Forbidden: DROP, TRUNCATE, ALTER DROP, EXEC, multiple statements.";
 

@@ -109,6 +109,7 @@ namespace App.BL.AppDataIntegrationAgent
                             session.SessionId,
                             session.SaasApplicationId,
                             session.DataSourceRegisterId,
+                            AllowedDataSources = AppDataIntegrationAgentDataSourceBL.ListForSession(session),
                             session.WorkspaceRelativePath,
                             session.SkillKey,
                             session.AllowProposeImport,
@@ -120,12 +121,10 @@ namespace App.BL.AppDataIntegrationAgent
                         return ToolText(AppDataIntegrationAgentSkillBL.GetSkill(SkillDs(), Str(args, "name")));
                     case "list_datasources":
                         return ToolText(JsonConvert.SerializeObject(
-                            AppDataSourceRegisterBL.GetDataSourceRegisterList()
-                                .Select(d => new { d.Id, Name = d.DataSourceName, d.DatabaseName })
-                                .ToList()));
+                            AppDataIntegrationAgentDataSourceBL.ListForSession(session)));
                     case "get_table_schema":
                         return ToolText(AppDataIntegrationSqlGateBL.GetTableSchema(
-                            RequireDs(args, session),
+                            AppDataIntegrationAgentDataSourceBL.ResolveSqlTarget(session, args),
                             Str(args, "schemaOwner") ?? "dbo",
                             Str(args, "tableName")));
                     case "list_application_assets":
@@ -195,7 +194,7 @@ namespace App.BL.AppDataIntegrationAgent
                         }
                     case "run_select":
                         return ToolText(AppDataIntegrationSqlGateBL.RunSelect(
-                            RequireDs(args, session),
+                            AppDataIntegrationAgentDataSourceBL.ResolveSqlTarget(session, args),
                             Str(args, "sql"),
                             AppDataIntegrationAgentConfig.SqlPreviewRowLimit));
                     case "propose_import_pack":
@@ -203,7 +202,8 @@ namespace App.BL.AppDataIntegrationAgent
                             return ToolText("propose_import_pack is disabled for this skill. Write the pack to packs/ instead.", true);
                         return ToolText(await ProposeImportAsync(session, Str(args, "relativePath"), ct).ConfigureAwait(false));
                     case "propose_sql":
-                        return ToolText(await ProposeSqlAsync(session, Str(args, "sql"), RequireDs(args, session), ct).ConfigureAwait(false));
+                        return ToolText(await ProposeSqlAsync(session, Str(args, "sql"),
+                            AppDataIntegrationAgentDataSourceBL.ResolveSqlTarget(session, args), ct).ConfigureAwait(false));
                     default:
                         return ToolText("Unknown tool: " + name, true);
                 }
@@ -241,25 +241,32 @@ namespace App.BL.AppDataIntegrationAgent
             }, ct).ConfigureAwait(false);
         }
 
-        private static async Task<string> ProposeSqlAsync(AppDataIntegrationAgentSessionStore.SessionData session, string sql, int dsId, CancellationToken ct)
+        private static async Task<string> ProposeSqlAsync(
+            AppDataIntegrationAgentSessionStore.SessionData session,
+            string sql,
+            AppDataIntegrationAgentSqlTarget target,
+            CancellationToken ct)
         {
             var classified = AppDataIntegrationSqlGateBL.Classify(sql);
             if (!classified.Allowed || classified.IsReadOnly)
                 return classified.Reason ?? "SQL not allowed for propose_sql. Use run_select for SELECT.";
 
+            var summaryTarget = target.UsesConnectionString
+                ? "user-supplied connection string"
+                : "DataSource " + target.DataSourceRegisterId;
             var gate = new AppDataIntegrationAgentGateEvent
             {
                 GateId = Guid.NewGuid().ToString("N"),
                 Kind = "exec_sql",
                 Title = "Execute " + classified.Kind,
-                Summary = classified.Kind + " against DataSource " + dsId,
+                Summary = classified.Kind + " against " + summaryTarget,
                 Sql = classified.Normalized,
-                DataSourceRegisterId = dsId
+                DataSourceRegisterId = target.DataSourceRegisterId
             };
             return await WaitGateAsync(session, gate, confirmed =>
             {
                 RestoreIdentity(session);
-                var text = AppDataIntegrationSqlGateBL.ExecuteWrite(dsId, classified.Normalized);
+                var text = AppDataIntegrationSqlGateBL.ExecuteWrite(target, classified.Normalized);
                 TryWriteOutput(session, "output/last-sql.json", text);
                 return text;
             }, ct).ConfigureAwait(false);
@@ -542,8 +549,20 @@ namespace App.BL.AppDataIntegrationAgent
             if (sql.Length > 12000)
                 return "sql is too long for the Open URL (max ~12000 chars). Shorten the query or ask the user to run it in SQL Workbench manually.";
 
-            var dsId = ResolveIntId(args, "dataSourceRegisterId", "dataSourceId")
-                ?? session.DataSourceRegisterId;
+            if (AppDataIntegrationAgentDataSourceBL.ShouldSkipSqlWorkbenchOpen(session, args))
+            {
+                return JsonConvert.SerializeObject(new
+                {
+                    Ok = false,
+                    SqlWorkbenchOpenAvailable = false,
+                    Message = "SQL Workbench Open is not available: the query used a user-supplied connection string "
+                        + "(or an unregistered database), not a tenant DataSourceRegister row. "
+                        + "Summarize the result in chat only — do NOT mention an Open button or call open_query_result again."
+                });
+            }
+
+            var dsId = AppDataIntegrationAgentDataSourceBL.ResolveForTool(session,
+                ResolveIntId(args, "dataSourceRegisterId", "dataSourceId") ?? session.DataSourceRegisterId);
             var autoExecute = true;
             var autoTok = args?["autoExecute"];
             if (autoTok != null && autoTok.Type != JTokenType.Null)
@@ -558,7 +577,7 @@ namespace App.BL.AppDataIntegrationAgent
                 ["queryText"] = sql,
                 ["autoExecute"] = autoExecute
             };
-            if (dsId.HasValue) paramObj["dataSourceRegisterId"] = dsId.Value;
+            if (dsId > 0) paramObj["dataSourceRegisterId"] = dsId;
 
             var label = Str(args, "label");
             if (string.IsNullOrWhiteSpace(label))
@@ -620,6 +639,8 @@ namespace App.BL.AppDataIntegrationAgent
 
             if (tables.Count == 0)
                 return "tables[] (or tableName) is required.";
+
+            AppDataIntegrationAgentDataSourceBL.EnsureTablePreviewDataSources(session, tables);
 
             var names = string.Join(", ", tables.Select(t => t.TableName).Where(n => !string.IsNullOrWhiteSpace(n)));
             AppDataIntegrationAgentSessionStore.NoteOpenUiOffer(session, new AppDataIntegrationAgentOpenUiOfferDto
@@ -742,12 +763,11 @@ namespace App.BL.AppDataIntegrationAgent
 
         private static int RequireDs(JObject args, AppDataIntegrationAgentSessionStore.SessionData session)
         {
-            var raw = args?["dataSourceRegisterId"];
+            var raw = args?["dataSourceRegisterId"] ?? args?["dataSourceId"];
+            int? requested = null;
             if (raw != null && raw.Type != JTokenType.Null)
-                return raw.Value<int>();
-            if (session.DataSourceRegisterId.HasValue)
-                return session.DataSourceRegisterId.Value;
-            throw new InvalidOperationException("dataSourceRegisterId is required (or pick a default DataSource in the UI).");
+                requested = raw.Value<int>();
+            return AppDataIntegrationAgentDataSourceBL.ResolveForTool(session, requested);
         }
 
         private static string Str(JObject args, string name)
@@ -792,9 +812,10 @@ namespace App.BL.AppDataIntegrationAgent
                 Tool("get_session_context", "Current Application, DataSource, skill, and workspace path."),
                 Tool("list_skills", "List App Data Integration Agent catalog and other skills."),
                 Tool("get_skill", "Load a composed saved skill by name.", Prop("name", "string", true)),
-                Tool("list_datasources", "List tenant registered databases."),
+                Tool("list_datasources", "List databases registered for the logged-in tenant company (Database Registration / DataSourceOwnerCompanyId)."),
                 Tool("get_table_schema", "Columns/PK for a table.",
-                    Prop("tableName", "string", true), Prop("schemaOwner", "string", false), Prop("dataSourceRegisterId", "integer", false)),
+                    Prop("tableName", "string", true), Prop("schemaOwner", "string", false),
+                    Prop("dataSourceRegisterId", "integer", false), Prop("connectionString", "string", false)),
                 Tool("list_application_assets", "Existing transactions and searches on the selected Application."),
                 Tool("list_application_menus", "Flat list of main-menu items (RouteCode/Link) for the Application."),
                 Tool("open_app_page", "Offer an Open button in chat to open an App tab (routeCode + optional paramObj). Does not open until the user clicks Open.",
@@ -816,7 +837,7 @@ namespace App.BL.AppDataIntegrationAgent
                 Tool("open_er_diagram", "Offer Open for ER Diagram editor.", Prop("diagramId", "integer", true)),
                 Tool("open_database_design", "Offer Open for Database Design management.",
                     Prop("applicationId", "integer", false), Prop("dataSourceRegisterId", "integer", false)),
-                Tool("open_query_result", "Offer Open for SQL Workbench with a SELECT (queryText). Page fills the editor and auto-runs. Use after SQL answers when user wants to see the query grid, or after they say yes to opening query results.",
+                Tool("open_query_result", "Offer Open for SQL Workbench — only when the query used a registered tenant dataSourceRegisterId (not connectionString).",
                     Prop("sql", "string", true), Prop("dataSourceRegisterId", "integer", false),
                     Prop("autoExecute", "boolean", false), Prop("label", "string", false)),
                 Tool("preview_tables_data", "Offer an Open button for DB Table/View Data Preview (multi-tab modal). Does not open until the user clicks Open. Call after the user agrees, or when they explicitly asked to open preview.",
@@ -828,8 +849,10 @@ namespace App.BL.AppDataIntegrationAgent
                 Tool("delete_workspace_file", "Delete a workspace file.", Prop("relativePath", "string", true)),
                 Tool("validate_config_pack", "Validate an AppConfigPack JSON file.", Prop("relativePath", "string", true)),
                 Tool("preview_config_pack", "Preview import actions without applying.", Prop("relativePath", "string", true)),
-                Tool("run_select", "Run a SELECT (row-capped).", Prop("sql", "string", true), Prop("dataSourceRegisterId", "integer", false)),
-                Tool("propose_sql", "Ask the user to confirm INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD.", Prop("sql", "string", true), Prop("dataSourceRegisterId", "integer", false))
+                Tool("run_select", "Run a SELECT (row-capped). Use dataSourceRegisterId from list_datasources, or connectionString when the user supplied one.",
+                    Prop("sql", "string", true), Prop("dataSourceRegisterId", "integer", false), Prop("connectionString", "string", false)),
+                Tool("propose_sql", "Ask the user to confirm INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD.",
+                    Prop("sql", "string", true), Prop("dataSourceRegisterId", "integer", false), Prop("connectionString", "string", false))
             };
             var session = AppDataIntegrationAgentContext.Current;
             if (session == null || session.AllowProposeImport)

@@ -22,7 +22,8 @@ namespace App.BL.AppDataIntegrationAgent
 
             var live = AppDataIntegrationAgentSessionStore.CreateSession();
             live.SaasApplicationId = request.SaasApplicationId;
-            live.DataSourceRegisterId = request.DataSourceRegisterId;
+            live.DataSourceRegisterId = AppDataIntegrationAgentDataSourceBL.NormalizeSessionDataSource(
+                request.DataSourceRegisterId);
             AppDataIntegrationAgentSkillCatalogBL.ApplyToSession(live, request.SkillKey);
             AppDataIntegrationAgentIdentity.Capture(live, identity);
             live.WorkspaceRelativePath = live.SessionId;
@@ -62,7 +63,10 @@ namespace App.BL.AppDataIntegrationAgent
             if (request.SaasApplicationId.HasValue && request.SaasApplicationId.Value > 0)
                 live.SaasApplicationId = request.SaasApplicationId;
             if (request.DataSourceRegisterId.HasValue)
-                live.DataSourceRegisterId = request.DataSourceRegisterId > 0 ? request.DataSourceRegisterId : null;
+            {
+                var reqDs = request.DataSourceRegisterId > 0 ? request.DataSourceRegisterId : null;
+                live.DataSourceRegisterId = AppDataIntegrationAgentDataSourceBL.NormalizeSessionDataSource(reqDs);
+            }
 
             live.ConversationHistory.Add(new AppDataIntegrationAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
             if (live.RunCts != null && !live.RunCts.IsCancellationRequested)

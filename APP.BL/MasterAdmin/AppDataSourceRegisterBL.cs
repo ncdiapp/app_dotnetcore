@@ -194,6 +194,29 @@ namespace App.BL
             return toReturn;
         }
 
+        /// <summary>
+        /// Master DB AppDataSourceRegister rows the logged-in tenant may use:
+        /// DataSourceOwnerCompanyId matches CurrentCompanyId (SysAdmin: all rows).
+        /// Equivalent to filtering MasterDB with DataSourceOwnerCompanyID = @CurrentCompanyId.
+        /// </summary>
+        public static HashSet<int> GetTenantAccessibleDataSourceIds()
+        {
+            var ids = new HashSet<int>();
+            var list = RetrieveAllAppDataSourceRegisterEntity(GetTenantScopeCompanyId());
+            foreach (var row in list)
+            {
+                if (row.DataSourceId > 0)
+                    ids.Add(row.DataSourceId);
+            }
+            return ids;
+        }
+
+        public static bool IsTenantAccessibleDataSource(int dataSourceRegisterId)
+        {
+            if (dataSourceRegisterId <= 0) return false;
+            return GetTenantAccessibleDataSourceIds().Contains(dataSourceRegisterId);
+        }
+
         private static int? GetTenantScopeCompanyId()
         {
             return IsSysAdminUser() ? null : GetCurrentUserCompanyId();

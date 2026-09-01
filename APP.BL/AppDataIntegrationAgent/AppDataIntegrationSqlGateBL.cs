@@ -6,6 +6,8 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using App.BL;
+using DatabaseSchemaMrg;
+using DatabaseSchemaMrg.DataSchema;
 using Newtonsoft.Json;
 
 namespace App.BL.AppDataIntegrationAgent
@@ -96,11 +98,16 @@ namespace App.BL.AppDataIntegrationAgent
 
         public static string RunSelect(int dataSourceRegisterId, string sql, int rowLimit)
         {
+            return RunSelect(new AppDataIntegrationAgentSqlTarget { DataSourceRegisterId = dataSourceRegisterId }, sql, rowLimit);
+        }
+
+        public static string RunSelect(AppDataIntegrationAgentSqlTarget target, string sql, int rowLimit)
+        {
             var classified = Classify(sql);
             if (classified.Kind != SqlKind.Select)
                 throw new InvalidOperationException(classified.Reason ?? "Not a SELECT.");
 
-            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegisterId);
+            var fixture = CreateFixture(target);
             var limited = WrapTop(classified.Normalized, rowLimit);
             var dt = fixture.RetriveDataTable(limited, new List<DbParameter>());
             return SerializeTable(dt, rowLimit);
@@ -108,11 +115,16 @@ namespace App.BL.AppDataIntegrationAgent
 
         public static string ExecuteWrite(int dataSourceRegisterId, string sql)
         {
+            return ExecuteWrite(new AppDataIntegrationAgentSqlTarget { DataSourceRegisterId = dataSourceRegisterId }, sql);
+        }
+
+        public static string ExecuteWrite(AppDataIntegrationAgentSqlTarget target, string sql)
+        {
             var classified = Classify(sql);
             if (!classified.Allowed || classified.IsReadOnly)
                 throw new InvalidOperationException(classified.Reason ?? "Write SQL not allowed.");
 
-            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegisterId);
+            var fixture = CreateFixture(target);
             fixture.ExecuteNonQueryResult(classified.Normalized, new List<DbParameter>());
             return JsonConvert.SerializeObject(new
             {
@@ -124,10 +136,15 @@ namespace App.BL.AppDataIntegrationAgent
 
         public static string GetTableSchema(int dataSourceRegisterId, string schemaOwner, string tableName)
         {
+            return GetTableSchema(new AppDataIntegrationAgentSqlTarget { DataSourceRegisterId = dataSourceRegisterId }, schemaOwner, tableName);
+        }
+
+        public static string GetTableSchema(AppDataIntegrationAgentSqlTarget target, string schemaOwner, string tableName)
+        {
             if (string.IsNullOrWhiteSpace(tableName))
                 throw new ArgumentException("tableName is required.");
 
-            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegisterId);
+            var fixture = CreateFixture(target);
             var schema = string.IsNullOrWhiteSpace(schemaOwner) ? "dbo" : schemaOwner.Trim();
             const string sql = @"
 SELECT c.COLUMN_NAME, c.DATA_TYPE, c.CHARACTER_MAXIMUM_LENGTH, c.NUMERIC_PRECISION, c.NUMERIC_SCALE,
@@ -149,6 +166,17 @@ ORDER BY c.ORDINAL_POSITION";
             var p2 = fixture.CreateParameter("@Table"); p2.Value = tableName.Trim();
             var dt = fixture.RetriveDataTable(sql, new List<DbParameter> { p1, p2 });
             return SerializeTable(dt, 500);
+        }
+
+        private static DatabaseFixture CreateFixture(AppDataIntegrationAgentSqlTarget target)
+        {
+            if (target == null)
+                throw new ArgumentNullException(nameof(target));
+            if (target.UsesConnectionString)
+                return new DatabaseFixture(target.ConnectionString.Trim(), EmSqlType.SqlServer);
+            if (!target.DataSourceRegisterId.HasValue || target.DataSourceRegisterId.Value <= 0)
+                throw new InvalidOperationException("dataSourceRegisterId or connectionString is required.");
+            return AppCacheManagerBL.GetOneDatabaseFixture(target.DataSourceRegisterId.Value);
         }
 
         private static bool ContainsForbidden(string upper)

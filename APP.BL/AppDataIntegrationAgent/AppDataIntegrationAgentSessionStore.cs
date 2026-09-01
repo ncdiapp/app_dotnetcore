@@ -41,6 +41,8 @@ namespace App.BL.AppDataIntegrationAgent
             /// <summary>Open UI offers from navigate / table_preview tools this turn.</summary>
             public List<AppDataIntegrationAgentOpenUiOfferDto> CurrentTurnOpenOffers { get; set; }
                 = new List<AppDataIntegrationAgentOpenUiOfferDto>();
+            /// <summary>True when run_select / propose_sql used a user connection string this turn (no SQL Workbench Open).</summary>
+            public bool CurrentTurnSqlViaConnectionString { get; set; }
             public ConcurrentQueue<AppDataIntegrationAgentEventDto> Events { get; set; }
                 = new ConcurrentQueue<AppDataIntegrationAgentEventDto>();
             public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -145,6 +147,7 @@ namespace App.BL.AppDataIntegrationAgent
             if (session == null) return;
             session.CurrentTurnPackPaths = new List<string>();
             session.CurrentTurnOpenOffers = new List<AppDataIntegrationAgentOpenUiOfferDto>();
+            session.CurrentTurnSqlViaConnectionString = false;
         }
 
         public static void NotePackPath(SessionData session, string relativePath)

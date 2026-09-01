@@ -252,4 +252,11 @@ namespace APP.Components.EntityDto
         public string Feedback { get; set; }
         public string ExecutionResult { get; set; }
     }
+
+    public class AppDataIntegrationAgentDataSourceItemDto
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+        public string DatabaseName { get; set; }
+    }
 }
