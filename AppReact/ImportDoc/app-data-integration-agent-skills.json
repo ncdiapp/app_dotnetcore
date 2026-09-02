@@ -40,7 +40,7 @@
         "ImportFromPLMDW/source/_plm_probe_template.sql",
         "ImportFromPLMDW/source/_dw_probe_by_tabids.sql"
       ],
-      "extraPrompt": "Mode: Import Data Model and Reference Data. Follow PROMPT.md. App Cloud delivery: Cursor artifacts + sync_cloud_artifacts only (same as images); never write_workspace_file. Do not use files under ImportDoc output/ as a substitute. Do not stack App Config Builder in this chat."
+      "extraPrompt": "Mode: Import Data Model and Reference Data. Follow PROMPT.md. Official generators are seeded into workspace source/ at session start. App Cloud: probes via MCP run_select (VM has no tenant SQL); deliver via Cursor artifacts + sync_cloud_artifacts; never write_workspace_file; never ship temporary gen_plmdw_*.py as final producer. Blueprint must include blueprintFields. Do not use ImportDoc output/ as a substitute. Do not stack App Config Builder in this chat."
     },
     {
       "id": "plm-pom-grading",

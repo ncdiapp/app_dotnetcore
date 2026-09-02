@@ -214,6 +214,24 @@ namespace App.BL.AppDataIntegrationAgent
             sb.AppendLine("  • Write every deliverable on the VM under the Cursor artifacts tree with the desired workspace-relative path, e.g. /opt/cursor/artifacts/output/3351/2_PlmDw_FieldMapping.sql or artifacts/packs/foo.appConfigPack.json.");
             sb.AppendLine("  • Then call sync_cloud_artifacts (AppAI downloads artifacts into Workspace, like images).");
             sb.AppendLine("  • Verify with list_workspace_files (RelativePath + SizeBytes) before claiming success.");
+            if (AppDataIntegrationPlmDwSeedBL.IsPlmDwSkill(live?.SkillKey))
+            {
+                sb.AppendLine();
+                sb.AppendLine("## PLM DW official tools (seeded into workspace)");
+                sb.AppendLine("- On session start, AppAI copied official generators/templates into workspace `source/`:");
+                sb.AppendLine("  `_gen_plmdw_import_sql.ps1`, `_gen_plmdw_bom_colorway.ps1`, `_gen_tchp_import_sql.ps1`, `_gen_simple_qc.ps1`,");
+                sb.AppendLine("  `PlmDw_ImportFromDW.sql`, `PlmDw_ImportBomColorwayGrandchild.sql`, `PlmDw_CleanupBomColorwayStaging.sql`, examples + probe SQL.");
+                sb.AppendLine("- You MUST use these official tools as the Phase B producer. Do NOT ship a temporary `gen_plmdw_*.py` as the final generator.");
+                sb.AppendLine("- Database access: the Cursor VM usually has NO tenant SQL Server / no sqlcmd to PLM/DW.");
+                sb.AppendLine("  Run ALL probes via MCP `run_select` / `get_table_schema` against App DataSources (PLM + plmDW).");
+                sb.AppendLine("  Do not assume `sqlcmd` inside `_gen_plmdw_import_sql.ps1` can reach the customer DB from the VM.");
+                sb.AppendLine("  Preferred App Cloud pattern: use MCP queries to gather metadata, then apply/patch the official SQL/JSON templates (or run the PS generator only if the VM can reach SQL — rare).");
+                sb.AppendLine("- Acceptance (hard fail if not met after sync_cloud_artifacts):");
+                sb.AppendLine("  • `4_…Blueprint.json` must include `blueprintFields` (hundreds+ entries), not a skeleton.");
+                sb.AppendLine("  • `1_…Tables.sql` ≥ ~400KB with ALTER/FK or official `@TablePrefix` dynamic DDL — not CREATE-TABLE-only shells.");
+                sb.AppendLine("  • `2_…FieldMapping.sql` ≥ ~100KB; `3_…ImportFromDW.sql` based on `source/PlmDw_ImportFromDW.sql`.");
+                sb.AppendLine("  • If BOM colorway: steps 5/6 expanded from official templates (not a tiny stub / generic #BomJobs-only script).");
+            }
             sb.AppendLine("- Do not modify cloned application source (.cs/.tsx). Do not open a pull request.");
             sb.AppendLine("- SELECT may run via run_select. INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD must go through propose_sql and wait.");
             if (live != null && !live.AllowProposeImport)

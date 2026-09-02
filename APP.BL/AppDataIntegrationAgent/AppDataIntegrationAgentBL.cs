@@ -31,6 +31,8 @@ namespace App.BL.AppDataIntegrationAgent
             live.ConversationHistory = request.ConversationHistory ?? new List<AppDataIntegrationAgentMessageDto>();
             live.ConversationHistory.Add(new AppDataIntegrationAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
             AppDataIntegrationWorkspaceBL.EnsureSessionDir(live.WorkspaceRelativePath, live.CompanyId);
+            try { AppDataIntegrationPlmDwSeedBL.SeedOfficialSourceFiles(live); }
+            catch { }
             AppDataIntegrationAgentSessionBL.SaveNew(live, request.UserMessage);
 
             live.RunCts = new CancellationTokenSource();
@@ -68,6 +70,9 @@ namespace App.BL.AppDataIntegrationAgent
                 var reqDs = request.DataSourceRegisterId > 0 ? request.DataSourceRegisterId : null;
                 live.DataSourceRegisterId = AppDataIntegrationAgentDataSourceBL.NormalizeSessionDataSource(reqDs);
             }
+
+            try { AppDataIntegrationPlmDwSeedBL.SeedOfficialSourceFiles(live); }
+            catch { }
 
             live.ConversationHistory.Add(new AppDataIntegrationAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
             if (live.RunCts != null && !live.RunCts.IsCancellationRequested)
@@ -274,9 +279,13 @@ namespace App.BL.AppDataIntegrationAgent
             }
             catch { }
 
-            var isIncomplete = recovery != null
+            var deliverableCheck = AppDataIntegrationPlmDwSeedBL.ValidatePhaseBDeliverables(live);
+            var deliverableFail = deliverableCheck != null && !deliverableCheck.Ok && deliverableCheck.Errors.Count > 0;
+
+            var isIncomplete = (recovery != null
                 && string.Equals(recovery.TerminalStatus, "TIMEOUT", StringComparison.OrdinalIgnoreCase)
-                && (recovery.RunStillActive || string.IsNullOrEmpty(recovery.Text));
+                && (recovery.RunStillActive || string.IsNullOrEmpty(recovery.Text)))
+                || deliverableFail;
 
             if (!string.IsNullOrEmpty(capture.Error) && assistant.Length == 0)
             {
@@ -295,11 +304,16 @@ namespace App.BL.AppDataIntegrationAgent
 
             if (isIncomplete)
             {
-                var notice = BuildIncompleteRunNotice(live, recovery);
-                if (!string.IsNullOrWhiteSpace(final))
-                    final = final.TrimEnd() + "\n\n" + notice;
-                else
-                    final = notice;
+                var notice = deliverableFail
+                    ? AppDataIntegrationPlmDwSeedBL.FormatValidationNotice(deliverableCheck)
+                    : BuildIncompleteRunNotice(live, recovery);
+                if (!string.IsNullOrWhiteSpace(notice))
+                {
+                    if (!string.IsNullOrWhiteSpace(final))
+                        final = final.TrimEnd() + "\n\n" + notice;
+                    else
+                        final = notice;
+                }
             }
 
             var openOffers = AppDataIntegrationAgentSessionStore.TakeTurnOpenOffers(live);
@@ -683,13 +697,21 @@ namespace App.BL.AppDataIntegrationAgent
                 })
                 .ToList();
 
+            var validation = AppDataIntegrationPlmDwSeedBL.ValidatePhaseBDeliverables(live);
+
             return JsonConvert.SerializeObject(new
             {
                 cloudAgentId = live.CloudAgentId,
                 artifactsListed = pulled.ListedCount,
                 artifactsPulled = pulled.PulledCount,
                 pulledPaths = pulled.PulledPaths,
-                workspaceFiles = files
+                workspaceFiles = files,
+                deliverableValidation = new
+                {
+                    validation.Ok,
+                    validation.Errors,
+                    validation.FilesChecked
+                }
             }, Formatting.Indented);
         }
 

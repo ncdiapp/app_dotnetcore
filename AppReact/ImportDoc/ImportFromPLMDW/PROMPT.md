@@ -293,17 +293,24 @@ This PROMPT is used in **two** places. **Detect which one you are in, then follo
 
 **Same delivery path as generated images.** Do **not** use `write_workspace_file` / `append_workspace_file` (disabled).
 
-1. Generate files on the VM.
-2. Place each deliverable under the **Cursor artifacts** tree with the final workspace-relative path:
-   - `/opt/cursor/artifacts/output/{templateId}/1_PlmDw_Tables.sql`
-   - `/opt/cursor/artifacts/output/{templateId}/2_PlmDw_FieldMapping.sql`
-   - … (also `source/…`, `scripts/…` as needed)
-   - or `artifacts/output/{templateId}/…` if that is how the environment exposes the artifacts folder
-3. Call MCP **`sync_cloud_artifacts`** once (AppAI lists/downloads Cursor artifacts into Workspace — same as pulling PNGs).
-4. Call **`list_workspace_files`** and report `RelativePath` + `SizeBytes` for every deliverable.
-5. User downloads via App **Workspace → Download**.
+1. Official generators/templates are **seeded by AppAI** into workspace `source/` at session start (`_gen_plmdw_import_sql.ps1`, BOM/TCHP/QC helpers, `PlmDw_*.sql` templates, examples). Confirm with `list_workspace_files`.
+2. Generate Phase B outputs using those official tools / templates — **never** a temporary `gen_plmdw_*.py` as the final producer. If `source/_gen_plmdw_import_sql.ps1` is missing → **STOP and ask the user** (do not invent a short generator).
+3. **Database probes on App Cloud:** the Cursor VM usually has **no** tenant SQL Server and **no** working `sqlcmd` to PLM/plmDW. Run probes with MCP **`run_select` / `get_table_schema`** against App DataSources. Do not rely on the PS script’s `Invoke-SqlQuery`/`sqlcmd` unless you have verified VM network + credentials (rare). Typical pattern: MCP metadata → patch official templates / drive the same transforms the PS generator would.
+4. Place each deliverable under the **Cursor artifacts** tree with the final workspace-relative path, e.g. `/opt/cursor/artifacts/output/{templateId}/1_PlmDw_Tables.sql`.
+5. Call MCP **`sync_cloud_artifacts`**, then **`list_workspace_files`**, and report `RelativePath` + `SizeBytes`.
+6. User downloads via App **Workspace → Download**.
 
-Never claim success from “generated on the VM only”. If a file is missing after sync, fix the artifact path and call `sync_cloud_artifacts` again — do not fall back to MCP write.
+**Hard acceptance (App Cloud) — fail the turn if not met:**
+
+| File | Minimum bar |
+|------|----------------|
+| `1_PlmDw_Tables.sql` | ≥ ~400 KB; official DDL with `@TablePrefix` and/or many `ALTER TABLE`/FK — not CREATE-only shells |
+| `2_PlmDw_FieldMapping.sql` | ≥ ~100 KB |
+| `3_PlmDw_ImportFromDW.sql` | Based on `source/PlmDw_ImportFromDW.sql` (not a tiny custom stub) |
+| `4_PlmDw_ImportBlueprint.json` | Must include **`blueprintFields`** (hundreds+); skeleton-only JSON is a failure |
+| `5_` / `6_` (when BOM colorway) | Expanded from official templates — not `#BomJobs` stub / one-line “no cleanup” |
+
+Never claim success from “generated on the VM only” or from filenames alone.
 
 ### B1. Write `source/dwTabImportConfig.json`
 
@@ -359,11 +366,20 @@ Never claim success from “generated on the VM only”. If a file is missing af
 
 ### B2. Run generator
 
+**Cursor IDE (local):**
+
 ```powershell
 powershell -File AppReact/ImportDoc/ImportFromPLMDW/source/_gen_plmdw_import_sql.ps1
 ```
 
-Requires `source/dwTabImportConfig.json` (not committed with secrets; example is `dwTabImportConfig.example.json`).
+Requires `source/dwTabImportConfig.json`. The script uses `sqlcmd` against `sqlServer` / `dwDatabase` / `plmDatabase` from that config.
+
+**App Cloud Agent:**
+
+1. Use seeded workspace files under `source/` (same script + `PlmDw_*.sql` templates).
+2. **Do not expect `sqlcmd` on the VM to reach customer PLM/DW.** Prefer MCP `run_select` / `get_table_schema` on App DataSources for every probe the PS generator would run.
+3. Produce the same six deliverables (structure/content parity with IDE). Forbidden as final producer: ad-hoc `gen_plmdw_*.py` short scripts.
+4. Publish via Cursor artifacts + `sync_cloud_artifacts` (see B0-APP). AppAI validates size + `blueprintFields` and marks the run incomplete if checks fail.
 
 **Produces in `output/{templateId}/`** (subfolder named from `plmTemplateId` in config):
 
