@@ -197,17 +197,23 @@ namespace App.BL.AppDataIntegrationAgent
             var sb = new StringBuilder();
             sb.AppendLine("You are the AppAI App Data Integration Agent.");
             sb.AppendLine();
+            sb.AppendLine("## Runtime (read this first)");
+            sb.AppendLine("- You are running as the **App Cloud Agent** (Cursor cloud VM), NOT as Cursor IDE on the user's PC.");
+            sb.AppendLine("- MCP server **appai** is available. Deliver files to the App session workspace (see rules below).");
+            sb.AppendLine("- Ignore any \"Cursor IDE / write to ImportDoc on disk\" branches in skill PROMPT.md — those apply only when the user runs the same PROMPT inside Cursor IDE locally.");
+            sb.AppendLine();
             AppendOpenUiCapability(sb);
             AppendDataSourceScopeGuidance(sb, live);
             sb.AppendLine("## This session");
             sb.AppendLine("- Target Application (SaasApplicationId): " + (live?.SaasApplicationId ?? 0));
             if (live?.DataSourceRegisterId != null)
                 sb.AppendLine("- Default DataSourceRegisterId: " + live.DataSourceRegisterId.Value);
-            sb.AppendLine("- Use MCP tools on server \"appai\" for schema, files, SQL, and opening App UI pages.");
-            sb.AppendLine("- Writable disk is the MCP workspace (packs/, scripts/, output/, notes/).");
-            sb.AppendLine("- Large workspace files: write_workspace_file for chunk 1 (truncate), then append_workspace_file for each next chunk (max ~"
-                + AppDataIntegrationAgentConfig.MaxWorkspaceChunkKb
-                + " KB UTF-8 per MCP call). Prefer Cursor artifacts when available; server also pulls artifacts into workspace.");
+            sb.AppendLine("- Use MCP tools on server \"appai\" for schema, SQL, opening App UI, listing workspace files, and syncing artifacts.");
+            sb.AppendLine("- File delivery rule (App Cloud — SAME as generated images):");
+            sb.AppendLine("  • NEVER put deliverable file contents into write_workspace_file / append_workspace_file (those tools are DISABLED).");
+            sb.AppendLine("  • Write every deliverable on the VM under the Cursor artifacts tree with the desired workspace-relative path, e.g. /opt/cursor/artifacts/output/3351/2_PlmDw_FieldMapping.sql or artifacts/packs/foo.appConfigPack.json.");
+            sb.AppendLine("  • Then call sync_cloud_artifacts (AppAI downloads artifacts into Workspace, like images).");
+            sb.AppendLine("  • Verify with list_workspace_files (RelativePath + SizeBytes) before claiming success.");
             sb.AppendLine("- Do not modify cloned application source (.cs/.tsx). Do not open a pull request.");
             sb.AppendLine("- SELECT may run via run_select. INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD must go through propose_sql and wait.");
             if (live != null && !live.AllowProposeImport)
@@ -271,6 +277,8 @@ namespace App.BL.AppDataIntegrationAgent
             AppendOpenUiCapability(sb);
             AppendDataSourceScopeGuidance(sb, live);
             AppendPlmSkillMismatchGuidance(sb, NormalizeKey(live?.SkillKey), userMessage);
+            sb.AppendLine("## Delivery reminder (App Cloud)");
+            sb.AppendLine("Deliver files like images: write under Cursor artifacts/ on the VM, then sync_cloud_artifacts. Do not use write_workspace_file.");
             sb.AppendLine("## User follow-up");
             sb.AppendLine(userMessage ?? "");
             return sb.ToString();

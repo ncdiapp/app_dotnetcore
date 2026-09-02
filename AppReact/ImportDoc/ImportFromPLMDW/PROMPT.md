@@ -4,6 +4,7 @@
 > **Outputs (after Phase B):** `output/{templateId}/1_PlmDw_Tables.sql` … `4_PlmDw_ImportBlueprint.json` (e.g. `output/3351/` for TemplateId 3351). Steps 5–6 are emitted only when BOM ProductDesignColor colorway grids are detected.  
 > **Phase D (BL TOOLS):** `PlmMigration/ExecuteDwBlueprintConfig` — consumes physical tables + FieldMapping + Blueprint to create Transaction / Form / Search / navigation.
 > **Applies to:** any PLM **Template** (not a single product type). APP table names come from DW metadata, not from fixed names in this prompt.
+> **Runtimes:** This file is used both in **Cursor IDE (local)** and in **App Cloud Agent** (Cursor VM + `appai` MCP). Phase **B0** branches by runtime — do not apply App MCP/artifact rules when running in the IDE.
 
 ---
 
@@ -269,19 +270,40 @@ Array order matches pivot value roles per slot (slot-1 template: color value, th
 
 ## Phase B — Generate SQL (after user confirms)
 
-### B0. Upload deliverables to MCP workspace
+### B0. Where to put deliverables (detect runtime first)
 
-After generating files under `output/{templateId}/` (and `scripts/` when applicable), copy them into the session workspace via MCP **`appai`** tools:
+This PROMPT is used in **two** places. **Detect which one you are in, then follow only that branch.**
 
-| File size | MCP pattern |
-|-----------|-------------|
-| ≤ ~256 KB UTF-8 | Single `write_workspace_file` |
-| > ~256 KB | `write_workspace_file` (chunk 1, replaces file) then `append_workspace_file` for each next ~256 KB chunk |
+| Signal | Runtime |
+|--------|---------|
+| MCP server **`appai`** is available (`list_workspace_files` / `sync_cloud_artifacts` work) | **App Cloud Agent** (Cursor cloud VM + AppAI) |
+| No `appai` MCP; you edit files in the user’s repo / workspace on disk | **Cursor IDE (local)** |
 
-- Preserve exact paths: `output/{templateId}/1_PlmDw_Tables.sql`, …, `4_PlmDw_ImportBlueprint.json`, optional `5_`/`6_`, `scripts/gen_plmdw_*.py`.
-- Do **not** rely on one giant tool payload for large SQL/JSON — chunking is required.
-- When Cursor cloud artifacts exist (`/agent/output/...`), prefer publishing artifacts; AppAI server also **pulls artifacts** into workspace during long runs.
-- After upload, `list_workspace_files` and report byte sizes; user downloads via workspace **Download**.
+#### B0-IDE — Cursor IDE (local)
+
+- Write files **directly** under this folder tree (relative to `ImportFromPLMDW/`):
+  - `output/{templateId}/1_PlmDw_Tables.sql` … `4_…` (and `5_`/`6_` when needed)
+  - `source/dwTabImportConfig.json`
+  - `scripts/…` when applicable
+- **Do not** call `write_workspace_file`, `append_workspace_file`, `sync_cloud_artifacts`, or depend on App Workspace.
+- **Do not** invent App Workspace / `FileRepository` URLs — the user opens files in the IDE or Explorer.
+- Success = files exist on disk at those paths with expected sizes.
+
+#### B0-APP — App Cloud Agent (VM + `appai` MCP)
+
+**Same delivery path as generated images.** Do **not** use `write_workspace_file` / `append_workspace_file` (disabled).
+
+1. Generate files on the VM.
+2. Place each deliverable under the **Cursor artifacts** tree with the final workspace-relative path:
+   - `/opt/cursor/artifacts/output/{templateId}/1_PlmDw_Tables.sql`
+   - `/opt/cursor/artifacts/output/{templateId}/2_PlmDw_FieldMapping.sql`
+   - … (also `source/…`, `scripts/…` as needed)
+   - or `artifacts/output/{templateId}/…` if that is how the environment exposes the artifacts folder
+3. Call MCP **`sync_cloud_artifacts`** once (AppAI lists/downloads Cursor artifacts into Workspace — same as pulling PNGs).
+4. Call **`list_workspace_files`** and report `RelativePath` + `SizeBytes` for every deliverable.
+5. User downloads via App **Workspace → Download**.
+
+Never claim success from “generated on the VM only”. If a file is missing after sync, fix the artifact path and call `sync_cloud_artifacts` again — do not fall back to MCP write.
 
 ### B1. Write `source/dwTabImportConfig.json`
 

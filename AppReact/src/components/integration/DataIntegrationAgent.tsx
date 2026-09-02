@@ -518,7 +518,7 @@ const WorkingStatus: React.FC<{ label: string; onStop?: () => void }> = ({ label
       <span>{label} {formatElapsed(elapsed)}</span>
       {longRun && (
         <span className="text-amber-700 dark:text-amber-300">
-          Long run — often MCP upload retries, not file size. You can Stop and use workspace files.
+          Taking longer than usual. You can Stop and check Workspace for any files saved so far.
         </span>
       )}
       {onStop && (
@@ -526,10 +526,50 @@ const WorkingStatus: React.FC<{ label: string; onStop?: () => void }> = ({ label
           type="button"
           onClick={onStop}
           className={`px-2 h-6 text-xs rounded-[4px] shrink-0 ${theme.button_default}`}
-          title="Stop waiting (keeps files already in workspace)"
+          title="Stop (saved files stay in Workspace)"
         >
           <i className="fa-solid fa-stop mr-1" />Stop
         </button>
+      )}
+    </div>
+  );
+};
+
+const WorkspaceEmptyState: React.FC<{ isRunning?: boolean }> = ({ isRunning }) => {
+  const { theme } = useTheme();
+  const [tipsOpen, setTipsOpen] = useState(false);
+
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[140px] px-4 py-8 text-center">
+      <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${theme.inputBox}`}>
+        {isRunning ? (
+          <i className={`fa-solid fa-circle-notch animate-spin text-lg ${theme.label}`} />
+        ) : (
+          <i className={`fa-solid fa-folder-open text-lg opacity-50 ${theme.label}`} />
+        )}
+      </div>
+      <div className={`text-sm font-medium ${theme.title}`}>
+        {isRunning ? 'Waiting for files' : 'No files yet'}
+      </div>
+      <div className={`text-xs mt-1 max-w-[220px] leading-relaxed ${theme.label}`}>
+        {isRunning
+          ? 'Still working… Files will show up here when ready.'
+          : 'Generated files will appear here.'}
+      </div>
+      {!isRunning && (
+        <button
+          type="button"
+          onClick={() => setTipsOpen(v => !v)}
+          className={`mt-3 text-[10px] ${theme.label} opacity-70 hover:opacity-100`}
+        >
+          {tipsOpen ? 'Hide tips' : 'Need help?'}
+        </button>
+      )}
+      {tipsOpen && !isRunning && (
+        <ul className={`mt-2 text-[10px] text-left max-w-[220px] space-y-1 ${theme.label} opacity-80`}>
+          <li>Click Refresh if files don&apos;t appear yet.</li>
+          <li>If work was interrupted, type Continue and send.</li>
+        </ul>
       )}
     </div>
   );
@@ -1055,7 +1095,7 @@ const DataIntegrationAgent: React.FC = () => {
     const status = String(summary.Status ?? session.Status ?? session.status ?? '');
     if (sessionLooksIncomplete(status, final, last?.role === 'assistant' ? last.content : '')) {
       setIncompleteWarning(
-        'This chat may be incomplete. Click Continue above or type Continue below and send.'
+        'Work may be incomplete. Click Continue or type Continue and send.'
       );
     }
     refreshFiles(summary.SessionGuid);
@@ -1153,7 +1193,7 @@ const DataIntegrationAgent: React.FC = () => {
     onStep: (step: AppDataIntegrationAgentStepEvent) => {
       const stepType = stepTypeOf(step);
       if (stepType === 'still_working')
-        setWorkingLabel('Agent still working…');
+        setWorkingLabel('Still working…');
       updateLastAssistant(msg => {
         const steps = [...msg.steps];
         if (isThinkingStep(step)) {
@@ -1250,7 +1290,7 @@ const DataIntegrationAgent: React.FC = () => {
         const isIncomplete = !!(result?.IsIncomplete ?? (result as any)?.isIncomplete);
         if (isIncomplete) {
           setIncompleteWarning(
-            'Task may be incomplete — workspace files may be partial. Click Continue above or type Continue below and send.'
+            'Work may be incomplete — some files may be missing. Click Continue or type Continue and send.'
           );
         } else {
           setIncompleteWarning(null);
@@ -1520,7 +1560,7 @@ const DataIntegrationAgent: React.FC = () => {
   if (!isAdmin) {
     return (
       <div className={`w-full h-full flex items-center justify-center ${theme.mainContentSection}`}>
-        <div className={`text-sm ${theme.label}`}>Administrator access is required for App Data Integration Agent.</div>
+        <div className={`text-sm ${theme.label}`}>Administrator access is required.</div>
       </div>
     );
   }
@@ -1635,7 +1675,7 @@ const DataIntegrationAgent: React.FC = () => {
                     type="button"
                     onClick={handleStop}
                     className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_default}`}
-                    title="Stop waiting (keeps workspace files)"
+                    title="Stop (saved files stay in Workspace)"
                   >
                     <i className="fa-solid fa-stop mr-1" />Stop
                   </button>
@@ -1645,7 +1685,7 @@ const DataIntegrationAgent: React.FC = () => {
                     type="button"
                     onClick={() => setWorkspaceOpen(v => !v)}
                     className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_secondary}`}
-                    title="Workspace files from agent"
+                    title="Files from this conversation"
                   >
                     <i className="fa-solid fa-folder-open mr-1" />Workspace
                     {workspaceFiles.length > 0 ? ` (${workspaceFiles.length})` : ''}
@@ -1658,7 +1698,7 @@ const DataIntegrationAgent: React.FC = () => {
               {messages.length === 0 ? (
                 <div className="h-full w-full flex items-center justify-center px-5">
                   <div className={`max-w-xl text-center text-sm ${theme.label}`}>
-                    Ask AI to build your application. Choose a skill below, then send a message.
+                    Ask AI for help. Choose a skill below, then describe what you need.
                   </div>
                 </div>
               ) : (
@@ -1895,8 +1935,8 @@ const DataIntegrationAgent: React.FC = () => {
                     }}
                     disabled={isRunning}
                     placeholder={looksIncomplete
-                      ? 'Type Continue and send to finish unfinished work…'
-                      : 'Message App Data Integration Agent…'}
+                      ? 'Type Continue and send to pick up where you left off…'
+                      : 'What do you need help with?'}
                     rows={3}
                     className="w-1 flex-auto px-2 py-1 text-xs resize-none border-0 focus:outline-none bg-transparent"
                   />
@@ -1905,7 +1945,7 @@ const DataIntegrationAgent: React.FC = () => {
                       type="button"
                       onClick={handleStop}
                       className={`px-3 h-7 ml-2 shrink-0 text-xs rounded-[4px] ${theme.button_default}`}
-                      title="Stop waiting (keeps workspace files)"
+                      title="Stop (saved files stay in Workspace)"
                     >
                       <i className="fa-solid fa-stop mr-1" />Stop
                     </button>
@@ -1974,13 +2014,7 @@ const DataIntegrationAgent: React.FC = () => {
                 </div>
                 <div className={`h-1 flex-auto overflow-auto px-2 py-2 ${theme.mainContentSection}`}>
                   {workspaceFiles.length === 0 ? (
-                    <div className={`text-xs px-1 py-2 ${theme.label}`}>
-                      <p>No workspace files yet. Files appear here when the cloud agent writes via MCP.</p>
-                      <p className="mt-1">
-                        If AppAI.Web was restarted during a run, Stop then Continue so MCP writes reconnect.
-                        Large files use write_workspace_file + append_workspace_file (256KB chunks).
-                      </p>
-                    </div>
+                    <WorkspaceEmptyState isRunning={isRunning} />
                   ) : workspaceFiles.map(f => {
                     const path = workspaceFilePath(f);
                     const selected = selectedWorkspacePaths.has(path);

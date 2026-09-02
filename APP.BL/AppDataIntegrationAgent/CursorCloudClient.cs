@@ -191,6 +191,18 @@ namespace App.BL.AppDataIntegrationAgent
                 || msg.IndexOf("already has an active run", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
+        public static bool IsArchivedError(Exception ex)
+        {
+            return (ex?.Message ?? "").IndexOf("agent_archived", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        public static async Task UnarchiveAgentAsync(string agentId, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(agentId)) return;
+            await SendAsync(HttpMethod.Post, "/v1/agents/" + agentId + "/unarchive", new JObject(), ct)
+                .ConfigureAwait(false);
+        }
+
         public static bool IsStreamGone(Exception ex)
         {
             return IsRecoverableStreamMessage(ex?.Message);

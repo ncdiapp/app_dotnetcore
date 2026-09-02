@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework;
+using Newtonsoft.Json;
 
 namespace App.BL.AppDataIntegrationAgent
 {
@@ -179,6 +180,12 @@ namespace App.BL.AppDataIntegrationAgent
                 CursorCloudClient.CreateResult created;
                 try
                 {
+                    created = await CursorCloudClient.FollowUpAsync(live.CloudAgentId, prompt, mcp, ct)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex) when (CursorCloudClient.IsArchivedError(ex))
+                {
+                    await CursorCloudClient.UnarchiveAgentAsync(live.CloudAgentId, ct).ConfigureAwait(false);
                     created = await CursorCloudClient.FollowUpAsync(live.CloudAgentId, prompt, mcp, ct)
                         .ConfigureAwait(false);
                 }
@@ -652,10 +659,57 @@ namespace App.BL.AppDataIntegrationAgent
             return AppDataIntegrationAgentSessionBL.RequireHydrated(sessionId);
         }
 
-        private static async Task PullCloudArtifactsAsync(AppDataIntegrationAgentSessionStore.SessionData live, CancellationToken ct)
+        /// <summary>
+        /// Pull Cursor cloud artifacts into the session workspace (same path as generated images).
+        /// Returns a JSON summary for MCP.
+        /// </summary>
+        public static async Task<string> SyncCloudArtifactsAsync(
+            AppDataIntegrationAgentSessionStore.SessionData live,
+            CancellationToken ct)
         {
-            if (live == null || string.IsNullOrWhiteSpace(live.CloudAgentId)) return;
+            if (live == null)
+                throw new InvalidOperationException("Session is required.");
+            if (string.IsNullOrWhiteSpace(live.CloudAgentId))
+                throw new InvalidOperationException("No Cursor cloud agent id on this session yet.");
+
+            var pulled = await PullCloudArtifactsAsync(live, ct).ConfigureAwait(false);
+            var files = AppDataIntegrationWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
+                .Where(f => f != null && !f.IsDirectory)
+                .Select(f => new
+                {
+                    f.RelativePath,
+                    f.SizeBytes,
+                    f.PublicUrl
+                })
+                .ToList();
+
+            return JsonConvert.SerializeObject(new
+            {
+                cloudAgentId = live.CloudAgentId,
+                artifactsListed = pulled.ListedCount,
+                artifactsPulled = pulled.PulledCount,
+                pulledPaths = pulled.PulledPaths,
+                workspaceFiles = files
+            }, Formatting.Indented);
+        }
+
+        private class ArtifactPullResult
+        {
+            public int ListedCount;
+            public int PulledCount;
+            public List<string> PulledPaths = new List<string>();
+        }
+
+        private static async Task<ArtifactPullResult> PullCloudArtifactsAsync(
+            AppDataIntegrationAgentSessionStore.SessionData live,
+            CancellationToken ct)
+        {
+            var result = new ArtifactPullResult();
+            if (live == null || string.IsNullOrWhiteSpace(live.CloudAgentId)) return result;
             var paths = await CursorCloudClient.ListArtifactPathsAsync(live.CloudAgentId, ct).ConfigureAwait(false);
+            result.ListedCount = paths?.Count ?? 0;
+            if (paths == null || paths.Count == 0) return result;
+
             foreach (var path in paths)
             {
                 var bytes = await CursorCloudClient.DownloadArtifactBytesAsync(live.CloudAgentId, path, ct)
@@ -669,7 +723,10 @@ namespace App.BL.AppDataIntegrationAgent
                     EventType = "file",
                     File = new AppDataIntegrationAgentFileEvent { Action = "artifact", RelativePath = rel }
                 });
+                result.PulledCount++;
+                result.PulledPaths.Add(rel + " (" + bytes.Length + " bytes)");
             }
+            return result;
         }
 
         private static string NormalizeArtifactPath(string path)
@@ -680,15 +737,30 @@ namespace App.BL.AppDataIntegrationAgent
                 p = p.Substring("/opt/cursor/artifacts/".Length);
             else if (p.StartsWith(opt, StringComparison.OrdinalIgnoreCase))
                 p = p.Substring(opt.Length);
+
             if (p.StartsWith("agent/", StringComparison.OrdinalIgnoreCase))
                 p = p.Substring("agent/".Length);
+
+            // artifacts/output/... → output/... (and same for packs/scripts/notes/source)
+            if (p.StartsWith("artifacts/", StringComparison.OrdinalIgnoreCase))
+            {
+                var rest = p.Substring("artifacts/".Length);
+                if (rest.StartsWith("output/", StringComparison.OrdinalIgnoreCase)
+                    || rest.StartsWith("scripts/", StringComparison.OrdinalIgnoreCase)
+                    || rest.StartsWith("packs/", StringComparison.OrdinalIgnoreCase)
+                    || rest.StartsWith("notes/", StringComparison.OrdinalIgnoreCase)
+                    || rest.StartsWith("source/", StringComparison.OrdinalIgnoreCase))
+                    return rest;
+                return p;
+            }
+
             if (p.StartsWith("output/", StringComparison.OrdinalIgnoreCase)
                 || p.StartsWith("scripts/", StringComparison.OrdinalIgnoreCase)
                 || p.StartsWith("packs/", StringComparison.OrdinalIgnoreCase)
-                || p.StartsWith("notes/", StringComparison.OrdinalIgnoreCase))
+                || p.StartsWith("notes/", StringComparison.OrdinalIgnoreCase)
+                || p.StartsWith("source/", StringComparison.OrdinalIgnoreCase))
                 return p;
-            if (p.StartsWith("artifacts/", StringComparison.OrdinalIgnoreCase))
-                return p;
+
             return "artifacts/" + p;
         }
 

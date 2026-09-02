@@ -162,31 +162,11 @@ namespace App.BL.AppDataIntegrationAgent
                     case "read_workspace_file":
                         return ToolText(AppDataIntegrationWorkspaceBL.ReadFile(session.WorkspaceRelativePath, Str(args, "relativePath"), session.CompanyId).Content);
                     case "write_workspace_file":
-                        {
-                            var relPath = Str(args, "relativePath");
-                            var rel = AppDataIntegrationWorkspaceBL.WriteFile(session.WorkspaceRelativePath, relPath, Str(args, "content") ?? "", session.CompanyId);
-                            var size = AppDataIntegrationWorkspaceBL.FileSizeBytes(session.WorkspaceRelativePath, rel, session.CompanyId);
-                            AppDataIntegrationAgentSessionStore.NotePackPath(session, rel);
-                            AppDataIntegrationAgentSessionStore.Enqueue(session.SessionId, new AppDataIntegrationAgentEventDto
-                            {
-                                EventType = "file",
-                                File = new AppDataIntegrationAgentFileEvent { Action = "write", RelativePath = rel }
-                            });
-                            return ToolText(WorkspaceWriteToolMessage(rel, size, false));
-                        }
                     case "append_workspace_file":
-                        {
-                            var relPath = Str(args, "relativePath");
-                            var size = AppDataIntegrationWorkspaceBL.AppendFile(session.WorkspaceRelativePath, relPath, Str(args, "content") ?? "", session.CompanyId);
-                            var rel = (relPath ?? "").Replace('\\', '/').TrimStart('/');
-                            AppDataIntegrationAgentSessionStore.NotePackPath(session, rel);
-                            AppDataIntegrationAgentSessionStore.Enqueue(session.SessionId, new AppDataIntegrationAgentEventDto
-                            {
-                                EventType = "file",
-                                File = new AppDataIntegrationAgentFileEvent { Action = "write", RelativePath = rel }
-                            });
-                            return ToolText(WorkspaceWriteToolMessage(rel, size, true));
-                        }
+                        return ToolText(McpWriteDisabledMessage(Str(args, "relativePath")), true);
+                    case "sync_cloud_artifacts":
+                        return ToolText(await AppDataIntegrationAgentBL.SyncCloudArtifactsAsync(session, ct)
+                            .ConfigureAwait(false));
                     case "delete_workspace_file":
                         AppDataIntegrationWorkspaceBL.DeleteFile(session.WorkspaceRelativePath, Str(args, "relativePath"), session.CompanyId);
                         AppDataIntegrationAgentSessionStore.Enqueue(session.SessionId, new AppDataIntegrationAgentEventDto
@@ -796,13 +776,19 @@ namespace App.BL.AppDataIntegrationAgent
             catch { return json; }
         }
 
+        private static string McpWriteDisabledMessage(string relativePath)
+        {
+            var path = string.IsNullOrWhiteSpace(relativePath) ? "<relativePath>" : relativePath.Replace('\\', '/').TrimStart('/');
+            return "MCP write_workspace_file / append_workspace_file are DISABLED for delivering files to App workspace. "
+                + "Same path as generated images: (1) write the file on the cloud VM under the Cursor artifacts tree "
+                + "(e.g. /opt/cursor/artifacts/" + path + " or artifacts/" + path + "), "
+                + "(2) call sync_cloud_artifacts, (3) list_workspace_files and check SizeBytes. "
+                + "Do not put file contents in MCP tool arguments.";
+        }
+
         private static string WorkspaceWriteToolMessage(string relativePath, long sizeBytes, bool appended)
         {
-            var maxKb = AppDataIntegrationAgentConfig.MaxWorkspaceChunkKb;
-            return (appended ? "Appended to " : "Wrote ")
-                + relativePath + " (file now " + sizeBytes + " bytes). "
-                + "Large files: first chunk write_workspace_file, then append_workspace_file (max ~"
-                + maxKb + " KB UTF-8 per call).";
+            return McpWriteDisabledMessage(relativePath);
         }
 
         private static object ToolText(string text, bool isError = false)
@@ -867,13 +853,16 @@ namespace App.BL.AppDataIntegrationAgent
                 Tool("preview_tables_data", "Offer an Open button for DB Table/View Data Preview (multi-tab modal). Does not open until the user clicks Open. Call after the user agrees, or when they explicitly asked to open preview.",
                     Prop("tables", "array", false), Prop("tableName", "string", false),
                     Prop("dataSourceRegisterId", "integer", false), Prop("schemaOwner", "string", false)),
-                Tool("list_workspace_files", "List files in the session workspace."),
-                Tool("read_workspace_file", "Read a workspace file.", Prop("relativePath", "string", true)),
+                Tool("list_workspace_files", "List files in the App session workspace (after sync_cloud_artifacts)."),
+                Tool("read_workspace_file", "Read a workspace file already pulled into App workspace.", Prop("relativePath", "string", true)),
+                Tool("sync_cloud_artifacts",
+                    "Pull all Cursor cloud artifacts for this agent into the App session workspace (same mechanism as generated images). "
+                    + "After writing deliverables under /opt/cursor/artifacts/ or artifacts/ on the VM, call this once, then list_workspace_files."),
                 Tool("write_workspace_file",
-                    "Create or replace a workspace file (first chunk only; max ~256KB UTF-8 per call).",
+                    "DISABLED for file delivery. Write under Cursor artifacts/ then call sync_cloud_artifacts.",
                     Prop("relativePath", "string", true), Prop("content", "string", true)),
                 Tool("append_workspace_file",
-                    "Append to a workspace file (continuation chunks; max ~256KB UTF-8 per call).",
+                    "DISABLED for file delivery. Use Cursor artifacts + sync_cloud_artifacts instead.",
                     Prop("relativePath", "string", true), Prop("content", "string", true)),
                 Tool("delete_workspace_file", "Delete a workspace file.", Prop("relativePath", "string", true)),
                 Tool("validate_config_pack", "Validate an AppConfigPack JSON file.", Prop("relativePath", "string", true)),

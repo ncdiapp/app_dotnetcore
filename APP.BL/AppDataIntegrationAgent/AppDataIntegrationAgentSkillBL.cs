@@ -158,8 +158,8 @@ Hard rules:
 1. On a new request, ask clarifying questions first and WAIT. Establish screen pattern first: Search+MasterDetail vs ListEdit (organizedType List). If the user said List Edit / ListEdit, use ListEdit only — no Search pair.
 2. If the user only wants to see table data / open DB Table/View Data Preview — call preview_tables_data (chat shows Open); do NOT generate Search or AppConfigPack. For a custom SELECT grid use open_query_result.
 3. Call get_skill('app-data-integration-agent-import-pack') if you need the JSON contract (PROMPT.md is attached as a skill ref).
-4. Write the pack to packs/<name>.appConfigPack.json via write_workspace_file.
-5. Call validate_config_pack then preview_config_pack.
+4. Write the pack as a Cursor cloud artifact at artifacts/packs/<name>.appConfigPack.json (or /opt/cursor/artifacts/packs/...), then call sync_cloud_artifacts. Do NOT use write_workspace_file.
+5. Call validate_config_pack then preview_config_pack on the workspace path after sync.
 6. Do not call propose_import_pack. Tell the user the workspace file is ready so they can click Start Build in this chat.
 7. source.generatedBy must be ""ai"". Use integrationId, never numeric TransactionId/SearchId. ListEdit uses organizedType List and transactions[].menu for the main menu.";
 
@@ -172,12 +172,20 @@ Hard rules:
 - propose_sql for INSERT, UPDATE, DELETE, CREATE TABLE, ALTER TABLE ... ADD. Wait for the user.
 - Forbidden: DROP, TRUNCATE, ALTER DROP, EXEC, multiple statements.";
 
-        private const string WorkspaceContent = @"Session workspace folders:
+        private const string WorkspaceContent = @"App session workspace (visible in App UI after sync):
 - packs/   AppConfigPack JSON
 - scripts/ SQL/scripts
 - output/  import/SQL results
 - notes/   working notes
-Only these paths are writable. Use list_workspace_files / read_workspace_file / write_workspace_file / append_workspace_file / delete_workspace_file.
-Large files (>256KB): first chunk write_workspace_file, then append_workspace_file per ~256KB chunk.";
+- source/  configs
+- artifacts/ other pulled cloud artifacts (e.g. images)
+
+App Cloud delivery (mandatory — same as Generate Image):
+1. Write files on the VM under Cursor artifacts tree: /opt/cursor/artifacts/<relativePath> or artifacts/<relativePath>
+2. Call MCP sync_cloud_artifacts
+3. list_workspace_files and confirm SizeBytes
+write_workspace_file / append_workspace_file are DISABLED. Never put file bodies in MCP tool args.
+
+Cursor IDE local: when the same PROMPT.md is used without appai MCP, write under ImportDoc on disk instead.";
     }
 }

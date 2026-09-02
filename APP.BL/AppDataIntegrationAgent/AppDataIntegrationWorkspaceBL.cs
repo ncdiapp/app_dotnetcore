@@ -100,7 +100,7 @@ namespace App.BL.AppDataIntegrationAgent
             return AppendBytes(workspaceRelativePath, relativePath, bytes, companyId);
         }
 
-        public static int MaxChunkBytes => Math.Max(16, AppDataIntegrationAgentConfig.MaxWorkspaceChunkKb) * 1024;
+        public static int MaxChunkBytes => Math.Max(16, AppDataIntegrationAgentConfig.PreferredMcpWriteKb) * 1024;
 
         private static void ValidateChunkSize(byte[] bytes, string toolName)
         {
@@ -108,9 +108,8 @@ namespace App.BL.AppDataIntegrationAgent
             var len = bytes?.Length ?? 0;
             if (len > max)
                 throw new InvalidOperationException(
-                    toolName + " rejected " + len + " bytes; max " + max
-                    + " bytes per MCP call (~" + AppDataIntegrationAgentConfig.MaxWorkspaceChunkKb
-                    + " KB). First chunk: write_workspace_file. Continuation: append_workspace_file.");
+                    toolName + " is disabled for workspace delivery. "
+                    + "Write under Cursor artifacts/ then call sync_cloud_artifacts.");
         }
 
         public static string WriteBytes(string workspaceRelativePath, string relativePath, byte[] bytes, int? companyId = null)
