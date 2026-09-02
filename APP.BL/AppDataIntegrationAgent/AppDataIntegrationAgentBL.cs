@@ -279,13 +279,9 @@ namespace App.BL.AppDataIntegrationAgent
             }
             catch { }
 
-            var deliverableCheck = AppDataIntegrationPlmDwSeedBL.ValidatePhaseBDeliverables(live);
-            var deliverableFail = deliverableCheck != null && !deliverableCheck.Ok && deliverableCheck.Errors.Count > 0;
-
-            var isIncomplete = (recovery != null
+            var isIncomplete = recovery != null
                 && string.Equals(recovery.TerminalStatus, "TIMEOUT", StringComparison.OrdinalIgnoreCase)
-                && (recovery.RunStillActive || string.IsNullOrEmpty(recovery.Text)))
-                || deliverableFail;
+                && (recovery.RunStillActive || string.IsNullOrEmpty(recovery.Text));
 
             if (!string.IsNullOrEmpty(capture.Error) && assistant.Length == 0)
             {
@@ -304,9 +300,7 @@ namespace App.BL.AppDataIntegrationAgent
 
             if (isIncomplete)
             {
-                var notice = deliverableFail
-                    ? AppDataIntegrationPlmDwSeedBL.FormatValidationNotice(deliverableCheck)
-                    : BuildIncompleteRunNotice(live, recovery);
+                var notice = BuildIncompleteRunNotice(live, recovery);
                 if (!string.IsNullOrWhiteSpace(notice))
                 {
                     if (!string.IsNullOrWhiteSpace(final))
@@ -697,21 +691,13 @@ namespace App.BL.AppDataIntegrationAgent
                 })
                 .ToList();
 
-            var validation = AppDataIntegrationPlmDwSeedBL.ValidatePhaseBDeliverables(live);
-
             return JsonConvert.SerializeObject(new
             {
                 cloudAgentId = live.CloudAgentId,
                 artifactsListed = pulled.ListedCount,
                 artifactsPulled = pulled.PulledCount,
                 pulledPaths = pulled.PulledPaths,
-                workspaceFiles = files,
-                deliverableValidation = new
-                {
-                    validation.Ok,
-                    validation.Errors,
-                    validation.FilesChecked
-                }
+                workspaceFiles = files
             }, Formatting.Indented);
         }
 
