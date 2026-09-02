@@ -74,11 +74,17 @@ namespace App.BL.AppDataIntegrationAgent
 
         public static SessionData GetByMcpToken(string token)
         {
+            if (string.IsNullOrWhiteSpace(token)) return null;
+            var t = token.Trim();
             string sessionId;
             SessionData data;
-            if (string.IsNullOrWhiteSpace(token)) return null;
-            if (!McpTokenToSession.TryGetValue(token.Trim(), out sessionId)) return null;
-            return Sessions.TryGetValue(sessionId, out data) ? data : null;
+            if (McpTokenToSession.TryGetValue(t, out sessionId)
+                && Sessions.TryGetValue(sessionId, out data))
+                return data;
+
+            // After AppAI.Web restart, in-memory token map is empty — hydrate from DB so Cursor MCP writes still work.
+            data = AppDataIntegrationAgentSessionBL.HydrateLiveByMcpToken(t);
+            return data;
         }
 
         public static void Enqueue(string sessionId, AppDataIntegrationAgentEventDto evt)

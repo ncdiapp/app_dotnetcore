@@ -269,6 +269,20 @@ Array order matches pivot value roles per slot (slot-1 template: color value, th
 
 ## Phase B — Generate SQL (after user confirms)
 
+### B0. Upload deliverables to MCP workspace
+
+After generating files under `output/{templateId}/` (and `scripts/` when applicable), copy them into the session workspace via MCP **`appai`** tools:
+
+| File size | MCP pattern |
+|-----------|-------------|
+| ≤ ~256 KB UTF-8 | Single `write_workspace_file` |
+| > ~256 KB | `write_workspace_file` (chunk 1, replaces file) then `append_workspace_file` for each next ~256 KB chunk |
+
+- Preserve exact paths: `output/{templateId}/1_PlmDw_Tables.sql`, …, `4_PlmDw_ImportBlueprint.json`, optional `5_`/`6_`, `scripts/gen_plmdw_*.py`.
+- Do **not** rely on one giant tool payload for large SQL/JSON — chunking is required.
+- When Cursor cloud artifacts exist (`/agent/output/...`), prefer publishing artifacts; AppAI server also **pulls artifacts** into workspace during long runs.
+- After upload, `list_workspace_files` and report byte sizes; user downloads via workspace **Download**.
+
 ### B1. Write `source/dwTabImportConfig.json`
 
 ```json

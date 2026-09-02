@@ -247,6 +247,9 @@ namespace App.BL.AppDataIntegrationAgent
                 if (CursorCloudClient.IsRecoverableStreamMessage(capture.Error))
                     capture.Error = null;
 
+                try { await PullCloudArtifactsAsync(live, ct).ConfigureAwait(false); }
+                catch { }
+
                 recovery = await RecoverRunAsync(live, ct, capture.StreamDisconnected).ConfigureAwait(false);
                 if (!string.IsNullOrEmpty(recovery.Text))
                     assistant.Append(recovery.Text);
@@ -474,7 +477,7 @@ namespace App.BL.AppDataIntegrationAgent
             var maxMinutes = AppDataIntegrationAgentConfig.RunRecoveryMaxMinutes;
             var maxAttempts = Math.Max(1, (maxMinutes * 60) / pollSec);
             var stillWorkingEvery = Math.Max(1, 60 / pollSec);
-            var artifactPullEvery = Math.Max(1, 30 / pollSec);
+            var artifactPullEvery = Math.Max(1, 15 / pollSec);
 
             if (streamDisconnected)
                 EnqueueStillWorking(live, "Real-time stream ended; waiting for Cursor cloud run to finish…");
@@ -646,13 +649,7 @@ namespace App.BL.AppDataIntegrationAgent
 
         private static AppDataIntegrationAgentSessionStore.SessionData GetOrHydrate(string sessionId)
         {
-            AppDataIntegrationAgentSessionStore.SessionData live;
-            if (AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live) && live != null)
-                return live;
-            live = AppDataIntegrationAgentSessionBL.HydrateLive(sessionId);
-            if (live == null)
-                throw new InvalidOperationException("Session not found.");
-            return live;
+            return AppDataIntegrationAgentSessionBL.RequireHydrated(sessionId);
         }
 
         private static async Task PullCloudArtifactsAsync(AppDataIntegrationAgentSessionStore.SessionData live, CancellationToken ct)
@@ -665,7 +662,7 @@ namespace App.BL.AppDataIntegrationAgent
                     .ConfigureAwait(false);
                 if (bytes == null || bytes.Length == 0) continue;
                 var rel = NormalizeArtifactPath(path);
-                AppDataIntegrationWorkspaceBL.WriteBytes(live.WorkspaceRelativePath, rel, bytes, live.CompanyId);
+                AppDataIntegrationWorkspaceBL.WriteBytesFromArtifact(live.WorkspaceRelativePath, rel, bytes, live.CompanyId);
                 AppDataIntegrationAgentSessionStore.NotePackPath(live, rel);
                 AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto
                 {
@@ -683,6 +680,13 @@ namespace App.BL.AppDataIntegrationAgent
                 p = p.Substring("/opt/cursor/artifacts/".Length);
             else if (p.StartsWith(opt, StringComparison.OrdinalIgnoreCase))
                 p = p.Substring(opt.Length);
+            if (p.StartsWith("agent/", StringComparison.OrdinalIgnoreCase))
+                p = p.Substring("agent/".Length);
+            if (p.StartsWith("output/", StringComparison.OrdinalIgnoreCase)
+                || p.StartsWith("scripts/", StringComparison.OrdinalIgnoreCase)
+                || p.StartsWith("packs/", StringComparison.OrdinalIgnoreCase)
+                || p.StartsWith("notes/", StringComparison.OrdinalIgnoreCase))
+                return p;
             if (p.StartsWith("artifacts/", StringComparison.OrdinalIgnoreCase))
                 return p;
             return "artifacts/" + p;

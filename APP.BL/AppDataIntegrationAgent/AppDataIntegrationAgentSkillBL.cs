@@ -177,6 +177,7 @@ Hard rules:
 - scripts/ SQL/scripts
 - output/  import/SQL results
 - notes/   working notes
-Only these paths are writable. Use list_workspace_files / read_workspace_file / write_workspace_file / delete_workspace_file.";
+Only these paths are writable. Use list_workspace_files / read_workspace_file / write_workspace_file / append_workspace_file / delete_workspace_file.
+Large files (>256KB): first chunk write_workspace_file, then append_workspace_file per ~256KB chunk.";
     }
 }

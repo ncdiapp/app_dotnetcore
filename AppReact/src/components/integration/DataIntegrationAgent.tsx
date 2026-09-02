@@ -165,7 +165,7 @@ function extractAppConfigPackPathsFromSteps(steps: AppDataIntegrationAgentStepEv
     const tool = String(s.ToolName ?? (s as any).toolName ?? '').toLowerCase();
     const desc = String(s.Description ?? (s as any).description ?? '').toLowerCase();
     const details = String(s.Details ?? (s as any).details ?? '');
-    const isWrite = tool.includes('write_workspace_file') || desc.includes('write_workspace_file');
+    const isWrite = tool.includes('write_workspace_file') || tool.includes('append_workspace_file') || desc.includes('write_workspace_file') || desc.includes('append_workspace_file');
     const isValidate = tool.includes('validate_config_pack') || desc.includes('validate_config_pack');
     const isPreview = tool.includes('preview_config_pack') || desc.includes('preview_config_pack');
     const isPropose = tool.includes('propose_import_pack') || desc.includes('propose_import_pack');
@@ -292,26 +292,146 @@ function stepDisplayText(s: AppDataIntegrationAgentStepEvent): string {
   return details.length > desc.length ? details : desc;
 }
 
-/** Steps shown while streaming — hide tool_call JSON; collapse thinking into one block. */
-function stepsForStreamingDisplay(steps: AppDataIntegrationAgentStepEvent[]): AppDataIntegrationAgentStepEvent[] {
-  const merged = mergeThinkingSteps(steps).filter(s => stepTypeOf(s) !== 'tool_call');
-  const thinkingParts: string[] = [];
-  const other: AppDataIntegrationAgentStepEvent[] = [];
+function collectMergedThinkingText(steps: AppDataIntegrationAgentStepEvent[]): string {
+  const merged = mergeThinkingSteps(steps || []);
+  const parts: string[] = [];
   for (const s of merged) {
-    if (isThinkingStep(s)) thinkingParts.push(stepDisplayText(s));
-    else other.push(s);
+    if (isThinkingStep(s)) {
+      const t = stepDisplayText(s).trim();
+      if (t) parts.push(t);
+    }
   }
-  const display: AppDataIntegrationAgentStepEvent[] = [...other];
-  if (thinkingParts.length > 0) {
-    display.push({
-      Type: 'thinking',
-      Description: thinkingParts.join('\n\n'),
-      Details: thinkingParts.join('\n\n'),
-      IsSuccess: true,
-      Timestamp: new Date().toISOString(),
+  return parts.join('\n\n');
+}
+
+/** Split long merged thinking into readable segments for foldable UI. */
+function splitThinkingSegments(text: string): string[] {
+  const raw = (text || '').replace(/\r\n/g, '\n').trim();
+  if (!raw) return [];
+
+  const byPara = raw.split(/\n{2,}/).map(s => s.trim()).filter(s => s.length > 0);
+  if (byPara.length > 1) return byPara;
+
+  const byLine = raw.split(/\n/).map(s => s.trim()).filter(s => s.length > 0);
+  if (byLine.length > 1) return byLine;
+
+  const bySentence = raw
+    .split(/(?<=[.!?])\s+(?=[A-Z"'“(I])/)
+    .map(s => s.trim())
+    .filter(s => s.length > 10);
+  if (bySentence.length > 1) return bySentence;
+
+  if (raw.length > 320) {
+    const chunks: string[] = [];
+    for (let i = 0; i < raw.length; i += 320) {
+      chunks.push(raw.slice(i, i + 320).trim());
+    }
+    return chunks.filter(Boolean);
+  }
+  return [raw];
+}
+
+function truncateText(text: string, max: number): string {
+  const t = (text || '').trim();
+  if (t.length <= max) return t;
+  return t.slice(0, max).trimEnd() + '…';
+}
+
+function formatThinkingSize(chars: number): string {
+  if (chars >= 10000) return `约 ${(chars / 1000).toFixed(1)}k 字`;
+  if (chars >= 1000) return `约 ${Math.round(chars / 1000)}k 字`;
+  return `${chars} 字`;
+}
+
+const ThinkingPanel: React.FC<{ text: string; isLive?: boolean }> = ({ text, isLive }) => {
+  const { theme } = useTheme();
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [openSegments, setOpenSegments] = useState<Set<number>>(() => new Set());
+  const segments = splitThinkingSegments(text);
+  const latestIdx = segments.length - 1;
+
+  useEffect(() => {
+    if (!isLive || latestIdx < 0) return;
+    setOpenSegments(prev => {
+      if (prev.has(latestIdx)) return prev;
+      const next = new Set(prev);
+      next.add(latestIdx);
+      return next;
     });
-  }
-  return display.slice(-3);
+  }, [isLive, latestIdx]);
+
+  if (segments.length === 0) return null;
+
+  const preview = truncateText(segments[latestIdx] ?? '', 100);
+
+  const toggleSegment = (idx: number) => {
+    setOpenSegments(prev => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  };
+
+  return (
+    <div className={`mb-3 text-xs rounded-[4px] border ${theme.inputBox}`}>
+      <button
+        type="button"
+        onClick={() => setPanelOpen(v => !v)}
+        className={`w-full flex items-start gap-2 px-2 py-2 text-left ${theme.contextMenu}`}
+      >
+        <i className={`fa-solid fa-chevron-${panelOpen ? 'down' : 'right'} mt-0.5 shrink-0 ${theme.label}`} />
+        <i className={`fa-solid fa-brain shrink-0 ${theme.label}`} />
+        <span className="w-1 flex-auto min-w-0">
+          <span className={`font-medium ${theme.title}`}>
+            思考过程
+          </span>
+          <span className={`ml-2 ${theme.label}`}>
+            {segments.length} 段 · {formatThinkingSize(text.length)}
+            {isLive ? ' · 进行中' : ''}
+          </span>
+          {!panelOpen && preview && (
+            <span className={`block mt-1 ${theme.label} opacity-80`}>{preview}</span>
+          )}
+        </span>
+      </button>
+      {panelOpen && (
+        <div className="max-h-56 overflow-y-auto px-2 pb-2 space-y-1">
+          {segments.map((seg, idx) => {
+            const open = openSegments.has(idx);
+            const head = truncateText(seg, 72);
+            return (
+              <div key={idx} className={`rounded-[4px] ${theme.mainContentSection}`}>
+                <button
+                  type="button"
+                  onClick={() => toggleSegment(idx)}
+                  className={`w-full flex items-start gap-1.5 px-2 py-1 text-left ${theme.contextMenu}`}
+                >
+                  <i className={`fa-solid fa-chevron-${open ? 'down' : 'right'} mt-0.5 shrink-0 text-[10px] ${theme.label}`} />
+                  <span className={`shrink-0 text-[10px] ${theme.label}`}>#{idx + 1}</span>
+                  <span className={`w-1 flex-auto min-w-0 ${open ? theme.label : theme.title}`}>
+                    {open ? null : head}
+                  </span>
+                </button>
+                {open && (
+                  <div className={`px-2 pb-2 pl-6 whitespace-pre-wrap break-words leading-relaxed ${theme.label}`}>
+                    {seg}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/** Non-thinking activity lines (still_working, etc.) — no tool_call JSON. */
+function activityStepsForDisplay(steps: AppDataIntegrationAgentStepEvent[]): AppDataIntegrationAgentStepEvent[] {
+  return mergeThinkingSteps(steps || [])
+    .filter(s => !isThinkingStep(s) && stepTypeOf(s) !== 'tool_call')
+    .slice(-5);
 }
 
 function mapOpenUiOffersFromHistory(raw: any): OpenUiOffer[] {
@@ -943,6 +1063,12 @@ const DataIntegrationAgent: React.FC = () => {
   }, [refreshFiles, resetChatUi]);
 
   useEffect(() => {
+    if (!isRunning || !sessionId) return;
+    const id = window.setInterval(() => refreshFiles(sessionId), 8000);
+    return () => window.clearInterval(id);
+  }, [isRunning, sessionId, refreshFiles]);
+
+  useEffect(() => {
     const existing = new Set(files.filter(f => !f.IsDirectory).map(f => workspaceFilePath(f)));
     setSelectedWorkspacePaths(prev => {
       const next = new Set(Array.from(prev).filter(p => existing.has(p)));
@@ -1514,14 +1640,15 @@ const DataIntegrationAgent: React.FC = () => {
                     <i className="fa-solid fa-stop mr-1" />Stop
                   </button>
                 )}
-                {workspaceFiles.length > 0 && (
+                {(sessionId || workspaceFiles.length > 0) && (
                   <button
                     type="button"
                     onClick={() => setWorkspaceOpen(v => !v)}
                     className={`px-2 h-6 text-xs rounded-[4px] ${theme.button_secondary}`}
-                    title="Workspace"
+                    title="Workspace files from agent"
                   >
                     <i className="fa-solid fa-folder-open mr-1" />Workspace
+                    {workspaceFiles.length > 0 ? ` (${workspaceFiles.length})` : ''}
                   </button>
                 )}
               </div>
@@ -1555,35 +1682,35 @@ const DataIntegrationAgent: React.FC = () => {
                         />
                       ) : (
                         <div className={`w-full text-sm leading-relaxed whitespace-pre-wrap ${t('text_title')}`}>
-                          {msg.isStreaming && (
+                          {msg.isStreaming && (() => {
+                            const thinkingText = collectMergedThinkingText(msg.steps);
+                            const activitySteps = activityStepsForDisplay(msg.steps);
+                            return (
                             <>
                               <WorkingStatus
                                 label={pendingGate ? 'Waiting for confirmation' : workingLabel}
                                 onStop={handleStop}
                               />
-                              {msg.steps.length > 0 && (
+                              {thinkingText && (
+                                <ThinkingPanel text={thinkingText} isLive />
+                              )}
+                              {activitySteps.length > 0 && (
                                 <div className={`mb-3 text-xs ${theme.label}`}>
-                                  {stepsForStreamingDisplay(msg.steps).map((s, idx) => {
+                                  {activitySteps.map((s, idx) => {
                                     const t = stepTypeOf(s);
-                                    const icon = t === 'tool_call'
-                                      ? 'fa-wrench'
-                                      : t === 'still_working'
-                                        ? 'fa-hourglass-half'
-                                        : isThinkingStep(s)
-                                          ? 'fa-brain'
-                                          : 'fa-gear';
-                                    const label = isThinkingStep(s) ? 'Thinking: ' : '';
+                                    const icon = t === 'still_working' ? 'fa-hourglass-half' : 'fa-gear';
                                     return (
                                       <div key={idx} className="break-words whitespace-pre-wrap mb-1">
                                         <i className={`fa-solid ${icon} mr-1`} />
-                                        {label}{stepDisplayText(s)}
+                                        {stepDisplayText(s)}
                                       </div>
                                     );
                                   })}
                                 </div>
                               )}
                             </>
-                          )}
+                            );
+                          })()}
                           <AssistantBody text={msg.content || msg.streamingContent || ''} />
                           {!msg.isStreaming && !(msg.content || msg.streamingContent) && (
                             <div className={theme.label}>No reply received.</div>
@@ -1809,12 +1936,20 @@ const DataIntegrationAgent: React.FC = () => {
             </div>
           </div>
 
-          {workspaceOpen && workspaceFiles.length > 0 && (
+          {workspaceOpen && (
             <div ref={workspacePanelRef} className="relative shrink-0 flex flex-col" style={{ width: workspaceWidth }}>
               <PanelResizeHandle edge="left" label="Resize workspace" onMouseDown={startResize('workspace')} />
               <div className={`flex items-center justify-between px-3 h-10 shrink-0 mb-1 ${theme.mainContentSection}`}>
                   <span className={`text-sm font-semibold truncate ${theme.title}`}>Workspace</span>
                   <div className="flex items-center shrink-0 space-x-1">
+                    <button
+                      type="button"
+                      onClick={() => void refreshFiles(sessionId)}
+                      className={`w-8 h-6 ${theme.button_default} rounded-[4px] text-xs`}
+                      title="Refresh file list"
+                    >
+                      <i className="fa-solid fa-rotate" />
+                    </button>
                     {selectedWorkspacePaths.size > 0 && (
                       <button
                         type="button"
@@ -1838,7 +1973,15 @@ const DataIntegrationAgent: React.FC = () => {
                   </div>
                 </div>
                 <div className={`h-1 flex-auto overflow-auto px-2 py-2 ${theme.mainContentSection}`}>
-                  {workspaceFiles.map(f => {
+                  {workspaceFiles.length === 0 ? (
+                    <div className={`text-xs px-1 py-2 ${theme.label}`}>
+                      <p>No workspace files yet. Files appear here when the cloud agent writes via MCP.</p>
+                      <p className="mt-1">
+                        If AppAI.Web was restarted during a run, Stop then Continue so MCP writes reconnect.
+                        Large files use write_workspace_file + append_workspace_file (256KB chunks).
+                      </p>
+                    </div>
+                  ) : workspaceFiles.map(f => {
                     const path = workspaceFilePath(f);
                     const selected = selectedWorkspacePaths.has(path);
                     return (

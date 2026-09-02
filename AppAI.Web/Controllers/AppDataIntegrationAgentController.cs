@@ -309,12 +309,7 @@ public class AppDataIntegrationAgentController : SecureBaseController
 
     private static AppDataIntegrationAgentSessionStore.SessionData RequireLive(string sessionId)
     {
-        AppDataIntegrationAgentSessionStore.SessionData live;
-        if (AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live) && live != null)
-            return live;
-        live = AppDataIntegrationAgentSessionBL.HydrateLive(sessionId);
-        if (live == null) throw new InvalidOperationException("Session not found.");
-        return live;
+        return AppDataIntegrationAgentSessionBL.RequireHydrated(sessionId);
     }
 
     private static AppClientIdentity? CurrentIdentity()

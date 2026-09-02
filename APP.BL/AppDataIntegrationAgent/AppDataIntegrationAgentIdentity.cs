@@ -51,6 +51,9 @@ namespace App.BL.AppDataIntegrationAgent
             live.Identity = identity;
             live.IdentityJson = Serialize(identity);
 
+            if (live.CompanyId == null && identity.Value.CurrentWorkingCompanyId != null)
+                live.CompanyId = Convert.ToInt32(identity.Value.CurrentWorkingCompanyId);
+
             var sc = ServerContext.Instance;
             if (sc.WindowsIdentityProvider != null)
                 sc.WindowsIdentityProvider.RegisterIdentity(identity);

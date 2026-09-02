@@ -24,6 +24,8 @@ namespace App.BL.AppDataIntegrationAgent
         public static bool AdminOnly => !string.Equals(AppConfig.Get("Cursor.AdminOnly"), "false", StringComparison.OrdinalIgnoreCase);
         public static int SqlPreviewRowLimit => ParseInt(AppConfig.Get("Cursor.SqlPreviewRowLimit"), 200);
         public static int MaxWorkspaceFileMb => ParseInt(AppConfig.Get("Cursor.MaxWorkspaceFileMb"), 20);
+        /// <summary>Max UTF-8 bytes per write_workspace_file / append_workspace_file MCP call (keeps JSON tool args small).</summary>
+        public static int MaxWorkspaceChunkKb => ParseInt(AppConfig.Get("Cursor.MaxWorkspaceChunkKb"), 256);
         /// <summary>How long to poll Cursor GetRun after SSE stream ends (long MCP/tool runs).</summary>
         public static int RunRecoveryMaxMinutes => ParseInt(AppConfig.Get("Cursor.RunRecoveryMaxMinutes"), 30);
         public static int RunRecoveryPollSeconds => ParseInt(AppConfig.Get("Cursor.RunRecoveryPollSeconds"), 3);

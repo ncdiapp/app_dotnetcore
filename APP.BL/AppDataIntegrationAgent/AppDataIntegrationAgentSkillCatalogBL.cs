@@ -205,6 +205,9 @@ namespace App.BL.AppDataIntegrationAgent
                 sb.AppendLine("- Default DataSourceRegisterId: " + live.DataSourceRegisterId.Value);
             sb.AppendLine("- Use MCP tools on server \"appai\" for schema, files, SQL, and opening App UI pages.");
             sb.AppendLine("- Writable disk is the MCP workspace (packs/, scripts/, output/, notes/).");
+            sb.AppendLine("- Large workspace files: write_workspace_file for chunk 1 (truncate), then append_workspace_file for each next chunk (max ~"
+                + AppDataIntegrationAgentConfig.MaxWorkspaceChunkKb
+                + " KB UTF-8 per MCP call). Prefer Cursor artifacts when available; server also pulls artifacts into workspace.");
             sb.AppendLine("- Do not modify cloned application source (.cs/.tsx). Do not open a pull request.");
             sb.AppendLine("- SELECT may run via run_select. INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD must go through propose_sql and wait.");
             if (live != null && !live.AllowProposeImport)

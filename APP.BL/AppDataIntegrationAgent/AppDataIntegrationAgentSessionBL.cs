@@ -259,6 +259,17 @@ FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
             catch { return null; }
         }
 
+        public static AppDataIntegrationAgentSessionStore.SessionData RequireHydrated(string sessionGuid)
+        {
+            AppDataIntegrationAgentSessionStore.SessionData live;
+            if (!AppDataIntegrationAgentSessionStore.TryGet(sessionGuid, out live) || live == null)
+                live = HydrateLive(sessionGuid);
+            if (live == null)
+                throw new InvalidOperationException("Session not found.");
+            AppDataIntegrationAgentIdentity.Restore(live);
+            return live;
+        }
+
         public static AppDataIntegrationAgentSessionStore.SessionData HydrateLive(string sessionGuid)
         {
             try
@@ -272,6 +283,50 @@ SELECT SessionGuid, CloudAgentId, LatestRunId, McpToken, AppSessionId, SaasAppli
        DataSourceRegisterId, SkillKey, CreatedById, WorkspaceRelativePath, ConversationHistoryJson, IdentityJson
 FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter> { P(fixture, "@SessionGuid", sessionGuid) });
+                if (dt == null || dt.Rows.Count == 0) return null;
+                var row = dt.Rows[0];
+                var data = new AppDataIntegrationAgentSessionStore.SessionData
+                {
+                    SessionId = row["SessionGuid"] as string,
+                    CloudAgentId = row["CloudAgentId"] as string,
+                    LatestRunId = row["LatestRunId"] as string,
+                    McpToken = row["McpToken"] as string,
+                    AppSessionId = row["AppSessionId"] as string,
+                    SaasApplicationId = ColInt(row, "SaasApplicationId"),
+                    DataSourceRegisterId = ColInt(row, "DataSourceRegisterId"),
+                    SkillKey = ColStr(row, "SkillKey"),
+                    CreatedById = ColInt(row, "CreatedById"),
+                    WorkspaceRelativePath = row["WorkspaceRelativePath"] as string,
+                    IdentityJson = row.Table.Columns.Contains("IdentityJson") ? row["IdentityJson"] as string : null
+                };
+                data.Identity = AppDataIntegrationAgentIdentity.Deserialize(data.IdentityJson);
+                AppDataIntegrationAgentSkillCatalogBL.ApplyToSession(data, data.SkillKey);
+                if (data.CompanyId == null && data.Identity.HasValue && data.Identity.Value.CurrentWorkingCompanyId != null)
+                    data.CompanyId = Convert.ToInt32(data.Identity.Value.CurrentWorkingCompanyId);
+                var hist = row["ConversationHistoryJson"] as string;
+                if (!string.IsNullOrWhiteSpace(hist))
+                    data.ConversationHistory = JsonConvert.DeserializeObject<List<AppDataIntegrationAgentMessageDto>>(hist)
+                        ?? new List<AppDataIntegrationAgentMessageDto>();
+                AppDataIntegrationAgentSessionStore.AttachLive(data);
+                return data;
+            }
+            catch { return null; }
+        }
+
+        public static AppDataIntegrationAgentSessionStore.SessionData HydrateLiveByMcpToken(string mcpToken)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(mcpToken)) return null;
+                var fixture = GetFixture();
+                if (fixture == null) return null;
+                EnsureSchema(fixture);
+
+                var dt = fixture.RetriveDataTable(@"
+SELECT SessionGuid, CloudAgentId, LatestRunId, McpToken, AppSessionId, SaasApplicationId,
+       DataSourceRegisterId, SkillKey, CreatedById, WorkspaceRelativePath, ConversationHistoryJson, IdentityJson
+FROM dbo.AppDataIntegrationAgentSession WHERE McpToken = @McpToken",
+                    new List<DbParameter> { P(fixture, "@McpToken", mcpToken.Trim()) });
                 if (dt == null || dt.Rows.Count == 0) return null;
                 var row = dt.Rows[0];
                 var data = new AppDataIntegrationAgentSessionStore.SessionData

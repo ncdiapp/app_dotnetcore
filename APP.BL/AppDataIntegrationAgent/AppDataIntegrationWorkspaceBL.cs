@@ -94,7 +94,69 @@ namespace App.BL.AppDataIntegrationAgent
             return WriteBytes(workspaceRelativePath, relativePath, bytes, companyId);
         }
 
+        public static long AppendFile(string workspaceRelativePath, string relativePath, string content, int? companyId = null)
+        {
+            var bytes = System.Text.Encoding.UTF8.GetBytes(content ?? "");
+            return AppendBytes(workspaceRelativePath, relativePath, bytes, companyId);
+        }
+
+        public static int MaxChunkBytes => Math.Max(16, AppDataIntegrationAgentConfig.MaxWorkspaceChunkKb) * 1024;
+
+        private static void ValidateChunkSize(byte[] bytes, string toolName)
+        {
+            var max = MaxChunkBytes;
+            var len = bytes?.Length ?? 0;
+            if (len > max)
+                throw new InvalidOperationException(
+                    toolName + " rejected " + len + " bytes; max " + max
+                    + " bytes per MCP call (~" + AppDataIntegrationAgentConfig.MaxWorkspaceChunkKb
+                    + " KB). First chunk: write_workspace_file. Continuation: append_workspace_file.");
+        }
+
         public static string WriteBytes(string workspaceRelativePath, string relativePath, byte[] bytes, int? companyId = null)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+                throw new ArgumentException("relativePath is required.");
+            ValidateChunkSize(bytes, "write_workspace_file");
+            EnsureSessionDir(workspaceRelativePath, companyId);
+            var full = Resolve(workspaceRelativePath, relativePath, companyId);
+            Directory.CreateDirectory(Path.GetDirectoryName(full) ?? full);
+            var maxBytes = Math.Max(AppDataIntegrationAgentConfig.MaxWorkspaceFileMb, 20) * 1024L * 1024L;
+            if (bytes != null && bytes.Length > maxBytes)
+                throw new InvalidOperationException("File exceeds AgentOutput size limit.");
+            File.WriteAllBytes(full, bytes ?? Array.Empty<byte>());
+            return ToRelative(Resolve(workspaceRelativePath, null, companyId), full).Replace('\\', '/');
+        }
+
+        public static long AppendBytes(string workspaceRelativePath, string relativePath, byte[] bytes, int? companyId = null)
+        {
+            if (string.IsNullOrWhiteSpace(relativePath))
+                throw new ArgumentException("relativePath is required.");
+            ValidateChunkSize(bytes, "append_workspace_file");
+            EnsureSessionDir(workspaceRelativePath, companyId);
+            var full = Resolve(workspaceRelativePath, relativePath, companyId);
+            Directory.CreateDirectory(Path.GetDirectoryName(full) ?? full);
+            var maxFile = Math.Max(AppDataIntegrationAgentConfig.MaxWorkspaceFileMb, 20) * 1024L * 1024L;
+            var add = bytes?.Length ?? 0;
+            var existing = File.Exists(full) ? new FileInfo(full).Length : 0L;
+            if (existing + add > maxFile)
+                throw new InvalidOperationException("File would exceed AgentOutput size limit after append.");
+            using (var fs = new FileStream(full, FileMode.Append, FileAccess.Write, FileShare.Read))
+            {
+                if (bytes != null && bytes.Length > 0)
+                    fs.Write(bytes, 0, bytes.Length);
+            }
+            return new FileInfo(full).Length;
+        }
+
+        public static long FileSizeBytes(string workspaceRelativePath, string relativePath, int? companyId = null)
+        {
+            var full = Resolve(workspaceRelativePath, relativePath, companyId);
+            return File.Exists(full) ? new FileInfo(full).Length : 0L;
+        }
+
+        /// <summary>Write artifact bytes pulled from Cursor (no per-chunk MCP limit).</summary>
+        public static string WriteBytesFromArtifact(string workspaceRelativePath, string relativePath, byte[] bytes, int? companyId = null)
         {
             if (string.IsNullOrWhiteSpace(relativePath))
                 throw new ArgumentException("relativePath is required.");

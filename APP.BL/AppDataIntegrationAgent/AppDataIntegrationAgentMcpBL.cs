@@ -163,14 +163,29 @@ namespace App.BL.AppDataIntegrationAgent
                         return ToolText(AppDataIntegrationWorkspaceBL.ReadFile(session.WorkspaceRelativePath, Str(args, "relativePath"), session.CompanyId).Content);
                     case "write_workspace_file":
                         {
-                            var rel = AppDataIntegrationWorkspaceBL.WriteFile(session.WorkspaceRelativePath, Str(args, "relativePath"), Str(args, "content") ?? "", session.CompanyId);
+                            var relPath = Str(args, "relativePath");
+                            var rel = AppDataIntegrationWorkspaceBL.WriteFile(session.WorkspaceRelativePath, relPath, Str(args, "content") ?? "", session.CompanyId);
+                            var size = AppDataIntegrationWorkspaceBL.FileSizeBytes(session.WorkspaceRelativePath, rel, session.CompanyId);
                             AppDataIntegrationAgentSessionStore.NotePackPath(session, rel);
                             AppDataIntegrationAgentSessionStore.Enqueue(session.SessionId, new AppDataIntegrationAgentEventDto
                             {
                                 EventType = "file",
                                 File = new AppDataIntegrationAgentFileEvent { Action = "write", RelativePath = rel }
                             });
-                            return ToolText("Wrote " + rel);
+                            return ToolText(WorkspaceWriteToolMessage(rel, size, false));
+                        }
+                    case "append_workspace_file":
+                        {
+                            var relPath = Str(args, "relativePath");
+                            var size = AppDataIntegrationWorkspaceBL.AppendFile(session.WorkspaceRelativePath, relPath, Str(args, "content") ?? "", session.CompanyId);
+                            var rel = (relPath ?? "").Replace('\\', '/').TrimStart('/');
+                            AppDataIntegrationAgentSessionStore.NotePackPath(session, rel);
+                            AppDataIntegrationAgentSessionStore.Enqueue(session.SessionId, new AppDataIntegrationAgentEventDto
+                            {
+                                EventType = "file",
+                                File = new AppDataIntegrationAgentFileEvent { Action = "write", RelativePath = rel }
+                            });
+                            return ToolText(WorkspaceWriteToolMessage(rel, size, true));
                         }
                     case "delete_workspace_file":
                         AppDataIntegrationWorkspaceBL.DeleteFile(session.WorkspaceRelativePath, Str(args, "relativePath"), session.CompanyId);
@@ -781,6 +796,15 @@ namespace App.BL.AppDataIntegrationAgent
             catch { return json; }
         }
 
+        private static string WorkspaceWriteToolMessage(string relativePath, long sizeBytes, bool appended)
+        {
+            var maxKb = AppDataIntegrationAgentConfig.MaxWorkspaceChunkKb;
+            return (appended ? "Appended to " : "Wrote ")
+                + relativePath + " (file now " + sizeBytes + " bytes). "
+                + "Large files: first chunk write_workspace_file, then append_workspace_file (max ~"
+                + maxKb + " KB UTF-8 per call).";
+        }
+
         private static object ToolText(string text, bool isError = false)
         {
             return new
@@ -845,7 +869,12 @@ namespace App.BL.AppDataIntegrationAgent
                     Prop("dataSourceRegisterId", "integer", false), Prop("schemaOwner", "string", false)),
                 Tool("list_workspace_files", "List files in the session workspace."),
                 Tool("read_workspace_file", "Read a workspace file.", Prop("relativePath", "string", true)),
-                Tool("write_workspace_file", "Write a workspace file.", Prop("relativePath", "string", true), Prop("content", "string", true)),
+                Tool("write_workspace_file",
+                    "Create or replace a workspace file (first chunk only; max ~256KB UTF-8 per call).",
+                    Prop("relativePath", "string", true), Prop("content", "string", true)),
+                Tool("append_workspace_file",
+                    "Append to a workspace file (continuation chunks; max ~256KB UTF-8 per call).",
+                    Prop("relativePath", "string", true), Prop("content", "string", true)),
                 Tool("delete_workspace_file", "Delete a workspace file.", Prop("relativePath", "string", true)),
                 Tool("validate_config_pack", "Validate an AppConfigPack JSON file.", Prop("relativePath", "string", true)),
                 Tool("preview_config_pack", "Preview import actions without applying.", Prop("relativePath", "string", true)),
