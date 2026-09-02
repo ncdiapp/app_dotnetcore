@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -99,6 +100,29 @@ namespace App.BL.AppDataIntegrationAgent
         public static string RunSelect(int dataSourceRegisterId, string sql, int rowLimit)
         {
             return RunSelect(new AppDataIntegrationAgentSqlTarget { DataSourceRegisterId = dataSourceRegisterId }, sql, rowLimit);
+        }
+
+        /// <summary>
+        /// Agent-facing SELECT: row-capped execution, summary JSON to VM, full rows cached on App server.
+        /// </summary>
+        public static string RunSelectForAgent(string sessionId, AppDataIntegrationAgentSqlTarget target, string sql)
+        {
+            var rowLimit = AppDataIntegrationAgentConfig.SqlPreviewRowLimit;
+            var sampleRows = AppDataIntegrationAgentConfig.SqlProbeSampleRows;
+            var sw = Stopwatch.StartNew();
+            var classified = Classify(sql);
+            if (classified.Kind != SqlKind.Select)
+                throw new InvalidOperationException(classified.Reason ?? "Not a SELECT.");
+
+            var fixture = CreateFixture(target);
+            var limited = WrapTop(classified.Normalized, rowLimit);
+            var dt = fixture.RetriveDataTable(limited, new List<DbParameter>());
+            sw.Stop();
+
+            var cacheKey = AppDataIntegrationProbeCacheBL.Store(sessionId, classified.Normalized, dt);
+            var json = SerializeAgentSummary(dt, rowLimit, sampleRows, cacheKey);
+            AppDataIntegrationMcpMetricsBL.LogRunSelect(sessionId, sw.ElapsedMilliseconds, json.Length, dt.Rows.Count);
+            return json;
         }
 
         public static string RunSelect(AppDataIntegrationAgentSqlTarget target, string sql, int rowLimit)
@@ -226,6 +250,48 @@ ORDER BY c.ORDINAL_POSITION";
                 rows.Add(dict);
             }
             return JsonConvert.SerializeObject(new { RowCount = dt.Rows.Count, Returned = rows.Count, Rows = rows });
+        }
+
+        private static string SerializeAgentSummary(DataTable dt, int rowLimit, int sampleRows, string cacheKey)
+        {
+            if (dt == null)
+                return JsonConvert.SerializeObject(new
+                {
+                    RowCount = 0,
+                    Returned = 0,
+                    Columns = new string[0],
+                    SampleRows = new object[0],
+                    Truncated = false,
+                    CacheKey = cacheKey,
+                    Note = "Full result cached on App server only. Do not write probe JSON to workspace artifacts."
+                });
+
+            var columns = dt.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList();
+            var take = Math.Min(dt.Rows.Count, Math.Max(1, sampleRows));
+            var samples = new List<Dictionary<string, object>>();
+            for (var i = 0; i < take; i++)
+            {
+                var dict = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                foreach (DataColumn col in dt.Columns)
+                {
+                    var v = dt.Rows[i][col];
+                    dict[col.ColumnName] = v == DBNull.Value ? null : v;
+                }
+                samples.Add(dict);
+            }
+
+            var truncated = dt.Rows.Count > rowLimit || dt.Rows.Count > sampleRows;
+            return JsonConvert.SerializeObject(new
+            {
+                RowCount = dt.Rows.Count,
+                Returned = samples.Count,
+                RowLimit = rowLimit,
+                Columns = columns,
+                SampleRows = samples,
+                Truncated = truncated,
+                CacheKey = cacheKey,
+                Note = "Summary only. Full rows cached server-side — do NOT save mcp_results/*.json or sql_cache to artifacts."
+            });
         }
     }
 }

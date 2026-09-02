@@ -235,6 +235,9 @@ namespace App.BL.AppDataIntegrationAgent
 
         private static async Task StreamAsync(AppDataIntegrationAgentSessionStore.SessionData live, CancellationToken ct)
         {
+            if (live.TurnStartedUtc == null)
+                live.TurnStartedUtc = DateTime.UtcNow;
+
             var assistant = new System.Text.StringBuilder();
             var capture = new StreamCapture();
             RunRecoveryResult recovery = null;
@@ -311,11 +314,18 @@ namespace App.BL.AppDataIntegrationAgent
             }
 
             var openOffers = AppDataIntegrationAgentSessionStore.TakeTurnOpenOffers(live);
+            var turnEndedUtc = DateTime.UtcNow;
+            var durationSec = AppDataIntegrationAgentSessionStore.GetTurnDurationSeconds(live);
+            if (durationSec <= 0 && live.TurnStartedUtc != null)
+                durationSec = (int)Math.Max(1, (turnEndedUtc - live.TurnStartedUtc.Value).TotalSeconds);
+
             live.ConversationHistory.Add(new AppDataIntegrationAgentMessageDto
             {
                 Role = "assistant",
                 Content = final,
-                Timestamp = DateTime.UtcNow.ToString("o"),
+                Timestamp = turnEndedUtc.ToString("o"),
+                StartedAt = live.TurnStartedUtc?.ToString("o"),
+                DurationSeconds = durationSec > 0 ? durationSec : null,
                 WrittenPackPaths = AppDataIntegrationAgentSessionStore.TakeTurnPackPaths(live),
                 OpenUiOffers = openOffers
             });
@@ -724,6 +734,8 @@ namespace App.BL.AppDataIntegrationAgent
                     .ConfigureAwait(false);
                 if (bytes == null || bytes.Length == 0) continue;
                 var rel = NormalizeArtifactPath(path);
+                if (!AppDataIntegrationArtifactBL.ShouldSyncArtifactPath(rel))
+                    continue;
                 AppDataIntegrationWorkspaceBL.WriteBytesFromArtifact(live.WorkspaceRelativePath, rel, bytes, live.CompanyId);
                 AppDataIntegrationAgentSessionStore.NotePackPath(live, rel);
                 AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto

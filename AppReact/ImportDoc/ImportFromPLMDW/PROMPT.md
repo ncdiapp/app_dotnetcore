@@ -293,24 +293,22 @@ This PROMPT is used in **two** places. **Detect which one you are in, then follo
 
 **Same delivery path as generated images.** Do **not** use `write_workspace_file` / `append_workspace_file` (disabled).
 
-1. Official generators/templates are **seeded by AppAI** into workspace `source/` at session start (`_gen_plmdw_import_sql.ps1`, BOM/TCHP/QC helpers, `PlmDw_*.sql` templates, examples). Confirm with `list_workspace_files`.
-2. Generate Phase B outputs using those official tools / templates — **never** a temporary `gen_plmdw_*.py` as the final producer. If `source/_gen_plmdw_import_sql.ps1` is missing → **STOP and ask the user** (do not invent a short generator).
-3. **Database probes on App Cloud:** the Cursor VM usually has **no** tenant SQL Server and **no** working `sqlcmd` to PLM/plmDW. Run probes with MCP **`run_select` / `get_table_schema`** against App DataSources. Do not rely on the PS script’s `Invoke-SqlQuery`/`sqlcmd` unless you have verified VM network + credentials (rare). Typical pattern: MCP metadata → patch official templates / drive the same transforms the PS generator would.
-4. Place each deliverable under the **Cursor artifacts** tree with the final workspace-relative path, e.g. `/opt/cursor/artifacts/output/{templateId}/1_PlmDw_Tables.sql`.
-5. Call MCP **`sync_cloud_artifacts`**, then **`list_workspace_files`**, and report `RelativePath` + `SizeBytes`.
+**Phase split (mandatory on App Cloud):**
+
+| Phase | Do | Do not |
+|-------|-----|--------|
+| **A** | Probe PLM + plmDW via MCP; draft `source/dwTabImportConfig.json`; **STOP** for user confirm | Generate `output/{templateId}/` in the same run |
+| **B** | After user confirms: patch official templates → six files under `output/{templateId}/` | Start Phase B before confirm |
+
+1. Official generators/templates are **seeded** into workspace `source/` at session start. Confirm with `list_workspace_files`.
+2. **Producer:** patch `source/PlmDw_*.sql` and official templates from probe data — **never** `gen_plmdw_*.py`, `build_sql_cache.py`, or `sql_cache.json`.
+3. **MCP probes:** `run_select` returns **summary only** (counts + sample rows). Full rows stay on App server. **Do not** write `source/mcp_results/*.json` or sync probe JSON via artifacts.
+   - Batch queries (one sub-item meta query, one grid meta query) — not one `INFORMATION_SCHEMA` file per DW table.
+4. Place **deliverables only** under Cursor artifacts, e.g. `/opt/cursor/artifacts/output/3351/1_PlmDw_Tables.sql`.
+5. Call **`sync_cloud_artifacts`**, then **`list_workspace_files`**, and report `RelativePath` + `SizeBytes`.
 6. User downloads via App **Workspace → Download**.
 
-**Hard acceptance (App Cloud) — fail the turn if not met:**
-
-| File | Minimum bar |
-|------|----------------|
-| `1_PlmDw_Tables.sql` | ≥ ~400 KB; official DDL with `@TablePrefix` and/or many `ALTER TABLE`/FK — not CREATE-only shells |
-| `2_PlmDw_FieldMapping.sql` | ≥ ~100 KB |
-| `3_PlmDw_ImportFromDW.sql` | Based on `source/PlmDw_ImportFromDW.sql` (not a tiny custom stub) |
-| `4_PlmDw_ImportBlueprint.json` | Must include **`blueprintFields`** (hundreds+); skeleton-only JSON is a failure |
-| `5_` / `6_` (when BOM colorway) | Expanded from official templates — not `#BomJobs` stub / one-line “no cleanup” |
-
-Never claim success from “generated on the VM only” or from filenames alone.
+**Do not sync to Workspace:** `mcp_results/`, `sql_cache.json`, `build_sql_cache.py`, `artifacts/bin/sqlcmd`, or other probe caches.
 
 ### B1. Write `source/dwTabImportConfig.json`
 

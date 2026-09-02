@@ -50,6 +50,8 @@ interface ChatMessage {
   streamingContent: string;
   isStreaming: boolean;
   timestamp?: string;
+  startedAt?: string;
+  durationSeconds?: number;
   /** Pack paths written during this assistant turn (for Start Build UI). */
   writtenPackPaths?: string[];
   /** Open-page / table-preview offers (user must click Open — never auto-open). */
@@ -122,6 +124,26 @@ function formatMessageTime(iso?: string): string {
   const d = new Date(iso);
   if (isNaN(d.getTime())) return '';
   return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+}
+
+function formatTurnMeta(msg: ChatMessage): string {
+  const endLabel = formatMessageTime(msg.timestamp);
+  if (msg.role === 'user') return endLabel;
+  const dur = msg.durationSeconds != null && msg.durationSeconds > 0 ? msg.durationSeconds : 0;
+  const durLabel = dur > 0 ? formatElapsed(dur) : '';
+  if (endLabel && durLabel) return `${endLabel} · ran ${durLabel}`;
+  if (durLabel) return `ran ${durLabel}`;
+  return endLabel || formatMessageTime(msg.startedAt);
+}
+
+function historyDurationSeconds(m: any): number | undefined {
+  const raw = m?.DurationSeconds ?? m?.durationSeconds;
+  if (typeof raw === 'number' && raw > 0) return raw;
+  if (typeof raw === 'string' && raw.trim() !== '' && !Number.isNaN(Number(raw))) {
+    const n = Number(raw);
+    return n > 0 ? n : undefined;
+  }
+  return undefined;
 }
 
 function workspaceFilePath(f: AppDataIntegrationAgentWorkspaceFile): string {
@@ -489,6 +511,8 @@ function mapHistoryMessages(hist: any[]): ChatMessage[] {
     streamingContent: '',
     isStreaming: false,
     timestamp: historyTimestamp(m),
+    startedAt: historyTimestamp({ Timestamp: m?.StartedAt ?? m?.startedAt }),
+    durationSeconds: historyDurationSeconds(m),
     writtenPackPaths: uniquePackPaths(
       (m?.WrittenPackPaths ?? m?.writtenPackPaths ?? []) as string[]
     ),
@@ -1296,36 +1320,58 @@ const DataIntegrationAgent: React.FC = () => {
           setIncompleteWarning(null);
         }
         const hist = (result as any)?.UpdatedHistory ?? (result as any)?.updatedHistory ?? [];
-        const fromHist = Array.isArray(hist) && hist.length
-          ? historyText(hist[hist.length - 1])
-          : '';
-        updateLastAssistant(msg => {
-          const content = final || msg.streamingContent || fromHist || msg.content || '';
+        if (Array.isArray(hist) && hist.length > 0) {
+          const mapped = mapHistoryMessages(hist);
+          const last = mapped[mapped.length - 1];
+          if (last?.role === 'assistant') {
+            if (!last.content && final) last.content = final;
+            const fromDone = mapOpenUiOffersFromHistory({
+              OpenUiOffers: (result as any)?.OpenUiOffers ?? (result as any)?.openUiOffers,
+            });
+            if (fromDone.length) last.openUiOffers = fromDone;
+          }
+          setMessages(mapped);
+        } else {
           const fromHistMsg = Array.isArray(hist) && hist.length ? hist[hist.length - 1] : null;
-          const histPacks = (fromHistMsg?.WrittenPackPaths ?? fromHistMsg?.writtenPackPaths ?? []) as string[];
-          const touched = uniquePackPaths([
-            ...(msg.writtenPackPaths ?? []),
-            ...extractAppConfigPackPathsFromSteps(msg.steps),
-            ...histPacks,
-          ]);
-          const fromDone = mapOpenUiOffersFromHistory({
-            OpenUiOffers: (result as any)?.OpenUiOffers ?? (result as any)?.openUiOffers,
+          updateLastAssistant(msg => {
+            const content = final || msg.streamingContent || (fromHistMsg ? historyText(fromHistMsg) : '') || msg.content || '';
+            const histPacks = (fromHistMsg?.WrittenPackPaths ?? fromHistMsg?.writtenPackPaths ?? []) as string[];
+            const touched = uniquePackPaths([
+              ...(msg.writtenPackPaths ?? []),
+              ...extractAppConfigPackPathsFromSteps(msg.steps),
+              ...histPacks,
+            ]);
+            const fromDone = mapOpenUiOffersFromHistory({
+              OpenUiOffers: (result as any)?.OpenUiOffers ?? (result as any)?.openUiOffers,
+            });
+            const fromHistOffers = mapOpenUiOffersFromHistory(fromHistMsg);
+            const openUiOffers =
+              (msg.openUiOffers?.length ? msg.openUiOffers : null)
+              ?? (fromDone.length ? fromDone : null)
+              ?? (fromHistOffers.length ? fromHistOffers : null)
+              ?? [];
+            const timestamp = historyTimestamp(fromHistMsg) ?? msg.timestamp;
+            const startedAt = historyTimestamp({ Timestamp: fromHistMsg?.StartedAt ?? fromHistMsg?.startedAt }) ?? msg.startedAt;
+            let durationSeconds = fromHistMsg ? historyDurationSeconds(fromHistMsg) : msg.durationSeconds;
+            if (!durationSeconds && startedAt) {
+              const startMs = new Date(startedAt).getTime();
+              if (!Number.isNaN(startMs)) {
+                durationSeconds = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+              }
+            }
+            return {
+              ...msg,
+              content: content || 'No reply received.',
+              streamingContent: '',
+              isStreaming: false,
+              timestamp,
+              startedAt,
+              durationSeconds,
+              writtenPackPaths: touched,
+              openUiOffers,
+            };
           });
-          const fromHistOffers = mapOpenUiOffersFromHistory(fromHistMsg);
-          const openUiOffers =
-            (msg.openUiOffers?.length ? msg.openUiOffers : null)
-            ?? (fromDone.length ? fromDone : null)
-            ?? (fromHistOffers.length ? fromHistOffers : null)
-            ?? [];
-          return {
-            ...msg,
-            content: content || 'No reply received.',
-            streamingContent: '',
-            isStreaming: false,
-            writtenPackPaths: touched,
-            openUiOffers,
-          };
-        });
+        }
         refreshHistory();
         refreshFiles(appDataIntegrationAgentService.currentSessionId);
       } finally {
@@ -1367,7 +1413,7 @@ const DataIntegrationAgent: React.FC = () => {
     setPendingGate(null);
     const now = new Date().toISOString();
     const userMsg: ChatMessage = { role: 'user', content: text, steps: [], streamingContent: '', isStreaming: false, timestamp: now };
-    const assistantMsg: ChatMessage = { role: 'assistant', content: '', steps: [], streamingContent: '', isStreaming: true, timestamp: now };
+    const assistantMsg: ChatMessage = { role: 'assistant', content: '', steps: [], streamingContent: '', isStreaming: true, timestamp: now, startedAt: now };
     setMessages(prev => {
       const base = truncateFrom == null ? prev : prev.slice(0, truncateFrom);
       return [...base, userMsg, assistantMsg];
@@ -1722,6 +1768,9 @@ const DataIntegrationAgent: React.FC = () => {
                         />
                       ) : (
                         <div className={`w-full text-sm leading-relaxed whitespace-pre-wrap ${t('text_title')}`}>
+                          {!msg.isStreaming && formatTurnMeta(msg) && (
+                            <div className={`flex justify-end text-[10px] mb-1 ${theme.label}`}>{formatTurnMeta(msg)}</div>
+                          )}
                           {msg.isStreaming && (() => {
                             const thinkingText = collectMergedThinkingText(msg.steps);
                             const activitySteps = activityStepsForDisplay(msg.steps);

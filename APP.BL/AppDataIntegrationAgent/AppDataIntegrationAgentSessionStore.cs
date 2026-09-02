@@ -43,6 +43,8 @@ namespace App.BL.AppDataIntegrationAgent
                 = new List<AppDataIntegrationAgentOpenUiOfferDto>();
             /// <summary>True when run_select / propose_sql used a user connection string this turn (no SQL Workbench Open).</summary>
             public bool CurrentTurnSqlViaConnectionString { get; set; }
+            /// <summary>UTC when the current assistant turn started (Cursor run).</summary>
+            public DateTime? TurnStartedUtc { get; set; }
             public ConcurrentQueue<AppDataIntegrationAgentEventDto> Events { get; set; }
                 = new ConcurrentQueue<AppDataIntegrationAgentEventDto>();
             public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
@@ -151,9 +153,17 @@ namespace App.BL.AppDataIntegrationAgent
         public static void BeginAssistantTurn(SessionData session)
         {
             if (session == null) return;
+            session.TurnStartedUtc = DateTime.UtcNow;
             session.CurrentTurnPackPaths = new List<string>();
             session.CurrentTurnOpenOffers = new List<AppDataIntegrationAgentOpenUiOfferDto>();
             session.CurrentTurnSqlViaConnectionString = false;
+        }
+
+        public static int GetTurnDurationSeconds(SessionData session)
+        {
+            if (session?.TurnStartedUtc == null) return 0;
+            var sec = (int)Math.Max(0, (DateTime.UtcNow - session.TurnStartedUtc.Value).TotalSeconds);
+            return sec;
         }
 
         public static void NotePackPath(SessionData session, string relativePath)

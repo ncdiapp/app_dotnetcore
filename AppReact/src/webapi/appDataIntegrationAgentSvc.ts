@@ -5,10 +5,14 @@ export interface AppDataIntegrationAgentMessage {
   Role?: string;
   Content?: string;
   Timestamp?: string;
+  StartedAt?: string;
+  DurationSeconds?: number;
   WrittenPackPaths?: string[];
   role?: string;
   content?: string;
   timestamp?: string;
+  startedAt?: string;
+  durationSeconds?: number;
   writtenPackPaths?: string[];
 }
 

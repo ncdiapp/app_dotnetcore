@@ -22,7 +22,8 @@ namespace App.BL.AppDataIntegrationAgent
         }
         public static bool AutoCreatePr => string.Equals(AppConfig.Get("Cursor.AutoCreatePr"), "true", StringComparison.OrdinalIgnoreCase);
         public static bool AdminOnly => !string.Equals(AppConfig.Get("Cursor.AdminOnly"), "false", StringComparison.OrdinalIgnoreCase);
-        public static int SqlPreviewRowLimit => ParseInt(AppConfig.Get("Cursor.SqlPreviewRowLimit"), 200);
+        public static int SqlPreviewRowLimit => ParseInt(AppConfig.Get("Cursor.SqlPreviewRowLimit"), 50);
+        public static int SqlProbeSampleRows => ParseInt(AppConfig.Get("Cursor.SqlProbeSampleRows"), 5);
         public static int MaxWorkspaceFileMb => ParseInt(AppConfig.Get("Cursor.MaxWorkspaceFileMb"), 20);
         /// <summary>
         /// Max UTF-8 KB per write_workspace_file / append_workspace_file call.

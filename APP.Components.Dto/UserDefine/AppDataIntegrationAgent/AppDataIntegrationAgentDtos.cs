@@ -66,6 +66,12 @@ namespace APP.Components.EntityDto
         public string Content { get; set; }
         public string Timestamp { get; set; }
 
+        /// <summary>Assistant turn start (UTC ISO). User messages use Timestamp only.</summary>
+        public string StartedAt { get; set; }
+
+        /// <summary>Assistant turn wall-clock seconds (Cursor run through reply).</summary>
+        public int? DurationSeconds { get; set; }
+
         /// <summary>
         /// AppConfigPack paths written/validated in this assistant turn (for Start Build UI after reload).
         /// </summary>

@@ -123,10 +123,17 @@ namespace App.BL.AppDataIntegrationAgent
                         return ToolText(JsonConvert.SerializeObject(
                             AppDataIntegrationAgentDataSourceBL.ListForSession(session)));
                     case "get_table_schema":
-                        return ToolText(AppDataIntegrationSqlGateBL.GetTableSchema(
-                            AppDataIntegrationAgentDataSourceBL.ResolveSqlTarget(session, args),
-                            Str(args, "schemaOwner") ?? "dbo",
-                            Str(args, "tableName")));
+                        {
+                            var sw = System.Diagnostics.Stopwatch.StartNew();
+                            var schemaJson = AppDataIntegrationSqlGateBL.GetTableSchema(
+                                AppDataIntegrationAgentDataSourceBL.ResolveSqlTarget(session, args),
+                                Str(args, "schemaOwner") ?? "dbo",
+                                Str(args, "tableName"));
+                            sw.Stop();
+                            AppDataIntegrationMcpMetricsBL.LogGetTableSchema(
+                                session.SessionId, sw.ElapsedMilliseconds, schemaJson?.Length ?? 0, Str(args, "tableName"));
+                            return ToolText(schemaJson);
+                        }
                     case "list_application_assets":
                         return ToolText(ListAssets(session.SaasApplicationId));
                     case "list_application_menus":
@@ -188,10 +195,10 @@ namespace App.BL.AppDataIntegrationAgent
                             return ToolText(PreviewPack(session, rel));
                         }
                     case "run_select":
-                        return ToolText(AppDataIntegrationSqlGateBL.RunSelect(
+                        return ToolText(AppDataIntegrationSqlGateBL.RunSelectForAgent(
+                            session.SessionId,
                             AppDataIntegrationAgentDataSourceBL.ResolveSqlTarget(session, args),
-                            Str(args, "sql"),
-                            AppDataIntegrationAgentConfig.SqlPreviewRowLimit));
+                            Str(args, "sql")));
                     case "propose_import_pack":
                         if (!session.AllowProposeImport)
                             return ToolText("propose_import_pack is disabled for this skill. Write the pack to packs/ instead.", true);
@@ -867,7 +874,7 @@ namespace App.BL.AppDataIntegrationAgent
                 Tool("delete_workspace_file", "Delete a workspace file.", Prop("relativePath", "string", true)),
                 Tool("validate_config_pack", "Validate an AppConfigPack JSON file.", Prop("relativePath", "string", true)),
                 Tool("preview_config_pack", "Preview import actions without applying.", Prop("relativePath", "string", true)),
-                Tool("run_select", "Run a SELECT (row-capped). Use dataSourceRegisterId from list_datasources, or connectionString when the user supplied one.",
+                Tool("run_select", "Run a SELECT (summary + sample rows; full result cached on App server). Use dataSourceRegisterId or connectionString.",
                     Prop("sql", "string", true), Prop("dataSourceRegisterId", "integer", false), Prop("connectionString", "string", false)),
                 Tool("propose_sql", "Ask the user to confirm INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD.",
                     Prop("sql", "string", true), Prop("dataSourceRegisterId", "integer", false), Prop("connectionString", "string", false))
