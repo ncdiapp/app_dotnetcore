@@ -32,6 +32,8 @@ namespace App.BL
 {
     public static class AppTransactionBL
     {
+        private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+
         public static readonly string App_TransactionEntity_Save_OK = "App_TransactionEntity_Save_OK";
         public static readonly string App_TransactionEntity_Save_Failed = "App_TransactionEntity_Save_Failed";
         public static readonly string App_TransactionEntityUILayout_Save_OK = "App_TransactionEntityUILayout_Save_OK";
@@ -1914,12 +1916,8 @@ namespace App.BL
                 linkedSearchElement.SubPath.Add(AppTransactionUnitLinkedSearchEntity.PrefetchPathAppTransactionUnitSearchViewFieldMapping)
                     .SubPath.Add(AppTransactionUnitSearchViewFieldMappingEntity.PrefetchPathAppTransactionField);
 
-                adpater.FetchEntity(transactionEntity, rootPath);
-
-                //EntityCollection<AppProjectWorkFlowActionEntity> commandActionList = new EntityCollection<AppProjectWorkFlowActionEntity>();
-                //adpater.FetchEntityCollection(commandActionList, new RelationPredicateBucket(AppProjectWorkFlowActionFields.CommandTransactionId == transcactionId));
-
-                return transactionEntity;
+                bool found = adpater.FetchEntity(transactionEntity, rootPath);
+                return found ? transactionEntity : null;
             }
         }
 
@@ -1954,9 +1952,8 @@ namespace App.BL
                 linkedSearchElement.SubPath.Add(AppTransactionUnitLinkedSearchEntity.PrefetchPathAppTransactionUnitSearchViewFieldMapping)
                     .SubPath.Add(AppTransactionUnitSearchViewFieldMappingEntity.PrefetchPathAppTransactionField);
 
-                await adpater.FetchEntityAsync(transactionEntity, rootPath).ConfigureAwait(false);
-
-                return transactionEntity;
+                bool found = await adpater.FetchEntityAsync(transactionEntity, rootPath).ConfigureAwait(false);
+                return found ? transactionEntity : null;
             }
         }
 

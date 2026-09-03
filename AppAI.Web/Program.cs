@@ -1,3 +1,4 @@
+using App.BL;
 using APP.Framework;
 using AppAI.Web.Auth;
 using AppAI.Web.Endpoints;
@@ -453,6 +454,10 @@ try
 
     // React SPA fallback (build output in wwwroot/)
     app.MapFallbackToFile("index.html");
+
+    // Kick off schema cache warm-up immediately so the first user request
+    // doesn't block for 2 minutes on a synchronous schema read.
+    AppCacheManagerBL.StartCache();
 
     app.Run();
 }
