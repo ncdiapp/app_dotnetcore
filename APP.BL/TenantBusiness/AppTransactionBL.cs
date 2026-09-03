@@ -1976,21 +1976,47 @@ namespace App.BL
 
         public static AppTransactionEntity RetrieveOneAppTransactionSimpleEntity(object transcactionId)
         {
-            using (DataAccessAdapter adpater = AppTenantAdapterBL.GetTenantAdapter())
+            try
             {
-                AppTransactionEntity transactionEntity = new AppTransactionEntity(int.Parse(transcactionId.ToString()));
-                adpater.FetchEntity(transactionEntity);
-                return transactionEntity;
+                using (DataAccessAdapter adpater = AppTenantAdapterBL.GetTenantAdapter())
+                {
+                    AppTransactionEntity transactionEntity = new AppTransactionEntity(int.Parse(transcactionId.ToString()));
+                    bool found = adpater.FetchEntity(transactionEntity);
+                    if (!found)
+                    {
+                        NLog.LogManager.GetCurrentClassLogger().Warn("RetrieveOneAppTransactionSimpleEntity: transaction not found id={0}", transcactionId);
+                        return null;
+                    }
+                    return transactionEntity;
+                }
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, "RetrieveOneAppTransactionSimpleEntity failed for id={0}", transcactionId);
+                throw;
             }
         }
 
         public static async Task<AppTransactionEntity> RetrieveOneAppTransactionSimpleEntityAsync(object transcactionId)
         {
-            using (DataAccessAdapter adpater = AppTenantAdapterBL.GetTenantAdapter())
+            try
             {
-                AppTransactionEntity transactionEntity = new AppTransactionEntity(int.Parse(transcactionId.ToString()));
-                await adpater.FetchEntityAsync(transactionEntity).ConfigureAwait(false);
-                return transactionEntity;
+                using (DataAccessAdapter adpater = AppTenantAdapterBL.GetTenantAdapter())
+                {
+                    AppTransactionEntity transactionEntity = new AppTransactionEntity(int.Parse(transcactionId.ToString()));
+                    bool found = await adpater.FetchEntityAsync(transactionEntity).ConfigureAwait(false);
+                    if (!found)
+                    {
+                        NLog.LogManager.GetCurrentClassLogger().Warn("RetrieveOneAppTransactionSimpleEntityAsync: transaction not found id={0}", transcactionId);
+                        return null;
+                    }
+                    return transactionEntity;
+                }
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, "RetrieveOneAppTransactionSimpleEntityAsync failed for id={0}", transcactionId);
+                throw;
             }
         }
 
