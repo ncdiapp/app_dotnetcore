@@ -662,13 +662,13 @@ GO
 -- INSERT INTO dbo.AppAgentMcpServer (SkillKey, ServerName, ServerType, ServerUrl) VALUES (
 --     'app-builder', 'BlueCherry ERP MCP', 'streamable-http', 'http://localhost:5100/mcp');
 GO
-select * from AppSecurityUser
-select * from AppDataSourceRegister
-update  AppSecurityUser set password = '600000:6WsiGjsJ93MkjPVrVru61RDCE0EzgaH5:HiToipPye4pCb3ioDvF0JN+uYg6ggmwrlg9OuB3/k1U='  where   LoginName= 'acmeadmin3'
+-- select * from AppSecurityUser
+-- select * from AppDataSourceRegister
+-- update  AppSecurityUser set password = '600000:6WsiGjsJ93MkjPVrVru61RDCE0EzgaH5:HiToipPye4pCb3ioDvF0JN+uYg6ggmwrlg9OuB3/k1U='  where   LoginName= 'acmeadmin3'
 
-select * from AppAISkill
-select * from AppAgentSkillSet
+-- select * from AppAISkill
+-- select * from AppAgentSkillSet
 
-update AppAISkill set name='dbaskiil_test' where SkillId=2
+-- update AppAISkill set name='dbaskiil_test' where SkillId=2
 
-select * from AppAgentToolRegister
+-- select * from AppAgentToolRegister
