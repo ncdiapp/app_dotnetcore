@@ -7,7 +7,6 @@ using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using App.BL;
-using App.BL.AppBuilderAgent;
 using App.BL.DbGenie;
 using App.BL.WorkflowAutomationAgent.Plugins;
 using APP.Components.Dto;
@@ -16,6 +15,7 @@ using APP.Framework;
 using APP.Framework.Communication;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using APP.Framework.Plugin;
 
 namespace App.BL.WorkflowAutomationAgent
 {
@@ -293,11 +293,11 @@ After completing all task operations, always:
             {
                 var methods = instance.GetType()
                     .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                    .Where(m => m.GetCustomAttribute<AgentFunctionAttribute>() != null);
+                    .Where(m => m.GetCustomAttribute<AgentToolAttribute>() != null);
 
                 foreach (var method in methods)
                 {
-                    var attr = method.GetCustomAttribute<AgentFunctionAttribute>();
+                    var attr = method.GetCustomAttribute<AgentToolAttribute>();
                     tools.Add(new ToolDescriptor
                     {
                         Name        = attr.Name,

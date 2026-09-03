@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using App.BL.AppBuilderAgent;
 using APP.Components.Dto;
 using DatabaseSchemaMrg.DataSchema;
 using Newtonsoft.Json;
+using APP.Framework.Plugin;
 
 namespace App.BL.QueryAgent
 {
@@ -22,7 +23,7 @@ namespace App.BL.QueryAgent
             _selectedTables = selectedTables ?? new List<string>();
         }
 
-        [AgentFunction("get_database_dialect",
+        [AgentTool("get_database_dialect",
             "Returns the database platform and SQL dialect for this data source (e.g. SQL Server/T-SQL, MySQL, Oracle/PL-SQL). " +
             "Call this first so you know which syntax to use.")]
         public string GetDatabaseDialect()
@@ -70,7 +71,7 @@ namespace App.BL.QueryAgent
             }
         }
 
-        [AgentFunction("list_selected_tables",
+        [AgentTool("list_selected_tables",
             "List the tables/views the user has selected to work with. Call this after get_database_dialect to see which tables are in scope.")]
         public string ListSelectedTables()
         {
@@ -96,7 +97,7 @@ namespace App.BL.QueryAgent
             }
         }
 
-        [AgentFunction("get_table_schema",
+        [AgentTool("get_table_schema",
             "Get the column names and data types for a specific table or view. " +
             "Call this before writing a query to understand the available columns.")]
         public string GetTableSchema(
@@ -157,7 +158,7 @@ namespace App.BL.QueryAgent
             }
         }
 
-        [AgentFunction("get_table_relationships",
+        [AgentTool("get_table_relationships",
             "Get foreign key relationships for a table — which columns reference other tables and vice versa. " +
             "Use this to understand how to JOIN tables correctly.")]
         public string GetTableRelationships(

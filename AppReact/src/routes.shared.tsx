@@ -59,6 +59,7 @@ import {
 } from './components/integration';
 import { DbaGenie } from './components/dbgenie';
 import AISkillManagement from './components/aiskill/AISkillManagement';
+import AgentSkillSetManagement from './components/aiskill/AgentSkillSetManagement';
 import AppBuilderAgent from './components/integration/AppBuilderAgent';
 import DataIntegrationAgent from './components/integration/DataIntegrationAgent';
 import AppReportAgent from './components/search/AppReportAgent';
@@ -157,6 +158,9 @@ export const AUTHENTICATED_ROUTES: SharedRouteDef[] = [
   // AI Skill Management
   { path: 'ai-skill-management/:param', element: <AISkillManagement /> },
   { path: 'ai-skill-management', element: <AISkillManagement /> },
+
+  // Agent Skill Set Management
+  { path: 'agent-skill-management', element: <AgentSkillSetManagement /> },
 
   // AppBuilder AI Agent
   { path: 'app-builder-agent/:param', element: <AppBuilderAgent /> },

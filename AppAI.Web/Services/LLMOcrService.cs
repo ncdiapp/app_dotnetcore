@@ -1,8 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
 using App.BL.DbGenie;
+using App.BL.GenericAgent;
 using APP.Components.EntityDto;
-using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json.Linq;
 
 namespace AppAI.Web.Services;
@@ -10,17 +10,16 @@ namespace AppAI.Web.Services;
 /// <summary>
 /// OCR implementation that sends the image to the configured LLM vision provider
 /// (OpenAI gpt-4o, Anthropic Claude, or Gemini) and returns the extracted text.
+/// Provider and model are read from tenant settings via AIConfigSettingBL.
 /// </summary>
 public sealed class LLMOcrService : IOcrService
 {
     private const string OcrPrompt = "Extract all text visible in this image. Return only the extracted text with no explanations or additional commentary.";
 
-    private readonly IConfiguration _config;
     private readonly IHttpClientFactory _httpClientFactory;
 
-    public LLMOcrService(IConfiguration config, IHttpClientFactory httpClientFactory)
+    public LLMOcrService(IHttpClientFactory httpClientFactory)
     {
-        _config = config;
         _httpClientFactory = httpClientFactory;
     }
 
@@ -43,7 +42,7 @@ public sealed class LLMOcrService : IOcrService
 
     private async Task<string?> CallOpenAIVisionAsync(string apiKey, string base64, string mimeType, CancellationToken ct)
     {
-        var model = _config["DbaGenieOpenAIModel"] ?? "gpt-4o";
+        var model = AIConfigSettingBL.GetOpenAIModel();
         var payload = new
         {
             model,
@@ -75,7 +74,7 @@ public sealed class LLMOcrService : IOcrService
 
     private async Task<string?> CallAnthropicVisionAsync(string apiKey, string base64, string mimeType, CancellationToken ct)
     {
-        var model = _config["DbaGenieAnthropicModel"] ?? "claude-3-5-sonnet-20241022";
+        var model = AIConfigSettingBL.GetAnthropicModel();
         var payload = new
         {
             model,
@@ -108,7 +107,7 @@ public sealed class LLMOcrService : IOcrService
 
     private async Task<string?> CallGeminiVisionAsync(string apiKey, string base64, string mimeType, CancellationToken ct)
     {
-        var model = _config["DbaGenieGeminiModel"] ?? "gemini-1.5-pro";
+        var model = AIConfigSettingBL.GetGeminiModel();
         var payload = new
         {
             contents = new[]

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -7,6 +7,7 @@ using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework.Communication;
 using Newtonsoft.Json;
+using APP.Framework.Plugin;
 
 namespace App.BL.WorkflowAutomationAgent.Plugins
 {
@@ -30,7 +31,7 @@ namespace App.BL.WorkflowAutomationAgent.Plugins
             _identity      = identity;
         }
 
-        [AgentFunction("create_task",
+        [AgentTool("create_task",
             "Creates a new operation task and appends it to the workflow. " +
             "MUST be preceded by an approved propose_workflow_changes call. " +
             "Returns the created task's Id, Name, and SortOrder.")]
@@ -119,7 +120,7 @@ namespace App.BL.WorkflowAutomationAgent.Plugins
             }
         }
 
-        [AgentFunction("update_task",
+        [AgentTool("update_task",
             "Updates one or more properties of an existing workflow task. " +
             "Only supply the fields you want to change — omitted parameters are left unchanged. " +
             "MUST be preceded by an approved propose_workflow_changes call.")]
@@ -178,7 +179,7 @@ namespace App.BL.WorkflowAutomationAgent.Plugins
             }
         }
 
-        [AgentFunction("delete_task",
+        [AgentTool("delete_task",
             "Removes a task from the workflow and deletes it from the database. " +
             "MUST be preceded by an approved propose_workflow_changes call.")]
         public Task<string> DeleteTask(

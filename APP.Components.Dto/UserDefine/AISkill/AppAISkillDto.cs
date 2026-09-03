@@ -24,4 +24,42 @@ namespace APP.Components.EntityDto
         public int SortOrder { get; set; }
         public DateTime CreatedDate { get; set; }
     }
+
+    public class AppAgentSkillSetDto
+    {
+        public string SkillKey            { get; set; } = "";
+        public string DisplayName         { get; set; } = "";
+        public string Description         { get; set; } = "";
+        public string SystemPrompt        { get; set; } = "";
+        public int    CapabilityFlags     { get; set; }
+        public bool   IsActive            { get; set; } = true;
+        public int    SortOrder           { get; set; }
+        public int    Version             { get; set; } = 1;
+        public int    MaxHistoryTokens    { get; set; } = 80000;
+        public int    SummarizeThreshold  { get; set; } = 60000;
+        public int    MaxToolResultChars  { get; set; } = 4000;
+        public int    RecentWindowSize    { get; set; } = 10;
+    }
+
+    public class AppAgentToolRegisterDto
+    {
+        public int    Id          { get; set; }
+        public string SkillKey    { get; set; } = "";
+        public string ToolName    { get; set; } = "";
+        public string Description { get; set; } = "";
+        public string ToolType    { get; set; } = "BuiltIn";
+        public string ToolConfig  { get; set; } = "{}";
+        public bool   IsActive    { get; set; } = true;
+        public int    SortOrder   { get; set; }
+    }
+
+    public class AppAgentMcpServerDto
+    {
+        public string McpServerKey { get; set; } = "";
+        public string ServerUrl    { get; set; } = "";
+        public string Transport    { get; set; } = "streamable-http";
+        public string AuthType     { get; set; } = "none";
+        public string AuthValue    { get; set; } = "";
+        public bool   IsActive     { get; set; } = true;
+    }
 }

@@ -2,8 +2,8 @@
 
 **Project:** AppAI / AppBuilder Platform  
 **Branch:** feature/dotnet10-migration  
-**Last updated:** 2026-06-09  
-**Status:** Implementation Ready
+**Last updated:** 2026-09-03  
+**Status:** Implementation Ready — V006 schema error identified; corrective migration pending
 
 ---
 
@@ -216,6 +216,11 @@ UNIQUE (Code, AppCreatedByCompanyID)         ← no duplicate vendor codes per t
 
 `AppBusinessPartnerInviteUser` stays in **MasterDB** and keeps `AppBusinessPartnerID` as a **logical reference only** (no FK enforced cross-DB). The physical FK was already dropped by the V004 migration pattern.
 
+> ⚠️ **V006 Schema Error** — `V006__BusinessPartnerTenantSchema.sql` incorrectly created
+> `AppBusinessPartnerInviteUser` (and its child table) in the tenant DB, conflating identity/ACL
+> data with CRM data. See §3.2 Corrective Migration below. `AppBusinessPartner` in tenant DB
+> (also created by V006) is correct and stays.
+
 #### Migration Steps
 
 **Step 1 — Add to tenant DB schema** (new migration `V005__AddAppBusinessPartner.sql`):
@@ -315,6 +320,84 @@ filter.PredicateExpression.AddWithAnd(AppBusinessPartnerFields.AppCompanyId == c
 -- Rename rather than drop — safe rollback window
 EXEC sp_rename 'AppBusinessPartner', 'AppBusinessPartner_MasterArchive';
 -- Drop after 2–4 weeks of confirmed stable operation
+```
+
+### 3.3 Corrective Migration — V010 (AppBusinessPartnerInviteUser back to MasterDB)
+
+V006 placed `AppBusinessPartnerInviteUser` in the tenant DB. This was incorrect. The table is
+identity/ACL data (cross-company user roles), not tenant CRM data. It must live in MasterDB for
+three reasons:
+
+1. Both of its meaningful foreign keys — `UserId` → `AppSecurityUser` and
+   `AppCreatedByCompanyId` → `AppCompany` — reference MasterDB tables.
+2. It is queried during session identity registration (`SetupBusinessParterUserType`), before
+   any tenant DB connection is established. Tenant DB tables are unreachable at that point.
+3. A single user can be invited by multiple companies. Scattering invite rows across tenant DBs
+   makes cross-tenant queries (e.g. "which companies can user X access?") impossible without
+   fanning out to every tenant.
+
+**V010 corrective migration — run against MasterDB:**
+
+```sql
+-- V010: Move AppBusinessPartnerInviteUser back to MasterDB
+-- AppBusinessPartner (also in V006) belongs in tenant DB and is NOT affected.
+
+-- Step 1 — Create in MasterDB if not already present
+IF NOT EXISTS (
+    SELECT 1 FROM INFORMATION_SCHEMA.TABLES
+    WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'AppBusinessPartnerInviteUser'
+)
+BEGIN
+    CREATE TABLE dbo.AppBusinessPartnerInviteUser (
+        ParternerInvitedUserId   INT      NOT NULL IDENTITY(1,1),
+        AppBusinessPartnerId     INT      NULL,
+        UserId                   INT      NULL,
+        AppCreatedById           INT      NULL,
+        AppCreatedDate           DATETIME NULL,
+        AppModifiedDate          DATETIME NULL,
+        AppModifiedById          INT      NULL,
+        AppCompanyId             INT      NULL,
+        AppCreatedByCompanyId    INT      NULL,
+        EmInvitedUserType        INT      NULL,
+        CONSTRAINT PK_AppBusinessPartnerInviteUser PRIMARY KEY (ParternerInvitedUserId)
+        -- No cross-DB FK to AppBusinessPartner; logical reference only
+    );
+
+    CREATE INDEX IX_AppBPInviteUser_UserId
+        ON dbo.AppBusinessPartnerInviteUser (UserId);
+    CREATE INDEX IX_AppBPInviteUser_CreatedByCompany
+        ON dbo.AppBusinessPartnerInviteUser (AppCreatedByCompanyId);
+END
+GO
+
+-- Step 2 — Copy rows from each tenant DB before dropping tenant copies
+-- Run once per tenant (substitute catalog name):
+--
+-- INSERT INTO AppMasterDB.dbo.AppBusinessPartnerInviteUser
+--     (AppBusinessPartnerId, UserId, AppCreatedById, AppCreatedDate, AppModifiedDate,
+--      AppModifiedById, AppCompanyId, AppCreatedByCompanyId, EmInvitedUserType)
+-- SELECT AppBusinessPartnerId, UserId, AppCreatedById, AppCreatedDate, AppModifiedDate,
+--        AppModifiedById, AppCompanyId, AppCreatedByCompanyId, EmInvitedUserType
+-- FROM [TenantDB_ACME].dbo.AppBusinessPartnerInviteUser;
+--
+-- Run AppTenantProvisioningBL.RunMigrationsOnAllTenants() or SSMS per tenant.
+-- Verify row counts before proceeding to Step 3.
+
+-- Step 3 — Drop from tenant DB (run per tenant after data verification):
+-- DROP TABLE [TenantDB_ACME].dbo.AppBusinessPartnerInviteUserChildUser;
+-- DROP TABLE [TenantDB_ACME].dbo.AppBusinessPartnerInviteUser;
+```
+
+**AppCacheManager.cs — after V010 is applied**, replace `CreateTenantAdapter` with a plain
+MasterDB adapter (no catalog rewrite needed):
+
+```csharp
+// CURRENT (temporary workaround while tenant table exists):
+using (DataAccessAdapter adapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
+
+// TARGET (after V010 — table is in MasterDB, no catalog overwrite needed):
+using (DataAccessAdapter adapter = new DataAccessAdapter(AppCompanyBL.AppMasterDBConnectionString))
+// Remove GetCurrentCompanyMasterDataSource / connStr / dbName lookups — not needed for MasterDB.
 ```
 
 #### BL File Changes for the Move
@@ -777,8 +860,15 @@ User logs in to Company B (cross-company — different from home company)
 
 | File | Change |
 |---|---|
-| `PlmApplication/Migrations/V005__AddAppBusinessPartner.sql` | New migration — create `AppBusinessPartner` table in tenant DB schema |
+| `AppAI.Web/Migrations/V006__BusinessPartnerTenantSchema.sql` | Already run — creates `AppBusinessPartner` in tenant DB (correct) and `AppBusinessPartnerInviteUser` in tenant DB (incorrect, corrected by V010) |
 | `APP.BL/TenantBusiness/AppComBusinessPartnerBL.cs` | Replace `MasterConnStr` with `GetTenantAdapter()`; remove `AppCompanyId` filter |
 | `APP.BL/MasterAuth/AppSaasAccountUserBL.cs` | Update partner entity fetch to use tenant adapter |
 | Data migration script | Per-tenant `INSERT … SELECT` from `AppMasterDB.AppBusinessPartner WHERE AppCompanyID = @companyId` |
 | `AppMasterDB.AppBusinessPartner` | Rename to `_MasterArchive` after verification; drop after stable period |
+
+**Phase C — Corrective: AppBusinessPartnerInviteUser back to MasterDB (see §3.3)**
+
+| File | Change |
+|---|---|
+| `AppAI.Web/Migrations/V010__InviteUserToMasterDB.sql` | New migration — create `AppBusinessPartnerInviteUser` in MasterDB; data copy script per tenant; drop from tenant DBs |
+| `APP.BL/Infrastructure/AppCacheManager.cs` | After V010: replace `CreateTenantAdapter(connStr, dbName)` with `new DataAccessAdapter(AppCompanyBL.AppMasterDBConnectionString)`; remove data-source-register lookup |

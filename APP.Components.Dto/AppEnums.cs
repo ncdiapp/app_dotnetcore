@@ -965,6 +965,14 @@ namespace APP.Components.Dto
         SupplierPartnerDataTransferId = 1625,
 
         FigmaPersonalAccessToken = 1700,
+
+        AIConfigProvider        = 3201,
+        AIConfigOpenAIApiKey    = 3202,
+        AIConfigGeminiApiKey    = 3203,
+        AIConfigAnthropicApiKey = 3204,
+        AIConfigOpenAIModel     = 3205,
+        AIConfigGeminiModel     = 3206,
+        AIConfigAnthropicModel  = 3207,
     }
 
 

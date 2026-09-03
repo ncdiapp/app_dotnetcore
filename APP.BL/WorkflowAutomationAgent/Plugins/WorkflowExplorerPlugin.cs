@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -7,6 +7,7 @@ using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework.Communication;
 using Newtonsoft.Json;
+using APP.Framework.Plugin;
 
 namespace App.BL.WorkflowAutomationAgent.Plugins
 {
@@ -28,7 +29,7 @@ namespace App.BL.WorkflowAutomationAgent.Plugins
             _identity      = identity;
         }
 
-        [AgentFunction("get_workflow_state",
+        [AgentTool("get_workflow_state",
             "Returns the full current state of the workflow: task count, task names, action types, SQL statements, sort order, and notes. " +
             "Call this first when the user asks to modify an existing workflow, or to understand what tasks are already present before proposing changes.")]
         public Task<string> GetWorkflowState(

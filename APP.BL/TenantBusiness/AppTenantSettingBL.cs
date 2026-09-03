@@ -74,6 +74,36 @@ namespace App.BL
             return val;
         }
 
+        // Overload for background threads where ServerContext.Instance is unavailable.
+        public static string GetStringValue(EmTenantSettings key, AppClientIdentity identity)
+        {
+            var companyId = identity.CurrentWorkingCompanyId is int id ? id : 0;
+            if (companyId == 0) return null;
+
+            var cache = _companyCache.GetOrAdd(companyId, _ =>
+            {
+                var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var connStr = identity.CurrentUserDbConnectionString;
+                if (string.IsNullOrEmpty(connStr)) return dict;
+                if (string.Equals(connStr.Trim(), AppCompanyBL.AppMasterDBConnectionString?.Trim(),
+                        StringComparison.OrdinalIgnoreCase))
+                    return dict;
+                using (var adapter = new DataAccessAdapter(connStr))
+                {
+                    const string sql = "SELECT SetupCode, SetupValue FROM dbo.AppTenantSetting";
+                    var dt = adapter.ExecuteDataTableRetrievalQuery(sql, new List<SqlParameter>());
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        var k = row[0] as string;
+                        if (!string.IsNullOrEmpty(k)) dict[k] = row[1] as string;
+                    }
+                }
+                return dict;
+            });
+            cache.TryGetValue(key.ToString(), out var val);
+            return val;
+        }
+
         public static int? GetIntValue(EmTenantSettings key)
         {
             var raw = GetStringValue(key);

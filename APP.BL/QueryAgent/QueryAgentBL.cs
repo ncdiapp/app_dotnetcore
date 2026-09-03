@@ -7,13 +7,13 @@ using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using App.BL.AppBuilderAgent;
 using App.BL.DbGenie;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using APP.Framework.Plugin;
 
 namespace App.BL.QueryAgent
 {
@@ -346,11 +346,11 @@ When mapping is ambiguous, show your reasoning briefly.";
             var tools = new List<ToolDescriptor>();
             var methods = plugin.GetType()
                 .GetMethods(BindingFlags.Public | BindingFlags.Instance)
-                .Where(m => m.GetCustomAttribute<AgentFunctionAttribute>() != null);
+                .Where(m => m.GetCustomAttribute<AgentToolAttribute>() != null);
 
             foreach (var method in methods)
             {
-                var attr = method.GetCustomAttribute<AgentFunctionAttribute>();
+                var attr = method.GetCustomAttribute<AgentToolAttribute>();
                 tools.Add(new ToolDescriptor
                 {
                     Name        = attr.Name,

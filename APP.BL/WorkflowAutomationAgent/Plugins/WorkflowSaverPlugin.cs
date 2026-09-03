@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -7,6 +7,7 @@ using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework.Communication;
 using Newtonsoft.Json;
+using APP.Framework.Plugin;
 
 namespace App.BL.WorkflowAutomationAgent.Plugins
 {
@@ -24,7 +25,7 @@ namespace App.BL.WorkflowAutomationAgent.Plugins
             _identity      = identity;
         }
 
-        [AgentFunction("save_workflow",
+        [AgentTool("save_workflow",
             "Persists all pending workflow changes to the database and refreshes the editor. " +
             "Call this after all create_task / update_task / delete_task operations are complete.")]
         public Task<string> SaveWorkflow()
@@ -47,7 +48,7 @@ namespace App.BL.WorkflowAutomationAgent.Plugins
             }
         }
 
-        [AgentFunction("explain_workflow",
+        [AgentTool("explain_workflow",
             "Returns a human-readable plain-English explanation of what the workflow does: each task in order, what it performs, and how they connect. " +
             "Use this when the user asks 'what does this workflow do?' or 'summarize this workflow'.")]
         public Task<string> ExplainWorkflow()

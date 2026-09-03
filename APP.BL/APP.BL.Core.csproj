@@ -60,9 +60,9 @@
 
   <!-- Google APIs -->
   <ItemGroup>
-    <PackageReference Include="Google.Apis" Version="1.68.0" />
-    <PackageReference Include="Google.Apis.Auth" Version="1.68.0" />
-    <PackageReference Include="Google.Apis.Core" Version="1.68.0" />
+    <PackageReference Include="Google.Apis" Version="1.73.0" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.73.0" />
+    <PackageReference Include="Google.Apis.Core" Version="1.73.0" />
     <PackageReference Include="Google.Protobuf" Version="3.29.3" />
   </ItemGroup>
 
@@ -96,13 +96,13 @@
   <!-- Logging + HTTP context -->
   <ItemGroup>
     <PackageReference Include="NLog" Version="5.3.4" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.5" />
     <PackageReference Include="Microsoft.AspNetCore.Http.Abstractions" Version="2.3.0" />
   </ItemGroup>
 
   <!-- JSON / serialisation -->
   <ItemGroup>
-    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="System.Text.Json" Version="9.0.0" />
     <PackageReference Include="System.Text.Encodings.Web" Version="9.0.0" />
   </ItemGroup>
@@ -121,6 +121,15 @@
   <!-- PDF / Browser automation -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Playwright" Version="1.49.0" />
+  </ItemGroup>
+
+  <!-- AI / MCP: Microsoft Semantic Kernel + Model Context Protocol -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.SemanticKernel"                    Version="1.74.0" />
+    <PackageReference Include="Microsoft.SemanticKernel.Agents.Core"       Version="1.74.0" />
+    <PackageReference Include="Microsoft.SemanticKernel.Connectors.OpenAI" Version="1.74.0" />
+    <PackageReference Include="Microsoft.SemanticKernel.Connectors.Google" Version="1.74.0-alpha" />
+    <PackageReference Include="ModelContextProtocol"                        Version="1.2.0" />
   </ItemGroup>
 
   <!-- Compression -->

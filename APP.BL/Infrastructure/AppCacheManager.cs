@@ -360,40 +360,43 @@ namespace App.BL
 
             try
             {
-                var appDataSourceRegister = GetCurrentCompanyMasterDataSource(workingCompanyId);
-                if (appDataSourceRegister == null)
-                {
-                    Logger.Warn("No master data source found for company: {0}", workingCompanyId);
-                    return null;
-                }
-
-                string connectInfo = AppConnectionStringEncryptionBL.Decrypt(appDataSourceRegister.ConnectionString);
+                // AppBusinessPartnerInviteUser lives in MasterDB (identity/ACL data).
+                // AppBusinessPartner lives in tenant DB (CRM data) — loaded separately below.
                 var partnerInviteUserList = new EntityCollection<AppBusinessPartnerInviteUserEntity>();
 
-                var prefetchPath = new PrefetchPath2(EntityType.AppBusinessPartnerInviteUserEntity);
-                prefetchPath.Add(AppBusinessPartnerInviteUserEntity.PrefetchPathAppBusinessPartner);
-
-                using (DataAccessAdapter adapter = new DataAccessAdapter(connectInfo))
+                using (var masterAdapter = new DataAccessAdapter(AppCompanyBL.AppMasterDBConnectionString))
                 {
-                    adapter.FetchEntityCollection(
+                    masterAdapter.FetchEntityCollection(
                         partnerInviteUserList,
                         new RelationPredicateBucket(
                             AppBusinessPartnerInviteUserFields.AppCreatedByCompanyId == workingCompanyId
                             & AppBusinessPartnerInviteUserFields.UserId == userId
-                            & AppBusinessPartnerInviteUserFields.AppBusinessPartnerId != DBNull.Value),
-                        prefetchPath);
+                            & AppBusinessPartnerInviteUserFields.AppBusinessPartnerId != DBNull.Value));
                 }
 
                 var partnerInviteUserEntity = partnerInviteUserList.FirstOrDefault();
                 _dictInviteUserType[cacheKey] = new CacheEntry<int?>(
                     partnerInviteUserEntity?.EmInvitedUserType, DefaultCacheTtl);
 
-                if (partnerInviteUserEntity?.AppBusinessPartner != null)
+                if (partnerInviteUserEntity?.AppBusinessPartnerId != null)
                 {
-                    var businessPartner = partnerInviteUserEntity.AppBusinessPartner;
-                    _dictCompanyIdInviteUserIdAppBusinessPartnerEntity[cacheKey] =
-                        new CacheEntry<AppBusinessPartnerEntity>(businessPartner, DefaultCacheTtl);
-                    return businessPartner;
+                    var appDataSourceRegister = GetCurrentCompanyMasterDataSource(workingCompanyId);
+                    if (appDataSourceRegister != null)
+                    {
+                        string connStr = AppConnectionStringEncryptionBL.Decrypt(appDataSourceRegister.ConnectionString);
+                        string dbName  = appDataSourceRegister.DatabaseName;
+                        var partnerEntity = new AppBusinessPartnerEntity(partnerInviteUserEntity.AppBusinessPartnerId.Value);
+
+                        using (var tenantAdapter = AppTenantAdapterBL.CreateTenantAdapter(connStr, dbName))
+                        {
+                            if (tenantAdapter.FetchEntity(partnerEntity))
+                            {
+                                _dictCompanyIdInviteUserIdAppBusinessPartnerEntity[cacheKey] =
+                                    new CacheEntry<AppBusinessPartnerEntity>(partnerEntity, DefaultCacheTtl);
+                                return partnerEntity;
+                            }
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -420,20 +423,11 @@ namespace App.BL
             try
             {
                 var dictUserIdAndPartnerId = new Dictionary<int, int>();
-                var appDataSourceRegister = GetCurrentCompanyMasterDataSource(companyId);
-
-                if (appDataSourceRegister == null)
-                {
-                    Logger.Warn("No master data source found for company: {0}", companyId);
-                    return dictUserIdAndPartnerId;
-                }
-
-                string connectInfo = AppConnectionStringEncryptionBL.Decrypt(appDataSourceRegister.ConnectionString);
                 var partnerInviteUserList = new EntityCollection<AppBusinessPartnerInviteUserEntity>();
 
-                using (DataAccessAdapter adapter = new DataAccessAdapter(connectInfo))
+                using (var masterAdapter = new DataAccessAdapter(AppCompanyBL.AppMasterDBConnectionString))
                 {
-                    adapter.FetchEntityCollection(
+                    masterAdapter.FetchEntityCollection(
                         partnerInviteUserList,
                         new RelationPredicateBucket(
                             AppBusinessPartnerInviteUserFields.AppCompanyId == companyId

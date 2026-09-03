@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using App.BL.AppBuilderAgent;
 using APP.Components.EntityDto;
 using Newtonsoft.Json;
+using APP.Framework.Plugin;
 
 namespace App.BL.WorkflowAutomationAgent.Plugins
 {
@@ -31,7 +32,7 @@ namespace App.BL.WorkflowAutomationAgent.Plugins
             _onPlanReady = onPlanReady;
         }
 
-        [AgentFunction("propose_workflow_changes",
+        [AgentTool("propose_workflow_changes",
             "REQUIRED GATE — MUST call this BEFORE create_task, update_task, or delete_task. " +
             "Presents a summary of all planned changes to the user and waits for their approval. " +
             "Returns 'approved' if the user approves — then proceed with the task operations. " +
