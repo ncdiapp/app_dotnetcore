@@ -19,6 +19,7 @@ namespace App.BL
         public static AppTransactionStructureDto GetAppTransactionStructureDto(int transactionId)
         {
             AppTransactionExDto transactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transactionId); // AppTransactionBL.GetOneTransactionExDtoWithFormId(transactionId);
+            if (transactionExDto == null) return null;
 
             AppTransactionStructureDto transactionStructureDto = GetGeneralStrcutureInfo(transactionExDto);
             SetupAllEntityLookUpItem(transactionStructureDto, transactionExDto);

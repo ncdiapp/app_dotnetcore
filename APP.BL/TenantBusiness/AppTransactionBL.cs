@@ -666,7 +666,7 @@ namespace App.BL
 
 
             var aAppTransactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(transcactionId);
-
+            if (aAppTransactionExDto == null) return null;
 
             AppSecurityManagementBL.ProcessCurrentUserTransactionAllSecurity(aAppTransactionExDto, rootPkId);
 
@@ -689,6 +689,7 @@ namespace App.BL
         public static AppTransactionExDto GetHierarchyTranscationFromDatabase(object transcactionId, int? rootWorkflowTransactionId = null)
         {
             AppTransactionExDto appTransactionExDto = RetrieveOneAppTransactionExDto(transcactionId, rootWorkflowTransactionId);
+            if (appTransactionExDto == null) return null;
             SetupHierarchyUnit(appTransactionExDto);
 
             PrepareUnitFormulaDictionary(appTransactionExDto);
@@ -2221,7 +2222,15 @@ namespace App.BL
                 else
                 {
                     var freshaHierarchyAppTransactionExDto = GetHierarchyTranscationFromDatabase(aHierarchyAppTransactionExDto.Id);
-                    SynchronizeDatabaseTableAndUpdateCahce(freshaHierarchyAppTransactionExDto);
+                    try
+                    {
+                        SynchronizeDatabaseTableAndUpdateCahce(freshaHierarchyAppTransactionExDto);
+                    }
+                    catch (Exception syncEx)
+                    {
+                        NLog.LogManager.GetCurrentClassLogger().Error(syncEx, "SynchronizeDatabaseTableAndUpdateCahce failed for transaction {0}", aHierarchyAppTransactionExDto.Id);
+                        aValidationResult.Items.Add(new ValidationItem(typeof(AppTransactionEntity), "App_SyncDatabaseTable_Error", ValidationItemType.Warning, "Schema sync failed (non-fatal): " + syncEx.Message));
+                    }
                     aOperationCallResult.Object = GetHierarchyTranscationFromDatabase(aHierarchyAppTransactionExDto.Id);
                 }
 
@@ -2668,6 +2677,7 @@ namespace App.BL
                 // Database FK Exeption ........
                 catch (ORMQueryExecutionException ex)
                 {
+                    NLog.LogManager.GetCurrentClassLogger().Error(ex, "PorcessNewTeanscation ORMQueryExecutionException for transaction '{0}'", aHierarchyAppTransactionExDto?.TransactionName);
                     adapter.Rollback();
                     aValidationResult.Items.Add(new ValidationItem(typeof(AppTransactionEntity), "App_TransactionEntity_QueryExecution_Error", ValidationItemType.Error, ex.ToString()));
                 }
@@ -3362,10 +3372,10 @@ namespace App.BL
 
             try
             {
-                //Save 
+                //Save
                 AppMetaDataBL.SaveModifiedTableSchema(schemaMetaDataDto, transactionUnitDto.DataSourceFrom);
 
-                //Set 
+                //Set
                 foreach (string removeColumn in removeColumnList)
                 {
                     DatabaseColumn aDatabaseColumn = dictTableColumn[removeColumn];
@@ -3377,7 +3387,8 @@ namespace App.BL
             }
             catch (Exception ex)
             {
-
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, "UpdateTranscationOneUnitDatabaseTable failed for table {0}", transactionUnitDto?.DataBaseTableName);
+                throw;
             }
 
 
@@ -3598,10 +3609,11 @@ namespace App.BL
                     adapter.Commit();
 
                 }
-                catch
+                catch (Exception ex)
                 {
+                    NLog.LogManager.GetCurrentClassLogger().Error(ex, "UpdateTransactionUnitDatabaeName failed for unit {0}", transactionUnitDto?.Id);
                     adapter.Rollback();
-
+                    throw;
                 }
             }
         }
