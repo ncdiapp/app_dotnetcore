@@ -34,6 +34,18 @@ namespace App.BL.AppBuilderAgent.Plugins
         {
             try
             {
+                // Return existing package if one with the same name already exists.
+                var existing = AppSaasUserApplicationPackageBL.GetSaasApplicationList()
+                    .FirstOrDefault(a => string.Equals(a.Name, applicationName, StringComparison.OrdinalIgnoreCase));
+                if (existing != null)
+                    return JsonConvert.SerializeObject(new
+                    {
+                        IsSuccess         = true,
+                        SaasApplicationId = (int)existing.Id,
+                        ApplicationName   = existing.Name,
+                        Note              = "Existing application package reused — name already exists. Pass SaasApplicationId to all subsequent tools."
+                    }, Formatting.Indented);
+
                 var menuDto = new AppListMenuExDto { Name = applicationName };
                 var result  = AppSaasUserApplicationPackageBL.CreateMyNewApplicationPackage(menuDto);
 
