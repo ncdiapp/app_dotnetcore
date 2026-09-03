@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using APP.Framework;
 using APP.Framework.Communication;
 
@@ -33,6 +34,13 @@ namespace APP.Framework
         public static void SetHttpContextAccessor(IHttpContextAccessor accessor) =>
             _httpContextAccessor = accessor;
 #endif
+
+        // Per-async-flow identity override for code running outside an HTTP request
+        // (e.g. agent tool execution inside Task.Run after the HTTP response has been sent).
+        private static readonly AsyncLocal<IClientIdentity?> _threadIdentity = new AsyncLocal<IClientIdentity?>();
+
+        public static void OverrideThreadIdentity(IClientIdentity? identity) =>
+            _threadIdentity.Value = identity;
 
         public static readonly string InternalApplcationSessionTokenValue = "41E146D8-25E9-4367-8428-E21E6DBD2171";
         public static readonly string ExternalApplcationSessionTokenValue = "35A5C58F-4C6F-45DD-85CF-1694D9265B15";
@@ -165,6 +173,10 @@ namespace APP.Framework
         {
             get
             {
+                // Thread-local override takes priority for background tasks (e.g. agent tools
+                // running in Task.Run after the HTTP response has been flushed and HttpContext cleared).
+                if (_threadIdentity.Value != null) return _threadIdentity.Value;
+
 #if NETFRAMEWORK
                 bool hasHttpContext = HttpContext.Current != null;
 #else

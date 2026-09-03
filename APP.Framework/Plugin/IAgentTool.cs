@@ -39,6 +39,9 @@ public sealed class AgentToolContext
     /// <summary>Tenant database connection string.</summary>
     public string ConnectionString { get; init; } = string.Empty;
 
+    /// <summary>Tenant database catalog name (used to restore identity on background threads).</summary>
+    public string DatabaseName { get; init; } = string.Empty;
+
     /// <summary>Active agent session identifier.</summary>
     public string SessionId        { get; init; } = string.Empty;
 

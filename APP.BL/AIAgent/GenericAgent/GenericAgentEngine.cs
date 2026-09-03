@@ -74,6 +74,7 @@ namespace App.BL.AIAgent.GenericAgent
                 var context   = new AgentToolContext
                 {
                     ConnectionString = identity.HasValue ? identity.Value.CurrentUserDbConnectionString ?? "" : "",
+                    DatabaseName     = identity.HasValue ? identity.Value.CurrentUserDataBaseName      ?? "" : "",
                     SessionId        = "",
                     SkillKey         = skillKey,
                     UserId           = userId,

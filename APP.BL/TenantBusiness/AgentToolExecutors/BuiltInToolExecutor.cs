@@ -5,6 +5,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using APP.Components.Dto;
+using APP.Framework;
 using APP.Framework.Plugin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -41,6 +42,20 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
 
             var paramValues = BuildParams(method, args, context, ct);
 
+            // Restore tenant identity on this thread — needed because agent tools run inside
+            // Task.Run after the HTTP response has been flushed, so IHttpContextAccessor returns
+            // null and ServerContext.CurrnetClientIdentity would otherwise throw.
+            if (!string.IsNullOrEmpty(context.ConnectionString) && !string.IsNullOrEmpty(context.DatabaseName))
+            {
+                ServerContext.OverrideThreadIdentity(new AppClientIdentity
+                {
+                    UserId                        = context.UserId,
+                    CurrentWorkingCompanyId       = context.CompanyId,
+                    CurrentUserDbConnectionString = context.ConnectionString,
+                    CurrentUserDataBaseName       = context.DatabaseName
+                });
+            }
+
             try
             {
                 object returnValue;
@@ -61,15 +76,19 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
             {
                 return JsonConvert.SerializeObject(new { Error = tie.InnerException.Message });
             }
+            finally
+            {
+                ServerContext.OverrideThreadIdentity(null);
+            }
         }
 
         private static object TryCreateInstance(Type type, AgentToolContext context)
         {
-            // Try parameterless constructor first
+            // 1. True parameterless constructor
             var ctor = type.GetConstructor(Type.EmptyTypes);
             if (ctor != null) return Activator.CreateInstance(type);
 
-            // Try constructor that takes AppClientIdentity
+            // 2. Constructor that takes a single AppClientIdentity
             var identityType = typeof(AppClientIdentity);
             var identityCtor = type.GetConstructors()
                 .FirstOrDefault(c => c.GetParameters().Length == 1 &&
@@ -77,12 +96,31 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
             if (identityCtor != null)
                 return identityCtor.Invoke(new object[] { default(AppClientIdentity) });
 
-            // Try constructor that takes a single Func<> (plan/schema gate callbacks)
-            var funcCtor = type.GetConstructors()
-                .FirstOrDefault(c => c.GetParameters().Length == 1 &&
-                                     c.GetParameters()[0].ParameterType.IsSubclassOf(typeof(Delegate)));
-            if (funcCtor != null)
-                return funcCtor.Invoke(new object[] { null });
+            // 3. Constructor where ALL parameters have default values
+            //    e.g. (int? dataSourceId = null) or (int? dataSourceId = null, string schemaOwner = "dbo")
+            var allDefaultCtor = type.GetConstructors()
+                .FirstOrDefault(c => c.GetParameters().Length > 0 &&
+                                     c.GetParameters().All(p => p.HasDefaultValue));
+            if (allDefaultCtor != null)
+                return allDefaultCtor.Invoke(
+                    allDefaultCtor.GetParameters().Select(p => p.DefaultValue).ToArray());
+
+            // 4. Constructor whose first parameter is a Func/delegate (callback passed as null)
+            //    and all remaining parameters have default values
+            //    e.g. (Func<AgentPlanEvent, Task<bool>> onPlanReady, int? dataSourceId = null)
+            var funcFirstCtor = type.GetConstructors()
+                .FirstOrDefault(c => c.GetParameters().Length >= 1 &&
+                                     typeof(Delegate).IsAssignableFrom(c.GetParameters()[0].ParameterType) &&
+                                     c.GetParameters().Skip(1).All(p => p.HasDefaultValue));
+            if (funcFirstCtor != null)
+            {
+                var ps = funcFirstCtor.GetParameters();
+                var invokeArgs = new object[ps.Length];
+                invokeArgs[0] = null; // null callback — plugin will not invoke the gate
+                for (var i = 1; i < ps.Length; i++)
+                    invokeArgs[i] = ps[i].DefaultValue;
+                return funcFirstCtor.Invoke(invokeArgs);
+            }
 
             return Activator.CreateInstance(type);
         }
