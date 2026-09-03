@@ -446,6 +446,20 @@ Only call search_memory when you need historical context — skip it for entirel
             {
                 agentIdentity = RegisterSystemAgentIdentity(agentIdentity);
 
+                // Make the identity available to background threads via AsyncLocal so that
+                // ServerContext.CurrnetClientIdentity works without an active HttpContext
+                // (e.g. in plugin methods called from this Task.Run context).
+                if (agentIdentity.HasValue)
+                    ServerContext.OverrideThreadIdentity(agentIdentity.Value);
+
+                // Resolve DataSourceRegisterId from ServerContext when the frontend doesn't send one.
+                if (!request.DataSourceRegisterId.HasValue)
+                {
+                    var dsId = ServerContext.Instance?.DataSourceId;
+                    if (dsId.HasValue && dsId.Value > 0)
+                        request.DataSourceRegisterId = dsId.Value;
+                }
+
                 // Create DB session record after identity is set up so GetFixture() can resolve the connection
                 int? createdById = null;
                 try { createdById = Convert.ToInt32(agentIdentity?.UserId); } catch { }
@@ -644,6 +658,10 @@ Only call search_memory when you need historical context — skip it for entirel
                 AppBuilderAgentSessionBL.UpdateSession(
                     dbSessionId, "Failed", null, null, ex.Message);
                 await SafeCallback(callbacks.OnError, $"Agent error: {ex.Message}");
+            }
+            finally
+            {
+                ServerContext.OverrideThreadIdentity(null);
             }
         }
 

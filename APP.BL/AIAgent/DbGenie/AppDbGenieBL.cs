@@ -1182,10 +1182,26 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
             if (!request.DataSourceRegisterId.HasValue)
                 request.DataSourceRegisterId = AppAISkillBL.GetDefaultDataSourceId();
 
+            // When DataSourceRegisterId is still unavailable, resolve via tenant connection string
+            var tenantConnStr = string.Empty;
+            if (!request.DataSourceRegisterId.HasValue || request.DataSourceRegisterId.Value <= 0)
+            {
+                if (ServerContext.Instance?.CurrnetClientIdentity is APP.Components.Dto.AppClientIdentity identity)
+                    tenantConnStr = identity.CurrentUserDbConnectionString ?? string.Empty;
+                if (string.IsNullOrEmpty(tenantConnStr))
+                {
+                    result.IsSuccess = false;
+                    result.Error     = "No DataSourceRegisterId and no tenant connection string available on the current thread.";
+                    return result;
+                }
+            }
+
             try
             {
                 var upperSql = request.SQL.Trim().ToUpper();
-                var fixture = AppCacheManagerBL.GetOneDatabaseFixture(request.DataSourceRegisterId.Value);
+                var fixture  = (request.DataSourceRegisterId.HasValue && request.DataSourceRegisterId.Value > 0)
+                    ? AppCacheManagerBL.GetOneDatabaseFixture(request.DataSourceRegisterId.Value)
+                    : AppCacheManagerBL.GetOrCreateFixtureByConnectionString(tenantConnStr);
 
                 bool isSelect = upperSql.StartsWith("SELECT");
                 bool isExec   = upperSql.StartsWith("EXEC ") || upperSql.StartsWith("EXEC\t")
@@ -1384,8 +1400,21 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
                 return result;
             }
 
-            // Step 4: Create the AppTransaction hierarchy from the physical tables
-            var transactionResult = AppTransactionBL.CreateHierarchyTransactionFromTables(hierarchySetupDto);
+            // Step 4: Create the AppTransaction hierarchy from the physical tables.
+            // Wrap in try-catch so any uncaught exception (e.g. identity error, ORM error)
+            // is surfaced as result.IsSuccess=false rather than propagating past the caller,
+            // which would bypass the auto-rollback logic in TransactionBuilderPlugin.CreateApplication.
+            OperationCallResult<AppTransactionExDto> transactionResult;
+            try
+            {
+                transactionResult = AppTransactionBL.CreateHierarchyTransactionFromTables(hierarchySetupDto);
+            }
+            catch (Exception ex)
+            {
+                result.IsSuccess = false;
+                result.Error = $"Transaction creation failed: {ex.Message}";
+                return result;
+            }
 
             if (transactionResult.ValidationResult != null &&
                 transactionResult.ValidationResult.Items != null &&
@@ -1466,7 +1495,17 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
                 return result;
             }
 
-            var transactionResult = AppTransactionBL.CreateHierarchyTransactionFromTables(hierarchySetupDto);
+            OperationCallResult<AppTransactionExDto> transactionResult;
+            try
+            {
+                transactionResult = AppTransactionBL.CreateHierarchyTransactionFromTables(hierarchySetupDto);
+            }
+            catch (Exception ex)
+            {
+                result.IsSuccess = false;
+                result.Error = $"Transaction creation failed: {ex.Message}";
+                return result;
+            }
 
             if (transactionResult.ValidationResult != null &&
                 transactionResult.ValidationResult.Items != null &&

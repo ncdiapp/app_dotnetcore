@@ -659,6 +659,38 @@ namespace App.BL
             }
         }
 
+        // Returns a DatabaseFixture for an arbitrary connection string, creating and caching it on first use.
+        // Used as fallback when DataSourceRegisterId is unavailable but the tenant connection string is known.
+        internal static DatabaseFixture GetOrCreateFixtureByConnectionString(string connStr)
+        {
+            var key = connStr.Trim();
+
+            _schemaRefreshLock.EnterReadLock();
+            try
+            {
+                if (_dictConnstringDatabaseFixture.TryGetValue(key, out var entry) && !entry.IsExpired)
+                    return entry.Value;
+            }
+            finally
+            {
+                _schemaRefreshLock.ExitReadLock();
+            }
+
+            var fixture = new DatabaseFixture(key, EmSqlType.SqlServer);
+
+            _schemaRefreshLock.EnterWriteLock();
+            try
+            {
+                _dictConnstringDatabaseFixture[key] = new CacheEntry<DatabaseFixture>(fixture, SchemaCacheTtl);
+            }
+            finally
+            {
+                _schemaRefreshLock.ExitWriteLock();
+            }
+
+            return fixture;
+        }
+
         // Returns a DatabaseFixture connected to the hosting AppMasterDB (from web.config).
         // Used for entities like AppSecurityUser that live in AppMasterDB, not in tenant DBs.
         internal static DatabaseFixture GetMasterDbFixture()

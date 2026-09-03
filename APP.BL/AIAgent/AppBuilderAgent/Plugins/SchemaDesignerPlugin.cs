@@ -52,10 +52,10 @@ namespace App.BL.AppBuilderAgent.Plugins
             "for review and optional inline editing BEFORE any DDL is executed. " +
             "The user will see each table with its columns, data types, FK relationships, and a CREATE TABLE preview. " +
             "They can rename columns, change types, remove unwanted columns, or reject with feedback. " +
-            "Returns {Confirmed:true, TableCount, Tables:[...names...]} when the user approves — the schema is stored internally. " +
+            "Returns {Confirmed:true, TableCount, Tables:[...names...], UserFacingMessage:'...'} when the user approves — the schema is stored internally. " +
             "Returns {Confirmed:false, Feedback:'...'} when the user rejects — adjust requirements and call again. " +
             "IMPORTANT: Call this EXACTLY ONCE per new application. " +
-            "When it returns {Confirmed:true}, immediately call execute_approved_schema with NO schemaJson argument — the schema is already stored. " +
+            "When it returns {Confirmed:true}: (1) FIRST send the UserFacingMessage to the user verbatim as your reply so they know what happens next; (2) THEN call execute_approved_schema with NO schemaJson argument — the schema is already stored. " +
             "execute_approved_schema does NOT need a separate propose_plan call; propose_schema already served as the approval gate.")]
         public async Task<string> ProposeSchema(
             [AgentParam("Detailed natural-language description of the entities, fields, and relationships to build.", isRequired: true)]
@@ -77,11 +77,12 @@ namespace App.BL.AppBuilderAgent.Plugins
                     try { prior = JsonConvert.DeserializeObject<SchemaExtractionResultDto>(_approvedSchemaJson); } catch { }
                     return JsonConvert.SerializeObject(new
                     {
-                        Confirmed  = true,
-                        TableCount = prior?.Tables?.Count ?? 0,
-                        Tables     = prior?.Tables?.Select(t => t.Name).ToList() ?? new System.Collections.Generic.List<string>(),
-                        NextStep   = "Schema was already approved earlier in this session — schema is stored internally. Call execute_approved_schema immediately. Do NOT call propose_schema again.",
-                        Note       = "Returning previously approved schema (propose_schema was already confirmed)."
+                        Confirmed         = true,
+                        TableCount        = prior?.Tables?.Count ?? 0,
+                        Tables            = prior?.Tables?.Select(t => t.Name).ToList() ?? new System.Collections.Generic.List<string>(),
+                        UserFacingMessage = "Schema was already approved. Resuming application build now...",
+                        NextStep          = "Schema was already approved earlier in this session — schema is stored internally. Call execute_approved_schema immediately. Do NOT call propose_schema again.",
+                        Note              = "Returning previously approved schema (propose_schema was already confirmed)."
                     });
                 }
 
@@ -237,12 +238,14 @@ namespace App.BL.AppBuilderAgent.Plugins
                     ? response.SchemaJson
                     : JsonConvert.SerializeObject(extraction);
 
+                var tableList = string.Join(", ", extraction.Tables.Select(t => t.Name));
                 return JsonConvert.SerializeObject(new
                 {
-                    Confirmed  = true,
-                    TableCount = extraction.Tables.Count,
-                    Tables     = extraction.Tables.Select(t => t.Name).ToList(),
-                    NextStep   = "Call execute_approved_schema immediately. Do NOT pass schemaJson — the schema is stored internally."
+                    Confirmed          = true,
+                    TableCount         = extraction.Tables.Count,
+                    Tables             = extraction.Tables.Select(t => t.Name).ToList(),
+                    UserFacingMessage  = $"Schema approved! I'll now build {extraction.Tables.Count} table(s): {tableList}.\n\nBuilding your application — this will take a moment...",
+                    NextStep           = "Send the UserFacingMessage to the user verbatim first, then call execute_approved_schema immediately. Do NOT pass schemaJson — the schema is stored internally."
                 });
             }
             catch (Exception ex)
@@ -387,8 +390,12 @@ namespace App.BL.AppBuilderAgent.Plugins
                           "  1) create_entity_from_table → note the returned entityId\n" +
                           "  2) For each matching entry in FKMappings, call set_field_entity(transactionId=MasterTransactionId, fieldName=FKField, unitName=FKTable, entityId=<returned entityId>)\n" +
                           "  3) create_transaction_from_table\n" +
-                          "  4) create_list_edit_form  ← this also adds the nav menu entry automatically, do NOT call create_search_view"
-                        : null,
+                          "  4) create_list_edit_form  ← this also adds the nav menu entry automatically, do NOT call create_search_view\n" +
+                          $"Then call create_search_view(transactionId={result.TransactionId}) for the MASTER transaction to create the main navigation screen."
+                        : $"Tables and transactions created. Now continue:\n" +
+                          $"  1) Call create_search_view(transactionId={result.TransactionId}) — this creates the search/listing screen and adds it to the navigation menu.\n" +
+                          $"  2) Call insert_mockup_data to populate realistic demo rows (lookup tables first, then master, then child rows).\n" +
+                          $"  3) If create_search_view did NOT auto-add the screen to the menu, call add_search_to_menu.",
                     Script          = result.CreatedTableScripts?.Length > 500
                         ? result.CreatedTableScripts.Substring(0, 500) + "..."
                         : result.CreatedTableScripts
