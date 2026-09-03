@@ -21,10 +21,11 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
         private static readonly Assembly BlAssembly = typeof(BuiltInToolExecutor).Assembly;
 
         public static async Task<string> ExecuteAsync(
-            string                             toolConfig,
+            string                              toolConfig,
             IReadOnlyDictionary<string, string> args,
             AgentToolContext                    context,
-            CancellationToken                  ct)
+            CancellationToken                  ct,
+            Dictionary<string, object>?        instancePool = null)
         {
             var cfg = ParseConfig(toolConfig);
             var type = ResolveType(cfg.TypeName);
@@ -38,7 +39,16 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
 
             object instance = null;
             if (!method.IsStatic)
-                instance = TryCreateInstance(type, context);
+            {
+                var poolKey = type.FullName ?? cfg.TypeName;
+                if (instancePool != null && instancePool.TryGetValue(poolKey, out var pooled))
+                    instance = pooled;
+                else
+                {
+                    instance = TryCreateInstance(type, context);
+                    if (instancePool != null) instancePool[poolKey] = instance;
+                }
+            }
 
             var paramValues = BuildParams(method, args, context, ct);
 
@@ -98,12 +108,22 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
 
             // 3. Constructor where ALL parameters have default values
             //    e.g. (int? dataSourceId = null) or (int? dataSourceId = null, string schemaOwner = "dbo")
+            //    If the first parameter is named "dataSourceId" and is int?, inject from context.
             var allDefaultCtor = type.GetConstructors()
                 .FirstOrDefault(c => c.GetParameters().Length > 0 &&
                                      c.GetParameters().All(p => p.HasDefaultValue));
             if (allDefaultCtor != null)
-                return allDefaultCtor.Invoke(
-                    allDefaultCtor.GetParameters().Select(p => p.DefaultValue).ToArray());
+            {
+                var ps = allDefaultCtor.GetParameters();
+                var invokeArgs = ps.Select(p => p.DefaultValue).ToArray<object>();
+                if (ps[0].Name == "dataSourceId" &&
+                    (ps[0].ParameterType == typeof(int?) || ps[0].ParameterType == typeof(int)) &&
+                    context.DataSourceId > 0)
+                {
+                    invokeArgs[0] = (int?)context.DataSourceId;
+                }
+                return allDefaultCtor.Invoke(invokeArgs);
+            }
 
             // 4. Constructor whose first parameter is a Func/delegate (callback passed as null)
             //    and all remaining parameters have default values
@@ -118,7 +138,14 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
                 var invokeArgs = new object[ps.Length];
                 invokeArgs[0] = null; // null callback — plugin will not invoke the gate
                 for (var i = 1; i < ps.Length; i++)
-                    invokeArgs[i] = ps[i].DefaultValue;
+                {
+                    if (ps[i].Name == "dataSourceId" &&
+                        (ps[i].ParameterType == typeof(int?) || ps[i].ParameterType == typeof(int)) &&
+                        context.DataSourceId > 0)
+                        invokeArgs[i] = (int?)context.DataSourceId;
+                    else
+                        invokeArgs[i] = ps[i].DefaultValue;
+                }
                 return funcFirstCtor.Invoke(invokeArgs);
             }
 
@@ -186,10 +213,17 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
             if (t != null) return t;
             t = BlAssembly.GetType(typeName);
             if (t != null) return t;
-            // Scan all loaded assemblies
             foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
             {
                 t = asm.GetType(typeName);
+                if (t != null) return t;
+            }
+            // Case-insensitive fallback — catches TypeName casing mismatches in DB seed data
+            t = BlAssembly.GetType(typeName, throwOnError: false, ignoreCase: true);
+            if (t != null) return t;
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                t = asm.GetType(typeName, throwOnError: false, ignoreCase: true);
                 if (t != null) return t;
             }
             return null;

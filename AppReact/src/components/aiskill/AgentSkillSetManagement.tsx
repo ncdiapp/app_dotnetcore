@@ -25,7 +25,7 @@ const CAP_FLAGS = [
 const emptySkillSet = (): AppAgentSkillSetDto => ({
     SkillKey: '', DisplayName: '', Description: '', SystemPrompt: '', CapabilityFlags: 3,
     IsActive: true, SortOrder: 0, Version: 1,
-    MaxHistoryTokens: 80000, SummarizeThreshold: 60000, MaxToolResultChars: 4000, RecentWindowSize: 10,
+    MaxHistoryTokens: 80000, SummarizeThreshold: 60000, MaxToolResultChars: 4000, RecentWindowSize: 10, MaxIterations: 40,
 });
 
 const AgentSkillSetManagement: React.FC = () => {
@@ -175,7 +175,7 @@ const AgentSkillSetManagement: React.FC = () => {
                                             </div>
                                         </div>
                                         <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                                            {([['MaxHistoryTokens', 'Max History Tokens'], ['SummarizeThreshold', 'Summarize Threshold'], ['MaxToolResultChars', 'Max Tool Result Chars'], ['RecentWindowSize', 'Recent Window Size']] as const).map(([field, label]) => (
+                                            {([['MaxHistoryTokens', 'Max History Tokens'], ['SummarizeThreshold', 'Summarize Threshold'], ['MaxToolResultChars', 'Max Tool Result Chars'], ['RecentWindowSize', 'Recent Window Size'], ['MaxIterations', 'Max Iterations']] as const).map(([field, label]) => (
                                                 <div key={field} className="flex items-center">
                                                     <label className={`w-40 text-xs ${theme.label} mr-2`}>{label}</label>
                                                     <input className={`w-24 h-7 px-2 text-xs border ${theme.inputBox}`} type="number" value={editItem[field]} onChange={e => update(field, parseInt(e.target.value) || 0)} />

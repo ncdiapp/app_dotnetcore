@@ -23,6 +23,9 @@ namespace App.BL.AppBuilderAgent.Plugins
         {
             try
             {
+                if (string.IsNullOrWhiteSpace(sql))
+                    return JsonConvert.SerializeObject(new { IsSuccess = false, Error = "sql parameter is required. Pass a SELECT statement." });
+
                 if (!sql.TrimStart().StartsWith("SELECT", StringComparison.OrdinalIgnoreCase))
                     return JsonConvert.SerializeObject(new
                     {

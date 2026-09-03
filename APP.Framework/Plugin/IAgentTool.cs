@@ -53,4 +53,11 @@ public sealed class AgentToolContext
 
     /// <summary>Tenant/company id, sourced from the request identity.</summary>
     public int    CompanyId        { get; init; }
+
+    /// <summary>
+    /// Registered data-source ID for the current tenant (AppDataSourceRegister.DataSourceRegisterId).
+    /// Passed to BuiltIn plugin constructors that accept <c>int? dataSourceId</c>.
+    /// 0 means "not resolved" — plugins should treat it the same as null.
+    /// </summary>
+    public int    DataSourceId     { get; init; }
 }

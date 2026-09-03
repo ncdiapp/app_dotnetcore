@@ -1,0 +1,33 @@
+-- V014: Fix the RECOVERY section of the app-builder system prompt.
+--
+-- Root cause: The old text said only "Use create_hierarchy_from_tables" without
+-- requiring create_app_package first. The agent skipped create_app_package, so
+-- transactions were created with SaasApplicationID=NULL and menu items landed
+-- under unrelated system menus (e.g. "Project And Workflow").
+--
+-- The code fix (isRequired guard in TransactionBuilderPlugin) blocks the API call,
+-- but this prompt fix is the first line of defence — the LLM sees the rule before
+-- it even makes a tool call.
+-- ============================================================
+
+-- NOTE: REPLACE on nvarchar with box-drawing chars (U+2501) is unreliable across
+-- SQL Server collations. This migration was applied via a PowerShell script that
+-- read the full SystemPrompt, replaced the RECOVERY section in .NET string space,
+-- and wrote it back with a parameterized UPDATE. The SQL below shows the intent;
+-- re-run via PowerShell if the DB is ever re-seeded from scratch.
+--
+-- Old RECOVERY section (single bullet):
+--   ━━━ RECOVERY ━━━...
+--   If tables already exist but the AppAI config is missing:
+--   - Use create_hierarchy_from_tables to rebuild the AppTransaction config from existing tables.
+--
+-- New RECOVERY section (numbered steps + guard rule):
+--   ━━━ RECOVERY ━━━...
+--   If tables already exist but the AppAI config is missing:
+--   1. Call create_app_package FIRST to create the application package and get a SaasApplicationId.
+--      Skip only if the application already exists - use search_platform to verify.
+--   2. Call create_hierarchy_from_tables, passing the SaasApplicationId from step 1.
+--   NEVER call create_hierarchy_from_tables or create_transaction_from_table without a saasApplicationId.
+--   Without it, transactions have no application parent and menu items land under unrelated system menus.
+--
+-- (Applied directly via PowerShell parameterized UPDATE — already deployed)

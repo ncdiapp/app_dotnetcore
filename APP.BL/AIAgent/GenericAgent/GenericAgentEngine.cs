@@ -75,21 +75,27 @@ namespace App.BL.AIAgent.GenericAgent
                 {
                     ConnectionString = identity.HasValue ? identity.Value.CurrentUserDbConnectionString ?? "" : "",
                     DatabaseName     = identity.HasValue ? identity.Value.CurrentUserDataBaseName      ?? "" : "",
-                    SessionId        = "",
+                    SessionId        = Guid.NewGuid().ToString("N"),
                     SkillKey         = skillKey,
                     UserId           = userId,
-                    CompanyId        = companyId
+                    CompanyId        = companyId,
+                    DataSourceId     = dsId
                 };
+
+                // Per-session instance pool keeps stateful plugin instances (e.g. SchemaDesignerPlugin)
+                // alive across multiple tool calls within the same agent run.
+                var instancePool = new Dictionary<string, object>(StringComparer.Ordinal);
 
                 // Build SK kernel (provider-specific connector registered here)
                 var kernel = BuildKernel(identity);
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks));
+                kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations));
 
                 // Wrap AppAgentToolRegister rows as KernelFunctions
                 var toolRows = (dsId > 0 ? TbToolBL.GetBySkillKey(skillKey, dsId) : TbToolBL.GetBySkillKey(skillKey)) ?? new List<TbToolDto>();
                 if (toolRows.Count > 0)
                     kernel.Plugins.AddFromFunctions("tools",
-                        toolRows.Select(r => WrapRegisteredTool(r, context, skillSet.MaxToolResultChars)).ToArray());
+                        toolRows.Select(r => WrapRegisteredTool(r, context, skillSet.MaxToolResultChars, instancePool)).ToArray());
 
                 // Connect MCP servers
                 var mcpClients = new List<McpClient>();
@@ -215,7 +221,7 @@ namespace App.BL.AIAgent.GenericAgent
         // Registered tool wrapper (AppAgentToolEngine → KernelFunction)
         // ─────────────────────────────────────────────────────────────────────
 
-        private static KernelFunction WrapRegisteredTool(TbToolDto row, AgentToolContext context, int maxChars)
+        private static KernelFunction WrapRegisteredTool(TbToolDto row, AgentToolContext context, int maxChars, Dictionary<string, object>? instancePool = null)
         {
             var parameters = ParseKernelParameters(row.ParameterSchemaJson);
             var cap        = maxChars > 0 ? maxChars : DefaultMaxToolResultChars;
@@ -228,9 +234,9 @@ namespace App.BL.AIAgent.GenericAgent
                     var strArgs = args
                         .Where(kv => kv.Value != null)
                         .ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? "");
-                    var result = await AppAgentToolEngine.Dispatch(toolType, toolConfig, strArgs, context, ct)
+                    var result = await AppAgentToolEngine.Dispatch(toolType, toolConfig, strArgs, context, ct, instancePool)
                                                          .ConfigureAwait(false);
-                    return Truncate(result, cap);
+                    return CapResult(result, cap);
                 },
                 functionName: SanitizeName(row.ToolName),
                 description:  row.Description ?? row.ToolName,
@@ -309,7 +315,7 @@ namespace App.BL.AIAgent.GenericAgent
                         .OfType<TextContentBlock>()
                         .Select(c => c.Text ?? ""));
 
-                    return Truncate(text, cap);
+                    return CapResult(text, cap);
                 },
                 functionName:    SanitizeName(toolName),
                 description:     description,
@@ -321,16 +327,33 @@ namespace App.BL.AIAgent.GenericAgent
         // ChatHistory builder
         // ─────────────────────────────────────────────────────────────────────
 
+        private const int MaxHistoryMessages = 8;
+
         private static ChatHistory BuildChatHistory(List<JObject>? messages)
         {
             var history = new ChatHistory();
-            if (messages == null) return history;
-            foreach (var msg in messages)
+            if (messages == null || messages.Count == 0) return history;
+
+            // Trim to last N messages to keep initial context within budget
+            var source = messages.Count > MaxHistoryMessages
+                ? messages.Skip(messages.Count - MaxHistoryMessages).ToList()
+                : messages;
+
+            foreach (var msg in source)
             {
                 var role    = msg["role"]?.ToString() ?? "user";
-                var content = msg["content"]?.ToString() ?? "";
-                if (role == "user")                        history.AddUserMessage(content);
-                else if (role == "assistant" || role == "model") history.AddAssistantMessage(content);
+                var content = msg["content"];
+
+                // Skip tool-call turns (content is array) or messages with no plain-text content
+                if (content == null || content.Type == JTokenType.Array) continue;
+                var contentStr = content.ToString();
+                if (string.IsNullOrEmpty(contentStr)) continue;
+
+                if (role == "user")
+                    history.AddUserMessage(contentStr);
+                else if (role == "assistant" || role == "model")
+                    history.AddAssistantMessage(contentStr);
+                // roles "tool"/"function" are intentionally skipped
             }
             return history;
         }
@@ -353,12 +376,16 @@ namespace App.BL.AIAgent.GenericAgent
                     StringComparer.OrdinalIgnoreCase);
                 foreach (var prop in props.Properties())
                 {
-                    var desc = prop.Value["description"]?.ToString();
+                    var desc      = prop.Value["description"]?.ToString();
+                    var propJson  = prop.Value.ToString(Newtonsoft.Json.Formatting.None);
+                    KernelJsonSchema? ks = null;
+                    try { ks = KernelJsonSchema.Parse(propJson); } catch { }
                     result.Add(new KernelParameterMetadata(prop.Name)
                     {
                         Description   = desc,
                         IsRequired    = required.Contains(prop.Name),
-                        ParameterType = typeof(string)
+                        ParameterType = typeof(string),
+                        Schema        = ks
                     });
                 }
             }
@@ -375,16 +402,64 @@ namespace App.BL.AIAgent.GenericAgent
             return s;
         }
 
-        private static string Truncate(string? s, int max)
+        private static string CapResult(string? s, int max)
         {
             if (string.IsNullOrEmpty(s) || s.Length <= max) return s ?? "";
-            return s.Substring(0, max) + "…";
+            var preview = s.Substring(0, max);
+            var omitted = s.Length - max;
+            var trimmed  = s.TrimStart();
+            if (trimmed.StartsWith("{") || trimmed.StartsWith("["))
+                return $"{{\"note\":\"Result truncated ({omitted} chars omitted)\",\"preview\":{Newtonsoft.Json.JsonConvert.ToString(preview)}}}";
+            return preview + $"… [{omitted} chars truncated]";
         }
 
         private static async Task Safe<T>(Func<T, Task>? callback, T arg)
         {
             if (callback == null) return;
             try { await callback(arg).ConfigureAwait(false); } catch { }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Auto-function invocation filter: context pruning + iteration cap
+        // Mirrors AppBuilderAgentBL.PruneMessages() — runs before every LLM
+        // call inside SK's agentic loop so the context window never overflows.
+        // ─────────────────────────────────────────────────────────────────────
+
+        private sealed class GenericAgentPruneFilter : IAutoFunctionInvocationFilter
+        {
+            private const int TokenBudget = 120_000;
+            private readonly int _maxIterations;
+
+            public GenericAgentPruneFilter(int maxIterations) =>
+                _maxIterations = maxIterations > 0 ? maxIterations : 40;
+
+            public async Task OnAutoFunctionInvocationAsync(AutoFunctionInvocationContext ctx, Func<AutoFunctionInvocationContext, Task> next)
+            {
+                // RequestSequenceIndex is 0-based; cap at _maxIterations rounds
+                if (ctx.RequestSequenceIndex >= _maxIterations)
+                    throw new OperationCanceledException($"Agent stopped: reached {_maxIterations} tool-call iterations.");
+
+                PruneHistory(ctx.ChatHistory);
+                await next(ctx).ConfigureAwait(false);
+            }
+
+            private static void PruneHistory(ChatHistory? history)
+            {
+                if (history == null || history.Count < 4) return;
+                var total = history.Sum(EstimateLen);
+                if (total / 4 < TokenBudget) return;
+
+                // Drop oldest messages (keep index 0 = original user message, keep last 2)
+                for (int i = 1; i < history.Count - 2 && total / 4 >= TokenBudget; i++)
+                {
+                    total -= EstimateLen(history[i]);
+                    history.RemoveAt(i);
+                    i--;
+                }
+            }
+
+            private static int EstimateLen(ChatMessageContent m) =>
+                (m.Content?.Length ?? 0) + m.Items.Sum(item => (item as TextContent)?.Text?.Length ?? 0) + 50;
         }
 
         // ─────────────────────────────────────────────────────────────────────

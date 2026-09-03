@@ -210,11 +210,18 @@ namespace App.BL.AppBuilderAgent.Plugins
             "The table must already exist in the database.")]
         public string CreateTransactionFromTable(
             [AgentParam("Name of the existing database table", isRequired: true)] string tableName,
-            [AgentParam("The SaasApplicationId returned by create_app_package, to link this transaction to the correct app.")] int? saasApplicationId = null,
+            [AgentParam("The SaasApplicationId returned by create_app_package. Required — call create_app_package first, then pass its SaasApplicationId here.", isRequired: true)] int? saasApplicationId = null,
             [AgentParam("Schema owner, e.g. 'dbo'. Leave empty to use the data source default.")] string schemaOwner = null)
         {
             try
             {
+                if (!saasApplicationId.HasValue || saasApplicationId <= 0)
+                    return JsonConvert.SerializeObject(new
+                    {
+                        IsSuccess = false,
+                        Error = "saasApplicationId is required. Call create_app_package first and pass the returned SaasApplicationId."
+                    });
+
                 var owner = schemaOwner ?? _schemaOwner;
 
                 // Refresh the in-memory schema cache so newly created tables are visible
@@ -263,7 +270,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             string masterTableName,
             [AgentParam("Comma-separated names of child tables that belong under the master, e.g. 'OrderLine,OrderPayment'")]
             string childTableNames = null,
-            [AgentParam("The SaasApplicationId to link this transaction to the correct application")]
+            [AgentParam("The SaasApplicationId returned by create_app_package. Required — call create_app_package first, then pass its SaasApplicationId here.", isRequired: true)]
             int? saasApplicationId = null,
             [AgentParam("Display name for the transaction, e.g. 'Sales Order Management'. Defaults to master table name.")]
             string transactionName = null,
@@ -276,6 +283,13 @@ namespace App.BL.AppBuilderAgent.Plugins
         {
             try
             {
+                if (!saasApplicationId.HasValue || saasApplicationId <= 0)
+                    return JsonConvert.SerializeObject(new
+                    {
+                        IsSuccess = false,
+                        Error = "saasApplicationId is required. Call create_app_package first and pass the returned SaasApplicationId."
+                    });
+
                 var owner = schemaOwner ?? _schemaOwner;
 
                 // Parse grandchild map once so we can apply it below

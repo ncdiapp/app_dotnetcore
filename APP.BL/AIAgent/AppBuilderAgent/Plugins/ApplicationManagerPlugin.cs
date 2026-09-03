@@ -6,6 +6,7 @@ using APP.Components.Dto;
 using APP.Components.EntityDto;
 using Newtonsoft.Json;
 using APP.Framework.Plugin;
+using APP.Framework.Communication;
 
 namespace App.BL.AppBuilderAgent.Plugins
 {
@@ -321,19 +322,26 @@ namespace App.BL.AppBuilderAgent.Plugins
         }
 
         [AgentTool("add_search_to_menu",
-            "Step 6 — Add an existing search (or saved search) to the application's main navigation menu. " +
-            "Call this after create_search_view if the search was not automatically added to the menu.")]
+            "Step 6 — Add an existing search (or saved search) to the application's navigation menu. " +
+            "Always pass saasApplicationId so the item appears under the correct app package in the sidebar. " +
+            "Call this after create_search_view.")]
         public string AddSearchToMenu(
             [AgentParam("The ID of the search or saved search to add to the menu", isRequired: true)]
             int searchId,
-            [AgentParam("Display label for the menu item, e.g. 'Sales Orders'", isRequired: true)]
+            [AgentParam("Display label for the menu item, e.g. 'Ticket Overview'", isRequired: true)]
             string menuName,
+            [AgentParam("The SaasApplicationId returned by create_app_package. Required to place the item under the correct app.", isRequired: true)]
+            int saasApplicationId,
             [AgentParam("Set true if searchId refers to a saved search; false for a regular search")]
             bool isSavedSearch = false)
         {
             try
             {
-                var result = AppTreeListMenuBL.AddSearchToMainMenu(searchId, menuName, isSavedSearch);
+                OperationCallResult<object> result;
+                if (saasApplicationId > 0)
+                    result = AppTreeListMenuBL.AddSearchToApplicationMenu(searchId, saasApplicationId, menuName, isSavedSearch);
+                else
+                    result = AppTreeListMenuBL.AddSearchToMainMenu(searchId, menuName, isSavedSearch);
 
                 bool success = result?.ValidationResult?.HasErrors == false;
                 var messages = result?.ValidationResult?.Items?
@@ -343,7 +351,7 @@ namespace App.BL.AppBuilderAgent.Plugins
                 {
                     IsSuccess = success,
                     Error     = success ? null : (messages != null ? string.Join("; ", messages) : "Unknown error"),
-                    Info      = success ? $"'{menuName}' added to navigation menu." : null
+                    Info      = success ? $"'{menuName}' added to navigation menu (saasApplicationId={saasApplicationId})." : null
                 }, Formatting.Indented);
             }
             catch (Exception ex)

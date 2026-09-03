@@ -441,23 +441,21 @@ namespace App.BL
 
                 if (!string.IsNullOrWhiteSpace(tableName))
                 {
-
                     string key = GetOwnerTableKey(owner, tableName);
 
-
-                    //DatabaseFixture databaseFixtureInstance = GetNewInstanceDatbaseFixtureWtihSchmaOwner(dataSourceRegisterId, owner);
-
+                    if (dictDatabaseTable.ContainsKey(key)) continue;
 
                     if (dictOwnerTablenameDataTable.ContainsKey(key))
                     {
-                        DatabaseTable dbtable = dictOwnerTablenameDataTable[key];
-
-                        if (!dictDatabaseTable.ContainsKey(key))
-                        {
-                            dictDatabaseTable.Add(key, dbtable);
-                        }
-
-
+                        dictDatabaseTable.Add(key, dictOwnerTablenameDataTable[key]);
+                    }
+                    else
+                    {
+                        // Table not in cache — fetch directly from DB and update cache so
+                        // newly-created tables are visible without a full fixture refresh.
+                        var fetched = GetOneDatabaseTableSchema(tableName, dataSourceRegisterId, owner);
+                        if (fetched != null)
+                            dictDatabaseTable.Add(key, fetched);
                     }
                 }
             }

@@ -39,15 +39,16 @@ namespace App.BL.TenantBusiness
         /// Dispatches a single tool call by ToolType.
         /// </summary>
         public static Task<string> Dispatch(
-            string                             toolType,
-            string                             toolConfig,
+            string                              toolType,
+            string                              toolConfig,
             IReadOnlyDictionary<string, string> args,
             AgentToolContext                    context,
-            CancellationToken                  ct)
+            CancellationToken                  ct,
+            Dictionary<string, object>?        instancePool = null)
         {
             return (toolType ?? "BuiltIn") switch
             {
-                "BuiltIn"       => BuiltInToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
+                "BuiltIn"       => BuiltInToolExecutor.ExecuteAsync(toolConfig, args, context, ct, instancePool),
                 "ExternalDll"   => ExternalDllToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
                 "SqlQuery"      => SqlQueryToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
                 "PowerShell"    => PowerShellToolExecutor.ExecuteAsync(toolConfig, args, context, ct),

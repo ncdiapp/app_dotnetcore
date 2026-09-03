@@ -18,14 +18,15 @@ namespace App.BL.AIAgent.AiSkill
         int    MaxHistoryTokens,
         int    SummarizeThreshold,
         int    MaxToolResultChars,
-        int    RecentWindowSize);
+        int    RecentWindowSize,
+        int    MaxIterations);
 
     public static class AppAgentSkillSetBL
     {
         private const string SelectCols = @"
             SkillKey, DisplayName, Description, SystemPrompt,
             CapabilityFlags, IsActive, SortOrder, Version,
-            MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize";
+            MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize, MaxIterations";
 
         public static List<AppAgentSkillSetDto> GetAll()
         {
@@ -77,15 +78,16 @@ IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey=@SkillKey)
         DisplayName=@DisplayName, Description=@Description, SystemPrompt=@SystemPrompt,
         CapabilityFlags=@CapabilityFlags, IsActive=@IsActive, SortOrder=@SortOrder,
         Version=@Version, MaxHistoryTokens=@MaxHistoryTokens, SummarizeThreshold=@SummarizeThreshold,
-        MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize
+        MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize,
+        MaxIterations=@MaxIterations
     WHERE SkillKey=@SkillKey
 ELSE
     INSERT INTO dbo.AppAgentSkillSet
         (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,
-         Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize)
+         Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations)
     VALUES
         (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,
-         @Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize)";
+         @Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations)";
 
             fixture.ExecuteNonQueryResult(sql, Params(fixture, dto));
         }
@@ -125,7 +127,8 @@ ELSE
                 MaxHistoryTokens:   ColInt(row, "MaxHistoryTokens"),
                 SummarizeThreshold: ColInt(row, "SummarizeThreshold"),
                 MaxToolResultChars: ColInt(row, "MaxToolResultChars"),
-                RecentWindowSize:   ColInt(row, "RecentWindowSize"));
+                RecentWindowSize:   ColInt(row, "RecentWindowSize"),
+                MaxIterations:      ColIntSafe(row, "MaxIterations", 40));
         }
 
         private static List<DbParameter> Params(DatabaseSchemaMrg.DatabaseFixture f, AppAgentSkillSetDto d)
@@ -143,7 +146,8 @@ ELSE
                 P(f, "@MaxHistoryTokens",    d.MaxHistoryTokens),
                 P(f, "@SummarizeThreshold",  d.SummarizeThreshold),
                 P(f, "@MaxToolResultChars",  d.MaxToolResultChars),
-                P(f, "@RecentWindowSize",    d.RecentWindowSize)
+                P(f, "@RecentWindowSize",    d.RecentWindowSize),
+                P(f, "@MaxIterations",       d.MaxIterations > 0 ? d.MaxIterations : 40)
             };
         }
 
@@ -164,5 +168,11 @@ ELSE
         private static string ColStr(DataRow row, string col) => row[col] as string ?? "";
         private static int    ColInt(DataRow row, string col)  => row[col] == DBNull.Value ? 0 : Convert.ToInt32(row[col]);
         private static bool   ColBool(DataRow row, string col) => row[col] != DBNull.Value && Convert.ToBoolean(row[col]);
+        // Safe read for columns that may not exist yet in older DBs (before V011 migration)
+        private static int    ColIntSafe(DataRow row, string col, int defaultVal)
+        {
+            try { return row.Table.Columns.Contains(col) && row[col] != DBNull.Value ? Convert.ToInt32(row[col]) : defaultVal; }
+            catch { return defaultVal; }
+        }
     }
 }

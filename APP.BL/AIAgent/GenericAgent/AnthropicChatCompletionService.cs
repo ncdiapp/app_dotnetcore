@@ -49,7 +49,7 @@ namespace App.BL.AIAgent.GenericAgent
             Kernel?                  kernel            = null,
             CancellationToken        cancellationToken = default)
         {
-            var tools    = BuildAnthropicTools(chatHistory, executionSettings, kernel);
+            var tools    = BuildAnthropicTools(kernel);
             var messages = BuildAnthropicMessages(chatHistory);
             var system   = BuildSystemPrompt(chatHistory);
 
@@ -178,22 +178,17 @@ namespace App.BL.AIAgent.GenericAgent
             return msgs;
         }
 
-        private static List<object>? BuildAnthropicTools(ChatHistory history, PromptExecutionSettings? settings, Kernel? kernel)
+        private static List<object>? BuildAnthropicTools(Kernel? kernel)
         {
-            if (settings?.FunctionChoiceBehavior == null || kernel == null) return null;
-            try
+            if (kernel == null) return null;
+            var fns = kernel.Plugins.SelectMany(p => p).ToList();
+            if (fns.Count == 0) return null;
+            return fns.Select(f => (object)new
             {
-                var ctx = new FunctionChoiceBehaviorConfigurationContext(history) { Kernel = kernel };
-                var cfg = settings.FunctionChoiceBehavior.GetConfiguration(ctx);
-                if (cfg.Functions == null || !cfg.Functions.Any()) return null;
-                return cfg.Functions.Select(f => (object)new
-                {
-                    name         = f.Name,
-                    description  = f.Description ?? "",
-                    input_schema = BuildInputSchema(f)
-                }).ToList();
-            }
-            catch { return null; }
+                name         = f.Name,
+                description  = f.Description ?? "",
+                input_schema = BuildInputSchema(f)
+            }).ToList();
         }
 
         private static object BuildInputSchema(KernelFunction f)

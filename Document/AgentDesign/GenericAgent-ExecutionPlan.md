@@ -2,8 +2,22 @@
 
 **Project:** App-netore  
 **Author:** Sean Zhang  
-**Date:** 2026-09-02  
-**Status:** Design Complete — Pending Implementation
+**Date:** 2026-09-02 (last audited: 2026-09-03)  
+**Status:** Phases 0–5 Complete · Phase 6 In Progress
+
+---
+
+## Implementation Status Summary
+
+| Phase | Description | Status | Notes |
+|---|---|---|---|
+| 0 | DB Migration (3 tables + seed data) | ✅ Done | V008 + V009 deployed |
+| 1 | APP.Framework Extensions | ✅ Done | IAgentTool + AgentToolAttribute |
+| 2 | Plugin Attribute Migration | 🔄 Partial | Old plugin files being deleted; attribute migration incomplete |
+| 3 | AppAgentToolEngine + 6 Executors | ✅ Done | All executors in TenantBusiness |
+| 4 | GenericAgent Infrastructure | ✅ Done | + AnthropicChatCompletionService + AgentStepFilter added |
+| 5 | SkillSet Admin UI Layer | ✅ Done | React + BL + controller all implemented |
+| 6 | Old Controller Cleanup | 🔄 In Progress | Old BL files being deleted; controllers not yet migrated |
 
 ---
 
@@ -61,188 +75,146 @@ Admin UI (AgentSkillSetManagement)            Existing agent UIs
         │                                              │
         ▼                                              ▼
 GenericAgentController          AppBuilderAgentController / AppReportAgentController / DbGenieController
-POST /webapi/GenericAgent/Run   POST /webapi/AppBuilderAgent/RunAgent  (routes unchanged)
+POST /webapi/GenericAgent/RunAgent   POST /webapi/AppBuilderAgent/RunAgent  (routes unchanged)
+GET  /webapi/GenericAgent/StreamEvents                 │
         │                                              │
         └──────────────────────┬───────────────────────┘
                                ▼
-                   GenericAgentBL.RunAsync(skillKey, ...)
+                   GenericAgentBL.RunAsync(skillKey, userMessage, chatHistory, callbacks, identity, ct)
                                │
-                   1. Load SkillSet config  (AppAgentSkillSet)
-                   2. Read system prompt    (AppAgentSkillSet.SystemPrompt)
-                   3. Load manual tools     (AppAgentToolEngine → 6 ToolTypes)
-                   4. Connect MCP servers   (AppAgentMcpServer → McpClient → KernelFunctions)
-                   5. Run SK agentic loop
+                   1. Resolve AppClientIdentity → dsId, userId, companyId
+                   2. Load SkillSet via AiSkill.AppAgentSkillSetBL.GetByKey()
+                   3. Build SK Kernel (provider from AIConfigSettingBL)
+                      └─ Anthropic → AnthropicChatCompletionService (custom, no official SK package)
+                      └─ Gemini   → AddGoogleAIGeminiChatCompletion + GeminiRoleFixHandler
+                      └─ OpenAI   → AddOpenAIChatCompletion
+                   4. Register AgentStepFilter (IFunctionInvocationFilter)
+                   5. Load tools  (TenantBusiness.AppAgentToolRegisterBL → WrapRegisteredTool)
+                   6. Connect MCP (TenantBusiness.AppAgentMcpServerBL → McpClient + KernelFunctionFactory)
+                   7. Run SK ChatCompletionAgent.InvokeStreamingAsync loop
                                │
-                        GenericAgentEngine
+                      GenericAgentEngine (inner)
                                │
           ┌────────────────────┼────────────────────┐
    KernelFunction        KernelFunction        KernelFunction
    (BuiltIn/SqlQuery/…)  (MCP auto-discovered)  (DynamicCSharp)
                                │
-                      SignalR stream events
+                      SSE stream events (StreamEvents endpoint)
                                │
-                      <GenericAgentChat />   ←── MCPAppRenderer (9 UI components)
+                      <GenericAgentChat />
 ```
 
 ---
 
 ## 5. DB Schema Design
 
-### 5.1 `AppAgentSkillSet` — Agent Persona Registry (NEW)
+### 5.1 `AppAgentSkillSet` — Agent Persona Registry ✅ COMPLETE (V008)
 
 ```sql
 CREATE TABLE dbo.AppAgentSkillSet (
-    SkillKey           NVARCHAR(100) NOT NULL PRIMARY KEY,
+    SkillKey           NVARCHAR(100) NOT NULL,
     DisplayName        NVARCHAR(200) NOT NULL,
     Description        NVARCHAR(MAX) NULL,
-    SystemPrompt       NVARCHAR(MAX) NULL,      -- full agent system prompt; migrated from hardcoded BL text
-    CapabilityFlags    INT  NOT NULL DEFAULT 0,
-    IsActive           BIT  NOT NULL DEFAULT 1,
-    SortOrder          INT  NOT NULL DEFAULT 0,
-    Version            INT  NOT NULL DEFAULT 1,
-    MaxHistoryTokens   INT  NOT NULL DEFAULT 80000,   -- prune when history exceeds this
-    SummarizeThreshold INT  NOT NULL DEFAULT 60000,   -- 0 = summarization off
-    MaxToolResultChars INT  NOT NULL DEFAULT 4000,    -- cap per tool result string
-    RecentWindowSize   INT  NOT NULL DEFAULT 10       -- always keep last N turns unpruned
+    SystemPrompt       NVARCHAR(MAX) NULL,
+    CapabilityFlags    INT           NOT NULL DEFAULT 0,
+    IsActive           BIT           NOT NULL DEFAULT 1,
+    SortOrder          INT           NOT NULL DEFAULT 0,
+    Version            INT           NOT NULL DEFAULT 1,
+    MaxHistoryTokens   INT           NOT NULL DEFAULT 80000,
+    SummarizeThreshold INT           NOT NULL DEFAULT 60000,
+    MaxToolResultChars INT           NOT NULL DEFAULT 4000,
+    RecentWindowSize   INT           NOT NULL DEFAULT 10,
+    CONSTRAINT PK_AppAgentSkillSet PRIMARY KEY (SkillKey)
 );
-
--- Seed the 4 existing agents (SystemPrompt content migrated from hardcoded BL source — see actual SQL file)
-INSERT INTO dbo.AppAgentSkillSet
-    (SkillKey, DisplayName, SystemPrompt, CapabilityFlags, MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize)
-VALUES
-('app-builder',      'App Builder Agent',      N'<migrated from AppBuilderAgentBL>',           31, 80000, 60000, 4000, 10),
-('app-report',       'App Report Agent',        N'<migrated from AppReportAgentBL>',             3, 40000,     0, 2000, 10),
-('db-genie',         'DB Genie',                N'<migrated from sqlskill.md>',                 35, 40000,     0, 8000, 10),
-('data-integration', 'Data Integration Agent',  N'<migrated from AppDataIntegrationAgentSkillBL>', 65, 20000, 0, 2000, 10);
 ```
 
-### 5.2 `CapabilityFlags` Enum
+4 rows seeded with full system prompts (migrated from hardcoded BL text).
+
+### 5.2 `CapabilityFlags` Enum ✅ COMPLETE (AppEnums.cs EmTenantSettings range 3201–3207)
 
 ```csharp
 [Flags]
 public enum AgentCapabilityFlags
 {
     None            = 0,
-    StreamTokens    = 1,   // stream tokens via SignalR
+    StreamTokens    = 1,   // stream tokens via SSE
     MultiTurn       = 2,   // keep conversation history
     PlanGate        = 4,   // pause on propose_plan → wait for ConfirmPlan
-    SchemaGate      = 8,   // pause on propose_schema → wait for approval
+    SchemaGate      = 8,   // pause on propose_schema → wait for ConfirmSchema
     InjectMemory    = 16,  // prepend AppBuilderAgentMemoryBL.SearchMemory() to prompt
     InjectSchema    = 32,  // prepend DB schema summary to prompt
-    ExternalBackend = 64,  // skip SK loop → delegate to Cursor BL
+    ExternalBackend = 64,  // skip SK loop → delegate to external backend
 }
 ```
 
-**End-user exposure:** flags are NOT shown as raw numbers. New SkillSet wizard uses guided behavior questions:
+Seeded flag values:
+- `app-builder` = 31 (Stream + MultiTurn + PlanGate + SchemaGate + InjectMemory)
+- `app-report`  = 3  (Stream + MultiTurn)
+- `db-genie`    = 35 (Stream + MultiTurn + InjectSchema)
+- `data-integration` = 65 (Stream + ExternalBackend)
 
-| Question shown to user | Flag(s) set |
-|---|---|
-| "Propose changes that need approval before executing?" | `PlanGate + SchemaGate` |
-| "Remember context from previous sessions?" | `InjectMemory` |
-| "Include database schema information automatically?" | `InjectSchema` |
-| "Stream replies word-by-word as they generate?" | `StreamTokens` |
-| "Maintain conversation history across messages?" | `MultiTurn` |
-| "Delegate entirely to an external backend?" | `ExternalBackend` |
+**End-user exposure:** flags are NOT shown as raw numbers in the admin UI. The wizard uses guided behavior questions that compute the bitmask.
 
-Built-in personas are read-only in the UI (flags visible but not editable).
-
-### 5.3 `AppAISkill` — Not Changed
-
-`AppAISkill` is **unchanged by this refactor**. It remains a separate user-created custom prompt library — unrelated to agent personas.
-
-| Current use | After refactor |
-|---|---|
-| `AppBuilderAgentBL` hardcoded system prompt | Migrated into `AppAgentSkillSet.SystemPrompt` for `'app-builder'` |
-| `AppReportAgentBL` hardcoded prompt | Migrated into `AppAgentSkillSet.SystemPrompt` for `'app-report'` |
-| `DbGenie` `sqlskill.md` | Migrated into `AppAgentSkillSet.SystemPrompt` for `'db-genie'` |
-| Existing `AppAISkill` rows (user-created) | Keep as-is — separate non-agent feature |
-
-No DDL changes. No new columns. No seed data. `AppAISkillBL.cs` and `AISkillManagement.tsx` remain on their current flat layout.
-
-### 5.4 `AppAgentToolRegister` — Tool Registry (NEW)
+### 5.3 `AppAgentToolRegister` — Tool Registry ✅ COMPLETE (V008)
 
 ```sql
 CREATE TABLE dbo.AppAgentToolRegister (
-    ToolRegisterId      INT IDENTITY PRIMARY KEY,
+    ToolRegisterId      INT           IDENTITY(1,1) PRIMARY KEY,
     SkillKey            NVARCHAR(100) NOT NULL,
-    ToolName            NVARCHAR(200) NOT NULL,    -- LLM-facing name
-    ToolDescription     NVARCHAR(MAX) NULL,        -- LLM-facing description
-    ParameterSchemaJson NVARCHAR(MAX) NULL,        -- JSON Schema for LLM
+    ToolName            NVARCHAR(200) NOT NULL,
+    ToolDescription     NVARCHAR(MAX) NULL,    -- NOTE: column is "ToolDescription", not "Description"
+    ParameterSchemaJson NVARCHAR(MAX) NULL,
     ToolType            NVARCHAR(50)  NOT NULL DEFAULT 'BuiltIn',
-    ToolConfig          NVARCHAR(MAX) NULL,        -- JSON, shape varies by ToolType
-    IsActive            BIT NOT NULL DEFAULT 1
+    ToolConfig          NVARCHAR(MAX) NULL,
+    IsActive            BIT           NOT NULL DEFAULT 1
+    -- NOTE: No SortOrder column in this schema
 );
 ```
 
-### 5.5 `AppAgentMcpServer` — MCP Server Registry (NEW)
+~37 built-in tool rows seeded (app-builder: 34, app-report: 5).
 
-MCP servers expose their tool list dynamically — registering each MCP tool individually in `AppAgentToolRegister` would defeat the purpose. Instead, register the server once and let SK auto-discover all its tools at session start.
+> **Schema Mismatch Warning:** `APP.BL/AIAgent/GenericAgent/AppAgentToolRegisterBL.cs` reads
+> columns `Id`, `Description`, `SortOrder` which do NOT exist in V008. This file is stale
+> and will fail at runtime. The **correct** BL for the engine is
+> `APP.BL/TenantBusiness/AppAgentToolRegisterBL.cs` which reads the actual V008 columns
+> (`ToolRegisterId`, `ToolDescription`, `ParameterSchemaJson`).
+> See §17 (Known Deviations) for full list.
+
+### 5.4 `AppAgentMcpServer` — MCP Server Registry ✅ COMPLETE (V008)
 
 ```sql
 CREATE TABLE dbo.AppAgentMcpServer (
-    McpServerId   INT IDENTITY PRIMARY KEY,
-    SkillKey      NVARCHAR(100) NOT NULL,    -- FK to AppAgentSkillSet
-    ServerName    NVARCHAR(200) NOT NULL,    -- display name, used as SK plugin group name
-    ServerType    NVARCHAR(50)  NOT NULL,    -- 'streamable-http' | 'stdio'
-    ServerUrl     NVARCHAR(500) NULL,        -- SSE: HTTP endpoint URL
-    Command       NVARCHAR(500) NULL,        -- stdio only: executable + args
-    IsActive      BIT NOT NULL DEFAULT 1
+    McpServerId   INT           IDENTITY(1,1) PRIMARY KEY,
+    SkillKey      NVARCHAR(100) NOT NULL,
+    ServerName    NVARCHAR(200) NOT NULL,
+    ServerType    NVARCHAR(50)  NOT NULL,   -- 'streamable-http' | 'stdio'
+    ServerUrl     NVARCHAR(500) NULL,
+    Command       NVARCHAR(500) NULL,
+    IsActive      BIT           NOT NULL DEFAULT 1
 );
-
--- Example: app-builder connects to BlueCherry MCP server
-INSERT INTO AppAgentMcpServer (SkillKey, ServerName, ServerType, ServerUrl) VALUES
-('app-builder', 'BlueCherry ERP MCP', 'streamable-http', 'http://localhost:5100/mcp');
 ```
 
-How `GenericAgentEngine` loads MCP tools alongside manual tools:
+> **Schema Mismatch Warning:** `APP.BL/AIAgent/GenericAgent/AppAgentMcpServerBL.cs` reads
+> columns `McpServerKey`, `Transport`, `AuthType`, `AuthValue` which do NOT exist in V008.
+> The **correct** BL for the engine is `APP.BL/TenantBusiness/AppAgentMcpServerBL.cs` which
+> reads the actual V008 columns (`McpServerId`, `SkillKey`, `ServerName`, `ServerType`,
+> `ServerUrl`, `Command`). The GenericAgent namespace file is stale/forward-looking.
 
-```csharp
-// Step 3 + 4 in GenericAgentBL.RunAsync
-var manualTools = await AppAgentToolEngine.LoadToolsForSkillAsync(skillKey, ctx);
-kernel.Plugins.AddFromFunctions("agent_tools", manualTools);
+### 5.5 `AppTenantSetting` — AI Config Rows ✅ COMPLETE (V009)
 
-var mcpServers = AppAgentMcpServerBL.GetActiveBySkillKey(skillKey);
-foreach (var server in mcpServers)
-{
-    // Use StreamableHttp transport — matches BC-MCP-Client McpPluginFactory.cs pattern
-    // NOTE: SseClientTransport is NOT used; AsKernelFunction() is also broken due to
-    // Microsoft.Extensions.AI version mismatch — tools must be manually wrapped.
-    // ServerType: 'streamable-http' (HTTP-based MCP) or 'stdio' (local process)
-    var transport = server.ServerType == "streamable-http"
-        ? (ITransport)new HttpClientTransport(new HttpClientTransportOptions
-          {
-              Url = server.ServerUrl,
-              TransportMode = HttpTransportMode.StreamableHttp
-          })
-        : new StdioClientTransport(new StdioClientTransportOptions
-          {
-              Command = server.Command!.Split(' ')[0],
-              Arguments = server.Command.Split(' ').Skip(1).ToArray()
-          });
-    var mcpClient = await McpClient.CreateAsync(transport);
-    var tools = await mcpClient.ListToolsAsync();
+7 rows added to `AppTenantSetting` (idempotent):
 
-    // Manual wrap — mirrors McpPluginFactory.BuildKernelFunction() in BC-MCP-Client
-    var functions = tools.Select(tool => KernelFunctionFactory.CreateFromMethod(
-        async (KernelArguments args, CancellationToken ct) =>
-        {
-            var result = await mcpClient.CallToolAsync(tool.Name, MapArgs(args), ct);
-            var text = string.Join("", result.Content.OfType<TextContentBlock>().Select(b => b.Text));
-            return text.Length > persona.MaxToolResultChars
-                ? text[..persona.MaxToolResultChars] + "\n[...truncated]"
-                : text;
-        },
-        functionName: tool.Name,
-        description: tool.Description,
-        parameters: ParseToolSchema(tool.JsonSchema))).ToList();
+| SetupCode | Default | EmTenantSettings enum |
+|---|---|---|
+| `AIConfigProvider` | `Gemini` | 3201 |
+| `AIConfigOpenAIApiKey` | `` | 3202 |
+| `AIConfigGeminiApiKey` | `` | 3203 |
+| `AIConfigAnthropicApiKey` | `` | 3204 |
+| `AIConfigOpenAIModel` | `gpt-4o` | 3205 |
+| `AIConfigGeminiModel` | `gemini-2.0-flash` | 3206 |
+| `AIConfigAnthropicModel` | `claude-3-5-sonnet-20241022` | 3207 |
 
-    var plugin = KernelPluginFactory.CreateFromFunctions("mcp_" + server.ServerName, functions);
-    kernel.Plugins.Add(plugin);
-}
-```
-
-`ModelContextProtocol` NuGet (v1.2.0) provides `McpClient`, `HttpClientTransport`, `HttpClientTransportOptions`, `HttpTransportMode` — no additional NuGet required.  
-See `BC-MCP-Client\server\McpChatAgent.Api\Services\McpPluginFactory.cs` for the complete `BuildKernelFunction` and `ParseToolSchema` implementations to copy.
+Each provider keeps its own API key row — tenants can configure multiple providers and switch via `AIConfigProvider`.
 
 ---
 
@@ -259,11 +231,35 @@ See `BC-MCP-Client\server\McpChatAgent.Api\Services\McpPluginFactory.cs` for the
 | `HttpRest` | `HttpClient` → `{argName}` URL placeholders → response | Tenant admin (UI only) | **No** |
 | `DynamicCSharp` | Roslyn `CSharpScript.EvaluateAsync` — whitelisted sandbox | Admin configures; LLM generates code | **No** (LLM writes C#) |
 
+### Strategy dispatch in `AppAgentToolEngine.Dispatch` ✅ COMPLETE
+
+```csharp
+// APP.BL/TenantBusiness/AppAgentToolEngine.cs
+public static Task<string> Dispatch(
+    string                              toolType,
+    string                              toolConfig,
+    IReadOnlyDictionary<string, string> args,
+    AgentToolContext                    context,
+    CancellationToken                   ct)
+{
+    return (toolType ?? "BuiltIn") switch
+    {
+        "BuiltIn"       => BuiltInToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
+        "ExternalDll"   => ExternalDllToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
+        "SqlQuery"      => SqlQueryToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
+        "PowerShell"    => PowerShellToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
+        "HttpRest"      => HttpRestToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
+        "DynamicCSharp" => DynamicCSharpToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
+        _               => Task.FromResult(JsonConvert.SerializeObject(new { Error = $"Unknown ToolType: {toolType}" }))
+    };
+}
+```
+
 ### ToolConfig JSON shapes
 
 **BuiltIn:**
 ```json
-{ "TypeName": "App.BL.AppBuilderAgent.Plugins.SchemaBuilderPlugin", "MethodName": "GetTableSchema" }
+{ "TypeName": "APP.BL.AppBuilderAgent.Plugins.SchemaBuilderPlugin", "MethodName": "GetTableSchema" }
 ```
 
 **ExternalDll:**
@@ -304,191 +300,277 @@ See `BC-MCP-Client\server\McpChatAgent.Api\Services\McpPluginFactory.cs` for the
 - **Timeout:** enforced via `CancellationTokenSource`
 - **Audit log:** every code execution logged with `userId`, `skillKey`, `toolName`, `code`
 
-### Strategy pattern in `AppAgentToolEngine`
-
-```csharp
-IToolExecutor executor = reg.ToolType switch
-{
-    "BuiltIn"       => new BuiltInToolExecutor(reg, ctx),
-    "ExternalDll"   => new ExternalDllToolExecutor(reg, ctx),
-    "SqlQuery"      => new SqlQueryToolExecutor(reg, ctx),
-    "PowerShell"    => new PowerShellToolExecutor(reg, ctx),
-    "HttpRest"      => new HttpRestToolExecutor(reg, ctx),
-    "DynamicCSharp" => new DynamicCSharpToolExecutor(reg, ctx),
-    _ => throw new NotSupportedException(reg.ToolType)
-};
-```
-
 ---
 
-## 7. SkillSet Management UI
+## 7. SkillSet Management UI ✅ COMPLETE
 
 `AppAISkillBL.cs` and `AISkillManagement.tsx` are **not changed** — they remain the non-agent prompt library.
 
-New management lives in a dedicated screen for `AppAgentSkillSet`:
+### BL layer — two separate classes ✅
 
-### New BL class — `AppAgentSkillSetBL.cs`
-
+**`App.BL.AIAgent.AiSkill.AppAgentSkillSetBL`** (for the runtime engine):
 ```csharp
-GetAllSkillSets(int dsId)                           // list for admin UI
-GetSkillSetByKey(int dsId, string skillKey)         // load one for editing
-CreateSkillSet(int dsId, AppAgentSkillSetDto dto)   // wizard step 2 save
-UpdateSkillSet(int dsId, AppAgentSkillSetDto dto)   // inline edit
-DeleteSkillSet(int dsId, string skillKey)           // disable only (IsActive=0)
+// APP.BL/AIAgent/AiSkill/AppAgentSkillSetBL.cs
+GetAll()                           // list all active
+GetByKey(string skillKey)          // engine uses this
+GetByKey(string skillKey, int dsId)// admin controller uses this overload
 ```
 
-### New controller endpoints (new `AgentSkillSetController.cs` or extend existing admin controller)
-
-```
-GET  GetAllSkillSets(dataSourceId)
-GET  GetSkillSetByKey(dataSourceId, skillKey)
-POST CreateSkillSet(dataSourceId, dto)
-POST UpdateSkillSet(dataSourceId, dto)
-POST DeleteSkillSet(dataSourceId, skillKey)
-```
-
-### React UI — `AgentSkillSetManagement.tsx` (NEW)
-
-**Single-level layout — one row per agent persona:**
-
-```
-┌───────────────────────────────────────────────────────────────────────────────┐
-│  Agent Personas                                                    [+ New]      │
-│  ─────────────────────────────────────────────────────────────────────────── │
-│  SkillKey         │ Display Name            │ Flags                │ Actions  │
-│  app-builder      │ App Builder Agent       │ Stream MultiTurn ... │ Edit ▶   │
-│  app-report       │ App Report Agent        │ Stream MultiTurn     │ Edit ▶   │
-│  db-genie         │ DB Genie                │ Stream Schema        │ Edit ▶   │
-│  data-integration │ Data Integration Agent  │ Stream External      │ Edit ▶   │
-└───────────────────────────────────────────────────────────────────────────────┘
+**`App.BL.AIAgent.GenericAgent.AppAgentSkillSetBL`** (for admin UI with explicit dsId):
+```csharp
+// APP.BL/AIAgent/GenericAgent/AppAgentSkillSetBL.cs
+GetAllSkillSets(int dataSourceId)
+UpsertSkillSet(int dataSourceId, AppAgentSkillSetDto dto)  // create or update (no separate Create/Update)
+DeleteSkillSet(int dataSourceId, string skillKey)           // hard delete (not IsActive=0)
+GetDebugInfo(int dataSourceId)                              // diagnostics: conn string + row count
 ```
 
-Editor panel: `SkillKey` (read-only after create), `DisplayName`, `Description`, `SystemPrompt` (large textarea), behavior checkboxes (wizard flags), context threshold fields (`MaxHistoryTokens` etc.), `IsActive`.
+> **Design deviation:** The plan described separate `CreateSkillSet` and `UpdateSkillSet` methods.
+> The implementation uses a single `UpsertSkillSet` (IF EXISTS UPDATE ELSE INSERT).
+> `DeleteSkillSet` performs a hard DELETE, not soft-delete to IsActive=0.
 
-**New SkillSet wizard — guided behavior questions (no raw flag numbers shown):**
+### Controller endpoints ✅ (`AgentSkillSetController.cs`)
 
 ```
-Create New Agent Persona                                          Step 1 of 2
-────────────────────────────────────────────────────────────────────────────
-Agent Key    [_______________]   Display Name  [___________________________]
-
-How does this agent behave?
-
-☐  Propose changes that need approval before executing
-   └─ Agent pauses and asks "shall I proceed?" on plans and schema changes
-
-☐  Remember context from previous sessions
-   └─ Agent reads past conversation memory before each reply
-
-☐  Include database schema information automatically
-   └─ Agent gets table/column definitions injected into its prompt
-
-☐  Stream replies word-by-word as they are generated (recommended)
-   └─ Responses appear live via SignalR
-
-☐  Maintain conversation history across messages (recommended)
-   └─ Agent remembers earlier messages in the same session
-
-☐  Delegate entirely to an external backend
-   └─ Forwards requests to an external API instead of built-in AI loop
-
-                                               [Cancel]  [Next: Write Prompt →]
+GET  GetDefaultDataSourceId()
+GET  GetDebugInfo()
+GET  GetAllSkillSets()
+POST UpsertSkillSet([FromBody] AppAgentSkillSetDto dto)
+DEL  DeleteSkillSet(string skillKey)
+GET  GetToolsBySkillKey(string skillKey)
+POST UpsertTool([FromBody] AppAgentToolRegisterDto dto)
+DEL  DeleteTool(int id)
+GET  GetAllMcpServers()
+POST UpsertMcpServer([FromBody] AppAgentMcpServerDto dto)
+DEL  DeleteMcpServer(int mcpServerId)
 ```
 
-Step 2: write the system prompt. On save: creates one `AppAgentSkillSet` row with `SystemPrompt` set. No `AppAISkill` row created.
+Note: `ToolBL = App.BL.TenantBusiness.AppAgentToolRegisterBL` and
+`McpBL = App.BL.TenantBusiness.AppAgentMcpServerBL` — the controller uses the TenantBusiness
+versions (which match V008), NOT the GenericAgent namespace versions.
+
+### React UI ✅
+
+```
+AppReact/src/components/aiskill/
+  AgentSkillSetManagement.tsx    — persona grid + editor panel + behavior wizard + [▶ Run] button
+  GenericAgentChat.tsx           — reusable streaming chat component
+  AgentToolRegisterTab.tsx       — tool CRUD tab within skill editor
+  AgentMcpServerTab.tsx          — MCP server CRUD tab within skill editor
+AppReact/src/webapi/
+  agentSkillSetSvc.ts            — SkillSet/Tool/MCP CRUD service calls
+  genericAgentSvc.ts             — RunAgent / SSE stream / ConfirmPlan / ConfirmSchema calls
+```
 
 ---
 
-## 8. GenericAgentBL — Core Entry Point
+## 8. GenericAgentBL — Core Entry Point ✅ COMPLETE
+
+**Actual signature (differs from original plan):**
 
 ```csharp
+// APP.BL/AIAgent/GenericAgent/GenericAgentBL.cs
 public static class GenericAgentBL
 {
-    public static async Task<string> RunAsync(
-        string skillKey, string userMessage, AgentContext ctx, GenericAgentCallbacks callbacks)
+    public static async Task RunAsync(
+        string                skillKey,
+        string                userMessage,
+        List<JObject>         chatHistory,    // ← multi-turn history passed by caller (not stored server-side)
+        GenericAgentCallbacks callbacks,
+        AppClientIdentity?    identity,       // ← replaces AgentContext ctx from plan
+        CancellationToken     ct)
     {
-        // 1. Load persona config
-        var persona = AppAgentSkillSetBL.GetByKey(skillKey)
-            ?? throw new InvalidOperationException($"Unknown skillKey: {skillKey}");
-
-        // 2. Read system prompt directly from persona
-        var systemPrompt = BuildSystemPrompt(userMessage, persona);
-
-        // 3. Load tools (all ToolTypes resolved by AppAgentToolEngine)
-        var tools = await AppAgentToolEngine.LoadToolsForSkillAsync(skillKey, ctx);
-
-        // 4. Run SK loop (or delegate if ExternalBackend flag set)
-        var session = GenericAgentSessionStore.CreateOrGet(ctx.SessionId);
-        await GenericAgentEngine.RunAsync(persona, systemPrompt, tools, userMessage, session, callbacks);
-        return session.SessionId;
-    }
-
-    private static string BuildSystemPrompt(string userMessage, AppAgentSkillSetDto persona)
-    {
-        var flags = (AgentCapabilityFlags)persona.CapabilityFlags;
-
-        // System prompt stored directly in AppAgentSkillSet.SystemPrompt
-        var prompt = persona.SystemPrompt ?? "";
-
-        // Memory injection (cross-session RAG)
-        if (flags.HasFlag(AgentCapabilityFlags.InjectMemory))
-        {
-            var memory = AppBuilderAgentMemoryBL.SearchMemory(userMessage, maxSections: 5);
-            if (!string.IsNullOrEmpty(memory))
-                prompt += $"\n\n━━━ MEMORY CONTEXT ━━━\n{memory}";
-        }
-
-        return prompt;
+        // Delegates directly to GenericAgentEngine.RunAsync
     }
 }
 ```
 
-### Controller changes (routes unchanged)
+**Key design differences from original plan:**
+- No `AgentContext ctx` parameter — identity is `AppClientIdentity?`
+- History is passed by caller as `List<JObject>` (user/assistant alternating, LLM-native format) — not fetched from session store
+- No `GenericAgentSession` object — `GenericAgentSessionStore` is used for event queuing only (not history storage)
+- Returns `Task` (not `Task<string>`) — session ID is created by the controller before calling this method
+
+**GenericAgentCallbacks (all delegates are optional):**
 
 ```csharp
-// AppBuilderAgentController — after
+// APP.BL/AIAgent/GenericAgent/GenericAgentCallbacks.cs
+public sealed class GenericAgentCallbacks
+{
+    public Func<string, Task>                          OnToken     { get; set; }  // each streamed token
+    public Func<AgentStepEvent, Task>                  OnStep      { get; set; }  // tool_call / tool_result / thinking
+    public Func<string, Task>                          OnDone      { get; set; }  // final response
+    public Func<string, Task>                          OnError     { get; set; }  // unrecoverable error
+    public Func<AgentPlanEvent, Task<bool>>            OnPlanReady { get; set; }  // PlanGate (optional)
+    public Func<AgentSchemaEvent, Task<AgentSchemaResponse>> OnSchemaReady { get; set; }  // SchemaGate (optional)
+}
+```
+
+### Controller changes (Phase 6 — PENDING)
+
+```csharp
+// AppBuilderAgentController — after (NOT YET DONE)
 [HttpPost("RunAgent")]
 public async Task<IActionResult> RunAgent([FromBody] AppBuilderAgentRequestDto req)
-    => Ok(await GenericAgentBL.RunAsync("app-builder", req.UserRequest, ctx, callbacks));
+{
+    var sessionId = GenericAgentSessionStore.CreateSession();
+    var callbacks = BuildCallbacks(sessionId);
+    Task.Run(() => GenericAgentBL.RunAsync("app-builder", req.UserMessage,
+        req.Messages ?? new List<JObject>(), callbacks, agentIdentity, CancellationToken.None));
+    return Ok(new { IsStarted = true, SessionId = sessionId });
+}
 
-[HttpPost("ConfirmPlan")]
-public IActionResult ConfirmPlan([FromBody] ConfirmDto dto)
-{ GenericAgentSessionStore.ResolvePlanGate(dto.SessionId, dto.Approved); return Ok(); }
-
-// AppReportAgentController — after
-[HttpPost("RunAgent")]
-public async Task<IActionResult> RunAgent([FromBody] AppReportAgentRequestDto req)
-    => Ok(await GenericAgentBL.RunAsync("app-report", req.UserRequest, ctx, callbacks));
-
-// DbGenieController — after
-[HttpPost("Chat")]
-public async Task<IActionResult> Chat([FromBody] DbGenieChatRequestDto req)
-    => Ok(await GenericAgentBL.RunAsync("db-genie", req.UserMessage, ctx, callbacks));
+// AppReportAgentController — after (NOT YET DONE)
+// DbGenieController — after (NOT YET DONE)
 ```
 
 ---
 
-## 9. MCP Data Rendering — `MCPAppRenderer`
+## 9. GenericAgentEngine — SK Agentic Loop ✅ COMPLETE
 
-BC-MCP-Client's `client/src/mcp-components/` folder contains 9 actively-used React components that render structured MCP tool results. All are wired and in production — zero dead code.
-
-### Rendering Chain
-
-```
-MessageItem.tsx
-  └── <MCPAppRenderer toolResult={...} />          ← single entry point
-        ├── reads toolResult.ui_hint
-        ├── if absent → detectUiHint() infers by data shape
-        │     Dashboard > ActionMenu > Form > RecordCard > PivotTable > ChartView > FlexGrid
-        ├── runs adapter(toolResult) → normalises data
-        └── renders matched component inside <Suspense>
+```csharp
+// APP.BL/AIAgent/GenericAgent/GenericAgentEngine.cs
+public static async Task RunAsync(
+    string                skillKey,
+    string                userMessage,
+    List<JObject>         chatHistory,
+    GenericAgentCallbacks callbacks,
+    AppClientIdentity?    identity,
+    CancellationToken     ct)
 ```
 
-`MCPAppRenderer` is triggered in `MessageItem.tsx` in two ways:
-1. `role === 'tool'` message with structured `toolResult` JSON attached
-2. Markdown code fence tagged `` ```mcp-ui `` or `` ```mcp `` — body is JSON-parsed
+**Engine flow:**
+1. Resolve `dsId`, `userId`, `companyId` from `AppClientIdentity`
+2. Load `AppAgentSkillSetDto` via `AiSkill.AppAgentSkillSetBL.GetByKey(skillKey, dsId)`
+3. Build SK `Kernel` via `BuildKernel(identity)` — provider selected from `AIConfigSettingBL`
+4. Add `AgentStepFilter` (IFunctionInvocationFilter) — fires `OnStep` for tool_call / tool_result events
+5. Load registered tools from `TenantBusiness.AppAgentToolRegisterBL.GetBySkillKey(skillKey, dsId)`
+   → Each row wrapped via `KernelFunctionFactory.CreateFromMethod` → dispatched through `AppAgentToolEngine.Dispatch`
+6. Connect MCP servers from `TenantBusiness.AppAgentMcpServerBL.GetBySkillKey(skillKey, dsId)`
+   → Only `streamable-http` ServerType supported; stdio is ignored
+   → `McpClient.CreateAsync(HttpClientTransport)` → `KernelFunctionFactory.CreateFromMethod` per tool
+7. Build `ChatHistory` from `List<JObject>` (user/assistant messages)
+8. Only enable `FunctionChoiceBehavior.Auto()` when tools are present (Gemini rejects empty tools array)
+9. Run `ChatCompletionAgent.InvokeStreamingAsync` → fires `OnToken` per chunk, `OnDone` on completion
 
-### 9 Active Components
+**Provider routing in BuildKernel:**
+
+```csharp
+switch (provider)
+{
+    case EmLLMProvider.Anthropic:
+        // No official SK Anthropic connector — use custom wrapper
+        builder.Services.AddSingleton<IChatCompletionService>(new AnthropicChatCompletionService(model, apiKey));
+        break;
+    case EmLLMProvider.Gemini:
+        builder.AddGoogleAIGeminiChatCompletion(model, apiKey,
+            httpClient: new HttpClient(new GeminiRoleFixHandler()));
+        break;
+    default:  // OpenAI
+        builder.AddOpenAIChatCompletion(model, apiKey);
+        break;
+}
+```
+
+**Note:** In-session history pruning (Section 12 Level 1) and summarization (Level 2) are **not yet implemented** in the engine. All chat history passed in is used as-is. This is a pending enhancement.
+
+---
+
+## 10. AnthropicChatCompletionService ✅ COMPLETE (not in original plan)
+
+```csharp
+// APP.BL/AIAgent/GenericAgent/AnthropicChatCompletionService.cs
+internal sealed class AnthropicChatCompletionService : IChatCompletionService
+```
+
+**Purpose:** SK has no official NuGet package for Anthropic. This class implements `IChatCompletionService` using direct HTTP calls to `https://api.anthropic.com/v1/messages`.
+
+**What it handles:**
+- Extracts system prompt from `ChatHistory` (System role messages)
+- Serializes user/assistant turns to Anthropic message format
+- Maps `FunctionCallContent` → Anthropic `tool_use` blocks
+- Maps `FunctionResultContent` → Anthropic `tool_result` content
+- Extracts tools from `FunctionChoiceBehavior` configuration and serializes as Anthropic tool definitions
+- Parses response — handles `text` and `tool_use` content blocks into SK's `FunctionCallContent`
+- Streaming is simulated (non-streaming request, yields results one chunk per item)
+
+**NuGet note:** Uses direct HTTP, **not** the official `Anthropic` NuGet package (v12.42.0). The plan mentioned that package but it is not used here — direct HTTP is simpler and avoids `Microsoft.Extensions.AI` version conflicts.
+
+---
+
+## 11. AgentStepFilter ✅ COMPLETE (not in original plan)
+
+```csharp
+// APP.BL/AIAgent/GenericAgent/AgentStepFilter.cs
+internal sealed class AgentStepFilter : IFunctionInvocationFilter
+```
+
+**What it does:** Wraps every SK tool call to fire `OnStep` events:
+- Before tool call: fires `AgentStepEvent { Type = "tool_call", ToolName, Details = truncated args JSON }`
+- After tool call: fires `AgentStepEvent { Type = "tool_result", ToolName, IsSuccess, Details = truncated result }`
+
+Registered in `GenericAgentEngine.BuildKernel`:
+```csharp
+kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks));
+```
+
+---
+
+## 12. GeminiRoleFixHandler (inner class in GenericAgentEngine — not in plan)
+
+SK Connectors.Google 1.74.0-alpha bug: sends tool results with `role = "function"` but Gemini API only accepts `"user"` for that turn. The `GeminiRoleFixHandler : DelegatingHandler` patches every outgoing request body, replacing `role:"function"` with `role:"user"` in the `contents[].role` field. Also captures and logs Gemini error response bodies (SK's streaming mode never reads them otherwise).
+
+---
+
+## 13. GenericAgentController ✅ COMPLETE
+
+```csharp
+// AppAI.Web/Controllers/GenericAgentController.cs
+// Route: webapi/[controller]/[action]
+```
+
+**Endpoints (actual implementation — differs from plan's simplified design):**
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `POST RunAgent` | fire-and-forget | Creates session, starts agent in background Task.Run, returns `{ IsStarted, SessionId }` |
+| `GET  StreamEvents?sessionId=` | SSE | Long-poll SSE stream; sends `event: <type>\ndata: <json>` per event |
+| `GET  PollEvents?sessionId=` | polling fallback | Dequeues all events for sessionId and returns them |
+| `POST ConfirmPlan` | gate resolve | Resolves `PlanGate` TCS with `{ SessionId, Confirmed }` |
+| `POST ConfirmSchema` | gate resolve | Resolves `SchemaGate` TCS with `{ SessionId, Confirmed, SchemaJson, Feedback }` |
+
+**GenericAgentRequestDto (actual):**
+```csharp
+public class GenericAgentRequestDto
+{
+    public string        SkillKey    { get; set; }
+    public string        UserMessage { get; set; }
+    public string?       SessionId   { get; set; }   // unused by server (client manages sessions)
+    public List<JObject> Messages    { get; set; }   // prior chat turns (user/assistant)
+}
+```
+
+**SSE event types emitted:**
+
+| EventType | When |
+|---|---|
+| `step` | Tool call starts or completes (fires `AgentStepFilter`) |
+| `token` | Each text token from LLM |
+| `plan` | PlanGate triggered — client should show Approve/Reject |
+| `schema` | SchemaGate triggered — client shows schema for review |
+| `done` | Run complete, `FinalResponse` field has full text |
+| `error` | Unrecoverable error |
+
+---
+
+## 14. MCP Data Rendering — `MCPAppRenderer`
+
+BC-MCP-Client's `client/src/mcp-components/` folder contains 9 actively-used React components that render structured MCP tool results.
+
+> **Status: NOT YET copied to App-netore.** `AppReact/src/mcp-components/` does not exist.
+> This is a remaining task for Phase 5 completion.
+
+### 9 Active Components (from BC-MCP-Client)
 
 | `ui_hint` | Component | Renders |
 |---|---|---|
@@ -518,404 +600,339 @@ MessageItem.tsx
 }
 ```
 
-Agent columns auto-derived from first-row keys when `columns` is absent (BlueCherry naming rules: `_date` → date, `net_price` → currency, `_code` → hidden).
-
-### Teaching the Agent to Emit `ui_hint` JSON
-
-Add rendering instructions directly inside the `AppAgentSkillSet.SystemPrompt` for each SkillSet that returns data:
-
-```markdown
-## Rendering Data Tables
-When a tool returns a list of rows, format the result as:
-```mcp-ui
-{ "ui_hint": "FlexGrid", "data": [...], "columns": [...], "meta": { "title": "..." } }
-```
-The frontend will render this as an interactive grid with export.
-```
-
-This block is part of the stored `SystemPrompt` — no separate `AppAISkill` row needed.
-
-### Integration in App-netore
-
-Copy (or npm-link) `mcp-components/` from BC-MCP-Client into `AppReact/src/`.  
-Import in the new `GenericAgentChat.tsx`:
-
-```tsx
-import { MCPAppRenderer } from '../mcp-components';
-
-// In message renderer:
-{msg.toolResult
-    ? <MCPAppRenderer toolResult={msg.toolResult} onAction={handleMcpAction} />
-    : <MarkdownRenderer>{msg.content}</MarkdownRenderer>
-}
-```
+The `ui_hint` rendering instruction block is already included in `AppAgentSkillSet.SystemPrompt` for both `app-builder` and `app-report` (seeded in V008).
 
 ---
 
-## 10. Launching GenericAgent from SkillSet Management
+## 15. Launching GenericAgent from SkillSet Management ✅ COMPLETE
 
-Admins can test any SkillSet directly from the management UI without a dedicated page per agent.
-
-### New Generic API Endpoint
-
-```csharp
-// AppAI.Web/Controllers/GenericAgentController.cs  (NEW)
-[HttpPost("Run")]
-public async Task<IActionResult> Run([FromBody] GenericAgentRunDto request)
-    => Ok(await GenericAgentBL.RunAsync(request.SkillKey, request.UserMessage, ctx, callbacks));
-
-[HttpPost("ConfirmGate")]
-public IActionResult ConfirmGate([FromBody] ConfirmGateDto dto)
-{ GenericAgentSessionStore.ResolvePlanGate(dto.SessionId, dto.Approved); return Ok(); }
-
-public class GenericAgentRunDto
-{
-    public string  SkillKey    { get; set; }
-    public string  UserMessage { get; set; }
-    public string? SessionId   { get; set; }  // null = start new session
-}
-```
-
-### `<GenericAgentChat />` — Reusable Chat Component
-
-```tsx
-// AppReact/src/components/aiskill/GenericAgentChat.tsx
-// Props: skillKey, title (optional), sessionId (optional)
-<GenericAgentChat skillKey="app-builder" title="App Builder Agent" />
-```
-
-SignalR stream event types the component handles:
-
-| Event type | Action |
-|---|---|
-| `token` | Append text to current message bubble |
-| `tool` | Show tool-call chip (name + args) |
-| `gate` | Show **Approve / Reject** buttons; POST `/ConfirmGate` on click |
-| `mcp_ui` | Render `<MCPAppRenderer toolResult={...} />` |
-| `done` | Save `sessionId` for next turn (multi-turn) |
-| `error` | Show error banner |
-
-### SkillSet Management Layout with Run Button
-
-```
-┌──────────────────────────┬──────────────────────────────────────────────────────────┐
-│  Agent Personas           │  ▶ Testing: App Builder Agent                      [✕]  │
-│  ───────────────────────  │  ──────────────────────────────────────────────────────  │
-│  App Builder Agent [▶Run] │                                                          │
-│  App Report Agent  [▶Run] │  [agent streaming response + MCPAppRenderer renders]     │
-│  DB Genie          [▶Run] │                                                          │
-│  Data Integration  [▶Run] │  ──────────────────────────────────────────────────────  │
-│                           │  Type a message...                          [Send]        │
-│  [+ New Persona]          │                                                          │
-└──────────────────────────┴──────────────────────────────────────────────────────────┘
-```
-
-Implementation in `AgentSkillSetManagement.tsx`:
-
-```tsx
-const [testSkillKey, setTestSkillKey] = useState<string | null>(null);
-
-// In persona list row:
-<button onClick={() => setTestSkillKey(row.SkillKey)}>▶ Run</button>
-
-// Right drawer:
-{testSkillKey && (
-    <RightDrawer title={`Testing: ${testSkillKey}`} onClose={() => setTestSkillKey(null)}>
-        <GenericAgentChat skillKey={testSkillKey} />
-    </RightDrawer>
-)}
-```
+The `[▶ Run]` button in `AgentSkillSetManagement.tsx` opens `<GenericAgentChat skillKey={selectedSkillKey} />` which calls:
+1. `POST /webapi/GenericAgent/RunAgent` → receives `{ IsStarted, SessionId }`
+2. `GET /webapi/GenericAgent/StreamEvents?sessionId=...` → SSE stream
 
 ### `<GenericAgentChat />` Is Reusable Everywhere
 
 | Launch point | Usage |
 |---|---|
-| SkillSet management | Right drawer — admin test mode |
+| SkillSet management | Right panel — admin test mode |
 | Application home page | Floating button → chat drawer |
 | Dedicated route `/agent-chat?skillKey=db-genie` | Full-page layout |
 | Embedded in any form page | Side panel alongside the form |
 
-The component only needs `skillKey` — all configuration (prompt, tools, flags, MCP servers) comes from the DB.
-
 ---
 
-## 11. NuGet Dependencies
+## 16. NuGet Dependencies ✅ COMPLETE (in APP.BL.Core.csproj)
 
 | Package | Version | Purpose |
 |---|---|---|
-| `Microsoft.SemanticKernel` | 1.74.0 | SK agentic loop — native `net10.0` build confirmed |
+| `Microsoft.SemanticKernel` | 1.74.0 | SK agentic loop |
 | `Microsoft.SemanticKernel.Agents.Core` | 1.74.0 | `ChatCompletionAgent` |
-| `Microsoft.SemanticKernel.Connectors.OpenAI` | 1.74.0 | OpenAI / Azure OpenAI provider |
-| `Microsoft.CodeAnalysis.CSharp.Scripting` | latest stable | `DynamicCSharp` ToolType — Roslyn sandbox |
-| `ModelContextProtocol` | 1.2.0 | MCP client — `McpClient`, `HttpClientTransport`, `HttpTransportMode.StreamableHttp`; **do NOT use `AsKernelFunction()`** — broken due to `Microsoft.Extensions.AI` version conflict; wrap tools manually via `KernelFunctionFactory.CreateFromMethod` |
-| `Anthropic` | 12.42.0 | Official Anthropic SDK (not community `Anthropic.SDK`) |
+| `Microsoft.SemanticKernel.Connectors.OpenAI` | 1.74.0 | OpenAI + Azure OpenAI provider |
+| `Microsoft.SemanticKernel.Connectors.Google` | 1.74.0-alpha | Gemini provider |
+| `Microsoft.CodeAnalysis.CSharp.Scripting` | latest stable | DynamicCSharp ToolType — Roslyn sandbox |
+| `ModelContextProtocol` | 1.2.0 | MCP client — `McpClient`, `HttpClientTransport`, `HttpTransportMode.StreamableHttp` |
 
-> **Note:** BC-MCP-Client switched from community `Anthropic.SDK` to official `Anthropic` v12.42.0.  
-> Use the official package — it is maintained by Anthropic directly and has no `Microsoft.Extensions.AI.Abstractions` version conflict.
+**Anthropic NuGet NOT used** — `AnthropicChatCompletionService` uses direct HTTP.
+**Do NOT call `AsKernelFunction()`** on MCP tools — broken due to `Microsoft.Extensions.AI` version mismatch. Tools wrapped manually via `KernelFunctionFactory.CreateFromMethod`.
 
 ---
 
-## 12. Long Session Context Management
+## 17. Long Session Context Management ⬜ NOT YET IMPLEMENTED
 
-### What Causes Context Overflow
+The architecture is designed for four levels but only Level 3 (cross-session RAG via InjectMemory flag) and Level 4 (InjectSchema flag) are wired. Levels 1 and 2 are pending.
 
-In a multi-turn agent session, tokens accumulate from four sources:
+### Level 1 — Token Budget + Pruning (NOT YET DONE)
 
-```
-System prompt         2K–8K   (fixed per SkillSet)
-Conversation history  grows with every turn
-Tool call records     [name + args] per call
-Tool results          10K+ per call (SQL dumps, MCP data payloads)
-Memory injection      1K–3K   (prepended each turn when InjectMemory set)
-```
-
-A 10-turn AppBuilder session with heavy schema work easily reaches 80K–120K tokens.
-
-### Four-Level Strategy
-
-#### Level 1 — Token Budget + Pruning (always on)
-
-Sliding window: always keep system prompt + first 2 turns (initial intent) + last N turns. Prune from the middle.
+Sliding window: keep system prompt + first 2 turns + last N turns. Prune from middle.
 
 ```csharp
-// GenericAgentEngine — runs before every LLM call
-PruneHistory(session.History, persona.MaxHistoryTokens, persona.RecentWindowSize);
+// GenericAgentEngine — add BEFORE calling InvokeStreamingAsync
+PruneHistory(history, persona.MaxHistoryTokens, persona.RecentWindowSize);
 
-// Tool results capped before being added to history
+// Tool results capped before being added to history (DONE — MaxToolResultChars applied)
 var cappedResult = result.Length > persona.MaxToolResultChars
     ? result[..persona.MaxToolResultChars] + $"\n[...truncated — {result.Length} chars total]"
     : result;
 ```
 
-#### Level 2 — Summarization (for long sessions)
+### Level 2 — Summarization for Long Sessions (NOT YET DONE)
 
-When token count exceeds `SummarizeThreshold`, call the LLM to compress the oldest messages into a single summary block — don't discard them:
+When token count exceeds `SummarizeThreshold`, compress oldest messages into a summary block.
 
-```csharp
-if (persona.SummarizeThreshold > 0
-    && CountTokens(session.History) > persona.SummarizeThreshold)
-{
-    var oldMessages = session.History.Take(session.History.Count - persona.RecentWindowSize);
-    var summary = await kernel.InvokePromptAsync(
-        $"Summarize this conversation so far in under 500 words, preserving key decisions and facts:\n"
-        + FormatMessages(oldMessages));
+### Level 3 — Cross-Session RAG Memory (flag-driven)
 
-    session.History.RemoveRange(0, oldMessages.Count);
-    session.History.Insert(0, new ChatMessageContent(AuthorRole.System,
-        $"[Conversation summary — earlier turns]\n{summary}"));
-}
-```
+`InjectMemory` flag (bit 16) is designed to call `AppBuilderAgentMemoryBL.SearchMemory()` and prepend results. Not yet wired in GenericAgentEngine — the flag is read but the injection is not implemented.
 
-Cost: one extra LLM call per summarization event (rare — only when threshold is crossed).
+### Level 4 — InjectSchema (flag-driven, not yet wired)
 
-#### Level 3 — Cross-Session RAG Memory (already planned)
-
-`InjectMemory` capability flag retrieves relevant facts from **past sessions** via `AppBuilderAgentMemoryBL.SearchMemory()`. This is RAG — semantic/keyword search over a persistent memory store, injected at session start. Solves long-term context across sessions, not within a single session.
-
-#### Level 4 — Knowledge Base RAG (optional)
-
-For SkillSets that reason over large corpora (500+ DB tables, large product docs), vector-search the relevant chunks instead of injecting the full corpus. `InjectSchema` flag is a simple version of this — for very large schemas, upgrade to a vector retrieval over `AppEntitySchema`.
-
-### Do We Need a Vector DB?
-
-| Use case | Solution | Vector DB needed? |
-|---|---|---|
-| In-session history overflow | Level 1 pruning + Level 2 summarization | **No** |
-| Cross-session memory | Level 3 RAG via `AppBuilderAgentMemoryBL` | Depends on existing impl |
-| Large schema / doc corpus | Level 4 knowledge RAG | Only if corpus > 20K tokens |
-| Tool result overflow | Hard cap at `MaxToolResultChars` | **No** |
-
-**Conclusion:** RAG is already in the design via `InjectMemory`. In-session overflow is solved by pruning + summarization with no vector DB required.
-
-### Per-SkillSet Context Config
-
-Four threshold columns are part of the `AppAgentSkillSet` CREATE TABLE (§5.1) — editable per agent in the admin UI without code changes.
-
-Recommended values per agent:
-
-| SkillSet | MaxHistory | Summarize | MaxToolResult | Why |
-|---|---|---|---|---|
-| `app-builder` | 80K | 60K | 4K | Long multi-step sessions; benefits from summarization |
-| `db-genie` | 40K | 0 | 8K | Shorter sessions; SQL results need more chars |
-| `app-report` | 40K | 0 | 2K | Single-turn reports; no summarization needed |
-| `data-integration` | 20K | 0 | 2K | Delegates to external backend; minimal history |
-
-These columns are editable in the admin UI's Agent Personas screen — no code change to adjust thresholds.
+`InjectSchema` flag (bit 32) is designed to prepend the DB schema summary. Not yet wired.
 
 ---
 
-## 13. File Map
+## 18. File Map — Actual State
 
-### Files to CREATE
+### Files CREATED ✅
+
+| File | Namespace / Class | Notes |
+|---|---|---|
+| `AppAI.Web/Migrations/V008__GenericAgentSchema.sql` | — | 3 tables + seed data; has stale debug SQL at end (lines 665-674) |
+| `AppAI.Web/Migrations/V009__AIConfigTenantSettings.sql` | — | 7 tenant setting rows |
+| `APP.Framework/Plugin/IAgentTool.cs` | `APP.Framework.Plugin` | Also defines `AgentToolContext` |
+| `APP.Framework/Plugin/AgentToolAttribute.cs` | `APP.Framework.Plugin` | Also defines `AgentParamAttribute` |
+| `APP.BL/TenantBusiness/AppAgentToolEngine.cs` | `App.BL.TenantBusiness` | Strategy dispatcher |
+| `APP.BL/TenantBusiness/AppAgentToolRegisterBL.cs` | `App.BL.TenantBusiness` | Reads V008 schema (ToolRegisterId, ToolDescription) |
+| `APP.BL/TenantBusiness/AppAgentMcpServerBL.cs` | `App.BL.TenantBusiness` | Reads V008 schema (McpServerId, SkillKey, ServerType) |
+| `APP.BL/TenantBusiness/AgentToolExecutors/BuiltInToolExecutor.cs` | — | |
+| `APP.BL/TenantBusiness/AgentToolExecutors/ExternalDllToolExecutor.cs` | — | |
+| `APP.BL/TenantBusiness/AgentToolExecutors/SqlQueryToolExecutor.cs` | — | |
+| `APP.BL/TenantBusiness/AgentToolExecutors/PowerShellToolExecutor.cs` | — | |
+| `APP.BL/TenantBusiness/AgentToolExecutors/HttpRestToolExecutor.cs` | — | |
+| `APP.BL/TenantBusiness/AgentToolExecutors/DynamicCSharpToolExecutor.cs` | — | Roslyn sandbox |
+| `APP.BL/AIAgent/AiSkill/AppAgentSkillSetBL.cs` | `App.BL.AIAgent.AiSkill` | Engine-facing; `GetByKey(skillKey)` + `GetByKey(skillKey, dsId)` |
+| `APP.BL/AIAgent/GenericAgent/AppAgentSkillSetBL.cs` | `App.BL.AIAgent.GenericAgent` | Admin-UI-facing; `UpsertSkillSet(dsId, dto)` |
+| `APP.BL/AIAgent/GenericAgent/AppAgentToolRegisterBL.cs` | `App.BL.AIAgent.GenericAgent` | Admin-UI-facing; different schema than V008 (stale) |
+| `APP.BL/AIAgent/GenericAgent/AppAgentMcpServerBL.cs` | `App.BL.AIAgent.GenericAgent` | Admin-UI-facing; different schema than V008 (stale) |
+| `APP.BL/AIAgent/GenericAgent/GenericAgentBL.cs` | `App.BL.AIAgent.GenericAgent` | Entry point; delegates to GenericAgentEngine |
+| `APP.BL/AIAgent/GenericAgent/GenericAgentEngine.cs` | `App.BL.AIAgent.GenericAgent` | Full SK loop |
+| `APP.BL/AIAgent/GenericAgent/GenericAgentSessionStore.cs` | `App.BL.AIAgent.GenericAgent` | Event queue; PlanGate + SchemaGate TCS |
+| `APP.BL/AIAgent/GenericAgent/GenericAgentCallbacks.cs` | `App.BL.AIAgent.GenericAgent` | Callback delegates |
+| `APP.BL/AIAgent/GenericAgent/KernelProviderHelper.cs` | `App.BL.AIAgent.GenericAgent` | Delegates to LLMProviderHelper/AIConfigSettingBL |
+| `APP.BL/AIAgent/GenericAgent/AIConfigSettingBL.cs` | `App.BL.GenericAgent` | Reads AIConfig* from AppTenantSetting |
+| `APP.BL/AIAgent/GenericAgent/AnthropicChatCompletionService.cs` | `App.BL.AIAgent.GenericAgent` | Custom SK IChatCompletionService for Anthropic |
+| `APP.BL/AIAgent/GenericAgent/AgentStepFilter.cs` | `App.BL.AIAgent.GenericAgent` | IFunctionInvocationFilter — fires OnStep |
+| `APP.Components.Dto/UserDefine/AISkill/GenericAgentDto.cs` | `APP.Components.Dto` | Request/result DTOs for GenericAgentController |
+| `AppAI.Web/Controllers/GenericAgentController.cs` | — | RunAgent + StreamEvents + PollEvents + ConfirmPlan + ConfirmSchema |
+| `AppAI.Web/Controllers/AgentSkillSetController.cs` | — | Full CRUD for SkillSet + Tool + McpServer |
+| `AppReact/src/webapi/agentSkillSetSvc.ts` | — | SkillSet/Tool/MCP service calls |
+| `AppReact/src/webapi/genericAgentSvc.ts` | — | RunAgent + SSE stream client |
+| `AppReact/src/components/aiskill/AgentSkillSetManagement.tsx` | — | Admin UI — persona grid + editor + wizard |
+| `AppReact/src/components/aiskill/GenericAgentChat.tsx` | — | Reusable chat component |
+| `AppReact/src/components/aiskill/AgentToolRegisterTab.tsx` | — | Tool CRUD tab |
+| `AppReact/src/components/aiskill/AgentMcpServerTab.tsx` | — | MCP server CRUD tab |
+
+### Files NOT YET CREATED ⬜
 
 | File | Purpose |
 |---|---|
-| `doc-deploy/AppAgentSkillSet_Create.sql` | Persona table DDL + 4 seed rows (with `SystemPrompt` populated from migrated BL text) |
-| `doc-deploy/AppAgentToolRegister_Create.sql` | Tool table DDL + ~31 built-in seed rows |
-| `APP.Framework/Plugin/IAgentTool.cs` | External DLL contract |
-| `APP.Framework/Plugin/AgentToolAttribute.cs` | Replaces `[AgentFunction]`/`[AgentParam]` |
-| `APP.BL/TenantBusiness/AppAgentToolEngine.cs` | Strategy dispatcher |
-| `APP.BL/TenantBusiness/AppAgentToolRegisterBL.cs` | CRUD over AppAgentToolRegister |
-| `APP.BL/TenantBusiness/AgentToolExecutors/BuiltInToolExecutor.cs` | |
-| `APP.BL/TenantBusiness/AgentToolExecutors/ExternalDllToolExecutor.cs` | |
-| `APP.BL/TenantBusiness/AgentToolExecutors/SqlQueryToolExecutor.cs` | |
-| `APP.BL/TenantBusiness/AgentToolExecutors/PowerShellToolExecutor.cs` | |
-| `APP.BL/TenantBusiness/AgentToolExecutors/HttpRestToolExecutor.cs` | |
-| `APP.BL/TenantBusiness/AgentToolExecutors/DynamicCSharpToolExecutor.cs` | Roslyn sandbox |
-| `APP.BL/AIAgent/GenericAgent/GenericAgentBL.cs` | Main entry point |
-| `APP.BL/AIAgent/GenericAgent/GenericAgentEngine.cs` | SK agentic loop |
-| `APP.BL/AIAgent/GenericAgent/GenericAgentSession.cs` | Unified session model |
-| `APP.BL/AIAgent/GenericAgent/GenericAgentSessionStore.cs` | Replaces 3 stores |
-| `APP.BL/AIAgent/GenericAgent/GenericAgentCallbacks.cs` | SignalR streaming |
-| `APP.BL/AIAgent/GenericAgent/KernelProviderHelper.cs` | SK kernel factory |
-| `APP.BL/AIAgent/AiSkill/AppAgentSkillSetBL.cs` | SkillSet CRUD |
-| `APP.BL/AIAgent/AiSkill/AppAgentMcpServerBL.cs` | MCP server registry CRUD |
-| `doc-deploy/AppAgentMcpServer_Create.sql` | MCP server table DDL |
-| `AppAI.Web/Controllers/GenericAgentController.cs` | Generic `Run` + `ConfirmGate` endpoints |
-| `AppAI.Web/Controllers/AgentSkillSetController.cs` | Persona CRUD endpoints |
-| `AppReact/src/webapi/genericAgentSvc.ts` | SignalR subscription + `Run`/`ConfirmGate` calls |
-| `AppReact/src/webapi/agentSkillSetSvc.ts` | `AppAgentSkillSetDto` interface + persona CRUD service methods |
-| `AppReact/src/components/aiskill/GenericAgentChat.tsx` | Reusable chat component (streaming + gates + MCPAppRenderer) |
-| `AppReact/src/components/aiskill/AgentSkillSetManagement.tsx` | Persona grid + editor panel + behavior wizard + `[▶ Run]` button |
 | `AppReact/src/mcp-components/` (copy from BC-MCP-Client) | 9 MCP render components + adapters + registry |
+| In-session pruning logic in `GenericAgentEngine` | Level 1 pruning (Section 17) |
+| Summarization logic in `GenericAgentEngine` | Level 2 (Section 17) |
+| InjectMemory implementation in `GenericAgentEngine` | Level 3 (read AppBuilderAgentMemoryBL) |
+| InjectSchema implementation in `GenericAgentEngine` | Level 4 |
 
-### Files to MODIFY
+### Files to MODIFY (Phase 6 — PENDING)
 
-| File | Change |
+| File | Change needed |
 |---|---|
-| `APP.Components.Dto/UserDefine/AISkill/AppAISkillDto.cs` | Add new `AppAgentSkillSetDto` class only (`AppAISkillDto` itself unchanged) |
-| `AppAI.Web/Controllers/AppBuilderAgentController.cs` | Body → `GenericAgentBL.RunAsync("app-builder",...)` |
-| `AppAI.Web/Controllers/AppReportAgentController.cs` | Body → `GenericAgentBL.RunAsync("app-report",...)` |
-| `AppAI.Web/Controllers/DbGenieController.cs` | Body → `GenericAgentBL.RunAsync("db-genie",...)` |
-| `APP.BL/AIAgent/AppBuilderAgent/Plugins/*.cs` (12 files) | `[AgentFunction]` → `[AgentTool]` attribute only |
-| `APP.BL/AIAgent/AppReportAgent/Plugins/*.cs` (3 files) | Same attribute migration |
-| `APP.BL/APP.BL.csproj` | Add `Microsoft.SemanticKernel` + `Microsoft.CodeAnalysis.CSharp.Scripting` + `ModelContextProtocol` NuGet |
+| `AppAI.Web/Controllers/AppBuilderAgentController.cs` | Migrate body to `GenericAgentBL.RunAsync("app-builder",...)` |
+| `AppAI.Web/Controllers/AppReportAgentController.cs` | Migrate body to `GenericAgentBL.RunAsync("app-report",...)` |
+| `AppAI.Web/Controllers/DbGenieController.cs` | Migrate body to `GenericAgentBL.RunAsync("db-genie",...)` |
+| `AppAI.Web/Migrations/V008__GenericAgentSchema.sql` | Remove stale debug SQL at lines 665-674 |
+| `APP.BL/AIAgent/GenericAgent/AppAgentToolRegisterBL.cs` | Fix column names to match V008 (Id→ToolRegisterId, Description→ToolDescription, add ParameterSchemaJson, remove SortOrder) OR delete if admin uses TenantBusiness version |
+| `APP.BL/AIAgent/GenericAgent/AppAgentMcpServerBL.cs` | Fix column names to match V008 (McpServerKey→McpServerId+ServerName, Transport→ServerType, remove AuthType/AuthValue) OR delete if admin uses TenantBusiness version |
 
-### Files to DELETE
+### Files to DELETE (Phase 6 — IN PROGRESS from git status)
 
-| File | Reason |
+| File | Status | Reason |
+|---|---|---|
+| `APP.BL/AppBuilderAgent/AppBuilderAgentBL.cs` | ` D` (deleted, not staged) | Replaced by GenericAgentBL |
+| `APP.BL/AppBuilderAgent/AgentFunctionAttribute.cs` | `D ` (staged) | Replaced by AgentToolAttribute |
+| `APP.BL/AppBuilderAgent/AppBuilderAgentMemoryBL.cs` | `D ` (staged) | May need to keep if InjectMemory is implemented |
+| `APP.BL/AppBuilderAgent/AppBuilderAgentSessionStore.cs` | ` D` (deleted) | Replaced by GenericAgentSessionStore |
+| `APP.BL/AppBuilderAgent/Plugins/*.cs` (12 files) | `D ` (staged) | Replaced by DB-registered BuiltIn tools |
+| `APP.BL/AppReportAgent/*.cs` | ` D` (deleted) | Replaced by GenericAgentBL |
+| `APP.BL/AppDataIntegrationAgent/*.cs` | ` D` (deleted) | Replaced by GenericAgentBL |
+
+### Files KEPT (plan said DELETE — now kept with delegation pattern)
+
+| File | Reason kept |
 |---|---|
-| `APP.BL/AIAgent/AppBuilderAgent/AppBuilderAgentBL.cs` | Replaced by GenericAgentBL |
-| `APP.BL/AIAgent/AppReportAgent/AppReportAgentBL.cs` | Replaced by GenericAgentBL |
-| `APP.BL/AIAgent/DbGenie/AppDbGenieBL.cs` | Replaced by GenericAgentBL |
-| `APP.BL/AIAgent/AppBuilderAgent/AgentFunctionAttribute.cs` | Replaced by AgentToolAttribute |
-| `APP.BL/AIAgent/DbGenie/LLMProviderHelper.cs` | Promoted to KernelProviderHelper |
-| 3× separate `*AgentSessionStore.cs` files | Replaced by GenericAgentSessionStore |
+| `APP.BL/AIAgent/DbGenie/LLMProviderHelper.cs` | Kept — `KernelProviderHelper` delegates to it; also used by `DbGenieBL` for non-SK paths |
 
 ---
 
-## 14. Implementation Phases
+## 19. Implementation Phases — Status
 
-### Phase 0 — DB Migration (prerequisite for all phases)
+### Phase 0 — DB Migration ✅ COMPLETE
 
-1. Run `AppAgentSkillSet_Create.sql` — create table, seed 4 agent personas with `SystemPrompt` populated from migrated BL text
-2. Run `AppAgentToolRegister_Create.sql` — create table, seed ~31 built-in tool rows
-3. Run `AppAgentMcpServer_Create.sql` — create table (seed example row optional)
+Run:
+1. `V008__GenericAgentSchema.sql` — 3 tables + 37 tool seed rows + 4 agent personas with system prompts
+2. `V009__AIConfigTenantSettings.sql` — 7 AI config rows in AppTenantSetting
 
-**`AppAISkill` is not touched.** No migration SQL for it.
+**Verify:** `SELECT COUNT(*) FROM AppAgentSkillSet` = 4; `SELECT COUNT(*) FROM AppAgentToolRegister` ≈ 37; AppAgentMcpServer table exists; AppTenantSetting has 7 AIConfig* rows.
 
-**Verify:** 4 rows in `AppAgentSkillSet` (each with non-null `SystemPrompt`); ~31 rows in `AppAgentToolRegister`; `AppAgentMcpServer` table exists
+### Phase 1 — APP.Framework Extensions ✅ COMPLETE
 
-### Phase 1 — APP.Framework Extensions
+`IAgentTool.cs` and `AgentToolAttribute.cs` in `APP.Framework/Plugin/`. Also contains `AgentToolContext` and `AgentParamAttribute`.
 
-Create `IAgentTool.cs` and `AgentToolAttribute.cs` in `APP.Framework/Plugin/`.  
-No changes to existing `IAppPlugin.cs` or `PluginContext.cs`.
+### Phase 2 — Plugin Attribute Migration 🔄 PARTIAL
 
-### Phase 2 — Plugin Attribute Migration
+Old plugin files staged for deletion. Attribute migration from `[AgentFunction]` to `[AgentTool]` is incomplete since the plugins themselves are being deleted (not migrated). The tools are now DB-registered as BuiltIn entries pointing to type + method — no attribute needed on the plugin class itself.
 
-Replace `[AgentFunction]` + `[AgentParam]` with `[AgentTool]` on all 15 plugin files.  
-**Plugin body: unchanged.** Delete `AgentFunctionAttribute.cs`.
+**Action required:** Verify the plugin classes being deleted are referenced correctly in V008 `ToolConfig` JSON (TypeName must be the fully-qualified class name that still exists in the assembly).
 
-### Phase 3 — AppAgentToolEngine + Executors
+### Phase 3 — AppAgentToolEngine + Executors ✅ COMPLETE
 
-Create `AppAgentToolEngine.cs`, `AppAgentToolRegisterBL.cs`, and 6 executor files in `AgentToolExecutors/`.  
-Add NuGet: `Microsoft.CodeAnalysis.CSharp.Scripting`.
+All 6 executors in `APP.BL/TenantBusiness/AgentToolExecutors/`. Engine in `APP.BL/TenantBusiness/AppAgentToolEngine.cs`.
 
-### Phase 4 — GenericAgent Infrastructure
+### Phase 4 — GenericAgent Infrastructure ✅ COMPLETE
 
-Create 6 files in `APP.BL/AIAgent/GenericAgent/`.  
-Create `APP.BL/AIAgent/AiSkill/AppAgentMcpServerBL.cs` (required by `GenericAgentBL.RunAsync` — loads MCP server configs).  
-Create `AppAI.Web/Controllers/GenericAgentController.cs` (generic `Run` + `ConfirmGate` endpoints for admin test UI).  
-Add NuGet: `Microsoft.SemanticKernel`.  
-Reference BC-MCP-Client patterns:
-- `KernelBuilderService.cs` → `KernelProviderHelper` (multi-provider kernel factory)
-- `McpPluginFactory.cs` → MCP tool loading (`McpClient.CreateAsync`, `HttpClientTransport`, manual `KernelFunctionFactory.CreateFromMethod` wrap — **do NOT use `AsKernelFunction()`**)
-- `ConversationGrain.cs` → `GenericAgentEngine` (SK loop, history summarization, `IFunctionInvocationFilter` pipeline)
+All 8 files in `APP.BL/AIAgent/GenericAgent/` + `APP.BL/AIAgent/AiSkill/AppAgentSkillSetBL.cs` + `APP.BL/TenantBusiness/AppAgentMcpServerBL.cs` + `GenericAgentController.cs`.
 
-### Phase 5 — SkillSet Admin Layer
+### Phase 5 — SkillSet Admin Layer ✅ COMPLETE (except mcp-components)
 
-Add `AppAgentSkillSetDto` to `AppAISkillDto.cs` (existing file, new class only).  
-Create `AppAgentSkillSetBL.cs` (CRUD for `AppAgentSkillSet`).  
-Create `AgentSkillSetController.cs` (REST endpoints for persona management).  
-Create `agentSkillSetSvc.ts` (TypeScript service + `AppAgentSkillSetDto` interface).  
-Create `genericAgentSvc.ts` (SignalR subscription + `Run`/`ConfirmGate` client calls — required by `GenericAgentChat.tsx`).  
-Create `AgentSkillSetManagement.tsx` (persona grid + editor + behavior wizard + `[▶ Run]` button).  
-Create `GenericAgentChat.tsx` (reusable streaming chat component + `MCPAppRenderer` integration).  
-Copy `mcp-components/` from BC-MCP-Client into `AppReact/src/`.
+All BL, controller, and React files exist. `AppReact/src/mcp-components/` not yet copied from BC-MCP-Client.
 
-### Phase 6 — Controller Updates + Cleanup
+**Remaining:** Copy `client/src/mcp-components/` from BC-MCP-Client into `AppReact/src/`. Import `<MCPAppRenderer>` in `GenericAgentChat.tsx` for `mcp_ui` event handling.
 
-Update 3 controllers → `GenericAgentBL.RunAsync(skillKey, ...)`.  
-Delete 3 old BL files, 3 old session stores, `LLMProviderHelper.cs`.
+### Phase 6 — Controller Updates + Cleanup ⬜ NOT DONE
+
+**Steps to complete Phase 6:**
+
+1. Migrate `AppBuilderAgentController.RunAgent` to call `GenericAgentBL.RunAsync("app-builder", ...)`:
+   - Replace `AppBuilderAgentSessionStore.CreateSession()` → `GenericAgentSessionStore.CreateSession()`
+   - Replace `AgentCallbacks` → `GenericAgentCallbacks`
+   - Remove call to old `AppBuilderAgentBL.RunAgentAsync`
+   - Wire `PollEvents` → `GenericAgentSessionStore.DequeueAll`
+
+2. Migrate `AppReportAgentController.RunAgent` similarly (`"app-report"` skill key).
+
+3. Migrate `DbGenieController.Chat` similarly (`"db-genie"` skill key).
+
+4. Stage and commit the already-deleted old BL files.
+
+5. Remove stale debug SQL from `V008__GenericAgentSchema.sql` lines 665–674.
+
+6. Resolve the `GenericAgent.AppAgentToolRegisterBL` and `GenericAgent.AppAgentMcpServerBL` schema mismatch — either:
+   - Update them to read V008 columns (`ToolRegisterId`, `ToolDescription`, etc.)
+   - Or delete them if the admin controller exclusively uses `TenantBusiness` versions
 
 ---
 
-## 15. Adding a New Agent Persona (Zero Recompile)
+## 20. Known Deviations from Original Design
 
+| # | Area | Plan said | Actual implementation |
+|---|---|---|---|
+| 1 | `GenericAgentBL.RunAsync` signature | `(skillKey, userMessage, AgentContext ctx, GenericAgentCallbacks)` | `(skillKey, userMessage, List<JObject> chatHistory, GenericAgentCallbacks, AppClientIdentity?, CancellationToken)` |
+| 2 | `GenericAgentSession.cs` | Listed as file to create | Not created; session state lives only in `GenericAgentSessionStore` |
+| 3 | `AnthropicChatCompletionService` | Not mentioned | Created — SK has no official Anthropic connector |
+| 4 | `AgentStepFilter` | Not mentioned | Created — `IFunctionInvocationFilter` for tool call logging |
+| 5 | `GeminiRoleFixHandler` | Not mentioned | Created — inner class in `GenericAgentEngine` fixing SK Gemini bug |
+| 6 | `AppAgentSkillSetBL` file location | Plan: `APP.BL/AIAgent/AiSkill/` | Two files: one in `AiSkill/` (engine-facing), one in `GenericAgent/` (admin-facing) |
+| 7 | `AppAgentToolRegisterBL` | Plan: one file in `TenantBusiness/` | Two files: `TenantBusiness/` (engine + controller, V008 schema) and `GenericAgent/` (admin UI, different schema — stale) |
+| 8 | `AppAgentMcpServerBL` | Plan: `APP.BL/AIAgent/AiSkill/` | Two files: `TenantBusiness/` (engine + controller, V008 schema) and `GenericAgent/` (admin UI, different schema with McpServerKey/Transport/AuthType/AuthValue — stale) |
+| 9 | `AppAgentSkillSetBL` methods | `CreateSkillSet` + `UpdateSkillSet` (separate) | `UpsertSkillSet` (merged); no `DeleteSkillSet` soft-delete, only hard DELETE |
+| 10 | `GenericAgentController` endpoints | `Run` + `ConfirmGate` | `RunAgent` + `StreamEvents` + `PollEvents` + `ConfirmPlan` + `ConfirmSchema` |
+| 11 | LLMProviderHelper | DELETE — promoted to KernelProviderHelper | KEPT — `KernelProviderHelper` delegates to it; still used by existing non-SK paths |
+| 12 | Session history storage | Stored server-side in session store | Passed by caller in each request as `List<JObject> Messages` |
+| 13 | In-session pruning + summarization | Section 12 Levels 1 + 2 planned | Not yet implemented |
+| 14 | InjectMemory flag wiring | Described in §8 BuildSystemPrompt | Not yet implemented in GenericAgentEngine |
+| 15 | InjectSchema flag wiring | Described conceptually | Not yet implemented |
+| 16 | Tool count in AppAgentToolRegister | Estimated ~31 | Actual seed: ~37 rows |
+| 17 | Anthropic NuGet package | Official `Anthropic` v12.42.0 | Not used; direct HTTP in `AnthropicChatCompletionService` |
+| 18 | `mcp-components/` copy | Listed as Phase 5 task | Not yet done |
+| 19 | V008 migration cleanliness | Production SQL only | Stale debug queries at lines 665-674 |
+
+---
+
+## 21. Critical Notes for Implementation (Next Developer)
+
+These are non-obvious gotchas discovered during implementation:
+
+### 1. `AsKernelFunction()` is broken — use `KernelFunctionFactory.CreateFromMethod`
+
+SK 1.74.0's `ModelContextProtocol.Client.McpClientTool.AsKernelFunction()` throws `MissingMethodException` at runtime due to `Microsoft.Extensions.AI.Abstractions` version mismatch. Do NOT use it. Instead, manually wrap each MCP tool:
+
+```csharp
+var f = KernelFunctionFactory.CreateFromMethod(
+    async (KernelArguments args, CancellationToken ct) => { ... },
+    functionName: toolName,
+    description: description,
+    parameters: parameters,
+    returnParameter: returnParameter);
 ```
-1. Admin UI → Agent Personas → [+ New Persona]
-   → Fill SkillKey, DisplayName
-   → Answer behavior questions (wizard computes CapabilityFlags)
-   → Write system prompt
-   → Save: creates one AppAgentSkillSet row with SystemPrompt set (no AppAISkill row created)
 
-2. Admin UI → Tools → [+ Add Tool]
-   → Select SkillKey = new persona
-   → Select ToolType (SqlQuery / HttpRest / ExternalDll etc.)
-   → Fill tool config
-   → Save: creates AppAgentToolRegister row
+### 2. Anthropic needs a custom `IChatCompletionService` — no official SK connector
 
-3. Frontend calls: POST /webapi/SomeController/RunAgent
-   → Body includes skillKey = 'new-persona'
-   → GenericAgentBL picks up the DB config automatically
-   → No code change, no recompile, no redeploy
+SK has no NuGet package for Anthropic. The official `Anthropic` SDK (v12.42.0) conflicts with `Microsoft.Extensions.AI.Abstractions`. Use `AnthropicChatCompletionService` (direct HTTP) already implemented at:
+`APP.BL/AIAgent/GenericAgent/AnthropicChatCompletionService.cs`
+
+### 3. Gemini SK connector sends wrong role — `GeminiRoleFixHandler` required
+
+SK Connectors.Google 1.74.0-alpha sends `role:"function"` for tool result turns. Gemini API rejects this. The `GeminiRoleFixHandler : DelegatingHandler` patches every outgoing request body. It is wired in `GenericAgentEngine.BuildKernel`. Do not remove it.
+
+### 4. Empty tool array crashes Gemini — check before enabling FunctionChoiceBehavior.Auto()
+
+Gemini (and some other providers) reject a request with an empty `tools` array. Guard:
+```csharp
+var hasTools = kernel.Plugins.Any(p => p.Any());
+if (hasTools) execSettings.FunctionChoiceBehavior = FunctionChoiceBehavior.Auto();
 ```
+
+### 5. MCP `ServerType` must be `'streamable-http'` — SSE not supported
+
+`HttpClientTransport` uses `HttpTransportMode.StreamableHttp`. The `stdio` type uses `StdioClientTransport`. Old SSE transport is not available in `ModelContextProtocol` 1.2.0. The V008 migration and BL both use `'streamable-http'` as the value.
+
+### 6. `LLMProviderHelper` is KEPT — do not delete
+
+`KernelProviderHelper` (in GenericAgent) calls `LLMProviderHelper.GetConfiguredProvider()` and `GetConfiguredApiKey()`. `LLMProviderHelper` is also used by old DB Genie non-SK paths. Do not delete it.
+
+### 7. Each provider has its own API key in tenant settings
+
+`AIConfigSettingBL.GetApiKey()` routes to the correct per-provider key based on the current `AIConfigProvider` setting. There is no shared key field. If a tenant switches from Gemini to Anthropic, they must configure `AIConfigAnthropicApiKey` separately.
+
+### 8. Admin BL files in `GenericAgent/` namespace have stale schema
+
+`APP.BL/AIAgent/GenericAgent/AppAgentToolRegisterBL.cs` and `APP.BL/AIAgent/GenericAgent/AppAgentMcpServerBL.cs` read column names that do not exist in V008 (`Id` instead of `ToolRegisterId`, `Description` instead of `ToolDescription`, `McpServerKey` instead of `McpServerId`, `Transport` instead of `ServerType`). These files will throw `IndexOutOfRangeException` at runtime if called. The engine and AgentSkillSetController both use the `TenantBusiness` namespace versions (which correctly match V008). The GenericAgent namespace files need to be either corrected or removed.
+
+### 9. Plugin class names in ToolConfig TypeName must still exist in the assembly
+
+V008 seeds tool rows like `{"TypeName":"APP.BL.AppBuilderAgent.Plugins.SchemaBuilderPlugin","MethodName":"GetTableSchema"}`. If `SchemaBuilderPlugin.cs` is deleted from APP.BL (Phase 2 cleanup), the `BuiltInToolExecutor` will fail to reflect the type. The plugin classes must remain in the assembly even after their `[AgentFunction]` attributes are removed.
+
+### 10. DB history: caller owns it — server is stateless per request
+
+`GenericAgentEngine` receives chat history as `List<JObject>` per request. The server does not store or retrieve history — the React client accumulates messages in state and passes them back on every request. This is different from the original plan which described server-side session history in `GenericAgentSession`. Do not implement server-side history persistence.
+
+### 11. SanitizeName is required for tool function names
+
+Gemini requires function names matching `^[a-zA-Z_][a-zA-Z0-9_]*$`. `SanitizeName()` in `GenericAgentEngine` replaces non-alphanumeric chars with `_` and prepends `_` if the name starts with a digit. Apply to both registered tool names and MCP tool names.
 
 ---
 
-## 16. Verification Checklist
+## 22. Verification Checklist
 
 | # | Test | Expected |
 |---|---|---|
-| 0 | Run migration SQLs | 4 SkillSet rows (each with non-null `SystemPrompt`), ~31 tool rows; `AppAISkill` unchanged |
+| 0 | Run V008 + V009 migrations | 4 SkillSet rows (each with non-null SystemPrompt); ~37 tool rows; MCP table exists; 7 AppTenantSetting AIConfig rows |
 | 1 | `dotnet build AppAI.Core.sln` | Zero errors |
-| 2 | POST `/webapi/AppBuilderAgent/RunAgent` | SSE events stream; steps + final response arrive |
-| 3 | Trigger `propose_plan` → POST `/ConfirmPlan` | Agent resumes after gate |
-| 4 | POST `/webapi/AppReportAgent/RunAgent` | Report data returned |
-| 5 | POST `/webapi/DbGenie/Chat` | SQL response returned |
-| 6 | POST `/webapi/AppDataIntegrationAgent/StartSession` | Cursor cloud events arrive |
-| 7 | Admin UI: create new SkillSet via wizard | Row created; behavior questions → correct CapabilityFlags bitmask |
-| 8 | Admin UI: add SqlQuery tool to new SkillSet | Row in AppAgentToolRegister; agent calls it correctly |
-| 9 | Drop ExternalDll + register via admin | Agent picks up new tool without restart |
+| 2 | POST `/webapi/GenericAgent/RunAgent` with `skillKey:"db-genie"`, `userMessage:"list tables"` | Returns `{ IsStarted: true, SessionId: "..." }` |
+| 3 | GET `/webapi/GenericAgent/StreamEvents?sessionId=<id>` | SSE events stream: `step`, `token`, `done` |
+| 4 | GET `/webapi/AgentSkillSet/GetAllSkillSets` | Returns 4 skill sets |
+| 5 | GET `/webapi/AgentSkillSet/GetToolsBySkillKey?skillKey=app-builder` | Returns ~34 tool rows |
+| 6 | Admin UI → Agent Personas → click [▶ Run] on DB Genie | Chat panel opens; agent responds to SQL question |
+| 7 | Admin UI → create new SkillSet via wizard | Row in AppAgentSkillSet; CapabilityFlags matches wizard checkboxes |
+| 8 | Admin UI → add SqlQuery tool to new SkillSet; run agent | Agent calls the SQL tool; result returned |
+| 9 | Register MCP server in AppAgentMcpServer (ServerType='streamable-http'); run agent | MCP tools auto-discovered; agent calls them |
 | 10 | DynamicCSharp tool: LLM passes code with `System.IO` | Executor rejects — not in whitelist |
-| 11 | DynamicCSharp tool: LLM passes valid LINQ expression | Compiles and returns correct result |
-| 12 | Register MCP server in `AppAgentMcpServer`; run agent | MCP tools auto-discovered; agent calls them |
-| 13 | MCP tool returns `{ "ui_hint": "FlexGrid", "data": [...] }` | `MCPAppRenderer` renders `AGGridMCP` (AG Grid) in chat |
-| 14 | Admin UI: click [▶ Run] on App Builder SkillSet | Right drawer opens with `<GenericAgentChat />` |
-| 15 | POST `/webapi/GenericAgent/Run { skillKey: "db-genie", ... }` | Streams response; same result as DbGenieController |
-| 16 | Gate triggered in test drawer → Approve clicked | Agent resumes; gate resolved via `ConfirmGate` |
+| 11 | DynamicCSharp tool: LLM passes valid LINQ | Compiles and returns correct result |
+| 12 | POST `/webapi/AppBuilderAgent/RunAgent` (after Phase 6) | Routes through GenericAgentBL; same events as test #3 |
+| 13 | Trigger `propose_plan` gate → POST `/webapi/GenericAgent/ConfirmPlan` | Agent resumes |
+| 14 | Trigger `propose_schema` gate → POST `/webapi/GenericAgent/ConfirmSchema` | Agent resumes |
 
 ---
 
-## 17. Risk Register
+## 23. Risk Register
 
 | Risk | Mitigation |
 |---|---|
-| ~~`Microsoft.SemanticKernel` incompatible with `net10.0`~~ | **Not a risk.** SK 1.74.0 ships native `net10.0` lib folder (confirmed from local cache). Use version 1.74.0 matching BC-MCP-Client. |
-| Roslyn sandbox escape via reflection | Whitelist enforced at `ScriptOptions` level; `System.Reflection` not in safe list |
-| `ExternalDll` DLL loads wrong version | Use `Assembly.LoadFrom` with full path; version-check the assembly |
-| System prompt too long | Prune in `GenericAgentEngine` at token budget (Level 1 pruning + Level 2 summarization) |
-| PlanGate/SchemaGate session not cleaned up on timeout | `GenericAgentSessionStore` TTL; clean up on session expiry |
-| MCP server unavailable at session start | Catch `McpClient.CreateAsync` / `HttpClientTransport` exceptions per server; log + skip; agent continues with remaining tools |
-| `mcp-components` React library version drift from BC-MCP-Client | Pin to a specific commit/tag when copying; document source version |
-| Official `Anthropic` SDK (v12.42.0) breaking API vs community SDK | BC-MCP-Client already migrated — use its integration pattern as reference |
+| `GenericAgent.AppAgentToolRegisterBL` schema mismatch causes IndexOutOfRangeException | Use `TenantBusiness` version; fix or remove GenericAgent version (§19 Phase 6) |
+| `GenericAgent.AppAgentMcpServerBL` schema mismatch | Same — use TenantBusiness version |
+| Plugin class deleted but still referenced in ToolConfig TypeName | Keep plugin .cs files in APP.BL even after attribute cleanup; or update TypeName in DB |
+| `AsKernelFunction()` used anywhere | Never call it — always use `KernelFunctionFactory.CreateFromMethod` |
+| Gemini rejects empty tools array | Guard with `kernel.Plugins.Any(p => p.Any())` before setting FunctionChoiceBehavior.Auto() |
+| Anthropic API key missing from tenant settings | AIConfigSettingBL returns empty string; Anthropic service will throw 401; surface as OnError event |
+| MCP server unavailable at session start | Try/catch per server in engine; log + skip; agent continues with remaining tools |
+| In-session context overflow (no pruning yet) | Add Level 1 pruning to GenericAgentEngine before next long-session use |
+| V008 debug SQL at end of migration file | Remove lines 665-674 before next environment deployment |
+| Stale GeminiRoleFixHandler — fixed in future SK release | Monitor SK release notes; remove handler when SK Connectors.Google is fixed |
+| `mcp-components/` not copied — MCPAppRenderer unavailable | Copy from BC-MCP-Client before enabling UI rendering in GenericAgentChat |

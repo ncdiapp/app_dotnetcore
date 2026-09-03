@@ -14,6 +14,7 @@ export interface AppAgentSkillSetDto {
     SummarizeThreshold: number;
     MaxToolResultChars: number;
     RecentWindowSize:   number;
+    MaxIterations:      number;
 }
 
 export interface AppAgentToolRegisterDto {

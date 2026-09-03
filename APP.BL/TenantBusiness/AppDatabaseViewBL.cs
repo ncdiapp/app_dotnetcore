@@ -3539,7 +3539,7 @@ tab2.name AS [REFERENCED_TABLE],Â Â Â Â col2.name AS [REFERENCED_COLUMN]
                 menuDto.RouteCode = "MasterDataManagement";
                 menuDto.IconName = "";
                 menuDto.Sort = maxSort + 1;
-                menuDto.Name = menuName;
+                menuDto.Name = !string.IsNullOrWhiteSpace(menuName) ? menuName : "Menu Item";
                 menuDto.Description = menuDescription;
                 menuDto.Link = searchId.ToString();
                 menuDto.ParentId = (int)rootMenu.Id;
@@ -3599,7 +3599,7 @@ tab2.name AS [REFERENCED_TABLE],Â Â Â Â col2.name AS [REFERENCED_COLUMN]
                 menuDto.RouteCode = "FolderNavigation";
                 menuDto.IconName = "";
                 menuDto.Sort = maxSort + 1;
-                menuDto.Name = menuName;
+                menuDto.Name = !string.IsNullOrWhiteSpace(menuName) ? menuName : "Menu Item";
                 menuDto.Description = menuDescription;
                 menuDto.Link = transactionId.ToString();
                 menuDto.ParentId = (int)rootMenu.Id;

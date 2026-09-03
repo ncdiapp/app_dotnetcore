@@ -39,6 +39,7 @@ namespace APP.Components.EntityDto
         public int    SummarizeThreshold  { get; set; } = 60000;
         public int    MaxToolResultChars  { get; set; } = 4000;
         public int    RecentWindowSize    { get; set; } = 10;
+        public int    MaxIterations      { get; set; } = 40;
     }
 
     public class AppAgentToolRegisterDto

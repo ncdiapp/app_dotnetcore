@@ -414,6 +414,71 @@ namespace App.BL
 
 
 
+        /// <summary>
+        /// Adds a search view under the specific app package root (not the generic "My Search" container).
+        /// Uses saasApplicationId as the parent — mirrors AddListTransactionToMainMenu behaviour.
+        /// </summary>
+        public static OperationCallResult<object> AddSearchToApplicationMenu(
+            int? searchId, int saasApplicationId, string menuName, bool isSavedSearch = false)
+        {
+            var result           = new OperationCallResult<object>();
+            var validationResult = new ValidationResult();
+            result.ValidationResult = validationResult;
+
+            if (!searchId.HasValue) return result;
+
+            var menuTree            = RetrieveListMenuHairarchyDto(false, saasApplicationId);
+            var applicationRootMenu = menuTree?.FirstOrDefault();
+            if (applicationRootMenu == null || applicationRootMenu.Id == null)
+            {
+                validationResult.Items.Add(new ValidationItem(
+                    typeof(AppListMenuEntity),
+                    "App_ListMenuEntity_CannotFindApplicationMenuRoot_Error",
+                    ValidationItemType.Error,
+                    $"Cannot find app package root for SaasApplicationId={saasApplicationId}."));
+                return result;
+            }
+
+            var allChildren = applicationRootMenu.AppListMenu_List ?? new ObservableSet<AppListMenuExDto>();
+            var linkValue   = isSavedSearch
+                ? searchId.Value + StringHelper.UnderscoreToken + "1"
+                : searchId.Value.ToString();
+
+            bool alreadyExists = allChildren.Any(o =>
+                o.RouteCode == ListMenus.MasterDataManagement && o.Link == linkValue);
+            if (alreadyExists)
+            {
+                validationResult.Items.Add(new ValidationItem(
+                    typeof(AppListMenuEntity),
+                    "App_ListMenuEntity_MenuAlreadyExists_Warning",
+                    ValidationItemType.Warning,
+                    "Menu shortcut already exists for this search."));
+                return result;
+            }
+
+            var newItem = new AppListMenuExDto
+            {
+                Name                  = menuName,
+                RouteCode             = ListMenus.MasterDataManagement,
+                LinkType              = (int)EmAppListMenuLinkType.SystemPage,
+                Link                  = linkValue,
+                ParentId              = saasApplicationId,
+                EmDeviceMenuShowMode  = 3,
+                EmAppMenuItemCategory = 1,
+                Sort = allChildren.Where(o => o.Sort.HasValue).Any()
+                       ? allChildren.Where(o => o.Sort.HasValue).Max(p => p.Sort.Value) + 10
+                       : 10
+            };
+
+            var saveResult = SaveOneAppListMenuTreeNode(newItem);
+            if (saveResult.IsSuccessfulWithResult)
+                result.Object = true;
+            else
+                validationResult.Merge(saveResult.ValidationResult);
+
+            return result;
+        }
+
         //internal static ValidationResult CopyListMenuStructure(object sourceMenuId, object targetMenuId)
         //{
         //    ValidationResult aValidationResult = new ValidationResult();

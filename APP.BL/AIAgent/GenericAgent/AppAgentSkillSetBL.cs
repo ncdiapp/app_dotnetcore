@@ -18,7 +18,7 @@ namespace App.BL.AIAgent.GenericAgent
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null) return list;
                 var dt = fixture.RetriveDataTable(
-                    "SELECT SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize FROM dbo.AppAgentSkillSet ORDER BY SortOrder,SkillKey",
+                    "SELECT SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations FROM dbo.AppAgentSkillSet ORDER BY SortOrder,SkillKey",
                     new List<DbParameter>());
                 if (dt == null) return list;
                 foreach (DataRow row in dt.Rows)
@@ -40,11 +40,12 @@ IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = @SkillKey)
         DisplayName=@DisplayName, Description=@Description, SystemPrompt=@SystemPrompt,
         CapabilityFlags=@CapabilityFlags, IsActive=@IsActive, SortOrder=@SortOrder,
         Version=@Version, MaxHistoryTokens=@MaxHistoryTokens, SummarizeThreshold=@SummarizeThreshold,
-        MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize
+        MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize,
+        MaxIterations=@MaxIterations
     WHERE SkillKey = @SkillKey
 ELSE
-    INSERT INTO dbo.AppAgentSkillSet (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize)
-    VALUES (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,@Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize)";
+    INSERT INTO dbo.AppAgentSkillSet (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations)
+    VALUES (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,@Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations)";
                 fixture.ExecuteNonQueryResult(sql, BuildParams(fixture, dto));
                 return true;
             }
@@ -96,6 +97,7 @@ ELSE
             SummarizeThreshold = row["SummarizeThreshold"] == DBNull.Value ? 60000 : Convert.ToInt32(row["SummarizeThreshold"]),
             MaxToolResultChars = row["MaxToolResultChars"] == DBNull.Value ? 4000 : Convert.ToInt32(row["MaxToolResultChars"]),
             RecentWindowSize   = row["RecentWindowSize"] == DBNull.Value ? 10 : Convert.ToInt32(row["RecentWindowSize"]),
+            MaxIterations      = row.Table.Columns.Contains("MaxIterations") && row["MaxIterations"] != DBNull.Value ? Convert.ToInt32(row["MaxIterations"]) : 40,
         };
 
         private static List<DbParameter> BuildParams(DatabaseFixture fixture, AppAgentSkillSetDto dto)
@@ -114,6 +116,7 @@ ELSE
             Add("@SummarizeThreshold", dto.SummarizeThreshold > 0 ? dto.SummarizeThreshold : 60000);
             Add("@MaxToolResultChars", dto.MaxToolResultChars > 0 ? dto.MaxToolResultChars : 4000);
             Add("@RecentWindowSize",   dto.RecentWindowSize > 0 ? dto.RecentWindowSize : 10);
+            Add("@MaxIterations",      dto.MaxIterations > 0 ? dto.MaxIterations : 40);
             return p;
         }
     }
