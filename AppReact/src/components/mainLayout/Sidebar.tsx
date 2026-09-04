@@ -153,7 +153,7 @@ const Sidebar: React.FC = () => {
         { Id: 'ai-agent-app-report', Name: 'App Report Agent', RouteCode: '/app-report-agent' },
 
         { Id: 'ai-agent-skill-mgt', Name: 'AI Skill Management', RouteCode: '/ai-skill-management' },
-        { Id: 'ai-agent-skill-set-mgt', Name: 'Agent Skill Set', RouteCode: '/agent-skill-management' },
+        { Id: 'ai-agent-skill-set-mgt', Name: 'Agent Management', RouteCode: '/agent-skill-management' },
       ]
     },
     {

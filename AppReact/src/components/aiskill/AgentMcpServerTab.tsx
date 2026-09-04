@@ -105,7 +105,7 @@ const AgentMcpServerTab: React.FC<Props> = ({ theme }) => {
                     <div className="h-full flex flex-col overflow-hidden">
                         <div className="w-full h-1 flex-auto overflow-auto p-3 flex flex-col gap-3">
                             <div className="flex items-center py-1">
-                                <label className={lbl}>Skill Key</label>
+                                <label className={lbl}>Agent Code</label>
                                 <input className={inp} value={editItem.SkillKey} onChange={e => update('SkillKey', e.target.value)} autoComplete="off" />
                             </div>
                             <div className="flex items-center py-1">

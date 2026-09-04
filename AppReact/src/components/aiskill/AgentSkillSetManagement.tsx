@@ -73,7 +73,7 @@ const AgentSkillSetManagement: React.FC = () => {
     };
 
     const handleSave = async () => {
-        if (!editItem.SkillKey.trim()) { setError('Skill Key is required.'); return; }
+        if (!editItem.SkillKey.trim()) { setError('Agent Code is required.'); return; }
         dispatch(setIsBusy()); setError(null);
         try {
             await agentSkillSetSvc.UpsertSkillSet(editItem);
@@ -104,9 +104,9 @@ const AgentSkillSetManagement: React.FC = () => {
     return (
         <div className="w-full h-full flex flex-col overflow-hidden">
             <div className={`flex items-center gap-1 px-3 py-2 ${theme.mainContentSection}`}>
-                <span className={`text-md font-semibold mr-3 ${theme.title}`}>Agent Skill Set</span>
-                <button className={tabCls('skills')} onClick={() => setActiveTab('skills')}>Skill Sets</button>
-                <button className={tabCls('tools')} onClick={() => setActiveTab('tools')}>Tool Register</button>
+                <span className={`text-md font-semibold mr-3 ${theme.title}`}>Agent Management</span>
+                <button className={tabCls('skills')} onClick={() => setActiveTab('skills')}>Agent Setting</button>
+                <button className={tabCls('tools')} onClick={() => setActiveTab('tools')}>Tools</button>
                 <button className={tabCls('mcp')} onClick={() => setActiveTab('mcp')}>MCP Servers</button>
             </div>
             {error && (
@@ -115,8 +115,7 @@ const AgentSkillSetManagement: React.FC = () => {
                 </div>
             )}
             <div className="w-full h-1 flex-auto overflow-hidden">
-                {activeTab === 'skills' && (
-                    <div className="w-full h-full flex gap-2 px-2 pb-2 overflow-hidden">
+                <div className={`w-full h-full flex gap-2 px-2 pb-2 overflow-hidden${activeTab === 'skills' ? '' : ' hidden'}`}>
                         <div className={`w-56 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}>
                             <div className="flex items-center px-2 py-1 gap-1 border-b border-gray-200">
                                 <button className={btn} onClick={() => { setSelected(null); setEditItem(emptySkillSet()); setIsEditing(true); setIsDirty(false); setTestSkillKey(null); }}>
@@ -127,7 +126,7 @@ const AgentSkillSetManagement: React.FC = () => {
                             </div>
                             <div className="w-full h-1 flex-auto overflow-hidden">
                                 <FlexGrid className="w-full h-full" itemsSource={skillsCV} isReadOnly headersVisibility="Column" selectionChanged={onGridSelectionChanged}>
-                                    <FlexGridColumn header="Skill Key" binding="SkillKey" width="*" />
+                                    <FlexGridColumn header="Agent Code" binding="SkillKey" width="*" />
                                     <FlexGridColumn header="Active" binding="IsActive" width={55} />
                                     <FlexGridColumn header="" binding="" width="*" />
                                 </FlexGrid>
@@ -149,7 +148,7 @@ const AgentSkillSetManagement: React.FC = () => {
                                 <div className="h-full flex flex-col overflow-hidden">
                                     <div className="w-full h-1 flex-auto overflow-auto p-3 flex flex-col gap-3">
                                         <div className="flex items-center py-1">
-                                            <label className={lbl}>Skill Key *</label>
+                                            <label className={lbl}>Agent Code *</label>
                                             <input className={inp} value={editItem.SkillKey} onChange={e => update('SkillKey', e.target.value)} autoComplete="off" />
                                         </div>
                                         <div className="flex items-center py-1">
@@ -218,7 +217,6 @@ const AgentSkillSetManagement: React.FC = () => {
                             )}
                         </div>
                     </div>
-                )}
                 {activeTab === 'tools' && <AgentToolRegisterTab selectedSkillKey={selected?.SkillKey ?? null} theme={theme} />}
                 {activeTab === 'mcp'   && <AgentMcpServerTab theme={theme} />}
             </div>
