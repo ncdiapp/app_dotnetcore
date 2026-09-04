@@ -1391,7 +1391,7 @@ namespace App.BL
 
 
 
-                        if (transactionExDto.OtherOptions != null && transactionExDto.OtherOptions.TransactionDataUpdateImportSettingId.HasValue)
+                        if (transactionExDto?.OtherOptions != null && transactionExDto.OtherOptions.TransactionDataUpdateImportSettingId.HasValue)
                         {
                             int importSettingId = transactionExDto.OtherOptions.TransactionDataUpdateImportSettingId.Value;
                             AppDatabaseTableImportBL.UpdateTransactionDataFromImport_ReloadTransaction(importSettingId);
