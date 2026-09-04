@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -20,6 +21,11 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
     {
         private static readonly Assembly BlAssembly = typeof(BuiltInToolExecutor).Assembly;
 
+        // Process-lifetime cache: TypeName::MethodName → (Type, MethodInfo)
+        // Avoids repeated assembly scanning (AppDomain.GetAssemblies) on every tool call.
+        private static readonly ConcurrentDictionary<string, (Type Type, MethodInfo Method)?> _methodCache
+            = new(StringComparer.Ordinal);
+
         public static async Task<string> ExecuteAsync(
             string                              toolConfig,
             IReadOnlyDictionary<string, string> args,
@@ -27,15 +33,15 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
             CancellationToken                  ct,
             Dictionary<string, object>?        instancePool = null)
         {
-            var cfg = ParseConfig(toolConfig);
-            var type = ResolveType(cfg.TypeName);
-            if (type == null)
-                return JsonConvert.SerializeObject(new { Error = $"BuiltIn type not found: {cfg.TypeName}" });
+            var cfg      = ParseConfig(toolConfig);
+            var cacheKey = $"{cfg.TypeName}::{cfg.MethodName}";
+            var cached   = _methodCache.GetOrAdd(cacheKey, _ => ResolveTypeAndMethod(cfg.TypeName, cfg.MethodName));
 
-            var method = type.GetMethod(cfg.MethodName,
-                BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
-            if (method == null)
-                return JsonConvert.SerializeObject(new { Error = $"Method not found: {cfg.MethodName} on {cfg.TypeName}" });
+            if (cached == null)
+                return JsonConvert.SerializeObject(new { Error = $"BuiltIn type or method not found: {cfg.TypeName}.{cfg.MethodName}" });
+
+            var type   = cached.Value.Type;
+            var method = cached.Value.Method;
 
             object instance = null;
             if (!method.IsStatic)
@@ -207,7 +213,16 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
 
         private static object GetDefault(Type t) => t.IsValueType ? Activator.CreateInstance(t) : null;
 
-        private static Type ResolveType(string typeName)
+        private static (Type Type, MethodInfo Method)? ResolveTypeAndMethod(string typeName, string methodName)
+        {
+            var type = FindType(typeName);
+            if (type == null) return null;
+            var method = type.GetMethod(methodName,
+                BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.IgnoreCase);
+            return method != null ? (type, method) : null;
+        }
+
+        private static Type FindType(string typeName)
         {
             if (string.IsNullOrWhiteSpace(typeName)) return null;
             var t = Type.GetType(typeName);
