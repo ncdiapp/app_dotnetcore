@@ -35,7 +35,7 @@ namespace App.BL.AppBuilderAgent.Plugins
         public async Task<string> CreateApplication(
             [AgentParam("Detailed natural-language description of what to build, including entity names, fields, and relationships.", isRequired: true)]
             string requirements,
-            [AgentParam("The SaasApplicationId returned by create_app_package. Required to link the transaction to the correct application.")]
+            [AgentParam("The SaasApplicationId returned by create_app_package in this session. Required.", isRequired: true)]
             int? saasApplicationId = null,
             [AgentParam("Optional descriptive name for the root transaction, e.g. 'Sales Order Management'")]
             string appName = null,
@@ -47,6 +47,9 @@ namespace App.BL.AppBuilderAgent.Plugins
         {
             try
             {
+                var validErr = ValidateSaasApplicationId(saasApplicationId);
+                if (validErr != null) return validErr;
+
                 var request = new DbGenieCreateTransactionRequestDto
                 {
                     RequirementsText     = requirements,
@@ -215,12 +218,8 @@ namespace App.BL.AppBuilderAgent.Plugins
         {
             try
             {
-                if (!saasApplicationId.HasValue || saasApplicationId <= 0)
-                    return JsonConvert.SerializeObject(new
-                    {
-                        IsSuccess = false,
-                        Error = "saasApplicationId is required. Call create_app_package first and pass the returned SaasApplicationId."
-                    });
+                var validErr = ValidateSaasApplicationId(saasApplicationId);
+                if (validErr != null) return validErr;
 
                 var owner = schemaOwner ?? _schemaOwner;
 
@@ -283,12 +282,8 @@ namespace App.BL.AppBuilderAgent.Plugins
         {
             try
             {
-                if (!saasApplicationId.HasValue || saasApplicationId <= 0)
-                    return JsonConvert.SerializeObject(new
-                    {
-                        IsSuccess = false,
-                        Error = "saasApplicationId is required. Call create_app_package first and pass the returned SaasApplicationId."
-                    });
+                var validErr = ValidateSaasApplicationId(saasApplicationId);
+                if (validErr != null) return validErr;
 
                 var owner = schemaOwner ?? _schemaOwner;
 
@@ -471,6 +466,34 @@ namespace App.BL.AppBuilderAgent.Plugins
             {
                 return true; // If we cannot query, allow through rather than false-blocking
             }
+        }
+
+        /// <summary>
+        /// Returns null if saasApplicationId is a valid user-created app package;
+        /// otherwise returns an error JSON string to return from the calling tool.
+        /// Rejects null/0 AND built-in platform menus (those have no AppCreatedByCompanyId).
+        /// </summary>
+        private static string ValidateSaasApplicationId(int? saasApplicationId)
+        {
+            if (!saasApplicationId.HasValue || saasApplicationId <= 0)
+                return JsonConvert.SerializeObject(new
+                {
+                    IsSuccess = false,
+                    Error = "saasApplicationId is required. Call create_app_package first and pass the returned SaasApplicationId."
+                });
+
+            var pkg = AppSaasUserApplicationPackageBL.RetrieveSelectedApplicationPackages()
+                .FirstOrDefault(a => a.Id != null && (int)a.Id == saasApplicationId.Value
+                                     && a.AppCreatedByCompanyId.HasValue);
+            if (pkg == null)
+                return JsonConvert.SerializeObject(new
+                {
+                    IsSuccess = false,
+                    Error = $"saasApplicationId={saasApplicationId} is not a valid user-created application package. " +
+                            "Call create_app_package to create one and use the returned SaasApplicationId."
+                });
+
+            return null; // valid
         }
 
         // ─────────────────────────────────────────────────────────────────────
