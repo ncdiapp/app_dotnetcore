@@ -472,37 +472,8 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
         }
 
-        /// <summary>
-        /// Returns null if saasApplicationId is a valid user-created app package;
-        /// otherwise returns an error JSON string to return from the calling tool.
-        /// Rejects null/0 AND built-in platform menus (those have no AppCreatedByCompanyId).
-        /// </summary>
         private static string ValidateSaasApplicationId(int? saasApplicationId)
-        {
-            if (!saasApplicationId.HasValue || saasApplicationId <= 0)
-                return JsonConvert.SerializeObject(new
-                {
-                    IsSuccess = false,
-                    Error = "saasApplicationId is required. Call create_app_package first and pass the returned SaasApplicationId."
-                });
-
-            // Accept packages created in this server session (not yet in cache).
-            if (AppBuilderState.IsKnownCreatedPackage(saasApplicationId.Value))
-                return null;
-
-            var pkg = AppSaasUserApplicationPackageBL.RetrieveSelectedApplicationPackages()
-                .FirstOrDefault(a => a.Id != null && (int)a.Id == saasApplicationId.Value
-                                     && a.AppCreatedByCompanyId.HasValue);
-            if (pkg == null)
-                return JsonConvert.SerializeObject(new
-                {
-                    IsSuccess = false,
-                    Error = $"saasApplicationId={saasApplicationId} is not a valid user-created application package. " +
-                            "Call create_app_package to create one and use the returned SaasApplicationId."
-                });
-
-            return null; // valid
-        }
+            => AppBuilderValidation.ValidateSaasApplicationId(saasApplicationId);
 
         // ─────────────────────────────────────────────────────────────────────
         // create_list_edit_form — generate a MasterDetail edit form for a List transaction

@@ -340,31 +340,7 @@ namespace App.BL.AppBuilderAgent.Plugins
         }
 
         private static string ValidateSaasApplicationId(int saasApplicationId)
-        {
-            if (saasApplicationId <= 0)
-                return JsonConvert.SerializeObject(new
-                {
-                    IsSuccess = false,
-                    Error = "saasApplicationId is required. Call create_app_package first and pass the returned SaasApplicationId."
-                });
-
-            // Accept packages created in this server session (not yet in cache).
-            if (AppBuilderState.IsKnownCreatedPackage(saasApplicationId))
-                return null;
-
-            var pkg = AppSaasUserApplicationPackageBL.RetrieveSelectedApplicationPackages()
-                .FirstOrDefault(a => a.Id != null && (int)a.Id == saasApplicationId
-                                     && a.AppCreatedByCompanyId.HasValue);
-            if (pkg == null)
-                return JsonConvert.SerializeObject(new
-                {
-                    IsSuccess = false,
-                    Error = $"saasApplicationId={saasApplicationId} is not a valid user-created application package. " +
-                            "Call create_app_package to create one and use the returned SaasApplicationId."
-                });
-
-            return null;
-        }
+            => AppBuilderValidation.ValidateSaasApplicationId(saasApplicationId);
 
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("add_search_to_menu",

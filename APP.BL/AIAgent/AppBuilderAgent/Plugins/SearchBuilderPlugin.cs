@@ -27,6 +27,7 @@ namespace App.BL.AppBuilderAgent.Plugins
         // create_search — all-in-one: Dataset + SearchView + Search
         // ─────────────────────────────────────────────────────────────────────
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("create_search",
             "Create a search/list screen backed by a SQL query. " +
             "Internally creates: (1) a Dataset that holds the SQL query, " +
@@ -45,6 +46,9 @@ namespace App.BL.AppBuilderAgent.Plugins
         {
             try
             {
+                var validErr = AppBuilderValidation.ValidateSaasApplicationId(saasApplicationId);
+                if (validErr != null) return validErr;
+
                 // ── Step 1: Dataset ───────────────────────────────────────────
                 var datasetDto = new AppDataSetExDto
                 {
@@ -119,6 +123,7 @@ namespace App.BL.AppBuilderAgent.Plugins
         // list_searches — explore existing searches
         // ─────────────────────────────────────────────────────────────────────
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("list_searches",
             "List existing searches in the platform. " +
             "Use this during exploration (Step 1) to see what searches already exist " +
