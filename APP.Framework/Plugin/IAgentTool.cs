@@ -60,4 +60,11 @@ public sealed class AgentToolContext
     /// 0 means "not resolved" — plugins should treat it the same as null.
     /// </summary>
     public int    DataSourceId     { get; init; }
+
+    /// <summary>
+    /// The user's HTTP session token (AppSecurityUserSession.SessionID).
+    /// Required by ViladateSessionIdAndCompanyIdRegisterIdentity when restoring identity
+    /// on background threads (agent tool execution after HTTP response is flushed).
+    /// </summary>
+    public string UserSessionId    { get; init; } = string.Empty;
 }

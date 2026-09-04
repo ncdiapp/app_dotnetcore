@@ -76,6 +76,7 @@ namespace App.BL.AIAgent.GenericAgent
                     ConnectionString = identity.HasValue ? identity.Value.CurrentUserDbConnectionString ?? "" : "",
                     DatabaseName     = identity.HasValue ? identity.Value.CurrentUserDataBaseName      ?? "" : "",
                     SessionId        = Guid.NewGuid().ToString("N"),
+                    UserSessionId    = identity.HasValue ? identity.Value.SessionId?.ToString() ?? "" : "",
                     SkillKey         = skillKey,
                     UserId           = userId,
                     CompanyId        = companyId,
