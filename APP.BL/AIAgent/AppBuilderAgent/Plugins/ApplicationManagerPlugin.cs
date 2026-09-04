@@ -23,6 +23,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             _dataSourceId = dataSourceId;
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("create_app_package",
             "Step 1 — Create a new named application package in the platform. " +
             "Returns the new SaasApplicationId (integer). " +
@@ -61,10 +62,13 @@ namespace App.BL.AppBuilderAgent.Plugins
                     return JsonConvert.SerializeObject(new { IsSuccess = false, Error = errorMsg });
                 }
 
+                int newId = result.Object.Value;
+                AppBuilderState.RegisterCreatedPackage(newId);
+
                 return JsonConvert.SerializeObject(new
                 {
                     IsSuccess        = true,
-                    SaasApplicationId = result.Object.Value,
+                    SaasApplicationId = newId,
                     ApplicationName  = applicationName,
                     Note             = "Pass SaasApplicationId to create_entity_simple_list, create_entity_from_table, and create_application."
                 }, Formatting.Indented);
@@ -75,6 +79,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("delete_application",
             "Permanently delete an application and ALL of its associated data: " +
             "transactions (data models + forms), search views, entity data sources, " +
@@ -269,6 +274,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("add_transaction_to_menu",
             "Add a List or FolderList transaction (data model) to the application's main navigation menu as a clickable item. " +
             "Use this to expose a List Edit transaction in the left-side navigation. " +
@@ -342,6 +348,10 @@ namespace App.BL.AppBuilderAgent.Plugins
                     Error = "saasApplicationId is required. Call create_app_package first and pass the returned SaasApplicationId."
                 });
 
+            // Accept packages created in this server session (not yet in cache).
+            if (AppBuilderState.IsKnownCreatedPackage(saasApplicationId))
+                return null;
+
             var pkg = AppSaasUserApplicationPackageBL.RetrieveSelectedApplicationPackages()
                 .FirstOrDefault(a => a.Id != null && (int)a.Id == saasApplicationId
                                      && a.AppCreatedByCompanyId.HasValue);
@@ -356,6 +366,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             return null;
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("add_search_to_menu",
             "Step 6 — Add an existing search (or saved search) to the application's navigation menu. " +
             "Always pass saasApplicationId so the item appears under the correct app package in the sidebar. " +

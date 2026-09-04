@@ -22,6 +22,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             _schemaOwner  = schemaOwner ?? "dbo";
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("create_application",
             "Step 2+4 — Build the database schema and transaction hierarchy from natural language requirements. " +
             "Runs the full pipeline: AI extracts schema, creates physical tables, " +
@@ -181,6 +182,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             return results;
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("create_search_view",
             "Generate a default search/list navigation view for an existing transaction. " +
             "Call this after create_application for each main transaction.")]
@@ -206,6 +208,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("create_transaction_from_table",
             "Create a single AppTransaction (data model + form) from a PRE-EXISTING database table. " +
             "WARNING: ONLY use this for tables that existed BEFORE your current session (discovered via explore_platform). " +
@@ -257,6 +260,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("create_hierarchy_from_tables",
             "RECOVERY TOOL — Create an AppTransaction hierarchy from tables that already exist in the database. " +
             "Use this when create_application failed AFTER the tables were physically created " +
@@ -482,6 +486,10 @@ namespace App.BL.AppBuilderAgent.Plugins
                     Error = "saasApplicationId is required. Call create_app_package first and pass the returned SaasApplicationId."
                 });
 
+            // Accept packages created in this server session (not yet in cache).
+            if (AppBuilderState.IsKnownCreatedPackage(saasApplicationId.Value))
+                return null;
+
             var pkg = AppSaasUserApplicationPackageBL.RetrieveSelectedApplicationPackages()
                 .FirstOrDefault(a => a.Id != null && (int)a.Id == saasApplicationId.Value
                                      && a.AppCreatedByCompanyId.HasValue);
@@ -500,6 +508,7 @@ namespace App.BL.AppBuilderAgent.Plugins
         // create_list_edit_form — generate a MasterDetail edit form for a List transaction
         // ─────────────────────────────────────────────────────────────────────
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("create_list_edit_form",
             "Create a MasterDetail edit form linked to an existing List-type transaction. " +
             "A List transaction (Data Model Type = 3. List) shows data in a grid. " +
