@@ -47,6 +47,7 @@ namespace App.BL.AppBuilderAgent.Plugins
         // propose_schema — extract schema + present to user for review/edit
         // ─────────────────────────────────────────────────────────────────────
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("propose_schema",
             "Extract a database schema from natural-language requirements and present it to the user " +
             "for review and optional inline editing BEFORE any DDL is executed. " +
@@ -258,6 +259,7 @@ namespace App.BL.AppBuilderAgent.Plugins
         // execute_approved_schema — run DDL + create transactions
         // ─────────────────────────────────────────────────────────────────────
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("execute_approved_schema",
             "Execute the schema approved by propose_schema: create the physical database tables and AppTransaction hierarchy. " +
             "Call this ONLY after propose_schema returns {Confirmed:true}. Do NOT pass schemaJson — the schema is stored internally. " +

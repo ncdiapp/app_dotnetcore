@@ -134,6 +134,7 @@ namespace App.BL.AppBuilderAgent.Plugins
         // update_transaction_field
         // ─────────────────────────────────────────────────────────────────────
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("update_transaction_field",
             "Modify properties of an existing field on a transaction. " +
             "Use this after create_application or when the user asks to rename a label, " +
@@ -236,6 +237,7 @@ namespace App.BL.AppBuilderAgent.Plugins
         // set_field_entity — explicit entity-field linkage (avoids burying it in requirements text)
         // ─────────────────────────────────────────────────────────────────────
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("set_field_entity",
             "Link a transaction field to an Entity Data Source so it renders as a dropdown (DDL). " +
             "Use this AFTER create_application or create_transaction_from_table to wire up FK columns " +
@@ -299,6 +301,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("delete_transaction",
             "Permanently delete a transaction and all its units, fields, forms, and search views. " +
             "Use this when the user asks to remove a screen/module from the application. " +

@@ -23,6 +23,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             _dataSourceId = dataSourceId;
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("list_entity_data_sources",
             "List all existing Entity Data Sources (dropdown definitions) in the platform. " +
             "Call this during explore_platform or before creating entities to avoid duplicates.")]
@@ -49,6 +50,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("create_entity_simple_list",
             "Step 3a — Create a Simple List Entity Data Source: a static dropdown with fixed items " +
             "(e.g. Order Status: Approved / Rejected / Canceled). " +
@@ -126,6 +128,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("create_entity_from_table",
             "Step 3b — Create a Database Table Entity Data Source: a dynamic dropdown backed by rows " +
             "from an existing database table (e.g. a Customer table where CustomerId is the value " +

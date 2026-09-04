@@ -18,6 +18,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             _schemaOwner  = schemaOwner ?? "dbo";
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("get_table_schema",
             "Get column definitions (name, data type, nullable, primary key) for a specific database table.")]
         public string GetTableSchema(
@@ -50,6 +51,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             catch (Exception ex) { return JsonConvert.SerializeObject(new { Error = ex.Message }); }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("create_database_table",
             "Execute a SQL CREATE TABLE statement to create a new table in the database. " +
             "WARNING: Do NOT use this after create_application — create_application already creates all tables. " +

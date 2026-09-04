@@ -368,22 +368,49 @@ namespace App.BL.AIAgent.GenericAgent
             if (string.IsNullOrWhiteSpace(schemaJson)) return result;
             try
             {
-                var schema   = JObject.Parse(schemaJson);
-                var props    = schema["properties"] as JObject;
-                if (props == null) return result;
-                var required = new HashSet<string>(
-                    (schema["required"] as JArray)?.Select(t => t.ToString()) ?? Enumerable.Empty<string>(),
-                    StringComparer.OrdinalIgnoreCase);
-                foreach (var prop in props.Properties())
+                var schema = JObject.Parse(schemaJson);
+
+                // Standard JSON Schema: {"properties":{...}, "required":[...]}
+                var props = schema["properties"] as JObject;
+                if (props != null)
                 {
-                    var desc      = prop.Value["description"]?.ToString();
-                    var propJson  = prop.Value.ToString(Newtonsoft.Json.Formatting.None);
+                    var required = new HashSet<string>(
+                        (schema["required"] as JArray)?.Select(t => t.ToString()) ?? Enumerable.Empty<string>(),
+                        StringComparer.OrdinalIgnoreCase);
+                    foreach (var prop in props.Properties())
+                    {
+                        var desc     = prop.Value["description"]?.ToString();
+                        var propJson = prop.Value.ToString(Newtonsoft.Json.Formatting.None);
+                        KernelJsonSchema? ks = null;
+                        try { ks = KernelJsonSchema.Parse(propJson); } catch { }
+                        result.Add(new KernelParameterMetadata(prop.Name)
+                        {
+                            Description   = desc,
+                            IsRequired    = required.Contains(prop.Name),
+                            ParameterType = typeof(string),
+                            Schema        = ks
+                        });
+                    }
+                    return result;
+                }
+
+                // Flat format: {"paramName":{"type":"string","description":"...","required":true}, ...}
+                // Top-level keys are parameter names; each value is a parameter definition object.
+                // This is the format stored in AppAgentToolRegister.ParameterSchemaJson.
+                foreach (var prop in schema.Properties())
+                {
+                    if (prop.Value is not JObject def) continue;
+                    var desc       = def["description"]?.ToString();
+                    var isRequired = def["required"]?.Value<bool>() ?? false;
+                    // Remove the non-standard "required" key before sending to the LLM schema
+                    var cleanDef = new JObject(def.Properties().Where(p => p.Name != "required"));
+                    var propJson = cleanDef.ToString(Newtonsoft.Json.Formatting.None);
                     KernelJsonSchema? ks = null;
                     try { ks = KernelJsonSchema.Parse(propJson); } catch { }
                     result.Add(new KernelParameterMetadata(prop.Name)
                     {
                         Description   = desc,
-                        IsRequired    = required.Contains(prop.Name),
+                        IsRequired    = isRequired,
                         ParameterType = typeof(string),
                         Schema        = ks
                     });

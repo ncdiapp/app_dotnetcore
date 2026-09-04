@@ -16,6 +16,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             _dataSourceId = dataSourceId;
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("execute_sql",
             "Execute a SQL SELECT query to verify tables were created or check data. Only SELECT is allowed.")]
         public string ExecuteSql(
@@ -55,6 +56,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             catch (Exception ex) { return JsonConvert.SerializeObject(new { IsSuccess = false, Error = ex.Message }); }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("insert_mockup_data",
             "Insert realistic sample/demo rows into a database table so the app has data to show. " +
             "Call this AFTER create_application and create_search_view succeed. " +
@@ -116,6 +118,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("check_table_exists",
             "Check whether a specific database table exists. Returns true/false.")]
         public string CheckTableExists(

@@ -28,6 +28,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             _schemaOwner  = schemaOwner ?? "dbo";
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("alter_table",
             "Add, rename, or drop a column on an existing database table AND keep the AppAI data model in sync. " +
             "alterSql must be a single ALTER TABLE statement, e.g. " +

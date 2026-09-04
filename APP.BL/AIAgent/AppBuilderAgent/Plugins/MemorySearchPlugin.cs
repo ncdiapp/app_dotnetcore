@@ -9,6 +9,7 @@ namespace App.BL.AppBuilderAgent.Plugins
     /// </summary>
     public class MemorySearchPlugin
     {
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("search_memory",
             "Search past build history, platform notes, and agent observations for entries " +
             "that match the given keywords. " +

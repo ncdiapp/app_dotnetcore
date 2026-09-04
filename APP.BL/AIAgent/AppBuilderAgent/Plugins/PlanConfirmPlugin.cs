@@ -31,6 +31,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             _onPlanReady = onPlanReady;
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("propose_plan",
             "REQUIRED GATE — call this BEFORE create_application or create_database_table. " +
             "Presents a summary of what will be built to the user and waits for their approval. " +
@@ -82,6 +83,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             });
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("confirm_drop_tables",
             "Ask the user whether the physical database tables for a deleted application should be DROPped. " +
             "Call this AFTER propose_plan confirms the deletion intent, but BEFORE calling delete_application. " +
