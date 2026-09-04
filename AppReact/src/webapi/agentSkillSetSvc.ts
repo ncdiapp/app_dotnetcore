@@ -15,6 +15,7 @@ export interface AppAgentSkillSetDto {
     MaxToolResultChars: number;
     RecentWindowSize:   number;
     MaxIterations:      number;
+    ExecutionMode:      string;
 }
 
 export interface AppAgentToolRegisterDto {

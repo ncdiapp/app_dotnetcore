@@ -67,4 +67,10 @@ public sealed class AgentToolContext
     /// on background threads (agent tool execution after HTTP response is flushed).
     /// </summary>
     public string UserSessionId    { get; init; } = string.Empty;
+
+    /// <summary>
+    /// When true the agent runs in Deterministic mode: PlanGate and SchemaGate are
+    /// auto-approved without blocking for user input. False = Interactive (default).
+    /// </summary>
+    public bool IsDeterministic    { get; init; }
 }

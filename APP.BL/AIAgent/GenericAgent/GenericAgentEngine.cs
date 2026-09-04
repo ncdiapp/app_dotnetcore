@@ -80,7 +80,8 @@ namespace App.BL.AIAgent.GenericAgent
                     SkillKey         = skillKey,
                     UserId           = userId,
                     CompanyId        = companyId,
-                    DataSourceId     = dsId
+                    DataSourceId     = dsId,
+                    IsDeterministic  = string.Equals(skillSet.ExecutionMode, "Deterministic", StringComparison.OrdinalIgnoreCase)
                 };
 
                 // Per-session instance pool keeps stateful plugin instances (e.g. SchemaDesignerPlugin)

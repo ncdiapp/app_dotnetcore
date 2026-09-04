@@ -26,6 +26,7 @@ const emptySkillSet = (): AppAgentSkillSetDto => ({
     SkillKey: '', DisplayName: '', Description: '', SystemPrompt: '', CapabilityFlags: 3,
     IsActive: true, SortOrder: 0, Version: 1,
     MaxHistoryTokens: 80000, SummarizeThreshold: 60000, MaxToolResultChars: 4000, RecentWindowSize: 10, MaxIterations: 40,
+    ExecutionMode: 'Interactive',
 });
 
 const AgentSkillSetManagement: React.FC = () => {
@@ -170,6 +171,23 @@ const AgentSkillSetManagement: React.FC = () => {
                                                     <label key={f.value} className={`flex items-center gap-1 text-xs ${theme.label} cursor-pointer`}>
                                                         <input type="checkbox" checked={(editItem.CapabilityFlags & f.value) !== 0} onChange={() => toggleCap(f.value)} />
                                                         {f.label}
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center py-1">
+                                            <label className={lbl}>Execution Mode</label>
+                                            <div className="flex gap-4">
+                                                {(['Interactive', 'Deterministic'] as const).map(mode => (
+                                                    <label key={mode} className={`flex items-center gap-1.5 text-xs ${theme.label} cursor-pointer`}>
+                                                        <input
+                                                            type="radio"
+                                                            name="executionMode"
+                                                            value={mode}
+                                                            checked={(editItem.ExecutionMode || 'Interactive') === mode}
+                                                            onChange={() => update('ExecutionMode', mode)}
+                                                        />
+                                                        {mode}
                                                     </label>
                                                 ))}
                                             </div>

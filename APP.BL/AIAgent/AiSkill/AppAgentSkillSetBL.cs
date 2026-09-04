@@ -19,14 +19,15 @@ namespace App.BL.AIAgent.AiSkill
         int    SummarizeThreshold,
         int    MaxToolResultChars,
         int    RecentWindowSize,
-        int    MaxIterations);
+        int    MaxIterations,
+        string ExecutionMode = "Interactive");
 
     public static class AppAgentSkillSetBL
     {
         private const string SelectCols = @"
             SkillKey, DisplayName, Description, SystemPrompt,
             CapabilityFlags, IsActive, SortOrder, Version,
-            MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize, MaxIterations";
+            MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize, MaxIterations, ExecutionMode";
 
         public static List<AppAgentSkillSetDto> GetAll()
         {
@@ -79,15 +80,15 @@ IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey=@SkillKey)
         CapabilityFlags=@CapabilityFlags, IsActive=@IsActive, SortOrder=@SortOrder,
         Version=@Version, MaxHistoryTokens=@MaxHistoryTokens, SummarizeThreshold=@SummarizeThreshold,
         MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize,
-        MaxIterations=@MaxIterations
+        MaxIterations=@MaxIterations, ExecutionMode=@ExecutionMode
     WHERE SkillKey=@SkillKey
 ELSE
     INSERT INTO dbo.AppAgentSkillSet
         (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,
-         Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations)
+         Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode)
     VALUES
         (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,
-         @Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations)";
+         @Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations,@ExecutionMode)";
 
             fixture.ExecuteNonQueryResult(sql, Params(fixture, dto));
         }
@@ -128,7 +129,8 @@ ELSE
                 SummarizeThreshold: ColInt(row, "SummarizeThreshold"),
                 MaxToolResultChars: ColInt(row, "MaxToolResultChars"),
                 RecentWindowSize:   ColInt(row, "RecentWindowSize"),
-                MaxIterations:      ColIntSafe(row, "MaxIterations", 40));
+                MaxIterations:      ColIntSafe(row, "MaxIterations", 40),
+                ExecutionMode:      ColStrSafe(row, "ExecutionMode", "Interactive"));
         }
 
         private static List<DbParameter> Params(DatabaseSchemaMrg.DatabaseFixture f, AppAgentSkillSetDto d)
@@ -147,7 +149,8 @@ ELSE
                 P(f, "@SummarizeThreshold",  d.SummarizeThreshold),
                 P(f, "@MaxToolResultChars",  d.MaxToolResultChars),
                 P(f, "@RecentWindowSize",    d.RecentWindowSize),
-                P(f, "@MaxIterations",       d.MaxIterations > 0 ? d.MaxIterations : 40)
+                P(f, "@MaxIterations",       d.MaxIterations > 0 ? d.MaxIterations : 40),
+                P(f, "@ExecutionMode",       string.IsNullOrWhiteSpace(d.ExecutionMode) ? "Interactive" : d.ExecutionMode)
             };
         }
 
@@ -168,10 +171,16 @@ ELSE
         private static string ColStr(DataRow row, string col) => row[col] as string ?? "";
         private static int    ColInt(DataRow row, string col)  => row[col] == DBNull.Value ? 0 : Convert.ToInt32(row[col]);
         private static bool   ColBool(DataRow row, string col) => row[col] != DBNull.Value && Convert.ToBoolean(row[col]);
-        // Safe read for columns that may not exist yet in older DBs (before V011 migration)
+        // Safe reads for columns that may not exist yet in older DBs
         private static int    ColIntSafe(DataRow row, string col, int defaultVal)
         {
             try { return row.Table.Columns.Contains(col) && row[col] != DBNull.Value ? Convert.ToInt32(row[col]) : defaultVal; }
+            catch { return defaultVal; }
+        }
+
+        private static string ColStrSafe(DataRow row, string col, string defaultVal)
+        {
+            try { return row.Table.Columns.Contains(col) && row[col] != DBNull.Value ? row[col].ToString() : defaultVal; }
             catch { return defaultVal; }
         }
     }
