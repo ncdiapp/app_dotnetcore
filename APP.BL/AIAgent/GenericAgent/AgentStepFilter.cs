@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using APP.Components.EntityDto;
 using Microsoft.SemanticKernel;
@@ -8,6 +9,8 @@ namespace App.BL.AIAgent.GenericAgent
 {
     internal sealed class AgentStepFilter : IFunctionInvocationFilter
     {
+        private static readonly NLog.Logger Log = NLog.LogManager.GetCurrentClassLogger();
+
         private readonly GenericAgentCallbacks _callbacks;
 
         public AgentStepFilter(GenericAgentCallbacks callbacks)
@@ -17,6 +20,8 @@ namespace App.BL.AIAgent.GenericAgent
 
         public async Task OnFunctionInvocationAsync(FunctionInvocationContext ctx, Func<FunctionInvocationContext, Task> next)
         {
+            Log.Info($"[Agent] → {ctx.Function.Name}");
+
             await Fire(_callbacks?.OnStep, new AgentStepEvent
             {
                 Type        = "tool_call",
@@ -26,6 +31,7 @@ namespace App.BL.AIAgent.GenericAgent
                 Details     = Truncate(SafeSerialize(ctx.Arguments), 400)
             });
 
+            var sw = Stopwatch.StartNew();
             bool ok = true;
             try
             {
@@ -38,12 +44,16 @@ namespace App.BL.AIAgent.GenericAgent
             }
             finally
             {
+                sw.Stop();
+                var status = ok ? "done" : "FAILED";
+                Log.Info($"[Agent] ← {ctx.Function.Name} {status} in {sw.ElapsedMilliseconds}ms");
+
                 var resultText = ok ? TryGetResult(ctx) : null;
                 await Fire(_callbacks?.OnStep, new AgentStepEvent
                 {
                     Type        = "tool_result",
                     ToolName    = ctx.Function.Name,
-                    Description = ok ? ctx.Function.Name + " — done" : ctx.Function.Name + " failed",
+                    Description = ok ? $"{ctx.Function.Name} — done ({sw.ElapsedMilliseconds}ms)" : ctx.Function.Name + " failed",
                     IsSuccess   = ok,
                     Details     = Truncate(resultText, 600)
                 });

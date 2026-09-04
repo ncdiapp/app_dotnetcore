@@ -56,6 +56,8 @@ namespace App.BL.AIAgent.GenericAgent
             CancellationToken     ct)
         {
             var log = NLog.LogManager.GetCurrentClassLogger();
+            var runSw = System.Diagnostics.Stopwatch.StartNew();
+            log.Info($"[Agent] START skill={skillKey}");
             try
             {
                 var dsId = identity.HasValue ? identity.Value.DataSourceId : 0;
@@ -151,6 +153,8 @@ namespace App.BL.AIAgent.GenericAgent
                         }
                     }
 
+                    runSw.Stop();
+                    log.Info($"[Agent] DONE skill={skillKey} total={runSw.ElapsedMilliseconds}ms");
                     await Safe(callbacks?.OnDone, fullResponse.ToString()).ConfigureAwait(false);
                 }
                 finally
