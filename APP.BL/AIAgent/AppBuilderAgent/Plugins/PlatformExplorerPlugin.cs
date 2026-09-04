@@ -16,6 +16,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             _dataSourceId = dataSourceId;
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("explore_platform",
             "Get a combined overview of existing application packages, transactions (data models), " +
             "entity data sources, and database tables. " +
@@ -28,25 +29,14 @@ namespace App.BL.AppBuilderAgent.Plugins
                     .Select(a => new { a.Id, a.Name })
                     .ToList();
 
-                var transactions = AppTransactionBL.RetrieveAllAppTransactionDto(false)
-                    .Select(t => new { t.Id, Name = t.TransactionName, t.SaasApplicationId })
-                    .ToList();
-
-                var entities = AppEntityInfoBL.RetrieveAllAppEntityInfoDto()
-                    .Select(e => new
-                    {
-                        e.Id,
-                        e.EntityCode,
-                        EntityType        = e.EntityType == 4 ? "SimpleList" : e.EntityType == 1 ? "DatabaseTable" : $"Type{e.EntityType}",
-                        e.TableName,
-                        e.SaasApplicationId
-                    })
-                    .ToList();
+                // Counts only — full lists inflate context; use list_applications or search_platform for details.
+                int transactionCount = AppTransactionBL.RetrieveAllAppTransactionDto(false).Count;
+                int entityCount      = AppEntityInfoBL.RetrieveAllAppEntityInfoDto().Count;
 
                 var tables = AppMetaDataBL.GetSaasDataSourceTableAndViewList(_dataSourceId, null, null)
                     .OrderBy(t => t.SchemaOwner).ThenBy(t => t.Name)
                     .Select(t => new { t.Name, t.SchemaOwner })
-                    .Take(200)
+                    .Take(100)
                     .ToList();
 
                 // Return compact (no indentation) — detailed search is available via search_platform().
@@ -54,17 +44,17 @@ namespace App.BL.AppBuilderAgent.Plugins
                 {
                     ExistingApplications   = applications,
                     ApplicationCount       = applications.Count,
-                    ExistingTransactions   = transactions,
-                    TransactionCount       = transactions.Count,
-                    ExistingEntitySources  = entities,
-                    EntitySourceCount      = entities.Count,
+                    TransactionCount       = transactionCount,
+                    EntitySourceCount      = entityCount,
                     ExistingDatabaseTables = tables,
-                    TableCount             = tables.Count
+                    TableCount             = tables.Count,
+                    Hint = "Use list_applications for full transaction/entity details, search_platform to find a specific item."
                 }, Formatting.None);
             }
             catch (Exception ex) { return JsonConvert.SerializeObject(new { Error = ex.Message }); }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("search_platform",
             "Search existing platform items by keyword: applications, transactions, entity data sources, " +
             "and database tables whose name contains the query string (case-insensitive). " +
@@ -118,6 +108,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             catch (Exception ex) { return JsonConvert.SerializeObject(new { Error = ex.Message }); }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("list_applications",
             "Return the full child tree of every application package: " +
             "transactions (with field count and table name) and search screens. " +
@@ -184,6 +175,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             catch (Exception ex) { return JsonConvert.SerializeObject(new { Error = ex.Message }); }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("get_database_tables",
             "List all tables and views in the target database.")]
         public string GetDatabaseTables()
@@ -199,6 +191,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             catch (Exception ex) { return JsonConvert.SerializeObject(new { Error = ex.Message }); }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("get_existing_transactions",
             "List all configured transaction units (data models / screens) in the application.")]
         public string GetExistingTransactions()
@@ -213,6 +206,7 @@ namespace App.BL.AppBuilderAgent.Plugins
             catch (Exception ex) { return JsonConvert.SerializeObject(new { Error = ex.Message }); }
         }
 
+        // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("get_transaction_details",
             "Get the full configuration of a transaction, including all units, fields, and search views.")]
         public string GetTransactionDetails(
