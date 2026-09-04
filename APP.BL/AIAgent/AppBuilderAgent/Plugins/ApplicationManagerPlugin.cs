@@ -333,6 +333,29 @@ namespace App.BL.AppBuilderAgent.Plugins
             }
         }
 
+        private static string ValidateSaasApplicationId(int saasApplicationId)
+        {
+            if (saasApplicationId <= 0)
+                return JsonConvert.SerializeObject(new
+                {
+                    IsSuccess = false,
+                    Error = "saasApplicationId is required. Call create_app_package first and pass the returned SaasApplicationId."
+                });
+
+            var pkg = AppSaasUserApplicationPackageBL.RetrieveSelectedApplicationPackages()
+                .FirstOrDefault(a => a.Id != null && (int)a.Id == saasApplicationId
+                                     && a.AppCreatedByCompanyId.HasValue);
+            if (pkg == null)
+                return JsonConvert.SerializeObject(new
+                {
+                    IsSuccess = false,
+                    Error = $"saasApplicationId={saasApplicationId} is not a valid user-created application package. " +
+                            "Call create_app_package to create one and use the returned SaasApplicationId."
+                });
+
+            return null;
+        }
+
         [AgentTool("add_search_to_menu",
             "Step 6 — Add an existing search (or saved search) to the application's navigation menu. " +
             "Always pass saasApplicationId so the item appears under the correct app package in the sidebar. " +
@@ -349,11 +372,11 @@ namespace App.BL.AppBuilderAgent.Plugins
         {
             try
             {
+                var validErr = ValidateSaasApplicationId(saasApplicationId);
+                if (validErr != null) return validErr;
+
                 OperationCallResult<object> result;
-                if (saasApplicationId > 0)
-                    result = AppTreeListMenuBL.AddSearchToApplicationMenu(searchId, saasApplicationId, menuName, isSavedSearch);
-                else
-                    result = AppTreeListMenuBL.AddSearchToMainMenu(searchId, menuName, isSavedSearch);
+                result = AppTreeListMenuBL.AddSearchToApplicationMenu(searchId, saasApplicationId, menuName, isSavedSearch);
 
                 bool success = result?.ValidationResult?.HasErrors == false;
                 var messages = result?.ValidationResult?.Items?
