@@ -79,6 +79,12 @@ export interface AppAgentPromptHistoryDto {
     SavedBy?:     string;
 }
 
+export interface GenerateAgentResult {
+    SystemPrompt:                string;
+    RecommendedLibraryKeys:      string[];
+    RecommendedBuiltInToolNames: string[];
+}
+
 interface OperationResult<T> {
     Object:           T;
     ValidationResult: { Items: Array<{ Message: string }>; IsValid: boolean };
@@ -259,6 +265,16 @@ class AgentSkillSetService {
     async GetPromptHistory(skillKey: string): Promise<OperationResult<AppAgentPromptHistoryDto[]>> {
         const res = await fetch(`${BASE}/GetPromptHistory?skillKey=${encodeURIComponent(skillKey)}`, { headers: getHeaders() });
         if (!res.ok) throw new Error(`GetPromptHistory failed (${res.status})`);
+        return res.json();
+    }
+
+    // ── AI-Assisted Agent Design Generation ──────────────────────────────
+
+    async GenerateAgentDesign(description: string): Promise<OperationResult<GenerateAgentResult>> {
+        const res = await fetch(`${BASE}/GenerateAgentDesign`, {
+            method: 'POST', headers: getHeaders(), body: JSON.stringify({ Description: description }),
+        });
+        if (!res.ok) throw new Error(`GenerateAgentDesign failed (${res.status})`);
         return res.json();
     }
 }

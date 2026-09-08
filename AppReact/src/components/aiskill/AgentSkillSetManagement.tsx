@@ -9,6 +9,7 @@ import { useTheme } from '../../redux/hooks/useTheme';
 import {
     agentSkillSetSvc,
     AppAgentSkillSetDto, AppAgentToolDomainDto, AppAgentToolLibraryDto, AppAgentPromptHistoryDto,
+    GenerateAgentResult, LibraryToolPreviewDto,
 } from '../../webapi/agentSkillSetSvc';
 import AgentToolRegisterTab from './AgentToolRegisterTab';
 import AgentMcpServerTab from './AgentMcpServerTab';
@@ -70,6 +71,15 @@ const AgentSkillSetManagement: React.FC = () => {
     // Prompt history
     const [promptHistory, setPromptHistory] = useState<AppAgentPromptHistoryDto[]>([]);
     const [showHistory, setShowHistory] = useState(false);
+
+    // AI Generate
+    const [showAiGenerate, setShowAiGenerate]         = useState(false);
+    const [aiDescription, setAiDescription]           = useState('');
+    const [aiGenerating, setAiGenerating]             = useState(false);
+    const [aiResult, setAiResult]                     = useState<GenerateAgentResult | null>(null);
+    const [aiAcceptedLibs, setAiAcceptedLibs]         = useState<Set<string>>(new Set());
+    const [aiAcceptedBuiltIns, setAiAcceptedBuiltIns] = useState<Set<string>>(new Set());
+    const [allBuiltInTools, setAllBuiltInTools]       = useState<LibraryToolPreviewDto[]>([]);
 
     // Library subscription state
     const [allDomains, setAllDomains] = useState<AppAgentToolDomainDto[]>([]);
@@ -186,6 +196,7 @@ const AgentSkillSetManagement: React.FC = () => {
         agentSkillSetSvc.GetAllLibraries().then(r => setAllLibraries(r.Object ?? [])).catch(() => {});
         agentSkillSetSvc.GetAllDomains().then(r => setAllDomains(r.Object ?? [])).catch(() => {});
         agentSkillSetSvc.GetTemplates().then(r => setTemplates(r.Object ?? [])).catch(() => {});
+        agentSkillSetSvc.GetAvailableBuiltInTools().then(r => setAllBuiltInTools(r.Object ?? [])).catch(() => {});
     }, []);
 
     const onGridSelectionChanged = (s: { control?: { selection?: { row?: number }; rows?: { dataItem: AppAgentSkillSetDto }[] }; selection?: { row?: number }; rows?: { dataItem: AppAgentSkillSetDto }[] }) => {
@@ -316,6 +327,50 @@ const AgentSkillSetManagement: React.FC = () => {
             setShowSaveAsTemplate(false);
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally { dispatch(setIsNotBusy()); }
+    };
+
+    const handleAiGenerate = async () => {
+        if (!aiDescription.trim()) return;
+        setAiGenerating(true);
+        try {
+            const res = await agentSkillSetSvc.GenerateAgentDesign(aiDescription.trim());
+            if (res.IsSuccessful && res.Object) {
+                setAiResult(res.Object);
+                setAiAcceptedLibs(new Set(
+                    (res.Object.RecommendedLibraryKeys ?? []).filter(k => allLibraries.some(l => l.LibraryKey === k))
+                ));
+                setAiAcceptedBuiltIns(new Set(
+                    (res.Object.RecommendedBuiltInToolNames ?? []).filter(n => allBuiltInTools.some(t => t.ToolName === n))
+                ));
+            } else {
+                setError(res.ValidationResult?.Items?.[0]?.Message ?? 'Generation failed');
+            }
+        } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
+        finally { setAiGenerating(false); }
+    };
+
+    const handleApplyAiResult = async () => {
+        if (!aiResult) return;
+        update('SystemPrompt', aiResult.SystemPrompt);
+        if (aiAcceptedLibs.size > 0) {
+            setSubscribedKeys(prev => {
+                const next = new Set(prev);
+                aiAcceptedLibs.forEach(k => next.add(k));
+                return next;
+            });
+            setSubsChanged(true);
+        }
+        if (aiAcceptedBuiltIns.size > 0 && editItem.SkillKey.trim()) {
+            const newTools = allBuiltInTools
+                .filter(t => aiAcceptedBuiltIns.has(t.ToolName))
+                .map(t => ({
+                    Id: 0, SkillKey: editItem.SkillKey, ToolName: t.ToolName,
+                    Description: t.ToolDescription, ToolType: 'BuiltIn',
+                    ToolConfig: t.ToolConfig ?? '', IsActive: true, SortOrder: 0,
+                }));
+            await Promise.all(newTools.map(t => agentSkillSetSvc.UpsertTool(t).catch(() => {})));
+        }
+        setShowAiGenerate(false);
     };
 
     const tabCls = (tab: Tab) =>
@@ -711,6 +766,14 @@ const AgentSkillSetManagement: React.FC = () => {
                                                     <i className="fa-solid fa-clock-rotate-left" />
                                                     History{promptHistory.length > 0 && <span className="ml-0.5 opacity-60">({promptHistory.length})</span>}
                                                 </button>
+                                                <button
+                                                    type="button"
+                                                    className={`ml-1 text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1`}
+                                                    onClick={(e) => { e.stopPropagation(); setAiDescription(''); setAiResult(null); setShowAiGenerate(true); }}
+                                                    title="Generate system prompt and tool recommendations with AI"
+                                                >
+                                                    <i className="fa-solid fa-wand-magic-sparkles" />AI
+                                                </button>
                                                 {showHistory && promptHistory.length > 0 && (
                                                     <div
                                                         className={`absolute top-full left-0 z-40 mt-1 rounded shadow-lg border w-72 ${theme.mainContentSection} ${borderCls}`}
@@ -818,6 +881,138 @@ const AgentSkillSetManagement: React.FC = () => {
                                 <i className="fa-solid fa-star mr-1" />Save as Template
                             </button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* AI Generate modal */}
+            {showAiGenerate && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50"
+                     onClick={e => { if (e.target === e.currentTarget) setShowAiGenerate(false); }}>
+                    <div className={`flex flex-col rounded shadow-2xl overflow-hidden ${theme.mainContentSection}`} style={{ width: 520 }}>
+                        <div className={`flex items-center px-4 py-2 border-b border-gray-200`}>
+                            <i className="fa-solid fa-wand-magic-sparkles mr-2 text-purple-500" />
+                            <span className={`text-sm font-semibold ${theme.title} flex-auto`}>
+                                {aiResult ? 'Review AI-Generated Design' : 'AI Generate Agent Design'}
+                            </span>
+                            <button className={btn} onClick={() => setShowAiGenerate(false)}><i className="fa-solid fa-xmark" /></button>
+                        </div>
+
+                        {aiResult === null ? (
+                            /* Phase 1: description input */
+                            <>
+                                <div className="px-4 py-3 flex flex-col gap-2">
+                                    <p className={`text-xs opacity-60 ${theme.label}`}>
+                                        Describe what this agent should do. The AI will generate the system prompt
+                                        and recommend relevant tool libraries and built-in tools.
+                                    </p>
+                                    <textarea
+                                        className={`w-full px-2 py-1.5 text-xs border ${theme.inputBox} focus:outline-none resize-none font-mono`}
+                                        rows={5}
+                                        value={aiDescription}
+                                        onChange={e => setAiDescription(e.target.value)}
+                                        placeholder={'Example: "An agent that helps warehouse managers query stock levels and outstanding POs. Read-only, formats results as tables."'}
+                                        autoFocus
+                                    />
+                                </div>
+                                <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-gray-200">
+                                    <button className={btn} onClick={() => setShowAiGenerate(false)}>Cancel</button>
+                                    <button className={btn} onClick={handleAiGenerate} disabled={aiGenerating || !aiDescription.trim()}>
+                                        {aiGenerating
+                                            ? <><i className="fa-solid fa-spinner fa-spin mr-1" />Generating…</>
+                                            : <><i className="fa-solid fa-wand-magic-sparkles mr-1" />Generate</>
+                                        }
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            /* Phase 2: review result */
+                            <>
+                                <div className="px-4 py-3 flex flex-col gap-3 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+                                    <div className="flex flex-col gap-1">
+                                        <div className={`text-xs font-semibold ${theme.title}`}>Generated System Prompt:</div>
+                                        <textarea
+                                            className={`w-full px-2 py-1.5 text-xs border ${theme.inputBox} font-mono resize-none opacity-80`}
+                                            rows={8}
+                                            readOnly
+                                            value={aiResult.SystemPrompt}
+                                        />
+                                    </div>
+
+                                    <div className="flex flex-col gap-1">
+                                        <div className={`text-xs font-semibold ${theme.title}`}>
+                                            <i className="fa-solid fa-book mr-1" />Recommended Tool Libraries:
+                                        </div>
+                                        {aiResult.RecommendedLibraryKeys.length === 0 ? (
+                                            <div className={`text-xs opacity-40 ${theme.label} px-1`}>No matching libraries found in the catalog</div>
+                                        ) : aiResult.RecommendedLibraryKeys.map(key => {
+                                            const lib = allLibraries.find(l => l.LibraryKey === key);
+                                            return (
+                                                <label key={key} className={`flex items-center gap-2 px-2 py-0.5 text-xs cursor-pointer ${theme.label}`}>
+                                                    <input type="checkbox"
+                                                        checked={aiAcceptedLibs.has(key)}
+                                                        onChange={e => setAiAcceptedLibs(prev => {
+                                                            const n = new Set(prev);
+                                                            e.target.checked ? n.add(key) : n.delete(key);
+                                                            return n;
+                                                        })} />
+                                                    <span className="font-mono font-semibold">{key}</span>
+                                                    {lib && <span className="opacity-60">— {lib.LibraryName}</span>}
+                                                    {!lib && <span className="opacity-40 italic">(not in catalog)</span>}
+                                                </label>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="flex flex-col gap-1">
+                                        <div className={`text-xs font-semibold ${theme.title}`}>
+                                            <i className="fa-solid fa-screwdriver-wrench mr-1" />Recommended Built-in Tools:
+                                        </div>
+                                        {aiResult.RecommendedBuiltInToolNames.length === 0 ? (
+                                            <div className={`text-xs opacity-40 ${theme.label} px-1`}>No matching built-in tools found</div>
+                                        ) : aiResult.RecommendedBuiltInToolNames.map(name => {
+                                            const tool = allBuiltInTools.find(t => t.ToolName === name);
+                                            const disabled = !editItem.SkillKey.trim();
+                                            return (
+                                                <label key={name} className={`flex items-center gap-2 px-2 py-0.5 text-xs cursor-pointer ${theme.label} ${disabled ? 'opacity-40' : ''}`}
+                                                       title={disabled ? 'Save the agent first to register built-in tools' : undefined}>
+                                                    <input type="checkbox"
+                                                        checked={aiAcceptedBuiltIns.has(name)}
+                                                        disabled={disabled}
+                                                        onChange={e => setAiAcceptedBuiltIns(prev => {
+                                                            const n = new Set(prev);
+                                                            e.target.checked ? n.add(name) : n.delete(name);
+                                                            return n;
+                                                        })} />
+                                                    <span className="font-mono font-semibold">{name}</span>
+                                                    {tool && <span className="opacity-60">— {tool.ToolDescription}</span>}
+                                                    {!tool && <span className="opacity-40 italic">(not in catalog)</span>}
+                                                </label>
+                                            );
+                                        })}
+                                        {!editItem.SkillKey.trim() && (
+                                            <div className={`text-xs opacity-40 ${theme.label} px-1 mt-0.5`}>
+                                                <i className="fa-solid fa-circle-info mr-1" />Save the agent first — built-in tools will register on next "Use this"
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className={`text-xs opacity-40 ${theme.label} border-t border-gray-100 pt-2`}>
+                                        <i className="fa-solid fa-server mr-1" />MCP Servers need manual configuration — use the MCP Servers tab after saving.
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-200">
+                                    <button className={btn} onClick={() => setAiResult(null)}>
+                                        <i className="fa-solid fa-arrow-left mr-1" />Regenerate
+                                    </button>
+                                    <div className="flex-auto" />
+                                    <button className={btn} onClick={() => setShowAiGenerate(false)}>Cancel</button>
+                                    <button className={btn} onClick={handleApplyAiResult}>
+                                        <i className="fa-solid fa-check mr-1" />Use this
+                                    </button>
+                                </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}
