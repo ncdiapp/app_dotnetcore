@@ -30,7 +30,7 @@ VALUES (
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentToolRegister WHERE SkillKey = 'platform-builtins' AND ToolName = 'get_database_schema')
 INSERT INTO dbo.AppAgentToolRegister
-    (SkillKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+    (SkillKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive)
 VALUES (
     'platform-builtins',
     'get_database_schema',
@@ -38,7 +38,7 @@ VALUES (
     '{"properties":{},"required":[]}',
     'BuiltIn',
     '{"TypeName":"App.BL.AIAgent.GenericAgent.Plugins.SchemaContextPlugin","MethodName":"GetDatabaseSchema"}',
-    1, 10
+    1
 );
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ VALUES (
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentToolRegister WHERE SkillKey = 'platform-builtins' AND ToolName = 'load_memory_context')
 INSERT INTO dbo.AppAgentToolRegister
-    (SkillKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+    (SkillKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive)
 VALUES (
     'platform-builtins',
     'load_memory_context',
@@ -58,5 +58,5 @@ VALUES (
     '{"properties":{},"required":[]}',
     'BuiltIn',
     '{"TypeName":"App.BL.AIAgent.GenericAgent.Plugins.MemoryContextPlugin","MethodName":"LoadMemoryContext"}',
-    1, 11
+    1
 );
