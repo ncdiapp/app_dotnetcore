@@ -1,8 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using App.BL.AppMgr.AiSkill;
 using App.BL.AIAgent.GenericAgent;
+using App.BL.DbGenie;
+using App.BL.GenericAgent;
 using APP.Components.EntityDto;
 using HistoryDto   = App.BL.TenantBusiness.AppAgentSkillSetHistoryDto;
 using HistBL       = App.BL.TenantBusiness.AppAgentSkillSetHistoryBL;
@@ -301,6 +306,92 @@ public class AgentSkillSetController : SecureBaseController
         result.Object = HistBL.GetRecent(GetDsId(), skillKey ?? "");
         return result;
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // AI-Assisted Agent Design Generation
+    // ─────────────────────────────────────────────────────────────────────
+
+    [HttpPost]
+    public async Task<OperationCallResult<GenerateAgentResult>> GenerateAgentDesign(
+        [FromBody] GenerateAgentRequest req)
+    {
+        var result = new OperationCallResult<GenerateAgentResult>();
+        if (string.IsNullOrWhiteSpace(req?.Description))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController), "Description_Required", ValidationItemType.Error,
+                "Description is required."));
+            return result;
+        }
+
+        var dsId = GetDsId();
+        var libraries = LibBL.GetAllLibraries(dsId);
+        var builtIns  = LibBL.GetAvailableBuiltInTools(dsId);
+
+        var libCatalog  = string.Join("\n", libraries.Select(l =>
+            $"- {l.LibraryKey} ({l.ToolCategory}/{l.DomainKey}): {l.LibraryName} — {l.Description}"));
+        var toolCatalog = string.Join("\n", builtIns.Select(t =>
+            $"- {t.ToolName}: {t.ToolDescription}"));
+
+        var metaPrompt = $@"You are an expert AI system prompt engineer for AppAI, an enterprise no-code platform.
+Given a domain expert's description of an agent, output a JSON object with exactly three fields.
+
+=== Available Tool Libraries (subscribe via LibraryKey) ===
+{(string.IsNullOrEmpty(libCatalog) ? "(none configured)" : libCatalog)}
+
+=== Available Built-in Tools (register by ToolName) ===
+{(string.IsNullOrEmpty(toolCatalog) ? "(none configured)" : toolCatalog)}
+
+Output ONLY valid JSON — no markdown fences, no extra text:
+{{
+  ""SystemPrompt"": ""..."",
+  ""RecommendedLibraryKeys"": [""lib-key-1""],
+  ""RecommendedBuiltInToolNames"": [""ToolName1""]
+}}
+
+SystemPrompt must use exactly four ## H2 sections:
+## Role — 2-3 sentences: agent name, domain, primary job
+## Workflow — 4-6 numbered steps the agent follows
+## Rules — constraints and guardrails as bullet list
+## Output Format — how the agent structures its responses
+
+RecommendedLibraryKeys: pick 0-3 keys from the Tool Libraries catalog that genuinely match. Never invent keys.
+RecommendedBuiltInToolNames: pick 0-5 tool names from the Built-in Tools catalog the agent clearly needs. Never invent names.
+If nothing matches, return empty arrays.";
+
+        var llmReq = new LLMRequestDto
+        {
+            Provider     = LLMProviderHelper.GetConfiguredProvider(),
+            ApiKey       = LLMProviderHelper.GetConfiguredApiKey(),
+            Model        = AIConfigSettingBL.GetModel(),
+            SystemPrompt = metaPrompt,
+            Prompt       = req.Description,
+            MaxTokens    = 2048,
+        };
+
+        var llmRes = await LLMProviderHelper.CallLLMAsync(llmReq);
+        if (!llmRes.IsSuccess)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController), "LLM_Error", ValidationItemType.Error,
+                llmRes.Error ?? "LLM call failed"));
+            return result;
+        }
+
+        try
+        {
+            var raw = llmRes.Content?.Trim() ?? "";
+            if (raw.StartsWith("```"))
+                raw = Regex.Replace(raw, @"^```[a-z]*\r?\n?|```$", "", RegexOptions.Multiline).Trim();
+            result.Object = System.Text.Json.JsonSerializer.Deserialize<GenerateAgentResult>(
+                raw, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+        }
+        catch
+        {
+            result.Object = new GenerateAgentResult(llmRes.Content ?? "", new List<string>(), new List<string>());
+        }
+        return result;
+    }
 }
 
 public sealed class SetSubscriptionsRequest
@@ -308,3 +399,13 @@ public sealed class SetSubscriptionsRequest
     public string SkillKey { get; set; }
     public List<string> LibraryKeys { get; set; }
 }
+
+public sealed class GenerateAgentRequest
+{
+    public string Description { get; set; }
+}
+
+public sealed record GenerateAgentResult(
+    string       SystemPrompt,
+    List<string> RecommendedLibraryKeys,
+    List<string> RecommendedBuiltInToolNames);
