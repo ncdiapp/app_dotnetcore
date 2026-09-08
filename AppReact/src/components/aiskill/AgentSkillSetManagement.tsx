@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FlexGrid, FlexGridColumn } from '@mescius/wijmo.react.grid';
 import { CollectionView } from '@mescius/wijmo';
 import '@mescius/wijmo.styles/wijmo.css';
@@ -46,6 +46,27 @@ const AgentSkillSetManagement: React.FC = () => {
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [testSkillKey, setTestSkillKey] = useState<string | null>(null);
     const [showToolsModal, setShowToolsModal] = useState(false);
+
+    // Resizable left panel
+    const [leftWidth, setLeftWidth] = useState(220);
+    const dragRef = useRef<{ startX: number; startW: number } | null>(null);
+
+    const onDragStart = (e: React.MouseEvent) => {
+        e.preventDefault();
+        dragRef.current = { startX: e.clientX, startW: leftWidth };
+        const onMove = (ev: MouseEvent) => {
+            if (!dragRef.current) return;
+            const next = Math.max(160, Math.min(420, dragRef.current.startW + ev.clientX - dragRef.current.startX));
+            setLeftWidth(next);
+        };
+        const onUp = () => {
+            dragRef.current = null;
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+        };
+        window.addEventListener('mousemove', onMove);
+        window.addEventListener('mouseup', onUp);
+    };
 
     // Templates
     const [templates, setTemplates] = useState<AppAgentSkillSetDto[]>([]);
@@ -164,8 +185,8 @@ const AgentSkillSetManagement: React.FC = () => {
                 </div>
             )}
             <div className="w-full h-1 flex-auto overflow-hidden">
-                <div className={`w-full h-full flex gap-2 px-2 pb-2 overflow-hidden${activeTab === 'skills' ? '' : ' hidden'}`}>
-                        <div className={`w-56 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}>
+                <div className={`w-full h-full flex px-2 pb-2 overflow-hidden${activeTab === 'skills' ? '' : ' hidden'}`}>
+                        <div className={`flex flex-col overflow-hidden rounded shrink-0 ${theme.mainContentSection}`} style={{ width: leftWidth }}>
                             <div className="flex items-center px-2 py-1 gap-1 border-b border-gray-200">
                                 {/* +New with template dropdown */}
                                 <div className="relative">
@@ -206,6 +227,13 @@ const AgentSkillSetManagement: React.FC = () => {
                                 </FlexGrid>
                             </div>
                         </div>
+                        {/* Drag handle */}
+                        <div
+                            className="w-1.5 shrink-0 cursor-col-resize hover:bg-blue-400 active:bg-blue-500 transition-colors mx-0.5 rounded"
+                            style={{ background: 'transparent' }}
+                            onMouseDown={onDragStart}
+                            title="Drag to resize"
+                        />
                         <div className={`w-1 flex-auto flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}
                              onClick={() => { setShowTemplateMenu(false); setShowHistory(false); }}>
                             {testSkillKey ? (
