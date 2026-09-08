@@ -71,6 +71,9 @@ const AgentSkillSetManagement: React.FC = () => {
     // Templates
     const [templates, setTemplates] = useState<AppAgentSkillSetDto[]>([]);
     const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+    const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
+    const [tmplName, setTmplName] = useState('');
+    const [tmplKey,  setTmplKey]  = useState('');
 
     // Prompt history
     const [promptHistory, setPromptHistory] = useState<AppAgentPromptHistoryDto[]>([]);
@@ -161,6 +164,32 @@ const AgentSkillSetManagement: React.FC = () => {
             await agentSkillSetSvc.DeleteSkillSet(selected.SkillKey);
             setSelected(null); setEditItem(emptySkillSet()); setIsEditing(false); setIsDirty(false);
             setConfirmDelete(false); await load();
+        } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
+        finally { dispatch(setIsNotBusy()); }
+    };
+
+    const openSaveAsTemplate = () => {
+        const slug = editItem.DisplayName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        setTmplName(editItem.DisplayName);
+        setTmplKey(slug);
+        setShowSaveAsTemplate(true);
+    };
+
+    const handleSaveAsTemplate = async () => {
+        const key = tmplKey.trim();
+        if (!key) { setError('Template key is required.'); return; }
+        const fullKey = key.startsWith('tmpl-') ? key : `tmpl-${key}`;
+        dispatch(setIsBusy()); setError(null);
+        try {
+            await agentSkillSetSvc.UpsertSkillSet({
+                ...editItem,
+                SkillKey:    fullKey,
+                DisplayName: tmplName.trim() || editItem.DisplayName,
+                IsActive:    false,
+            });
+            const res = await agentSkillSetSvc.GetTemplates();
+            setTemplates(res.Object ?? []);
+            setShowSaveAsTemplate(false);
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally { dispatch(setIsNotBusy()); }
     };
@@ -406,6 +435,11 @@ const AgentSkillSetManagement: React.FC = () => {
                                         <button className={btn} onClick={handleSave} disabled={!isDirty}><i className="fa-solid fa-floppy-disk mr-1" />Save</button>
                                         <button className={btn} onClick={() => { if (selected) { setEditItem({ ...selected }); setIsDirty(false); } else { setIsEditing(false); } }} disabled={!isDirty}>Cancel</button>
                                         {isDirty && <span className="text-xs text-orange-500 ml-2">Unsaved changes</span>}
+                                        {selected && !selected.SkillKey.startsWith('tmpl-') && (
+                                            <button className={`${btn} ml-auto`} onClick={openSaveAsTemplate} title="Clone this agent as a reusable template">
+                                                <i className="fa-solid fa-star mr-1" />Save as Template
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             ) : (
@@ -435,6 +469,45 @@ const AgentSkillSetManagement: React.FC = () => {
                         </div>
                         <div className="w-full h-1 flex-auto overflow-hidden">
                             <AgentToolRegisterTab selectedSkillKey={editItem.SkillKey} theme={theme} />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Save as Template modal */}
+            {showSaveAsTemplate && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50"
+                     onClick={e => { if (e.target === e.currentTarget) setShowSaveAsTemplate(false); }}>
+                    <div className={`flex flex-col rounded shadow-2xl overflow-hidden ${theme.mainContentSection}`} style={{ width: 420 }}>
+                        <div className={`flex items-center px-4 py-2 border-b border-gray-200`}>
+                            <i className="fa-solid fa-star mr-2 text-yellow-500" />
+                            <span className={`text-sm font-semibold ${theme.title} flex-auto`}>Save as Template</span>
+                            <button className={btn} onClick={() => setShowSaveAsTemplate(false)}><i className="fa-solid fa-xmark" /></button>
+                        </div>
+                        <div className="px-4 py-3 flex flex-col gap-3">
+                            <p className={`text-xs opacity-60 ${theme.label}`}>
+                                Creates a reusable template from this agent. It will appear in the "+ New ▾" picker.
+                                The original agent is unchanged.
+                            </p>
+                            <div className="flex flex-col gap-1">
+                                <label className={`text-xs ${theme.label}`}>Template Name</label>
+                                <input className={inp} value={tmplName} onChange={e => setTmplName(e.target.value)} />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <label className={`text-xs ${theme.label}`}>Template Key</label>
+                                <div className="flex items-center gap-1">
+                                    <span className={`text-xs opacity-50 ${theme.label} shrink-0`}>tmpl-</span>
+                                    <input className={`${inp}`} value={tmplKey}
+                                           onChange={e => setTmplKey(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} />
+                                </div>
+                                <span className={`text-xs opacity-40 ${theme.label}`}>Final key: tmpl-{tmplKey || '…'}</span>
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-gray-200">
+                            <button className={btn} onClick={() => setShowSaveAsTemplate(false)}>Cancel</button>
+                            <button className={btn} onClick={handleSaveAsTemplate} disabled={!tmplKey.trim()}>
+                                <i className="fa-solid fa-star mr-1" />Save as Template
+                            </button>
                         </div>
                     </div>
                 </div>
