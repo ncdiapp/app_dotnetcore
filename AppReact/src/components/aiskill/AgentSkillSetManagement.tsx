@@ -23,13 +23,6 @@ const SPLIT_LEFT_DEFAULT_PX = 400;
 const SPLIT_LEFT_MIN_PX = 300;
 const SPLIT_RIGHT_MIN_PX = 280;
 
-const CAP_FLAGS = [
-    { label: 'StreamTokens',    value: 1 },
-    { label: 'MultiTurn',       value: 2 },
-    { label: 'PlanGate',        value: 4 },
-    { label: 'SchemaGate',      value: 8 },
-    { label: 'ExternalBackend', value: 64 },
-];
 
 const emptySkillSet = (): AppAgentSkillSetDto => ({
     SkillKey: '', DisplayName: '', Description: '', SystemPrompt: '', CapabilityFlags: 3,
@@ -220,12 +213,7 @@ const AgentSkillSetManagement: React.FC = () => {
         setIsDirty(true);
     };
 
-    const toggleCap = (flag: number) => {
-        setEditItem(prev => ({ ...prev, CapabilityFlags: prev.CapabilityFlags ^ flag }));
-        setIsDirty(true);
-    };
-
-    const handleSave = async () => {
+const handleSave = async () => {
         if (!editItem.SkillKey.trim()) { setError('Agent Code is required.'); return; }
         const key = editItem.SkillKey.trim();
         dispatch(setIsBusy()); setError(null);
@@ -627,18 +615,7 @@ const AgentSkillSetManagement: React.FC = () => {
 
                                                 <div className="mb-4">
                                                     <div className={sectionTitle}>Behavior</div>
-                                                    <div className="flex items-start py-1">
-                                                        <label className={lbl}>Capabilities</label>
-                                                        <div className="flex flex-wrap gap-x-4 gap-y-1">
-                                                            {CAP_FLAGS.map(f => (
-                                                                <label key={f.value} className={`flex items-center gap-1 text-xs ${theme.label} cursor-pointer`}>
-                                                                    <input type="checkbox" checked={(editItem.CapabilityFlags & f.value) !== 0} onChange={() => toggleCap(f.value)} />
-                                                                    {f.label}
-                                                                </label>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center py-1">
+<div className="flex items-center py-1">
                                                         <label className={lbl}>Execution Mode</label>
                                                         <div className="flex gap-4">
                                                             {(['Interactive', 'Deterministic'] as const).map(mode => (
