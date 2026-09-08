@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using App.BL.AppMgr.AiSkill;
 using App.BL.AIAgent.GenericAgent;
 using APP.Components.EntityDto;
+using HistoryDto   = App.BL.TenantBusiness.AppAgentSkillSetHistoryDto;
+using HistBL       = App.BL.TenantBusiness.AppAgentSkillSetHistoryBL;
 using ToolBL       = App.BL.TenantBusiness.AppAgentToolRegisterBL;
 using McpBL        = App.BL.TenantBusiness.AppAgentMcpServerBL;
 using LibBL        = App.BL.TenantBusiness.AppAgentToolLibraryBL;
@@ -273,6 +275,30 @@ public class AgentSkillSetController : SecureBaseController
     {
         var result = new OperationCallResult<List<ToolPreview>>();
         result.Object = LibBL.GetAvailableBuiltInTools(GetDsId());
+        return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Agent Templates
+    // ─────────────────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public OperationCallResult<List<AppAgentSkillSetDto>> GetTemplates()
+    {
+        var result = new OperationCallResult<List<AppAgentSkillSetDto>>();
+        result.Object = AppAgentSkillSetBL.GetTemplates(GetDsId());
+        return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Prompt Version History
+    // ─────────────────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public OperationCallResult<List<HistoryDto>> GetPromptHistory(string skillKey)
+    {
+        var result = new OperationCallResult<List<HistoryDto>>();
+        result.Object = HistBL.GetRecent(GetDsId(), skillKey ?? "");
         return result;
     }
 }

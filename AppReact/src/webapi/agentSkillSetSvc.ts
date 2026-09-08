@@ -69,6 +69,14 @@ export interface LibraryToolPreviewDto {
     ToolConfig?:     string;
 }
 
+export interface AppAgentPromptHistoryDto {
+    HistoryId:    number;
+    SkillKey:     string;
+    SystemPrompt: string;
+    SavedAt:      string;
+    SavedBy?:     string;
+}
+
 interface OperationResult<T> {
     Object:           T;
     ValidationResult: { Items: Array<{ Message: string }>; IsValid: boolean };
@@ -233,6 +241,22 @@ class AgentSkillSetService {
     async GetAvailableBuiltInTools(): Promise<OperationResult<LibraryToolPreviewDto[]>> {
         const res = await fetch(`${BASE}/GetAvailableBuiltInTools`, { headers: getHeaders() });
         if (!res.ok) throw new Error(`GetAvailableBuiltInTools failed (${res.status})`);
+        return res.json();
+    }
+
+    // ── Agent Templates ───────────────────────────────────────────────────
+
+    async GetTemplates(): Promise<OperationResult<AppAgentSkillSetDto[]>> {
+        const res = await fetch(`${BASE}/GetTemplates`, { headers: getHeaders() });
+        if (!res.ok) throw new Error(`GetTemplates failed (${res.status})`);
+        return res.json();
+    }
+
+    // ── Prompt Version History ────────────────────────────────────────────
+
+    async GetPromptHistory(skillKey: string): Promise<OperationResult<AppAgentPromptHistoryDto[]>> {
+        const res = await fetch(`${BASE}/GetPromptHistory?skillKey=${encodeURIComponent(skillKey)}`, { headers: getHeaders() });
+        if (!res.ok) throw new Error(`GetPromptHistory failed (${res.status})`);
         return res.json();
     }
 }

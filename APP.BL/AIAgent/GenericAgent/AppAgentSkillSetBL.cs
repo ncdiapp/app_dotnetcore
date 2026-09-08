@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using App.BL;
+using App.BL.TenantBusiness;
 using APP.Components.EntityDto;
 using DatabaseSchemaMrg;
 
@@ -28,12 +29,43 @@ namespace App.BL.AIAgent.GenericAgent
             return list;
         }
 
+        public static List<AppAgentSkillSetDto> GetTemplates(int dataSourceId)
+        {
+            var list = new List<AppAgentSkillSetDto>();
+            try
+            {
+                var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
+                if (fixture == null) return list;
+                var dt = fixture.RetriveDataTable(
+                    "SELECT SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations FROM dbo.AppAgentSkillSet WHERE SkillKey LIKE 'tmpl-%' AND IsActive = 0 ORDER BY SortOrder,SkillKey",
+                    new List<DbParameter>());
+                if (dt == null) return list;
+                foreach (DataRow row in dt.Rows)
+                    list.Add(MapRow(row));
+            }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine("GetTemplates error: " + ex); }
+            return list;
+        }
+
         public static bool UpsertSkillSet(int dataSourceId, AppAgentSkillSetDto dto)
         {
             try
             {
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null) return false;
+
+                // Snapshot current SystemPrompt into history before overwriting (update path only)
+                var existing = fixture.RetriveDataTable(
+                    "SELECT SystemPrompt FROM dbo.AppAgentSkillSet WHERE SkillKey = @SkillKey",
+                    new List<DbParameter> { BuildParam(fixture, "@SkillKey", dto.SkillKey) });
+                if (existing != null && existing.Rows.Count > 0)
+                {
+                    var currentPrompt = existing.Rows[0]["SystemPrompt"] as string ?? "";
+                    var newPrompt     = dto.SystemPrompt ?? "";
+                    if (!string.Equals(currentPrompt, newPrompt, StringComparison.Ordinal))
+                        AppAgentSkillSetHistoryBL.Insert(dataSourceId, dto.SkillKey, currentPrompt);
+                }
+
                 const string sql = @"
 IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = @SkillKey)
     UPDATE dbo.AppAgentSkillSet SET
@@ -99,6 +131,13 @@ ELSE
             RecentWindowSize   = row["RecentWindowSize"] == DBNull.Value ? 10 : Convert.ToInt32(row["RecentWindowSize"]),
             MaxIterations      = row.Table.Columns.Contains("MaxIterations") && row["MaxIterations"] != DBNull.Value ? Convert.ToInt32(row["MaxIterations"]) : 40,
         };
+
+        private static DbParameter BuildParam(DatabaseFixture fixture, string name, object value)
+        {
+            var p = fixture.CreateParameter(name);
+            p.Value = value ?? DBNull.Value;
+            return p;
+        }
 
         private static List<DbParameter> BuildParams(DatabaseFixture fixture, AppAgentSkillSetDto dto)
         {
