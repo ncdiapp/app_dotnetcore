@@ -28,8 +28,6 @@ const CAP_FLAGS = [
     { label: 'MultiTurn',       value: 2 },
     { label: 'PlanGate',        value: 4 },
     { label: 'SchemaGate',      value: 8 },
-    { label: 'InjectMemory',    value: 16 },
-    { label: 'InjectSchema',    value: 32 },
     { label: 'ExternalBackend', value: 64 },
 ];
 

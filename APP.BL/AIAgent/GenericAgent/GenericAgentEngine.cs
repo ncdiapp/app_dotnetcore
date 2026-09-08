@@ -72,20 +72,7 @@ namespace App.BL.AIAgent.GenericAgent
                     return;
                 }
 
-                // InjectSchema (CapabilityFlags bit 32): prepend live DB schema to system prompt
-                const int InjectSchemaFlag = 32;
                 var systemPrompt = skillSet.SystemPrompt ?? "";
-                if ((skillSet.CapabilityFlags & InjectSchemaFlag) != 0 && dsId > 0)
-                {
-                    try
-                    {
-                        var tables = await AppDbGenieBL.GetSchemaContextAsync(dsId).ConfigureAwait(false);
-                        var schemaText = AppDbGenieBL.FormatSchemaContext(tables);
-                        if (!string.IsNullOrWhiteSpace(schemaText))
-                            systemPrompt += "\n\n## DATABASE SCHEMA\nThe following tables exist in the connected database. Use this to find relevant tables for any query:\n\n" + schemaText;
-                    }
-                    catch (Exception ex) { log.Warn(ex, $"InjectSchema failed for skill={skillKey}"); }
-                }
 
                 var userId    = identity.HasValue && identity.Value.UserId != null                      ? Convert.ToInt32(identity.Value.UserId)                      : 0;
                 var companyId = identity.HasValue && identity.Value.CurrentWorkingCompanyId != null     ? Convert.ToInt32(identity.Value.CurrentWorkingCompanyId)      : 0;
