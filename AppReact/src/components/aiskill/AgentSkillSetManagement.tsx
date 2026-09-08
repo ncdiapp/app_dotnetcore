@@ -195,7 +195,7 @@ const AgentSkillSetManagement: React.FC = () => {
                                             <i className="fa-solid fa-plus mr-1" />New
                                         </button>
                                         {templates.length > 0 && (
-                                            <button className={`${btn} rounded-l-none px-1.5`} onClick={() => setShowTemplateMenu(o => !o)} title="New from template">
+                                            <button className={`${btn} rounded-l-none px-1.5`} onClick={(e) => { e.stopPropagation(); setShowTemplateMenu(o => !o); }} title="New from template">
                                                 <i className="fa-solid fa-chevron-down text-xs" />
                                             </button>
                                         )}
@@ -268,7 +268,7 @@ const AgentSkillSetManagement: React.FC = () => {
                                                 <div className="relative">
                                                     <button
                                                         className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1 ${promptHistory.length === 0 ? 'opacity-40' : ''}`}
-                                                        onClick={() => promptHistory.length > 0 && setShowHistory(o => !o)}
+                                                        onClick={(e) => { e.stopPropagation(); promptHistory.length > 0 && setShowHistory(o => !o); }}
                                                         title={promptHistory.length > 0
                                                             ? `${promptHistory.length} saved version${promptHistory.length > 1 ? 's' : ''} — click to restore`
                                                             : 'History is saved each time you update the system prompt'}
