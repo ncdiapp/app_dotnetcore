@@ -773,7 +773,7 @@ Be concise and build the query directly without unnecessary back-and-forth.";
         /// <summary>
         /// Formats schema context for the prompt
         /// </summary>
-        private static string FormatSchemaContext(List<DbGenieTableMetadataDto> tables)
+        public static string FormatSchemaContext(List<DbGenieTableMetadataDto> tables)
         {
             if (tables == null || tables.Count == 0)
                 return "No schema context available.";

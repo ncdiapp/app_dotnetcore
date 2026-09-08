@@ -5,12 +5,15 @@ import '@mescius/wijmo.styles/wijmo.css';
 import { useDispatch } from 'react-redux';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
 import { useTheme } from '../../redux/hooks/useTheme';
-import { agentSkillSetSvc, AppAgentSkillSetDto } from '../../webapi/agentSkillSetSvc';
+import {
+    agentSkillSetSvc, AppAgentSkillSetDto, AppAgentToolLibraryDto,
+} from '../../webapi/agentSkillSetSvc';
 import AgentToolRegisterTab from './AgentToolRegisterTab';
 import AgentMcpServerTab from './AgentMcpServerTab';
+import AgentLibraryTab from './AgentLibraryTab';
 import GenericAgentChat from './GenericAgentChat';
 
-type Tab = 'skills' | 'tools' | 'mcp';
+type Tab = 'skills' | 'tools' | 'mcp' | 'libraries';
 
 const CAP_FLAGS = [
     { label: 'StreamTokens',    value: 1 },
@@ -42,6 +45,12 @@ const AgentSkillSetManagement: React.FC = () => {
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [testSkillKey, setTestSkillKey] = useState<string | null>(null);
 
+    // Library subscription state
+    const [allLibraries, setAllLibraries] = useState<AppAgentToolLibraryDto[]>([]);
+    const [subscribedKeys, setSubscribedKeys] = useState<Set<string>>(new Set());
+    const [libSearch, setLibSearch] = useState('');
+    const [subsChanged, setSubsChanged] = useState(false);
+
     const load = async () => {
         dispatch(setIsBusy());
         try {
@@ -51,7 +60,18 @@ const AgentSkillSetManagement: React.FC = () => {
         finally { dispatch(setIsNotBusy()); }
     };
 
-    useEffect(() => { load(); }, []);
+    const loadSubscriptions = async (skillKey: string) => {
+        try {
+            const subRes = await agentSkillSetSvc.GetSubscriptions(skillKey);
+            setSubscribedKeys(new Set((subRes.Object ?? []).map(s => s.LibraryKey)));
+            setSubsChanged(false);
+        } catch { /* non-critical */ }
+    };
+
+    useEffect(() => {
+        load();
+        agentSkillSetSvc.GetAllLibraries().then(r => setAllLibraries(r.Object ?? [])).catch(() => {});
+    }, []);
 
     const onGridSelectionChanged = (s: { control?: { selection?: { row?: number }; rows?: { dataItem: AppAgentSkillSetDto }[] }; selection?: { row?: number }; rows?: { dataItem: AppAgentSkillSetDto }[] }) => {
         const flex = s?.control ?? s;
@@ -60,6 +80,8 @@ const AgentSkillSetManagement: React.FC = () => {
         const item = flex.rows?.[row]?.dataItem;
         if (!item) return;
         setSelected(item); setEditItem({ ...item }); setIsEditing(true); setIsDirty(false);
+        setSubsChanged(false);
+        loadSubscriptions(item.SkillKey);
     };
 
     const update = (field: keyof AppAgentSkillSetDto, value: unknown) => {
@@ -77,6 +99,10 @@ const AgentSkillSetManagement: React.FC = () => {
         dispatch(setIsBusy()); setError(null);
         try {
             await agentSkillSetSvc.UpsertSkillSet(editItem);
+            if (subsChanged) {
+                await agentSkillSetSvc.SetSubscriptions(editItem.SkillKey, Array.from(subscribedKeys));
+                setSubsChanged(false);
+            }
             setIsDirty(false);
             await load();
             setSelected(editItem);
@@ -108,6 +134,7 @@ const AgentSkillSetManagement: React.FC = () => {
                 <button className={tabCls('skills')} onClick={() => setActiveTab('skills')}>Agent Setting</button>
                 <button className={tabCls('tools')} onClick={() => setActiveTab('tools')}>Tools</button>
                 <button className={tabCls('mcp')} onClick={() => setActiveTab('mcp')}>MCP Servers</button>
+                <button className={tabCls('libraries')} onClick={() => setActiveTab('libraries')}>Tool Libraries</button>
             </div>
             {error && (
                 <div className="px-3 py-1 text-xs text-red-600 bg-red-50 border border-red-200 mx-2 mb-1 rounded">
@@ -203,6 +230,47 @@ const AgentSkillSetManagement: React.FC = () => {
                                             <label className={lbl}>Active</label>
                                             <input type="checkbox" checked={editItem.IsActive} onChange={e => update('IsActive', e.target.checked)} />
                                         </div>
+
+                                        {/* Tool Library Subscriptions */}
+                                        {allLibraries.length > 0 && (
+                                            <div className={`border rounded p-2 flex flex-col gap-1 ${theme.mainContentSection}`}>
+                                                <div className={`text-xs font-semibold ${theme.title} mb-1`}>
+                                                    <i className="fa-solid fa-book mr-1" />Tool Libraries
+                                                    <span className={`ml-2 font-normal ${theme.label}`}>({subscribedKeys.size} subscribed)</span>
+                                                </div>
+                                                <input
+                                                    className={`${inp} mb-1`}
+                                                    placeholder="Search libraries..."
+                                                    value={libSearch}
+                                                    onChange={e => setLibSearch(e.target.value)}
+                                                />
+                                                <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5">
+                                                    {allLibraries
+                                                        .filter(l => !libSearch || l.LibraryKey.toLowerCase().includes(libSearch.toLowerCase()) || l.LibraryName.toLowerCase().includes(libSearch.toLowerCase()))
+                                                        .map(l => (
+                                                            <label key={l.LibraryKey} className={`flex items-center gap-2 px-1 py-0.5 text-xs cursor-pointer hover:opacity-80 ${theme.label}`}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={subscribedKeys.has(l.LibraryKey)}
+                                                                    onChange={e => {
+                                                                        setSubscribedKeys(prev => {
+                                                                            const next = new Set(prev);
+                                                                            if (e.target.checked) next.add(l.LibraryKey);
+                                                                            else next.delete(l.LibraryKey);
+                                                                            return next;
+                                                                        });
+                                                                        setSubsChanged(true);
+                                                                        setIsDirty(true);
+                                                                    }}
+                                                                />
+                                                                <span className="font-mono font-semibold">{l.LibraryKey}</span>
+                                                                <span className={`${theme.label}`}>{l.LibraryName && `— ${l.LibraryName}`}</span>
+                                                                {l.ToolCount > 0 && <span className="ml-auto opacity-60">({l.ToolCount} tools)</span>}
+                                                            </label>
+                                                        ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-200">
                                         <button className={btn} onClick={handleSave} disabled={!isDirty}><i className="fa-solid fa-floppy-disk mr-1" />Save</button>
@@ -217,8 +285,9 @@ const AgentSkillSetManagement: React.FC = () => {
                             )}
                         </div>
                     </div>
-                {activeTab === 'tools' && <AgentToolRegisterTab selectedSkillKey={selected?.SkillKey ?? null} theme={theme} />}
-                {activeTab === 'mcp'   && <AgentMcpServerTab theme={theme} />}
+                {activeTab === 'tools'      && <AgentToolRegisterTab selectedSkillKey={selected?.SkillKey ?? null} theme={theme} />}
+                {activeTab === 'mcp'       && <AgentMcpServerTab theme={theme} />}
+                {activeTab === 'libraries' && <AgentLibraryTab />}
             </div>
             {confirmDelete && (
                 <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">

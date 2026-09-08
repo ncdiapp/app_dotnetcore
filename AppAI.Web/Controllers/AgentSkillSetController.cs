@@ -4,10 +4,15 @@ using Microsoft.AspNetCore.Mvc;
 using App.BL.AppMgr.AiSkill;
 using App.BL.AIAgent.GenericAgent;
 using APP.Components.EntityDto;
-using ToolBL  = App.BL.TenantBusiness.AppAgentToolRegisterBL;
-using McpBL   = App.BL.TenantBusiness.AppAgentMcpServerBL;
-using ToolDto = App.BL.TenantBusiness.AppAgentToolRegisterDto;
-using McpDto  = App.BL.TenantBusiness.AppAgentMcpServerDto;
+using ToolBL       = App.BL.TenantBusiness.AppAgentToolRegisterBL;
+using McpBL        = App.BL.TenantBusiness.AppAgentMcpServerBL;
+using LibBL        = App.BL.TenantBusiness.AppAgentToolLibraryBL;
+using ToolDto      = App.BL.TenantBusiness.AppAgentToolRegisterDto;
+using McpDto       = App.BL.TenantBusiness.AppAgentMcpServerDto;
+using DomainDto    = App.BL.TenantBusiness.AppAgentToolDomainDto;
+using LibraryDto   = App.BL.TenantBusiness.AppAgentToolLibraryDto;
+using SubDto       = App.BL.TenantBusiness.AppAgentLibrarySubscriptionDto;
+using ToolPreview  = App.BL.TenantBusiness.LibraryToolPreviewDto;
 using APP.Framework.Communication;
 using APP.Framework.Validation;
 using AppAI.Web.Controllers.Base;
@@ -140,4 +145,140 @@ public class AgentSkillSetController : SecureBaseController
         result.Object = McpBL.Delete(mcpServerId);
         return result;
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Tool Library — Domains
+    // ─────────────────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public OperationCallResult<List<DomainDto>> GetAllDomains()
+    {
+        var result = new OperationCallResult<List<DomainDto>>();
+        result.Object = LibBL.GetAllDomains(GetDsId());
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<bool> UpsertDomain([FromBody] DomainDto dto)
+    {
+        var result = new OperationCallResult<bool>();
+        if (string.IsNullOrWhiteSpace(dto?.DomainKey))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController), "DomainKey_Required", ValidationItemType.Error, "DomainKey is required."));
+            return result;
+        }
+        result.Object = LibBL.UpsertDomain(GetDsId(), dto);
+        return result;
+    }
+
+    [HttpDelete]
+    public OperationCallResult<bool> DeleteDomain(string domainKey)
+    {
+        var result = new OperationCallResult<bool>();
+        result.Object = LibBL.DeleteDomain(GetDsId(), domainKey ?? "");
+        return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Tool Library — Libraries
+    // ─────────────────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public OperationCallResult<List<LibraryDto>> GetAllLibraries()
+    {
+        var result = new OperationCallResult<List<LibraryDto>>();
+        result.Object = LibBL.GetAllLibraries(GetDsId());
+        return result;
+    }
+
+    [HttpGet]
+    public OperationCallResult<List<LibraryDto>> GetLibrariesByDomain(string domainKey)
+    {
+        var result = new OperationCallResult<List<LibraryDto>>();
+        result.Object = LibBL.GetLibrariesByDomain(GetDsId(), domainKey ?? "");
+        return result;
+    }
+
+    [HttpGet]
+    public OperationCallResult<List<LibraryDto>> SearchLibraries(string query)
+    {
+        var result = new OperationCallResult<List<LibraryDto>>();
+        result.Object = LibBL.SearchLibraries(GetDsId(), query ?? "");
+        return result;
+    }
+
+    [HttpGet]
+    public OperationCallResult<List<ToolPreview>> GetLibraryToolPreview(string libraryKey)
+    {
+        var result = new OperationCallResult<List<ToolPreview>>();
+        result.Object = LibBL.GetLibraryToolPreview(GetDsId(), libraryKey ?? "");
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<bool> UpsertLibrary([FromBody] LibraryDto dto)
+    {
+        var result = new OperationCallResult<bool>();
+        if (string.IsNullOrWhiteSpace(dto?.LibraryKey))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController), "LibraryKey_Required", ValidationItemType.Error, "LibraryKey is required."));
+            return result;
+        }
+        result.Object = LibBL.UpsertLibrary(GetDsId(), dto);
+        return result;
+    }
+
+    [HttpDelete]
+    public OperationCallResult<bool> DeleteLibrary(string libraryKey)
+    {
+        var result = new OperationCallResult<bool>();
+        result.Object = LibBL.DeleteLibrary(GetDsId(), libraryKey ?? "");
+        return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Tool Library — Subscriptions
+    // ─────────────────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public OperationCallResult<List<SubDto>> GetSubscriptions(string skillKey)
+    {
+        var result = new OperationCallResult<List<SubDto>>();
+        result.Object = LibBL.GetSubscriptions(GetDsId(), skillKey ?? "");
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<bool> SetSubscriptions([FromBody] SetSubscriptionsRequest req)
+    {
+        var result = new OperationCallResult<bool>();
+        if (string.IsNullOrWhiteSpace(req?.SkillKey))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController), "SkillKey_Required", ValidationItemType.Error, "SkillKey is required."));
+            return result;
+        }
+        result.Object = LibBL.SetSubscriptions(GetDsId(), req.SkillKey, req.LibraryKeys ?? new List<string>());
+        return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // BuiltIn tool browser
+    // ─────────────────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public OperationCallResult<List<ToolPreview>> GetAvailableBuiltInTools()
+    {
+        var result = new OperationCallResult<List<ToolPreview>>();
+        result.Object = LibBL.GetAvailableBuiltInTools(GetDsId());
+        return result;
+    }
+}
+
+public sealed class SetSubscriptionsRequest
+{
+    public string SkillKey { get; set; }
+    public List<string> LibraryKeys { get; set; }
 }

@@ -47,6 +47,50 @@ namespace App.BL.TenantBusiness
             return MapAll(dt);
         }
 
+        // Returns agent-owned tools UNION subscribed library tools.
+        // Agent-owned rows are ordered first; dedup keeps first occurrence (agent wins on name collision).
+        public static List<AppAgentToolRegisterDto> GetBySkillKeyWithLibraries(string skillKey)
+        {
+            if (string.IsNullOrWhiteSpace(skillKey)) return new List<AppAgentToolRegisterDto>();
+            var fixture = GetFixture();
+            if (fixture == null) return new List<AppAgentToolRegisterDto>();
+            return GetBySkillKeyWithLibraries(skillKey, fixture);
+        }
+
+        public static List<AppAgentToolRegisterDto> GetBySkillKeyWithLibraries(string skillKey, int dataSourceId)
+        {
+            if (string.IsNullOrWhiteSpace(skillKey)) return new List<AppAgentToolRegisterDto>();
+            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
+            if (fixture == null) return new List<AppAgentToolRegisterDto>();
+            return GetBySkillKeyWithLibraries(skillKey, fixture);
+        }
+
+        private static List<AppAgentToolRegisterDto> GetBySkillKeyWithLibraries(string skillKey, DatabaseSchemaMrg.DatabaseFixture fixture)
+        {
+            var dt = fixture.RetriveDataTable(@"
+SELECT t.ToolRegisterId, t.SkillKey, t.ToolName, t.ToolDescription, t.ParameterSchemaJson,
+       t.ToolType, t.ToolConfig, t.IsActive, 0 AS IsLibraryTool
+FROM dbo.AppAgentToolRegister t
+WHERE t.SkillKey=@SkillKey AND t.IsActive=1
+UNION ALL
+SELECT t.ToolRegisterId, t.SkillKey, t.ToolName, t.ToolDescription, t.ParameterSchemaJson,
+       t.ToolType, t.ToolConfig, t.IsActive, 1 AS IsLibraryTool
+FROM dbo.AppAgentToolRegister t
+INNER JOIN dbo.AppAgentLibrarySubscription s ON t.SkillKey=s.LibraryKey
+WHERE s.SkillKey=@SkillKey AND t.IsActive=1
+ORDER BY IsLibraryTool, ToolRegisterId",
+                new List<DbParameter> { P(fixture, "@SkillKey", skillKey.Trim()) });
+
+            // Agent-owned tools come first (IsLibraryTool=0); dedup by ToolName — agent wins on collision.
+            var rows = MapAll(dt);
+            var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var result = new List<AppAgentToolRegisterDto>();
+            foreach (var r in rows)
+                if (seen.Add(r.ToolName))
+                    result.Add(r);
+            return result;
+        }
+
         // Controller-facing aliases (accept explicit dsId, bypass ServerContext)
         public static List<AppAgentToolRegisterDto> GetToolsBySkillKey(int dataSourceId, string skillKey)
             => GetBySkillKey(skillKey, dataSourceId);

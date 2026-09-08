@@ -52,6 +52,39 @@ namespace App.BL.TenantBusiness
             return MapAll(dt);
         }
 
+        // Returns agent-owned MCP servers UNION subscribed library MCP servers.
+        public static List<AppAgentMcpServerDto> GetBySkillKeyWithLibraries(string skillKey)
+        {
+            if (string.IsNullOrWhiteSpace(skillKey)) return new List<AppAgentMcpServerDto>();
+            var fixture = GetFixture();
+            if (fixture == null) return new List<AppAgentMcpServerDto>();
+            return GetBySkillKeyWithLibraries(skillKey, fixture);
+        }
+
+        public static List<AppAgentMcpServerDto> GetBySkillKeyWithLibraries(string skillKey, int dataSourceId)
+        {
+            if (string.IsNullOrWhiteSpace(skillKey)) return new List<AppAgentMcpServerDto>();
+            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
+            if (fixture == null) return new List<AppAgentMcpServerDto>();
+            return GetBySkillKeyWithLibraries(skillKey, fixture);
+        }
+
+        private static List<AppAgentMcpServerDto> GetBySkillKeyWithLibraries(string skillKey, DatabaseSchemaMrg.DatabaseFixture fixture)
+        {
+            var dt = fixture.RetriveDataTable(@"
+SELECT m.McpServerId,m.SkillKey,m.ServerName,m.ServerType,m.ServerUrl,m.Command,m.IsActive
+FROM dbo.AppAgentMcpServer m
+WHERE m.SkillKey=@SkillKey AND m.IsActive=1
+UNION ALL
+SELECT m.McpServerId,m.SkillKey,m.ServerName,m.ServerType,m.ServerUrl,m.Command,m.IsActive
+FROM dbo.AppAgentMcpServer m
+INNER JOIN dbo.AppAgentLibrarySubscription s ON m.SkillKey=s.LibraryKey
+WHERE s.SkillKey=@SkillKey AND m.IsActive=1
+ORDER BY McpServerId",
+                new List<DbParameter> { P(fixture, "@SkillKey", skillKey.Trim()) });
+            return MapAll(dt);
+        }
+
         public static AppAgentMcpServerDto GetById(int mcpServerId)
         {
             var fixture = GetFixture();
