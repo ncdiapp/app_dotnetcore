@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using App.BL.AIAgent.AiSkill;
+using App.BL.DbGenie;
 using App.BL.GenericAgent;
 using App.BL.TenantBusiness;
 using APP.Components.Dto;
@@ -71,6 +72,21 @@ namespace App.BL.AIAgent.GenericAgent
                     return;
                 }
 
+                // InjectSchema (CapabilityFlags bit 32): prepend live DB schema to system prompt
+                const int InjectSchemaFlag = 32;
+                var systemPrompt = skillSet.SystemPrompt ?? "";
+                if ((skillSet.CapabilityFlags & InjectSchemaFlag) != 0 && dsId > 0)
+                {
+                    try
+                    {
+                        var tables = await AppDbGenieBL.GetSchemaContextAsync(dsId).ConfigureAwait(false);
+                        var schemaText = AppDbGenieBL.FormatSchemaContext(tables);
+                        if (!string.IsNullOrWhiteSpace(schemaText))
+                            systemPrompt += "\n\n## DATABASE SCHEMA\nThe following tables exist in the connected database. Use this to find relevant tables for any query:\n\n" + schemaText;
+                    }
+                    catch (Exception ex) { log.Warn(ex, $"InjectSchema failed for skill={skillKey}"); }
+                }
+
                 var userId    = identity.HasValue && identity.Value.UserId != null                      ? Convert.ToInt32(identity.Value.UserId)                      : 0;
                 var companyId = identity.HasValue && identity.Value.CurrentWorkingCompanyId != null     ? Convert.ToInt32(identity.Value.CurrentWorkingCompanyId)      : 0;
                 var context   = new AgentToolContext
@@ -95,15 +111,15 @@ namespace App.BL.AIAgent.GenericAgent
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks));
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations));
 
-                // Wrap AppAgentToolRegister rows as KernelFunctions
-                var toolRows = (dsId > 0 ? TbToolBL.GetBySkillKey(skillKey, dsId) : TbToolBL.GetBySkillKey(skillKey)) ?? new List<TbToolDto>();
+                // Wrap AppAgentToolRegister rows as KernelFunctions (agent-owned + subscribed library tools)
+                var toolRows = (dsId > 0 ? TbToolBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbToolBL.GetBySkillKeyWithLibraries(skillKey)) ?? new List<TbToolDto>();
                 if (toolRows.Count > 0)
                     kernel.Plugins.AddFromFunctions("tools",
                         toolRows.Select(r => WrapRegisteredTool(r, context, skillSet.MaxToolResultChars, instancePool)).ToArray());
 
-                // Connect MCP servers
+                // Connect MCP servers (agent-owned + subscribed library MCP servers)
                 var mcpClients = new List<McpClient>();
-                var mcpServers = (dsId > 0 ? TbMcpBL.GetBySkillKey(skillKey, dsId) : TbMcpBL.GetBySkillKey(skillKey)) ?? new List<TbMcpDto>();
+                var mcpServers = (dsId > 0 ? TbMcpBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbMcpBL.GetBySkillKeyWithLibraries(skillKey)) ?? new List<TbMcpDto>();
                 foreach (var srv in mcpServers)
                 {
                     if (!string.Equals(srv.ServerType, "streamable-http", StringComparison.OrdinalIgnoreCase)) continue;
@@ -132,7 +148,7 @@ namespace App.BL.AIAgent.GenericAgent
                     {
                         Kernel       = kernel,
                         Name         = "Assistant",
-                        Instructions = skillSet.SystemPrompt ?? "",
+                        Instructions = systemPrompt,
                         Arguments    = new KernelArguments(execSettings)
                     };
 

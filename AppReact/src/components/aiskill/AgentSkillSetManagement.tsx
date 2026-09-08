@@ -6,13 +6,17 @@ import '@mescius/wijmo.styles/wijmo.css';
 import { useDispatch } from 'react-redux';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
 import { useTheme } from '../../redux/hooks/useTheme';
-import { agentSkillSetSvc, AppAgentSkillSetDto } from '../../webapi/agentSkillSetSvc';
+import {
+    agentSkillSetSvc,
+    AppAgentSkillSetDto, AppAgentToolDomainDto, AppAgentToolLibraryDto, AppAgentPromptHistoryDto,
+} from '../../webapi/agentSkillSetSvc';
 import AgentToolRegisterTab from './AgentToolRegisterTab';
 import AgentMcpServerTab from './AgentMcpServerTab';
 import AgentUiChatHost from './AgentUiChatHost';
 import { AGENT_UI_OPTIONS, EmAppAgentUi, resolveAgentUi } from './agentUiTypes';
+import AgentLibraryTab from './AgentLibraryTab';
 
-type Tab = 'skills' | 'tools' | 'mcp';
+type Tab = 'skills' | 'mcp' | 'libraries';
 
 const SPLIT_LEFT_DEFAULT_PX = 400;
 const SPLIT_LEFT_MIN_PX = 300;
@@ -54,6 +58,25 @@ const AgentSkillSetManagement: React.FC = () => {
     const splitDragRef = useRef(false);
     const flexGridRef = useRef<any>(null);
     const suppressGridSelectionSyncRef = useRef(false);
+    const [showToolsModal, setShowToolsModal] = useState(false);
+
+    // Templates
+    const [templates, setTemplates] = useState<AppAgentSkillSetDto[]>([]);
+    const [showTemplateMenu, setShowTemplateMenu] = useState(false);
+    const [showSaveAsTemplate, setShowSaveAsTemplate] = useState(false);
+    const [tmplName, setTmplName] = useState('');
+    const [tmplKey,  setTmplKey]  = useState('');
+
+    // Prompt history
+    const [promptHistory, setPromptHistory] = useState<AppAgentPromptHistoryDto[]>([]);
+    const [showHistory, setShowHistory] = useState(false);
+
+    // Library subscription state
+    const [allDomains, setAllDomains] = useState<AppAgentToolDomainDto[]>([]);
+    const [allLibraries, setAllLibraries] = useState<AppAgentToolLibraryDto[]>([]);
+    const [subscribedKeys, setSubscribedKeys] = useState<Set<string>>(new Set());
+    const [libSearch, setLibSearch] = useState('');
+    const [subsChanged, setSubsChanged] = useState(false);
 
     const selectGridRowBySkillKey = useCallback((skillKey: string | null | undefined) => {
         const flex = flexGridRef.current?.control ?? flexGridRef.current;
@@ -141,7 +164,29 @@ const AgentSkillSetManagement: React.FC = () => {
         finally { dispatch(setIsNotBusy()); }
     };
 
-    useEffect(() => { load(); }, []);
+    const loadHistory = async (skillKey: string) => {
+        setPromptHistory([]);
+        setShowHistory(false);
+        try {
+            const res = await agentSkillSetSvc.GetPromptHistory(skillKey);
+            setPromptHistory(res.Object ?? []);
+        } catch { /* non-critical */ }
+    };
+
+    const loadSubscriptions = async (skillKey: string) => {
+        try {
+            const subRes = await agentSkillSetSvc.GetSubscriptions(skillKey);
+            setSubscribedKeys(new Set((subRes.Object ?? []).map(s => s.LibraryKey)));
+            setSubsChanged(false);
+        } catch { /* non-critical */ }
+    };
+
+    useEffect(() => {
+        load();
+        agentSkillSetSvc.GetAllLibraries().then(r => setAllLibraries(r.Object ?? [])).catch(() => {});
+        agentSkillSetSvc.GetAllDomains().then(r => setAllDomains(r.Object ?? [])).catch(() => {});
+        agentSkillSetSvc.GetTemplates().then(r => setTemplates(r.Object ?? [])).catch(() => {});
+    }, []);
 
     const onGridSelectionChanged = (s: { control?: { selection?: { row?: number }; rows?: { dataItem: AppAgentSkillSetDto }[] }; selection?: { row?: number }; rows?: { dataItem: AppAgentSkillSetDto }[] }) => {
         if (suppressGridSelectionSyncRef.current) return;
@@ -155,6 +200,10 @@ const AgentSkillSetManagement: React.FC = () => {
         setIsEditing(true);
         setIsDirty(false);
         setTestSkillKey(null);
+        setSubsChanged(false);
+        setShowHistory(false);
+        loadSubscriptions(item.SkillKey);
+        loadHistory(item.SkillKey);
     };
 
     const update = (field: keyof AppAgentSkillSetDto, value: unknown) => {
@@ -173,6 +222,10 @@ const AgentSkillSetManagement: React.FC = () => {
         dispatch(setIsBusy()); setError(null);
         try {
             await agentSkillSetSvc.UpsertSkillSet(editItem);
+            if (subsChanged) {
+                await agentSkillSetSvc.SetSubscriptions(editItem.SkillKey, Array.from(subscribedKeys));
+                setSubsChanged(false);
+            }
             setIsDirty(false);
             const res = await agentSkillSetSvc.GetAllSkillSets();
             const list = res.Object ?? [];
@@ -180,6 +233,7 @@ const AgentSkillSetManagement: React.FC = () => {
             if (fresh) {
                 setSelected(fresh);
                 setEditItem({ ...fresh, AgentUi: resolveAgentUi(fresh.AgentUi) });
+                loadHistory(key);
             } else {
                 setSelected({ ...editItem, SkillKey: key });
             }
@@ -209,6 +263,8 @@ const AgentSkillSetManagement: React.FC = () => {
             const keepKey = selected?.SkillKey || editItem.SkillKey || null;
             if (keepKey) {
                 applyListAndKeepSelection(list, keepKey, true);
+                loadHistory(keepKey);
+                loadSubscriptions(keepKey);
             } else {
                 skillsCV.sourceCollection = list;
                 if (isEditing) {
@@ -229,6 +285,37 @@ const AgentSkillSetManagement: React.FC = () => {
         setIsEditing(true);
         setIsDirty(false);
         setTestSkillKey(null);
+        setShowTemplateMenu(false);
+        setSubscribedKeys(new Set());
+        setSubsChanged(false);
+        setPromptHistory([]);
+        setShowHistory(false);
+    };
+
+    const openSaveAsTemplate = () => {
+        const slug = editItem.DisplayName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+        setTmplName(editItem.DisplayName);
+        setTmplKey(slug);
+        setShowSaveAsTemplate(true);
+    };
+
+    const handleSaveAsTemplate = async () => {
+        const key = tmplKey.trim();
+        if (!key) { setError('Template key is required.'); return; }
+        const fullKey = key.startsWith('tmpl-') ? key : `tmpl-${key}`;
+        dispatch(setIsBusy()); setError(null);
+        try {
+            await agentSkillSetSvc.UpsertSkillSet({
+                ...editItem,
+                SkillKey:    fullKey,
+                DisplayName: tmplName.trim() || editItem.DisplayName,
+                IsActive:    false,
+            });
+            const res = await agentSkillSetSvc.GetTemplates();
+            setTemplates(res.Object ?? []);
+            setShowSaveAsTemplate(false);
+        } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
+        finally { dispatch(setIsNotBusy()); }
     };
 
     const tabCls = (tab: Tab) =>
@@ -243,11 +330,11 @@ const AgentSkillSetManagement: React.FC = () => {
 
     return (
         <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
-            <div className={`flex items-center gap-1 px-3 py-2 mb-1 ${theme.mainContentSection}`}>
+            <div className={`flex items-center gap-1 px-3 py-2 mb-1 mx-2 ${theme.mainContentSection}`}>
                 <span className={`text-md font-semibold mr-3 ${theme.title}`}>Agent Management</span>
                 <button type="button" className={tabCls('skills')} onClick={() => setActiveTab('skills')}>Agent Setting</button>
-                <button type="button" className={tabCls('tools')} onClick={() => setActiveTab('tools')}>Tools</button>
                 <button type="button" className={tabCls('mcp')} onClick={() => setActiveTab('mcp')}>MCP Servers</button>
+                <button type="button" className={tabCls('libraries')} onClick={() => setActiveTab('libraries')}>Tool Libraries</button>
             </div>
             {error && (
                 <div className={`px-3 py-1 text-xs mx-2 mb-1 rounded border ${theme.mainContentSection} ${theme.label} ${borderCls}`}>
@@ -265,9 +352,58 @@ const AgentSkillSetManagement: React.FC = () => {
                         style={{ width: leftPanelWidthPx, minWidth: SPLIT_LEFT_MIN_PX }}
                     >
                         <div className={`flex items-center px-2 py-1 gap-1 border-b ${borderCls}`}>
-                            <button type="button" className={btn} onClick={beginNew}>
-                                <i className="fa-solid fa-plus mr-1" />New
-                            </button>
+                            <div className="relative">
+                                <div className="flex">
+                                    <button type="button" className={`${btn} rounded-r-none border-r-0`} onClick={beginNew}>
+                                        <i className="fa-solid fa-plus mr-1" />New
+                                    </button>
+                                    {templates.length > 0 && (
+                                        <button
+                                            type="button"
+                                            className={`${btn} rounded-l-none px-1.5`}
+                                            onClick={(e) => { e.stopPropagation(); setShowTemplateMenu(o => !o); }}
+                                            title="New from template"
+                                        >
+                                            <i className="fa-solid fa-chevron-down text-xs" />
+                                        </button>
+                                    )}
+                                </div>
+                                {showTemplateMenu && (
+                                    <div className={`absolute top-full left-0 z-40 mt-1 rounded shadow-lg border min-w-52 ${theme.mainContentSection} ${borderCls}`}>
+                                        <div className={`px-2 py-1 text-xs font-semibold opacity-50 ${theme.label} border-b ${borderCls}`}>New from template</div>
+                                        {templates.map(tmpl => (
+                                            <button
+                                                type="button"
+                                                key={tmpl.SkillKey}
+                                                className={`w-full text-left px-3 py-1.5 text-xs hover:opacity-80 ${theme.label}`}
+                                                onClick={() => {
+                                                    setEditItem({
+                                                        ...emptySkillSet(),
+                                                        SystemPrompt: tmpl.SystemPrompt,
+                                                        CapabilityFlags: tmpl.CapabilityFlags,
+                                                        MaxHistoryTokens: tmpl.MaxHistoryTokens,
+                                                        MaxToolResultChars: tmpl.MaxToolResultChars,
+                                                        MaxIterations: tmpl.MaxIterations,
+                                                        ExecutionMode: tmpl.ExecutionMode || 'Interactive',
+                                                        AgentUi: resolveAgentUi(tmpl.AgentUi),
+                                                    });
+                                                    setSelected(null);
+                                                    setIsEditing(true);
+                                                    setIsDirty(true);
+                                                    setTestSkillKey(null);
+                                                    setShowTemplateMenu(false);
+                                                    setSubscribedKeys(new Set());
+                                                    setSubsChanged(false);
+                                                    setPromptHistory([]);
+                                                }}
+                                            >
+                                                <div className="font-semibold">{tmpl.DisplayName}</div>
+                                                <div className="opacity-50 truncate">{tmpl.Description}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                             {selected && (
                                 <button type="button" className={btn} onClick={() => setConfirmDelete(true)}>
                                     <i className="fa-solid fa-trash mr-1" />Delete
@@ -316,7 +452,10 @@ const AgentSkillSetManagement: React.FC = () => {
                         className={`shrink-0 w-1.5 mx-1 cursor-col-resize border-x self-stretch min-h-0 ${theme.inputBox} hover:opacity-90 focus:outline-none focus:ring-1 focus:ring-inset`}
                     />
 
-                    <div className={`min-w-0 w-1 flex-auto flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}>
+                    <div
+                        className={`min-w-0 w-1 flex-auto flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}
+                        onClick={() => { setShowTemplateMenu(false); setShowHistory(false); }}
+                    >
                         {testSkillKey ? (
                             <div className="w-full h-full flex flex-col overflow-hidden">
                                 <div className={`flex items-center px-3 py-1 border-b ${borderCls} ${theme.mainContentSection}`}>
@@ -348,6 +487,11 @@ const AgentSkillSetManagement: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-2 shrink-0">
                                         {isDirty && <span className={`text-xs ${theme.label}`}>Unsaved changes</span>}
+                                        {selected && !selected.SkillKey.startsWith('tmpl-') && (
+                                            <button type="button" className={btn} onClick={openSaveAsTemplate} title="Clone this agent as a reusable template">
+                                                <i className="fa-solid fa-star mr-1" />Save as Template
+                                            </button>
+                                        )}
                                         <button
                                             type="button"
                                             className={`${iconBtn} bg-blue-400 text-white hover:bg-blue-500`}
@@ -373,7 +517,6 @@ const AgentSkillSetManagement: React.FC = () => {
                                         generalExpanded ? 'overflow-auto' : 'overflow-hidden'
                                     }`}
                                 >
-                                    {/* General: bordered panel so scope is clear */}
                                     <div className={`shrink-0 mx-3 mt-3 mb-2 rounded-[4px] border overflow-hidden ${borderCls}`}>
                                         <button
                                             type="button"
@@ -396,22 +539,22 @@ const AgentSkillSetManagement: React.FC = () => {
                                                             <label className={lbl}>Agent Code *</label>
                                                             <input className={inp} value={editItem.SkillKey} onChange={e => update('SkillKey', e.target.value)} autoComplete="off" />
                                                         </div>
-                                                    <div className="flex items-center py-1">
-                                                        <label className={lbl}>Display Name</label>
-                                                        <input className={inp} value={editItem.DisplayName} onChange={e => update('DisplayName', e.target.value)} autoComplete="off" />
-                                                    </div>
-                                                    <div className="flex items-center py-1 xl:col-span-2">
-                                                        <label className={lbl}>Agent UI</label>
-                                                        <select
-                                                            className={`h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox} focus:outline-none`}
-                                                            value={resolveAgentUi(editItem.AgentUi)}
-                                                            onChange={e => update('AgentUi', parseInt(e.target.value, 10) || EmAppAgentUi.GenericChat)}
-                                                        >
-                                                            {AGENT_UI_OPTIONS.map(o => (
-                                                                <option key={o.value} value={o.value}>{o.label}</option>
-                                                            ))}
-                                                        </select>
-                                                    </div>
+                                                        <div className="flex items-center py-1">
+                                                            <label className={lbl}>Display Name</label>
+                                                            <input className={inp} value={editItem.DisplayName} onChange={e => update('DisplayName', e.target.value)} autoComplete="off" />
+                                                        </div>
+                                                        <div className="flex items-center py-1 xl:col-span-2">
+                                                            <label className={lbl}>Agent UI</label>
+                                                            <select
+                                                                className={`h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox} focus:outline-none`}
+                                                                value={resolveAgentUi(editItem.AgentUi)}
+                                                                onChange={e => update('AgentUi', parseInt(e.target.value, 10) || EmAppAgentUi.GenericChat)}
+                                                            >
+                                                                {AGENT_UI_OPTIONS.map(o => (
+                                                                    <option key={o.value} value={o.value}>{o.label}</option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
                                                     </div>
                                                     <div className="flex items-center py-1">
                                                         <label className={`text-xs ${theme.label}`}>Description</label>
@@ -461,7 +604,7 @@ const AgentSkillSetManagement: React.FC = () => {
                                                     </div>
                                                 </div>
 
-                                                <div>
+                                                <div className="mb-4">
                                                     <div className={sectionTitle}>Limits</div>
                                                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-1">
                                                         {([['MaxHistoryTokens', 'Max History Tokens'], ['SummarizeThreshold', 'Summarize Threshold'], ['MaxToolResultChars', 'Max Tool Result Chars'], ['RecentWindowSize', 'Recent Window Size'], ['MaxIterations', 'Max Iterations']] as const).map(([field, label]) => (
@@ -477,6 +620,71 @@ const AgentSkillSetManagement: React.FC = () => {
                                                         ))}
                                                     </div>
                                                 </div>
+
+                                                <div className="mb-4">
+                                                    <div className={sectionTitle}>Tools</div>
+                                                    <div className="flex items-center py-1">
+                                                        <label className={lbl}>Private Tools</label>
+                                                        <button
+                                                            type="button"
+                                                            className={`${btn} flex items-center gap-1.5`}
+                                                            disabled={!editItem.SkillKey.trim()}
+                                                            onClick={() => setShowToolsModal(true)}
+                                                            title={editItem.SkillKey.trim() ? undefined : 'Save the agent first to manage its tools'}
+                                                        >
+                                                            <i className="fa-solid fa-screwdriver-wrench" />
+                                                            Manage Agent Tools
+                                                        </button>
+                                                        <span className={`ml-3 text-xs opacity-50 ${theme.label}`}>Tools private to this agent only</span>
+                                                    </div>
+                                                    {allLibraries.length > 0 && (() => {
+                                                        const q = libSearch.toLowerCase();
+                                                        const filtered = allLibraries.filter(l =>
+                                                            !q || l.LibraryKey.toLowerCase().includes(q) || l.LibraryName.toLowerCase().includes(q) || l.DomainKey.toLowerCase().includes(q)
+                                                        );
+                                                        const domainOrder = allDomains.length > 0 ? allDomains : [];
+                                                        const grouped = domainOrder
+                                                            .map(d => ({ domain: d, libs: filtered.filter(l => l.DomainKey === d.DomainKey) }))
+                                                            .filter(g => g.libs.length > 0);
+                                                        const ungrouped = filtered.filter(l => !allDomains.some(d => d.DomainKey === l.DomainKey));
+                                                        const toggleLib = (libraryKey: string, checked: boolean) => {
+                                                            setSubscribedKeys(prev => {
+                                                                const next = new Set(prev);
+                                                                if (checked) next.add(libraryKey); else next.delete(libraryKey);
+                                                                return next;
+                                                            });
+                                                            setSubsChanged(true); setIsDirty(true);
+                                                        };
+                                                        const libRow = (l: AppAgentToolLibraryDto) => (
+                                                            <label key={l.LibraryKey} className={`flex items-center gap-2 px-2 py-0.5 text-xs cursor-pointer hover:opacity-80 ${theme.label}`}>
+                                                                <input type="checkbox" checked={subscribedKeys.has(l.LibraryKey)} onChange={e => toggleLib(l.LibraryKey, e.target.checked)} />
+                                                                <span className="font-mono font-semibold">{l.LibraryKey}</span>
+                                                                <span className="opacity-70">{l.LibraryName && `— ${l.LibraryName}`}</span>
+                                                                {l.ToolCount > 0 && <span className="ml-auto opacity-50">({l.ToolCount})</span>}
+                                                            </label>
+                                                        );
+                                                        return (
+                                                            <div className={`border rounded p-2 flex flex-col gap-1 mt-2 ${theme.mainContentSection} ${borderCls}`}>
+                                                                <div className={`text-xs font-semibold ${theme.title} mb-1`}>
+                                                                    <i className="fa-solid fa-book mr-1" />Tool Libraries
+                                                                    <span className={`ml-2 font-normal ${theme.label}`}>({subscribedKeys.size} subscribed)</span>
+                                                                </div>
+                                                                <input className={`${inp} mb-1`} placeholder="Search libraries..." value={libSearch} onChange={e => setLibSearch(e.target.value)} />
+                                                                <div className="max-h-48 overflow-y-auto flex flex-col gap-0">
+                                                                    {grouped.map(g => (
+                                                                        <div key={g.domain.DomainKey} className="mb-1">
+                                                                            <div className={`px-1 py-0.5 text-xs font-semibold uppercase tracking-wide opacity-50 ${theme.label}`}>
+                                                                                {g.domain.DomainName || g.domain.DomainKey}
+                                                                            </div>
+                                                                            {g.libs.map(libRow)}
+                                                                        </div>
+                                                                    ))}
+                                                                    {ungrouped.map(libRow)}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                </div>
                                             </div>
                                         )}
                                     </div>
@@ -491,6 +699,44 @@ const AgentSkillSetManagement: React.FC = () => {
                                     >
                                         <div className={`flex items-center pb-1 mb-2 border-b shrink-0 ${borderCls}`}>
                                             <span className={`text-xs font-semibold ${theme.title}`}>System Prompt</span>
+                                            <div className="relative ml-2">
+                                                <button
+                                                    type="button"
+                                                    className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1 ${promptHistory.length === 0 ? 'opacity-40' : ''}`}
+                                                    onClick={(e) => { e.stopPropagation(); promptHistory.length > 0 && setShowHistory(o => !o); }}
+                                                    title={promptHistory.length > 0
+                                                        ? `${promptHistory.length} saved version${promptHistory.length > 1 ? 's' : ''} — click to restore`
+                                                        : 'History is saved each time you update the system prompt'}
+                                                >
+                                                    <i className="fa-solid fa-clock-rotate-left" />
+                                                    History{promptHistory.length > 0 && <span className="ml-0.5 opacity-60">({promptHistory.length})</span>}
+                                                </button>
+                                                {showHistory && promptHistory.length > 0 && (
+                                                    <div
+                                                        className={`absolute top-full left-0 z-40 mt-1 rounded shadow-lg border w-72 ${theme.mainContentSection} ${borderCls}`}
+                                                        style={{ maxHeight: 320, overflowY: 'auto' }}
+                                                        onClick={e => e.stopPropagation()}
+                                                    >
+                                                        <div className={`px-2 py-1 text-xs font-semibold opacity-50 ${theme.label} border-b sticky top-0 ${theme.mainContentSection} ${borderCls}`}>
+                                                            Previous versions — click to restore
+                                                        </div>
+                                                        {promptHistory.map(h => (
+                                                            <button
+                                                                type="button"
+                                                                key={h.HistoryId}
+                                                                className={`w-full text-left px-3 py-2 text-xs hover:opacity-80 border-b ${theme.label} ${borderCls}`}
+                                                                onClick={() => { update('SystemPrompt', h.SystemPrompt); setShowHistory(false); }}
+                                                            >
+                                                                <div className="font-semibold opacity-60 mb-0.5">
+                                                                    {new Date(h.SavedAt).toLocaleString()}
+                                                                    {h.SavedBy && <span className="ml-1 font-normal">by {h.SavedBy}</span>}
+                                                                </div>
+                                                                <div className="opacity-50 truncate">{h.SystemPrompt.slice(0, 80)}…</div>
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                             <span className={`text-xs ml-auto ${theme.label}`}>{promptChars} chars</span>
                                         </div>
                                         <textarea
@@ -512,9 +758,70 @@ const AgentSkillSetManagement: React.FC = () => {
                         )}
                     </div>
                 </div>
-                {activeTab === 'tools' && <AgentToolRegisterTab selectedSkillKey={selected?.SkillKey ?? null} theme={theme} />}
-                {activeTab === 'mcp'   && <AgentMcpServerTab theme={theme} />}
+                {activeTab === 'mcp'       && <AgentMcpServerTab theme={theme} />}
+                {activeTab === 'libraries' && <AgentLibraryTab />}
             </div>
+
+            {/* Private Tools modal */}
+            {showToolsModal && editItem.SkillKey && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50" onClick={e => { if (e.target === e.currentTarget) setShowToolsModal(false); }}>
+                    <div className={`flex flex-col rounded shadow-2xl overflow-hidden ${theme.mainContentSection}`} style={{ width: '80vw', height: '80vh' }}>
+                        <div className={`flex items-center px-4 py-2 border-b ${borderCls} ${theme.mainContentSection}`}>
+                            <i className="fa-solid fa-screwdriver-wrench mr-2" />
+                            <span className={`text-sm font-semibold ${theme.title} w-1 flex-auto`}>
+                                Private Tools — <span className="font-mono">{editItem.SkillKey}</span>
+                            </span>
+                            <span className={`text-xs mr-4 opacity-50 ${theme.label}`}>Tools owned exclusively by this agent</span>
+                            <button type="button" className={`${btn} ml-auto`} onClick={() => setShowToolsModal(false)}>
+                                <i className="fa-solid fa-xmark mr-1" />Close
+                            </button>
+                        </div>
+                        <div className="w-full h-1 flex-auto overflow-hidden">
+                            <AgentToolRegisterTab selectedSkillKey={editItem.SkillKey} theme={theme} />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Save as Template modal */}
+            {showSaveAsTemplate && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50"
+                     onClick={e => { if (e.target === e.currentTarget) setShowSaveAsTemplate(false); }}>
+                    <div className={`flex flex-col rounded shadow-2xl overflow-hidden ${theme.mainContentSection}`} style={{ width: 420 }}>
+                        <div className={`flex items-center px-4 py-2 border-b ${borderCls}`}>
+                            <i className="fa-solid fa-star mr-2" />
+                            <span className={`text-sm font-semibold ${theme.title} w-1 flex-auto`}>Save as Template</span>
+                            <button type="button" className={btn} onClick={() => setShowSaveAsTemplate(false)}><i className="fa-solid fa-xmark" /></button>
+                        </div>
+                        <div className="px-4 py-3 flex flex-col gap-3">
+                            <p className={`text-xs opacity-60 ${theme.label}`}>
+                                Creates a reusable template from this agent. It will appear in the "+ New ▾" picker.
+                                The original agent is unchanged.
+                            </p>
+                            <div className="flex flex-col gap-1">
+                                <label className={`text-xs ${theme.label}`}>Template Name</label>
+                                <input className={inp} value={tmplName} onChange={e => setTmplName(e.target.value)} />
+                            </div>
+                            <div className="flex flex-col gap-1">
+                                <label className={`text-xs ${theme.label}`}>Template Key</label>
+                                <div className="flex items-center gap-1">
+                                    <span className={`text-xs opacity-50 ${theme.label} shrink-0`}>tmpl-</span>
+                                    <input className={`${inp}`} value={tmplKey}
+                                           onChange={e => setTmplKey(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} />
+                                </div>
+                                <span className={`text-xs opacity-40 ${theme.label}`}>Final key: tmpl-{tmplKey || '…'}</span>
+                            </div>
+                        </div>
+                        <div className={`flex items-center justify-end gap-2 px-4 py-2 border-t ${borderCls}`}>
+                            <button type="button" className={btn} onClick={() => setShowSaveAsTemplate(false)}>Cancel</button>
+                            <button type="button" className={btn} onClick={handleSaveAsTemplate} disabled={!tmplKey.trim()}>
+                                <i className="fa-solid fa-star mr-1" />Save as Template
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {confirmDelete && (
                 <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50">
                     <div className={`p-6 rounded shadow-lg ${theme.mainContentSection} flex flex-col gap-4`} style={{ minWidth: 320 }}>
