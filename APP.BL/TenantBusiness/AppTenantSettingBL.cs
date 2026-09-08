@@ -126,7 +126,7 @@ namespace App.BL
 
             using (var adapter = new DataAccessAdapter(connStr))
             {
-                const string sql = @"SELECT SetupId, SetupCode, SetupValue, Description, EntityId, UsageType
+                const string sql = @"SELECT SetupId, SetupCode, SetupValue, Description, EntityId, UsageType, Category, SubCategory
                                      FROM dbo.AppTenantSetting
                                      ORDER BY SetupCode";
                 var dt = adapter.ExecuteDataTableRetrievalQuery(sql, new List<SqlParameter>());
@@ -141,6 +141,8 @@ namespace App.BL
                         SetupCode = code,
                         SetupValue = row["SetupValue"] as string,
                         Description = row["Description"] as string ?? code,
+                        Category = row["Category"] as string,
+                        SubCategory = row["SubCategory"] as string,
                     };
 
                     if (row["EntityId"] != DBNull.Value && int.TryParse(row["EntityId"]?.ToString(), out var entityId))

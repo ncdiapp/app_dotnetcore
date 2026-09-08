@@ -14,7 +14,8 @@ import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLo
 import { useEnumValues } from '../../hooks/useEnumDictionary';
 
 type ApplicationSettingItem = any;
-type SettingGroup = { category: string | number; items: ApplicationSettingItem[] };
+type SettingSubGroup = { subCategory: string; items: ApplicationSettingItem[] };
+type SettingGroup = { category: string; subGroups: SettingSubGroup[] };
 
 const ApplicationSettingValueType = Object.freeze({
   Unknown: 0,
@@ -107,7 +108,8 @@ const ApplicationSetting2: React.FC = () => {
   const [serverSettings, setServerSettings] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState<ApplicationSettingItem[]>([]);
-  const categoryEnumMap = useEnumValues('EmAppApplicationSettingCategory');
+  /** Categories present in this set are collapsed. */
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(() => new Set());
   const _valueTypeEnumMap = useEnumValues('EmAppApplicationSettingValueType');
   const installedDbDriverCVRef = useRef<CollectionView | null>(null);
 
@@ -155,121 +157,73 @@ const ApplicationSetting2: React.FC = () => {
 
   const prepareGroups = useCallback(
     (list: ApplicationSettingItem[]): SettingGroup[] => {
-      const map = new Map<string | number, ApplicationSettingItem[]>();
+      const categoryMap = new Map<string, Map<string, ApplicationSettingItem[]>>();
 
-      const resolveCategoryValue = (item: ApplicationSettingItem): string | number => {
-        const rawCandidate =
-          item?.ApplicationSettingCategory ??
+      const resolveCategoryValue = (item: ApplicationSettingItem): string => {
+        const raw =
           item?.Category ??
+          item?.ApplicationSettingCategory ??
           item?.Description ??
           'General';
 
-        if (typeof rawCandidate === 'number' && Number.isFinite(rawCandidate)) {
-          return rawCandidate;
+        if (typeof raw === 'number' && Number.isFinite(raw)) {
+          return String(raw);
         }
-
-        if (typeof rawCandidate === 'string') {
-          const trimmed = rawCandidate.trim();
-          if (trimmed === '') {
-            return 'General';
-          }
-
-          if (categoryEnumMap && categoryEnumMap[trimmed] !== undefined) {
-            return categoryEnumMap[trimmed];
-          }
-
-          const numericCandidate = Number(trimmed);
-          if (Number.isFinite(numericCandidate)) {
-            return numericCandidate;
-          }
-
-          return trimmed;
+        if (typeof raw === 'string') {
+          const trimmed = raw.trim();
+          return trimmed === '' ? 'General' : trimmed;
         }
-
         return 'General';
+      };
+
+      const resolveSubCategoryValue = (item: ApplicationSettingItem): string => {
+        const raw = item?.SubCategory;
+        if (typeof raw === 'string' && raw.trim() !== '') {
+          return raw.trim();
+        }
+        return '';
       };
 
       list.forEach((item) => {
         const categoryValue = resolveCategoryValue(item);
-        if (!map.has(categoryValue)) {
-          map.set(categoryValue, []);
+        const subCategoryValue = resolveSubCategoryValue(item);
+        if (!categoryMap.has(categoryValue)) {
+          categoryMap.set(categoryValue, new Map());
         }
-        map.get(categoryValue)!.push(item);
+        const subMap = categoryMap.get(categoryValue)!;
+        if (!subMap.has(subCategoryValue)) {
+          subMap.set(subCategoryValue, []);
+        }
+        subMap.get(subCategoryValue)!.push(item);
       });
 
-      const toNumeric = (value: string | number): number | null => {
-        if (typeof value === 'number' && Number.isFinite(value)) {
-          return value;
-        }
-        const numericValue = Number(value);
-        return Number.isFinite(numericValue) ? numericValue : null;
-      };
+      const sortLabel = (a: string, b: string) => a.localeCompare(b);
 
-      return Array.from(map.entries())
-        .map(([category, items]) => ({
+      return Array.from(categoryMap.entries())
+        .map(([category, subMap]) => ({
           category,
-          items: [...items].sort((a, b) => (a.SetupCode || '').localeCompare(b.SetupCode || '')),
+          subGroups: Array.from(subMap.entries())
+            .map(([subCategory, items]) => ({
+              subCategory,
+              items: [...items].sort((a, b) => (a.SetupCode || '').localeCompare(b.SetupCode || '')),
+            }))
+            .sort((a, b) => {
+              if (!a.subCategory) return -1;
+              if (!b.subCategory) return 1;
+              return sortLabel(a.subCategory, b.subCategory);
+            }),
         }))
-        .sort((a, b) => {
-          const aNum = toNumeric(a.category);
-          const bNum = toNumeric(b.category);
-
-          if (aNum !== null && bNum !== null) {
-            return aNum - bNum;
-          }
-          if (aNum !== null) {
-            return -1;
-          }
-          if (bNum !== null) {
-            return 1;
-          }
-          return String(a.category ?? '').localeCompare(String(b.category ?? ''));
-        });
+        .sort((a, b) => sortLabel(a.category, b.category));
     },
-    [categoryEnumMap],
+    [],
   );
 
   const groupedSettings = useMemo(() => prepareGroups(settings), [prepareGroups, settings]);
 
-  const resolveCategoryLabel = useCallback(
-    (categoryValue: string | number | null | undefined) => {
-      const fallbackLabel = categoryValue ?? 'General';
-      if (!categoryEnumMap) {
-        return fallbackLabel as string;
-      }
-
-      const humanizeKey = (key: string) =>
-        key.replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim();
-
-      const numericValue =
-        typeof categoryValue === 'number' ? categoryValue : Number(categoryValue);
-
-      if (Number.isFinite(numericValue)) {
-        const matchedEntry = Object.entries(categoryEnumMap).find(
-          ([, value]) => value === numericValue,
-        );
-        if (matchedEntry) {
-          return humanizeKey(matchedEntry[0]);
-        }
-      }
-
-      if (typeof categoryValue === 'string' && categoryEnumMap[categoryValue] !== undefined) {
-        return humanizeKey(categoryValue);
-      }
-
-      if (typeof categoryValue === 'string') {
-        const caseInsensitiveKey = Object.keys(categoryEnumMap).find(
-          (enumKey) => enumKey.toLowerCase() === categoryValue.toLowerCase(),
-        );
-        if (caseInsensitiveKey) {
-          return humanizeKey(caseInsensitiveKey);
-        }
-      }
-
-      return fallbackLabel as string;
-    },
-    [categoryEnumMap],
-  );
+  const resolveCategoryLabel = useCallback((categoryValue: string | null | undefined) => {
+    const label = (categoryValue ?? 'General').trim();
+    return label === '' ? 'General' : label;
+  }, []);
 
   const prepareAppSetupDtoList = (items: ApplicationSettingItem[]) => {
     const emptyValueDtoList = (items || []).map((item) => ({
@@ -509,21 +463,47 @@ const ApplicationSetting2: React.FC = () => {
     }
   };
 
-  // Get GeneralSetting category enum value
-  const generalSettingCategoryValue = useMemo(() => {
-    if (!categoryEnumMap) return null;
-    const generalSettingKey = Object.keys(categoryEnumMap).find(
-      (key) => key.toLowerCase().includes('general')
-    );
-    return generalSettingKey ? categoryEnumMap[generalSettingKey] : null;
-  }, [categoryEnumMap]);
+  // Get GeneralSetting category label
+  const generalSettingCategoryValue = 'General Setting';
+
+  const toggleCategoryCollapsed = useCallback((category: string) => {
+    setCollapsedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
+      return next;
+    });
+  }, []);
+
+  const allCategoriesCollapsed =
+    groupedSettings.length > 0 &&
+    groupedSettings.every((g) => collapsedCategories.has(g.category));
+
+  const toggleExpandCollapseAll = useCallback(() => {
+    if (allCategoriesCollapsed) {
+      setCollapsedCategories(new Set());
+    } else {
+      setCollapsedCategories(new Set(groupedSettings.map((g) => g.category)));
+    }
+  }, [allCategoriesCollapsed, groupedSettings]);
 
   return (
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       {/* Header Toolbar */}
       <div className={`flex items-center justify-between px-3 mb-1 py-2 ${theme.mainContentSection}`}>
-        <div className="text-sm font-semibold tracking-wide">
-          System Setting
+        <div className="flex items-center gap-3">
+          <div className="text-sm font-semibold tracking-wide">
+            System Setting
+          </div>
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1.5 px-2 h-6 text-xs rounded-[4px] border ${theme.button_default}`}
+            onClick={toggleExpandCollapseAll}
+            title={allCategoriesCollapsed ? 'Expand All Categories' : 'Collapse All Categories'}
+          >
+            <i className={`fa-solid ${allCategoriesCollapsed ? 'fa-angles-down' : 'fa-angles-up'}`} />
+            <span>{allCategoriesCollapsed ? 'Expand all' : 'Collapse all'}</span>
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -571,18 +551,25 @@ const ApplicationSetting2: React.FC = () => {
       {/* Main Content */}
       <div className={`h-1 flex-auto overflow-hidden ${theme.mainContentSection}`}>
         <div className="flex flex-col gap-4 h-full overflow-y-auto px-4 py-3">
-          {groupedSettings.map(({ category, items }) => {
+          {groupedSettings.map(({ category, subGroups }) => {
             const categoryDisplayName = resolveCategoryLabel(category);
-            const isGeneralSetting = categoryEnumMap && 
-              (category === generalSettingCategoryValue || 
-               (typeof category === 'string' && category.toLowerCase().includes('general')));
+            const isCollapsed = collapsedCategories.has(category);
+            const isGeneralSetting =
+              category === generalSettingCategoryValue ||
+              (typeof category === 'string' && category.toLowerCase().includes('general'));
 
             return (
               <section key={category} className={`${theme.mainContentSection} rounded-lg border px-4 py-3`} style={{ width: '750px' }}>
-                <header className={`mb-3 text-sm font-semibold tracking-wide ${theme.label}`}>
-                  {categoryDisplayName}
+                <header
+                  className={`flex items-center gap-2 text-sm font-semibold tracking-wide cursor-pointer select-none ${theme.label} ${isCollapsed ? '' : 'mb-3'}`}
+                  onClick={() => toggleCategoryCollapsed(category)}
+                  title={isCollapsed ? 'Expand' : 'Collapse'}
+                >
+                  <i className={`fa-solid ${isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'} text-[10px] w-3`} />
+                  <span>{categoryDisplayName}</span>
                 </header>
-                <div className="flex flex-col gap-3">
+                {!isCollapsed && (
+                <div className="flex flex-col gap-3 pl-4">
                   {/* Installed Db Driver section for GeneralSetting category */}
                   {isGeneralSetting && installedDbDriverRows.length > 0 && installedDbDriverColumns.length > 0 && (
                     <div style={{ margin: '2px' }}>
@@ -611,24 +598,35 @@ const ApplicationSetting2: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Settings fields */}
-                  {items.map((item) => (
-                    <div key={item.SetupCode} className="flex items-center gap-3 text-sm" style={{ margin: '2px' }} title={item.SetupValue}>
-                      <label className={`w-[300px] truncate select-none text-xs tracking-wide ${theme.label}`}>
-                        {item.SetupCode}
-                      </label>
-                      <div className="w-[400px]">{renderField(item)}</div>
-                      {Boolean(item.IsReadOnly) && (
-                        <span
-                          className="text-xs tracking-wide text-slate-400 px-2"
-                          title="Read Only"
-                        >
-                          <i className="fa-solid fa-lock"></i>
-                        </span>
-                      )}
+                  {subGroups.map(({ subCategory, items }) => (
+                    <div key={`${category}::${subCategory || '_'}`} className="flex flex-col gap-2">
+                      {subCategory ? (
+                        <div className={`text-xs font-semibold tracking-wide pt-1 pl-2 ${theme.label}`}>
+                          {subCategory}
+                        </div>
+                      ) : null}
+                      <div className={`flex flex-col gap-2 ${subCategory ? 'pl-4' : 'pl-2'}`}>
+                        {items.map((item) => (
+                          <div key={item.SetupCode} className="flex items-center gap-3 text-sm" style={{ margin: '2px' }} title={item.SetupValue}>
+                            <label className={`w-[280px] truncate select-none text-xs tracking-wide ${theme.label}`}>
+                              {item.SetupCode}
+                            </label>
+                            <div className="w-[400px]">{renderField(item)}</div>
+                            {Boolean(item.IsReadOnly) && (
+                              <span
+                                className="text-xs tracking-wide text-slate-400 px-2"
+                                title="Read Only"
+                              >
+                                <i className="fa-solid fa-lock"></i>
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   ))}
                 </div>
+                )}
               </section>
             );
           })}

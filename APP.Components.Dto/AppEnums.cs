@@ -966,13 +966,18 @@ namespace APP.Components.Dto
 
         FigmaPersonalAccessToken = 1700,
 
-        AIConfigProvider        = 3201,
-        AIConfigOpenAIApiKey    = 3202,
-        AIConfigGeminiApiKey    = 3203,
-        AIConfigAnthropicApiKey = 3204,
-        AIConfigOpenAIModel     = 3205,
-        AIConfigGeminiModel     = 3206,
-        AIConfigAnthropicModel  = 3207,
+        AIConfigDefaultProvider         = 3201, // was AIConfigProvider
+        AIConfigOpenAIApiKey            = 3202,
+        AIConfigGeminiApiKey            = 3203,
+        AIConfigAnthropicApiKey         = 3204,
+        AIConfigOpenAIModel             = 3205,
+        AIConfigGeminiModel             = 3206,
+        AIConfigAnthropicModel          = 3207,
+        AIConfigImageProcessProvider    = 3208,
+        AIConfigIntegrationProvider     = 3209,
+        AIConfigCursorApiKey            = 3210,
+        AIConfigCursorModel             = 3211,
+        AIConfigCursorMcpPublicBaseUrl  = 3212,
     }
 
 

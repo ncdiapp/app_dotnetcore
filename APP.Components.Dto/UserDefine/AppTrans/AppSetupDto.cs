@@ -24,6 +24,22 @@ namespace APP.Components.EntityDto
             get;
             set;
         }
+
+        /// <summary>UI primary group (AppTenantSetting.Category).</summary>
+        [DataMember(EmitDefaultValue = false)]
+        public string Category
+        {
+            get;
+            set;
+        }
+
+        /// <summary>UI secondary group under Category (AppTenantSetting.SubCategory).</summary>
+        [DataMember(EmitDefaultValue = false)]
+        public string SubCategory
+        {
+            get;
+            set;
+        }
     }
 }
 

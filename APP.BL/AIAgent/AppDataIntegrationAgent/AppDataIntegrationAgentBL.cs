@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework;
+using App.BL.GenericAgent;
 using Newtonsoft.Json;
 
 namespace App.BL.AppDataIntegrationAgent
@@ -18,8 +19,15 @@ namespace App.BL.AppDataIntegrationAgent
                 throw new ArgumentException("UserMessage is required.");
             if (!request.SaasApplicationId.HasValue || request.SaasApplicationId.Value <= 0)
                 throw new ArgumentException("SaasApplicationId is required.");
+
+            var integrationProvider = AIConfigSettingBL.GetIntegrationProvider();
+            if (!string.Equals(integrationProvider, "Cursor", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"AIConfigIntegrationProvider '{integrationProvider}' is not implemented yet. Use 'Cursor' for now.");
+            }
             if (string.IsNullOrWhiteSpace(AppDataIntegrationAgentConfig.ApiKey))
-                throw new InvalidOperationException("Cursor:ApiKey is not configured.");
+                throw new InvalidOperationException("AIConfigCursorApiKey is not configured in tenant AppTenantSetting.");
 
             var live = AppDataIntegrationAgentSessionStore.CreateSession();
             live.SaasApplicationId = request.SaasApplicationId;

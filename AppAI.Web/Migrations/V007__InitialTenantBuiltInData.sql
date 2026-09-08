@@ -479,6 +479,7 @@ BEGIN
         -- Category: 1=ServerSetting, 3=EmailSystem, 4=UILayout, 5=EShop, 6=FileFolder,
         --           8=Mobile/Google(legacy), 10=Calendar, 11=UserProfile, 12=SecurityFilterEntity,
         --           14=PartnerMapping, 15=PartnerExtendMapping, 16=Figma, 100=GeneralSetting
+        -- V017 copies Description → Category (human labels) and adds SubCategory for AI Settings.
         ('EnableConfigurationMode', '', '1', CAST(NULL AS varchar(100)), 3),
         ('SystemEmailFromAddress', '', '3', NULL, 4),
         ('SystemAgentUser', '', '3', 'AppSecurityUser', 2),

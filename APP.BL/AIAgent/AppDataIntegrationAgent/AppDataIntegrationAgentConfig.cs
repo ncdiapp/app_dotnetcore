@@ -1,14 +1,41 @@
 using System;
 using System.IO;
+using APP.Components.Dto;
 using APP.Framework;
+using App.BL;
 
 namespace App.BL.AppDataIntegrationAgent
 {
     public static class AppDataIntegrationAgentConfig
     {
-        public static string ApiKey => AppConfig.Get("Cursor.ApiKey")?.Trim() ?? "";
+        /// <summary>Tenant AIConfigCursorApiKey only (removed from appsettings.json).</summary>
+        public static string ApiKey
+        {
+            get
+            {
+                var fromTenant = AppTenantSettingBL.GetStringValue(EmTenantSettings.AIConfigCursorApiKey);
+                return string.IsNullOrWhiteSpace(fromTenant) ? "" : fromTenant.Trim();
+            }
+        }
+
         public static string ApiBaseUrl => (AppConfig.Get("Cursor.ApiBaseUrl") ?? "https://api.cursor.com").TrimEnd('/');
-        public static string ModelId => string.IsNullOrWhiteSpace(AppConfig.Get("Cursor.ModelId")) ? "auto" : AppConfig.Get("Cursor.ModelId").Trim();
+
+        /// <summary>
+        /// Tenant AIConfigCursorModel when the row exists (blank → auto).
+        /// If the key is absent from tenant DB, fall back to appsettings, then auto.
+        /// </summary>
+        public static string ModelId
+        {
+            get
+            {
+                var fromTenant = AppTenantSettingBL.GetStringValue(EmTenantSettings.AIConfigCursorModel);
+                if (fromTenant != null)
+                    return string.IsNullOrWhiteSpace(fromTenant) ? "auto" : fromTenant.Trim();
+                var fromJson = AppConfig.Get("Cursor.ModelId");
+                return string.IsNullOrWhiteSpace(fromJson) ? "auto" : fromJson.Trim();
+            }
+        }
+
         public static string RepoUrl => AppConfig.Get("Cursor.RepoUrl")?.Trim() ?? "";
         public static string RepoRef => string.IsNullOrWhiteSpace(AppConfig.Get("Cursor.RepoRef")) ? "main" : AppConfig.Get("Cursor.RepoRef").Trim();
         public static bool AttachRepo
@@ -38,7 +65,17 @@ namespace App.BL.AppDataIntegrationAgent
         public static int RunRecoveryPollSeconds => ParseInt(AppConfig.Get("Cursor.RunRecoveryPollSeconds"), 3);
         public static int HttpClientTimeoutMinutes => RunRecoveryMaxMinutes + 3;
 
-        public static string McpPublicBaseUrl => AppConfig.Get("Cursor.McpPublicBaseUrl")?.Trim().TrimEnd('/') ?? "";
+        /// <summary>Tenant AIConfigCursorMcpPublicBaseUrl first; fallback appsettings Cursor:McpPublicBaseUrl.</summary>
+        public static string McpPublicBaseUrl
+        {
+            get
+            {
+                var fromTenant = AppTenantSettingBL.GetStringValue(EmTenantSettings.AIConfigCursorMcpPublicBaseUrl);
+                if (!string.IsNullOrWhiteSpace(fromTenant))
+                    return fromTenant.Trim().TrimEnd('/');
+                return AppConfig.Get("Cursor.McpPublicBaseUrl")?.Trim().TrimEnd('/') ?? "";
+            }
+        }
 
         public static string WorkspaceRootAbsolute
         {

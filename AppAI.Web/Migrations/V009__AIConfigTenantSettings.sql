@@ -4,13 +4,17 @@
 -- AIConfigSettingBL reads these first; no appsettings.json fallback.
 -- Idempotent: skips INSERT if the row already exists.
 --
+-- Note: V017 renames AIConfigProvider → AIConfigDefaultProvider and adds Category/SubCategory.
+-- Fresh installs that already ran V017 should prefer AIConfigDefaultProvider.
+--
 -- SetupCode prefix: AIConfig
--- Enum range: EmTenantSettings 3201–3207 (AppEnums.cs)
--- UsageType: 2=Text, 4=Select, 5=Password/Secret
+-- Enum range: EmTenantSettings 3201–3211 (AppEnums.cs)
+-- UsageType: 4=Text, 5=Password/Secret
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = 'AIConfigProvider')
+   AND NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = 'AIConfigDefaultProvider')
     INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, UsageType)
-    VALUES ('AIConfigProvider', 'Gemini', 'Active LLM Provider (OpenAI / Gemini / Anthropic)', 2);
+    VALUES ('AIConfigProvider', 'Gemini', 'Active LLM Provider (OpenAI / Gemini / Anthropic)', 4);
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = 'AIConfigOpenAIApiKey')
     INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, UsageType)

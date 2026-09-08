@@ -7,10 +7,10 @@ import { adminSvc } from '../../webapi/adminsvc';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
-import { useEnumValues } from '../../hooks/useEnumDictionary';
 
 type ApplicationSettingItem = any;
-type SettingGroup = { category: string | number; items: ApplicationSettingItem[] };
+type SettingSubGroup = { subCategory: string; items: ApplicationSettingItem[] };
+type SettingGroup = { category: string; subGroups: SettingSubGroup[] };
 
 const ApplicationSettingValueType = Object.freeze({
   Unknown: 0,
@@ -103,7 +103,7 @@ const ApplicationSetting: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [settings, setSettings] = useState<ApplicationSettingItem[]>([]);
   const [isCacheMenuOpen, setIsCacheMenuOpen] = useState(false);
-  const categoryEnumMap = useEnumValues('EmAppApplicationSettingCategory');
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(() => new Set());
   const cacheMenuRef = useRef<HTMLDivElement | null>(null);
   const installedDbDriverRows = serverSettings?.InstalledDbDriver?.DataRowList ?? [];
 
@@ -141,129 +141,82 @@ const ApplicationSetting: React.FC = () => {
 
   const prepareGroups = useCallback(
     (list: ApplicationSettingItem[]): SettingGroup[] => {
-      const map = new Map<string | number, ApplicationSettingItem[]>();
+      const categoryMap = new Map<string, Map<string, ApplicationSettingItem[]>>();
 
-      const resolveCategoryValue = (item: ApplicationSettingItem): string | number => {
-        const rawCandidate =
-          item?.ApplicationSettingCategory ??
+      const resolveCategoryValue = (item: ApplicationSettingItem): string => {
+        const raw =
           item?.Category ??
+          item?.ApplicationSettingCategory ??
           item?.Description ??
           'General';
-
-        if (typeof rawCandidate === 'number' && Number.isFinite(rawCandidate)) {
-          return rawCandidate;
+        if (typeof raw === 'number' && Number.isFinite(raw)) return String(raw);
+        if (typeof raw === 'string') {
+          const trimmed = raw.trim();
+          return trimmed === '' ? 'General' : trimmed;
         }
-
-        if (typeof rawCandidate === 'string') {
-          const trimmed = rawCandidate.trim();
-          if (trimmed === '') {
-            return 'General';
-          }
-
-          if (categoryEnumMap && categoryEnumMap[trimmed] !== undefined) {
-            return categoryEnumMap[trimmed];
-          }
-
-          const numericCandidate = Number(trimmed);
-          if (Number.isFinite(numericCandidate)) {
-            return numericCandidate;
-          }
-
-          return trimmed;
-        }
-
         return 'General';
+      };
+
+      const resolveSubCategoryValue = (item: ApplicationSettingItem): string => {
+        const raw = item?.SubCategory;
+        if (typeof raw === 'string' && raw.trim() !== '') return raw.trim();
+        return '';
       };
 
       list.forEach((item) => {
         const categoryValue = resolveCategoryValue(item);
-        if (!map.has(categoryValue)) {
-          map.set(categoryValue, []);
-        }
-        map.get(categoryValue)!.push(item);
+        const subCategoryValue = resolveSubCategoryValue(item);
+        if (!categoryMap.has(categoryValue)) categoryMap.set(categoryValue, new Map());
+        const subMap = categoryMap.get(categoryValue)!;
+        if (!subMap.has(subCategoryValue)) subMap.set(subCategoryValue, []);
+        subMap.get(subCategoryValue)!.push(item);
       });
 
-      const toNumeric = (value: string | number): number | null => {
-        if (typeof value === 'number' && Number.isFinite(value)) {
-          return value;
-        }
-        const numericValue = Number(value);
-        return Number.isFinite(numericValue) ? numericValue : null;
-      };
+      const sortLabel = (a: string, b: string) => a.localeCompare(b);
 
-      return Array.from(map.entries())
-        .map(([category, items]) => ({
+      return Array.from(categoryMap.entries())
+        .map(([category, subMap]) => ({
           category,
-          items: [...items].sort((a, b) => (a.SetupCode || '').localeCompare(b.SetupCode || '')),
+          subGroups: Array.from(subMap.entries())
+            .map(([subCategory, items]) => ({
+              subCategory,
+              items: [...items].sort((a, b) => (a.SetupCode || '').localeCompare(b.SetupCode || '')),
+            }))
+            .sort((a, b) => {
+              if (!a.subCategory) return -1;
+              if (!b.subCategory) return 1;
+              return sortLabel(a.subCategory, b.subCategory);
+            }),
         }))
-        .sort((a, b) => {
-          const aNum = toNumeric(a.category);
-          const bNum = toNumeric(b.category);
-
-          if (aNum !== null && bNum !== null) {
-            return aNum - bNum;
-          }
-          if (aNum !== null) {
-            return -1;
-          }
-          if (bNum !== null) {
-            return 1;
-          }
-          return String(a.category ?? '').localeCompare(String(b.category ?? ''));
-        });
+        .sort((a, b) => sortLabel(a.category, b.category));
     },
-    [categoryEnumMap],
+    [],
   );
 
   const groupedSettings = useMemo(() => prepareGroups(settings), [prepareGroups, settings]);
 
   const filteredGroupedSettings = useMemo(
     () =>
-      groupedSettings.filter(
-        ({ items }) => !(items.length === 1 && items[0]?.SetupCode === 'AppVersion'),
-      ),
+      groupedSettings.filter(({ subGroups }) => {
+        const items = subGroups.flatMap((g) => g.items);
+        return !(items.length === 1 && items[0]?.SetupCode === 'AppVersion');
+      }),
     [groupedSettings],
   );
 
-  const resolveCategoryLabel = useCallback(
-    (categoryValue: string | number | null | undefined) => {
-      const fallbackLabel = categoryValue ?? 'General';
-      if (!categoryEnumMap) {
-        return fallbackLabel as string;
-      }
+  const resolveCategoryLabel = useCallback((categoryValue: string | null | undefined) => {
+    const label = (categoryValue ?? 'General').trim();
+    return label === '' ? 'General' : label;
+  }, []);
 
-      const humanizeKey = (key: string) =>
-        key.replace(/_/g, ' ').replace(/([a-z0-9])([A-Z])/g, '$1 $2').trim();
+  const allCategoriesCollapsed =
+    filteredGroupedSettings.length > 0 &&
+    filteredGroupedSettings.every((g) => collapsedCategories.has(g.category));
 
-      const numericValue =
-        typeof categoryValue === 'number' ? categoryValue : Number(categoryValue);
-
-      if (Number.isFinite(numericValue)) {
-        const matchedEntry = Object.entries(categoryEnumMap).find(
-          ([, value]) => value === numericValue,
-        );
-        if (matchedEntry) {
-          return humanizeKey(matchedEntry[0]);
-        }
-      }
-
-      if (typeof categoryValue === 'string' && categoryEnumMap[categoryValue] !== undefined) {
-        return humanizeKey(categoryValue);
-      }
-
-      if (typeof categoryValue === 'string') {
-        const caseInsensitiveKey = Object.keys(categoryEnumMap).find(
-          (enumKey) => enumKey.toLowerCase() === categoryValue.toLowerCase(),
-        );
-        if (caseInsensitiveKey) {
-          return humanizeKey(caseInsensitiveKey);
-        }
-      }
-
-      return fallbackLabel as string;
-    },
-    [categoryEnumMap],
-  );
+  const toggleExpandCollapseAll = useCallback(() => {
+    if (allCategoriesCollapsed) setCollapsedCategories(new Set());
+    else setCollapsedCategories(new Set(filteredGroupedSettings.map((g) => g.category)));
+  }, [allCategoriesCollapsed, filteredGroupedSettings]);
 
   const prepareAppSetupDtoList = (items: ApplicationSettingItem[]) => {
 
@@ -532,8 +485,19 @@ const ApplicationSetting: React.FC = () => {
   return (
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 mb-1 py-2 ${theme.mainContentSection}`}>
-        <div className="text-sm font-semibold tracking-wide">
-          System Setting
+        <div className="flex items-center gap-3">
+          <div className="text-sm font-semibold tracking-wide">
+            System Setting
+          </div>
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1.5 px-2 h-6 text-xs rounded-[4px] border ${theme.button_default}`}
+            onClick={toggleExpandCollapseAll}
+            title={allCategoriesCollapsed ? 'Expand All Categories' : 'Collapse All Categories'}
+          >
+            <i className={`fa-solid ${allCategoriesCollapsed ? 'fa-angles-down' : 'fa-angles-up'}`} />
+            <span>{allCategoriesCollapsed ? 'Expand all' : 'Collapse all'}</span>
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -542,7 +506,7 @@ const ApplicationSetting: React.FC = () => {
             onClick={handleRefresh}
             title="Refresh"
           >
-            <i className="fa fa-refresh" />
+            <i className="fa-solid fa-rotate" />
           </button>
           <button
             type="button"
@@ -552,7 +516,7 @@ const ApplicationSetting: React.FC = () => {
             title="Save"
           >
             {isSaving ? (
-              <i className="fa fa-spinner fa-spin" />
+              <i className="fa-solid fa-spinner fa-spin" />
             ) : (
               <svg className="w-[14px] h-[14px] fill-white" viewBox="0 0 448 512">
                 <path d="M433.941 129.941l-83.882-83.882A48 48 0 0 0 316.118 32H48C21.49 32 0 53.49 0 80v352c0 26.51 21.49 48 48 48h352c26.51 0 48-21.49 48-48V163.882a48 48 0 0 0-14.059-33.941zM272 80v80H144V80h128zm122 352H54a6 6 0 0 1-6-6V86a6 6 0 0 1 6-6h42v104c0 13.255 10.745 24 24 24h176c13.255 0 24-10.745 24-24V83.882l78.243 78.243a6 6 0 0 1 1.757 4.243V426a6 6 0 0 1-6 6zM224 232c-48.523 0-88 39.477-88 88s39.477 88 88 88 88-39.477 88-88-39.477-88-88-88zm0 128c-22.056 0-40-17.944-40-40s17.944-40 40-40 40 17.944 40 40-17.944 40-40 40z" />
@@ -566,7 +530,7 @@ const ApplicationSetting: React.FC = () => {
               onClick={toggleCacheMenu}
               title="Cache Settings"
             >
-              <i className="fa fa-database" />
+              <i className="fa-solid fa-database" />
             </button>
             {isCacheMenuOpen && (
               <div className="absolute right-0 mt-1 w-48 divide-y divide-slate-100 rounded-md border bg-white text-xs shadow-lg z-10">
@@ -592,33 +556,59 @@ const ApplicationSetting: React.FC = () => {
 
       <div className={`h-1 flex-auto overflow-hidden ${theme.mainContentSection}`}>
         <div className="flex flex-col gap-4 h-full overflow-y-auto px-4 py-3">
-        {filteredGroupedSettings.map(({ category, items }) => {
+        {filteredGroupedSettings.map(({ category, subGroups }) => {
           const categoryDisplayName = resolveCategoryLabel(category);
+          const isCollapsed = collapsedCategories.has(category);
 
           return (
             <section key={category} className={`${theme.mainContentSection} rounded-lg border px-4 py-3`}>
-              <header className={`mb-3 text-sm font-semibold tracking-wide ${theme.label}`}>
-                {categoryDisplayName}
+              <header
+                className={`flex items-center gap-2 text-sm font-semibold tracking-wide cursor-pointer select-none ${theme.label} ${isCollapsed ? '' : 'mb-3'}`}
+                onClick={() => {
+                  setCollapsedCategories((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(category)) next.delete(category);
+                    else next.add(category);
+                    return next;
+                  });
+                }}
+                title={isCollapsed ? 'Expand' : 'Collapse'}
+              >
+                <i className={`fa-solid ${isCollapsed ? 'fa-chevron-right' : 'fa-chevron-down'} text-[10px] w-3`} />
+                <span>{categoryDisplayName}</span>
               </header>
-              <div className="flex flex-col gap-3">
-                {items.map((item) => (
-                  <div key={item.SetupCode} className="flex items-center gap-3 text-sm">
-                    <label className={`w-[400px] pl-5 truncate select-none text-xs tracking-wide ${theme.label}`}>
-                      {item.SetupCode}
-                    </label>
-                    <div className="w-[400px]">{renderField(item)}</div>
+              {!isCollapsed && (
+              <div className="flex flex-col gap-3 pl-4">
+                {subGroups.map(({ subCategory, items }) => (
+                  <div key={`${category}::${subCategory || '_'}`} className="flex flex-col gap-2">
+                    {subCategory ? (
+                      <div className={`text-xs font-semibold tracking-wide pt-1 pl-2 ${theme.label}`}>
+                        {subCategory}
+                      </div>
+                    ) : null}
+                    <div className={`flex flex-col gap-2 ${subCategory ? 'pl-4' : 'pl-2'}`}>
+                      {items.map((item) => (
+                        <div key={item.SetupCode} className="flex items-center gap-3 text-sm">
+                          <label className={`w-[380px] truncate select-none text-xs tracking-wide ${theme.label}`}>
+                            {item.SetupCode}
+                          </label>
+                          <div className="w-[400px]">{renderField(item)}</div>
 
-                    {Boolean(item.IsReadOnly) && (
-                      <span
-                        className="text-xs tracking-wide text-slate-400"
-                        title="Read Only"
-                      >
-                        <i className="fa fa-lock"></i>
-                      </span>
-                    )}
+                          {Boolean(item.IsReadOnly) && (
+                            <span
+                              className="text-xs tracking-wide text-slate-400"
+                              title="Read Only"
+                            >
+                              <i className="fa-solid fa-lock"></i>
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>
+              )}
             </section>
           );
         })}

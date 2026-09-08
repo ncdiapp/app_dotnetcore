@@ -25,8 +25,10 @@ public sealed class LLMOcrService : IOcrService
 
     public async Task<string?> ExtractTextAsync(byte[] imageBytes, string mimeType, CancellationToken ct = default)
     {
-        var provider = LLMProviderHelper.GetConfiguredProvider();
-        var apiKey = LLMProviderHelper.GetConfiguredApiKey();
+        var providerName = AIConfigSettingBL.GetImageProcessProvider();
+        if (!Enum.TryParse(providerName, true, out EmLLMProvider provider))
+            provider = EmLLMProvider.Gemini;
+        var apiKey = AIConfigSettingBL.GetImageProcessApiKey();
         if (string.IsNullOrWhiteSpace(apiKey)) return null;
 
         var base64 = Convert.ToBase64String(imageBytes);
@@ -42,7 +44,7 @@ public sealed class LLMOcrService : IOcrService
 
     private async Task<string?> CallOpenAIVisionAsync(string apiKey, string base64, string mimeType, CancellationToken ct)
     {
-        var model = AIConfigSettingBL.GetOpenAIModel();
+        var model = AIConfigSettingBL.GetModelForProvider("OpenAI");
         var payload = new
         {
             model,
