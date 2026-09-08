@@ -937,7 +937,7 @@ const SkillPicker: React.FC<{
   );
 };
 
-const DataIntegrationAgent: React.FC = () => {
+const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embeddedSkillKey }) => {
   const { theme, t } = useTheme();
   const userContext = useSelector((s: RootState) => s.userSession.userContext);
   const isAdmin = isAdminUserFromContext(userContext);
@@ -947,7 +947,7 @@ const DataIntegrationAgent: React.FC = () => {
   const [dataSources, setDataSources] = useState<{ id: number; name: string }[]>([]);
   const [saasApplicationId, setSaasApplicationId] = useState<number | undefined>();
   const [dataSourceId, setDataSourceId] = useState<number | undefined>();
-  const [skillKey, setSkillKey] = useState('app-config-builder');
+  const [skillKey, setSkillKey] = useState(embeddedSkillKey || 'app-config-builder');
   const [skillItems, setSkillItems] = useState<AppDataIntegrationAgentSkillMenuItem[]>([]);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -1159,7 +1159,7 @@ const DataIntegrationAgent: React.FC = () => {
     }).catch(() => {});
     listAppDataIntegrationAgentSkillMenu().then(menu => {
       setSkillItems(menu.Items ?? []);
-      if (menu.DefaultKey) setSkillKey(prev => prev || menu.DefaultKey);
+      if (!embeddedSkillKey && menu.DefaultKey) setSkillKey(prev => prev || menu.DefaultKey);
     }).catch(() => {});
 
     void (async () => {
@@ -1174,6 +1174,10 @@ const DataIntegrationAgent: React.FC = () => {
       if (target) await applyLoadedSession(target);
     })();
   }, [applyLoadedSession, refreshHistory]);
+
+  useEffect(() => {
+    if (embeddedSkillKey) setSkillKey(embeddedSkillKey);
+  }, [embeddedSkillKey]);
 
   useEffect(() => {
     if (sessionId) writeLastSessionGuid(sessionId);

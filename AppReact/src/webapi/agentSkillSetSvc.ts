@@ -16,6 +16,8 @@ export interface AppAgentSkillSetDto {
     RecentWindowSize:   number;
     MaxIterations:      number;
     ExecutionMode:      string;
+    /** EmAppAgentUi: 0 Unspecified, 1 GenericChat, 2 ConfigurationAndIntegration, 3 DbManagement, 4 ImageAndFileProcess */
+    AgentUi:            number;
 }
 
 export interface AppAgentToolRegisterDto {

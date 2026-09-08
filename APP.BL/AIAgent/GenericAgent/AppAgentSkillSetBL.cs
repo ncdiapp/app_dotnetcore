@@ -10,6 +10,10 @@ namespace App.BL.AIAgent.GenericAgent
 {
     public static class AppAgentSkillSetBL
     {
+        private const string SelectCols = @"
+            SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,
+            MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi";
+
         public static List<AppAgentSkillSetDto> GetAllSkillSets(int dataSourceId)
         {
             var list = new List<AppAgentSkillSetDto>();
@@ -18,7 +22,7 @@ namespace App.BL.AIAgent.GenericAgent
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 if (fixture == null) return list;
                 var dt = fixture.RetriveDataTable(
-                    "SELECT SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations FROM dbo.AppAgentSkillSet ORDER BY SortOrder,SkillKey",
+                    $"SELECT {SelectCols} FROM dbo.AppAgentSkillSet ORDER BY SortOrder,SkillKey",
                     new List<DbParameter>());
                 if (dt == null) return list;
                 foreach (DataRow row in dt.Rows)
@@ -41,11 +45,11 @@ IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = @SkillKey)
         CapabilityFlags=@CapabilityFlags, IsActive=@IsActive, SortOrder=@SortOrder,
         Version=@Version, MaxHistoryTokens=@MaxHistoryTokens, SummarizeThreshold=@SummarizeThreshold,
         MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize,
-        MaxIterations=@MaxIterations
+        MaxIterations=@MaxIterations, ExecutionMode=@ExecutionMode, AgentUi=@AgentUi
     WHERE SkillKey = @SkillKey
 ELSE
-    INSERT INTO dbo.AppAgentSkillSet (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations)
-    VALUES (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,@Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations)";
+    INSERT INTO dbo.AppAgentSkillSet (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi)
+    VALUES (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,@Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations,@ExecutionMode,@AgentUi)";
                 fixture.ExecuteNonQueryResult(sql, BuildParams(fixture, dto));
                 return true;
             }
@@ -97,8 +101,23 @@ ELSE
             SummarizeThreshold = row["SummarizeThreshold"] == DBNull.Value ? 60000 : Convert.ToInt32(row["SummarizeThreshold"]),
             MaxToolResultChars = row["MaxToolResultChars"] == DBNull.Value ? 4000 : Convert.ToInt32(row["MaxToolResultChars"]),
             RecentWindowSize   = row["RecentWindowSize"] == DBNull.Value ? 10 : Convert.ToInt32(row["RecentWindowSize"]),
-            MaxIterations      = row.Table.Columns.Contains("MaxIterations") && row["MaxIterations"] != DBNull.Value ? Convert.ToInt32(row["MaxIterations"]) : 40,
+            MaxIterations      = ColInt(row, "MaxIterations", 40),
+            ExecutionMode      = ColStr(row, "ExecutionMode", "Interactive"),
+            AgentUi            = ColInt(row, "AgentUi", 1),
         };
+
+        private static int ColInt(DataRow row, string col, int fallback)
+        {
+            if (!row.Table.Columns.Contains(col) || row[col] == DBNull.Value) return fallback;
+            return Convert.ToInt32(row[col]);
+        }
+
+        private static string ColStr(DataRow row, string col, string fallback)
+        {
+            if (!row.Table.Columns.Contains(col) || row[col] == DBNull.Value) return fallback;
+            var s = row[col] as string;
+            return string.IsNullOrWhiteSpace(s) ? fallback : s;
+        }
 
         private static List<DbParameter> BuildParams(DatabaseFixture fixture, AppAgentSkillSetDto dto)
         {
@@ -117,6 +136,8 @@ ELSE
             Add("@MaxToolResultChars", dto.MaxToolResultChars > 0 ? dto.MaxToolResultChars : 4000);
             Add("@RecentWindowSize",   dto.RecentWindowSize > 0 ? dto.RecentWindowSize : 10);
             Add("@MaxIterations",      dto.MaxIterations > 0 ? dto.MaxIterations : 40);
+            Add("@ExecutionMode",      string.IsNullOrWhiteSpace(dto.ExecutionMode) ? "Interactive" : dto.ExecutionMode);
+            Add("@AgentUi",            dto.AgentUi > 0 ? dto.AgentUi : 1);
             return p;
         }
     }

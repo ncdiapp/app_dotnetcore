@@ -3144,6 +3144,19 @@ namespace APP.Components.Dto
     //    SearchViewComponent = 3,
     //}
 
+    /// <summary>
+    /// Agent chat UI shell selected on AppAgentSkillSet.AgentUi.
+    /// Unspecified (0) resolves to GenericChat at runtime.
+    /// </summary>
+    public enum EmAppAgentUi
+    {
+        Unspecified = 0,
+        GenericChat = 1,
+        ConfigurationAndIntegration = 2,
+        DbManagement = 3,
+        ImageAndFileProcess = 4,
+    }
+
     public static class AppSystemConstants
     {
         /// <summary>
