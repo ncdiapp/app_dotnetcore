@@ -12,6 +12,35 @@ type ApplicationSettingItem = any;
 type SettingSubGroup = { subCategory: string; items: ApplicationSettingItem[] };
 type SettingGroup = { category: string; subGroups: SettingSubGroup[] };
 
+/** Split SetupCode and wrap filter matches for highlight. */
+const renderHighlightedSetupCode = (setupCode: string, filter: string) => {
+  const text = setupCode || '';
+  const q = filter.trim();
+  if (!q || !text) return text;
+
+  const lower = text.toLowerCase();
+  const needle = q.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let start = 0;
+  let idx = lower.indexOf(needle, start);
+  let key = 0;
+  while (idx !== -1) {
+    if (idx > start) parts.push(text.slice(start, idx));
+    parts.push(
+      <mark
+        key={`m-${key++}`}
+        className="bg-amber-200 text-inherit rounded-sm px-0.5"
+      >
+        {text.slice(idx, idx + needle.length)}
+      </mark>,
+    );
+    start = idx + needle.length;
+    idx = lower.indexOf(needle, start);
+  }
+  if (start < text.length) parts.push(text.slice(start));
+  return parts;
+};
+
 const ApplicationSettingValueType = Object.freeze({
   Unknown: 0,
   Integer: 1,
@@ -104,6 +133,7 @@ const ApplicationSetting: React.FC = () => {
   const [settings, setSettings] = useState<ApplicationSettingItem[]>([]);
   const [isCacheMenuOpen, setIsCacheMenuOpen] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(() => new Set());
+  const [setupCodeFilter, setSetupCodeFilter] = useState('');
   const cacheMenuRef = useRef<HTMLDivElement | null>(null);
   const installedDbDriverRows = serverSettings?.InstalledDbDriver?.DataRowList ?? [];
 
@@ -195,14 +225,27 @@ const ApplicationSetting: React.FC = () => {
 
   const groupedSettings = useMemo(() => prepareGroups(settings), [prepareGroups, settings]);
 
-  const filteredGroupedSettings = useMemo(
-    () =>
-      groupedSettings.filter(({ subGroups }) => {
-        const items = subGroups.flatMap((g) => g.items);
-        return !(items.length === 1 && items[0]?.SetupCode === 'AppVersion');
-      }),
-    [groupedSettings],
-  );
+  const filteredGroupedSettings = useMemo(() => {
+    const withoutAppVersion = groupedSettings.filter(({ subGroups }) => {
+      const items = subGroups.flatMap((g) => g.items);
+      return !(items.length === 1 && items[0]?.SetupCode === 'AppVersion');
+    });
+    const q = setupCodeFilter.trim().toLowerCase();
+    if (!q) return withoutAppVersion;
+    return withoutAppVersion
+      .map((g) => ({
+        ...g,
+        subGroups: g.subGroups
+          .map((sg) => ({
+            ...sg,
+            items: sg.items.filter((item) =>
+              String(item.SetupCode || '').toLowerCase().includes(q),
+            ),
+          }))
+          .filter((sg) => sg.items.length > 0),
+      }))
+      .filter((g) => g.subGroups.length > 0);
+  }, [groupedSettings, setupCodeFilter]);
 
   const resolveCategoryLabel = useCallback((categoryValue: string | null | undefined) => {
     const label = (categoryValue ?? 'General').trim();
@@ -491,13 +534,34 @@ const ApplicationSetting: React.FC = () => {
           </div>
           <button
             type="button"
-            className={`inline-flex items-center gap-1.5 px-2 h-6 text-xs rounded-[4px] border ${theme.button_default}`}
+            className={`inline-flex items-center gap-1.5 px-2.5 h-7 text-xs rounded-[4px] border ${theme.button_default}`}
             onClick={toggleExpandCollapseAll}
             title={allCategoriesCollapsed ? 'Expand All Categories' : 'Collapse All Categories'}
           >
-            <i className={`fa-solid ${allCategoriesCollapsed ? 'fa-angles-down' : 'fa-angles-up'}`} />
+            <i className={`fa-solid ${allCategoriesCollapsed ? 'fa-angles-down' : 'fa-angles-up'} text-[11px]`} />
             <span>{allCategoriesCollapsed ? 'Expand all' : 'Collapse all'}</span>
           </button>
+          <div className="relative ml-3">
+            <i className="fa-solid fa-filter pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 opacity-70" />
+            <input
+              type="text"
+              className={`w-56 h-7 pl-7 pr-7 text-xs border rounded-[4px] ${theme.inputBox}`}
+              placeholder="Filter SetupCode..."
+              value={setupCodeFilter}
+              onChange={(e) => setSetupCodeFilter(e.target.value)}
+              title="Filter by SetupCode"
+            />
+            {setupCodeFilter.trim() !== '' && (
+              <button
+                type="button"
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-5 h-5 text-[10px] text-slate-400 hover:text-slate-600 flex items-center justify-center"
+                onClick={() => setSetupCodeFilter('')}
+                title="Clear filter"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -589,8 +653,8 @@ const ApplicationSetting: React.FC = () => {
                     <div className={`flex flex-col gap-2 ${subCategory ? 'pl-4' : 'pl-2'}`}>
                       {items.map((item) => (
                         <div key={item.SetupCode} className="flex items-center gap-3 text-sm">
-                          <label className={`w-[380px] truncate select-none text-xs tracking-wide ${theme.label}`}>
-                            {item.SetupCode}
+                          <label className={`w-[380px] truncate text-xs tracking-wide ${theme.label}`}>
+                            {renderHighlightedSetupCode(item.SetupCode || '', setupCodeFilter)}
                           </label>
                           <div className="w-[400px]">{renderField(item)}</div>
 

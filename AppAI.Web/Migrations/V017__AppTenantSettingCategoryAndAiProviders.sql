@@ -1,7 +1,7 @@
 -- V017__AppTenantSettingCategoryAndAiProviders.sql
 -- 1) Add Category / SubCategory columns
 -- 2) Copy Description → Category; map known numeric category codes to labels
--- 3) Set AI Settings category + subcategories; rename AIConfigProvider → AIConfigDefaultProvider
+-- 3) Set AI Config category + subcategories; rename AIConfigProvider → AIConfigDefaultProvider
 -- 4) Insert ImageProcess / Integration providers + AIConfigCursorApiKey / AIConfigCursorModel / AIConfigCursorMcpPublicBaseUrl
 -- Idempotent for re-runs on existing tenant DBs.
 
@@ -63,14 +63,14 @@ GO
 -- Ensure DefaultProvider row exists
 IF NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = 'AIConfigDefaultProvider')
     INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, UsageType, Category, SubCategory)
-    VALUES ('AIConfigDefaultProvider', 'Gemini', 'Default LLM Provider (OpenAI / Gemini / Anthropic)', 4, N'AI Settings', N'Provider Routing');
+    VALUES ('AIConfigDefaultProvider', 'Gemini', 'Default LLM Provider (OpenAI / Gemini / Anthropic)', 4, N'AI Config', N'Provider Routing');
 GO
 
 -- ============================================================
 -- 4. AI category / subcategory for existing + new AI keys
 -- ============================================================
 UPDATE dbo.AppTenantSetting
-SET Category = N'AI Settings', SubCategory = N'Provider Routing'
+SET Category = N'AI Config', SubCategory = N'Provider Routing'
 WHERE SetupCode IN (
     'AIConfigDefaultProvider',
     'AIConfigImageProcessProvider',
@@ -78,27 +78,27 @@ WHERE SetupCode IN (
 );
 
 UPDATE dbo.AppTenantSetting
-SET Category = N'AI Settings', SubCategory = N'OpenAI Settings'
+SET Category = N'AI Config', SubCategory = N'OpenAI Settings'
 WHERE SetupCode IN ('AIConfigOpenAIApiKey', 'AIConfigOpenAIModel');
 
 UPDATE dbo.AppTenantSetting
-SET Category = N'AI Settings', SubCategory = N'Gemini Settings'
+SET Category = N'AI Config', SubCategory = N'Gemini Settings'
 WHERE SetupCode IN ('AIConfigGeminiApiKey', 'AIConfigGeminiModel');
 
 UPDATE dbo.AppTenantSetting
-SET Category = N'AI Settings', SubCategory = N'Anthropic Settings'
+SET Category = N'AI Config', SubCategory = N'Anthropic Settings'
 WHERE SetupCode IN ('AIConfigAnthropicApiKey', 'AIConfigAnthropicModel');
 
 UPDATE dbo.AppTenantSetting
-SET Category = N'AI Settings', SubCategory = N'Cursor Settings'
+SET Category = N'AI Config', SubCategory = N'Cursor Settings'
 WHERE SetupCode IN ('AIConfigCursorApiKey', 'AIConfigCursorModel', 'AIConfigCursorMcpPublicBaseUrl');
 GO
 
 -- Also regroup any leftover AIConfig* rows that still have free-text Description-as-category
 UPDATE dbo.AppTenantSetting
-SET Category = N'AI Settings'
+SET Category = N'AI Config'
 WHERE SetupCode LIKE 'AIConfig%'
-  AND (Category IS NULL OR Category NOT IN (N'AI Settings'));
+  AND (Category IS NULL OR Category NOT IN (N'AI Config'));
 GO
 
 -- Normalize UsageType for provider keys to Text(4)
@@ -116,35 +116,35 @@ GO
 -- ============================================================
 IF NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = 'AIConfigImageProcessProvider')
     INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, UsageType, Category, SubCategory)
-    VALUES ('AIConfigImageProcessProvider', 'Gemini', 'Image / OCR / Vision LLM Provider (OpenAI / Gemini / Anthropic)', 4, N'AI Settings', N'Provider Routing');
+    VALUES ('AIConfigImageProcessProvider', 'Gemini', 'Image / OCR / Vision LLM Provider (OpenAI / Gemini / Anthropic)', 4, N'AI Config', N'Provider Routing');
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = 'AIConfigIntegrationProvider')
     INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, UsageType, Category, SubCategory)
-    VALUES ('AIConfigIntegrationProvider', 'Cursor', 'Integration engine (Cursor / Cloud / OpenAI / Gemini / Anthropic)', 4, N'AI Settings', N'Provider Routing');
+    VALUES ('AIConfigIntegrationProvider', 'Cursor', 'Integration engine (Cursor / Cloud / OpenAI / Gemini / Anthropic)', 4, N'AI Config', N'Provider Routing');
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = 'AIConfigCursorApiKey')
     INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, UsageType, Category, SubCategory)
-    VALUES ('AIConfigCursorApiKey', 'crsr_b7cf4a429f1fbca6cbc31602763bb4c9d4122e05b67b3851bfd3b9a65056cd7f', 'Cursor API Key', 5, N'AI Settings', N'Cursor Settings');
+    VALUES ('AIConfigCursorApiKey', 'crsr_b7cf4a429f1fbca6cbc31602763bb4c9d4122e05b67b3851bfd3b9a65056cd7f', 'Cursor API Key', 5, N'AI Config', N'Cursor Settings');
 
 -- Seed previous appsettings default when row exists but value is empty
 UPDATE dbo.AppTenantSetting
 SET SetupValue = N'crsr_b7cf4a429f1fbca6cbc31602763bb4c9d4122e05b67b3851bfd3b9a65056cd7f',
-    Category = N'AI Settings',
+    Category = N'AI Config',
     SubCategory = N'Cursor Settings'
 WHERE SetupCode = 'AIConfigCursorApiKey'
   AND (SetupValue IS NULL OR LTRIM(RTRIM(SetupValue)) = '');
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = 'AIConfigCursorModel')
     INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, UsageType, Category, SubCategory)
-    VALUES ('AIConfigCursorModel', 'auto', 'Cursor Model Id', 4, N'AI Settings', N'Cursor Settings');
+    VALUES ('AIConfigCursorModel', 'auto', 'Cursor Model Id', 4, N'AI Config', N'Cursor Settings');
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = 'AIConfigCursorMcpPublicBaseUrl')
     INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, UsageType, Category, SubCategory)
-    VALUES ('AIConfigCursorMcpPublicBaseUrl', 'https://intensive-dealers-spreading-nascar.trycloudflare.com/appai', 'Cursor MCP Public Base URL', 4, N'AI Settings', N'Cursor Settings');
+    VALUES ('AIConfigCursorMcpPublicBaseUrl', 'https://intensive-dealers-spreading-nascar.trycloudflare.com/appai', 'Cursor MCP Public Base URL', 4, N'AI Config', N'Cursor Settings');
 ELSE
     UPDATE dbo.AppTenantSetting
-    SET Category = N'AI Settings',
+    SET Category = N'AI Config',
         SubCategory = N'Cursor Settings'
     WHERE SetupCode = 'AIConfigCursorMcpPublicBaseUrl'
-      AND (Category IS NULL OR Category <> N'AI Settings' OR SubCategory IS NULL OR SubCategory <> N'Cursor Settings');
+      AND (Category IS NULL OR Category <> N'AI Config' OR SubCategory IS NULL OR SubCategory <> N'Cursor Settings');
 GO
