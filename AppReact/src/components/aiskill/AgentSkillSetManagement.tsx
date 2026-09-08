@@ -49,7 +49,7 @@ const AgentSkillSetManagement: React.FC = () => {
     const [showToolsModal, setShowToolsModal] = useState(false);
 
     // Resizable left panel
-    const [leftWidth, setLeftWidth] = useState(220);
+    const [leftWidth, setLeftWidth] = useState(300);
     const dragRef = useRef<{ startX: number; startW: number } | null>(null);
 
     const onDragStart = (e: React.MouseEvent) => {
@@ -57,7 +57,7 @@ const AgentSkillSetManagement: React.FC = () => {
         dragRef.current = { startX: e.clientX, startW: leftWidth };
         const onMove = (ev: MouseEvent) => {
             if (!dragRef.current) return;
-            const next = Math.max(160, Math.min(420, dragRef.current.startW + ev.clientX - dragRef.current.startX));
+            const next = Math.max(200, Math.min(500, dragRef.current.startW + ev.clientX - dragRef.current.startX));
             setLeftWidth(next);
         };
         const onUp = () => {
@@ -307,7 +307,7 @@ const AgentSkillSetManagement: React.FC = () => {
                                 <FlexGrid className="w-full h-full" itemsSource={skillsCV} isReadOnly headersVisibility="Column" selectionChanged={onGridSelectionChanged}>
                                     <FlexGridColumn header="Agent Code" binding="SkillKey" width="*" />
                                     <FlexGridColumn header="Active" binding="IsActive" width={55} />
-                                    <FlexGridColumn header="" binding="" width="*" />
+                                    <FlexGridColumn header="" binding="" width={20} />
                                 </FlexGrid>
                             </div>
                         </div>
