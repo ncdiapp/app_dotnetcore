@@ -6,11 +6,13 @@ using App.BL;
 using App.BL.TenantBusiness;
 using APP.Components.EntityDto;
 using DatabaseSchemaMrg;
+using NLog;
 
 namespace App.BL.AIAgent.GenericAgent
 {
     public static class AppAgentSkillSetBL
     {
+        private static readonly Logger Log = LogManager.GetCurrentClassLogger();
         public static List<AppAgentSkillSetDto> GetAllSkillSets(int dataSourceId)
         {
             var list = new List<AppAgentSkillSetDto>();
@@ -25,7 +27,7 @@ namespace App.BL.AIAgent.GenericAgent
                 foreach (DataRow row in dt.Rows)
                     list.Add(MapRow(row));
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine("GetAllSkillSets error: " + ex); }
+            catch (Exception ex) { Log.Error(ex, nameof(GetAllSkillSets)); }
             return list;
         }
 
@@ -43,7 +45,7 @@ namespace App.BL.AIAgent.GenericAgent
                 foreach (DataRow row in dt.Rows)
                     list.Add(MapRow(row));
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine("GetTemplates error: " + ex); }
+            catch (Exception ex) { Log.Error(ex, nameof(GetTemplates)); }
             return list;
         }
 
@@ -81,7 +83,7 @@ ELSE
                 fixture.ExecuteNonQueryResult(sql, BuildParams(fixture, dto));
                 return true;
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine("UpsertSkillSet error: " + ex); return false; }
+            catch (Exception ex) { Log.Error(ex, nameof(UpsertSkillSet)); return false; }
         }
 
         public static bool DeleteSkillSet(int dataSourceId, string skillKey)
