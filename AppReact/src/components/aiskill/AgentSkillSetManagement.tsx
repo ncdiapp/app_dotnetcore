@@ -613,26 +613,6 @@ const handleSave = async () => {
                                                     />
                                                 </div>
 
-                                                <div className="mb-4">
-                                                    <div className={sectionTitle}>Behavior</div>
-<div className="flex items-center py-1">
-                                                        <label className={lbl}>Execution Mode</label>
-                                                        <div className="flex gap-4">
-                                                            {(['Interactive', 'Deterministic'] as const).map(mode => (
-                                                                <label key={mode} className={`flex items-center gap-1.5 text-xs ${theme.label} cursor-pointer`}>
-                                                                    <input
-                                                                        type="radio"
-                                                                        name="executionMode"
-                                                                        value={mode}
-                                                                        checked={(editItem.ExecutionMode || 'Interactive') === mode}
-                                                                        onChange={() => update('ExecutionMode', mode)}
-                                                                    />
-                                                                    {mode}
-                                                                </label>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </div>
 
                                                 <div className="mb-4">
                                                     <div className={sectionTitle}>Limits</div>
