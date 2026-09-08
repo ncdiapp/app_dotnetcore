@@ -265,35 +265,35 @@ const AgentSkillSetManagement: React.FC = () => {
                                         <div className="flex items-start py-1">
                                             <div className={`${lbl} mt-1 flex flex-col gap-1`}>
                                                 <span>System Prompt</span>
-                                                {promptHistory.length > 0 && (
-                                                    <div className="relative">
-                                                        <button
-                                                            className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1`}
-                                                            onClick={() => setShowHistory(o => !o)}
-                                                            title="Restore a previous version"
-                                                        >
-                                                            <i className="fa-solid fa-clock-rotate-left" />
-                                                            History
-                                                        </button>
-                                                        {showHistory && (
-                                                            <div className={`absolute top-full left-0 z-40 mt-1 rounded shadow-lg border border-gray-200 w-72 ${theme.mainContentSection}`} style={{ maxHeight: 320, overflowY: 'auto' }}>
-                                                                <div className={`px-2 py-1 text-xs font-semibold opacity-50 ${theme.label} border-b border-gray-100 sticky top-0 ${theme.mainContentSection}`}>
-                                                                    Previous versions — click to restore
-                                                                </div>
-                                                                {promptHistory.map(h => (
-                                                                    <button key={h.HistoryId} className={`w-full text-left px-3 py-2 text-xs hover:opacity-80 border-b border-gray-100 ${theme.label}`}
-                                                                        onClick={() => { update('SystemPrompt', h.SystemPrompt); setShowHistory(false); }}>
-                                                                        <div className="font-semibold opacity-60 mb-0.5">
-                                                                            {new Date(h.SavedAt).toLocaleString()}
-                                                                            {h.SavedBy && <span className="ml-1 font-normal">by {h.SavedBy}</span>}
-                                                                        </div>
-                                                                        <div className="opacity-50 truncate">{h.SystemPrompt.slice(0, 80)}…</div>
-                                                                    </button>
-                                                                ))}
+                                                <div className="relative">
+                                                    <button
+                                                        className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1 ${promptHistory.length === 0 ? 'opacity-40' : ''}`}
+                                                        onClick={() => promptHistory.length > 0 && setShowHistory(o => !o)}
+                                                        title={promptHistory.length > 0
+                                                            ? `${promptHistory.length} saved version${promptHistory.length > 1 ? 's' : ''} — click to restore`
+                                                            : 'History is saved each time you update the system prompt'}
+                                                    >
+                                                        <i className="fa-solid fa-clock-rotate-left" />
+                                                        History{promptHistory.length > 0 && <span className="ml-0.5 opacity-60">({promptHistory.length})</span>}
+                                                    </button>
+                                                    {showHistory && promptHistory.length > 0 && (
+                                                        <div className={`absolute top-full left-0 z-40 mt-1 rounded shadow-lg border border-gray-200 w-72 ${theme.mainContentSection}`} style={{ maxHeight: 320, overflowY: 'auto' }}>
+                                                            <div className={`px-2 py-1 text-xs font-semibold opacity-50 ${theme.label} border-b border-gray-100 sticky top-0 ${theme.mainContentSection}`}>
+                                                                Previous versions — click to restore
                                                             </div>
-                                                        )}
-                                                    </div>
-                                                )}
+                                                            {promptHistory.map(h => (
+                                                                <button key={h.HistoryId} className={`w-full text-left px-3 py-2 text-xs hover:opacity-80 border-b border-gray-100 ${theme.label}`}
+                                                                    onClick={() => { update('SystemPrompt', h.SystemPrompt); setShowHistory(false); }}>
+                                                                    <div className="font-semibold opacity-60 mb-0.5">
+                                                                        {new Date(h.SavedAt).toLocaleString()}
+                                                                        {h.SavedBy && <span className="ml-1 font-normal">by {h.SavedBy}</span>}
+                                                                    </div>
+                                                                    <div className="opacity-50 truncate">{h.SystemPrompt.slice(0, 80)}…</div>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                             <textarea className={`flex-auto w-32 px-2 py-1 text-xs border font-mono ${theme.inputBox}`} rows={5} value={editItem.SystemPrompt} onChange={e => update('SystemPrompt', e.target.value)} />
                                         </div>
