@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
@@ -12,16 +12,19 @@ namespace App.BL.CursorCloudAgent
     {
         private const string MigrateRenameTableSql = @"
 IF OBJECT_ID(N'dbo.CursorAgentSession', N'U') IS NOT NULL
-   AND OBJECT_ID(N'dbo.AppDataIntegrationAgentSession', N'U') IS NULL
-    EXEC sp_rename N'dbo.CursorAgentSession', N'AppDataIntegrationAgentSession'";
+   AND OBJECT_ID(N'dbo.CursorCloudAgentSession', N'U') IS NULL
+    EXEC sp_rename N'dbo.CursorAgentSession', N'CursorCloudAgentSession';
+IF OBJECT_ID(N'dbo.AppDataIntegrationAgentSession', N'U') IS NOT NULL
+   AND OBJECT_ID(N'dbo.CursorCloudAgentSession', N'U') IS NULL
+    EXEC sp_rename N'dbo.AppDataIntegrationAgentSession', N'CursorCloudAgentSession'";
 
         private const string CreateTableSql = @"
 IF NOT EXISTS (
     SELECT 1 FROM INFORMATION_SCHEMA.TABLES
-    WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'AppDataIntegrationAgentSession'
+    WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = 'CursorCloudAgentSession'
 )
 BEGIN
-    CREATE TABLE dbo.AppDataIntegrationAgentSession (
+    CREATE TABLE dbo.CursorCloudAgentSession (
         SessionGuid             NVARCHAR(50)   NOT NULL,
         CreatedAt               DATETIME       NOT NULL,
         UpdatedAt               DATETIME       NOT NULL,
@@ -39,49 +42,49 @@ BEGIN
         IdentityJson            NVARCHAR(MAX)  NULL,
         PendingGateJson         NVARCHAR(MAX)  NULL,
         FinalResponse           NVARCHAR(4000) NULL,
-        CONSTRAINT PK_AppDataIntegrationAgentSession PRIMARY KEY (SessionGuid)
+        CONSTRAINT PK_CursorCloudAgentSession PRIMARY KEY (SessionGuid)
     )
 END";
 
         private const string MigrateRenameColumnSql = @"
-IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'CursorAgentId') IS NOT NULL
-   AND COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'CloudAgentId') IS NULL
-    EXEC sp_rename N'dbo.AppDataIntegrationAgentSession.CursorAgentId', N'CloudAgentId', N'COLUMN'";
+IF COL_LENGTH('dbo.CursorCloudAgentSession', 'CursorAgentId') IS NOT NULL
+   AND COL_LENGTH('dbo.CursorCloudAgentSession', 'CloudAgentId') IS NULL
+    EXEC sp_rename N'dbo.CursorCloudAgentSession.CursorAgentId', N'CloudAgentId', N'COLUMN'";
 
         private const string MigrateRenamePkSql = @"
 IF OBJECT_ID(N'dbo.PK_CursorAgentSession', N'PK') IS NOT NULL
-   AND OBJECT_ID(N'dbo.PK_AppDataIntegrationAgentSession', N'PK') IS NULL
-    EXEC sp_rename N'dbo.PK_CursorAgentSession', N'PK_AppDataIntegrationAgentSession'";
+   AND OBJECT_ID(N'dbo.PK_CursorCloudAgentSession', N'PK') IS NULL
+    EXEC sp_rename N'dbo.PK_CursorAgentSession', N'PK_CursorCloudAgentSession'";
 
         private const string MigrateRenameDfArchivedSql = @"
 IF OBJECT_ID(N'dbo.DF_CursorAgentSession_IsArchived', N'D') IS NOT NULL
-   AND OBJECT_ID(N'dbo.DF_AppDataIntegrationAgentSession_IsArchived', N'D') IS NULL
-    EXEC sp_rename N'dbo.DF_CursorAgentSession_IsArchived', N'DF_AppDataIntegrationAgentSession_IsArchived'";
+   AND OBJECT_ID(N'dbo.DF_CursorCloudAgentSession_IsArchived', N'D') IS NULL
+    EXEC sp_rename N'dbo.DF_CursorAgentSession_IsArchived', N'DF_CursorCloudAgentSession_IsArchived'";
 
         private const string MigrateRenameDfSortSql = @"
 IF OBJECT_ID(N'dbo.DF_CursorAgentSession_SortOrder', N'D') IS NOT NULL
-   AND OBJECT_ID(N'dbo.DF_AppDataIntegrationAgentSession_SortOrder', N'D') IS NULL
-    EXEC sp_rename N'dbo.DF_CursorAgentSession_SortOrder', N'DF_AppDataIntegrationAgentSession_SortOrder'";
+   AND OBJECT_ID(N'dbo.DF_CursorCloudAgentSession_SortOrder', N'D') IS NULL
+    EXEC sp_rename N'dbo.DF_CursorAgentSession_SortOrder', N'DF_CursorCloudAgentSession_SortOrder'";
 
         private const string MigrateIdentityJsonSql = @"
-IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'IdentityJson') IS NULL
-    ALTER TABLE dbo.AppDataIntegrationAgentSession ADD IdentityJson NVARCHAR(MAX) NULL";
+IF COL_LENGTH('dbo.CursorCloudAgentSession', 'IdentityJson') IS NULL
+    ALTER TABLE dbo.CursorCloudAgentSession ADD IdentityJson NVARCHAR(MAX) NULL";
 
         private const string MigrateSkillKeySql = @"
-IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'SkillKey') IS NULL
-    ALTER TABLE dbo.AppDataIntegrationAgentSession ADD SkillKey NVARCHAR(80) NULL";
+IF COL_LENGTH('dbo.CursorCloudAgentSession', 'SkillKey') IS NULL
+    ALTER TABLE dbo.CursorCloudAgentSession ADD SkillKey NVARCHAR(80) NULL";
 
         private const string MigrateChatTitleSql = @"
-IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'DisplayTitle') IS NULL
-    ALTER TABLE dbo.AppDataIntegrationAgentSession ADD DisplayTitle NVARCHAR(200) NULL";
+IF COL_LENGTH('dbo.CursorCloudAgentSession', 'DisplayTitle') IS NULL
+    ALTER TABLE dbo.CursorCloudAgentSession ADD DisplayTitle NVARCHAR(200) NULL";
 
         private const string MigrateChatArchivedSql = @"
-IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'IsArchived') IS NULL
-    ALTER TABLE dbo.AppDataIntegrationAgentSession ADD IsArchived BIT NOT NULL CONSTRAINT DF_AppDataIntegrationAgentSession_IsArchived DEFAULT(0)";
+IF COL_LENGTH('dbo.CursorCloudAgentSession', 'IsArchived') IS NULL
+    ALTER TABLE dbo.CursorCloudAgentSession ADD IsArchived BIT NOT NULL CONSTRAINT DF_CursorCloudAgentSession_IsArchived DEFAULT(0)";
 
         private const string MigrateChatSortSql = @"
-IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'SortOrder') IS NULL
-    ALTER TABLE dbo.AppDataIntegrationAgentSession ADD SortOrder INT NOT NULL CONSTRAINT DF_AppDataIntegrationAgentSession_SortOrder DEFAULT(0)";
+IF COL_LENGTH('dbo.CursorCloudAgentSession', 'SortOrder') IS NULL
+    ALTER TABLE dbo.CursorCloudAgentSession ADD SortOrder INT NOT NULL CONSTRAINT DF_CursorCloudAgentSession_SortOrder DEFAULT(0)";
 
         private static void EnsureSchema(DatabaseSchemaMrg.DatabaseFixture fixture)
         {
@@ -107,7 +110,7 @@ IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'SortOrder') IS NULL
                 EnsureSchema(fixture);
 
                 const string sql = @"
-INSERT INTO dbo.AppDataIntegrationAgentSession
+INSERT INTO dbo.CursorCloudAgentSession
     (SessionGuid, CreatedAt, UpdatedAt, UserRequest, Status, CloudAgentId, LatestRunId, McpToken,
      AppSessionId, SaasApplicationId, DataSourceRegisterId, CreatedById, WorkspaceRelativePath,
      ConversationHistoryJson, IdentityJson, SkillKey, DisplayTitle, IsArchived, SortOrder)
@@ -148,7 +151,7 @@ VALUES
                 EnsureSchema(fixture);
 
                 const string sql = @"
-UPDATE dbo.AppDataIntegrationAgentSession SET
+UPDATE dbo.CursorCloudAgentSession SET
     UpdatedAt = @UpdatedAt,
     Status = @Status,
     CloudAgentId = @CloudAgentId,
@@ -199,7 +202,7 @@ WHERE SessionGuid = @SessionGuid";
 SELECT TOP (@Take) SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CloudAgentId,
        SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath, FinalResponse,
        IsArchived, SortOrder
-FROM dbo.AppDataIntegrationAgentSession
+FROM dbo.CursorCloudAgentSession
 WHERE (@CreatedById IS NULL OR CreatedById = @CreatedById)
   AND ISNULL(IsArchived, 0) = 0
 ORDER BY SortOrder ASC, UpdatedAt DESC",
@@ -228,7 +231,7 @@ ORDER BY SortOrder ASC, UpdatedAt DESC",
 SELECT SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CloudAgentId, LatestRunId,
        SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath,
        ConversationHistoryJson, PendingGateJson, FinalResponse, IsArchived, SortOrder
-FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
+FROM dbo.CursorCloudAgentSession WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter> { P(fixture, "@SessionGuid", sessionGuid) });
                 if (dt == null || dt.Rows.Count == 0) return null;
                 var row = dt.Rows[0];
@@ -281,7 +284,7 @@ FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
                 var dt = fixture.RetriveDataTable(@"
 SELECT SessionGuid, CloudAgentId, LatestRunId, McpToken, AppSessionId, SaasApplicationId,
        DataSourceRegisterId, SkillKey, CreatedById, WorkspaceRelativePath, ConversationHistoryJson, IdentityJson
-FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
+FROM dbo.CursorCloudAgentSession WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter> { P(fixture, "@SessionGuid", sessionGuid) });
                 if (dt == null || dt.Rows.Count == 0) return null;
                 var row = dt.Rows[0];
@@ -325,7 +328,7 @@ FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
                 var dt = fixture.RetriveDataTable(@"
 SELECT SessionGuid, CloudAgentId, LatestRunId, McpToken, AppSessionId, SaasApplicationId,
        DataSourceRegisterId, SkillKey, CreatedById, WorkspaceRelativePath, ConversationHistoryJson, IdentityJson
-FROM dbo.AppDataIntegrationAgentSession WHERE McpToken = @McpToken",
+FROM dbo.CursorCloudAgentSession WHERE McpToken = @McpToken",
                     new List<DbParameter> { P(fixture, "@McpToken", mcpToken.Trim()) });
                 if (dt == null || dt.Rows.Count == 0) return null;
                 var row = dt.Rows[0];
@@ -369,7 +372,7 @@ FROM dbo.AppDataIntegrationAgentSession WHERE McpToken = @McpToken",
 SELECT SessionGuid, CreatedAt, UpdatedAt, UserRequest, DisplayTitle, Status, CloudAgentId,
        SaasApplicationId, DataSourceRegisterId, SkillKey, WorkspaceRelativePath, FinalResponse,
        IsArchived, SortOrder
-FROM dbo.AppDataIntegrationAgentSession
+FROM dbo.CursorCloudAgentSession
 WHERE (@CreatedById IS NULL OR CreatedById = @CreatedById)
 ORDER BY SortOrder ASC, UpdatedAt DESC",
                     new List<DbParameter> { P(fixture, "@CreatedById", createdById) });
@@ -389,7 +392,7 @@ ORDER BY SortOrder ASC, UpdatedAt DESC",
                 if (fixture == null || string.IsNullOrWhiteSpace(sessionGuid)) return false;
                 EnsureSchema(fixture);
                 fixture.ExecuteNonQueryResult(@"
-UPDATE dbo.AppDataIntegrationAgentSession SET DisplayTitle = @DisplayTitle WHERE SessionGuid = @SessionGuid",
+UPDATE dbo.CursorCloudAgentSession SET DisplayTitle = @DisplayTitle WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter>
                     {
                         P(fixture, "@DisplayTitle", string.IsNullOrWhiteSpace(title) ? null : Trunc(title.Trim(), 200)),
@@ -413,7 +416,7 @@ UPDATE dbo.AppDataIntegrationAgentSession SET DisplayTitle = @DisplayTitle WHERE
                     if (fixture == null) return n;
                     EnsureSchema(fixture);
                     fixture.ExecuteNonQueryResult(@"
-UPDATE dbo.AppDataIntegrationAgentSession SET IsArchived = @IsArchived WHERE SessionGuid = @SessionGuid",
+UPDATE dbo.CursorCloudAgentSession SET IsArchived = @IsArchived WHERE SessionGuid = @SessionGuid",
                         new List<DbParameter>
                         {
                             P(fixture, "@IsArchived", archived ? 1 : 0),
@@ -439,7 +442,7 @@ UPDATE dbo.AppDataIntegrationAgentSession SET IsArchived = @IsArchived WHERE Ses
                     if (fixture == null) return n;
                     EnsureSchema(fixture);
                     fixture.ExecuteNonQueryResult(
-                        "DELETE FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
+                        "DELETE FROM dbo.CursorCloudAgentSession WHERE SessionGuid = @SessionGuid",
                         new List<DbParameter> { P(fixture, "@SessionGuid", guid) });
                     CursorCloudAgentSessionStore.Remove(guid);
                     n++;
@@ -462,7 +465,7 @@ UPDATE dbo.AppDataIntegrationAgentSession SET IsArchived = @IsArchived WHERE Ses
                 {
                     if (string.IsNullOrWhiteSpace(guid)) continue;
                     fixture.ExecuteNonQueryResult(@"
-UPDATE dbo.AppDataIntegrationAgentSession SET SortOrder = @SortOrder WHERE SessionGuid = @SessionGuid",
+UPDATE dbo.CursorCloudAgentSession SET SortOrder = @SortOrder WHERE SessionGuid = @SessionGuid",
                         new List<DbParameter>
                         {
                             P(fixture, "@SortOrder", order),

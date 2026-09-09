@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using App.BL.GenericAgent;
 using APP.Components.Dto;
 using Newtonsoft.Json.Linq;
+using TbSkillBL = App.BL.AIAgent.AiSkill.AppAgentSkillSetBL;
 
 namespace App.BL.AIAgent.GenericAgent
 {
@@ -36,10 +38,40 @@ namespace App.BL.AIAgent.GenericAgent
 
             try
             {
+                var dsId = identity.HasValue ? identity.Value.DataSourceId : 0;
+                var skillSet = dsId > 0
+                    ? TbSkillBL.GetByKey(skillKey, dsId)
+                    : TbSkillBL.GetByKey(skillKey);
+                if (skillSet == null)
+                {
+                    await SafeOnError(callbacks, "Skill key not found: " + skillKey).ConfigureAwait(false);
+                    return;
+                }
+
+                var runtime = AppAgentRuntimeProvider.Normalize(
+                    skillSet.RuntimeProvider,
+                    identity.HasValue
+                        ? AIConfigSettingBL.GetDefaultProvider(identity.Value)
+                        : AIConfigSettingBL.GetDefaultProvider());
+
+                if (AppAgentRuntimeProvider.IsCursorCloudAgents(runtime))
+                {
+                    await AgentManagedCursorBL.RunAsync(
+                        skillKey,
+                        userMessage,
+                        chatHistory ?? new List<JObject>(),
+                        skillSet.SystemPrompt,
+                        callbacks,
+                        identity,
+                        ct).ConfigureAwait(false);
+                    return;
+                }
+
                 await GenericAgentEngine.RunAsync(
                     skillKey, userMessage,
                     chatHistory ?? new List<JObject>(),
-                    callbacks, identity, ct).ConfigureAwait(false);
+                    callbacks, identity, ct,
+                    runtimeProviderOverride: runtime).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

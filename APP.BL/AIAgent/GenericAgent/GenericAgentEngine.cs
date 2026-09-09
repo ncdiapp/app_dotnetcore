@@ -54,7 +54,8 @@ namespace App.BL.AIAgent.GenericAgent
             List<JObject>         chatHistory,
             GenericAgentCallbacks callbacks,
             AppClientIdentity?    identity,
-            CancellationToken     ct)
+            CancellationToken     ct,
+            string                runtimeProviderOverride = null)
         {
             var log = NLog.LogManager.GetCurrentClassLogger();
             var runSw = System.Diagnostics.Stopwatch.StartNew();
@@ -93,8 +94,8 @@ namespace App.BL.AIAgent.GenericAgent
                 // alive across multiple tool calls within the same agent run.
                 var instancePool = new Dictionary<string, object>(StringComparer.Ordinal);
 
-                // Build SK kernel (provider-specific connector registered here)
-                var kernel = BuildKernel(identity);
+                // Build SK kernel (per-agent RuntimeProvider when set; else tenant default)
+                var kernel = BuildKernel(identity, runtimeProviderOverride ?? skillSet.RuntimeProvider);
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks));
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
 
@@ -188,24 +189,33 @@ namespace App.BL.AIAgent.GenericAgent
         // Kernel builder
         // ─────────────────────────────────────────────────────────────────────
 
-        private static Kernel BuildKernel(AppClientIdentity? identity)
+        private static Kernel BuildKernel(AppClientIdentity? identity, string runtimeProviderOverride = null)
         {
             EmLLMProvider provider;
             string        apiKey;
             string        model;
 
+            var providerStr = AppAgentRuntimeProvider.Normalize(
+                runtimeProviderOverride,
+                identity.HasValue
+                    ? AIConfigSettingBL.GetDefaultProvider(identity.Value)
+                    : AIConfigSettingBL.GetDefaultProvider());
+
+            if (AppAgentRuntimeProvider.IsCursorCloudAgents(providerStr))
+                providerStr = identity.HasValue
+                    ? AIConfigSettingBL.GetDefaultProvider(identity.Value)
+                    : AIConfigSettingBL.GetDefaultProvider();
+
+            provider = Enum.TryParse<EmLLMProvider>(providerStr, true, out var parsed) ? parsed : EmLLMProvider.Gemini;
             if (identity.HasValue)
             {
-                var providerStr = AIConfigSettingBL.GetProvider(identity.Value) ?? "";
-                provider = Enum.TryParse<EmLLMProvider>(providerStr, true, out var parsed) ? parsed : EmLLMProvider.Anthropic;
-                apiKey   = AIConfigSettingBL.GetApiKey(identity.Value) ?? "";
-                model    = AIConfigSettingBL.GetModel(identity.Value)  ?? "";
+                apiKey = AIConfigSettingBL.GetApiKeyForProvider(providerStr, identity.Value) ?? "";
+                model  = AIConfigSettingBL.GetModelForProvider(providerStr, identity.Value) ?? "";
             }
             else
             {
-                provider = KernelProviderHelper.GetProvider();
-                apiKey   = KernelProviderHelper.GetApiKey() ?? "";
-                model    = KernelProviderHelper.GetModel()  ?? "";
+                apiKey = AIConfigSettingBL.GetApiKeyForProvider(providerStr) ?? "";
+                model  = AIConfigSettingBL.GetModelForProvider(providerStr) ?? "";
             }
 
             var builder = Kernel.CreateBuilder();
