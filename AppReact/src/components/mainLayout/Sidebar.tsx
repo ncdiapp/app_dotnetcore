@@ -1,9 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { RootState } from '../../redux/store';
 import { useTabNavigation } from '../../redux/hooks/useTabNavigation';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { isMasterSysAdminFromContext } from '../../helper/adminPermissionHelper';
+import { genericAgentSvc } from '../../webapi/genericAgentSvc';
 
 // GlobalGuid constants for routing (matching AngularJS implementation)
 const ESiteConfigurationRootMenuGuid = '706026CA-27FE-4A7D-B0BF-03DC2966DB74';
@@ -22,6 +23,19 @@ const Sidebar: React.FC = () => {
 
   // State to track the currently selected (active) leaf menu item
   const [selectedMenuId, setSelectedMenuId] = useState<string | null>(null);
+
+  // Dynamic agent nav items fetched from the DB (IsActive=1 agents)
+  const [activeAgentItems, setActiveAgentItems] = useState<Array<{ Id: string; Name: string; RouteCode: string }>>([]);
+
+  useEffect(() => {
+    genericAgentSvc.GetActiveAgents().then(agents => {
+      setActiveAgentItems(agents.map(a => ({
+        Id: `ai-agent-dynamic-${a.SkillKey}`,
+        Name: a.AgentName,
+        RouteCode: `/agent-chat?skillKey=${encodeURIComponent(a.SkillKey)}&agentUi=${a.AgentUi}`,
+      })));
+    });
+  }, []);
   
   // Helper function to sort menu items by Sort property (following AngularJS logic)
   const sortMenuItems = (menuItems: any[]): any[] => {
@@ -151,7 +165,7 @@ const Sidebar: React.FC = () => {
         { Id: 'ai-agent-app-builder', Name: 'App Builder Agent', RouteCode: '/app-builder-agent' },
         { Id: 'ai-agent-data-integration', Name: 'App Data Integration Agent', RouteCode: '/app-data-integration-agent' },
         { Id: 'ai-agent-app-report', Name: 'App Report Agent', RouteCode: '/app-report-agent' },
-
+        ...activeAgentItems,
         { Id: 'ai-agent-skill-mgt', Name: 'AI Skill Management', RouteCode: '/ai-skill-management' },
         { Id: 'ai-agent-skill-set-mgt', Name: 'Agent Management', RouteCode: '/agent-skill-management' },
       ]

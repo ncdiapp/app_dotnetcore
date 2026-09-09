@@ -28,12 +28,13 @@ interface PlanEvent {
 
 interface Props {
     skillKey: string;
+    testMode?: boolean;
 }
 
 const snippet = (s?: string | null, max = 300) =>
     !s ? '' : s.length > max ? s.slice(0, max) + '…' : s;
 
-const GenericAgentChat: React.FC<Props> = ({ skillKey }) => {
+const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
     const { theme } = useTheme();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [turnActivities, setTurnActivities] = useState<TurnActivity[]>([]);
@@ -54,15 +55,17 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey }) => {
     }, [messages, turnActivities]);
 
     useEffect(() => {
-        // Restore prior session on mount
-        genericAgentSvc.LoadSession(skillKey).then(prior => {
-            if (prior && prior.length > 0) {
-                setMessages(prior.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })));
-                setCurrentTurnIndex(prior.filter(m => m.role === 'user').length);
-            }
-        });
+        if (!testMode) {
+            // Restore prior session on mount (skipped in test mode)
+            genericAgentSvc.LoadSession(skillKey).then(prior => {
+                if (prior && prior.length > 0) {
+                    setMessages(prior.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })));
+                    setCurrentTurnIndex(prior.filter(m => m.role === 'user').length);
+                }
+            });
+        }
         return () => { genericAgentSvc.disconnect(); };
-    }, [skillKey]);
+    }, [skillKey, testMode]);
 
     const findLastIdx = <T,>(arr: T[], pred: (item: T) => boolean): number => {
         for (let i = arr.length - 1; i >= 0; i--) if (pred(arr[i])) return i;
@@ -219,7 +222,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey }) => {
                     {messages.length > 0 && (
                         <button className={btn} onClick={() => {
                             setMessages([]); setTurnActivities([]); setCurrentTurnIndex(0); setSessionId(null); setError(null);
-                            genericAgentSvc.ClearSession(skillKey);
+                            if (!testMode) genericAgentSvc.ClearSession(skillKey);
                         }} title="Clear conversation">
                             <i className="fa-solid fa-rotate-left" />
                         </button>

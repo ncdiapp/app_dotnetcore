@@ -461,7 +461,7 @@ const handleSave = async () => {
                             )}
                             {selected && (
                                 <button type="button" className={btn} onClick={() => setTestSkillKey(selected.SkillKey)}>
-                                    <i className="fa-solid fa-play mr-1" />Run
+                                    <i className="fa-solid fa-play mr-1" />Run Test
                                 </button>
                             )}
                         </div>
@@ -526,6 +526,7 @@ const handleSave = async () => {
                                     <AgentUiChatHost
                                         skillKey={testSkillKey}
                                         agentUi={editItem.SkillKey === testSkillKey ? editItem.AgentUi : selected?.AgentUi}
+                                        testMode={true}
                                     />
                                 </div>
                             </div>

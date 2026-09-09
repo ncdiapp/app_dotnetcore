@@ -42,6 +42,18 @@ namespace App.BL.AIAgent.AiSkill
             return MapAll(dt);
         }
 
+        public static List<AppAgentSkillSetDto> GetAll(int dataSourceId)
+        {
+            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
+            if (fixture == null) return new List<AppAgentSkillSetDto>();
+
+            var dt = fixture.RetriveDataTable(
+                $"SELECT {SelectCols} FROM dbo.AppAgentSkillSet WHERE IsActive=1 ORDER BY SortOrder",
+                new List<DbParameter>());
+
+            return MapAll(dt);
+        }
+
         public static AppAgentSkillSetDto GetByKey(string skillKey)
         {
             if (string.IsNullOrWhiteSpace(skillKey)) return null;
