@@ -7,6 +7,7 @@ using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.LBL.DatabaseSpecific;
 using APP.LBL.EntityClasses;
+using NLog;
 
 namespace App.BL
 {
@@ -465,6 +466,13 @@ namespace App.BL
                 "AppDataSet", "AppEntityInfo", "AppTransaction",
                 "AppSecurityGroup", "AppSecurityGroupMember", "AppSecurityEntityAction",
                 "AppTenantSetting",
+                // Agent platform config — Domain → Library → Tools → Subscriptions → SkillSet
+                "AppAgentToolDomain",
+                "AppAgentToolLibrary",
+                "AppAgentToolRegister",
+                "AppAgentLibrarySubscription",
+                "AppAgentSkillSet",
+                "AppAgentSkillSetHistory",
             };
 
             // Connect via master catalog so we can issue cross-DB queries.
@@ -531,6 +539,175 @@ namespace App.BL
                         $"IF OBJECT_ID(N'[{newDbName}].[dbo].[{table}]') IS NOT NULL " +
                         $"ALTER TABLE [{newDbName}].[dbo].[{table}] CHECK CONSTRAINT ALL", conn))
                         cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Copies platform agent config (domains, libraries, tools, subscriptions, skill sets)
+        /// from the template tenant DB into every other registered tenant DB.
+        /// Uses IF NOT EXISTS — only inserts missing rows; existing tenant customisations are untouched.
+        /// </summary>
+        public static Dictionary<string, string> PushAgentTemplatesToAllTenants(int templateDataSourceId)
+        {
+            var log = LogManager.GetCurrentClassLogger();
+            var results = new Dictionary<string, string>();
+
+            // Resolve template DB connection string from AppDataSourceRegister (stored in MasterDB).
+            string templateConnStr = ResolveConnectionString(templateDataSourceId);
+            if (string.IsNullOrWhiteSpace(templateConnStr))
+            {
+                results["_error"] = $"Template DataSourceId {templateDataSourceId} not found.";
+                return results;
+            }
+
+            // Tables pushed in FK-safe order; matched on their natural/business keys (not identity PKs).
+            // Each entry: (tableName, mergeKeyColumns used in the WHERE NOT EXISTS check)
+            var agentTables = new[]
+            {
+                ("AppAgentToolDomain",          new[] { "DomainKey" }),
+                ("AppAgentToolLibrary",         new[] { "LibraryKey" }),
+                ("AppAgentToolRegister",        new[] { "SkillKey", "ToolName" }),
+                ("AppAgentLibrarySubscription", new[] { "SkillKey", "LibraryKey" }),
+                ("AppAgentSkillSet",            new[] { "SkillKey" }),
+            };
+
+            // Load all tenant connections from AppMasterDB.
+            const string tenantSql = "SELECT DataSourceId, DataSourceName, ConnectionString FROM AppDataSourceRegister WHERE IsActive = 1";
+            var tenants = new List<(int id, string name, string connStr)>();
+            using (var conn = new SqlConnection(MasterConnStr))
+            {
+                conn.Open();
+                using (var cmd = new SqlCommand(tenantSql, conn))
+                using (var rdr = cmd.ExecuteReader())
+                    while (rdr.Read())
+                        tenants.Add((rdr.GetInt32(0), rdr.GetString(1), rdr.GetString(2)));
+            }
+
+            foreach (var (tenantId, tenantName, encryptedConnStr) in tenants)
+            {
+                if (tenantId == templateDataSourceId) continue;
+
+                try
+                {
+                    string targetConnStr = AppConnectionStringEncryptionBL.Decrypt(encryptedConnStr);
+                    int totalInserted = 0;
+
+                    using (var srcConn = new SqlConnection(templateConnStr))
+                    using (var dstConn = new SqlConnection(targetConnStr))
+                    {
+                        srcConn.Open();
+                        dstConn.Open();
+
+                        foreach (var (table, keyColumns) in agentTables)
+                        {
+                            // Skip if table doesn't exist in either DB (older tenants may be on older schema).
+                            bool srcExists = TableExists(srcConn, table);
+                            bool dstExists = TableExists(dstConn, table);
+                            if (!srcExists || !dstExists) continue;
+
+                            // Read all rows from the template DB.
+                            var rows = new List<Dictionary<string, object>>();
+                            using (var cmd = new SqlCommand($"SELECT * FROM dbo.[{table}]", srcConn))
+                            using (var rdr = cmd.ExecuteReader())
+                            {
+                                while (rdr.Read())
+                                {
+                                    var row = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                                    for (int i = 0; i < rdr.FieldCount; i++)
+                                        row[rdr.GetName(i)] = rdr.IsDBNull(i) ? DBNull.Value : rdr.GetValue(i);
+                                    rows.Add(row);
+                                }
+                            }
+
+                            if (rows.Count == 0) continue;
+
+                            // Get column names from target (may differ slightly from source if migrations diverge).
+                            var targetCols = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            using (var cmd = new SqlCommand(
+                                $"SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='{table}'", dstConn))
+                            using (var rdr = cmd.ExecuteReader())
+                                while (rdr.Read()) targetCols.Add(rdr.GetString(0));
+
+                            // Check if table has an identity column in the target.
+                            bool hasIdentity = false;
+                            using (var cmd = new SqlCommand(
+                                $"SELECT COUNT(1) FROM sys.identity_columns WHERE OBJECT_NAME(object_id)='{table}'", dstConn))
+                                hasIdentity = (int)cmd.ExecuteScalar() > 0;
+
+                            foreach (var row in rows)
+                            {
+                                // Build WHERE NOT EXISTS predicate on key columns.
+                                var whereParts = new List<string>();
+                                foreach (var key in keyColumns)
+                                {
+                                    if (!row.ContainsKey(key)) { whereParts = null; break; }
+                                    whereParts.Add($"[{key}] = @k_{key}");
+                                }
+                                if (whereParts == null) continue;
+
+                                // Only insert columns that exist in the target.
+                                var insertCols = new List<string>();
+                                foreach (var col in row.Keys)
+                                    if (targetCols.Contains(col)) insertCols.Add(col);
+
+                                string colList = string.Join(", ", insertCols.ConvertAll(c => $"[{c}]"));
+                                string paramList = string.Join(", ", insertCols.ConvertAll(c => $"@p_{c}"));
+                                string whereClause = string.Join(" AND ", whereParts);
+
+                                string identOn  = hasIdentity ? $"SET IDENTITY_INSERT dbo.[{table}] ON; " : "";
+                                string identOff = hasIdentity ? $" SET IDENTITY_INSERT dbo.[{table}] OFF;" : "";
+
+                                string sql = $@"{identOn}
+IF NOT EXISTS (SELECT 1 FROM dbo.[{table}] WHERE {whereClause})
+    INSERT INTO dbo.[{table}] ({colList}) VALUES ({paramList});
+{identOff}";
+
+                                using (var cmd = new SqlCommand(sql, dstConn))
+                                {
+                                    foreach (var col in insertCols)
+                                        cmd.Parameters.AddWithValue($"@p_{col}", row[col]);
+                                    foreach (var key in keyColumns)
+                                        cmd.Parameters.AddWithValue($"@k_{key}", row[key]);
+                                    totalInserted += cmd.ExecuteNonQuery();
+                                }
+                            }
+                        }
+                    }
+
+                    results[tenantName] = $"OK — {totalInserted} rows inserted";
+                }
+                catch (Exception ex)
+                {
+                    log.Error(ex, $"PushAgentTemplatesToAllTenants failed for tenant {tenantName}");
+                    results[tenantName] = $"ERROR: {ex.Message}";
+                }
+            }
+
+            return results;
+        }
+
+        private static bool TableExists(SqlConnection conn, string tableName)
+        {
+            using (var cmd = new SqlCommand(
+                "SELECT COUNT(1) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME=@t", conn))
+            {
+                cmd.Parameters.AddWithValue("@t", tableName);
+                return (int)cmd.ExecuteScalar() > 0;
+            }
+        }
+
+        private static string ResolveConnectionString(int dataSourceId)
+        {
+            const string sql = "SELECT TOP 1 ConnectionString FROM AppDataSourceRegister WHERE DataSourceId = @id AND IsActive = 1";
+            using (var conn = new SqlConnection(MasterConnStr))
+            {
+                conn.Open();
+                using (var cmd = new SqlCommand(sql, conn))
+                {
+                    cmd.Parameters.AddWithValue("@id", dataSourceId);
+                    var result = cmd.ExecuteScalar() as string;
+                    return string.IsNullOrWhiteSpace(result) ? null : AppConnectionStringEncryptionBL.Decrypt(result);
                 }
             }
         }

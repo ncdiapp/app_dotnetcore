@@ -51,6 +51,17 @@ public class TenantProvisioningController : SecureBaseController
         return AppTenantProvisioningBL.RepairDataSourceIdReferencesOnAllTenants(templateDataSourceId);
     }
 
+    // POST /webapi/TenantProvisioning/PushAgentTemplates
+    // Copies platform agent config (domains, libraries, tools, skill sets) from the designated
+    // template tenant DB into every other registered tenant DB.
+    // Uses IF NOT EXISTS — existing tenant customisations are never overwritten.
+    [HttpPost]
+    public Dictionary<string, string> PushAgentTemplates([FromBody] PushAgentTemplatesRequest request)
+    {
+        RequireSysAdmin();
+        return AppTenantProvisioningBL.PushAgentTemplatesToAllTenants(request.TemplateDataSourceId);
+    }
+
     private void RequireSysAdmin()
     {
         if (!AppSecurityUserBL.IsAdminUser())
