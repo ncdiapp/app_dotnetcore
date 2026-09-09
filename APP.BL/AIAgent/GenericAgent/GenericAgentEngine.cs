@@ -55,7 +55,8 @@ namespace App.BL.AIAgent.GenericAgent
             GenericAgentCallbacks callbacks,
             AppClientIdentity?    identity,
             CancellationToken     ct,
-            string                runtimeProviderOverride = null)
+            string                runtimeProviderOverride = null,
+            string                workflowId = null)
         {
             var log = NLog.LogManager.GetCurrentClassLogger();
             var runSw = System.Diagnostics.Stopwatch.StartNew();
@@ -87,7 +88,8 @@ namespace App.BL.AIAgent.GenericAgent
                     UserId           = userId,
                     CompanyId        = companyId,
                     DataSourceId     = dsId,
-                    IsDeterministic  = string.Equals(skillSet.ExecutionMode, "Deterministic", StringComparison.OrdinalIgnoreCase)
+                    IsDeterministic  = string.Equals(skillSet.ExecutionMode, "Deterministic", StringComparison.OrdinalIgnoreCase),
+                    WorkflowId       = string.IsNullOrEmpty(workflowId) ? Guid.NewGuid().ToString("N") : workflowId
                 };
 
                 // Per-session instance pool keeps stateful plugin instances (e.g. SchemaDesignerPlugin)

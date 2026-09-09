@@ -22,7 +22,8 @@ namespace App.BL.AIAgent.GenericAgent
             List<JObject>         chatHistory,
             GenericAgentCallbacks callbacks,
             AppClientIdentity?    identity,
-            CancellationToken     ct)
+            CancellationToken     ct,
+            string                workflowId = null)
         {
             if (string.IsNullOrWhiteSpace(skillKey))
             {
@@ -71,7 +72,8 @@ namespace App.BL.AIAgent.GenericAgent
                     skillKey, userMessage,
                     chatHistory ?? new List<JObject>(),
                     callbacks, identity, ct,
-                    runtimeProviderOverride: runtime).ConfigureAwait(false);
+                    runtimeProviderOverride: runtime,
+                    workflowId: workflowId).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
