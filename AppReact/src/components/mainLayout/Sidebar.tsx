@@ -276,7 +276,7 @@ const Sidebar: React.FC = () => {
       return sortMenuItems([...menus, applicationConfigurationMenu]);
     }
     return sortMenuItems(menus);
-  }, [applicationConfigurationMenu]);
+  }, [applicationConfigurationMenu, activeAgentItems]);
 
   const sortedUserMenu = useMemo(() => {
     if (!userMenu) return null;
