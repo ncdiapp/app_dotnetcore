@@ -18,8 +18,6 @@ export interface AppAgentSkillSetDto {
     ExecutionMode:      string;
     /** EmAppAgentUi: 0 Unspecified, 1 GenericChat, 2 ConfigurationAndIntegration, 3 DbManagement, 4 ImageAndFileProcess */
     AgentUi:            number;
-    /** OpenAI | Gemini | Anthropic | CursorCloudAgents. Empty means use tenant default provider. */
-    RuntimeProvider:    string;
 }
 
 export interface AppAgentToolRegisterDto {
@@ -99,12 +97,6 @@ class AgentSkillSetService {
     async GetAllSkillSets(): Promise<OperationResult<AppAgentSkillSetDto[]>> {
         const res = await fetch(`${BASE}/GetAllSkillSets`, { headers: getHeaders() });
         if (!res.ok) throw new Error(`GetAllSkillSets failed (${res.status})`);
-        return res.json();
-    }
-
-    async GetDefaultRuntimeProvider(): Promise<OperationResult<string>> {
-        const res = await fetch(`${BASE}/GetDefaultRuntimeProvider`, { headers: getHeaders() });
-        if (!res.ok) throw new Error(`GetDefaultRuntimeProvider failed (${res.status})`);
         return res.json();
     }
 

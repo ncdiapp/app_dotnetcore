@@ -61,16 +61,6 @@ public class AgentSkillSetController : SecureBaseController
         return result;
     }
 
-    /// <summary>Tenant AIConfigDefaultProvider for new-agent RuntimeProvider default.</summary>
-    [HttpGet]
-    public OperationCallResult<string> GetDefaultRuntimeProvider()
-    {
-        var result = new OperationCallResult<string>();
-        result.Object = App.BL.AIAgent.GenericAgent.AppAgentRuntimeProvider.Normalize(
-            App.BL.GenericAgent.AIConfigSettingBL.GetDefaultProvider());
-        return result;
-    }
-
     [HttpPost]
     public OperationCallResult<bool> UpsertSkillSet([FromBody] AppAgentSkillSetDto dto)
     {

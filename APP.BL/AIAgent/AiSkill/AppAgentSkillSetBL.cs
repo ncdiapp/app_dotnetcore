@@ -21,15 +21,14 @@ namespace App.BL.AIAgent.AiSkill
         int    RecentWindowSize,
         int    MaxIterations,
         string ExecutionMode = "Interactive",
-        int    AgentUi = 1,
-        string RuntimeProvider = "Gemini");
+        int    AgentUi = 1);
 
     public static class AppAgentSkillSetBL
     {
         private const string SelectCols = @"
             SkillKey, DisplayName, Description, SystemPrompt,
             CapabilityFlags, IsActive, SortOrder, Version,
-            MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize, MaxIterations, ExecutionMode, AgentUi, RuntimeProvider";
+            MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize, MaxIterations, ExecutionMode, AgentUi";
 
         public static List<AppAgentSkillSetDto> GetAll()
         {
@@ -82,15 +81,15 @@ IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey=@SkillKey)
         CapabilityFlags=@CapabilityFlags, IsActive=@IsActive, SortOrder=@SortOrder,
         Version=@Version, MaxHistoryTokens=@MaxHistoryTokens, SummarizeThreshold=@SummarizeThreshold,
         MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize,
-        MaxIterations=@MaxIterations, ExecutionMode=@ExecutionMode, AgentUi=@AgentUi, RuntimeProvider=@RuntimeProvider
+        MaxIterations=@MaxIterations, ExecutionMode=@ExecutionMode, AgentUi=@AgentUi
     WHERE SkillKey=@SkillKey
 ELSE
     INSERT INTO dbo.AppAgentSkillSet
         (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,
-         Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi,RuntimeProvider)
+         Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi)
     VALUES
         (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,
-         @Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations,@ExecutionMode,@AgentUi,@RuntimeProvider)";
+         @Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations,@ExecutionMode,@AgentUi)";
 
             fixture.ExecuteNonQueryResult(sql, Params(fixture, dto));
         }
@@ -133,9 +132,7 @@ ELSE
                 RecentWindowSize:   ColInt(row, "RecentWindowSize"),
                 MaxIterations:      ColIntSafe(row, "MaxIterations", 40),
                 ExecutionMode:      ColStrSafe(row, "ExecutionMode", "Interactive"),
-                AgentUi:            ColIntSafe(row, "AgentUi", 1),
-                RuntimeProvider:    App.BL.AIAgent.GenericAgent.AppAgentRuntimeProvider.NormalizeStored(
-                    ColStrSafe(row, "RuntimeProvider", "")));
+                AgentUi:            ColIntSafe(row, "AgentUi", 1));
         }
 
         private static List<DbParameter> Params(DatabaseSchemaMrg.DatabaseFixture f, AppAgentSkillSetDto d)
@@ -156,11 +153,7 @@ ELSE
                 P(f, "@RecentWindowSize",    d.RecentWindowSize),
                 P(f, "@MaxIterations",       d.MaxIterations > 0 ? d.MaxIterations : 40),
                 P(f, "@ExecutionMode",       string.IsNullOrWhiteSpace(d.ExecutionMode) ? "Interactive" : d.ExecutionMode),
-                P(f, "@AgentUi",             d.AgentUi > 0 ? d.AgentUi : 1),
-                P(f, "@RuntimeProvider",
-                    string.IsNullOrWhiteSpace(d.RuntimeProvider)
-                        ? DBNull.Value
-                        : (object)App.BL.AIAgent.GenericAgent.AppAgentRuntimeProvider.NormalizeStored(d.RuntimeProvider))
+                P(f, "@AgentUi",             d.AgentUi > 0 ? d.AgentUi : 1)
             };
         }
 

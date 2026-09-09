@@ -15,7 +15,6 @@ import AgentToolRegisterTab from './AgentToolRegisterTab';
 import AgentMcpServerTab from './AgentMcpServerTab';
 import AgentUiChatHost from './AgentUiChatHost';
 import { AGENT_UI_OPTIONS, EmAppAgentUi, resolveAgentUi } from './agentUiTypes';
-import { RUNTIME_PROVIDER_OPTIONS, effectiveRuntimeProvider, normalizeRuntimeProvider } from './runtimeProviderTypes';
 import AgentLibraryTab from './AgentLibraryTab';
 
 type Tab = 'skills' | 'mcp' | 'libraries';
@@ -25,13 +24,12 @@ const SPLIT_LEFT_MIN_PX = 300;
 const SPLIT_RIGHT_MIN_PX = 280;
 
 
-const emptySkillSet = (_runtimeProvider = ''): AppAgentSkillSetDto => ({
+const emptySkillSet = (): AppAgentSkillSetDto => ({
     SkillKey: '', DisplayName: '', Description: '', SystemPrompt: '', CapabilityFlags: 3,
     IsActive: true, SortOrder: 0, Version: 1,
     MaxHistoryTokens: 80000, SummarizeThreshold: 60000, MaxToolResultChars: 4000, RecentWindowSize: 10, MaxIterations: 40,
     ExecutionMode: 'Interactive',
     AgentUi: EmAppAgentUi.GenericChat,
-    RuntimeProvider: '',
 });
 
 const AgentSkillSetManagement: React.FC = () => {
@@ -73,7 +71,6 @@ const AgentSkillSetManagement: React.FC = () => {
     const [aiAcceptedLibs, setAiAcceptedLibs]         = useState<Set<string>>(new Set());
     const [aiAcceptedBuiltIns, setAiAcceptedBuiltIns] = useState<Set<string>>(new Set());
     const [allBuiltInTools, setAllBuiltInTools]       = useState<LibraryToolPreviewDto[]>([]);
-    const [tenantDefaultProvider, setTenantDefaultProvider] = useState('Gemini');
 
     // Library subscription state
     const [allDomains, setAllDomains] = useState<AppAgentToolDomainDto[]>([]);
@@ -107,7 +104,6 @@ const AgentSkillSetManagement: React.FC = () => {
                 setEditItem({
                     ...fresh,
                     AgentUi: resolveAgentUi(fresh.AgentUi),
-                    RuntimeProvider: normalizeRuntimeProvider(fresh.RuntimeProvider, tenantDefaultProvider),
                 });
                 setIsEditing(true);
                 setIsDirty(false);
@@ -122,14 +118,14 @@ const AgentSkillSetManagement: React.FC = () => {
         } else {
             setSelected(null);
             if (syncEditFromServer) {
-                setEditItem(emptySkillSet(tenantDefaultProvider));
+                setEditItem(emptySkillSet());
                 setIsEditing(false);
                 setIsDirty(false);
             }
             window.setTimeout(() => { suppressGridSelectionSyncRef.current = false; }, 0);
         }
         return fresh;
-    }, [skillsCV, selectGridRowBySkillKey, tenantDefaultProvider]);
+    }, [skillsCV, selectGridRowBySkillKey]);
 
     useEffect(() => {
         const onMove = (e: MouseEvent) => {
@@ -195,10 +191,6 @@ const AgentSkillSetManagement: React.FC = () => {
         agentSkillSetSvc.GetAllDomains().then(r => setAllDomains(r.Object ?? [])).catch(() => {});
         agentSkillSetSvc.GetTemplates().then(r => setTemplates(r.Object ?? [])).catch(() => {});
         agentSkillSetSvc.GetAvailableBuiltInTools().then(r => setAllBuiltInTools(r.Object ?? [])).catch(() => {});
-        agentSkillSetSvc.GetDefaultRuntimeProvider().then(r => {
-            const p = effectiveRuntimeProvider('', normalizeRuntimeProvider(r.Object || 'Gemini') || 'Gemini');
-            setTenantDefaultProvider(p);
-        }).catch(() => {});
     }, []);
 
     const onGridSelectionChanged = (s: { control?: { selection?: { row?: number }; rows?: { dataItem: AppAgentSkillSetDto }[] }; selection?: { row?: number }; rows?: { dataItem: AppAgentSkillSetDto }[] }) => {
@@ -212,7 +204,6 @@ const AgentSkillSetManagement: React.FC = () => {
         setEditItem({
             ...item,
             AgentUi: resolveAgentUi(item.AgentUi),
-            RuntimeProvider: normalizeRuntimeProvider(item.RuntimeProvider, tenantDefaultProvider),
         });
         setIsEditing(true);
         setIsDirty(false);
@@ -247,7 +238,6 @@ const handleSave = async () => {
                 setEditItem({
                     ...fresh,
                     AgentUi: resolveAgentUi(fresh.AgentUi),
-                    RuntimeProvider: normalizeRuntimeProvider(fresh.RuntimeProvider, tenantDefaultProvider),
                 });
                 loadHistory(key);
             } else {
@@ -262,7 +252,7 @@ const handleSave = async () => {
         dispatch(setIsBusy());
         try {
             await agentSkillSetSvc.DeleteSkillSet(selected.SkillKey);
-            setSelected(null); setEditItem(emptySkillSet(tenantDefaultProvider)); setIsEditing(false); setIsDirty(false);
+            setSelected(null); setEditItem(emptySkillSet()); setIsEditing(false); setIsDirty(false);
             setConfirmDelete(false);
             const res = await agentSkillSetSvc.GetAllSkillSets();
             skillsCV.sourceCollection = res.Object ?? [];
@@ -284,7 +274,7 @@ const handleSave = async () => {
             } else {
                 skillsCV.sourceCollection = list;
                 if (isEditing) {
-                    setEditItem(emptySkillSet(tenantDefaultProvider));
+                    setEditItem(emptySkillSet());
                     setIsDirty(false);
                 }
             }
@@ -297,7 +287,7 @@ const handleSave = async () => {
 
     const beginNew = () => {
         setSelected(null);
-        setEditItem(emptySkillSet(tenantDefaultProvider));
+        setEditItem(emptySkillSet());
         setIsEditing(true);
         setIsDirty(false);
         setTestSkillKey(null);
@@ -438,7 +428,7 @@ const handleSave = async () => {
                                                 className={`w-full text-left px-3 py-1.5 text-xs hover:opacity-80 ${theme.label}`}
                                                 onClick={() => {
                                                     setEditItem({
-                                                        ...emptySkillSet(tenantDefaultProvider),
+                                                        ...emptySkillSet(),
                                                         SystemPrompt: tmpl.SystemPrompt,
                                                         CapabilityFlags: tmpl.CapabilityFlags,
                                                         MaxHistoryTokens: tmpl.MaxHistoryTokens,
@@ -446,8 +436,6 @@ const handleSave = async () => {
                                                         MaxIterations: tmpl.MaxIterations,
                                                         ExecutionMode: tmpl.ExecutionMode || 'Interactive',
                                                         AgentUi: resolveAgentUi(tmpl.AgentUi),
-                                                        RuntimeProvider: normalizeRuntimeProvider(
-                                                            tmpl.RuntimeProvider, tenantDefaultProvider),
                                                     });
                                                     setSelected(null);
                                                     setIsEditing(true);
@@ -616,23 +604,6 @@ const handleSave = async () => {
                                                                     <option key={o.value} value={o.value}>{o.label}</option>
                                                                 ))}
                                                             </select>
-                                                        </div>
-                                                        <div className="flex items-center py-1 xl:col-span-2">
-                                                            <label className={lbl}>Runtime Provider</label>
-                                                            <select
-                                                                className={`h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox} focus:outline-none`}
-                                                                value={normalizeRuntimeProvider(editItem.RuntimeProvider, tenantDefaultProvider)}
-                                                                onChange={e => update('RuntimeProvider', e.target.value)}
-                                                            >
-                                                                {RUNTIME_PROVIDER_OPTIONS.map(o => (
-                                                                    <option key={o.value} value={o.value}>{o.label}</option>
-                                                                ))}
-                                                            </select>
-                                                            <span className={`ml-2 text-[10px] ${theme.label}`}>
-                                                                {normalizeRuntimeProvider(editItem.RuntimeProvider)
-                                                                    ? `Uses ${effectiveRuntimeProvider(editItem.RuntimeProvider, tenantDefaultProvider)}`
-                                                                    : `Uses Application Settings default: ${tenantDefaultProvider}`}
-                                                            </span>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center py-1">
