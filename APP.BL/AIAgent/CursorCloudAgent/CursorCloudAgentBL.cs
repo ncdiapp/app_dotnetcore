@@ -261,9 +261,13 @@ namespace App.BL.CursorCloudAgent
                 capture.StreamDisconnected = true;
             }
 
+            // Only block on recovery when we still have no assistant text. If tokens already
+            // streamed, finalize promptly — otherwise the UI keeps Thinking/Stop after the answer.
             var needsRecovery = !ct.IsCancellationRequested
-                && (assistant.Length == 0 || capture.StreamDisconnected
-                    || CursorCloudAgentsApiClient.IsRecoverableStreamMessage(capture.Error));
+                && assistant.Length == 0
+                && (capture.StreamDisconnected
+                    || CursorCloudAgentsApiClient.IsRecoverableStreamMessage(capture.Error)
+                    || string.IsNullOrEmpty(capture.Error));
 
             if (needsRecovery)
             {
@@ -282,6 +286,12 @@ namespace App.BL.CursorCloudAgent
                     capture.Error = "Cursor run did not finish within "
                         + CursorCloudAgentConfig.RunRecoveryMaxMinutes
                         + " minutes. Send Continue to re-attach, or New for a fresh chat.";
+            }
+            else if (capture.StreamDisconnected && assistant.Length > 0)
+            {
+                // Text already delivered; clear recoverable stream noise so we still emit done.
+                if (CursorCloudAgentsApiClient.IsRecoverableStreamMessage(capture.Error))
+                    capture.Error = null;
             }
 
             try

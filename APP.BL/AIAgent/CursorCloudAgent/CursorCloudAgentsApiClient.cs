@@ -184,6 +184,13 @@ namespace App.BL.CursorCloudAgent
                 || string.Equals(status, "QUEUED", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>Run reached a terminal Cloud Agents status (not creating/running/queued).</summary>
+        public static bool IsTerminalStatus(string status)
+        {
+            if (string.IsNullOrWhiteSpace(status)) return false;
+            return !IsActiveStatus(status);
+        }
+
         public static bool IsBusyError(Exception ex)
         {
             var msg = ex?.Message ?? "";
@@ -278,12 +285,19 @@ namespace App.BL.CursorCloudAgent
         {
             if (string.IsNullOrWhiteSpace(eventName) || string.IsNullOrWhiteSpace(data) || onEvent == null)
                 return false;
+            // Heartbeats keep the socket alive; ignore empty keep-alives without ending the stream.
+            if (string.Equals(eventName, "heartbeat", StringComparison.OrdinalIgnoreCase))
+                return false;
             JObject payload;
             try { payload = JObject.Parse(data); }
             catch { payload = new JObject { ["raw"] = data }; }
             onEvent(eventName, payload);
+            // Official stream ends with result then done. Close on either so UI is not left spinning
+            // if the connection only heartbeats after result (or done is delayed/missing).
+            // Do not stop on status=FINISHED alone — that can arrive before the last text deltas.
             return string.Equals(eventName, "done", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(eventName, "error", StringComparison.OrdinalIgnoreCase);
+                || string.Equals(eventName, "error", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(eventName, "result", StringComparison.OrdinalIgnoreCase);
         }
 
         private static async Task<string> SendAsync(HttpMethod method, string path, JObject body, CancellationToken ct)
