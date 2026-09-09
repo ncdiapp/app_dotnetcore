@@ -65,6 +65,26 @@ class GenericAgentService {
         }).catch(() => {});
     }
 
+    async LoadSession(skillKey: string): Promise<Array<{ role: string; content: string }> | null> {
+        try {
+            const res = await fetch(`${BASE}/LoadSession?skillKey=${encodeURIComponent(skillKey)}`, {
+                headers: getHeaders(),
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return data?.Object ?? null;
+        } catch {
+            return null;
+        }
+    }
+
+    async ClearSession(skillKey: string): Promise<void> {
+        await fetch(`${BASE}/ClearSession?skillKey=${encodeURIComponent(skillKey)}`, {
+            method: 'POST',
+            headers: getHeaders(),
+        }).catch(() => {});
+    }
+
     disconnect(): void {
         this.stopPolling();
     }

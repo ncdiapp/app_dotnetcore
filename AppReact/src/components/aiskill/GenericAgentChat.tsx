@@ -54,8 +54,15 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey }) => {
     }, [messages, turnActivities]);
 
     useEffect(() => {
+        // Restore prior session on mount
+        genericAgentSvc.LoadSession(skillKey).then(prior => {
+            if (prior && prior.length > 0) {
+                setMessages(prior.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })));
+                setCurrentTurnIndex(prior.filter(m => m.role === 'user').length);
+            }
+        });
         return () => { genericAgentSvc.disconnect(); };
-    }, []);
+    }, [skillKey]);
 
     const findLastIdx = <T,>(arr: T[], pred: (item: T) => boolean): number => {
         for (let i = arr.length - 1; i >= 0; i--) if (pred(arr[i])) return i;
@@ -210,7 +217,10 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey }) => {
                         {isRunning ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
                     </button>
                     {messages.length > 0 && (
-                        <button className={btn} onClick={() => { setMessages([]); setTurnActivities([]); setCurrentTurnIndex(0); setSessionId(null); setError(null); }}>
+                        <button className={btn} onClick={() => {
+                            setMessages([]); setTurnActivities([]); setCurrentTurnIndex(0); setSessionId(null); setError(null);
+                            genericAgentSvc.ClearSession(skillKey);
+                        }} title="Clear conversation">
                             <i className="fa-solid fa-rotate-left" />
                         </button>
                     )}

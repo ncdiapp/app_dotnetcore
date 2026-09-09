@@ -13,6 +13,7 @@ using AppAI.Web.Controllers.Base;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using SessionBL = App.BL.AIAgent.GenericAgent.AppGenericAgentSessionBL;
 
 namespace AppAI.Web.Controllers;
 
@@ -42,6 +43,10 @@ public class GenericAgentController : SecureBaseController
         var currentIdentity = ServerContext.Instance.CurrnetClientIdentity;
         if (currentIdentity is AppClientIdentity ai) agentIdentity = ai;
 
+        var agentUserId    = agentIdentity.HasValue && agentIdentity.Value.UserId != null
+            ? Convert.ToInt32(agentIdentity.Value.UserId) : 0;
+        var agentDsId      = agentIdentity.HasValue ? agentIdentity.Value.DataSourceId : 0;
+
         var result = new OperationCallResult<GenericAgentStartResultDto>();
 
         if (string.IsNullOrWhiteSpace(request?.SkillKey))
@@ -66,7 +71,18 @@ public class GenericAgentController : SecureBaseController
         {
             OnStep = step => { GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "step", Step = step }); return Task.CompletedTask; },
             OnToken = token => { GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "token", Token = token }); return Task.CompletedTask; },
-            OnDone = done => { GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "done", Done = new AgentDoneEvent { FinalResponse = done } }); return Task.CompletedTask; },
+            OnDone = done =>
+            {
+                GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "done", Done = new AgentDoneEvent { FinalResponse = done } });
+                if (agentUserId > 0 && agentDsId > 0)
+                {
+                    var updated = new List<JObject>(request.Messages ?? new List<JObject>());
+                    updated.Add(JObject.FromObject(new { role = "user",      content = request.UserMessage }));
+                    updated.Add(JObject.FromObject(new { role = "assistant", content = done ?? "" }));
+                    SessionBL.SaveSession(request.SkillKey, agentUserId, agentDsId, updated);
+                }
+                return Task.CompletedTask;
+            },
             OnError = msg => { GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "error", Error = msg }); return Task.CompletedTask; },
 
             OnPlanReady = async planEvent =>
@@ -206,5 +222,28 @@ public class GenericAgentController : SecureBaseController
 
         result.Object = found;
         return result;
+    }
+
+    // GET /webapi/GenericAgent/LoadSession?skillKey=...
+    // Returns stored conversation history for the calling user + skill, or null if none.
+    [HttpGet]
+    public OperationCallResult<List<JObject>> LoadSession(string skillKey)
+    {
+        var result   = new OperationCallResult<List<JObject>>();
+        var identity = ServerContext.Instance.CurrnetClientIdentity;
+        if (identity is not AppClientIdentity ai || ai.UserId == null) return result;
+        result.Object = SessionBL.LoadSession(skillKey, Convert.ToInt32(ai.UserId));
+        return result;
+    }
+
+    // POST /webapi/GenericAgent/ClearSession?skillKey=...
+    // Deletes the stored session so the next conversation starts fresh.
+    [HttpPost]
+    public IActionResult ClearSession([FromQuery] string skillKey)
+    {
+        var identity = ServerContext.Instance.CurrnetClientIdentity;
+        if (identity is AppClientIdentity ai && ai.UserId != null)
+            SessionBL.DeleteSession(skillKey, Convert.ToInt32(ai.UserId));
+        return Ok();
     }
 }
