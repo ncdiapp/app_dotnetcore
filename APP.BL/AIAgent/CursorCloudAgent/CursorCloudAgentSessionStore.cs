@@ -7,9 +7,9 @@ using System.Threading.Tasks;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
-    public static class AppDataIntegrationAgentSessionStore
+    public static class CursorCloudAgentSessionStore
     {
         private static readonly ConcurrentDictionary<string, SessionData> Sessions
             = new ConcurrentDictionary<string, SessionData>(StringComparer.OrdinalIgnoreCase);
@@ -33,24 +33,24 @@ namespace App.BL.AppDataIntegrationAgent
             public string SkillKey { get; set; }
             public bool AllowProposeImport { get; set; }
             public string WorkspaceRelativePath { get; set; }
-            public List<AppDataIntegrationAgentMessageDto> ConversationHistory { get; set; }
-                = new List<AppDataIntegrationAgentMessageDto>();
+            public List<CursorCloudAgentMessageDto> ConversationHistory { get; set; }
+                = new List<CursorCloudAgentMessageDto>();
             /// <summary>Pack paths touched during the in-flight assistant turn (cleared at run start).</summary>
             public List<string> CurrentTurnPackPaths { get; set; }
                 = new List<string>();
             /// <summary>Open UI offers from navigate / table_preview tools this turn.</summary>
-            public List<AppDataIntegrationAgentOpenUiOfferDto> CurrentTurnOpenOffers { get; set; }
-                = new List<AppDataIntegrationAgentOpenUiOfferDto>();
+            public List<CursorCloudAgentOpenUiOfferDto> CurrentTurnOpenOffers { get; set; }
+                = new List<CursorCloudAgentOpenUiOfferDto>();
             /// <summary>True when run_select / propose_sql used a user connection string this turn (no SQL Workbench Open).</summary>
             public bool CurrentTurnSqlViaConnectionString { get; set; }
             /// <summary>UTC when the current assistant turn started (Cursor run).</summary>
             public DateTime? TurnStartedUtc { get; set; }
-            public ConcurrentQueue<AppDataIntegrationAgentEventDto> Events { get; set; }
-                = new ConcurrentQueue<AppDataIntegrationAgentEventDto>();
+            public ConcurrentQueue<CursorCloudAgentEventDto> Events { get; set; }
+                = new ConcurrentQueue<CursorCloudAgentEventDto>();
             public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
             public SemaphoreSlim EventReady { get; set; } = new SemaphoreSlim(0, int.MaxValue);
-            public AppDataIntegrationAgentGateEvent PendingGate { get; set; }
-            public TaskCompletionSource<AppDataIntegrationAgentGateResult> PendingGateTcs { get; set; }
+            public CursorCloudAgentGateEvent PendingGate { get; set; }
+            public TaskCompletionSource<CursorCloudAgentGateResult> PendingGateTcs { get; set; }
             public CancellationTokenSource RunCts { get; set; }
         }
 
@@ -85,11 +85,11 @@ namespace App.BL.AppDataIntegrationAgent
                 return data;
 
             // After AppAI.Web restart, in-memory token map is empty — hydrate from DB so Cursor MCP writes still work.
-            data = AppDataIntegrationAgentSessionBL.HydrateLiveByMcpToken(t);
+            data = CursorCloudAgentSessionBL.HydrateLiveByMcpToken(t);
             return data;
         }
 
-        public static void Enqueue(string sessionId, AppDataIntegrationAgentEventDto evt)
+        public static void Enqueue(string sessionId, CursorCloudAgentEventDto evt)
         {
             SessionData session;
             if (!Sessions.TryGetValue(sessionId ?? "", out session)) return;
@@ -105,27 +105,27 @@ namespace App.BL.AppDataIntegrationAgent
             catch (OperationCanceledException) { return false; }
         }
 
-        public static AppDataIntegrationAgentPollResponseDto DequeueAll(string sessionId)
+        public static CursorCloudAgentPollResponseDto DequeueAll(string sessionId)
         {
             SessionData session;
             if (!Sessions.TryGetValue(sessionId ?? "", out session))
-                return new AppDataIntegrationAgentPollResponseDto { SessionExists = false };
+                return new CursorCloudAgentPollResponseDto { SessionExists = false };
 
-            var list = new List<AppDataIntegrationAgentEventDto>();
-            AppDataIntegrationAgentEventDto evt;
+            var list = new List<CursorCloudAgentEventDto>();
+            CursorCloudAgentEventDto evt;
             while (session.Events.TryDequeue(out evt))
                 list.Add(evt);
 
-            return new AppDataIntegrationAgentPollResponseDto { Events = list, SessionExists = true };
+            return new CursorCloudAgentPollResponseDto { Events = list, SessionExists = true };
         }
 
-        public static TaskCompletionSource<AppDataIntegrationAgentGateResult> RegisterGate(string sessionId, AppDataIntegrationAgentGateEvent gate)
+        public static TaskCompletionSource<CursorCloudAgentGateResult> RegisterGate(string sessionId, CursorCloudAgentGateEvent gate)
         {
             SessionData session;
             if (!Sessions.TryGetValue(sessionId ?? "", out session))
                 return null;
 
-            var tcs = new TaskCompletionSource<AppDataIntegrationAgentGateResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var tcs = new TaskCompletionSource<CursorCloudAgentGateResult>(TaskCreationOptions.RunContinuationsAsynchronously);
             session.PendingGate = gate;
             session.PendingGateTcs = tcs;
             return tcs;
@@ -143,7 +143,7 @@ namespace App.BL.AppDataIntegrationAgent
             var tcs = session.PendingGateTcs;
             session.PendingGateTcs = null;
             session.PendingGate = null;
-            return tcs.TrySetResult(new AppDataIntegrationAgentGateResult
+            return tcs.TrySetResult(new CursorCloudAgentGateResult
             {
                 Confirmed = confirmed,
                 Feedback = feedback
@@ -155,7 +155,7 @@ namespace App.BL.AppDataIntegrationAgent
             if (session == null) return;
             session.TurnStartedUtc = DateTime.UtcNow;
             session.CurrentTurnPackPaths = new List<string>();
-            session.CurrentTurnOpenOffers = new List<AppDataIntegrationAgentOpenUiOfferDto>();
+            session.CurrentTurnOpenOffers = new List<CursorCloudAgentOpenUiOfferDto>();
             session.CurrentTurnSqlViaConnectionString = false;
         }
 
@@ -202,24 +202,24 @@ namespace App.BL.AppDataIntegrationAgent
                 .ToList();
         }
 
-        public static void NoteOpenUiOffer(SessionData session, AppDataIntegrationAgentOpenUiOfferDto offer)
+        public static void NoteOpenUiOffer(SessionData session, CursorCloudAgentOpenUiOfferDto offer)
         {
             if (session == null || offer == null) return;
             if (session.CurrentTurnOpenOffers == null)
-                session.CurrentTurnOpenOffers = new List<AppDataIntegrationAgentOpenUiOfferDto>();
+                session.CurrentTurnOpenOffers = new List<CursorCloudAgentOpenUiOfferDto>();
             session.CurrentTurnOpenOffers.Add(offer);
         }
 
-        public static List<AppDataIntegrationAgentOpenUiOfferDto> TakeTurnOpenOffers(SessionData session)
+        public static List<CursorCloudAgentOpenUiOfferDto> TakeTurnOpenOffers(SessionData session)
         {
             if (session?.CurrentTurnOpenOffers == null || session.CurrentTurnOpenOffers.Count == 0)
                 return null;
             var list = session.CurrentTurnOpenOffers.ToList();
-            session.CurrentTurnOpenOffers = new List<AppDataIntegrationAgentOpenUiOfferDto>();
+            session.CurrentTurnOpenOffers = new List<CursorCloudAgentOpenUiOfferDto>();
             return list.Count == 0 ? null : list;
         }
 
-        public static List<AppDataIntegrationAgentOpenUiOfferDto> PeekTurnOpenOffers(SessionData session)
+        public static List<CursorCloudAgentOpenUiOfferDto> PeekTurnOpenOffers(SessionData session)
         {
             if (session?.CurrentTurnOpenOffers == null || session.CurrentTurnOpenOffers.Count == 0)
                 return null;

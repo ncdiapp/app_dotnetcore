@@ -10,15 +10,15 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
-    public static class CursorCloudClient
+    public static class CursorCloudAgentsApiClient
     {
         private static readonly HttpClient Http = CreateClient();
 
         private static HttpClient CreateClient()
         {
-            var client = new HttpClient { Timeout = TimeSpan.FromMinutes(AppDataIntegrationAgentConfig.HttpClientTimeoutMinutes) };
+            var client = new HttpClient { Timeout = TimeSpan.FromMinutes(CursorCloudAgentConfig.HttpClientTimeoutMinutes) };
             return client;
         }
 
@@ -37,19 +37,19 @@ namespace App.BL.AppDataIntegrationAgent
             var body = new JObject
             {
                 ["prompt"] = new JObject { ["text"] = promptText ?? "" },
-                ["model"] = new JObject { ["id"] = AppDataIntegrationAgentConfig.ModelId },
-                ["autoCreatePR"] = AppDataIntegrationAgentConfig.AutoCreatePr,
+                ["model"] = new JObject { ["id"] = CursorCloudAgentConfig.ModelId },
+                ["autoCreatePR"] = CursorCloudAgentConfig.AutoCreatePr,
                 ["mode"] = "agent"
             };
 
-            if (AppDataIntegrationAgentConfig.AttachRepo && !string.IsNullOrWhiteSpace(AppDataIntegrationAgentConfig.RepoUrl))
+            if (CursorCloudAgentConfig.AttachRepo && !string.IsNullOrWhiteSpace(CursorCloudAgentConfig.RepoUrl))
             {
                 body["repos"] = new JArray
                 {
                     new JObject
                     {
-                        ["url"] = AppDataIntegrationAgentConfig.RepoUrl,
-                        ["startingRef"] = AppDataIntegrationAgentConfig.RepoRef
+                        ["url"] = CursorCloudAgentConfig.RepoUrl,
+                        ["startingRef"] = CursorCloudAgentConfig.RepoRef
                     }
                 };
                 body["workOnCurrentBranch"] = false;
@@ -223,11 +223,11 @@ namespace App.BL.AppDataIntegrationAgent
             Action<string, JObject> onEvent,
             CancellationToken ct)
         {
-            var key = AppDataIntegrationAgentConfig.ApiKey;
+            var key = CursorCloudAgentConfig.ApiKey;
             if (string.IsNullOrWhiteSpace(key))
                 throw new InvalidOperationException("Cursor:ApiKey is not configured.");
 
-            var url = AppDataIntegrationAgentConfig.ApiBaseUrl + "/v1/agents/" + agentId + "/runs/" + runId + "/stream";
+            var url = CursorCloudAgentConfig.ApiBaseUrl + "/v1/agents/" + agentId + "/runs/" + runId + "/stream";
             using (var req = new HttpRequestMessage(HttpMethod.Get, url))
             {
                 ApplyAuth(req, key);
@@ -288,11 +288,11 @@ namespace App.BL.AppDataIntegrationAgent
 
         private static async Task<string> SendAsync(HttpMethod method, string path, JObject body, CancellationToken ct)
         {
-            var key = AppDataIntegrationAgentConfig.ApiKey;
+            var key = CursorCloudAgentConfig.ApiKey;
             if (string.IsNullOrWhiteSpace(key))
                 throw new InvalidOperationException("Cursor:ApiKey is not configured. Set Cursor:ApiKey in appsettings.");
 
-            using (var req = new HttpRequestMessage(method, AppDataIntegrationAgentConfig.ApiBaseUrl + path))
+            using (var req = new HttpRequestMessage(method, CursorCloudAgentConfig.ApiBaseUrl + path))
             {
                 ApplyAuth(req, key);
                 if (body != null)

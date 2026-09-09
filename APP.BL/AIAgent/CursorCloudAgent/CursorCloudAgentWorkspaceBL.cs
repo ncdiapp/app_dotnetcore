@@ -4,9 +4,9 @@ using System.IO;
 using APP.Components.EntityDto;
 using APP.Framework;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
-    public static class AppDataIntegrationWorkspaceBL
+    public static class CursorCloudAgentWorkspaceBL
     {
         public const string FolderName = "AgentOutput";
 
@@ -45,16 +45,16 @@ namespace App.BL.AppDataIntegrationAgent
             return combined;
         }
 
-        public static List<AppDataIntegrationAgentWorkspaceFileDto> ListFiles(string workspaceRelativePath, int? companyId = null)
+        public static List<CursorCloudAgentWorkspaceFileDto> ListFiles(string workspaceRelativePath, int? companyId = null)
         {
             var dir = EnsureSessionDir(workspaceRelativePath, companyId);
-            var list = new List<AppDataIntegrationAgentWorkspaceFileDto>();
+            var list = new List<CursorCloudAgentWorkspaceFileDto>();
             foreach (var path in Directory.GetFileSystemEntries(dir, "*", SearchOption.AllDirectories))
             {
                 var info = new FileInfo(path);
                 var isDir = Directory.Exists(path);
                 var rel = ToRelative(dir, path).Replace('\\', '/');
-                list.Add(new AppDataIntegrationAgentWorkspaceFileDto
+                list.Add(new CursorCloudAgentWorkspaceFileDto
                 {
                     RelativePath = rel,
                     SizeBytes = isDir ? 0 : info.Exists ? info.Length : 0,
@@ -66,13 +66,13 @@ namespace App.BL.AppDataIntegrationAgent
             return list;
         }
 
-        public static AppDataIntegrationAgentFileContentDto ReadFile(string workspaceRelativePath, string relativePath, int? companyId = null)
+        public static CursorCloudAgentFileContentDto ReadFile(string workspaceRelativePath, string relativePath, int? companyId = null)
         {
             var bytes = ReadBytes(workspaceRelativePath, relativePath, companyId);
-            var maxBytes = AppDataIntegrationAgentConfig.MaxWorkspaceFileMb * 1024L * 1024L;
+            var maxBytes = CursorCloudAgentConfig.MaxWorkspaceFileMb * 1024L * 1024L;
             var truncated = bytes.Length > maxBytes;
             var take = truncated ? (int)Math.Min(maxBytes, bytes.Length) : bytes.Length;
-            return new AppDataIntegrationAgentFileContentDto
+            return new CursorCloudAgentFileContentDto
             {
                 RelativePath = relativePath,
                 Content = System.Text.Encoding.UTF8.GetString(bytes, 0, take),
@@ -100,7 +100,7 @@ namespace App.BL.AppDataIntegrationAgent
             return AppendBytes(workspaceRelativePath, relativePath, bytes, companyId);
         }
 
-        public static int MaxChunkBytes => Math.Max(16, AppDataIntegrationAgentConfig.PreferredMcpWriteKb) * 1024;
+        public static int MaxChunkBytes => Math.Max(16, CursorCloudAgentConfig.PreferredMcpWriteKb) * 1024;
 
         private static void ValidateChunkSize(byte[] bytes, string toolName)
         {
@@ -120,7 +120,7 @@ namespace App.BL.AppDataIntegrationAgent
             EnsureSessionDir(workspaceRelativePath, companyId);
             var full = Resolve(workspaceRelativePath, relativePath, companyId);
             Directory.CreateDirectory(Path.GetDirectoryName(full) ?? full);
-            var maxBytes = Math.Max(AppDataIntegrationAgentConfig.MaxWorkspaceFileMb, 20) * 1024L * 1024L;
+            var maxBytes = Math.Max(CursorCloudAgentConfig.MaxWorkspaceFileMb, 20) * 1024L * 1024L;
             if (bytes != null && bytes.Length > maxBytes)
                 throw new InvalidOperationException("File exceeds AgentOutput size limit.");
             File.WriteAllBytes(full, bytes ?? Array.Empty<byte>());
@@ -135,7 +135,7 @@ namespace App.BL.AppDataIntegrationAgent
             EnsureSessionDir(workspaceRelativePath, companyId);
             var full = Resolve(workspaceRelativePath, relativePath, companyId);
             Directory.CreateDirectory(Path.GetDirectoryName(full) ?? full);
-            var maxFile = Math.Max(AppDataIntegrationAgentConfig.MaxWorkspaceFileMb, 20) * 1024L * 1024L;
+            var maxFile = Math.Max(CursorCloudAgentConfig.MaxWorkspaceFileMb, 20) * 1024L * 1024L;
             var add = bytes?.Length ?? 0;
             var existing = File.Exists(full) ? new FileInfo(full).Length : 0L;
             if (existing + add > maxFile)
@@ -162,7 +162,7 @@ namespace App.BL.AppDataIntegrationAgent
             EnsureSessionDir(workspaceRelativePath, companyId);
             var full = Resolve(workspaceRelativePath, relativePath, companyId);
             Directory.CreateDirectory(Path.GetDirectoryName(full) ?? full);
-            var maxBytes = Math.Max(AppDataIntegrationAgentConfig.MaxWorkspaceFileMb, 20) * 1024L * 1024L;
+            var maxBytes = Math.Max(CursorCloudAgentConfig.MaxWorkspaceFileMb, 20) * 1024L * 1024L;
             if (bytes != null && bytes.Length > maxBytes)
                 throw new InvalidOperationException("File exceeds AgentOutput size limit.");
             File.WriteAllBytes(full, bytes ?? Array.Empty<byte>());

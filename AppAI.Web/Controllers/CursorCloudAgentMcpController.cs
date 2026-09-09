@@ -3,7 +3,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using App.BL.AppDataIntegrationAgent;
+using App.BL.CursorCloudAgent;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -15,13 +15,13 @@ namespace AppAI.Web.Controllers;
 /// </summary>
 [ApiController]
 [Route("webapi/[controller]/[action]")]
-public class AppDataIntegrationAgentMcpController : ControllerBase
+public class CursorCloudAgentMcpController : ControllerBase
 {
     [HttpPost]
     public async Task<IActionResult> Invoke(CancellationToken cancellationToken)
     {
         var token = ReadBearer();
-        var session = AppDataIntegrationAgentSessionStore.GetByMcpToken(token);
+        var session = CursorCloudAgentSessionStore.GetByMcpToken(token);
         if (session == null)
             return Unauthorized(new { error = "Invalid MCP token." });
 
@@ -32,7 +32,7 @@ public class AppDataIntegrationAgentMcpController : ControllerBase
         if (string.IsNullOrWhiteSpace(body))
             return Ok(new { jsonrpc = "2.0", result = new { } });
 
-        AppDataIntegrationAgentContext.Current = session;
+        CursorCloudAgentContext.Current = session;
         try
         {
             var trimmed = body.TrimStart();
@@ -44,7 +44,7 @@ public class AppDataIntegrationAgentMcpController : ControllerBase
                 {
                     var obj = item as JObject;
                     if (obj == null) continue;
-                    var handled = await AppDataIntegrationAgentMcpBL.HandleJsonRpcAsync(obj, cancellationToken).ConfigureAwait(false);
+                    var handled = await CursorCloudAgentMcpBL.HandleJsonRpcAsync(obj, cancellationToken).ConfigureAwait(false);
                     if (handled != null)
                         results.Add(JToken.FromObject(handled));
                 }
@@ -52,7 +52,7 @@ public class AppDataIntegrationAgentMcpController : ControllerBase
             }
 
             var request = JObject.Parse(body);
-            var response = await AppDataIntegrationAgentMcpBL.HandleJsonRpcAsync(request, cancellationToken).ConfigureAwait(false);
+            var response = await CursorCloudAgentMcpBL.HandleJsonRpcAsync(request, cancellationToken).ConfigureAwait(false);
             if (response == null)
                 return NoContent();
             return Content(JsonConvert.SerializeObject(response), "application/json");
@@ -63,7 +63,7 @@ public class AppDataIntegrationAgentMcpController : ControllerBase
         }
         finally
         {
-            AppDataIntegrationAgentContext.Current = null;
+            CursorCloudAgentContext.Current = null;
         }
     }
 

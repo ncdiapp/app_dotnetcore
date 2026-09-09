@@ -8,7 +8,7 @@ using App.BL.AppReportAgent;
 using App.BL.DbGenie;
 using APP.Components.EntityDto;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
     public static class AppDataIntegrationAgentSkillBL
     {

@@ -6,7 +6,7 @@ using App.BL;
 using APP.Components.EntityDto;
 using Newtonsoft.Json.Linq;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
     /// <summary>
     /// Data-source access for the App Data Integration Agent:
@@ -16,13 +16,13 @@ namespace App.BL.AppDataIntegrationAgent
     /// </summary>
     public static class AppDataIntegrationAgentDataSourceBL
     {
-        public static List<AppDataIntegrationAgentDataSourceItemDto> ListForSession(
-            AppDataIntegrationAgentSessionStore.SessionData session)
+        public static List<CursorCloudAgentDataSourceItemDto> ListForSession(
+            CursorCloudAgentSessionStore.SessionData session)
         {
             return ListTenantCompanyDataSources();
         }
 
-        public static List<AppDataIntegrationAgentDataSourceItemDto> ListTenantCompanyDataSources()
+        public static List<CursorCloudAgentDataSourceItemDto> ListTenantCompanyDataSources()
         {
             return MapIdsToListItems(GetTenantCompanyAccessibleIds());
         }
@@ -39,7 +39,7 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         public static int ResolveForTool(
-            AppDataIntegrationAgentSessionStore.SessionData session,
+            CursorCloudAgentSessionStore.SessionData session,
             int? requestedDataSourceRegisterId)
         {
             var allowed = GetTenantCompanyAccessibleIds();
@@ -68,7 +68,7 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         public static AppDataIntegrationAgentSqlTarget ResolveSqlTarget(
-            AppDataIntegrationAgentSessionStore.SessionData session,
+            CursorCloudAgentSessionStore.SessionData session,
             JObject args)
         {
             var connectionString = ExtractConnectionString(args);
@@ -92,7 +92,7 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         public static bool ShouldSkipSqlWorkbenchOpen(
-            AppDataIntegrationAgentSessionStore.SessionData session,
+            CursorCloudAgentSessionStore.SessionData session,
             JObject args)
         {
             return ArgsHaveConnectionString(args)
@@ -100,7 +100,7 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         public static void NoteSqlRunTarget(
-            AppDataIntegrationAgentSessionStore.SessionData session,
+            CursorCloudAgentSessionStore.SessionData session,
             AppDataIntegrationAgentSqlTarget target)
         {
             if (session == null || target == null) return;
@@ -109,8 +109,8 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         public static void EnsureTablePreviewDataSources(
-            AppDataIntegrationAgentSessionStore.SessionData session,
-            List<AppDataIntegrationAgentTablePreviewItemDto> tables)
+            CursorCloudAgentSessionStore.SessionData session,
+            List<CursorCloudAgentTablePreviewItemDto> tables)
         {
             if (tables == null || tables.Count == 0) return;
             foreach (var t in tables)
@@ -135,16 +135,16 @@ namespace App.BL.AppDataIntegrationAgent
             return AppDataSourceRegisterBL.IsTenantAccessibleDataSource(dataSourceRegisterId);
         }
 
-        private static List<AppDataIntegrationAgentDataSourceItemDto> MapIdsToListItems(HashSet<int> ids)
+        private static List<CursorCloudAgentDataSourceItemDto> MapIdsToListItems(HashSet<int> ids)
         {
             if (ids == null || ids.Count == 0)
-                return new List<AppDataIntegrationAgentDataSourceItemDto>();
+                return new List<CursorCloudAgentDataSourceItemDto>();
 
             return AppDataSourceRegisterBL.GetDataSourceRegisterList()
                 .Select(d => new { Dto = d, Id = ParseRegisterId(d.Id) })
                 .Where(x => x.Id.HasValue && ids.Contains(x.Id.Value))
                 .OrderBy(x => x.Id)
-                .Select(x => new AppDataIntegrationAgentDataSourceItemDto
+                .Select(x => new CursorCloudAgentDataSourceItemDto
                 {
                     Id = x.Id.Value,
                     Name = x.Dto.DataSourceName,

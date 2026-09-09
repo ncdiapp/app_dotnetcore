@@ -12,9 +12,9 @@ using APP.Framework;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
-    public static class AppDataIntegrationAgentMcpBL
+    public static class CursorCloudAgentMcpBL
     {
         public static object HandleJsonRpc(JObject request)
         {
@@ -75,7 +75,7 @@ namespace App.BL.AppDataIntegrationAgent
                 {
                     name = "appai",
                     type = "http",
-                    url = mcpBaseUrl.TrimEnd('/') + "/webapi/AppDataIntegrationAgentMcp/Invoke",
+                    url = mcpBaseUrl.TrimEnd('/') + "/webapi/CursorCloudAgentMcp/Invoke",
                     headers = new Dictionary<string, string>
                     {
                         { "Authorization", "Bearer " + token }
@@ -93,7 +93,7 @@ namespace App.BL.AppDataIntegrationAgent
         {
             var name = (string)p?["name"];
             var args = p?["arguments"] as JObject ?? new JObject();
-            var session = AppDataIntegrationAgentContext.Current;
+            var session = CursorCloudAgentContext.Current;
             if (session == null)
                 return ToolText("No App Data Integration Agent session is bound to this MCP token.", true);
 
@@ -165,33 +165,33 @@ namespace App.BL.AppDataIntegrationAgent
                     case "preview_tables_data":
                         return ToolText(EnqueueTablePreview(session, args));
                     case "list_workspace_files":
-                        return ToolText(JsonConvert.SerializeObject(AppDataIntegrationWorkspaceBL.ListFiles(session.WorkspaceRelativePath, session.CompanyId)));
+                        return ToolText(JsonConvert.SerializeObject(CursorCloudAgentWorkspaceBL.ListFiles(session.WorkspaceRelativePath, session.CompanyId)));
                     case "read_workspace_file":
-                        return ToolText(AppDataIntegrationWorkspaceBL.ReadFile(session.WorkspaceRelativePath, Str(args, "relativePath"), session.CompanyId).Content);
+                        return ToolText(CursorCloudAgentWorkspaceBL.ReadFile(session.WorkspaceRelativePath, Str(args, "relativePath"), session.CompanyId).Content);
                     case "write_workspace_file":
                     case "append_workspace_file":
                         return ToolText(McpWriteDisabledMessage(Str(args, "relativePath")), true);
                     case "sync_cloud_artifacts":
-                        return ToolText(await AppDataIntegrationAgentBL.SyncCloudArtifactsAsync(session, ct)
+                        return ToolText(await CursorCloudAgentBL.SyncCloudArtifactsAsync(session, ct)
                             .ConfigureAwait(false));
                     case "delete_workspace_file":
-                        AppDataIntegrationWorkspaceBL.DeleteFile(session.WorkspaceRelativePath, Str(args, "relativePath"), session.CompanyId);
-                        AppDataIntegrationAgentSessionStore.Enqueue(session.SessionId, new AppDataIntegrationAgentEventDto
+                        CursorCloudAgentWorkspaceBL.DeleteFile(session.WorkspaceRelativePath, Str(args, "relativePath"), session.CompanyId);
+                        CursorCloudAgentSessionStore.Enqueue(session.SessionId, new CursorCloudAgentEventDto
                         {
                             EventType = "file",
-                            File = new AppDataIntegrationAgentFileEvent { Action = "delete", RelativePath = Str(args, "relativePath") }
+                            File = new CursorCloudAgentFileEvent { Action = "delete", RelativePath = Str(args, "relativePath") }
                         });
                         return ToolText("Deleted " + Str(args, "relativePath"));
                     case "validate_config_pack":
                         {
                             var rel = Str(args, "relativePath");
-                            AppDataIntegrationAgentSessionStore.NotePackPath(session, rel);
+                            CursorCloudAgentSessionStore.NotePackPath(session, rel);
                             return ToolText(ValidatePack(session, rel));
                         }
                     case "preview_config_pack":
                         {
                             var rel = Str(args, "relativePath");
-                            AppDataIntegrationAgentSessionStore.NotePackPath(session, rel);
+                            CursorCloudAgentSessionStore.NotePackPath(session, rel);
                             return ToolText(PreviewPack(session, rel));
                         }
                     case "run_select":
@@ -216,10 +216,10 @@ namespace App.BL.AppDataIntegrationAgent
             }
         }
 
-        private static async Task<string> ProposeImportAsync(AppDataIntegrationAgentSessionStore.SessionData session, string relativePath, CancellationToken ct)
+        private static async Task<string> ProposeImportAsync(CursorCloudAgentSessionStore.SessionData session, string relativePath, CancellationToken ct)
         {
             var preview = PreviewPack(session, relativePath);
-            var gate = new AppDataIntegrationAgentGateEvent
+            var gate = new CursorCloudAgentGateEvent
             {
                 GateId = Guid.NewGuid().ToString("N"),
                 Kind = "import_pack",
@@ -244,7 +244,7 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         private static async Task<string> ProposeSqlAsync(
-            AppDataIntegrationAgentSessionStore.SessionData session,
+            CursorCloudAgentSessionStore.SessionData session,
             string sql,
             AppDataIntegrationAgentSqlTarget target,
             CancellationToken ct)
@@ -256,7 +256,7 @@ namespace App.BL.AppDataIntegrationAgent
             var summaryTarget = target.UsesConnectionString
                 ? "user-supplied connection string"
                 : "DataSource " + target.DataSourceRegisterId;
-            var gate = new AppDataIntegrationAgentGateEvent
+            var gate = new CursorCloudAgentGateEvent
             {
                 GateId = Guid.NewGuid().ToString("N"),
                 Kind = "exec_sql",
@@ -275,19 +275,19 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         private static async Task<string> WaitGateAsync(
-            AppDataIntegrationAgentSessionStore.SessionData session,
-            AppDataIntegrationAgentGateEvent gate,
+            CursorCloudAgentSessionStore.SessionData session,
+            CursorCloudAgentGateEvent gate,
             Func<bool, string> onConfirm,
             CancellationToken ct)
         {
-            var tcs = AppDataIntegrationAgentSessionStore.RegisterGate(session.SessionId, gate);
-            AppDataIntegrationAgentSessionStore.Enqueue(session.SessionId, new AppDataIntegrationAgentEventDto { EventType = "gate", Gate = gate });
-            AppDataIntegrationAgentSessionBL.Update(session, "InProgress", null, gate);
+            var tcs = CursorCloudAgentSessionStore.RegisterGate(session.SessionId, gate);
+            CursorCloudAgentSessionStore.Enqueue(session.SessionId, new CursorCloudAgentEventDto { EventType = "gate", Gate = gate });
+            CursorCloudAgentSessionBL.Update(session, "InProgress", null, gate);
 
             using (var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(10)))
             using (var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, timeout.Token))
             {
-                linked.Token.Register(() => tcs.TrySetResult(new AppDataIntegrationAgentGateResult
+                linked.Token.Register(() => tcs.TrySetResult(new CursorCloudAgentGateResult
                 {
                     Confirmed = false,
                     Feedback = "Gate timed out."
@@ -299,14 +299,14 @@ namespace App.BL.AppDataIntegrationAgent
             }
         }
 
-        private static string ValidatePack(AppDataIntegrationAgentSessionStore.SessionData session, string relativePath)
+        private static string ValidatePack(CursorCloudAgentSessionStore.SessionData session, string relativePath)
         {
             var pack = LoadPack(session, relativePath);
             var result = AppConfigPackBL.Validate(pack);
             return JsonConvert.SerializeObject(result.Object);
         }
 
-        private static string PreviewPack(AppDataIntegrationAgentSessionStore.SessionData session, string relativePath)
+        private static string PreviewPack(CursorCloudAgentSessionStore.SessionData session, string relativePath)
         {
             var pack = LoadPack(session, relativePath);
             var result = AppConfigPackBL.Preview(new AppConfigPackExecuteRequestDto
@@ -317,9 +317,9 @@ namespace App.BL.AppDataIntegrationAgent
             return JsonConvert.SerializeObject(result.Object);
         }
 
-        private static AppConfigPackDto LoadPack(AppDataIntegrationAgentSessionStore.SessionData session, string relativePath)
+        private static AppConfigPackDto LoadPack(CursorCloudAgentSessionStore.SessionData session, string relativePath)
         {
-            var file = AppDataIntegrationWorkspaceBL.ReadFile(session.WorkspaceRelativePath, relativePath, session.CompanyId);
+            var file = CursorCloudAgentWorkspaceBL.ReadFile(session.WorkspaceRelativePath, relativePath, session.CompanyId);
             var loaded = AppConfigPackBL.Load(new AppConfigPackLoadRequestDto { PackJson = file.Content });
             if (loaded.Object == null)
                 throw new InvalidOperationException("Invalid pack JSON: " + (loaded.ValidationResult?.Items?.FirstOrDefault()?.Message ?? "unknown"));
@@ -374,7 +374,7 @@ namespace App.BL.AppDataIntegrationAgent
             return JsonConvert.SerializeObject(new { Menus = flat });
         }
 
-        private static string EnqueueNavigate(AppDataIntegrationAgentSessionStore.SessionData session, JObject args)
+        private static string EnqueueNavigate(CursorCloudAgentSessionStore.SessionData session, JObject args)
         {
             var routeCode = Str(args, "routeCode") ?? Str(args, "route");
             if (string.IsNullOrWhiteSpace(routeCode))
@@ -389,7 +389,7 @@ namespace App.BL.AppDataIntegrationAgent
                     ?? new Dictionary<string, object>();
             }
 
-            AppDataIntegrationAgentSessionStore.NoteOpenUiOffer(session, new AppDataIntegrationAgentOpenUiOfferDto
+            CursorCloudAgentSessionStore.NoteOpenUiOffer(session, new CursorCloudAgentOpenUiOfferDto
             {
                 Kind = "navigate",
                 Label = label,
@@ -397,10 +397,10 @@ namespace App.BL.AppDataIntegrationAgent
                 Link = link,
                 ParamObj = paramObj
             });
-            AppDataIntegrationAgentSessionStore.Enqueue(session.SessionId, new AppDataIntegrationAgentEventDto
+            CursorCloudAgentSessionStore.Enqueue(session.SessionId, new CursorCloudAgentEventDto
             {
                 EventType = "navigate",
-                Navigate = new AppDataIntegrationAgentNavigateEvent
+                Navigate = new CursorCloudAgentNavigateEvent
                 {
                     RouteCode = routeCode.Trim(),
                     Label = label,
@@ -419,7 +419,7 @@ namespace App.BL.AppDataIntegrationAgent
             });
         }
 
-        private static string OpenSearch(AppDataIntegrationAgentSessionStore.SessionData session, JObject args)
+        private static string OpenSearch(CursorCloudAgentSessionStore.SessionData session, JObject args)
         {
             int? searchId = ResolveSearchId(session, args);
             if (!searchId.HasValue)
@@ -435,7 +435,7 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         private static string OpenTransactionForm(
-            AppDataIntegrationAgentSessionStore.SessionData session,
+            CursorCloudAgentSessionStore.SessionData session,
             JObject args,
             bool listEdit)
         {
@@ -461,7 +461,7 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         private static string OpenTransactionEditor(
-            AppDataIntegrationAgentSessionStore.SessionData session,
+            CursorCloudAgentSessionStore.SessionData session,
             JObject args,
             string defaultSectionCode)
         {
@@ -486,7 +486,7 @@ namespace App.BL.AppDataIntegrationAgent
             }));
         }
 
-        private static string OpenSearchEditor(AppDataIntegrationAgentSessionStore.SessionData session, JObject args)
+        private static string OpenSearchEditor(CursorCloudAgentSessionStore.SessionData session, JObject args)
         {
             int? searchId = ResolveSearchId(session, args);
             if (!searchId.HasValue)
@@ -502,7 +502,7 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         private static string OpenSimplePage(
-            AppDataIntegrationAgentSessionStore.SessionData session,
+            CursorCloudAgentSessionStore.SessionData session,
             string routeCode,
             string defaultLabel,
             int? id,
@@ -522,7 +522,7 @@ namespace App.BL.AppDataIntegrationAgent
             }));
         }
 
-        private static string OpenDatabaseDesign(AppDataIntegrationAgentSessionStore.SessionData session, JObject args)
+        private static string OpenDatabaseDesign(CursorCloudAgentSessionStore.SessionData session, JObject args)
         {
             var appId = ResolveIntId(args, "applicationId", "saasApplicationId", "id")
                 ?? session.SaasApplicationId;
@@ -542,7 +542,7 @@ namespace App.BL.AppDataIntegrationAgent
         /// <summary>
         /// Offer Open → SQL Workbench with queryText (+ optional DS). Page auto-runs SELECT when opened.
         /// </summary>
-        private static string OpenQueryResult(AppDataIntegrationAgentSessionStore.SessionData session, JObject args)
+        private static string OpenQueryResult(CursorCloudAgentSessionStore.SessionData session, JObject args)
         {
             var sql = Str(args, "sql") ?? Str(args, "queryText") ?? Str(args, "query");
             if (string.IsNullOrWhiteSpace(sql))
@@ -597,9 +597,9 @@ namespace App.BL.AppDataIntegrationAgent
             }));
         }
 
-        private static string EnqueueTablePreview(AppDataIntegrationAgentSessionStore.SessionData session, JObject args)
+        private static string EnqueueTablePreview(CursorCloudAgentSessionStore.SessionData session, JObject args)
         {
-            var tables = new List<AppDataIntegrationAgentTablePreviewItemDto>();
+            var tables = new List<CursorCloudAgentTablePreviewItemDto>();
             var arr = args?["tables"] as JArray;
             if (arr != null)
             {
@@ -614,7 +614,7 @@ namespace App.BL.AppDataIntegrationAgent
                         ds = dsTok.Value<int>();
                     if (!ds.HasValue)
                         ds = session.DataSourceRegisterId;
-                    tables.Add(new AppDataIntegrationAgentTablePreviewItemDto
+                    tables.Add(new CursorCloudAgentTablePreviewItemDto
                     {
                         TableName = name.Trim(),
                         DataSourceId = ds,
@@ -629,7 +629,7 @@ namespace App.BL.AppDataIntegrationAgent
                 var one = Str(args, "tableName");
                 if (!string.IsNullOrWhiteSpace(one))
                 {
-                    tables.Add(new AppDataIntegrationAgentTablePreviewItemDto
+                    tables.Add(new CursorCloudAgentTablePreviewItemDto
                     {
                         TableName = one.Trim(),
                         DataSourceId = ResolveIntId(args, "dataSourceRegisterId", "dataSourceId")
@@ -645,16 +645,16 @@ namespace App.BL.AppDataIntegrationAgent
             AppDataIntegrationAgentDataSourceBL.EnsureTablePreviewDataSources(session, tables);
 
             var names = string.Join(", ", tables.Select(t => t.TableName).Where(n => !string.IsNullOrWhiteSpace(n)));
-            AppDataIntegrationAgentSessionStore.NoteOpenUiOffer(session, new AppDataIntegrationAgentOpenUiOfferDto
+            CursorCloudAgentSessionStore.NoteOpenUiOffer(session, new CursorCloudAgentOpenUiOfferDto
             {
                 Kind = "table_preview",
                 Label = string.IsNullOrWhiteSpace(names) ? "Table Preview" : names,
                 Tables = tables
             });
-            AppDataIntegrationAgentSessionStore.Enqueue(session.SessionId, new AppDataIntegrationAgentEventDto
+            CursorCloudAgentSessionStore.Enqueue(session.SessionId, new CursorCloudAgentEventDto
             {
                 EventType = "table_preview",
-                TablePreview = new AppDataIntegrationAgentTablePreviewEvent { Tables = tables }
+                TablePreview = new CursorCloudAgentTablePreviewEvent { Tables = tables }
             });
             return JsonConvert.SerializeObject(new
             {
@@ -664,7 +664,7 @@ namespace App.BL.AppDataIntegrationAgent
             });
         }
 
-        private static int? ResolveTransactionId(AppDataIntegrationAgentSessionStore.SessionData session, JObject args)
+        private static int? ResolveTransactionId(CursorCloudAgentSessionStore.SessionData session, JObject args)
         {
             var id = ResolveIntId(args, "transactionId", "id");
             if (id.HasValue) return id;
@@ -684,7 +684,7 @@ namespace App.BL.AppDataIntegrationAgent
             return null;
         }
 
-        private static int? ResolveSearchId(AppDataIntegrationAgentSessionStore.SessionData session, JObject args)
+        private static int? ResolveSearchId(CursorCloudAgentSessionStore.SessionData session, JObject args)
         {
             var id = ResolveIntId(args, "searchId", "id");
             if (id.HasValue) return id;
@@ -747,13 +747,13 @@ namespace App.BL.AppDataIntegrationAgent
             return null;
         }
 
-        private static void TryWriteOutput(AppDataIntegrationAgentSessionStore.SessionData session, string path, string content)
+        private static void TryWriteOutput(CursorCloudAgentSessionStore.SessionData session, string path, string content)
         {
-            try { AppDataIntegrationWorkspaceBL.WriteFile(session.WorkspaceRelativePath, path, content, session.CompanyId); }
+            try { CursorCloudAgentWorkspaceBL.WriteFile(session.WorkspaceRelativePath, path, content, session.CompanyId); }
             catch { }
         }
 
-        private static void RestoreIdentity(AppDataIntegrationAgentSessionStore.SessionData session)
+        private static void RestoreIdentity(CursorCloudAgentSessionStore.SessionData session)
         {
             AppDataIntegrationAgentIdentity.Restore(session);
         }
@@ -763,7 +763,7 @@ namespace App.BL.AppDataIntegrationAgent
             return AppAISkillBL.GetDefaultDataSourceId();
         }
 
-        private static int RequireDs(JObject args, AppDataIntegrationAgentSessionStore.SessionData session)
+        private static int RequireDs(JObject args, CursorCloudAgentSessionStore.SessionData session)
         {
             var raw = args?["dataSourceRegisterId"] ?? args?["dataSourceId"];
             int? requested = null;
@@ -879,7 +879,7 @@ namespace App.BL.AppDataIntegrationAgent
                 Tool("propose_sql", "Ask the user to confirm INSERT/UPDATE/DELETE/CREATE TABLE/ALTER TABLE ADD.",
                     Prop("sql", "string", true), Prop("dataSourceRegisterId", "integer", false), Prop("connectionString", "string", false))
             };
-            var session = AppDataIntegrationAgentContext.Current;
+            var session = CursorCloudAgentContext.Current;
             if (session == null || session.AllowProposeImport)
             {
                 tools.Add(Tool("propose_import_pack", "Ask the user to confirm importing a pack. Blocks until they confirm.", Prop("relativePath", "string", true)));
@@ -923,12 +923,12 @@ namespace App.BL.AppDataIntegrationAgent
         }
     }
 
-    public static class AppDataIntegrationAgentContext
+    public static class CursorCloudAgentContext
     {
-        private static readonly AsyncLocal<AppDataIntegrationAgentSessionStore.SessionData> CurrentData
-            = new AsyncLocal<AppDataIntegrationAgentSessionStore.SessionData>();
+        private static readonly AsyncLocal<CursorCloudAgentSessionStore.SessionData> CurrentData
+            = new AsyncLocal<CursorCloudAgentSessionStore.SessionData>();
 
-        public static AppDataIntegrationAgentSessionStore.SessionData Current
+        public static CursorCloudAgentSessionStore.SessionData Current
         {
             get { return CurrentData.Value; }
             set { CurrentData.Value = value; }

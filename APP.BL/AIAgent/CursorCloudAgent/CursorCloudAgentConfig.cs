@@ -4,9 +4,9 @@ using APP.Components.Dto;
 using APP.Framework;
 using App.BL;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
-    public static class AppDataIntegrationAgentConfig
+    public static class CursorCloudAgentConfig
     {
         /// <summary>Tenant AIConfigCursorApiKey only (removed from appsettings.json).</summary>
         public static string ApiKey

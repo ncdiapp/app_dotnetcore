@@ -6,7 +6,7 @@ namespace App.BL.GenericAgent
     /// <summary>
     /// Reads LLM / Cursor config exclusively from tenant settings (AppTenantSetting).
     /// No appsettings.json fallback for AIConfig* keys — each tenant must supply their own API keys.
-    /// AIConfigCursorApiKey is tenant-only. AIConfigCursorModel / AIConfigCursorMcpPublicBaseUrl may fall back via AppDataIntegrationAgentConfig.
+    /// AIConfigCursorApiKey is tenant-only. AIConfigCursorModel / AIConfigCursorMcpPublicBaseUrl may fall back via CursorCloudAgentConfig.
     /// </summary>
     public static class AIConfigSettingBL
     {

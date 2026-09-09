@@ -5,29 +5,29 @@ import { useTheme } from '../../redux/hooks/useTheme';
 import { RootState } from '../../redux/store';
 import { adminSvc } from '../../webapi/adminsvc';
 import {
-  AppDataIntegrationAgentDoneEvent,
-  AppDataIntegrationAgentFileEvent,
-  AppDataIntegrationAgentGateEvent,
-  AppDataIntegrationAgentMessage,
-  AppDataIntegrationAgentNavigateEvent,
-  AppDataIntegrationAgentSessionSummary,
-  AppDataIntegrationAgentSkillMenuItem,
-  AppDataIntegrationAgentStepEvent,
-  AppDataIntegrationAgentTablePreviewEvent,
-  AppDataIntegrationAgentWorkspaceFile,
-  archiveAppDataIntegrationAgentSessions,
-  appDataIntegrationAgentService,
-  appDataIntegrationAgentChatTitle,
-  deleteAppDataIntegrationAgentSessions,
-  getAppDataIntegrationAgentSession,
-  getRecentAppDataIntegrationAgentSessions,
-  listAppDataIntegrationAgentSkillMenu,
-  listAppDataIntegrationAgentWorkspaceFiles,
-  readAppDataIntegrationAgentWorkspaceFile,
-  downloadAppDataIntegrationAgentWorkspaceFile,
-  deleteAppDataIntegrationAgentWorkspaceFile,
-  renameAppDataIntegrationAgentSession,
-} from '../../webapi/appDataIntegrationAgentSvc';
+  CursorCloudAgentDoneEvent,
+  CursorCloudAgentFileEvent,
+  CursorCloudAgentGateEvent,
+  CursorCloudAgentMessage,
+  CursorCloudAgentNavigateEvent,
+  CursorCloudAgentSessionSummary,
+  CursorCloudAgentSkillMenuItem,
+  CursorCloudAgentStepEvent,
+  CursorCloudAgentTablePreviewEvent,
+  CursorCloudAgentWorkspaceFile,
+  archiveCursorCloudAgentSessions,
+  cursorCloudAgentService,
+  cursorCloudAgentChatTitle,
+  deleteCursorCloudAgentSessions,
+  getCursorCloudAgentSession,
+  getRecentCursorCloudAgentSessions,
+  listCursorCloudAgentSkillMenu,
+  listCursorCloudAgentWorkspaceFiles,
+  readCursorCloudAgentWorkspaceFile,
+  downloadCursorCloudAgentWorkspaceFile,
+  deleteCursorCloudAgentWorkspaceFile,
+  renameCursorCloudAgentSession,
+} from '../../webapi/cursorCloudAgentSvc';
 import { endpoints } from '../../webapi/endpoints';
 import { isAdminUserFromContext } from '../../helper/adminPermissionHelper';
 import {
@@ -46,7 +46,7 @@ import { suggestPlmSkills, type PlmSkillSuggestion } from './plmSkillSuggestionH
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
-  steps: AppDataIntegrationAgentStepEvent[];
+  steps: CursorCloudAgentStepEvent[];
   streamingContent: string;
   isStreaming: boolean;
   timestamp?: string;
@@ -146,7 +146,7 @@ function historyDurationSeconds(m: any): number | undefined {
   return undefined;
 }
 
-function workspaceFilePath(f: AppDataIntegrationAgentWorkspaceFile): string {
+function workspaceFilePath(f: CursorCloudAgentWorkspaceFile): string {
   return String(f?.RelativePath ?? (f as any)?.relativePath ?? '');
 }
 
@@ -181,7 +181,7 @@ function extractAppConfigPackPathsFromText(text: string): string[] {
  * Packs actually touched this turn via tools — NOT free-text mentions.
  * write = generated; validate/preview = ready for Start Build.
  */
-function extractAppConfigPackPathsFromSteps(steps: AppDataIntegrationAgentStepEvent[]): string[] {
+function extractAppConfigPackPathsFromSteps(steps: CursorCloudAgentStepEvent[]): string[] {
   const found: string[] = [];
   for (const s of steps || []) {
     const tool = String(s.ToolName ?? (s as any).toolName ?? '').toLowerCase();
@@ -267,18 +267,18 @@ function sessionLooksIncomplete(status: string, finalResponse: string, lastAssis
   return false;
 }
 
-function stepTypeOf(s: AppDataIntegrationAgentStepEvent): string {
+function stepTypeOf(s: CursorCloudAgentStepEvent): string {
   return String(s?.Type ?? (s as any)?.type ?? '').toLowerCase();
 }
 
-function isThinkingStep(s: AppDataIntegrationAgentStepEvent): boolean {
+function isThinkingStep(s: CursorCloudAgentStepEvent): boolean {
   const t = stepTypeOf(s);
   return t === 'thinking' || t === 'thinking-delta';
 }
 
 /** Cursor streams thinking as many small deltas; merge for readable UI. */
-function mergeThinkingSteps(steps: AppDataIntegrationAgentStepEvent[]): AppDataIntegrationAgentStepEvent[] {
-  const out: AppDataIntegrationAgentStepEvent[] = [];
+function mergeThinkingSteps(steps: CursorCloudAgentStepEvent[]): CursorCloudAgentStepEvent[] {
+  const out: CursorCloudAgentStepEvent[] = [];
   for (const s of steps || []) {
     if (isThinkingStep(s)) {
       const last = out[out.length - 1];
@@ -297,7 +297,7 @@ function mergeThinkingSteps(steps: AppDataIntegrationAgentStepEvent[]): AppDataI
   return out;
 }
 
-function stepDisplayText(s: AppDataIntegrationAgentStepEvent): string {
+function stepDisplayText(s: CursorCloudAgentStepEvent): string {
   const t = stepTypeOf(s);
   const desc = String(s.Description ?? (s as any).description ?? '');
   if (t === 'tool_call') {
@@ -314,7 +314,7 @@ function stepDisplayText(s: AppDataIntegrationAgentStepEvent): string {
   return details.length > desc.length ? details : desc;
 }
 
-function collectMergedThinkingText(steps: AppDataIntegrationAgentStepEvent[]): string {
+function collectMergedThinkingText(steps: CursorCloudAgentStepEvent[]): string {
   const merged = mergeThinkingSteps(steps || []);
   const parts: string[] = [];
   for (const s of merged) {
@@ -450,7 +450,7 @@ const ThinkingPanel: React.FC<{ text: string; isLive?: boolean }> = ({ text, isL
 };
 
 /** Non-thinking activity lines (still_working, etc.) — no tool_call JSON. */
-function activityStepsForDisplay(steps: AppDataIntegrationAgentStepEvent[]): AppDataIntegrationAgentStepEvent[] {
+function activityStepsForDisplay(steps: CursorCloudAgentStepEvent[]): CursorCloudAgentStepEvent[] {
   return mergeThinkingSteps(steps || [])
     .filter(s => !isThinkingStep(s) && stepTypeOf(s) !== 'tool_call')
     .slice(-5);
@@ -688,7 +688,7 @@ const PREVIEW_MAX_PX = 480;
 const CENTER_MIN_PX = 280;
 
 /** Remember last selected chat so reopening the page restores it (not New Chat). */
-const LAST_SESSION_STORAGE_KEY = 'appai.appDataIntegrationAgent.lastSessionGuid';
+const LAST_SESSION_STORAGE_KEY = 'appai.cursorCloudAgent.lastSessionGuid';
 
 function readLastSessionGuid(): string | null {
   try {
@@ -730,9 +730,9 @@ const PanelResizeHandle: React.FC<PanelResizeHandleProps> = ({ label, edge, onMo
   );
 };
 
-const itemKey = (i: AppDataIntegrationAgentSkillMenuItem) => i.Key;
-const itemLabel = (i: AppDataIntegrationAgentSkillMenuItem) => i.Label;
-const itemGroup = (i: AppDataIntegrationAgentSkillMenuItem) => i.Group;
+const itemKey = (i: CursorCloudAgentSkillMenuItem) => i.Key;
+const itemLabel = (i: CursorCloudAgentSkillMenuItem) => i.Label;
+const itemGroup = (i: CursorCloudAgentSkillMenuItem) => i.Group;
 
 const ToolbarField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => {
   const { theme } = useTheme();
@@ -745,7 +745,7 @@ const ToolbarField: React.FC<{ label: string; children: React.ReactNode }> = ({ 
 };
 
 const SkillPicker: React.FC<{
-  items: AppDataIntegrationAgentSkillMenuItem[];
+  items: CursorCloudAgentSkillMenuItem[];
   value: string;
   disabled: boolean;
   lockSelection: boolean;
@@ -767,7 +767,7 @@ const SkillPicker: React.FC<{
   const selected = items.find(i => itemKey(i) === value);
   const label = selected ? itemLabel(selected) : 'App Config Builder';
 
-  const categories: { id: string; label: string; leafKey?: string; children: AppDataIntegrationAgentSkillMenuItem[] }[] = [
+  const categories: { id: string; label: string; leafKey?: string; children: CursorCloudAgentSkillMenuItem[] }[] = [
     { id: 'general', label: 'General', leafKey: 'general', children: [] },
     { id: 'app', label: 'App Config Builder', leafKey: 'app-config-builder', children: [] },
     { id: 'plm', label: 'PLM Integration', children: items.filter(i => itemGroup(i) === 'plm') },
@@ -948,7 +948,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
   const [saasApplicationId, setSaasApplicationId] = useState<number | undefined>();
   const [dataSourceId, setDataSourceId] = useState<number | undefined>();
   const [skillKey, setSkillKey] = useState(embeddedSkillKey || 'app-config-builder');
-  const [skillItems, setSkillItems] = useState<AppDataIntegrationAgentSkillMenuItem[]>([]);
+  const [skillItems, setSkillItems] = useState<CursorCloudAgentSkillMenuItem[]>([]);
 
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [hasAgent, setHasAgent] = useState(false);
@@ -959,12 +959,12 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
   const [workingLabel, setWorkingLabel] = useState('Thinking');
   const [error, setError] = useState<string | null>(null);
   const [incompleteWarning, setIncompleteWarning] = useState<string | null>(null);
-  const [pendingGate, setPendingGate] = useState<AppDataIntegrationAgentGateEvent | null>(null);
+  const [pendingGate, setPendingGate] = useState<CursorCloudAgentGateEvent | null>(null);
   const [gateFeedback, setGateFeedback] = useState('');
   const [tablePreviewOpen, setTablePreviewOpen] = useState(false);
   const [tablePreviewTables, setTablePreviewTables] = useState<TablePreviewItem[]>([]);
-  const [chatHistory, setChatHistory] = useState<AppDataIntegrationAgentSessionSummary[]>([]);
-  const [files, setFiles] = useState<AppDataIntegrationAgentWorkspaceFile[]>([]);
+  const [chatHistory, setChatHistory] = useState<CursorCloudAgentSessionSummary[]>([]);
+  const [files, setFiles] = useState<CursorCloudAgentWorkspaceFile[]>([]);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
   const [previewContent, setPreviewContent] = useState('');
   const [previewTruncated, setPreviewTruncated] = useState(false);
@@ -981,11 +981,11 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
   const workspaceWidthRef = useRef(WORKSPACE_DEFAULT_PX);
   const previewHeightRef = useRef(PREVIEW_DEFAULT_PX);
   const workspaceOpenRef = useRef(false);
-  const [chatMenu, setChatMenu] = useState<{ visible: boolean; x: number; y: number; item: AppDataIntegrationAgentSessionSummary | null }>({
+  const [chatMenu, setChatMenu] = useState<{ visible: boolean; x: number; y: number; item: CursorCloudAgentSessionSummary | null }>({
     visible: false, x: 0, y: 0, item: null,
   });
-  const [renameItem, setRenameItem] = useState<AppDataIntegrationAgentSessionSummary | null>(null);
-  const [deleteItem, setDeleteItem] = useState<AppDataIntegrationAgentSessionSummary | null>(null);
+  const [renameItem, setRenameItem] = useState<CursorCloudAgentSessionSummary | null>(null);
+  const [deleteItem, setDeleteItem] = useState<CursorCloudAgentSessionSummary | null>(null);
   const [manageOpen, setManageOpen] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editText, setEditText] = useState('');
@@ -1059,26 +1059,26 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
   }, []);
 
   const refreshHistory = useCallback(() => {
-    return getRecentAppDataIntegrationAgentSessions(30).then(list => {
+    return getRecentCursorCloudAgentSessions(30).then(list => {
       setChatHistory(list);
       return list;
     }).catch(() => {
       setChatHistory([]);
-      return [] as AppDataIntegrationAgentSessionSummary[];
+      return [] as CursorCloudAgentSessionSummary[];
     });
   }, []);
 
   const refreshFiles = useCallback((sid: string | null) => {
     if (!sid) { setFiles([]); return; }
-    listAppDataIntegrationAgentWorkspaceFiles(sid).then(list => {
+    listCursorCloudAgentWorkspaceFiles(sid).then(list => {
       setFiles(list);
       if (list.some(f => !f.IsDirectory)) setWorkspaceOpen(true);
     }).catch(() => setFiles([]));
   }, []);
 
   const resetChatUi = useCallback(() => {
-    appDataIntegrationAgentService.disconnect();
-    appDataIntegrationAgentService.currentSessionId = null;
+    cursorCloudAgentService.disconnect();
+    cursorCloudAgentService.currentSessionId = null;
     setSessionId(null);
     setHasAgent(false);
     setMessages([]);
@@ -1096,12 +1096,12 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
     setSelectedWorkspacePaths(new Set());
   }, []);
 
-  const applyLoadedSession = useCallback(async (summary: AppDataIntegrationAgentSessionSummary) => {
+  const applyLoadedSession = useCallback(async (summary: CursorCloudAgentSessionSummary) => {
     resetChatUi();
-    const session = await getAppDataIntegrationAgentSession(summary.SessionGuid);
+    const session = await getCursorCloudAgentSession(summary.SessionGuid);
     if (!session) return false;
     setSessionId(summary.SessionGuid);
-    appDataIntegrationAgentService.currentSessionId = summary.SessionGuid;
+    cursorCloudAgentService.currentSessionId = summary.SessionGuid;
     writeLastSessionGuid(summary.SessionGuid);
     setHasAgent(!!(session.CloudAgentId || summary.CloudAgentId));
     const appId = Number(session.SaasApplicationId ?? session.saasApplicationId ?? 0);
@@ -1157,7 +1157,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
         setDataSourceId(prev => prev ?? mapped[0]?.id);
       }
     }).catch(() => {});
-    listAppDataIntegrationAgentSkillMenu().then(menu => {
+    listCursorCloudAgentSkillMenu().then(menu => {
       setSkillItems(menu.Items ?? []);
       if (!embeddedSkillKey && menu.DefaultKey) setSkillKey(prev => prev || menu.DefaultKey);
     }).catch(() => {});
@@ -1187,7 +1187,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, pendingGate]);
 
-  useEffect(() => () => { appDataIntegrationAgentService.disconnect(); }, []);
+  useEffect(() => () => { cursorCloudAgentService.disconnect(); }, []);
 
   const closeChatMenu = useCallback(() => {
     setChatMenu({ visible: false, x: 0, y: 0, item: null });
@@ -1218,7 +1218,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
   }, []);
 
   const makeHandlers = useCallback(() => ({
-    onStep: (step: AppDataIntegrationAgentStepEvent) => {
+    onStep: (step: CursorCloudAgentStepEvent) => {
       const stepType = stepTypeOf(step);
       if (stepType === 'still_working')
         setWorkingLabel('Still working…');
@@ -1244,8 +1244,8 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
     onToken: (token: string) => {
       updateLastAssistant(msg => ({ ...msg, streamingContent: (msg.streamingContent || '') + token }));
     },
-    onFile: (file: AppDataIntegrationAgentFileEvent) => {
-      refreshFiles(appDataIntegrationAgentService.currentSessionId);
+    onFile: (file: CursorCloudAgentFileEvent) => {
+      refreshFiles(cursorCloudAgentService.currentSessionId);
       const path = normalizeWorkspacePath(file?.RelativePath ?? (file as any)?.relativePath ?? '');
       const action = String(file?.Action ?? (file as any)?.action ?? '').toLowerCase();
       if (!path || !isAppConfigPackPath(path)) return;
@@ -1265,8 +1265,8 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
         return { ...msg, writtenPackPaths: [...existing, path] };
       });
     },
-    onGate: (gate: AppDataIntegrationAgentGateEvent) => setPendingGate(gate),
-    onNavigate: (nav: AppDataIntegrationAgentNavigateEvent) => {
+    onGate: (gate: CursorCloudAgentGateEvent) => setPendingGate(gate),
+    onNavigate: (nav: CursorCloudAgentNavigateEvent) => {
       const routeCode = String(nav?.RouteCode ?? nav?.routeCode ?? '').trim();
       if (!routeCode) return;
       const label = String(nav?.Label ?? nav?.label ?? routeCode);
@@ -1289,7 +1289,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
         openUiOffers: [...(msg.openUiOffers ?? []), offer],
       }));
     },
-    onTablePreview: (preview: AppDataIntegrationAgentTablePreviewEvent) => {
+    onTablePreview: (preview: CursorCloudAgentTablePreviewEvent) => {
       const raw = preview?.Tables ?? preview?.tables ?? [];
       const tables: TablePreviewItem[] = (Array.isArray(raw) ? raw : [])
         .map((t) => ({
@@ -1311,7 +1311,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
         openUiOffers: [...(msg.openUiOffers ?? []), offer],
       }));
     },
-    onDone: (result: AppDataIntegrationAgentDoneEvent) => {
+    onDone: (result: CursorCloudAgentDoneEvent) => {
       try {
         setPendingGate(null);
         const final = String((result as any)?.FinalResponse ?? (result as any)?.finalResponse ?? '').trim();
@@ -1377,7 +1377,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
           });
         }
         refreshHistory();
-        refreshFiles(appDataIntegrationAgentService.currentSessionId);
+        refreshFiles(cursorCloudAgentService.currentSessionId);
       } finally {
         setIsRunning(false);
         isRunningRef.current = false;
@@ -1424,14 +1424,14 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
     });
     try {
       if (!hasAgent || !sessionId) {
-        const sid = await appDataIntegrationAgentService.startSession(
+        const sid = await cursorCloudAgentService.startSession(
           text, saasApplicationId, dataSourceId, [], makeHandlers(), skillKey);
         setSessionId(sid);
         setHasAgent(true);
         refreshFiles(sid);
         refreshHistory();
       } else {
-        await appDataIntegrationAgentService.followUp(text, makeHandlers(), skillKey, saasApplicationId, dataSourceId);
+        await cursorCloudAgentService.followUp(text, makeHandlers(), skillKey, saasApplicationId, dataSourceId);
       }
     } catch (err: any) {
       const errMsg = err?.message ?? 'Unknown error';
@@ -1474,7 +1474,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
     }
   }, [handleNewChat, refreshHistory, sessionId]);
 
-  const handleLoadSession = useCallback(async (summary: AppDataIntegrationAgentSessionSummary) => {
+  const handleLoadSession = useCallback(async (summary: CursorCloudAgentSessionSummary) => {
     await applyLoadedSession(summary);
   }, [applyLoadedSession]);
 
@@ -1484,7 +1484,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
     const assistantMsg: ChatMessage = { role: 'assistant', content: '', steps: [], streamingContent: '', isStreaming: true };
     setMessages(prev => [...prev, assistantMsg]);
     try {
-      await appDataIntegrationAgentService.resume(sessionId, 'Continue from where we left off.', makeHandlers());
+      await cursorCloudAgentService.resume(sessionId, 'Continue from where we left off.', makeHandlers());
     } catch (err: any) {
       setError(err?.message ?? 'Resume failed');
       setIsRunning(false);
@@ -1492,12 +1492,12 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
   }, [isRunning, makeHandlers, sessionId]);
 
   const handleStop = useCallback(() => {
-    void appDataIntegrationAgentService.cancel();
+    void cursorCloudAgentService.cancel();
   }, []);
 
   const handleConfirmGate = useCallback((confirmed: boolean) => {
     if (!pendingGate) return;
-    appDataIntegrationAgentService.confirmGate(pendingGate.GateId, confirmed, confirmed ? undefined : gateFeedback);
+    cursorCloudAgentService.confirmGate(pendingGate.GateId, confirmed, confirmed ? undefined : gateFeedback);
     setPendingGate(null);
     setGateFeedback('');
   }, [gateFeedback, pendingGate]);
@@ -1534,7 +1534,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
     setError(null);
     try {
       for (const path of paths) {
-        await deleteAppDataIntegrationAgentWorkspaceFile(sessionId, path);
+        await deleteCursorCloudAgentWorkspaceFile(sessionId, path);
       }
       setSelectedWorkspacePaths(new Set());
       if (previewPath && paths.some(p => normalizeWorkspacePath(p) === normalizeWorkspacePath(previewPath))) {
@@ -1551,7 +1551,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
   const openPreview = useCallback(async (relativePath: string) => {
     if (!sessionId) return;
     try {
-      const { content, truncated } = await readAppDataIntegrationAgentWorkspaceFile(sessionId, relativePath);
+      const { content, truncated } = await readCursorCloudAgentWorkspaceFile(sessionId, relativePath);
       setPreviewPath(relativePath);
       setPreviewContent(content);
       setPreviewTruncated(truncated);
@@ -1590,7 +1590,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
   const downloadPreview = useCallback(async () => {
     if (!sessionId || !previewPath) return;
     try {
-      await downloadAppDataIntegrationAgentWorkspaceFile(sessionId, previewPath);
+      await downloadCursorCloudAgentWorkspaceFile(sessionId, previewPath);
       setPreviewCopyHint('Downloaded');
       window.setTimeout(() => setPreviewCopyHint(null), 1500);
     } catch (err: any) {
@@ -1602,7 +1602,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
   const chatTitle = (() => {
     const fromList = chatHistory.find(c => c.SessionGuid === sessionId);
     const fromMessages = messages.find(m => m.role === 'user')?.content;
-    const text = (fromList ? appDataIntegrationAgentChatTitle(fromList) : fromMessages || '').trim();
+    const text = (fromList ? cursorCloudAgentChatTitle(fromList) : fromMessages || '').trim();
     if (!text) return 'New Chat';
     return text;
   })();
@@ -1677,7 +1677,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
                   }`}
                 >
                   <div className="w-1 flex-auto min-w-0">
-                    <div className="text-xs font-medium truncate">{appDataIntegrationAgentChatTitle(item).slice(0, 55)}</div>
+                    <div className="text-xs font-medium truncate">{cursorCloudAgentChatTitle(item).slice(0, 55)}</div>
                     <div className={`text-[10px] ${theme.label}`}>{item.Status}</div>
                   </div>
                   <button
@@ -2173,7 +2173,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
               const guid = chatMenu.item?.SessionGuid;
               closeChatMenu();
               if (!guid) return;
-              await archiveAppDataIntegrationAgentSessions([guid], true);
+              await archiveCursorCloudAgentSessions([guid], true);
               refreshHistory();
             }}
           >
@@ -2199,11 +2199,11 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
 
       <RenameChatDialog
         isOpen={!!renameItem}
-        initialTitle={renameItem ? appDataIntegrationAgentChatTitle(renameItem) : ''}
+        initialTitle={renameItem ? cursorCloudAgentChatTitle(renameItem) : ''}
         onCancel={() => setRenameItem(null)}
         onSave={async title => {
           if (!renameItem) return;
-          await renameAppDataIntegrationAgentSession(renameItem.SessionGuid, title);
+          await renameCursorCloudAgentSession(renameItem.SessionGuid, title);
           setRenameItem(null);
           refreshHistory();
         }}
@@ -2219,7 +2219,7 @@ const DataIntegrationAgent: React.FC<{ embeddedSkillKey?: string }> = ({ embedde
           const guid = deleteItem?.SessionGuid;
           setDeleteItem(null);
           if (!guid) return;
-          await deleteAppDataIntegrationAgentSessions([guid]);
+          await deleteCursorCloudAgentSessions([guid]);
           handleDeletedSessions([guid]);
         }}
       />

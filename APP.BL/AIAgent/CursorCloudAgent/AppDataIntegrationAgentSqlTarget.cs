@@ -1,4 +1,4 @@
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
     /// <summary>Resolved target for run_select / get_table_schema / propose_sql.</summary>
     public sealed class AppDataIntegrationAgentSqlTarget

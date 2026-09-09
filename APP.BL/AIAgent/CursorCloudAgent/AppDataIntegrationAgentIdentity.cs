@@ -4,7 +4,7 @@ using APP.Components.Dto;
 using APP.Framework;
 using Newtonsoft.Json;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
     /// <summary>
     /// Background Task.Run has no HttpContext, so ServerContext falls through to
@@ -14,7 +14,7 @@ namespace App.BL.AppDataIntegrationAgent
     /// </summary>
     internal static class AppDataIntegrationAgentIdentity
     {
-        public static void Capture(AppDataIntegrationAgentSessionStore.SessionData live, AppClientIdentity? identity)
+        public static void Capture(CursorCloudAgentSessionStore.SessionData live, AppClientIdentity? identity)
         {
             if (live == null) return;
             if (!identity.HasValue && ServerContext.Instance.CurrnetClientIdentity is AppClientIdentity current)
@@ -31,7 +31,7 @@ namespace App.BL.AppDataIntegrationAgent
                 live.CompanyId = Convert.ToInt32(identity.Value.CurrentWorkingCompanyId);
         }
 
-        public static void Restore(AppDataIntegrationAgentSessionStore.SessionData live)
+        public static void Restore(CursorCloudAgentSessionStore.SessionData live)
         {
             if (live == null) return;
 

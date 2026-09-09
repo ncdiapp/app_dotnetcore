@@ -6,9 +6,9 @@ using App.BL;
 using APP.Components.EntityDto;
 using Newtonsoft.Json;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
-    public static class AppDataIntegrationAgentSessionBL
+    public static class CursorCloudAgentSessionBL
     {
         private const string MigrateRenameTableSql = @"
 IF OBJECT_ID(N'dbo.CursorAgentSession', N'U') IS NOT NULL
@@ -98,7 +98,7 @@ IF COL_LENGTH('dbo.AppDataIntegrationAgentSession', 'SortOrder') IS NULL
             fixture.ExecuteNonQueryResult(MigrateChatSortSql, new List<DbParameter>());
         }
 
-        public static void SaveNew(AppDataIntegrationAgentSessionStore.SessionData session, string userRequest)
+        public static void SaveNew(CursorCloudAgentSessionStore.SessionData session, string userRequest)
         {
             try
             {
@@ -131,7 +131,7 @@ VALUES
                     P(fixture, "@DataSourceRegisterId", session.DataSourceRegisterId),
                     P(fixture, "@CreatedById", session.CreatedById),
                     P(fixture, "@WorkspaceRelativePath", session.WorkspaceRelativePath),
-                    P(fixture, "@ConversationHistoryJson", JsonConvert.SerializeObject(session.ConversationHistory ?? new List<AppDataIntegrationAgentMessageDto>())),
+                    P(fixture, "@ConversationHistoryJson", JsonConvert.SerializeObject(session.ConversationHistory ?? new List<CursorCloudAgentMessageDto>())),
                     P(fixture, "@IdentityJson", session.IdentityJson ?? AppDataIntegrationAgentIdentity.Serialize(session.Identity)),
                     P(fixture, "@SkillKey", session.SkillKey)
                 });
@@ -139,7 +139,7 @@ VALUES
             catch { }
         }
 
-        public static void Update(AppDataIntegrationAgentSessionStore.SessionData session, string status, string finalResponse, AppDataIntegrationAgentGateEvent pendingGate)
+        public static void Update(CursorCloudAgentSessionStore.SessionData session, string status, string finalResponse, CursorCloudAgentGateEvent pendingGate)
         {
             try
             {
@@ -175,7 +175,7 @@ WHERE SessionGuid = @SessionGuid";
                     P(fixture, "@DataSourceRegisterId", session.DataSourceRegisterId),
                     P(fixture, "@SkillKey", session.SkillKey),
                     P(fixture, "@WorkspaceRelativePath", session.WorkspaceRelativePath),
-                    P(fixture, "@ConversationHistoryJson", JsonConvert.SerializeObject(session.ConversationHistory ?? new List<AppDataIntegrationAgentMessageDto>())),
+                    P(fixture, "@ConversationHistoryJson", JsonConvert.SerializeObject(session.ConversationHistory ?? new List<CursorCloudAgentMessageDto>())),
                     P(fixture, "@IdentityJson", session.IdentityJson ?? AppDataIntegrationAgentIdentity.Serialize(session.Identity)),
                     P(fixture, "@PendingGateJson", pendingGate == null ? null : JsonConvert.SerializeObject(pendingGate)),
                     P(fixture, "@FinalResponse", Trunc(finalResponse, 4000)),
@@ -185,9 +185,9 @@ WHERE SessionGuid = @SessionGuid";
             catch { }
         }
 
-        public static List<AppDataIntegrationAgentSessionSummaryDto> ListRecent(int limit, int? createdById)
+        public static List<CursorCloudAgentSessionSummaryDto> ListRecent(int limit, int? createdById)
         {
-            var list = new List<AppDataIntegrationAgentSessionSummaryDto>();
+            var list = new List<CursorCloudAgentSessionSummaryDto>();
             try
             {
                 var fixture = GetFixture();
@@ -216,7 +216,7 @@ ORDER BY SortOrder ASC, UpdatedAt DESC",
             return list;
         }
 
-        public static AppDataIntegrationAgentSessionFullDto Get(string sessionGuid)
+        public static CursorCloudAgentSessionFullDto Get(string sessionGuid)
         {
             try
             {
@@ -232,7 +232,7 @@ FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter> { P(fixture, "@SessionGuid", sessionGuid) });
                 if (dt == null || dt.Rows.Count == 0) return null;
                 var row = dt.Rows[0];
-                var full = new AppDataIntegrationAgentSessionFullDto
+                var full = new CursorCloudAgentSessionFullDto
                 {
                     SessionGuid = row["SessionGuid"] as string,
                     CreatedAt = row["CreatedAt"] is DateTime c ? c : DateTime.MinValue,
@@ -253,16 +253,16 @@ FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
                 };
                 var hist = row["ConversationHistoryJson"] as string;
                 if (!string.IsNullOrWhiteSpace(hist))
-                    full.ConversationHistory = JsonConvert.DeserializeObject<List<AppDataIntegrationAgentMessageDto>>(hist);
+                    full.ConversationHistory = JsonConvert.DeserializeObject<List<CursorCloudAgentMessageDto>>(hist);
                 return full;
             }
             catch { return null; }
         }
 
-        public static AppDataIntegrationAgentSessionStore.SessionData RequireHydrated(string sessionGuid)
+        public static CursorCloudAgentSessionStore.SessionData RequireHydrated(string sessionGuid)
         {
-            AppDataIntegrationAgentSessionStore.SessionData live;
-            if (!AppDataIntegrationAgentSessionStore.TryGet(sessionGuid, out live) || live == null)
+            CursorCloudAgentSessionStore.SessionData live;
+            if (!CursorCloudAgentSessionStore.TryGet(sessionGuid, out live) || live == null)
                 live = HydrateLive(sessionGuid);
             if (live == null)
                 throw new InvalidOperationException("Session not found.");
@@ -270,7 +270,7 @@ FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
             return live;
         }
 
-        public static AppDataIntegrationAgentSessionStore.SessionData HydrateLive(string sessionGuid)
+        public static CursorCloudAgentSessionStore.SessionData HydrateLive(string sessionGuid)
         {
             try
             {
@@ -285,7 +285,7 @@ FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
                     new List<DbParameter> { P(fixture, "@SessionGuid", sessionGuid) });
                 if (dt == null || dt.Rows.Count == 0) return null;
                 var row = dt.Rows[0];
-                var data = new AppDataIntegrationAgentSessionStore.SessionData
+                var data = new CursorCloudAgentSessionStore.SessionData
                 {
                     SessionId = row["SessionGuid"] as string,
                     CloudAgentId = row["CloudAgentId"] as string,
@@ -305,15 +305,15 @@ FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
                     data.CompanyId = Convert.ToInt32(data.Identity.Value.CurrentWorkingCompanyId);
                 var hist = row["ConversationHistoryJson"] as string;
                 if (!string.IsNullOrWhiteSpace(hist))
-                    data.ConversationHistory = JsonConvert.DeserializeObject<List<AppDataIntegrationAgentMessageDto>>(hist)
-                        ?? new List<AppDataIntegrationAgentMessageDto>();
-                AppDataIntegrationAgentSessionStore.AttachLive(data);
+                    data.ConversationHistory = JsonConvert.DeserializeObject<List<CursorCloudAgentMessageDto>>(hist)
+                        ?? new List<CursorCloudAgentMessageDto>();
+                CursorCloudAgentSessionStore.AttachLive(data);
                 return data;
             }
             catch { return null; }
         }
 
-        public static AppDataIntegrationAgentSessionStore.SessionData HydrateLiveByMcpToken(string mcpToken)
+        public static CursorCloudAgentSessionStore.SessionData HydrateLiveByMcpToken(string mcpToken)
         {
             try
             {
@@ -329,7 +329,7 @@ FROM dbo.AppDataIntegrationAgentSession WHERE McpToken = @McpToken",
                     new List<DbParameter> { P(fixture, "@McpToken", mcpToken.Trim()) });
                 if (dt == null || dt.Rows.Count == 0) return null;
                 var row = dt.Rows[0];
-                var data = new AppDataIntegrationAgentSessionStore.SessionData
+                var data = new CursorCloudAgentSessionStore.SessionData
                 {
                     SessionId = row["SessionGuid"] as string,
                     CloudAgentId = row["CloudAgentId"] as string,
@@ -349,17 +349,17 @@ FROM dbo.AppDataIntegrationAgentSession WHERE McpToken = @McpToken",
                     data.CompanyId = Convert.ToInt32(data.Identity.Value.CurrentWorkingCompanyId);
                 var hist = row["ConversationHistoryJson"] as string;
                 if (!string.IsNullOrWhiteSpace(hist))
-                    data.ConversationHistory = JsonConvert.DeserializeObject<List<AppDataIntegrationAgentMessageDto>>(hist)
-                        ?? new List<AppDataIntegrationAgentMessageDto>();
-                AppDataIntegrationAgentSessionStore.AttachLive(data);
+                    data.ConversationHistory = JsonConvert.DeserializeObject<List<CursorCloudAgentMessageDto>>(hist)
+                        ?? new List<CursorCloudAgentMessageDto>();
+                CursorCloudAgentSessionStore.AttachLive(data);
                 return data;
             }
             catch { return null; }
         }
 
-        public static List<AppDataIntegrationAgentSessionSummaryDto> ListAll(int? createdById)
+        public static List<CursorCloudAgentSessionSummaryDto> ListAll(int? createdById)
         {
-            var list = new List<AppDataIntegrationAgentSessionSummaryDto>();
+            var list = new List<CursorCloudAgentSessionSummaryDto>();
             try
             {
                 var fixture = GetFixture();
@@ -441,7 +441,7 @@ UPDATE dbo.AppDataIntegrationAgentSession SET IsArchived = @IsArchived WHERE Ses
                     fixture.ExecuteNonQueryResult(
                         "DELETE FROM dbo.AppDataIntegrationAgentSession WHERE SessionGuid = @SessionGuid",
                         new List<DbParameter> { P(fixture, "@SessionGuid", guid) });
-                    AppDataIntegrationAgentSessionStore.Remove(guid);
+                    CursorCloudAgentSessionStore.Remove(guid);
                     n++;
                 }
                 catch { }
@@ -475,9 +475,9 @@ UPDATE dbo.AppDataIntegrationAgentSession SET SortOrder = @SortOrder WHERE Sessi
             catch { return false; }
         }
 
-        private static AppDataIntegrationAgentSessionSummaryDto MapSummary(DataRow row)
+        private static CursorCloudAgentSessionSummaryDto MapSummary(DataRow row)
         {
-            return new AppDataIntegrationAgentSessionSummaryDto
+            return new CursorCloudAgentSessionSummaryDto
             {
                 SessionGuid = row["SessionGuid"] as string,
                 CreatedAt = row["CreatedAt"] is DateTime c ? c : DateTime.MinValue,

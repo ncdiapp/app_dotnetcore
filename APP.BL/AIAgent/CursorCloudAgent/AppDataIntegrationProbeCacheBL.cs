@@ -7,7 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
     /// <summary>
     /// Server-side cache for full MCP probe query results. Agent receives summaries only.

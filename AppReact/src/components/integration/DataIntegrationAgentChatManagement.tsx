@@ -6,14 +6,14 @@ import Confirm from '../common/Confirm';
 import appHelper from '../../helper/appHelper';
 import { useRefineContextMenuField } from '../../hooks/useClampedContextMenuPosition';
 import {
-  AppDataIntegrationAgentSessionSummary,
-  archiveAppDataIntegrationAgentSessions,
-  appDataIntegrationAgentChatTitle,
-  deleteAppDataIntegrationAgentSessions,
-  listAllAppDataIntegrationAgentSessions,
-  renameAppDataIntegrationAgentSession,
-  reorderAppDataIntegrationAgentSessions,
-} from '../../webapi/appDataIntegrationAgentSvc';
+  CursorCloudAgentSessionSummary,
+  archiveCursorCloudAgentSessions,
+  cursorCloudAgentChatTitle,
+  deleteCursorCloudAgentSessions,
+  listAllCursorCloudAgentSessions,
+  renameCursorCloudAgentSession,
+  reorderCursorCloudAgentSessions,
+} from '../../webapi/cursorCloudAgentSvc';
 
 export interface DataIntegrationAgentChatManagementProps {
   isOpen: boolean;
@@ -21,11 +21,11 @@ export interface DataIntegrationAgentChatManagementProps {
   onChanged: (deletedSessionIds?: string[]) => void;
 }
 
-type ChatRow = AppDataIntegrationAgentSessionSummary & { Title: string; ArchivedText: string };
+type ChatRow = CursorCloudAgentSessionSummary & { Title: string; ArchivedText: string };
 
-const toRow = (item: AppDataIntegrationAgentSessionSummary): ChatRow => ({
+const toRow = (item: CursorCloudAgentSessionSummary): ChatRow => ({
   ...item,
-  Title: appDataIntegrationAgentChatTitle(item),
+  Title: cursorCloudAgentChatTitle(item),
   ArchivedText: item.IsArchived ? 'Yes' : 'No',
 });
 
@@ -111,7 +111,7 @@ const DataIntegrationAgentChatManagement: React.FC<DataIntegrationAgentChatManag
   }, []);
 
   const load = useCallback(async () => {
-    const list = await listAllAppDataIntegrationAgentSessions();
+    const list = await listAllCursorCloudAgentSessions();
     setCv(new CollectionView<ChatRow>((list || []).map(toRow)));
   }, []);
 
@@ -161,7 +161,7 @@ const DataIntegrationAgentChatManagement: React.FC<DataIntegrationAgentChatManag
 
   const handleRename = useCallback(async (title: string) => {
     if (!renameItem) return;
-    await renameAppDataIntegrationAgentSession(renameItem.SessionGuid, title);
+    await renameCursorCloudAgentSession(renameItem.SessionGuid, title);
     setRenameItem(null);
     await afterChange();
   }, [afterChange, renameItem]);
@@ -169,7 +169,7 @@ const DataIntegrationAgentChatManagement: React.FC<DataIntegrationAgentChatManag
   const handleArchive = useCallback(async (archived: boolean, guids?: string[]) => {
     const ids = guids ?? selectedGuids();
     if (!ids.length) return;
-    await archiveAppDataIntegrationAgentSessions(ids, archived);
+    await archiveCursorCloudAgentSessions(ids, archived);
     closeContextMenu();
     await afterChange();
   }, [afterChange, closeContextMenu, selectedGuids]);
@@ -178,7 +178,7 @@ const DataIntegrationAgentChatManagement: React.FC<DataIntegrationAgentChatManag
     const ids = deleteIds ?? [];
     setDeleteIds(null);
     if (!ids.length) return;
-    await deleteAppDataIntegrationAgentSessions(ids);
+    await deleteCursorCloudAgentSessions(ids);
     closeContextMenu();
     await afterChange(ids);
   }, [afterChange, closeContextMenu, deleteIds]);
@@ -193,7 +193,7 @@ const DataIntegrationAgentChatManagement: React.FC<DataIntegrationAgentChatManag
     const tmp = items[idx];
     items[idx] = items[next];
     items[next] = tmp;
-    await reorderAppDataIntegrationAgentSessions(items.map(i => i.SessionGuid));
+    await reorderCursorCloudAgentSessions(items.map(i => i.SessionGuid));
     await afterChange();
   }, [afterChange, cv.items, selectedGuids]);
 
@@ -309,7 +309,7 @@ const DataIntegrationAgentChatManagement: React.FC<DataIntegrationAgentChatManag
 
       <RenameChatDialog
         isOpen={!!renameItem}
-        initialTitle={renameItem ? appDataIntegrationAgentChatTitle(renameItem) : ''}
+        initialTitle={renameItem ? cursorCloudAgentChatTitle(renameItem) : ''}
         onCancel={() => setRenameItem(null)}
         onSave={handleRename}
       />

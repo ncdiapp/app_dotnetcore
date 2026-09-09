@@ -9,11 +9,11 @@ using APP.Framework;
 using App.BL.GenericAgent;
 using Newtonsoft.Json;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
-    public static class AppDataIntegrationAgentBL
+    public static class CursorCloudAgentBL
     {
-        public static AppDataIntegrationAgentStartResultDto StartSession(AppDataIntegrationAgentStartRequestDto request, AppClientIdentity? identity)
+        public static CursorCloudAgentStartResultDto StartSession(CursorCloudAgentStartRequestDto request, AppClientIdentity? identity)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.UserMessage))
                 throw new ArgumentException("UserMessage is required.");
@@ -26,22 +26,22 @@ namespace App.BL.AppDataIntegrationAgent
                 throw new InvalidOperationException(
                     $"AIConfigIntegrationProvider '{integrationProvider}' is not implemented yet. Use 'Cursor' for now.");
             }
-            if (string.IsNullOrWhiteSpace(AppDataIntegrationAgentConfig.ApiKey))
+            if (string.IsNullOrWhiteSpace(CursorCloudAgentConfig.ApiKey))
                 throw new InvalidOperationException("AIConfigCursorApiKey is not configured in tenant AppTenantSetting.");
 
-            var live = AppDataIntegrationAgentSessionStore.CreateSession();
+            var live = CursorCloudAgentSessionStore.CreateSession();
             live.SaasApplicationId = request.SaasApplicationId;
             live.DataSourceRegisterId = AppDataIntegrationAgentDataSourceBL.NormalizeSessionDataSource(
                 request.DataSourceRegisterId);
             AppDataIntegrationAgentSkillCatalogBL.ApplyToSession(live, request.SkillKey);
             AppDataIntegrationAgentIdentity.Capture(live, identity);
             live.WorkspaceRelativePath = live.SessionId;
-            live.ConversationHistory = request.ConversationHistory ?? new List<AppDataIntegrationAgentMessageDto>();
-            live.ConversationHistory.Add(new AppDataIntegrationAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
-            AppDataIntegrationWorkspaceBL.EnsureSessionDir(live.WorkspaceRelativePath, live.CompanyId);
+            live.ConversationHistory = request.ConversationHistory ?? new List<CursorCloudAgentMessageDto>();
+            live.ConversationHistory.Add(new CursorCloudAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
+            CursorCloudAgentWorkspaceBL.EnsureSessionDir(live.WorkspaceRelativePath, live.CompanyId);
             try { AppDataIntegrationPlmDwSeedBL.SeedOfficialSourceFiles(live); }
             catch { }
-            AppDataIntegrationAgentSessionBL.SaveNew(live, request.UserMessage);
+            CursorCloudAgentSessionBL.SaveNew(live, request.UserMessage);
 
             live.RunCts = new CancellationTokenSource();
             var ct = live.RunCts.Token;
@@ -49,7 +49,7 @@ namespace App.BL.AppDataIntegrationAgent
             var userMessage = request.UserMessage;
             Task.Run(() => RunCreateAsync(sessionId, userMessage, ct));
 
-            return new AppDataIntegrationAgentStartResultDto
+            return new CursorCloudAgentStartResultDto
             {
                 IsStarted = true,
                 SessionId = live.SessionId,
@@ -57,7 +57,7 @@ namespace App.BL.AppDataIntegrationAgent
             };
         }
 
-        public static void FollowUp(AppDataIntegrationAgentFollowUpRequestDto request, AppClientIdentity? identity = null)
+        public static void FollowUp(CursorCloudAgentFollowUpRequestDto request, AppClientIdentity? identity = null)
         {
             if (request == null || string.IsNullOrWhiteSpace(request.SessionId))
                 throw new ArgumentException("SessionId is required.");
@@ -82,7 +82,7 @@ namespace App.BL.AppDataIntegrationAgent
             try { AppDataIntegrationPlmDwSeedBL.SeedOfficialSourceFiles(live); }
             catch { }
 
-            live.ConversationHistory.Add(new AppDataIntegrationAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
+            live.ConversationHistory.Add(new CursorCloudAgentMessageDto { Role = "user", Content = request.UserMessage, Timestamp = DateTime.UtcNow.ToString("o") });
             if (live.RunCts != null && !live.RunCts.IsCancellationRequested)
             {
                 try { live.RunCts.Cancel(); } catch { }
@@ -94,7 +94,7 @@ namespace App.BL.AppDataIntegrationAgent
             Task.Run(() => RunFollowUpAsync(sessionId, text, ct));
         }
 
-        public static void Resume(AppDataIntegrationAgentResumeRequestDto request, AppClientIdentity? identity = null)
+        public static void Resume(CursorCloudAgentResumeRequestDto request, AppClientIdentity? identity = null)
         {
             var live = GetOrHydrate(request?.SessionId);
             AppDataIntegrationAgentIdentity.Capture(live, identity);
@@ -104,23 +104,23 @@ namespace App.BL.AppDataIntegrationAgent
             var text = string.IsNullOrWhiteSpace(request.UserMessage)
                 ? "Continue from where we left off."
                 : request.UserMessage;
-            FollowUp(new AppDataIntegrationAgentFollowUpRequestDto { SessionId = live.SessionId, UserMessage = text }, identity);
+            FollowUp(new CursorCloudAgentFollowUpRequestDto { SessionId = live.SessionId, UserMessage = text }, identity);
         }
 
         public static async Task CancelAsync(string sessionId)
         {
-            AppDataIntegrationAgentSessionStore.SessionData live;
-            if (!AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live) || live == null)
-                live = AppDataIntegrationAgentSessionBL.HydrateLive(sessionId);
+            CursorCloudAgentSessionStore.SessionData live;
+            if (!CursorCloudAgentSessionStore.TryGet(sessionId, out live) || live == null)
+                live = CursorCloudAgentSessionBL.HydrateLive(sessionId);
             if (live == null) return;
             try { live.RunCts?.Cancel(); } catch { }
             try
             {
-                await CursorCloudClient.CancelAsync(live.CloudAgentId, live.LatestRunId, CancellationToken.None)
+                await CursorCloudAgentsApiClient.CancelAsync(live.CloudAgentId, live.LatestRunId, CancellationToken.None)
                     .ConfigureAwait(false);
             }
             catch { }
-            AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto
+            CursorCloudAgentSessionStore.Enqueue(sessionId, new CursorCloudAgentEventDto
             {
                 EventType = "error",
                 Error = "Cancelled."
@@ -131,29 +131,29 @@ namespace App.BL.AppDataIntegrationAgent
         {
             try
             {
-                AppDataIntegrationAgentSessionStore.SessionData live;
-                if (!AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live)) return;
+                CursorCloudAgentSessionStore.SessionData live;
+                if (!CursorCloudAgentSessionStore.TryGet(sessionId, out live)) return;
                 AppDataIntegrationAgentIdentity.Restore(live);
-                AppDataIntegrationAgentSessionStore.BeginAssistantTurn(live);
+                CursorCloudAgentSessionStore.BeginAssistantTurn(live);
 
                 var prompt = BuildPrompt(live, userMessage);
-                var mcp = AppDataIntegrationAgentMcpBL.McpServerSpec(AppDataIntegrationAgentConfig.McpPublicBaseUrl, live.McpToken);
-                var created = await CursorCloudClient.CreateAgentAsync(prompt, mcp, ct).ConfigureAwait(false);
+                var mcp = CursorCloudAgentMcpBL.McpServerSpec(CursorCloudAgentConfig.McpPublicBaseUrl, live.McpToken);
+                var created = await CursorCloudAgentsApiClient.CreateAgentAsync(prompt, mcp, ct).ConfigureAwait(false);
                 live.CloudAgentId = created.AgentId;
                 live.LatestRunId = created.RunId;
-                AppDataIntegrationAgentSessionBL.Update(live, "InProgress", null, null);
+                CursorCloudAgentSessionBL.Update(live, "InProgress", null, null);
                 await StreamAsync(live, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
-                AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto { EventType = "error", Error = "Cancelled." });
+                CursorCloudAgentSessionStore.Enqueue(sessionId, new CursorCloudAgentEventDto { EventType = "error", Error = "Cancelled." });
             }
             catch (Exception ex)
             {
-                AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto { EventType = "error", Error = FormatError(ex) });
-                AppDataIntegrationAgentSessionStore.SessionData live;
-                if (AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live))
-                    AppDataIntegrationAgentSessionBL.Update(live, "Failed", FormatError(ex), null);
+                CursorCloudAgentSessionStore.Enqueue(sessionId, new CursorCloudAgentEventDto { EventType = "error", Error = FormatError(ex) });
+                CursorCloudAgentSessionStore.SessionData live;
+                if (CursorCloudAgentSessionStore.TryGet(sessionId, out live))
+                    CursorCloudAgentSessionBL.Update(live, "Failed", FormatError(ex), null);
             }
         }
 
@@ -161,10 +161,10 @@ namespace App.BL.AppDataIntegrationAgent
         {
             try
             {
-                AppDataIntegrationAgentSessionStore.SessionData live;
-                if (!AppDataIntegrationAgentSessionStore.TryGet(sessionId, out live))
+                CursorCloudAgentSessionStore.SessionData live;
+                if (!CursorCloudAgentSessionStore.TryGet(sessionId, out live))
                 {
-                    AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto
+                    CursorCloudAgentSessionStore.Enqueue(sessionId, new CursorCloudAgentEventDto
                     {
                         EventType = "error",
                         Error = "Session not found on server. Try Resume or start a new chat."
@@ -172,56 +172,56 @@ namespace App.BL.AppDataIntegrationAgent
                     return;
                 }
                 AppDataIntegrationAgentIdentity.Restore(live);
-                AppDataIntegrationAgentSessionStore.BeginAssistantTurn(live);
+                CursorCloudAgentSessionStore.BeginAssistantTurn(live);
 
                 if (!string.IsNullOrWhiteSpace(live.LatestRunId))
                 {
-                    var activeRun = await CursorCloudClient.GetRunAsync(live.CloudAgentId, live.LatestRunId, ct)
+                    var activeRun = await CursorCloudAgentsApiClient.GetRunAsync(live.CloudAgentId, live.LatestRunId, ct)
                         .ConfigureAwait(false);
                     var activeStatus = ((string)activeRun?["status"] ?? "").ToUpperInvariant();
-                    if (CursorCloudClient.IsActiveStatus(activeStatus))
+                    if (CursorCloudAgentsApiClient.IsActiveStatus(activeStatus))
                     {
-                        AppDataIntegrationAgentSessionBL.Update(live, "InProgress", null, null);
+                        CursorCloudAgentSessionBL.Update(live, "InProgress", null, null);
                         await StreamAsync(live, ct).ConfigureAwait(false);
                         return;
                     }
                 }
 
-                await CursorCloudClient.EnsureIdleAsync(live.CloudAgentId, live.LatestRunId, ct).ConfigureAwait(false);
-                var mcp = AppDataIntegrationAgentMcpBL.McpServerSpec(AppDataIntegrationAgentConfig.McpPublicBaseUrl, live.McpToken);
+                await CursorCloudAgentsApiClient.EnsureIdleAsync(live.CloudAgentId, live.LatestRunId, ct).ConfigureAwait(false);
+                var mcp = CursorCloudAgentMcpBL.McpServerSpec(CursorCloudAgentConfig.McpPublicBaseUrl, live.McpToken);
                 var prompt = AppDataIntegrationAgentSkillCatalogBL.BuildFollowUpPrompt(live, userMessage);
-                CursorCloudClient.CreateResult created;
+                CursorCloudAgentsApiClient.CreateResult created;
                 try
                 {
-                    created = await CursorCloudClient.FollowUpAsync(live.CloudAgentId, prompt, mcp, ct)
+                    created = await CursorCloudAgentsApiClient.FollowUpAsync(live.CloudAgentId, prompt, mcp, ct)
                         .ConfigureAwait(false);
                 }
-                catch (Exception ex) when (CursorCloudClient.IsArchivedError(ex))
+                catch (Exception ex) when (CursorCloudAgentsApiClient.IsArchivedError(ex))
                 {
-                    await CursorCloudClient.UnarchiveAgentAsync(live.CloudAgentId, ct).ConfigureAwait(false);
-                    created = await CursorCloudClient.FollowUpAsync(live.CloudAgentId, prompt, mcp, ct)
+                    await CursorCloudAgentsApiClient.UnarchiveAgentAsync(live.CloudAgentId, ct).ConfigureAwait(false);
+                    created = await CursorCloudAgentsApiClient.FollowUpAsync(live.CloudAgentId, prompt, mcp, ct)
                         .ConfigureAwait(false);
                 }
-                catch (Exception ex) when (CursorCloudClient.IsBusyError(ex))
+                catch (Exception ex) when (CursorCloudAgentsApiClient.IsBusyError(ex))
                 {
-                    await CursorCloudClient.EnsureIdleAsync(live.CloudAgentId, live.LatestRunId, ct).ConfigureAwait(false);
+                    await CursorCloudAgentsApiClient.EnsureIdleAsync(live.CloudAgentId, live.LatestRunId, ct).ConfigureAwait(false);
                     await Task.Delay(2000, ct).ConfigureAwait(false);
-                    created = await CursorCloudClient.FollowUpAsync(live.CloudAgentId, prompt, mcp, ct)
+                    created = await CursorCloudAgentsApiClient.FollowUpAsync(live.CloudAgentId, prompt, mcp, ct)
                         .ConfigureAwait(false);
                 }
                 live.LatestRunId = created.RunId;
                 if (string.IsNullOrWhiteSpace(live.LatestRunId))
                     throw new InvalidOperationException("Follow-up did not return a run id.");
-                AppDataIntegrationAgentSessionBL.Update(live, "InProgress", null, null);
+                CursorCloudAgentSessionBL.Update(live, "InProgress", null, null);
                 await StreamAsync(live, ct).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
-                AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto { EventType = "error", Error = "Cancelled." });
+                CursorCloudAgentSessionStore.Enqueue(sessionId, new CursorCloudAgentEventDto { EventType = "error", Error = "Cancelled." });
             }
             catch (Exception ex)
             {
-                AppDataIntegrationAgentSessionStore.Enqueue(sessionId, new AppDataIntegrationAgentEventDto { EventType = "error", Error = FormatError(ex) });
+                CursorCloudAgentSessionStore.Enqueue(sessionId, new CursorCloudAgentEventDto { EventType = "error", Error = FormatError(ex) });
             }
         }
 
@@ -241,7 +241,7 @@ namespace App.BL.AppDataIntegrationAgent
             public string LastRunStatus { get; set; }
         }
 
-        private static async Task StreamAsync(AppDataIntegrationAgentSessionStore.SessionData live, CancellationToken ct)
+        private static async Task StreamAsync(CursorCloudAgentSessionStore.SessionData live, CancellationToken ct)
         {
             if (live.TurnStartedUtc == null)
                 live.TurnStartedUtc = DateTime.UtcNow;
@@ -251,23 +251,23 @@ namespace App.BL.AppDataIntegrationAgent
             RunRecoveryResult recovery = null;
             try
             {
-                await CursorCloudClient.StreamRunAsync(live.CloudAgentId, live.LatestRunId, (evt, payload) =>
+                await CursorCloudAgentsApiClient.StreamRunAsync(live.CloudAgentId, live.LatestRunId, (evt, payload) =>
                 {
                     HandleStreamEvent(live, assistant, evt, payload, capture);
                 }, ct).ConfigureAwait(false);
             }
-            catch (Exception ex) when (CursorCloudClient.IsStreamGone(ex) && !ct.IsCancellationRequested)
+            catch (Exception ex) when (CursorCloudAgentsApiClient.IsStreamGone(ex) && !ct.IsCancellationRequested)
             {
                 capture.StreamDisconnected = true;
             }
 
             var needsRecovery = !ct.IsCancellationRequested
                 && (assistant.Length == 0 || capture.StreamDisconnected
-                    || CursorCloudClient.IsRecoverableStreamMessage(capture.Error));
+                    || CursorCloudAgentsApiClient.IsRecoverableStreamMessage(capture.Error));
 
             if (needsRecovery)
             {
-                if (CursorCloudClient.IsRecoverableStreamMessage(capture.Error))
+                if (CursorCloudAgentsApiClient.IsRecoverableStreamMessage(capture.Error))
                     capture.Error = null;
 
                 try { await PullCloudArtifactsAsync(live, ct).ConfigureAwait(false); }
@@ -280,7 +280,7 @@ namespace App.BL.AppDataIntegrationAgent
                     capture.Error = recovery.ErrorMessage;
                 else if (assistant.Length == 0 && recovery.TerminalStatus == "TIMEOUT")
                     capture.Error = "Cursor run did not finish within "
-                        + AppDataIntegrationAgentConfig.RunRecoveryMaxMinutes
+                        + CursorCloudAgentConfig.RunRecoveryMaxMinutes
                         + " minutes. Send Continue to re-attach, or New for a fresh chat.";
             }
 
@@ -299,13 +299,13 @@ namespace App.BL.AppDataIntegrationAgent
                 var fallback = BuildWorkspaceFallbackMessage(live);
                 if (!string.IsNullOrEmpty(fallback))
                     assistant.Append(fallback);
-                else if (CursorCloudClient.IsRecoverableStreamMessage(capture.Error))
+                else if (CursorCloudAgentsApiClient.IsRecoverableStreamMessage(capture.Error))
                     throw new InvalidOperationException(capture.Error);
                 else
                     throw new InvalidOperationException(capture.Error);
             }
 
-            var final = AppDataIntegrationWorkspaceBL.RewriteCloudPaths(assistant.ToString(), live.WorkspaceRelativePath, live.CompanyId);
+            var final = CursorCloudAgentWorkspaceBL.RewriteCloudPaths(assistant.ToString(), live.WorkspaceRelativePath, live.CompanyId);
             if (string.IsNullOrWhiteSpace(final))
                 final = BuildWorkspaceFallbackMessage(live) ?? "";
 
@@ -321,30 +321,30 @@ namespace App.BL.AppDataIntegrationAgent
                 }
             }
 
-            var openOffers = AppDataIntegrationAgentSessionStore.TakeTurnOpenOffers(live);
+            var openOffers = CursorCloudAgentSessionStore.TakeTurnOpenOffers(live);
             var turnEndedUtc = DateTime.UtcNow;
-            var durationSec = AppDataIntegrationAgentSessionStore.GetTurnDurationSeconds(live);
+            var durationSec = CursorCloudAgentSessionStore.GetTurnDurationSeconds(live);
             if (durationSec <= 0 && live.TurnStartedUtc != null)
                 durationSec = (int)Math.Max(1, (turnEndedUtc - live.TurnStartedUtc.Value).TotalSeconds);
 
-            live.ConversationHistory.Add(new AppDataIntegrationAgentMessageDto
+            live.ConversationHistory.Add(new CursorCloudAgentMessageDto
             {
                 Role = "assistant",
                 Content = final,
                 Timestamp = turnEndedUtc.ToString("o"),
                 StartedAt = live.TurnStartedUtc?.ToString("o"),
                 DurationSeconds = durationSec > 0 ? durationSec : null,
-                WrittenPackPaths = AppDataIntegrationAgentSessionStore.TakeTurnPackPaths(live),
+                WrittenPackPaths = CursorCloudAgentSessionStore.TakeTurnPackPaths(live),
                 OpenUiOffers = openOffers
             });
-            var files = AppDataIntegrationWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
+            var files = CursorCloudAgentWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
                 .Where(f => !f.IsDirectory)
                 .Select(f => f.RelativePath)
                 .ToList();
-            AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto
+            CursorCloudAgentSessionStore.Enqueue(live.SessionId, new CursorCloudAgentEventDto
             {
                 EventType = "done",
-                Done = new AppDataIntegrationAgentDoneEvent
+                Done = new CursorCloudAgentDoneEvent
                 {
                     FinalResponse = final,
                     UpdatedHistory = live.ConversationHistory.ToList(),
@@ -353,11 +353,11 @@ namespace App.BL.AppDataIntegrationAgent
                     IsIncomplete = isIncomplete
                 }
             });
-            AppDataIntegrationAgentSessionBL.Update(live, isIncomplete ? "InProgress" : "Completed", final, null);
+            CursorCloudAgentSessionBL.Update(live, isIncomplete ? "InProgress" : "Completed", final, null);
         }
 
         private static void HandleStreamEvent(
-            AppDataIntegrationAgentSessionStore.SessionData live,
+            CursorCloudAgentSessionStore.SessionData live,
             System.Text.StringBuilder assistant,
             string evt,
             Newtonsoft.Json.Linq.JObject payload,
@@ -366,7 +366,7 @@ namespace App.BL.AppDataIntegrationAgent
             if (string.Equals(evt, "error", StringComparison.OrdinalIgnoreCase))
             {
                 var err = (string)payload?["message"] ?? (string)payload?["code"] ?? "Cursor run error";
-                if (CursorCloudClient.IsRecoverableStreamMessage(err))
+                if (CursorCloudAgentsApiClient.IsRecoverableStreamMessage(err))
                     capture.StreamDisconnected = true;
                 else
                     capture.Error = err;
@@ -408,10 +408,10 @@ namespace App.BL.AppDataIntegrationAgent
             {
                 var name = (string)payload["name"];
                 var status = (string)payload["status"];
-                AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto
+                CursorCloudAgentSessionStore.Enqueue(live.SessionId, new CursorCloudAgentEventDto
                 {
                     EventType = "step",
-                    Step = new AppDataIntegrationAgentStepEvent
+                    Step = new CursorCloudAgentStepEvent
                     {
                         Type = "tool_call",
                         ToolName = name,
@@ -456,22 +456,22 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         private static void AppendAssistant(
-            AppDataIntegrationAgentSessionStore.SessionData live,
+            CursorCloudAgentSessionStore.SessionData live,
             System.Text.StringBuilder assistant,
             string text)
         {
             if (string.IsNullOrEmpty(text)) return;
             assistant.Append(text);
-            AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto { EventType = "token", Token = text });
+            CursorCloudAgentSessionStore.Enqueue(live.SessionId, new CursorCloudAgentEventDto { EventType = "token", Token = text });
         }
 
-        private static void EnqueueThinking(AppDataIntegrationAgentSessionStore.SessionData live, string text)
+        private static void EnqueueThinking(CursorCloudAgentSessionStore.SessionData live, string text)
         {
             if (string.IsNullOrEmpty(text)) return;
-            AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto
+            CursorCloudAgentSessionStore.Enqueue(live.SessionId, new CursorCloudAgentEventDto
             {
                 EventType = "step",
-                Step = new AppDataIntegrationAgentStepEvent { Type = "thinking", Description = text, Details = text }
+                Step = new CursorCloudAgentStepEvent { Type = "thinking", Description = text, Details = text }
             });
         }
 
@@ -501,13 +501,13 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         private static async Task<RunRecoveryResult> RecoverRunAsync(
-            AppDataIntegrationAgentSessionStore.SessionData live,
+            CursorCloudAgentSessionStore.SessionData live,
             CancellationToken ct,
             bool streamDisconnected)
         {
             var result = new RunRecoveryResult();
-            var pollSec = AppDataIntegrationAgentConfig.RunRecoveryPollSeconds;
-            var maxMinutes = AppDataIntegrationAgentConfig.RunRecoveryMaxMinutes;
+            var pollSec = CursorCloudAgentConfig.RunRecoveryPollSeconds;
+            var maxMinutes = CursorCloudAgentConfig.RunRecoveryMaxMinutes;
             var maxAttempts = Math.Max(1, (maxMinutes * 60) / pollSec);
             var stillWorkingEvery = Math.Max(1, 60 / pollSec);
             var artifactPullEvery = Math.Max(1, 15 / pollSec);
@@ -526,7 +526,7 @@ namespace App.BL.AppDataIntegrationAgent
                     catch { }
                 }
 
-                var run = await CursorCloudClient.GetRunAsync(live.CloudAgentId, live.LatestRunId, ct)
+                var run = await CursorCloudAgentsApiClient.GetRunAsync(live.CloudAgentId, live.LatestRunId, ct)
                     .ConfigureAwait(false);
                 if (run == null)
                 {
@@ -536,7 +536,7 @@ namespace App.BL.AppDataIntegrationAgent
 
                 var status = ((string)run["status"] ?? "").ToUpperInvariant();
                 result.LastRunStatus = status;
-                if (CursorCloudClient.IsActiveStatus(status))
+                if (CursorCloudAgentsApiClient.IsActiveStatus(status))
                 {
                     await Task.Delay(TimeSpan.FromSeconds(pollSec), ct).ConfigureAwait(false);
                     continue;
@@ -558,11 +558,11 @@ namespace App.BL.AppDataIntegrationAgent
 
             try
             {
-                var finalRun = await CursorCloudClient.GetRunAsync(live.CloudAgentId, live.LatestRunId, ct)
+                var finalRun = await CursorCloudAgentsApiClient.GetRunAsync(live.CloudAgentId, live.LatestRunId, ct)
                     .ConfigureAwait(false);
                 var finalStatus = ((string)finalRun?["status"] ?? "").ToUpperInvariant();
                 result.LastRunStatus = finalStatus;
-                if (!string.IsNullOrEmpty(finalStatus) && !CursorCloudClient.IsActiveStatus(finalStatus))
+                if (!string.IsNullOrEmpty(finalStatus) && !CursorCloudAgentsApiClient.IsActiveStatus(finalStatus))
                 {
                     result.TerminalStatus = finalStatus;
                     if (string.Equals(finalStatus, "ERROR", StringComparison.OrdinalIgnoreCase)
@@ -579,7 +579,7 @@ namespace App.BL.AppDataIntegrationAgent
                     return result;
                 }
 
-                result.RunStillActive = CursorCloudClient.IsActiveStatus(finalStatus);
+                result.RunStillActive = CursorCloudAgentsApiClient.IsActiveStatus(finalStatus);
             }
             catch
             {
@@ -590,13 +590,13 @@ namespace App.BL.AppDataIntegrationAgent
             return result;
         }
 
-        private static void EnqueueStillWorking(AppDataIntegrationAgentSessionStore.SessionData live, string message)
+        private static void EnqueueStillWorking(CursorCloudAgentSessionStore.SessionData live, string message)
         {
             if (live == null || string.IsNullOrWhiteSpace(message)) return;
-            AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto
+            CursorCloudAgentSessionStore.Enqueue(live.SessionId, new CursorCloudAgentEventDto
             {
                 EventType = "step",
-                Step = new AppDataIntegrationAgentStepEvent
+                Step = new CursorCloudAgentStepEvent
                 {
                     Type = "still_working",
                     Description = message,
@@ -606,11 +606,11 @@ namespace App.BL.AppDataIntegrationAgent
             });
         }
 
-        private static string BuildWorkspaceFallbackMessage(AppDataIntegrationAgentSessionStore.SessionData live)
+        private static string BuildWorkspaceFallbackMessage(CursorCloudAgentSessionStore.SessionData live)
         {
             if (live == null) return null;
-            var packs = AppDataIntegrationAgentSessionStore.PeekTurnPackPaths(live);
-            var files = AppDataIntegrationWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
+            var packs = CursorCloudAgentSessionStore.PeekTurnPackPaths(live);
+            var files = CursorCloudAgentWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
                 .Where(f => !f.IsDirectory)
                 .Select(f => f.RelativePath)
                 .Where(p => !string.IsNullOrWhiteSpace(p))
@@ -637,12 +637,12 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         private static string BuildIncompleteRunNotice(
-            AppDataIntegrationAgentSessionStore.SessionData live,
+            CursorCloudAgentSessionStore.SessionData live,
             RunRecoveryResult recovery)
         {
             if (live == null) return null;
-            var maxMin = AppDataIntegrationAgentConfig.RunRecoveryMaxMinutes;
-            var files = AppDataIntegrationWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
+            var maxMin = CursorCloudAgentConfig.RunRecoveryMaxMinutes;
+            var files = CursorCloudAgentWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
                 .Where(f => !f.IsDirectory)
                 .Select(f => f.RelativePath)
                 .Where(p => !string.IsNullOrWhiteSpace(p))
@@ -670,19 +670,19 @@ namespace App.BL.AppDataIntegrationAgent
             return sb.ToString().Trim();
         }
 
-        public static AppDataIntegrationAgentSkillMenuDto ListSkillMenu()
+        public static CursorCloudAgentSkillMenuDto ListSkillMenu()
         {
             return AppDataIntegrationAgentSkillCatalogBL.ListMenu();
         }
 
-        private static string BuildPrompt(AppDataIntegrationAgentSessionStore.SessionData live, string userMessage)
+        private static string BuildPrompt(CursorCloudAgentSessionStore.SessionData live, string userMessage)
         {
             return AppDataIntegrationAgentSkillCatalogBL.BuildInjectedPrompt(live, userMessage);
         }
 
-        private static AppDataIntegrationAgentSessionStore.SessionData GetOrHydrate(string sessionId)
+        private static CursorCloudAgentSessionStore.SessionData GetOrHydrate(string sessionId)
         {
-            return AppDataIntegrationAgentSessionBL.RequireHydrated(sessionId);
+            return CursorCloudAgentSessionBL.RequireHydrated(sessionId);
         }
 
         /// <summary>
@@ -690,7 +690,7 @@ namespace App.BL.AppDataIntegrationAgent
         /// Returns a JSON summary for MCP.
         /// </summary>
         public static async Task<string> SyncCloudArtifactsAsync(
-            AppDataIntegrationAgentSessionStore.SessionData live,
+            CursorCloudAgentSessionStore.SessionData live,
             CancellationToken ct)
         {
             if (live == null)
@@ -699,7 +699,7 @@ namespace App.BL.AppDataIntegrationAgent
                 throw new InvalidOperationException("No Cursor cloud agent id on this session yet.");
 
             var pulled = await PullCloudArtifactsAsync(live, ct).ConfigureAwait(false);
-            var files = AppDataIntegrationWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
+            var files = CursorCloudAgentWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
                 .Where(f => f != null && !f.IsDirectory)
                 .Select(f => new
                 {
@@ -727,29 +727,29 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         private static async Task<ArtifactPullResult> PullCloudArtifactsAsync(
-            AppDataIntegrationAgentSessionStore.SessionData live,
+            CursorCloudAgentSessionStore.SessionData live,
             CancellationToken ct)
         {
             var result = new ArtifactPullResult();
             if (live == null || string.IsNullOrWhiteSpace(live.CloudAgentId)) return result;
-            var paths = await CursorCloudClient.ListArtifactPathsAsync(live.CloudAgentId, ct).ConfigureAwait(false);
+            var paths = await CursorCloudAgentsApiClient.ListArtifactPathsAsync(live.CloudAgentId, ct).ConfigureAwait(false);
             result.ListedCount = paths?.Count ?? 0;
             if (paths == null || paths.Count == 0) return result;
 
             foreach (var path in paths)
             {
-                var bytes = await CursorCloudClient.DownloadArtifactBytesAsync(live.CloudAgentId, path, ct)
+                var bytes = await CursorCloudAgentsApiClient.DownloadArtifactBytesAsync(live.CloudAgentId, path, ct)
                     .ConfigureAwait(false);
                 if (bytes == null || bytes.Length == 0) continue;
                 var rel = NormalizeArtifactPath(path);
-                if (!AppDataIntegrationArtifactBL.ShouldSyncArtifactPath(rel))
+                if (!CursorCloudAgentArtifactBL.ShouldSyncArtifactPath(rel))
                     continue;
-                AppDataIntegrationWorkspaceBL.WriteBytesFromArtifact(live.WorkspaceRelativePath, rel, bytes, live.CompanyId);
-                AppDataIntegrationAgentSessionStore.NotePackPath(live, rel);
-                AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto
+                CursorCloudAgentWorkspaceBL.WriteBytesFromArtifact(live.WorkspaceRelativePath, rel, bytes, live.CompanyId);
+                CursorCloudAgentSessionStore.NotePackPath(live, rel);
+                CursorCloudAgentSessionStore.Enqueue(live.SessionId, new CursorCloudAgentEventDto
                 {
                     EventType = "file",
-                    File = new AppDataIntegrationAgentFileEvent { Action = "artifact", RelativePath = rel }
+                    File = new CursorCloudAgentFileEvent { Action = "artifact", RelativePath = rel }
                 });
                 result.PulledCount++;
                 result.PulledPaths.Add(rel + " (" + bytes.Length + " bytes)");
@@ -795,11 +795,11 @@ namespace App.BL.AppDataIntegrationAgent
         private static string FormatError(Exception ex)
         {
             if (ex == null) return "Unknown error.";
-            if (CursorCloudClient.IsBusyError(ex))
+            if (CursorCloudAgentsApiClient.IsBusyError(ex))
                 return "上一轮 Cursor 任务还在跑。请等几秒再发，或点 New 开新对话。";
-            if (CursorCloudClient.IsStreamGone(ex))
+            if (CursorCloudAgentsApiClient.IsStreamGone(ex))
                 return "Cursor 实时流已结束，但云端任务可能仍在执行。请稍候或再发 Continue；若超过 "
-                    + AppDataIntegrationAgentConfig.RunRecoveryMaxMinutes
+                    + CursorCloudAgentConfig.RunRecoveryMaxMinutes
                     + " 分钟仍未完成，请再发 Continue 或点 New。";
             var msg = ex.GetType().Name + ": " + ex.Message;
             if (ex.InnerException != null && !string.IsNullOrWhiteSpace(ex.InnerException.Message))

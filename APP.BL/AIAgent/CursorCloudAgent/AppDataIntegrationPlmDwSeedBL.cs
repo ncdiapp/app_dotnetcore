@@ -7,7 +7,7 @@ using APP.Components.EntityDto;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
     /// <summary>
     /// Seeds official ImportFromPLMDW generator/templates into the session workspace
@@ -49,7 +49,7 @@ namespace App.BL.AppDataIntegrationAgent
             return string.Equals(Normalize(skillKey), SkillKey, StringComparison.OrdinalIgnoreCase);
         }
 
-        public static int SeedOfficialSourceFiles(AppDataIntegrationAgentSessionStore.SessionData live)
+        public static int SeedOfficialSourceFiles(CursorCloudAgentSessionStore.SessionData live)
         {
             if (live == null || !IsPlmDwSkill(live.SkillKey)) return 0;
             var root = AppDataIntegrationAgentSkillCatalogBL.FindImportDocRoot();
@@ -67,13 +67,13 @@ namespace App.BL.AppDataIntegrationAgent
                 var fileName = Path.GetFileName(full);
                 var destRel = "source/" + fileName;
                 var bytes = File.ReadAllBytes(full);
-                AppDataIntegrationWorkspaceBL.WriteBytesFromArtifact(
+                CursorCloudAgentWorkspaceBL.WriteBytesFromArtifact(
                     live.WorkspaceRelativePath, destRel, bytes, live.CompanyId);
                 count++;
-                AppDataIntegrationAgentSessionStore.Enqueue(live.SessionId, new AppDataIntegrationAgentEventDto
+                CursorCloudAgentSessionStore.Enqueue(live.SessionId, new CursorCloudAgentEventDto
                 {
                     EventType = "file",
-                    File = new AppDataIntegrationAgentFileEvent { Action = "seed", RelativePath = destRel }
+                    File = new CursorCloudAgentFileEvent { Action = "seed", RelativePath = destRel }
                 });
             }
             return count;
@@ -87,14 +87,14 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         public static DeliverableValidation ValidatePhaseBDeliverables(
-            AppDataIntegrationAgentSessionStore.SessionData live)
+            CursorCloudAgentSessionStore.SessionData live)
         {
             var result = new DeliverableValidation { Ok = true };
             if (live == null || !IsPlmDwSkill(live.SkillKey))
                 return result;
 
-            var files = AppDataIntegrationWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
-                ?? new List<AppDataIntegrationAgentWorkspaceFileDto>();
+            var files = CursorCloudAgentWorkspaceBL.ListFiles(live.WorkspaceRelativePath, live.CompanyId)
+                ?? new List<CursorCloudAgentWorkspaceFileDto>();
             var byName = files
                 .Where(f => f != null && !f.IsDirectory)
                 .GroupBy(f => Path.GetFileName(f.RelativePath ?? ""), StringComparer.OrdinalIgnoreCase)
@@ -112,7 +112,7 @@ namespace App.BL.AppDataIntegrationAgent
 
             foreach (var kv in MinSizeByFileName)
             {
-                AppDataIntegrationAgentWorkspaceFileDto hit = null;
+                CursorCloudAgentWorkspaceFileDto hit = null;
                 if (templateId != null)
                 {
                     var expect = "output/" + templateId + "/" + kv.Key;
@@ -159,7 +159,7 @@ namespace App.BL.AppDataIntegrationAgent
                 {
                     try
                     {
-                        var content = AppDataIntegrationWorkspaceBL.ReadFile(
+                        var content = CursorCloudAgentWorkspaceBL.ReadFile(
                             live.WorkspaceRelativePath, hit.RelativePath, live.CompanyId);
                         var jo = JObject.Parse(content.Content ?? "{}");
                         var fields = jo["blueprintFields"] as JArray;
@@ -183,7 +183,7 @@ namespace App.BL.AppDataIntegrationAgent
                 {
                     try
                     {
-                        var content = AppDataIntegrationWorkspaceBL.ReadFile(
+                        var content = CursorCloudAgentWorkspaceBL.ReadFile(
                             live.WorkspaceRelativePath, hit.RelativePath, live.CompanyId);
                         var text = content.Content ?? "";
                         var alterCount = CountIgnoreCase(text, "ALTER TABLE");

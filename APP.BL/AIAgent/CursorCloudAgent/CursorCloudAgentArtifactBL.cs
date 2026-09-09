@@ -1,9 +1,9 @@
 using System;
 using System.Text.RegularExpressions;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
-    public static class AppDataIntegrationArtifactBL
+    public static class CursorCloudAgentArtifactBL
     {
         /// <summary>
         /// Paths that must not be synced from Cursor artifacts into the user workspace.

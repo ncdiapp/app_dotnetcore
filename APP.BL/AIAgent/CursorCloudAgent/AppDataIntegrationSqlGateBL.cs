@@ -11,7 +11,7 @@ using DatabaseSchemaMrg;
 using DatabaseSchemaMrg.DataSchema;
 using Newtonsoft.Json;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
     public static class AppDataIntegrationSqlGateBL
     {
@@ -107,8 +107,8 @@ namespace App.BL.AppDataIntegrationAgent
         /// </summary>
         public static string RunSelectForAgent(string sessionId, AppDataIntegrationAgentSqlTarget target, string sql)
         {
-            var rowLimit = AppDataIntegrationAgentConfig.SqlPreviewRowLimit;
-            var sampleRows = AppDataIntegrationAgentConfig.SqlProbeSampleRows;
+            var rowLimit = CursorCloudAgentConfig.SqlPreviewRowLimit;
+            var sampleRows = CursorCloudAgentConfig.SqlProbeSampleRows;
             var sw = Stopwatch.StartNew();
             var classified = Classify(sql);
             if (classified.Kind != SqlKind.Select)

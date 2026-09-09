@@ -10,7 +10,7 @@ using App.BL.DbGenie;
 using APP.Components.EntityDto;
 using Newtonsoft.Json;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
     public static class AppDataIntegrationAgentSkillCatalogBL
     {
@@ -57,13 +57,13 @@ namespace App.BL.AppDataIntegrationAgent
             return null;
         }
 
-        public static AppDataIntegrationAgentSkillMenuDto ListMenu()
+        public static CursorCloudAgentSkillMenuDto ListMenu()
         {
-            var menu = new AppDataIntegrationAgentSkillMenuDto { DefaultKey = DefaultKey };
+            var menu = new CursorCloudAgentSkillMenuDto { DefaultKey = DefaultKey };
             var catalog = LoadCatalog();
             foreach (var skill in catalog.Skills ?? new List<CatalogSkill>())
             {
-                menu.Items.Add(new AppDataIntegrationAgentSkillMenuItemDto
+                menu.Items.Add(new CursorCloudAgentSkillMenuItemDto
                 {
                     Key = skill.Id,
                     Label = skill.Label,
@@ -93,7 +93,7 @@ namespace App.BL.AppDataIntegrationAgent
                 if (skill == null || !skill.IsActive) continue;
                 if (IsHiddenSavedName(skill.Name)) continue;
                 if (!addedNames.Add(skill.Name)) continue;
-                menu.Items.Add(new AppDataIntegrationAgentSkillMenuItemDto
+                menu.Items.Add(new CursorCloudAgentSkillMenuItemDto
                 {
                     Key = SavedPrefix + skill.SkillId,
                     Label = skill.Name,
@@ -123,7 +123,7 @@ namespace App.BL.AppDataIntegrationAgent
         }
 
         private static void AddOtherSkill(
-            AppDataIntegrationAgentSkillMenuDto menu,
+            CursorCloudAgentSkillMenuDto menu,
             List<AppAISkillDto> all,
             string name,
             string label,
@@ -132,7 +132,7 @@ namespace App.BL.AppDataIntegrationAgent
             addedNames.Add(name);
             var found = all.FirstOrDefault(s =>
                 s != null && s.IsActive && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
-            menu.Items.Add(new AppDataIntegrationAgentSkillMenuItemDto
+            menu.Items.Add(new CursorCloudAgentSkillMenuItemDto
             {
                 Key = found != null && found.SkillId > 0 ? SavedPrefix + found.SkillId : NamedPrefix + name,
                 Label = label,
@@ -141,7 +141,7 @@ namespace App.BL.AppDataIntegrationAgent
             });
         }
 
-        public static void ApplyToSession(AppDataIntegrationAgentSessionStore.SessionData live, string skillKey)
+        public static void ApplyToSession(CursorCloudAgentSessionStore.SessionData live, string skillKey)
         {
             if (live == null) return;
             live.SkillKey = NormalizeKey(skillKey);
@@ -192,7 +192,7 @@ namespace App.BL.AppDataIntegrationAgent
             return catalogSkill != null && catalogSkill.AllowProposeImport;
         }
 
-        public static string BuildInjectedPrompt(AppDataIntegrationAgentSessionStore.SessionData live, string userMessage)
+        public static string BuildInjectedPrompt(CursorCloudAgentSessionStore.SessionData live, string userMessage)
         {
             var sb = new StringBuilder();
             sb.AppendLine("You are the AppAI App Data Integration Agent.");
@@ -271,7 +271,7 @@ namespace App.BL.AppDataIntegrationAgent
         /// Follow-up turns do not re-send the full create prompt; restate UI open capability so the
         /// model does not refuse with "I cannot open App pages".
         /// </summary>
-        public static string BuildFollowUpPrompt(AppDataIntegrationAgentSessionStore.SessionData live, string userMessage)
+        public static string BuildFollowUpPrompt(CursorCloudAgentSessionStore.SessionData live, string userMessage)
         {
             var sb = new StringBuilder();
             if (!string.IsNullOrWhiteSpace(live?.SkillKey))
@@ -419,7 +419,7 @@ namespace App.BL.AppDataIntegrationAgent
             sb.AppendLine("- Then `sync_cloud_artifacts` + `list_workspace_files` (RelativePath + SizeBytes).");
         }
 
-        private static void AppendDataSourceScopeGuidance(StringBuilder sb, AppDataIntegrationAgentSessionStore.SessionData live)
+        private static void AppendDataSourceScopeGuidance(StringBuilder sb, CursorCloudAgentSessionStore.SessionData live)
         {
             if (live == null) return;
             var allowed = AppDataIntegrationAgentDataSourceBL.ListTenantCompanyDataSources();

@@ -1,7 +1,7 @@
 using System;
 using NLog;
 
-namespace App.BL.AppDataIntegrationAgent
+namespace App.BL.CursorCloudAgent
 {
     public static class AppDataIntegrationMcpMetricsBL
     {

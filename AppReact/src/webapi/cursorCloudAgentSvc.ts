@@ -1,7 +1,7 @@
 import { getHeaders } from '../helper/apiServiceHelper';
 import { endpoints } from './endpoints';
 
-export interface AppDataIntegrationAgentMessage {
+export interface CursorCloudAgentMessage {
   Role?: string;
   Content?: string;
   Timestamp?: string;
@@ -16,7 +16,7 @@ export interface AppDataIntegrationAgentMessage {
   writtenPackPaths?: string[];
 }
 
-export interface AppDataIntegrationAgentStepEvent {
+export interface CursorCloudAgentStepEvent {
   Type: string;
   ToolName?: string;
   Description: string;
@@ -25,7 +25,7 @@ export interface AppDataIntegrationAgentStepEvent {
   Timestamp: string;
 }
 
-export interface AppDataIntegrationAgentGateEvent {
+export interface CursorCloudAgentGateEvent {
   GateId: string;
   Kind: 'import_pack' | 'exec_sql' | string;
   Title: string;
@@ -37,12 +37,12 @@ export interface AppDataIntegrationAgentGateEvent {
   Timestamp: string;
 }
 
-export interface AppDataIntegrationAgentFileEvent {
+export interface CursorCloudAgentFileEvent {
   Action: string;
   RelativePath: string;
 }
 
-export interface AppDataIntegrationAgentNavigateEvent {
+export interface CursorCloudAgentNavigateEvent {
   RouteCode?: string;
   Label?: string;
   Link?: string;
@@ -53,7 +53,7 @@ export interface AppDataIntegrationAgentNavigateEvent {
   paramObj?: Record<string, unknown>;
 }
 
-export interface AppDataIntegrationAgentTablePreviewItem {
+export interface CursorCloudAgentTablePreviewItem {
   TableName?: string;
   DataSourceId?: number | null;
   SchemaOwner?: string | null;
@@ -62,14 +62,14 @@ export interface AppDataIntegrationAgentTablePreviewItem {
   schemaOwner?: string | null;
 }
 
-export interface AppDataIntegrationAgentTablePreviewEvent {
-  Tables?: AppDataIntegrationAgentTablePreviewItem[];
-  tables?: AppDataIntegrationAgentTablePreviewItem[];
+export interface CursorCloudAgentTablePreviewEvent {
+  Tables?: CursorCloudAgentTablePreviewItem[];
+  tables?: CursorCloudAgentTablePreviewItem[];
 }
 
-export interface AppDataIntegrationAgentDoneEvent {
+export interface CursorCloudAgentDoneEvent {
   FinalResponse: string;
-  UpdatedHistory: AppDataIntegrationAgentMessage[];
+  UpdatedHistory: CursorCloudAgentMessage[];
   WorkspaceFiles: string[];
   OpenUiOffers?: any[];
   openUiOffers?: any[];
@@ -77,7 +77,7 @@ export interface AppDataIntegrationAgentDoneEvent {
   isIncomplete?: boolean;
 }
 
-export interface AppDataIntegrationAgentFileContent {
+export interface CursorCloudAgentFileContent {
   Content?: string;
   content?: string;
   Truncated?: boolean;
@@ -86,18 +86,18 @@ export interface AppDataIntegrationAgentFileContent {
   relativePath?: string;
 }
 
-export interface AppDataIntegrationAgentEventHandlers {
-  onStep: (step: AppDataIntegrationAgentStepEvent) => void;
+export interface CursorCloudAgentEventHandlers {
+  onStep: (step: CursorCloudAgentStepEvent) => void;
   onToken: (text: string) => void;
-  onFile?: (file: AppDataIntegrationAgentFileEvent) => void;
-  onGate: (gate: AppDataIntegrationAgentGateEvent) => void;
-  onNavigate?: (nav: AppDataIntegrationAgentNavigateEvent) => void;
-  onTablePreview?: (preview: AppDataIntegrationAgentTablePreviewEvent) => void;
-  onDone: (result: AppDataIntegrationAgentDoneEvent) => void;
+  onFile?: (file: CursorCloudAgentFileEvent) => void;
+  onGate: (gate: CursorCloudAgentGateEvent) => void;
+  onNavigate?: (nav: CursorCloudAgentNavigateEvent) => void;
+  onTablePreview?: (preview: CursorCloudAgentTablePreviewEvent) => void;
+  onDone: (result: CursorCloudAgentDoneEvent) => void;
   onError: (message: string) => void;
 }
 
-export interface AppDataIntegrationAgentSessionSummary {
+export interface CursorCloudAgentSessionSummary {
   SessionGuid: string;
   CreatedAt: string;
   UpdatedAt: string;
@@ -114,12 +114,12 @@ export interface AppDataIntegrationAgentSessionSummary {
   SortOrder?: number;
 }
 
-export function appDataIntegrationAgentChatTitle(item?: { DisplayTitle?: string; UserRequest?: string } | null): string {
+export function cursorCloudAgentChatTitle(item?: { DisplayTitle?: string; UserRequest?: string } | null): string {
   const text = (item?.DisplayTitle || item?.UserRequest || '').trim();
   return text || 'Untitled chat';
 }
 
-export interface AppDataIntegrationAgentWorkspaceFile {
+export interface CursorCloudAgentWorkspaceFile {
   RelativePath: string;
   SizeBytes: number;
   UpdatedAt: string;
@@ -127,7 +127,7 @@ export interface AppDataIntegrationAgentWorkspaceFile {
   PublicUrl?: string;
 }
 
-class AppDataIntegrationAgentService {
+class CursorCloudAgentService {
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   currentSessionId: string | null = null;
 
@@ -135,12 +135,12 @@ class AppDataIntegrationAgentService {
     userMessage: string,
     saasApplicationId: number,
     dataSourceRegisterId: number | undefined,
-    conversationHistory: AppDataIntegrationAgentMessage[],
-    handlers: AppDataIntegrationAgentEventHandlers,
+    conversationHistory: CursorCloudAgentMessage[],
+    handlers: CursorCloudAgentEventHandlers,
     skillKey?: string
   ): Promise<string> {
     this.stopPolling();
-    const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/StartSession`;
+    const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/StartSession`;
     const response = await fetch(url, {
       method: 'POST',
       headers: getHeaders(),
@@ -159,14 +159,14 @@ class AppDataIntegrationAgentService {
 
   async followUp(
     userMessage: string,
-    handlers: AppDataIntegrationAgentEventHandlers,
+    handlers: CursorCloudAgentEventHandlers,
     skillKey?: string,
     saasApplicationId?: number,
     dataSourceRegisterId?: number
   ): Promise<void> {
     if (!this.currentSessionId) throw new Error('No active session');
     this.stopPolling();
-    const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/FollowUp`;
+    const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/FollowUp`;
     const response = await fetch(url, {
       method: 'POST',
       headers: getHeaders(),
@@ -179,10 +179,10 @@ class AppDataIntegrationAgentService {
     this.startPolling(this.currentSessionId, handlers);
   }
 
-  async resume(sessionId: string, userMessage: string, handlers: AppDataIntegrationAgentEventHandlers): Promise<void> {
+  async resume(sessionId: string, userMessage: string, handlers: CursorCloudAgentEventHandlers): Promise<void> {
     this.stopPolling();
     this.currentSessionId = sessionId;
-    const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/ResumeSession`;
+    const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/ResumeSession`;
     const response = await fetch(url, {
       method: 'POST',
       headers: getHeaders(),
@@ -194,7 +194,7 @@ class AppDataIntegrationAgentService {
 
   async confirmGate(gateId: string, confirmed: boolean, feedback?: string): Promise<void> {
     if (!this.currentSessionId) return;
-    await fetch(`${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/ConfirmGate`, {
+    await fetch(`${endpoints.BASE_URL}/webapi/CursorCloudAgent/ConfirmGate`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({
@@ -209,7 +209,7 @@ class AppDataIntegrationAgentService {
   async cancel(): Promise<void> {
     if (!this.currentSessionId) return;
     this.stopPolling();
-    await fetch(`${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/Cancel`, {
+    await fetch(`${endpoints.BASE_URL}/webapi/CursorCloudAgent/Cancel`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({ sessionId: this.currentSessionId }),
@@ -220,7 +220,7 @@ class AppDataIntegrationAgentService {
     this.stopPolling();
   }
 
-  private startPolling(sessionId: string, handlers: AppDataIntegrationAgentEventHandlers): void {
+  private startPolling(sessionId: string, handlers: CursorCloudAgentEventHandlers): void {
     this.stopPolling();
     let consecutiveFailures = 0;
     const MAX_FAILURES = 10;
@@ -229,7 +229,7 @@ class AppDataIntegrationAgentService {
       if (inFlight) return;
       inFlight = true;
       try {
-        const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/PollEvents?sessionId=${sessionId || ''}`;
+        const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/PollEvents?sessionId=${sessionId || ''}`;
         const resp = await fetch(url, { headers: getHeaders() });
         if (!resp.ok) {
           consecutiveFailures++;
@@ -307,46 +307,46 @@ class AppDataIntegrationAgentService {
   }
 }
 
-export const appDataIntegrationAgentService = new AppDataIntegrationAgentService();
+export const cursorCloudAgentService = new CursorCloudAgentService();
 
-export interface AppDataIntegrationAgentSkillMenuItem {
+export interface CursorCloudAgentSkillMenuItem {
   Key: string;
   Label: string;
   Group: string;
   GroupLabel: string;
 }
 
-export interface AppDataIntegrationAgentSkillMenu {
+export interface CursorCloudAgentSkillMenu {
   DefaultKey: string;
-  Items: AppDataIntegrationAgentSkillMenuItem[];
+  Items: CursorCloudAgentSkillMenuItem[];
 }
 
-export async function listAppDataIntegrationAgentSkillMenu(): Promise<AppDataIntegrationAgentSkillMenu> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/ListSkillMenu`;
+export async function listCursorCloudAgentSkillMenu(): Promise<CursorCloudAgentSkillMenu> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/ListSkillMenu`;
   const resp = await fetch(url, { headers: getHeaders() });
   if (!resp.ok) return { DefaultKey: 'app-config-builder', Items: [] };
   const data = await resp.json();
   return data?.Object ?? { DefaultKey: 'app-config-builder', Items: [] };
 }
 
-export async function getRecentAppDataIntegrationAgentSessions(limit = 30): Promise<AppDataIntegrationAgentSessionSummary[]> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/RecentSessions?limit=${limit || ''}`;
+export async function getRecentCursorCloudAgentSessions(limit = 30): Promise<CursorCloudAgentSessionSummary[]> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/RecentSessions?limit=${limit || ''}`;
   const resp = await fetch(url, { headers: getHeaders() });
   if (!resp.ok) return [];
   const data = await resp.json();
   return data?.Object ?? [];
 }
 
-export async function listAllAppDataIntegrationAgentSessions(): Promise<AppDataIntegrationAgentSessionSummary[]> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/ListAllSessions`;
+export async function listAllCursorCloudAgentSessions(): Promise<CursorCloudAgentSessionSummary[]> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/ListAllSessions`;
   const resp = await fetch(url, { headers: getHeaders() });
   if (!resp.ok) return [];
   const data = await resp.json();
   return data?.Object ?? [];
 }
 
-export async function renameAppDataIntegrationAgentSession(sessionId: string, title: string): Promise<void> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/RenameSession`;
+export async function renameCursorCloudAgentSession(sessionId: string, title: string): Promise<void> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/RenameSession`;
   const response = await fetch(url, {
     method: 'POST',
     headers: getHeaders(),
@@ -355,8 +355,8 @@ export async function renameAppDataIntegrationAgentSession(sessionId: string, ti
   if (!response.ok) throw new Error('Failed to rename chat');
 }
 
-export async function archiveAppDataIntegrationAgentSessions(sessionIds: string[], archived: boolean): Promise<void> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/ArchiveSessions`;
+export async function archiveCursorCloudAgentSessions(sessionIds: string[], archived: boolean): Promise<void> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/ArchiveSessions`;
   const response = await fetch(url, {
     method: 'POST',
     headers: getHeaders(),
@@ -365,8 +365,8 @@ export async function archiveAppDataIntegrationAgentSessions(sessionIds: string[
   if (!response.ok) throw new Error('Failed to archive chats');
 }
 
-export async function deleteAppDataIntegrationAgentSessions(sessionIds: string[]): Promise<void> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/DeleteSessions`;
+export async function deleteCursorCloudAgentSessions(sessionIds: string[]): Promise<void> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/DeleteSessions`;
   const response = await fetch(url, {
     method: 'POST',
     headers: getHeaders(),
@@ -375,8 +375,8 @@ export async function deleteAppDataIntegrationAgentSessions(sessionIds: string[]
   if (!response.ok) throw new Error('Failed to delete chats');
 }
 
-export async function reorderAppDataIntegrationAgentSessions(sessionIds: string[]): Promise<void> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/ReorderSessions`;
+export async function reorderCursorCloudAgentSessions(sessionIds: string[]): Promise<void> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/ReorderSessions`;
   const response = await fetch(url, {
     method: 'POST',
     headers: getHeaders(),
@@ -385,31 +385,31 @@ export async function reorderAppDataIntegrationAgentSessions(sessionIds: string[
   if (!response.ok) throw new Error('Failed to reorder chats');
 }
 
-export async function getAppDataIntegrationAgentSession(sessionId: string): Promise<any> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/GetSession?sessionId=${sessionId || ''}`;
+export async function getCursorCloudAgentSession(sessionId: string): Promise<any> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/GetSession?sessionId=${sessionId || ''}`;
   const resp = await fetch(url, { headers: getHeaders() });
   if (!resp.ok) return null;
   const data = await resp.json();
   return data?.Object ?? null;
 }
 
-export async function listAppDataIntegrationAgentWorkspaceFiles(sessionId: string): Promise<AppDataIntegrationAgentWorkspaceFile[]> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/ListWorkspaceFiles?sessionId=${sessionId || ''}`;
+export async function listCursorCloudAgentWorkspaceFiles(sessionId: string): Promise<CursorCloudAgentWorkspaceFile[]> {
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/ListWorkspaceFiles?sessionId=${sessionId || ''}`;
   const resp = await fetch(url, { headers: getHeaders() });
   if (!resp.ok) return [];
   const data = await resp.json();
   return data?.Object ?? [];
 }
 
-export async function readAppDataIntegrationAgentWorkspaceFile(
+export async function readCursorCloudAgentWorkspaceFile(
   sessionId: string,
   relativePath: string
 ): Promise<{ content: string; truncated: boolean }> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/ReadWorkspaceFile?sessionId=${sessionId || ''}&relativePath=${encodeURIComponent(relativePath || '')}`;
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/ReadWorkspaceFile?sessionId=${sessionId || ''}&relativePath=${encodeURIComponent(relativePath || '')}`;
   const resp = await fetch(url, { headers: getHeaders() });
   if (!resp.ok) throw new Error('Failed to read workspace file');
   const data = await resp.json();
-  const obj = (data?.Object ?? {}) as AppDataIntegrationAgentFileContent;
+  const obj = (data?.Object ?? {}) as CursorCloudAgentFileContent;
   return {
     content: obj.Content ?? obj.content ?? '',
     truncated: !!(obj.Truncated ?? obj.truncated),
@@ -426,11 +426,11 @@ function parseFileNameFromContentDisposition(header: string | null): string | nu
   return plain?.[1]?.trim() ?? null;
 }
 
-export async function downloadAppDataIntegrationAgentWorkspaceFile(
+export async function downloadCursorCloudAgentWorkspaceFile(
   sessionId: string,
   relativePath: string
 ): Promise<void> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/DownloadWorkspaceFile?sessionId=${sessionId || ''}&relativePath=${encodeURIComponent(relativePath || '')}`;
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/DownloadWorkspaceFile?sessionId=${sessionId || ''}&relativePath=${encodeURIComponent(relativePath || '')}`;
   const resp = await fetch(url, { headers: getHeaders() });
   if (!resp.ok) {
     const errText = await resp.text().catch(() => '');
@@ -451,11 +451,11 @@ export async function downloadAppDataIntegrationAgentWorkspaceFile(
   setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
 }
 
-export async function deleteAppDataIntegrationAgentWorkspaceFile(
+export async function deleteCursorCloudAgentWorkspaceFile(
   sessionId: string,
   relativePath: string
 ): Promise<void> {
-  const url = `${endpoints.BASE_URL}/webapi/AppDataIntegrationAgent/DeleteWorkspaceFile`;
+  const url = `${endpoints.BASE_URL}/webapi/CursorCloudAgent/DeleteWorkspaceFile`;
   const resp = await fetch(url, {
     method: 'POST',
     headers: getHeaders(),
