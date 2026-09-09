@@ -5,7 +5,8 @@ import { useNavigate } from 'react-router-dom';
 
 import { logout } from '../../redux/features/admin/userSessionSlice';
 import { setThemeById } from '../../redux/features/ui/theme/themeSlice';
-import { toggleSidebar } from '../../redux/features/ui/navigation/sidebarSlice';
+import { toggleSidebar, incrementMenuRefreshTick } from '../../redux/features/ui/navigation/sidebarSlice';
+import { refreshUserTreeMenu } from '../../helper/userMenuHelper';
 import { activateTab, clearTabsForLogout } from '../../redux/features/ui/navigation/tabnavSlice';
 import { adminSvc } from '../../webapi/adminsvc';
 import { useTheme } from '../../redux/hooks/useTheme';
@@ -217,7 +218,7 @@ const Header: React.FC = () => {
         <div className={`h-16 flex-none flex items-center justify-between px-4 lg:px-6 border-b ${theme.mainHeader} w-full`}>
             <div className="flex items-center">
                 {/* Hamburger menu button - always visible on the left */}
-                <button 
+                <button
                     onClick={() => dispatch(toggleSidebar())}
                     className="w-8 h-8 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors mr-2 lg:mr-4"
                     title="Toggle Sidebar"
@@ -225,6 +226,14 @@ const Header: React.FC = () => {
                     <svg className="w-6 h-6 text-gray-700 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
                     </svg>
+                </button>
+                {/* Refresh menus button */}
+                <button
+                    onClick={async () => { await refreshUserTreeMenu(); dispatch(incrementMenuRefreshTick()); }}
+                    className="w-8 h-8 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors mr-2"
+                    title="Refresh Menus"
+                >
+                    <i className="fa-solid fa-rotate text-gray-700 dark:text-gray-300"></i>
                 </button>
             </div>
             <div className="flex items-center flex-auto lg:flex-none">

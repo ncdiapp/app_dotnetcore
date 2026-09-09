@@ -3,11 +3,13 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 interface SidebarState {
   isCollapsed: boolean;
   autoCollapseOnPageOpen: boolean; // Setting to auto-collapse when opening/clicking a page
+  menuRefreshTick: number;
 }
 
 const initialState: SidebarState = {
   isCollapsed: false,
   autoCollapseOnPageOpen: true, // Default to true to match AngularJS behavior (can be overridden by app setup)
+  menuRefreshTick: 0,
 };
 
 const sidebarSlice = createSlice({
@@ -29,15 +31,19 @@ const sidebarSlice = createSlice({
     expandSidebar: (state) => {
       state.isCollapsed = false;
     },
+    incrementMenuRefreshTick: (state) => {
+      state.menuRefreshTick += 1;
+    },
   },
 });
 
-export const { 
-  toggleSidebar, 
-  setSidebarCollapsed, 
+export const {
+  toggleSidebar,
+  setSidebarCollapsed,
   setAutoCollapseOnPageOpen,
   collapseSidebar,
-  expandSidebar 
+  expandSidebar,
+  incrementMenuRefreshTick,
 } = sidebarSlice.actions;
 
 export default sidebarSlice.reducer;

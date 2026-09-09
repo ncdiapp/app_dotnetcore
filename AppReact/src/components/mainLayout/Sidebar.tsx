@@ -16,6 +16,7 @@ const Sidebar: React.FC = () => {
   const userMenu = useSelector((state: RootState) => state.userSession.userMenu);
   const userContext = useSelector((state: RootState) => state.userSession.userContext);
   const isSysAdmin = isMasterSysAdminFromContext(userContext);
+  const menuRefreshTick = useSelector((state: RootState) => state.sidebar.menuRefreshTick);
   const { addTabFromListMenu, addTabAndNavigate } = useTabNavigation();
   
   // State to track which parent menus are expanded
@@ -35,7 +36,7 @@ const Sidebar: React.FC = () => {
         RouteCode: `/agent-chat?skillKey=${encodeURIComponent(a.SkillKey)}&agentUi=${a.AgentUi}`,
       })));
     });
-  }, []);
+  }, [menuRefreshTick]);
   
   // Helper function to sort menu items by Sort property (following AngularJS logic)
   const sortMenuItems = (menuItems: any[]): any[] => {
