@@ -96,7 +96,7 @@ namespace App.BL.AIAgent.GenericAgent
                 // Build SK kernel (provider-specific connector registered here)
                 var kernel = BuildKernel(identity);
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks));
-                kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations));
+                kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
 
                 // Wrap AppAgentToolRegister rows as KernelFunctions (agent-owned + subscribed library tools)
                 var toolRows = (dsId > 0 ? TbToolBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbToolBL.GetBySkillKeyWithLibraries(skillKey)) ?? new List<TbToolDto>();
@@ -122,7 +122,7 @@ namespace App.BL.AIAgent.GenericAgent
 
                 try
                 {
-                    var history = BuildChatHistory(chatHistory);
+                    var history = await BuildChatHistoryAsync(chatHistory, skillSet.RecentWindowSize, kernel).ConfigureAwait(false);
                     history.AddUserMessage(userMessage);
 
                     // Only enable auto tool calling when tools are actually registered;
@@ -336,16 +336,52 @@ namespace App.BL.AIAgent.GenericAgent
         // ChatHistory builder
         // ─────────────────────────────────────────────────────────────────────
 
-        private const int MaxHistoryMessages = 8;
+        private static async Task<ChatHistory> BuildChatHistoryAsync(
+            List<JObject>? messages, int recentWindowSize, Kernel kernel)
+        {
+            var window = recentWindowSize > 0 ? recentWindowSize : 10;
+            if (messages == null || messages.Count == 0) return new ChatHistory();
 
-        private static ChatHistory BuildChatHistory(List<JObject>? messages)
+            // Fast path: history fits within the window — no summarization needed
+            if (messages.Count <= window)
+                return BuildChatHistory(messages, window);
+
+            // Overflow: summarize older turns, keep recent ones verbatim
+            var oldTurns = messages.Take(messages.Count - window).ToList();
+            var recent   = messages.Skip(messages.Count - window).ToList();
+
+            var finalHistory = new ChatHistory();
+
+            if (oldTurns.Count >= 2)
+            {
+                var summaryText = await SummarizeOldTurnsAsync(oldTurns, kernel).ConfigureAwait(false);
+                if (!string.IsNullOrEmpty(summaryText))
+                    finalHistory.AddSystemMessage($"[Earlier conversation summary: {summaryText}]");
+            }
+
+            foreach (var msg in recent)
+            {
+                var role    = msg["role"]?.ToString() ?? "user";
+                var content = msg["content"];
+                if (content == null || content.Type == JTokenType.Array) continue;
+                var contentStr = content.ToString();
+                if (string.IsNullOrEmpty(contentStr)) continue;
+                if (role == "user")
+                    finalHistory.AddUserMessage(contentStr);
+                else if (role == "assistant" || role == "model")
+                    finalHistory.AddAssistantMessage(contentStr);
+            }
+
+            return finalHistory;
+        }
+
+        private static ChatHistory BuildChatHistory(List<JObject>? messages, int recentWindowSize)
         {
             var history = new ChatHistory();
             if (messages == null || messages.Count == 0) return history;
 
-            // Trim to last N messages to keep initial context within budget
-            var source = messages.Count > MaxHistoryMessages
-                ? messages.Skip(messages.Count - MaxHistoryMessages).ToList()
+            var source = messages.Count > recentWindowSize
+                ? messages.Skip(messages.Count - recentWindowSize).ToList()
                 : messages;
 
             foreach (var msg in source)
@@ -365,6 +401,33 @@ namespace App.BL.AIAgent.GenericAgent
                 // roles "tool"/"function" are intentionally skipped
             }
             return history;
+        }
+
+        private static async Task<string?> SummarizeOldTurnsAsync(List<JObject> turns, Kernel kernel)
+        {
+            try
+            {
+                var sb = new StringBuilder();
+                foreach (var msg in turns)
+                {
+                    var role    = msg["role"]?.ToString() ?? "user";
+                    var content = msg["content"]?.ToString();
+                    if (string.IsNullOrEmpty(content)) continue;
+                    sb.AppendLine($"{role}: {content}");
+                }
+
+                var prompt = "Summarize the following conversation in 2-3 sentences, preserving key facts, user goals, and any decisions made:\n\n" + sb;
+                var chat = kernel.GetRequiredService<IChatCompletionService>();
+                var h = new ChatHistory();
+                h.AddUserMessage(prompt);
+                var result = await chat.GetChatMessageContentAsync(h).ConfigureAwait(false);
+                return result.Content;
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Warn(ex, "SummarizeOldTurnsAsync failed — no summary injected");
+                return null;
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -463,11 +526,14 @@ namespace App.BL.AIAgent.GenericAgent
 
         private sealed class GenericAgentPruneFilter : IAutoFunctionInvocationFilter
         {
-            private const int TokenBudget = 120_000;
+            private readonly int _tokenBudget;
             private readonly int _maxIterations;
 
-            public GenericAgentPruneFilter(int maxIterations) =>
+            public GenericAgentPruneFilter(int maxIterations, int tokenBudget = 0)
+            {
                 _maxIterations = maxIterations > 0 ? maxIterations : 40;
+                _tokenBudget   = tokenBudget   > 0 ? tokenBudget   : 120_000;
+            }
 
             public async Task OnAutoFunctionInvocationAsync(AutoFunctionInvocationContext ctx, Func<AutoFunctionInvocationContext, Task> next)
             {
@@ -475,18 +541,18 @@ namespace App.BL.AIAgent.GenericAgent
                 if (ctx.RequestSequenceIndex >= _maxIterations)
                     throw new OperationCanceledException($"Agent stopped: reached {_maxIterations} tool-call iterations.");
 
-                PruneHistory(ctx.ChatHistory);
+                PruneHistory(ctx.ChatHistory, _tokenBudget);
                 await next(ctx).ConfigureAwait(false);
             }
 
-            private static void PruneHistory(ChatHistory? history)
+            private static void PruneHistory(ChatHistory? history, int tokenBudget)
             {
                 if (history == null || history.Count < 4) return;
                 var total = history.Sum(EstimateLen);
-                if (total / 4 < TokenBudget) return;
+                if (total / 4 < tokenBudget) return;
 
                 // Drop oldest messages (keep index 0 = original user message, keep last 2)
-                for (int i = 1; i < history.Count - 2 && total / 4 >= TokenBudget; i++)
+                for (int i = 1; i < history.Count - 2 && total / 4 >= tokenBudget; i++)
                 {
                     total -= EstimateLen(history[i]);
                     history.RemoveAt(i);
