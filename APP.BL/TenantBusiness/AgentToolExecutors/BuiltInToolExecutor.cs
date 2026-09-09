@@ -163,6 +163,10 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
         {
             var parameters = method.GetParameters();
             var values = new object[parameters.Length];
+            // LLM / SK may vary parameter casing (dataSourceId vs DataSourceId).
+            IReadOnlyDictionary<string, string> namedArgs = args == null
+                ? null
+                : new Dictionary<string, string>(args, StringComparer.OrdinalIgnoreCase);
 
             for (int i = 0; i < parameters.Length; i++)
             {
@@ -186,7 +190,7 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
                     continue;
                 }
 
-                if (args != null && args.TryGetValue(param.Name, out var raw))
+                if (namedArgs != null && namedArgs.TryGetValue(param.Name, out var raw))
                 {
                     values[i] = ConvertArg(raw, param.ParameterType);
                     continue;

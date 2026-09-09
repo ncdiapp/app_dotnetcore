@@ -18,9 +18,10 @@ namespace App.BL.AppBuilderAgent.Plugins
 
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("execute_sql",
-            "Execute a SQL SELECT query to verify tables were created or check data. Only SELECT is allowed.")]
+            "Execute a SQL SELECT query to verify tables were created or check data. Only SELECT is allowed. Optional dataSourceId targets a registered DataSource; omit to use the session default.")]
         public string ExecuteSql(
-            [AgentParam("A SQL SELECT statement. Must start with SELECT.", isRequired: true)] string sql)
+            [AgentParam("A SQL SELECT statement. Must start with SELECT.", isRequired: true)] string sql,
+            [AgentParam("Optional DataSourceRegisterId. When omitted or 0, uses the session default data source.")] int? dataSourceId = null)
         {
             try
             {
@@ -34,10 +35,11 @@ namespace App.BL.AppBuilderAgent.Plugins
                         Error = "Only SELECT statements are allowed. Use create_database_table for DDL."
                     });
 
+                var ds = ResolveDataSourceId(dataSourceId);
                 var result = AppDbGenieBL.ExecuteSQL(new ExecuteSQLRequestDto
                 {
                     SQL                  = sql,
-                    DataSourceRegisterId = _dataSourceId,
+                    DataSourceRegisterId = ds,
                     RequireConfirmation  = false,
                     IsConfirmed          = true
                 });
@@ -48,6 +50,7 @@ namespace App.BL.AppBuilderAgent.Plugins
                 return JsonConvert.SerializeObject(new
                 {
                     result.IsSuccess,
+                    DataSourceId = ds,
                     result.ColumnNames,
                     RowCount = result.Results?.Count ?? 0,
                     Rows     = result.Results?.Take(20).ToList()
@@ -120,19 +123,21 @@ namespace App.BL.AppBuilderAgent.Plugins
 
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("check_table_exists",
-            "Check whether a specific database table exists. Returns true/false.")]
+            "Check whether a specific database table exists. Returns true/false. Optional dataSourceId targets a registered DataSource; omit to use the session default.")]
         public string CheckTableExists(
             [AgentParam("Table name to check", isRequired: true)] string tableName,
-            [AgentParam("Schema owner, default 'dbo'")] string schemaOwner = "dbo")
+            [AgentParam("Schema owner, default 'dbo'")] string schemaOwner = "dbo",
+            [AgentParam("Optional DataSourceRegisterId. When omitted or 0, uses the session default data source.")] int? dataSourceId = null)
         {
             try
             {
+                var ds = ResolveDataSourceId(dataSourceId);
                 var result = AppDbGenieBL.ExecuteSQL(new ExecuteSQLRequestDto
                 {
                     SQL = $"SELECT COUNT(*) AS TableCount FROM INFORMATION_SCHEMA.TABLES " +
                           $"WHERE TABLE_NAME = '{tableName.Replace("'", "''")}' " +
                           $"AND TABLE_SCHEMA = '{(schemaOwner ?? "dbo").Replace("'", "''")}'",
-                    DataSourceRegisterId = _dataSourceId,
+                    DataSourceRegisterId = ds,
                     RequireConfirmation  = false,
                     IsConfirmed          = true
                 });
@@ -142,9 +147,12 @@ namespace App.BL.AppBuilderAgent.Plugins
                     exists = result.Results[0].ContainsKey("TableCount")
                           && result.Results[0]["TableCount"]?.ToString() != "0";
 
-                return JsonConvert.SerializeObject(new { TableName = tableName, Exists = exists });
+                return JsonConvert.SerializeObject(new { TableName = tableName, Exists = exists, DataSourceId = ds });
             }
             catch (Exception ex) { return JsonConvert.SerializeObject(new { IsSuccess = false, Error = ex.Message }); }
         }
+
+        private int? ResolveDataSourceId(int? dataSourceId)
+            => dataSourceId is > 0 ? dataSourceId : _dataSourceId;
     }
 }

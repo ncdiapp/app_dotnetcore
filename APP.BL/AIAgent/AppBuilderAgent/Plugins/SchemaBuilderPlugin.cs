@@ -20,24 +20,27 @@ namespace App.BL.AppBuilderAgent.Plugins
 
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("get_table_schema",
-            "Get column definitions (name, data type, nullable, primary key) for a specific database table.")]
+            "Get column definitions (name, data type, nullable, primary key) for a specific database table. Optional dataSourceId targets a registered DataSource; omit to use the session default.")]
         public string GetTableSchema(
             [AgentParam("Table name to inspect", isRequired: true)] string tableName,
-            [AgentParam("Schema owner, e.g. 'dbo'")] string schemaOwner = "dbo")
+            [AgentParam("Schema owner, e.g. 'dbo'")] string schemaOwner = "dbo",
+            [AgentParam("Optional DataSourceRegisterId. When omitted or 0, uses the session default data source.")] int? dataSourceId = null)
         {
             try
             {
                 var owner = schemaOwner ?? _schemaOwner;
-                var table = AppMetaDataBL.GetOneDatabaseTableSchema(tableName, _dataSourceId, owner);
+                var ds    = dataSourceId is > 0 ? dataSourceId : _dataSourceId;
+                var table = AppMetaDataBL.GetOneDatabaseTableSchema(tableName, ds, owner);
 
                 if (table == null)
-                    return JsonConvert.SerializeObject(new { Error = $"Table '{tableName}' not found" });
+                    return JsonConvert.SerializeObject(new { Error = $"Table '{tableName}' not found", DataSourceId = ds });
 
                 return JsonConvert.SerializeObject(new
                 {
-                    TableName   = table.Name,
-                    SchemaOwner = owner,
-                    Columns     = table.Columns?.Select(c => new
+                    TableName    = table.Name,
+                    SchemaOwner  = owner,
+                    DataSourceId = ds,
+                    Columns      = table.Columns?.Select(c => new
                     {
                         c.Name,
                         DataType        = c.DbDataType,

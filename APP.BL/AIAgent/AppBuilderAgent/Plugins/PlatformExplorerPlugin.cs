@@ -177,16 +177,18 @@ namespace App.BL.AppBuilderAgent.Plugins
 
         // Legacy: Generic Agent reads tool description from AppAgentToolRegister DB; this attribute is used by AppBuilderAgentBL only.
         [AgentTool("get_database_tables",
-            "List all tables and views in the target database.")]
-        public string GetDatabaseTables()
+            "List all tables and views in the target database. Optional dataSourceId targets a registered DataSource; omit to use the session default.")]
+        public string GetDatabaseTables(
+            [AgentParam("Optional DataSourceRegisterId. When omitted or 0, uses the session default data source.")] int? dataSourceId = null)
         {
             try
             {
-                var tables = AppMetaDataBL.GetSaasDataSourceTableAndViewList(_dataSourceId, null, null)
+                var ds = dataSourceId is > 0 ? dataSourceId : _dataSourceId;
+                var tables = AppMetaDataBL.GetSaasDataSourceTableAndViewList(ds, null, null)
                     .OrderBy(t => t.SchemaOwner).ThenBy(t => t.Name)
                     .Select(t => new { t.Name, t.SchemaOwner, IsView = t.IsDbView })
                     .ToList();
-                return JsonConvert.SerializeObject(tables, Formatting.None);
+                return JsonConvert.SerializeObject(new { DataSourceId = ds, Tables = tables }, Formatting.None);
             }
             catch (Exception ex) { return JsonConvert.SerializeObject(new { Error = ex.Message }); }
         }

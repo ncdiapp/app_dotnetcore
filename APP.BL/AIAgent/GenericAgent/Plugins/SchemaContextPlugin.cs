@@ -23,21 +23,24 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             _dataSourceId = dataSourceId;
         }
 
-        public async Task<string> GetDatabaseSchema(CancellationToken ct)
+        /// <param name="dataSourceId">Optional DataSourceRegisterId. When omitted or 0, uses the session default.</param>
+        public async Task<string> GetDatabaseSchema(CancellationToken ct, int? dataSourceId = null)
         {
-            if (!_dataSourceId.HasValue || _dataSourceId.Value == 0)
+            var ds = dataSourceId is > 0 ? dataSourceId : _dataSourceId;
+            if (!ds.HasValue || ds.Value == 0)
                 return JsonConvert.SerializeObject(new { Error = "No data source configured for this agent." });
             try
             {
-                var tables = await AppDbGenieBL.GetSchemaContextAsync(_dataSourceId.Value).ConfigureAwait(false);
+                var tables = await AppDbGenieBL.GetSchemaContextAsync(ds.Value).ConfigureAwait(false);
                 var text = AppDbGenieBL.FormatSchemaContext(tables);
-                return string.IsNullOrWhiteSpace(text)
-                    ? JsonConvert.SerializeObject(new { Result = "No tables found in the connected database." })
-                    : text;
+                if (string.IsNullOrWhiteSpace(text))
+                    return JsonConvert.SerializeObject(new { DataSourceId = ds, Result = "No tables found in the connected database." });
+                // Prefix so the LLM knows which DS the dump came from when probing multiple DBs.
+                return $"DataSourceId={ds}\n{text}";
             }
             catch (Exception ex)
             {
-                return JsonConvert.SerializeObject(new { Error = ex.Message });
+                return JsonConvert.SerializeObject(new { Error = ex.Message, DataSourceId = ds });
             }
         }
     }
