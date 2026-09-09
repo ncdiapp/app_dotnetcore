@@ -85,6 +85,17 @@ class GenericAgentService {
         }).catch(() => {});
     }
 
+    async GetActiveAgents(): Promise<Array<{ SkillKey: string; AgentName: string; AgentUi: number }>> {
+        try {
+            const res = await fetch(`${BASE}/GetActiveAgents`, { headers: getHeaders() });
+            if (!res.ok) return [];
+            const data = await res.json();
+            return data?.Object ?? [];
+        } catch {
+            return [];
+        }
+    }
+
     disconnect(): void {
         this.stopPolling();
     }

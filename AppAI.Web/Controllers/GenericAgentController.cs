@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using App.BL.AIAgent.GenericAgent;
+using SkillSetBL = App.BL.AIAgent.AiSkill.AppAgentSkillSetBL;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework;
@@ -246,4 +248,34 @@ public class GenericAgentController : SecureBaseController
             SessionBL.DeleteSession(skillKey, Convert.ToInt32(ai.UserId));
         return Ok();
     }
+
+    // GET /webapi/GenericAgent/GetActiveAgents
+    // Returns all active (IsActive=1) agent skill sets for the current tenant.
+    // Used by the sidebar to render dynamic agent nav items.
+    [HttpGet]
+    public OperationCallResult<List<ActiveAgentDto>> GetActiveAgents()
+    {
+        var result   = new OperationCallResult<List<ActiveAgentDto>>();
+        var identity = ServerContext.Instance.CurrnetClientIdentity;
+        if (identity is not AppClientIdentity ai) return result;
+
+        var agents = ai.DataSourceId > 0
+            ? SkillSetBL.GetAll(ai.DataSourceId)
+            : SkillSetBL.GetAll();
+
+        result.Object = agents.Select(a => new ActiveAgentDto
+        {
+            SkillKey  = a.SkillKey,
+            AgentName = string.IsNullOrWhiteSpace(a.DisplayName) ? a.SkillKey : a.DisplayName,
+            AgentUi   = a.AgentUi
+        }).ToList();
+        return result;
+    }
+}
+
+public class ActiveAgentDto
+{
+    public string SkillKey  { get; set; }
+    public string AgentName { get; set; }
+    public int    AgentUi   { get; set; }
 }

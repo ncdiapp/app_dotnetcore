@@ -8,10 +8,11 @@ import { EmAppAgentUi, resolveAgentUi } from './agentUiTypes';
 interface Props {
   skillKey: string;
   agentUi?: number | null;
+  testMode?: boolean;
 }
 
 /** Pick Agent chat shell by AgentUi (Run preview / later published instance). */
-const AgentUiChatHost: React.FC<Props> = ({ skillKey, agentUi }) => {
+const AgentUiChatHost: React.FC<Props> = ({ skillKey, agentUi, testMode }) => {
   const ui = resolveAgentUi(agentUi);
   switch (ui) {
     case EmAppAgentUi.ConfigurationAndIntegration:
@@ -22,7 +23,7 @@ const AgentUiChatHost: React.FC<Props> = ({ skillKey, agentUi }) => {
       return <ImageProcessAgentChat skillKey={skillKey} />;
     case EmAppAgentUi.GenericChat:
     default:
-      return <GenericAgentChat skillKey={skillKey} />;
+      return <GenericAgentChat skillKey={skillKey} testMode={testMode} />;
   }
 };
 
