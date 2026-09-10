@@ -736,8 +736,8 @@ const handleSave = async () => {
                                         style={generalExpanded ? { minHeight: 600 } : undefined}
                                     >
                                         <div className={`flex items-center pb-1 mb-2 border-b shrink-0 ${borderCls}`}>
-                                            <span className={`text-xs font-semibold ${theme.title}`}>System Prompt</span>
-                                            <div className="relative ml-2">
+                                            <span className={`text-xs font-semibold ${theme.title} shrink-0`}>System Prompt</span>
+                                            <div className="relative ml-2 flex items-center gap-1 shrink-0">
                                                 <button
                                                     type="button"
                                                     className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1 ${promptHistory.length === 0 ? 'opacity-40' : ''}`}
@@ -751,7 +751,7 @@ const handleSave = async () => {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    className={`ml-1 text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1`}
+                                                    className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1`}
                                                     onClick={(e) => { e.stopPropagation(); setAiDescription(''); setAiResult(null); setShowAiGenerate(true); }}
                                                     title="Generate system prompt and tool recommendations with AI"
                                                 >
@@ -759,7 +759,7 @@ const handleSave = async () => {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    className={`ml-1 text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1 ${!editItem.SystemPrompt?.trim() ? 'opacity-40' : ''}`}
+                                                    className={`text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1 ${!editItem.SystemPrompt?.trim() ? 'opacity-40' : ''}`}
                                                     onClick={(e) => { e.stopPropagation(); if (editItem.SystemPrompt?.trim()) { setAiEditInstruction(''); setAiEditResult(null); setShowAiEdit(true); } }}
                                                     title={editItem.SystemPrompt?.trim() ? 'Edit existing system prompt with AI' : 'Write a system prompt first'}
                                                 >
