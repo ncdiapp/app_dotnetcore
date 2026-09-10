@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { genericAgentSvc } from '../../webapi/genericAgentSvc';
+import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 
 interface ChatMessage {
     role: 'user' | 'assistant';
@@ -45,6 +46,8 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [rightTab, setRightTab] = useState<'tools' | 'files'>('tools');
+    const [fileSessionKey, setFileSessionKey] = useState<string | null>(null);
     const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
     const bottomRef = useRef<HTMLDivElement | null>(null);
     // Track in-progress tool calls (call event received, result pending)
@@ -55,6 +58,10 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
     }, [messages, turnActivities]);
 
     useEffect(() => {
+        let cancelled = false;
+        genericAgentSvc.GetFixedSessionKey(skillKey).then(key => {
+            if (!cancelled) setFileSessionKey(key);
+        });
         if (!testMode) {
             // Restore prior session on mount (skipped in test mode)
             genericAgentSvc.LoadSession(skillKey).then(prior => {
@@ -64,7 +71,10 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                 }
             });
         }
-        return () => { genericAgentSvc.disconnect(); };
+        return () => {
+            cancelled = true;
+            genericAgentSvc.disconnect();
+        };
     }, [skillKey, testMode]);
 
     const findLastIdx = <T,>(arr: T[], pred: (item: T) => boolean): number => {
@@ -227,115 +237,131 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                             <i className="fa-solid fa-rotate-left" />
                         </button>
                     )}
-                    <button className={`${btn} ml-auto`} onClick={() => setSidebarOpen(o => !o)} title="Toggle tool activity">
+                    <button className={`${btn} ml-auto`} onClick={() => setSidebarOpen(o => !o)} title="Toggle sidebar">
                         <i className={`fa-solid fa-timeline`} />
                     </button>
                 </div>
             </div>
 
-            {/* ── Right: Tool Activity sidebar ── */}
+            {/* ── Right: Tool Activity | Files ── */}
             {sidebarOpen && (
-                <div className={`w-72 flex flex-col overflow-hidden border-l border-gray-200 ${theme.mainContentSection} shrink-0`}>
-                    <div className={`flex items-center px-3 py-2 border-b border-gray-200`}>
-                        <i className="fa-solid fa-timeline mr-2 text-blue-500" />
-                        <span className={`text-xs font-semibold ${theme.title} flex-auto`}>Tool Activity</span>
-                        <button className="text-xs opacity-50 hover:opacity-100" onClick={() => setSidebarOpen(false)}>
+                <div className={`w-80 flex flex-col overflow-hidden border-l border-gray-200 ${theme.mainContentSection} shrink-0`}>
+                    <div className={`flex items-center gap-1 px-2 py-1.5 border-b border-gray-200`}>
+                        <button
+                            type="button"
+                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'tools' ? ' font-semibold' : ' opacity-70'}`}
+                            onClick={() => setRightTab('tools')}
+                        >
+                            Tool Activity
+                        </button>
+                        <button
+                            type="button"
+                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'files' ? ' font-semibold' : ' opacity-70'}`}
+                            onClick={() => setRightTab('files')}
+                        >
+                            Files
+                        </button>
+                        <button className="text-xs opacity-50 hover:opacity-100 ml-auto" onClick={() => setSidebarOpen(false)}>
                             <i className="fa-solid fa-xmark" />
                         </button>
                     </div>
 
-                    <div className="w-full h-1 flex-auto overflow-y-auto flex flex-col gap-0 p-2">
-                        {!hasAnyTools && !isRunning && messages.length > 0 && (
-                            <div className={`p-3 rounded text-xs ${theme.label} flex flex-col gap-1`}>
-                                <div className="flex items-center gap-2 opacity-60">
-                                    <i className="fa-solid fa-circle-info" />
-                                    <span className="font-semibold">No tools called</span>
-                                </div>
-                                <p className="opacity-50 leading-relaxed">The agent replied from its training without invoking any tools. If a tool should have fired, check that its description clearly states when to call it.</p>
-                            </div>
-                        )}
-
-                        {allActivities.map((turn) => (
-                            <div key={turn.turnIndex} className="mb-3">
-                                {allActivities.length > 1 && (
-                                    <div className={`text-xs opacity-40 px-1 mb-1 ${theme.label}`}>Turn {turn.turnIndex + 1}</div>
-                                )}
-
-                                {turn.steps.length === 0 && turn.isComplete && (
-                                    <div className={`px-2 py-1.5 text-xs rounded flex items-center gap-2 opacity-50 ${theme.label}`}>
-                                        <i className="fa-solid fa-circle-minus" />
-                                        No tools called
+                    {rightTab === 'files' ? (
+                        <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
+                            <GenericAgentFilesPanel skillKey={skillKey} sessionKey={fileSessionKey} />
+                        </div>
+                    ) : (
+                        <div className="w-full h-1 flex-auto overflow-y-auto flex flex-col gap-0 p-2">
+                            {!hasAnyTools && !isRunning && messages.length > 0 && (
+                                <div className={`p-3 rounded text-xs ${theme.label} flex flex-col gap-1`}>
+                                    <div className="flex items-center gap-2 opacity-60">
+                                        <i className="fa-solid fa-circle-info" />
+                                        <span className="font-semibold">No tools called</span>
                                     </div>
-                                )}
+                                    <p className="opacity-50 leading-relaxed">The agent replied from its training without invoking any tools. If a tool should have fired, check that its description clearly states when to call it.</p>
+                                </div>
+                            )}
 
-                                {/* Pair up tool_call + tool_result by toolName */}
-                                {(() => {
-                                    const paired: Array<{ call?: ToolStep; result?: ToolStep; key: string }> = [];
-                                    turn.steps.forEach((s, idx) => {
-                                        if (s.result !== undefined) {
-                                            // This is a completed tool — find its call entry
-                                            const callIdx = findLastIdx(paired, p => p.call?.toolName === s.toolName && !p.result);
-                                            if (callIdx >= 0) {
-                                                paired[callIdx] = { ...paired[callIdx], result: s };
+                            {allActivities.map((turn) => (
+                                <div key={turn.turnIndex} className="mb-3">
+                                    {allActivities.length > 1 && (
+                                        <div className={`text-xs opacity-40 px-1 mb-1 ${theme.label}`}>Turn {turn.turnIndex + 1}</div>
+                                    )}
+
+                                    {turn.steps.length === 0 && turn.isComplete && (
+                                        <div className={`px-2 py-1.5 text-xs rounded flex items-center gap-2 opacity-50 ${theme.label}`}>
+                                            <i className="fa-solid fa-circle-minus" />
+                                            No tools called
+                                        </div>
+                                    )}
+
+                                    {(() => {
+                                        const paired: Array<{ call?: ToolStep; result?: ToolStep; key: string }> = [];
+                                        turn.steps.forEach((s, idx) => {
+                                            if (s.result !== undefined) {
+                                                const callIdx = findLastIdx(paired, p => p.call?.toolName === s.toolName && !p.result);
+                                                if (callIdx >= 0) {
+                                                    paired[callIdx] = { ...paired[callIdx], result: s };
+                                                } else {
+                                                    paired.push({ result: s, key: `${s.toolName}-${idx}` });
+                                                }
                                             } else {
-                                                paired.push({ result: s, key: `${s.toolName}-${idx}` });
+                                                paired.push({ call: s, key: `${s.toolName}-${idx}` });
                                             }
-                                        } else {
-                                            paired.push({ call: s, key: `${s.toolName}-${idx}` });
-                                        }
-                                    });
-                                    return paired.map((pair, pi) => {
-                                        const toolName = pair.call?.toolName ?? pair.result?.toolName ?? '';
-                                        const isSuccess = pair.result ? pair.result.isSuccess : true;
-                                        const hasResult = pair.result !== undefined;
-                                        const expandKey = `${turn.turnIndex}-${pi}`;
-                                        const isExpanded = expandedTools.has(expandKey);
-                                        const hasDetails = !!(pair.call?.args || pair.result?.result);
-                                        return (
-                                            <div key={pair.key} className={`mb-1 rounded border ${isSuccess ? 'border-green-200' : 'border-red-200'} overflow-hidden`}>
-                                                <button
-                                                    className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left ${isSuccess ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}`}
-                                                    onClick={() => hasDetails && toggleExpand(expandKey)}
-                                                >
-                                                    <i className={`fa-solid ${!hasResult ? 'fa-spinner fa-spin text-blue-400' : isSuccess ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-500'}`} />
-                                                    <span className="font-mono font-semibold flex-auto">{toolName}</span>
-                                                    {pair.result?.durationMs != null && (
-                                                        <span className="opacity-40">{pair.result.durationMs}ms</span>
-                                                    )}
-                                                    {hasDetails && (
-                                                        <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'} opacity-40`} />
-                                                    )}
-                                                </button>
-                                                {isExpanded && (
-                                                    <div className="px-2 py-1.5 flex flex-col gap-1.5">
-                                                        {pair.call?.args && (
-                                                            <div>
-                                                                <div className="text-xs opacity-40 mb-0.5">Args</div>
-                                                                <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{snippet(pair.call.args, 400)}</pre>
-                                                            </div>
+                                        });
+                                        return paired.map((pair, pi) => {
+                                            const toolName = pair.call?.toolName ?? pair.result?.toolName ?? '';
+                                            const isSuccess = pair.result ? pair.result.isSuccess : true;
+                                            const hasResult = pair.result !== undefined;
+                                            const expandKey = `${turn.turnIndex}-${pi}`;
+                                            const isExpanded = expandedTools.has(expandKey);
+                                            const hasDetails = !!(pair.call?.args || pair.result?.result);
+                                            return (
+                                                <div key={pair.key} className={`mb-1 rounded border ${isSuccess ? 'border-green-200' : 'border-red-200'} overflow-hidden`}>
+                                                    <button
+                                                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left ${isSuccess ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}`}
+                                                        onClick={() => hasDetails && toggleExpand(expandKey)}
+                                                    >
+                                                        <i className={`fa-solid ${!hasResult ? 'fa-spinner fa-spin text-blue-400' : isSuccess ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-500'}`} />
+                                                        <span className="font-mono font-semibold flex-auto">{toolName}</span>
+                                                        {pair.result?.durationMs != null && (
+                                                            <span className="opacity-40">{pair.result.durationMs}ms</span>
                                                         )}
-                                                        {pair.result?.result && (
-                                                            <div>
-                                                                <div className="text-xs opacity-40 mb-0.5">{isSuccess ? 'Result' : 'Error'}</div>
-                                                                <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{snippet(pair.result.result, 400)}</pre>
-                                                            </div>
+                                                        {hasDetails && (
+                                                            <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'} opacity-40`} />
                                                         )}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        );
-                                    });
-                                })()}
-                            </div>
-                        ))}
+                                                    </button>
+                                                    {isExpanded && (
+                                                        <div className="px-2 py-1.5 flex flex-col gap-1.5">
+                                                            {pair.call?.args && (
+                                                                <div>
+                                                                    <div className="text-xs opacity-40 mb-0.5">Args</div>
+                                                                    <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{snippet(pair.call.args, 400)}</pre>
+                                                                </div>
+                                                            )}
+                                                            {pair.result?.result && (
+                                                                <div>
+                                                                    <div className="text-xs opacity-40 mb-0.5">{isSuccess ? 'Result' : 'Error'}</div>
+                                                                    <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{snippet(pair.result.result, 400)}</pre>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        });
+                                    })()}
+                                </div>
+                            ))}
 
-                        {isRunning && turnActivities.find(t => t.turnIndex === currentTurnIndex) === undefined && (
-                            <div className={`px-2 py-1.5 text-xs opacity-50 ${theme.label} flex items-center gap-2`}>
-                                <i className="fa-solid fa-spinner fa-spin" />
-                                Waiting for tools…
-                            </div>
-                        )}
-                    </div>
+                            {isRunning && turnActivities.find(t => t.turnIndex === currentTurnIndex) === undefined && (
+                                <div className={`px-2 py-1.5 text-xs opacity-50 ${theme.label} flex items-center gap-2`}>
+                                    <i className="fa-solid fa-spinner fa-spin" />
+                                    Waiting for tools…
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
         </div>
