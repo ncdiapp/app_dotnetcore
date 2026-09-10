@@ -56,7 +56,7 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
                 }
             }
 
-            var paramValues = BuildParams(method, args, context, ct);
+            var paramValues = BuildParams(method, args, context, ct, toolConfig);
 
             // Restore tenant identity on this thread — needed because agent tools run inside
             // Task.Run after the HTTP response has been flushed, so IHttpContextAccessor returns
@@ -159,7 +159,12 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
             return Activator.CreateInstance(type);
         }
 
-        private static object[] BuildParams(MethodInfo method, IReadOnlyDictionary<string, string> args, AgentToolContext context, CancellationToken ct)
+        private static object[] BuildParams(
+            MethodInfo method,
+            IReadOnlyDictionary<string, string> args,
+            AgentToolContext context,
+            CancellationToken ct,
+            string toolConfig = null)
         {
             var parameters = method.GetParameters();
             var values = new object[parameters.Length];
@@ -187,6 +192,15 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
                 if (param.ParameterType == typeof(AppClientIdentity))
                 {
                     values[i] = default(AppClientIdentity);
+                    continue;
+                }
+
+                // Inject full ToolConfig JSON for policy fields (e.g. AgentScriptPlugin.Run).
+                // Do not take toolConfig from LLM args.
+                if (param.ParameterType == typeof(string)
+                    && string.Equals(param.Name, "toolConfig", StringComparison.OrdinalIgnoreCase))
+                {
+                    values[i] = toolConfig;
                     continue;
                 }
 

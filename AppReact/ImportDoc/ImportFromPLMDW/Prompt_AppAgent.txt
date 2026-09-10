@@ -6,6 +6,7 @@
 > **Applies to:** any PLM **Template** (not a single product type). APP table names come from DW metadata, not from fixed names in this prompt.
 > **Runtime (this file):** AppAI **Agent Management** GenericAgent. Probes use BuiltIn tools `execute_sql` / `get_table_schema` / `get_database_tables` / `get_database_schema` with optional `dataSourceId` (DataSourceRegisterId). Do **not** use sqlcmd or raw connection strings.
 > **Files:** chat **Files** panel + BuiltIn library `agent-files` (`file_list` / `file_read` / `file_write` / `file_mkdir` / `file_delete`). Paths are **relative** to the chat file root (see §Agent Management file area). Do **not** invent absolute `FileRepository\...` paths in tools — use `source/...` and `output/...`.
+> **Scripts:** library `agent-scripts` tool `run_agent_script` runs user-uploaded `.ps1` under `source/` on the App server (sqlcmd via official generator). Subscribe this library on the PLM agent.
 > **Do not use:** Cursor IDE-only file writes, `appai` MCP, or connection-string Gate 0 from the original PROMPT.md — this file replaces those with DataSourceId.
 
 ---
@@ -107,6 +108,7 @@ If the user **only** references this file (e.g. `@Prompt_AppAgent.txt`) and does
 | **No server code** | **Default:** deliverables are **SQL + JSON + PowerShell in this folder only** — no C# / WebAPI edits, no `dotnet build`. **Exception (BOM colorway pivot):** `PlmMigrationBL` pivot/hierarchy support in `APP.BL` is required for Phase D; already in repo. Any *other* BL gap → **STOP**, explain, warn user. |
 | **Two phases** | **Phase A:** DW analysis + APP table proposal + **Blueprint draft** → **STOP for user confirmation**. **Phase B:** generate SQL + Blueprint JSON **after** confirm. **Phase D:** BL TOOLS apply Blueprint to APP config (separate step; user runs in app). |
 | **Official source/** | Phase B **requires** official files under chat `source/` (see §Agent Management file area). If missing → ask user to upload via **Files** tab; do not invent stubs. |
+| **run_agent_script** | Phase B **must** call library `agent-scripts` / `run_agent_script` on `source/_gen_plmdw_import_sql.ps1`. Never hand-write stub `1_`/`4_` deliverables. |
 | **Blueprint shape** | Step-4 JSON must match official generator (`schemaVersion`, `rootUnit`, `unitStructure.siblingUnits` / `childUnits`, `blueprintFields`). Never emit config-shaped `appTable`/`unitType`-only transactions. |
 | **plmDW is truth** | Column names, SubItem IDs, TabIds from DW — not legacy PLM exports. |
 | **1 Tab → 1 sibling table + N grid tables** | Tab wide table (`PLM_DW_Tab_*_{TabId}`) = the tab's regular sub-items → **sibling** (PK `ReferenceId`). Each materialized grid sub-item (`PLM_DW_Grid_*`) = a **grid table** (PK `RowId` identity). A tab with both yields 1 sibling + 1 grid table per grid; the tab table is never a child. Grid-only tabs (no DW Tab table): true PLM `parentPlmTabId` or orphan `Grid_{id}` as **Root+Child** — never Master Sibling. **Exception FX1 (Fit family):** see §TechPack Fit — do not emit `Plm_Fit_1`…`Plm_Fit_N`; fold into `Plm_FitSummary` + `Plm_FitRoundInfo` + `TchpFitRound` / `TchpFitMeasurement`. **Exception QX1 (Simple QC):** see §TechPack Simple QC — do not emit flat `Plm_SpecQCGrid` size slots; emit `Plm_SimpleQC` + `Plm_SimpleQCResult` (+ size VIEW). |
@@ -327,24 +329,24 @@ Array order matches pivot value roles per slot (slot-1 template: color value, th
 
 ### B0. Where to put deliverables (detect runtime first)
 
-This PROMPT is used in **three** places. **Detect which one you are in, then follow only that branch.** Prefer **B0-AGENT** when `file_list` / `file_write` (library `agent-files`) are available.
+This PROMPT is used in **three** places. **Detect which one you are in, then follow only that branch.** Prefer **B0-AGENT** when `file_list` / `file_write` (library `agent-files`) and/or `run_agent_script` (library `agent-scripts`) are available.
 
 | Signal | Runtime |
 |--------|---------|
-| Tools `file_list` / `file_read` / `file_write` (Agent Management Files) | **Agent Management (this file’s primary runtime)** → **B0-AGENT** |
+| Tools `file_list` / `run_agent_script` (Agent Management) | **Agent Management (this file’s primary runtime)** → **B0-AGENT** |
 | MCP server **`appai`** (`list_workspace_files` / `sync_cloud_artifacts`) | **App Cloud Agent** → **B0-APP** |
 | Neither; edit files in the user’s repo on disk | **Cursor IDE (local)** → **B0-IDE** |
 
-#### B0-AGENT — Agent Management (GenericAgent + Files)
+#### B0-AGENT — Agent Management (GenericAgent + Files + Scripts)
 
 **This is the default path for `Prompt_AppAgent.txt`.**
 
-1. **Before Phase B:** `file_list` on `source`. Confirm every **Required** file in §Agent Management file area is present. If not → **STOP** and ask the user to upload official `ImportFromPLMDW/source/*` into the chat **Files → source/** folder (same tree as a prior good run under `AgentOutput/{SessionKey}/source/`).
+1. **Before Phase B:** `file_list` on `source`. Confirm every **Required** file in §Agent Management file area is present (especially `_gen_plmdw_import_sql.ps1`). If not → **STOP** and ask the user to upload official `ImportFromPLMDW/source/*` into **Files → source/**.
 2. After user confirms Phase A: `file_write` `source/dwTabImportConfig.json` (see §B1). Include `plmDataSourceId` / `dwDataSourceId`.
-3. **Producer:** use official `source/_gen_plmdw_import_sql.ps1` (+ BOM helper). Agent Management has **no sqlcmd to customer DB** — use `execute_sql` / `get_table_schema` with the user’s DataSourceIds for every probe the generator needs, then write the **same** six deliverables the PS script would emit (full static DDL / FieldMapping / Import SQL / Blueprint with `unitStructure` + `blueprintFields`).
-4. Write under **relative** paths only: `output/{templateId}/1_PlmDw_Tables.sql` … `4_PlmDw_ImportBlueprint.json` (+ `5_`/`6_` when BOM). Use `file_mkdir` / `file_write`.
-5. `file_list` on `output/{templateId}` and report each file’s **SizeBytes**. Reject your own work if Blueprint is tiny or lacks `unitStructure.siblingUnits` / `blueprintFields`.
-6. **Never** claim “Phase B success” from a hand-authored config-shaped JSON.
+3. **Producer (mandatory):** call `run_agent_script` with `relativePath=source/_gen_plmdw_import_sql.ps1`. The App server runs the official PowerShell generator (sqlcmd probes + full DDL/Blueprint). **Do not** hand-write `1_PlmDw_Tables.sql` / `4_PlmDw_ImportBlueprint.json` stubs. **Do not** invent columns from memory.
+4. Optionally call `validate_agent_outputs` with min sizes (e.g. `1_PlmDw_Tables.sql` ≥ 400000, `4_PlmDw_ImportBlueprint.json` ≥ 500000) or `file_list` on `output/{templateId}` and report **SizeBytes**.
+5. If `run_agent_script` fails (missing sqlcmd, bad DataSource, script error) → report the Tool error and **STOP**. Never replace with stub SQL/JSON.
+6. Reject your own work if Blueprint is tiny or lacks `unitStructure.siblingUnits` / `blueprintFields`.
 
 #### B0-IDE — Cursor IDE (local)
 
@@ -440,10 +442,10 @@ Requires `source/dwTabImportConfig.json`. The script uses `sqlcmd` against `sqlS
 
 **Agent Management (B0-AGENT):**
 
-1. Require official files already under chat `source/` (user upload via **Files** tab if missing — see §Agent Management file area).
-2. No `sqlcmd` to customer PLM/DW — use `execute_sql` / `get_table_schema` with DataSourceIds for generator probes.
-3. Produce the same six deliverables (structure/content parity with IDE `_gen_plmdw_import_sql.ps1`). Forbidden: hand-written stub Blueprint / `gen_plmdw_*.py`.
-4. Publish with `file_write` under `output/{templateId}/`; verify SizeBytes + Blueprint `unitStructure`.
+1. Require official files under chat `source/` (user upload via **Files** if missing).
+2. `file_write` `source/dwTabImportConfig.json` with DataSourceIds.
+3. Call **`run_agent_script`** (`relativePath=source/_gen_plmdw_import_sql.ps1`) — App host runs official PS + sqlcmd. Forbidden: hand-written stub Blueprint / DDL.
+4. Verify with `file_list` / `validate_agent_outputs` (SizeBytes + `unitStructure`).
 
 **App Cloud Agent:**
 
@@ -628,9 +630,9 @@ AgentOutput/{SessionKey}/          e.g. …/Company_5042/AgentOutput/plm-integra
 [ ] Propose referenceScope on IsTemplateHeaderTab (or IsMasterReferenceHeaderTab) tab
 [ ] Phase A checklist → WAIT FOR USER
 [ ] Agent Mgmt: file_list source/ — official generators present? If not → ask upload via Files tab
-[ ] Write dwTabImportConfig.json (plmTemplateId + PLM tab metadata)
-[ ] Run / apply _gen_plmdw_import_sql.ps1 → output/{templateId}/1_…6_ files (not hand stubs)
-[ ] Verify 4_…Blueprint has unitStructure.siblingUnits/childUnits + large blueprintFields (not appTable/unitType-only)
+[ ] Write dwTabImportConfig.json (plmTemplateId + PLM tab metadata + DataSourceIds)
+[ ] run_agent_script relativePath=source/_gen_plmdw_import_sql.ps1 → output/{templateId}/1_…6_
+[ ] Verify SizeBytes / validate_agent_outputs; Blueprint has unitStructure (not appTable/unitType stubs)
 [ ] Verify 3_PlmDw_ImportFromDW.sql has @PlmTemplateId + APPEND default
 [ ] Verify 4_PlmDw_ImportBlueprint.json includes bomColorwayPivotBindings when steps 5–6 exist
 [ ] TechPack: run 3b (includes View_TchpStyleActiveSizeRunSizes + View_TchpFitMeasurementByPom) before Phase D
