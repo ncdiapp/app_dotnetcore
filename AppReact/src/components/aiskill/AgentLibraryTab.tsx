@@ -39,6 +39,7 @@ const AgentLibraryTab: React.FC = () => {
     const [confirmDeleteDomain, setConfirmDeleteDomain] = useState(false);
     const [confirmDeleteLib, setConfirmDeleteLib] = useState(false);
     const [showDomainModal, setShowDomainModal] = useState(false);
+    const [showLibModal, setShowLibModal] = useState(false);
 
     const loadDomains = async () => {
         dispatch(setIsBusy());
@@ -74,6 +75,12 @@ const AgentLibraryTab: React.FC = () => {
         setShowDomainModal(true);
     };
 
+    const openLibModal = (lib: AppAgentToolLibraryDto) => {
+        setEditLib({ ...lib });
+        setLibDirty(false);
+        setShowLibModal(true);
+    };
+
     const onLibSelectionChanged = (s: { control?: { selection?: { row?: number }; rows?: { dataItem: AppAgentToolLibraryDto }[] }; selection?: { row?: number }; rows?: { dataItem: AppAgentToolLibraryDto }[] }) => {
         const flex = s?.control ?? s;
         const row = flex.selection?.row;
@@ -81,9 +88,7 @@ const AgentLibraryTab: React.FC = () => {
         const item = flex.rows?.[row]?.dataItem;
         if (!item) return;
         setSelectedLib(item);
-        setEditLib({ ...item });
         setRightMode('library');
-        setLibDirty(false);
     };
 
     const updateDomain = (field: keyof AppAgentToolDomainDto, value: unknown) => {
@@ -126,6 +131,11 @@ const AgentLibraryTab: React.FC = () => {
         try {
             await agentSkillSetSvc.UpsertLibrary(editLib);
             setLibDirty(false);
+            setShowLibModal(false);
+            // keep selectedLib pointing to the saved version
+            const saved = { ...editLib };
+            setSelectedLib(saved);
+            setRightMode('library');
             if (selectedDomain) await loadLibraries(selectedDomain.DomainKey);
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally { dispatch(setIsNotBusy()); }
@@ -136,7 +146,7 @@ const AgentLibraryTab: React.FC = () => {
         dispatch(setIsBusy());
         try {
             await agentSkillSetSvc.DeleteLibrary(selectedLib.LibraryKey);
-            setSelectedLib(null); setRightMode('none'); setConfirmDeleteLib(false);
+            setSelectedLib(null); setRightMode('none'); setConfirmDeleteLib(false); setShowLibModal(false);
             if (selectedDomain) await loadLibraries(selectedDomain.DomainKey);
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally { dispatch(setIsNotBusy()); }
@@ -234,27 +244,26 @@ const AgentLibraryTab: React.FC = () => {
 
             {/* Middle: Library list */}
             <div className={`shrink-0 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`} style={{ width: midWidthPx }}>
-                <div className={`px-2 py-1 text-xs font-semibold border-b border-gray-200 ${theme.title}`}>
-                    <i className="fa-solid fa-book mr-1 opacity-60" />
-                    {selectedDomain ? selectedDomain.DomainName || selectedDomain.DomainKey : 'Libraries'}
+                <div className={`px-2 py-1 border-b border-gray-200 ${theme.title}`}>
+                    <div className="text-xs font-semibold"><i className="fa-solid fa-book mr-1 opacity-60" />Libraries</div>
+                    {selectedDomain && <div className={`text-[10px] ${theme.label} opacity-70`}>in {selectedDomain.DomainName || selectedDomain.DomainKey}</div>}
                 </div>
                 <div className="flex items-center px-2 py-1 gap-1 border-b border-gray-200">
                     <button
                         className={btn}
                         disabled={!selectedDomain}
-                        onClick={() => {
-                            if (!selectedDomain) return;
-                            setSelectedLib(null);
-                            setEditLib(emptyLibrary(selectedDomain.DomainKey));
-                            setRightMode('library');
-                            setLibDirty(false);
-                        }}
+                        onClick={() => { if (!selectedDomain) return; openLibModal(emptyLibrary(selectedDomain.DomainKey)); }}
                     >
                         <i className="fa-solid fa-plus mr-1" />New
                     </button>
                     {selectedLib && (
+                        <button className={btn} onClick={() => openLibModal(selectedLib)}>
+                            <i className="fa-solid fa-pencil mr-1" />Edit
+                        </button>
+                    )}
+                    {selectedLib && (
                         <button className={btn} onClick={() => setConfirmDeleteLib(true)}>
-                            <i className="fa-solid fa-trash mr-1" />Delete
+                            <i className="fa-solid fa-trash" />
                         </button>
                     )}
                 </div>
@@ -295,67 +304,17 @@ const AgentLibraryTab: React.FC = () => {
                     </div>
                 )}
 
-                {rightMode === 'library' && (
+                {rightMode === 'library' && selectedLib && (
                     <div className="h-full flex flex-col overflow-hidden">
-                        {/* Library form header */}
-                        <div className={`px-3 py-1.5 text-xs font-semibold border-b border-gray-200 ${theme.title}`}>
-                            <i className="fa-solid fa-book mr-1" />{editLib.LibraryKey || 'New Library'}
+                        <div className={`px-3 py-1 text-xs font-semibold border-b border-gray-200 ${theme.title} flex items-center gap-2`}>
+                            <i className="fa-solid fa-key mr-1 opacity-60" />
+                            <span className="flex-auto">Tools in {selectedLib.LibraryKey}</span>
+                            <button className={`${btn} text-[11px] py-0.5`} onClick={() => openLibModal(selectedLib)}>
+                                <i className="fa-solid fa-pencil mr-1" />Edit Library
+                            </button>
                         </div>
-                        {/* Scrollable area: library form + tools panel */}
-                        <div className="w-full h-1 flex-auto flex flex-col overflow-hidden">
-                            {/* Library form — fixed height */}
-                            <div className="flex-none p-3 flex flex-col gap-2 border-b border-gray-200">
-                                <div className="flex items-center">
-                                    <label className={lbl}>Library Key *</label>
-                                    <input className={inp} value={editLib.LibraryKey} onChange={e => updateLib('LibraryKey', e.target.value)} placeholder="e.g. shopify-products" autoComplete="off" />
-                                </div>
-                                <div className="flex items-center">
-                                    <label className={lbl}>Domain</label>
-                                    <select className={`h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} value={editLib.DomainKey} onChange={e => updateLib('DomainKey', e.target.value)}>
-                                        {domains.map(d => <option key={d.DomainKey} value={d.DomainKey}>{d.DomainName || d.DomainKey}</option>)}
-                                    </select>
-                                </div>
-                                <div className="flex items-center">
-                                    <label className={lbl}>Library Name</label>
-                                    <input className={inp} value={editLib.LibraryName} onChange={e => updateLib('LibraryName', e.target.value)} autoComplete="off" />
-                                </div>
-                                <div className="flex items-center">
-                                    <label className={lbl}>Tool Category</label>
-                                    <select className={`h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} value={editLib.ToolCategory} onChange={e => updateLib('ToolCategory', e.target.value)}>
-                                        <option value="SqlQuery">SQL Query</option>
-                                        <option value="HttpRest">HTTP REST</option>
-                                        <option value="BuiltIn">Built-in</option>
-                                        <option value="Mixed">Mixed</option>
-                                    </select>
-                                </div>
-                                <div className="flex items-center">
-                                    <label className={lbl}>Active</label>
-                                    <input type="checkbox" checked={editLib.IsActive} onChange={e => updateLib('IsActive', e.target.checked)} />
-                                </div>
-                                <div className="flex gap-2 pt-1">
-                                    <button className={btn} onClick={saveLib}><i className="fa-solid fa-floppy-disk mr-1" />Save Library</button>
-                                    <button className={btn} onClick={() => { if (selectedLib) { setEditLib({ ...selectedLib }); setLibDirty(false); } else { setRightMode('none'); } }} disabled={!libDirty}>Cancel</button>
-                                    {libDirty && <span className="text-xs text-orange-500 self-center">Unsaved</span>}
-                                </div>
-                            </div>
-
-                            {/* Tool list — only shown when library key is saved (i.e. selectedLib exists) */}
-                            <div className="w-full h-1 flex-auto flex flex-col overflow-hidden">
-                                {selectedLib?.LibraryKey ? (
-                                    <>
-                                        <div className={`flex-none px-3 py-1 text-xs font-semibold border-b border-gray-200 ${theme.title}`}>
-                                            <i className="fa-solid fa-key mr-1 opacity-60" />Tools in {selectedLib.LibraryKey}
-                                        </div>
-                                        <div className="w-full h-1 flex-auto overflow-hidden">
-                                            <AgentToolRegisterTab selectedSkillKey={selectedLib.LibraryKey} theme={theme} />
-                                        </div>
-                                    </>
-                                ) : (
-                                    <div className="h-full flex items-center justify-center">
-                                        <span className={`text-xs ${theme.label}`}>Save the library first to manage its tools</span>
-                                    </div>
-                                )}
-                            </div>
+                        <div className="w-full h-1 flex-auto overflow-hidden">
+                            <AgentToolRegisterTab selectedSkillKey={selectedLib.LibraryKey} theme={theme} />
                         </div>
                     </div>
                 )}
@@ -395,6 +354,56 @@ const AgentLibraryTab: React.FC = () => {
                             <button className={btn} onClick={saveDomain}><i className="fa-solid fa-floppy-disk mr-1" />Save</button>
                             <button className={btn} onClick={() => setShowDomainModal(false)}>Cancel</button>
                             {domainDirty && <span className="text-xs text-orange-500 ml-2">Unsaved changes</span>}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Library add / edit modal */}
+            {showLibModal && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50" onClick={() => !libDirty && setShowLibModal(false)}>
+                    <div className={`rounded-lg shadow-xl ${theme.mainContentSection} flex flex-col overflow-hidden`} style={{ width: 480 }} onClick={e => e.stopPropagation()}>
+                        <div className={`px-4 py-3 text-sm font-semibold border-b border-gray-200 ${theme.title} flex items-center justify-between`}>
+                            <span><i className="fa-solid fa-book mr-2 opacity-70" />{editLib.LibraryKey ? `Edit: ${editLib.LibraryKey}` : 'New Library'}</span>
+                            <button className="opacity-50 hover:opacity-100 text-lg leading-none" onClick={() => setShowLibModal(false)}>×</button>
+                        </div>
+                        <div className="p-4 flex flex-col gap-3">
+                            <div className="flex items-center">
+                                <label className={lbl}>Library Key *</label>
+                                <input className={inp} value={editLib.LibraryKey} onChange={e => updateLib('LibraryKey', e.target.value)} placeholder="e.g. shopify-products" autoComplete="off" autoFocus />
+                            </div>
+                            <div className="flex items-center">
+                                <label className={lbl}>Domain</label>
+                                <select className={`h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} value={editLib.DomainKey} onChange={e => updateLib('DomainKey', e.target.value)}>
+                                    {domains.map(d => <option key={d.DomainKey} value={d.DomainKey}>{d.DomainName || d.DomainKey}</option>)}
+                                </select>
+                            </div>
+                            <div className="flex items-center">
+                                <label className={lbl}>Library Name</label>
+                                <input className={inp} value={editLib.LibraryName} onChange={e => updateLib('LibraryName', e.target.value)} autoComplete="off" />
+                            </div>
+                            <div className="flex items-start">
+                                <label className={`${lbl} mt-1`}>Description</label>
+                                <textarea className={`flex-auto w-32 px-2 py-1 text-xs border ${theme.inputBox}`} rows={2} value={editLib.Description} onChange={e => updateLib('Description', e.target.value)} />
+                            </div>
+                            <div className="flex items-center">
+                                <label className={lbl}>Tool Category</label>
+                                <select className={`h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} value={editLib.ToolCategory} onChange={e => updateLib('ToolCategory', e.target.value)}>
+                                    <option value="SqlQuery">SQL Query</option>
+                                    <option value="HttpRest">HTTP REST</option>
+                                    <option value="BuiltIn">Built-in</option>
+                                    <option value="Mixed">Mixed</option>
+                                </select>
+                            </div>
+                            <div className="flex items-center">
+                                <label className={lbl}>Active</label>
+                                <input type="checkbox" checked={editLib.IsActive} onChange={e => updateLib('IsActive', e.target.checked)} />
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-200">
+                            <button className={btn} onClick={saveLib}><i className="fa-solid fa-floppy-disk mr-1" />Save</button>
+                            <button className={btn} onClick={() => setShowLibModal(false)}>Cancel</button>
+                            {libDirty && <span className="text-xs text-orange-500 ml-2">Unsaved changes</span>}
                         </div>
                     </div>
                 </div>
