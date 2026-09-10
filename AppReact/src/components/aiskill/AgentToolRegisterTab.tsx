@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FlexGrid, FlexGridColumn } from '@mescius/wijmo.react.grid';
 import { CollectionView } from '@mescius/wijmo';
 import { useDispatch } from 'react-redux';
@@ -35,9 +35,10 @@ interface TableInfo { name: string; schema: string; }
 const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHeader = false }) => {
     const dispatch = useDispatch();
     const [toolsCV] = useState(() => new CollectionView<AppAgentToolRegisterDto>([]));
+    const suppressSelectRef = useRef(false);
     const [selected, setSelected] = useState<AppAgentToolRegisterDto | null>(null);
     const [editItem, setEditItem] = useState<AppAgentToolRegisterDto>(emptyTool(''));
-    const [isEditing, setIsEditing] = useState(false);
+    const [showModal, setShowModal] = useState(false);
     const [isDirty, setIsDirty] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [confirmDelete, setConfirmDelete] = useState(false);
@@ -53,12 +54,17 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
     const [schemaLoaded, setSchemaLoaded] = useState(false);
 
     const load = async (skillKey: string) => {
+        suppressSelectRef.current = true;
         dispatch(setIsBusy());
         try {
             const res = await agentSkillSetSvc.GetToolsBySkillKey(skillKey);
             toolsCV.sourceCollection = res.Object ?? [];
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
-        finally { dispatch(setIsNotBusy()); }
+        finally {
+            dispatch(setIsNotBusy());
+            // Clear suppress after Wijmo has had time to fire its auto-selection event
+            setTimeout(() => { suppressSelectRef.current = false; }, 150);
+        }
     };
 
     const loadBuiltInTools = async () => {
@@ -83,7 +89,7 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
 
     useEffect(() => {
         if (selectedSkillKey) {
-            setSelected(null); setIsEditing(false); setIsDirty(false);
+            setSelected(null); setShowModal(false); setIsDirty(false);
             toolsCV.sourceCollection = [];
             load(selectedSkillKey);
         }
@@ -94,14 +100,24 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
         if (editItem.ToolType === 'SqlQuery' && schemaOpen) loadSchema();
     }, [editItem.ToolType, schemaOpen]);
 
+    const openModal = (tool: AppAgentToolRegisterDto) => {
+        setEditItem({ ...tool });
+        setIsDirty(false);
+        setSchemaOpen(false);
+        setSchemaFilter('');
+        setBuiltInFilter('');
+        setShowModal(true);
+    };
+
     const onGridSelectionChanged = (s: { control?: { selection?: { row?: number }; rows?: { dataItem: AppAgentToolRegisterDto }[] }; selection?: { row?: number }; rows?: { dataItem: AppAgentToolRegisterDto }[] }) => {
         const flex = s?.control ?? s;
         const row = flex.selection?.row;
         if (row == null || row < 0) return;
         const item = flex.rows?.[row]?.dataItem;
         if (!item) return;
-        setSelected(item); setEditItem({ ...item }); setIsEditing(true); setIsDirty(false);
-        setSchemaOpen(false); setSchemaFilter(''); setBuiltInFilter('');
+        setSelected(item);
+        // Only open modal for genuine user clicks, not programmatic selection after data load
+        if (!suppressSelectRef.current) openModal(item);
     };
 
     const update = (field: keyof AppAgentToolRegisterDto, value: unknown) => {
@@ -116,6 +132,7 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
             const payload = { ...editItem, SkillKey: selectedSkillKey ?? editItem.SkillKey };
             await agentSkillSetSvc.UpsertTool(payload);
             setIsDirty(false);
+            setShowModal(false);
             if (selectedSkillKey) await load(selectedSkillKey);
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally { dispatch(setIsNotBusy()); }
@@ -126,8 +143,7 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
         dispatch(setIsBusy());
         try {
             await agentSkillSetSvc.DeleteTool(selected.Id);
-            setSelected(null); setEditItem(emptyTool(selectedSkillKey ?? '')); setIsEditing(false);
-            setConfirmDelete(false);
+            setSelected(null); setShowModal(false); setConfirmDelete(false);
             if (selectedSkillKey) await load(selectedSkillKey);
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally { dispatch(setIsNotBusy()); }
@@ -167,48 +183,57 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
     }
 
     return (
-        <div className="w-full h-full flex gap-2 px-2 pb-2 overflow-hidden">
+        <div className="w-full h-full flex flex-col overflow-hidden px-2 pb-2">
             {/* Tool list */}
-            <div className={`w-56 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}>
+            <div className={`w-full h-full flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}>
                 {!hideHeader && (
                     <div className={`px-2 py-1 text-xs font-semibold border-b border-gray-200 ${theme.title}`}>
                         <i className="fa-solid fa-key mr-1 opacity-60" />{selectedSkillKey}
                     </div>
                 )}
                 <div className="flex items-center px-2 py-1 gap-1 border-b border-gray-200">
-                    <button className={btn} onClick={() => { setSelected(null); setEditItem(emptyTool(selectedSkillKey)); setIsEditing(true); setIsDirty(false); setSchemaOpen(false); }}>
+                    <button className={btn} onClick={() => openModal(emptyTool(selectedSkillKey))}>
                         <i className="fa-solid fa-plus mr-1" />New
                     </button>
-                    {selected && (
-                        <button className={btn} onClick={() => setConfirmDelete(true)}>
-                            <i className="fa-solid fa-trash mr-1" />Delete
+                    {selected && (<>
+                        <button className={btn} onClick={() => openModal(selected)}>
+                            <i className="fa-solid fa-pencil mr-1" />Edit
                         </button>
-                    )}
+                        <button className={btn} onClick={() => setConfirmDelete(true)}>
+                            <i className="fa-solid fa-trash" />
+                        </button>
+                    </>)}
                 </div>
                 <div className="w-full h-1 flex-auto overflow-hidden">
                     <FlexGrid className="w-full h-full" itemsSource={toolsCV} isReadOnly headersVisibility="Column" selectionChanged={onGridSelectionChanged}>
                         <FlexGridColumn header="Tool Name" binding="ToolName" width="*" />
-                        <FlexGridColumn header="Type" binding="ToolType" width={80} />
+                        <FlexGridColumn header="Type" binding="ToolType" width={100} />
                         <FlexGridColumn header="" binding="" width="*" />
                     </FlexGrid>
                 </div>
             </div>
 
-            {/* Tool editor */}
-            <div className={`w-1 flex-auto flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}>
-                {isEditing ? (
-                    <div className="h-full flex flex-col overflow-hidden">
-                        {error && <div className="px-3 py-1 text-xs text-red-600 bg-red-50 border border-red-200 mx-2 mt-1 rounded">{error}<button className="ml-2 font-bold" onClick={() => setError(null)}>x</button></div>}
-                        <div className="w-full h-1 flex-auto overflow-auto p-3 flex flex-col gap-3">
+            {/* Tool add / edit modal */}
+            {showModal && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50" onClick={() => !isDirty && setShowModal(false)}>
+                    <div className={`rounded-lg shadow-xl ${theme.mainContentSection} flex flex-col`} style={{ width: 800, height: '85vh', minWidth: 480, minHeight: 400, maxWidth: '95vw', maxHeight: '95vh', resize: 'both', overflow: 'hidden' }} onClick={e => e.stopPropagation()}>
+                        <div className={`px-4 py-3 text-sm font-semibold border-b border-gray-200 ${theme.title} flex items-center justify-between shrink-0`}>
+                            <span><i className="fa-solid fa-key mr-2 opacity-70" />{editItem.Id ? `Edit: ${editItem.ToolName}` : 'New Tool'}</span>
+                            <button className="opacity-50 hover:opacity-100 text-lg leading-none" onClick={() => setShowModal(false)}>×</button>
+                        </div>
+
+                        {error && <div className="mx-4 mt-3 px-3 py-1 text-xs text-red-600 bg-red-50 border border-red-200 rounded shrink-0">{error}<button className="ml-2 font-bold" onClick={() => setError(null)}>x</button></div>}
+
+                        <div className="overflow-auto p-4 flex flex-col gap-3">
 
                             {/* Tool Name */}
-                            <div className="flex items-center py-1">
+                            <div className="flex items-center">
                                 <label className={lbl}>Tool Name *</label>
-                                <input className={inp} value={editItem.ToolName} onChange={e => update('ToolName', e.target.value)} autoComplete="off" placeholder="e.g. get_open_orders" />
+                                <input className={inp} value={editItem.ToolName} onChange={e => update('ToolName', e.target.value)} autoComplete="off" placeholder="e.g. get_open_orders" autoFocus />
                             </div>
 
-                            {/* Description with word count */}
-                            <div className="flex items-start py-1">
+                            {/* Description */}
+                            <div className="flex items-start">
                                 <label className={`${lbl} mt-1`}>Description</label>
                                 <div className="flex flex-col flex-auto w-32 gap-0.5">
                                     <textarea
@@ -225,18 +250,14 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                             </div>
 
                             {/* Tool Type */}
-                            <div className="flex items-center py-1">
+                            <div className="flex items-center">
                                 <label className={lbl}>Tool Type</label>
                                 <select
                                     className={`h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`}
                                     value={editItem.ToolType}
                                     onChange={e => {
                                         const t = e.target.value;
-                                        setEditItem(prev => ({
-                                            ...prev,
-                                            ToolType: t,
-                                            ToolConfig: TOOL_CONFIG_TEMPLATES[t] ?? '{}',
-                                        }));
+                                        setEditItem(prev => ({ ...prev, ToolType: t, ToolConfig: TOOL_CONFIG_TEMPLATES[t] ?? '{}' }));
                                         setIsDirty(true);
                                         setSchemaOpen(false);
                                     }}
@@ -256,35 +277,17 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                                     <div className={`text-xs font-semibold ${theme.title} mb-1`}>
                                         <i className="fa-solid fa-puzzle-piece mr-1" />Pick Built-in Method
                                     </div>
-                                    <input
-                                        className={`${inp} mb-1`}
-                                        placeholder="Search methods..."
-                                        value={builtInFilter}
-                                        onChange={e => setBuiltInFilter(e.target.value)}
-                                    />
+                                    <input className={`${inp} mb-1`} placeholder="Search methods..." value={builtInFilter} onChange={e => setBuiltInFilter(e.target.value)} />
                                     <div className="max-h-40 overflow-y-auto flex flex-col gap-0.5">
-                                        {filteredBuiltIn.length === 0 && (
-                                            <span className={`text-xs ${theme.label}`}>No built-in methods found.</span>
-                                        )}
+                                        {filteredBuiltIn.length === 0 && <span className={`text-xs ${theme.label}`}>No built-in methods found.</span>}
                                         {filteredBuiltIn.map(t => (
-                                            <button
-                                                key={t.ToolName}
-                                                className={`text-left px-2 py-1 rounded text-xs hover:opacity-80 ${theme.button_default}`}
+                                            <button key={t.ToolName} className={`text-left px-2 py-1 rounded text-xs hover:opacity-80 ${theme.button_default}`}
                                                 onClick={() => {
-                                                    setEditItem(prev => ({
-                                                        ...prev,
-                                                        ToolName:    t.ToolName,
-                                                        Description: t.ToolDescription,
-                                                        ToolConfig:  t.ToolConfig || TOOL_CONFIG_TEMPLATES['BuiltIn'],
-                                                    }));
-                                                    setIsDirty(true);
-                                                    setBuiltInFilter('');
-                                                }}
-                                            >
+                                                    setEditItem(prev => ({ ...prev, ToolName: t.ToolName, Description: t.ToolDescription, ToolConfig: t.ToolConfig || TOOL_CONFIG_TEMPLATES['BuiltIn'] }));
+                                                    setIsDirty(true); setBuiltInFilter('');
+                                                }}>
                                                 <span className="font-mono font-semibold">{t.ToolName}</span>
-                                                {t.ToolDescription && (
-                                                    <span className={`ml-2 ${theme.label}`}>— {t.ToolDescription.substring(0, 80)}</span>
-                                                )}
+                                                {t.ToolDescription && <span className={`ml-2 ${theme.label}`}>— {t.ToolDescription.substring(0, 80)}</span>}
                                             </button>
                                         ))}
                                     </div>
@@ -292,7 +295,7 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                             )}
 
                             {/* Tool Config */}
-                            <div className="flex items-start py-1">
+                            <div className="flex items-start">
                                 <label className={`${lbl} mt-1`}>Tool Config (JSON)</label>
                                 <textarea
                                     id="tool-config-textarea"
@@ -303,38 +306,23 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                                 />
                             </div>
 
-                            {/* Schema browser for SqlQuery */}
+                            {/* Schema browser */}
                             {editItem.ToolType === 'SqlQuery' && (
                                 <div className={`border rounded ${theme.mainContentSection}`}>
-                                    <button
-                                        className={`w-full text-left px-3 py-1.5 text-xs font-semibold flex items-center gap-1 ${theme.title}`}
-                                        onClick={() => { setSchemaOpen(v => !v); if (!schemaLoaded) loadSchema(); }}
-                                    >
+                                    <button className={`w-full text-left px-3 py-1.5 text-xs font-semibold flex items-center gap-1 ${theme.title}`}
+                                        onClick={() => { setSchemaOpen(v => !v); if (!schemaLoaded) loadSchema(); }}>
                                         <i className={`fa-solid fa-chevron-${schemaOpen ? 'down' : 'right'} opacity-60`} />
                                         DB Schema Browser
                                         <span className={`ml-1 font-normal ${theme.label}`}>(click table name → inserts into SQL)</span>
                                     </button>
                                     {schemaOpen && (
                                         <div className="px-2 pb-2 flex flex-col gap-1">
-                                            <input
-                                                className={`${inp} my-1`}
-                                                placeholder="Filter tables..."
-                                                value={schemaFilter}
-                                                onChange={e => setSchemaFilter(e.target.value)}
-                                            />
+                                            <input className={`${inp} my-1`} placeholder="Filter tables..." value={schemaFilter} onChange={e => setSchemaFilter(e.target.value)} />
                                             <div className="max-h-48 overflow-y-auto flex flex-wrap gap-1">
-                                                {filteredSchema.length === 0 && (
-                                                    <span className={`text-xs ${theme.label}`}>
-                                                        {schemaLoaded ? 'No tables found.' : 'Loading schema…'}
-                                                    </span>
-                                                )}
+                                                {filteredSchema.length === 0 && <span className={`text-xs ${theme.label}`}>{schemaLoaded ? 'No tables found.' : 'Loading schema…'}</span>}
                                                 {filteredSchema.map(t => (
-                                                    <button
-                                                        key={t.name}
-                                                        className={`${btnSm} font-mono`}
-                                                        title={`Insert ${t.schema}.${t.name}`}
-                                                        onClick={() => insertAtCursor('tool-config-textarea', `${t.schema}.${t.name}`)}
-                                                    >
+                                                    <button key={t.name} className={`${btnSm} font-mono`} title={`Insert ${t.schema}.${t.name}`}
+                                                        onClick={() => insertAtCursor('tool-config-textarea', `${t.schema}.${t.name}`)}>
                                                         {t.name}
                                                     </button>
                                                 ))}
@@ -344,31 +332,25 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                                 </div>
                             )}
 
-                            {/* Sort Order */}
-                            <div className="flex items-center py-1">
+                            {/* Sort Order + Active */}
+                            <div className="flex items-center">
                                 <label className={lbl}>Sort Order</label>
                                 <input className={`w-20 h-7 px-2 text-xs border ${theme.inputBox}`} type="number" value={editItem.SortOrder} onChange={e => update('SortOrder', parseInt(e.target.value) || 0)} />
                             </div>
-
-                            {/* Active */}
-                            <div className="flex items-center py-1">
+                            <div className="flex items-center">
                                 <label className={lbl}>Active</label>
                                 <input type="checkbox" checked={editItem.IsActive} onChange={e => update('IsActive', e.target.checked)} />
                             </div>
                         </div>
 
-                        <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-200">
-                            <button className={btn} onClick={handleSave} disabled={!isDirty}><i className="fa-solid fa-floppy-disk mr-1" />Save</button>
-                            <button className={btn} onClick={() => { if (selected) { setEditItem({ ...selected }); setIsDirty(false); } else { setIsEditing(false); } }} disabled={!isDirty}>Cancel</button>
+                        <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-200 shrink-0">
+                            <button className={btn} onClick={handleSave}><i className="fa-solid fa-floppy-disk mr-1" />Save</button>
+                            <button className={btn} onClick={() => setShowModal(false)}>Cancel</button>
                             {isDirty && <span className="text-xs text-orange-500 ml-2">Unsaved changes</span>}
                         </div>
                     </div>
-                ) : (
-                    <div className="h-full flex items-center justify-center">
-                        <span className={`text-sm ${theme.label}`}>Select a tool or click + New</span>
-                    </div>
-                )}
-            </div>
+                </div>
+            )}
 
             {/* Delete confirmation */}
             {confirmDelete && (
