@@ -251,7 +251,7 @@ const AgentLibraryTab: React.FC = () => {
                 <div className="w-full h-1 flex-auto overflow-hidden">
                     {selectedDomain ? (
                         <FlexGrid className="w-full h-full" itemsSource={libsCV} isReadOnly headersVisibility="Column" selectionChanged={onLibSelectionChanged}>
-                            <FlexGridColumn header="Library Key" binding="LibraryKey" width="*" />
+                            <FlexGridColumn header="Library Key" binding="LibraryKey" width={200} />
                             <FlexGridColumn header="Tools" binding="ToolCount" width={50} />
                             <FlexGridColumn header="Active" binding="IsActive" width={55} />
                             <FlexGridColumn header="" binding="" width="*" />
