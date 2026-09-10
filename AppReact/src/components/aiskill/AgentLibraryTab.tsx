@@ -311,7 +311,7 @@ const AgentLibraryTab: React.FC = () => {
                             <div className={`text-[10px] ${theme.label} opacity-70`}>in {selectedLib.LibraryKey}</div>
                         </div>
                         <div className="w-full h-1 flex-auto overflow-hidden">
-                            <AgentToolRegisterTab selectedSkillKey={selectedLib.LibraryKey} theme={theme} hideHeader />
+                            <AgentToolRegisterTab selectedSkillKey={selectedLib.LibraryKey} theme={theme} hideHeader mode="library" />
                         </div>
                     </div>
                 )}

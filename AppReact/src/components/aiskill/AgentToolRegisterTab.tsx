@@ -4,7 +4,7 @@ import { CollectionView } from '@mescius/wijmo';
 import { useDispatch } from 'react-redux';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
 import {
-    agentSkillSetSvc, AppAgentToolRegisterDto, LibraryToolPreviewDto,
+    agentSkillSetSvc, AppAgentToolRegisterDto, AppAgentLibraryToolDto, LibraryToolPreviewDto,
 } from '../../webapi/agentSkillSetSvc';
 import { Theme } from '../../redux/features/ui/theme/types';
 import { endpoints } from '../../webapi/endpoints';
@@ -14,6 +14,9 @@ interface Props {
     selectedSkillKey: string | null;
     theme: Theme;
     hideHeader?: boolean;
+    /** 'agent' = tools owned by an agent (AppAgentToolRegister)
+     *  'library' = tools owned by a library (AppAgentLibraryTool) */
+    mode?: 'agent' | 'library';
 }
 
 const TOOL_CONFIG_TEMPLATES: Record<string, string> = {
@@ -32,7 +35,7 @@ const emptyTool = (skillKey: string): AppAgentToolRegisterDto => ({
 
 interface TableInfo { name: string; schema: string; }
 
-const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHeader = false }) => {
+const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHeader = false, mode = 'agent' }) => {
     const dispatch = useDispatch();
     const [toolsCV] = useState(() => new CollectionView<AppAgentToolRegisterDto>([]));
     const suppressSelectRef = useRef(false);
@@ -57,12 +60,14 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
         suppressSelectRef.current = true;
         dispatch(setIsBusy());
         try {
-            const res = await agentSkillSetSvc.GetToolsBySkillKey(skillKey);
-            toolsCV.sourceCollection = res.Object ?? [];
+            const res = mode === 'library'
+                ? await agentSkillSetSvc.GetLibraryTools(skillKey)
+                : await agentSkillSetSvc.GetToolsBySkillKey(skillKey);
+            // Normalize: library tools use LibraryKey; map to SkillKey field for unified form
+            toolsCV.sourceCollection = (res.Object ?? []) as AppAgentToolRegisterDto[];
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally {
             dispatch(setIsNotBusy());
-            // Clear suppress after Wijmo has had time to fire its auto-selection event
             setTimeout(() => { suppressSelectRef.current = false; }, 150);
         }
     };
@@ -129,8 +134,19 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
         if (!editItem.ToolName.trim()) { setError('Tool Name is required.'); return; }
         dispatch(setIsBusy()); setError(null);
         try {
-            const payload = { ...editItem, SkillKey: selectedSkillKey ?? editItem.SkillKey };
-            await agentSkillSetSvc.UpsertTool(payload);
+            if (mode === 'library') {
+                const payload: AppAgentLibraryToolDto = {
+                    Id: editItem.Id, LibraryKey: selectedSkillKey ?? '',
+                    ToolName: editItem.ToolName, Description: editItem.Description,
+                    ParameterSchemaJson: '', ToolType: editItem.ToolType,
+                    ToolConfig: editItem.ToolConfig, IsActive: editItem.IsActive,
+                    SortOrder: editItem.SortOrder ?? 0,
+                };
+                await agentSkillSetSvc.UpsertLibraryTool(payload);
+            } else {
+                const payload = { ...editItem, SkillKey: selectedSkillKey ?? editItem.SkillKey };
+                await agentSkillSetSvc.UpsertTool(payload);
+            }
             setIsDirty(false);
             setShowModal(false);
             if (selectedSkillKey) await load(selectedSkillKey);
@@ -142,7 +158,11 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
         if (!selected) return;
         dispatch(setIsBusy());
         try {
-            await agentSkillSetSvc.DeleteTool(selected.Id);
+            if (mode === 'library') {
+                await agentSkillSetSvc.DeleteLibraryTool(selected.Id);
+            } else {
+                await agentSkillSetSvc.DeleteTool(selected.Id);
+            }
             setSelected(null); setShowModal(false); setConfirmDelete(false);
             if (selectedSkillKey) await load(selectedSkillKey);
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }

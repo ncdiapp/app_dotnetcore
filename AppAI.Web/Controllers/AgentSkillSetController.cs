@@ -14,7 +14,9 @@ using HistBL       = App.BL.TenantBusiness.AppAgentSkillSetHistoryBL;
 using ToolBL       = App.BL.TenantBusiness.AppAgentToolRegisterBL;
 using McpBL        = App.BL.TenantBusiness.AppAgentMcpServerBL;
 using LibBL        = App.BL.TenantBusiness.AppAgentToolLibraryBL;
+using LibToolBL    = App.BL.TenantBusiness.AppAgentLibraryToolBL;
 using ToolDto      = App.BL.TenantBusiness.AppAgentToolRegisterDto;
+using LibToolDto   = App.BL.TenantBusiness.AppAgentLibraryToolDto;
 using McpDto       = App.BL.TenantBusiness.AppAgentMcpServerDto;
 using DomainDto    = App.BL.TenantBusiness.AppAgentToolDomainDto;
 using LibraryDto   = App.BL.TenantBusiness.AppAgentToolLibraryDto;
@@ -242,6 +244,40 @@ public class AgentSkillSetController : SecureBaseController
     {
         var result = new OperationCallResult<bool>();
         result.Object = LibBL.DeleteLibrary(GetDsId(), libraryKey ?? "");
+        return result;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Tool Library — Library Tools (AppAgentLibraryTool)
+    // ─────────────────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public OperationCallResult<List<LibToolDto>> GetLibraryTools(string libraryKey)
+    {
+        var result = new OperationCallResult<List<LibToolDto>>();
+        result.Object = LibToolBL.GetByLibraryKey(GetDsId(), libraryKey ?? "");
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<bool> UpsertLibraryTool([FromBody] LibToolDto dto)
+    {
+        var result = new OperationCallResult<bool>();
+        if (string.IsNullOrWhiteSpace(dto?.ToolName))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController), "ToolName_Required", ValidationItemType.Error, "ToolName is required."));
+            return result;
+        }
+        result.Object = LibToolBL.Upsert(GetDsId(), dto) > 0;
+        return result;
+    }
+
+    [HttpDelete]
+    public OperationCallResult<bool> DeleteLibraryTool(int id)
+    {
+        var result = new OperationCallResult<bool>();
+        result.Object = LibToolBL.Delete(GetDsId(), id);
         return result;
     }
 

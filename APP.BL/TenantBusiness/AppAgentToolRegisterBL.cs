@@ -73,10 +73,10 @@ SELECT t.ToolRegisterId, t.SkillKey, t.ToolName, t.ToolDescription, t.ParameterS
 FROM dbo.AppAgentToolRegister t
 WHERE t.SkillKey=@SkillKey AND t.IsActive=1
 UNION ALL
-SELECT t.ToolRegisterId, t.SkillKey, t.ToolName, t.ToolDescription, t.ParameterSchemaJson,
+SELECT t.LibraryToolId, t.LibraryKey, t.ToolName, t.ToolDescription, t.ParameterSchemaJson,
        t.ToolType, t.ToolConfig, t.IsActive, 1 AS IsLibraryTool
-FROM dbo.AppAgentToolRegister t
-INNER JOIN dbo.AppAgentLibrarySubscription s ON t.SkillKey=s.LibraryKey
+FROM dbo.AppAgentLibraryTool t
+INNER JOIN dbo.AppAgentLibrarySubscription s ON t.LibraryKey=s.LibraryKey
 WHERE s.SkillKey=@SkillKey AND t.IsActive=1
 ORDER BY IsLibraryTool, ToolRegisterId",
                 new List<DbParameter> { P(fixture, "@SkillKey", skillKey.Trim()) });

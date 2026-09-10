@@ -65,6 +65,18 @@ export interface AppAgentLibrarySubscriptionDto {
     LibraryKey: string;
 }
 
+export interface AppAgentLibraryToolDto {
+    Id:                 number;
+    LibraryKey:         string;
+    ToolName:           string;
+    Description:        string;
+    ParameterSchemaJson:string;
+    ToolType:           string;
+    ToolConfig:         string;
+    IsActive:           boolean;
+    SortOrder:          number;
+}
+
 export interface LibraryToolPreviewDto {
     ToolName:        string;
     ToolDescription: string;
@@ -241,6 +253,30 @@ class AgentSkillSetService {
             method: 'POST', headers: getHeaders(), body: JSON.stringify({ SkillKey: skillKey, LibraryKeys: libraryKeys }),
         });
         if (!res.ok) throw new Error(`SetSubscriptions failed (${res.status})`);
+        return res.json();
+    }
+
+    // ── Tool Library — Library Tools ─────────────────────────────────────
+
+    async GetLibraryTools(libraryKey: string): Promise<OperationResult<AppAgentLibraryToolDto[]>> {
+        const res = await fetch(`${BASE}/GetLibraryTools?libraryKey=${encodeURIComponent(libraryKey)}`, { headers: getHeaders() });
+        if (!res.ok) throw new Error(`GetLibraryTools failed (${res.status})`);
+        return res.json();
+    }
+
+    async UpsertLibraryTool(dto: AppAgentLibraryToolDto): Promise<OperationResult<boolean>> {
+        const res = await fetch(`${BASE}/UpsertLibraryTool`, {
+            method: 'POST', headers: getHeaders(), body: JSON.stringify(dto),
+        });
+        if (!res.ok) throw new Error(`UpsertLibraryTool failed (${res.status})`);
+        return res.json();
+    }
+
+    async DeleteLibraryTool(id: number): Promise<OperationResult<boolean>> {
+        const res = await fetch(`${BASE}/DeleteLibraryTool?id=${id}`, {
+            method: 'DELETE', headers: getHeaders(),
+        });
+        if (!res.ok) throw new Error(`DeleteLibraryTool failed (${res.status})`);
         return res.json();
     }
 

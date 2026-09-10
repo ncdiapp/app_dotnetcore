@@ -117,7 +117,7 @@ ELSE
         {
             var dt = fixture.RetriveDataTable(@"
 SELECT l.LibraryKey, l.DomainKey, l.LibraryName, l.Description, l.ToolCategory, l.IsActive,
-       (SELECT COUNT(*) FROM dbo.AppAgentToolRegister t WHERE t.SkillKey=l.LibraryKey AND t.IsActive=1) AS ToolCount
+       (SELECT COUNT(*) FROM dbo.AppAgentLibraryTool t WHERE t.LibraryKey=l.LibraryKey AND t.IsActive=1) AS ToolCount
 FROM dbo.AppAgentToolLibrary l
 ORDER BY l.DomainKey, l.LibraryName",
                 new List<DbParameter>());
@@ -131,7 +131,7 @@ ORDER BY l.DomainKey, l.LibraryName",
 
             var dt = fixture.RetriveDataTable(@"
 SELECT l.LibraryKey, l.DomainKey, l.LibraryName, l.Description, l.ToolCategory, l.IsActive,
-       (SELECT COUNT(*) FROM dbo.AppAgentToolRegister t WHERE t.SkillKey=l.LibraryKey AND t.IsActive=1) AS ToolCount
+       (SELECT COUNT(*) FROM dbo.AppAgentLibraryTool t WHERE t.LibraryKey=l.LibraryKey AND t.IsActive=1) AS ToolCount
 FROM dbo.AppAgentToolLibrary l
 WHERE l.DomainKey=@DomainKey
 ORDER BY l.LibraryName",
@@ -146,7 +146,7 @@ ORDER BY l.LibraryName",
 
             var dt = fixture.RetriveDataTable(@"
 SELECT l.LibraryKey, l.DomainKey, l.LibraryName, l.Description, l.ToolCategory, l.IsActive,
-       (SELECT COUNT(*) FROM dbo.AppAgentToolRegister t WHERE t.SkillKey=l.LibraryKey AND t.IsActive=1) AS ToolCount
+       (SELECT COUNT(*) FROM dbo.AppAgentLibraryTool t WHERE t.LibraryKey=l.LibraryKey AND t.IsActive=1) AS ToolCount
 FROM dbo.AppAgentToolLibrary l
 WHERE l.IsActive=1
   AND (@query IS NULL OR @query=''
@@ -159,23 +159,7 @@ ORDER BY l.DomainKey, l.LibraryName",
         }
 
         public static List<LibraryToolPreviewDto> GetLibraryToolPreview(int dataSourceId, string libraryKey)
-        {
-            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
-            if (fixture == null) return new List<LibraryToolPreviewDto>();
-
-            // Returns tool name + description only — ToolConfig is intentionally excluded
-            var dt = fixture.RetriveDataTable(
-                "SELECT ToolName, ToolDescription FROM dbo.AppAgentToolRegister WHERE SkillKey=@LibraryKey AND IsActive=1 ORDER BY ToolRegisterId",
-                new List<DbParameter> { P(fixture, "@LibraryKey", libraryKey) });
-
-            var result = new List<LibraryToolPreviewDto>();
-            if (dt == null) return result;
-            foreach (DataRow row in dt.Rows)
-                result.Add(new LibraryToolPreviewDto(
-                    ToolName:        row["ToolName"] as string ?? "",
-                    ToolDescription: row["ToolDescription"] as string ?? ""));
-            return result;
-        }
+            => AppAgentLibraryToolBL.GetLibraryToolPreview(dataSourceId, libraryKey);
 
         public static bool UpsertLibrary(int dataSourceId, AppAgentToolLibraryDto dto)
         {
@@ -210,16 +194,14 @@ ELSE
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
             if (fixture == null) return false;
 
-            // Order matters: remove tool rows, then MCP rows, then the library row.
+            // Order: remove library tools, MCP rows, then the library header.
             // Subscription rows are removed automatically by ON DELETE CASCADE.
+            AppAgentLibraryToolBL.DeleteByLibraryKey(fixture, libraryKey);
             fixture.ExecuteNonQueryResult(
-                "DELETE FROM dbo.AppAgentMcpServer    WHERE SkillKey=@LibraryKey",
+                "DELETE FROM dbo.AppAgentMcpServer   WHERE SkillKey=@LibraryKey",
                 new List<DbParameter> { P(fixture, "@LibraryKey", libraryKey) });
             fixture.ExecuteNonQueryResult(
-                "DELETE FROM dbo.AppAgentToolRegister WHERE SkillKey=@LibraryKey",
-                new List<DbParameter> { P(fixture, "@LibraryKey", libraryKey) });
-            fixture.ExecuteNonQueryResult(
-                "DELETE FROM dbo.AppAgentToolLibrary  WHERE LibraryKey=@LibraryKey",
+                "DELETE FROM dbo.AppAgentToolLibrary WHERE LibraryKey=@LibraryKey",
                 new List<DbParameter> { P(fixture, "@LibraryKey", libraryKey) });
             return true;
         }
@@ -276,23 +258,7 @@ ELSE
         // ─────────────────────────────────────────────────────────────────────
 
         public static List<LibraryToolPreviewDto> GetAvailableBuiltInTools(int dataSourceId)
-        {
-            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
-            if (fixture == null) return new List<LibraryToolPreviewDto>();
-
-            var dt = fixture.RetriveDataTable(
-                "SELECT DISTINCT ToolName, ToolDescription, ToolConfig FROM dbo.AppAgentToolRegister WHERE ToolType='BuiltIn' AND IsActive=1 ORDER BY ToolName",
-                new List<DbParameter>());
-
-            var result = new List<LibraryToolPreviewDto>();
-            if (dt == null) return result;
-            foreach (DataRow row in dt.Rows)
-                result.Add(new LibraryToolPreviewDto(
-                    ToolName:        row["ToolName"]        as string ?? "",
-                    ToolDescription: row["ToolDescription"] as string ?? "",
-                    ToolConfig:      row["ToolConfig"]      as string ?? ""));
-            return result;
-        }
+            => AppAgentLibraryToolBL.GetAvailableBuiltInTools(dataSourceId);
 
         // ─────────────────────────────────────────────────────────────────────
         // Mapping helpers
