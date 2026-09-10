@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FlexGrid, FlexGridColumn } from '@mescius/wijmo.react.grid';
 import { CollectionView } from '@mescius/wijmo';
 import { useDispatch } from 'react-redux';
@@ -136,14 +136,48 @@ const AgentLibraryTab: React.FC = () => {
         finally { dispatch(setIsNotBusy()); }
     };
 
+    const SPLIT_MIN_PX = 120;
+    const splitContainerRef = useRef<HTMLDivElement | null>(null);
+    const [leftWidthPx, setLeftWidthPx] = useState(192);
+    const [midWidthPx, setMidWidthPx] = useState(260);
+
+    const onDivider1MouseDown = (e: React.MouseEvent) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startW = leftWidthPx;
+        const onMove = (me: MouseEvent) => {
+            const w = splitContainerRef.current?.getBoundingClientRect().width ?? 800;
+            const max = w - midWidthPx - SPLIT_MIN_PX - 16;
+            setLeftWidthPx(Math.max(SPLIT_MIN_PX, Math.min(max, startW + me.clientX - startX)));
+        };
+        const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    };
+
+    const onDivider2MouseDown = (e: React.MouseEvent) => {
+        e.preventDefault();
+        const startX = e.clientX;
+        const startW = midWidthPx;
+        const onMove = (me: MouseEvent) => {
+            const w = splitContainerRef.current?.getBoundingClientRect().width ?? 800;
+            const max = w - leftWidthPx - SPLIT_MIN_PX - 16;
+            setMidWidthPx(Math.max(SPLIT_MIN_PX, Math.min(max, startW + me.clientX - startX)));
+        };
+        const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    };
+
     const inp = `flex-auto w-32 h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`;
     const lbl = `w-28 text-xs ${theme.label} mr-2`;
     const btn = `px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`;
+    const borderCls = `border-gray-200`;
 
     return (
-        <div className="w-full h-full flex gap-2 px-2 pb-2 overflow-hidden">
+        <div ref={splitContainerRef} className="w-full h-full flex px-2 pb-2 overflow-hidden">
             {/* Left: Domain list */}
-            <div className={`w-48 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}>
+            <div className={`shrink-0 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`} style={{ width: leftWidthPx }}>
                 <div className={`px-2 py-1 text-xs font-semibold border-b border-gray-200 ${theme.title}`}>
                     <i className="fa-solid fa-layer-group mr-1 opacity-60" />Domains
                 </div>
@@ -177,8 +211,19 @@ const AgentLibraryTab: React.FC = () => {
                 </div>
             </div>
 
+            {/* Divider 1 */}
+            <div
+                role="separator" aria-orientation="vertical" tabIndex={0}
+                onMouseDown={onDivider1MouseDown}
+                onKeyDown={(e) => {
+                    if (e.key === 'ArrowLeft') { e.preventDefault(); setLeftWidthPx(w => Math.max(SPLIT_MIN_PX, w - 16)); }
+                    if (e.key === 'ArrowRight') { e.preventDefault(); setLeftWidthPx(w => Math.min(w + 16, (splitContainerRef.current?.getBoundingClientRect().width ?? 800) - midWidthPx - SPLIT_MIN_PX - 16)); }
+                }}
+                className={`shrink-0 w-1.5 mx-1 cursor-col-resize border-x self-stretch min-h-0 ${theme.inputBox} hover:opacity-90 focus:outline-none focus:ring-1 focus:ring-inset`}
+            />
+
             {/* Middle: Library list */}
-            <div className={`w-64 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}>
+            <div className={`shrink-0 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`} style={{ width: midWidthPx }}>
                 <div className={`px-2 py-1 text-xs font-semibold border-b border-gray-200 ${theme.title}`}>
                     <i className="fa-solid fa-book mr-1 opacity-60" />
                     {selectedDomain ? selectedDomain.DomainName || selectedDomain.DomainKey : 'Libraries'}
@@ -218,6 +263,17 @@ const AgentLibraryTab: React.FC = () => {
                     )}
                 </div>
             </div>
+
+            {/* Divider 2 */}
+            <div
+                role="separator" aria-orientation="vertical" tabIndex={0}
+                onMouseDown={onDivider2MouseDown}
+                onKeyDown={(e) => {
+                    if (e.key === 'ArrowLeft') { e.preventDefault(); setMidWidthPx(w => Math.max(SPLIT_MIN_PX, w - 16)); }
+                    if (e.key === 'ArrowRight') { e.preventDefault(); setMidWidthPx(w => Math.min(w + 16, (splitContainerRef.current?.getBoundingClientRect().width ?? 800) - leftWidthPx - SPLIT_MIN_PX - 16)); }
+                }}
+                className={`shrink-0 w-1.5 mx-1 cursor-col-resize border-x self-stretch min-h-0 ${theme.inputBox} hover:opacity-90 focus:outline-none focus:ring-1 focus:ring-inset`}
+            />
 
             {/* Right: Context panel */}
             <div className={`w-1 flex-auto flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}>
