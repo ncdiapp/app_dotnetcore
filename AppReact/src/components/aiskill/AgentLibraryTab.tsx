@@ -389,15 +389,6 @@ const AgentLibraryTab: React.FC = () => {
                                 <textarea className={`flex-auto w-32 px-2 py-1 text-xs border ${theme.inputBox}`} rows={2} value={editLib.Description} onChange={e => updateLib('Description', e.target.value)} />
                             </div>
                             <div className="flex items-center">
-                                <label className={lbl}>Tool Category</label>
-                                <select className={`h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} value={editLib.ToolCategory} onChange={e => updateLib('ToolCategory', e.target.value)}>
-                                    <option value="SqlQuery">SQL Query</option>
-                                    <option value="HttpRest">HTTP REST</option>
-                                    <option value="BuiltIn">Built-in</option>
-                                    <option value="Mixed">Mixed</option>
-                                </select>
-                            </div>
-                            <div className="flex items-center">
                                 <label className={lbl}>Active</label>
                                 <input type="checkbox" checked={editLib.IsActive} onChange={e => updateLib('IsActive', e.target.checked)} />
                             </div>
