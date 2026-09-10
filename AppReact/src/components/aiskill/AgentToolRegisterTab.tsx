@@ -101,7 +101,7 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
     }, [selectedSkillKey]);
 
     useEffect(() => {
-        if (editItem.ToolType === 'BuiltIn') loadBuiltInTools();
+        if (editItem.ToolType === 'BuiltIn' && mode === 'agent') loadBuiltInTools();
         if (editItem.ToolType === 'SqlQuery' && schemaOpen) loadSchema();
     }, [editItem.ToolType, schemaOpen]);
 
@@ -291,8 +291,8 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                                 </select>
                             </div>
 
-                            {/* BuiltIn picker */}
-                            {editItem.ToolType === 'BuiltIn' && (
+                            {/* BuiltIn picker — only for agent tools; in library mode you ARE defining the built-ins */}
+                            {editItem.ToolType === 'BuiltIn' && mode === 'agent' && (
                                 <div className={`border rounded p-2 flex flex-col gap-1 ${theme.mainContentSection}`}>
                                     <div className={`text-xs font-semibold ${theme.title} mb-1`}>
                                         <i className="fa-solid fa-puzzle-piece mr-1" />Pick Built-in Method
