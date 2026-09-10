@@ -70,6 +70,10 @@ const AgentSkillSetManagement: React.FC = () => {
     const [aiResult, setAiResult]                     = useState<GenerateAgentResult | null>(null);
     const [aiAcceptedLibs, setAiAcceptedLibs]         = useState<Set<string>>(new Set());
     const [aiAcceptedBuiltIns, setAiAcceptedBuiltIns] = useState<Set<string>>(new Set());
+    const [showAiEdit, setShowAiEdit]                 = useState(false);
+    const [aiEditInstruction, setAiEditInstruction]   = useState('');
+    const [aiEditing, setAiEditing]                   = useState(false);
+    const [aiEditResult, setAiEditResult]             = useState<string | null>(null);
     const [allBuiltInTools, setAllBuiltInTools]       = useState<LibraryToolPreviewDto[]>([]);
 
     // Library subscription state
@@ -342,6 +346,20 @@ const handleSave = async () => {
             }
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally { setAiGenerating(false); }
+    };
+
+    const handleAiEdit = async () => {
+        if (!aiEditInstruction.trim() || !editItem.SystemPrompt?.trim()) return;
+        setAiEditing(true);
+        try {
+            const res = await agentSkillSetSvc.EditSystemPrompt(editItem.SystemPrompt, aiEditInstruction.trim());
+            if (res.IsSuccessful && res.Object) {
+                setAiEditResult(res.Object);
+            } else {
+                setError(res.ValidationResult?.Items?.[0]?.Message ?? 'Edit failed');
+            }
+        } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
+        finally { setAiEditing(false); }
     };
 
     const handleApplyAiResult = async () => {
@@ -739,6 +757,14 @@ const handleSave = async () => {
                                                 >
                                                     <i className="fa-solid fa-wand-magic-sparkles" />AI
                                                 </button>
+                                                <button
+                                                    type="button"
+                                                    className={`ml-1 text-xs px-1.5 py-0.5 rounded ${theme.button_default} flex items-center gap-1 ${!editItem.SystemPrompt?.trim() ? 'opacity-40' : ''}`}
+                                                    onClick={(e) => { e.stopPropagation(); if (editItem.SystemPrompt?.trim()) { setAiEditInstruction(''); setAiEditResult(null); setShowAiEdit(true); } }}
+                                                    title={editItem.SystemPrompt?.trim() ? 'Edit existing system prompt with AI' : 'Write a system prompt first'}
+                                                >
+                                                    <i className="fa-solid fa-pencil" />AI Edit
+                                                </button>
                                                 {showHistory && promptHistory.length > 0 && (
                                                     <div
                                                         className={`absolute top-full left-0 z-40 mt-1 rounded shadow-lg border w-72 ${theme.mainContentSection} ${borderCls}`}
@@ -974,6 +1000,77 @@ const handleSave = async () => {
                                     <button className={btn} onClick={() => setShowAiGenerate(false)}>Cancel</button>
                                     <button className={btn} onClick={handleApplyAiResult}>
                                         <i className="fa-solid fa-check mr-1" />Use this
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* AI Edit System Prompt modal */}
+            {showAiEdit && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-40 z-50"
+                     onClick={e => { if (e.target === e.currentTarget) { setShowAiEdit(false); } }}>
+                    <div className={`flex flex-col rounded shadow-2xl overflow-hidden ${theme.mainContentSection}`} style={{ width: 580 }}>
+                        <div className={`flex items-center px-4 py-2 border-b border-gray-200`}>
+                            <i className="fa-solid fa-pencil mr-2 text-blue-500" />
+                            <span className={`text-sm font-semibold ${theme.title} flex-auto`}>
+                                {aiEditResult ? 'Review Edited Prompt' : 'AI Edit System Prompt'}
+                            </span>
+                            <button className={btn} onClick={() => setShowAiEdit(false)}><i className="fa-solid fa-xmark" /></button>
+                        </div>
+
+                        {aiEditResult === null ? (
+                            <>
+                                <div className="px-4 py-3 flex flex-col gap-3">
+                                    <div className="flex flex-col gap-1">
+                                        <div className={`text-xs font-semibold ${theme.title} opacity-60`}>Current prompt (first 300 chars):</div>
+                                        <div className={`text-xs font-mono px-2 py-1.5 rounded border ${theme.inputBox} opacity-60 whitespace-pre-wrap`} style={{ maxHeight: 80, overflowY: 'auto' }}>
+                                            {(editItem.SystemPrompt || '').slice(0, 300)}{(editItem.SystemPrompt || '').length > 300 ? '…' : ''}
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col gap-1">
+                                        <div className={`text-xs font-semibold ${theme.title}`}>Editing instruction:</div>
+                                        <textarea
+                                            className={`w-full px-2 py-1.5 text-xs border ${theme.inputBox} focus:outline-none resize-none font-mono`}
+                                            rows={4}
+                                            value={aiEditInstruction}
+                                            onChange={e => setAiEditInstruction(e.target.value)}
+                                            placeholder={'Example: "Make the workflow section more concise. Add error handling instructions. Use a more formal tone."'}
+                                            autoFocus
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-gray-200">
+                                    <button className={btn} onClick={() => setShowAiEdit(false)}>Cancel</button>
+                                    <button className={btn} onClick={handleAiEdit} disabled={aiEditing || !aiEditInstruction.trim()}>
+                                        {aiEditing
+                                            ? <><i className="fa-solid fa-spinner fa-spin mr-1" />Editing…</>
+                                            : <><i className="fa-solid fa-pencil mr-1" />Edit</>
+                                        }
+                                    </button>
+                                </div>
+                            </>
+                        ) : (
+                            <>
+                                <div className="px-4 py-3 flex flex-col gap-2 overflow-y-auto" style={{ maxHeight: '70vh' }}>
+                                    <div className={`text-xs font-semibold ${theme.title}`}>Edited System Prompt:</div>
+                                    <textarea
+                                        className={`w-full px-2 py-1.5 text-xs border ${theme.inputBox} font-mono resize-none`}
+                                        rows={16}
+                                        value={aiEditResult}
+                                        onChange={e => setAiEditResult(e.target.value)}
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-200">
+                                    <button className={btn} onClick={() => setAiEditResult(null)}>
+                                        <i className="fa-solid fa-arrow-left mr-1" />Re-edit
+                                    </button>
+                                    <div className="flex-auto" />
+                                    <button className={btn} onClick={() => setShowAiEdit(false)}>Cancel</button>
+                                    <button className={btn} onClick={() => { update('SystemPrompt', aiEditResult); setShowAiEdit(false); }}>
+                                        <i className="fa-solid fa-check mr-1" />Apply
                                     </button>
                                 </div>
                             </>

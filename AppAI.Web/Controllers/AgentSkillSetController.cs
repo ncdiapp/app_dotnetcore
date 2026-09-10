@@ -392,6 +392,61 @@ If nothing matches, return empty arrays.";
         }
         return result;
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // AI-Assisted System Prompt Editing
+    // ─────────────────────────────────────────────────────────────────────
+
+    [HttpPost]
+    public async Task<OperationCallResult<string>> EditSystemPrompt(
+        [FromBody] EditSystemPromptRequest req)
+    {
+        var result = new OperationCallResult<string>();
+        if (string.IsNullOrWhiteSpace(req?.CurrentPrompt) || string.IsNullOrWhiteSpace(req?.Instruction))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController), "EditPrompt_Required", ValidationItemType.Error,
+                "CurrentPrompt and Instruction are both required."));
+            return result;
+        }
+
+        var metaPrompt = @"You are an expert AI system prompt editor for an enterprise no-code platform.
+The user will provide their current system prompt and an editing instruction.
+Apply the instruction to produce an improved version of the system prompt.
+Return ONLY the edited system prompt — no preamble, no explanation, no markdown fences.
+Preserve the existing structure and formatting style unless the instruction explicitly asks to change it.";
+
+        var userMessage = $@"=== Current System Prompt ===
+{req.CurrentPrompt}
+
+=== Editing Instruction ===
+{req.Instruction}";
+
+        var llmReq = new LLMRequestDto
+        {
+            Provider     = LLMProviderHelper.GetConfiguredProvider(),
+            ApiKey       = LLMProviderHelper.GetConfiguredApiKey(),
+            Model        = AIConfigSettingBL.GetModel(),
+            SystemPrompt = metaPrompt,
+            Prompt       = userMessage,
+            MaxTokens    = 4096,
+        };
+
+        var llmRes = await LLMProviderHelper.CallLLMAsync(llmReq);
+        if (!llmRes.IsSuccess)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController), "LLM_Error", ValidationItemType.Error,
+                llmRes.Error ?? "LLM call failed"));
+            return result;
+        }
+
+        var edited = llmRes.Content?.Trim() ?? "";
+        if (edited.StartsWith("```"))
+            edited = Regex.Replace(edited, @"^```[a-z]*\r?\n?|```$", "", RegexOptions.Multiline).Trim();
+        result.Object = edited;
+        return result;
+    }
 }
 
 public sealed class SetSubscriptionsRequest
@@ -409,3 +464,9 @@ public sealed record GenerateAgentResult(
     string       SystemPrompt,
     List<string> RecommendedLibraryKeys,
     List<string> RecommendedBuiltInToolNames);
+
+public sealed class EditSystemPromptRequest
+{
+    public string CurrentPrompt { get; set; }
+    public string Instruction   { get; set; }
+}

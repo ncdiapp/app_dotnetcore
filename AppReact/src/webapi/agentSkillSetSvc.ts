@@ -277,6 +277,15 @@ class AgentSkillSetService {
         if (!res.ok) throw new Error(`GenerateAgentDesign failed (${res.status})`);
         return res.json();
     }
+
+    async EditSystemPrompt(currentPrompt: string, instruction: string): Promise<OperationResult<string>> {
+        const res = await fetch(`${BASE}/EditSystemPrompt`, {
+            method: 'POST', headers: getHeaders(),
+            body: JSON.stringify({ CurrentPrompt: currentPrompt, Instruction: instruction }),
+        });
+        if (!res.ok) throw new Error(`EditSystemPrompt failed (${res.status})`);
+        return res.json();
+    }
 }
 
 export const agentSkillSetSvc = new AgentSkillSetService();
