@@ -227,8 +227,9 @@ class GenericAgentService {
         const q = new URLSearchParams({ skillKey: skillKey || '', sessionKey: sessionKey || '', path: path || '' });
         const form = new FormData();
         form.append('file', file);
-        const headers = { ...getHeaders() } as Record<string, string>;
-        delete headers['Content-Type'];
+        // Let the browser set multipart boundary — do not copy JSON Content-Type from getHeaders().
+        const headers = new Headers(getHeaders());
+        headers.delete('Content-Type');
         await fetch(`${BASE}/UploadAgentFile?${q}`, { method: 'POST', headers, body: form });
     }
 
