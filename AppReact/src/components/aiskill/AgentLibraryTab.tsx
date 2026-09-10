@@ -306,14 +306,9 @@ const AgentLibraryTab: React.FC = () => {
 
                 {rightMode === 'library' && selectedLib && (
                     <div className="h-full flex flex-col overflow-hidden">
-                        <div className={`px-3 py-1 border-b border-gray-200 ${theme.title} flex items-start justify-between`}>
-                            <div>
-                                <div className="text-xs font-semibold"><i className="fa-solid fa-key mr-1 opacity-60" />Tools</div>
-                                <div className={`text-[10px] ${theme.label} opacity-70`}>in {selectedLib.LibraryKey}</div>
-                            </div>
-                            <button className={`${btn} text-[11px] py-0.5 shrink-0 mt-0.5`} onClick={() => openLibModal(selectedLib)}>
-                                <i className="fa-solid fa-pencil mr-1" />Edit Library
-                            </button>
+                        <div className={`px-3 py-1 border-b border-gray-200 ${theme.title}`}>
+                            <div className="text-xs font-semibold"><i className="fa-solid fa-key mr-1 opacity-60" />Tools</div>
+                            <div className={`text-[10px] ${theme.label} opacity-70`}>in {selectedLib.LibraryKey}</div>
                         </div>
                         <div className="w-full h-1 flex-auto overflow-hidden">
                             <AgentToolRegisterTab selectedSkillKey={selectedLib.LibraryKey} theme={theme} hideHeader />
