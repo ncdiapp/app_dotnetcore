@@ -50,7 +50,8 @@ namespace App.BL.AIAgent.GenericAgent
                 targetSkillKey, message,
                 new List<JObject>(),
                 callbacks, identity, ct,
-                workflowId: context.WorkflowId).ConfigureAwait(false);
+                workflowId: context.WorkflowId,
+                chatSessionKey: context.ChatSessionKey).ConfigureAwait(false);
 
             return result;
         }

@@ -55,7 +55,8 @@ namespace App.BL.AIAgent.GenericAgent
             GenericAgentCallbacks callbacks,
             AppClientIdentity?    identity,
             CancellationToken     ct,
-            string                workflowId = null)
+            string                workflowId = null,
+            string                chatSessionKey = null)
         {
             var log = NLog.LogManager.GetCurrentClassLogger();
             var runSw = System.Diagnostics.Stopwatch.StartNew();
@@ -77,6 +78,9 @@ namespace App.BL.AIAgent.GenericAgent
 
                 var userId    = identity.HasValue && identity.Value.UserId != null                      ? Convert.ToInt32(identity.Value.UserId)                      : 0;
                 var companyId = identity.HasValue && identity.Value.CurrentWorkingCompanyId != null     ? Convert.ToInt32(identity.Value.CurrentWorkingCompanyId)      : 0;
+                var resolvedChatKey = string.IsNullOrWhiteSpace(chatSessionKey)
+                    ? (userId > 0 ? AppGenericAgentSessionBL.MakeFixedKey(skillKey, userId) : "")
+                    : chatSessionKey.Trim();
                 var context   = new AgentToolContext
                 {
                     ConnectionString = identity.HasValue ? identity.Value.CurrentUserDbConnectionString ?? "" : "",
@@ -88,7 +92,8 @@ namespace App.BL.AIAgent.GenericAgent
                     CompanyId        = companyId,
                     DataSourceId     = dsId,
                     IsDeterministic  = string.Equals(skillSet.ExecutionMode, "Deterministic", StringComparison.OrdinalIgnoreCase),
-                    WorkflowId       = string.IsNullOrEmpty(workflowId) ? Guid.NewGuid().ToString("N") : workflowId
+                    WorkflowId       = string.IsNullOrEmpty(workflowId) ? Guid.NewGuid().ToString("N") : workflowId,
+                    ChatSessionKey   = resolvedChatKey
                 };
 
                 // Per-session instance pool keeps stateful plugin instances (e.g. SchemaDesignerPlugin)
