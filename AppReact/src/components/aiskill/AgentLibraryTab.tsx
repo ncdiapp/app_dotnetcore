@@ -138,8 +138,8 @@ const AgentLibraryTab: React.FC = () => {
 
     const SPLIT_MIN_PX = 120;
     const splitContainerRef = useRef<HTMLDivElement | null>(null);
-    const [leftWidthPx, setLeftWidthPx] = useState(192);
-    const [midWidthPx, setMidWidthPx] = useState(260);
+    const [leftWidthPx, setLeftWidthPx] = useState(110);
+    const [midWidthPx, setMidWidthPx] = useState(280);
 
     const onDivider1MouseDown = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -219,7 +219,7 @@ const AgentLibraryTab: React.FC = () => {
                     if (e.key === 'ArrowLeft') { e.preventDefault(); setLeftWidthPx(w => Math.max(SPLIT_MIN_PX, w - 16)); }
                     if (e.key === 'ArrowRight') { e.preventDefault(); setLeftWidthPx(w => Math.min(w + 16, (splitContainerRef.current?.getBoundingClientRect().width ?? 800) - midWidthPx - SPLIT_MIN_PX - 16)); }
                 }}
-                className={`shrink-0 w-1.5 mx-1 cursor-col-resize border-x self-stretch min-h-0 ${theme.inputBox} hover:opacity-90 focus:outline-none focus:ring-1 focus:ring-inset`}
+                className={`shrink-0 w-px cursor-col-resize border-r self-stretch min-h-0 border-gray-200 hover:border-blue-400 focus:outline-none`}
             />
 
             {/* Middle: Library list */}
@@ -272,7 +272,7 @@ const AgentLibraryTab: React.FC = () => {
                     if (e.key === 'ArrowLeft') { e.preventDefault(); setMidWidthPx(w => Math.max(SPLIT_MIN_PX, w - 16)); }
                     if (e.key === 'ArrowRight') { e.preventDefault(); setMidWidthPx(w => Math.min(w + 16, (splitContainerRef.current?.getBoundingClientRect().width ?? 800) - leftWidthPx - SPLIT_MIN_PX - 16)); }
                 }}
-                className={`shrink-0 w-1.5 mx-1 cursor-col-resize border-x self-stretch min-h-0 ${theme.inputBox} hover:opacity-90 focus:outline-none focus:ring-1 focus:ring-inset`}
+                className={`shrink-0 w-px cursor-col-resize border-r self-stretch min-h-0 border-gray-200 hover:border-blue-400 focus:outline-none`}
             />
 
             {/* Right: Context panel */}
