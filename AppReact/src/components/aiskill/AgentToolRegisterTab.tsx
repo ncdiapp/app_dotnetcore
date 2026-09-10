@@ -13,6 +13,7 @@ import { getHeaders } from '../../helper/apiServiceHelper';
 interface Props {
     selectedSkillKey: string | null;
     theme: Theme;
+    hideHeader?: boolean;
 }
 
 const TOOL_CONFIG_TEMPLATES: Record<string, string> = {
@@ -31,7 +32,7 @@ const emptyTool = (skillKey: string): AppAgentToolRegisterDto => ({
 
 interface TableInfo { name: string; schema: string; }
 
-const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme }) => {
+const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHeader = false }) => {
     const dispatch = useDispatch();
     const [toolsCV] = useState(() => new CollectionView<AppAgentToolRegisterDto>([]));
     const [selected, setSelected] = useState<AppAgentToolRegisterDto | null>(null);
@@ -169,9 +170,11 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme }) => {
         <div className="w-full h-full flex gap-2 px-2 pb-2 overflow-hidden">
             {/* Tool list */}
             <div className={`w-56 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}>
-                <div className={`px-2 py-1 text-xs font-semibold border-b border-gray-200 ${theme.title}`}>
-                    <i className="fa-solid fa-key mr-1 opacity-60" />{selectedSkillKey}
-                </div>
+                {!hideHeader && (
+                    <div className={`px-2 py-1 text-xs font-semibold border-b border-gray-200 ${theme.title}`}>
+                        <i className="fa-solid fa-key mr-1 opacity-60" />{selectedSkillKey}
+                    </div>
+                )}
                 <div className="flex items-center px-2 py-1 gap-1 border-b border-gray-200">
                     <button className={btn} onClick={() => { setSelected(null); setEditItem(emptyTool(selectedSkillKey)); setIsEditing(true); setIsDirty(false); setSchemaOpen(false); }}>
                         <i className="fa-solid fa-plus mr-1" />New
