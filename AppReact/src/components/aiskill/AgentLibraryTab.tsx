@@ -20,7 +20,7 @@ const emptyLibrary = (domainKey: string): AppAgentToolLibraryDto => ({
     ToolCategory: 'SqlQuery', IsActive: true, ToolCount: 0,
 });
 
-type RightMode = 'none' | 'domain' | 'library';
+type RightMode = 'none' | 'library';
 
 const AgentLibraryTab: React.FC = () => {
     const { theme } = useTheme();
@@ -38,6 +38,7 @@ const AgentLibraryTab: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [confirmDeleteDomain, setConfirmDeleteDomain] = useState(false);
     const [confirmDeleteLib, setConfirmDeleteLib] = useState(false);
+    const [showDomainModal, setShowDomainModal] = useState(false);
 
     const loadDomains = async () => {
         dispatch(setIsBusy());
@@ -61,12 +62,16 @@ const AgentLibraryTab: React.FC = () => {
 
     const selectDomain = (d: AppAgentToolDomainDto) => {
         setSelectedDomain(d);
-        setEditDomain({ ...d });
         setSelectedLib(null);
-        setRightMode('domain');
-        setDomainDirty(false);
+        setRightMode('none');
         libsCV.sourceCollection = [];
         loadLibraries(d.DomainKey);
+    };
+
+    const openDomainModal = (d: AppAgentToolDomainDto) => {
+        setEditDomain({ ...d });
+        setDomainDirty(false);
+        setShowDomainModal(true);
     };
 
     const onLibSelectionChanged = (s: { control?: { selection?: { row?: number }; rows?: { dataItem: AppAgentToolLibraryDto }[] }; selection?: { row?: number }; rows?: { dataItem: AppAgentToolLibraryDto }[] }) => {
@@ -97,6 +102,7 @@ const AgentLibraryTab: React.FC = () => {
         try {
             await agentSkillSetSvc.UpsertDomain(editDomain);
             setDomainDirty(false);
+            setShowDomainModal(false);
             await loadDomains();
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally { dispatch(setIsNotBusy()); }
@@ -107,7 +113,7 @@ const AgentLibraryTab: React.FC = () => {
         dispatch(setIsBusy());
         try {
             await agentSkillSetSvc.DeleteDomain(selectedDomain.DomainKey);
-            setSelectedDomain(null); setRightMode('none'); setConfirmDeleteDomain(false);
+            setSelectedDomain(null); setRightMode('none'); setConfirmDeleteDomain(false); setShowDomainModal(false);
             libsCV.sourceCollection = [];
             await loadDomains();
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
@@ -130,7 +136,7 @@ const AgentLibraryTab: React.FC = () => {
         dispatch(setIsBusy());
         try {
             await agentSkillSetSvc.DeleteLibrary(selectedLib.LibraryKey);
-            setSelectedLib(null); setRightMode('domain'); setConfirmDeleteLib(false);
+            setSelectedLib(null); setRightMode('none'); setConfirmDeleteLib(false);
             if (selectedDomain) await loadLibraries(selectedDomain.DomainKey);
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally { dispatch(setIsNotBusy()); }
@@ -172,7 +178,6 @@ const AgentLibraryTab: React.FC = () => {
     const inp = `flex-auto w-32 h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`;
     const lbl = `w-28 text-xs ${theme.label} mr-2`;
     const btn = `px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`;
-    const borderCls = `border-gray-200`;
 
     return (
         <div ref={splitContainerRef} className="w-full h-full flex px-2 pb-2 overflow-hidden">
@@ -182,10 +187,7 @@ const AgentLibraryTab: React.FC = () => {
                     <i className="fa-solid fa-layer-group mr-1 opacity-60" />Domains
                 </div>
                 <div className="flex items-center px-2 py-1 gap-1 border-b border-gray-200">
-                    <button className={btn} onClick={() => {
-                        setSelectedDomain(null); setEditDomain(emptyDomain()); setRightMode('domain');
-                        setDomainDirty(false); libsCV.sourceCollection = [];
-                    }}>
+                    <button className={btn} onClick={() => openDomainModal(emptyDomain())}>
                         <i className="fa-solid fa-plus mr-1" />New
                     </button>
                     {selectedDomain && (
@@ -199,14 +201,22 @@ const AgentLibraryTab: React.FC = () => {
                         <span className={`block text-xs px-2 ${theme.label}`}>No domains yet.</span>
                     )}
                     {domains.map(d => (
-                        <button
+                        <div
                             key={d.DomainKey}
-                            className={`w-full text-left px-2 py-1.5 text-xs ${selectedDomain?.DomainKey === d.DomainKey ? `font-semibold ${theme.title}` : theme.label} hover:opacity-80`}
+                            className={`group w-full flex items-center px-2 py-1.5 text-xs ${selectedDomain?.DomainKey === d.DomainKey ? `font-semibold ${theme.title}` : theme.label} hover:opacity-80 cursor-pointer`}
                             onClick={() => selectDomain(d)}
                         >
-                            <i className="fa-solid fa-folder mr-1 opacity-60" />{d.DomainName || d.DomainKey}
-                            {!d.IsActive && <span className="ml-1 opacity-50">(off)</span>}
-                        </button>
+                            <i className="fa-solid fa-folder mr-1 opacity-60 shrink-0" />
+                            <span className="flex-auto truncate">{d.DomainName || d.DomainKey}</span>
+                            {!d.IsActive && <span className="ml-1 opacity-50 shrink-0">(off)</span>}
+                            <button
+                                className="shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 px-1"
+                                onClick={e => { e.stopPropagation(); selectDomain(d); openDomainModal(d); }}
+                                title="Edit domain"
+                            >
+                                <i className="fa-solid fa-pencil text-[10px]" />
+                            </button>
+                        </div>
                     ))}
                 </div>
             </div>
@@ -281,42 +291,7 @@ const AgentLibraryTab: React.FC = () => {
 
                 {rightMode === 'none' && (
                     <div className="h-full flex items-center justify-center">
-                        <span className={`text-sm ${theme.label}`}>Select a domain or library, or click + New</span>
-                    </div>
-                )}
-
-                {rightMode === 'domain' && (
-                    <div className="h-full flex flex-col overflow-hidden">
-                        <div className={`px-3 py-1.5 text-xs font-semibold border-b border-gray-200 ${theme.title}`}>
-                            <i className="fa-solid fa-folder mr-1" />{editDomain.DomainKey || 'New Domain'}
-                        </div>
-                        <div className="w-full h-1 flex-auto overflow-auto p-3 flex flex-col gap-3">
-                            <div className="flex items-center py-1">
-                                <label className={lbl}>Domain Key *</label>
-                                <input className={inp} value={editDomain.DomainKey} onChange={e => updateDomain('DomainKey', e.target.value)} placeholder="e.g. shopify-apis" autoComplete="off" />
-                            </div>
-                            <div className="flex items-center py-1">
-                                <label className={lbl}>Domain Name</label>
-                                <input className={inp} value={editDomain.DomainName} onChange={e => updateDomain('DomainName', e.target.value)} autoComplete="off" />
-                            </div>
-                            <div className="flex items-start py-1">
-                                <label className={`${lbl} mt-1`}>Description</label>
-                                <textarea className={`flex-auto w-32 px-2 py-1 text-xs border ${theme.inputBox}`} rows={3} value={editDomain.Description} onChange={e => updateDomain('Description', e.target.value)} />
-                            </div>
-                            <div className="flex items-center py-1">
-                                <label className={lbl}>Sort Order</label>
-                                <input className="w-20 h-7 px-2 text-xs border" type="number" value={editDomain.SortOrder} onChange={e => updateDomain('SortOrder', parseInt(e.target.value) || 0)} />
-                            </div>
-                            <div className="flex items-center py-1">
-                                <label className={lbl}>Active</label>
-                                <input type="checkbox" checked={editDomain.IsActive} onChange={e => updateDomain('IsActive', e.target.checked)} />
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2 px-3 py-2 border-t border-gray-200">
-                            <button className={btn} onClick={saveDomain}><i className="fa-solid fa-floppy-disk mr-1" />Save</button>
-                            <button className={btn} onClick={() => { if (selectedDomain) { setEditDomain({ ...selectedDomain }); setDomainDirty(false); } else { setRightMode('none'); } }} disabled={!domainDirty}>Cancel</button>
-                            {domainDirty && <span className="text-xs text-orange-500 ml-2">Unsaved changes</span>}
-                        </div>
+                        <span className={`text-sm ${theme.label}`}>Select a library, or click + New</span>
                     </div>
                 )}
 
@@ -359,7 +334,7 @@ const AgentLibraryTab: React.FC = () => {
                                 </div>
                                 <div className="flex gap-2 pt-1">
                                     <button className={btn} onClick={saveLib}><i className="fa-solid fa-floppy-disk mr-1" />Save Library</button>
-                                    <button className={btn} onClick={() => { if (selectedLib) { setEditLib({ ...selectedLib }); setLibDirty(false); } else { setRightMode(selectedDomain ? 'domain' : 'none'); } }} disabled={!libDirty}>Cancel</button>
+                                    <button className={btn} onClick={() => { if (selectedLib) { setEditLib({ ...selectedLib }); setLibDirty(false); } else { setRightMode('none'); } }} disabled={!libDirty}>Cancel</button>
                                     {libDirty && <span className="text-xs text-orange-500 self-center">Unsaved</span>}
                                 </div>
                             </div>
@@ -385,6 +360,45 @@ const AgentLibraryTab: React.FC = () => {
                     </div>
                 )}
             </div>
+
+            {/* Domain add / edit modal */}
+            {showDomainModal && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-30 z-50" onClick={() => !domainDirty && setShowDomainModal(false)}>
+                    <div className={`rounded-lg shadow-xl ${theme.mainContentSection} flex flex-col overflow-hidden`} style={{ width: 480 }} onClick={e => e.stopPropagation()}>
+                        <div className={`px-4 py-3 text-sm font-semibold border-b border-gray-200 ${theme.title} flex items-center justify-between`}>
+                            <span><i className="fa-solid fa-folder mr-2 opacity-70" />{editDomain.DomainKey ? `Edit: ${editDomain.DomainKey}` : 'New Domain'}</span>
+                            <button className="opacity-50 hover:opacity-100 text-lg leading-none" onClick={() => setShowDomainModal(false)}>×</button>
+                        </div>
+                        <div className="p-4 flex flex-col gap-3">
+                            <div className="flex items-center">
+                                <label className={lbl}>Domain Key *</label>
+                                <input className={inp} value={editDomain.DomainKey} onChange={e => updateDomain('DomainKey', e.target.value)} placeholder="e.g. shopify-apis" autoComplete="off" autoFocus />
+                            </div>
+                            <div className="flex items-center">
+                                <label className={lbl}>Domain Name</label>
+                                <input className={inp} value={editDomain.DomainName} onChange={e => updateDomain('DomainName', e.target.value)} autoComplete="off" />
+                            </div>
+                            <div className="flex items-start">
+                                <label className={`${lbl} mt-1`}>Description</label>
+                                <textarea className={`flex-auto w-32 px-2 py-1 text-xs border ${theme.inputBox}`} rows={3} value={editDomain.Description} onChange={e => updateDomain('Description', e.target.value)} />
+                            </div>
+                            <div className="flex items-center">
+                                <label className={lbl}>Sort Order</label>
+                                <input className="w-20 h-7 px-2 text-xs border" type="number" value={editDomain.SortOrder} onChange={e => updateDomain('SortOrder', parseInt(e.target.value) || 0)} />
+                            </div>
+                            <div className="flex items-center">
+                                <label className={lbl}>Active</label>
+                                <input type="checkbox" checked={editDomain.IsActive} onChange={e => updateDomain('IsActive', e.target.checked)} />
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-200">
+                            <button className={btn} onClick={saveDomain}><i className="fa-solid fa-floppy-disk mr-1" />Save</button>
+                            <button className={btn} onClick={() => setShowDomainModal(false)}>Cancel</button>
+                            {domainDirty && <span className="text-xs text-orange-500 ml-2">Unsaved changes</span>}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Delete domain confirmation */}
             {confirmDeleteDomain && (
