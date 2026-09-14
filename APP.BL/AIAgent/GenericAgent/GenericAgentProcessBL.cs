@@ -73,7 +73,10 @@ namespace App.BL.AIAgent.GenericAgent
                 if (jo["InjectDataSourcesFromConfig"] != null)
                     policy.InjectDataSourcesFromConfig = jo["InjectDataSourcesFromConfig"].ToString()?.Trim();
             }
-            catch { /* keep defaults */ }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Warn(ex, "GenericAgentProcessBL.ParsePolicy: failed to parse ToolConfig JSON; using defaults.");
+            }
             return policy;
         }
 
@@ -223,8 +226,9 @@ namespace App.BL.AIAgent.GenericAgent
                     return null;
                 return new SqlConnectionStringBuilder(fixture.ConnectionString);
             }
-            catch
+            catch (Exception ex)
             {
+                NLog.LogManager.GetCurrentClassLogger().Warn(ex, $"GenericAgentProcessBL.TryGetBuilder: failed to get connection for dataSourceId={dataSourceId}.");
                 return null;
             }
         }
@@ -325,8 +329,9 @@ namespace App.BL.AIAgent.GenericAgent
                 }
                 return list;
             }
-            catch
+            catch (Exception ex)
             {
+                NLog.LogManager.GetCurrentClassLogger().Warn(ex, "GenericAgentProcessBL.ListOutputSummary: failed to list output files.");
                 return new List<object>();
             }
         }
