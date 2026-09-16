@@ -4,6 +4,7 @@ using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using GemBox.Spreadsheet;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -174,9 +175,9 @@ namespace App.BL.AIAgent.GenericAgent
         ///   overwrite_sheet — replace only the named sheet(s); keep other sheets
         ///   replace_file    — ONLY mode that creates a brand-new workbook (explicit wipe)
         /// Preferred JSON (single sheet):
-        ///   {"mode":"overwrite_sheet","sheet":"Japanese","headers":["A","B"],"rows":[["v1","v2"]]}
+        ///   {"mode":"overwrite_sheet","sheet":"SheetA","headers":["A","B"],"rows":[["v1","v2"]]}
         /// Multi-sheet:
-        ///   {"mode":"overwrite_sheet","sheets":[{"name":"Japanese","headers":[...],"rows":[...]},{"name":"Korean",...}]}
+        ///   {"mode":"overwrite_sheet","sheets":[{"name":"SheetA","headers":[...],"rows":[...]},{"name":"SheetB",...}]}
         /// </summary>
         public static object WriteFromAgentContent(string fullPath, string content)
         {
@@ -184,9 +185,15 @@ namespace App.BL.AIAgent.GenericAgent
             var mode = NormalizeMode(spec.Mode);
             var sheetWrites = ExpandSheetWrites(spec);
 
+            // LLM may dump "Sheet: Name" + markdown "| ... |" as rows on ONE worksheet.
+            // Rescue into real multi-sheet writes when possible; otherwise reject.
+            sheetWrites = RescueMarkdownDumpToSheets(sheetWrites, content);
+            if (sheetWrites.Count > 1 && mode == "append")
+                mode = "overwrite_sheet"; // creating/updating several sheets must not append onto one sheet
+
             if (sheetWrites.Count == 0)
                 throw new ArgumentException(
-                    "Excel write produced no sheets/rows. Use JSON {mode,sheet,headers,rows} or {mode,sheets:[{name,headers,rows}]}.");
+                    "Excel write produced no sheets/rows. Use JSON {mode,sheets:[{name,headers,rows},...]} — one worksheet object per sheet name.");
 
             foreach (var sw in sheetWrites)
             {
@@ -194,22 +201,7 @@ namespace App.BL.AIAgent.GenericAgent
                     throw new InvalidOperationException($"Excel write exceeds row limit ({MaxWriteRows}) on sheet '{sw.Name}'.");
             }
 
-            // Guard: refuse dumping a huge instruction blob into a single Message/Log Content cell
-            foreach (var sw in sheetWrites)
-            {
-                if (sw.Rows.Count == 1 && sw.Rows[0].Count == 1)
-                {
-                    var cell = sw.Rows[0][0] ?? "";
-                    if (cell.Length > 500 && (cell.Contains("| Month |", StringComparison.OrdinalIgnoreCase)
-                        || cell.Contains("Add two sheets", StringComparison.OrdinalIgnoreCase)
-                        || cell.Contains('\n') && cell.Contains('|')))
-                    {
-                        throw new ArgumentException(
-                            "Refusing to write instruction/markdown blob as a single Excel cell. " +
-                            "Pass structured JSON with sheet/headers/rows (or sheets:[{name,headers,rows}]) instead.");
-                    }
-                }
-            }
+            RejectMarkdownDumpedAsCells(sheetWrites);
 
             var ext = Path.GetExtension(fullPath);
             var isXlsx = !string.Equals(ext, ".xls", StringComparison.OrdinalIgnoreCase);
@@ -272,6 +264,10 @@ namespace App.BL.AIAgent.GenericAgent
             AssertLooksLikeExcelFile(fullPath);
 
             var allNames = ef.Worksheets.Cast<ExcelWorksheet>().Select(w => w.Name).ToList();
+            if (sheetWrites.Count > 1 && allNames.Count < sheetWrites.Count)
+                throw new InvalidOperationException(
+                    $"Expected {sheetWrites.Count} sheets but workbook has {allNames.Count}: {string.Join(", ", allNames)}");
+
             return new
             {
                 Ok = true,
@@ -280,8 +276,196 @@ namespace App.BL.AIAgent.GenericAgent
                 Mode = createdNew ? "create" : mode,
                 SheetCount = allNames.Count,
                 SheetNames = allNames,
-                Written = written
+                Written = written,
+                SheetsCreatedOrUpdated = writtenNames.OrderBy(n => n).ToList()
             };
+        }
+
+        /// <summary>
+        /// Detect rows like "Sheet: Name" / markdown "| col | ..." dumped into one sheet and split into real SheetWrites.
+        /// </summary>
+        private static List<SheetWrite> RescueMarkdownDumpToSheets(List<SheetWrite> sheetWrites, string rawContent)
+        {
+            if (sheetWrites == null || sheetWrites.Count == 0)
+                return sheetWrites ?? new List<SheetWrite>();
+
+            // Already proper multi-sheet with real cell grids (no pipe-markdown rows)
+            if (sheetWrites.Count > 1 && !sheetWrites.Any(LooksLikeMarkdownDumpSheet))
+                return sheetWrites;
+
+            if (sheetWrites.Count == 1 && !LooksLikeMarkdownDumpSheet(sheetWrites[0]))
+            {
+                // Try raw content if it contains Sheet: sections
+                var fromRaw = ParseSheetSectionsFromText(rawContent);
+                if (fromRaw.Count > 1)
+                    return fromRaw;
+                return sheetWrites;
+            }
+
+            // Flatten dumped rows/cells into text lines
+            var lines = new List<string>();
+            foreach (var sw in sheetWrites)
+            {
+                foreach (var row in sw.Rows)
+                {
+                    if (row == null || row.Count == 0) continue;
+                    if (row.Count == 1)
+                        lines.Add(row[0] ?? "");
+                    else if (row.All(c => (c ?? "").Contains('|')))
+                        lines.Add(string.Join(" ", row));
+                    else
+                        lines.Add("| " + string.Join(" | ", row) + " |");
+                }
+            }
+
+            var rescued = ParseSheetSectionsFromLines(lines);
+            if (rescued.Count > 0)
+                return rescued;
+
+            // Single markdown table without Sheet: labels → keep as one structured sheet
+            var oneTable = ParseMarkdownTable(lines);
+            if (oneTable.HasValue && oneTable.Value.Rows.Count > 0)
+            {
+                return new List<SheetWrite>
+                {
+                    new SheetWrite
+                    {
+                        Name = string.IsNullOrWhiteSpace(sheetWrites[0].Name) ? "Sheet1" : sheetWrites[0].Name,
+                        Headers = oneTable.Value.Headers,
+                        Rows = oneTable.Value.Rows
+                    }
+                };
+            }
+
+            return sheetWrites;
+        }
+
+        private static bool LooksLikeMarkdownDumpSheet(SheetWrite sw)
+        {
+            if (sw?.Rows == null || sw.Rows.Count == 0) return false;
+            int pipeRows = 0;
+            int sheetLabels = 0;
+            foreach (var row in sw.Rows)
+            {
+                if (row == null || row.Count == 0) continue;
+                var joined = string.Join(" ", row);
+                if (joined.IndexOf('|') >= 0) pipeRows++;
+                if (Regex.IsMatch(joined, @"^\s*Sheet\s*:\s*\S+", RegexOptions.IgnoreCase))
+                    sheetLabels++;
+                if (Regex.IsMatch(joined, @"^\s*Sheets\s*:", RegexOptions.IgnoreCase))
+                    sheetLabels++;
+            }
+            return sheetLabels >= 1 || pipeRows >= 3;
+        }
+
+        private static void RejectMarkdownDumpedAsCells(List<SheetWrite> sheetWrites)
+        {
+            foreach (var sw in sheetWrites)
+            {
+                if (!LooksLikeMarkdownDumpSheet(sw)) continue;
+                // Still looks like markdown after rescue → hard fail
+                throw new ArgumentException(
+                    "Refusing to write markdown/pipe-table text into Excel cells (that creates one messy sheet). " +
+                    "Call file_write with JSON like: " +
+                    "{\"mode\":\"overwrite_sheet\",\"sheets\":[" +
+                    "{\"name\":\"SheetA\",\"headers\":[\"Col1\",\"Col2\"],\"rows\":[[\"a\",\"b\"]]}," +
+                    "{\"name\":\"SheetB\",\"headers\":[\"Col1\",\"Col2\"],\"rows\":[[\"c\",\"d\"]]}" +
+                    "]}. Each sheet name MUST be its own worksheet object — not rows of markdown on one sheet.");
+            }
+        }
+
+        private static List<SheetWrite> ParseSheetSectionsFromText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return new List<SheetWrite>();
+            var lines = text.Replace("\r\n", "\n").Replace('\r', '\n')
+                .Split('\n')
+                .Select(l => l.TrimEnd())
+                .Where(l => l.Length > 0)
+                .ToList();
+            return ParseSheetSectionsFromLines(lines);
+        }
+
+        private static List<SheetWrite> ParseSheetSectionsFromLines(List<string> lines)
+        {
+            var result = new List<SheetWrite>();
+            if (lines == null || lines.Count == 0) return result;
+
+            string currentName = null;
+            var buf = new List<string>();
+
+            void Flush()
+            {
+                if (string.IsNullOrWhiteSpace(currentName) || buf.Count == 0) { buf.Clear(); return; }
+                var table = ParseMarkdownTable(buf);
+                if (table.HasValue && (table.Value.Headers.Count > 0 || table.Value.Rows.Count > 0))
+                {
+                    result.Add(new SheetWrite
+                    {
+                        Name = SanitizeSheetName(currentName),
+                        Headers = table.Value.Headers,
+                        Rows = table.Value.Rows
+                    });
+                }
+                buf.Clear();
+            }
+
+            foreach (var line in lines)
+            {
+                var m = Regex.Match(line, @"^\s*Sheet\s*:\s*(.+?)\s*$", RegexOptions.IgnoreCase);
+                if (m.Success)
+                {
+                    Flush();
+                    currentName = m.Groups[1].Value.Trim();
+                    continue;
+                }
+                if (Regex.IsMatch(line, @"^\s*Sheets\s*:", RegexOptions.IgnoreCase))
+                    continue; // index line, skip
+                if (currentName != null)
+                    buf.Add(line);
+            }
+            Flush();
+            return result;
+        }
+
+        private static (List<string> Headers, List<List<string>> Rows)? ParseMarkdownTable(List<string> lines)
+        {
+            var tableLines = lines
+                .Where(l => l.Trim().StartsWith("|"))
+                .Where(l => !Regex.IsMatch(l.Trim(), @"^\|?\s*:?-{3,}"))
+                .Select(l => l.Trim())
+                .ToList();
+            // also skip pure separator rows like |---|---|
+            tableLines = tableLines.Where(l => !Regex.IsMatch(l.Replace(" ", ""), @"^\|?[-:|]+\|?$")).ToList();
+            if (tableLines.Count == 0) return null;
+
+            List<string> SplitMd(string line) =>
+                line.Trim().Trim('|').Split('|')
+                    .Select(c => c.Trim())
+                    .ToList();
+
+            var headers = SplitMd(tableLines[0]);
+            var rows = new List<List<string>>();
+            for (int i = 1; i < tableLines.Count; i++)
+            {
+                var cells = SplitMd(tableLines[i]);
+                // pad/truncate to header width
+                while (cells.Count < headers.Count) cells.Add("");
+                if (cells.Count > headers.Count) cells = cells.Take(headers.Count).ToList();
+                if (cells.All(string.IsNullOrWhiteSpace)) continue;
+                rows.Add(cells);
+            }
+            return (headers, rows);
+        }
+
+        private static string SanitizeSheetName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "Sheet1";
+            var s = name.Trim();
+            foreach (var c in Path.GetInvalidFileNameChars())
+                s = s.Replace(c, '_');
+            s = s.Replace('[', '(').Replace(']', ')').Replace('*', '_').Replace('?', '_').Replace(':', ' ').Replace('/', '-').Replace('\\', '-');
+            if (s.Length > 31) s = s.Substring(0, 31);
+            return string.IsNullOrWhiteSpace(s) ? "Sheet1" : s;
         }
 
         private static string NormalizeMode(string mode)
