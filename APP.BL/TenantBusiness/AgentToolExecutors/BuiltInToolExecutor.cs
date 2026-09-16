@@ -63,13 +63,17 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
             // null and ServerContext.CurrnetClientIdentity would otherwise throw.
             if (!string.IsNullOrEmpty(context.ConnectionString) && !string.IsNullOrEmpty(context.DatabaseName))
             {
+                // DataSourceId must be restored — nested call_agent / GetFixture paths use
+                // ServerContext.DataSourceId; omitting it yields 0 and LLBLGen OutOfSync on
+                // AppDataSourceRegisterEntity(0).
                 ServerContext.OverrideThreadIdentity(new AppClientIdentity
                 {
                     UserId                        = context.UserId,
                     CurrentWorkingCompanyId       = context.CompanyId,
                     CurrentUserDbConnectionString = context.ConnectionString,
                     CurrentUserDataBaseName       = context.DatabaseName,
-                    SessionId                     = context.UserSessionId
+                    SessionId                     = context.UserSessionId,
+                    DataSourceId                  = context.DataSourceId
                 });
             }
 

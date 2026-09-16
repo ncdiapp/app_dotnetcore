@@ -26,11 +26,27 @@ namespace App.BL.AIAgent.GenericAgent
             AgentToolContext context,
             CancellationToken ct)
         {
-            // BuiltInToolExecutor restores thread identity before invoking this method,
-            // so ServerContext.Instance.CurrnetClientIdentity is valid here.
+            // Prefer AgentToolContext fields (includes DataSourceId). Falling back to
+            // ServerContext alone is unsafe: older OverrideThreadIdentity omitted DataSourceId,
+            // which made child GetFixture resolve register id 0 → ORMEntityOutOfSyncException.
             AppClientIdentity? identity = null;
-            if (ServerContext.Instance.CurrnetClientIdentity is AppClientIdentity ai)
+            if (context != null &&
+                (!string.IsNullOrEmpty(context.ConnectionString) || context.DataSourceId > 0))
+            {
+                identity = new AppClientIdentity
+                {
+                    UserId                        = context.UserId,
+                    CurrentWorkingCompanyId       = context.CompanyId,
+                    CurrentUserDbConnectionString = context.ConnectionString,
+                    CurrentUserDataBaseName       = context.DatabaseName,
+                    SessionId                     = context.UserSessionId,
+                    DataSourceId                  = context.DataSourceId
+                };
+            }
+            else if (ServerContext.Instance.CurrnetClientIdentity is AppClientIdentity ai)
+            {
                 identity = ai;
+            }
 
             var result = "";
             var callbacks = new GenericAgentCallbacks
