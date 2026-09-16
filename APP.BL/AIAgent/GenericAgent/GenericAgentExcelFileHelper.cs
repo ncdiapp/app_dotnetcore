@@ -119,13 +119,33 @@ namespace App.BL.AIAgent.GenericAgent
             var ext = Path.GetExtension(fullPath);
             using var stm = File.OpenRead(fullPath);
             var ef = LoadExcel(stm, ext);
-            var ws = ef.Worksheets.Count > 0 ? ef.Worksheets[0] : null;
-            if (ws == null)
-                return new { Format = "excel", Sheet = (string)null, Headers = Array.Empty<string>(), Rows = Array.Empty<object[]>(), RowCount = 0, Truncated = false };
 
+            var sheetNames = new List<string>();
+            var sheets = new List<object>();
+            foreach (ExcelWorksheet ws in ef.Worksheets)
+            {
+                sheetNames.Add(ws.Name);
+                sheets.Add(SheetToDto(ws, maxRows));
+            }
+
+            var first = sheets.Count > 0 ? sheets[0] : null;
+            return new
+            {
+                Format = "excel",
+                SheetNames = sheetNames,
+                SheetCount = sheetNames.Count,
+                Sheets = sheets,
+                // Backward-compatible: first sheet flattened at top level
+                Sheet = sheetNames.Count > 0 ? sheetNames[0] : null,
+                FirstSheet = first
+            };
+        }
+
+        private static object SheetToDto(ExcelWorksheet ws, int maxRows)
+        {
             var table = ExtractSheet(ws);
             var headers = table.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToArray();
-            var take = Math.Min(Math.Max(1, maxRows), table.Rows.Count);
+            var take = Math.Min(Math.Max(0, maxRows), table.Rows.Count);
             var rows = new List<object[]>(take);
             for (int i = 0; i < take; i++)
             {
@@ -138,8 +158,7 @@ namespace App.BL.AIAgent.GenericAgent
 
             return new
             {
-                Format = "excel",
-                Sheet = ws.Name,
+                Name = ws.Name,
                 Headers = headers,
                 Rows = rows,
                 RowCount = table.Rows.Count,
@@ -148,88 +167,102 @@ namespace App.BL.AIAgent.GenericAgent
         }
 
         /// <summary>
-        /// Writes Excel from agent content.
-        /// Preferred JSON:
-        ///   {"mode":"append"|"overwrite","sheet":"Log","headers":["A","B"],"rows":[["v1","v2"]]}
-        /// Also accepts plain text: one line = one row (single Message column), or CSV/TSV lines.
+        /// Writes Excel from agent content without destroying unrelated sheets.
+        /// Modes:
+        ///   append          — append rows to sheet(s); create sheet if missing; keep other sheets
+        ///   overwrite       — same as overwrite_sheet (legacy name)
+        ///   overwrite_sheet — replace only the named sheet(s); keep other sheets
+        ///   replace_file    — ONLY mode that creates a brand-new workbook (explicit wipe)
+        /// Preferred JSON (single sheet):
+        ///   {"mode":"overwrite_sheet","sheet":"Japanese","headers":["A","B"],"rows":[["v1","v2"]]}
+        /// Multi-sheet:
+        ///   {"mode":"overwrite_sheet","sheets":[{"name":"Japanese","headers":[...],"rows":[...]},{"name":"Korean",...}]}
         /// </summary>
         public static object WriteFromAgentContent(string fullPath, string content)
         {
             var spec = ParseWriteSpec(content);
-            if (spec.Rows.Count == 0 && spec.Mode != "overwrite")
-                throw new ArgumentException("Excel write content produced no rows. Use JSON {mode,sheet,headers,rows} or plain/CSV lines.");
+            var mode = NormalizeMode(spec.Mode);
+            var sheetWrites = ExpandSheetWrites(spec);
 
-            if (spec.Rows.Count > MaxWriteRows)
-                throw new InvalidOperationException($"Excel write exceeds row limit ({MaxWriteRows}).");
+            if (sheetWrites.Count == 0)
+                throw new ArgumentException(
+                    "Excel write produced no sheets/rows. Use JSON {mode,sheet,headers,rows} or {mode,sheets:[{name,headers,rows}]}.");
+
+            foreach (var sw in sheetWrites)
+            {
+                if (sw.Rows.Count > MaxWriteRows)
+                    throw new InvalidOperationException($"Excel write exceeds row limit ({MaxWriteRows}) on sheet '{sw.Name}'.");
+            }
+
+            // Guard: refuse dumping a huge instruction blob into a single Message/Log Content cell
+            foreach (var sw in sheetWrites)
+            {
+                if (sw.Rows.Count == 1 && sw.Rows[0].Count == 1)
+                {
+                    var cell = sw.Rows[0][0] ?? "";
+                    if (cell.Length > 500 && (cell.Contains("| Month |", StringComparison.OrdinalIgnoreCase)
+                        || cell.Contains("Add two sheets", StringComparison.OrdinalIgnoreCase)
+                        || cell.Contains('\n') && cell.Contains('|')))
+                    {
+                        throw new ArgumentException(
+                            "Refusing to write instruction/markdown blob as a single Excel cell. " +
+                            "Pass structured JSON with sheet/headers/rows (or sheets:[{name,headers,rows}]) instead.");
+                    }
+                }
+            }
 
             var ext = Path.GetExtension(fullPath);
             var isXlsx = !string.Equals(ext, ".xls", StringComparison.OrdinalIgnoreCase);
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath) ?? ".");
 
             ExcelFile ef;
-            ExcelWorksheet ws;
             bool createdNew = false;
 
-            if (File.Exists(fullPath) && string.Equals(spec.Mode, "append", StringComparison.OrdinalIgnoreCase))
+            if (File.Exists(fullPath) && mode != "replace_file")
             {
                 using var stm = File.OpenRead(fullPath);
                 ef = LoadExcel(stm, ext);
-                ws = FindOrAddSheet(ef, spec.Sheet);
             }
             else
             {
                 createdNew = true;
                 ef = new ExcelFile();
-                ws = ef.Worksheets.Add(string.IsNullOrWhiteSpace(spec.Sheet) ? "Sheet1" : spec.Sheet.Trim());
             }
 
-            var existing = ExtractSheet(ws);
-            var headers = ResolveHeaders(spec.Headers, spec.Rows, existing, createdNew || string.Equals(spec.Mode, "overwrite", StringComparison.OrdinalIgnoreCase));
+            var written = new List<object>();
+            var writtenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            if (createdNew || string.Equals(spec.Mode, "overwrite", StringComparison.OrdinalIgnoreCase))
+            foreach (var sw in sheetWrites)
             {
-                // Clear sheet by replacing workbook sheet content via InsertDataTable
-                if (!createdNew)
+                var headers = ResolveHeaders(sw.Headers, sw.Rows, null, replace: mode != "append");
+                if (mode == "append")
                 {
-                    // GemBox: clear used range simply by creating a fresh workbook/sheet when overwrite
-                    ef = new ExcelFile();
-                    ws = ef.Worksheets.Add(string.IsNullOrWhiteSpace(spec.Sheet) ? "Sheet1" : spec.Sheet.Trim());
-                }
-
-                var dt = BuildTable(headers, spec.Rows);
-                ws.InsertDataTable(dt, new InsertDataTableOptions
-                {
-                    ColumnHeaders = true,
-                    StartRow = 0,
-                    StartColumn = 0
-                });
-            }
-            else
-            {
-                // Append: ensure header row exists; write after last used row
-                int startRow = 0;
-                if (ws.Rows.Count == 0 || IsSheetEmpty(ws))
-                {
-                    for (int c = 0; c < headers.Count; c++)
-                        ws.Cells[0, c].Value = headers[c];
-                    startRow = 1;
+                    var ws = FindOrAddSheet(ef, sw.Name);
+                    var existing = ExtractSheet(ws);
+                    headers = ResolveHeaders(sw.Headers, sw.Rows, existing, replace: false);
+                    AppendRows(ws, headers, sw.Rows);
+                    written.Add(new { Sheet = ws.Name, Mode = "append", RowsWritten = sw.Rows.Count, Headers = headers });
+                    writtenNames.Add(ws.Name);
                 }
                 else
                 {
-                    startRow = FindLastUsedRow(ws) + 1;
-                    // If first row looks empty of headers but we have data, still append at end
-                }
-
-                foreach (var row in spec.Rows)
-                {
-                    for (int c = 0; c < headers.Count; c++)
+                    // overwrite_sheet / replace_file (per sheet)
+                    var ws = PrepareSheetForOverwrite(ef, sw.Name);
+                    var dt = BuildTable(headers, sw.Rows);
+                    ws.InsertDataTable(dt, new InsertDataTableOptions
                     {
-                        var val = c < row.Count ? row[c] : "";
-                        ws.Cells[startRow, c].Value = val;
-                    }
-                    startRow++;
+                        ColumnHeaders = true,
+                        StartRow = 0,
+                        StartColumn = 0
+                    });
+                    written.Add(new { Sheet = ws.Name, Mode = mode, RowsWritten = sw.Rows.Count, Headers = headers });
+                    writtenNames.Add(ws.Name);
                 }
             }
+
+            // Drop leftover default empty "Sheet1" when we created a new file and wrote other names
+            if (createdNew)
+                TryRemoveUnusedDefaultSheet(ef, writtenNames);
 
             if (isXlsx)
                 ef.Save(fullPath, SaveOptions.XlsxDefault);
@@ -238,16 +271,134 @@ namespace App.BL.AIAgent.GenericAgent
 
             AssertLooksLikeExcelFile(fullPath);
 
+            var allNames = ef.Worksheets.Cast<ExcelWorksheet>().Select(w => w.Name).ToList();
             return new
             {
                 Ok = true,
                 Format = isXlsx ? "xlsx" : "xls",
                 RelativePathHint = Path.GetFileName(fullPath),
-                Mode = createdNew ? "create" : spec.Mode,
-                Sheet = ws.Name,
-                RowsWritten = spec.Rows.Count,
-                Headers = headers
+                Mode = createdNew ? "create" : mode,
+                SheetCount = allNames.Count,
+                SheetNames = allNames,
+                Written = written
             };
+        }
+
+        private static string NormalizeMode(string mode)
+        {
+            var m = (mode ?? "append").Trim().ToLowerInvariant();
+            return m switch
+            {
+                "overwrite" => "overwrite_sheet",
+                "overwrite_sheet" => "overwrite_sheet",
+                "replace" => "replace_file",
+                "replace_file" => "replace_file",
+                "create" => "replace_file",
+                _ => "append"
+            };
+        }
+
+        private static List<SheetWrite> ExpandSheetWrites(WriteSpec spec)
+        {
+            if (spec.Sheets != null && spec.Sheets.Count > 0)
+                return spec.Sheets;
+
+            if (spec.Rows.Count == 0 && (spec.Headers == null || spec.Headers.Count == 0))
+                return new List<SheetWrite>();
+
+            return new List<SheetWrite>
+            {
+                new SheetWrite
+                {
+                    Name = string.IsNullOrWhiteSpace(spec.Sheet) ? "Sheet1" : spec.Sheet.Trim(),
+                    Headers = spec.Headers ?? new List<string>(),
+                    Rows = spec.Rows ?? new List<List<string>>()
+                }
+            };
+        }
+
+        private static void AppendRows(ExcelWorksheet ws, List<string> headers, List<List<string>> rows)
+        {
+            int startRow;
+            if (IsSheetEmpty(ws))
+            {
+                for (int c = 0; c < headers.Count; c++)
+                    ws.Cells[0, c].Value = headers[c];
+                startRow = 1;
+            }
+            else
+            {
+                startRow = FindLastUsedRow(ws) + 1;
+            }
+
+            foreach (var row in rows)
+            {
+                for (int c = 0; c < headers.Count; c++)
+                {
+                    var val = c < row.Count ? row[c] : "";
+                    ws.Cells[startRow, c].Value = val;
+                }
+                startRow++;
+            }
+        }
+
+        private static ExcelWorksheet PrepareSheetForOverwrite(ExcelFile ef, string sheetName)
+        {
+            var name = string.IsNullOrWhiteSpace(sheetName) ? "Sheet1" : sheetName.Trim();
+            ExcelWorksheet existing = null;
+            foreach (ExcelWorksheet w in ef.Worksheets)
+            {
+                if (string.Equals(w.Name, name, StringComparison.OrdinalIgnoreCase))
+                {
+                    existing = w;
+                    break;
+                }
+            }
+
+            if (existing != null)
+            {
+                if (ef.Worksheets.Count > 1)
+                {
+                    // Remove only this sheet, keep siblings
+                    ef.Worksheets.Remove(existing.Index);
+                    return ef.Worksheets.Add(name);
+                }
+
+                // Sole sheet: clear cells in place (cannot remove last worksheet)
+                ClearSheet(existing);
+                if (!string.Equals(existing.Name, name, StringComparison.Ordinal))
+                    existing.Name = name;
+                return existing;
+            }
+
+            return ef.Worksheets.Add(name);
+        }
+
+        private static void ClearSheet(ExcelWorksheet ws)
+        {
+            int lastRow = FindLastUsedRow(ws);
+            int lastCol = FindLastUsedColumn(ws);
+            if (lastRow < 0 || lastCol < 0) return;
+            for (int r = 0; r <= lastRow; r++)
+                for (int c = 0; c <= lastCol; c++)
+                    ws.Cells[r, c].Value = null;
+        }
+
+        private static void TryRemoveUnusedDefaultSheet(ExcelFile ef, HashSet<string> keepNames)
+        {
+            if (ef.Worksheets.Count <= 1) return;
+            ExcelWorksheet victim = null;
+            foreach (ExcelWorksheet w in ef.Worksheets)
+            {
+                if (keepNames.Contains(w.Name)) continue;
+                if (string.Equals(w.Name, "Sheet1", StringComparison.OrdinalIgnoreCase) && IsSheetEmpty(w))
+                {
+                    victim = w;
+                    break;
+                }
+            }
+            if (victim != null && ef.Worksheets.Count > 1)
+                ef.Worksheets.Remove(victim.Index);
         }
 
         private static WriteSpec ParseWriteSpec(string content)
@@ -257,7 +408,8 @@ namespace App.BL.AIAgent.GenericAgent
                 Mode = "append",
                 Sheet = "Sheet1",
                 Headers = new List<string>(),
-                Rows = new List<List<string>>()
+                Rows = new List<List<string>>(),
+                Sheets = new List<SheetWrite>()
             };
 
             if (string.IsNullOrWhiteSpace(content))
@@ -275,6 +427,28 @@ namespace App.BL.AIAgent.GenericAgent
                     var sheet = obj.Value<string>("sheet") ?? obj.Value<string>("sheetName");
                     if (!string.IsNullOrWhiteSpace(sheet))
                         spec.Sheet = sheet.Trim();
+
+                    var sheetsTok = obj["sheets"] as JArray;
+                    if (sheetsTok != null)
+                    {
+                        foreach (var s in sheetsTok)
+                        {
+                            if (s is not JObject so) continue;
+                            var sw = new SheetWrite
+                            {
+                                Name = (so.Value<string>("name") ?? so.Value<string>("sheet") ?? "Sheet1").Trim(),
+                                Headers = new List<string>(),
+                                Rows = new List<List<string>>()
+                            };
+                            if (so["headers"] is JArray hh)
+                                sw.Headers = hh.Select(t => t?.ToString() ?? "").ToList();
+                            if (so["rows"] is JArray rr)
+                                foreach (var r in rr)
+                                    sw.Rows.Add(RowFromToken(r));
+                            spec.Sheets.Add(sw);
+                        }
+                        return spec;
+                    }
 
                     var headersTok = obj["headers"] as JArray;
                     if (headersTok != null)
@@ -296,9 +470,8 @@ namespace App.BL.AIAgent.GenericAgent
                     }
                     else
                     {
-                        // Flat object → one row by header order or property values
                         var skip = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-                            { "mode", "sheet", "sheetName", "headers", "rows", "row", "values" };
+                            { "mode", "sheet", "sheetName", "headers", "rows", "row", "values", "sheets" };
                         var props = obj.Properties().Where(p => !skip.Contains(p.Name)).ToList();
                         if (props.Count > 0)
                         {
@@ -325,7 +498,6 @@ namespace App.BL.AIAgent.GenericAgent
 
             if (lines.Count == 1 && lines[0].IndexOf('\t') < 0 && CountCommasOutsideQuotes(lines[0]) == 0)
             {
-                // Single free-text log line → one Message column
                 spec.Headers = new List<string> { "Message" };
                 spec.Rows.Add(new List<string> { lines[0] });
                 return spec;
@@ -538,6 +710,14 @@ namespace App.BL.AIAgent.GenericAgent
         {
             public string Mode { get; set; }
             public string Sheet { get; set; }
+            public List<string> Headers { get; set; }
+            public List<List<string>> Rows { get; set; }
+            public List<SheetWrite> Sheets { get; set; }
+        }
+
+        private sealed class SheetWrite
+        {
+            public string Name { get; set; }
             public List<string> Headers { get; set; }
             public List<List<string>> Rows { get; set; }
         }
