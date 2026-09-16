@@ -346,10 +346,22 @@ try
     // LLBLGen 5.x — mark saved entities as fetched (required for change tracking)
     EntityBase2.MarkSavedEntitiesAsFetched = true;
 
-    // GemBox licenses — read from config (moved from hardcoded Global.asax values)
-    GemBox.Document.ComponentInfo.SetLicense(app.Configuration["GemBox:DocumentLicense"] ?? "FREE-LIMITED-KEY");
-    GemBox.Spreadsheet.SpreadsheetInfo.SetLicense(app.Configuration["GemBox:SpreadsheetLicense"] ?? "FREE-LIMITED-KEY");
-    GemBox.Pdf.ComponentInfo.SetLicense(app.Configuration["GemBox:PdfLicense"] ?? "FREE-LIMITED-KEY");
+    // GemBox licenses — read from config (moved from hardcoded Global.asax values).
+    // Placeholders like SET_VIA_ENVIRONMENT are not valid keys; fall back to free limited mode.
+    static string GemBoxKey(IConfiguration cfg, string path) =>
+        NormalizeGemBoxKey(cfg[path]);
+    static string NormalizeGemBoxKey(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "FREE-LIMITED-KEY";
+        var k = raw.Trim();
+        if (string.Equals(k, "SET_VIA_ENVIRONMENT", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(k, "FREE-LIMITED-KEY", StringComparison.OrdinalIgnoreCase))
+            return "FREE-LIMITED-KEY";
+        return k;
+    }
+    GemBox.Document.ComponentInfo.SetLicense(GemBoxKey(app.Configuration, "GemBox:DocumentLicense"));
+    GemBox.Spreadsheet.SpreadsheetInfo.SetLicense(GemBoxKey(app.Configuration, "GemBox:SpreadsheetLicense"));
+    GemBox.Pdf.ComponentInfo.SetLicense(GemBoxKey(app.Configuration, "GemBox:PdfLicense"));
 
     // ── Middleware pipeline ───────────────────────────────────────────────────
     // HSTS — only in production (not dev where self-signed certs are common)

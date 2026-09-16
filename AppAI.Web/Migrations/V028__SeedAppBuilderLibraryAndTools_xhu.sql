@@ -908,7 +908,7 @@ INSERT INTO dbo.AppAgentLibraryTool
 VALUES (
     N'agent-files',
     N'file_read',
-    N'Read a UTF-8 text file from the current chat file area. Path is relative to AgentOutput/{sessionKey}/.',
+    N'Read a file from the chat file area (relative to AgentOutput/{sessionKey}/). Text files return UTF-8 content. .xlsx/.xls return tabular JSON (sheet, headers, rows) via GemBox — not binary.',
     N'{"path":{"type":"string","description":"Relative file path","required":true}}',
     N'BuiltIn',
     N'{"TypeName":"App.BL.AIAgent.GenericAgent.Plugins.AgentFilePlugin","MethodName":"Read"}',
@@ -924,8 +924,8 @@ INSERT INTO dbo.AppAgentLibraryTool
 VALUES (
     N'agent-files',
     N'file_write',
-    N'Write a UTF-8 text file into the current chat file area (creates parent folders). Path is relative to AgentOutput/{sessionKey}/.',
-    N'{"path":{"type":"string","description":"Relative file path","required":true},"content":{"type":"string","description":"File content","required":true}}',
+    N'Write a file into the chat file area. Text: UTF-8 body. .xlsx/.xls: pass JSON {"mode":"append|overwrite","sheet":"Log","headers":["A","B"],"rows":[["v1","v2"]]} or plain/CSV lines (plain one-line log becomes a Message column). Creates real Excel via GemBox — do not write binary as text.',
+    N'{"path":{"type":"string","description":"Relative file path","required":true},"content":{"type":"string","description":"Text body, or for Excel: JSON {mode,sheet,headers,rows} or CSV/TSV/plain log lines","required":true}}',
     N'BuiltIn',
     N'{"TypeName":"App.BL.AIAgent.GenericAgent.Plugins.AgentFilePlugin","MethodName":"Write"}',
     1,
