@@ -1,25 +1,41 @@
 using System;
 using System.Collections.Generic;
-using System.Data;
 using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
+using DocumentFormat.OpenXml;
+using DocumentFormat.OpenXml.Packaging;
+using DocumentFormat.OpenXml.Spreadsheet;
 using GemBox.Spreadsheet;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using OpenXmlCell = DocumentFormat.OpenXml.Spreadsheet.Cell;
+using OpenXmlRow = DocumentFormat.OpenXml.Spreadsheet.Row;
+using OpenXmlSheet = DocumentFormat.OpenXml.Spreadsheet.Sheet;
+using OpenXmlSheets = DocumentFormat.OpenXml.Spreadsheet.Sheets;
+using OpenXmlWorksheet = DocumentFormat.OpenXml.Spreadsheet.Worksheet;
 
 namespace App.BL.AIAgent.GenericAgent
 {
     /// <summary>
-    /// Excel (.xlsx / .xls) helpers for agent file tools.
-    /// Reuses GemBox (same stack as AppImportExportExcelToDataTableBL / FileProcessTools).
-    /// LLM-facing content is tabular JSON / plain lines — never raw binary.
+    /// Excel helpers for agent file tools.
+    /// Shared LLM parsing + in-memory sheet model; I/O backend is switched by <see cref="UseOpenXml"/>.
     /// </summary>
     public static class GenericAgentExcelFileHelper
     {
         public const int MaxReadRows = 500;
         public const int MaxWriteRows = 5000;
+
+        /// <summary>
+        /// One-line backend switch for agent Excel I/O:
+        /// false = GemBox.Spreadsheet (default);
+        /// true  = DocumentFormat.OpenXml (no free 5-sheet / 150-row cap).
+        /// </summary>
+        public const bool UseOpenXml = false;
+
+        private const string XlsOpenXmlMessage =
+            "OpenXml backend requires .xlsx. Set UseOpenXml=false for .xls, or use a .xlsx path.";
 
         public static bool IsExcelPath(string relativePath)
         {
@@ -117,22 +133,17 @@ namespace App.BL.AIAgent.GenericAgent
             if (!File.Exists(fullPath))
                 throw new FileNotFoundException("Excel file not found.", fullPath);
 
-            var ext = Path.GetExtension(fullPath);
-            using var stm = File.OpenRead(fullPath);
-            var ef = LoadExcel(stm, ext);
+            AssertSupportedExtension(fullPath);
 
-            var sheetNames = new List<string>();
-            var sheets = new List<object>();
-            foreach (ExcelWorksheet ws in ef.Worksheets)
-            {
-                sheetNames.Add(ws.Name);
-                sheets.Add(SheetToDto(ws, maxRows));
-            }
-
+            var workbook = LoadWorkbook(fullPath);
+            var sheetNames = workbook.Sheets.Select(s => s.Name).ToList();
+            var sheets = workbook.Sheets.Select(s => SheetToDto(s, maxRows)).ToList();
             var first = sheets.Count > 0 ? sheets[0] : null;
+
             return new
             {
                 Format = "excel",
+                Engine = UseOpenXml ? "OpenXml" : "GemBox",
                 SheetNames = sheetNames,
                 SheetCount = sheetNames.Count,
                 Sheets = sheets,
@@ -142,28 +153,27 @@ namespace App.BL.AIAgent.GenericAgent
             };
         }
 
-        private static object SheetToDto(ExcelWorksheet ws, int maxRows)
+        private static object SheetToDto(SheetModel sheet, int maxRows)
         {
-            var table = ExtractSheet(ws);
-            var headers = table.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToArray();
-            var take = Math.Min(Math.Max(0, maxRows), table.Rows.Count);
+            var headers = sheet.Headers.ToArray();
+            var take = Math.Min(Math.Max(0, maxRows), sheet.Rows.Count);
             var rows = new List<object[]>(take);
             for (int i = 0; i < take; i++)
             {
-                var dr = table.Rows[i];
+                var src = sheet.Rows[i];
                 var cells = new object[headers.Length];
                 for (int c = 0; c < headers.Length; c++)
-                    cells[c] = dr[c] == DBNull.Value ? "" : dr[c]?.ToString() ?? "";
+                    cells[c] = c < src.Count ? (src[c] ?? "") : "";
                 rows.Add(cells);
             }
 
             return new
             {
-                Name = ws.Name,
+                Name = sheet.Name,
                 Headers = headers,
                 Rows = rows,
-                RowCount = table.Rows.Count,
-                Truncated = table.Rows.Count > take
+                RowCount = sheet.Rows.Count,
+                Truncated = sheet.Rows.Count > take
             };
         }
 
@@ -181,6 +191,8 @@ namespace App.BL.AIAgent.GenericAgent
         /// </summary>
         public static object WriteFromAgentContent(string fullPath, string content)
         {
+            AssertSupportedExtension(fullPath);
+
             var spec = ParseWriteSpec(content);
             var mode = NormalizeMode(spec.Mode);
             var sheetWrites = ExpandSheetWrites(spec);
@@ -203,22 +215,19 @@ namespace App.BL.AIAgent.GenericAgent
 
             RejectMarkdownDumpedAsCells(sheetWrites);
 
-            var ext = Path.GetExtension(fullPath);
-            var isXlsx = !string.Equals(ext, ".xls", StringComparison.OrdinalIgnoreCase);
             Directory.CreateDirectory(Path.GetDirectoryName(fullPath) ?? ".");
 
-            ExcelFile ef;
+            WorkbookModel workbook;
             bool createdNew = false;
 
             if (File.Exists(fullPath) && mode != "replace_file")
             {
-                using var stm = File.OpenRead(fullPath);
-                ef = LoadExcel(stm, ext);
+                workbook = LoadWorkbook(fullPath);
             }
             else
             {
                 createdNew = true;
-                ef = new ExcelFile();
+                workbook = new WorkbookModel();
             }
 
             var written = new List<object>();
@@ -226,44 +235,38 @@ namespace App.BL.AIAgent.GenericAgent
 
             foreach (var sw in sheetWrites)
             {
-                var headers = ResolveHeaders(sw.Headers, sw.Rows, null, replace: mode != "append");
+                var name = SanitizeSheetName(sw.Name);
                 if (mode == "append")
                 {
-                    var ws = FindOrAddSheet(ef, sw.Name);
-                    var existing = ExtractSheet(ws);
-                    headers = ResolveHeaders(sw.Headers, sw.Rows, existing, replace: false);
-                    AppendRows(ws, headers, sw.Rows);
-                    written.Add(new { Sheet = ws.Name, Mode = "append", RowsWritten = sw.Rows.Count, Headers = headers });
-                    writtenNames.Add(ws.Name);
+                    var sheet = FindOrAddSheet(workbook, name);
+                    var headers = ResolveHeaders(sw.Headers, sw.Rows, sheet, replace: false);
+                    AppendRows(sheet, headers, sw.Rows);
+                    written.Add(new { Sheet = sheet.Name, Mode = "append", RowsWritten = sw.Rows.Count, Headers = headers });
+                    writtenNames.Add(sheet.Name);
                 }
                 else
                 {
                     // overwrite_sheet / replace_file (per sheet)
-                    var ws = PrepareSheetForOverwrite(ef, sw.Name);
-                    var dt = BuildTable(headers, sw.Rows);
-                    ws.InsertDataTable(dt, new InsertDataTableOptions
-                    {
-                        ColumnHeaders = true,
-                        StartRow = 0,
-                        StartColumn = 0
-                    });
-                    written.Add(new { Sheet = ws.Name, Mode = mode, RowsWritten = sw.Rows.Count, Headers = headers });
-                    writtenNames.Add(ws.Name);
+                    var sheet = PrepareSheetForOverwrite(workbook, name);
+                    var headers = ResolveHeaders(sw.Headers, sw.Rows, null, replace: true);
+                    sheet.Headers = headers;
+                    sheet.Rows = NormalizeRows(headers.Count, sw.Rows);
+                    written.Add(new { Sheet = sheet.Name, Mode = mode, RowsWritten = sw.Rows.Count, Headers = headers });
+                    writtenNames.Add(sheet.Name);
                 }
             }
 
             // Drop leftover default empty "Sheet1" when we created a new file and wrote other names
             if (createdNew)
-                TryRemoveUnusedDefaultSheet(ef, writtenNames);
+                TryRemoveUnusedDefaultSheet(workbook, writtenNames);
 
-            if (isXlsx)
-                ef.Save(fullPath, SaveOptions.XlsxDefault);
-            else
-                ef.Save(fullPath, SaveOptions.XlsDefault);
+            if (workbook.Sheets.Count == 0)
+                workbook.Sheets.Add(new SheetModel { Name = "Sheet1" });
 
+            SaveWorkbook(fullPath, workbook);
             AssertLooksLikeExcelFile(fullPath);
 
-            var allNames = ef.Worksheets.Cast<ExcelWorksheet>().Select(w => w.Name).ToList();
+            var allNames = workbook.Sheets.Select(s => s.Name).ToList();
             if (sheetWrites.Count > 1 && allNames.Count < sheetWrites.Count)
                 throw new InvalidOperationException(
                     $"Expected {sheetWrites.Count} sheets but workbook has {allNames.Count}: {string.Join(", ", allNames)}");
@@ -271,14 +274,33 @@ namespace App.BL.AIAgent.GenericAgent
             return new
             {
                 Ok = true,
-                Format = isXlsx ? "xlsx" : "xls",
+                Format = Path.GetExtension(fullPath)?.TrimStart('.').ToLowerInvariant() == "xls" ? "xls" : "xlsx",
+                Engine = UseOpenXml ? "OpenXml" : "GemBox",
                 RelativePathHint = Path.GetFileName(fullPath),
                 Mode = createdNew ? "create" : mode,
                 SheetCount = allNames.Count,
                 SheetNames = allNames,
+                RequestedSheetCount = sheetWrites.Count,
                 Written = written,
                 SheetsCreatedOrUpdated = writtenNames.OrderBy(n => n).ToList()
             };
+        }
+
+        private static void AssertSupportedExtension(string fullPath)
+        {
+            var ext = Path.GetExtension(fullPath);
+            if (string.Equals(ext, ".xlsx", StringComparison.OrdinalIgnoreCase))
+                return;
+            if (string.Equals(ext, ".xls", StringComparison.OrdinalIgnoreCase))
+            {
+                if (UseOpenXml)
+                    throw new ArgumentException(XlsOpenXmlMessage);
+                return;
+            }
+            throw new ArgumentException(
+                UseOpenXml
+                    ? "OpenXml backend requires a .xlsx path."
+                    : "Agent Excel tools require a .xlsx or .xls path.");
         }
 
         /// <summary>
@@ -501,88 +523,57 @@ namespace App.BL.AIAgent.GenericAgent
             };
         }
 
-        private static void AppendRows(ExcelWorksheet ws, List<string> headers, List<List<string>> rows)
+        private static void AppendRows(SheetModel sheet, List<string> headers, List<List<string>> rows)
         {
-            int startRow;
-            if (IsSheetEmpty(ws))
+            if (IsSheetEmpty(sheet))
             {
-                for (int c = 0; c < headers.Count; c++)
-                    ws.Cells[0, c].Value = headers[c];
-                startRow = 1;
-            }
-            else
-            {
-                startRow = FindLastUsedRow(ws) + 1;
+                sheet.Headers = headers;
+                sheet.Rows = NormalizeRows(headers.Count, rows);
+                return;
             }
 
-            foreach (var row in rows)
+            // Align to resolved headers (may widen existing sheet)
+            if (sheet.Headers == null || sheet.Headers.Count == 0)
+                sheet.Headers = headers;
+            else if (headers.Count > sheet.Headers.Count)
             {
-                for (int c = 0; c < headers.Count; c++)
-                {
-                    var val = c < row.Count ? row[c] : "";
-                    ws.Cells[startRow, c].Value = val;
-                }
-                startRow++;
+                while (sheet.Headers.Count < headers.Count)
+                    sheet.Headers.Add(headers[sheet.Headers.Count]);
+                foreach (var row in sheet.Rows)
+                    while (row.Count < headers.Count) row.Add("");
             }
+
+            sheet.Rows.AddRange(NormalizeRows(sheet.Headers.Count, rows));
         }
 
-        private static ExcelWorksheet PrepareSheetForOverwrite(ExcelFile ef, string sheetName)
+        private static SheetModel PrepareSheetForOverwrite(WorkbookModel workbook, string sheetName)
         {
             var name = string.IsNullOrWhiteSpace(sheetName) ? "Sheet1" : sheetName.Trim();
-            ExcelWorksheet existing = null;
-            foreach (ExcelWorksheet w in ef.Worksheets)
-            {
-                if (string.Equals(w.Name, name, StringComparison.OrdinalIgnoreCase))
-                {
-                    existing = w;
-                    break;
-                }
-            }
+            var existing = workbook.Sheets.FirstOrDefault(s =>
+                string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
 
             if (existing != null)
             {
-                if (ef.Worksheets.Count > 1)
-                {
-                    // Remove only this sheet, keep siblings
-                    ef.Worksheets.Remove(existing.Index);
-                    return ef.Worksheets.Add(name);
-                }
-
-                // Sole sheet: clear cells in place (cannot remove last worksheet)
-                ClearSheet(existing);
-                if (!string.Equals(existing.Name, name, StringComparison.Ordinal))
-                    existing.Name = name;
+                existing.Name = name;
+                existing.Headers = new List<string>();
+                existing.Rows = new List<List<string>>();
                 return existing;
             }
 
-            return ef.Worksheets.Add(name);
+            var sheet = new SheetModel { Name = name };
+            workbook.Sheets.Add(sheet);
+            return sheet;
         }
 
-        private static void ClearSheet(ExcelWorksheet ws)
+        private static void TryRemoveUnusedDefaultSheet(WorkbookModel workbook, HashSet<string> keepNames)
         {
-            int lastRow = FindLastUsedRow(ws);
-            int lastCol = FindLastUsedColumn(ws);
-            if (lastRow < 0 || lastCol < 0) return;
-            for (int r = 0; r <= lastRow; r++)
-                for (int c = 0; c <= lastCol; c++)
-                    ws.Cells[r, c].Value = null;
-        }
-
-        private static void TryRemoveUnusedDefaultSheet(ExcelFile ef, HashSet<string> keepNames)
-        {
-            if (ef.Worksheets.Count <= 1) return;
-            ExcelWorksheet victim = null;
-            foreach (ExcelWorksheet w in ef.Worksheets)
-            {
-                if (keepNames.Contains(w.Name)) continue;
-                if (string.Equals(w.Name, "Sheet1", StringComparison.OrdinalIgnoreCase) && IsSheetEmpty(w))
-                {
-                    victim = w;
-                    break;
-                }
-            }
-            if (victim != null && ef.Worksheets.Count > 1)
-                ef.Worksheets.Remove(victim.Index);
+            if (workbook.Sheets.Count <= 1) return;
+            var victim = workbook.Sheets.FirstOrDefault(s =>
+                !keepNames.Contains(s.Name)
+                && string.Equals(s.Name, "Sheet1", StringComparison.OrdinalIgnoreCase)
+                && IsSheetEmpty(s));
+            if (victim != null)
+                workbook.Sheets.Remove(victim);
         }
 
         private static WriteSpec ParseWriteSpec(string content)
@@ -707,14 +698,14 @@ namespace App.BL.AIAgent.GenericAgent
         private static List<string> ResolveHeaders(
             List<string> requested,
             List<List<string>> rows,
-            DataTable existing,
+            SheetModel existing,
             bool replace)
         {
             if (requested != null && requested.Count > 0)
                 return requested;
 
-            if (!replace && existing != null && existing.Columns.Count > 0)
-                return existing.Columns.Cast<DataColumn>().Select(c => c.ColumnName).ToList();
+            if (!replace && existing != null && existing.Headers != null && existing.Headers.Count > 0)
+                return existing.Headers.ToList();
 
             var width = rows.Count == 0 ? 1 : rows.Max(r => r.Count);
             if (width <= 1)
@@ -723,78 +714,139 @@ namespace App.BL.AIAgent.GenericAgent
             return Enumerable.Range(1, width).Select(i => "Column" + i).ToList();
         }
 
-        private static DataTable BuildTable(List<string> headers, List<List<string>> rows)
+        private static List<List<string>> NormalizeRows(int colCount, List<List<string>> rows)
         {
-            var dt = new DataTable();
-            foreach (var h in headers)
-                dt.Columns.Add(string.IsNullOrWhiteSpace(h) ? "Column" : h);
-
+            var result = new List<List<string>>(rows?.Count ?? 0);
+            if (rows == null) return result;
             foreach (var row in rows)
             {
-                var vals = new object[headers.Count];
-                for (int i = 0; i < headers.Count; i++)
-                    vals[i] = i < row.Count ? row[i] : "";
-                dt.Rows.Add(vals);
+                var cells = new List<string>(colCount);
+                for (int i = 0; i < colCount; i++)
+                    cells.Add(i < (row?.Count ?? 0) ? (row[i] ?? "") : "");
+                result.Add(cells);
             }
-            return dt;
+            return result;
         }
 
-        private static DataTable ExtractSheet(ExcelWorksheet ws)
+        private static bool IsSheetEmpty(SheetModel sheet) =>
+            sheet == null
+            || ((sheet.Headers == null || sheet.Headers.Count == 0)
+                && (sheet.Rows == null || sheet.Rows.Count == 0));
+
+        private static SheetModel FindOrAddSheet(WorkbookModel workbook, string sheetName)
         {
-            // Used range approximation: scan for last non-empty cell
-            int lastRow = FindLastUsedRow(ws);
-            int lastCol = FindLastUsedColumn(ws);
+            var name = string.IsNullOrWhiteSpace(sheetName) ? "Sheet1" : sheetName.Trim();
+            var existing = workbook.Sheets.FirstOrDefault(s =>
+                string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (existing != null)
+                return existing;
+
+            if (workbook.Sheets.Count > 0 && string.Equals(name, "Sheet1", StringComparison.OrdinalIgnoreCase))
+                return workbook.Sheets[0];
+
+            var sheet = new SheetModel { Name = name };
+            workbook.Sheets.Add(sheet);
+            return sheet;
+        }
+
+        // ── Backend dispatch (UseOpenXml) ─────────────────────────────────────
+
+        private static WorkbookModel LoadWorkbook(string fullPath) =>
+            UseOpenXml ? LoadWorkbookOpenXml(fullPath) : LoadWorkbookGemBox(fullPath);
+
+        private static void SaveWorkbook(string fullPath, WorkbookModel workbook)
+        {
+            if (UseOpenXml)
+                SaveWorkbookOpenXml(fullPath, workbook);
+            else
+                SaveWorkbookGemBox(fullPath, workbook);
+        }
+
+        private static void EnsureGemBoxLicense()
+        {
+            // Same key used elsewhere in APP.BL. If invalid for GemBox 47, runtime stays on
+            // whatever Program.cs set (often FREE-LIMITED-KEY → max 5 sheets). Flip UseOpenXml=true to bypass.
+            try { SpreadsheetInfo.SetLicense("E1H5-CMM5-01EP-4OKK"); }
+            catch { /* second SetLicense is ignored; invalid key throws on first ExcelFile use */ }
+        }
+
+        private static WorkbookModel LoadWorkbookGemBox(string fullPath)
+        {
+            EnsureGemBoxLicense();
+            var model = new WorkbookModel();
+            using var stm = File.OpenRead(fullPath);
+            var ext = Path.GetExtension(fullPath) ?? "";
+            ExcelFile ef;
+            try
+            {
+                if (ext.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) && !ext.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                    ef = ExcelFile.Load(stm, LoadOptions.XlsDefault);
+                else
+                    ef = ExcelFile.Load(stm, LoadOptions.XlsxDefault);
+            }
+            catch (FreeLimitReachedException ex)
+            {
+                throw new InvalidOperationException(
+                    "GemBox free limit on load (max 5 sheets / 150 rows). Set UseOpenXml=true in GenericAgentExcelFileHelper, or configure a valid GemBox:SpreadsheetLicense.",
+                    ex);
+            }
+
+            foreach (ExcelWorksheet ws in ef.Worksheets)
+                model.Sheets.Add(ReadSheetGemBox(ws));
+            return model;
+        }
+
+        private static SheetModel ReadSheetGemBox(ExcelWorksheet ws)
+        {
+            var sheet = new SheetModel { Name = ws.Name ?? "Sheet1" };
+            int lastRow = FindLastUsedRowGemBox(ws);
+            int lastCol = FindLastUsedColumnGemBox(ws);
             if (lastRow < 0 || lastCol < 0)
-                return new DataTable();
+                return sheet;
 
             int colCount = lastCol + 1;
-            var dt = new DataTable();
+            var headers = new List<string>(colCount);
             for (int c = 0; c < colCount; c++)
             {
                 var header = ws.Cells[0, c].Value?.ToString();
                 var name = string.IsNullOrWhiteSpace(header) ? "Column" + (c + 1) : header;
-                // unique column names
                 var baseName = name;
                 int n = 2;
-                while (dt.Columns.Contains(name))
+                while (headers.Contains(name, StringComparer.OrdinalIgnoreCase))
                     name = baseName + "_" + n++;
-                dt.Columns.Add(name);
+                headers.Add(name);
             }
 
-            // If only one row and it was used as headers with no data, return headers-only empty
+            var rows = new List<List<string>>();
             for (int r = 1; r <= lastRow; r++)
             {
-                var vals = new object[colCount];
+                var vals = new List<string>(colCount);
                 bool any = false;
                 for (int c = 0; c < colCount; c++)
                 {
                     var v = ws.Cells[r, c].Value?.ToString() ?? "";
-                    vals[c] = v;
+                    vals.Add(v);
                     if (!string.IsNullOrWhiteSpace(v)) any = true;
                 }
-                if (any) dt.Rows.Add(vals);
+                if (any) rows.Add(vals);
             }
 
-            // No header row case: if row 0 has data and we treated it as headers but there were no further rows,
-            // and headers look like data — still OK for LLM preview.
-            if (dt.Rows.Count == 0 && lastRow == 0)
+            if (rows.Count == 0 && lastRow == 0)
             {
-                // Single row file: expose that row as data with Column1..N
-                dt = new DataTable();
+                headers = Enumerable.Range(1, colCount).Select(i => "Column" + i).ToList();
+                var vals = new List<string>(colCount);
                 for (int c = 0; c < colCount; c++)
-                    dt.Columns.Add("Column" + (c + 1));
-                var vals = new object[colCount];
-                for (int c = 0; c < colCount; c++)
-                    vals[c] = ws.Cells[0, c].Value?.ToString() ?? "";
-                dt.Rows.Add(vals);
+                    vals.Add(ws.Cells[0, c].Value?.ToString() ?? "");
+                rows.Add(vals);
             }
 
-            return dt;
+            sheet.Headers = headers;
+            sheet.Rows = rows;
+            return sheet;
         }
 
-        private static int FindLastUsedRow(ExcelWorksheet ws)
+        private static int FindLastUsedRowGemBox(ExcelWorksheet ws)
         {
-            // Walk from a generous max downward — agent logs are small
             const int scanMax = 10000;
             for (int r = scanMax; r >= 0; r--)
             {
@@ -808,11 +860,11 @@ namespace App.BL.AIAgent.GenericAgent
             return -1;
         }
 
-        private static int FindLastUsedColumn(ExcelWorksheet ws)
+        private static int FindLastUsedColumnGemBox(ExcelWorksheet ws)
         {
             const int scanMax = 100;
             int last = -1;
-            int lastRow = Math.Max(0, FindLastUsedRow(ws));
+            int lastRow = Math.Max(0, FindLastUsedRowGemBox(ws));
             for (int r = 0; r <= lastRow; r++)
             {
                 for (int c = 0; c < scanMax; c++)
@@ -825,29 +877,326 @@ namespace App.BL.AIAgent.GenericAgent
             return last;
         }
 
-        private static bool IsSheetEmpty(ExcelWorksheet ws) => FindLastUsedRow(ws) < 0;
-
-        private static ExcelWorksheet FindOrAddSheet(ExcelFile ef, string sheetName)
+        private static void SaveWorkbookGemBox(string fullPath, WorkbookModel workbook)
         {
-            var name = string.IsNullOrWhiteSpace(sheetName) ? "Sheet1" : sheetName.Trim();
-            foreach (ExcelWorksheet ws in ef.Worksheets)
+            EnsureGemBoxLicense();
+
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var s in workbook.Sheets)
             {
-                if (string.Equals(ws.Name, name, StringComparison.OrdinalIgnoreCase))
-                    return ws;
+                s.Name = MakeUniqueSheetName(SanitizeSheetName(s.Name), used);
+                used.Add(s.Name);
             }
-            if (ef.Worksheets.Count > 0 && string.Equals(name, "Sheet1", StringComparison.OrdinalIgnoreCase))
-                return ef.Worksheets[0];
-            return ef.Worksheets.Add(name);
+
+            var ef = new ExcelFile();
+            // Remove default empty sheet after we add real ones
+            foreach (var sheetModel in workbook.Sheets)
+            {
+                var ws = ef.Worksheets.Add(sheetModel.Name);
+                var headers = sheetModel.Headers ?? new List<string>();
+                var rows = sheetModel.Rows ?? new List<List<string>>();
+                int colCount = headers.Count;
+                if (colCount == 0 && rows.Count > 0)
+                    colCount = rows.Max(r => r?.Count ?? 0);
+
+                for (int c = 0; c < headers.Count; c++)
+                    ws.Cells[0, c].Value = headers[c] ?? "";
+
+                int startRow = headers.Count > 0 ? 1 : 0;
+                for (int r = 0; r < rows.Count; r++)
+                {
+                    var row = rows[r];
+                    int width = colCount > 0 ? colCount : (row?.Count ?? 0);
+                    for (int c = 0; c < width; c++)
+                        ws.Cells[startRow + r, c].Value = c < (row?.Count ?? 0) ? (row[c] ?? "") : "";
+                }
+            }
+
+            // Drop GemBox's initial blank worksheet if we added named sheets
+            if (ef.Worksheets.Count > 1)
+            {
+                var first = ef.Worksheets[0];
+                bool firstIsDefaultEmpty =
+                    string.Equals(first.Name, "Sheet1", StringComparison.OrdinalIgnoreCase)
+                    && FindLastUsedRowGemBox(first) < 0
+                    && !workbook.Sheets.Any(s => string.Equals(s.Name, first.Name, StringComparison.OrdinalIgnoreCase));
+                if (firstIsDefaultEmpty)
+                    ef.Worksheets.Remove(0);
+            }
+
+            var ext = Path.GetExtension(fullPath) ?? "";
+            try
+            {
+                if (ext.EndsWith(".xls", StringComparison.OrdinalIgnoreCase) && !ext.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
+                    ef.Save(fullPath, SaveOptions.XlsDefault);
+                else
+                    ef.Save(fullPath, SaveOptions.XlsxDefault);
+            }
+            catch (FreeLimitReachedException ex)
+            {
+                throw new InvalidOperationException(
+                    "GemBox free limit on save (max 5 sheets / 150 rows). Set UseOpenXml=true in GenericAgentExcelFileHelper, or configure a valid GemBox:SpreadsheetLicense. " +
+                    $"Attempted {workbook.Sheets.Count} sheet(s): {string.Join(", ", workbook.Sheets.Select(s => s.Name))}.",
+                    ex);
+            }
         }
 
-        private static ExcelFile LoadExcel(Stream stm, string extension)
+        // ── Open XML load / save ──────────────────────────────────────────────
+
+        private static WorkbookModel LoadWorkbookOpenXml(string fullPath)
         {
-            var ext = extension ?? "";
-            if (ext.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))
-                return ExcelFile.Load(stm, LoadOptions.XlsxDefault);
-            if (ext.EndsWith(".xls", StringComparison.OrdinalIgnoreCase))
-                return ExcelFile.Load(stm, LoadOptions.XlsDefault);
-            return ExcelFile.Load(stm, LoadOptions.XlsxDefault);
+            var model = new WorkbookModel();
+            using var doc = SpreadsheetDocument.Open(fullPath, false);
+            var wbPart = doc.WorkbookPart
+                ?? throw new InvalidOperationException("Excel file has no workbook part: " + fullPath);
+
+            var sst = wbPart.SharedStringTablePart?.SharedStringTable;
+            var sheets = wbPart.Workbook?.Sheets?.Elements<OpenXmlSheet>().ToList()
+                ?? new List<OpenXmlSheet>();
+
+            foreach (var sheet in sheets)
+            {
+                var name = sheet.Name?.Value ?? "Sheet1";
+                if (sheet.Id?.Value == null) continue;
+                var wsPart = (WorksheetPart)wbPart.GetPartById(sheet.Id.Value);
+                model.Sheets.Add(ReadSheetOpenXml(wsPart, name, sst));
+            }
+
+            return model;
+        }
+
+        private static SheetModel ReadSheetOpenXml(WorksheetPart wsPart, string name, SharedStringTable sst)
+        {
+            var sheet = new SheetModel { Name = name };
+            var sheetData = wsPart.Worksheet?.GetFirstChild<SheetData>();
+            if (sheetData == null) return sheet;
+
+            var grid = new Dictionary<int, Dictionary<int, string>>();
+            int maxCol = -1;
+            int maxRow = -1;
+
+            foreach (var row in sheetData.Elements<OpenXmlRow>())
+            {
+                if (row.RowIndex == null) continue;
+                int r = (int)row.RowIndex.Value - 1; // 0-based
+                if (r < 0) continue;
+                maxRow = Math.Max(maxRow, r);
+
+                foreach (var cell in row.Elements<OpenXmlCell>())
+                {
+                    int c = ColumnIndexFromReference(cell.CellReference?.Value);
+                    if (c < 0) continue;
+                    maxCol = Math.Max(maxCol, c);
+                    if (!grid.TryGetValue(r, out var cols))
+                    {
+                        cols = new Dictionary<int, string>();
+                        grid[r] = cols;
+                    }
+                    cols[c] = GetCellText(cell, sst);
+                }
+            }
+
+            if (maxRow < 0 || maxCol < 0)
+                return sheet;
+
+            int colCount = maxCol + 1;
+            string CellAt(int r, int c)
+            {
+                if (grid.TryGetValue(r, out var cols) && cols.TryGetValue(c, out var v))
+                    return v ?? "";
+                return "";
+            }
+
+            // Header row (row 0)
+            var headers = new List<string>(colCount);
+            for (int c = 0; c < colCount; c++)
+            {
+                var header = CellAt(0, c);
+                var colName = string.IsNullOrWhiteSpace(header) ? "Column" + (c + 1) : header;
+                var baseName = colName;
+                int n = 2;
+                while (headers.Contains(colName, StringComparer.OrdinalIgnoreCase))
+                    colName = baseName + "_" + n++;
+                headers.Add(colName);
+            }
+
+            // Data rows (from row 1)
+            var rows = new List<List<string>>();
+            for (int r = 1; r <= maxRow; r++)
+            {
+                var vals = new List<string>(colCount);
+                bool any = false;
+                for (int c = 0; c < colCount; c++)
+                {
+                    var v = CellAt(r, c);
+                    vals.Add(v);
+                    if (!string.IsNullOrWhiteSpace(v)) any = true;
+                }
+                if (any) rows.Add(vals);
+            }
+
+            // Single-row file: treat as data with Column1..N
+            if (rows.Count == 0 && maxRow == 0)
+            {
+                headers = Enumerable.Range(1, colCount).Select(i => "Column" + i).ToList();
+                var vals = new List<string>(colCount);
+                for (int c = 0; c < colCount; c++)
+                    vals.Add(CellAt(0, c));
+                rows.Add(vals);
+            }
+
+            sheet.Headers = headers;
+            sheet.Rows = rows;
+            return sheet;
+        }
+
+        private static string GetCellText(OpenXmlCell cell, SharedStringTable sst)
+        {
+            if (cell == null) return "";
+
+            if (cell.DataType != null && cell.DataType.Value == CellValues.SharedString)
+            {
+                if (sst != null && int.TryParse(cell.InnerText, out int idx))
+                {
+                    var item = sst.Elements<SharedStringItem>().ElementAtOrDefault(idx);
+                    return item?.InnerText ?? "";
+                }
+                return cell.InnerText ?? "";
+            }
+
+            if (cell.DataType != null && cell.DataType.Value == CellValues.InlineString)
+                return cell.InlineString?.Text?.Text
+                    ?? cell.InlineString?.InnerText
+                    ?? "";
+
+            if (cell.CellValue != null)
+                return cell.CellValue.Text ?? "";
+
+            return cell.InnerText ?? "";
+        }
+
+        private static int ColumnIndexFromReference(string cellRef)
+        {
+            if (string.IsNullOrEmpty(cellRef)) return -1;
+            int col = 0;
+            foreach (char ch in cellRef)
+            {
+                if (ch >= 'A' && ch <= 'Z')
+                    col = col * 26 + (ch - 'A' + 1);
+                else if (ch >= 'a' && ch <= 'z')
+                    col = col * 26 + (ch - 'a' + 1);
+                else
+                    break;
+            }
+            return col - 1; // 0-based; -1 if no letters
+        }
+
+        private static void SaveWorkbookOpenXml(string fullPath, WorkbookModel workbook)
+        {
+            // Ensure unique sheet names within Excel limits
+            var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var s in workbook.Sheets)
+            {
+                s.Name = MakeUniqueSheetName(SanitizeSheetName(s.Name), used);
+                used.Add(s.Name);
+            }
+
+            if (File.Exists(fullPath))
+                File.Delete(fullPath);
+
+            using var doc = SpreadsheetDocument.Create(fullPath, SpreadsheetDocumentType.Workbook);
+            var wbPart = doc.AddWorkbookPart();
+            wbPart.Workbook = new Workbook();
+            var sheets = new OpenXmlSheets();
+            wbPart.Workbook.Append(sheets);
+
+            uint sheetId = 1;
+            foreach (var sheetModel in workbook.Sheets)
+            {
+                var wsPart = wbPart.AddNewPart<WorksheetPart>();
+                wsPart.Worksheet = BuildWorksheetOpenXml(sheetModel);
+                sheets.Append(new OpenXmlSheet
+                {
+                    Id = wbPart.GetIdOfPart(wsPart),
+                    SheetId = sheetId++,
+                    Name = sheetModel.Name
+                });
+            }
+
+            wbPart.Workbook.Save();
+        }
+
+        private static OpenXmlWorksheet BuildWorksheetOpenXml(SheetModel sheet)
+        {
+            var sheetData = new SheetData();
+            var headers = sheet.Headers ?? new List<string>();
+            var rows = sheet.Rows ?? new List<List<string>>();
+            int colCount = headers.Count;
+            if (colCount == 0 && rows.Count > 0)
+                colCount = rows.Max(r => r?.Count ?? 0);
+
+            uint rowIndex = 1;
+            if (headers.Count > 0)
+            {
+                sheetData.Append(BuildRowOpenXml(rowIndex++, headers));
+            }
+
+            foreach (var row in rows)
+            {
+                var cells = new List<string>(colCount);
+                for (int c = 0; c < colCount; c++)
+                    cells.Add(c < (row?.Count ?? 0) ? (row[c] ?? "") : "");
+                if (headers.Count == 0 && colCount == 0 && row != null)
+                    cells = row.Select(x => x ?? "").ToList();
+                sheetData.Append(BuildRowOpenXml(rowIndex++, cells));
+            }
+
+            return new OpenXmlWorksheet(sheetData);
+        }
+
+        private static OpenXmlRow BuildRowOpenXml(uint rowIndex, List<string> values)
+        {
+            var row = new OpenXmlRow { RowIndex = rowIndex };
+            for (int c = 0; c < values.Count; c++)
+            {
+                var text = values[c] ?? "";
+                var cell = new OpenXmlCell
+                {
+                    CellReference = ColumnNameFromIndex(c) + rowIndex,
+                    DataType = CellValues.InlineString,
+                    InlineString = new InlineString(new Text(text))
+                };
+                row.Append(cell);
+            }
+            return row;
+        }
+
+        private static string ColumnNameFromIndex(int zeroBasedIndex)
+        {
+            int n = zeroBasedIndex + 1;
+            var sb = new StringBuilder();
+            while (n > 0)
+            {
+                n--;
+                sb.Insert(0, (char)('A' + (n % 26)));
+                n /= 26;
+            }
+            return sb.ToString();
+        }
+
+        private static string MakeUniqueSheetName(string name, HashSet<string> used)
+        {
+            if (!used.Contains(name)) return name;
+            for (int i = 2; i < 1000; i++)
+            {
+                var suffix = "_" + i;
+                var baseName = name.Length + suffix.Length > 31
+                    ? name.Substring(0, Math.Max(1, 31 - suffix.Length))
+                    : name;
+                var candidate = baseName + suffix;
+                if (!used.Contains(candidate)) return candidate;
+            }
+            return name.Substring(0, Math.Min(28, name.Length)) + "_" + Guid.NewGuid().ToString("N").Substring(0, 2);
         }
 
         private static int CountCommasOutsideQuotes(string line)
@@ -888,6 +1237,18 @@ namespace App.BL.AIAgent.GenericAgent
             }
             list.Add(sb.ToString());
             return list;
+        }
+
+        private sealed class WorkbookModel
+        {
+            public List<SheetModel> Sheets { get; set; } = new List<SheetModel>();
+        }
+
+        private sealed class SheetModel
+        {
+            public string Name { get; set; }
+            public List<string> Headers { get; set; } = new List<string>();
+            public List<List<string>> Rows { get; set; } = new List<List<string>>();
         }
 
         private sealed class WriteSpec
