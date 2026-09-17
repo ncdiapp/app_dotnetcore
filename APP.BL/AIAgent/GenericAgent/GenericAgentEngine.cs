@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using App.BL.AIAgent.AiSkill;
+using App.BL.AIAgent.GenericAgent.Plugins;
 using App.BL.DbGenie;
 using App.BL.GenericAgent;
 using App.BL.TenantBusiness;
@@ -61,6 +62,8 @@ namespace App.BL.AIAgent.GenericAgent
             var log = NLog.LogManager.GetCurrentClassLogger();
             var runSw = System.Diagnostics.Stopwatch.StartNew();
             log.Info($"[Agent] START skill={skillKey}");
+            var previousHitl = AgentHitlBridge.Current;
+            AgentHitlBridge.Current = callbacks;
             try
             {
                 var dsId = identity.HasValue ? identity.Value.DataSourceId : 0;
@@ -110,6 +113,14 @@ namespace App.BL.AIAgent.GenericAgent
                 if (toolRows.Count > 0)
                     kernel.Plugins.AddFromFunctions("tools",
                         toolRows.Select(r => WrapRegisteredTool(r, context, skillSet.MaxToolResultChars, instancePool)).ToArray());
+
+                // Interactive: ensure ask_user is always available (even if not subscribed via library).
+                // Deterministic: never inject — ask_user returns error if somehow invoked.
+                if (!context.IsDeterministic
+                    && !KernelHasFunction(kernel, "ask_user"))
+                {
+                    kernel.Plugins.AddFromFunctions("hitl", new[] { CreateAskUserKernelFunction(context) });
+                }
 
                 // Connect MCP servers (agent-owned + subscribed library MCP servers)
                 var mcpClients = new List<McpClient>();
@@ -189,6 +200,10 @@ namespace App.BL.AIAgent.GenericAgent
                     msg += " — " + ex.InnerException.Message;
                 await Safe(callbacks?.OnError, "Agent error: " + msg).ConfigureAwait(false);
             }
+            finally
+            {
+                AgentHitlBridge.Current = previousHitl;
+            }
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -257,6 +272,79 @@ namespace App.BL.AIAgent.GenericAgent
                 functionName: SanitizeName(row.ToolName),
                 description:  row.Description ?? row.ToolName,
                 parameters:   parameters);
+        }
+
+        private static bool KernelHasFunction(Kernel kernel, string functionName)
+        {
+            if (kernel == null || string.IsNullOrWhiteSpace(functionName)) return false;
+            return kernel.Plugins
+                .SelectMany(p => p)
+                .Any(f => string.Equals(f.Name, functionName, StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(f.Name, SanitizeName(functionName), StringComparison.OrdinalIgnoreCase));
+        }
+
+        /// <summary>
+        /// Auto-injected ask_user for Interactive agents when the library tool is not subscribed.
+        /// AgentToolContext is closed over — not exposed as an LLM parameter.
+        /// </summary>
+        private static KernelFunction CreateAskUserKernelFunction(AgentToolContext context)
+        {
+            var parameters = new List<KernelParameterMetadata>
+            {
+                new("prompt")
+                {
+                    Description = "Question shown to the user",
+                    IsRequired = true,
+                    ParameterType = typeof(string)
+                },
+                new("mode")
+                {
+                    Description = "text | single_choice | multi_choice",
+                    IsRequired = false,
+                    ParameterType = typeof(string),
+                    DefaultValue = "text"
+                },
+                new("fieldsJson")
+                {
+                    Description = "JSON array of {name,label,required?} for text answers",
+                    IsRequired = false,
+                    ParameterType = typeof(string)
+                },
+                new("optionsJson")
+                {
+                    Description = "JSON array of {id,label} for choice modes",
+                    IsRequired = false,
+                    ParameterType = typeof(string)
+                },
+                new("contextKey")
+                {
+                    Description = "Optional shared-context key to merge answers into",
+                    IsRequired = false,
+                    ParameterType = typeof(string)
+                }
+            };
+
+            var plugin = new AgentAskUserPlugin();
+            return KernelFunctionFactory.CreateFromMethod(
+                async (KernelArguments args, CancellationToken ct) =>
+                {
+                    string Arg(string name, string fallback = null) =>
+                        args.TryGetValue(name, out var v) && v != null ? v.ToString() : fallback;
+
+                    return await plugin.AskUser(
+                        prompt: Arg("prompt", "") ?? "",
+                        context: context,
+                        mode: Arg("mode", "text"),
+                        fieldsJson: Arg("fieldsJson"),
+                        optionsJson: Arg("optionsJson"),
+                        contextKey: Arg("contextKey")).ConfigureAwait(false);
+                },
+                functionName: "ask_user",
+                description:
+                    "Ask the user a structured question and wait for their answer (Interactive only). " +
+                    "Use for Gate-0 / missing fields / menus. mode=text|single_choice|multi_choice. " +
+                    "Optionally merge answers into shared context via contextKey.",
+                parameters: parameters);
         }
 
         // ─────────────────────────────────────────────────────────────────────

@@ -32,9 +32,10 @@ namespace AppAI.Web.Controllers;
 /// Polling fallback:
 ///   GET /PollEvents?sessionId=...  (call every 500 ms)
 ///
-/// Plan/schema gates:
+/// Plan/schema/ask_user gates:
 ///   POST /ConfirmPlan    → unblocks propose_plan
 ///   POST /ConfirmSchema  → unblocks propose_schema
+///   POST /ConfirmAskUser → unblocks ask_user
 ///
 /// ChatSessionKey = AppGenericAgentSession.SessionKey:
 ///   empty on request → fixed SkillKey:UserId (Agent Management test RUN)
@@ -142,8 +143,12 @@ public class GenericAgentController : SecureBaseController
                 GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "done", Done = new AgentDoneEvent { FinalResponse = done } });
                 if (agentUserId > 0 && agentDsId > 0)
                 {
+                    var isSessionStart = string.Equals(
+                        request.UserMessage?.Trim(), "[session_start]", StringComparison.Ordinal);
                     var updated = new List<JObject>(request.Messages ?? new List<JObject>());
-                    updated.Add(JObject.FromObject(new { role = "user", content = request.UserMessage }));
+                    // Do not persist the synthetic [session_start] marker as a user bubble.
+                    if (!isSessionStart)
+                        updated.Add(JObject.FromObject(new { role = "user", content = request.UserMessage }));
                     var assistant = new JObject
                     {
                         ["role"] = "assistant",
@@ -171,6 +176,15 @@ public class GenericAgentController : SecureBaseController
                 var tcs = GenericAgentSessionStore.RegisterPlanConfirmation(sessionId);
                 using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
                 cts.Token.Register(() => tcs.TrySetResult(false));
+                return await tcs.Task.ConfigureAwait(false);
+            },
+
+            OnAskUser = async askEvent =>
+            {
+                GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "ask_user", AskUser = askEvent });
+                var tcs = GenericAgentSessionStore.RegisterAskUserConfirmation(sessionId);
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+                cts.Token.Register(() => tcs.TrySetResult(new AgentAskUserResponse { Cancelled = true }));
                 return await tcs.Task.ConfigureAwait(false);
             },
 
@@ -305,6 +319,38 @@ public class GenericAgentController : SecureBaseController
             result.ValidationResult.Items.Add(new ValidationItem(
                 typeof(GenericAgentController), "ConfirmSchema_NoPending",
                 ValidationItemType.Warning, "No pending schema confirmation found. It may have already resolved or timed out."));
+
+        result.Object = found;
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<bool> ConfirmAskUser([FromBody] GenericAgentConfirmAskUserDto request)
+    {
+        var result = new OperationCallResult<bool>();
+
+        if (string.IsNullOrWhiteSpace(request?.SessionId))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "ConfirmAskUser_NoSession",
+                ValidationItemType.Error, "SessionId is required."));
+            return result;
+        }
+
+        var response = new AgentAskUserResponse
+        {
+            Cancelled = request.Cancelled,
+            Answers = request.Answers ?? new Dictionary<string, string>(),
+            SelectedIds = request.SelectedIds ?? new List<string>(),
+            FreeText = request.FreeText
+        };
+
+        bool found = GenericAgentSessionStore.ConfirmAskUser(request.SessionId, response);
+
+        if (!found)
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "ConfirmAskUser_NoPending",
+                ValidationItemType.Warning, "No pending ask_user confirmation found. It may have already resolved or timed out."));
 
         result.Object = found;
         return result;

@@ -26,6 +26,9 @@ namespace App.BL.AIAgent.GenericAgent
         private static readonly ConcurrentDictionary<string, TaskCompletionSource<AgentSchemaResponse>> PendingSchema
             = new ConcurrentDictionary<string, TaskCompletionSource<AgentSchemaResponse>>();
 
+        private static readonly ConcurrentDictionary<string, TaskCompletionSource<AgentAskUserResponse>> PendingAskUser
+            = new ConcurrentDictionary<string, TaskCompletionSource<AgentAskUserResponse>>();
+
         public sealed class SessionData
         {
             public ConcurrentQueue<AgentEventDto> Events    = new ConcurrentQueue<AgentEventDto>();
@@ -104,6 +107,23 @@ namespace App.BL.AIAgent.GenericAgent
             return false;
         }
 
+        public static TaskCompletionSource<AgentAskUserResponse> RegisterAskUserConfirmation(string sessionId)
+        {
+            var tcs = new TaskCompletionSource<AgentAskUserResponse>();
+            PendingAskUser[sessionId] = tcs;
+            return tcs;
+        }
+
+        public static bool ConfirmAskUser(string sessionId, AgentAskUserResponse response)
+        {
+            if (PendingAskUser.TryRemove(sessionId, out var tcs))
+            {
+                tcs.TrySetResult(response ?? new AgentAskUserResponse { Cancelled = true });
+                return true;
+            }
+            return false;
+        }
+
         private static void CleanExpired()
         {
             var cutoff = DateTime.UtcNow.AddMinutes(-30);
@@ -119,6 +139,9 @@ namespace App.BL.AIAgent.GenericAgent
 
                     if (PendingSchema.TryRemove(kv.Key, out var stcs))
                         stcs.TrySetResult(new AgentSchemaResponse { Confirmed = false, Feedback = "Session expired." });
+
+                    if (PendingAskUser.TryRemove(kv.Key, out var atcs))
+                        atcs.TrySetResult(new AgentAskUserResponse { Cancelled = true });
                 }
             }
         }

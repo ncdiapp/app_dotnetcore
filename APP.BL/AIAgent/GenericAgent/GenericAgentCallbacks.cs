@@ -30,6 +30,12 @@ namespace App.BL.AIAgent.GenericAgent
         public Func<AgentPlanEvent, Task<bool>> OnPlanReady { get; set; }
 
         /// <summary>
+        /// Optional: blocks the agent until the user answers a structured ask_user prompt.
+        /// Interactive only — Deterministic agents must not call ask_user.
+        /// </summary>
+        public Func<AgentAskUserEvent, Task<AgentAskUserResponse>> OnAskUser { get; set; }
+
+        /// <summary>
         /// Optional: blocks the agent until the user reviews the schema.
         /// Only invoked when CapabilityFlags has the SchemaGate bit (8).
         /// </summary>

@@ -194,6 +194,48 @@ namespace APP.Components.EntityDto
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
+    // ask_user HITL: structured question shown to the user; agent waits for answer
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    public class AgentAskUserField
+    {
+        public string Name { get; set; }
+        public string Label { get; set; }
+        public bool Required { get; set; }
+    }
+
+    public class AgentAskUserOption
+    {
+        public string Id { get; set; }
+        public string Label { get; set; }
+    }
+
+    /// <summary>
+    /// Emitted when the agent calls ask_user. UI must call POST /ConfirmAskUser to proceed.
+    /// Mode: "text" | "single_choice" | "multi_choice"
+    /// </summary>
+    public class AgentAskUserEvent
+    {
+        public string Prompt { get; set; }
+        /// <summary>"text" | "single_choice" | "multi_choice"</summary>
+        public string Mode { get; set; } = "text";
+        public List<AgentAskUserField> Fields { get; set; } = new List<AgentAskUserField>();
+        public List<AgentAskUserOption> Options { get; set; } = new List<AgentAskUserOption>();
+        /// <summary>Optional shared-context key; answers are merged into AppAgentSharedContext when set.</summary>
+        public string ContextKey { get; set; }
+        public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");
+    }
+
+    /// <summary>User response resolving a pending ask_user gate.</summary>
+    public class AgentAskUserResponse
+    {
+        public bool Cancelled { get; set; }
+        public Dictionary<string, string> Answers { get; set; } = new Dictionary<string, string>();
+        public List<string> SelectedIds { get; set; } = new List<string>();
+        public string FreeText { get; set; }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
     // Request body for POST /ConfirmPlan
     // ─────────────────────────────────────────────────────────────────────────────
 
@@ -264,11 +306,11 @@ namespace APP.Components.EntityDto
 
     /// <summary>
     /// A single event emitted by the agent, queued server-side and returned by polling.
-    /// EventType: "step" | "token" | "done" | "error" | "plan" | "schema"
+    /// EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user"
     /// </summary>
     public class AgentEventDto
     {
-        /// <summary>EventType: "step" | "token" | "done" | "error" | "plan" | "schema"</summary>
+        /// <summary>EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user"</summary>
         public string EventType { get; set; }
         public AgentStepEvent Step  { get; set; }
         public string Token         { get; set; }
@@ -280,6 +322,9 @@ namespace APP.Components.EntityDto
 
         /// <summary>Populated when EventType = "schema". UI must call POST /ConfirmSchema to proceed.</summary>
         public AgentSchemaEvent Schema { get; set; }
+
+        /// <summary>Populated when EventType = "ask_user". UI must call POST /ConfirmAskUser to proceed.</summary>
+        public AgentAskUserEvent AskUser { get; set; }
     }
 
     public class AgentPollResponseDto

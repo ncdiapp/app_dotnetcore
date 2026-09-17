@@ -53,4 +53,14 @@ namespace APP.Components.Dto
         public string SchemaJson { get; set; }
         public string Feedback  { get; set; }
     }
+
+    /// <summary>Request body for POST /GenericAgent/ConfirmAskUser.</summary>
+    public class GenericAgentConfirmAskUserDto
+    {
+        public string SessionId { get; set; }
+        public bool Cancelled { get; set; }
+        public Dictionary<string, string> Answers { get; set; } = new Dictionary<string, string>();
+        public List<string> SelectedIds { get; set; } = new List<string>();
+        public string FreeText { get; set; }
+    }
 }

@@ -120,6 +120,13 @@ Propagates `context.WorkflowId` to the child via `GenericAgentBL.RunAsync(..., w
 
 ---
 
+## Interactive HITL (session_start + ask_user)
+
+- **No `OpeningMessage` column.** Empty chat for Interactive agents fires a hidden `[session_start]` turn; the SystemPrompt tells the LLM to speak first.
+- **`ask_user`** (BuiltIn, `platform-multi-agent`; also auto-injected for Interactive) is the structured HITL gate (`text` | `single_choice` | `multi_choice`), same wait/confirm pattern as `propose_plan`.
+- Deterministic workers must never call `ask_user`; all Gate-0 / confirm / menus stay on the Interactive ROOT.
+- AllowAgentFirstTurn (`[session_start]`) applies to **all Interactive** agents, not only orchestrators.
+
 ## Verification
 
 1. Create three skill sets: `prod-agent` (orchestrator), `sales-agent` (Deterministic), `ws-agent` (Deterministic)

@@ -35,10 +35,38 @@ export interface GenericAgentFile {
     IsDirectory: boolean;
 }
 
+export interface AskUserField {
+    Name: string;
+    Label?: string;
+    Required?: boolean;
+}
+
+export interface AskUserOption {
+    Id: string;
+    Label?: string;
+}
+
+export interface AskUserEvent {
+    Prompt: string;
+    Mode: string;
+    Fields?: AskUserField[];
+    Options?: AskUserOption[];
+    ContextKey?: string;
+}
+
+export interface ConfirmAskUserDto {
+    SessionId: string;
+    Cancelled: boolean;
+    Answers?: Record<string, string>;
+    SelectedIds?: string[];
+    FreeText?: string;
+}
+
 export interface GenericAgentEventHandlers {
     onToken: (text: string) => void;
     onStep: (step: { Type: string; ToolName?: string; Description: string; IsSuccess: boolean }) => void;
     onPlan: (plan: { PlanSummary: string }) => void;
+    onAskUser?: (ask: AskUserEvent) => void;
     onDone: (done: { FinalResponse: string }) => void;
     onError: (message: string) => void;
 }
@@ -86,6 +114,14 @@ class GenericAgentService {
             method: 'POST',
             headers: getHeaders(),
             body: JSON.stringify({ sessionId, confirmed }),
+        }).catch(() => {});
+    }
+
+    async ConfirmAskUser(sessionId: string, body: ConfirmAskUserDto): Promise<void> {
+        await fetch(`${BASE}/ConfirmAskUser`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ ...body, SessionId: body.SessionId || sessionId }),
         }).catch(() => {});
     }
 
@@ -291,6 +327,7 @@ class GenericAgentService {
                         Token?: string;
                         Step?: unknown;
                         Plan?: unknown;
+                        AskUser?: AskUserEvent;
                         Done?: { FinalResponse: string };
                         Error?: string;
                     }[];
@@ -305,6 +342,7 @@ class GenericAgentService {
                     if (evt.EventType === 'token' && evt.Token) handlers.onToken(evt.Token);
                     if (evt.EventType === 'step' && evt.Step) handlers.onStep(evt.Step as never);
                     if (evt.EventType === 'plan' && evt.Plan) handlers.onPlan(evt.Plan as never);
+                    if (evt.EventType === 'ask_user' && evt.AskUser) handlers.onAskUser?.(evt.AskUser);
                     if (evt.EventType === 'done') {
                         this.stopPolling();
                         handlers.onDone(evt.Done ?? { FinalResponse: '' });
