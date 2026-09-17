@@ -1,16 +1,21 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { genericAgentSvc } from '../../webapi/genericAgentSvc';
+import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 
 interface ChatMessage {
     role: 'user' | 'assistant';
     content: string;
     isStreaming?: boolean;
+    /** Persisted with session; restored into Tool Activity on reload. */
+    toolSteps?: ToolStep[];
 }
 
 interface ToolStep {
     toolName: string;
+    /** Optional label from server (e.g. "call_agent → excel-read-agent"). */
+    label?: string;
     args?: string;      // Details from tool_call
     result?: string;    // Details from tool_result
     isSuccess: boolean;
@@ -35,6 +40,152 @@ interface Props {
 const snippet = (s?: string | null, max = 300) =>
     !s ? '' : s.length > max ? s.slice(0, max) + '…' : s;
 
+/** Try parse a string that may be JSON (including truncated / double-escaped blobs). */
+const tryParseJsonish = (s: string): unknown | undefined => {
+    const t = s.trim();
+    if (!t) return undefined;
+    try { return JSON.parse(t); } catch { /* continue */ }
+    // Truncated with … — try closing braces/brackets for partial display
+    if (/[…\u2026]$/.test(t) || t.endsWith('...')) {
+        const base = t.replace(/[…\u2026]+$/, '').replace(/\.\.\.$/, '');
+        for (const suffix of ['}', '"]}', '"}]}', ']', '" ] }']) {
+            try { return JSON.parse(base + suffix); } catch { /* try next */ }
+        }
+    }
+    return undefined;
+};
+
+/** Recursively expand stringified JSON fields (e.g. valueJson / value). */
+const deepExpandJson = (v: unknown, depth = 0): unknown => {
+    if (depth > 6 || v == null) return v;
+    if (typeof v === 'string') {
+        const parsed = tryParseJsonish(v);
+        if (parsed !== undefined && (typeof parsed === 'object'))
+            return deepExpandJson(parsed, depth + 1);
+        // Unescape common sequences for readability when still a plain string
+        if (v.includes('\\n') || v.includes('\\t') || v.includes('\\"'))
+            return v.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
+        return v;
+    }
+    if (Array.isArray(v)) return v.map(x => deepExpandJson(x, depth + 1));
+    if (typeof v === 'object') {
+        const out: Record<string, unknown> = {};
+        for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+            // Prefer "value" over legacy double-encoded "valueJson"
+            if ((k === 'valueJson' || k === 'value') && typeof val === 'string') {
+                const parsed = tryParseJsonish(val);
+                out[k === 'valueJson' ? 'value' : k] = parsed !== undefined
+                    ? deepExpandJson(parsed, depth + 1)
+                    : deepExpandJson(val, depth + 1);
+                continue;
+            }
+            out[k] = deepExpandJson(val, depth + 1);
+        }
+        return out;
+    }
+    return v;
+};
+
+/** Pretty-print tool Args/Result for human reading. */
+const formatToolPayload = (raw?: string | null, max = 4000): string => {
+    if (raw == null || raw === '' || raw === 'null') return '';
+    const parsed = tryParseJsonish(raw);
+    if (parsed !== undefined) {
+        const pretty = JSON.stringify(deepExpandJson(parsed), null, 2);
+        return snippet(pretty, max);
+    }
+    // Not JSON — unescape common sequences for readability
+    const unescaped = raw.replace(/\\n/g, '\n').replace(/\\t/g, '\t').replace(/\\"/g, '"');
+    return snippet(unescaped, max);
+};
+
+/** Normalize tool result text — literal "null" from void tools is not useful. */
+const displayResult = (result?: string | null) => {
+    if (result == null || result === '' || result === 'null') return null;
+    return result;
+};
+
+const findSkillKeyInValue = (v: unknown, depth = 0): string | undefined => {
+    if (depth > 4 || v == null) return undefined;
+    if (typeof v === 'string') {
+        const t = v.trim();
+        if (t && !t.includes(' ') && t.length < 100 && /^[a-zA-Z0-9][\w.-]*$/.test(t)) {
+            // likely a skill key when found under a target* property — caller filters
+            return t;
+        }
+        return undefined;
+    }
+    if (Array.isArray(v)) {
+        for (const item of v) {
+            const f = findSkillKeyInValue(item, depth + 1);
+            if (f) return f;
+        }
+        return undefined;
+    }
+    if (typeof v === 'object') {
+        const obj = v as Record<string, unknown>;
+        for (const [k, val] of Object.entries(obj)) {
+            if (/target.*skill|skill.*key|skillKey/i.test(k) && typeof val === 'string' && val.trim())
+                return val.trim();
+        }
+        for (const val of Object.values(obj)) {
+            const f = findSkillKeyInValue(val, depth + 1);
+            if (f) return f;
+        }
+    }
+    return undefined;
+};
+
+/** Extract call_agent targetSkillKey from serialized tool args. */
+const parseCallAgentTarget = (args?: string | null, knownKeys?: Record<string, string>): string | undefined => {
+    if (!args) return undefined;
+    try {
+        const o = JSON.parse(args);
+        const fromProp = findSkillKeyInValue(o);
+        if (fromProp) return fromProp;
+    } catch { /* ignore */ }
+    const m = /targetSkillKey["']?\s*[:=]\s*["']([^"']+)/i.exec(args);
+    if (m?.[1]?.trim()) return m[1].trim();
+    if (knownKeys) {
+        for (const key of Object.keys(knownKeys)) {
+            if (new RegExp(`["']${key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`).test(args))
+                return key;
+        }
+    }
+    return undefined;
+};
+
+/** "call_agent → excel-read-agent" or "call_agent → excel-read-agent — done (9s)" */
+const extractCallAgentKeyFromLabel = (label?: string | null): string | undefined => {
+    if (!label || !/call_agent\s*→/i.test(label)) return undefined;
+    const after = label.split('→')[1];
+    if (!after) return undefined;
+    return after.split('—')[0].split('|')[0].trim() || undefined;
+};
+
+const toolTitle = (toolName: string, args?: string | null, skillNames?: Record<string, string>, label?: string) => {
+    const fromLabel = extractCallAgentKeyFromLabel(label);
+    if (fromLabel) {
+        const display = skillNames?.[fromLabel];
+        return display && display !== fromLabel ? `call_agent: ${display}` : `call_agent: ${fromLabel}`;
+    }
+    if (!/^call_agent$/i.test(toolName)) return toolName;
+    const key = parseCallAgentTarget(args, skillNames);
+    if (!key) return toolName;
+    const display = skillNames?.[key];
+    return display && display !== key ? `call_agent: ${display}` : `call_agent: ${key}`;
+};
+
+const toolTooltip = (toolName: string, args?: string | null, skillNames?: Record<string, string>, label?: string) => {
+    let key = extractCallAgentKeyFromLabel(label);
+    if (!key && /^call_agent$/i.test(toolName))
+        key = parseCallAgentTarget(args, skillNames);
+    if (!key) return toolName;
+    const display = skillNames?.[key];
+    if (display && display !== key) return `SkillKey: ${key}\nDisplayName: ${display}`;
+    return `SkillKey: ${key}`;
+};
+
 const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
     const { theme } = useTheme();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -49,6 +200,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
     const [rightTab, setRightTab] = useState<'tools' | 'files'>('tools');
     const [fileSessionKey, setFileSessionKey] = useState<string | null>(null);
     const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+    const [skillDisplayNames, setSkillDisplayNames] = useState<Record<string, string>>({});
     const bottomRef = useRef<HTMLDivElement | null>(null);
     // Track in-progress tool calls (call event received, result pending)
     const pendingCallRef = useRef<Map<string, { args?: string; startedAt: number }>>(new Map());
@@ -59,6 +211,19 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
 
     useEffect(() => {
         let cancelled = false;
+        agentSkillSetSvc.GetAllSkillSets().then(res => {
+            if (cancelled || !res?.Object) return;
+            const map: Record<string, string> = {};
+            for (const s of res.Object) {
+                if (s?.SkillKey) map[s.SkillKey] = s.DisplayName || s.SkillKey;
+            }
+            setSkillDisplayNames(map);
+        }).catch(() => { /* optional for tool titles */ });
+        return () => { cancelled = true; };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
         genericAgentSvc.GetFixedSessionKey(skillKey).then(key => {
             if (!cancelled) setFileSessionKey(key);
         });
@@ -66,7 +231,40 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
             // Restore prior session on mount (skipped in test mode)
             genericAgentSvc.LoadSession(skillKey).then(prior => {
                 if (prior && prior.length > 0) {
-                    setMessages(prior.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })));
+                    const restoredMsgs: ChatMessage[] = [];
+                    const restored: TurnActivity[] = [];
+                    let userTurn = -1;
+                    for (const m of prior) {
+                        const content = typeof m.content === 'string' ? m.content : String(m.content ?? '');
+                        const steps: ToolStep[] | undefined =
+                            m.role === 'assistant' && Array.isArray(m.toolSteps) && m.toolSteps.length > 0
+                                ? m.toolSteps
+                                    .filter(s => s && s.toolName)
+                                    .map(s => ({
+                                        toolName: s.toolName,
+                                        label: s.label,
+                                        args: s.args,
+                                        result: s.result,
+                                        isSuccess: s.isSuccess !== false,
+                                        durationMs: s.durationMs,
+                                    }))
+                                : undefined;
+                        if (m.role === 'user') {
+                            userTurn++;
+                            restoredMsgs.push({ role: 'user', content });
+                        } else if (m.role === 'assistant') {
+                            restoredMsgs.push({ role: 'assistant', content, toolSteps: steps });
+                            if (steps && steps.length > 0) {
+                                restored.push({
+                                    turnIndex: Math.max(0, userTurn),
+                                    isComplete: true,
+                                    steps,
+                                });
+                            }
+                        }
+                    }
+                    setMessages(restoredMsgs);
+                    setTurnActivities(restored);
                     setCurrentTurnIndex(prior.filter(m => m.role === 'user').length);
                 }
             });
@@ -112,7 +310,13 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
         try {
             const history = messages
                 .filter(m => !m.isStreaming)
-                .map(m => ({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }));
+                .map(m => ({
+                    role: m.role === 'user' ? 'user' : 'assistant',
+                    content: m.content,
+                    ...(m.role === 'assistant' && m.toolSteps && m.toolSteps.length > 0
+                        ? { toolSteps: m.toolSteps }
+                        : {}),
+                }));
 
             const sid = await genericAgentSvc.RunAgent({ SkillKey: skillKey, UserMessage: msg, SessionId: sessionId ?? undefined, Messages: history }, {
                 onToken: (token) => {
@@ -129,27 +333,49 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                     if (!s.ToolName) return;
                     if (s.Type === 'tool_call') {
                         pendingCallRef.current.set(s.ToolName, { args: s.Details, startedAt: Date.now() });
-                        addStep(turnIdx, { toolName: s.ToolName, args: s.Details, isSuccess: true });
+                        addStep(turnIdx, { toolName: s.ToolName, label: s.Description, args: s.Details, isSuccess: true });
                     } else if (s.Type === 'tool_result') {
                         const pending = pendingCallRef.current.get(s.ToolName);
                         const durationMs = pending ? Date.now() - pending.startedAt : undefined;
                         pendingCallRef.current.delete(s.ToolName);
-                        addStep(turnIdx, { toolName: s.ToolName, result: s.Details, isSuccess: s.IsSuccess, durationMs });
+                        const resultLabel = extractCallAgentKeyFromLabel(s.Description)
+                            ? s.Description.split('—')[0].trim()
+                            : undefined;
+                        addStep(turnIdx, {
+                            toolName: s.ToolName,
+                            result: s.Details,
+                            isSuccess: s.IsSuccess,
+                            durationMs,
+                            ...(resultLabel ? { label: resultLabel } : {}),
+                        });
                     }
                 },
                 onPlan:  (plan) => setPendingPlan(plan),
                 onDone:  (done) => {
-                    setMessages(prev => {
-                        const last = prev[prev.length - 1];
-                        if (last?.role === 'assistant' && last.isStreaming) {
-                            return [...prev.slice(0, -1), { ...last, content: done.FinalResponse || last.content, isStreaming: false }];
-                        }
-                        if (done.FinalResponse) return [...prev, { role: 'assistant', content: done.FinalResponse }];
-                        return prev;
+                    setTurnActivities(prev => {
+                        const turn = prev.find(t => t.turnIndex === turnIdx);
+                        const stepsForMsg = turn?.steps ? [...turn.steps] : [];
+                        setMessages(msgs => {
+                            const last = msgs[msgs.length - 1];
+                            if (last?.role === 'assistant' && last.isStreaming) {
+                                return [...msgs.slice(0, -1), {
+                                    ...last,
+                                    content: done.FinalResponse || last.content,
+                                    isStreaming: false,
+                                    toolSteps: stepsForMsg.length > 0 ? stepsForMsg : undefined,
+                                }];
+                            }
+                            if (done.FinalResponse) {
+                                return [...msgs, {
+                                    role: 'assistant' as const,
+                                    content: done.FinalResponse,
+                                    toolSteps: stepsForMsg.length > 0 ? stepsForMsg : undefined,
+                                }];
+                            }
+                            return msgs;
+                        });
+                        return prev.map(t => t.turnIndex === turnIdx ? { ...t, isComplete: true } : t);
                     });
-                    setTurnActivities(prev =>
-                        prev.map(t => t.turnIndex === turnIdx ? { ...t, isComplete: true } : t)
-                    );
                     setCurrentTurnIndex(i => i + 1);
                     setIsRunning(false);
                 },
@@ -276,9 +502,11 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                                 <div className={`p-3 rounded text-xs ${theme.label} flex flex-col gap-1`}>
                                     <div className="flex items-center gap-2 opacity-60">
                                         <i className="fa-solid fa-circle-info" />
-                                        <span className="font-semibold">No tools called</span>
+                                        <span className="font-semibold">No tool activity</span>
                                     </div>
-                                    <p className="opacity-50 leading-relaxed">The agent replied from its training without invoking any tools. If a tool should have fired, check that its description clearly states when to call it.</p>
+                                    <p className="opacity-50 leading-relaxed">
+                                        No tool steps are stored for this chat view. New runs save tool activity with the session; chats saved before that change will not show past tools after reload.
+                                    </p>
                                 </div>
                             )}
 
@@ -298,12 +526,17 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                                     {(() => {
                                         const paired: Array<{ call?: ToolStep; result?: ToolStep; key: string }> = [];
                                         turn.steps.forEach((s, idx) => {
+                                            // Merged step (args + result on one object) — keep args visible for titles
+                                            if (s.result !== undefined && s.args !== undefined) {
+                                                paired.push({ call: s, result: s, key: `${s.toolName}-${idx}` });
+                                                return;
+                                            }
                                             if (s.result !== undefined) {
                                                 const callIdx = findLastIdx(paired, p => p.call?.toolName === s.toolName && !p.result);
                                                 if (callIdx >= 0) {
                                                     paired[callIdx] = { ...paired[callIdx], result: s };
                                                 } else {
-                                                    paired.push({ result: s, key: `${s.toolName}-${idx}` });
+                                                    paired.push({ call: s, result: s, key: `${s.toolName}-${idx}` });
                                                 }
                                             } else {
                                                 paired.push({ call: s, key: `${s.toolName}-${idx}` });
@@ -311,39 +544,49 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                                         });
                                         return paired.map((pair, pi) => {
                                             const toolName = pair.call?.toolName ?? pair.result?.toolName ?? '';
+                                            const argsText = pair.call?.args ?? pair.result?.args;
+                                            const labelText = pair.call?.label ?? pair.result?.label;
                                             const isSuccess = pair.result ? pair.result.isSuccess : true;
                                             const hasResult = pair.result !== undefined;
                                             const expandKey = `${turn.turnIndex}-${pi}`;
                                             const isExpanded = expandedTools.has(expandKey);
-                                            const hasDetails = !!(pair.call?.args || pair.result?.result);
+                                            const resultText = displayResult(pair.result?.result);
+                                            const hasDetails = !!(argsText || resultText);
+                                            const title = toolTitle(toolName, argsText, skillDisplayNames, labelText);
+                                            const tip = toolTooltip(toolName, argsText, skillDisplayNames, labelText);
                                             return (
                                                 <div key={pair.key} className={`mb-1 rounded border ${isSuccess ? 'border-green-200' : 'border-red-200'} overflow-hidden`}>
                                                     <button
+                                                        type="button"
+                                                        title={tip}
                                                         className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left ${isSuccess ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}`}
                                                         onClick={() => hasDetails && toggleExpand(expandKey)}
                                                     >
                                                         <i className={`fa-solid ${!hasResult ? 'fa-spinner fa-spin text-blue-400' : isSuccess ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-500'}`} />
-                                                        <span className="font-mono font-semibold flex-auto">{toolName}</span>
+                                                        <span className="font-mono font-semibold flex-auto truncate">{title}</span>
                                                         {pair.result?.durationMs != null && (
-                                                            <span className="opacity-40">{pair.result.durationMs}ms</span>
+                                                            <span className="opacity-40 shrink-0">{pair.result.durationMs}ms</span>
                                                         )}
                                                         {hasDetails && (
-                                                            <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'} opacity-40`} />
+                                                            <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'} opacity-40 shrink-0`} />
                                                         )}
                                                     </button>
                                                     {isExpanded && (
                                                         <div className="px-2 py-1.5 flex flex-col gap-1.5">
-                                                            {pair.call?.args && (
+                                                            {argsText && (
                                                                 <div>
                                                                     <div className="text-xs opacity-40 mb-0.5">Args</div>
-                                                                    <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{snippet(pair.call.args, 400)}</pre>
+                                                                    <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{formatToolPayload(argsText)}</pre>
                                                                 </div>
                                                             )}
-                                                            {pair.result?.result && (
+                                                            {resultText && (
                                                                 <div>
                                                                     <div className="text-xs opacity-40 mb-0.5">{isSuccess ? 'Result' : 'Error'}</div>
-                                                                    <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{snippet(pair.result.result, 400)}</pre>
+                                                                    <pre className={`text-xs whitespace-pre-wrap break-all opacity-70 ${theme.label}`}>{formatToolPayload(resultText)}</pre>
                                                                 </div>
+                                                            )}
+                                                            {!resultText && hasResult && isSuccess && (
+                                                                <div className={`text-xs opacity-50 ${theme.label}`}>Completed (see Args for written values).</div>
                                                             )}
                                                         </div>
                                                     )}

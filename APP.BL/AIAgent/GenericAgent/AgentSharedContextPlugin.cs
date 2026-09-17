@@ -1,4 +1,6 @@
 using APP.Framework.Plugin;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace App.BL.AIAgent.GenericAgent
 {
@@ -21,11 +23,28 @@ namespace App.BL.AIAgent.GenericAgent
 
         /// <summary>
         /// Writes a JSON value to the shared workflow context.
-        /// All agents sharing the same WorkflowId can read it via ReadContext.
+        /// Returns pretty-printed confirmation JSON so Tool Activity is human-readable
+        /// (void would surface as null; string-embedding valueJson double-escapes and is unreadable).
         /// </summary>
-        public static void WriteContext(string key, string valueJson, AgentToolContext context)
+        public static string WriteContext(string key, string valueJson, AgentToolContext context)
         {
             AppAgentSharedContextBL.WriteContext(context.WorkflowId, key, valueJson, context.DataSourceId);
+
+            JToken valueNode;
+            try { valueNode = JToken.Parse(string.IsNullOrWhiteSpace(valueJson) ? "{}" : valueJson); }
+            catch { valueNode = new JValue(valueJson ?? ""); }
+
+            var payload = new JObject
+            {
+                ["ok"] = true,
+                ["key"] = key ?? "",
+                ["value"] = valueNode
+            };
+
+            var pretty = payload.ToString(Formatting.Indented);
+            if (pretty.Length > 4000)
+                pretty = pretty.Substring(0, 4000) + "\n…";
+            return pretty;
         }
     }
 }

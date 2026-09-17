@@ -91,6 +91,14 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
                     returnValue = method.Invoke(instance, paramValues);
 
                 if (returnValue is string s) return s;
+                if (returnValue == null)
+                {
+                    // void / null-returning BuiltIns must not serialize as the literal "null"
+                    // (that shows up as Result: null in Tool Activity).
+                    if (method.ReturnType == typeof(void) || method.ReturnType == typeof(Task))
+                        return "{\"ok\":true}";
+                    return "{\"ok\":true}";
+                }
                 return JsonConvert.SerializeObject(returnValue);
             }
             catch (TargetInvocationException tie) when (tie.InnerException != null)

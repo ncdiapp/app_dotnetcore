@@ -7,7 +7,11 @@ export interface GenericAgentRunDto {
     SessionId?: string;
     /** Stable AppGenericAgentSession.SessionKey. Omit for fixed test key SkillKey:UserId. */
     ChatSessionKey?: string;
-    Messages?: Array<{ role: string; content: unknown }>;
+    Messages?: Array<{
+        role: string;
+        content: unknown;
+        toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
+    }>;
 }
 
 export interface GenericAgentStartResult {
@@ -98,8 +102,12 @@ class GenericAgentService {
         }
     }
 
-    /** Fixed test session: SessionKey = SkillKey:UserId */
-    async LoadSession(skillKey: string): Promise<Array<{ role: string; content: string }> | null> {
+    /** Fixed test session: SessionKey = SkillKey:UserId. toolSteps optional on assistant messages. */
+    async LoadSession(skillKey: string): Promise<Array<{
+        role: string;
+        content: string;
+        toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
+    }> | null> {
         try {
             const res = await fetch(`${BASE}/LoadSession?skillKey=${encodeURIComponent(skillKey)}`, {
                 headers: getHeaders(),

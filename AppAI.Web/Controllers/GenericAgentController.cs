@@ -99,9 +99,43 @@ public class GenericAgentController : SecureBaseController
 
         var sessionId = GenericAgentSessionStore.CreateSession();
 
+        // Accumulate tool steps for this run so they can be persisted with the chat session.
+        var persistedToolSteps = new List<JObject>();
+
         var callbacks = new GenericAgentCallbacks
         {
-            OnStep = step => { GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "step", Step = step }); return Task.CompletedTask; },
+            OnStep = step =>
+            {
+                GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "step", Step = step });
+                if (step != null && !string.IsNullOrWhiteSpace(step.ToolName))
+                {
+                    if (string.Equals(step.Type, "tool_call", StringComparison.OrdinalIgnoreCase))
+                    {
+                        persistedToolSteps.Add(JObject.FromObject(new
+                        {
+                            toolName = step.ToolName,
+                            label = step.Description,
+                            args = step.Details,
+                            isSuccess = true
+                        }));
+                    }
+                    else if (string.Equals(step.Type, "tool_result", StringComparison.OrdinalIgnoreCase))
+                    {
+                        for (int i = persistedToolSteps.Count - 1; i >= 0; i--)
+                        {
+                            var row = persistedToolSteps[i];
+                            if (string.Equals(row.Value<string>("toolName"), step.ToolName, StringComparison.OrdinalIgnoreCase)
+                                && row["result"] == null)
+                            {
+                                row["result"] = step.Details;
+                                row["isSuccess"] = step.IsSuccess;
+                                break;
+                            }
+                        }
+                    }
+                }
+                return Task.CompletedTask;
+            },
             OnToken = token => { GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "token", Token = token }); return Task.CompletedTask; },
             OnDone = done =>
             {
@@ -109,8 +143,15 @@ public class GenericAgentController : SecureBaseController
                 if (agentUserId > 0 && agentDsId > 0)
                 {
                     var updated = new List<JObject>(request.Messages ?? new List<JObject>());
-                    updated.Add(JObject.FromObject(new { role = "user",      content = request.UserMessage }));
-                    updated.Add(JObject.FromObject(new { role = "assistant", content = done ?? "" }));
+                    updated.Add(JObject.FromObject(new { role = "user", content = request.UserMessage }));
+                    var assistant = new JObject
+                    {
+                        ["role"] = "assistant",
+                        ["content"] = done ?? ""
+                    };
+                    if (persistedToolSteps.Count > 0)
+                        assistant["toolSteps"] = new JArray(persistedToolSteps);
+                    updated.Add(assistant);
                     SessionBL.SaveSession(
                         request.SkillKey, agentUserId, agentDsId, updated,
                         sessionKey: chatSessionKey);
