@@ -6,15 +6,16 @@ namespace APP.Framework.Plugin;
 
 /// <summary>
 /// Contract for ExternalDll agent tools.
-/// Drop a DLL that implements this interface into the ExternalDllRepository folder,
-/// register it in AppAgentToolRegister with ToolType='ExternalDll', and the agent
-/// picks it up without recompile or redeploy.
+/// Drop a DLL that implements this interface into the AgentPlugins folder
+/// (or path from AppConfig key Agent.ExternalDllRepo),
+/// register it in AppAgentToolRegister / AppAgentLibraryTool with ToolType='ExternalDll'.
+/// (Command form plugins use a separate ExternalDllRepository + IAppPlugin — do not mix.)
 ///
 /// ToolConfig JSON shape for ExternalDll:
-///   { "AssemblyName": "Tenant.Reports.dll", "TypeName": "Tenant.Reports.ReportTool", "MethodName": "Run" }
+///   { "AssemblyName": "Tenant.Reports.dll", "TypeName": "Tenant.Reports.ReportTool" }
 ///
-/// ExternalDllToolExecutor loads the assembly via Assembly.LoadFrom, instantiates the
-/// type, and calls ExecuteAsync with the LLM-supplied arguments and the current AgentContext.
+/// ExternalDllToolExecutor loads the assembly via Assembly.LoadFrom, restores ServerContext
+/// identity like BuiltIn, instantiates the type, and calls ExecuteAsync.
 /// </summary>
 public interface IAgentTool
 {

@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>APP.AgentPlugins.Sample</AssemblyName>
+    <RootNamespace>APP.AgentPlugins.Sample</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <!-- Sample for customers: implement IAgentTool, drop into AgentPlugins. -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Platform contract only — no APP.BL / LLBLGen -->
+    <ProjectReference Include="..\APP.Framework\APP.Framework.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Copy DLL next to the running web app so ExternalDllToolExecutor can LoadFrom it. -->
+  <Target Name="CopyToAgentPlugins" AfterTargets="Build">
+    <PropertyGroup>
+      <_AgentPluginsOut>$(MSBuildThisFileDirectory)..\AppAI.Web\bin\$(Configuration)\$(TargetFramework)\AgentPlugins\</_AgentPluginsOut>
+      <_AgentPluginsRepo>$(MSBuildThisFileDirectory)..\AppAI.Web\AgentPlugins\</_AgentPluginsRepo>
+    </PropertyGroup>
+    <MakeDir Directories="$(_AgentPluginsOut);$(_AgentPluginsRepo)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(_AgentPluginsOut)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(_AgentPluginsRepo)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

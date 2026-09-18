@@ -24,7 +24,7 @@ const TOOL_CONFIG_TEMPLATES: Record<string, string> = {
     SqlQuery:     '{\n  "SqlBody": "SELECT TOP 50 Col1, Col2 FROM dbo.YourTable WHERE Col1 = @param1",\n  "ReturnType": "json"\n}',
     HttpRest:     '{\n  "Url": "https://api.example.com/endpoint/{param1}",\n  "Method": "GET",\n  "Headers": {\n    "Authorization": "Bearer YOUR_TOKEN_HERE"\n  }\n}',
     DynamicCSharp:'{\n  "ScriptBody": "// Write C# here. Return a string.\\nreturn \\"result\\";",\n  "AllowedNamespaces": ["System", "System.Linq", "System.Collections.Generic"],\n  "TimeoutSeconds": 10\n}',
-    ExternalDll:  '{\n  "AssemblyPath": "plugins/MyPlugin.dll",\n  "TypeName": "MyPlugin.MyClass",\n  "MethodName": "Execute"\n}',
+    ExternalDll:  '{\n  "AssemblyName": "MyCompany.MyPlugin.dll",\n  "TypeName": "MyCompany.MyPlugin.MyTool"\n}',
     PowerShell:   '{\n  "ScriptPath": "scripts/myscript.ps1",\n  "TimeoutSeconds": 30\n}',
 };
 

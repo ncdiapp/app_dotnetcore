@@ -4,6 +4,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using APP.Components.Dto;
 using APP.Framework;
 using APP.Framework.Plugin;
 using Newtonsoft.Json;
@@ -14,7 +15,9 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
     /// <summary>
     /// Loads an external DLL and calls an IAgentTool implementation.
     /// ToolConfig: {"AssemblyName":"Tenant.Custom.dll","TypeName":"Tenant.Custom.MyTool"}
-    /// The DLL must be in the ExternalDllRepository folder (AppConfig key "Agent.ExternalDllRepo").
+    /// DLL folder: AppConfig "Agent.ExternalDllRepo", else {BaseDirectory}/AgentPlugins
+    /// (Command plugins use ExternalDllRepository — keep Agent DLLs in AgentPlugins unless configured).
+    /// Restores ServerContext identity like BuiltIn so host BL calls work on background threads.
     /// </summary>
     public static class ExternalDllToolExecutor
     {
@@ -43,7 +46,8 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
             catch (Exception ex)
             { return JsonConvert.SerializeObject(new { Error = $"Failed to load {cfg.AssemblyName}: {ex.Message}" }); }
 
-            var type = asm.GetType(cfg.TypeName);
+            var type = asm.GetType(cfg.TypeName, throwOnError: false, ignoreCase: true)
+                       ?? asm.GetType(cfg.TypeName);
             if (type == null)
                 return JsonConvert.SerializeObject(new { Error = $"Type not found: {cfg.TypeName}" });
 
@@ -55,7 +59,28 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
             if (instance is not IAgentTool tool)
                 return JsonConvert.SerializeObject(new { Error = $"{cfg.TypeName} does not implement IAgentTool." });
 
-            return await tool.ExecuteAsync(args, context, ct).ConfigureAwait(false);
+            // Same identity restore as BuiltInToolExecutor — agent tools often run after HTTP flush.
+            if (!string.IsNullOrEmpty(context.ConnectionString) && !string.IsNullOrEmpty(context.DatabaseName))
+            {
+                ServerContext.OverrideThreadIdentity(new AppClientIdentity
+                {
+                    UserId                        = context.UserId,
+                    CurrentWorkingCompanyId       = context.CompanyId,
+                    CurrentUserDbConnectionString = context.ConnectionString,
+                    CurrentUserDataBaseName       = context.DatabaseName,
+                    SessionId                     = context.UserSessionId,
+                    DataSourceId                  = context.DataSourceId
+                });
+            }
+
+            try
+            {
+                return await tool.ExecuteAsync(args, context, ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                ServerContext.OverrideThreadIdentity(null);
+            }
         }
 
         private static (string AssemblyName, string TypeName) ParseConfig(string toolConfig)

@@ -1,0 +1,3 @@
+# Placeholder for ExternalDll agent plugins.
+# Build APP.AgentPlugins.Sample to populate APP.AgentPlugins.Sample.dll here.
+# Runtime also looks under bin/{Configuration}/net10.0/AgentPlugins/ (post-build copy).

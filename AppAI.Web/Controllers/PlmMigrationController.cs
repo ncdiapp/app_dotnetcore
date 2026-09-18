@@ -17,7 +17,18 @@ public class PlmMigrationController : SecureBaseController
     {
         try
         {
-            return PlmMigrationBL.TestPlmConnection(request);
+            // Phase 1: Wizard → AppAgentToolEngine.Dispatch (same path as GenericAgent tools).
+            var args = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["connectionString"] = request?.ConnectionString ?? "",
+            };
+            if (request?.TargetCompanyId != null)
+                args["targetCompanyId"] = request.TargetCompanyId.Value.ToString();
+
+            var json = PlmMigrationToolDispatch.Dispatch(
+                PlmMigrationToolDispatch.TestConnectionConfig, args);
+            var parsed = PlmMigrationToolDispatch.DeserializeResult<OperationCallResult<PlmConnectionTestResultDto>>(json);
+            return parsed ?? PlmMigrationBL.TestPlmConnection(request);
         }
         catch (Exception ex)
         {
@@ -30,7 +41,21 @@ public class PlmMigrationController : SecureBaseController
     {
         try
         {
-            return PlmMigrationBL.DiscoverPlmDataSources(request);
+            var args = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["plmConnectionString"] = request?.PlmConnectionString ?? "",
+            };
+            if (request?.SaasApplicationId != null)
+                args["saasApplicationId"] = request.SaasApplicationId.Value.ToString();
+            if (request?.TargetCompanyId != null)
+                args["targetCompanyId"] = request.TargetCompanyId.Value.ToString();
+            if (request?.SessionId != null)
+                args["sessionId"] = request.SessionId.Value.ToString();
+
+            var json = PlmMigrationToolDispatch.Dispatch(
+                PlmMigrationToolDispatch.DiscoverDataSourcesConfig, args);
+            var parsed = PlmMigrationToolDispatch.DeserializeResult<OperationCallResult<PlmDiscoverDataSourcesResultDto>>(json);
+            return parsed ?? PlmMigrationBL.DiscoverPlmDataSources(request);
         }
         catch (Exception ex)
         {
