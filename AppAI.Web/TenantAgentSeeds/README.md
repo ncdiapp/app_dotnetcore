@@ -18,7 +18,12 @@ structure upgrade pipeline.
 
 | Path | Purpose |
 |---|---|
-| `PlmIntegration/` | PLM Integration library tools (optional pack) |
+| **`PlmIntegrationMultiAgent/`** | **Preferred for new tenants** — Migration Multi-Agent pack (ROOT + DW CHILD + libraries + AppConfigPack). Use `RUN_ALL.bat`. |
+| `PlmIntegration/` | PLM Integration library only (+ alternate single-agent orchestrator seed) |
+| `AppConfigPack/` | Platform App Config Pack BuiltIn tools + orchestrator (also copied into MultiAgent pack) |
 | `SampleExternalDll/` | Demo ExternalDll `sample_hello` (APP.AgentPlugins.Sample) |
+
+**New tenant Multi-Agent:** `TenantAgentSeeds/PlmIntegrationMultiAgent/README.md`  
+**PLM Interactive E2E:** `AppReact/ImportDoc/PlmAgentIntegration/Interactive-E2E-Checklist.md`
 
 Confirm folder naming / location with product owner before expanding.

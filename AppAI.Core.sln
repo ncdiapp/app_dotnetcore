@@ -58,6 +58,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "APP.AgentPlugins.Sample", "
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "APP.Framework", "APP.Framework", "{F8A3CE27-C8BB-34BF-2CAF-2D25790F706A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "APP.AgentPlugins.PlmImport", "APP.AgentPlugins.PlmImport\APP.AgentPlugins.PlmImport.csproj", "{A8A04FED-D5D2-4B72-8291-5347B3761C12}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "APP.Components.Dto", "APP.Components.Dto", "{8C4DB25A-C727-5441-0290-5BCB3E7EED5B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -236,6 +240,18 @@ Global
 		{6A13F2E4-AFE7-4211-A3E5-3892F9A3F930}.Release|x64.Build.0 = Release|Any CPU
 		{6A13F2E4-AFE7-4211-A3E5-3892F9A3F930}.Release|x86.ActiveCfg = Release|Any CPU
 		{6A13F2E4-AFE7-4211-A3E5-3892F9A3F930}.Release|x86.Build.0 = Release|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Debug|x64.Build.0 = Debug|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Debug|x86.Build.0 = Debug|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Release|x64.ActiveCfg = Release|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Release|x64.Build.0 = Release|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Release|x86.ActiveCfg = Release|Any CPU
+		{A8A04FED-D5D2-4B72-8291-5347B3761C12}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

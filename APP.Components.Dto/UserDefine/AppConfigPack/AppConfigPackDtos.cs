@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
 using APP.Components.Dto;
@@ -1149,6 +1150,27 @@ namespace APP.Components.EntityDto
         public int SearchesUpdated { get; set; }
 
         [DataMember]
+        public int? TransactionGroupId { get; set; }
+    }
+
+    /// <summary>
+    /// Mutable context for calling AppConfigPackBL pipeline steps from Execute or external callers
+    /// (e.g. PLM Ex DLL). Prefer Compose pack → Validate → Execute; use steps only when a partial apply is required.
+    /// </summary>
+    public class AppConfigPackStepContext
+    {
+        public AppConfigPackDto Pack { get; set; }
+
+        public int TenantDataSourceId { get; set; }
+
+        public int? SaasApplicationId { get; set; }
+
+        public AppConfigPackExecuteResultDto Result { get; set; } = new AppConfigPackExecuteResultDto();
+
+        /// <summary>integrationId → TransactionID; filled by UpsertTransactions.</summary>
+        public Dictionary<string, int> TransactionIdsByIntegration { get; set; }
+            = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
         public int? TransactionGroupId { get; set; }
     }
 }

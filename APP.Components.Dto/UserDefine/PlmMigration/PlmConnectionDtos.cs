@@ -7,8 +7,9 @@ namespace APP.Components.EntityDto
     [DataContract(Namespace = ContractNamespaces.Dto)]
     public class PlmConnectionTestRequestDto
     {
+        /// <summary>Tenant AppDataSourceRegister id to test (never a connection string).</summary>
         [DataMember]
-        public string ConnectionString { get; set; }
+        public int? DataSourceRegisterId { get; set; }
 
         [DataMember]
         public int? TargetCompanyId { get; set; }
@@ -21,6 +22,12 @@ namespace APP.Components.EntityDto
         public bool IsSuccess { get; set; }
 
         [DataMember]
+        public int? DataSourceRegisterId { get; set; }
+
+        [DataMember]
+        public string DataSourceName { get; set; }
+
+        [DataMember]
         public string ServerVersion { get; set; }
 
         [DataMember]
@@ -30,6 +37,41 @@ namespace APP.Components.EntityDto
         public string ErrorMessage { get; set; }
     }
 
+    /// <summary>List tenant-registered data sources for ask_user selection (no connection strings).</summary>
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmListTenantDataSourcesRequestDto
+    {
+        [DataMember]
+        public int? TargetCompanyId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmTenantDataSourceItemDto
+    {
+        [DataMember]
+        public int DataSourceRegisterId { get; set; }
+
+        [DataMember]
+        public string DataSourceName { get; set; }
+
+        [DataMember]
+        public string DatabaseName { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmListTenantDataSourcesResultDto
+    {
+        [DataMember]
+        public bool IsSuccess { get; set; }
+
+        [DataMember]
+        public string ErrorMessage { get; set; }
+
+        [DataMember]
+        public List<PlmTenantDataSourceItemDto> DataSources { get; set; } = new List<PlmTenantDataSourceItemDto>();
+    }
+
+    /// <summary>Obsolete: do not use. Connect via DataSourceRegisterId only.</summary>
     [DataContract(Namespace = ContractNamespaces.Dto)]
     public class PlmDiscoverDataSourcesRequestDto
     {
@@ -55,11 +97,9 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string DataSourceFromName { get; set; }
 
-        /// <summary>Legacy pdmDataSource.DataSourceName (e.g. PLM, ERP).</summary>
         [DataMember]
         public string DataSourceName { get; set; }
 
-        /// <summary>Raw pdmDataSource.ConnectionString as stored in PLM (empty when null/blank in DB).</summary>
         [DataMember]
         public string ConnectionString { get; set; }
 

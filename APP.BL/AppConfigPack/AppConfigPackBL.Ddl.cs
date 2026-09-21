@@ -10,7 +10,8 @@ namespace APP.BL.AppConfigPack
 {
     public static partial class AppConfigPackBL
     {
-        private static void ApplyDdl(AppConfigPackDto pack, int tenantDataSourceId, AppConfigPackExecuteResultDto executeResult)
+        /// <summary>Public DDL apply — prefer <see cref="StepApplyDdl"/> from a step context.</summary>
+        public static void ApplyDdl(AppConfigPackDto pack, int tenantDataSourceId, AppConfigPackExecuteResultDto executeResult)
         {
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(tenantDataSourceId);
             var tables = pack.Tables ?? new List<AppConfigPackTableDto>();

@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>APP.AgentPlugins.PlmImport</AssemblyName>
+    <RootNamespace>APP.AgentPlugins.PlmImport</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="System.Data.SqlClient" Version="4.8.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Shared App BL + schema reader (Migration code uses DatabaseSchemaMrg).
+         Host must NOT ProjectReference this plugin from APP.BL (LoadFrom only).
+         AppAI.Web may reference this plugin for PlmMigrationController. -->
+    <ProjectReference Include="..\APP.Framework\APP.Framework.Core.csproj" />
+    <ProjectReference Include="..\APP.Components.Dto\APP.Components.Dto.Core.csproj" />
+    <ProjectReference Include="..\DatabaseSchemaReader\DatabaseSchemaReader.Core.csproj" />
+    <ProjectReference Include="..\APP.BL\APP.BL.Core.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+  <Target Name="CopyToAgentPlugins" AfterTargets="Build">
+    <PropertyGroup>
+      <_AgentPluginsOut>$(MSBuildThisFileDirectory)..\AppAI.Web\bin\$(Configuration)\$(TargetFramework)\AgentPlugins\</_AgentPluginsOut>
+      <_AgentPluginsRepo>$(MSBuildThisFileDirectory)..\AppAI.Web\AgentPlugins\</_AgentPluginsRepo>
+    </PropertyGroup>
+    <MakeDir Directories="$(_AgentPluginsOut);$(_AgentPluginsRepo)" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(_AgentPluginsOut)" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(_AgentPluginsRepo)" SkipUnchangedFiles="true" />
+  </Target>
+
+</Project>

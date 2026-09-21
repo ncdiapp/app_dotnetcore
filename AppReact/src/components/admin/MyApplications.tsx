@@ -316,9 +316,13 @@ const MyApplications: React.FC = () => {
         await loadApplications();
         await refreshUserTreeMenu();
         
-        // Auto-open new application configuration editor (matching AngularJS autoOpenNewAppConfigurationEditor)
+        // Auto-open new application configuration editor on Application Properties
+        // so the user can name the app immediately (default reopen uses Data Model Design).
         const applicationId = result.Object;
-        const paramObj = { id: applicationId };
+        const paramObj = {
+          id: applicationId,
+          initialSelectedSection: 1 // EmAppApplicationBuilderSection.ApplicationSetting
+        };
         addTabAndNavigate('/my-application-editor', `Config: New Application`, paramObj, true);
       } else {
         // Show validation errors

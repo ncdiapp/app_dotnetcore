@@ -46,14 +46,53 @@ const VALID_SECTION_IDS = [
   ApplicationBuilderSection.MenuSetting
 ];
 
-function getInitialCurrentSection(): number {
+function parseEditorRouteParam(param: string | undefined): Record<string, any> {
+  if (!param) return {};
+  try {
+    return JSON.parse(decodeURIComponent(param));
+  } catch {
+    return { id: param };
+  }
+}
+
+function getInitialSelectedSectionFromRoute(paramObj: Record<string, any>): number | null {
+  let initial = paramObj.initialSelectedSection;
+  if (initial == null && paramObj.param2 != null) {
+    try {
+      const param2Obj =
+        typeof paramObj.param2 === 'string' ? JSON.parse(paramObj.param2) : paramObj.param2;
+      initial = param2Obj?.initialSelectedSection;
+    } catch {
+      initial = null;
+    }
+  }
+  if (initial == null) return null;
+  const sectionId = Number(initial);
+  return VALID_SECTION_IDS.includes(sectionId) ? sectionId : null;
+}
+
+/** Same-app tab cache > route initialSelectedSection (new-app create) > Data Model Design. */
+function getInitialCurrentSection(routeParam?: string): number {
+  const paramObj = parseEditorRouteParam(routeParam);
+  const routeAppId = paramObj.id != null ? String(paramObj.id) : null;
+  const fromRoute = getInitialSelectedSectionFromRoute(paramObj);
+
   const activeTab = getCurrentActiveTab();
   const tabKey = activeTab?.tabKey ?? null;
   if (tabKey) {
     const cached = getDataModelFromCache(tabKey);
-    if (cached?.currentSection != null && VALID_SECTION_IDS.includes(Number(cached.currentSection))) {
+    const cachedAppId = cached?.menuId != null ? String(cached.menuId) : null;
+    const sameApp = routeAppId != null && cachedAppId != null && routeAppId === cachedAppId;
+    if (
+      sameApp &&
+      cached?.currentSection != null &&
+      VALID_SECTION_IDS.includes(Number(cached.currentSection))
+    ) {
       return Number(cached.currentSection);
     }
+  }
+  if (fromRoute != null) {
+    return fromRoute;
   }
   return ApplicationBuilderSection.Transaction;
 }
@@ -67,24 +106,21 @@ const MyApplicationEditor: React.FC = () => {
   
   const [menuId, setMenuId] = useState<string | null>(null);
   const [applicationData, setApplicationData] = useState<any>(null);
-  const [currentSection, setCurrentSection] = useState<number>(getInitialCurrentSection);
+  const [currentSection, setCurrentSection] = useState<number>(() => getInitialCurrentSection(param));
+  const lastSectionParamRef = React.useRef<string | undefined>(param);
 
-  // Extract menu ID from route parameter
+  // Extract menu ID from route parameter; reset section when editor opens a different app (tab reuse).
   useEffect(() => {
-    let paramObj: any = {};
-    
-    if (param) {
-      try {
-        const decodedParam = decodeURIComponent(param);
-        paramObj = JSON.parse(decodedParam);
-      } catch (error) {
-        paramObj = { id: param };
-      }
-    }
-    
+    const paramObj = parseEditorRouteParam(param);
     const idValue = paramObj.id || null;
     if (idValue) {
       setMenuId(idValue.toString());
+    }
+
+    if (param !== lastSectionParamRef.current) {
+      lastSectionParamRef.current = param;
+      const fromRoute = getInitialSelectedSectionFromRoute(paramObj);
+      setCurrentSection(fromRoute ?? ApplicationBuilderSection.Transaction);
     }
   }, [param]);
 
@@ -100,14 +136,6 @@ const MyApplicationEditor: React.FC = () => {
         
         if (menuData) {
           setApplicationData(menuData);
-          // If application name is "New Application", auto-select Application Properties only when no tab cache (first open)
-          if (menuData.Name === 'New Application') {
-            const tabKey = getCurrentActiveTab()?.tabKey ?? null;
-            const cached = tabKey ? getDataModelFromCache(tabKey) : null;
-            if (cached?.currentSection == null) {
-              setCurrentSection(ApplicationBuilderSection.ApplicationSetting);
-            }
-          }
         } else {
           showError('Application not found');
         }

@@ -1,0 +1,16 @@
+﻿{
+    "SkillKey":  "plm-integration-orchestrator",
+    "DisplayName":  "PLM Integration Orchestrator",
+    "Description":  "ROOT: open with PLM/DW DataSourceId questions, task menu, then call children",
+    "CapabilityFlags":  3,
+    "IsActive":  true,
+    "SortOrder":  100,
+    "Version":  1,
+    "MaxHistoryTokens":  80000,
+    "SummarizeThreshold":  60000,
+    "MaxToolResultChars":  4000,
+    "RecentWindowSize":  10,
+    "MaxIterations":  40,
+    "ExecutionMode":  "Interactive",
+    "AgentUi":  1
+}

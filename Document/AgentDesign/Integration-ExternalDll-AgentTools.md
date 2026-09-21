@@ -2,4 +2,4 @@
 
 Canonical copy: see **[Agent-ExternalDll-Tools.md](./Agent-ExternalDll-Tools.md)**.
 
-(This filename kept briefly so existing links still resolve.)
+For end-to-end Integration Agents (Ex DLL + AppConfigPack BuiltIn + register-id Connect): see **[Agent-Integration-Playbook.md](./Agent-Integration-Playbook.md)**.

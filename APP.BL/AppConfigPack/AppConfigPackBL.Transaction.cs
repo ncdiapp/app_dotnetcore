@@ -14,7 +14,8 @@ namespace APP.BL.AppConfigPack
 {
     public static partial class AppConfigPackBL
     {
-        private static Dictionary<string, int> UpsertTransactions(
+        /// <summary>Public TX upsert — prefer <see cref="StepUpsertTransactions"/>.</summary>
+        public static Dictionary<string, int> UpsertTransactions(
             AppConfigPackDto pack,
             int tenantDataSourceId,
             int? saasApplicationId,
@@ -546,7 +547,8 @@ WHERE TransactionFieldID = @SelectedFieldId";
             }
         }
 
-        internal static void ApplyTransactionChildLinkTargets(
+        /// <summary>Public child link-target apply — prefer <see cref="StepApplyTransactionChildLinkTargets"/>.</summary>
+        public static void ApplyTransactionChildLinkTargets(
             AppConfigPackDto pack,
             Dictionary<string, int> txIdsByIntegration)
         {
@@ -1299,7 +1301,8 @@ ORDER BY CASE WHEN u.ParentTransactionUnitID IS NULL THEN 0 ELSE 1 END, f.Transa
             return sb.ToString();
         }
 
-        private static int? UpsertTransactionGroup(
+        /// <summary>Public transaction-group upsert — prefer <see cref="StepUpsertTransactionGroup"/>.</summary>
+        public static int? UpsertTransactionGroup(
             AppConfigPackDto pack,
             Dictionary<string, int> txIdsByIntegration,
             int? saasApplicationId)
@@ -1434,7 +1437,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
             }
         }
 
-        private static void AttachApplicationAssets(
+        /// <summary>Public attach TX assets — prefer <see cref="StepAttachApplicationAssets"/>.</summary>
+        public static void AttachApplicationAssets(
             int? saasApplicationId,
             List<int> transactionIds,
             AppConfigPackExecuteResultDto executeResult)

@@ -11,7 +11,8 @@ namespace APP.BL.AppConfigPack
 {
     public static partial class AppConfigPackBL
     {
-        private static void UpsertSearches(
+        /// <summary>Public Search upsert — prefer <see cref="StepUpsertSearches"/>.</summary>
+        public static void UpsertSearches(
             AppConfigPackDto pack,
             int tenantDataSourceId,
             int? saasApplicationId,

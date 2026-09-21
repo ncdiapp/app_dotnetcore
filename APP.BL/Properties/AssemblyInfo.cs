@@ -34,3 +34,7 @@ using System.Runtime.InteropServices;
 // [assembly: AssemblyVersion("1.0.*")]
 [assembly: AssemblyVersion("1.0.0.0")]
 [assembly: AssemblyFileVersion("1.0.0.0")]
+
+// PLM Integration agent plugin hosts migrated PlmMigrationBL and needs APP.BL internals
+// (AppCacheManagerBL fixtures/cache refresh) without widening public surface.
+[assembly: InternalsVisibleTo("APP.AgentPlugins.PlmImport")]

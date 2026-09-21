@@ -737,5 +737,8 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public List<int> TransactionIds { get; set; } = new List<int>();
+
+        [DataMember]
+        public List<string> Messages { get; set; } = new List<string>();
     }
 }

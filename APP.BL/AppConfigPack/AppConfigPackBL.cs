@@ -132,7 +132,6 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
             };
             try
             {
-                EnsurePackSchema();
                 if (request?.Pack == null)
                     throw new ArgumentException("Pack is required.");
 
@@ -141,35 +140,8 @@ IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA='dbo'
                 if (validation.Errors.Count > 0)
                     throw new InvalidOperationException(string.Join("; ", validation.Errors));
 
-                int tenantDataSourceId = GetTenantDataSourceId();
-                int? saasApplicationId = request.SaasApplicationId
-                    ?? request.Pack.Source?.SaasApplicationId;
-
-                ApplyDdl(request.Pack, tenantDataSourceId, result.Object);
-                AppCacheManagerBL.RefreshOneCustomerDbRegAndFixtureCache(tenantDataSourceId);
-
-                UpsertSimpleListEntities(request.Pack, saasApplicationId, result.Object);
-
-                var txIdsByIntegration = UpsertTransactions(
-                    request.Pack, tenantDataSourceId, saasApplicationId, result.Object);
-                ApplyTransactionChildLinkTargets(request.Pack, txIdsByIntegration);
-
-                int? groupId = UpsertTransactionGroup(request.Pack, txIdsByIntegration, saasApplicationId);
-                if (groupId.HasValue && groupId.Value > 0)
-                {
-                    result.Object.TransactionGroupId = groupId;
-                    result.Object.Messages.Add($"Transaction group {groupId.Value} ready.");
-                }
-
-                UpsertSearches(
-                    request.Pack, tenantDataSourceId, saasApplicationId, txIdsByIntegration, groupId, result.Object);
-
-                ApplyTransactionRuntimeExtras(
-                    request.Pack, txIdsByIntegration, tenantDataSourceId, saasApplicationId);
-
-                AttachApplicationAssets(saasApplicationId, txIdsByIntegration.Values.ToList(), result.Object);
-
-                result.Object.IsSuccess = true;
+                // Full pipeline = shared public steps (also callable from Ex DLL / other BL).
+                result.Object = RunAllSteps(request.Pack, request.SaasApplicationId);
             }
             catch (Exception ex)
             {

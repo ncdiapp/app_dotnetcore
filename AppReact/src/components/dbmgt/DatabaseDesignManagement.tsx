@@ -133,6 +133,9 @@ const SECTIONS: SectionConfig[] = [
     label: 'PLM Data Import',
     icon: 'fa-solid fa-file-import',
     component: PlmDataImportManagement,
+    // Hidden: use Interactive agent plm-integration-orchestrator (ExternalDll).
+    // Reference UI under plmImport/ remains; HTTP PlmMigrationController removed.
+    hidden: true,
   },
 ];
 

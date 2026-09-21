@@ -9,7 +9,8 @@ namespace APP.BL.AppConfigPack
 {
     public static partial class AppConfigPackBL
     {
-        private static void UpsertSimpleListEntities(
+        /// <summary>Public simple-list upsert — prefer <see cref="StepUpsertSimpleListEntities"/>.</summary>
+        public static void UpsertSimpleListEntities(
             AppConfigPackDto pack,
             int? saasApplicationId,
             AppConfigPackExecuteResultDto executeResult)

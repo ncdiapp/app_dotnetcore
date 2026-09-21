@@ -1,0 +1,10 @@
+﻿[
+    "agent-files",
+    "agent-scripts",
+    "platform-application",
+    "platform-database",
+    "platform-memory",
+    "platform-multi-agent",
+    "platform-search",
+    "platform-transaction"
+]

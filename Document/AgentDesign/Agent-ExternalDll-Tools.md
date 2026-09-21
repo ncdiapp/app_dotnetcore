@@ -4,6 +4,8 @@
 
 Related (different product): Command/Form plugins use `IAppPlugin` + `ExternalDllRepository\` — see `Document/Design/TechPack_Plugin_Architecture.md`.
 
+**Integration Agents (product + App Config):** see **[Agent-Integration-Playbook.md](./Agent-Integration-Playbook.md)** (register-id Connect, AppConfigPack BuiltIn, seed layout).
+
 ---
 
 ## Reference sample in this repo
@@ -179,7 +181,9 @@ PLM Import/Integration is **one optional consumer** of ExternalDll (and of Built
 
 | Item | Location |
 |---|---|
-| Optional tenant seed | `AppAI.Web/TenantAgentSeeds/PlmIntegration/` |
-| Wizard dual entry (Connect/Discover via Dispatch) | `PlmMigrationToolDispatch` / `PlmImportConnectPlugin` |
+| Optional tenant seed | `AppAI.Web/TenantAgentSeeds/PlmIntegration/` (or MultiAgent pack) |
+| PLM docs home | `AppReact/ImportDoc/PlmAgentIntegration/` |
+| Image vertical slice | [PlmImport-Image-ExternalDll-Slice.md](../../AppReact/ImportDoc/PlmAgentIntegration/PlmImport-Image-ExternalDll-Slice.md) + `APP.AgentPlugins.PlmImport` |
+| Entity vertical slice | [PlmImport-Entity-ExternalDll-Slice.md](../../AppReact/ImportDoc/PlmAgentIntegration/PlmImport-Entity-ExternalDll-Slice.md) |
 
 Other integrations (ERP, custom imports, company rules) use the same Library + ExternalDll flow above.

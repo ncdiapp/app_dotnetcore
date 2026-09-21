@@ -73,6 +73,8 @@
   <ItemGroup>
     <!-- APP.BL.Core pulls in transitive: Framework, Dto, EntityConverter, LBL, etc. -->
     <ProjectReference Include="..\APP.BL\APP.BL.Core.csproj" />
+    <!-- Do NOT reference APP.AgentPlugins.PlmImport — Controllers must not call ExternalDll/plugin.
+         PLM agent tools load via AgentPlugins folder + ExternalDllToolExecutor. -->
   </ItemGroup>
 
   <!-- McpGateway plugin — exposes enterprise backend APIs as MCP tools via /appai/mcp -->

@@ -11,20 +11,25 @@ Runtime APIs live under `/webapi/AppConfigPack/` (not PLM Migration). No FieldMa
 
 ## Pipeline
 
-1. **DDL** — create missing tables; **ADD** missing columns only; `CREATE OR ALTER VIEW`
-2. Refresh tenant schema cache
-3. **Simple list entities** — upsert by `entityCode` (`EmAppEntityType.SimpleValueList` = 4); replace values by `code`
-4. **Transactions** — upsert by `integrationId` via table hierarchy (Root / Sibling / Child / Grandchild)
-5. Overlay field metadata (control type, entity/LOV, **query datasource**, visibility, pivot flags, cascading DDL, PK / parent-link, **decimal places**)
-6. Overlay unit display names, grid display type, Available Select pairing (`AvailableSourceUnitId` + field mapping)
-7. Auto-wire child/sibling **Link To Parent PK** (DB FK, same column name, or StyleSpecId↔ReferenceId). VIEW units without a SQL PK get a logical PK.
-8. **Form layout** — if `formLayout.items` is present, delete the existing Flex tree and rebuild it (portable widget names, bind by table/column/command). If omitted, create the default Flex form when missing, then apply `layoutTab` / `layoutHostTable`
-9. **Commands** — upsert by `name` on the transaction (Execute SQL / Refresh / Composition); rewrite `[TF:Table.Column]` tokens; optional CommandActionButton above a child grid
-10. Child-grid **Link Targets** (Create/Edit/Delete) — after all transaction ids exist
-11. Transaction Group (Data Model Template)
-12. **Searches** — DataSet SQL, criteria, SearchView fields, linkTargets, optional main menu
-13. **Transaction extras** (omit = keep default / existing; `[]` = clear): header buttons + read-only, Data Load, Unit Formula, Conditional Action, Linked Search mappings
-14. Attach TX + Search as Application assets
+`AppConfigPackBL.Execute` validates, then runs **`RunAllSteps`** (same public steps Ex DLL / other BL may call). Prefer **compose pack → Validate → Execute**; use individual steps only for partial apply.
+
+| # | Public step | What it does |
+|---|-------------|--------------|
+| 0 | `BeginSteps` | Ensure IntegrationId columns; resolve tenant DS + `SaasApplicationId` |
+| 1 | `StepApplyDdl` | Create missing tables; **ADD** missing columns only; `CREATE OR ALTER VIEW` |
+| 2 | `StepRefreshTenantSchemaCache` | Refresh tenant schema fixture cache |
+| 3 | `StepUpsertSimpleListEntities` | Upsert by `entityCode` (`EmAppEntityType.SimpleValueList` = 4); replace values by `code` |
+| 4 | `StepUpsertTransactions` | Upsert by `integrationId` (hierarchy insert); field overlay; unit display / `GridDisplayType` / Available Select; Link-to-parent PK; form layout; commands; ListEdit main menu. Fills `TransactionIdsByIntegration` |
+| 4b | `StepApplyFieldAndUnitOverlays` | **Optional** — re-apply field + unit overlays only (no hierarchy create). For callers that already have TX ids |
+| 5 | `StepApplyTransactionChildLinkTargets` | Child-grid Create/Edit/Delete link targets (needs all TX ids) |
+| 6 | `StepUpsertTransactionGroup` | Data Model Template / transaction group |
+| 7 | `StepUpsertSearches` | DataSet SQL, criteria, SearchView, linkTargets, menu; attach Search assets |
+| 8 | `StepApplyTransactionRuntimeExtras` | Data Load / Unit Formula / Conditional Action / Linked Search (`omit` = keep; `[]` = clear) |
+| 9 | `StepAttachApplicationAssets` | Attach TX as Application assets |
+
+Inside step 4 (not separately callable as “create only”): auto-wire child/sibling **Link To Parent PK**; portable `formLayout` replace or default Flex + `layoutTab` / `layoutHostTable`; command SQL tokens `[TF:Table.Column]`.
+
+**Callers:** Import Config UI / AI → `Execute`. BuiltIn Agent tools (`get_app_config_pack_contract` / `validate_app_config_pack` / `preview_app_config_pack` / `execute_app_config_pack` in library `platform-app-config-pack`). PLM Ex DLL (`APP.AgentPlugins.PlmImport`) → compose `AppConfigPackDto` via builders → `Execute` (or `BeginSteps` + selected steps). Do **not** put PLM / Blueprint / FieldMapping concepts into AppConfigPackBL.
 
 ## Matching / safety
 

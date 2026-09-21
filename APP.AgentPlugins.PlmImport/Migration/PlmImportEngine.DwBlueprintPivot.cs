@@ -1,0 +1,1858 @@
+using System;
+using System.Collections.Generic;
+using System.Data.SqlClient;
+using System.Linq;
+using System.Text.RegularExpressions;
+using APP.Components.Dto;
+using APP.Components.EntityDto;
+
+namespace APP.AgentPlugins.PlmImport
+{
+    public static partial class PlmImportEngine
+    {
+        private static void ApplyBomColorwayPivotBindingsSql(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            int plmTabId,
+            IReadOnlyList<PlmDwBlueprintBomColorwayPivotBindingDto> bindings)
+        {
+            if (bindings == null || bindings.Count == 0)
+                return;
+
+            foreach (var binding in bindings.Where(b => b != null && b.PlmTabId == plmTabId))
+            {
+                if (string.IsNullOrWhiteSpace(binding.HostAppTableName)
+                    || string.IsNullOrWhiteSpace(binding.GrandchildAppTableName)
+                    || string.IsNullOrWhiteSpace(binding.SourceAppTableName))
+                    continue;
+
+                int? hostUnitId = GetTransactionUnitIdByTableName(conn, tran, transactionId, binding.HostAppTableName);
+                if (!hostUnitId.HasValue)
+                    throw new InvalidOperationException(
+                        $"BOM colorway pivot: host unit not found for table {binding.HostAppTableName} on transaction {transactionId}.");
+
+                int? sourceUnitId = GetTransactionUnitIdByTableName(conn, tran, transactionId, binding.SourceAppTableName);
+                if (!sourceUnitId.HasValue)
+                    throw new InvalidOperationException(
+                        $"BOM colorway pivot: source unit not found for table {binding.SourceAppTableName} on transaction {transactionId}.");
+
+                string pivotKeyColumn = string.IsNullOrWhiteSpace(binding.SourcePivotKeyColumn)
+                    ? "Color"
+                    : binding.SourcePivotKeyColumn.Trim();
+
+                int? sourcePivotFieldId = GetTransactionFieldId(conn, tran, sourceUnitId.Value, pivotKeyColumn);
+                if (!sourcePivotFieldId.HasValue)
+                    throw new InvalidOperationException(
+                        $"BOM colorway pivot: source field {binding.SourceAppTableName}.{pivotKeyColumn} not found.");
+
+                int? grandchildUnitId = GetChildTransactionUnitIdByTableName(
+                    conn, tran, transactionId, hostUnitId.Value, binding.GrandchildAppTableName);
+                if (!grandchildUnitId.HasValue)
+                    throw new InvalidOperationException(
+                        $"BOM colorway pivot: grandchild unit not found for table {binding.GrandchildAppTableName} under host unit {hostUnitId}.");
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit
+SET EmGridViewDisplayType = @DisplayType
+WHERE TransactionUnitID = @UnitId";
+                    cmd.Parameters.AddWithValue("@DisplayType", (int)EmAppTransactionGridDisplayType.ChildUnitPivotColumns);
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.ExecuteNonQuery();
+                }
+
+                string colorwayField = binding.GrandchildColumns?.ColorwayKey ?? "Colorway";
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionField
+SET IsPivotColumn = 1,
+    MatrixForeignKeyFieldId = @SourceFieldId,
+    IsVisible = 1
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                    cmd.Parameters.AddWithValue("@SourceFieldId", sourcePivotFieldId.Value);
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.Parameters.AddWithValue("@FieldName", colorwayField);
+                    cmd.ExecuteNonQuery();
+                }
+
+                if (binding.GrandchildColumns?.ValueFields != null)
+                {
+                    foreach (var vf in binding.GrandchildColumns.ValueFields.Where(v => v != null && !string.IsNullOrWhiteSpace(v.Column)))
+                    {
+                        using (var cmd = conn.CreateCommand())
+                        {
+                            cmd.Transaction = tran;
+                            cmd.CommandText = @"
+UPDATE dbo.AppTransactionField
+SET IsPivotValue = @IsPivotValue,
+    IsVisible = 1
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                            cmd.Parameters.AddWithValue("@IsPivotValue", vf.IsPivotValue);
+                            cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                            cmd.Parameters.AddWithValue("@FieldName", vf.Column.Trim());
+                            cmd.ExecuteNonQuery();
+                        }
+                    }
+                }
+
+                string parentLink = binding.GrandchildColumns?.ParentLink ?? "ParentRowId";
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionField
+SET IsVisible = 0
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.Parameters.AddWithValue("@FieldName", parentLink);
+                    cmd.ExecuteNonQuery();
+                }
+
+                DeleteHostStagingPivotFields(conn, tran, hostUnitId.Value, binding);
+            }
+        }
+
+        private static void DeleteHostStagingPivotFields(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int hostUnitId,
+            PlmDwBlueprintBomColorwayPivotBindingDto binding)
+        {
+            var fieldNames = new List<string>();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT DataBaseFieldName
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId";
+                cmd.Parameters.AddWithValue("@UnitId", hostUnitId);
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        if (!reader.IsDBNull(0))
+                            fieldNames.Add(reader.GetString(0));
+                    }
+                }
+            }
+
+            foreach (string fieldName in fieldNames)
+            {
+                if (!IsBomColorwayStagingHostColumn(fieldName, binding))
+                    continue;
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+DELETE FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                    cmd.Parameters.AddWithValue("@UnitId", hostUnitId);
+                    cmd.Parameters.AddWithValue("@FieldName", fieldName);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        private static bool IsBomColorwayStagingHostColumn(
+            string fieldName,
+            PlmDwBlueprintBomColorwayPivotBindingDto binding)
+        {
+            if (string.IsNullOrWhiteSpace(fieldName))
+                return false;
+
+            if (Regex.IsMatch(fieldName, @"^Colorway_\d+$", RegexOptions.IgnoreCase))
+                return true;
+            if (Regex.IsMatch(fieldName, @"^Image\d+$", RegexOptions.IgnoreCase))
+                return true;
+
+            if (binding.StagingHostColumnPatterns != null)
+            {
+                foreach (string pattern in binding.StagingHostColumnPatterns.Where(p => !string.IsNullOrWhiteSpace(p)))
+                {
+                    string regex = "^" + Regex.Escape(pattern).Replace("%", ".*") + "$";
+                    if (Regex.IsMatch(fieldName, regex, RegexOptions.IgnoreCase))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int? GetChildTransactionUnitIdByTableName(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            int parentUnitId,
+            string tableName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT TOP 1 TransactionUnitID
+FROM dbo.AppTransactionUnit
+WHERE TransactionID = @TransactionId
+  AND ParentTransactionUnitID = @ParentUnitId
+  AND DataBaseTableName = @TableName";
+                cmd.Parameters.AddWithValue("@TransactionId", transactionId);
+                cmd.Parameters.AddWithValue("@ParentUnitId", parentUnitId);
+                cmd.Parameters.AddWithValue("@TableName", tableName);
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        private static int? GetTransactionFieldId(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string fieldName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT TOP 1 TransactionFieldID
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@FieldName", fieldName);
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        private static void AttachBomColorwayHierarchyChildren(
+            List<HierarchyChildTableDto> rootChildTables,
+            IReadOnlyList<PlmDwBlueprintBomColorwayPivotBindingDto> tabBindings)
+        {
+            if (tabBindings == null || tabBindings.Count == 0)
+                return;
+
+            foreach (var binding in tabBindings)
+            {
+                if (string.IsNullOrWhiteSpace(binding.HostAppTableName)
+                    || string.IsNullOrWhiteSpace(binding.GrandchildAppTableName)
+                    || string.IsNullOrWhiteSpace(binding.SourceAppTableName))
+                    continue;
+
+                if (!rootChildTables.Any(c => string.Equals(c.TableName, binding.SourceAppTableName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    rootChildTables.Add(new HierarchyChildTableDto { TableName = binding.SourceAppTableName });
+                }
+
+                var hostChild = rootChildTables.FirstOrDefault(c =>
+                    string.Equals(c.TableName, binding.HostAppTableName, StringComparison.OrdinalIgnoreCase));
+                if (hostChild == null)
+                {
+                    hostChild = new HierarchyChildTableDto
+                    {
+                        TableName = binding.HostAppTableName,
+                        GrandChildTableNames = new List<string>()
+                    };
+                    rootChildTables.Add(hostChild);
+                }
+
+                if (hostChild.GrandChildTableNames == null)
+                    hostChild.GrandChildTableNames = new List<string>();
+
+                if (!hostChild.GrandChildTableNames.Any(g =>
+                    string.Equals(g, binding.GrandchildAppTableName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    hostChild.GrandChildTableNames.Add(binding.GrandchildAppTableName);
+                }
+            }
+        }
+
+        /// <summary>
+        /// TechPack Grading: TchpGradeValue → ChildUnitPivotColumns; column domain = View_TchpStyleActiveSizeRunSizes.
+        /// MatrixKey → View.IsVisible (DimensionCode filter), matching Style Spec 2298.
+        /// </summary>
+        private static void ApplyTechPackGradeValuePivotBindingsSql(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            int plmTabId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            var bindings = plan?.TechPackGradeValuePivotBindings?
+                .Where(b => b != null && b.PlmTabId == plmTabId)
+                .ToList() ?? new List<PlmDwBlueprintTechPackGradeValuePivotDto>();
+
+            // Fallback: derive from ChildUnitDefs when blueprint omitted explicit bindings.
+            if (bindings.Count == 0 && plan?.ChildUnitDefs != null)
+            {
+                bool hasView = plan.ChildUnitDefs.Any(c =>
+                    c?.AppTableName != null
+                    && c.AppTableName.IndexOf("View_TchpStyleActiveSizeRunSizes", StringComparison.OrdinalIgnoreCase) >= 0);
+                var pomLine = plan.ChildUnitDefs.FirstOrDefault(c =>
+                    c?.AppTableName != null
+                    && c.AppTableName.IndexOf("TchpPomSpecLine", StringComparison.OrdinalIgnoreCase) >= 0
+                    && c.GrandChildAppTableNames != null
+                    && c.GrandChildAppTableNames.Any(g =>
+                        g != null && g.IndexOf("TchpGradeValue", StringComparison.OrdinalIgnoreCase) >= 0));
+                if (hasView && pomLine != null)
+                {
+                    bindings.Add(new PlmDwBlueprintTechPackGradeValuePivotDto
+                    {
+                        PlmTabId = plmTabId,
+                        HostAppTableName = "TchpPomSpecLine",
+                        GrandchildAppTableName = "TchpGradeValue",
+                        SourceAppTableName = "View_TchpStyleActiveSizeRunSizes",
+                        SourcePivotKeyColumn = "SizeRunSizeId",
+                        PivotColumnField = "SizeRunSizeId",
+                        PivotValueField = "GradingDelta",
+                        SkipMatrixKeyVisibleFilter = false
+                    });
+                }
+            }
+
+            foreach (var binding in bindings)
+            {
+                string hostTable = QualifyBlueprintTableName(
+                    binding.HostAppTableName ?? "TchpPomSpecLine", tablePrefix, skipTablePrefix: true);
+                string gcTable = QualifyBlueprintTableName(
+                    binding.GrandchildAppTableName ?? "TchpGradeValue", tablePrefix, skipTablePrefix: true);
+                string sourceTable = QualifyBlueprintTableName(
+                    binding.SourceAppTableName ?? "View_TchpStyleActiveSizeRunSizes", tablePrefix, skipTablePrefix: true);
+
+                int? hostUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, hostTable);
+                int? sourceUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, sourceTable);
+                if (!hostUnitId.HasValue || !sourceUnitId.HasValue)
+                    continue;
+
+                int? grandchildUnitId = GetChildTransactionUnitIdByTableName(
+                    conn, tran, transactionId, hostUnitId.Value, gcTable);
+                if (!grandchildUnitId.HasValue)
+                    grandchildUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, gcTable);
+                if (!grandchildUnitId.HasValue)
+                    continue;
+
+                string sourceKeyCol = string.IsNullOrWhiteSpace(binding.SourcePivotKeyColumn)
+                    ? "SizeRunSizeId"
+                    : binding.SourcePivotKeyColumn.Trim();
+                string pivotColField = string.IsNullOrWhiteSpace(binding.PivotColumnField)
+                    ? "SizeRunSizeId"
+                    : binding.PivotColumnField.Trim();
+                string pivotValField = string.IsNullOrWhiteSpace(binding.PivotValueField)
+                    ? "GradingDelta"
+                    : binding.PivotValueField.Trim();
+
+                int? sourcePivotFieldId = GetTransactionFieldId(conn, tran, sourceUnitId.Value, sourceKeyCol);
+                if (!sourcePivotFieldId.HasValue)
+                    continue;
+
+                // Dimension filter column (view CASE); required for MatrixKey like Style Spec 2298.
+                int? matrixKeyFieldId = EnsureViewIsVisibleTransactionField(conn, tran, sourceUnitId.Value);
+                if (binding.SkipMatrixKeyVisibleFilter)
+                    matrixKeyFieldId = null;
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit
+SET EmGridViewDisplayType = @DisplayType,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId";
+                    cmd.Parameters.AddWithValue("@DisplayType", (int)EmAppTransactionGridDisplayType.ChildUnitPivotColumns);
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.ExecuteNonQuery();
+                }
+
+                int? sizeRunDetailEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "SizeRunDetail");
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    IsPivotColumn = 1,
+    IsPivotValue = 0,
+    MatrixForeignKeyFieldId = @SourceFieldId,
+    MatrixKeyTransactionFieldId = @MatrixKeyFieldId,
+    ControlType = @Ddl,
+    EntityId = COALESCE(@EntityId, EntityId),
+    DisplayWidth = N'150',
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                    cmd.Parameters.AddWithValue("@SourceFieldId", sourcePivotFieldId.Value);
+                    cmd.Parameters.AddWithValue("@MatrixKeyFieldId", (object)matrixKeyFieldId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Ddl", (int)EmAppControlType.DDL);
+                    cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.Parameters.AddWithValue("@FieldName", pivotColField);
+                    cmd.ExecuteNonQuery();
+                }
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    IsPivotValue = 1,
+    IsPivotColumn = 0,
+    DisplayWidth = N'150',
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.Parameters.AddWithValue("@FieldName", pivotValField);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        /// <summary>
+        /// TechPack Fit F3: View_TchpFitMeasurementByPom → ChildUnitPivotColumns; column domain = TchpFitRound.RoundNumber.
+        /// Read-only aggregate on FIT SUMMARY (no IsVisible matrix key).
+        /// </summary>
+        private static void ApplyTechPackFitMeasurementPivotBindingsSql(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            int plmTabId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            var bindings = plan?.TechPackFitMeasurementPivotBindings?
+                .Where(b => b != null && b.PlmTabId == plmTabId)
+                .ToList() ?? new List<PlmDwBlueprintTechPackFitMeasurementPivotDto>();
+
+            // Fallback: derive from ChildUnitDefs when blueprint omitted explicit bindings.
+            if (bindings.Count == 0 && plan?.ChildUnitDefs != null)
+            {
+                bool hasFitRound = plan.ChildUnitDefs.Any(c =>
+                    c?.AppTableName != null
+                    && c.AppTableName.IndexOf("TchpFitRound", StringComparison.OrdinalIgnoreCase) >= 0);
+                var pomLine = plan.ChildUnitDefs.FirstOrDefault(c =>
+                    c?.AppTableName != null
+                    && c.AppTableName.IndexOf("TchpPomSpecLine", StringComparison.OrdinalIgnoreCase) >= 0
+                    && c.GrandChildAppTableNames != null
+                    && c.GrandChildAppTableNames.Any(g =>
+                        g != null && g.IndexOf("View_TchpFitMeasurementByPom", StringComparison.OrdinalIgnoreCase) >= 0));
+                if (hasFitRound && pomLine != null)
+                {
+                    bindings.Add(new PlmDwBlueprintTechPackFitMeasurementPivotDto
+                    {
+                        PlmTabId = plmTabId,
+                        HostAppTableName = "TchpPomSpecLine",
+                        GrandchildAppTableName = "View_TchpFitMeasurementByPom",
+                        SourceAppTableName = "TchpFitRound",
+                        SourcePivotKeyColumn = "RoundNumber",
+                        PivotColumnField = "RoundNumber",
+                        PivotValueField = "ActualValue",
+                        SkipMatrixKeyVisibleFilter = true
+                    });
+                }
+            }
+
+            foreach (var binding in bindings)
+            {
+                string hostTable = QualifyBlueprintTableName(
+                    binding.HostAppTableName ?? "TchpPomSpecLine", tablePrefix, skipTablePrefix: true);
+                string gcTable = QualifyBlueprintTableName(
+                    binding.GrandchildAppTableName ?? "View_TchpFitMeasurementByPom", tablePrefix, skipTablePrefix: true);
+                string sourceTable = QualifyBlueprintTableName(
+                    binding.SourceAppTableName ?? "TchpFitRound", tablePrefix, skipTablePrefix: true);
+
+                int? hostUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, hostTable);
+                int? sourceUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, sourceTable);
+                if (!hostUnitId.HasValue || !sourceUnitId.HasValue)
+                    continue;
+
+                int? grandchildUnitId = GetChildTransactionUnitIdByTableName(
+                    conn, tran, transactionId, hostUnitId.Value, gcTable);
+                if (!grandchildUnitId.HasValue)
+                    grandchildUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, gcTable);
+                if (!grandchildUnitId.HasValue)
+                    continue;
+
+                // Views have no SQL FK — ensure PomSpecLineId (or FitRoundId) links to host child PK
+                // so GetFormData can filter grandchild rows (avoids empty "() OR" SQL).
+                foreach (string linkCol in new[] { "PomSpecLineId", "FitRoundId" })
+                {
+                    int? hostPkFieldId = GetTransactionFieldId(conn, tran, hostUnitId.Value, linkCol);
+                    if (!hostPkFieldId.HasValue)
+                        continue;
+                    if (GetTransactionFieldId(conn, tran, grandchildUnitId.Value, linkCol).HasValue)
+                    {
+                        SetFieldLinkToParentPrimaryKeySql(
+                            conn, tran, grandchildUnitId.Value, linkCol, hostPkFieldId.Value);
+                        break;
+                    }
+                }
+
+                string sourceKeyCol = string.IsNullOrWhiteSpace(binding.SourcePivotKeyColumn)
+                    ? "RoundNumber"
+                    : binding.SourcePivotKeyColumn.Trim();
+                string pivotColField = string.IsNullOrWhiteSpace(binding.PivotColumnField)
+                    ? "RoundNumber"
+                    : binding.PivotColumnField.Trim();
+                string pivotValField = string.IsNullOrWhiteSpace(binding.PivotValueField)
+                    ? "ActualValue"
+                    : binding.PivotValueField.Trim();
+
+                int? sourcePivotFieldId = GetTransactionFieldId(conn, tran, sourceUnitId.Value, sourceKeyCol);
+                if (!sourcePivotFieldId.HasValue)
+                    continue;
+
+                int? matrixKeyFieldId = null;
+                if (!binding.SkipMatrixKeyVisibleFilter)
+                {
+                    matrixKeyFieldId = EnsureViewIsVisibleTransactionField(conn, tran, sourceUnitId.Value);
+                }
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit
+SET EmGridViewDisplayType = @DisplayType,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId";
+                    cmd.Parameters.AddWithValue("@DisplayType", (int)EmAppTransactionGridDisplayType.ChildUnitPivotColumns);
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.ExecuteNonQuery();
+                }
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    IsPivotColumn = 1,
+    IsPivotValue = 0,
+    MatrixForeignKeyFieldId = @SourceFieldId,
+    MatrixKeyTransactionFieldId = @MatrixKeyFieldId,
+    DisplayWidth = N'100',
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                    cmd.Parameters.AddWithValue("@SourceFieldId", sourcePivotFieldId.Value);
+                    cmd.Parameters.AddWithValue("@MatrixKeyFieldId", (object)matrixKeyFieldId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.Parameters.AddWithValue("@FieldName", pivotColField);
+                    cmd.ExecuteNonQuery();
+                }
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    IsPivotValue = 1,
+    IsPivotColumn = 0,
+    DisplayWidth = N'100',
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.Parameters.AddWithValue("@FieldName", pivotValField);
+                    cmd.ExecuteNonQuery();
+                }
+
+                // F3: force read-only on host + grandchild view.
+                foreach (var roUnitId in new[] { hostUnitId.Value, grandchildUnitId.Value })
+                {
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.Transaction = tran;
+                        cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit SET
+    IsReadOnly = 1,
+    IsDisableAddButton = 1,
+    IsDisableDeleteButton = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId";
+                        cmd.Parameters.AddWithValue("@UnitId", roUnitId);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// TechPack Simple QC (QX1): Plm_SimpleQCResult → ChildUnitPivotColumns;
+        /// column domain = View_TchpSimpleQcSelectedSizes (QcSelectedSizes whitelist).
+        /// </summary>
+        private static void ApplyTechPackSimpleQcPivotBindingsSql(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            int plmTabId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            var bindings = plan?.TechPackSimpleQcPivotBindings?
+                .Where(b => b != null && b.PlmTabId == plmTabId)
+                .ToList() ?? new List<PlmDwBlueprintTechPackSimpleQcPivotDto>();
+
+            if (bindings.Count == 0 && plan?.ChildUnitDefs != null)
+            {
+                bool hasView = plan.ChildUnitDefs.Any(c =>
+                    c?.AppTableName != null
+                    && c.AppTableName.IndexOf("View_TchpSimpleQcSelectedSizes", StringComparison.OrdinalIgnoreCase) >= 0);
+                var host = plan.ChildUnitDefs.FirstOrDefault(c =>
+                    c?.AppTableName != null
+                    && c.AppTableName.IndexOf("SimpleQC", StringComparison.OrdinalIgnoreCase) >= 0
+                    && c.AppTableName.IndexOf("SimpleQCResult", StringComparison.OrdinalIgnoreCase) < 0
+                    && c.GrandChildAppTableNames != null
+                    && c.GrandChildAppTableNames.Any(g =>
+                        g != null && g.IndexOf("SimpleQCResult", StringComparison.OrdinalIgnoreCase) >= 0));
+                if (hasView && host != null)
+                {
+                    bindings.Add(new PlmDwBlueprintTechPackSimpleQcPivotDto
+                    {
+                        PlmTabId = plmTabId,
+                        HostAppTableName = "SimpleQC",
+                        GrandchildAppTableName = "SimpleQCResult",
+                        SourceAppTableName = "View_TchpSimpleQcSelectedSizes",
+                        SourcePivotKeyColumn = "SizeRunSizeId",
+                        PivotColumnField = "SizeRunSizeId",
+                        PivotValueFields = new List<string>
+                        {
+                            "GradingSize", "QCSize", "Difference",
+                            "QCSizeBeforeWash", "DiffBeforeWashAndGrading",
+                            "QCAfterWashIron", "DiffAfterIronAndGrading",
+                            "QCAfterIron"
+                        },
+                        SkipMatrixKeyVisibleFilter = false,
+                        SkipTablePrefixOnSource = true
+                    });
+                }
+            }
+
+            foreach (var binding in bindings)
+            {
+                string hostTable = QualifyBlueprintTableName(
+                    binding.HostAppTableName ?? "SimpleQC", tablePrefix, skipTablePrefix: binding.SkipTablePrefixOnHost);
+                string gcTable = QualifyBlueprintTableName(
+                    binding.GrandchildAppTableName ?? "SimpleQCResult", tablePrefix, skipTablePrefix: binding.SkipTablePrefixOnGrandchild);
+                string sourceTable = QualifyBlueprintTableName(
+                    binding.SourceAppTableName ?? "View_TchpSimpleQcSelectedSizes", tablePrefix, skipTablePrefix: binding.SkipTablePrefixOnSource);
+
+                int? hostUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, hostTable);
+                int? sourceUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, sourceTable);
+                if (!hostUnitId.HasValue || !sourceUnitId.HasValue)
+                    continue;
+
+                int? grandchildUnitId = GetChildTransactionUnitIdByTableName(
+                    conn, tran, transactionId, hostUnitId.Value, gcTable);
+                if (!grandchildUnitId.HasValue)
+                    grandchildUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, gcTable);
+                if (!grandchildUnitId.HasValue)
+                    continue;
+
+                // ParentRowId → host RowId for nested load
+                int? hostPkFieldId = GetTransactionFieldId(conn, tran, hostUnitId.Value, "RowId");
+                if (hostPkFieldId.HasValue
+                    && GetTransactionFieldId(conn, tran, grandchildUnitId.Value, "ParentRowId").HasValue)
+                {
+                    SetFieldLinkToParentPrimaryKeySql(
+                        conn, tran, grandchildUnitId.Value, "ParentRowId", hostPkFieldId.Value);
+                }
+
+                string sourceKeyCol = string.IsNullOrWhiteSpace(binding.SourcePivotKeyColumn)
+                    ? "SizeRunSizeId"
+                    : binding.SourcePivotKeyColumn.Trim();
+                string pivotColField = string.IsNullOrWhiteSpace(binding.PivotColumnField)
+                    ? "SizeRunSizeId"
+                    : binding.PivotColumnField.Trim();
+
+                var pivotValFields = (binding.PivotValueFields ?? new List<string>())
+                    .Where(f => !string.IsNullOrWhiteSpace(f))
+                    .Select(f => f.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                if (pivotValFields.Count == 0 && !string.IsNullOrWhiteSpace(binding.PivotValueField))
+                    pivotValFields.Add(binding.PivotValueField.Trim());
+                if (pivotValFields.Count == 0)
+                    pivotValFields.Add("QCSize");
+
+                int? sourcePivotFieldId = GetTransactionFieldId(conn, tran, sourceUnitId.Value, sourceKeyCol);
+                if (!sourcePivotFieldId.HasValue)
+                    continue;
+
+                int? matrixKeyFieldId = EnsureViewIsVisibleTransactionField(conn, tran, sourceUnitId.Value);
+                if (binding.SkipMatrixKeyVisibleFilter)
+                    matrixKeyFieldId = null;
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionUnit
+SET EmGridViewDisplayType = @DisplayType,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId";
+                    cmd.Parameters.AddWithValue("@DisplayType", (int)EmAppTransactionGridDisplayType.ChildUnitPivotColumns);
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.ExecuteNonQuery();
+                }
+
+                int? sizeRunDetailEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "SizeRunDetail");
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    IsPivotColumn = 1,
+    IsPivotValue = 0,
+    MatrixForeignKeyFieldId = @SourceFieldId,
+    MatrixKeyTransactionFieldId = @MatrixKeyFieldId,
+    ControlType = @Ddl,
+    EntityId = COALESCE(@EntityId, EntityId),
+    DisplayWidth = N'150',
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                    cmd.Parameters.AddWithValue("@SourceFieldId", sourcePivotFieldId.Value);
+                    cmd.Parameters.AddWithValue("@MatrixKeyFieldId", (object)matrixKeyFieldId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Ddl", (int)EmAppControlType.DDL);
+                    cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                    cmd.Parameters.AddWithValue("@FieldName", pivotColField);
+                    cmd.ExecuteNonQuery();
+                }
+
+                var labelByField = (binding.PivotValueLabels ?? new List<PlmDwBlueprintSimpleQcMeasureLabelDto>())
+                    .Where(l => l != null && !string.IsNullOrWhiteSpace(l.FieldName))
+                    .GroupBy(l => l.FieldName.Trim(), StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(g => g.Key, g => (g.First().DisplayLabel ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase);
+
+                var allMeasureStems = new[]
+                {
+                    "GradingSize", "QCSize", "Difference",
+                    "QCSizeBeforeWash", "DiffBeforeWashAndGrading",
+                    "QCAfterWashIron", "DiffAfterIronAndGrading",
+                    "QCAfterIron"
+                };
+                var visibleMeasures = new HashSet<string>(pivotValFields, StringComparer.OrdinalIgnoreCase);
+                var measureStems = allMeasureStems
+                    .Concat(pivotValFields)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                foreach (string pivotValField in measureStems)
+                {
+                    bool isVisibleMeasure = visibleMeasures.Contains(pivotValField);
+                    string displayLabel = null;
+                    if (labelByField.TryGetValue(pivotValField, out var label) && !string.IsNullOrWhiteSpace(label))
+                        displayLabel = label;
+
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.Transaction = tran;
+                        cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    IsPivotValue = @IsPivotValue,
+    IsPivotColumn = 0,
+    DisplayWidth = N'120',
+    IsVisible = @IsVisible,
+    DisplayName = COALESCE(@DisplayName, DisplayName),
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                        cmd.Parameters.AddWithValue("@IsPivotValue", isVisibleMeasure ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@IsVisible", isVisibleMeasure ? 1 : 0);
+                        cmd.Parameters.AddWithValue("@DisplayName", (object)displayLabel ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@UnitId", grandchildUnitId.Value);
+                        cmd.Parameters.AddWithValue("@FieldName", pivotValField);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }
+
+            if (bindings.Count == 0)
+                return;
+
+            // StyleSpec size fields read-only on Simple QC TX (QcSelectedSizes stays editable MultiSelect)
+            int? styleSpecUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, "TchpStyleSpec");
+            if (styleSpecUnitId.HasValue)
+            {
+                foreach (string roField in new[] { "SizeRunId", "BaseSizeDetailId", "UnitOfMeasure" })
+                {
+                    using (var cmd = conn.CreateCommand())
+                    {
+                        cmd.Transaction = tran;
+                        cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    IsReadonly = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = @FieldName";
+                        cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId.Value);
+                        cmd.Parameters.AddWithValue("@FieldName", roField);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+
+                RemoveTechPackStyleSpecVisibleSizesField(conn, tran, styleSpecUnitId.Value);
+
+                int? sizeRunDetailEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "SizeRunDetail");
+                int? sizeRunFieldId = GetTransactionFieldId(conn, tran, styleSpecUnitId.Value, "SizeRunId");
+                EnsureTechPackStyleSpecQcSelectedSizesField(
+                    conn, tran, styleSpecUnitId.Value, sizeRunDetailEntityId, sizeRunFieldId);
+            }
+
+            RemovePlmSiblingSelectedSizeFields(conn, tran, transactionId);
+        }
+
+        /// <summary>
+        /// F2: wire Child Unit Link Target from SUMMARY TchpFitRound → FIT ROUND transaction.
+        /// Uses SourceColumn1 (field name) — not SourceViewColumnID1 (FK to AppSearchViewField).
+        /// </summary>
+        private static void ApplyTechPackFitRoundLinkTargetsSql(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            if (plan?.ChildUnitDefs == null)
+                return;
+
+            foreach (var child in plan.ChildUnitDefs)
+            {
+                if (child == null || string.IsNullOrWhiteSpace(child.LinkTargetIntegrationId))
+                    continue;
+                if (child.AppTableName == null
+                    || child.AppTableName.IndexOf("TchpFitRound", StringComparison.OrdinalIgnoreCase) < 0)
+                    continue;
+
+                int? targetTxId = GetTransactionIdByIntegrationId(conn, tran, child.LinkTargetIntegrationId.Trim());
+                if (!targetTxId.HasValue)
+                    continue;
+
+                string childTable = QualifyBlueprintTableName(
+                    child.AppTableName, tablePrefix,
+                    child.SkipTablePrefix
+                    || child.AppTableName.StartsWith("Tchp", StringComparison.OrdinalIgnoreCase));
+                int? unitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, childTable);
+                if (!unitId.HasValue)
+                    continue;
+
+                // Avoid duplicate link targets for this unit + target txn.
+                using (var exists = conn.CreateCommand())
+                {
+                    exists.Transaction = tran;
+                    exists.CommandText = @"
+SELECT TOP 1 LinkTargetId
+FROM dbo.AppFormLinkTarget
+WHERE TransactionUnitId = @UnitId
+  AND LinkTargetTransactionID = @TxId";
+                    exists.Parameters.AddWithValue("@UnitId", unitId.Value);
+                    exists.Parameters.AddWithValue("@TxId", targetTxId.Value);
+                    if (exists.ExecuteScalar() != null)
+                        continue;
+                }
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+INSERT INTO dbo.AppFormLinkTarget (
+    TransactionUnitId,
+    NavigationActionName,
+    ActionType,
+    LinkTargetTransactionID,
+    LinkTargetUsageType,
+    SourceColumnType,
+    SourceColumn1,
+    TargetColumn1,
+    Sort,
+    IsPopup,
+    PopupWidth,
+    PopupHeight)
+VALUES (
+    @UnitId,
+    N'Open Fit Round',
+    @ActionType,
+    @LinkTargetTransactionId,
+    @LinkTargetUsageType,
+    @SourceColumnType,
+    N'FitRoundId',
+    N'FitRoundId',
+    10,
+    1,
+    1200,
+    700)";
+                    cmd.Parameters.AddWithValue("@UnitId", unitId.Value);
+                    cmd.Parameters.AddWithValue("@ActionType", (int)EmAppLinkTargetActionType.Edit);
+                    cmd.Parameters.AddWithValue("@LinkTargetTransactionId", targetTxId.Value);
+                    cmd.Parameters.AddWithValue("@LinkTargetUsageType", (int)EmAppLinkTargetUsageType.TransactionUnitLinkToForm);
+                    cmd.Parameters.AddWithValue("@SourceColumnType", (int)EmAppLinkTargetSourceColumnType.TransactionField);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Ensure View_TchpStyleActiveSizeRunSizes.IsVisible exists as AppTransactionField (hidden filter key).
+        /// </summary>
+        private static int? EnsureViewIsVisibleTransactionField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int sourceUnitId)
+        {
+            int? existing = GetTransactionFieldId(conn, tran, sourceUnitId, "IsVisible");
+            if (existing.HasValue)
+                return existing;
+
+            int sortOrder = 80;
+            using (var max = conn.CreateCommand())
+            {
+                max.Transaction = tran;
+                max.CommandText = @"
+SELECT ISNULL(MAX(SortOrder), 0) + 10
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId";
+                max.Parameters.AddWithValue("@UnitId", sourceUnitId);
+                var val = max.ExecuteScalar();
+                if (val != null && val != DBNull.Value)
+                    sortOrder = Convert.ToInt32(val);
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+INSERT INTO dbo.AppTransactionField (
+    TransactionUnitID, DisplayName, DataBaseFieldName, ControlType, DataType,
+    SortOrder, IsPrimaryKey, IsVisible, IsReadonly, IsAllowEmpty,
+    DisplayWidth, NBDecimal, IsLinkToParentPrimaryKey, RowIdentityGuid,
+    AppCreatedDate, AppModifiedDate)
+VALUES (
+    @UnitId, N'Is Visible', N'IsVisible', @ControlType, @DataType,
+    @SortOrder, 0, 0, 1, 1,
+    N'150', 0, 0, NEWID(),
+    GETDATE(), GETDATE());";
+                cmd.Parameters.AddWithValue("@UnitId", sourceUnitId);
+                cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.CheckBox);
+                cmd.Parameters.AddWithValue("@DataType", 2);
+                cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                cmd.ExecuteNonQuery();
+            }
+
+            return GetTransactionFieldId(conn, tran, sourceUnitId, "IsVisible");
+        }
+
+        /// <summary>
+        /// Grading golden field template (locked from Transaction 2303 hand-tune):
+        /// Pom Spec Line widths/sort/entities; StyleSpec SizeRun/BaseSize cascade; UOM stays TextBox.
+        /// </summary>
+        private static void ApplyTechPackGradingGoldenFieldTemplate(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            if (plan?.ChildUnitDefs == null
+                || !plan.ChildUnitDefs.Any(c =>
+                    c?.AppTableName != null
+                    && c.AppTableName.IndexOf("TchpPomSpecLine", StringComparison.OrdinalIgnoreCase) >= 0))
+                return;
+
+            string pomTable = QualifyBlueprintTableName("TchpPomSpecLine", tablePrefix, skipTablePrefix: true);
+            int? pomUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, pomTable);
+            if (!pomUnitId.HasValue)
+                return;
+
+            int? bodyPartEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "TchpBodyPart");
+            int? gradeRuleSetEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "TchpGradeRuleSet");
+
+            // Sort — visible row order
+            UpdateTechPackFieldMeta(conn, tran, pomUnitId.Value, "Sort",
+                controlType: null, entityId: null, width: "100", sortOrder: 25, isVisible: true, groupByLevel: 1);
+
+            // BodyPartId — DDL TchpBodyPart, width 200
+            UpdateTechPackFieldMeta(conn, tran, pomUnitId.Value, "BodyPartId",
+                controlType: (int)EmAppControlType.DDL, entityId: bodyPartEntityId, width: "200", sortOrder: 30, isVisible: true, groupByLevel: null);
+
+            UpdateTechPackFieldMeta(conn, tran, pomUnitId.Value, "BodypartAliasName",
+                controlType: null, entityId: null, width: "200", sortOrder: 35, isVisible: true, groupByLevel: null);
+
+            // GradeRuleSetId — DDL TchpGradeRuleSet (locked 4 yes); IsFixed stays TextBox (locked 4 no)
+            UpdateTechPackFieldMeta(conn, tran, pomUnitId.Value, "GradeRuleSetId",
+                controlType: (int)EmAppControlType.DDL, entityId: gradeRuleSetEntityId, width: "150", sortOrder: 40, isVisible: true, groupByLevel: null);
+
+            UpdateTechPackFieldMeta(conn, tran, pomUnitId.Value, "BaseValue",
+                controlType: null, entityId: null, width: "150", sortOrder: 50, isVisible: true, groupByLevel: null);
+            UpdateTechPackFieldMeta(conn, tran, pomUnitId.Value, "Tolerance",
+                controlType: null, entityId: null, width: "150", sortOrder: 60, isVisible: true, groupByLevel: null);
+            UpdateTechPackFieldMeta(conn, tran, pomUnitId.Value, "IsFixed",
+                controlType: (int)EmAppControlType.TextBox, entityId: null, width: "150", sortOrder: 70, isVisible: true, groupByLevel: null);
+
+            // StyleSpec: SizeRun / BaseSize cascade; UnitOfMeasure TextBox + Entity (locked 4 TEXTBOX)
+            string styleSpecTable = QualifyBlueprintTableName("TchpStyleSpec", tablePrefix, skipTablePrefix: true);
+            int? styleSpecUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, styleSpecTable);
+            if (!styleSpecUnitId.HasValue)
+                return;
+
+            int? sizeRunEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "SizeRun");
+            int? sizeRunDetailEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "SizeRunDetail");
+            int? uomEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "UnitOfMeasure");
+            int? sizeRunFieldId = ResolveTransactionFieldIdSql(conn, tran, styleSpecUnitId.Value, "SizeRunId");
+
+            UpdateTechPackFieldMeta(conn, tran, styleSpecUnitId.Value, "SizeRunId",
+                controlType: (int)EmAppControlType.DDL, entityId: sizeRunEntityId, width: "100", sortOrder: 20, isVisible: true, groupByLevel: null);
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    ControlType = @Ddl,
+    EntityId = COALESCE(@EntityId, EntityId),
+    DDLParentLevelID = @ParentFieldId,
+    DataRetrieveType = @DataRetrieveType,
+    CascadingRelationTable = N'TchpSizeRunSize',
+    CascadingRelationTableSchemaOwner = N'dbo',
+    CascadingRelationTableParentKeyField = N'SizeRunId',
+    CascadingRelationTableChildKeyField = N'SizeRunSizeId',
+    DisplayWidth = N'100',
+    SortOrder = 30,
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'BaseSizeDetailId'";
+                cmd.Parameters.AddWithValue("@Ddl", (int)EmAppControlType.DDL);
+                cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@ParentFieldId",
+                    sizeRunFieldId.HasValue ? (object)sizeRunFieldId.Value : DBNull.Value);
+                cmd.Parameters.AddWithValue("@DataRetrieveType", (int)EmAppCascadingSourceType.RelationalTable);
+                cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId.Value);
+                cmd.ExecuteNonQuery();
+            }
+
+            // UnitOfMeasure: keep TextBox; attach Entity for label if present
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    ControlType = @TextBox,
+    EntityId = COALESCE(@EntityId, EntityId),
+    DisplayWidth = N'100',
+    SortOrder = 40,
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'UnitOfMeasure'";
+                cmd.Parameters.AddWithValue("@TextBox", (int)EmAppControlType.TextBox);
+                cmd.Parameters.AddWithValue("@EntityId", (object)uomEntityId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId.Value);
+                cmd.ExecuteNonQuery();
+            }
+
+            // VisibleSizes: Grading / V1 only (SizeRunSizes pivot whitelist). Not on Fit Summary StyleSpec.
+            if (PlanUsesGradingVisibleSizes(plan))
+            {
+                EnsureTechPackStyleSpecVisibleSizesField(conn, tran, styleSpecUnitId.Value, sizeRunDetailEntityId, sizeRunFieldId);
+            }
+            else
+            {
+                RemoveTechPackStyleSpecVisibleSizesField(conn, tran, styleSpecUnitId.Value);
+            }
+        }
+
+        /// <summary>
+        /// VisibleSizes is only for Grading StyleSpec (feeds View_TchpStyleActiveSizeRunSizes.IsVisible).
+        /// Fit Summary / Fit Round StyleSpec siblings must not carry this field.
+        /// </summary>
+        private static bool PlanUsesGradingVisibleSizes(TemplateTabExecutionPlan plan)
+        {
+            if (plan == null)
+                return false;
+
+            if (plan.TechPackGradeValuePivotBindings != null && plan.TechPackGradeValuePivotBindings.Count > 0)
+                return true;
+
+            foreach (var child in plan.ChildUnitDefs ?? Enumerable.Empty<PlmDwBlueprintChildUnitDto>())
+            {
+                if (child?.AppTableName != null
+                    && (child.AppTableName.IndexOf("View_TchpStyleActiveSizeRunSizes", StringComparison.OrdinalIgnoreCase) >= 0
+                        || child.AppTableName.IndexOf("TchpGradeValue", StringComparison.OrdinalIgnoreCase) >= 0))
+                    return true;
+
+                if (child?.GrandChildAppTableNames == null)
+                    continue;
+                foreach (var grand in child.GrandChildAppTableNames)
+                {
+                    if (string.IsNullOrWhiteSpace(grand))
+                        continue;
+                    if (grand.IndexOf("View_TchpStyleActiveSizeRunSizes", StringComparison.OrdinalIgnoreCase) >= 0
+                        || grand.IndexOf("TchpGradeValue", StringComparison.OrdinalIgnoreCase) >= 0)
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Drop StyleSpec.VisibleSizes (and layout refs) when not a Grading TX.
+        /// </summary>
+        private static void RemoveTechPackStyleSpecVisibleSizesField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int styleSpecUnitId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+DELETE li
+FROM dbo.AppFormLayoutItem li
+INNER JOIN dbo.AppTransactionField tf ON tf.TransactionFieldID = li.TransactionFieldID
+WHERE tf.TransactionUnitID = @UnitId
+  AND tf.DataBaseFieldName = N'VisibleSizes';
+
+DELETE FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId
+  AND DataBaseFieldName = N'VisibleSizes';";
+                cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>
+        /// Ensure TchpStyleSpec.VisibleSizes exists as MultiSelectDDL (Entity SizeRunDetail, cascade from SizeRunId).
+        /// </summary>
+        private static void EnsureTechPackStyleSpecVisibleSizesField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int styleSpecUnitId,
+            int? sizeRunDetailEntityId,
+            int? sizeRunFieldId)
+        {
+            EnsureTechPackStyleSpecMultiSelectSizeField(
+                conn, tran, styleSpecUnitId, "VisibleSizes", "Visible Sizes",
+                sizeRunDetailEntityId, sizeRunFieldId, preferredSortOrder: 45);
+        }
+
+        /// <summary>
+        /// Simple QC: TchpStyleSpec.QcSelectedSizes as MultiSelectDDL (same cascade as Grading VisibleSizes).
+        /// </summary>
+        private static void EnsureTechPackStyleSpecQcSelectedSizesField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int styleSpecUnitId,
+            int? sizeRunDetailEntityId,
+            int? sizeRunFieldId)
+        {
+            EnsureTechPackStyleSpecMultiSelectSizeField(
+                conn, tran, styleSpecUnitId, "QcSelectedSizes", "Qc Selected Sizes",
+                sizeRunDetailEntityId, sizeRunFieldId, preferredSortOrder: 50);
+        }
+
+        /// <summary>
+        /// Pipe-delimited SizeRunSizeId MultiSelectDDL (Entity SizeRunDetail, cascade from SizeRunId).
+        /// Collapses duplicate AppTransactionField rows for the same DbName (keep lowest Id).
+        /// </summary>
+        private static void EnsureTechPackStyleSpecMultiSelectSizeField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int styleSpecUnitId,
+            string databaseFieldName,
+            string displayName,
+            int? sizeRunDetailEntityId,
+            int? sizeRunFieldId,
+            int preferredSortOrder)
+        {
+            using (var del = conn.CreateCommand())
+            {
+                del.Transaction = tran;
+                del.CommandText = @"
+;WITH d AS (
+    SELECT TransactionFieldID,
+           ROW_NUMBER() OVER (ORDER BY TransactionFieldID) AS rn
+    FROM dbo.AppTransactionField
+    WHERE TransactionUnitID = @UnitId
+      AND DataBaseFieldName = @FieldName
+)
+DELETE FROM dbo.AppTransactionField
+WHERE TransactionFieldID IN (SELECT TransactionFieldID FROM d WHERE rn > 1);";
+                del.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                del.Parameters.AddWithValue("@FieldName", databaseFieldName);
+                del.ExecuteNonQuery();
+            }
+
+            int? existing = GetTransactionFieldId(conn, tran, styleSpecUnitId, databaseFieldName);
+            if (!existing.HasValue)
+            {
+                int sortOrder = preferredSortOrder;
+                using (var max = conn.CreateCommand())
+                {
+                    max.Transaction = tran;
+                    max.CommandText = @"
+SELECT ISNULL(MAX(SortOrder), 0) + 5
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId";
+                    max.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                    var val = max.ExecuteScalar();
+                    if (val != null && val != DBNull.Value)
+                        sortOrder = Convert.ToInt32(val);
+                }
+
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+INSERT INTO dbo.AppTransactionField (
+    TransactionUnitID, DisplayName, DataBaseFieldName, ControlType, DataType,
+    EntityId, DDLParentLevelID, SortOrder, IsPrimaryKey, IsVisible, IsReadonly, IsAllowEmpty,
+    DisplayWidth, NBDecimal, IsLinkToParentPrimaryKey, RowIdentityGuid,
+    DataRetrieveType, CascadingRelationTable, CascadingRelationTableSchemaOwner,
+    CascadingRelationTableParentKeyField, CascadingRelationTableChildKeyField,
+    AppCreatedDate, AppModifiedDate)
+SELECT
+    @UnitId, @DisplayName, @FieldName, @ControlType, @DataType,
+    @EntityId, @ParentFieldId, @SortOrder, 0, 1, 0, 1,
+    N'200', 0, 0, NEWID(),
+    base.DataRetrieveType, base.CascadingRelationTable, base.CascadingRelationTableSchemaOwner,
+    base.CascadingRelationTableParentKeyField, base.CascadingRelationTableChildKeyField,
+    GETDATE(), GETDATE()
+FROM (SELECT 1 AS _) AS dummy
+OUTER APPLY (
+    SELECT TOP 1
+        DataRetrieveType, CascadingRelationTable, CascadingRelationTableSchemaOwner,
+        CascadingRelationTableParentKeyField, CascadingRelationTableChildKeyField
+    FROM dbo.AppTransactionField
+    WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'BaseSizeDetailId'
+) AS base;";
+                    cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                    cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                    cmd.Parameters.AddWithValue("@FieldName", databaseFieldName);
+                    cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.MultiSelectDDL);
+                    cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.String);
+                    cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ParentFieldId",
+                        sizeRunFieldId.HasValue ? (object)sizeRunFieldId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                    cmd.ExecuteNonQuery();
+                }
+                return;
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE vs SET
+    ControlType = @ControlType,
+    DataType = @DataType,
+    DisplayName = COALESCE(NULLIF(LTRIM(RTRIM(vs.DisplayName)), N''), @DisplayName),
+    EntityId = COALESCE(@EntityId, vs.EntityId),
+    DDLParentLevelID = @ParentFieldId,
+    DisplayWidth = N'200',
+    SortOrder = @SortOrder,
+    IsVisible = 1,
+    IsReadonly = 0,
+    IsAllowEmpty = 1,
+    DataRetrieveType = COALESCE(vs.DataRetrieveType, base.DataRetrieveType),
+    CascadingRelationTable = COALESCE(vs.CascadingRelationTable, base.CascadingRelationTable),
+    CascadingRelationTableSchemaOwner = COALESCE(vs.CascadingRelationTableSchemaOwner, base.CascadingRelationTableSchemaOwner),
+    CascadingRelationTableParentKeyField = COALESCE(vs.CascadingRelationTableParentKeyField, base.CascadingRelationTableParentKeyField),
+    CascadingRelationTableChildKeyField = COALESCE(vs.CascadingRelationTableChildKeyField, base.CascadingRelationTableChildKeyField),
+    AppModifiedDate = GETDATE()
+FROM dbo.AppTransactionField AS vs
+OUTER APPLY (
+    SELECT TOP 1
+        DataRetrieveType, CascadingRelationTable, CascadingRelationTableSchemaOwner,
+        CascadingRelationTableParentKeyField, CascadingRelationTableChildKeyField
+    FROM dbo.AppTransactionField
+    WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = N'BaseSizeDetailId'
+) AS base
+WHERE vs.TransactionUnitID = @UnitId AND vs.DataBaseFieldName = @FieldName";
+                cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.MultiSelectDDL);
+                cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.String);
+                cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                cmd.Parameters.AddWithValue("@EntityId", (object)sizeRunDetailEntityId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@ParentFieldId",
+                    sizeRunFieldId.HasValue ? (object)sizeRunFieldId.Value : DBNull.Value);
+                cmd.Parameters.AddWithValue("@SortOrder", preferredSortOrder);
+                cmd.Parameters.AddWithValue("@UnitId", styleSpecUnitId);
+                cmd.Parameters.AddWithValue("@FieldName", databaseFieldName);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>
+        /// QX1: Selected_Size is StyleSpec.QcSelectedSizes only — drop leftover Plm_* Sizes fields from this TX.
+        /// </summary>
+        private static void RemovePlmSiblingSelectedSizeFields(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+DELETE li
+FROM dbo.AppFormLayoutItem li
+INNER JOIN dbo.AppTransactionField tf ON tf.TransactionFieldID = li.TransactionFieldID
+INNER JOIN dbo.AppTransactionUnit tu ON tu.TransactionUnitID = tf.TransactionUnitID
+WHERE tu.TransactionID = @TxId
+  AND tu.DataBaseTableName NOT LIKE N'TchpStyleSpec'
+  AND tf.DataBaseFieldName IN (N'SelectedSizes', N'Selected_Size', N'SelectedSize', N'Sizes');
+
+DELETE tf
+FROM dbo.AppTransactionField tf
+INNER JOIN dbo.AppTransactionUnit tu ON tu.TransactionUnitID = tf.TransactionUnitID
+WHERE tu.TransactionID = @TxId
+  AND tu.DataBaseTableName NOT LIKE N'TchpStyleSpec'
+  AND tf.DataBaseFieldName IN (N'SelectedSizes', N'Selected_Size', N'SelectedSize', N'Sizes');";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void UpdateTechPackFieldMeta(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string databaseFieldName,
+            int? controlType,
+            int? entityId,
+            string width,
+            int sortOrder,
+            bool isVisible,
+            int? groupByLevel)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    ControlType = COALESCE(@ControlType, ControlType),
+    EntityId = COALESCE(@EntityId, EntityId),
+    DisplayWidth = COALESCE(@Width, DisplayWidth),
+    SortOrder = @SortOrder,
+    IsVisible = @IsVisible,
+    GroupByLevel = CASE WHEN @HasGroupBy = 1 THEN @GroupByLevel ELSE GroupByLevel END,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @FieldName";
+                cmd.Parameters.AddWithValue("@ControlType", (object)controlType ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@EntityId", (object)entityId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Width", (object)width ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                cmd.Parameters.AddWithValue("@IsVisible", isVisible ? 1 : 0);
+                cmd.Parameters.AddWithValue("@HasGroupBy", groupByLevel.HasValue ? 1 : 0);
+                cmd.Parameters.AddWithValue("@GroupByLevel", (object)groupByLevel ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@FieldName", databaseFieldName);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>
+        /// FX1 Fit Round golden template: Plm_FitRoundInfo semantic columns as Entity/DDL (or Date/Text/Memo)
+        /// and ensure Form layout items so the sibling is visible on TX_FitRound.
+        /// PLM-imported round header fields stay on FitRoundInfo only (not TchpFitRound).
+        /// </summary>
+        private static void ApplyTechPackFitRoundInfoGoldenFieldTemplate(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            string friTable = QualifyBlueprintTableName("FitRoundInfo", tablePrefix, skipTablePrefix: false);
+            int? friUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, friTable);
+            if (!friUnitId.HasValue)
+                friUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, "Plm_FitRoundInfo");
+            if (!friUnitId.HasValue)
+                return;
+
+            // Only on Fit Round TX (or any TX that already hosts FitRoundInfo sibling).
+            _ = plan;
+
+            int? sampleTypeEntity = ResolveAppEntityInfoIdByCode(conn, tran, "Sample_Type");
+            int? sampleStatusEntity = ResolveAppEntityInfoIdByCode(conn, tran, "Sample_Status");
+            int? factoryEntity = ResolveAppEntityInfoIdByCode(conn, tran, "Factory");
+            int? pdmUserEntity = ResolveAppEntityInfoIdByCode(conn, tran, "PDMUser");
+            int? sketchEntity = ResolveAppEntityInfoIdByCode(conn, tran, "Sketch");
+            int? patternStatusEntity = ResolveAppEntityInfoIdByCode(conn, tran, "Pattern_Status");
+            int? securityGroupEntity = ResolveAppEntityInfoIdByCode(conn, tran, "PDMSecurityGroup");
+
+            var fields = new (string DbName, string Display, int ControlType, int? EntityId, int Sort, string Width)[]
+            {
+                ("SampleType", "Sample Type", (int)EmAppControlType.DDL, sampleTypeEntity, 30, "150"),
+                ("SampleStatus", "Sample Status", (int)EmAppControlType.DDL, sampleStatusEntity, 40, "150"),
+                ("State", "State", (int)EmAppControlType.TextBox, null, 50, "100"),
+                ("ReceiveDate", "Receive Date", (int)EmAppControlType.Date, null, 60, "150"),
+                ("RequestDate", "Request Date", (int)EmAppControlType.Date, null, 70, "150"),
+                ("ApproveDate", "Approve Date", (int)EmAppControlType.Date, null, 80, "150"),
+                ("MeasureDate", "Measure Date", (int)EmAppControlType.Date, null, 90, "150"),
+                ("Factory", "Factory", (int)EmAppControlType.DDL, factoryEntity, 100, "150"),
+                ("FitTechnician", "Fit Technician", (int)EmAppControlType.DDL, pdmUserEntity, 110, "150"),
+                ("Model", "Model", (int)EmAppControlType.TextBox, null, 120, "200"),
+                ("FitFile", "Fit File", (int)EmAppControlType.DDL, sketchEntity, 130, "150"),
+                ("PatternCode", "Pattern Code", (int)EmAppControlType.TextBox, null, 140, "150"),
+                ("PatternStatus", "Pattern Status", (int)EmAppControlType.DDL, patternStatusEntity, 150, "150"),
+                ("PatternFile", "Pattern File", (int)EmAppControlType.DDL, sketchEntity, 160, "150"),
+                ("PatternStateIb", "Pattern State", (int)EmAppControlType.TextBox, null, 170, "100"),
+                ("SupplierMeasDate", "Supplier Meas Date", (int)EmAppControlType.Date, null, 180, "150"),
+                ("SupplierMeasurer", "Supplier Measurer", (int)EmAppControlType.TextBox, null, 190, "150"),
+                ("SampleSent", "Sample Sent", (int)EmAppControlType.TextBox, null, 200, "150"),
+                ("CommentDate", "Comment Date", (int)EmAppControlType.Date, null, 210, "150"),
+                ("SecurityGroup", "Security Group", (int)EmAppControlType.DDL, securityGroupEntity, 220, "150"),
+                ("BlankDateCalc", "Blank Date Calc", (int)EmAppControlType.TextBox, null, 230, "100"),
+                ("DateIsBlankCalc", "Date Is Blank Calc", (int)EmAppControlType.TextBox, null, 240, "100"),
+                ("SetDateCalc", "Set Date Calc", (int)EmAppControlType.TextBox, null, 250, "100"),
+                ("SampleStatusStateCb", "Sample Status State CB", (int)EmAppControlType.TextBox, null, 260, "100"),
+                ("FitComment", "Fit Comment", (int)EmAppControlType.Memo, null, 270, "300"),
+                ("FitCommentImage", "Fit Comment Image", (int)EmAppControlType.DDL, sketchEntity, 280, "150"),
+            };
+
+            foreach (var f in fields)
+            {
+                EnsureTechPackFitRoundInfoField(conn, tran, friUnitId.Value, f.DbName, f.Display, f.ControlType, f.EntityId, f.Sort, f.Width);
+            }
+
+            UpdateTechPackFieldMeta(conn, tran, friUnitId.Value, "FitRoundId",
+                controlType: (int)EmAppControlType.TextBox, entityId: null, width: "100", sortOrder: 10, isVisible: false, groupByLevel: null);
+            UpdateTechPackFieldMeta(conn, tran, friUnitId.Value, "StyleSpecId",
+                controlType: (int)EmAppControlType.TextBox, entityId: null, width: "100", sortOrder: 20, isVisible: true, groupByLevel: null);
+
+            // Do not insert orphan flat AppFormLayoutItem rows (breaks Flex Reset / nested tree).
+            // Form Design → Reset & Auto Design Layout places root + Master Sibling fields.
+        }
+
+        private static void EnsureTechPackFitRoundInfoField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string databaseFieldName,
+            string displayName,
+            int controlType,
+            int? entityId,
+            int sortOrder,
+            string width)
+        {
+            int? existing = GetTransactionFieldId(conn, tran, unitId, databaseFieldName);
+            if (!existing.HasValue)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+INSERT INTO dbo.AppTransactionField (
+    TransactionUnitID, DisplayName, DataBaseFieldName, ControlType,
+    SortOrder, IsPrimaryKey, IsVisible, IsReadonly, IsAllowEmpty,
+    DisplayWidth, NBDecimal, IsLinkToParentPrimaryKey, RowIdentityGuid,
+    EntityId, AppCreatedDate, AppModifiedDate)
+VALUES (
+    @UnitId, @DisplayName, @FieldName, @ControlType,
+    @SortOrder, 0, 1, 0, 1,
+    @Width, 0, 0, NEWID(),
+    @EntityId, GETDATE(), GETDATE());";
+                    cmd.Parameters.AddWithValue("@UnitId", unitId);
+                    cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                    cmd.Parameters.AddWithValue("@FieldName", databaseFieldName);
+                    cmd.Parameters.AddWithValue("@ControlType", controlType);
+                    cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                    cmd.Parameters.AddWithValue("@Width", width ?? "150");
+                    cmd.Parameters.AddWithValue("@EntityId", (object)entityId ?? DBNull.Value);
+                    cmd.ExecuteNonQuery();
+                }
+                return;
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    DisplayName = @DisplayName,
+    ControlType = @ControlType,
+    EntityId = COALESCE(@EntityId, EntityId),
+    DisplayWidth = COALESCE(@Width, DisplayWidth),
+    SortOrder = @SortOrder,
+    IsVisible = 1,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @FieldName";
+                cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                cmd.Parameters.AddWithValue("@ControlType", controlType);
+                cmd.Parameters.AddWithValue("@EntityId", (object)entityId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@Width", (object)width ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@FieldName", databaseFieldName);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>
+        /// F2 Fit Round measurement UX: PomSpecLine DDL entity (View_TchpPomSpecLine),
+        /// temp InitValue/Tol subscribed from BaseValue/Tolerance, Diff = Actual − Init,
+        /// and IsShowCalculateButton on TX_FitRound.
+        /// </summary>
+        private static void ApplyTechPackFitRoundMeasurementGoldenFieldTemplate(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            TemplateTabExecutionPlan plan,
+            string tablePrefix)
+        {
+            _ = plan;
+            _ = tablePrefix;
+
+            int? measUnitId = GetAnyTransactionUnitIdByTableName(conn, tran, transactionId, "TchpFitMeasurement");
+            if (!measUnitId.HasValue)
+                return;
+
+            EnsureTechPackPomSpecLineEntity(conn, tran);
+            int? pomSpecLineEntityId = ResolveAppEntityInfoIdByCode(conn, tran, "PomSpecLine");
+
+            UpdateTechPackFieldMeta(conn, tran, measUnitId.Value, "PomSpecLineId",
+                controlType: (int)EmAppControlType.DDL,
+                entityId: pomSpecLineEntityId,
+                width: "200",
+                sortOrder: 30,
+                isVisible: true,
+                groupByLevel: null);
+
+            int? pomSpecLineFieldId = GetTransactionFieldId(conn, tran, measUnitId.Value, "PomSpecLineId");
+            if (!pomSpecLineFieldId.HasValue)
+                return;
+
+            int initFieldId = EnsureTechPackTempNumericField(
+                conn, tran, measUnitId.Value,
+                preferredName: "InitValue",
+                namePrefix: "InitValue",
+                displayName: "Init Value",
+                sortOrder: 35,
+                masterEntityFieldId: pomSpecLineFieldId.Value,
+                innerEntitySubscribeField: "BaseValue");
+
+            EnsureTechPackTempNumericField(
+                conn, tran, measUnitId.Value,
+                preferredName: "Tol",
+                namePrefix: "Tol",
+                displayName: "Tol",
+                sortOrder: 36,
+                masterEntityFieldId: pomSpecLineFieldId.Value,
+                innerEntitySubscribeField: "Tolerance");
+
+            UpdateTechPackFieldMeta(conn, tran, measUnitId.Value, "ActualValue",
+                controlType: (int)EmAppControlType.Numeric,
+                entityId: null,
+                width: "120",
+                sortOrder: 40,
+                isVisible: true,
+                groupByLevel: null);
+            SetTechPackFieldDecimalMeta(conn, tran, measUnitId.Value, "ActualValue", nbDecimal: 4);
+
+            int diffFieldId = EnsureTechPackTempNumericField(
+                conn, tran, measUnitId.Value,
+                preferredName: "Diff",
+                namePrefix: "Diff",
+                displayName: "Diff",
+                sortOrder: 60,
+                masterEntityFieldId: null,
+                innerEntitySubscribeField: null);
+
+            int? actualFieldId = GetTransactionFieldId(conn, tran, measUnitId.Value, "ActualValue");
+            if (actualFieldId.HasValue)
+            {
+                EnsureTechPackFitDiffAssignmentFormula(
+                    conn, tran, measUnitId.Value, diffFieldId, actualFieldId.Value, initFieldId);
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransaction
+SET IsShowCalculateButton = 1, AppModifiedDate = GETDATE()
+WHERE TransactionID = @TxId";
+                cmd.Parameters.AddWithValue("@TxId", transactionId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void EnsureTechPackPomSpecLineEntity(SqlConnection conn, SqlTransaction tran)
+        {
+            const string otherSettings =
+                "{\"IdentityColumnDataType\":\"Integer\",\"LogicKeyColumnNameList\":null,\"ListEditTransactionId\":null,\"ItemSimpleFormTransactionId\":null,\"ItemDetailFormTransactionId\":null,\"SortByField\":\"Sort\"}";
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+IF EXISTS (SELECT 1 FROM dbo.AppEntityInfo WHERE EntityCode = N'PomSpecLine')
+BEGIN
+    UPDATE dbo.AppEntityInfo SET
+        EntityType = 1,
+        TableName = N'View_TchpPomSpecLine',
+        SchemaOwner = N'dbo',
+        IdentityField = N'PomSpecLineId',
+        DisplayFiled1 = N'BodyPartName',
+        OtherSettings = @OtherSettings,
+        AppModifiedDate = GETDATE()
+    WHERE EntityCode = N'PomSpecLine';
+END
+ELSE
+BEGIN
+    INSERT INTO dbo.AppEntityInfo (
+        EntityCode, [Description], EntityType, TableName, SchemaOwner,
+        IdentityField, DisplayFiled1, OtherSettings, AppCreatedDate, AppModifiedDate)
+    VALUES (
+        N'PomSpecLine', N'TechPack POM Spec Line (Fit Round DDL)', 1, N'View_TchpPomSpecLine', N'dbo',
+        N'PomSpecLineId', N'BodyPartName', @OtherSettings, GETDATE(), GETDATE());
+END";
+                cmd.Parameters.AddWithValue("@OtherSettings", otherSettings);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static int EnsureTechPackTempNumericField(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string preferredName,
+            string namePrefix,
+            string displayName,
+            int sortOrder,
+            int? masterEntityFieldId,
+            string innerEntitySubscribeField)
+        {
+            int? existing = GetTransactionFieldId(conn, tran, unitId, preferredName);
+            if (!existing.HasValue)
+                existing = GetTransactionFieldIdByNamePrefix(conn, tran, unitId, namePrefix);
+            if (!existing.HasValue)
+                existing = GetTransactionFieldIdByDisplayName(conn, tran, unitId, displayName);
+
+            if (!existing.HasValue)
+            {
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.Transaction = tran;
+                    cmd.CommandText = @"
+INSERT INTO dbo.AppTransactionField (
+    TransactionUnitID, DisplayName, DataBaseFieldName, ControlType, DataType,
+    SortOrder, IsPrimaryKey, IsVisible, IsReadonly, IsAllowEmpty,
+    DisplayWidth, NBDecimal, IsTempVariable, IsLinkToParentPrimaryKey, RowIdentityGuid,
+    MasterEntityFieldlID, InnerEntitySubscribeFiled,
+    AppCreatedDate, AppModifiedDate)
+VALUES (
+    @UnitId, @DisplayName, @FieldName, @ControlType, @DataType,
+    @SortOrder, 0, 1, 0, 1,
+    N'120', 4, 1, 0, NEWID(),
+    @MasterFieldId, @SubscribeField,
+    GETDATE(), GETDATE());
+SELECT CAST(SCOPE_IDENTITY() AS INT);";
+                    cmd.Parameters.AddWithValue("@UnitId", unitId);
+                    cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                    cmd.Parameters.AddWithValue("@FieldName", preferredName);
+                    cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.Numeric);
+                    cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.Decimal);
+                    cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                    cmd.Parameters.AddWithValue("@MasterFieldId", (object)masterEntityFieldId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SubscribeField", (object)innerEntitySubscribeField ?? DBNull.Value);
+                    return Convert.ToInt32(cmd.ExecuteScalar());
+                }
+            }
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    DisplayName = @DisplayName,
+    ControlType = @ControlType,
+    DataType = @DataType,
+    NBDecimal = 4,
+    IsTempVariable = 1,
+    IsVisible = 1,
+    SortOrder = @SortOrder,
+    DisplayWidth = COALESCE(DisplayWidth, N'120'),
+    MasterEntityFieldlID = CASE WHEN @HasMaster = 1 THEN @MasterFieldId ELSE MasterEntityFieldlID END,
+    InnerEntitySubscribeFiled = CASE WHEN @HasSubscribe = 1 THEN @SubscribeField ELSE InnerEntitySubscribeFiled END,
+    AppModifiedDate = GETDATE()
+WHERE TransactionFieldID = @FieldId";
+                cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                cmd.Parameters.AddWithValue("@ControlType", (int)EmAppControlType.Numeric);
+                cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.Decimal);
+                cmd.Parameters.AddWithValue("@SortOrder", sortOrder);
+                cmd.Parameters.AddWithValue("@HasMaster", masterEntityFieldId.HasValue ? 1 : 0);
+                cmd.Parameters.AddWithValue("@MasterFieldId", (object)masterEntityFieldId ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@HasSubscribe", !string.IsNullOrWhiteSpace(innerEntitySubscribeField) ? 1 : 0);
+                cmd.Parameters.AddWithValue("@SubscribeField", (object)innerEntitySubscribeField ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("@FieldId", existing.Value);
+                cmd.ExecuteNonQuery();
+            }
+
+            return existing.Value;
+        }
+
+        private static void SetTechPackFieldDecimalMeta(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string fieldName,
+            int nbDecimal)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+UPDATE dbo.AppTransactionField SET
+    DataType = @DataType,
+    NBDecimal = @NbDecimal,
+    AppModifiedDate = GETDATE()
+WHERE TransactionUnitID = @UnitId AND DataBaseFieldName = @FieldName";
+                cmd.Parameters.AddWithValue("@DataType", (int)EmAppDataType.Decimal);
+                cmd.Parameters.AddWithValue("@NbDecimal", nbDecimal);
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@FieldName", fieldName);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static void EnsureTechPackFitDiffAssignmentFormula(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            int diffFieldId,
+            int actualFieldId,
+            int initFieldId)
+        {
+            string expression =
+                "transactionfieldid_" + diffFieldId
+                + " = transactionfieldid_" + actualFieldId
+                + " - transactionfieldid_" + initFieldId;
+
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+IF EXISTS (
+    SELECT 1 FROM dbo.AppTransactionUnitFormula
+    WHERE TransactionUnitID = @UnitId AND FormulaName = N'FitDiff_ActualMinusInit')
+BEGIN
+    UPDATE dbo.AppTransactionUnitFormula SET
+        FormulaExpression = @Expr,
+        OperationType = 1,
+        CaculationFlowSort = 1,
+        AppModifiedDate = GETDATE()
+    WHERE TransactionUnitID = @UnitId AND FormulaName = N'FitDiff_ActualMinusInit';
+END
+ELSE IF EXISTS (
+    SELECT 1 FROM dbo.AppTransactionUnitFormula
+    WHERE TransactionUnitID = @UnitId
+      AND FormulaExpression LIKE N'%transactionfieldid_' + CAST(@DiffId AS NVARCHAR(20)) + N'%')
+BEGIN
+    UPDATE dbo.AppTransactionUnitFormula SET
+        FormulaExpression = @Expr,
+        FormulaName = N'FitDiff_ActualMinusInit',
+        OperationType = 1,
+        CaculationFlowSort = 1,
+        AppModifiedDate = GETDATE()
+    WHERE TransactionUnitFormulaID = (
+        SELECT TOP 1 TransactionUnitFormulaID FROM dbo.AppTransactionUnitFormula
+        WHERE TransactionUnitID = @UnitId
+          AND FormulaExpression LIKE N'%transactionfieldid_' + CAST(@DiffId AS NVARCHAR(20)) + N'%'
+        ORDER BY TransactionUnitFormulaID);
+END
+ELSE
+BEGIN
+    INSERT INTO dbo.AppTransactionUnitFormula (
+        TransactionUnitID, CaculationFlowSort, FormulaExpression, OperationType,
+        FormulaName, AppCreatedDate, AppModifiedDate, AppCreatedByCompanyID)
+    SELECT
+        @UnitId, 1, @Expr, 1,
+        N'FitDiff_ActualMinusInit', GETDATE(), GETDATE(),
+        (SELECT TOP 1 AppCreatedByCompanyID FROM dbo.AppTransactionUnit WHERE TransactionUnitID = @UnitId);
+END";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@Expr", expression);
+                cmd.Parameters.AddWithValue("@DiffId", diffFieldId);
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        private static int? GetTransactionFieldIdByNamePrefix(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string namePrefix)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT TOP 1 TransactionFieldID
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId
+  AND (DataBaseFieldName = @Prefix OR DataBaseFieldName LIKE @PrefixLike)
+ORDER BY TransactionFieldID";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@Prefix", namePrefix);
+                cmd.Parameters.AddWithValue("@PrefixLike", namePrefix + "_%");
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        private static int? GetTransactionFieldIdByDisplayName(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int unitId,
+            string displayName)
+        {
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Transaction = tran;
+                cmd.CommandText = @"
+SELECT TOP 1 TransactionFieldID
+FROM dbo.AppTransactionField
+WHERE TransactionUnitID = @UnitId AND DisplayName = @DisplayName
+ORDER BY TransactionFieldID";
+                cmd.Parameters.AddWithValue("@UnitId", unitId);
+                cmd.Parameters.AddWithValue("@DisplayName", displayName);
+                var val = cmd.ExecuteScalar();
+                return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);
+            }
+        }
+
+        // Intentionally unused: inserting flat AppFormLayoutItem with a copied CurrentHostId
+        // (e.g. sample.CurrentHostID) breaks Flex Save (duplicate dictionary key) and Reset trees.
+        // Use Form Design → Reset & Auto Design Layout after field meta is applied.
+        private static void EnsureTechPackFitRoundInfoFormLayout(
+            SqlConnection conn,
+            SqlTransaction tran,
+            int transactionId,
+            int friUnitId)
+        {
+            _ = conn;
+            _ = tran;
+            _ = transactionId;
+            _ = friUnitId;
+        }
+    }
+}

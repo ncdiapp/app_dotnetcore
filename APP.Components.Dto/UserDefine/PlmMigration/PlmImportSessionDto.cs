@@ -38,17 +38,34 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string CurrentStepCode { get; set; }
 
-        /// <summary>Decrypted PLM connection string (returned to wizard admin on read/save).</summary>
+        /// <summary>
+        /// Obsolete for Agent/API input. Never ask the user for a connection string.
+        /// Engine may hydrate this in-memory from <see cref="PlmDataSourceRegisterId"/> for internal jobs only;
+        /// Get/Save session responses must leave it null.
+        /// </summary>
         [DataMember]
         public string PlmConnectionString { get; set; }
 
-        /// <summary>True when session has a stored PLM connection (resume).</summary>
+        /// <summary>True when session has a bound PLM DataSourceRegisterId (or legacy encrypted connection).</summary>
         [DataMember]
         public bool HasPlmConnection { get; set; }
+
+        /// <summary>Required for Connect: tenant AppDataSourceRegister id for the PLM database.</summary>
+        [DataMember]
+        public int? PlmDataSourceRegisterId { get; set; }
+
+        /// <summary>Optional: tenant register id for PLM DW (data warehouse) database.</summary>
+        [DataMember]
+        public int? PlmDwDataSourceRegisterId { get; set; }
+
+        /// <summary>Optional: tenant register id for ERP (or other) database used by import.</summary>
+        [DataMember]
+        public int? ErpDataSourceRegisterId { get; set; }
 
         [DataMember]
         public string StepStateJson { get; set; }
 
+        /// <summary>Optional JSON metadata (no connection strings). Prefer register id fields above.</summary>
         [DataMember]
         public string DataSourceDiscoveryJson { get; set; }
     }

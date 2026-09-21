@@ -46,7 +46,8 @@ WHERE TransactionID = @Id";
             }
         }
 
-        internal static void ApplyTransactionRuntimeExtras(
+        /// <summary>Public runtime extras — prefer <see cref="StepApplyTransactionRuntimeExtras"/>.</summary>
+        public static void ApplyTransactionRuntimeExtras(
             AppConfigPackDto pack,
             Dictionary<string, int> txIdsByIntegration,
             int tenantDataSourceId,
