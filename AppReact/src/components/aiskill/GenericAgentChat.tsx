@@ -614,34 +614,38 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
 
                             {askMode === 'single_choice' && (pendingAskUser.Options?.length ?? 0) > 0 && (
                                 <div className="flex flex-col gap-1.5">
-                                    {pendingAskUser.Options!.map(opt => (
-                                        <label key={opt.Id} className={`flex items-center gap-2 text-xs cursor-pointer ${theme.label}`}>
+                                    {pendingAskUser.Options!.map(opt => {
+                                        const id = String(opt.Id ?? '');
+                                        return (
+                                        <label key={id} className={`flex items-center gap-2 text-xs cursor-pointer ${theme.label}`}>
                                             <input
                                                 type="radio"
                                                 name="ask-user-single"
-                                                checked={askSelectedIds[0] === opt.Id}
-                                                onChange={() => setAskSelectedIds([opt.Id])}
+                                                checked={askSelectedIds[0] === id}
+                                                onChange={() => setAskSelectedIds([id])}
                                             />
-                                            <span>{opt.Label || opt.Id}</span>
+                                            <span>{opt.Display || id}</span>
                                         </label>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             )}
 
                             {askMode === 'multi_choice' && (pendingAskUser.Options?.length ?? 0) > 0 && (
                                 <div className="flex flex-col gap-1.5">
                                     {pendingAskUser.Options!.map(opt => {
-                                        const checked = askSelectedIds.includes(opt.Id);
+                                        const id = String(opt.Id ?? '');
+                                        const checked = askSelectedIds.includes(id);
                                         return (
-                                            <label key={opt.Id} className={`flex items-center gap-2 text-xs cursor-pointer ${theme.label}`}>
+                                            <label key={id} className={`flex items-center gap-2 text-xs cursor-pointer ${theme.label}`}>
                                                 <input
                                                     type="checkbox"
                                                     checked={checked}
                                                     onChange={() => setAskSelectedIds(prev =>
-                                                        checked ? prev.filter(id => id !== opt.Id) : [...prev, opt.Id]
+                                                        checked ? prev.filter(x => x !== id) : [...prev, id]
                                                     )}
                                                 />
-                                                <span>{opt.Label || opt.Id}</span>
+                                                <span>{opt.Display || id}</span>
                                             </label>
                                         );
                                     })}
@@ -651,19 +655,39 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                             {(askMode === 'text' || (askMode !== 'single_choice' && askMode !== 'multi_choice')) && (
                                 (pendingAskUser.Fields && pendingAskUser.Fields.length > 0) ? (
                                     <div className="flex flex-col gap-2">
-                                        {pendingAskUser.Fields.map(field => (
+                                        {pendingAskUser.Fields.map(field => {
+                                            const fieldType = (field.Type || 'text').toLowerCase();
+                                            const isSelect = fieldType === 'select' && (field.Options?.length ?? 0) > 0;
+                                            return (
                                             <div key={field.Name} className="flex items-center gap-2">
                                                 <label className={`w-32 text-xs shrink-0 ${theme.label}`}>
                                                     {field.Label || field.Name}
                                                     {field.Required ? ' *' : ''}
                                                 </label>
-                                                <input
-                                                    className={`w-1 flex-auto h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`}
-                                                    value={askAnswers[field.Name] || ''}
-                                                    onChange={e => setAskAnswers(prev => ({ ...prev, [field.Name]: e.target.value }))}
-                                                />
+                                                {isSelect ? (
+                                                    <select
+                                                        className={`w-1 flex-auto h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox} focus:outline-none`}
+                                                        value={askAnswers[field.Name] || ''}
+                                                        onChange={e => setAskAnswers(prev => ({ ...prev, [field.Name]: e.target.value }))}
+                                                    >
+                                                        <option value="">{field.Required ? '— select —' : '— skip —'}</option>
+                                                        {field.Options!.map(opt => {
+                                                            const id = String(opt.Id ?? '');
+                                                            return (
+                                                            <option key={id} value={id}>{opt.Display || id}</option>
+                                                            );
+                                                        })}
+                                                    </select>
+                                                ) : (
+                                                    <input
+                                                        className={`w-1 flex-auto h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`}
+                                                        value={askAnswers[field.Name] || ''}
+                                                        onChange={e => setAskAnswers(prev => ({ ...prev, [field.Name]: e.target.value }))}
+                                                    />
+                                                )}
                                             </div>
-                                        ))}
+                                            );
+                                        })}
                                     </div>
                                 ) : (
                                     <textarea

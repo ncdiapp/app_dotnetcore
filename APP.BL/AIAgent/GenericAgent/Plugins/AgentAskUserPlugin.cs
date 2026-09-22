@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework.Plugin;
 using Newtonsoft.Json;
@@ -159,39 +160,66 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     if (token is not JObject o) continue;
                     var name = o.Value<string>("name") ?? o.Value<string>("Name");
                     if (string.IsNullOrWhiteSpace(name)) continue;
-                    list.Add(new AgentAskUserField
+                    var type = (o.Value<string>("type") ?? o.Value<string>("Type") ?? "text").Trim().ToLowerInvariant();
+                    if (type != "select" && type != "text")
+                        type = "text";
+                    var field = new AgentAskUserField
                     {
                         Name = name.Trim(),
                         Label = (o.Value<string>("label") ?? o.Value<string>("Label") ?? name).Trim(),
-                        Required = o.Value<bool?>("required") ?? o.Value<bool?>("Required") ?? false
-                    });
+                        Required = o.Value<bool?>("required") ?? o.Value<bool?>("Required") ?? false,
+                        Type = type,
+                        Options = new List<LookupItemDto>()
+                    };
+                    var optsToken = o["options"] ?? o["Options"];
+                    if (optsToken is JArray optsArr)
+                    {
+                        foreach (var optTok in optsArr)
+                        {
+                            var item = ParseLookupItem(optTok);
+                            if (item != null)
+                                field.Options.Add(item);
+                        }
+                    }
+                    list.Add(field);
                 }
             }
             catch { /* ignore bad JSON — LLM gets empty fields */ }
             return list;
         }
 
-        private static List<AgentAskUserOption> ParseOptions(string optionsJson)
+        private static List<LookupItemDto> ParseOptions(string optionsJson)
         {
-            var list = new List<AgentAskUserOption>();
+            var list = new List<LookupItemDto>();
             if (string.IsNullOrWhiteSpace(optionsJson)) return list;
             try
             {
                 var arr = JArray.Parse(optionsJson);
                 foreach (var token in arr)
                 {
-                    if (token is not JObject o) continue;
-                    var id = o.Value<string>("id") ?? o.Value<string>("Id");
-                    if (string.IsNullOrWhiteSpace(id)) continue;
-                    list.Add(new AgentAskUserOption
-                    {
-                        Id = id.Trim(),
-                        Label = (o.Value<string>("label") ?? o.Value<string>("Label") ?? id).Trim()
-                    });
+                    var item = ParseLookupItem(token);
+                    if (item != null)
+                        list.Add(item);
                 }
             }
             catch { /* ignore bad JSON */ }
             return list;
+        }
+
+        /// <summary>
+        /// Accepts LookupItemDto shape {id,display} and legacy ask_user {id,label}.
+        /// </summary>
+        private static LookupItemDto ParseLookupItem(JToken token)
+        {
+            if (token is not JObject o) return null;
+            var idTok = o["id"] ?? o["Id"];
+            if (idTok == null || idTok.Type == JTokenType.Null) return null;
+            var id = idTok.Type == JTokenType.String ? (object)idTok.Value<string>()?.Trim() : idTok.ToObject<object>();
+            if (id == null || (id is string s && string.IsNullOrWhiteSpace(s))) return null;
+            var display = o.Value<string>("display") ?? o.Value<string>("Display")
+                ?? o.Value<string>("label") ?? o.Value<string>("Label")
+                ?? id.ToString();
+            return new LookupItemDto { Id = id, Display = display?.Trim() ?? id.ToString() };
         }
     }
 }

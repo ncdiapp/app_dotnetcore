@@ -39,18 +39,22 @@ export interface AskUserField {
     Name: string;
     Label?: string;
     Required?: boolean;
+    /** text (default) | select — select uses Options as dropdown */
+    Type?: string;
+    Options?: LookupItemDto[];
 }
 
-export interface AskUserOption {
-    Id: string;
-    Label?: string;
+/** Matches APP.Components.Dto.LookupItemDto (Id + Display). */
+export interface LookupItemDto {
+    Id: string | number;
+    Display?: string;
 }
 
 export interface AskUserEvent {
     Prompt: string;
     Mode: string;
     Fields?: AskUserField[];
-    Options?: AskUserOption[];
+    Options?: LookupItemDto[];
     ContextKey?: string;
 }
 

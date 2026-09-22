@@ -62,6 +62,13 @@ namespace APP.Components.EntityDto
         [DataMember]
         public int? ErpDataSourceRegisterId { get; set; }
 
+        /// <summary>
+        /// Optional: tenant register id for PLM External DB (ExDb) — extra data feeding PLM datasource entities.
+        /// Same usage pattern as ERP; never pass connection strings.
+        /// </summary>
+        [DataMember]
+        public int? PlmExDbDataSourceRegisterId { get; set; }
+
         [DataMember]
         public string StepStateJson { get; set; }
 

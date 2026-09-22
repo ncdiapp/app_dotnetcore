@@ -52,20 +52,6 @@ VALUES (
 );
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources')
-INSERT INTO dbo.AppAgentLibraryTool
-    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
-VALUES (
-    N'integration-plm-import',
-    N'discover_plm_data_sources',
-    N'DISABLED for security. Use list_tenant_data_sources + save_plm_import_session with register ids. Do not pass connection strings.',
-    N'{"type":"object","properties":{}}',
-    N'ExternalDll',
-    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.DiscoverPlmDataSourcesTool"}',
-    0,
-    20
-);
-GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'get_plm_import_session')
 INSERT INTO dbo.AppAgentLibraryTool
@@ -88,8 +74,8 @@ INSERT INTO dbo.AppAgentLibraryTool
 VALUES (
     N'integration-plm-import',
     N'save_plm_import_session',
-    N'Save / upsert PLM Import session. Pass saasApplicationId + plmDataSourceRegisterId (required) and optional plmDwDataSourceRegisterId / erpDataSourceRegisterId. Never pass connection strings.',
-    N'{"type":"object","properties":{"saasApplicationId":{"type":"integer"},"plmDataSourceRegisterId":{"type":"integer","description":"Tenant register id for PLM"},"plmDwDataSourceRegisterId":{"type":"integer"},"erpDataSourceRegisterId":{"type":"integer"},"sessionId":{"type":"integer"},"sessionJson":{"type":"string","description":"Optional full PlmImportSessionDto JSON without connection strings"},"targetCompanyId":{"type":"integer"}},"required":["saasApplicationId","plmDataSourceRegisterId"]}',
+    N'Save / upsert PLM Import session. Pass saasApplicationId + plmDataSourceRegisterId (required) and optional plmDwDataSourceRegisterId / erpDataSourceRegisterId / plmExDbDataSourceRegisterId. Never pass connection strings.',
+    N'{"type":"object","properties":{"saasApplicationId":{"type":"integer"},"plmDataSourceRegisterId":{"type":"integer","description":"Tenant register id for PLM"},"plmDwDataSourceRegisterId":{"type":"integer"},"erpDataSourceRegisterId":{"type":"integer"},"plmExDbDataSourceRegisterId":{"type":"integer","description":"Optional PLM External DB register id"},"sessionId":{"type":"integer"},"sessionJson":{"type":"string","description":"Optional full PlmImportSessionDto JSON without connection strings"},"targetCompanyId":{"type":"integer"}},"required":["saasApplicationId","plmDataSourceRegisterId"]}',
     N'ExternalDll',
     N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.SavePlmImportSessionTool"}',
     1,
@@ -671,7 +657,6 @@ SET ToolType = N'ExternalDll',
 FROM dbo.AppAgentLibraryTool t
 INNER JOIN (VALUES
     (N'test_plm_connection', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.TestPlmConnectionTool"}'),
-    (N'discover_plm_data_sources', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.DiscoverPlmDataSourcesTool"}'),
     (N'get_plm_import_session', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.GetPlmImportSessionTool"}'),
     (N'save_plm_import_session', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.SavePlmImportSessionTool"}'),
     (N'preview_plm_sketch_import', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.PreviewSketchImportTool"}'),
@@ -738,16 +723,10 @@ UPDATE dbo.AppAgentLibraryTool SET
 WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'test_plm_connection';
 GO
 
-UPDATE dbo.AppAgentLibraryTool SET
-    ToolDescription = N'DISABLED for security. Use list_tenant_data_sources + save_plm_import_session with register ids. Do not pass connection strings.',
-    ParameterSchemaJson = N'{"type":"object","properties":{}}',
-    IsActive = 0
-WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources';
-GO
 
 UPDATE dbo.AppAgentLibraryTool SET
-    ToolDescription = N'Save / upsert PLM Import session. Pass saasApplicationId + plmDataSourceRegisterId (required) and optional plmDwDataSourceRegisterId / erpDataSourceRegisterId. Never pass connection strings.',
-    ParameterSchemaJson = N'{"type":"object","properties":{"saasApplicationId":{"type":"integer"},"plmDataSourceRegisterId":{"type":"integer"},"plmDwDataSourceRegisterId":{"type":"integer"},"erpDataSourceRegisterId":{"type":"integer"},"sessionId":{"type":"integer"},"sessionJson":{"type":"string"},"targetCompanyId":{"type":"integer"}},"required":["saasApplicationId","plmDataSourceRegisterId"]}',
+    ToolDescription = N'Save / upsert PLM Import session. Pass saasApplicationId + plmDataSourceRegisterId (required) and optional plmDwDataSourceRegisterId / erpDataSourceRegisterId / plmExDbDataSourceRegisterId. Never pass connection strings.',
+    ParameterSchemaJson = N'{"type":"object","properties":{"saasApplicationId":{"type":"integer"},"plmDataSourceRegisterId":{"type":"integer"},"plmDwDataSourceRegisterId":{"type":"integer"},"erpDataSourceRegisterId":{"type":"integer"},"plmExDbDataSourceRegisterId":{"type":"integer","description":"Optional PLM External DB register id"},"sessionId":{"type":"integer"},"sessionJson":{"type":"string"},"targetCompanyId":{"type":"integer"}},"required":["saasApplicationId","plmDataSourceRegisterId"]}',
     ToolType = N'ExternalDll',
     ToolConfig = N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.SavePlmImportSessionTool"}',
     IsActive = 1
@@ -767,4 +746,9 @@ VALUES (
     1,
     15
 );
+GO
+
+-- discover_plm_data_sources removed: never create AppDataSourceRegister from PLM connections.
+IF EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources')
+DELETE FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources';
 GO

@@ -40,19 +40,6 @@ public sealed class ListTenantDataSourcesTool : IAgentTool
     }
 }
 
-/// <summary>Obsolete — returns an error directing agents to list_tenant_data_sources.</summary>
-public sealed class DiscoverPlmDataSourcesTool : IAgentTool
-{
-    public Task<string> ExecuteAsync(
-        IReadOnlyDictionary<string, string> args,
-        AgentToolContext context,
-        CancellationToken cancellationToken)
-    {
-        return Task.FromResult(PlmBlToolArgs.Serialize(PlmImportEngine.DiscoverPlmDataSources(
-            new PlmDiscoverDataSourcesRequestDto())));
-    }
-}
-
 public sealed class GetPlmImportSessionTool : IAgentTool
 {
     public Task<string> ExecuteAsync(
@@ -92,6 +79,9 @@ public sealed class SavePlmImportSessionTool : IAgentTool
 
         var erpReg = PlmBlToolArgs.ParseInt(args, "erpDataSourceRegisterId");
         if (erpReg.HasValue) dto.ErpDataSourceRegisterId = erpReg;
+
+        var exDbReg = PlmBlToolArgs.ParseInt(args, "plmExDbDataSourceRegisterId");
+        if (exDbReg.HasValue) dto.PlmExDbDataSourceRegisterId = exDbReg;
 
         var sessionId = PlmBlToolArgs.ParseInt(args, "sessionId");
         if (sessionId.HasValue) dto.SessionId = sessionId;

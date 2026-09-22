@@ -306,13 +306,13 @@ namespace App.BL.AIAgent.GenericAgent
                 },
                 new("fieldsJson")
                 {
-                    Description = "JSON array of {name,label,required?} for text answers",
+                    Description = "JSON array of {name,label,required?,type?,options?} — type=text|select; select options:[{id,display}] (LookupItemDto; label accepted as display alias)",
                     IsRequired = false,
                     ParameterType = typeof(string)
                 },
                 new("optionsJson")
                 {
-                    Description = "JSON array of {id,label} for choice modes",
+                    Description = "JSON array of LookupItemDto {id,display} for choice modes (label accepted as display alias)",
                     IsRequired = false,
                     ParameterType = typeof(string)
                 },
@@ -343,6 +343,7 @@ namespace App.BL.AIAgent.GenericAgent
                 description:
                     "Ask the user a structured question and wait for their answer (Interactive only). " +
                     "Use for Gate-0 / missing fields / menus. mode=text|single_choice|multi_choice. " +
+                    "fieldsJson supports type=select with per-field options for dropdowns. " +
                     "Optionally merge answers into shared context via contextKey.",
                 parameters: parameters);
         }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using APP.Components.Dto;
 
 namespace APP.Components.EntityDto
 {
@@ -202,12 +203,9 @@ namespace APP.Components.EntityDto
         public string Name { get; set; }
         public string Label { get; set; }
         public bool Required { get; set; }
-    }
-
-    public class AgentAskUserOption
-    {
-        public string Id { get; set; }
-        public string Label { get; set; }
+        /// <summary>"text" (default) | "select" — select renders a dropdown; options on this field.</summary>
+        public string Type { get; set; } = "text";
+        public List<LookupItemDto> Options { get; set; } = new List<LookupItemDto>();
     }
 
     /// <summary>
@@ -220,7 +218,7 @@ namespace APP.Components.EntityDto
         /// <summary>"text" | "single_choice" | "multi_choice"</summary>
         public string Mode { get; set; } = "text";
         public List<AgentAskUserField> Fields { get; set; } = new List<AgentAskUserField>();
-        public List<AgentAskUserOption> Options { get; set; } = new List<AgentAskUserOption>();
+        public List<LookupItemDto> Options { get; set; } = new List<LookupItemDto>();
         /// <summary>Optional shared-context key; answers are merged into AppAgentSharedContext when set.</summary>
         public string ContextKey { get; set; }
         public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");

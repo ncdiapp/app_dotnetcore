@@ -26,16 +26,19 @@ Empty chat sends a hidden user message `[session_start]` (not shown in UI). Trea
 On `[session_start]` (or any first turn without clear IDs), do **not** call any child yet.
 Use the `ask_user` tool for all Gate-0 / menu questions (Interactive HITL). Prefer structured modes over plain chat:
 
-1. **DataSourceIds** - call `ask_user` with:
+1. **DataSource register ids (Gate-0)** - FIRST call `list_tenant_data_sources` (never invent ids; never call discover_plm_data_sources; never create new AppDataSourceRegister).
+   Then call `ask_user` with:
    - mode=`text`
-   - fieldsJson=`[{"name":"plmDataSourceId","label":"PLM DB DataSourceId","required":true},{"name":"dwDataSourceId","label":"PLM Data Warehouse DataSourceId","required":true}]`
-   - prompt explaining PLM DB vs DW DB
-   - optional contextKey=`plm.integration.job`
-   Optional before ask: `list_entity_data_sources` / `explore_platform` to list Id + name, then still `ask_user`.
+   - contextKey=`plm.integration.job`
+   - fieldsJson = four **select** fields; build each field `options` from list_tenant_data_sources as `[{id:"<registerId>",display:"<name> (#id)"}]`:
+     plmDataSourceId (required), dwDataSourceId (required), erpDataSourceId (optional), plmExDbDataSourceId (optional; PLM External DB).
+     Example shape: `[{"name":"plmDataSourceId","label":"PLM DB","required":true,"type":"select","options":[...]},{"name":"dwDataSourceId","label":"PLM Data Warehouse","required":true,"type":"select","options":[...]},{"name":"erpDataSourceId","label":"ERP (optional)","required":false,"type":"select","options":[...]},{"name":"plmExDbDataSourceId","label":"PLM External DB / ExDb (optional)","required":false,"type":"select","options":[...]}]`
+   - Prompt: pick existing tenant DataSource Register ids only.
 
-2. After answers: ensure `write_shared_context` key `plm.integration.job` has
-   `{ "plmDataSourceId": <int>, "dwDataSourceId": <int>, "status":"datasources-set" }`
-   (ask_user may already merge via contextKey - still verify). Smoke-check connectivity if possible; on failure re-ask with `ask_user`, do not continue.
+2. After answers: ensure `plm.integration.job` has
+   `{ "plmDataSourceId": <int>, "dwDataSourceId": <int>, "erpDataSourceId": <int|omit>, "plmExDbDataSourceId": <int|omit>, "status":"datasources-set" }`
+   (ask_user may already merge via contextKey - still verify; omit empty optional fields).
+   Smoke-check with `test_plm_connection(dataSourceRegisterId=...)` on each selected id only. On failure re-ask that role; do **not** read PLM pdmDataSource or create registers.
 
 3. **What to do next** - `ask_user` mode=`single_choice`, optionsJson like:
    `[{"id":"import-dw","label":"1. Import Template TAB from Data Warehouse - Transaction / Form"},{"id":"import-search-view","label":"2. Import Search & View"},{"id":"import-entity","label":"3. Import Entity"}]`
@@ -62,7 +65,7 @@ Do **not** invent OpeningMessage / static welcome text - always use PROMPT + `[s
 
 ## Shared context keys (`plm.integration.*`)
 ### Session
-- `plm.integration.job` - `{ plmDataSourceId, dwDataSourceId, appDataSourceId, activeChild, templateId, status, notes }`
+- `plm.integration.job` - `{ plmDataSourceId, dwDataSourceId, erpDataSourceId?, plmExDbDataSourceId?, appDataSourceId, activeChild, templateId, status, notes }`
 
 ### import-dw
 - `plm.integration.import-dw.inputs` - Gate 0 / run inputs (templateId, dataSourceIds, prefix, …)

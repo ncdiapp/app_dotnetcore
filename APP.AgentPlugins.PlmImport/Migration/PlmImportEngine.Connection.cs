@@ -121,7 +121,9 @@ IF COL_LENGTH('dbo.AppPlmImportSession', 'PlmDataSourceRegisterId') IS NULL
 IF COL_LENGTH('dbo.AppPlmImportSession', 'PlmDwDataSourceRegisterId') IS NULL
     ALTER TABLE dbo.AppPlmImportSession ADD PlmDwDataSourceRegisterId INT NULL;
 IF COL_LENGTH('dbo.AppPlmImportSession', 'ErpDataSourceRegisterId') IS NULL
-    ALTER TABLE dbo.AppPlmImportSession ADD ErpDataSourceRegisterId INT NULL;";
+    ALTER TABLE dbo.AppPlmImportSession ADD ErpDataSourceRegisterId INT NULL;
+IF COL_LENGTH('dbo.AppPlmImportSession', 'PlmExDbDataSourceRegisterId') IS NULL
+    ALTER TABLE dbo.AppPlmImportSession ADD PlmExDbDataSourceRegisterId INT NULL;";
 
         private const string EnsureLogTableSql = @"
 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='AppPlmImportLog')
@@ -344,7 +346,7 @@ END";
                 {
                     IsSuccess = false,
                     ErrorMessage =
-                        "discover_plm_data_sources is disabled. Use list_tenant_data_sources and bind Plm/PlmDw/Erp DataSourceRegisterIds on the session. Do not pass connection strings."
+                        "discover_plm_data_sources is removed. Use list_tenant_data_sources and bind Plm/PlmDw/Erp/ExDb DataSourceRegisterIds from ask_user. Do not pass connection strings; never create new registers from PLM."
                 }
             };
             result.ValidationResult.Items.Add(new ValidationItem(
@@ -373,7 +375,7 @@ END";
 SELECT TOP 1 SessionId, SessionGuid, CompanyId, SaasApplicationId, CreatedByUserId,
        CreatedAt, UpdatedAt, SessionStatus, CurrentStepCode, StepStateJson, DataSourceDiscoveryJson,
        PlmConnectionEncrypted,
-       PlmDataSourceRegisterId, PlmDwDataSourceRegisterId, ErpDataSourceRegisterId,
+       PlmDataSourceRegisterId, PlmDwDataSourceRegisterId, ErpDataSourceRegisterId, PlmExDbDataSourceRegisterId,
        CASE WHEN PlmDataSourceRegisterId IS NOT NULL AND PlmDataSourceRegisterId > 0 THEN 1
             WHEN PlmConnectionEncrypted IS NULL OR LEN(PlmConnectionEncrypted)=0 THEN 0 ELSE 1 END AS HasPlmConnection
 FROM dbo.AppPlmImportSession
@@ -421,7 +423,7 @@ ORDER BY UpdatedAt DESC",
                 {
                     result.ValidationResult.Items.Add(new ValidationItem(
                         typeof(PlmImportSessionDto), "Plm_Session_ConnectionStringRejected", ValidationItemType.Error,
-                        "Do not pass PlmConnectionString. Bind plmDataSourceRegisterId (and optional plmDw/erp register ids) from list_tenant_data_sources."));
+                        "Do not pass PlmConnectionString. Bind plmDataSourceRegisterId (and optional plmDw/erp/exDb register ids) from list_tenant_data_sources."));
                     return result;
                 }
 
@@ -431,6 +433,8 @@ ORDER BY UpdatedAt DESC",
                     ResolveConnectionStringFromRegisterId(dto.PlmDwDataSourceRegisterId.Value);
                 if (dto.ErpDataSourceRegisterId.HasValue && dto.ErpDataSourceRegisterId.Value > 0)
                     ResolveConnectionStringFromRegisterId(dto.ErpDataSourceRegisterId.Value);
+                if (dto.PlmExDbDataSourceRegisterId.HasValue && dto.PlmExDbDataSourceRegisterId.Value > 0)
+                    ResolveConnectionStringFromRegisterId(dto.PlmExDbDataSourceRegisterId.Value);
 
                 var fixture = GetTenantFixture();
                 var now = DateTime.UtcNow;
@@ -458,6 +462,9 @@ UPDATE dbo.AppPlmImportSession SET
                         + (dto.ErpDataSourceRegisterId.HasValue
                             ? ", ErpDataSourceRegisterId = @ErpDataSourceRegisterId"
                             : "")
+                        + (dto.PlmExDbDataSourceRegisterId.HasValue
+                            ? ", PlmExDbDataSourceRegisterId = @PlmExDbDataSourceRegisterId"
+                            : "")
                         + " WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Status";
 
                     var parms = new List<DbParameter>
@@ -478,6 +485,8 @@ UPDATE dbo.AppPlmImportSession SET
                         parms.Add(CreateParam(fixture, "@PlmDwDataSourceRegisterId", dto.PlmDwDataSourceRegisterId));
                     if (dto.ErpDataSourceRegisterId.HasValue)
                         parms.Add(CreateParam(fixture, "@ErpDataSourceRegisterId", dto.ErpDataSourceRegisterId));
+                    if (dto.PlmExDbDataSourceRegisterId.HasValue)
+                        parms.Add(CreateParam(fixture, "@PlmExDbDataSourceRegisterId", dto.PlmExDbDataSourceRegisterId));
 
                     fixture.ExecuteNonQueryResult(updateSql, parms);
                     result.Object = LoadSessionById(fixture, dto.SessionId.Value, includeConnection: false);
@@ -492,11 +501,11 @@ UPDATE dbo.AppPlmImportSession SET
 INSERT INTO dbo.AppPlmImportSession
     (SessionGuid, CompanyId, SaasApplicationId, CreatedByUserId, CreatedAt, UpdatedAt,
      SessionStatus, CurrentStepCode, PlmConnectionEncrypted, StepStateJson, DataSourceDiscoveryJson,
-     PlmDataSourceRegisterId, PlmDwDataSourceRegisterId, ErpDataSourceRegisterId)
+     PlmDataSourceRegisterId, PlmDwDataSourceRegisterId, ErpDataSourceRegisterId, PlmExDbDataSourceRegisterId)
 VALUES
     (@SessionGuid, @CompanyId, @SaasApplicationId, @CreatedByUserId, @CreatedAt, @UpdatedAt,
      @Status, @CurrentStepCode, NULL, @StepStateJson, @DataSourceDiscoveryJson,
-     @PlmDataSourceRegisterId, @PlmDwDataSourceRegisterId, @ErpDataSourceRegisterId);
+     @PlmDataSourceRegisterId, @PlmDwDataSourceRegisterId, @ErpDataSourceRegisterId, @PlmExDbDataSourceRegisterId);
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
                     var parms = new List<DbParameter>
@@ -513,7 +522,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
                         CreateParam(fixture, "@DataSourceDiscoveryJson", (object)dto.DataSourceDiscoveryJson ?? DBNull.Value),
                         CreateParam(fixture, "@PlmDataSourceRegisterId", (object)dto.PlmDataSourceRegisterId ?? DBNull.Value),
                         CreateParam(fixture, "@PlmDwDataSourceRegisterId", (object)dto.PlmDwDataSourceRegisterId ?? DBNull.Value),
-                        CreateParam(fixture, "@ErpDataSourceRegisterId", (object)dto.ErpDataSourceRegisterId ?? DBNull.Value)
+                        CreateParam(fixture, "@ErpDataSourceRegisterId", (object)dto.ErpDataSourceRegisterId ?? DBNull.Value),
+                        CreateParam(fixture, "@PlmExDbDataSourceRegisterId", (object)dto.PlmExDbDataSourceRegisterId ?? DBNull.Value)
                     };
 
                     var newIdObj = fixture.RetriveScalar(insertSql, parms);
@@ -894,7 +904,7 @@ WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Sta
 SELECT SessionId, SessionGuid, CompanyId, SaasApplicationId, CreatedByUserId,
        CreatedAt, UpdatedAt, SessionStatus, CurrentStepCode, StepStateJson, DataSourceDiscoveryJson,
        PlmConnectionEncrypted,
-       PlmDataSourceRegisterId, PlmDwDataSourceRegisterId, ErpDataSourceRegisterId,
+       PlmDataSourceRegisterId, PlmDwDataSourceRegisterId, ErpDataSourceRegisterId, PlmExDbDataSourceRegisterId,
        CASE WHEN PlmDataSourceRegisterId IS NOT NULL AND PlmDataSourceRegisterId > 0 THEN 1
             WHEN PlmConnectionEncrypted IS NULL OR LEN(PlmConnectionEncrypted)=0 THEN 0 ELSE 1 END AS HasPlmConnection
 FROM dbo.AppPlmImportSession WHERE SessionId = @SessionId",
@@ -928,6 +938,8 @@ FROM dbo.AppPlmImportSession WHERE SessionId = @SessionId",
                 dto.PlmDwDataSourceRegisterId = Convert.ToInt32(row["PlmDwDataSourceRegisterId"]);
             if (row.Table.Columns.Contains("ErpDataSourceRegisterId") && row["ErpDataSourceRegisterId"] != DBNull.Value)
                 dto.ErpDataSourceRegisterId = Convert.ToInt32(row["ErpDataSourceRegisterId"]);
+            if (row.Table.Columns.Contains("PlmExDbDataSourceRegisterId") && row["PlmExDbDataSourceRegisterId"] != DBNull.Value)
+                dto.PlmExDbDataSourceRegisterId = Convert.ToInt32(row["PlmExDbDataSourceRegisterId"]);
 
             // Engine-only hydration: never returned by GetActive/Save (those use includeConnection:false).
             if (includeConnection)
