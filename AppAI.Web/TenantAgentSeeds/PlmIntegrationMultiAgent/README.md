@@ -10,9 +10,9 @@ For a **new or restored** tenant DB (structure through **V031+**). Do not mix wi
 |---|---|---|
 | 1 | `01_Seed_IntegrationPlmImportLibrary.sql` | Library + ExternalDll tools (incl. `list_tenant_data_sources`, `list_tenant_saas_applications`) |
 | 2 | `02_Seed_PlmIntegrationImportDw_Child.sql` | Child agent `plm-integration-import-dw` |
-| 3 | `03_Seed_PlmIntegrationOrchestrator_Root.sql` | ROOT Wizard orchestrator + subscriptions (UPDATEs prompt on re-run) |
+| 3 | `03_Seed_PlmIntegrationOrchestrator_Root.sql` | ROOT Wizard orchestrator + subscriptions (UPDATEs prompt on re-run; **MaxIterations=400**) |
 | 4 | `99_Verify.sql` | Smoke checks |
-| — | `RUN_ALL.bat` | Runs 01→02→03→99 |
+| — | `RUN_ALL.bat` | Runs 01→02→03 → force MaxIterations=400 → 99 |
 
 ## Apply
 

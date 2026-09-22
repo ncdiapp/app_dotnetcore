@@ -825,39 +825,31 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
 
     // Load data from cache or server
     useEffect(() => {
+        const tabKey = getCurrentActiveTab()?.tabKey || null;
+        const isEmbeddedForm = isEmbedded || !!param2Obj?.isEmbeddedByOtherPage;
+        const dataModelKey = tabKey
+            ? (isEmbeddedForm
+                ? `${tabKey}|form|${transactionId ?? ''}|${rootPrimaryKeyValue ?? ''}`
+                : tabKey)
+            : null;
 
-
-        // Check cache first
-
-        let isAllowLoadTabCache = false;
-
-        if (isAllowLoadTabCache) {
-            let cachedDataModel = null;
-            let dataModelKey = null;
-
-            if (paramObj.isNavigatedFromTab) {
-                dataModelKey = getCurrentActiveTab()?.tabKey || null;
-            }
-
-            if (dataModelKey) {
-                cachedDataModel = getDataModelFromCache(dataModelKey);
-                if (cachedDataModel) {
-                    // Only use cache if it's for the same transactionId and rootPrimaryKeyValue
-                    if (cachedDataModel.controllerModel?.transactionId === transactionId &&
-                        cachedDataModel.controllerModel?.rootPrimaryKeyValue === rootPrimaryKeyValue) {
-                        setControllerModel(cachedDataModel.controllerModel);
-                        setDataModel(cachedDataModel.dataModel);
-                        formStructureDataRef.current = cachedDataModel.formStructureData;
-                        // Restore transactionExDto from cache if available
-                        if (cachedDataModel.transactionExDto) {
-                            transactionExDtoRef.current = cachedDataModel.transactionExDto;
-                        }
-                        lastLoadedKeyRef.current = `${transactionId}-${rootPrimaryKeyValue}`;
-                        return;
+        if (dataModelKey) {
+            const cachedDataModel = getDataModelFromCache(dataModelKey);
+            if (cachedDataModel) {
+                // Only use cache if it's for the same transactionId and rootPrimaryKeyValue
+                if (cachedDataModel.controllerModel?.transactionId === transactionId &&
+                    cachedDataModel.controllerModel?.rootPrimaryKeyValue === rootPrimaryKeyValue) {
+                    setControllerModel(cachedDataModel.controllerModel);
+                    setDataModel(cachedDataModel.dataModel);
+                    formStructureDataRef.current = cachedDataModel.formStructureData;
+                    // Restore transactionExDto from cache if available
+                    if (cachedDataModel.transactionExDto) {
+                        transactionExDtoRef.current = cachedDataModel.transactionExDto;
                     }
-                } 
+                    lastLoadedKeyRef.current = `${transactionId}-${rootPrimaryKeyValue}`;
+                    return;
+                }
             }
-
         }
 
         // Dedup guard (ALWAYS active): if this effect re-runs for the same form key
@@ -873,43 +865,40 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
         // Load from server (will use transactionExDtoRef if already loaded)
         loadDataFromServer();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [transactionId, rootPrimaryKeyValue, paramObj.isNavigatedFromTab]);
+    }, [transactionId, rootPrimaryKeyValue, isEmbedded, param2Obj?.isEmbeddedByOtherPage]);
 
-    // Use a ref to store cache data and keep it in sync with the latest loaded form state.
-    // This snapshot is what we persist into the tab cache so that switching tabs restores
-    // the most recent in-memory state (matching Angular's $scope behavior).
-    const cacheDataRef = useRef<any>({});
-    const lastCachedTransactionIdRef = useRef<number | null>(null);
-    const lastCachedRootPkRef = useRef<string | null>(null);
-
-    useEffect(() => {
+    // Snapshot for tab cache — keep reactive so useTabDataAutoCache sees field edits.
+    const formCachePayload = useMemo(() => {
         const isDataLoaded = !dataModel.isLoading && !dataModel.doing_async;
         const hasData = dataModel.currentFormData || dataModel.currentFormStructure;
-        const transactionChanged = lastCachedTransactionIdRef.current !== controllerModel.transactionId;
-        const rootPkChanged = lastCachedRootPkRef.current !== controllerModel.rootPrimaryKeyValue;
-
-        if (isDataLoaded && hasData) {
-            cacheDataRef.current = {
-                controllerModel,
-                dataModel,
-                formStructureData: formStructureDataRef.current,
-                transactionExDto: transactionExDtoRef.current
-            };
-            // Track current form identity so diagnostics can detect stale cache issues if needed
-            lastCachedTransactionIdRef.current = controllerModel.transactionId;
-            lastCachedRootPkRef.current = controllerModel.rootPrimaryKeyValue;
-        }
+        if (!isDataLoaded || !hasData) return null;
+        return {
+            controllerModel,
+            dataModel,
+            formStructureData: formStructureDataRef.current,
+            transactionExDto: transactionExDtoRef.current,
+        };
     }, [
-        controllerModel.transactionId,
-        controllerModel.rootPrimaryKeyValue,
+        controllerModel,
+        dataModel,
         dataModel.isLoading,
         dataModel.doing_async,
         dataModel.currentFormData,
-        dataModel.currentFormStructure
+        dataModel.currentFormStructure,
     ]);
 
-    // Auto-cache data for tab navigation (skip when embedded in another page, e.g. TransactionFormGroup)
-    useTabDataAutoCache(isEmbedded || param2Obj?.isEmbeddedByOtherPage ? null : cacheDataRef.current);
+    const formCacheKey = useMemo(() => {
+        const tabKey = getCurrentActiveTab()?.tabKey || null;
+        if (!tabKey || !transactionId) return undefined;
+        const isEmbeddedForm = isEmbedded || !!param2Obj?.isEmbeddedByOtherPage;
+        if (isEmbeddedForm) {
+            return `${tabKey}|form|${transactionId}|${rootPrimaryKeyValue ?? ''}`;
+        }
+        return tabKey;
+    }, [transactionId, rootPrimaryKeyValue, isEmbedded, param2Obj?.isEmbeddedByOtherPage]);
+
+    // Auto-cache standalone and embedded forms (Form Group left-nav remount / tab switch).
+    useTabDataAutoCache(formCachePayload, formCacheKey);
 
 
 

@@ -70,6 +70,46 @@ export interface ConfirmAskUserDto {
     FreeText?: string;
 }
 
+/** In-memory UI state so Agent Chat survives App-tab remount without restarting. */
+export interface GenericAgentChatUiSnapshot {
+    skillKey: string;
+    messages: Array<{
+        role: 'user' | 'assistant';
+        content: string;
+        isStreaming?: boolean;
+        toolSteps?: Array<{
+            toolName: string;
+            label?: string;
+            args?: string;
+            result?: string;
+            isSuccess: boolean;
+            durationMs?: number;
+        }>;
+    }>;
+    turnActivities: Array<{
+        turnIndex: number;
+        steps: Array<{
+            toolName: string;
+            label?: string;
+            args?: string;
+            result?: string;
+            isSuccess: boolean;
+            durationMs?: number;
+        }>;
+        isComplete: boolean;
+    }>;
+    currentTurnIndex: number;
+    sessionId: string | null;
+    pendingAskUser: AskUserEvent | null;
+    pendingPlan: { PlanSummary: string } | null;
+    askAnswers: Record<string, string>;
+    askSelectedIds: string[];
+    askFreeText: string;
+    isRunning: boolean;
+    error: string | null;
+    skillExecutionMode: string;
+}
+
 export interface GenericAgentEventHandlers {
     onToken: (text: string) => void;
     onStep: (step: { Type: string; ToolName?: string; Description: string; IsSuccess: boolean }) => void;
@@ -83,6 +123,7 @@ const BASE = `${endpoints.BASE_URL}/webapi/GenericAgent`;
 
 class GenericAgentService {
     private pollTimer: ReturnType<typeof setInterval> | null = null;
+    private activeHandlers: GenericAgentEventHandlers | null = null;
     currentSessionId: string | null = null;
     currentChatSessionKey: string | null = null;
 
@@ -320,13 +361,27 @@ class GenericAgentService {
 
     disconnect(): void {
         this.stopPolling();
+        this.activeHandlers = null;
+    }
+
+    /** True while PollEvents loop is active for the current RunAgent session. */
+    isPolling(): boolean {
+        return this.pollTimer !== null;
+    }
+
+    /** Rebind UI handlers after remount without starting a new RunAgent. */
+    reattachHandlers(handlers: GenericAgentEventHandlers): void {
+        this.activeHandlers = handlers;
     }
 
     private startPolling(sessionId: string, handlers: GenericAgentEventHandlers): void {
         let consecutiveFailures = 0;
         const MAX_FAILURES = 10;
+        this.activeHandlers = handlers;
 
         this.pollTimer = setInterval(async () => {
+            const h = this.activeHandlers;
+            if (!h) return;
             try {
                 const data: {
                     SessionExists?: boolean;
@@ -342,23 +397,23 @@ class GenericAgentService {
                 } = (await this.PollEvents(sessionId)) as never;
                 if (data?.SessionExists === false) {
                     this.stopPolling();
-                    handlers.onError('Session not found. Server may have restarted.');
+                    h.onError('Session not found. Server may have restarted.');
                     return;
                 }
                 consecutiveFailures = 0;
                 for (const evt of data?.Events ?? []) {
-                    if (evt.EventType === 'token' && evt.Token) handlers.onToken(evt.Token);
-                    if (evt.EventType === 'step' && evt.Step) handlers.onStep(evt.Step as never);
-                    if (evt.EventType === 'plan' && evt.Plan) handlers.onPlan(evt.Plan as never);
-                    if (evt.EventType === 'ask_user' && evt.AskUser) handlers.onAskUser?.(evt.AskUser);
+                    if (evt.EventType === 'token' && evt.Token) h.onToken(evt.Token);
+                    if (evt.EventType === 'step' && evt.Step) h.onStep(evt.Step as never);
+                    if (evt.EventType === 'plan' && evt.Plan) h.onPlan(evt.Plan as never);
+                    if (evt.EventType === 'ask_user' && evt.AskUser) h.onAskUser?.(evt.AskUser);
                     if (evt.EventType === 'done') {
                         this.stopPolling();
-                        handlers.onDone(evt.Done ?? { FinalResponse: '' });
+                        h.onDone(evt.Done ?? { FinalResponse: '' });
                         return;
                     }
                     if (evt.EventType === 'error') {
                         this.stopPolling();
-                        handlers.onError(evt.Error ?? 'Unknown error');
+                        h.onError(evt.Error ?? 'Unknown error');
                         return;
                     }
                 }
@@ -366,7 +421,7 @@ class GenericAgentService {
                 consecutiveFailures++;
                 if (consecutiveFailures >= MAX_FAILURES) {
                     this.stopPolling();
-                    handlers.onError('Lost connection to server after multiple retries.');
+                    h.onError('Lost connection to server after multiple retries.');
                 }
             }
         }, 500);

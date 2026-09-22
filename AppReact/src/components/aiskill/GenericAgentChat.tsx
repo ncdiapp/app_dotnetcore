@@ -1,7 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTheme } from '../../redux/hooks/useTheme';
-import { AskUserEvent, genericAgentSvc } from '../../webapi/genericAgentSvc';
+import { AskUserEvent, genericAgentSvc, type GenericAgentChatUiSnapshot } from '../../webapi/genericAgentSvc';
 import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
+import { registerTabDataSaver, unregisterTabDataSaver } from '../../redux/hooks/useTabNavigation';
+import {
+    clearAgentChatTabCache,
+    getActiveTabKey,
+    loadAgentChatFromTabCache,
+    saveAgentChatToTabCache,
+} from './agentChatTabCache';
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 
 const SESSION_START = '[session_start]';
@@ -41,6 +48,22 @@ interface Props {
 
 const snippet = (s?: string | null, max = 300) =>
     !s ? '' : s.length > max ? s.slice(0, max) + '…' : s;
+
+/** Strip leading LLM junk before a step title like [Linear]… (not before TODO [x] lines). */
+const sanitizeAgentDisplayText = (raw?: string | null): string => {
+    if (!raw) return '';
+    let s = raw.trim();
+    // ###[Title] at start → [Title]
+    if (/^#{1,6}\s*\[/.test(s)) {
+        s = s.replace(/^#{1,6}\s*/, '').trim();
+    }
+    // Inline junk before first [StepTitle] on the same line (e.g. "巧妙 eyes0123…###[Linear] …")
+    const m = s.match(/^([^\n[\]]{1,80}?)((?:#{1,6}\s*)?\[[A-Za-z][^\]]{1,80}\])/);
+    if (m && m[1] && !/^\s*$/.test(m[1])) {
+        return (m[2].replace(/^#{1,6}\s*/, '') + s.slice(m[0].length)).trim();
+    }
+    return s;
+};
 
 /** Format ask_user answers so Q&A stays in the chat after the Question card closes. */
 const formatAskUserAnswerSummary = (
@@ -257,37 +280,241 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
     const currentTurnIndexRef = useRef(0);
     const isRunningRef = useRef(false);
     const pendingAskUserRef = useRef<AskUserEvent | null>(null);
+    const pendingPlanRef = useRef<PlanEvent | null>(null);
+    const mountedRef = useRef(true);
+    const turnActivitiesRef = useRef<TurnActivity[]>([]);
+    const skillKeyRef = useRef(skillKey);
+    const tabKeyRef = useRef<string | null>(null);
+    const askAnswersRef = useRef<Record<string, string>>({});
+    const askSelectedIdsRef = useRef<string[]>([]);
+    const askFreeTextRef = useRef('');
 
     messagesRef.current = messages;
     sessionIdRef.current = sessionId;
     currentTurnIndexRef.current = currentTurnIndex;
     isRunningRef.current = isRunning;
     pendingAskUserRef.current = pendingAskUser;
+    pendingPlanRef.current = pendingPlan;
     skillExecutionModeRef.current = skillExecutionMode;
+    turnActivitiesRef.current = turnActivities;
+    skillKeyRef.current = skillKey;
+    askAnswersRef.current = askAnswers;
+    askSelectedIdsRef.current = askSelectedIds;
+    askFreeTextRef.current = askFreeText;
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, turnActivities, pendingAskUser]);
 
+    const buildSnapshot = (): GenericAgentChatUiSnapshot => ({
+        skillKey: skillKeyRef.current,
+        messages: messagesRef.current.map(m => ({ ...m, toolSteps: m.toolSteps ? [...m.toolSteps] : undefined })),
+        turnActivities: turnActivitiesRef.current.map(t => ({
+            ...t,
+            steps: t.steps.map(s => ({ ...s })),
+        })),
+        currentTurnIndex: currentTurnIndexRef.current,
+        sessionId: sessionIdRef.current,
+        pendingAskUser: pendingAskUserRef.current,
+        pendingPlan: pendingPlanRef.current,
+        askAnswers: { ...askAnswersRef.current },
+        askSelectedIds: [...askSelectedIdsRef.current],
+        askFreeText: askFreeTextRef.current,
+        isRunning: isRunningRef.current,
+        error: null,
+        skillExecutionMode: skillExecutionModeRef.current,
+    });
+
+    const persistSnapshotToTab = () => {
+        const tabKey = tabKeyRef.current ?? getActiveTabKey();
+        if (!tabKey) return;
+        tabKeyRef.current = tabKey;
+        saveAgentChatToTabCache(tabKey, buildSnapshot());
+    };
+
+    const findLastIdx = <T,>(arr: T[], pred: (item: T) => boolean): number => {
+        for (let i = arr.length - 1; i >= 0; i--) if (pred(arr[i])) return i;
+        return -1;
+    };
+
+    const addStep = (turnIdx: number, patch: Partial<ToolStep> & { toolName: string }) => {
+        setTurnActivities(prev => {
+            const existing = prev.find(t => t.turnIndex === turnIdx);
+            if (existing) {
+                const steps = [...existing.steps];
+                const idx = findLastIdx(steps, s => s.toolName === patch.toolName && s.result === undefined);
+                if (idx >= 0 && (patch.result !== undefined || patch.durationMs !== undefined)) {
+                    steps[idx] = { ...steps[idx], ...patch };
+                } else {
+                    steps.push({ isSuccess: true, ...patch });
+                }
+                return prev.map(t => t.turnIndex === turnIdx ? { ...t, steps } : t);
+            }
+            return [...prev, { turnIndex: turnIdx, steps: [{ isSuccess: true, ...patch }], isComplete: false }];
+        });
+    };
+
+    const buildLiveHandlers = (_turnIdx: number) => ({
+        onToken: (token: string) => {
+            if (!mountedRef.current) return;
+            setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last?.role === 'assistant' && last.isStreaming) {
+                    return [...prev.slice(0, -1), { ...last, content: last.content + token }];
+                }
+                return [...prev, { role: 'assistant' as const, content: token, isStreaming: true }];
+            });
+        },
+        onStep: (step: { Type: string; ToolName?: string; Description: string; IsSuccess: boolean; Details?: string }) => {
+            if (!mountedRef.current) return;
+            const s = step;
+            if (!s.ToolName) return;
+            const idx = currentTurnIndexRef.current;
+            if (s.Type === 'tool_call') {
+                pendingCallRef.current.set(s.ToolName, { args: s.Details, startedAt: Date.now() });
+                addStep(idx, { toolName: s.ToolName, label: s.Description, args: s.Details, isSuccess: true });
+            } else if (s.Type === 'tool_result') {
+                const pending = pendingCallRef.current.get(s.ToolName);
+                const durationMs = pending ? Date.now() - pending.startedAt : undefined;
+                pendingCallRef.current.delete(s.ToolName);
+                const resultLabel = extractCallAgentKeyFromLabel(s.Description)
+                    ? s.Description.split('—')[0].trim()
+                    : undefined;
+                addStep(idx, {
+                    toolName: s.ToolName,
+                    result: s.Details,
+                    isSuccess: s.IsSuccess,
+                    durationMs,
+                    ...(resultLabel ? { label: resultLabel } : {}),
+                });
+            }
+        },
+        onPlan: (plan: PlanEvent) => {
+            if (!mountedRef.current) return;
+            setPendingPlan(plan);
+        },
+        onAskUser: (ask: AskUserEvent) => {
+            if (!mountedRef.current) return;
+            setPendingAskUser(ask);
+            setAskAnswers({});
+            setAskSelectedIds([]);
+            setAskFreeText('');
+            setIsRunning(true);
+            isRunningRef.current = true;
+        },
+        onDone: (done: { FinalResponse: string }) => {
+            if (!mountedRef.current) return;
+            const idx = currentTurnIndexRef.current;
+            setTurnActivities(prev => {
+                const turn = prev.find(t => t.turnIndex === idx);
+                const stepsForMsg = turn?.steps ? [...turn.steps] : [];
+                setMessages(msgs => {
+                    const last = msgs[msgs.length - 1];
+                    if (last?.role === 'assistant' && last.isStreaming) {
+                        return [...msgs.slice(0, -1), {
+                            ...last,
+                            content: done.FinalResponse || last.content,
+                            isStreaming: false,
+                            toolSteps: stepsForMsg.length > 0 ? stepsForMsg : undefined,
+                        }];
+                    }
+                    if (done.FinalResponse) {
+                        return [...msgs, {
+                            role: 'assistant' as const,
+                            content: done.FinalResponse,
+                            toolSteps: stepsForMsg.length > 0 ? stepsForMsg : undefined,
+                        }];
+                    }
+                    return msgs;
+                });
+                return prev.map(t => t.turnIndex === idx ? { ...t, isComplete: true } : t);
+            });
+            setCurrentTurnIndex(i => {
+                const next = i + 1;
+                currentTurnIndexRef.current = next;
+                return next;
+            });
+            setPendingAskUser(null);
+            setIsRunning(false);
+            isRunningRef.current = false;
+        },
+        onError: (m: string) => {
+            if (!mountedRef.current) return;
+            setError(m);
+            setPendingAskUser(null);
+            setIsRunning(false);
+            isRunningRef.current = false;
+        },
+    });
+
     useEffect(() => {
         let cancelled = false;
-        sessionStartFiredRef.current = false;
-        setIsRunning(false);
-        isRunningRef.current = false;
-        setMessages([]);
-        setTurnActivities([]);
-        setCurrentTurnIndex(0);
-        currentTurnIndexRef.current = 0;
-        setSessionId(null);
-        sessionIdRef.current = null;
-        setPendingPlan(null);
-        setPendingAskUser(null);
-        setAskAnswers({});
-        setAskSelectedIds([]);
-        setAskFreeText('');
-        setError(null);
-        setSkillExecutionMode('Interactive');
-        skillExecutionModeRef.current = 'Interactive';
+        mountedRef.current = true;
+
+        const applySnapshot = (): boolean => {
+            if (testMode) return false;
+            const tabKey = getActiveTabKey();
+            tabKeyRef.current = tabKey;
+            const snap = loadAgentChatFromTabCache(tabKey, skillKey);
+            if (!snap) return false;
+            const hasUi =
+                (snap.messages?.length ?? 0) > 0
+                || !!snap.pendingAskUser
+                || !!snap.pendingPlan
+                || snap.isRunning;
+            if (!hasUi) return false;
+
+            sessionStartFiredRef.current = true;
+            setMessages(snap.messages as ChatMessage[]);
+            setTurnActivities(snap.turnActivities as TurnActivity[]);
+            setCurrentTurnIndex(snap.currentTurnIndex);
+            currentTurnIndexRef.current = snap.currentTurnIndex;
+            setSessionId(snap.sessionId);
+            sessionIdRef.current = snap.sessionId;
+            setPendingAskUser(snap.pendingAskUser);
+            setPendingPlan(snap.pendingPlan);
+            setAskAnswers(snap.askAnswers || {});
+            setAskSelectedIds(snap.askSelectedIds || []);
+            setAskFreeText(snap.askFreeText || '');
+            setIsRunning(!!snap.isRunning || !!snap.pendingAskUser);
+            isRunningRef.current = !!snap.isRunning || !!snap.pendingAskUser;
+            setSkillExecutionMode(snap.skillExecutionMode || 'Interactive');
+            skillExecutionModeRef.current = snap.skillExecutionMode || 'Interactive';
+            if (snap.error) setError(snap.error);
+            if (genericAgentSvc.isPolling() || snap.isRunning || snap.pendingAskUser) {
+                genericAgentSvc.reattachHandlers(buildLiveHandlers(snap.currentTurnIndex));
+            }
+            return true;
+        };
+
+        const restored = applySnapshot();
+
+        // Register tab flush saver so switching App tabs writes Redux tabKey cache.
+        const tabKeyForSaver = tabKeyRef.current ?? getActiveTabKey();
+        if (tabKeyForSaver && !testMode) {
+            tabKeyRef.current = tabKeyForSaver;
+            registerTabDataSaver(tabKeyForSaver, () => persistSnapshotToTab(), 'agent-chat');
+        }
+
+        if (!restored) {
+            sessionStartFiredRef.current = false;
+            setIsRunning(false);
+            isRunningRef.current = false;
+            setMessages([]);
+            setTurnActivities([]);
+            setCurrentTurnIndex(0);
+            currentTurnIndexRef.current = 0;
+            setSessionId(null);
+            sessionIdRef.current = null;
+            setPendingPlan(null);
+            setPendingAskUser(null);
+            setAskAnswers({});
+            setAskSelectedIds([]);
+            setAskFreeText('');
+            setError(null);
+            setSkillExecutionMode('Interactive');
+            skillExecutionModeRef.current = 'Interactive';
+        }
 
         genericAgentSvc.GetFixedSessionKey(skillKey).then(key => {
             if (!cancelled) setFileSessionKey(key);
@@ -296,7 +523,6 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
         const fireSessionStartIfAllowed = (mode: string, allowFirstTurn: boolean) => {
             if (cancelled || sessionStartFiredRef.current) return;
             sessionStartFiredRef.current = true;
-            // Interactive + AllowAgentFirstTurn only (UI: "Agent speaks first")
             if (!/^Interactive$/i.test(mode || 'Interactive')) return;
             if (!allowFirstTurn) return;
             void runAgentTurnRef.current({
@@ -321,9 +547,13 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                     }
                 }
                 setSkillDisplayNames(map);
-                setSkillExecutionMode(mode);
-                skillExecutionModeRef.current = mode;
+                if (!restored) {
+                    setSkillExecutionMode(mode);
+                    skillExecutionModeRef.current = mode;
+                }
             } catch { /* optional */ }
+
+            if (cancelled || restored) return;
 
             if (testMode) {
                 fireSessionStartIfAllowed(mode, allowFirstTurn);
@@ -339,7 +569,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                 if (meaningful.length > 0) {
                     sessionStartFiredRef.current = true;
                     const restoredMsgs: ChatMessage[] = [];
-                    const restored: TurnActivity[] = [];
+                    const restoredActs: TurnActivity[] = [];
                     let userTurn = -1;
                     for (const m of meaningful) {
                         const content = typeof m.content === 'string' ? m.content : String(m.content ?? '');
@@ -362,7 +592,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                         } else if (m.role === 'assistant') {
                             restoredMsgs.push({ role: 'assistant', content, toolSteps: steps });
                             if (steps && steps.length > 0) {
-                                restored.push({
+                                restoredActs.push({
                                     turnIndex: Math.max(0, userTurn),
                                     isComplete: true,
                                     steps,
@@ -371,7 +601,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                         }
                     }
                     setMessages(restoredMsgs);
-                    setTurnActivities(restored);
+                    setTurnActivities(restoredActs);
                     setCurrentTurnIndex(meaningful.filter(m => m.role === 'user').length);
                 } else {
                     fireSessionStartIfAllowed(mode, allowFirstTurn);
@@ -385,31 +615,17 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
 
         return () => {
             cancelled = true;
-            genericAgentSvc.disconnect();
+            mountedRef.current = false;
+            const tabKey = tabKeyRef.current ?? getActiveTabKey();
+            if (tabKey) {
+                unregisterTabDataSaver(tabKey, 'agent-chat');
+                saveAgentChatToTabCache(tabKey, buildSnapshot());
+            }
+            if (!isRunningRef.current && !pendingAskUserRef.current) {
+                genericAgentSvc.disconnect();
+            }
         };
     }, [skillKey, testMode]);
-
-    const findLastIdx = <T,>(arr: T[], pred: (item: T) => boolean): number => {
-        for (let i = arr.length - 1; i >= 0; i--) if (pred(arr[i])) return i;
-        return -1;
-    };
-
-    const addStep = (turnIdx: number, patch: Partial<ToolStep> & { toolName: string }) => {
-        setTurnActivities(prev => {
-            const existing = prev.find(t => t.turnIndex === turnIdx);
-            if (existing) {
-                const steps = [...existing.steps];
-                const idx = findLastIdx(steps, s => s.toolName === patch.toolName && s.result === undefined);
-                if (idx >= 0 && (patch.result !== undefined || patch.durationMs !== undefined)) {
-                    steps[idx] = { ...steps[idx], ...patch };
-                } else {
-                    steps.push({ isSuccess: true, ...patch });
-                }
-                return prev.map(t => t.turnIndex === turnIdx ? { ...t, steps } : t);
-            }
-            return [...prev, { turnIndex: turnIdx, steps: [{ isSuccess: true, ...patch }], isComplete: false }];
-        });
-    };
 
     const runAgentTurn = async (opts: {
         userMessage: string;
@@ -441,88 +657,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
 
             const sid = await genericAgentSvc.RunAgent(
                 { SkillKey: skillKey, UserMessage: msg, SessionId: sessionIdRef.current ?? undefined, Messages: history },
-                {
-                    onToken: (token) => {
-                        setMessages(prev => {
-                            const last = prev[prev.length - 1];
-                            if (last?.role === 'assistant' && last.isStreaming) {
-                                return [...prev.slice(0, -1), { ...last, content: last.content + token }];
-                            }
-                            return [...prev, { role: 'assistant', content: token, isStreaming: true }];
-                        });
-                    },
-                    onStep: (step) => {
-                        const s = step as { Type: string; ToolName?: string; Description: string; IsSuccess: boolean; Details?: string };
-                        if (!s.ToolName) return;
-                        if (s.Type === 'tool_call') {
-                            pendingCallRef.current.set(s.ToolName, { args: s.Details, startedAt: Date.now() });
-                            addStep(turnIdx, { toolName: s.ToolName, label: s.Description, args: s.Details, isSuccess: true });
-                        } else if (s.Type === 'tool_result') {
-                            const pending = pendingCallRef.current.get(s.ToolName);
-                            const durationMs = pending ? Date.now() - pending.startedAt : undefined;
-                            pendingCallRef.current.delete(s.ToolName);
-                            const resultLabel = extractCallAgentKeyFromLabel(s.Description)
-                                ? s.Description.split('—')[0].trim()
-                                : undefined;
-                            addStep(turnIdx, {
-                                toolName: s.ToolName,
-                                result: s.Details,
-                                isSuccess: s.IsSuccess,
-                                durationMs,
-                                ...(resultLabel ? { label: resultLabel } : {}),
-                            });
-                        }
-                    },
-                    onPlan: (plan) => setPendingPlan(plan),
-                    onAskUser: (ask) => {
-                        setPendingAskUser(ask);
-                        setAskAnswers({});
-                        setAskSelectedIds([]);
-                        setAskFreeText('');
-                        setIsRunning(true);
-                        isRunningRef.current = true;
-                    },
-                    onDone: (done) => {
-                        setTurnActivities(prev => {
-                            const turn = prev.find(t => t.turnIndex === turnIdx);
-                            const stepsForMsg = turn?.steps ? [...turn.steps] : [];
-                            setMessages(msgs => {
-                                const last = msgs[msgs.length - 1];
-                                if (last?.role === 'assistant' && last.isStreaming) {
-                                    return [...msgs.slice(0, -1), {
-                                        ...last,
-                                        content: done.FinalResponse || last.content,
-                                        isStreaming: false,
-                                        toolSteps: stepsForMsg.length > 0 ? stepsForMsg : undefined,
-                                    }];
-                                }
-                                if (done.FinalResponse) {
-                                    return [...msgs, {
-                                        role: 'assistant' as const,
-                                        content: done.FinalResponse,
-                                        toolSteps: stepsForMsg.length > 0 ? stepsForMsg : undefined,
-                                    }];
-                                }
-                                return msgs;
-                            });
-                            return prev.map(t => t.turnIndex === turnIdx ? { ...t, isComplete: true } : t);
-                        });
-                        setCurrentTurnIndex(i => {
-                            const next = i + 1;
-                            currentTurnIndexRef.current = next;
-                            return next;
-                        });
-                        setPendingAskUser(null);
-                        setIsRunning(false);
-                        isRunningRef.current = false;
-                    },
-                    onError: (m) => {
-                        setError(m);
-                        setPendingAskUser(null);
-                        setIsRunning(false);
-                        isRunningRef.current = false;
-                    },
-                },
+                buildLiveHandlers(turnIdx),
             );
             setSessionId(sid);
             sessionIdRef.current = sid;
@@ -591,6 +726,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
 
     const handleClear = async () => {
         genericAgentSvc.disconnect();
+        clearAgentChatTabCache(tabKeyRef.current ?? getActiveTabKey());
         setIsRunning(false);
         isRunningRef.current = false;
         setMessages([]);
@@ -615,7 +751,11 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
     const toggleExpand = (key: string) =>
         setExpandedTools(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
-    const btn = `px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`;
+    const btn = `px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`;
+    const choiceCardBase =
+        `w-full text-left px-3 py-2.5 text-sm rounded-[4px] border transition-colors ${theme.button_default}`;
+    const choiceCardPrimary =
+        `w-full text-left px-3 py-2.5 text-sm rounded-[4px] border font-medium transition-colors ${theme.button_default}`;
     const allActivities = turnActivities;
     const hasAnyTools = allActivities.some(t => t.steps.length > 0);
     const askMode = (pendingAskUser?.Mode || 'text').toLowerCase();
@@ -635,7 +775,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                     {messages.map((m, i) => (
                         <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             <div className={`max-w-2xl px-3 py-2 rounded-lg text-xs whitespace-pre-wrap ${m.role === 'user' ? `${theme.button_default} ml-8` : `${theme.mainContentSection} mr-8`}`}>
-                                {m.content}
+                                {m.role === 'assistant' ? sanitizeAgentDisplayText(m.content) : m.content}
                                 {m.isStreaming && <span className="animate-pulse ml-1">|</span>}
                             </div>
                         </div>
@@ -664,17 +804,27 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                     {pendingAskUser && (
                         <div className={`mx-2 p-3 rounded border ${theme.mainContentSection} flex flex-col gap-2`}>
                             <div className={`text-xs font-semibold ${theme.title}`}>Question</div>
-                            <div className={`text-xs ${theme.label} whitespace-pre-wrap`}>{pendingAskUser.Prompt}</div>
+                            <div className={`text-xs ${theme.label} whitespace-pre-wrap`}>{sanitizeAgentDisplayText(pendingAskUser.Prompt)}</div>
 
                             {isButtonGroup && (
-                                <div className={askLayout === 'horizontal' ? 'flex flex-row flex-wrap gap-2' : 'flex flex-col gap-2'}>
-                                    {pendingAskUser.Options!.map(opt => {
+                                <div
+                                    className={
+                                        askLayout === 'horizontal'
+                                            ? 'flex flex-row flex-nowrap gap-2 w-full items-stretch'
+                                            : 'flex flex-col gap-2 w-full max-w-xl items-stretch'
+                                    }
+                                >
+                                    {pendingAskUser.Options!.map((opt, optIdx) => {
                                         const id = String(opt.Id ?? '');
+                                        const isCancelish = /^(cancel|done|stop)$/i.test(id);
+                                        const cardClass = askLayout === 'horizontal'
+                                            ? `${btn} ${isCancelish ? 'opacity-80' : ''}`
+                                            : (optIdx === 0 && !isCancelish ? choiceCardPrimary : choiceCardBase);
                                         return (
                                             <button
                                                 key={id}
                                                 type="button"
-                                                className={btn}
+                                                className={cardClass}
                                                 onClick={() => handleConfirmAskUser(false, [id])}
                                             >
                                                 {opt.Display || id}
@@ -772,16 +922,17 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                                 )
                             )}
 
-                            <div className="flex gap-2">
-                                {!isButtonGroup && (
+                            {/* button_group is one-click; options already include Cancel — do not add a second Cancel row. */}
+                            {!isButtonGroup && (
+                                <div className="flex gap-2">
                                     <button className={btn} onClick={() => handleConfirmAskUser(false)}>
                                         <i className="fa-solid fa-check mr-1" />Submit
                                     </button>
-                                )}
-                                <button className={btn} onClick={() => handleConfirmAskUser(true)}>
-                                    <i className="fa-solid fa-xmark mr-1" />Cancel
-                                </button>
-                            </div>
+                                    <button className={btn} onClick={() => handleConfirmAskUser(true)}>
+                                        <i className="fa-solid fa-xmark mr-1" />Cancel
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     )}
 

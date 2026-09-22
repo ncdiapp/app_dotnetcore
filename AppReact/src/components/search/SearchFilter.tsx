@@ -58,8 +58,22 @@ const resolveValuesForCriteria = (
     let overrideValues: string[] | undefined;
     if (Array.isArray(override)) {
       overrideValues = normalizeStringArray(override);
-    } else if (typeof override === "object" && Array.isArray(override.values)) {
-      overrideValues = normalizeStringArray(override.values);
+    } else if (typeof override === "object") {
+      if (Array.isArray(override.values)) {
+        overrideValues = normalizeStringArray(override.values);
+      } else if (typeof override.valuesText === "string") {
+        // Text criteria persist as valuesText until SEARCH parses them.
+        const parsed = override.valuesText
+          .split(",")
+          .map((s: string) => s.trim())
+          .filter((s: string) => s.length > 0);
+        // Keep raw text (including empty) for UI restore even when no tokens yet.
+        if (parsed.length === 0 && override.valuesText.length > 0) {
+          overrideValues = [override.valuesText];
+        } else {
+          overrideValues = parsed;
+        }
+      }
     }
     if (overrideValues !== undefined) {
       const allowEmpty = options?.allowEmptyOverride === true;
@@ -303,14 +317,23 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
     const valueMap: Record<string, any[]> = {};
     const textMap: Record<string, string> = {};
     (Criterias || []).forEach((criteria: any) => {
-      const opType = criteria?.CriteriaOperator?.OperatorType;
-      operatorMap[criteria.SearcDCUID] =
+      const dcuId = criteria.SearcDCUID;
+      const override = dictDcuValue?.[dcuId];
+      const overrideOp = override && typeof override === 'object' ? override.operator : null;
+      const opType =
+        overrideOp?.OperatorType ??
+        overrideOp?.operatorType ??
+        criteria?.CriteriaOperator?.OperatorType;
+      operatorMap[dcuId] =
         opType === 0 || opType ? String(opType) : "";
-      valueMap[criteria.SearcDCUID] = resolveValuesForCriteria(criteria, dictDcuValue);
+      valueMap[dcuId] = resolveValuesForCriteria(criteria, dictDcuValue, { allowEmptyOverride: true });
 
       if (criteria.CriteriaType === EmAppCriteriaType.Text) {
-        const values = resolveValuesForCriteria(criteria, dictDcuValue);
-        textMap[criteria.SearcDCUID] = values.join(",");
+        if (override && typeof override === 'object' && typeof override.valuesText === 'string') {
+          textMap[dcuId] = override.valuesText;
+        } else {
+          textMap[dcuId] = (valueMap[dcuId] ?? []).join(",");
+        }
       }
     });
     setOperatorSelections(operatorMap);
@@ -538,11 +561,19 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
             value={rawValue}
             disabled={criteria.IsReadOnly}
             onChange={(event) => {
-              // Do not parse/sync Values[] on every keystroke.
+              // Do not parse Values[] on every keystroke, but keep parent dictDcuValue in sync
+              // so tab-switch cache restores the typed criteria text.
+              const nextText = event.target.value;
               setTextInputs((prev) => ({
                 ...prev,
-                [criteria.SearcDCUID]: event.target.value,
+                [criteria.SearcDCUID]: nextText,
               }));
+              const operatorSelection = operatorSelectionsRef.current[criteria.SearcDCUID] ?? "";
+              const selectedOperator = resolveSelectedOperator(criteria, operatorSelection);
+              onCriteriaValueChanged?.(criteria.SearcDCUID, {
+                operator: selectedOperator ?? null,
+                valuesText: nextText,
+              });
             }}
             className={commonInputClass}
           />
@@ -560,7 +591,7 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
         />
       );
     },
-    [handleValueChange, theme.inputBox, valueSelections, textInputs, dictDcuValue]
+    [handleValueChange, theme.inputBox, valueSelections, textInputs, dictDcuValue, onCriteriaValueChanged, resolveSelectedOperator]
   );
 
   // Expose latest raw TEXT input overrides for parent to parse on SEARCH click.
@@ -664,8 +695,8 @@ export const SearchFilter: React.FC<SearchFilterProps> = ({
   }, [Criterias, getLiveCriteriaOverrides, onCriteriaValueChanged]);
 
   useEffect(() => {
-    onRegisterLiveCriteriaOverrides?.(flushAndGetLiveCriteriaOverrides);
-  }, [onRegisterLiveCriteriaOverrides, flushAndGetLiveCriteriaOverrides]);
+    onRegisterLiveCriteriaOverrides?.(getLiveCriteriaOverrides);
+  }, [onRegisterLiveCriteriaOverrides, getLiveCriteriaOverrides]);
 
   // Clear criteria values (match Angular clearCriteriaValues behavior).
   useEffect(() => {

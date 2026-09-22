@@ -277,7 +277,8 @@ const LandingPage: React.FC = () => {
           <TabHeaders />
           <div className="flex h-1 min-h-0 w-full flex-auto flex-col p-4">
             <div className="flex h-full min-h-0 w-full flex-col overflow-auto">
-              <Outlet key={`${activeTabKey ?? ''}-${location.pathname}`} />
+              {/* pathname only — do not remount on activeTabKey alone (same route / tab chrome). */}
+              <Outlet key={location.pathname} />
             </div>
           </div>
         </main>

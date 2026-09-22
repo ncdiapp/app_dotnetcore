@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { RootState, store } from '../../redux/store';
 import { activateTab, closeTab, Tab } from '../../redux/features/ui/navigation/tabnavSlice';
 import { collapseSidebar } from '../../redux/features/ui/navigation/sidebarSlice';
-//import { cacheCurrentTabData } from '../../redux/hooks/useTabNavigation';
+import { cacheCurrentTabData } from '../../redux/hooks/useTabNavigation';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { resolveTabNavigationPath, tabRoutePathsMatch } from '../../helper/navigationHelper';
 
@@ -29,6 +29,7 @@ const TabHeaders: React.FC = () => {
   };
 
   const handleTabClick = (tab: Tab) => {
+    cacheCurrentTabData();
     dispatch(activateTab(tab.tabKey));
     dispatch(collapseSidebar());
     navigateToTabKey(tab.tabKey);

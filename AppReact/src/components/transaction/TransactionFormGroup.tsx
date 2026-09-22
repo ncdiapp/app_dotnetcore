@@ -3,7 +3,7 @@ import { useParams, useLocation } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useTabDataAutoCache } from '../../redux/hooks/useTabNavigation';
-import { updateCurrentTabLabel, getCurrentActiveTab } from '../../redux/features/ui/navigation/tabnavSlice';
+import { updateCurrentTabLabel, getCurrentActiveTab, getDataModelFromCache } from '../../redux/features/ui/navigation/tabnavSlice';
 import { tabRoutePathsMatch } from '../../helper/navigationHelper';
 import FormMasterDetail, { type TemplateHeaderEmbeddedForm } from '../formMgt/FormMasterDetail';
 import AppSearch from '../search/AppSearch';
@@ -234,8 +234,27 @@ const TransactionFormGroup: React.FC = () => {
     isHideLeftMenu,
   });
 
-  // Session payload (viewDto + row) is stored under formGroupSessionKey by Search — do not overwrite via tab cache.
-  useTabDataAutoCache(null);
+  const formGroupUiCacheKey = useMemo(() => {
+    const tabKey = getCurrentActiveTab()?.tabKey || null;
+    if (!tabKey || !sessionKey) return undefined;
+    return `${tabKey}|form-group|${sessionKey}`;
+  }, [sessionKey]);
+
+  const formGroupUiCache = useMemo(() => {
+    if (!sessionKey || !selectedLinkTarget) return null;
+    return {
+      pageType: 'transaction-form-group' as const,
+      sessionKey,
+      selectedLinkTargetId: selectedLinkTarget?.Id ?? null,
+      selectedLinkTargetTransactionId: selectedLinkTarget?.LinkTargetTransactionId ?? null,
+      selectedLinkTargetSearchId: selectedLinkTarget?.LinkTargetSearchId ?? null,
+      selecedDataRowId: selecedDataRow?.Id ?? null,
+      isHideLeftMenu,
+    };
+  }, [sessionKey, selectedLinkTarget, selecedDataRow, isHideLeftMenu]);
+
+  // Persist left-nav selection across tab remount (forms use their own composite keys).
+  useTabDataAutoCache(formGroupUiCache, formGroupUiCacheKey);
 
   useEffect(() => {
     setDataModel((prev: any) => ({
@@ -346,6 +365,19 @@ const TransactionFormGroup: React.FC = () => {
       setHeaderForms([]);
       setHeaderSearches([]);
 
+      if (sessionKey) {
+        setSessionData((prev) => {
+          if (!prev) return prev;
+          const next = {
+            ...prev,
+            linkTargetDto: sessionData?.linkTargetDto ?? prev.linkTargetDto,
+            selecedDataRow: row,
+          };
+          cacheFormGroupSession(dispatch, sessionKey, next);
+          return next;
+        });
+      }
+
       const nextMainForms: EmbeddedFormConfig[] = [];
       const nextMainSearches: EmbeddedSearchConfig[] = [];
 
@@ -382,8 +414,10 @@ const TransactionFormGroup: React.FC = () => {
       adaptTemplateItemForCreate,
       buildFormEmbedded,
       buildSearchEmbedded,
+      dispatch,
       linkTargetList,
       sessionData?.linkTargetDto,
+      sessionKey,
       templateHeaderList,
     ],
   );
@@ -410,6 +444,19 @@ const TransactionFormGroup: React.FC = () => {
       setNavigationObj(
         buildNavigationObj(row, sessionData?.searchResultRowList || []),
       );
+
+      if (sessionKey) {
+        setSessionData((prev) => {
+          if (!prev) return prev;
+          const next = {
+            ...prev,
+            linkTargetDto: effectiveLinkTarget,
+            selecedDataRow: row,
+          };
+          cacheFormGroupSession(dispatch, sessionKey, next);
+          return next;
+        });
+      }
 
       const nextHeaderForms: EmbeddedFormConfig[] = [];
       const nextHeaderSearches: EmbeddedSearchConfig[] = [];
@@ -455,7 +502,9 @@ const TransactionFormGroup: React.FC = () => {
       buildFormEmbedded,
       buildNavigationObj,
       buildSearchEmbedded,
+      dispatch,
       sessionData?.searchResultRowList,
+      sessionKey,
       templateHeaderList,
     ],
   );
@@ -468,12 +517,41 @@ const TransactionFormGroup: React.FC = () => {
       loadFormGroupCreateLayout(sessionData.selecedDataRow);
       return;
     }
-    const initial =
+
+    const tabKey = getCurrentActiveTab()?.tabKey || null;
+    const uiCacheKey = tabKey && sessionKey ? `${tabKey}|form-group|${sessionKey}` : null;
+    const uiCache = uiCacheKey ? getDataModelFromCache(uiCacheKey) : null;
+
+    let initial =
       findLinkTargetInList(sessionData.linkTargetDto, linkTargetList) ||
       sessionData.linkTargetDto ||
       linkTargetList[0];
-    loadTemplateItem(initial, sessionData.selecedDataRow);
-  }, [businessTemplateReady, sessionData, linkTargetList, loadFormGroupCreateLayout, loadTemplateItem]);
+    let row = sessionData.selecedDataRow;
+
+    if (uiCache?.pageType === 'transaction-form-group' && uiCache.sessionKey === sessionKey) {
+      const fromCache =
+        linkTargetList.find((lt: any) =>
+          (uiCache.selectedLinkTargetId != null && lt.Id === uiCache.selectedLinkTargetId) ||
+          (uiCache.selectedLinkTargetTransactionId != null &&
+            lt.LinkTargetTransactionId === uiCache.selectedLinkTargetTransactionId) ||
+          (uiCache.selectedLinkTargetSearchId != null &&
+            lt.LinkTargetSearchId === uiCache.selectedLinkTargetSearchId),
+        ) || null;
+      if (fromCache) initial = fromCache;
+
+      if (uiCache.selecedDataRowId != null && Array.isArray(sessionData.searchResultRowList)) {
+        const cachedRow = sessionData.searchResultRowList.find(
+          (r: any) => r?.Id === uiCache.selecedDataRowId,
+        );
+        if (cachedRow) row = cachedRow;
+      }
+      if (typeof uiCache.isHideLeftMenu === 'boolean') {
+        setIsHideLeftMenu(uiCache.isHideLeftMenu);
+      }
+    }
+
+    loadTemplateItem(initial, row);
+  }, [businessTemplateReady, sessionData, linkTargetList, loadFormGroupCreateLayout, loadTemplateItem, sessionKey]);
 
   const loadFromByNavigation = useCallback(
     (direction: 'First' | 'Prev' | 'Next' | 'Last') => {

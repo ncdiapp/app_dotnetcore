@@ -1,0 +1,58 @@
+import { store } from '../../redux/store';
+import {
+  getCurrentActiveTab,
+  getDataModelFromCache,
+  setDataModelToCache,
+} from '../../redux/features/ui/navigation/tabnavSlice';
+import type { GenericAgentChatUiSnapshot } from '../../webapi/genericAgentSvc';
+
+export const AGENT_CHAT_PAGE_TYPE = 'generic-agent-chat' as const;
+
+export type AgentChatTabCache = GenericAgentChatUiSnapshot & {
+  pageType: typeof AGENT_CHAT_PAGE_TYPE;
+  version: 1;
+  tabKey: string;
+};
+
+export function getActiveTabKey(): string | null {
+  return getCurrentActiveTab()?.tabKey ?? null;
+}
+
+export function saveAgentChatToTabCache(
+  tabKey: string | null | undefined,
+  snapshot: GenericAgentChatUiSnapshot,
+): void {
+  if (!tabKey) return;
+  const payload: AgentChatTabCache = {
+    ...snapshot,
+    pageType: AGENT_CHAT_PAGE_TYPE,
+    version: 1,
+    tabKey,
+  };
+  store.dispatch(setDataModelToCache({ dataModelKey: tabKey, dataModel: payload }));
+}
+
+export function loadAgentChatFromTabCache(
+  tabKey: string | null | undefined,
+  skillKey: string,
+): GenericAgentChatUiSnapshot | null {
+  if (!tabKey) return null;
+  const raw = getDataModelFromCache(tabKey) as AgentChatTabCache | null;
+  if (!raw || raw.pageType !== AGENT_CHAT_PAGE_TYPE) return null;
+  if (raw.skillKey && skillKey && raw.skillKey !== skillKey) return null;
+  const hasUi =
+    (raw.messages?.length ?? 0) > 0
+    || !!raw.pendingAskUser
+    || !!raw.pendingPlan
+    || raw.isRunning;
+  if (!hasUi) return null;
+  return raw;
+}
+
+export function clearAgentChatTabCache(tabKey: string | null | undefined): void {
+  if (!tabKey) return;
+  const raw = getDataModelFromCache(tabKey) as AgentChatTabCache | null;
+  if (raw?.pageType === AGENT_CHAT_PAGE_TYPE) {
+    store.dispatch(setDataModelToCache({ dataModelKey: tabKey, dataModel: null }));
+  }
+}

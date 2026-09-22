@@ -313,7 +313,7 @@ namespace App.BL.AIAgent.GenericAgent
                 },
                 new("optionsJson")
                 {
-                    Description = "JSON array of LookupItemDto {id,display} for choice modes (label accepted as display alias)",
+                    Description = "REQUIRED for single_choice/multi_choice: JSON array LookupItemDto [{id,display}]. Empty/missing = no choice UI (do not list choices in prompt instead).",
                     IsRequired = false,
                     ParameterType = typeof(string)
                 },
@@ -325,10 +325,9 @@ namespace App.BL.AIAgent.GenericAgent
                 },
                 new("ui")
                 {
-                    Description = "Choice UI: radio (default, select then Submit) | button_group (one click = select+submit). Only for mode=single_choice.",
+                    Description = "For single_choice menus/confirms prefer button_group (default when omitted). radio = select then Submit.",
                     IsRequired = false,
-                    ParameterType = typeof(string),
-                    DefaultValue = "radio"
+                    ParameterType = typeof(string)
                 },
                 new("layout")
                 {
@@ -353,16 +352,17 @@ namespace App.BL.AIAgent.GenericAgent
                         fieldsJson: Arg("fieldsJson"),
                         optionsJson: Arg("optionsJson"),
                         contextKey: Arg("contextKey"),
-                        ui: Arg("ui", "radio"),
+                        ui: Arg("ui"), // null → plugin defaults single_choice to button_group
                         layout: Arg("layout", "vertical")).ConfigureAwait(false);
                 },
                 functionName: "ask_user",
                 description:
                     "Ask the user a structured question and wait for their answer (Interactive only). " +
                     "Use for Gate-0 / missing fields / menus. mode=text|single_choice|multi_choice. " +
-                    "For menus/confirm-next: mode=single_choice + optionsJson REQUIRED (never list choices only in prompt text). " +
-                    "ui=radio|button_group (button_group = one-click select+submit); layout=vertical|horizontal. " +
-                    "fieldsJson supports type=select with per-field options for dropdowns. " +
+                    "CRITICAL for menus/confirm-next/TechPack: mode=single_choice + ui=button_group + non-empty optionsJson. " +
+                    "Never put numbered choices or 'reply with one of the following' in prompt — that yields no buttons. " +
+                    "Prompt = title + short context only; all choices go in optionsJson as [{id,display}]. " +
+                    "layout=vertical|horizontal. fieldsJson type=select for Gate-0 dropdowns. " +
                     "Optionally merge answers into shared context via contextKey.",
                 parameters: parameters);
         }

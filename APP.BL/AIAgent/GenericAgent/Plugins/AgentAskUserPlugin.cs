@@ -46,9 +46,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (normalizedMode != "text" && normalizedMode != "single_choice" && normalizedMode != "multi_choice")
                 normalizedMode = "text";
 
-            var normalizedUi = string.IsNullOrWhiteSpace(ui) ? "radio" : ui.Trim().ToLowerInvariant();
+            // single_choice menus default to button_group when ui omitted (model often forgets ui=).
+            var normalizedUi = string.IsNullOrWhiteSpace(ui)
+                ? (normalizedMode == "single_choice" ? "button_group" : "radio")
+                : ui.Trim().ToLowerInvariant();
             if (normalizedUi != "radio" && normalizedUi != "button_group")
-                normalizedUi = "radio";
+                normalizedUi = normalizedMode == "single_choice" ? "button_group" : "radio";
 
             var normalizedLayout = string.IsNullOrWhiteSpace(layout) ? "vertical" : layout.Trim().ToLowerInvariant();
             if (normalizedLayout != "vertical" && normalizedLayout != "horizontal")
@@ -58,14 +61,26 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (normalizedMode != "single_choice")
                 normalizedUi = "radio";
 
+            var options = ParseOptions(optionsJson);
+            if ((normalizedMode == "single_choice" || normalizedMode == "multi_choice") && options.Count == 0)
+            {
+                return JsonConvert.SerializeObject(new
+                {
+                    ok = false,
+                    error = "mode=" + normalizedMode
+                        + " requires non-empty optionsJson as [{id,display}]. "
+                        + "Do not put numbered choices in prompt text — retry ask_user with optionsJson + ui=button_group."
+                });
+            }
+
             var askEvent = new AgentAskUserEvent
             {
-                Prompt = prompt.Trim(),
+                Prompt = SanitizeAskUserPrompt(prompt),
                 Mode = normalizedMode,
                 Ui = normalizedUi,
                 Layout = normalizedLayout,
                 Fields = ParseFields(fieldsJson),
-                Options = ParseOptions(optionsJson),
+                Options = options,
                 ContextKey = string.IsNullOrWhiteSpace(contextKey) ? null : contextKey.Trim()
             };
 
@@ -119,6 +134,33 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 selectedIds = response.SelectedIds ?? new List<string>(),
                 freeText = response.FreeText ?? ""
             });
+        }
+
+        /// <summary>
+        /// Drop leading model garbage before the first <c>[StepTitle]</c> (e.g. "巧妙 eyes0123…###[Linear] …").
+        /// Does not strip content that has newlines before a later <c>[x]</c> checklist marker.
+        /// </summary>
+        private static string SanitizeAskUserPrompt(string prompt)
+        {
+            if (string.IsNullOrWhiteSpace(prompt)) return prompt?.Trim() ?? "";
+            var trimmed = prompt.Trim();
+            // ###[Title] → [Title]
+            while (trimmed.StartsWith("#", StringComparison.Ordinal))
+                trimmed = trimmed.TrimStart('#').TrimStart();
+
+            var nl = trimmed.IndexOfAny(new[] { '\r', '\n' });
+            var line = nl < 0 ? trimmed : trimmed.Substring(0, nl);
+            var rest = nl < 0 ? "" : trimmed.Substring(nl);
+
+            var idx = line.IndexOf('[');
+            if (idx > 0)
+            {
+                var after = line.Substring(idx);
+                var close = after.IndexOf(']');
+                if (close > 1 && close < 120)
+                    return (after + rest).Trim();
+            }
+            return trimmed;
         }
 
         private static bool HasAnswers(AgentAskUserResponse response)

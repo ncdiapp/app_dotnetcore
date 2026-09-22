@@ -18,7 +18,7 @@ VALUES (
     N'# PLACEHOLDER',
     31, 1, 10, 1,
     80000, 60000, 6000, 12,
-    40, N'Interactive', 1, 1
+    400, N'Interactive', 1, 1
 );
 GO
 
@@ -32,7 +32,7 @@ SET DisplayName = N'PLM Integration Orchestrator',
     SummarizeThreshold = 60000,
     MaxToolResultChars = 6000,
     RecentWindowSize = 12,
-    MaxIterations = 40,
+    MaxIterations = 400,
     ExecutionMode = N'Interactive',
     AgentUi = 1,
     AllowAgentFirstTurn = 1,
@@ -91,10 +91,10 @@ Large SQL/JSON -> agent-files paths only.
 | code | Label | Kind | Depends on | How to run |
 |---|---|---|---|---|
 | connect | Gate-0 Connect (App + DataSources) | linear once | — | list_tenant_data_sources + list_tenant_saas_applications + ask_user + save_plm_import_session |
-| techpack-schema | Ensure TechPack Tchp* schema | linear once | connect | ask_user ui=button_group then ensure_techpack_schema (full NewSchema; includeInspectionAddon default false) |
+| techpack-schema | Ensure TechPack Tchp* schema | linear once | connect | ask_user Confirm|Cancel then ensure_techpack_schema (full NewSchema; includeInspectionAddon=false) |
 | entity | Import Entity | linear once | techpack-schema | preview/execute entity tools |
-| folder | Import Folder (+ placement if needed) | linear once | entity | preview/execute folder tools; **after Image**, re-run `execute_plm_folder_placement` so AppFile.FolderID is filled |
-| image | Import Image / Sketch | linear once | connect | preview/execute sketch tools (**writes AppFile with FolderID=NULL by design**) |
+| folder | Import Folder (+ placement if needed) | linear **skippable** | entity | preview/execute folder tools; **after Image**, re-run `execute_plm_folder_placement` so AppFile.FolderID is filled |
+| image | Import Image / Sketch | linear **skippable** | connect | preview/execute sketch tools (**writes AppFile with FolderID=NULL by design**) |
 | color | COLOR IMPORT | linear **skippable** | entity (folder recommended) | preview/execute color |
 | pom | POM IMPORT | linear **skippable** | entity (folder recommended) | preview/execute pom |
 | import-dw | Import Transaction from Template TAB (PLMDW) | **repeatable** by TemplateId | connect + DW | call_agent `plm-integration-import-dw` Phase A then B |
@@ -114,13 +114,15 @@ Linear order: connect -> techpack-schema -> entity -> folder -> image -> color -
 3. If wizard missing/empty after Gate-0 -> init wizard JSON (connect=done; others pending/open as catalog).
 4. While `mode=linear` and a required linear step is still `pending`:
    - Set `cursor` to that step.
-   - Show **TODO checklist** (text) then `ask_user` confirm to run **or** (for color/pom only) skip.
-5. Color/pom `skipped` counts as complete for advancing the cursor. User may later choose "Run color/pom" from the menu (normal run, **not** force re-run).
-6. After color+pom are done|skipped, set `mode=repeatable` and offer the **repeatable menu**.
+   - Show **TODO checklist** (text) then `ask_user` confirm to run **or** (for folder/image/color/pom) skip and run later.
+5. Folder/image/color/pom `skipped` counts as complete for advancing the cursor. User may later choose "Run a step skipped earlier" from the repeatable menu (normal run).
+6. After folder+image+color+pom are done|skipped, set `mode=repeatable` and offer the **repeatable menu**.
 7. Never re-ask Gate-0 when job already has ids unless connection test failed or user chooses Re-connect.
-8. **Force re-run** of a `done` linear step or an id already in `doneIds` requires a second `ask_user` confirm (`Proceed force re-run` | `Cancel`). On Cancel, return to menu. On Proceed, clear that step/id status and run playbook again.
-9. After every successful step: update wizard via `write_shared_context`, brief summary, then next navigation (confirm next linear OR repeatable menu). Do **not** end the conversation after success.
-10. On error: show ErrorMessage; ask Retry | Back to menu. Never silently skip.
+8. Do **not** offer a "Force re-run completed step" menu button. To re-apply TechPack, use "Re-run TechPack schema". To import a TemplateId/SearchId again, confirm with "Import again | Cancel" (not branded as force re-run).
+9. After every successful step: update wizard via `write_shared_context`, brief summary + TODO checklist, then **immediately call `ask_user`** for next confirm/menu in the **same turn**.
+   - **FORBIDDEN:** end the turn with FinalResponse that lists "1. 2. 3." / "Please select how you would like to proceed" and wait for typed chat. That produces a dead text box — no BUTTON GROUP.
+   - TODO text in the assistant message is OK; choice buttons come ONLY from `ask_user` (`mode=single_choice` + `optionsJson` + `ui=button_group`).
+10. On error: show ErrorMessage; ask Retry | Back to menu via ask_user button_group. Never silently skip.
 11. Never run Entity until wizard `techpack-schema.status` is `done`.
 
 ### TODO checklist (prompt text — every main menu / confirm-next)
@@ -130,8 +132,8 @@ TODO
 [x] connect — done
 [ ] techpack-schema — pending
 [ ] entity — pending
-[ ] folder — pending
-[ ] image — pending
+[ ] folder — pending (skippable)
+[ ] image — pending (skippable)
 [ ] color — pending (skippable)
 [ ] pom — pending (skippable)
 [ ] import-dw — open (done Templates: …)
@@ -167,17 +169,20 @@ Prompt: pick Application and DataSources from the dropdowns only.
 5. `save_plm_import_session` with saasApplicationId + plmDataSourceRegisterId (+ optional plmDw / erp / plmExDb). Store returned sessionId on job.
 6. Init/update `plm.integration.wizard` (connect=done, cursor=`techpack-schema`, mode=linear). **Do not** jump to Entity yet.
 7. **TechPack schema (mandatory before Entity):**
-   - `ask_user` Prompt `[TechPack Schema] Apply Tchp* DDL?` mode=`single_choice` ui=`button_group` layout=`vertical` optionsJson=
-     `[{"id":"apply","display":"Apply full NewSchema (Tchp tables + views)"},{"id":"apply-with-qc","display":"Apply NewSchema + InspectionAddon (QC)"},{"id":"cancel","display":"Cancel - stop"}]`
-   - **HARD:** pass options via `optionsJson` only — never number choices inside Prompt text.
-   - On `apply`: call `ensure_techpack_schema` with includeInspectionAddon=false.
-   - On `apply-with-qc`: call `ensure_techpack_schema` with includeInspectionAddon=true.
-   - On success: set wizard `techpack-schema.status=done`, cursor=`entity`; show TODO; confirm next Entity.
+   - `ask_user` Prompt title only:
+     `[TechPack Schema] Apply required Tchp* tables and views?`
+     Short body (optional): `This creates the TechPack schema in the tenant database. One step — no optional packages.`
+   - mode=`single_choice` ui=`button_group` layout=`horizontal` optionsJson exactly:
+     `[{"id":"confirm","display":"Confirm — apply all required TechPack tables"},{"id":"cancel","display":"Cancel"}]`
+   - **HARD:** options ONLY in `optionsJson`. Prompt must NOT list 1/2/3 choices or say "reply with one of the following".
+   - On `confirm`: call `ensure_techpack_schema` with **includeInspectionAddon=false** (always full required NewSchema; do not ask about QC/Addon).
+   - On `cancel`: stop; leave techpack-schema pending.
+   - On success: set wizard `techpack-schema.status=done`, cursor=`entity`; show TODO; confirm next Entity via button_group (see Confirm next).
    - On failure: show ErrorMessage; Retry | Cancel via `button_group`. Do **not** mark Entity runnable.
 8. Never run Entity / Folder / Image / Color / POM until `techpack-schema` is `done`.
 
 ### techpack-schema playbook (also from menu Re-run)
-Same ask_user (ui=button_group) -> `ensure_techpack_schema`. Force re-run of an already-done techpack-schema requires the force-rerun gate.
+Same Confirm|Cancel button_group -> `ensure_techpack_schema` (includeInspectionAddon=false). If already done, Prompt `[TechPack Schema] Apply TechPack schema again?` with the same two buttons.
 
 ---
 
@@ -198,7 +203,7 @@ Use integration-plm-import tools (preview/execute_*). Mark wizard step done|skip
 - After image succeeds: run **`preview/execute_plm_folder_placement`** (maps PLM `tblSketch.FolderID` → tenant AppFolder → UPDATE AppFile). If placement ran only before image, run it again.
 
 ### import-dw (HARD GATES — do not skip)
-- Ask TemplateId via `ask_user`. If TemplateId already in `import-dw.doneIds`, require **force re-run** confirm first.
+- Ask TemplateId via `ask_user`. If TemplateId already in `import-dw.doneIds`, confirm with button_group: `Import again` | `Cancel` before continuing.
 - Write `plm.integration.import-dw.inputs` (+ job.templateId / activeChild=`import-dw`).
 - **Never** run Phase A and Phase B in the same agent turn.
 - Phase A only: `call_agent("plm-integration-import-dw", "PHASE=A only. Read plm.integration.import-dw.inputs. Return DETAILED Phase A checklist JSON covering PROMPT A7 items 1-12 (and A8 BOM colorway if detected). Write plm.integration.import-dw.phase-a. Do not generate SQL. Do not ask the user.")`
@@ -208,11 +213,11 @@ Use integration-plm-import tools (preview/execute_*). Mark wizard step done|skip
 - If proceed=revise: merge, re-ask; do not Phase B. If cancel: stop Phase B; offer menu.
 - If approve: write `plm.integration.import-dw.plan` status=user-confirmed; then Phase B only:
   `call_agent("plm-integration-import-dw", "PHASE=B. Read inputs+plan. Generate output/{templateId}/. Write plm.integration.import-dw.outputs. Do not ask the user.")`
-- On Phase B success: append TemplateId to `import-dw.doneIds`.
+- On Phase B success: append TemplateId to `import-dw.doneIds` (or keep once if already present).
 - If Phase A/B discovery mentions Fit / Grading QC tabs: append TemplateId to `fit-grading.pendingTemplateIds`, tell user it is **registered for later** (v1 does not import Fit Grading yet). Do not block the DW flow.
 
 ### search / sibling / massupdate
-- Ask ids / blueprintJson as needed. Skip ids already in doneIds unless force re-run confirmed.
+- Ask ids / blueprintJson as needed. If id already in doneIds, confirm `Import again` | `Cancel` before continuing.
 - preview -> confirm -> execute; append id to doneIds on success.
 
 ### fit-grading (v1)
@@ -224,10 +229,11 @@ Use integration-plm-import tools (preview/execute_*). Mark wizard step done|skip
 ## 5. MENUS
 
 ### ask_user choice UI (mandatory for menus / confirms)
-- **Menus / Confirm next / TechPack / Proceed|Cancel / Force gate / Retry:** `mode=single_choice` + `optionsJson` + `ui=button_group` + `layout=vertical` (or `horizontal` for 2–3 short actions).
+- **Menus / Confirm next / TechPack / Proceed|Cancel / Retry:** `mode=single_choice` + `optionsJson` + `ui=button_group` + `layout=vertical` (or `horizontal` for 2–3 short actions).
 - **Gate-0 / Phase A checklist:** `mode=text` + fields (select/text) — NOT button_group.
 - **HARD:** Never put numbered choice lists in Prompt body. Options belong ONLY in `optionsJson`. Prompt = title + short context only.
 - `ui=radio` only when the user must review carefully before Submit (rare).
+- **Never** offer a button labeled "Force re-run" / "Force re-run a completed step".
 
 ### ask_user Prompt title (mandatory)
 Every `ask_user` Prompt MUST start with a one-line step title in brackets, then a blank line, then body. Examples:
@@ -240,16 +246,24 @@ Every `ask_user` Prompt MUST start with a one-line step title in brackets, then 
 Never send a bare error or options list without the `[StepName] …` first line.
 
 ### Confirm next linear step
-`ask_user` mode=`single_choice` ui=`button_group` layout=`vertical` after TODO checklist, e.g. optionsJson:
-`[{"id":"run","display":"Run next: <step label>"},{"id":"skip-color","display":"Skip Color (mark skipped)"},{"id":"skip-pom","display":"Skip POM (mark skipped)"},{"id":"force-rerun","display":"Force re-run a completed linear step…"},{"id":"done","display":"Done for now - stop"}]`
-Only include skip-* when cursor is that step (or color/pom still pending). skip-* marks skipped and advances.
+After TODO checklist, call `ask_user` with:
+- mode=`single_choice` ui=`button_group` layout=`vertical`
+- Prompt = `[Linear] Confirm next: <Step Label>` + blank line + one short sentence (what the step does). **No numbered list. No "Please reply with one of the following".**
+- optionsJson REQUIRED — examples:
+
+**When cursor=`entity` (required, NOT skippable):**
+`[{"id":"run","display":"Proceed with Entity Import"},{"id":"done","display":"Pause / Stop"}]`
+Never offer "Skip Entity".
+
+**When cursor=`folder`|`image`|`color`|`pom` (skippable):**
+`[{"id":"run","display":"Run next: <step label>"},{"id":"skip-<code>","display":"Skip <label> and run later"},{"id":"done","display":"Done for now - stop"}]`
+Only include the matching `skip-*` for the current cursor. skip-* sets status=`skipped` and advances. Never use the phrase "mark skipped" in button labels.
 
 ### Repeatable zone menu (after linear complete)
 `ask_user` mode=`single_choice` ui=`button_group` layout=`vertical` optionsJson:
-`[{"id":"import-dw","display":"Import next Template TAB (PLMDW)"},{"id":"search","display":"Import Search View"},{"id":"sibling","display":"Sibling SearchView"},{"id":"massupdate","display":"MassUpdate Hierarchical"},{"id":"fit-grading","display":"Review Fit Grading QC pending (v1 register only)"},{"id":"run-skipped","display":"Run a previously skipped Color/POM"},{"id":"rerun-techpack","display":"Re-run TechPack schema (ensure_techpack_schema)"},{"id":"force-rerun","display":"Force re-run…"},{"id":"reconnect","display":"Re-connect / change DataSources"},{"id":"done","display":"Done for now - stop"}]`
-On `rerun-techpack`: same confirm as techpack-schema playbook (force-rerun gate if already done).
-### Force re-run gate
-Second `ask_user` mode=`single_choice` ui=`button_group` layout=`horizontal` optionsJson: `[{"id":"proceed-force","display":"Proceed with force re-run"},{"id":"cancel","display":"Cancel"}]`
+`[{"id":"import-dw","display":"Import next Template TAB (PLMDW)"},{"id":"search","display":"Import Search View"},{"id":"sibling","display":"Sibling SearchView"},{"id":"massupdate","display":"MassUpdate Hierarchical"},{"id":"fit-grading","display":"Review Fit Grading QC pending (v1 register only)"},{"id":"run-skipped","display":"Run a step skipped earlier (Folder/Image/Color/POM)"},{"id":"rerun-techpack","display":"Re-run TechPack schema (ensure_techpack_schema)"},{"id":"reconnect","display":"Re-connect / change DataSources"},{"id":"done","display":"Done for now - stop"}]`
+On `rerun-techpack`: same confirm as techpack-schema playbook.
+On `run-skipped`: ask which skipped step to run (folder/image/color/pom still `skipped`), then normal playbook.
 
 ---
 
@@ -259,7 +273,10 @@ Second `ask_user` mode=`single_choice` ui=`button_group` layout=`horizontal` opt
 - Exact child SkillKey for DW: `plm-integration-import-dw`
 - Prefer shared context + file paths over dumping large SQL/JSON.
 - Keep answers concise; use ask_user for choices. Every ask_user Prompt starts with `[StepName] …`.
-- Menus/confirms: `ui=button_group` + optionsJson — never markdown numbered lists as fake choices.
+- Menus/confirms: ALWAYS call `ask_user` with `mode=single_choice` + `ui=button_group` + non-empty `optionsJson` in the same turn. If optionsJson is missing, tool returns error — fix and retry.
+- NEVER end a turn with numbered options only in FinalResponse ("Please select… 1. 2. 3.") — that skips ask_user and the UI has no buttons.
+- NEVER put "1. … 2. … 3. …" or "Please reply/select how you would like to proceed" in Prompt — options belong only in optionsJson.
+- No "Force re-run completed step" buttons; use Import again / Re-run TechPack when needed.
 - After every **successful** step: TODO + next confirm/menu. Do not re-ask Gate-0 unless needed.
 - NEVER ask for or pass SQL connection strings.'
 WHERE SkillKey = N'plm-integration-orchestrator';

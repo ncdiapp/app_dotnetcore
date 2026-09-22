@@ -400,8 +400,14 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
       const searchResult = await searchSvc.retrieveSearchResult(finalSearchDto);
 
       // Update the data model with search results
+      // Also lock the criteria overrides used for this SEARCH into dictDcuValue so
+      // tab-switch cache keeps CRITERIA + VIEW RESULT in sync.
       setDataModel((prev: any) => ({
         ...prev,
+        dictDcuValue: {
+          ...(prev.dictDcuValue ?? {}),
+          ...dictDcuValueOverrides,
+        },
         searchResultDto: searchResult,
         searchResultCV: searchResult?.SearchResultRowList || [],
         searchViewDto: prev.searchViewDto ? {
@@ -794,8 +800,15 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
     let cachedDataModel = null;
     let dataModelKey = null;
 
-    if (paramObj.isNavigatedFromTab) {
-      dataModelKey = getCurrentActiveTab()?.tabKey || null;
+    // Prefer active tab cache whenever available (tab click remount / keep-alive restore).
+    const tabKey = getCurrentActiveTab()?.tabKey || null;
+    if (tabKey) {
+      if (embeddedParamObj) {
+        const linkedRow = paramObj?.linkedSourceRowId ?? '';
+        dataModelKey = `${tabKey}|search|${currentSearchId ?? ''}|${initialViewId ?? ''}|${linkedRow}`;
+      } else {
+        dataModelKey = tabKey;
+      }
     }
 
     if (dataModelKey) {
@@ -1264,8 +1277,31 @@ const AppSearch = React.forwardRef<AppSearchHandle, AppSearchProps>(({ embeddedP
   // Tree click updates `eshopCardCritRef.current` synchronously then triggers executeSearch immediately,
   // avoiding stale-criteria races when clicking nodes quickly.
 
-  // Auto-cache data for tab navigation
-  useTabDataAutoCache(dataModel);
+  // Auto-cache data for tab navigation (flush live/text criteria into dictDcuValue on leave).
+  const searchCacheKey = React.useMemo(() => {
+    const tabKey = getCurrentActiveTab()?.tabKey || null;
+    if (!tabKey) return undefined;
+    if (embeddedParamObj) {
+      const linkedRow = paramObj?.linkedSourceRowId ?? '';
+      return `${tabKey}|search|${searchId ?? ''}|${initialViewId ?? ''}|${linkedRow}`;
+    }
+    return tabKey;
+  }, [embeddedParamObj, searchId, initialViewId, paramObj?.linkedSourceRowId]);
+
+  useTabDataAutoCache(dataModel, searchCacheKey, () => {
+    const live = liveCriteriaOverridesGetterRef.current?.() ?? {};
+    const text = textCriteriaOverridesGetterRef.current?.() ?? {};
+    if (!live || (Object.keys(live).length === 0 && Object.keys(text).length === 0)) {
+      return { dictDcuValue: dataModel.dictDcuValue ?? {} };
+    }
+    return {
+      dictDcuValue: {
+        ...(dataModel.dictDcuValue ?? {}),
+        ...live,
+        ...text,
+      },
+    };
+  });
 
   return (
     <div className={`w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden`}>

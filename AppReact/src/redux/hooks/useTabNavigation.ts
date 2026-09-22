@@ -2,6 +2,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 import React, { useEffect, useRef, createContext, useContext, useMemo, type ReactNode } from 'react';
 import type { RootState } from '../store';
+import { store } from '../store';
 import { addTab, activateTab, setDataModelToCache, updateTabPath } from '../features/ui/navigation/tabnavSlice';
 import {
   buildRoutePathFromParamObj,
@@ -14,6 +15,41 @@ import {
 } from '../../helper/navigationHelper';
 
 const FILE_MANAGEMENT_DEFAULT_CATEGORY = 3; // My Company
+
+// Tab leave flush: pages register savers keyed by active tabKey (multiple savers per tab OK).
+const _dictTabKeyAndSaveToCacheFuncs: Record<string, Map<string, () => void>> = {};
+
+export const registerTabDataSaver = (tabKey: string, saver: () => void, saverId = 'default') => {
+  if (!tabKey) return;
+  if (!_dictTabKeyAndSaveToCacheFuncs[tabKey]) {
+    _dictTabKeyAndSaveToCacheFuncs[tabKey] = new Map();
+  }
+  _dictTabKeyAndSaveToCacheFuncs[tabKey].set(saverId, saver);
+};
+
+export const unregisterTabDataSaver = (tabKey: string, saverId = 'default') => {
+  if (!tabKey) return;
+  const map = _dictTabKeyAndSaveToCacheFuncs[tabKey];
+  if (!map) return;
+  map.delete(saverId);
+  if (map.size === 0) delete _dictTabKeyAndSaveToCacheFuncs[tabKey];
+};
+
+/** Flush the currently active tab's registered savers into tabnav cache (call before switching tabs). */
+export const cacheCurrentTabData = () => {
+  const currentState = store.getState();
+  const activeTab = currentState.tabnav.tabs.find((tab: { isActive?: boolean; tabKey?: string }) => tab.isActive);
+  if (!activeTab?.tabKey) return;
+  const savers = _dictTabKeyAndSaveToCacheFuncs[activeTab.tabKey];
+  if (!savers || savers.size === 0) return;
+  savers.forEach((saver) => {
+    try {
+      saver();
+    } catch (e) {
+      console.warn('cacheCurrentTabData failed', e);
+    }
+  });
+};
 
 export type TabNavigationApi = {
   addTabAndNavigate: (
@@ -61,6 +97,11 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
   }, [activeTabKey, tabs, navigate, location.pathname, userContext]);
 
   const value = useMemo((): TabNavigationApi => {
+  const activateTabFlushing = (tabKey: string) => {
+    cacheCurrentTabData();
+    dispatch(activateTab(tabKey));
+  };
+
   const buildParamObjFromListMenu = (menuDto: any) => {
     let paramObj: any = {};
     const routeCode = (menuDto.RouteCode || '').toString().replace(/^\//, '');
@@ -174,7 +215,7 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
           String(existingParams?.param1 ?? '') === String(originalParamObj?.param1 ?? '') &&
           String(originalParamObj?.id ?? '') !== '');
       if (sameFormInstance) {
-        dispatch(activateTab(existingByBase.tabKey));
+        activateTabFlushing(existingByBase.tabKey);
         if (existingByBase.path !== routePath) {
           dispatch(updateTabPath({ tabKey: existingByBase.tabKey, path: routePath }));
         }
@@ -188,7 +229,7 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
     const existingTab = tabs.find(tab => tab.path === routePath);
     if (existingTab) {
       // Tab already exists, just activate it
-      dispatch(activateTab(existingTab.tabKey));
+      activateTabFlushing(existingTab.tabKey);
       navigate(existingTab.path);
       return;
     }
@@ -199,7 +240,7 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
     if (homeTab) {
       // Default landing tab (e.g. SysAdmin Company and Users on home-tab)
       if (extractBaseRoutePath(homeTab.path) === targetBasePath) {
-        dispatch(activateTab(homeTab.tabKey));
+        activateTabFlushing(homeTab.tabKey);
         navigate(homeTab.path);
         return;
       }
@@ -222,7 +263,7 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
         
         if (targetKeys.length === 0 && homeKeys.length === 0) {
           // Both have no parameters, match - activate Home tab but navigate to requested path so URL/content match
-          dispatch(activateTab(homeTab.tabKey));
+          activateTabFlushing(homeTab.tabKey);
           navigate(routePath);
           return;
         }
@@ -234,7 +275,7 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
           
           if (paramsMatch) {
             // If target route matches Home tab (same component and same params), activate and show requested path
-            dispatch(activateTab(homeTab.tabKey));
+            activateTabFlushing(homeTab.tabKey);
             navigate(routePath);
             return;
           }
@@ -242,7 +283,8 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
       }
     }
     
-    // Add tab to Redux store
+    // Add tab to Redux store (flush current tab first so Search/Agent caches survive)
+    cacheCurrentTabData();
     dispatch(addTab({
       tabPath: routePath,
       label,
@@ -312,26 +354,6 @@ export const useTabNavigation = (): TabNavigationApi => {
 };
 
 
-// const _dictTabKeyAndSaveToCacheFunc: Record<string, () => void> = {};
-
-// export const registerTabDataSaver = (tabKey: string, saver: () => void) => {
-//   _dictTabKeyAndSaveToCacheFunc[tabKey] = saver;
-// };
-
-// export const unregisterTabDataSaver = (tabKey: string) => {
-//   delete _dictTabKeyAndSaveToCacheFunc[tabKey];
-// };
-
-
-// export const cacheCurrentTabData = () => {
-//   const currentState = store.getState();
-//   const activeTab = currentState.tabnav.tabs.find(tab => tab.isActive);
-  
-//   if (activeTab && activeTab.tabKey && _dictTabKeyAndSaveToCacheFunc[activeTab.tabKey]) {
-//     f[activeTab.tabKey]();
-//   }
-// };
-
 // Helper function to create a serializable version of dataModel (reserved)
 const _createSerializableDataModel = (dataModel: any): any => {
   if (!dataModel) return null;
@@ -376,35 +398,60 @@ const _createSerializableDataModel = (dataModel: any): any => {
   return serializableDataModel;
 };
 
-export const useTabDataAutoCache = (dataModel: any, customDataModelKey?: string) => {
+export const useTabDataAutoCache = (
+  dataModel: any,
+  customDataModelKey?: string,
+  enrichBeforeCache?: () => Record<string, any> | null | undefined,
+) => {
   const { tabs } = useSelector((state: RootState) => state.tabnav);
   const dispatch = useDispatch();
-  
-  // Use ref to always have access to the latest data without re-registering
-  const dataRef = useRef({ dataModel });
-  dataRef.current = { dataModel };
-  
-  useEffect(() => {
-    const activeTab = tabs.find(tab => tab.isActive);
-    const tabKey = activeTab?.tabKey;
-    
-    if (tabKey) {
-      // Create save function that always uses the latest data from ref
-      const saveFunction = () => {
-        const { dataModel: currentDataModel} = dataRef.current;
-        if (currentDataModel && Object.keys(currentDataModel).length > 0) {
-          // Use custom dataModelKey if provided, otherwise use tab's tabKey
-          const dataModelKey = customDataModelKey || tabKey;
-          
-          // Create a serializable version of the dataModel
-          //const serializableDataModel = createSerializableDataModel(currentDataModel);
-          
-          dispatch(setDataModelToCache({ dataModelKey, dataModel: currentDataModel }));
-        }
-      };
+  const activeTab = tabs.find((tab) => tab.isActive);
+  const tabKey = activeTab?.tabKey ?? null;
+  const saverId = customDataModelKey || 'page';
 
-      saveFunction();
+  // Use ref so tab-leave flush always writes the latest snapshot.
+  const dataRef = useRef({ dataModel, customDataModelKey });
+  dataRef.current = { dataModel, customDataModelKey };
+  const enrichRef = useRef(enrichBeforeCache);
+  enrichRef.current = enrichBeforeCache;
+
+  useEffect(() => {
+    if (!tabKey || dataModel == null) {
+      return;
     }
-  }, [dataModel, customDataModelKey]); // Only re-run dataModel changes
+
+    const saveFunction = () => {
+      let currentDataModel = dataRef.current.dataModel;
+      if (currentDataModel == null) return;
+      if (typeof currentDataModel === 'object' && Object.keys(currentDataModel).length === 0) return;
+
+      const enrich = enrichRef.current?.();
+      if (enrich && typeof currentDataModel === 'object') {
+        currentDataModel = {
+          ...currentDataModel,
+          ...enrich,
+          dictDcuValue: {
+            ...(currentDataModel.dictDcuValue ?? {}),
+            ...(enrich.dictDcuValue ?? {}),
+          },
+        };
+      }
+
+      const dataModelKey = dataRef.current.customDataModelKey || tabKey;
+      dispatch(setDataModelToCache({ dataModelKey, dataModel: currentDataModel }));
+    };
+
+    registerTabDataSaver(tabKey, saveFunction, saverId);
+    saveFunction();
+
+    return () => {
+      try {
+        saveFunction();
+      } catch {
+        /* ignore */
+      }
+      unregisterTabDataSaver(tabKey, saverId);
+    };
+  }, [dataModel, customDataModelKey, tabKey, saverId, dispatch]);
 }; 
 
