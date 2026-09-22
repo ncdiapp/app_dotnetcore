@@ -687,13 +687,46 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
         overrideSelectedIds?: string[],
     ) => {
         const ask = pendingAskUserRef.current;
-        const sid = sessionIdRef.current;
+        const sid = sessionIdRef.current || genericAgentSvc.currentSessionId;
         const answers = { ...askAnswers };
         const selectedIds = overrideSelectedIds ?? [...askSelectedIds];
         const freeText = askFreeText;
         const mode = (ask?.Mode || 'text').toLowerCase();
 
-        // Keep Q&A in the transcript — clearing pendingAskUser alone removed the Question card with no history.
+        if (!sid) {
+            setError('No agent session for ConfirmAskUser. Re-open the chat or retry the step.');
+            setIsRunning(false);
+            isRunningRef.current = false;
+            return;
+        }
+
+        setIsRunning(true);
+        isRunningRef.current = true;
+
+        const ok = await genericAgentSvc.ConfirmAskUser(sid, {
+            SessionId: sid,
+            Cancelled: cancelled,
+            ...(cancelled
+                ? {}
+                : mode === 'single_choice' || mode === 'multi_choice'
+                    ? { SelectedIds: selectedIds }
+                    : (ask?.Fields && ask.Fields.length > 0)
+                        ? { Answers: answers }
+                        : { FreeText: freeText }),
+        });
+
+        if (!ok) {
+            // Pending HITL missing (timeout / remount / wrong SessionId) — do not spin forever.
+            setIsRunning(false);
+            isRunningRef.current = false;
+            setError(
+                'ConfirmAskUser found no pending question (session timed out or was remounted). '
+                + 'Send a short message like "Continue" to resume, or Clear and re-open from wizard progress.',
+            );
+            return;
+        }
+
+        // Keep Q&A in the transcript only after server accepted the answer.
         if (ask) {
             const answerText = formatAskUserAnswerSummary(ask, answers, selectedIds, freeText, cancelled);
             setMessages(prev => [
@@ -707,21 +740,6 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
         setAskAnswers({});
         setAskSelectedIds([]);
         setAskFreeText('');
-        // Agent remains blocked/running until onDone after ConfirmAskUser unblocks the tool.
-        setIsRunning(true);
-        isRunningRef.current = true;
-        if (!sid) return;
-        await genericAgentSvc.ConfirmAskUser(sid, {
-            SessionId: sid,
-            Cancelled: cancelled,
-            ...(cancelled
-                ? {}
-                : mode === 'single_choice' || mode === 'multi_choice'
-                    ? { SelectedIds: selectedIds }
-                    : (ask?.Fields && ask.Fields.length > 0)
-                        ? { Answers: answers }
-                        : { FreeText: freeText }),
-        });
     };
 
     const handleClear = async () => {

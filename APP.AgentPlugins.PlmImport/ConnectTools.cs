@@ -131,3 +131,41 @@ public sealed class SavePlmImportSessionTool : IAgentTool
         return Task.FromResult(PlmBlToolArgs.Serialize(PlmImportEngine.SaveImportSession(dto)));
     }
 }
+
+/// <summary>
+/// Persist Agent Wizard checklist onto AppPlmImportSession.StepStateJson (agentWizardJson).
+/// Call after every successful step so progress survives app restart.
+/// </summary>
+public sealed class UpdatePlmWizardProgressTool : IAgentTool
+{
+    public Task<string> ExecuteAsync(
+        IReadOnlyDictionary<string, string> args,
+        AgentToolContext context,
+        CancellationToken cancellationToken)
+    {
+        var sessionId = PlmBlToolArgs.ParseInt(args, "sessionId");
+        var wizardJson = PlmBlToolArgs.GetString(args, "wizardJson");
+        var currentStepCode = PlmBlToolArgs.GetString(args, "currentStepCode");
+        var targetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId");
+        return Task.FromResult(PlmBlToolArgs.Serialize(
+            PlmImportEngine.UpdateWizardProgress(sessionId, wizardJson, currentStepCode, targetCompanyId)));
+    }
+}
+
+/// <summary>
+/// Load Agent Wizard from AppPlmImportSession for resume after app restart.
+/// Prefer this over WorkflowId-scoped shared context alone.
+/// </summary>
+public sealed class GetPlmWizardProgressTool : IAgentTool
+{
+    public Task<string> ExecuteAsync(
+        IReadOnlyDictionary<string, string> args,
+        AgentToolContext context,
+        CancellationToken cancellationToken)
+    {
+        var sessionId = PlmBlToolArgs.ParseInt(args, "sessionId");
+        var targetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId");
+        return Task.FromResult(PlmBlToolArgs.Serialize(
+            PlmImportEngine.GetWizardProgress(sessionId, targetCompanyId)));
+    }
+}

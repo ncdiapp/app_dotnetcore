@@ -183,7 +183,7 @@ public class GenericAgentController : SecureBaseController
             {
                 GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "ask_user", AskUser = askEvent });
                 var tcs = GenericAgentSessionStore.RegisterAskUserConfirmation(sessionId);
-                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(10));
+                using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(60));
                 cts.Token.Register(() => tcs.TrySetResult(new AgentAskUserResponse { Cancelled = true }));
                 return await tcs.Task.ConfigureAwait(false);
             },

@@ -18,7 +18,7 @@ structure upgrade pipeline.
 
 | Path | Purpose |
 |---|---|
-| **`PlmIntegrationMultiAgent/`** | **Preferred for new tenants** — Migration Multi-Agent pack (ROOT + DW CHILD + PLM import library). Use `RUN_ALL.bat`. |
+| **`PlmIntegrationMultiAgent/`** | **Preferred for new tenants** — Migration Multi-Agent pack (ROOT + DW CHILD + PLM import library + wizard progress tools). Use `RUN_ALL.bat`. See `CHILD_AGENT_CONTRACTS.md` for draft child SkillKeys. |
 | `PlmIntegration/` | PLM Integration library only (+ alternate single-agent orchestrator seed) |
 | `AppConfigPack/` | Platform App Config Pack BuiltIn tools + orchestrator |
 | `SampleExternalDll/` | Demo ExternalDll `sample_hello` (APP.AgentPlugins.Sample) |

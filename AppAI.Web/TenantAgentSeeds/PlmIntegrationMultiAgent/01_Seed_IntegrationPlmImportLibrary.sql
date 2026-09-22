@@ -106,6 +106,36 @@ VALUES (
 );
 GO
 
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'update_plm_wizard_progress')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'integration-plm-import',
+    N'update_plm_wizard_progress',
+    N'Persist plm.integration.wizard JSON onto AppPlmImportSession (StepStateJson.agentWizardJson). Call after every successful step so checklist survives app restart. Pass sessionId + wizardJson (full wizard object).',
+    N'{"type":"object","properties":{"sessionId":{"type":"integer"},"wizardJson":{"type":"string","description":"Full plm.integration.wizard JSON"},"currentStepCode":{"type":"string","description":"Optional; defaults to wizard.cursor"},"targetCompanyId":{"type":"integer"}},"required":["wizardJson"]}',
+    N'ExternalDll',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.UpdatePlmWizardProgressTool"}',
+    1,
+    42
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'get_plm_wizard_progress')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'integration-plm-import',
+    N'get_plm_wizard_progress',
+    N'Load Agent Wizard JSON from AppPlmImportSession for resume after app restart. Prefer over WorkflowId shared context alone. Returns {found, sessionId, wizardJson, currentStepCode}.',
+    N'{"type":"object","properties":{"sessionId":{"type":"integer"},"targetCompanyId":{"type":"integer"}}}',
+    N'ExternalDll',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.GetPlmWizardProgressTool"}',
+    1,
+    43
+);
+GO
+
 -- Image Import (tblSketch → AppFile) — BuiltIn wrappers; later ExternalDll for PLM-read slice.
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'preview_plm_sketch_import')
 INSERT INTO dbo.AppAgentLibraryTool

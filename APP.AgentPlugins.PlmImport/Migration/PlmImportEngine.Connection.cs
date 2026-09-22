@@ -11,6 +11,7 @@ using APP.Framework.Communication;
 using APP.Framework.Validation;
 using DatabaseSchemaMrg;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace APP.AgentPlugins.PlmImport
 {
@@ -841,6 +842,177 @@ VALUES
             public string tablePrefix { get; set; }
             public string entityWideTablePrefix { get; set; }
             public string templateImportSettingJson { get; set; }
+
+            /// <summary>
+            /// Agent Wizard progress JSON (plm.integration.wizard). Survives app restart via AppPlmImportSession.
+            /// </summary>
+            public string agentWizardJson { get; set; }
+        }
+
+        /// <summary>
+        /// Persist Agent Wizard checklist onto the active (or specified) import session StepStateJson.
+        /// Source of truth for resume across app restarts — not WorkflowId-scoped shared context alone.
+        /// </summary>
+        public static OperationCallResult<object> UpdateWizardProgress(
+            int? sessionId,
+            string wizardJson,
+            string currentStepCode,
+            int? targetCompanyId)
+        {
+            var result = new OperationCallResult<object>();
+            try
+            {
+                RequirePlmMigrationAdmin();
+                if (string.IsNullOrWhiteSpace(wizardJson))
+                    throw new ArgumentException("wizardJson is required.");
+
+                // Validate JSON
+                try { JToken.Parse(wizardJson); }
+                catch (Exception ex)
+                {
+                    throw new ArgumentException("wizardJson must be valid JSON: " + ex.Message);
+                }
+
+                int companyId = ResolveCompanyId(targetCompanyId);
+                var fixture = GetTenantFixture();
+
+                PlmImportSessionDto session = null;
+                if (sessionId.HasValue && sessionId.Value > 0)
+                    session = LoadSessionById(fixture, sessionId.Value, includeConnection: false);
+                if (session == null)
+                {
+                    var active = GetActiveImportSession(companyId);
+                    session = active?.Object;
+                }
+                if (session?.SessionId == null || session.SessionId.Value <= 0)
+                    throw new InvalidOperationException("No InProgress AppPlmImportSession found. Run Gate-0 / save_plm_import_session first.");
+
+                string cursor = currentStepCode;
+                if (string.IsNullOrWhiteSpace(cursor))
+                {
+                    try
+                    {
+                        var w = JObject.Parse(wizardJson);
+                        cursor = w.Value<string>("cursor");
+                    }
+                    catch { /* ignore */ }
+                }
+
+                string merged = MergeAgentWizardIntoStepState(session.StepStateJson, wizardJson);
+                var now = DateTime.UtcNow;
+                var pId = fixture.CreateParameter("@SessionId");
+                pId.Value = session.SessionId.Value;
+
+                fixture.ExecuteNonQueryResult(@"
+UPDATE dbo.AppPlmImportSession SET
+    UpdatedAt = @UpdatedAt,
+    CurrentStepCode = @CurrentStepCode,
+    StepStateJson = @StepStateJson
+WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Status",
+                    new List<DbParameter>
+                    {
+                        CreateParam(fixture, "@UpdatedAt", now),
+                        CreateParam(fixture, "@CurrentStepCode",
+                            string.IsNullOrWhiteSpace(cursor) ? (session.CurrentStepCode ?? StepConnect) : cursor.Trim()),
+                        CreateParam(fixture, "@StepStateJson", merged),
+                        pId,
+                        CreateParam(fixture, "@CompanyId", companyId),
+                        CreateParam(fixture, "@Status", SessionStatusInProgress)
+                    });
+
+                result.Object = new
+                {
+                    ok = true,
+                    sessionId = session.SessionId.Value,
+                    currentStepCode = string.IsNullOrWhiteSpace(cursor) ? session.CurrentStepCode : cursor.Trim(),
+                    wizardPersisted = true
+                };
+            }
+            catch (Exception ex)
+            {
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(PlmImportSessionDto), "Plm_Wizard_UpdateFailed", ValidationItemType.Error, ex.Message));
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Read Agent Wizard JSON from active (or specified) import session for resume after app restart.
+        /// </summary>
+        public static OperationCallResult<object> GetWizardProgress(int? sessionId, int? targetCompanyId)
+        {
+            var result = new OperationCallResult<object>();
+            try
+            {
+                RequirePlmMigrationAdmin();
+                int companyId = ResolveCompanyId(targetCompanyId);
+                var fixture = GetTenantFixture();
+
+                PlmImportSessionDto session = null;
+                if (sessionId.HasValue && sessionId.Value > 0)
+                    session = LoadSessionById(fixture, sessionId.Value, includeConnection: false);
+                if (session == null)
+                {
+                    var active = GetActiveImportSession(companyId);
+                    session = active?.Object;
+                }
+
+                if (session?.SessionId == null)
+                {
+                    result.Object = new { ok = true, found = false, sessionId = (int?)null, wizardJson = (string)null };
+                    return result;
+                }
+
+                string wizardJson = ExtractAgentWizardJson(session.StepStateJson);
+                result.Object = new
+                {
+                    ok = true,
+                    found = !string.IsNullOrWhiteSpace(wizardJson),
+                    sessionId = session.SessionId,
+                    saasApplicationId = session.SaasApplicationId,
+                    currentStepCode = session.CurrentStepCode,
+                    sessionStatus = session.SessionStatus,
+                    wizardJson
+                };
+            }
+            catch (Exception ex)
+            {
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(PlmImportSessionDto), "Plm_Wizard_GetFailed", ValidationItemType.Error, ex.Message));
+            }
+            return result;
+        }
+
+        internal static string ExtractAgentWizardJson(string stepStateJson)
+        {
+            if (string.IsNullOrWhiteSpace(stepStateJson)) return null;
+            try
+            {
+                var state = JsonConvert.DeserializeObject<PlmImportStepStateJson>(stepStateJson);
+                return string.IsNullOrWhiteSpace(state?.agentWizardJson) ? null : state.agentWizardJson;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        internal static string MergeAgentWizardIntoStepState(string stepStateJson, string wizardJson)
+        {
+            PlmImportStepStateJson state;
+            try
+            {
+                state = string.IsNullOrWhiteSpace(stepStateJson)
+                    ? new PlmImportStepStateJson()
+                    : JsonConvert.DeserializeObject<PlmImportStepStateJson>(stepStateJson) ?? new PlmImportStepStateJson();
+            }
+            catch
+            {
+                state = new PlmImportStepStateJson();
+            }
+
+            state.agentWizardJson = wizardJson;
+            return JsonConvert.SerializeObject(state);
         }
 
         internal static PlmTemplateImportSettingDto LoadTemplateImportSetting(string stepStateJson)

@@ -166,12 +166,20 @@ class GenericAgentService {
         }).catch(() => {});
     }
 
-    async ConfirmAskUser(sessionId: string, body: ConfirmAskUserDto): Promise<void> {
-        await fetch(`${BASE}/ConfirmAskUser`, {
-            method: 'POST',
-            headers: getHeaders(),
-            body: JSON.stringify({ ...body, SessionId: body.SessionId || sessionId }),
-        }).catch(() => {});
+    async ConfirmAskUser(sessionId: string, body: ConfirmAskUserDto): Promise<boolean> {
+        try {
+            const res = await fetch(`${BASE}/ConfirmAskUser`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ ...body, SessionId: body.SessionId || sessionId }),
+            });
+            if (!res.ok) return false;
+            const data = await res.json();
+            // Object=true when pending TCS was found and completed.
+            return data?.Object === true;
+        } catch {
+            return false;
+        }
     }
 
     async GetFixedSessionKey(skillKey: string): Promise<string | null> {
