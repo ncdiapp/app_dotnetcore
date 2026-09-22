@@ -181,6 +181,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                                 field.Options.Add(item);
                         }
                     }
+                    // If the model supplied options but forgot type=select, still render DDL.
+                    if (field.Options.Count > 0 && !string.Equals(field.Type, "select", StringComparison.OrdinalIgnoreCase))
+                        field.Type = "select";
                     list.Add(field);
                 }
             }

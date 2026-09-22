@@ -296,6 +296,11 @@ END";
             return result;
         }
 
+        /// <summary>
+        /// List tenant-visible DataSource registers for ask_user DDL (Id + Name only).
+        /// Same source as SQL Workbench / Database Management dropdown:
+        /// <see cref="AppDataSourceRegisterBL.GetDataSourceRegisterList"/> (no Admin gate; no connection strings).
+        /// </summary>
         public static OperationCallResult<PlmListTenantDataSourcesResultDto> ListTenantDataSources(PlmListTenantDataSourcesRequestDto request)
         {
             var result = new OperationCallResult<PlmListTenantDataSourcesResultDto>
@@ -304,11 +309,11 @@ END";
             };
             try
             {
-                RequirePlmMigrationAdmin();
-                if (request != null)
-                    ResolveCompanyId(request.TargetCompanyId);
+                // Align with UI pages (Workbench etc.): company-scoped list, connection strings cleared.
+                // Do not require SaasCompanyAdmin — listing Ids/Names is not a PLM import write.
+                _ = request;
 
-                foreach (var reg in AppDataSourceRegisterBL.RetrieveAllAppDataSourceRegisterExDto())
+                foreach (var reg in AppDataSourceRegisterBL.GetDataSourceRegisterList())
                 {
                     if (reg == null || reg.Id == null)
                         continue;

@@ -30,10 +30,10 @@ Use the `ask_user` tool for all Gate-0 / menu questions (Interactive HITL). Pref
    Then call `ask_user` with:
    - mode=`text`
    - contextKey=`plm.integration.job`
-   - fieldsJson = four **select** fields; build each field `options` from list_tenant_data_sources as `[{id:"<registerId>",display:"<name> (#id)"}]`:
-     plmDataSourceId (required), dwDataSourceId (required), erpDataSourceId (optional), plmExDbDataSourceId (optional; PLM External DB).
-     Example shape: `[{"name":"plmDataSourceId","label":"PLM DB","required":true,"type":"select","options":[...]},{"name":"dwDataSourceId","label":"PLM Data Warehouse","required":true,"type":"select","options":[...]},{"name":"erpDataSourceId","label":"ERP (optional)","required":false,"type":"select","options":[...]},{"name":"plmExDbDataSourceId","label":"PLM External DB / ExDb (optional)","required":false,"type":"select","options":[...]}]`
-   - Prompt: pick existing tenant DataSource Register ids only.
+   - **HARD REQUIREMENT:** every Gate-0 field MUST be `type`=`select` with a non-empty `options` array built from THAT list_tenant result as LookupItemDto `[{id:<registerId>,display:"<name> (#id)"}]`. Do **not** use free-text inputs for Register ids. Do **not** omit `options` (empty options => UI shows a text box).
+   - Four fields: plmDataSourceId (required), dwDataSourceId (required), erpDataSourceId (optional), plmExDbDataSourceId (optional; PLM External DB).
+   - Example (options filled from list_tenant — replace ... with real rows): `[{"name":"plmDataSourceId","label":"PLM DB","required":true,"type":"select","options":[{"id":12,"display":"MyPlm (12)"}]},{"name":"dwDataSourceId","label":"PLM Data Warehouse","required":true,"type":"select","options":[{"id":13,"display":"MyDw (13)"}]},{"name":"erpDataSourceId","label":"ERP (optional)","required":false,"type":"select","options":[{"id":12,"display":"MyPlm (12)"}]},{"name":"plmExDbDataSourceId","label":"PLM External DB / ExDb (optional)","required":false,"type":"select","options":[{"id":12,"display":"MyPlm (12)"}]}]`
+   - Prompt: pick from the dropdowns only.
 
 2. After answers: ensure `plm.integration.job` has
    `{ "plmDataSourceId": <int>, "dwDataSourceId": <int>, "erpDataSourceId": <int|omit>, "plmExDbDataSourceId": <int|omit>, "status":"datasources-set" }`
