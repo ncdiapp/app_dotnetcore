@@ -259,11 +259,12 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
             if (!cancelled) setFileSessionKey(key);
         });
 
-        const fireSessionStartIfAllowed = (mode: string) => {
+        const fireSessionStartIfAllowed = (mode: string, allowFirstTurn: boolean) => {
             if (cancelled || sessionStartFiredRef.current) return;
             sessionStartFiredRef.current = true;
-            // AllowAgentFirstTurn: Interactive agents only
+            // Interactive + AllowAgentFirstTurn only (UI: "Agent speaks first")
             if (!/^Interactive$/i.test(mode || 'Interactive')) return;
+            if (!allowFirstTurn) return;
             void runAgentTurnRef.current({
                 userMessage: SESSION_START,
                 hideUserBubble: true,
@@ -273,13 +274,17 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
 
         const boot = async () => {
             let mode = 'Interactive';
+            let allowFirstTurn = false;
             try {
                 const res = await agentSkillSetSvc.GetAllSkillSets();
                 if (cancelled) return;
                 const map: Record<string, string> = {};
                 for (const s of res?.Object ?? []) {
                     if (s?.SkillKey) map[s.SkillKey] = s.DisplayName || s.SkillKey;
-                    if (s?.SkillKey === skillKey) mode = s.ExecutionMode || 'Interactive';
+                    if (s?.SkillKey === skillKey) {
+                        mode = s.ExecutionMode || 'Interactive';
+                        allowFirstTurn = !!s.AllowAgentFirstTurn;
+                    }
                 }
                 setSkillDisplayNames(map);
                 setSkillExecutionMode(mode);
@@ -287,7 +292,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
             } catch { /* optional */ }
 
             if (testMode) {
-                fireSessionStartIfAllowed(mode);
+                fireSessionStartIfAllowed(mode, allowFirstTurn);
                 return;
             }
 
@@ -335,10 +340,10 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                     setTurnActivities(restored);
                     setCurrentTurnIndex(meaningful.filter(m => m.role === 'user').length);
                 } else {
-                    fireSessionStartIfAllowed(mode);
+                    fireSessionStartIfAllowed(mode, allowFirstTurn);
                 }
             } catch {
-                if (!cancelled) fireSessionStartIfAllowed(mode);
+                if (!cancelled) fireSessionStartIfAllowed(mode, allowFirstTurn);
             }
         };
 

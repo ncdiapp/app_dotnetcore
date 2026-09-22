@@ -30,6 +30,7 @@ const emptySkillSet = (): AppAgentSkillSetDto => ({
     MaxHistoryTokens: 80000, SummarizeThreshold: 60000, MaxToolResultChars: 4000, RecentWindowSize: 10, MaxIterations: 40,
     ExecutionMode: 'Interactive',
     AgentUi: EmAppAgentUi.GenericChat,
+    AllowAgentFirstTurn: false,
 });
 
 const AgentSkillSetManagement: React.FC = () => {
@@ -454,6 +455,7 @@ const handleSave = async () => {
                                                         MaxIterations: tmpl.MaxIterations,
                                                         ExecutionMode: tmpl.ExecutionMode || 'Interactive',
                                                         AgentUi: resolveAgentUi(tmpl.AgentUi),
+                                                        AllowAgentFirstTurn: !!tmpl.AllowAgentFirstTurn,
                                                     });
                                                     setSelected(null);
                                                     setIsEditing(true);
@@ -623,6 +625,20 @@ const handleSave = async () => {
                                                                     <option key={o.value} value={o.value}>{o.label}</option>
                                                                 ))}
                                                             </select>
+                                                        </div>
+                                                        <div className="flex items-center py-1 xl:col-span-2">
+                                                            <label className={lbl}>Agent speaks first</label>
+                                                            <label
+                                                                className={`flex items-center gap-1.5 text-xs ${theme.label} cursor-pointer`}
+                                                                title="When on, the agent may greet or ask questions as soon as you open the chat. When off, it waits until you send a message."
+                                                            >
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={!!editItem.AllowAgentFirstTurn}
+                                                                    onChange={e => update('AllowAgentFirstTurn', e.target.checked)}
+                                                                />
+                                                                On
+                                                            </label>
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center py-1">

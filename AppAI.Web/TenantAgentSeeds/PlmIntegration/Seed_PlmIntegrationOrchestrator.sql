@@ -124,3 +124,9 @@ When you receive a hidden [session_start] message (or the user opens a new chat)
 - Keep answers concise; use ask_user for choices instead of long numbered lists when possible.'
 WHERE SkillKey = N'plm-integration-orchestrator';
 GO
+
+IF COL_LENGTH('dbo.AppAgentSkillSet', 'AllowAgentFirstTurn') IS NOT NULL
+UPDATE dbo.AppAgentSkillSet
+SET AllowAgentFirstTurn = 1
+WHERE SkillKey = N'plm-integration-orchestrator';
+GO

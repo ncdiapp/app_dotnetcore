@@ -18,6 +18,8 @@ export interface AppAgentSkillSetDto {
     ExecutionMode:      string;
     /** EmAppAgentUi: 0 Unspecified, 1 GenericChat, 2 ConfigurationAndIntegration, 3 DbManagement, 4 ImageAndFileProcess */
     AgentUi:            number;
+    /** When true + Interactive: empty chat fires hidden [session_start]. UI: "Agent speaks first". */
+    AllowAgentFirstTurn?: boolean;
 }
 
 export interface AppAgentToolRegisterDto {

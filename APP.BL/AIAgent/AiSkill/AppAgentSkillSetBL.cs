@@ -21,22 +21,23 @@ namespace App.BL.AIAgent.AiSkill
         int    RecentWindowSize,
         int    MaxIterations,
         string ExecutionMode = "Interactive",
-        int    AgentUi = 1);
+        int    AgentUi = 1,
+        /// <summary>
+        /// When true and ExecutionMode is Interactive, empty chat sends hidden [session_start]
+        /// so the agent may speak first / call ask_user per SystemPrompt. Default false.
+        /// UI: "Agent speaks first"
+        /// </summary>
+        bool   AllowAgentFirstTurn = false);
 
     public static class AppAgentSkillSetBL
     {
-        private const string SelectCols = @"
-            SkillKey, DisplayName, Description, SystemPrompt,
-            CapabilityFlags, IsActive, SortOrder, Version,
-            MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize, MaxIterations, ExecutionMode, AgentUi";
-
         public static List<AppAgentSkillSetDto> GetAll()
         {
             var fixture = GetFixture();
             if (fixture == null) return new List<AppAgentSkillSetDto>();
 
             var dt = fixture.RetriveDataTable(
-                $"SELECT {SelectCols} FROM dbo.AppAgentSkillSet WHERE IsActive=1 ORDER BY SortOrder",
+                $"SELECT {BuildSelectCols(fixture)} FROM dbo.AppAgentSkillSet WHERE IsActive=1 ORDER BY SortOrder",
                 new List<DbParameter>());
 
             return MapAll(dt);
@@ -48,7 +49,7 @@ namespace App.BL.AIAgent.AiSkill
             if (fixture == null) return new List<AppAgentSkillSetDto>();
 
             var dt = fixture.RetriveDataTable(
-                $"SELECT {SelectCols} FROM dbo.AppAgentSkillSet WHERE IsActive=1 ORDER BY SortOrder",
+                $"SELECT {BuildSelectCols(fixture)} FROM dbo.AppAgentSkillSet WHERE IsActive=1 ORDER BY SortOrder",
                 new List<DbParameter>());
 
             return MapAll(dt);
@@ -73,7 +74,7 @@ namespace App.BL.AIAgent.AiSkill
         private static AppAgentSkillSetDto GetByKey(string skillKey, DatabaseSchemaMrg.DatabaseFixture fixture)
         {
             var dt = fixture.RetriveDataTable(
-                $"SELECT {SelectCols} FROM dbo.AppAgentSkillSet WHERE SkillKey=@SkillKey",
+                $"SELECT {BuildSelectCols(fixture)} FROM dbo.AppAgentSkillSet WHERE SkillKey=@SkillKey",
                 new List<DbParameter> { P(fixture, "@SkillKey", skillKey.Trim()) });
 
             if (dt == null || dt.Rows.Count == 0) return null;
@@ -86,7 +87,26 @@ namespace App.BL.AIAgent.AiSkill
             var fixture = GetFixture();
             if (fixture == null) return;
 
-            const string sql = @"
+            var hasFirstTurn = HasAllowAgentFirstTurnColumn(fixture);
+            string sql = hasFirstTurn
+                ? @"
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey=@SkillKey)
+    UPDATE dbo.AppAgentSkillSet SET
+        DisplayName=@DisplayName, Description=@Description, SystemPrompt=@SystemPrompt,
+        CapabilityFlags=@CapabilityFlags, IsActive=@IsActive, SortOrder=@SortOrder,
+        Version=@Version, MaxHistoryTokens=@MaxHistoryTokens, SummarizeThreshold=@SummarizeThreshold,
+        MaxToolResultChars=@MaxToolResultChars, RecentWindowSize=@RecentWindowSize,
+        MaxIterations=@MaxIterations, ExecutionMode=@ExecutionMode, AgentUi=@AgentUi,
+        AllowAgentFirstTurn=@AllowAgentFirstTurn
+    WHERE SkillKey=@SkillKey
+ELSE
+    INSERT INTO dbo.AppAgentSkillSet
+        (SkillKey,DisplayName,Description,SystemPrompt,CapabilityFlags,IsActive,SortOrder,
+         Version,MaxHistoryTokens,SummarizeThreshold,MaxToolResultChars,RecentWindowSize,MaxIterations,ExecutionMode,AgentUi,AllowAgentFirstTurn)
+    VALUES
+        (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,
+         @Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations,@ExecutionMode,@AgentUi,@AllowAgentFirstTurn)"
+                : @"
 IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey=@SkillKey)
     UPDATE dbo.AppAgentSkillSet SET
         DisplayName=@DisplayName, Description=@Description, SystemPrompt=@SystemPrompt,
@@ -103,7 +123,7 @@ ELSE
         (@SkillKey,@DisplayName,@Description,@SystemPrompt,@CapabilityFlags,@IsActive,@SortOrder,
          @Version,@MaxHistoryTokens,@SummarizeThreshold,@MaxToolResultChars,@RecentWindowSize,@MaxIterations,@ExecutionMode,@AgentUi)";
 
-            fixture.ExecuteNonQueryResult(sql, Params(fixture, dto));
+            fixture.ExecuteNonQueryResult(sql, Params(fixture, dto, hasFirstTurn));
         }
 
         public static bool Delete(string skillKey)
@@ -130,26 +150,27 @@ ELSE
         private static AppAgentSkillSetDto Map(DataRow row)
         {
             return new AppAgentSkillSetDto(
-                SkillKey:           ColStr(row, "SkillKey"),
-                DisplayName:        ColStr(row, "DisplayName"),
-                Description:        ColStr(row, "Description"),
-                SystemPrompt:       ColStr(row, "SystemPrompt"),
-                CapabilityFlags:    ColInt(row, "CapabilityFlags"),
-                IsActive:           ColBool(row, "IsActive"),
-                SortOrder:          ColInt(row, "SortOrder"),
-                Version:            ColInt(row, "Version"),
-                MaxHistoryTokens:   ColInt(row, "MaxHistoryTokens"),
-                SummarizeThreshold: ColInt(row, "SummarizeThreshold"),
-                MaxToolResultChars: ColInt(row, "MaxToolResultChars"),
-                RecentWindowSize:   ColInt(row, "RecentWindowSize"),
-                MaxIterations:      ColIntSafe(row, "MaxIterations", 40),
-                ExecutionMode:      ColStrSafe(row, "ExecutionMode", "Interactive"),
-                AgentUi:            ColIntSafe(row, "AgentUi", 1));
+                SkillKey:            ColStr(row, "SkillKey"),
+                DisplayName:         ColStr(row, "DisplayName"),
+                Description:         ColStr(row, "Description"),
+                SystemPrompt:        ColStr(row, "SystemPrompt"),
+                CapabilityFlags:     ColInt(row, "CapabilityFlags"),
+                IsActive:            ColBool(row, "IsActive"),
+                SortOrder:           ColInt(row, "SortOrder"),
+                Version:             ColInt(row, "Version"),
+                MaxHistoryTokens:    ColInt(row, "MaxHistoryTokens"),
+                SummarizeThreshold:  ColInt(row, "SummarizeThreshold"),
+                MaxToolResultChars:  ColInt(row, "MaxToolResultChars"),
+                RecentWindowSize:    ColInt(row, "RecentWindowSize"),
+                MaxIterations:       ColIntSafe(row, "MaxIterations", 40),
+                ExecutionMode:       ColStrSafe(row, "ExecutionMode", "Interactive"),
+                AgentUi:             ColIntSafe(row, "AgentUi", 1),
+                AllowAgentFirstTurn: ColBoolSafe(row, "AllowAgentFirstTurn", false));
         }
 
-        private static List<DbParameter> Params(DatabaseSchemaMrg.DatabaseFixture f, AppAgentSkillSetDto d)
+        private static List<DbParameter> Params(DatabaseSchemaMrg.DatabaseFixture f, AppAgentSkillSetDto d, bool includeAllowAgentFirstTurn)
         {
-            return new List<DbParameter>
+            var list = new List<DbParameter>
             {
                 P(f, "@SkillKey",            d.SkillKey),
                 P(f, "@DisplayName",         d.DisplayName),
@@ -167,6 +188,30 @@ ELSE
                 P(f, "@ExecutionMode",       string.IsNullOrWhiteSpace(d.ExecutionMode) ? "Interactive" : d.ExecutionMode),
                 P(f, "@AgentUi",             d.AgentUi > 0 ? d.AgentUi : 1)
             };
+            if (includeAllowAgentFirstTurn)
+                list.Add(P(f, "@AllowAgentFirstTurn", d.AllowAgentFirstTurn));
+            return list;
+        }
+
+        private static string BuildSelectCols(DatabaseSchemaMrg.DatabaseFixture fixture)
+        {
+            var baseCols = @"
+            SkillKey, DisplayName, Description, SystemPrompt,
+            CapabilityFlags, IsActive, SortOrder, Version,
+            MaxHistoryTokens, SummarizeThreshold, MaxToolResultChars, RecentWindowSize, MaxIterations, ExecutionMode, AgentUi";
+            return HasAllowAgentFirstTurnColumn(fixture) ? baseCols + ", AllowAgentFirstTurn" : baseCols;
+        }
+
+        private static bool HasAllowAgentFirstTurnColumn(DatabaseSchemaMrg.DatabaseFixture fixture)
+        {
+            try
+            {
+                var dt = fixture.RetriveDataTable(
+                    "SELECT 1 AS x FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.AppAgentSkillSet') AND name = N'AllowAgentFirstTurn'",
+                    new List<DbParameter>());
+                return dt != null && dt.Rows.Count > 0;
+            }
+            catch { return false; }
         }
 
         private static DatabaseSchemaMrg.DatabaseFixture GetFixture()
@@ -196,6 +241,17 @@ ELSE
         private static string ColStrSafe(DataRow row, string col, string defaultVal)
         {
             try { return row.Table.Columns.Contains(col) && row[col] != DBNull.Value ? row[col].ToString() : defaultVal; }
+            catch { return defaultVal; }
+        }
+
+        private static bool ColBoolSafe(DataRow row, string col, bool defaultVal)
+        {
+            try
+            {
+                return row.Table.Columns.Contains(col) && row[col] != DBNull.Value
+                    ? Convert.ToBoolean(row[col])
+                    : defaultVal;
+            }
             catch { return defaultVal; }
         }
     }

@@ -74,3 +74,9 @@ SET DisplayName = N'App Config Pack Orchestrator',
 - Keep replies concise; use ask_user for choices.'
 WHERE SkillKey = N'app-config-pack-orchestrator';
 GO
+
+IF COL_LENGTH('dbo.AppAgentSkillSet', 'AllowAgentFirstTurn') IS NOT NULL
+UPDATE dbo.AppAgentSkillSet
+SET AllowAgentFirstTurn = 1
+WHERE SkillKey = N'app-config-pack-orchestrator';
+GO

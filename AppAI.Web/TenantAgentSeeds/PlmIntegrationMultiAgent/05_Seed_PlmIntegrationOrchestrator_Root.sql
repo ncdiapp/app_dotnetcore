@@ -312,6 +312,12 @@ When a **child subtask completes successfully** (not an error, not mid-flow HITL
 WHERE SkillKey = N'plm-integration-orchestrator';
 GO
 
+IF COL_LENGTH('dbo.AppAgentSkillSet', 'AllowAgentFirstTurn') IS NOT NULL
+UPDATE dbo.AppAgentSkillSet
+SET AllowAgentFirstTurn = 1
+WHERE SkillKey = N'plm-integration-orchestrator';
+GO
+
 IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
 AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-multi-agent')
 AND NOT EXISTS (
