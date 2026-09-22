@@ -40,6 +40,41 @@ public sealed class ListTenantDataSourcesTool : IAgentTool
     }
 }
 
+/// <summary>List tenant SaaS Application packages for ask_user (SaasApplicationId + name only).</summary>
+public sealed class ListTenantSaasApplicationsTool : IAgentTool
+{
+    public Task<string> ExecuteAsync(
+        IReadOnlyDictionary<string, string> args,
+        AgentToolContext context,
+        CancellationToken cancellationToken)
+    {
+        var request = new PlmListTenantSaasApplicationsRequestDto
+        {
+            TargetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId")
+        };
+        return Task.FromResult(PlmBlToolArgs.Serialize(PlmImportEngine.ListTenantSaasApplications(request)));
+    }
+}
+
+/// <summary>
+/// Apply TechPack Tchp* DDL from embedded Sql/TechPack scripts (full NewSchema; optional InspectionAddon).
+/// </summary>
+public sealed class EnsureTechPackSchemaTool : IAgentTool
+{
+    public Task<string> ExecuteAsync(
+        IReadOnlyDictionary<string, string> args,
+        AgentToolContext context,
+        CancellationToken cancellationToken)
+    {
+        var request = new PlmEnsureTechPackSchemaRequestDto
+        {
+            IncludeInspectionAddon = PlmBlToolArgs.ParseBool(args, "includeInspectionAddon", defaultValue: false),
+            TargetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId")
+        };
+        return Task.FromResult(PlmBlToolArgs.Serialize(PlmImportEngine.EnsureTechPackSchema(request)));
+    }
+}
+
 public sealed class GetPlmImportSessionTool : IAgentTool
 {
     public Task<string> ExecuteAsync(

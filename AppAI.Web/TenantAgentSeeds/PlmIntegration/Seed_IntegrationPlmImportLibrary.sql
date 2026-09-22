@@ -52,6 +52,36 @@ VALUES (
 );
 GO
 
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'list_tenant_saas_applications')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'integration-plm-import',
+    N'list_tenant_saas_applications',
+    N'List SaasApplicationId + ApplicationName for Gate-0 ask_user DDL. Slim list only (no TX/Search tree). Prefer over list_applications for Connect.',
+    N'{"type":"object","properties":{"targetCompanyId":{"type":"integer"}}}',
+    N'ExternalDll',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ListTenantSaasApplicationsTool"}',
+    1,
+    16
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'ensure_techpack_schema')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'integration-plm-import',
+    N'ensure_techpack_schema',
+    N'Apply TechPack Tchp* DDL on the tenant DB (full POM_Grading_QC_NewSchema.sql from plugin Sql/TechPack). Optional includeInspectionAddon=true for QC addon. Idempotent IF OBJECT_ID. Run after Connect, before Entity. Requires SaasCompanyAdmin/SysAdmin.',
+    N'{"type":"object","properties":{"includeInspectionAddon":{"type":"boolean","description":"Default false. When true also run InspectionAddon.sql"},"targetCompanyId":{"type":"integer"}}}',
+    N'ExternalDll',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.EnsureTechPackSchemaTool"}',
+    1,
+    17
+);
+GO
+
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'get_plm_import_session')
 INSERT INTO dbo.AppAgentLibraryTool
@@ -748,7 +778,47 @@ VALUES (
 );
 GO
 
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'list_tenant_saas_applications')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'integration-plm-import',
+    N'list_tenant_saas_applications',
+    N'List SaasApplicationId + ApplicationName for Gate-0 ask_user DDL. Slim list only (no TX/Search tree). Prefer over list_applications for Connect.',
+    N'{"type":"object","properties":{"targetCompanyId":{"type":"integer"}}}',
+    N'ExternalDll',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ListTenantSaasApplicationsTool"}',
+    1,
+    16
+);
+GO
+
 -- discover_plm_data_sources removed: never create AppDataSourceRegister from PLM connections.
 IF EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources')
 DELETE FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources';
+GO
+
+-- ensure_techpack_schema: refresh description/config on existing tenants
+UPDATE dbo.AppAgentLibraryTool SET
+    ToolDescription = N'Apply TechPack Tchp* DDL on the tenant DB (full POM_Grading_QC_NewSchema.sql from plugin Sql/TechPack). Optional includeInspectionAddon=true for QC addon. Idempotent IF OBJECT_ID. Run after Connect, before Entity. Requires SaasCompanyAdmin/SysAdmin.',
+    ParameterSchemaJson = N'{"type":"object","properties":{"includeInspectionAddon":{"type":"boolean","description":"Default false. When true also run InspectionAddon.sql"},"targetCompanyId":{"type":"integer"}}}',
+    ToolType = N'ExternalDll',
+    ToolConfig = N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.EnsureTechPackSchemaTool"}',
+    IsActive = 1
+WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'ensure_techpack_schema';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'ensure_techpack_schema')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'integration-plm-import',
+    N'ensure_techpack_schema',
+    N'Apply TechPack Tchp* DDL on the tenant DB (full POM_Grading_QC_NewSchema.sql from plugin Sql/TechPack). Optional includeInspectionAddon=true for QC addon. Idempotent IF OBJECT_ID. Run after Connect, before Entity. Requires SaasCompanyAdmin/SysAdmin.',
+    N'{"type":"object","properties":{"includeInspectionAddon":{"type":"boolean","description":"Default false. When true also run InspectionAddon.sql"},"targetCompanyId":{"type":"integer"}}}',
+    N'ExternalDll',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.EnsureTechPackSchemaTool"}',
+    1,
+    17
+);
 GO

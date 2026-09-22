@@ -211,12 +211,21 @@ namespace APP.Components.EntityDto
     /// <summary>
     /// Emitted when the agent calls ask_user. UI must call POST /ConfirmAskUser to proceed.
     /// Mode: "text" | "single_choice" | "multi_choice"
+    /// Ui (choice modes): "radio" (default) | "button_group" — button_group clicks select+submit in one action.
+    /// Layout (button_group): "vertical" (default) | "horizontal"
     /// </summary>
     public class AgentAskUserEvent
     {
         public string Prompt { get; set; }
         /// <summary>"text" | "single_choice" | "multi_choice"</summary>
         public string Mode { get; set; } = "text";
+        /// <summary>
+        /// Choice presentation: "radio" (default) | "button_group".
+        /// button_group: one click = select option + ConfirmAskUser (no separate Submit).
+        /// </summary>
+        public string Ui { get; set; } = "radio";
+        /// <summary>"vertical" (default) | "horizontal" — applies when Ui=button_group.</summary>
+        public string Layout { get; set; } = "vertical";
         public List<AgentAskUserField> Fields { get; set; } = new List<AgentAskUserField>();
         public List<LookupItemDto> Options { get; set; } = new List<LookupItemDto>();
         /// <summary>Optional shared-context key; answers are merged into AppAgentSharedContext when set.</summary>

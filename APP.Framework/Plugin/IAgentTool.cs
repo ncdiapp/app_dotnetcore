@@ -88,4 +88,10 @@ public sealed class AgentToolContext
     /// Distinct from <see cref="SessionId"/> (ephemeral SSE / tool-run id).
     /// </summary>
     public string ChatSessionKey   { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Login user type from the HTTP session (<c>EmAppUserType</c> / AppClientIdentity.CurrentLoginUserType).
+    /// Must be restored on background tool threads so IsAdminUser / RequirePlmMigrationAdmin work.
+    /// </summary>
+    public int LoginUserType { get; init; }
 }

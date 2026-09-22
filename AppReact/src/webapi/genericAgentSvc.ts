@@ -53,6 +53,10 @@ export interface LookupItemDto {
 export interface AskUserEvent {
     Prompt: string;
     Mode: string;
+    /** radio (default) | button_group — button_group one-click select+submit */
+    Ui?: string;
+    /** vertical (default) | horizontal — button_group layout */
+    Layout?: string;
     Fields?: AskUserField[];
     Options?: LookupItemDto[];
     ContextKey?: string;

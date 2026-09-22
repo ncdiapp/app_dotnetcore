@@ -1393,10 +1393,10 @@ const FolderNavigation: React.FC<Props> = ({
       )}
 
       <div className="w-1 flex-auto h-full flex overflow-hidden min-w-0">
-        {/* Folder Tree Panel */}
+        {/* Folder Tree Panel — resize handle is a sibling so it does not cover the tree scrollbar */}
         {isFolderTreeVisible && (
           <div
-            className="flex flex-col mr-1 relative"
+            className="flex flex-col flex-none"
             style={{ width: folderTreeWidth, minWidth: 200, maxWidth: 600 }}
           >
             {/* Folder Tree Header (title = category name when file mgt, else folder name) */}
@@ -1510,23 +1510,25 @@ const FolderNavigation: React.FC<Props> = ({
                 </FlexGrid>
               )}
             </div>
+          </div>
+        )}
 
-            {/* Resize Handle */}
+        {/* Resize handle between folder tree and content (sibling, not overlaid on scrollbar) */}
+        {isFolderTreeVisible && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Drag to resize folder tree"
+            title="Drag to resize"
+            onMouseDown={handleResizeStart}
+            className="group flex-none self-stretch w-3 flex cursor-col-resize items-center justify-center select-none touch-none"
+          >
             <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Drag to resize folder tree"
-              title="Drag to resize"
-              onMouseDown={handleResizeStart}
-              className="group absolute right-0 top-0 bottom-0 z-10 flex w-4 -mr-2 cursor-col-resize items-center justify-center select-none touch-none"
-            >
-              <div
-                className={`pointer-events-none h-[min(200px,45vh)] w-1.5 rounded-full border ${theme.mainContentSection} ${theme.menu_default} shadow-sm transition-[opacity,box-shadow] group-hover:border-2 group-hover:shadow-md ${
-                  isResizing ? 'border-2 opacity-100 shadow-md' : 'opacity-80 group-hover:opacity-100'
-                }`}
-                aria-hidden
-              />
-            </div>
+              className={`pointer-events-none h-[min(200px,45vh)] w-1.5 rounded-full border ${theme.mainContentSection} ${theme.menu_default} shadow-sm transition-[opacity,box-shadow] group-hover:border-2 group-hover:shadow-md ${
+                isResizing ? 'border-2 opacity-100 shadow-md' : 'opacity-80 group-hover:opacity-100'
+              }`}
+              aria-hidden
+            />
           </div>
         )}
 

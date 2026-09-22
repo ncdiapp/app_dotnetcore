@@ -172,6 +172,7 @@ namespace APP.AgentPlugins.PlmImport
             using (var tenantConn = new SqlConnection(tenantConnectionString))
             {
                 tenantConn.Open();
+                EnsureTchpPomSchema(tenantConn);
                 preview.HasBodyPartTable = TemplateTableExists(tenantConn, null, PomBodyPartTableName);
                 preview.HasBodyTypeTable = TemplateTableExists(tenantConn, null, PomBodyTypeTableName);
                 preview.HasTchpBodyPartTable = TemplateTableExists(tenantConn, null, TchpBodyPartTableName);
@@ -189,7 +190,7 @@ namespace APP.AgentPlugins.PlmImport
                 {
                     preview.IsSuccess = false;
                     preview.ErrorMessage =
-                        "Tchp POM schema missing. Run Document/Design/POM_Grading_QC_NewSchema.sql "
+                        "Tchp POM schema missing after Ensure "
                         + "(TchpBodyPart, TchpPomTemplate, TchpPomTemplatePart).";
                     return preview;
                 }

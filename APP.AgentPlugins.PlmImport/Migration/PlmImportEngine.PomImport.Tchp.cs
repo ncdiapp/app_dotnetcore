@@ -47,13 +47,115 @@ namespace APP.AgentPlugins.PlmImport
 
         private static void RequireTchpPomSchema(SqlConnection tenantConn)
         {
+            EnsureTchpPomSchema(tenantConn);
             if (!TemplateTableExists(tenantConn, null, TchpBodyPartTableName)
                 || !TemplateTableExists(tenantConn, null, TchpPomTemplateTableName)
                 || !TemplateTableExists(tenantConn, null, TchpPomTemplatePartTableName))
             {
                 throw new InvalidOperationException(
-                    "Tchp POM schema is missing. Run Document/Design/POM_Grading_QC_NewSchema.sql "
-                    + $"(need {TchpBodyPartTableName}, {TchpPomTemplateTableName}, {TchpPomTemplatePartTableName}).");
+                    "Tchp POM schema is still missing after Ensure "
+                    + $"({TchpBodyPartTableName}, {TchpPomTemplateTableName}, {TchpPomTemplatePartTableName}).");
+            }
+        }
+
+        /// <summary>
+        /// Creates the three POM library tables if missing (subset of POM_Grading_QC_NewSchema.sql).
+        /// Does not create Fit/QC/SizeRun domain tables. DefaultBaseSizeId FK to TchpSizeRunSize
+        /// is added only when that table already exists.
+        /// </summary>
+        private static void EnsureTchpPomSchema(SqlConnection tenantConn)
+        {
+            if (tenantConn == null)
+                throw new ArgumentNullException(nameof(tenantConn));
+
+            ExecuteEnsureDdl(tenantConn, @"
+IF OBJECT_ID(N'dbo.TchpBodyPart', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[TchpBodyPart] (
+        [BodyPartId]            INT             IDENTITY(1,1)   NOT NULL,
+        [Code]                  NVARCHAR(50)    NOT NULL,
+        [BodyPartName]          NVARCHAR(100)   NOT NULL,
+        [Tolerance]             DECIMAL(10,3)   NULL,
+        [GradingPlusValue]      DECIMAL(10,3)   NOT NULL CONSTRAINT DF_TchpBodyPart_PlusValue DEFAULT (0),
+        [GradingMinuValue]      DECIMAL(10,3)   NOT NULL CONSTRAINT DF_TchpBodyPart_MinuValue DEFAULT (0),
+        [IsActive]              BIT             NOT NULL CONSTRAINT DF_TchpBodyPart_IsActive DEFAULT (1),
+        [SystemTimeStamp]       ROWVERSION      NULL,
+        [AppCreatedById]        INT             NULL,
+        [AppCreatedDate]        DATETIME        NULL,
+        [AppModifiedDate]       DATETIME        NULL,
+        [AppModifiedById]       INT             NULL,
+        [AppCreatedByCompanyId] INT             NULL,
+        CONSTRAINT [PK_TchpBodyPart] PRIMARY KEY CLUSTERED ([BodyPartId] ASC),
+        CONSTRAINT [UQ_TchpBodyPart_Code] UNIQUE ([Code])
+    );
+END");
+
+            ExecuteEnsureDdl(tenantConn, @"
+IF OBJECT_ID(N'dbo.TchpPomTemplate', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[TchpPomTemplate] (
+        [PomTemplateId]         INT             IDENTITY(1,1)   NOT NULL,
+        [TemplateCode]          NVARCHAR(50)    NOT NULL,
+        [TemplateName]          NVARCHAR(100)   NOT NULL,
+        [DefaultBaseSizeId]     INT             NULL,
+        [IsActive]              BIT             NOT NULL CONSTRAINT DF_TchpPomTemplate_IsActive DEFAULT (1),
+        [SystemTimeStamp]       ROWVERSION      NULL,
+        [AppCreatedById]        INT             NULL,
+        [AppCreatedDate]        DATETIME        NULL,
+        [AppModifiedDate]       DATETIME        NULL,
+        [AppModifiedById]       INT             NULL,
+        [AppCreatedByCompanyId] INT             NULL,
+        CONSTRAINT [PK_TchpPomTemplate] PRIMARY KEY CLUSTERED ([PomTemplateId] ASC),
+        CONSTRAINT [UQ_TchpPomTemplate_Code] UNIQUE ([TemplateCode])
+    );
+END");
+
+            // Optional FK when SizeRun size table already exists (full NewSchema / prior SizeRun import).
+            ExecuteEnsureDdl(tenantConn, @"
+IF OBJECT_ID(N'dbo.TchpPomTemplate', N'U') IS NOT NULL
+   AND OBJECT_ID(N'dbo.TchpSizeRunSize', N'U') IS NOT NULL
+   AND NOT EXISTS (
+        SELECT 1 FROM sys.foreign_keys WHERE name = N'FK_TchpPomTemplate_TchpSizeRunSize')
+BEGIN
+    ALTER TABLE [dbo].[TchpPomTemplate] WITH CHECK
+    ADD CONSTRAINT [FK_TchpPomTemplate_TchpSizeRunSize]
+        FOREIGN KEY ([DefaultBaseSizeId]) REFERENCES [dbo].[TchpSizeRunSize] ([SizeRunSizeId]);
+END");
+
+            ExecuteEnsureDdl(tenantConn, @"
+IF OBJECT_ID(N'dbo.TchpPomTemplatePart', N'U') IS NULL
+BEGIN
+    CREATE TABLE [dbo].[TchpPomTemplatePart] (
+        [PomTemplatePartId]     INT             IDENTITY(1,1)   NOT NULL,
+        [PomTemplateId]         INT             NOT NULL,
+        [BodyPartId]            INT             NOT NULL,
+        [BodypartAliasName]     NVARCHAR(50)    NULL,
+        [Sort]                  INT             NOT NULL CONSTRAINT DF_TchpPomTemplatePart_Sort DEFAULT (0),
+        [SystemTimeStamp]       ROWVERSION      NULL,
+        [AppCreatedById]        INT             NULL,
+        [AppCreatedDate]        DATETIME        NULL,
+        [AppModifiedDate]       DATETIME        NULL,
+        [AppModifiedById]       INT             NULL,
+        [AppCreatedByCompanyId] INT             NULL,
+        CONSTRAINT [PK_TchpPomTemplatePart] PRIMARY KEY CLUSTERED ([PomTemplatePartId] ASC),
+        CONSTRAINT [FK_TchpPomTemplatePart_TchpPomTemplate]
+            FOREIGN KEY ([PomTemplateId]) REFERENCES [dbo].[TchpPomTemplate] ([PomTemplateId]),
+        CONSTRAINT [FK_TchpPomTemplatePart_TchpBodyPart]
+            FOREIGN KEY ([BodyPartId]) REFERENCES [dbo].[TchpBodyPart] ([BodyPartId]),
+        CONSTRAINT [UQ_TchpPomTemplatePart_TemplatePart] UNIQUE ([PomTemplateId], [BodyPartId])
+    );
+    CREATE NONCLUSTERED INDEX [IX_TchpPomTemplatePart_Template]
+        ON [dbo].[TchpPomTemplatePart] ([PomTemplateId] ASC);
+END");
+        }
+
+        private static void ExecuteEnsureDdl(SqlConnection tenantConn, string sql)
+        {
+            using (var cmd = tenantConn.CreateCommand())
+            {
+                cmd.CommandText = sql;
+                cmd.CommandTimeout = 120;
+                cmd.ExecuteNonQuery();
             }
         }
 

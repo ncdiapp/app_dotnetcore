@@ -7,9 +7,11 @@ WHERE LibraryKey IN (
   N'platform-transaction', N'platform-search', N'platform-memory')
 ORDER BY LibraryKey;
 
-PRINT '=== platform-multi-agent tools ===';
+PRINT '=== Gate-0 tools (must exist) ===';
 SELECT ToolName, ToolType, IsActive FROM dbo.AppAgentLibraryTool
-WHERE LibraryKey = N'platform-multi-agent' ORDER BY SortOrder, ToolName;
+WHERE LibraryKey = N'integration-plm-import'
+  AND ToolName IN (N'list_tenant_data_sources', N'list_tenant_saas_applications', N'ensure_techpack_schema', N'test_plm_connection', N'save_plm_import_session')
+ORDER BY ToolName;
 
 PRINT '=== integration-plm-import tool count ===';
 SELECT COUNT(*) AS ToolCount FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import';
@@ -17,7 +19,9 @@ SELECT COUNT(*) AS ToolCount FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'i
 PRINT '=== Agents ===';
 SELECT SkillKey, DisplayName, ExecutionMode, IsActive,
        AllowAgentFirstTurn,
-       LEN(SystemPrompt) AS PromptLen
+       LEN(SystemPrompt) AS PromptLen,
+       CASE WHEN SystemPrompt LIKE N'%list_tenant_saas_applications%' THEN 1 ELSE 0 END AS HasSaasAppToolInPrompt,
+       CASE WHEN SystemPrompt LIKE N'%WIZARD CATALOG%' THEN 1 ELSE 0 END AS HasWizardCatalog
 FROM dbo.AppAgentSkillSet
 WHERE SkillKey IN (N'plm-integration-orchestrator', N'plm-integration-import-dw')
 ORDER BY SkillKey;
@@ -29,3 +33,4 @@ ORDER BY SkillKey, LibraryKey;
 
 PRINT '=== Shared context table ===';
 SELECT CASE WHEN OBJECT_ID(N'dbo.AppAgentSharedContext', N'U') IS NULL THEN 'MISSING' ELSE 'OK' END AS AppAgentSharedContext;
+GO

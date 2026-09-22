@@ -342,6 +342,78 @@ END";
             return result;
         }
 
+        /// <summary>
+        /// List tenant SaaS Application packages for ask_user DDL (Id + Name only).
+        /// Same ids as save_plm_import_session.saasApplicationId (root AppListMenu LinkType=ApplicationPackage).
+        /// Prefer this over platform list_applications (full TX/Search tree) for Gate-0.
+        /// </summary>
+        public static OperationCallResult<PlmListTenantSaasApplicationsResultDto> ListTenantSaasApplications(
+            PlmListTenantSaasApplicationsRequestDto request)
+        {
+            var result = new OperationCallResult<PlmListTenantSaasApplicationsResultDto>
+            {
+                Object = new PlmListTenantSaasApplicationsResultDto()
+            };
+            try
+            {
+                _ = request;
+
+                // Canonical package list (MenuId = SaasApplicationId).
+                foreach (var app in AppSaasUserApplicationPackageBL.GetSaasApplicationList(excludeChildMenu: true))
+                {
+                    if (app?.Id == null)
+                        continue;
+                    int id = Convert.ToInt32(app.Id);
+                    if (id <= 0)
+                        continue;
+                    result.Object.Applications.Add(new PlmTenantSaasApplicationItemDto
+                    {
+                        SaasApplicationId = id,
+                        ApplicationName = app.Name
+                    });
+                }
+
+                // Fallback: root ApplicationPackage menus (LinkType=10) if BL returned empty.
+                if (result.Object.Applications.Count == 0)
+                {
+                    var fixture = GetTenantFixture();
+                    var dt = fixture.RetriveDataTable(@"
+SELECT MenuID, Name
+FROM dbo.AppListMenu
+WHERE (ParentID IS NULL OR ParentID = 0)
+  AND LinkType = 10
+ORDER BY MenuID",
+                        new List<DbParameter>());
+                    if (dt != null)
+                    {
+                        foreach (DataRow row in dt.Rows)
+                        {
+                            int id = Convert.ToInt32(row["MenuID"]);
+                            if (id <= 0)
+                                continue;
+                            result.Object.Applications.Add(new PlmTenantSaasApplicationItemDto
+                            {
+                                SaasApplicationId = id,
+                                ApplicationName = row["Name"]?.ToString()
+                            });
+                        }
+                    }
+                }
+
+                result.Object.IsSuccess = true;
+            }
+            catch (Exception ex)
+            {
+                result.Object.IsSuccess = false;
+                result.Object.ErrorMessage = ex.Message;
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(PlmListTenantSaasApplicationsRequestDto), "Plm_ListSaasApplications_Error",
+                    ValidationItemType.Error, ex.Message));
+            }
+
+            return result;
+        }
+
         /// <summary>Obsolete: connection-string discover from PLM pdmDataSource is disabled for security.</summary>
         public static OperationCallResult<PlmDiscoverDataSourcesResultDto> DiscoverPlmDataSources(PlmDiscoverDataSourcesRequestDto request)
         {

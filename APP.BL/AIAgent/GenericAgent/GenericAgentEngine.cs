@@ -94,6 +94,7 @@ namespace App.BL.AIAgent.GenericAgent
                     UserId           = userId,
                     CompanyId        = companyId,
                     DataSourceId     = dsId,
+                    LoginUserType    = identity.HasValue ? identity.Value.CurrentLoginUserType : 0,
                     IsDeterministic  = string.Equals(skillSet.ExecutionMode, "Deterministic", StringComparison.OrdinalIgnoreCase),
                     WorkflowId       = string.IsNullOrEmpty(workflowId) ? Guid.NewGuid().ToString("N") : workflowId,
                     ChatSessionKey   = resolvedChatKey
@@ -321,6 +322,20 @@ namespace App.BL.AIAgent.GenericAgent
                     Description = "Optional shared-context key to merge answers into",
                     IsRequired = false,
                     ParameterType = typeof(string)
+                },
+                new("ui")
+                {
+                    Description = "Choice UI: radio (default, select then Submit) | button_group (one click = select+submit). Only for mode=single_choice.",
+                    IsRequired = false,
+                    ParameterType = typeof(string),
+                    DefaultValue = "radio"
+                },
+                new("layout")
+                {
+                    Description = "button_group layout: vertical (default) | horizontal",
+                    IsRequired = false,
+                    ParameterType = typeof(string),
+                    DefaultValue = "vertical"
                 }
             };
 
@@ -337,12 +352,16 @@ namespace App.BL.AIAgent.GenericAgent
                         mode: Arg("mode", "text"),
                         fieldsJson: Arg("fieldsJson"),
                         optionsJson: Arg("optionsJson"),
-                        contextKey: Arg("contextKey")).ConfigureAwait(false);
+                        contextKey: Arg("contextKey"),
+                        ui: Arg("ui", "radio"),
+                        layout: Arg("layout", "vertical")).ConfigureAwait(false);
                 },
                 functionName: "ask_user",
                 description:
                     "Ask the user a structured question and wait for their answer (Interactive only). " +
                     "Use for Gate-0 / missing fields / menus. mode=text|single_choice|multi_choice. " +
+                    "For menus/confirm-next: mode=single_choice + optionsJson REQUIRED (never list choices only in prompt text). " +
+                    "ui=radio|button_group (button_group = one-click select+submit); layout=vertical|horizontal. " +
                     "fieldsJson supports type=select with per-field options for dropdowns. " +
                     "Optionally merge answers into shared context via contextKey.",
                 parameters: parameters);

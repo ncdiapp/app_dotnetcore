@@ -1,10 +1,9 @@
 @echo off
-REM Apply PLM Migration Multi-Agent seeds to a NEW tenant DB (structure-migrated through V031+).
+REM Apply PLM Migration Multi-Agent seeds to a NEW / restored tenant DB (structure through V031+).
 REM Usage: RUN_ALL.bat ServerName TenantDbName
 REM Example: RUN_ALL.bat PC3B\MSSQLSERVER01 TenantDB_PLM34
-REM Uses Windows auth (-E). For SQL auth, edit to add -U/-P.
-REM -f 65001 = UTF-8 input (avoids mojibake). Prefer ASCII-only in seed text when possible.
-REM New-tenant only: INSERT agents/libraries; does not UPDATE existing agents.
+REM Windows auth (-E). SQL auth: add -U/-P.
+REM -f 65001 = UTF-8. Scripts are INSERT (IF NOT EXISTS); 03 also UPDATEs ROOT prompt.
 
 if "%~1"=="" goto usage
 if "%~2"=="" goto usage

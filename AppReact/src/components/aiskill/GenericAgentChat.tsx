@@ -42,6 +42,40 @@ interface Props {
 const snippet = (s?: string | null, max = 300) =>
     !s ? '' : s.length > max ? s.slice(0, max) + '…' : s;
 
+/** Format ask_user answers so Q&A stays in the chat after the Question card closes. */
+const formatAskUserAnswerSummary = (
+    ask: AskUserEvent,
+    answers: Record<string, string>,
+    selectedIds: string[],
+    freeText: string,
+    cancelled: boolean,
+): string => {
+    if (cancelled) return '(cancelled)';
+    const mode = (ask.Mode || 'text').toLowerCase();
+    if (mode === 'single_choice' || mode === 'multi_choice') {
+        const opts = ask.Options ?? [];
+        const labels = selectedIds.map(id => {
+            const opt = opts.find(o => String(o.Id ?? '') === id);
+            return opt?.Display || id;
+        });
+        return labels.length > 0 ? labels.join(', ') : '(no selection)';
+    }
+    if (ask.Fields && ask.Fields.length > 0) {
+        const lines = ask.Fields.map(field => {
+            const raw = answers[field.Name] ?? '';
+            if (!raw) return `${field.Label || field.Name}: (empty)`;
+            const fieldType = (field.Type || 'text').toLowerCase();
+            if (fieldType === 'select' && (field.Options?.length ?? 0) > 0) {
+                const opt = field.Options!.find(o => String(o.Id ?? '') === raw);
+                return `${field.Label || field.Name}: ${opt?.Display || raw}`;
+            }
+            return `${field.Label || field.Name}: ${raw}`;
+        });
+        return lines.join('\n');
+    }
+    return freeText.trim() || '(empty)';
+};
+
 /** Try parse a string that may be JSON (including truncated / double-escaped blobs). */
 const tryParseJsonish = (s: string): unknown | undefined => {
     const t = s.trim();
@@ -513,13 +547,27 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
         if (sessionId) await genericAgentSvc.ConfirmPlan(sessionId, confirmed);
     };
 
-    const handleConfirmAskUser = async (cancelled: boolean) => {
+    const handleConfirmAskUser = async (
+        cancelled: boolean,
+        overrideSelectedIds?: string[],
+    ) => {
         const ask = pendingAskUserRef.current;
         const sid = sessionIdRef.current;
         const answers = { ...askAnswers };
-        const selectedIds = [...askSelectedIds];
+        const selectedIds = overrideSelectedIds ?? [...askSelectedIds];
         const freeText = askFreeText;
         const mode = (ask?.Mode || 'text').toLowerCase();
+
+        // Keep Q&A in the transcript — clearing pendingAskUser alone removed the Question card with no history.
+        if (ask) {
+            const answerText = formatAskUserAnswerSummary(ask, answers, selectedIds, freeText, cancelled);
+            setMessages(prev => [
+                ...prev,
+                { role: 'assistant', content: ask.Prompt || '(question)' },
+                { role: 'user', content: answerText },
+            ]);
+        }
+
         setPendingAskUser(null);
         setAskAnswers({});
         setAskSelectedIds([]);
@@ -571,6 +619,12 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
     const allActivities = turnActivities;
     const hasAnyTools = allActivities.some(t => t.steps.length > 0);
     const askMode = (pendingAskUser?.Mode || 'text').toLowerCase();
+    const askUi = (pendingAskUser?.Ui || 'radio').toLowerCase();
+    const askLayout = (pendingAskUser?.Layout || 'vertical').toLowerCase();
+    const isButtonGroup =
+        askMode === 'single_choice'
+        && askUi === 'button_group'
+        && (pendingAskUser?.Options?.length ?? 0) > 0;
     const blocked = isRunning || !!pendingAskUser;
 
     return (
@@ -612,7 +666,25 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                             <div className={`text-xs font-semibold ${theme.title}`}>Question</div>
                             <div className={`text-xs ${theme.label} whitespace-pre-wrap`}>{pendingAskUser.Prompt}</div>
 
-                            {askMode === 'single_choice' && (pendingAskUser.Options?.length ?? 0) > 0 && (
+                            {isButtonGroup && (
+                                <div className={askLayout === 'horizontal' ? 'flex flex-row flex-wrap gap-2' : 'flex flex-col gap-2'}>
+                                    {pendingAskUser.Options!.map(opt => {
+                                        const id = String(opt.Id ?? '');
+                                        return (
+                                            <button
+                                                key={id}
+                                                type="button"
+                                                className={btn}
+                                                onClick={() => handleConfirmAskUser(false, [id])}
+                                            >
+                                                {opt.Display || id}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {askMode === 'single_choice' && !isButtonGroup && (pendingAskUser.Options?.length ?? 0) > 0 && (
                                 <div className="flex flex-col gap-1.5">
                                     {pendingAskUser.Options!.map(opt => {
                                         const id = String(opt.Id ?? '');
@@ -701,9 +773,11 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                             )}
 
                             <div className="flex gap-2">
-                                <button className={btn} onClick={() => handleConfirmAskUser(false)}>
-                                    <i className="fa-solid fa-check mr-1" />Submit
-                                </button>
+                                {!isButtonGroup && (
+                                    <button className={btn} onClick={() => handleConfirmAskUser(false)}>
+                                        <i className="fa-solid fa-check mr-1" />Submit
+                                    </button>
+                                )}
                                 <button className={btn} onClick={() => handleConfirmAskUser(true)}>
                                     <i className="fa-solid fa-xmark mr-1" />Cancel
                                 </button>

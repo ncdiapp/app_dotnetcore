@@ -1,13 +1,6 @@
--- TENANT / CUSTOMER seed — NOT a schema migration.
--- Do NOT run via Flyway/generic structure upgrade.
--- Apply manually on a tenant that needs PLM Integration agents (e.g. TenantDB_PLM32).
---
--- Library: integration-plm-import
--- All agent tools are ExternalDll (APP.AgentPlugins.PlmImport.dll).
--- PlmImportEngine lives in the plugin (APP.BL/DataMigration/PlmMigration removed).
--- Orchestrator: Seed_PlmIntegrationOrchestrator.sql (SkillKey plm-integration-orchestrator).
--- Progress: AppReact/ImportDoc/PlmAgentIntegration/Agent-Replace-Wizard-Progress.md
--- E2E: AppReact/ImportDoc/PlmAgentIntegration/Interactive-E2E-Checklist.md
+-- TENANT seed for PlmIntegrationMultiAgent pack (RUN_ALL) — NOT a Flyway migration.
+-- Library: integration-plm-import (ExternalDll -> APP.AgentPlugins.PlmImport.dll).
+-- New-tenant INSERT only (IF NOT EXISTS). Subscriptions are in 03_Seed_*_Root.sql.
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
 INSERT INTO dbo.AppAgentToolLibrary
@@ -16,8 +9,8 @@ VALUES (
     N'integration-plm-import',
     N'platform',
     N'PLM Integration Import',
-    N'PLM Data Import tools for Agent (Connect/Entity/Image/Folder/Color/POM/DW/Search). Prefer ExternalDll + sessionId. Subscribe plm-integration-orchestrator.',
-    N'BuiltIn',
+    N'PLM Data Import tools for Agent (Connect/Entity/Image/Folder/Color/POM/DW/Search). ExternalDll + sessionId. Subscribe plm-integration-orchestrator.',
+    N'ExternalDll',
     1
 );
 GO
@@ -49,6 +42,36 @@ VALUES (
     N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ListTenantDataSourcesTool"}',
     1,
     15
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'list_tenant_saas_applications')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'integration-plm-import',
+    N'list_tenant_saas_applications',
+    N'List SaasApplicationId + ApplicationName for Gate-0 ask_user DDL. Slim list only (no TX/Search tree). Prefer over list_applications for Connect.',
+    N'{"type":"object","properties":{"targetCompanyId":{"type":"integer"}}}',
+    N'ExternalDll',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ListTenantSaasApplicationsTool"}',
+    1,
+    16
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'ensure_techpack_schema')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'integration-plm-import',
+    N'ensure_techpack_schema',
+    N'Apply TechPack Tchp* DDL on the tenant DB (full POM_Grading_QC_NewSchema.sql from plugin Sql/TechPack). Optional includeInspectionAddon=true for QC addon. Idempotent IF OBJECT_ID. Run after Connect, before Entity. Requires SaasCompanyAdmin/SysAdmin.',
+    N'{"type":"object","properties":{"includeInspectionAddon":{"type":"boolean","description":"Default false. When true also run InspectionAddon.sql"},"targetCompanyId":{"type":"integer"}}}',
+    N'ExternalDll',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.EnsureTechPackSchemaTool"}',
+    1,
+    17
 );
 GO
 
@@ -649,30 +672,6 @@ VALUES (
 );
 GO
 
--- Phase 3b: upgrade any previously seeded BuiltIn Connect/Entity/Image tools to ExternalDll
--- (IF NOT EXISTS inserts above skip when rows already exist).
-UPDATE t
-SET ToolType = N'ExternalDll',
-    ToolConfig = v.ToolConfig
-FROM dbo.AppAgentLibraryTool t
-INNER JOIN (VALUES
-    (N'test_plm_connection', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.TestPlmConnectionTool"}'),
-    (N'get_plm_import_session', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.GetPlmImportSessionTool"}'),
-    (N'save_plm_import_session', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.SavePlmImportSessionTool"}'),
-    (N'preview_plm_sketch_import', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.PreviewSketchImportTool"}'),
-    (N'execute_plm_sketch_import', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ExecuteSketchImportTool"}'),
-    (N'get_plm_import_job', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.GetPlmImportJobTool"}'),
-    (N'cancel_plm_import_job', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.CancelPlmImportJobTool"}'),
-    (N'preview_plm_table_export_plan', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.PreviewTableExportPlanTool"}'),
-    (N'execute_plm_table_export', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ExecuteTableExportTool"}'),
-    (N'preview_system_define_entity_import', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.PreviewSystemDefineEntityImportTool"}'),
-    (N'execute_system_define_entity_import', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ExecuteSystemDefineEntityImportTool"}'),
-    (N'preview_user_define_entity_import', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.PreviewUserDefineEntityImportTool"}'),
-    (N'execute_user_define_entity_import', N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ExecuteUserDefineEntityImportTool"}')
-) v(ToolName, ToolConfig) ON t.ToolName = v.ToolName
-WHERE t.LibraryKey = N'integration-plm-import'
-  AND (t.ToolType <> N'ExternalDll' OR ISNULL(t.ToolConfig, N'') <> v.ToolConfig);
-GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'build_dw_app_config_pack')
 INSERT INTO dbo.AppAgentLibraryTool
@@ -704,51 +703,32 @@ VALUES (
 );
 GO
 
--- Optional: subscribe PLM Integration Orchestrator when present (idempotent).
-IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
-AND NOT EXISTS (
-    SELECT 1 FROM dbo.AppAgentLibrarySubscription
-    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'integration-plm-import')
-INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
-VALUES (N'plm-integration-orchestrator', N'integration-plm-import');
+-- discover_plm_data_sources removed
+IF EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources')
+DELETE FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources';
 GO
 
--- Security: Connect via DataSourceRegisterId only (upgrade existing tenant rows).
+-- ensure_techpack_schema: refresh description/config on existing tenants
 UPDATE dbo.AppAgentLibraryTool SET
-    ToolDescription = N'Test a tenant AppDataSourceRegister by id (PLM/PLMDW/ERP). Never pass a connection string. Returns IsSuccess, DataSourceName, DatabaseName, ServerVersion.',
-    ParameterSchemaJson = N'{"type":"object","properties":{"dataSourceRegisterId":{"type":"integer","description":"Tenant AppDataSourceRegister id"},"targetCompanyId":{"type":"integer"}},"required":["dataSourceRegisterId"]}',
+    ToolDescription = N'Apply TechPack Tchp* DDL on the tenant DB (full POM_Grading_QC_NewSchema.sql from plugin Sql/TechPack). Optional includeInspectionAddon=true for QC addon. Idempotent IF OBJECT_ID. Run after Connect, before Entity. Requires SaasCompanyAdmin/SysAdmin.',
+    ParameterSchemaJson = N'{"type":"object","properties":{"includeInspectionAddon":{"type":"boolean","description":"Default false. When true also run InspectionAddon.sql"},"targetCompanyId":{"type":"integer"}}}',
     ToolType = N'ExternalDll',
-    ToolConfig = N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.TestPlmConnectionTool"}',
+    ToolConfig = N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.EnsureTechPackSchemaTool"}',
     IsActive = 1
-WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'test_plm_connection';
+WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'ensure_techpack_schema';
 GO
 
-
-UPDATE dbo.AppAgentLibraryTool SET
-    ToolDescription = N'Save / upsert PLM Import session. Pass saasApplicationId + plmDataSourceRegisterId (required) and optional plmDwDataSourceRegisterId / erpDataSourceRegisterId / plmExDbDataSourceRegisterId. Never pass connection strings.',
-    ParameterSchemaJson = N'{"type":"object","properties":{"saasApplicationId":{"type":"integer"},"plmDataSourceRegisterId":{"type":"integer"},"plmDwDataSourceRegisterId":{"type":"integer"},"erpDataSourceRegisterId":{"type":"integer"},"plmExDbDataSourceRegisterId":{"type":"integer","description":"Optional PLM External DB register id"},"sessionId":{"type":"integer"},"sessionJson":{"type":"string"},"targetCompanyId":{"type":"integer"}},"required":["saasApplicationId","plmDataSourceRegisterId"]}',
-    ToolType = N'ExternalDll',
-    ToolConfig = N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.SavePlmImportSessionTool"}',
-    IsActive = 1
-WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'save_plm_import_session';
-GO
-
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'list_tenant_data_sources')
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'ensure_techpack_schema')
 INSERT INTO dbo.AppAgentLibraryTool
     (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
 VALUES (
     N'integration-plm-import',
-    N'list_tenant_data_sources',
-    N'List DataSourceRegisterId + name + databaseName for the current tenant company. Use for ask_user to pick PLM / PLMDW / ERP registers. Never returns connection strings.',
-    N'{"type":"object","properties":{"targetCompanyId":{"type":"integer"}}}',
+    N'ensure_techpack_schema',
+    N'Apply TechPack Tchp* DDL on the tenant DB (full POM_Grading_QC_NewSchema.sql from plugin Sql/TechPack). Optional includeInspectionAddon=true for QC addon. Idempotent IF OBJECT_ID. Run after Connect, before Entity. Requires SaasCompanyAdmin/SysAdmin.',
+    N'{"type":"object","properties":{"includeInspectionAddon":{"type":"boolean","description":"Default false. When true also run InspectionAddon.sql"},"targetCompanyId":{"type":"integer"}}}',
     N'ExternalDll',
-    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ListTenantDataSourcesTool"}',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.EnsureTechPackSchemaTool"}',
     1,
-    15
+    17
 );
-GO
-
--- discover_plm_data_sources removed: never create AppDataSourceRegister from PLM connections.
-IF EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources')
-DELETE FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources';
 GO

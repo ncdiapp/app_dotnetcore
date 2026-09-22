@@ -40,7 +40,8 @@ namespace App.BL.AIAgent.GenericAgent
                     CurrentUserDbConnectionString = context.ConnectionString,
                     CurrentUserDataBaseName       = context.DatabaseName,
                     SessionId                     = context.UserSessionId,
-                    DataSourceId                  = context.DataSourceId
+                    DataSourceId                  = context.DataSourceId,
+                    CurrentLoginUserType          = context.LoginUserType
                 };
             }
             else if (ServerContext.Instance.CurrnetClientIdentity is AppClientIdentity ai)

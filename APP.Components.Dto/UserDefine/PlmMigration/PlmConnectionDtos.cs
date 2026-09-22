@@ -71,6 +71,71 @@ namespace APP.Components.EntityDto
         public List<PlmTenantDataSourceItemDto> DataSources { get; set; } = new List<PlmTenantDataSourceItemDto>();
     }
 
+    /// <summary>List tenant SaaS Application packages for ask_user DDL (Id + Name only).</summary>
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmListTenantSaasApplicationsRequestDto
+    {
+        [DataMember]
+        public int? TargetCompanyId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmTenantSaasApplicationItemDto
+    {
+        [DataMember]
+        public int SaasApplicationId { get; set; }
+
+        [DataMember]
+        public string ApplicationName { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmListTenantSaasApplicationsResultDto
+    {
+        [DataMember]
+        public bool IsSuccess { get; set; }
+
+        [DataMember]
+        public string ErrorMessage { get; set; }
+
+        [DataMember]
+        public List<PlmTenantSaasApplicationItemDto> Applications { get; set; } = new List<PlmTenantSaasApplicationItemDto>();
+    }
+
+    /// <summary>Apply TechPack Tchp* DDL (product SQL under plugin Sql/TechPack).</summary>
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmEnsureTechPackSchemaRequestDto
+    {
+        /// <summary>When true, also run POM_Grading_QC_InspectionAddon.sql. Default false.</summary>
+        [DataMember]
+        public bool IncludeInspectionAddon { get; set; }
+
+        [DataMember]
+        public int? TargetCompanyId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmEnsureTechPackSchemaResultDto
+    {
+        [DataMember]
+        public bool IsSuccess { get; set; }
+
+        [DataMember]
+        public string ErrorMessage { get; set; }
+
+        [DataMember]
+        public int BatchesExecuted { get; set; }
+
+        [DataMember]
+        public bool RanNewSchema { get; set; }
+
+        [DataMember]
+        public bool RanInspectionAddon { get; set; }
+
+        [DataMember]
+        public List<string> Messages { get; set; } = new List<string>();
+    }
+
     /// <summary>Obsolete: do not use. Connect via DataSourceRegisterId only.</summary>
     [DataContract(Namespace = ContractNamespaces.Dto)]
     public class PlmDiscoverDataSourcesRequestDto

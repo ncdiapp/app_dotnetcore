@@ -73,7 +73,8 @@ namespace App.BL.TenantBusiness.AgentToolExecutors
                     CurrentUserDbConnectionString = context.ConnectionString,
                     CurrentUserDataBaseName       = context.DatabaseName,
                     SessionId                     = context.UserSessionId,
-                    DataSourceId                  = context.DataSourceId
+                    DataSourceId                  = context.DataSourceId,
+                    CurrentLoginUserType          = context.LoginUserType
                 });
             }
 

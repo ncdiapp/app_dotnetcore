@@ -25,6 +25,11 @@
     </ProjectReference>
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Sql\TechPack\POM_Grading_QC_NewSchema.sql" />
+    <EmbeddedResource Include="Sql\TechPack\POM_Grading_QC_InspectionAddon.sql" />
+  </ItemGroup>
+
   <Target Name="CopyToAgentPlugins" AfterTargets="Build">
     <PropertyGroup>
       <_AgentPluginsOut>$(MSBuildThisFileDirectory)..\AppAI.Web\bin\$(Configuration)\$(TargetFramework)\AgentPlugins\</_AgentPluginsOut>

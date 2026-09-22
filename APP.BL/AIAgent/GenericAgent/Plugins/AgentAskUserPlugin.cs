@@ -24,7 +24,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             string mode = "text",
             string fieldsJson = null,
             string optionsJson = null,
-            string contextKey = null)
+            string contextKey = null,
+            string ui = "radio",
+            string layout = "vertical")
         {
             if (context != null && context.IsDeterministic)
             {
@@ -44,10 +46,24 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (normalizedMode != "text" && normalizedMode != "single_choice" && normalizedMode != "multi_choice")
                 normalizedMode = "text";
 
+            var normalizedUi = string.IsNullOrWhiteSpace(ui) ? "radio" : ui.Trim().ToLowerInvariant();
+            if (normalizedUi != "radio" && normalizedUi != "button_group")
+                normalizedUi = "radio";
+
+            var normalizedLayout = string.IsNullOrWhiteSpace(layout) ? "vertical" : layout.Trim().ToLowerInvariant();
+            if (normalizedLayout != "vertical" && normalizedLayout != "horizontal")
+                normalizedLayout = "vertical";
+
+            // button_group only applies to single_choice with options; otherwise fall back to radio.
+            if (normalizedMode != "single_choice")
+                normalizedUi = "radio";
+
             var askEvent = new AgentAskUserEvent
             {
                 Prompt = prompt.Trim(),
                 Mode = normalizedMode,
+                Ui = normalizedUi,
+                Layout = normalizedLayout,
                 Fields = ParseFields(fieldsJson),
                 Options = ParseOptions(optionsJson),
                 ContextKey = string.IsNullOrWhiteSpace(contextKey) ? null : contextKey.Trim()
