@@ -43,6 +43,8 @@ namespace APP.Components.EntityDto
         public string ExecutionMode       { get; set; } = "Interactive";
         /// <summary>EmAppAgentUi: 0 Unspecified, 1 GenericChat, 2 ConfigurationAndIntegration, 3 DbManagement, 4 ImageAndFileProcess.</summary>
         public int    AgentUi             { get; set; } = 1;
+        /// <summary>When true and Interactive, empty chat sends [session_start] (UI: Agent speaks first).</summary>
+        public bool   AllowAgentFirstTurn { get; set; }
     }
 
     public class AppAgentToolRegisterDto
