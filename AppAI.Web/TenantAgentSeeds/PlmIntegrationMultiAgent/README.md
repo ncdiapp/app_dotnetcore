@@ -55,6 +55,8 @@ Or run files **in order**:
 
 Scripts are idempotent (IF NOT EXISTS + UPDATE prompts on re-run).
 
+**Notes:** Every `UPDATE AppAgentSkillSet` is scoped with `WHERE SkillKey=...`. Prompts use ASCII separators (`===`, `->`). `RUN_ALL.bat` uses `sqlcmd -f 65001` (UTF-8).
+
 ---
 
 ## How to test
@@ -74,5 +76,3 @@ Docs: `Document/AgentDesign/MultiAgent-Architecture.md`, `AppReact/ImportDoc/Plm
 |---|---|
 | **This pack** (`PlmIntegrationMultiAgent/`) | Multi-agent ROOT + DW CHILD (+ AppConfigPack) |
 | `PlmIntegration/Seed_PlmIntegrationOrchestrator.sql` | Older/alternate Ex-DLL Interactive single-agent prompt — **do not** run it after this pack or it will overwrite the ROOT prompt |
-
-`_export_*.prompt.txt` files are raw exports for reference; apply the numbered `0x_*.sql` files only.
