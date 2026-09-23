@@ -193,7 +193,7 @@ public class GenericAgentController : SecureBaseController
                         sessionKey: chatSessionKey);
                     if (agentCompanyId > 0 && !string.IsNullOrWhiteSpace(chatSessionKey))
                     {
-                        try { GenericAgentFileBL.EnsureRoot(chatSessionKey, agentCompanyId); }
+                        try { GenericAgentFileBL.EnsureRoot(chatSessionKey, agentCompanyId, request.SkillKey); }
                         catch { /* file root ensure must not fail the run */ }
                     }
                 }
@@ -478,7 +478,7 @@ public class GenericAgentController : SecureBaseController
         var companyId = ai.CurrentWorkingCompanyId != null ? Convert.ToInt32(ai.CurrentWorkingCompanyId) : 0;
         if (companyId > 0)
         {
-            try { GenericAgentFileBL.EnsureRoot(key, companyId); }
+            try { GenericAgentFileBL.EnsureRoot(key, companyId, skillKey); }
             catch { /* ignore */ }
         }
 
@@ -550,6 +550,25 @@ public class GenericAgentController : SecureBaseController
         return true;
     }
 
+    private static bool IsDefaultSourceScope(string scope) =>
+        string.Equals(scope, "defaultSource", StringComparison.OrdinalIgnoreCase);
+
+    private bool AuthorizeAgentFiles(string skillKey, string sessionKey, string scope, int userId, OperationCallResult<object> result)
+    {
+        if (IsDefaultSourceScope(scope))
+        {
+            if (string.IsNullOrWhiteSpace(skillKey))
+            {
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(GenericAgentController), "Files_NoSkill",
+                    ValidationItemType.Error, "skillKey is required."));
+                return false;
+            }
+            return true;
+        }
+        return AssertChatOwned(skillKey, sessionKey, userId, result);
+    }
+
     private bool AssertChatOwned(string skillKey, string sessionKey, int userId, OperationCallResult<object> result)
     {
         if (string.IsNullOrWhiteSpace(sessionKey))
@@ -569,7 +588,8 @@ public class GenericAgentController : SecureBaseController
 
     [HttpGet]
     public OperationCallResult<List<GenericAgentFileDto>> ListAgentFiles(
-        [FromQuery] string skillKey, [FromQuery] string sessionKey, [FromQuery] string path = null)
+        [FromQuery] string skillKey, [FromQuery] string sessionKey, [FromQuery] string path = null,
+        [FromQuery] string scope = null)
     {
         var result = new OperationCallResult<List<GenericAgentFileDto>>();
         if (!TryFilesIdentity(out var ai, out var companyId, out var err))
@@ -578,14 +598,16 @@ public class GenericAgentController : SecureBaseController
             return result;
         }
         var boxed = new OperationCallResult<object>();
-        if (!AssertChatOwned(skillKey, sessionKey, Convert.ToInt32(ai.UserId), boxed))
+        if (!AuthorizeAgentFiles(skillKey, sessionKey, scope, Convert.ToInt32(ai.UserId), boxed))
         {
             result.ValidationResult = boxed.ValidationResult;
             return result;
         }
         try
         {
-            result.Object = GenericAgentFileBL.List(sessionKey, path, companyId);
+            result.Object = IsDefaultSourceScope(scope)
+                ? GenericAgentFileBL.ListDefaultSource(skillKey, path, companyId)
+                : GenericAgentFileBL.List(sessionKey, path, companyId, skillKey);
         }
         catch (Exception ex)
         {
@@ -598,7 +620,8 @@ public class GenericAgentController : SecureBaseController
 
     [HttpGet]
     public OperationCallResult<GenericAgentFileContentDto> ReadAgentFile(
-        [FromQuery] string skillKey, [FromQuery] string sessionKey, [FromQuery] string path)
+        [FromQuery] string skillKey, [FromQuery] string sessionKey, [FromQuery] string path,
+        [FromQuery] string scope = null)
     {
         var result = new OperationCallResult<GenericAgentFileContentDto>();
         if (!TryFilesIdentity(out var ai, out var companyId, out var err))
@@ -607,14 +630,16 @@ public class GenericAgentController : SecureBaseController
             return result;
         }
         var boxed = new OperationCallResult<object>();
-        if (!AssertChatOwned(skillKey, sessionKey, Convert.ToInt32(ai.UserId), boxed))
+        if (!AuthorizeAgentFiles(skillKey, sessionKey, scope, Convert.ToInt32(ai.UserId), boxed))
         {
             result.ValidationResult = boxed.ValidationResult;
             return result;
         }
         try
         {
-            result.Object = GenericAgentFileBL.ReadText(sessionKey, path, companyId);
+            result.Object = IsDefaultSourceScope(scope)
+                ? GenericAgentFileBL.ReadDefaultSourceText(skillKey, path, companyId)
+                : GenericAgentFileBL.ReadText(sessionKey, path, companyId);
         }
         catch (Exception ex)
         {
@@ -628,6 +653,7 @@ public class GenericAgentController : SecureBaseController
     [HttpPost]
     public OperationCallResult<string> WriteAgentFile(
         [FromQuery] string skillKey,
+        [FromQuery] string scope,
         [FromBody] GenericAgentFilePathDto body)
     {
         var result = new OperationCallResult<string>();
@@ -637,14 +663,16 @@ public class GenericAgentController : SecureBaseController
             return result;
         }
         var boxed = new OperationCallResult<object>();
-        if (!AssertChatOwned(skillKey, body?.SessionKey, Convert.ToInt32(ai.UserId), boxed))
+        if (!AuthorizeAgentFiles(skillKey, body?.SessionKey, scope, Convert.ToInt32(ai.UserId), boxed))
         {
             result.ValidationResult = boxed.ValidationResult;
             return result;
         }
         try
         {
-            result.Object = GenericAgentFileBL.WriteText(body.SessionKey, body.RelativePath, body.Content, companyId);
+            result.Object = IsDefaultSourceScope(scope)
+                ? GenericAgentFileBL.WriteDefaultSourceText(skillKey, body.RelativePath, body.Content, companyId)
+                : GenericAgentFileBL.WriteText(body.SessionKey, body.RelativePath, body.Content, companyId);
         }
         catch (Exception ex)
         {
@@ -658,6 +686,7 @@ public class GenericAgentController : SecureBaseController
     [HttpPost]
     public OperationCallResult<bool> MkdirAgentFile(
         [FromQuery] string skillKey,
+        [FromQuery] string scope,
         [FromBody] GenericAgentFilePathDto body)
     {
         var result = new OperationCallResult<bool>();
@@ -667,14 +696,17 @@ public class GenericAgentController : SecureBaseController
             return result;
         }
         var boxed = new OperationCallResult<object>();
-        if (!AssertChatOwned(skillKey, body?.SessionKey, Convert.ToInt32(ai.UserId), boxed))
+        if (!AuthorizeAgentFiles(skillKey, body?.SessionKey, scope, Convert.ToInt32(ai.UserId), boxed))
         {
             result.ValidationResult = boxed.ValidationResult;
             return result;
         }
         try
         {
-            GenericAgentFileBL.Mkdir(body.SessionKey, body.RelativePath, companyId);
+            if (IsDefaultSourceScope(scope))
+                GenericAgentFileBL.MkdirDefaultSource(skillKey, body.RelativePath, companyId);
+            else
+                GenericAgentFileBL.Mkdir(body.SessionKey, body.RelativePath, companyId);
             result.Object = true;
         }
         catch (Exception ex)
@@ -689,6 +721,7 @@ public class GenericAgentController : SecureBaseController
     [HttpPost]
     public OperationCallResult<bool> RenameAgentFile(
         [FromQuery] string skillKey,
+        [FromQuery] string scope,
         [FromBody] GenericAgentFilePathDto body)
     {
         var result = new OperationCallResult<bool>();
@@ -698,14 +731,17 @@ public class GenericAgentController : SecureBaseController
             return result;
         }
         var boxed = new OperationCallResult<object>();
-        if (!AssertChatOwned(skillKey, body?.SessionKey, Convert.ToInt32(ai.UserId), boxed))
+        if (!AuthorizeAgentFiles(skillKey, body?.SessionKey, scope, Convert.ToInt32(ai.UserId), boxed))
         {
             result.ValidationResult = boxed.ValidationResult;
             return result;
         }
         try
         {
-            GenericAgentFileBL.Rename(body.SessionKey, body.RelativePath, body.NewPath, companyId);
+            if (IsDefaultSourceScope(scope))
+                GenericAgentFileBL.RenameDefaultSource(skillKey, body.RelativePath, body.NewPath, companyId);
+            else
+                GenericAgentFileBL.Rename(body.SessionKey, body.RelativePath, body.NewPath, companyId);
             result.Object = true;
         }
         catch (Exception ex)
@@ -720,6 +756,7 @@ public class GenericAgentController : SecureBaseController
     [HttpPost]
     public OperationCallResult<bool> DeleteAgentFile(
         [FromQuery] string skillKey,
+        [FromQuery] string scope,
         [FromBody] GenericAgentFilePathDto body)
     {
         var result = new OperationCallResult<bool>();
@@ -729,14 +766,17 @@ public class GenericAgentController : SecureBaseController
             return result;
         }
         var boxed = new OperationCallResult<object>();
-        if (!AssertChatOwned(skillKey, body?.SessionKey, Convert.ToInt32(ai.UserId), boxed))
+        if (!AuthorizeAgentFiles(skillKey, body?.SessionKey, scope, Convert.ToInt32(ai.UserId), boxed))
         {
             result.ValidationResult = boxed.ValidationResult;
             return result;
         }
         try
         {
-            GenericAgentFileBL.Delete(body.SessionKey, body.RelativePath, companyId);
+            if (IsDefaultSourceScope(scope))
+                GenericAgentFileBL.DeleteDefaultSource(skillKey, body.RelativePath, companyId);
+            else
+                GenericAgentFileBL.Delete(body.SessionKey, body.RelativePath, companyId);
             result.Object = true;
         }
         catch (Exception ex)
@@ -753,6 +793,7 @@ public class GenericAgentController : SecureBaseController
         [FromQuery] string skillKey,
         [FromQuery] string sessionKey,
         [FromQuery] string path,
+        [FromQuery] string scope,
         IFormFile file)
     {
         var result = new OperationCallResult<string>();
@@ -762,7 +803,7 @@ public class GenericAgentController : SecureBaseController
             return result;
         }
         var boxed = new OperationCallResult<object>();
-        if (!AssertChatOwned(skillKey, sessionKey, Convert.ToInt32(ai.UserId), boxed))
+        if (!AuthorizeAgentFiles(skillKey, sessionKey, scope, Convert.ToInt32(ai.UserId), boxed))
         {
             result.ValidationResult = boxed.ValidationResult;
             return result;
@@ -778,10 +819,15 @@ public class GenericAgentController : SecureBaseController
         {
             await using var ms = new MemoryStream();
             await file.CopyToAsync(ms);
-            var rel = string.IsNullOrWhiteSpace(path)
-                ? file.FileName
-                : path.TrimEnd('/') + "/" + file.FileName;
-            result.Object = GenericAgentFileBL.WriteBytes(sessionKey, rel, ms.ToArray(), companyId);
+            var dest = string.IsNullOrWhiteSpace(path) ? file.FileName : path.Replace('\\', '/').Trim();
+            var fileName = Path.GetFileName(file.FileName) ?? file.FileName;
+            var destName = Path.GetFileName(dest);
+            var rel = string.Equals(destName, fileName, StringComparison.OrdinalIgnoreCase)
+                ? dest
+                : (string.IsNullOrWhiteSpace(path) ? fileName : dest.TrimEnd('/') + "/" + fileName);
+            result.Object = IsDefaultSourceScope(scope)
+                ? GenericAgentFileBL.WriteDefaultSourceBytes(skillKey, rel, ms.ToArray(), companyId)
+                : GenericAgentFileBL.WriteBytes(sessionKey, rel, ms.ToArray(), companyId);
         }
         catch (Exception ex)
         {
@@ -794,7 +840,8 @@ public class GenericAgentController : SecureBaseController
 
     [HttpGet]
     public IActionResult DownloadAgentFile(
-        [FromQuery] string skillKey, [FromQuery] string sessionKey, [FromQuery] string path)
+        [FromQuery] string skillKey, [FromQuery] string sessionKey, [FromQuery] string path,
+        [FromQuery] string scope = null)
     {
         var identity = ServerContext.Instance.CurrnetClientIdentity;
         if (identity is not AppClientIdentity ai || ai.UserId == null)
@@ -802,11 +849,13 @@ public class GenericAgentController : SecureBaseController
         var companyId = ai.CurrentWorkingCompanyId != null ? Convert.ToInt32(ai.CurrentWorkingCompanyId) : 0;
         if (companyId <= 0) return BadRequest("Company id required.");
         var boxed = new OperationCallResult<object>();
-        if (!AssertChatOwned(skillKey, sessionKey, Convert.ToInt32(ai.UserId), boxed))
+        if (!AuthorizeAgentFiles(skillKey, sessionKey, scope, Convert.ToInt32(ai.UserId), boxed))
             return NotFound();
         try
         {
-            var bytes = GenericAgentFileBL.ReadBytes(sessionKey, path, companyId);
+            var bytes = IsDefaultSourceScope(scope)
+                ? GenericAgentFileBL.ReadDefaultSourceBytes(skillKey, path, companyId)
+                : GenericAgentFileBL.ReadBytes(sessionKey, path, companyId);
             var name = Path.GetFileName(path) ?? "file";
             return File(bytes, "application/octet-stream", name);
         }
@@ -814,6 +863,36 @@ public class GenericAgentController : SecureBaseController
         {
             return NotFound();
         }
+    }
+
+    [HttpPost]
+    public OperationCallResult<int> RestoreDefaultSourceFiles(
+        [FromQuery] string skillKey, [FromQuery] string sessionKey)
+    {
+        var result = new OperationCallResult<int>();
+        if (!TryFilesIdentity(out var ai, out var companyId, out var err))
+        {
+            result.ValidationResult = err.ValidationResult;
+            return result;
+        }
+        var boxed = new OperationCallResult<object>();
+        if (!AssertChatOwned(skillKey, sessionKey, Convert.ToInt32(ai.UserId), boxed))
+        {
+            result.ValidationResult = boxed.ValidationResult;
+            return result;
+        }
+        try
+        {
+            GenericAgentFileBL.EnsureRoot(sessionKey, companyId, skillKey);
+            result.Object = GenericAgentFileBL.CopyDefaultSourceToChat(skillKey, sessionKey, companyId, overwrite: true);
+        }
+        catch (Exception ex)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "Files_RestoreDefault",
+                ValidationItemType.Error, ex.Message));
+        }
+        return result;
     }
 
     [HttpGet]

@@ -4,8 +4,11 @@ import { genericAgentSvc, GenericAgentFile } from '../../webapi/genericAgentSvc'
 
 interface Props {
     skillKey: string;
-    /** AppGenericAgentSession.SessionKey (fixed SkillKey:UserId or GUID). */
-    sessionKey: string | null;
+    /** AppGenericAgentSession.SessionKey (fixed SkillKey:UserId or GUID). Unused for defaultSource. */
+    sessionKey?: string | null;
+    /** chat (default) or defaultSource — Agent editor Default Source Files. */
+    fileScope?: 'chat' | 'defaultSource';
+    emptyHint?: string;
 }
 
 const formatSize = (n: number) => {
@@ -25,7 +28,7 @@ const parentPath = (p: string) => {
     return parts.join('/');
 };
 
-const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
+const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey, fileScope = 'chat', emptyHint }) => {
     const { theme, t } = useTheme();
     const [cwd, setCwd] = useState('');
     const [files, setFiles] = useState<GenericAgentFile[]>([]);
@@ -34,20 +37,23 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
     const [editingPath, setEditingPath] = useState<string | null>(null);
     const [editContent, setEditContent] = useState('');
     const [editSaving, setEditSaving] = useState(false);
+    const [restoring, setRestoring] = useState(false);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
+    const isStarter = fileScope === 'defaultSource';
+    const canUse = !!skillKey && (isStarter || !!sessionKey);
 
     const btn = `px-2 py-1 text-xs rounded-[4px] ${theme.button_default}`;
     const iconBtn = `w-7 h-6 ${theme.button_default} rounded-[4px] text-xs`;
 
     const refresh = useCallback(async (path = cwd) => {
-        if (!skillKey || !sessionKey) {
+        if (!canUse) {
             setFiles([]);
             return;
         }
         setLoading(true);
         setError(null);
         try {
-            const list = await genericAgentSvc.ListAgentFiles(skillKey, sessionKey, path || '');
+            const list = await genericAgentSvc.ListAgentFiles(skillKey, sessionKey, path || '', fileScope);
             setFiles(list);
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : String(e));
@@ -55,12 +61,12 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
         } finally {
             setLoading(false);
         }
-    }, [skillKey, sessionKey, cwd]);
+    }, [canUse, skillKey, sessionKey, cwd, fileScope]);
 
     useEffect(() => {
         setCwd('');
         setEditingPath(null);
-    }, [skillKey, sessionKey]);
+    }, [skillKey, sessionKey, fileScope]);
 
     useEffect(() => {
         void refresh(cwd);
@@ -78,12 +84,12 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
     };
 
     const handleUpload = async (list: FileList | null) => {
-        if (!list?.length || !sessionKey) return;
+        if (!list?.length || !canUse) return;
         setError(null);
         try {
             for (const file of Array.from(list)) {
                 const dest = cwd ? `${cwd}/${file.name}` : file.name;
-                await genericAgentSvc.UploadAgentFile(skillKey, sessionKey, dest, file);
+                await genericAgentSvc.UploadAgentFile(skillKey, sessionKey, dest, file, fileScope);
             }
             await refresh(cwd);
         } catch (e: unknown) {
@@ -94,12 +100,12 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
     };
 
     const handleMkdir = async () => {
-        if (!sessionKey) return;
+        if (!canUse) return;
         const name = window.prompt('New folder name');
         if (!name?.trim()) return;
         const rel = cwd ? `${cwd}/${name.trim()}` : name.trim();
         try {
-            await genericAgentSvc.MkdirAgentFile(skillKey, sessionKey, rel);
+            await genericAgentSvc.MkdirAgentFile(skillKey, sessionKey, rel, fileScope);
             await refresh(cwd);
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : String(e));
@@ -107,11 +113,11 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
     };
 
     const handleDelete = async (f: GenericAgentFile) => {
-        if (!sessionKey) return;
+        if (!canUse) return;
         const label = basename(f.RelativePath);
         if (!window.confirm(`Delete ${f.IsDirectory ? 'folder' : 'file'} "${label}"?`)) return;
         try {
-            await genericAgentSvc.DeleteAgentFile(skillKey, sessionKey, f.RelativePath);
+            await genericAgentSvc.DeleteAgentFile(skillKey, sessionKey, f.RelativePath, fileScope);
             if (editingPath === f.RelativePath) setEditingPath(null);
             await refresh(cwd);
         } catch (e: unknown) {
@@ -120,13 +126,13 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
     };
 
     const handleRename = async (f: GenericAgentFile) => {
-        if (!sessionKey) return;
+        if (!canUse) return;
         const current = basename(f.RelativePath);
         const next = window.prompt('Rename to', current);
         if (!next?.trim() || next.trim() === current) return;
         const newPath = cwd ? `${cwd}/${next.trim()}` : next.trim();
         try {
-            await genericAgentSvc.RenameAgentFile(skillKey, sessionKey, f.RelativePath, newPath);
+            await genericAgentSvc.RenameAgentFile(skillKey, sessionKey, f.RelativePath, newPath, fileScope);
             if (editingPath === f.RelativePath) setEditingPath(null);
             await refresh(cwd);
         } catch (e: unknown) {
@@ -135,9 +141,9 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
     };
 
     const openEdit = async (f: GenericAgentFile) => {
-        if (!sessionKey || f.IsDirectory) return;
+        if (!canUse || f.IsDirectory) return;
         setError(null);
-        const content = await genericAgentSvc.ReadAgentFile(skillKey, sessionKey, f.RelativePath);
+        const content = await genericAgentSvc.ReadAgentFile(skillKey, sessionKey, f.RelativePath, fileScope);
         if (!content) {
             setError('Could not read file.');
             return;
@@ -148,11 +154,11 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
     };
 
     const saveEdit = async () => {
-        if (!sessionKey || !editingPath) return;
+        if (!canUse || !editingPath) return;
         setEditSaving(true);
         setError(null);
         try {
-            await genericAgentSvc.WriteAgentFile(skillKey, sessionKey, editingPath, editContent);
+            await genericAgentSvc.WriteAgentFile(skillKey, sessionKey, editingPath, editContent, fileScope);
             setEditingPath(null);
             await refresh(cwd);
         } catch (e: unknown) {
@@ -162,10 +168,25 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
         }
     };
 
-    if (!sessionKey) {
+    const handleRestore = async () => {
+        if (isStarter || !sessionKey) return;
+        if (!window.confirm('Copy Default Source Files into this chat source/ folder? Existing files with the same name will be replaced.')) return;
+        setRestoring(true);
+        setError(null);
+        try {
+            await genericAgentSvc.RestoreDefaultSourceFiles(skillKey, sessionKey);
+            await refresh(cwd);
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : String(e));
+        } finally {
+            setRestoring(false);
+        }
+    };
+
+    if (!canUse) {
         return (
             <div className={`p-3 text-xs ${theme.label} opacity-70`}>
-                Resolving file session…
+                {isStarter ? 'Save the agent (Agent Code) first to manage Default Source Files.' : 'Resolving file session…'}
             </div>
         );
     }
@@ -212,6 +233,17 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
                 <button type="button" className={iconBtn} onClick={() => fileInputRef.current?.click()} title="Upload">
                     <i className="fa-solid fa-upload" />
                 </button>
+                {!isStarter && (
+                    <button
+                        type="button"
+                        className={iconBtn}
+                        onClick={() => void handleRestore()}
+                        disabled={restoring}
+                        title="Restore Default Source Files"
+                    >
+                        <i className={`fa-solid fa-copy ${restoring ? 'fa-spin' : ''}`} />
+                    </button>
+                )}
                 <input
                     ref={fileInputRef}
                     type="file"
@@ -232,7 +264,9 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
             <div className="w-full h-1 flex-auto overflow-y-auto px-1 pb-2">
                 {files.length === 0 && !loading && (
                     <div className={`p-3 text-xs opacity-60 ${theme.label}`}>
-                        Empty folder. Upload official <span className="font-mono">source/</span> files here for Phase B.
+                        {emptyHint ?? (isStarter
+                            ? 'Upload Default Source Files. New Chat copies them into that chat source/ folder.'
+                            : 'Empty folder. Upload official source/ files here, or restore Default Source Files.')}
                     </div>
                 )}
                 {files.map(f => (
@@ -258,7 +292,7 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
                         </button>
                         {!f.IsDirectory && (
                             <button type="button" className={`${iconBtn} opacity-0 group-hover:opacity-100`} title="Download"
-                                onClick={() => void genericAgentSvc.DownloadAgentFile(skillKey, sessionKey, f.RelativePath)}>
+                                onClick={() => void genericAgentSvc.DownloadAgentFile(skillKey, sessionKey, f.RelativePath, fileScope)}>
                                 <i className="fa-solid fa-download" />
                             </button>
                         )}

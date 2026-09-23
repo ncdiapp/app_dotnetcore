@@ -283,60 +283,70 @@ class GenericAgentService {
         ).catch(() => {});
     }
 
-    async ListAgentFiles(skillKey: string, sessionKey: string, path?: string): Promise<GenericAgentFile[]> {
+    fileScopeQuery(skillKey: string, sessionKey: string | null | undefined, path?: string, fileScope?: string): URLSearchParams {
         const q = new URLSearchParams({
             skillKey: skillKey || '',
             sessionKey: sessionKey || '',
             path: path || '',
+            scope: fileScope || '',
         });
+        return q;
+    }
+
+    async ListAgentFiles(skillKey: string, sessionKey: string | null | undefined, path?: string, fileScope?: string): Promise<GenericAgentFile[]> {
+        const q = this.fileScopeQuery(skillKey, sessionKey, path, fileScope);
         const res = await fetch(`${BASE}/ListAgentFiles?${q}`, { headers: getHeaders() });
         if (!res.ok) return [];
         const data = await res.json();
         return data?.Object ?? [];
     }
 
-    async ReadAgentFile(skillKey: string, sessionKey: string, path: string): Promise<{ Content: string; Truncated?: boolean } | null> {
-        const q = new URLSearchParams({ skillKey: skillKey || '', sessionKey: sessionKey || '', path: path || '' });
+    async ReadAgentFile(skillKey: string, sessionKey: string | null | undefined, path: string, fileScope?: string): Promise<{ Content: string; Truncated?: boolean } | null> {
+        const q = this.fileScopeQuery(skillKey, sessionKey, path, fileScope);
         const res = await fetch(`${BASE}/ReadAgentFile?${q}`, { headers: getHeaders() });
         if (!res.ok) return null;
         const data = await res.json();
         return data?.Object ?? null;
     }
 
-    async WriteAgentFile(skillKey: string, sessionKey: string, relativePath: string, content: string): Promise<void> {
-        await fetch(`${BASE}/WriteAgentFile?skillKey=${encodeURIComponent(skillKey || '')}`, {
+    async WriteAgentFile(skillKey: string, sessionKey: string | null | undefined, relativePath: string, content: string, fileScope?: string): Promise<void> {
+        const q = new URLSearchParams({ skillKey: skillKey || '', scope: fileScope || '' });
+        await fetch(`${BASE}/WriteAgentFile?${q}`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ SessionKey: sessionKey, RelativePath: relativePath, Content: content }),
+            body: JSON.stringify({ SessionKey: sessionKey || '', RelativePath: relativePath, Content: content }),
         });
     }
 
-    async MkdirAgentFile(skillKey: string, sessionKey: string, relativePath: string): Promise<void> {
-        await fetch(`${BASE}/MkdirAgentFile?skillKey=${encodeURIComponent(skillKey || '')}`, {
+    async MkdirAgentFile(skillKey: string, sessionKey: string | null | undefined, relativePath: string, fileScope?: string): Promise<void> {
+        const q = new URLSearchParams({ skillKey: skillKey || '', scope: fileScope || '' });
+        await fetch(`${BASE}/MkdirAgentFile?${q}`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ SessionKey: sessionKey, RelativePath: relativePath }),
+            body: JSON.stringify({ SessionKey: sessionKey || '', RelativePath: relativePath }),
         });
     }
 
-    async RenameAgentFile(skillKey: string, sessionKey: string, relativePath: string, newPath: string): Promise<void> {
-        await fetch(`${BASE}/RenameAgentFile?skillKey=${encodeURIComponent(skillKey || '')}`, {
+    async RenameAgentFile(skillKey: string, sessionKey: string | null | undefined, relativePath: string, newPath: string, fileScope?: string): Promise<void> {
+        const q = new URLSearchParams({ skillKey: skillKey || '', scope: fileScope || '' });
+        await fetch(`${BASE}/RenameAgentFile?${q}`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ SessionKey: sessionKey, RelativePath: relativePath, NewPath: newPath }),
+            body: JSON.stringify({ SessionKey: sessionKey || '', RelativePath: relativePath, NewPath: newPath }),
         });
     }
 
-    async DeleteAgentFile(skillKey: string, sessionKey: string, relativePath: string): Promise<void> {
-        await fetch(`${BASE}/DeleteAgentFile?skillKey=${encodeURIComponent(skillKey || '')}`, {
+    async DeleteAgentFile(skillKey: string, sessionKey: string | null | undefined, relativePath: string, fileScope?: string): Promise<void> {
+        const q = new URLSearchParams({ skillKey: skillKey || '', scope: fileScope || '' });
+        await fetch(`${BASE}/DeleteAgentFile?${q}`, {
             method: 'POST',
             headers: getHeaders(),
-            body: JSON.stringify({ SessionKey: sessionKey, RelativePath: relativePath }),
+            body: JSON.stringify({ SessionKey: sessionKey || '', RelativePath: relativePath }),
         });
     }
 
-    async UploadAgentFile(skillKey: string, sessionKey: string, path: string, file: File): Promise<void> {
-        const q = new URLSearchParams({ skillKey: skillKey || '', sessionKey: sessionKey || '', path: path || '' });
+    async UploadAgentFile(skillKey: string, sessionKey: string | null | undefined, path: string, file: File, fileScope?: string): Promise<void> {
+        const q = this.fileScopeQuery(skillKey, sessionKey, path, fileScope);
         const form = new FormData();
         form.append('file', file);
         // Let the browser set multipart boundary — do not copy JSON Content-Type from getHeaders().
@@ -345,13 +355,24 @@ class GenericAgentService {
         await fetch(`${BASE}/UploadAgentFile?${q}`, { method: 'POST', headers, body: form });
     }
 
-    downloadAgentFileUrl(skillKey: string, sessionKey: string, path: string): string {
-        const q = new URLSearchParams({ skillKey: skillKey || '', sessionKey: sessionKey || '', path: path || '' });
+    downloadAgentFileUrl(skillKey: string, sessionKey: string | null | undefined, path: string, fileScope?: string): string {
+        const q = this.fileScopeQuery(skillKey, sessionKey, path, fileScope);
         return `${BASE}/DownloadAgentFile?${q}`;
     }
 
-    async DownloadAgentFile(skillKey: string, sessionKey: string, relativePath: string): Promise<void> {
-        const res = await fetch(this.downloadAgentFileUrl(skillKey, sessionKey, relativePath), {
+    async RestoreDefaultSourceFiles(skillKey: string, sessionKey: string): Promise<number> {
+        const q = new URLSearchParams({ skillKey: skillKey || '', sessionKey: sessionKey || '' });
+        const res = await fetch(`${BASE}/RestoreDefaultSourceFiles?${q}`, {
+            method: 'POST',
+            headers: getHeaders(),
+        });
+        if (!res.ok) throw new Error(`Restore failed (${res.status})`);
+        const data = await res.json();
+        return data?.Object ?? 0;
+    }
+
+    async DownloadAgentFile(skillKey: string, sessionKey: string | null | undefined, relativePath: string, fileScope?: string): Promise<void> {
+        const res = await fetch(this.downloadAgentFileUrl(skillKey, sessionKey, relativePath, fileScope), {
             headers: getHeaders(),
         });
         if (!res.ok) throw new Error(`Download failed (${res.status})`);

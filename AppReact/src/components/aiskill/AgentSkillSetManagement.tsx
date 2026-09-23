@@ -16,6 +16,7 @@ import AgentMcpServerTab from './AgentMcpServerTab';
 import AgentUiChatHost from './AgentUiChatHost';
 import { chatModulesFromLibraries } from './agentUiModules';
 import AgentLibraryTab from './AgentLibraryTab';
+import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 
 type Tab = 'skills' | 'mcp' | 'libraries';
 
@@ -728,6 +729,21 @@ const handleSave = async () => {
                                                         );
                                                     })()}
                                                 </div>
+
+                                                {editItem.SkillKey.trim() && (
+                                                    <div className="mb-4">
+                                                        <div className={sectionTitle}>Default Source Files</div>
+                                                        <div className={`text-xs mb-2 ${theme.label}`}>
+                                                            New Chat copies these files into that chat <span className="font-mono">source/</span> folder. Existing chats are not changed.
+                                                        </div>
+                                                        <div className={`border rounded overflow-hidden ${borderCls}`} style={{ height: 280 }}>
+                                                            <GenericAgentFilesPanel
+                                                                skillKey={editItem.SkillKey.trim()}
+                                                                fileScope="defaultSource"
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                     </div>
