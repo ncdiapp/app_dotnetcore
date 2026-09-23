@@ -1,8 +1,9 @@
-# PLM Multi-Agent — Child SkillKey / call_agent contracts (draft)
+# PLM Multi-Agent — Child SkillKey / call_agent contracts
 
-**Status:** Draft for ROOT ↔ child split. Only `plm-integration-import-dw` is seeded today.  
+**Status:** Wave 0+1 live. Search / MassUpdate children are Wave 2 (ROOT still runs those tools).  
 **ROOT:** `plm-integration-orchestrator` (Interactive, all HITL).  
-**Children:** Deterministic, never `ask_user` / PlanGate wait.
+**Children:** Deterministic, never `ask_user` / PlanGate wait.  
+**Missing SkillKey:** `call_agent` errors; ROOT stops (Retry / Back). No local preview/execute fallback.
 
 ## Platform rules (non-negotiable)
 
@@ -39,14 +40,15 @@ On failure: `ok=false`, fill `errors[]`, leave wizard step unchanged (ROOT decid
 | SkillKey | Wizard code | Seeded? | Kind |
 |---|---|---|---|
 | `plm-integration-import-dw` | `import-dw` | **Yes** (`02_*.sql`) | Repeatable by TemplateId |
-| `plm-integration-entity` | `entity` | Draft | Linear once |
-| `plm-integration-folder` | `folder` | Draft | Linear skippable (+ placement) |
-| `plm-integration-image` | `image` | Draft | Linear skippable |
-| `plm-integration-color` | `color` | Draft | Linear skippable |
-| `plm-integration-pom` | `pom` | Draft | Linear skippable |
-| `plm-integration-search` | `search` | Later | Repeatable by SearchId |
-| `plm-integration-sibling` | `sibling` | Later | Repeatable |
+| `plm-integration-entity` | `entity` | **Yes** (`04_*.sql`) | Linear once |
+| `plm-integration-folder` | `folder` | **Yes** (`05_*.sql`) | Linear skippable (+ PHASE=PLACEMENT) |
+| `plm-integration-image` | `image` | **Yes** (`06_*.sql`) | Linear skippable |
+| `plm-integration-color` | `color` | **Yes** (`07_*.sql`) | Linear skippable |
+| `plm-integration-pom` | `pom` | **Yes** (`08_*.sql`) | Linear skippable |
+| `plm-integration-search` | `search` | Later | Repeatable (main Search **or** additional View on an existing Search) |
 | `plm-integration-massupdate` | `massupdate` | Later | Repeatable |
+
+**No `plm-integration-sibling`.** Additional Search View (former Sibling View / Card attach) is **the same wizard step and the same child** as Import Search View. MassUpdate stays separate.
 
 `connect` / `techpack-schema` stay on ROOT (Gate-0 + `ensure_techpack_schema`).
 
@@ -104,19 +106,21 @@ call_agent("<SkillKey>", "<PHASE=…>. Read plm.integration.<code>.inputs. <cons
 
 Never A+B in one ROOT turn.
 
-### Linear import children (draft — same shape)
+### Linear import children (entity / folder / image / color / pom)
 
 ROOT after Proceed confirm:
 
 1. `write_shared_context("plm.integration.<code>.inputs", { sessionId, … })`
-2. Optional preview turn:  
+2. Preview:  
    `call_agent("plm-integration-<code>", "PHASE=PREVIEW. Read inputs. Call preview_*. Summarize counts in FinalResponse JSON. Write …outputs.preview. Do not ask the user.")`
 3. ROOT shows counts; `ask_user` Proceed | Cancel.
 4. Execute:  
    `call_agent("plm-integration-<code>", "PHASE=EXECUTE. Read inputs. Call execute_*. Poll get_plm_import_job if async. Write …outputs. Do not ask the user.")`
 5. On `ok=true`: wizard step `done`; `write_shared_context` + `update_plm_wizard_progress`; Confirm next.
 
-Until child SkillSets exist, ROOT runs the same preview/execute tools **locally** (current prompt playbooks).
+Folder extra: after image `ok`, `call_agent("plm-integration-folder", "PHASE=PLACEMENT. …")` with `runPlacement=true`.
+
+If SkillKey is missing: ROOT stops. Do not run those tools on ROOT.
 
 | SkillKey | Preview tool(s) | Execute tool(s) |
 |---|---|---|
@@ -153,12 +157,46 @@ Subscribe: `integration-plm-import` (+ `platform-multi-agent` only if child must
 
 ---
 
-## Migration plan (when implementing)
+## Search step — main + additional View (merged)
 
-1. Add `04_Seed_PlmIntegrationEntity_Child.sql` … `08_…Pom_Child.sql` (INSERT-only, like DW child).
-2. Point ROOT catalog "How to run" column at `call_agent` for those codes.
-3. Keep preview→confirm→execute HITL on ROOT; children stay Deterministic phase workers.
-4. Re-run `RUN_ALL.bat` / verify SkillKeys appear in `99_Verify.sql`.
+User-facing: one menu **Import Search View**. No Sibling SearchView button, no wizard `sibling` code, no `plm-integration-sibling` SkillKey.
+
+| Kind | Blueprint (typical) | Tools (stay two sets) |
+|---|---|---|
+| Main Search + default View | Search import JSON | `preview_*` / `execute_*` search blueprint tools |
+| Additional View on same Search (Card, etc.) | `2_PlmSearch_SiblingView_*.json` | `preview_search_sibling_view` / `execute_search_sibling_view` |
+
+ROOT (and later the search child) **detects JSON mode** the same way Search Import UI does (`main` vs sibling-mode JSON). Do not ask the user to pick “sibling”. Internal tool names may still say `*_sibling_view`; never show that word in menus, TODO, or ask_user titles.
+
+Wizard `search` only:
+
+```json
+"search": { "status": "open", "doneIds": [], "pendingIds": [], "doneViewKeys": [] }
+```
+
+- `doneIds`: SearchIds after a **main** Search import.
+- `doneViewKeys`: additional views, e.g. `"{searchId}:{viewName}"` (or ViewId when known). Re-run confirm uses the matching key.
+- Resume: if old wizard still has `sibling`, **ignore** that node (do not show it). If `sibling.doneIds` is non-empty, copy into `search.doneViewKeys` once, then drop `sibling`.
+
+Search child FinalResponse should include `"mode": "main" | "additional-view"` so ROOT appends the right id list.
+
+Until the search child is seeded, ROOT runs both tool sets **locally** under the search playbook.
+
+---
+
+## Migration plan
+
+### Wave 0 + 1 — done
+
+1. ROOT: no `sibling` step/menu; Search detects JSON (`siblingviewenrichdataset` = additional View).
+2. Children `04`…`08` seeded; ROOT `call_agent` only for entity/folder/image/color/pom. Missing SkillKey → stop.
+3. HITL stays on ROOT; children are Deterministic phase workers.
+
+### Wave 2 — not started
+
+4. One search child `plm-integration-search` owning **both** tool sets. **Do not** add a sibling child.
+5. MassUpdate child `plm-integration-massupdate`.
+6. Re-run `RUN_ALL.bat` / verify SkillKeys in `99_Verify.sql`.
 
 ## Out of scope (v1)
 
