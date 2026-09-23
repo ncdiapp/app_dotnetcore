@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using App.BL.AIAgent.GenericAgent;
 using App.BL.Document;
 using APP.Components.Dto.Document;
-using APP.Framework;
 using APP.Framework.Plugin;
 using Newtonsoft.Json;
 
@@ -34,12 +33,7 @@ public sealed class PdfExtractorPlugin
                 return JsonConvert.SerializeObject(new { Error = "path must point to a PDF file." });
 
             var bytes = GenericAgentFileBL.ReadBytes(context.ChatSessionKey, path, context.CompanyId);
-            var extractor = new PdfTechPackExtractor(
-                AppConfig.Get("Google:DocumentAI:ProjectId"),
-                AppConfig.Get("Google:DocumentAI:Location") ?? "us",
-                AppConfig.Get("Google:DocumentAI:ProcessorId"),
-                AppConfig.Get("Google:DocumentAI:Bucket"),
-                ParseTimeout(AppConfig.Get("Google:DocumentAI:PollTimeoutMinutes")));
+            var extractor = new PdfTechPackExtractor();
 
             var extraction = await extractor.ExtractAsync(new PdfTechPackExtractionRequest
             {
@@ -68,6 +62,4 @@ public sealed class PdfExtractorPlugin
         }
     }
 
-    private static int ParseTimeout(string value) =>
-        int.TryParse(value, out var minutes) ? minutes : 90;
 }

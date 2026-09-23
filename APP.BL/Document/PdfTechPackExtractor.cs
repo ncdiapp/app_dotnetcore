@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using App.BL.AIAgent.GenericAgent;
 using APP.Components.Dto.Document;
+using APP.Framework;
 using Google.Cloud.DocumentAI.V1;
 using Google.Cloud.Storage.V1;
 using Google.Apis.Auth.OAuth2;
@@ -24,40 +25,13 @@ public interface IPdfTechPackExtractor
 /// Extracts a PDF tech pack into two explicit outputs:
 /// PureData (Document AI JSON/text/tables/entities) and Images (page/figure artifacts).
 ///
-/// Credentials are obtained through Google Application Default Credentials. The service
-/// account should be attached to the hosting workload or supplied through GOOGLE_APPLICATION_CREDENTIALS;
-/// no private key belongs in tenant configuration.
+/// All Document AI settings, including the tenant credential file path or encrypted
+/// credential JSON, are resolved from AppTenantSetting for the current tenant.
 /// </summary>
 public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
 {
-    private readonly string _projectId;
-    private readonly string _location;
-    private readonly string _processorId;
-    private readonly string _bucket;
-    private readonly TimeSpan _pollTimeout;
-
-    public PdfTechPackExtractor(Microsoft.Extensions.Configuration.IConfiguration configuration)
-        : this(
-            Required(configuration["Google:DocumentAI:ProjectId"], "Google:DocumentAI:ProjectId"),
-            configuration["Google:DocumentAI:Location"] ?? "us",
-            Required(configuration["Google:DocumentAI:ProcessorId"], "Google:DocumentAI:ProcessorId"),
-            Required(configuration["Google:DocumentAI:Bucket"], "Google:DocumentAI:Bucket"),
-            ParseTimeout(configuration["Google:DocumentAI:PollTimeoutMinutes"]))
+    public PdfTechPackExtractor()
     {
-    }
-
-    public PdfTechPackExtractor(
-        string projectId,
-        string location,
-        string processorId,
-        string bucket,
-        int pollTimeoutMinutes = 90)
-    {
-        _projectId = Required(projectId, "Google:DocumentAI:ProjectId");
-        _location = string.IsNullOrWhiteSpace(location) ? "us" : location.Trim();
-        _processorId = Required(processorId, "Google:DocumentAI:ProcessorId");
-        _bucket = Required(bucket, "Google:DocumentAI:Bucket");
-        _pollTimeout = TimeSpan.FromMinutes(Math.Clamp(pollTimeoutMinutes, 1, 240));
     }
 
     public async Task<PdfTechPackExtractionResultDto> ExtractAsync(
@@ -67,23 +41,29 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         Validate(request);
 
         var configuration = request.Configuration ?? ResolveTenantConfiguration();
-        var projectId = Required(Prefer(configuration.ProjectId, _projectId), "Google:DocumentAI:ProjectId");
-        var location = Prefer(configuration.Location, _location);
-        var processorId = Required(Prefer(configuration.ProcessorId, _processorId), "Google:DocumentAI:ProcessorId");
-        var bucket = Required(Prefer(configuration.Bucket, _bucket), "Google:DocumentAI:Bucket");
-        var pollTimeout = TimeSpan.FromMinutes(Math.Clamp(configuration.PollTimeoutMinutes ?? (int)_pollTimeout.TotalMinutes, 1, 240));
+        var projectId = Required(configuration.ProjectId, "GoogleDocumentAIProjectId");
+        var location = Required(configuration.Location, "GoogleDocumentAILocation");
+        var processorId = Required(configuration.ProcessorId, "GoogleDocumentAIProcessorId");
+        var bucket = Required(configuration.Bucket, "GoogleDocumentAIBucket");
+        var pollTimeoutMinutes = configuration.PollTimeoutMinutes.GetValueOrDefault();
+        if (pollTimeoutMinutes < 1 || pollTimeoutMinutes > 240)
+            throw new InvalidOperationException("GoogleDocumentAIPollTimeoutMinutes must be between 1 and 240.");
+        var pollTimeout = TimeSpan.FromMinutes(pollTimeoutMinutes);
 
         var jobId = Guid.NewGuid().ToString("N");
         var inputObject = $"document-ai/input/{request.CompanyId}/{jobId}/{SanitizeFileName(request.FileName)}";
         var outputPrefix = $"document-ai/output/{request.CompanyId}/{jobId}/";
         var inputUri = $"gs://{bucket}/{inputObject}";
         var outputUri = $"gs://{bucket}/{outputPrefix}";
-        var credential = string.IsNullOrWhiteSpace(configuration.CredentialJson)
-            ? null
-            : GoogleCredential.FromJson(configuration.CredentialJson);
-        var storage = credential == null
-            ? await StorageClient.CreateAsync()
-            : await new StorageClientBuilder { Credential = credential }.BuildAsync();
+        var credentialJson = configuration.CredentialJson;
+        if (string.IsNullOrWhiteSpace(credentialJson) && !string.IsNullOrWhiteSpace(configuration.CredentialFilePath))
+            credentialJson = File.ReadAllText(ResolveCredentialFilePath(configuration.CredentialFilePath));
+
+        if (string.IsNullOrWhiteSpace(credentialJson))
+            throw new InvalidOperationException("Missing configuration: GoogleDocumentAICredentialJson");
+
+        var credential = GoogleCredential.FromJson(credentialJson);
+        var storage = await new StorageClientBuilder { Credential = credential }.BuildAsync();
         var outputObjects = new List<string>();
 
         try
@@ -179,6 +159,10 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
     public static PdfTechPackConfiguration ResolveTenantConfiguration()
     {
         var identity = (APP.Components.Dto.AppClientIdentity?)APP.Framework.ServerContext.Instance.CurrnetClientIdentity;
+        var credentialSetting = identity.HasValue
+            ? DecryptCredential(AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAICredentialJson, identity.Value))
+            : null;
+        var isCredentialJson = credentialSetting?.TrimStart().StartsWith("{", StringComparison.Ordinal) == true;
         return new PdfTechPackConfiguration
         {
             ProjectId = identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIProjectId, identity.Value) : null,
@@ -187,14 +171,24 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
             Bucket = identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIBucket, identity.Value) : null,
             PollTimeoutMinutes = int.TryParse(identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIPollTimeoutMinutes, identity.Value) : null, out var timeout)
                 ? timeout : null
-            ,CredentialJson = identity.HasValue
-                ? DecryptCredential(AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAICredentialJson, identity.Value))
-                : null
+            ,CredentialJson = isCredentialJson ? credentialSetting : null
+            ,CredentialFilePath = isCredentialJson ? null : credentialSetting
         };
     }
 
     private static string? DecryptCredential(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : AppConnectionStringEncryptionBL.Decrypt(value);
+
+    private static string ResolveCredentialFilePath(string configuredPath)
+    {
+        if (!Path.IsPathRooted(configuredPath))
+            throw new InvalidOperationException("GoogleDocumentAICredentialJson must contain an absolute server file path.");
+
+        var candidate = Path.GetFullPath(configuredPath);
+        if (!File.Exists(candidate))
+            throw new FileNotFoundException("Tenant Google credential file was not found.", candidate);
+        return candidate;
+    }
 
     private static PdfTechPackExtractionResultDto BuildResult(
         string jobId,
@@ -293,12 +287,6 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"Missing configuration: {key}")
             : value.Trim();
-
-    private static string Prefer(string? value, string fallback) =>
-        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
-
-    private static int ParseTimeout(string? value) =>
-        int.TryParse(value, out var minutes) ? minutes : 90;
 
     private static string SanitizeFileName(string fileName)
     {
