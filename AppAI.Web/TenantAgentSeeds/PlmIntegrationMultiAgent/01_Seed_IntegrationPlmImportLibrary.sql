@@ -628,6 +628,21 @@ VALUES (
 );
 GO
 
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'apply_agent_output_plan')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'integration-plm-import',
+    N'apply_agent_output_plan',
+    N'Execute the full executionPlan in BL (SQL files then DW blueprint). Reads plm.integration.import-dw.outputs unless planJson is passed. Logs each step to AppPlmImportLog and output/{id}/apply-log.json. Do not walk steps yourself.',
+    N'{"type":"object","properties":{"outputsContextKey":{"type":"string","description":"Shared context key (default plm.integration.import-dw.outputs)"},"planJson":{"type":"string","description":"Optional executionPlan JSON array override"},"sessionId":{"type":"integer"},"saasApplicationId":{"type":"integer"},"requiredDataSourceIds":{"type":"string"},"mode":{"type":"string","description":"Blueprint mode override Insert|Update|Repair"}}}',
+    N'ExternalDll',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ApplyAgentOutputPlanTool"}',
+    1,
+    186
+);
+GO
+
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'load_search_import_blueprint')
 INSERT INTO dbo.AppAgentLibraryTool
     (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)

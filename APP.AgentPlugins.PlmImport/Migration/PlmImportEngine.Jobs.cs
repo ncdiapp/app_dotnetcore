@@ -354,10 +354,48 @@ UPDATE dbo.AppPlmImportJob SET
         {
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(context.TenantDataSourceId);
             var session = LoadSessionById(fixture, context.SessionId, includeConnection: false);
+            string tablePrefix = ResolveImportPrefixes(session?.StepStateJson).TablePrefix;
+
+            UpdateJobProgress(fixture, context.JobId, JobStatusRunning, 0,
+                "Copying System Define PLM tables into tenant (Plm_*)…");
+            var exportResult = ExportPlmTablesToTenant(
+                context.PlmConnectionString,
+                context.TenantConnectionString,
+                tablePrefix,
+                (percent, message) =>
+                {
+                    if (IsJobCancellationRequested(context.JobId))
+                        throw new OperationCanceledException("Import cancelled.");
+                    UpdateJobProgress(fixture, context.JobId, JobStatusRunning,
+                        Math.Min(40, percent / 3), message);
+                });
+
+            if (exportResult.Issues?.Count > 0)
+            {
+                WritePlmTableExportIssuesToLog(
+                    fixture, context.SessionId, context.JobId, PlmExportActionExport, "Warning",
+                    exportResult.Issues);
+            }
+
+            if (!exportResult.IsSuccess)
+            {
+                string exportJson = JsonConvert.SerializeObject(exportResult);
+                UpdateJobProgress(
+                    fixture, context.JobId, JobStatusFailed, 100, "PLM table export failed.",
+                    resultJson: exportJson, errorMessage: exportResult.ErrorMessage, markCompleted: true);
+                WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
+                    PlmExportActionExport, "Failed", null, null, null, null, exportResult.ErrorMessage);
+                return;
+            }
+
+            int? copied = exportResult.Tables?.Sum(t => t.RowsCopied);
+            WriteImportLog(fixture, context.SessionId, context.JobId, StepEntity,
+                "PlmTableExport", "Success", null, null, copied, null,
+                "PLM tables imported to tenant database before entity metadata.");
 
             var importResult = ImportSystemDefineEntities(
                 context.PlmConnectionString,
-                session?.DataSourceDiscoveryJson,
+                EnsureDataSourceDiscoveryJson(session),
                 context.TenantConnectionString,
                 session?.SaasApplicationId,
                 ResolveImportPrefixes(session?.StepStateJson).TablePrefix,

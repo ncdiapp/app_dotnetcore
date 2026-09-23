@@ -103,9 +103,9 @@ call_agent("<SkillKey>", "<PHASE=…>. Read plm.integration.<code>.inputs. <cons
 |---|---|---|---|
 | A | `PHASE=A only. Read …inputs. Return DETAILED Phase A checklist… Write …phase-a. No SQL.` | `…phase-a` | HITL checklist → write `…plan` |
 | B | `PHASE=B. Read inputs+plan. Generate output/{templateId}/. Write …outputs (files + executionPlan).` | `…outputs` | **Do not** write `doneIds`. Show plan; `ask_user` Apply \| Cancel |
-| APPLY | `PHASE=APPLY. Read …outputs.executionPlan. Execute in order. Do not ask the user.` | `…outputs.apply` | `ok=true` → append TemplateId to `import-dw.doneIds`; Cancel → `pendingApplyIds` |
+| APPLY | `PHASE=APPLY. Call apply_agent_output_plan once.` | `…outputs.apply` + `output/{id}/apply-log.json` | `ok=true` **and** `executed==planned` → `doneIds`; Cancel → `pendingApplyIds` |
 
-Never A+B+APPLY in one ROOT turn. ROOT never runs `execute_agent_sql_file` / `execute_dw_blueprint_from_file`.
+Never A+B+APPLY in one ROOT turn. ROOT never runs apply/execute file tools. After user clicks Apply, ROOT's next tool **must** be `call_agent` PHASE=APPLY.
 
 ### `executionPlan` (variable file count — only files that exist)
 
@@ -135,10 +135,12 @@ Assembly rules (do not hard-code a fixed step count):
 - `5_` → after blueprint (BOM official order)
 - `6_` only if the file exists
 
-APPLY tool map:
+APPLY tool: child calls **`apply_agent_output_plan` once**. BL walks the plan:
 
-- `kind=sql` → `execute_agent_sql_file` (path only). Pass `requiredDataSourceIds` = job `plmDataSourceId,dwDataSourceId` (+ erp when present).
-- `kind=dw-blueprint` → `execute_dw_blueprint_from_file` (path + mode + saasApplicationId).
+- `kind=sql` → `execute_agent_sql_file` internally
+- `kind=dw-blueprint` → `execute_dw_blueprint_from_file` internally
+
+Each step is written to `AppPlmImportLog` (StepCode=`import-dw`) and `output/{templateId}/apply-log.json`. Use `get_plm_import_log` to read the session log.
 
 **Cross-database SQL:** official scripts INSERT into APP and SELECT/JOIN PLM, plmDW, and sometimes ERP via three-part names (`[plmDW].dbo.Table`) and `DB_ID()`. They must run on the **APP** connection. All catalogs must live on the **same SQL Server instance** and be visible to the APP login. Different servers → tool error (no linked-server rewrite).
 
@@ -162,7 +164,7 @@ If SkillKey is missing: ROOT stops. Do not run those tools on ROOT.
 
 | SkillKey | Preview tool(s) | Execute tool(s) |
 |---|---|---|
-| entity | `preview_system_define_entity_import` / `preview_user_define_entity_import` | `execute_system_define_entity_import` / `execute_user_define_entity_import` |
+| entity | `preview_plm_table_export_plan` + `preview_system_define_entity_import` / `preview_user_define_entity_import` | `execute_system_define_entity_import` (copies `Plm_*` tables first, then metadata) / `execute_user_define_entity_import` |
 | folder | `preview_plm_folder_import` (+ `preview_plm_folder_placement`) | `execute_plm_folder_import`; after image: `execute_plm_folder_placement` |
 | image | `preview_plm_sketch_import` | `execute_plm_sketch_import` |
 | color | `preview_plm_color_import` | `execute_plm_color_import` |

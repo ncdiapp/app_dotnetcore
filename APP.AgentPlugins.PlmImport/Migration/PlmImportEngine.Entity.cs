@@ -35,7 +35,7 @@ namespace APP.AgentPlugins.PlmImport
                 var prefixes = ResolveImportPrefixes(session.StepStateJson);
                 result.Object = BuildSystemDefineEntityPreview(
                     session.PlmConnectionString.Trim(),
-                    session.DataSourceDiscoveryJson,
+                    EnsureDataSourceDiscoveryJson(session),
                     tenantConn,
                     prefixes.TablePrefix);
 

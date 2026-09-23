@@ -84,7 +84,9 @@ namespace APP.AgentPlugins.PlmImport
                     throw new InvalidOperationException("PLM connection is not available on this session.");
 
                 string tenantConn = GetTenantConnectionString();
-                result.Object = BuildPlmPomImportPreview(session.PlmConnectionString.Trim(), tenantConn, sessionId.Value);
+                string erpConn = TryResolveSessionErpConnection(session);
+                result.Object = BuildPlmPomImportPreview(
+                    session.PlmConnectionString.Trim(), tenantConn, erpConn, sessionId.Value);
 
                 if (!result.Object.IsSuccess)
                 {
@@ -132,6 +134,7 @@ namespace APP.AgentPlugins.PlmImport
                 result.Object = ExecutePlmPomImportCore(
                     session.PlmConnectionString.Trim(),
                     tenantConn,
+                    TryResolveSessionErpConnection(session),
                     request.SessionId.Value,
                     session.CompanyId.Value,
                     saasApplicationId,
@@ -163,9 +166,24 @@ namespace APP.AgentPlugins.PlmImport
             return result;
         }
 
+        private static string TryResolveSessionErpConnection(PlmImportSessionDto session)
+        {
+            if (session?.ErpDataSourceRegisterId == null || session.ErpDataSourceRegisterId.Value <= 0)
+                return null;
+            try
+            {
+                return ResolveConnectionStringFromRegisterId(session.ErpDataSourceRegisterId.Value);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private static PlmPomImportPreviewDto BuildPlmPomImportPreview(
             string plmConnectionString,
             string tenantConnectionString,
+            string erpConnectionString,
             int sessionId)
         {
             var preview = new PlmPomImportPreviewDto();
@@ -181,9 +199,8 @@ namespace APP.AgentPlugins.PlmImport
 
                 if (!preview.HasBodyPartTable)
                 {
-                    preview.IsSuccess = false;
-                    preview.ErrorMessage = "Tenant Plm_PdmV2kBodyPart was not found. Import PLM BodyPart table first (Entity Import).";
-                    return preview;
+                    preview.Warnings.Add(
+                        "Tenant Plm_PdmV2kBodyPart was not found. POM management Form/Search will be skipped. Tchp master data still imports from PLM/ERP.");
                 }
 
                 if (!preview.HasTchpBodyPartTable || !preview.HasTchpPomTemplateTable || !preview.HasTchpPomTemplatePartTable)
@@ -195,7 +212,8 @@ namespace APP.AgentPlugins.PlmImport
                     return preview;
                 }
 
-                preview.BodyPartRowCount = CountTableRows(tenantConn, PomBodyPartTableName);
+                preview.BodyPartRowCount = preview.HasBodyPartTable
+                    ? CountTableRows(tenantConn, PomBodyPartTableName) : 0;
                 preview.BodyTypeRowCount = preview.HasBodyTypeTable ? CountTableRows(tenantConn, PomBodyTypeTableName) : 0;
                 preview.TchpBodyPartRowCount = CountTableRows(tenantConn, TchpBodyPartTableName);
                 preview.TchpPomTemplateRowCount = CountTableRows(tenantConn, TchpPomTemplateTableName);
@@ -215,9 +233,12 @@ namespace APP.AgentPlugins.PlmImport
                 preview.ExistingPomTemplateListSearchId = GetSearchIdByIntegrationId(tenantConn, null, PomTemplateListSearchIntegrationId);
                 preview.ExistingPomTemplateFolderSearchId = GetSearchIdByIntegrationId(tenantConn, null, PomTemplateFolderSearchIntegrationId);
 
-                var pomRemapPreview = PreviewPomFolderIdRemap(tenantConn, null, sessionId, PomBodyPartTableName, PlmPomFolderType);
-                preview.PomFolderIdReadyToRemap = pomRemapPreview.ReadyToRemapCount;
-                preview.PomFolderIdUnmappedCount = pomRemapPreview.UnmappedCount;
+                if (preview.HasBodyPartTable)
+                {
+                    var pomRemapPreview = PreviewPomFolderIdRemap(tenantConn, null, sessionId, PomBodyPartTableName, PlmPomFolderType);
+                    preview.PomFolderIdReadyToRemap = pomRemapPreview.ReadyToRemapCount;
+                    preview.PomFolderIdUnmappedCount = pomRemapPreview.UnmappedCount;
+                }
             }
 
             preview.BodyTypeDetailSourceRowCount = CountPlmSourceTableRows(plmConnectionString, PomBodyTypeDetailSourceTable);
@@ -239,6 +260,9 @@ namespace APP.AgentPlugins.PlmImport
             preview.Warnings.Add(
                 "POM Template editor uses TchpPomTemplate + TchpPomTemplatePart (no FolderID on Tchp rows; list search only).");
 
+            FillSizeRunPreview(preview, plmConnectionString, tenantConnectionString, erpConnectionString);
+            FillGradeRulePreview(preview, plmConnectionString, tenantConnectionString);
+
             preview.PlannedActions.Add("Upsert TchpBodyPart / TchpPomTemplate / TchpPomTemplatePart from PLM");
             preview.PlannedActions.Add("Remap FolderID on Plm_PdmV2kBodyPart via AppPlmFolderMap");
             if (preview.PomFolderIdReadyToRemap > 0)
@@ -258,6 +282,7 @@ namespace APP.AgentPlugins.PlmImport
         private static PlmPomImportExecuteResultDto ExecutePlmPomImportCore(
             string plmConnectionString,
             string tenantConnectionString,
+            string erpConnectionString,
             int sessionId,
             int companyId,
             int? saasApplicationId,
@@ -266,15 +291,21 @@ namespace APP.AgentPlugins.PlmImport
             bool importFoldersIfMissing)
         {
             var executeResult = new PlmPomImportExecuteResultDto();
+            ImportTchpSizeRunMasterData(
+                plmConnectionString, tenantConnectionString, erpConnectionString,
+                tenantDataSourceId, executeResult);
+
             using (var tenantConn = new SqlConnection(tenantConnectionString))
             {
                 tenantConn.Open();
-                if (!TemplateTableExists(tenantConn, null, PomBodyPartTableName))
-                    throw new InvalidOperationException("Tenant Plm_PdmV2kBodyPart was not found. Import PLM tables first.");
+                bool hasPlmBodyPart = TemplateTableExists(tenantConn, null, PomBodyPartTableName);
+                if (!hasPlmBodyPart)
+                    executeResult.Messages.Add(
+                        "Tenant Plm_PdmV2kBodyPart was not found. Skipped POM Form/Search; Tchp master data still imported.");
 
                 RequireTchpPomSchema(tenantConn);
 
-                if (importFoldersIfMissing)
+                if (importFoldersIfMissing && hasPlmBodyPart)
                 {
                     executeResult.FoldersImported = ImportPlmFolderTypes(
                         sessionId, companyId, plmConnectionString, tenantConnectionString,
@@ -284,11 +315,20 @@ namespace APP.AgentPlugins.PlmImport
                 if (importJunctionTables)
                     ImportTchpPomTemplateMasterData(plmConnectionString, tenantConnectionString, executeResult);
 
+                ImportTchpGradeRules(plmConnectionString, tenantConnectionString, executeResult);
+
                 // Tchp tables must be in schema cache before CreateHierarchyTransactionFromTables.
                 RefreshTenantTableSchemaCache(tenantDataSourceId);
                 AppCacheManagerBL.RefreshOneTableCache(TchpBodyPartTableName, tenantDataSourceId, "dbo");
                 AppCacheManagerBL.RefreshOneTableCache(TchpPomTemplateTableName, tenantDataSourceId, "dbo");
                 AppCacheManagerBL.RefreshOneTableCache(TchpPomTemplatePartTableName, tenantDataSourceId, "dbo");
+
+                if (!hasPlmBodyPart)
+                {
+                    executeResult.IsSuccess = true;
+                    executeResult.Messages.Add("Tchp SizeRun / POM / GradeRule master data import completed.");
+                    return executeResult;
+                }
 
                 var pomRemap = RemapImportedPomFolderIds(tenantConn, null, sessionId, PomBodyPartTableName, PlmPomFolderType);
                 executeResult.PomFolderIdsRemapped = pomRemap.UpdatedCount;

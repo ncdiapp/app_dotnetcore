@@ -225,7 +225,7 @@ WHERE BlueprintKey = @BlueprintKey";
           ?? request.Blueprint.TransactionGroup?.SaasApplicationId;
 
         var existing = LoadExistingTransactionIntegrationIds(tenantConn);
-        var pack = DwBlueprintAppConfigPackBuilder.Build(request.Blueprint, new DwBlueprintAppConfigPackBuilder.Options
+        var packOptions = new DwBlueprintAppConfigPackBuilder.Options
         {
           SaasApplicationId = saasApplicationId,
           IncludeSearchView = request.IncludeSearchView,
@@ -233,7 +233,20 @@ WHERE BlueprintKey = @BlueprintKey";
           IncludeTransactionGroup = request.IncludeTransactionGroup,
           Mode = mode,
           ExistingTransactionIntegrationIds = existing
-        });
+        };
+        var pack = DwBlueprintAppConfigPackBuilder.Build(request.Blueprint, packOptions);
+
+        // Insert skips every existing TX. After a partial APPLY that created
+        // transactions but failed on Search, the next Insert pack can be empty.
+        if (IsPackEmpty(pack)
+            && string.Equals(mode, DwBlueprintModeInsert, StringComparison.OrdinalIgnoreCase)
+            && HasExistingBlueprintTransactions(request.Blueprint, existing))
+        {
+          packOptions.Mode = DwBlueprintModeUpdate;
+          pack = DwBlueprintAppConfigPackBuilder.Build(request.Blueprint, packOptions);
+          result.Object.Messages.Add(
+            "Insert produced an empty pack (transactions already exist); retried as Update.");
+        }
 
         // Preferred path: compose AppConfigPackDto → AppConfigPackBL.Execute (public steps inside RunAllSteps).
         // Partial steps (BeginSteps / StepApplyFieldAndUnitOverlays / …) only when pack cannot express a piece yet.
@@ -311,6 +324,36 @@ WHERE BlueprintKey = @BlueprintKey";
       }
 
       return result;
+    }
+
+    private static bool IsPackEmpty(AppConfigPackDto pack)
+    {
+      return pack == null
+        || ((pack.Tables == null || pack.Tables.Count == 0)
+            && (pack.Views == null || pack.Views.Count == 0)
+            && (pack.Transactions == null || pack.Transactions.Count == 0)
+            && (pack.Searches == null || pack.Searches.Count == 0));
+    }
+
+    private static bool HasExistingBlueprintTransactions(
+      PlmDwImportBlueprintDto blueprint,
+      HashSet<string> existing)
+    {
+      if (blueprint?.Transactions == null || existing == null || existing.Count == 0)
+        return false;
+      foreach (var tx in blueprint.Transactions)
+      {
+        if (tx == null)
+          continue;
+        if (string.Equals(tx.ImportStatus, "Skipped", StringComparison.OrdinalIgnoreCase))
+          continue;
+        string integrationId = string.IsNullOrWhiteSpace(tx.IntegrationId)
+          ? "Tab_" + tx.PlmTabId
+          : tx.IntegrationId.Trim();
+        if (existing.Contains(integrationId))
+          return true;
+      }
+      return false;
     }
 
     private static HashSet<string> LoadExistingTransactionIntegrationIds(string tenantConn)

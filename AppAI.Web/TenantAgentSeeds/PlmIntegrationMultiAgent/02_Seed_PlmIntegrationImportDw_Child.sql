@@ -28,11 +28,11 @@ VALUES (
 4. Honor the call message PHASE=
    - `PHASE=A` - discovery only; write `plm.integration.import-dw.phase-a`; no SQL generation under `output/`
    - `PHASE=B` - generate deliverables under `output/{templateId}/`; write `plm.integration.import-dw.outputs` with files[] + executionPlan[] (only files that exist)
-   - `PHASE=APPLY` - execute `executionPlan` in order with path-based tools only; stop on first failure; write `plm.integration.import-dw.outputs.apply`
+   - `PHASE=APPLY` - call `apply_agent_output_plan` once; BL runs the whole plan and logs each step
    - `PHASE=D` - legacy alias of PHASE=APPLY (same rules)
 5. Treat Gate 0 / "WAIT FOR USER" / "STOP for confirmation" sections below as **documentation of domain rules for ROOT**, not as instructions for you to chat with the user.
 6. Final reply: short status + paths + executionPlan + any blocking issues for ROOT. Do not dump full SQL/JSON bodies.
-7. **Never** `file_read` large deliverables. **Never** pass SQL/JSON bodies into `execute_sql` or `execute_dw_blueprint_config`. APPLY uses `execute_agent_sql_file` and `execute_dw_blueprint_from_file` only.
+7. **Never** `file_read` large deliverables. **Never** pass SQL/JSON bodies into `execute_sql` or `execute_dw_blueprint_config`. APPLY calls `apply_agent_output_plan` **once** (BL runs every step). Do not walk `execute_agent_sql_file` yourself.
 
 ## Shared context keys (this child)
 - `plm.integration.import-dw.inputs`
@@ -601,15 +601,11 @@ API equivalents: `POST webapi/PlmMigration/ValidateDwImportBlueprint`, `PreviewD
 
 When the call message is `PHASE=APPLY` (or `PHASE=D` as a legacy alias):
 
-1. Read `plm.integration.import-dw.outputs.executionPlan` and `plm.integration.job` (sessionId, saasApplicationId, plmDataSourceId, dwDataSourceId, optional erpDataSourceId).
-2. If `executionPlan` is missing/empty → `ok=false` and stop. Do not guess file names.
-3. Sort by `order`. For **each** step, one tool call, in order. **Do not skip. Do not reorder.**
-   - `kind=sql` → `execute_agent_sql_file` with `relativePath=step.path`. Omit `dataSourceId` when `target=app`. Pass `requiredDataSourceIds` as the comma-separated job ids that the script will three-part-name (typically plmDataSourceId,dwDataSourceId; add erp when job has it). Official scripts INSERT into APP and SELECT from PLM/plmDW/ERP via `[Catalog].dbo.Table` -- they require those catalogs on the **same SQL Server** as APP.
-   - `kind=dw-blueprint` → `execute_dw_blueprint_from_file` with `relativePath=step.path`, `mode` from plan (or ROOT override), `saasApplicationId` from job.
-4. Stop on the first `ok=false`. Do not continue later steps.
-5. Write `plm.integration.import-dw.outputs.apply` = `{ ok, steps:[{order,kind,path,ok,error,batches,durationMs}] }`.
-6. FinalResponse = compact JSON `{ ok, skillKey, phase:"APPLY", templateId, summary, errors }`. Never dump SQL/JSON.
-7. Forbidden: `file_read` of deliverables; `execute_sql`; inline `blueprintJson` on `execute_dw_blueprint_config`.
+1. Call `apply_agent_output_plan` **exactly once**. BL reads `plm.integration.import-dw.outputs.executionPlan` and runs every step in order (SQL files then blueprint). It writes AppPlmImportLog + `output/{templateId}/apply-log.json`.
+2. Do **not** call `execute_agent_sql_file` / `execute_dw_blueprint_from_file` yourself. Do not invent step results.
+3. `ok=true` only if the tool returns `ok=true` AND `executed == planned` AND every `steps[].ok` is true. Otherwise `ok=false` and copy `error`.
+4. FinalResponse = compact JSON `{ ok, skillKey, phase:"APPLY", templateId, planned, executed, errors, logFile }`. Never dump SQL/JSON.
+5. Forbidden: `file_read` of deliverables; `execute_sql`; inline `blueprintJson`.
 
 **BL (Phase D):** `SaveDwBlueprintLinkTargets` reads `plmTemplate.templateHeaderTabIds` and per-transaction `isTemplateHeaderTab` / `plmTabSort` from Blueprint JSON - same `TemplateItemType` behavior as legacy Template Import (`TemplateHeader` vs `MainItem`). **New** action targets the first non-header tab.
 
@@ -1168,5 +1164,16 @@ AND NOT EXISTS (
     WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'integration-plm-import')
 INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
 VALUES (N'plm-integration-import-dw', N'integration-plm-import');
+GO
+
+-- Existing tenants: switch APPLY from LLM-walked tools to one BL runner
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(
+    SystemPrompt,
+    N'   - `PHASE=APPLY` - execute `executionPlan` in order with path-based tools only; stop on first failure; write `plm.integration.import-dw.outputs.apply`',
+    N'   - `PHASE=APPLY` - call `apply_agent_output_plan` once; BL runs the whole plan and logs each step')
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt LIKE N'%PHASE=APPLY%execute `executionPlan`%'
+  AND SystemPrompt NOT LIKE N'%apply_agent_output_plan%';
 GO
 

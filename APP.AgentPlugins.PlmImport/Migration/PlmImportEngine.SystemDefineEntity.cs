@@ -515,6 +515,14 @@ ORDER BY c.EntityID, ISNULL(c.DataRowSort, 9999), c.UserDefineEntityColumnID";
 
             foreach (var entity in entities.Where(e => e.ImportStatus == SysEntityStatusReady && !e.PhysicalTableOk))
             {
+                // DataSourceFrom=1 targets tenant Plm_* copies. TableExport creates them
+                // before metadata import — do not skip those entities in preview.
+                if (entity.PlmDataSourceFrom == 1)
+                {
+                    entity.SkipReason = "Physical table will be created by table export";
+                    continue;
+                }
+
                 entity.ImportStatus = SysEntityStatusSkipped;
                 entity.SkipReason = "Physical table not found in datasource database";
             }

@@ -25,12 +25,12 @@ VALUES (
 5. Final reply = compact JSON only: ok, skillKey, phase, sessionId, summary, counts, jobId, errors, nextHint. No huge dumps.
 
 ## Tools (sessionId required)
-- PREVIEW: preview_system_define_entity_import AND preview_user_define_entity_import
-- EXECUTE: execute_system_define_entity_import then poll get_plm_import_job until Completed/Failed/Cancelled; then execute_user_define_entity_import and poll the same way
+- PREVIEW: preview_plm_table_export_plan, then preview_system_define_entity_import AND preview_user_define_entity_import
+- EXECUTE: execute_system_define_entity_import (BL copies Plm_* tables first, then writes AppEntityInfo) then poll get_plm_import_job until Completed/Failed/Cancelled; then execute_user_define_entity_import and poll the same way
 - Write plm.integration.entity.outputs with preview or execute summaries
 
 ## EXECUTE order
-System Define first, then User Define. If System job Failed: ok=false; do not start User Define.
+System Define first (includes TableExport of DataSourceFrom=1 tables into tenant Plm_*), then User Define. If System job Failed: ok=false; do not start User Define. Do not skip table export — System Define metadata requires those Plm_* tables.
 
 ## nextHint
 PREVIEW: Ask ROOT to confirm Proceed. EXECUTE ok: Mark wizard.entity=done
@@ -57,4 +57,25 @@ AND NOT EXISTS (
     WHERE SkillKey = N'plm-integration-entity' AND LibraryKey = N'integration-plm-import')
 INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
 VALUES (N'plm-integration-entity', N'integration-plm-import');
+GO
+
+-- Existing tenants: System Define execute now copies Plm_* tables first.
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-entity')
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(SystemPrompt,
+    N'- PREVIEW: preview_system_define_entity_import AND preview_user_define_entity_import
+- EXECUTE: execute_system_define_entity_import then poll get_plm_import_job until Completed/Failed/Cancelled; then execute_user_define_entity_import and poll the same way',
+    N'- PREVIEW: preview_plm_table_export_plan, then preview_system_define_entity_import AND preview_user_define_entity_import
+- EXECUTE: execute_system_define_entity_import (BL copies Plm_* tables first, then writes AppEntityInfo) then poll get_plm_import_job until Completed/Failed/Cancelled; then execute_user_define_entity_import and poll the same way')
+WHERE SkillKey = N'plm-integration-entity'
+  AND SystemPrompt LIKE N'%PREVIEW: preview_system_define_entity_import AND preview_user_define_entity_import%';
+GO
+
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-entity')
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(SystemPrompt,
+    N'System Define first, then User Define. If System job Failed: ok=false; do not start User Define.',
+    N'System Define first (includes TableExport of DataSourceFrom=1 tables into tenant Plm_*), then User Define. If System job Failed: ok=false; do not start User Define. Do not skip table export — System Define metadata requires those Plm_* tables.')
+WHERE SkillKey = N'plm-integration-entity'
+  AND SystemPrompt LIKE N'%System Define first, then User Define%';
 GO

@@ -410,6 +410,12 @@ ORDER BY c.EntityID, ISNULL(c.DataRowSort, 9999), c.UserDefineEntityColumnID";
 
         foreach (var entity in entities.Where(e => e.ImportStatus == StatusReady && !e.PhysicalTableOk))
         {
+            if (entity.PlmDataSourceFrom == 1)
+            {
+                entity.SkipReason = "Physical table will be created by table export";
+                continue;
+            }
+
             entity.ImportStatus = StatusSkipped;
             entity.SkipReason = "Physical table not found in datasource database";
         }

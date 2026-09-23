@@ -550,6 +550,14 @@ ORDER BY UpdatedAt DESC",
 
                 if (dto.SessionId.HasValue && dto.SessionId.Value > 0)
                 {
+                    var existing = LoadSessionById(fixture, dto.SessionId.Value, includeConnection: false);
+                    MergeSessionRegisterIds(dto, existing);
+                }
+
+                dto.DataSourceDiscoveryJson = BuildDataSourceDiscoveryJson(dto);
+
+                if (dto.SessionId.HasValue && dto.SessionId.Value > 0)
+                {
                     var pId = fixture.CreateParameter("@SessionId");
                     pId.Value = dto.SessionId.Value;
 
@@ -562,9 +570,7 @@ UPDATE dbo.AppPlmImportSession SET
                         + (!string.IsNullOrWhiteSpace(dto.ChatSessionKey)
                             ? ", ChatSessionKey = @ChatSessionKey"
                             : "")
-                        + (dto.DataSourceDiscoveryJson != null
-                            ? ", DataSourceDiscoveryJson = @DataSourceDiscoveryJson"
-                            : "")
+                        + ", DataSourceDiscoveryJson = @DataSourceDiscoveryJson"
                         + (dto.PlmDataSourceRegisterId.HasValue
                             ? ", PlmDataSourceRegisterId = @PlmDataSourceRegisterId"
                             : "")
@@ -589,8 +595,8 @@ UPDATE dbo.AppPlmImportSession SET
                         CreateParam(fixture, "@CompanyId", companyId),
                         CreateParam(fixture, "@Status", SessionStatusInProgress)
                     };
-                    if (dto.DataSourceDiscoveryJson != null)
-                        parms.Add(CreateParam(fixture, "@DataSourceDiscoveryJson", dto.DataSourceDiscoveryJson));
+                    parms.Add(CreateParam(fixture, "@DataSourceDiscoveryJson",
+                        (object)dto.DataSourceDiscoveryJson ?? DBNull.Value));
                     if (dto.PlmDataSourceRegisterId.HasValue)
                         parms.Add(CreateParam(fixture, "@PlmDataSourceRegisterId", dto.PlmDataSourceRegisterId));
                     if (dto.PlmDwDataSourceRegisterId.HasValue)

@@ -246,12 +246,12 @@ On child ok=true: mark wizard step done|skipped accordingly.
   `call_agent("plm-integration-import-dw", "PHASE=B. Read inputs+plan. Generate output/{templateId}/. Write plm.integration.import-dw.outputs. Do not ask the user.")`
 - On Phase B success: **do not** write `doneIds` yet. Read `plm.integration.import-dw.outputs.executionPlan`.
 - `ask_user` `[import-dw] Apply generated outputs` — list each plan step (order, kind, path, label). Options: `Apply` | `Cancel`. Optional field/choice for Blueprint `mode` = Insert|Update|Repair (default Insert).
-- Apply: if user picked a mode, write it onto the dw-blueprint step in `…outputs.executionPlan`, then
-  `call_agent("plm-integration-import-dw", "PHASE=APPLY. Read plm.integration.import-dw.outputs.executionPlan. Execute in order with execute_agent_sql_file / execute_dw_blueprint_from_file. Pass requiredDataSourceIds from job. Do not ask the user.")`
-- On APPLY `ok=true`: append TemplateId to `import-dw.doneIds` (or keep once if already present); remove it from `pendingApplyIds`.
+- Apply: **HARD — next tool MUST be** `call_agent("plm-integration-import-dw", "PHASE=APPLY. Call apply_agent_output_plan once. Do not ask the user.")`. Forbidden before that result: write `doneIds`, show the repeatable menu, or say "imported successfully".
+- Child APPLY `ok=true` is valid only when the tool result has `ok=true` AND `executed == planned` AND every `steps[].ok`. If the child returns success without `steps[]`, treat as FAILED (Retry | Back).
+- On valid APPLY success: append TemplateId to `import-dw.doneIds`; remove it from `pendingApplyIds`. Summarize each step from `steps[]` / `logFile`.
 - On Cancel: keep files; append TemplateId to `import-dw.pendingApplyIds`. Do not mark doneIds.
 - If `pendingApplyIds` is non-empty and user returns to the repeatable menu, include option `apply-pending` = "Apply pending Template outputs". That path skips A/B and goes to the Apply confirm for that TemplateId.
-- Never run `execute_agent_sql_file` / `execute_dw_blueprint_from_file` on ROOT. Missing SkillKey or child error = STOP (Retry | Back).
+- Never run `apply_agent_output_plan` / `execute_agent_sql_file` / `execute_dw_blueprint_from_file` on ROOT. Missing SkillKey or child error = STOP (Retry | Back).
 - If Phase A/B discovery mentions Fit / Grading QC tabs: append TemplateId to `fit-grading.pendingTemplateIds`, tell user it is **registered for later** (v1 does not import Fit Grading yet). Do not block the DW flow.
 
 ### search (ROOT local until Wave 2) / massupdate

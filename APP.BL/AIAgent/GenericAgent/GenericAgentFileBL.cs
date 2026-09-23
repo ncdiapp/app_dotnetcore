@@ -76,7 +76,7 @@ namespace App.BL.AIAgent.GenericAgent
             return new GenericAgentFileContentDto
             {
                 RelativePath = relativePath,
-                Content = Encoding.UTF8.GetString(bytes, 0, take),
+                Content = DecodeText(bytes, take),
                 Truncated = truncated
             };
         }
@@ -153,7 +153,7 @@ namespace App.BL.AIAgent.GenericAgent
             return new GenericAgentFileContentDto
             {
                 RelativePath = relativePath,
-                Content = Encoding.UTF8.GetString(bytes, 0, take),
+                Content = DecodeText(bytes, take),
                 Truncated = truncated
             };
         }
@@ -321,6 +321,55 @@ namespace App.BL.AIAgent.GenericAgent
             if (string.IsNullOrWhiteSpace(s))
                 throw new ArgumentException("sessionKey is invalid.");
             return s;
+        }
+
+        /// <summary>
+        /// Agent SQL/JSON is often written by PowerShell (UTF-8 BOM or UTF-16 LE).
+        /// Blind UTF-8 decode turns those prefixes into '?' / U+FFFD and breaks SQL/JSON parse.
+        /// </summary>
+        internal static string DecodeText(byte[] bytes, int count)
+        {
+            if (bytes == null || count <= 0)
+                return string.Empty;
+
+            int offset = 0;
+            Encoding encoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
+            if (count >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF)
+            {
+                offset = 3;
+            }
+            else if (count >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE)
+            {
+                encoding = Encoding.Unicode;
+                offset = 2;
+            }
+            else if (count >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF)
+            {
+                encoding = Encoding.BigEndianUnicode;
+                offset = 2;
+            }
+            else if (LooksLikeUtf16LeWithoutBom(bytes, count))
+            {
+                encoding = Encoding.Unicode;
+            }
+
+            var text = encoding.GetString(bytes, offset, count - offset);
+            return text.TrimStart('\uFEFF', '\uFFFE');
+        }
+
+        private static bool LooksLikeUtf16LeWithoutBom(byte[] bytes, int count)
+        {
+            if (count < 4)
+                return false;
+            int pairs = Math.Min(32, count / 2);
+            int zeros = 0;
+            for (int i = 0; i < pairs; i++)
+            {
+                if (bytes[i * 2 + 1] == 0)
+                    zeros++;
+            }
+            return zeros >= (pairs * 3) / 4;
         }
 
         private static string ToRelative(string root, string full)

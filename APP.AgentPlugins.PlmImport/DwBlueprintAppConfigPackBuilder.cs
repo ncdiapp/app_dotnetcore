@@ -615,13 +615,31 @@ public static class DwBlueprintAppConfigPackBuilder
         return Qualify(master.AppTableName, prefix, master.SkipTablePrefix);
     }
 
+    private static readonly string[] ReferenceBasicInfoColumns =
+    {
+        "ReferenceId", "ReferenceCode", "FolderId", "MasterReferenceId"
+    };
+
+    /// <summary>
+    /// Same column list as official template Search (TemplatePostProcess).
+    /// Do not SELECT * from both joined tables — they share ReferenceId and
+    /// AppConfigPackBL wraps the query as SELECT * FROM (query) AS subQuery.
+    /// </summary>
     private static string BuildReferenceBasicInfoQuery(string rootTable, string masterSiblingTable)
     {
+        if (string.IsNullOrWhiteSpace(rootTable))
+            throw new InvalidOperationException("Root table is required for the Reference Basic Info search query.");
+
         if (string.IsNullOrWhiteSpace(masterSiblingTable))
-            return $"SELECT * FROM [dbo].[{rootTable}]";
-        return $@"SELECT [{rootTable}].*, [{masterSiblingTable}].*
-FROM [dbo].[{rootTable}]
-INNER JOIN [dbo].[{masterSiblingTable}] ON [{rootTable}].ReferenceId = [{masterSiblingTable}].ReferenceId";
+            return "SELECT " + string.Join(", ", ReferenceBasicInfoColumns)
+                + " FROM [dbo].[" + rootTable + "]";
+
+        string selectList = string.Join(",\r\n",
+            ReferenceBasicInfoColumns.Select(c => "[" + rootTable + "].[" + c + "]"));
+        return "SELECT\r\n" + selectList
+            + "\r\nFROM [dbo].[" + rootTable + "]"
+            + "\r\nINNER JOIN [dbo].[" + masterSiblingTable + "]"
+            + " ON [" + rootTable + "].[ReferenceId] = [" + masterSiblingTable + "].[ReferenceId]";
     }
 
     private static string ResolvePrefix(PlmDwImportBlueprintDto blueprint)

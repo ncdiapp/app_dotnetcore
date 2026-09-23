@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 using APP.Framework;
+using NLog;
 
 namespace App.BL.AIAgent.GenericAgent
 {
@@ -34,6 +35,7 @@ namespace App.BL.AIAgent.GenericAgent
         {
             var result = new AgentSqlFileExecuteResult { Path = NormalizeRel(relativePath) };
             var sw = Stopwatch.StartNew();
+            var log = LogManager.GetCurrentClassLogger();
             try
             {
                 if (!App.BL.AppSecurityUserBL.IsAdminUser())
@@ -77,6 +79,9 @@ namespace App.BL.AIAgent.GenericAgent
                         declaredCatalogs.Add(extra.Catalog);
                 }
 
+                log.Info("execute_agent_sql_file start path={0} target={1}/{2} extraIds={3}",
+                    path, result.TargetServer, result.TargetCatalog, requiredDataSourceIds);
+
                 using (var conn = new SqlConnection(targetFixture.ConnectionString))
                 {
                     conn.Open();
@@ -96,12 +101,14 @@ namespace App.BL.AIAgent.GenericAgent
 
                     result.Batches = executed;
                     result.Ok = true;
+                    log.Info("execute_agent_sql_file ok path={0} batches={1} ms={2}", path, executed, sw.ElapsedMilliseconds);
                 }
             }
             catch (Exception ex)
             {
                 result.Ok = false;
                 result.Error = ex.Message;
+                log.Error(ex, "execute_agent_sql_file failed path={0}", result.Path);
             }
 
             sw.Stop();

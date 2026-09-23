@@ -120,6 +120,51 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public List<string> PlannedActions { get; set; } = new List<string>();
+
+        [DataMember]
+        public string SizeRunDataSourceFromName { get; set; }
+
+        [DataMember]
+        public int? SizeRunDataSourceFrom { get; set; }
+
+        [DataMember]
+        public string SizeRunTableName { get; set; }
+
+        [DataMember]
+        public string SizeRunDetailTableName { get; set; }
+
+        [DataMember]
+        public int SizeRunSourceRowCount { get; set; }
+
+        [DataMember]
+        public int SizeRunVisibleRowCount { get; set; }
+
+        [DataMember]
+        public int SizeRunSizeSourceRowCount { get; set; }
+
+        [DataMember]
+        public bool SizeRunEntityExists { get; set; }
+
+        [DataMember]
+        public bool SizeRunDetailEntityExists { get; set; }
+
+        [DataMember]
+        public int TchpSizeRunRowCount { get; set; }
+
+        [DataMember]
+        public int TchpSizeRunSizeRowCount { get; set; }
+
+        [DataMember]
+        public int TchpGradeRuleSetRowCount { get; set; }
+
+        [DataMember]
+        public int TchpGradeRuleRowCount { get; set; }
+
+        [DataMember]
+        public int PlannedGradeRuleSetCount { get; set; }
+
+        [DataMember]
+        public int PlannedGradeRuleCount { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -204,6 +249,21 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public int TchpPomTemplatePartRowsImported { get; set; }
+
+        [DataMember]
+        public int TchpSizeRunRowsImported { get; set; }
+
+        [DataMember]
+        public int TchpSizeRunSizeRowsImported { get; set; }
+
+        [DataMember]
+        public int TchpGradeRuleSetRowsImported { get; set; }
+
+        [DataMember]
+        public int TchpGradeRuleRowsImported { get; set; }
+
+        [DataMember]
+        public bool SizeRunEntitiesRemounted { get; set; }
 
         [DataMember]
         public int SpecBodyPartGradingRowsImported { get; set; }

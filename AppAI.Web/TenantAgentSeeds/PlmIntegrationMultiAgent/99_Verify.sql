@@ -15,7 +15,8 @@ WHERE (
       N'list_tenant_data_sources', N'list_tenant_saas_applications', N'ensure_techpack_schema',
       N'test_plm_connection', N'save_plm_import_session',
       N'update_plm_wizard_progress', N'get_plm_wizard_progress',
-      N'preview_dw_blueprint_from_file', N'execute_dw_blueprint_from_file')
+      N'preview_dw_blueprint_from_file', N'execute_dw_blueprint_from_file',
+      N'apply_agent_output_plan')
   )
   OR (LibraryKey = N'agent-files' AND ToolName = N'execute_agent_sql_file')
 ORDER BY LibraryKey, ToolName;
