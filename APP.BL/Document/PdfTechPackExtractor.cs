@@ -39,11 +39,21 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
 
     public PdfTechPackExtractor(Microsoft.Extensions.Configuration.IConfiguration configuration)
         : this(
-            Required(configuration["Google:DocumentAI:ProjectId"], "Google:DocumentAI:ProjectId"),
+            configuration["Google:DocumentAI:ProjectId"],
             configuration["Google:DocumentAI:Location"] ?? "us",
-            Required(configuration["Google:DocumentAI:ProcessorId"], "Google:DocumentAI:ProcessorId"),
-            Required(configuration["Google:DocumentAI:Bucket"], "Google:DocumentAI:Bucket"),
+            configuration["Google:DocumentAI:ProcessorId"],
+            configuration["Google:DocumentAI:Bucket"],
             ParseTimeout(configuration["Google:DocumentAI:PollTimeoutMinutes"]))
+    {
+    }
+
+    public PdfTechPackExtractor()
+        : this(
+            AppConfig.Get("Google:DocumentAI:ProjectId"),
+            AppConfig.Get("Google:DocumentAI:Location") ?? "us",
+            AppConfig.Get("Google:DocumentAI:ProcessorId"),
+            AppConfig.Get("Google:DocumentAI:Bucket"),
+            ParseTimeout(AppConfig.Get("Google:DocumentAI:PollTimeoutMinutes")))
     {
     }
 
@@ -54,10 +64,10 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         string bucket,
         int pollTimeoutMinutes = 90)
     {
-        _projectId = Required(projectId, "Google:DocumentAI:ProjectId");
+        _projectId = projectId?.Trim() ?? string.Empty;
         _location = string.IsNullOrWhiteSpace(location) ? "us" : location.Trim();
-        _processorId = Required(processorId, "Google:DocumentAI:ProcessorId");
-        _bucket = Required(bucket, "Google:DocumentAI:Bucket");
+        _processorId = processorId?.Trim() ?? string.Empty;
+        _bucket = bucket?.Trim() ?? string.Empty;
         _pollTimeout = TimeSpan.FromMinutes(Math.Clamp(pollTimeoutMinutes, 1, 240));
     }
 
