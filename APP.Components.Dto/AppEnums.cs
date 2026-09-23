@@ -978,6 +978,11 @@ namespace APP.Components.Dto
         AIConfigCursorApiKey            = 3210,
         AIConfigCursorModel             = 3211,
         AIConfigCursorMcpPublicBaseUrl  = 3212,
+        GoogleDocumentAIProjectId       = 3213,
+        GoogleDocumentAILocation        = 3214,
+        GoogleDocumentAIProcessorId     = 3215,
+        GoogleDocumentAIBucket          = 3216,
+        GoogleDocumentAIPollTimeoutMinutes = 3217,
     }
 
 

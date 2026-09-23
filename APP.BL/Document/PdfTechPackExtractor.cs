@@ -65,11 +65,18 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
     {
         Validate(request);
 
+        var configuration = request.Configuration ?? ResolveTenantConfiguration();
+        var projectId = Required(Prefer(configuration.ProjectId, _projectId), "Google:DocumentAI:ProjectId");
+        var location = Prefer(configuration.Location, _location);
+        var processorId = Required(Prefer(configuration.ProcessorId, _processorId), "Google:DocumentAI:ProcessorId");
+        var bucket = Required(Prefer(configuration.Bucket, _bucket), "Google:DocumentAI:Bucket");
+        var pollTimeout = TimeSpan.FromMinutes(Math.Clamp(configuration.PollTimeoutMinutes ?? (int)_pollTimeout.TotalMinutes, 1, 240));
+
         var jobId = Guid.NewGuid().ToString("N");
         var inputObject = $"document-ai/input/{request.CompanyId}/{jobId}/{SanitizeFileName(request.FileName)}";
         var outputPrefix = $"document-ai/output/{request.CompanyId}/{jobId}/";
-        var inputUri = $"gs://{_bucket}/{inputObject}";
-        var outputUri = $"gs://{_bucket}/{outputPrefix}";
+        var inputUri = $"gs://{bucket}/{inputObject}";
+        var outputUri = $"gs://{bucket}/{outputPrefix}";
         var storage = await StorageClient.CreateAsync();
         var outputObjects = new List<string>();
 
@@ -77,14 +84,14 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         {
             await using (var input = new MemoryStream(request.PdfBytes, writable: false))
             {
-                await storage.UploadObjectAsync(_bucket, inputObject, "application/pdf", input,
+            await storage.UploadObjectAsync(bucket, inputObject, "application/pdf", input,
                     cancellationToken: cancellationToken);
             }
 
-            var processorName = $"projects/{_projectId}/locations/{_location}/processors/{_processorId}";
+            var processorName = $"projects/{projectId}/locations/{location}/processors/{processorId}";
             var client = await new DocumentProcessorServiceClientBuilder
             {
-                Endpoint = $"{_location}-documentai.googleapis.com"
+                Endpoint = $"{location}-documentai.googleapis.com"
             }.BuildAsync(cancellationToken: cancellationToken);
 
             var batchRequest = new BatchProcessRequest
@@ -113,13 +120,13 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
             var pollTask = operation.PollUntilCompletedAsync();
             var completed = await Task.WhenAny(
                 pollTask,
-                Task.Delay(_pollTimeout, cancellationToken));
+                Task.Delay(pollTimeout, cancellationToken));
             if (completed != pollTask)
-                throw new TimeoutException($"Document AI batch processing did not complete within {_pollTimeout.TotalMinutes:0} minutes.");
+                throw new TimeoutException($"Document AI batch processing did not complete within {pollTimeout.TotalMinutes:0} minutes.");
             await pollTask;
 
             var documents = new List<JObject>();
-            await foreach (var item in storage.ListObjectsAsync(_bucket, outputPrefix)
+            await foreach (var item in storage.ListObjectsAsync(bucket, outputPrefix)
                 .WithCancellation(cancellationToken))
             {
                 if (string.IsNullOrWhiteSpace(item.Name) || !item.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
@@ -127,7 +134,7 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
 
                 outputObjects.Add(item.Name);
                 await using var jsonStream = new MemoryStream();
-                await storage.DownloadObjectAsync(_bucket, item.Name, jsonStream,
+                await storage.DownloadObjectAsync(bucket, item.Name, jsonStream,
                     cancellationToken: cancellationToken);
                 var json = System.Text.Encoding.UTF8.GetString(jsonStream.ToArray());
                 var parsed = JObject.Parse(json);
@@ -151,15 +158,29 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         {
             // Temporary cloud artifacts are deleted after extraction. The normalized data and
             // image files remain in the tenant's Generic Agent file area.
-            try { await storage.DeleteObjectAsync(_bucket, inputObject, cancellationToken: CancellationToken.None); }
+            try { await storage.DeleteObjectAsync(bucket, inputObject, cancellationToken: CancellationToken.None); }
             catch { /* cleanup must not hide the extraction result */ }
 
             foreach (var outputObject in outputObjects)
             {
-                try { await storage.DeleteObjectAsync(_bucket, outputObject, cancellationToken: CancellationToken.None); }
+                try { await storage.DeleteObjectAsync(bucket, outputObject, cancellationToken: CancellationToken.None); }
                 catch { /* cleanup must not hide the extraction result */ }
             }
         }
+    }
+
+    public static PdfTechPackConfiguration ResolveTenantConfiguration()
+    {
+        var identity = (APP.Components.Dto.AppClientIdentity?)APP.Framework.ServerContext.Instance.CurrnetClientIdentity;
+        return new PdfTechPackConfiguration
+        {
+            ProjectId = identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIProjectId, identity.Value) : null,
+            Location = identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAILocation, identity.Value) : null,
+            ProcessorId = identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIProcessorId, identity.Value) : null,
+            Bucket = identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIBucket, identity.Value) : null,
+            PollTimeoutMinutes = int.TryParse(identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIPollTimeoutMinutes, identity.Value) : null, out var timeout)
+                ? timeout : null
+        };
     }
 
     private static PdfTechPackExtractionResultDto BuildResult(
@@ -259,6 +280,9 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"Missing configuration: {key}")
             : value.Trim();
+
+    private static string Prefer(string? value, string fallback) =>
+        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
 
     private static int ParseTimeout(string? value) =>
         int.TryParse(value, out var minutes) ? minutes : 90;
