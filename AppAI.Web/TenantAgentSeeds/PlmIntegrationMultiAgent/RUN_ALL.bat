@@ -17,6 +17,11 @@ echo === Applying to [%SERVER%] / [%DB%] ===
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%01_Seed_IntegrationPlmImportLibrary.sql" || goto fail
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%02_Seed_PlmIntegrationImportDw_Child.sql" || goto fail
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%03_Seed_PlmIntegrationOrchestrator_Root.sql" || goto fail
+sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%04_Seed_PlmIntegrationEntity_Child.sql" || goto fail
+sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%05_Seed_PlmIntegrationFolder_Child.sql" || goto fail
+sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%06_Seed_PlmIntegrationImage_Child.sql" || goto fail
+sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%07_Seed_PlmIntegrationColor_Child.sql" || goto fail
+sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%08_Seed_PlmIntegrationPom_Child.sql" || goto fail
 echo === Ensure ROOT MaxIterations=400 ===
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -Q "UPDATE dbo.AppAgentSkillSet SET MaxIterations = 400 WHERE SkillKey = N'plm-integration-orchestrator'; SELECT SkillKey, MaxIterations FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator';" || goto fail
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%99_Verify.sql" || goto fail

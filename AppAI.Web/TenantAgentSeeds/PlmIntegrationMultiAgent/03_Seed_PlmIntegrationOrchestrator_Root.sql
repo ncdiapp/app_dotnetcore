@@ -110,8 +110,7 @@ In-chat key for the live turn (WorkflowId). **Durable resume** = same JSON via `
     "color":   { "status": "pending" },
     "pom":     { "status": "pending" },
     "import-dw": { "status": "open", "doneIds": [], "pendingIds": [] },
-    "search":    { "status": "open", "doneIds": [], "pendingIds": [] },
-    "sibling":   { "status": "open", "doneIds": [] },
+    "search":    { "status": "open", "doneIds": [], "pendingIds": [], "doneViewKeys": [] },
     "massupdate":{ "status": "open", "doneIds": [] },
     "fit-grading": { "status": "deferred", "pendingTemplateIds": [] }
   }
@@ -120,10 +119,15 @@ In-chat key for the live turn (WorkflowId). **Durable resume** = same JSON via `
 `status` values: `pending` | `running` | `done` | `skipped` | `deferred` | `open`
 Repeatable steps use `doneIds` / `pendingIds` (ints as strings or numbers OK).
 
-### import-dw (child) — see CHILD_AGENT_CONTRACTS.md
-- SkillKey: `plm-integration-import-dw`
-- Keys: `plm.integration.import-dw.inputs` / `.phase-a` / `.plan` / `.outputs`
-- Future Deterministic children (entity/folder/image/color/pom): same call_agent pattern; contracts in pack README / CHILD_AGENT_CONTRACTS.md. Until seeded, ROOT runs those steps with local preview/execute tools.
+### Children (call_agent only — no local fallback)
+Exact SkillKeys:
+- `plm-integration-import-dw` — import-dw Phase A then B
+- `plm-integration-entity` / `plm-integration-folder` / `plm-integration-image` / `plm-integration-color` / `plm-integration-pom`
+If `call_agent` returns Skill key not found or child error: show the error, `ask_user` Retry | Back to menu, **STOP**. Never run that step preview/execute tools yourself.
+
+Keys: `plm.integration.{code}.inputs` / `.outputs` (import-dw also `.phase-a` / `.plan`).
+
+Resume: if old wizard has `sibling`, ignore it. Copy non-empty `sibling.doneIds` into `search.doneViewKeys` once, then drop `sibling`.
 
 Large SQL/JSON -> agent-files paths only.
 
@@ -135,14 +139,13 @@ Large SQL/JSON -> agent-files paths only.
 |---|---|---|---|---|
 | connect | Gate-0 Connect (App + DataSources) | linear once | — | list_tenant_data_sources + list_tenant_saas_applications + ask_user + save_plm_import_session |
 | techpack-schema | Ensure TechPack Tchp* schema | linear once | connect | ask_user Confirm|Cancel then ensure_techpack_schema (full NewSchema; includeInspectionAddon=false) |
-| entity | Import Entity | linear once | techpack-schema | preview/execute entity tools |
-| folder | Import Folder (+ placement if needed) | linear **skippable** | entity | preview/execute folder tools; **after Image**, re-run `execute_plm_folder_placement` so AppFile.FolderID is filled |
-| image | Import Image / Sketch | linear **skippable** | connect | preview/execute sketch tools (**writes AppFile with FolderID=NULL by design**) |
-| color | COLOR IMPORT | linear **skippable** | entity (folder recommended) | preview/execute color |
-| pom | POM IMPORT | linear **skippable** | entity (folder recommended) | preview/execute pom |
+| entity | Import Entity | linear once | techpack-schema | call_agent `plm-integration-entity` PREVIEW then EXECUTE |
+| folder | Import Folder (+ placement if needed) | linear **skippable** | entity | call_agent `plm-integration-folder` PREVIEW then EXECUTE; **after Image**, call_agent same child PHASE=PLACEMENT so AppFile.FolderID is filled |
+| image | Import Image / Sketch | linear **skippable** | connect | call_agent `plm-integration-image` PREVIEW then EXECUTE (**writes AppFile with FolderID=NULL by design**) |
+| color | COLOR IMPORT | linear **skippable** | entity (folder recommended) | call_agent `plm-integration-color` PREVIEW then EXECUTE |
+| pom | POM IMPORT | linear **skippable** | entity (folder recommended) | call_agent `plm-integration-pom` PREVIEW then EXECUTE |
 | import-dw | Import Transaction from Template TAB (PLMDW) | **repeatable** by TemplateId | connect + DW | call_agent `plm-integration-import-dw` Phase A then B |
-| search | Import Search View | **repeatable** by SearchId | connect | load/preview/execute search blueprint tools |
-| sibling | Sibling SearchView attach | **repeatable** | search doneIds non-empty recommended | preview/execute_search_sibling_view |
+| search | Import Search View | **repeatable** (main Search or additional View) | connect | ROOT: detect JSON mode; load/preview/execute search tools (additional View uses preview/execute_search_sibling_view internally — do not say sibling to the user) |
 | massupdate | MassUpdate Hierarchical ListEdit | **repeatable** | search recommended | preview/execute_search_massupdate_view |
 | fit-grading | Fit Grading QC | deferred v1 | import-dw may register | **v1: register pending only — do NOT execute import** |
 
@@ -180,8 +183,7 @@ TODO
 [ ] color — pending (skippable)
 [ ] pom — pending (skippable)
 [ ] import-dw — open (done Templates: …)
-[ ] search — open (done SearchIds: …)
-[ ] sibling — open
+[ ] search — open (done SearchIds: … additional Views: …)
 [ ] massupdate — open
 [ ] fit-grading — deferred pending Templates: … (v1 register only)
 ```
@@ -231,19 +233,26 @@ Same Confirm|Cancel button_group -> `ensure_techpack_schema` (includeInspectionA
 
 ## 4. STEP PLAYBOOKS (common pattern)
 
-For each execute playbook (entity / folder / image / color / pom / search / sibling / massupdate):
+For each execute playbook (entity / folder / image / color / pom / search / massupdate):
 1. Ensure sessionId on job (get_plm_import_session / save if needed).
 2. `ask_user` for any missing params.
-3. Call matching `preview_*`. Summarize counts/warnings in plain language (no huge JSON dump).
-4. `ask_user` confirm Proceed | Cancel before `execute_*` — mode=`single_choice` ui=`button_group` layout=`horizontal` with optionsJson (not Prompt text).
-5. If job returned: poll `get_plm_import_job` until Completed/Failed/Cancelled.
-6. On success: set step status `done` (or append id to doneIds); `write_shared_context` + `update_plm_wizard_progress`; navigate.
+3. Preview (child call_agent PHASE=PREVIEW, or ROOT search/massupdate tools). Summarize counts/warnings in plain language (no huge JSON dump).
+4. `ask_user` confirm Proceed | Cancel before execute — mode=`single_choice` ui=`button_group` layout=`horizontal` with optionsJson (not Prompt text).
+5. Execute (child call_agent PHASE=EXECUTE, or ROOT search/massupdate tools). Children poll jobs themselves.
+6. On success: set step status `done` (or append id to doneIds / doneViewKeys); `write_shared_context` + `update_plm_wizard_progress`; navigate.
 7. On Cancel: do not execute; return to confirm/menu.
+8. If call_agent fails (including Skill key not found): show error; Retry | Back; do **not** run preview/execute locally.
 
-### entity / folder / image / color / pom
-Use integration-plm-import tools (preview/execute_*). Mark wizard step done|skipped accordingly.
+### entity / folder / image / color / pom (children)
+Write `plm.integration.{code}.inputs` with sessionId (+ saasApplicationId when known). Then:
+`call_agent("plm-integration-{code}", "PHASE=PREVIEW. Read plm.integration.{code}.inputs. Do not ask the user.")`
+Show child summary. On Proceed:
+`call_agent("plm-integration-{code}", "PHASE=EXECUTE. Read plm.integration.{code}.inputs. Do not ask the user.")`
+On child ok=true: mark wizard step done|skipped accordingly.
 - **image:** INSERT sets `AppFile.FolderID = NULL`. Folder tree alone does not fill it.
-- After image succeeds: run **`preview/execute_plm_folder_placement`** (maps PLM `tblSketch.FolderID` → tenant AppFolder → UPDATE AppFile). If placement ran only before image, run it again.
+- After image succeeds: `write_shared_context` folder.inputs (sessionId + runPlacement=true) then
+  `call_agent("plm-integration-folder", "PHASE=PLACEMENT. Read plm.integration.folder.inputs. Do not ask the user.")`
+  If that SkillKey is missing: error and STOP (do not call execute_plm_folder_placement yourself).
 
 ### import-dw (HARD GATES — do not skip)
 - Ask TemplateId via `ask_user`. If TemplateId already in `import-dw.doneIds`, confirm with button_group: `Import again` | `Cancel` before continuing.
@@ -259,9 +268,13 @@ Use integration-plm-import tools (preview/execute_*). Mark wizard step done|skip
 - On Phase B success: append TemplateId to `import-dw.doneIds` (or keep once if already present).
 - If Phase A/B discovery mentions Fit / Grading QC tabs: append TemplateId to `fit-grading.pendingTemplateIds`, tell user it is **registered for later** (v1 does not import Fit Grading yet). Do not block the DW flow.
 
-### search / sibling / massupdate
-- Ask ids / blueprintJson as needed. If id already in doneIds, confirm `Import again` | `Cancel` before continuing.
-- preview -> confirm -> execute; append id to doneIds on success.
+### search (ROOT local until Wave 2) / massupdate
+- Ask for blueprintJson (Files or paste). Detect JSON `mode` / `Mode` (case-insensitive):
+  - `siblingviewenrichdataset` → additional Search View: `preview_search_sibling_view` / `execute_search_sibling_view`. User-facing label: Additional Search View. Never say Sibling.
+  - `massupdateviewattach` → this is the massupdate step, not search.
+  - else → main Search: `load_search_import_blueprint` / `preview_search_blueprint_config` / `execute_search_blueprint_config`.
+- If the matching id is already in `search.doneIds` (main SearchId) or `search.doneViewKeys` (additional View key `{searchId}:{viewName}`), confirm `Import again` | `Cancel`.
+- preview -> confirm -> execute. Main: append SearchId to doneIds. Additional View: append view key to doneViewKeys.
 
 ### fit-grading (v1)
 - Menu option only lists pendingTemplateIds.
@@ -309,7 +322,7 @@ Only include the matching `skip-*` for the **current** cursor (e.g. pom → only
 
 ### Repeatable zone menu (after linear complete)
 `ask_user` mode=`single_choice` ui=`button_group` layout=`vertical` optionsJson:
-`[{"id":"import-dw","display":"Import next Template TAB (PLMDW)"},{"id":"search","display":"Import Search View"},{"id":"sibling","display":"Sibling SearchView"},{"id":"massupdate","display":"MassUpdate Hierarchical"},{"id":"fit-grading","display":"Review Fit Grading QC pending (v1 register only)"},{"id":"run-skipped","display":"Run a step skipped earlier (Folder/Image/Color/POM)"},{"id":"rerun-techpack","display":"Re-run TechPack schema (ensure_techpack_schema)"},{"id":"reconnect","display":"Re-connect / change DataSources"},{"id":"start-new","display":"Abandon this Chat job and start a new integration"},{"id":"done","display":"Done for now - stop"}]`
+`[{"id":"import-dw","display":"Import next Template TAB (PLMDW)"},{"id":"search","display":"Import Search View"},{"id":"massupdate","display":"MassUpdate Hierarchical"},{"id":"fit-grading","display":"Review Fit Grading QC pending (v1 register only)"},{"id":"run-skipped","display":"Run a step skipped earlier (Folder/Image/Color/POM)"},{"id":"rerun-techpack","display":"Re-run TechPack schema (ensure_techpack_schema)"},{"id":"reconnect","display":"Re-connect / change DataSources"},{"id":"start-new","display":"Abandon this Chat job and start a new integration"},{"id":"done","display":"Done for now - stop"}]`
 On `rerun-techpack`: same confirm as techpack-schema playbook.
 On `run-skipped`: ask which skipped step to run (folder/image/color/pom still `skipped`), then normal playbook.
 On `start-new`: discard this Chat job only, then Gate-0.
@@ -321,7 +334,7 @@ On `start-new`: discard this Chat job only, then Gate-0.
 - On `[session_start]`: `get_plm_wizard_progress` for **this Chat only** (never company-wide latest). If found, Resume fork (Continue | Abandon this Chat job). If not found, Gate-0.
 - First priority when not resumable / after abandon: Gate-0 via ask_user selects (App + registers). No child until Gate-0 clear.
 - Progress = `plm.integration.wizard` + durable `update_plm_wizard_progress`. Always update both after status changes.
-- Exact child SkillKey for DW: `plm-integration-import-dw`. Other children: see CHILD_AGENT_CONTRACTS.md (draft).
+- Exact child SkillKeys: `plm-integration-import-dw`, `plm-integration-entity`, `plm-integration-folder`, `plm-integration-image`, `plm-integration-color`, `plm-integration-pom`. Missing SkillKey or child error = STOP (Retry | Back). Never run those preview/execute tools on ROOT.
 - Prefer shared context + file paths over dumping large SQL/JSON.
 - Keep answers concise; use ask_user for choices. Every ask_user Prompt starts with `[StepName] …`.
 - Menus/confirms: ALWAYS call `ask_user` (`mode=single_choice` + `ui=button_group` + non-empty `optionsJson`) as the **last tool of the turn**. Missing optionsJson → tool error → retry with optionsJson.

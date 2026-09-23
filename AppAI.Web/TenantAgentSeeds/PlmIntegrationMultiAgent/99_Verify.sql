@@ -26,14 +26,23 @@ SELECT SkillKey, DisplayName, ExecutionMode, IsActive,
        CASE WHEN SystemPrompt LIKE N'%list_tenant_saas_applications%' THEN 1 ELSE 0 END AS HasSaasAppToolInPrompt,
        CASE WHEN SystemPrompt LIKE N'%WIZARD CATALOG%' THEN 1 ELSE 0 END AS HasWizardCatalog,
        CASE WHEN SystemPrompt LIKE N'%get_plm_wizard_progress%' THEN 1 ELSE 0 END AS HasWizardResume,
-       CASE WHEN SystemPrompt LIKE N'%update_plm_wizard_progress%' THEN 1 ELSE 0 END AS HasWizardPersist
+       CASE WHEN SystemPrompt LIKE N'%update_plm_wizard_progress%' THEN 1 ELSE 0 END AS HasWizardPersist,
+       CASE WHEN SystemPrompt LIKE N'%Sibling SearchView%' THEN 1 ELSE 0 END AS HasLegacySiblingMenu,
+       CASE WHEN SystemPrompt LIKE N'%plm-integration-entity%' THEN 1 ELSE 0 END AS HasEntityChild,
+       CASE WHEN SystemPrompt LIKE N'%Never run those preview/execute tools on ROOT%' THEN 1 ELSE 0 END AS HasNoLocalFallback
 FROM dbo.AppAgentSkillSet
-WHERE SkillKey IN (N'plm-integration-orchestrator', N'plm-integration-import-dw')
+WHERE SkillKey IN (
+  N'plm-integration-orchestrator', N'plm-integration-import-dw',
+  N'plm-integration-entity', N'plm-integration-folder', N'plm-integration-image',
+  N'plm-integration-color', N'plm-integration-pom')
 ORDER BY SkillKey;
 
 PRINT '=== Subscriptions ===';
 SELECT SkillKey, LibraryKey FROM dbo.AppAgentLibrarySubscription
-WHERE SkillKey IN (N'plm-integration-orchestrator', N'plm-integration-import-dw')
+WHERE SkillKey IN (
+  N'plm-integration-orchestrator', N'plm-integration-import-dw',
+  N'plm-integration-entity', N'plm-integration-folder', N'plm-integration-image',
+  N'plm-integration-color', N'plm-integration-pom')
 ORDER BY SkillKey, LibraryKey;
 
 PRINT '=== Shared context table (platform; wizard durable scope = ChatSessionKey) ===';
