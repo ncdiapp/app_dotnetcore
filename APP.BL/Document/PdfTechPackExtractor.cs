@@ -125,7 +125,21 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                     cancellationToken: cancellationToken);
                 var json = System.Text.Encoding.UTF8.GetString(jsonStream.ToArray());
                 var parsed = JObject.Parse(json);
-                documents.Add(parsed["document"] as JObject ?? parsed);
+                var nestedDocument = GetToken(parsed, "document") as JObject;
+                if (nestedDocument != null)
+                {
+                    documents.Add(nestedDocument);
+                    continue;
+                }
+
+                if (GetToken(parsed, "documents") is JArray documentArray)
+                {
+                    foreach (var documentItem in documentArray.OfType<JObject>())
+                        documents.Add(documentItem);
+                    continue;
+                }
+
+                documents.Add(parsed);
             }
 
             if (documents.Count == 0)
@@ -208,28 +222,28 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
 
         foreach (var document in documents)
         {
-            var purePages = document["pages"]?.DeepClone() as JArray ?? new JArray();
+            var purePages = GetToken(document, "pages")?.DeepClone() as JArray ?? new JArray();
             foreach (var purePage in purePages.OfType<JObject>())
                 purePage.Remove("image");
             var normalized = new JObject
             {
-                ["text"] = document["text"]?.DeepClone() ?? JValue.CreateNull(),
+                ["text"] = GetToken(document, "text")?.DeepClone() ?? JValue.CreateNull(),
                 ["pages"] = purePages,
-                ["entities"] = document["entities"]?.DeepClone() ?? new JArray(),
+                ["entities"] = GetToken(document, "entities")?.DeepClone() ?? new JArray(),
                 ["tables"] = ExtractTables(document)
             };
             ((JArray)pureData["documents"]!).Add(normalized);
 
-            var pages = document["pages"] as JArray;
+            var pages = GetToken(document, "pages") as JArray;
             if (pages == null) continue;
             pageCount += pages.Count;
             for (var index = 0; index < pages.Count; index++)
             {
                 var pageNumber = index + 1;
                 var page = pages[index] as JObject;
-                var image = page?["image"] as JObject;
-                var content = image?["content"]?.Value<string>();
-                var mimeType = image?["mimeType"]?.Value<string>() ?? "image/png";
+                var image = GetToken(page, "image") as JObject;
+                var content = GetToken(image, "content")?.Value<string>();
+                var mimeType = GetToken(image, "mimeType")?.Value<string>() ?? "image/png";
                 var relativePath = string.Empty;
 
                 if (!string.IsNullOrWhiteSpace(content))
@@ -248,8 +262,8 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                     PageNumber = pageNumber,
                     MimeType = mimeType,
                     RelativePath = relativePath,
-                    SourceUri = image?["gcsUri"]?.Value<string>(),
-                    ImageText = page?["layout"]?["textAnchor"]?.ToString()
+                    SourceUri = GetToken(image, "gcsUri")?.Value<string>(),
+                    ImageText = GetToken(GetToken(page, "layout") as JObject, "textAnchor")?.ToString()
                 });
             }
         }
@@ -267,9 +281,9 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
     private static JArray ExtractTables(JObject document)
     {
         var tables = new JArray();
-        foreach (var page in document["pages"] as JArray ?? new JArray())
+        foreach (var page in (GetToken(document, "pages") as JArray) ?? new JArray())
         {
-            foreach (var table in page["tables"] as JArray ?? new JArray())
+            foreach (var table in (GetToken(page as JObject, "tables") as JArray) ?? new JArray())
                 tables.Add(table.DeepClone());
         }
         return tables;
@@ -287,6 +301,15 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"Missing configuration: {key}")
             : value.Trim();
+
+    private static JToken? GetToken(JObject? source, string name)
+    {
+        if (source == null) return null;
+        var exact = source[name];
+        if (exact != null) return exact;
+        return source.Properties()
+            .FirstOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))?.Value;
+    }
 
     private static string SanitizeFileName(string fileName)
     {
