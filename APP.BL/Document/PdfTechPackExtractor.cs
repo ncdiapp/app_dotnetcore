@@ -8,6 +8,7 @@ using App.BL.AIAgent.GenericAgent;
 using APP.Components.Dto.Document;
 using Google.Cloud.DocumentAI.V1;
 using Google.Cloud.Storage.V1;
+using Google.Apis.Auth.OAuth2;
 using Newtonsoft.Json.Linq;
 
 namespace App.BL.Document;
@@ -77,7 +78,12 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         var outputPrefix = $"document-ai/output/{request.CompanyId}/{jobId}/";
         var inputUri = $"gs://{bucket}/{inputObject}";
         var outputUri = $"gs://{bucket}/{outputPrefix}";
-        var storage = await StorageClient.CreateAsync();
+        var credential = string.IsNullOrWhiteSpace(configuration.CredentialJson)
+            ? null
+            : GoogleCredential.FromJson(configuration.CredentialJson);
+        var storage = credential == null
+            ? await StorageClient.CreateAsync()
+            : await new StorageClientBuilder { Credential = credential }.BuildAsync();
         var outputObjects = new List<string>();
 
         try
@@ -91,7 +97,8 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
             var processorName = $"projects/{projectId}/locations/{location}/processors/{processorId}";
             var client = await new DocumentProcessorServiceClientBuilder
             {
-                Endpoint = $"{location}-documentai.googleapis.com"
+                Endpoint = $"{location}-documentai.googleapis.com",
+                GoogleCredential = credential
             }.BuildAsync(cancellationToken: cancellationToken);
 
             var batchRequest = new BatchProcessRequest
@@ -180,8 +187,14 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
             Bucket = identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIBucket, identity.Value) : null,
             PollTimeoutMinutes = int.TryParse(identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIPollTimeoutMinutes, identity.Value) : null, out var timeout)
                 ? timeout : null
+            ,CredentialJson = identity.HasValue
+                ? DecryptCredential(AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAICredentialJson, identity.Value))
+                : null
         };
     }
+
+    private static string? DecryptCredential(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : AppConnectionStringEncryptionBL.Decrypt(value);
 
     private static PdfTechPackExtractionResultDto BuildResult(
         string jobId,

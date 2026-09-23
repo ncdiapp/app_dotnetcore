@@ -983,6 +983,7 @@ namespace APP.Components.Dto
         GoogleDocumentAIProcessorId     = 3215,
         GoogleDocumentAIBucket          = 3216,
         GoogleDocumentAIPollTimeoutMinutes = 3217,
+        GoogleDocumentAICredentialJson    = 3218,
     }
 
 

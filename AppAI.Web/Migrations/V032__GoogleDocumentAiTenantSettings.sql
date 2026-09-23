@@ -21,3 +21,7 @@ VALUES (N'GoogleDocumentAIBucket', N'', N'Temporary Google Cloud Storage bucket 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = N'GoogleDocumentAIPollTimeoutMinutes')
 INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, UsageType, Category, SubCategory)
 VALUES (N'GoogleDocumentAIPollTimeoutMinutes', N'90', N'Maximum Document AI batch polling time in minutes.', 1, N'Google Setting', N'Document AI');
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = N'GoogleDocumentAICredentialJson')
+INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, UsageType, Category, SubCategory)
+VALUES (N'GoogleDocumentAICredentialJson', N'', N'Encrypted Google service-account JSON for this tenant. Enter through Tenant Application Settings; the value is encrypted before persistence.', 1, N'Google Setting', N'Document AI');

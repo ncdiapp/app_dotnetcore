@@ -145,6 +145,10 @@ namespace App.BL
                         SubCategory = row["SubCategory"] as string,
                     };
 
+                    if (string.Equals(code, nameof(EmTenantSettings.GoogleDocumentAICredentialJson), StringComparison.OrdinalIgnoreCase)
+                        && !string.IsNullOrWhiteSpace(dto.SetupValue))
+                        dto.SetupValue = "[configured] Enter a new service-account JSON to replace it.";
+
                     if (row["EntityId"] != DBNull.Value && int.TryParse(row["EntityId"]?.ToString(), out var entityId))
                         dto.EntityId = entityId;
 
@@ -212,10 +216,17 @@ namespace App.BL
                 {
                     foreach (var dto in modified)
                     {
+                        var value = dto.SetupValue ?? string.Empty;
+                        if (string.Equals(dto.SetupCode, nameof(EmTenantSettings.GoogleDocumentAICredentialJson), StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (value.StartsWith("[configured]", StringComparison.OrdinalIgnoreCase))
+                                continue;
+                            value = AppConnectionStringEncryptionBL.Encrypt(value);
+                        }
                         const string sql = "UPDATE dbo.AppTenantSetting SET SetupValue = @val WHERE SetupCode = @code";
                         adapter.ExecuteExecuteNonQuery(sql, new List<SqlParameter>
                         {
-                            new SqlParameter("@val", (object)(dto.SetupValue ?? string.Empty)),
+                            new SqlParameter("@val", (object)value),
                             new SqlParameter("@code", dto.SetupCode)
                         });
                     }
