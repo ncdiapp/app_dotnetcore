@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using App.BL.AIAgent.GenericAgent;
 using APP.Components.Dto.Document;
+using APP.Framework;
 using Google.Cloud.DocumentAI.V1;
 using Google.Cloud.Storage.V1;
 using Google.Apis.Auth.OAuth2;
@@ -78,9 +79,13 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         var outputPrefix = $"document-ai/output/{request.CompanyId}/{jobId}/";
         var inputUri = $"gs://{bucket}/{inputObject}";
         var outputUri = $"gs://{bucket}/{outputPrefix}";
-        var credential = string.IsNullOrWhiteSpace(configuration.CredentialJson)
+        var credentialJson = configuration.CredentialJson;
+        if (string.IsNullOrWhiteSpace(credentialJson) && !string.IsNullOrWhiteSpace(configuration.CredentialFilePath))
+            credentialJson = File.ReadAllText(ResolveCredentialFilePath(configuration.CredentialFilePath));
+
+        var credential = string.IsNullOrWhiteSpace(credentialJson)
             ? null
-            : GoogleCredential.FromJson(configuration.CredentialJson);
+            : GoogleCredential.FromJson(credentialJson);
         var storage = credential == null
             ? await StorageClient.CreateAsync()
             : await new StorageClientBuilder { Credential = credential }.BuildAsync();
@@ -179,6 +184,10 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
     public static PdfTechPackConfiguration ResolveTenantConfiguration()
     {
         var identity = (APP.Components.Dto.AppClientIdentity?)APP.Framework.ServerContext.Instance.CurrnetClientIdentity;
+        var credentialSetting = identity.HasValue
+            ? DecryptCredential(AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAICredentialJson, identity.Value))
+            : null;
+        var isCredentialJson = credentialSetting?.TrimStart().StartsWith("{", StringComparison.Ordinal) == true;
         return new PdfTechPackConfiguration
         {
             ProjectId = identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIProjectId, identity.Value) : null,
@@ -187,14 +196,32 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
             Bucket = identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIBucket, identity.Value) : null,
             PollTimeoutMinutes = int.TryParse(identity.HasValue ? AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAIPollTimeoutMinutes, identity.Value) : null, out var timeout)
                 ? timeout : null
-            ,CredentialJson = identity.HasValue
-                ? DecryptCredential(AppTenantSettingBL.GetStringValue(APP.Components.Dto.EmTenantSettings.GoogleDocumentAICredentialJson, identity.Value))
-                : null
+            ,CredentialJson = isCredentialJson ? credentialSetting : null
+            ,CredentialFilePath = isCredentialJson ? null : credentialSetting
         };
     }
 
     private static string? DecryptCredential(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : AppConnectionStringEncryptionBL.Decrypt(value);
+
+    private static string ResolveCredentialFilePath(string configuredPath)
+    {
+        var root = AppConfig.Get("Google:DocumentAI:CredentialRoot");
+        if (string.IsNullOrWhiteSpace(root))
+            throw new InvalidOperationException("Google:DocumentAI:CredentialRoot must be configured on the server.");
+
+        var rootFull = Path.GetFullPath(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            + Path.DirectorySeparatorChar);
+        var candidate = Path.GetFullPath(Path.IsPathRooted(configuredPath)
+            ? configuredPath
+            : Path.Combine(rootFull, configuredPath));
+
+        if (!candidate.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
+            throw new UnauthorizedAccessException("The tenant Google credential path is outside CredentialRoot.");
+        if (!File.Exists(candidate))
+            throw new FileNotFoundException("Tenant Google credential file was not found.", candidate);
+        return candidate;
+    }
 
     private static PdfTechPackExtractionResultDto BuildResult(
         string jobId,

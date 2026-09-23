@@ -24,4 +24,4 @@ VALUES (N'GoogleDocumentAIPollTimeoutMinutes', N'90', N'Maximum Document AI batc
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppTenantSetting WHERE SetupCode = N'GoogleDocumentAICredentialJson')
 INSERT INTO dbo.AppTenantSetting (SetupCode, SetupValue, Description, UsageType, Category, SubCategory)
-VALUES (N'GoogleDocumentAICredentialJson', N'', N'Encrypted Google service-account JSON for this tenant. Enter through Tenant Application Settings; the value is encrypted before persistence.', 1, N'Google Setting', N'Document AI');
+VALUES (N'GoogleDocumentAICredentialJson', N'', N'Server-side credential file path for this tenant, relative to Google:DocumentAI:CredentialRoot.', 1, N'Google Setting', N'Document AI');

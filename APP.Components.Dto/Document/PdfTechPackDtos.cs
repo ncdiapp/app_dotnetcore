@@ -42,4 +42,5 @@ public sealed class PdfTechPackConfiguration
     public string? Bucket { get; set; }
     public int? PollTimeoutMinutes { get; set; }
     public string? CredentialJson { get; set; }
+    public string? CredentialFilePath { get; set; }
 }
