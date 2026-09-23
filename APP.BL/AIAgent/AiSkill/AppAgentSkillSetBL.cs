@@ -25,7 +25,7 @@ namespace App.BL.AIAgent.AiSkill
         /// <summary>
         /// When true and ExecutionMode is Interactive, empty chat sends hidden [session_start]
         /// so the agent may speak first / call ask_user per SystemPrompt. Default false.
-        /// UI: "Agent speaks first"
+        /// UI: "Agent Starts Chat First"
         /// </summary>
         bool   AllowAgentFirstTurn = false);
 

@@ -16,9 +16,9 @@ export interface AppAgentSkillSetDto {
     RecentWindowSize:   number;
     MaxIterations:      number;
     ExecutionMode:      string;
-    /** EmAppAgentUi: 0 Unspecified, 1 GenericChat, 2 ConfigurationAndIntegration, 3 DbManagement, 4 ImageAndFileProcess */
+    /** Legacy column; unused for chat shell. UI modules follow subscribed libraries. */
     AgentUi:            number;
-    /** When true + Interactive: empty chat fires hidden [session_start]. UI: "Agent speaks first". */
+    /** When true + Interactive: empty chat fires hidden [session_start]. UI: "Agent Starts Chat First". */
     AllowAgentFirstTurn?: boolean;
 }
 

@@ -443,13 +443,20 @@ public class GenericAgentController : SecureBaseController
         return result;
     }
 
-    // POST /webapi/GenericAgent/ClearSession?skillKey=...  (fixed test key)
+    // POST /webapi/GenericAgent/ClearSession?skillKey=...&sessionKey=...
+    // sessionKey omitted → wipe/delete the fixed test key SkillKey:UserId.
     [HttpPost]
-    public IActionResult ClearSession([FromQuery] string skillKey)
+    public IActionResult ClearSession([FromQuery] string skillKey, [FromQuery] string sessionKey = null)
     {
         var identity = ServerContext.Instance.CurrnetClientIdentity;
         if (identity is AppClientIdentity ai && ai.UserId != null)
-            SessionBL.DeleteSession(skillKey, Convert.ToInt32(ai.UserId));
+        {
+            var userId = Convert.ToInt32(ai.UserId);
+            if (!string.IsNullOrWhiteSpace(sessionKey))
+                SessionBL.ClearBySessionKey(sessionKey, skillKey, userId);
+            else
+                SessionBL.DeleteSession(skillKey, userId);
+        }
         return Ok();
     }
 
@@ -773,8 +780,7 @@ public class GenericAgentController : SecureBaseController
         result.Object = agents.Select(a => new ActiveAgentDto
         {
             SkillKey  = a.SkillKey,
-            AgentName = string.IsNullOrWhiteSpace(a.DisplayName) ? a.SkillKey : a.DisplayName,
-            AgentUi   = a.AgentUi
+            AgentName = string.IsNullOrWhiteSpace(a.DisplayName) ? a.SkillKey : a.DisplayName
         }).ToList();
         return result;
     }
@@ -784,5 +790,4 @@ public class ActiveAgentDto
 {
     public string SkillKey  { get; set; }
     public string AgentName { get; set; }
-    public int    AgentUi   { get; set; }
 }

@@ -10,6 +10,7 @@ import {
     saveAgentChatToTabCache,
 } from './agentChatTabCache';
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
+import { chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 
 const SESSION_START = '[session_start]';
 
@@ -44,6 +45,9 @@ interface PlanEvent {
 interface Props {
     skillKey: string;
     testMode?: boolean;
+    /** AppGenericAgentSession.SessionKey. Sidebar Chat Management passes a GUID; Agent Management Run omits it. */
+    chatSessionKey?: string | null;
+    onConversationChanged?: () => void;
 }
 
 const snippet = (s?: string | null, max = 300) =>
@@ -245,7 +249,7 @@ const toolTooltip = (toolName: string, args?: string | null, skillNames?: Record
     return `SkillKey: ${key}`;
 };
 
-const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
+const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey, onConversationChanged }) => {
     const { theme } = useTheme();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [turnActivities, setTurnActivities] = useState<TurnActivity[]>([]);
@@ -261,6 +265,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
     const [error, setError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [rightTab, setRightTab] = useState<'tools' | 'files'>('tools');
+    const [uiModules, setUiModules] = useState<Set<AgentChatUiModule>>(() => new Set());
     const [fileSessionKey, setFileSessionKey] = useState<string | null>(null);
     const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
     const [skillDisplayNames, setSkillDisplayNames] = useState<Record<string, string>>({});
@@ -301,13 +306,22 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
     askAnswersRef.current = askAnswers;
     askSelectedIdsRef.current = askSelectedIds;
     askFreeTextRef.current = askFreeText;
+    const chatSessionKeyRef = useRef<string | null>(chatSessionKey ?? null);
+    chatSessionKeyRef.current = chatSessionKey ?? null;
+    const onConversationChangedRef = useRef(onConversationChanged);
+    onConversationChangedRef.current = onConversationChanged;
 
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, turnActivities, pendingAskUser]);
 
+    useEffect(() => {
+        if (rightTab === 'files' && !uiModules.has('files')) setRightTab('tools');
+    }, [rightTab, uiModules]);
+
     const buildSnapshot = (): GenericAgentChatUiSnapshot => ({
         skillKey: skillKeyRef.current,
+        chatSessionKey: chatSessionKeyRef.current,
         messages: messagesRef.current.map(m => ({ ...m, toolSteps: m.toolSteps ? [...m.toolSteps] : undefined })),
         turnActivities: turnActivitiesRef.current.map(t => ({
             ...t,
@@ -437,6 +451,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
             setPendingAskUser(null);
             setIsRunning(false);
             isRunningRef.current = false;
+            onConversationChangedRef.current?.();
         },
         onError: (m: string) => {
             if (!mountedRef.current) return;
@@ -455,7 +470,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
             if (testMode) return false;
             const tabKey = getActiveTabKey();
             tabKeyRef.current = tabKey;
-            const snap = loadAgentChatFromTabCache(tabKey, skillKey);
+            const snap = loadAgentChatFromTabCache(tabKey, skillKey, chatSessionKey ?? null);
             if (!snap) return false;
             const hasUi =
                 (snap.messages?.length ?? 0) > 0
@@ -516,9 +531,13 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
             skillExecutionModeRef.current = 'Interactive';
         }
 
-        genericAgentSvc.GetFixedSessionKey(skillKey).then(key => {
-            if (!cancelled) setFileSessionKey(key);
-        });
+        if (chatSessionKey) {
+            setFileSessionKey(chatSessionKey);
+        } else {
+            genericAgentSvc.GetFixedSessionKey(skillKey).then(key => {
+                if (!cancelled) setFileSessionKey(key);
+            });
+        }
 
         const fireSessionStartIfAllowed = (mode: string, allowFirstTurn: boolean) => {
             if (cancelled || sessionStartFiredRef.current) return;
@@ -536,7 +555,10 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
             let mode = 'Interactive';
             let allowFirstTurn = false;
             try {
-                const res = await agentSkillSetSvc.GetAllSkillSets();
+                const [res, subRes] = await Promise.all([
+                    agentSkillSetSvc.GetAllSkillSets(),
+                    agentSkillSetSvc.GetSubscriptions(skillKey).catch(() => null),
+                ]);
                 if (cancelled) return;
                 const map: Record<string, string> = {};
                 for (const s of res?.Object ?? []) {
@@ -547,6 +569,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                     }
                 }
                 setSkillDisplayNames(map);
+                setUiModules(chatModulesFromLibraries((subRes?.Object ?? []).map(s => s.LibraryKey)));
                 if (!restored) {
                     setSkillExecutionMode(mode);
                     skillExecutionModeRef.current = mode;
@@ -561,7 +584,9 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
             }
 
             try {
-                const prior = await genericAgentSvc.LoadSession(skillKey);
+                const prior = chatSessionKey
+                    ? (await genericAgentSvc.LoadChat(skillKey, chatSessionKey))?.Messages ?? []
+                    : await genericAgentSvc.LoadSession(skillKey);
                 if (cancelled) return;
                 const meaningful = (prior ?? []).filter(
                     m => !(m.role === 'user' && (typeof m.content === 'string' ? m.content : String(m.content ?? '')) === SESSION_START)
@@ -625,7 +650,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                 genericAgentSvc.disconnect();
             }
         };
-    }, [skillKey, testMode]);
+    }, [skillKey, testMode, chatSessionKey]);
 
     const runAgentTurn = async (opts: {
         userMessage: string;
@@ -656,7 +681,13 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                 }));
 
             const sid = await genericAgentSvc.RunAgent(
-                { SkillKey: skillKey, UserMessage: msg, SessionId: sessionIdRef.current ?? undefined, Messages: history },
+                {
+                    SkillKey: skillKey,
+                    UserMessage: msg,
+                    SessionId: sessionIdRef.current ?? undefined,
+                    ChatSessionKey: chatSessionKeyRef.current || undefined,
+                    Messages: history,
+                },
                 buildLiveHandlers(turnIdx),
             );
             setSessionId(sid);
@@ -759,7 +790,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
         setAskAnswers({});
         setAskSelectedIds([]);
         setAskFreeText('');
-        if (!testMode) await genericAgentSvc.ClearSession(skillKey);
+        if (!testMode) await genericAgentSvc.ClearSession(skillKey, chatSessionKeyRef.current || undefined);
         sessionStartFiredRef.current = true;
         if (/^Interactive$/i.test(skillExecutionModeRef.current || 'Interactive')) {
             await runAgentTurn({ userMessage: SESSION_START, hideUserBubble: true, historyBase: [] });
@@ -997,6 +1028,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                         >
                             Tool Activity
                         </button>
+                        {uiModules.has('files') && (
                         <button
                             type="button"
                             className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'files' ? ' font-semibold' : ' opacity-70'}`}
@@ -1004,12 +1036,13 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode }) => {
                         >
                             Files
                         </button>
+                        )}
                         <button className="text-xs opacity-50 hover:opacity-100 ml-auto" onClick={() => setSidebarOpen(false)}>
                             <i className="fa-solid fa-xmark" />
                         </button>
                     </div>
 
-                    {rightTab === 'files' ? (
+                    {rightTab === 'files' && uiModules.has('files') ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
                             <GenericAgentFilesPanel skillKey={skillKey} sessionKey={fileSessionKey} />
                         </div>

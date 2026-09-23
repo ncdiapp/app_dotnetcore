@@ -35,11 +35,15 @@ export function saveAgentChatToTabCache(
 export function loadAgentChatFromTabCache(
   tabKey: string | null | undefined,
   skillKey: string,
+  chatSessionKey?: string | null,
 ): GenericAgentChatUiSnapshot | null {
   if (!tabKey) return null;
   const raw = getDataModelFromCache(tabKey) as AgentChatTabCache | null;
   if (!raw || raw.pageType !== AGENT_CHAT_PAGE_TYPE) return null;
   if (raw.skillKey && skillKey && raw.skillKey !== skillKey) return null;
+  const cachedChat = raw.chatSessionKey ?? null;
+  const wantChat = chatSessionKey ?? null;
+  if (cachedChat !== wantChat) return null;
   const hasUi =
     (raw.messages?.length ?? 0) > 0
     || !!raw.pendingAskUser

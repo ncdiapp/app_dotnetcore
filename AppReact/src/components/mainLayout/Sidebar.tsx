@@ -33,7 +33,7 @@ const Sidebar: React.FC = () => {
       setActiveAgentItems(agents.map(a => ({
         Id: `ai-agent-dynamic-${a.SkillKey}`,
         Name: a.AgentName,
-        RouteCode: `/agent-chat?skillKey=${encodeURIComponent(a.SkillKey)}&agentUi=${a.AgentUi}`,
+        RouteCode: `/agent-chat?skillKey=${encodeURIComponent(a.SkillKey)}`,
       })));
     });
   }, [menuRefreshTick]);

@@ -83,7 +83,10 @@ public sealed class GetPlmImportSessionTool : IAgentTool
         CancellationToken cancellationToken)
     {
         var targetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId");
-        return Task.FromResult(PlmBlToolArgs.Serialize(PlmImportEngine.GetActiveImportSession(targetCompanyId)));
+        var chatSessionKey = PlmBlToolArgs.GetString(args, "chatSessionKey")
+            ?? context?.ChatSessionKey;
+        return Task.FromResult(PlmBlToolArgs.Serialize(
+            PlmImportEngine.GetImportSessionForChat(chatSessionKey, targetCompanyId)));
     }
 }
 
@@ -128,13 +131,17 @@ public sealed class SavePlmImportSessionTool : IAgentTool
         // Strip any connection string the model may have put in sessionJson.
         dto.PlmConnectionString = null;
 
+        if (string.IsNullOrWhiteSpace(dto.ChatSessionKey))
+            dto.ChatSessionKey = PlmBlToolArgs.GetString(args, "chatSessionKey")
+                ?? context?.ChatSessionKey;
+
         return Task.FromResult(PlmBlToolArgs.Serialize(PlmImportEngine.SaveImportSession(dto)));
     }
 }
 
 /// <summary>
-/// Persist Agent Wizard checklist onto AppPlmImportSession.StepStateJson (agentWizardJson).
-/// Call after every successful step so progress survives app restart.
+/// Persist wizard onto AppAgentSharedContext (ScopeId = current ChatSessionKey).
+/// Survives restart; does not require AppPlmImportSession.
 /// </summary>
 public sealed class UpdatePlmWizardProgressTool : IAgentTool
 {
@@ -147,14 +154,15 @@ public sealed class UpdatePlmWizardProgressTool : IAgentTool
         var wizardJson = PlmBlToolArgs.GetString(args, "wizardJson");
         var currentStepCode = PlmBlToolArgs.GetString(args, "currentStepCode");
         var targetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId");
+        var chatSessionKey = PlmBlToolArgs.GetString(args, "chatSessionKey")
+            ?? context?.ChatSessionKey;
         return Task.FromResult(PlmBlToolArgs.Serialize(
-            PlmImportEngine.UpdateWizardProgress(sessionId, wizardJson, currentStepCode, targetCompanyId)));
+            PlmImportEngine.UpdateWizardProgress(sessionId, wizardJson, currentStepCode, targetCompanyId, chatSessionKey)));
     }
 }
 
 /// <summary>
-/// Load Agent Wizard from AppPlmImportSession for resume after app restart.
-/// Prefer this over WorkflowId-scoped shared context alone.
+/// Load wizard for this Chat from AppAgentSharedContext (ScopeId = ChatSessionKey).
 /// </summary>
 public sealed class GetPlmWizardProgressTool : IAgentTool
 {
@@ -165,7 +173,9 @@ public sealed class GetPlmWizardProgressTool : IAgentTool
     {
         var sessionId = PlmBlToolArgs.ParseInt(args, "sessionId");
         var targetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId");
+        var chatSessionKey = PlmBlToolArgs.GetString(args, "chatSessionKey")
+            ?? context?.ChatSessionKey;
         return Task.FromResult(PlmBlToolArgs.Serialize(
-            PlmImportEngine.GetWizardProgress(sessionId, targetCompanyId)));
+            PlmImportEngine.GetWizardProgress(sessionId, targetCompanyId, chatSessionKey)));
     }
 }

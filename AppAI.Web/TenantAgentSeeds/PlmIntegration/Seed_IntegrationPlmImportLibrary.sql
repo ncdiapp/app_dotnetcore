@@ -119,7 +119,7 @@ INSERT INTO dbo.AppAgentLibraryTool
 VALUES (
     N'integration-plm-import',
     N'update_plm_wizard_progress',
-    N'Persist plm.integration.wizard JSON onto AppPlmImportSession (StepStateJson.agentWizardJson). Call after every successful step so checklist survives app restart. Pass sessionId + wizardJson (full wizard object).',
+    N'Persist plm.integration.wizard JSON onto AppAgentSharedContext with ScopeId=this ChatSessionKey (durable across restart; not WorkflowId). Pass wizardJson. sessionId optional.',
     N'{"type":"object","properties":{"sessionId":{"type":"integer"},"wizardJson":{"type":"string","description":"Full plm.integration.wizard JSON"},"currentStepCode":{"type":"string","description":"Optional; defaults to wizard.cursor"},"targetCompanyId":{"type":"integer"}},"required":["wizardJson"]}',
     N'ExternalDll',
     N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.UpdatePlmWizardProgressTool"}',
@@ -134,7 +134,7 @@ INSERT INTO dbo.AppAgentLibraryTool
 VALUES (
     N'integration-plm-import',
     N'get_plm_wizard_progress',
-    N'Load Agent Wizard JSON from AppPlmImportSession for resume after app restart. Prefer over WorkflowId shared context alone. Returns {found, sessionId, wizardJson, currentStepCode}.',
+    N'Load wizard JSON for this Chat from AppAgentSharedContext (ScopeId=ChatSessionKey). Never reads another Chat. Returns {found, sessionId, wizardJson, currentStepCode}.',
     N'{"type":"object","properties":{"sessionId":{"type":"integer"},"targetCompanyId":{"type":"integer"}}}',
     N'ExternalDll',
     N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.GetPlmWizardProgressTool"}',

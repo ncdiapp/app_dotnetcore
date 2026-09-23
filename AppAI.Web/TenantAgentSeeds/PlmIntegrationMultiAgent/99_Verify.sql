@@ -36,6 +36,6 @@ SELECT SkillKey, LibraryKey FROM dbo.AppAgentLibrarySubscription
 WHERE SkillKey IN (N'plm-integration-orchestrator', N'plm-integration-import-dw')
 ORDER BY SkillKey, LibraryKey;
 
-PRINT '=== Shared context table ===';
+PRINT '=== Shared context table (platform; wizard durable scope = ChatSessionKey) ===';
 SELECT CASE WHEN OBJECT_ID(N'dbo.AppAgentSharedContext', N'U') IS NULL THEN 'MISSING' ELSE 'OK' END AS AppAgentSharedContext;
 GO

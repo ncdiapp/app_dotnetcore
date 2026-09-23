@@ -19,7 +19,9 @@ public sealed class DiscardSessionTool : IAgentTool
     {
         var sessionId = PlmBlToolArgs.ParseInt(args, "sessionId");
         var targetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId");
-        var result = PlmImportEngine.DiscardImportSession(sessionId, targetCompanyId);
+        var chatSessionKey = PlmBlToolArgs.GetString(args, "chatSessionKey")
+            ?? context?.ChatSessionKey;
+        var result = PlmImportEngine.DiscardImportSession(sessionId, targetCompanyId, chatSessionKey);
         return Task.FromResult(PlmBlToolArgs.Serialize(result));
     }
 }

@@ -41,9 +41,9 @@ namespace APP.Components.EntityDto
         public int    RecentWindowSize    { get; set; } = 10;
         public int    MaxIterations       { get; set; } = 40;
         public string ExecutionMode       { get; set; } = "Interactive";
-        /// <summary>EmAppAgentUi: 0 Unspecified, 1 GenericChat, 2 ConfigurationAndIntegration, 3 DbManagement, 4 ImageAndFileProcess.</summary>
+        /// <summary>Legacy AppAgentSkillSet.AgentUi. Column kept; chat UI modules follow subscribed tool libraries.</summary>
         public int    AgentUi             { get; set; } = 1;
-        /// <summary>When true and Interactive, empty chat sends [session_start] (UI: Agent speaks first).</summary>
+        /// <summary>When true and Interactive, empty chat sends [session_start] (UI: Agent Starts Chat First).</summary>
         public bool   AllowAgentFirstTurn { get; set; }
     }
 

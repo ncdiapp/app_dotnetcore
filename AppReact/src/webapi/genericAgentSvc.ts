@@ -73,6 +73,7 @@ export interface ConfirmAskUserDto {
 /** In-memory UI state so Agent Chat survives App-tab remount without restarting. */
 export interface GenericAgentChatUiSnapshot {
     skillKey: string;
+    chatSessionKey?: string | null;
     messages: Array<{
         role: 'user' | 'assistant';
         content: string;
@@ -216,7 +217,11 @@ class GenericAgentService {
     async LoadChat(skillKey: string, sessionKey: string): Promise<{
         SessionKey: string;
         Title?: string | null;
-        Messages: Array<{ role: string; content: string }>;
+        Messages: Array<{
+            role: string;
+            content: string;
+            toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
+        }>;
     } | null> {
         try {
             const res = await fetch(
@@ -258,8 +263,10 @@ class GenericAgentService {
         }
     }
 
-    async ClearSession(skillKey: string): Promise<void> {
-        await fetch(`${BASE}/ClearSession?skillKey=${encodeURIComponent(skillKey)}`, {
+    async ClearSession(skillKey: string, sessionKey?: string): Promise<void> {
+        const q = new URLSearchParams({ skillKey: skillKey || '' });
+        if (sessionKey) q.set('sessionKey', sessionKey);
+        await fetch(`${BASE}/ClearSession?${q.toString()}`, {
             method: 'POST',
             headers: getHeaders(),
         }).catch(() => {});
@@ -356,7 +363,7 @@ class GenericAgentService {
         setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     }
 
-    async GetActiveAgents(): Promise<Array<{ SkillKey: string; AgentName: string; AgentUi: number }>> {
+    async GetActiveAgents(): Promise<Array<{ SkillKey: string; AgentName: string }>> {
         try {
             const res = await fetch(`${BASE}/GetActiveAgents`, { headers: getHeaders() });
             if (!res.ok) return [];

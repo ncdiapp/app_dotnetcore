@@ -1,6 +1,32 @@
+/** Strip `?query` so `/agent-chat?skillKey=x` and `/agent-chat` share a route family. */
+export function stripPathQuery(path: string): string {
+  if (!path) return '';
+  const q = path.indexOf('?');
+  return q >= 0 ? path.slice(0, q) : path;
+}
+
+export function isAgentChatPath(path: string): boolean {
+  if (!path) return false;
+  const normalized = stripPathQuery(path.startsWith('/') ? path : `/${path}`).toLowerCase();
+  return normalized === '/agent-chat';
+}
+
+/** `skillKey` from a stored tab path or browser URL (`/agent-chat?skillKey=...`). */
+export function getAgentChatSkillKey(path: string): string {
+  if (!path) return '';
+  const q = path.indexOf('?');
+  if (q < 0) return '';
+  try {
+    return new URLSearchParams(path.slice(q + 1)).get('skillKey') ?? '';
+  } catch {
+    return '';
+  }
+}
+
 /** Extract route base path (strip encoded JSON param segment). */
 export function extractRouteBasePath(path: string): string {
   if (!path) return '/';
+  path = stripPathQuery(path);
   const parts = path.split('/').filter((p) => p);
   if (parts.length === 0) return '/';
   const lastPart = parts[parts.length - 1];
@@ -20,6 +46,12 @@ export function canUpdateTabPath(currentPath: string, newPath: string): boolean 
   if (!newPath) return false;
   if (!currentPath) return true;
   if (currentPath === newPath) return true;
+  if (isAgentChatPath(currentPath) || isAgentChatPath(newPath)) {
+    if (!isAgentChatPath(currentPath) || !isAgentChatPath(newPath)) return false;
+    const currentSkill = getAgentChatSkillKey(currentPath);
+    const nextSkill = getAgentChatSkillKey(newPath);
+    return !currentSkill || !nextSkill || currentSkill === nextSkill;
+  }
   return extractRouteBasePath(currentPath) === extractRouteBasePath(newPath);
 }
 
@@ -27,6 +59,12 @@ export function canUpdateTabPath(currentPath: string, newPath: string): boolean 
 export function tabRoutePathsMatch(tabPath: string, urlPath: string): boolean {
   if (!tabPath || !urlPath) return false;
   if (tabPath === urlPath) return true;
+  if (isAgentChatPath(tabPath) || isAgentChatPath(urlPath)) {
+    if (!isAgentChatPath(tabPath) || !isAgentChatPath(urlPath)) return false;
+    const tabSkill = getAgentChatSkillKey(tabPath);
+    const urlSkill = getAgentChatSkillKey(urlPath);
+    return !!tabSkill && tabSkill === urlSkill;
+  }
 
   try {
     if (decodeURIComponent(tabPath) === decodeURIComponent(urlPath)) return true;

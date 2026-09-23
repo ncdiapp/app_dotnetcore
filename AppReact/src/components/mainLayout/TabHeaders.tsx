@@ -45,7 +45,7 @@ const TabHeaders: React.FC = () => {
     
     if (tab.isClosable !== false) {
       const wasActiveTab = tab.isActive;
-      const isViewingClosedTab = tabRoutePathsMatch(tab.path, location.pathname);
+      const isViewingClosedTab = tabRoutePathsMatch(tab.path, `${location.pathname}${location.search || ''}`);
 
       dispatch(closeTab(tab.tabKey));
 

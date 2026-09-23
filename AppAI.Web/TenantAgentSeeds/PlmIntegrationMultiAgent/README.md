@@ -24,7 +24,7 @@ RUN_ALL.bat YourServer\Instance YourTenantDb
 
 Example: `RUN_ALL.bat PC3B\MSSQLSERVER01 TenantDB_PLM34`
 
-Prereqs: V031+ migrated; rebuild/copy `APP.AgentPlugins.PlmImport.dll` to `AppAI.Web/AgentPlugins/` (includes `update_plm_wizard_progress` / `get_plm_wizard_progress`); tenant AI key set.
+Prereqs: V022+ (`AppAgentSharedContext`); rebuild/copy `APP.AgentPlugins.PlmImport.dll` (plugin Ensures PLM job tables only when those tools run). Tenant AI key set.
 
 ## What you get
 
@@ -35,6 +35,6 @@ Prereqs: V031+ migrated; rebuild/copy `APP.AgentPlugins.PlmImport.dll` to `AppAI
 
 Gate-0: `list_tenant_saas_applications` + `list_tenant_data_sources` → `ask_user` selects (App + PLM/DW/ERP/ExDb).
 
-**Progress:** in-chat `plm.integration.wizard` + durable `AppPlmImportSession.StepStateJson.agentWizardJson` via `update_plm_wizard_progress` / resume with `get_plm_wizard_progress` on `[session_start]`.
+**Progress:** in-chat `write_shared_context` (WorkflowId, this turn) + durable `update_plm_wizard_progress` on `AppAgentSharedContext` with ScopeId=`ChatSessionKey`. PLM job table is plugin-only, not a Flyway Vxxx.
 
 **Future children:** see `CHILD_AGENT_CONTRACTS.md` (draft only; ROOT still runs entity/folder/image/color/pom tools locally until those SkillSets are seeded).

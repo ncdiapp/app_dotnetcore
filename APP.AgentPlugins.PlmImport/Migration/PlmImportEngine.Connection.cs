@@ -48,6 +48,7 @@ BEGIN
         UpdatedAt               DATETIME          NOT NULL,
         SessionStatus           NVARCHAR(20)      NOT NULL,
         CurrentStepCode         NVARCHAR(50)      NULL,
+        ChatSessionKey          NVARCHAR(200)     NULL,
         PlmConnectionEncrypted  NVARCHAR(MAX)     NULL,
         StepStateJson           NVARCHAR(MAX)     NULL,
         DataSourceDiscoveryJson NVARCHAR(MAX)     NULL,
@@ -55,6 +56,7 @@ BEGIN
         CONSTRAINT UQ_AppPlmImportSession_Guid UNIQUE (SessionGuid)
     );
     CREATE INDEX IX_AppPlmImportSession_CompanyStatus ON dbo.AppPlmImportSession (CompanyId, SessionStatus);
+    CREATE INDEX IX_AppPlmImportSession_CompanyChat ON dbo.AppPlmImportSession (CompanyId, ChatSessionKey);
 END";
 
         private const string EnsureJobTableSql = @"
@@ -124,7 +126,9 @@ IF COL_LENGTH('dbo.AppPlmImportSession', 'PlmDwDataSourceRegisterId') IS NULL
 IF COL_LENGTH('dbo.AppPlmImportSession', 'ErpDataSourceRegisterId') IS NULL
     ALTER TABLE dbo.AppPlmImportSession ADD ErpDataSourceRegisterId INT NULL;
 IF COL_LENGTH('dbo.AppPlmImportSession', 'PlmExDbDataSourceRegisterId') IS NULL
-    ALTER TABLE dbo.AppPlmImportSession ADD PlmExDbDataSourceRegisterId INT NULL;";
+    ALTER TABLE dbo.AppPlmImportSession ADD PlmExDbDataSourceRegisterId INT NULL;
+IF COL_LENGTH('dbo.AppPlmImportSession', 'ChatSessionKey') IS NULL
+    ALTER TABLE dbo.AppPlmImportSession ADD ChatSessionKey NVARCHAR(200) NULL;";
 
         private const string EnsureLogTableSql = @"
 IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='AppPlmImportLog')
@@ -452,7 +456,7 @@ ORDER BY MenuID",
                 var dt = fixture.RetriveDataTable(@"
 SELECT TOP 1 SessionId, SessionGuid, CompanyId, SaasApplicationId, CreatedByUserId,
        CreatedAt, UpdatedAt, SessionStatus, CurrentStepCode, StepStateJson, DataSourceDiscoveryJson,
-       PlmConnectionEncrypted,
+       PlmConnectionEncrypted, ChatSessionKey,
        PlmDataSourceRegisterId, PlmDwDataSourceRegisterId, ErpDataSourceRegisterId, PlmExDbDataSourceRegisterId,
        CASE WHEN PlmDataSourceRegisterId IS NOT NULL AND PlmDataSourceRegisterId > 0 THEN 1
             WHEN PlmConnectionEncrypted IS NULL OR LEN(PlmConnectionEncrypted)=0 THEN 0 ELSE 1 END AS HasPlmConnection
@@ -474,6 +478,25 @@ ORDER BY UpdatedAt DESC",
                     typeof(PlmImportSessionDto), "Plm_Session_GetActive_Error", ValidationItemType.Error, ex.Message));
             }
 
+            return result;
+        }
+
+        /// <summary>InProgress job for this Chat. Does not fall back to another Chat's company session.</summary>
+        public static OperationCallResult<PlmImportSessionDto> GetImportSessionForChat(string chatSessionKey, int? targetCompanyId)
+        {
+            var result = new OperationCallResult<PlmImportSessionDto>();
+            try
+            {
+                RequirePlmMigrationAdmin();
+                int companyId = ResolveCompanyId(targetCompanyId);
+                var fixture = GetTenantFixture();
+                result.Object = LoadInProgressByChat(fixture, companyId, chatSessionKey);
+            }
+            catch (Exception ex)
+            {
+                result.ValidationResult.Items.Add(new ValidationItem(
+                    typeof(PlmImportSessionDto), "Plm_Session_GetByChat_Error", ValidationItemType.Error, ex.Message));
+            }
             return result;
         }
 
@@ -517,6 +540,14 @@ ORDER BY UpdatedAt DESC",
                 var fixture = GetTenantFixture();
                 var now = DateTime.UtcNow;
 
+                if ((!dto.SessionId.HasValue || dto.SessionId.Value <= 0)
+                    && !string.IsNullOrWhiteSpace(dto.ChatSessionKey))
+                {
+                    var existingForChat = LoadInProgressByChat(fixture, companyId, dto.ChatSessionKey);
+                    if (existingForChat?.SessionId != null && existingForChat.SessionId.Value > 0)
+                        dto.SessionId = existingForChat.SessionId;
+                }
+
                 if (dto.SessionId.HasValue && dto.SessionId.Value > 0)
                 {
                     var pId = fixture.CreateParameter("@SessionId");
@@ -528,6 +559,9 @@ UPDATE dbo.AppPlmImportSession SET
     SaasApplicationId = @SaasApplicationId,
     CurrentStepCode = @CurrentStepCode,
     StepStateJson = @StepStateJson"
+                        + (!string.IsNullOrWhiteSpace(dto.ChatSessionKey)
+                            ? ", ChatSessionKey = @ChatSessionKey"
+                            : "")
                         + (dto.DataSourceDiscoveryJson != null
                             ? ", DataSourceDiscoveryJson = @DataSourceDiscoveryJson"
                             : "")
@@ -565,6 +599,8 @@ UPDATE dbo.AppPlmImportSession SET
                         parms.Add(CreateParam(fixture, "@ErpDataSourceRegisterId", dto.ErpDataSourceRegisterId));
                     if (dto.PlmExDbDataSourceRegisterId.HasValue)
                         parms.Add(CreateParam(fixture, "@PlmExDbDataSourceRegisterId", dto.PlmExDbDataSourceRegisterId));
+                    if (!string.IsNullOrWhiteSpace(dto.ChatSessionKey))
+                        parms.Add(CreateParam(fixture, "@ChatSessionKey", dto.ChatSessionKey.Trim()));
 
                     fixture.ExecuteNonQueryResult(updateSql, parms);
                     result.Object = LoadSessionById(fixture, dto.SessionId.Value, includeConnection: false);
@@ -578,11 +614,11 @@ UPDATE dbo.AppPlmImportSession SET
                     const string insertSql = @"
 INSERT INTO dbo.AppPlmImportSession
     (SessionGuid, CompanyId, SaasApplicationId, CreatedByUserId, CreatedAt, UpdatedAt,
-     SessionStatus, CurrentStepCode, PlmConnectionEncrypted, StepStateJson, DataSourceDiscoveryJson,
+     SessionStatus, CurrentStepCode, ChatSessionKey, PlmConnectionEncrypted, StepStateJson, DataSourceDiscoveryJson,
      PlmDataSourceRegisterId, PlmDwDataSourceRegisterId, ErpDataSourceRegisterId, PlmExDbDataSourceRegisterId)
 VALUES
     (@SessionGuid, @CompanyId, @SaasApplicationId, @CreatedByUserId, @CreatedAt, @UpdatedAt,
-     @Status, @CurrentStepCode, NULL, @StepStateJson, @DataSourceDiscoveryJson,
+     @Status, @CurrentStepCode, @ChatSessionKey, NULL, @StepStateJson, @DataSourceDiscoveryJson,
      @PlmDataSourceRegisterId, @PlmDwDataSourceRegisterId, @ErpDataSourceRegisterId, @PlmExDbDataSourceRegisterId);
 SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
@@ -596,6 +632,8 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
                         CreateParam(fixture, "@UpdatedAt", now),
                         CreateParam(fixture, "@Status", SessionStatusInProgress),
                         CreateParam(fixture, "@CurrentStepCode", dto.CurrentStepCode ?? StepConnect),
+                        CreateParam(fixture, "@ChatSessionKey",
+                            string.IsNullOrWhiteSpace(dto.ChatSessionKey) ? (object)DBNull.Value : dto.ChatSessionKey.Trim()),
                         CreateParam(fixture, "@StepStateJson", (object)dto.StepStateJson ?? DBNull.Value),
                         CreateParam(fixture, "@DataSourceDiscoveryJson", (object)dto.DataSourceDiscoveryJson ?? DBNull.Value),
                         CreateParam(fixture, "@PlmDataSourceRegisterId", (object)dto.PlmDataSourceRegisterId ?? DBNull.Value),
@@ -619,7 +657,10 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
             return result;
         }
 
-        public static OperationCallResult<bool> DiscardImportSession(int? sessionId, int? targetCompanyId)
+        public static OperationCallResult<bool> DiscardImportSession(
+            int? sessionId,
+            int? targetCompanyId,
+            string chatSessionKey = null)
         {
             var result = new OperationCallResult<bool> { Object = false };
             try
@@ -630,13 +671,15 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);";
 
                 if (!sessionId.HasValue || sessionId.Value <= 0)
                 {
-                    var active = GetActiveImportSession(targetCompanyId);
-                    if (active.Object == null)
+                    var forChat = LoadInProgressByChat(fixture, companyId, chatSessionKey);
+                    if (forChat?.SessionId == null)
                     {
+                        if (!string.IsNullOrWhiteSpace(chatSessionKey))
+                            DeleteChatSharedContext(fixture, chatSessionKey.Trim(), WizardSharedContextKey);
                         result.Object = true;
                         return result;
                     }
-                    sessionId = active.Object.SessionId;
+                    sessionId = forChat.SessionId;
                 }
 
                 fixture.ExecuteNonQueryResult(@"
@@ -653,6 +696,8 @@ WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @InP
                     });
 
                 WriteImportLog(fixture, sessionId.Value, null, StepConnect, "SessionDiscarded", "Success", null, null, null, null, "Import session discarded by user.");
+                if (!string.IsNullOrWhiteSpace(chatSessionKey))
+                    DeleteChatSharedContext(fixture, chatSessionKey.Trim(), WizardSharedContextKey);
                 result.Object = true;
             }
             catch (Exception ex)
@@ -742,12 +787,7 @@ WHERE JobId = @JobId AND Status IN (@Queued, @Running)",
                 var fixture = GetTenantFixture();
 
                 if (!sessionId.HasValue || sessionId.Value <= 0)
-                {
-                    var active = GetActiveImportSession(targetCompanyId);
-                    if (active.Object?.SessionId == null)
-                        return result;
-                    sessionId = active.Object.SessionId;
-                }
+                    return result;
 
                 var p = fixture.CreateParameter("@SessionId");
                 p.Value = sessionId.Value;
@@ -843,21 +883,22 @@ VALUES
             public string entityWideTablePrefix { get; set; }
             public string templateImportSettingJson { get; set; }
 
-            /// <summary>
-            /// Agent Wizard progress JSON (plm.integration.wizard). Survives app restart via AppPlmImportSession.
-            /// </summary>
+            /// <summary>Legacy only. Wizard SoT is AppAgentSharedContext ScopeId=ChatSessionKey.</summary>
             public string agentWizardJson { get; set; }
         }
 
+        public const string WizardSharedContextKey = "plm.integration.wizard";
+
         /// <summary>
-        /// Persist Agent Wizard checklist onto the active (or specified) import session StepStateJson.
-        /// Source of truth for resume across app restarts — not WorkflowId-scoped shared context alone.
+        /// Persist wizard onto AppAgentSharedContext with ScopeId = ChatSessionKey
+        /// (survives restart; not WorkflowId). Does not require AppPlmImportSession.
         /// </summary>
         public static OperationCallResult<object> UpdateWizardProgress(
             int? sessionId,
             string wizardJson,
             string currentStepCode,
-            int? targetCompanyId)
+            int? targetCompanyId,
+            string chatSessionKey = null)
         {
             var result = new OperationCallResult<object>();
             try
@@ -865,67 +906,56 @@ VALUES
                 RequirePlmMigrationAdmin();
                 if (string.IsNullOrWhiteSpace(wizardJson))
                     throw new ArgumentException("wizardJson is required.");
+                if (string.IsNullOrWhiteSpace(chatSessionKey))
+                    throw new ArgumentException("ChatSessionKey is required (current Chat).");
 
-                // Validate JSON
                 try { JToken.Parse(wizardJson); }
                 catch (Exception ex)
                 {
                     throw new ArgumentException("wizardJson must be valid JSON: " + ex.Message);
                 }
 
-                int companyId = ResolveCompanyId(targetCompanyId);
                 var fixture = GetTenantFixture();
-
-                PlmImportSessionDto session = null;
-                if (sessionId.HasValue && sessionId.Value > 0)
-                    session = LoadSessionById(fixture, sessionId.Value, includeConnection: false);
-                if (session == null)
-                {
-                    var active = GetActiveImportSession(companyId);
-                    session = active?.Object;
-                }
-                if (session?.SessionId == null || session.SessionId.Value <= 0)
-                    throw new InvalidOperationException("No InProgress AppPlmImportSession found. Run Gate-0 / save_plm_import_session first.");
+                UpsertChatSharedContext(fixture, chatSessionKey.Trim(), WizardSharedContextKey, wizardJson);
 
                 string cursor = currentStepCode;
                 if (string.IsNullOrWhiteSpace(cursor))
                 {
-                    try
-                    {
-                        var w = JObject.Parse(wizardJson);
-                        cursor = w.Value<string>("cursor");
-                    }
+                    try { cursor = JObject.Parse(wizardJson).Value<string>("cursor"); }
                     catch { /* ignore */ }
                 }
 
-                string merged = MergeAgentWizardIntoStepState(session.StepStateJson, wizardJson);
-                var now = DateTime.UtcNow;
-                var pId = fixture.CreateParameter("@SessionId");
-                pId.Value = session.SessionId.Value;
-
-                fixture.ExecuteNonQueryResult(@"
-UPDATE dbo.AppPlmImportSession SET
-    UpdatedAt = @UpdatedAt,
-    CurrentStepCode = @CurrentStepCode,
-    StepStateJson = @StepStateJson
-WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Status",
-                    new List<DbParameter>
+                int? jobSessionId = null;
+                try
+                {
+                    int companyId = ResolveCompanyId(targetCompanyId);
+                    var job = ResolveImportSession(fixture, companyId, sessionId, chatSessionKey);
+                    jobSessionId = job?.SessionId;
+                    if (job?.SessionId != null && job.SessionId.Value > 0 && !string.IsNullOrWhiteSpace(cursor))
                     {
-                        CreateParam(fixture, "@UpdatedAt", now),
-                        CreateParam(fixture, "@CurrentStepCode",
-                            string.IsNullOrWhiteSpace(cursor) ? (session.CurrentStepCode ?? StepConnect) : cursor.Trim()),
-                        CreateParam(fixture, "@StepStateJson", merged),
-                        pId,
-                        CreateParam(fixture, "@CompanyId", companyId),
-                        CreateParam(fixture, "@Status", SessionStatusInProgress)
-                    });
+                        fixture.ExecuteNonQueryResult(@"
+UPDATE dbo.AppPlmImportSession SET UpdatedAt = @UpdatedAt, CurrentStepCode = @CurrentStepCode
+WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Status",
+                            new List<DbParameter>
+                            {
+                                CreateParam(fixture, "@UpdatedAt", DateTime.UtcNow),
+                                CreateParam(fixture, "@CurrentStepCode", cursor.Trim()),
+                                CreateParam(fixture, "@SessionId", job.SessionId.Value),
+                                CreateParam(fixture, "@CompanyId", companyId),
+                                CreateParam(fixture, "@Status", SessionStatusInProgress)
+                            });
+                    }
+                }
+                catch { /* Job table is PLM-only; wizard persist must not depend on it. */ }
 
                 result.Object = new
                 {
                     ok = true,
-                    sessionId = session.SessionId.Value,
-                    currentStepCode = string.IsNullOrWhiteSpace(cursor) ? session.CurrentStepCode : cursor.Trim(),
-                    wizardPersisted = true
+                    sessionId = jobSessionId,
+                    chatSessionKey = chatSessionKey.Trim(),
+                    currentStepCode = cursor,
+                    wizardPersisted = true,
+                    scope = "chat"
                 };
             }
             catch (Exception ex)
@@ -937,42 +967,65 @@ WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Sta
         }
 
         /// <summary>
-        /// Read Agent Wizard JSON from active (or specified) import session for resume after app restart.
+        /// Read wizard for this Chat from AppAgentSharedContext (ScopeId=ChatSessionKey).
+        /// Legacy fallback: AppPlmImportSession.StepStateJson.agentWizardJson if Chat scope is empty.
         /// </summary>
-        public static OperationCallResult<object> GetWizardProgress(int? sessionId, int? targetCompanyId)
+        public static OperationCallResult<object> GetWizardProgress(
+            int? sessionId,
+            int? targetCompanyId,
+            string chatSessionKey = null)
         {
             var result = new OperationCallResult<object>();
             try
             {
                 RequirePlmMigrationAdmin();
-                int companyId = ResolveCompanyId(targetCompanyId);
-                var fixture = GetTenantFixture();
-
-                PlmImportSessionDto session = null;
-                if (sessionId.HasValue && sessionId.Value > 0)
-                    session = LoadSessionById(fixture, sessionId.Value, includeConnection: false);
-                if (session == null)
-                {
-                    var active = GetActiveImportSession(companyId);
-                    session = active?.Object;
-                }
-
-                if (session?.SessionId == null)
+                if (string.IsNullOrWhiteSpace(chatSessionKey))
                 {
                     result.Object = new { ok = true, found = false, sessionId = (int?)null, wizardJson = (string)null };
                     return result;
                 }
 
-                string wizardJson = ExtractAgentWizardJson(session.StepStateJson);
+                var fixture = GetTenantFixture();
+                string wizardJson = ReadChatSharedContext(fixture, chatSessionKey.Trim(), WizardSharedContextKey);
+
+                int? jobSessionId = null;
+                int? saasApplicationId = null;
+                string sessionStatus = null;
+                string cursor = null;
+                try
+                {
+                    int companyId = ResolveCompanyId(targetCompanyId);
+                    var job = ResolveImportSession(fixture, companyId, sessionId, chatSessionKey);
+                    jobSessionId = job?.SessionId;
+                    saasApplicationId = job?.SaasApplicationId;
+                    sessionStatus = job?.SessionStatus;
+                    cursor = job?.CurrentStepCode;
+                    if (string.IsNullOrWhiteSpace(wizardJson) && job != null)
+                    {
+                        wizardJson = ExtractAgentWizardJson(job.StepStateJson);
+                        if (!string.IsNullOrWhiteSpace(wizardJson))
+                            UpsertChatSharedContext(fixture, chatSessionKey.Trim(), WizardSharedContextKey, wizardJson);
+                    }
+                }
+                catch { /* Job table is PLM-only. */ }
+
+                if (string.IsNullOrWhiteSpace(cursor) && !string.IsNullOrWhiteSpace(wizardJson))
+                {
+                    try { cursor = JObject.Parse(wizardJson).Value<string>("cursor"); }
+                    catch { /* ignore */ }
+                }
+
                 result.Object = new
                 {
                     ok = true,
                     found = !string.IsNullOrWhiteSpace(wizardJson),
-                    sessionId = session.SessionId,
-                    saasApplicationId = session.SaasApplicationId,
-                    currentStepCode = session.CurrentStepCode,
-                    sessionStatus = session.SessionStatus,
-                    wizardJson
+                    sessionId = jobSessionId,
+                    chatSessionKey = chatSessionKey.Trim(),
+                    saasApplicationId,
+                    currentStepCode = cursor,
+                    sessionStatus,
+                    wizardJson,
+                    scope = "chat"
                 };
             }
             catch (Exception ex)
@@ -981,6 +1034,51 @@ WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Sta
                     typeof(PlmImportSessionDto), "Plm_Wizard_GetFailed", ValidationItemType.Error, ex.Message));
             }
             return result;
+        }
+
+        private static string ReadChatSharedContext(DatabaseFixture fixture, string chatSessionKey, string contextKey)
+        {
+            if (string.IsNullOrWhiteSpace(chatSessionKey) || string.IsNullOrWhiteSpace(contextKey))
+                return null;
+            var dt = fixture.RetriveDataTable(
+                "SELECT DataJson FROM dbo.AppAgentSharedContext WHERE ScopeId=@S AND ContextKey=@K",
+                new List<DbParameter>
+                {
+                    CreateParam(fixture, "@S", chatSessionKey),
+                    CreateParam(fixture, "@K", contextKey)
+                });
+            if (dt == null || dt.Rows.Count == 0) return null;
+            return dt.Rows[0]["DataJson"]?.ToString();
+        }
+
+        private static void UpsertChatSharedContext(
+            DatabaseFixture fixture, string chatSessionKey, string contextKey, string dataJson)
+        {
+            fixture.ExecuteNonQueryResult(@"
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSharedContext WHERE ScopeId=@S AND ContextKey=@K)
+    UPDATE dbo.AppAgentSharedContext SET DataJson=@J, UpdatedAt=GETUTCDATE() WHERE ScopeId=@S AND ContextKey=@K
+ELSE
+    INSERT INTO dbo.AppAgentSharedContext (ScopeId, ContextKey, DataJson, UpdatedAt)
+    VALUES (@S, @K, @J, GETUTCDATE())",
+                new List<DbParameter>
+                {
+                    CreateParam(fixture, "@S", chatSessionKey),
+                    CreateParam(fixture, "@K", contextKey),
+                    CreateParam(fixture, "@J", dataJson ?? "")
+                });
+        }
+
+        private static void DeleteChatSharedContext(DatabaseFixture fixture, string chatSessionKey, string contextKey)
+        {
+            if (string.IsNullOrWhiteSpace(chatSessionKey) || string.IsNullOrWhiteSpace(contextKey))
+                return;
+            fixture.ExecuteNonQueryResult(
+                "DELETE FROM dbo.AppAgentSharedContext WHERE ScopeId=@S AND ContextKey=@K",
+                new List<DbParameter>
+                {
+                    CreateParam(fixture, "@S", chatSessionKey),
+                    CreateParam(fixture, "@K", contextKey)
+                });
         }
 
         internal static string ExtractAgentWizardJson(string stepStateJson)
@@ -1145,6 +1243,47 @@ WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Sta
 
         #region Mapping helpers
 
+        private static PlmImportSessionDto ResolveImportSession(
+            DatabaseFixture fixture,
+            int companyId,
+            int? sessionId,
+            string chatSessionKey)
+        {
+            if (sessionId.HasValue && sessionId.Value > 0)
+            {
+                var byId = LoadSessionById(fixture, sessionId.Value, includeConnection: false);
+                if (byId != null) return byId;
+            }
+            return LoadInProgressByChat(fixture, companyId, chatSessionKey);
+        }
+
+        private static PlmImportSessionDto LoadInProgressByChat(
+            DatabaseFixture fixture,
+            int companyId,
+            string chatSessionKey)
+        {
+            if (string.IsNullOrWhiteSpace(chatSessionKey)) return null;
+
+            var dt = fixture.RetriveDataTable(@"
+SELECT TOP 1 SessionId, SessionGuid, CompanyId, SaasApplicationId, CreatedByUserId,
+       CreatedAt, UpdatedAt, SessionStatus, CurrentStepCode, StepStateJson, DataSourceDiscoveryJson,
+       PlmConnectionEncrypted, ChatSessionKey,
+       PlmDataSourceRegisterId, PlmDwDataSourceRegisterId, ErpDataSourceRegisterId, PlmExDbDataSourceRegisterId,
+       CASE WHEN PlmDataSourceRegisterId IS NOT NULL AND PlmDataSourceRegisterId > 0 THEN 1
+            WHEN PlmConnectionEncrypted IS NULL OR LEN(PlmConnectionEncrypted)=0 THEN 0 ELSE 1 END AS HasPlmConnection
+FROM dbo.AppPlmImportSession
+WHERE CompanyId = @CompanyId AND ChatSessionKey = @ChatSessionKey AND SessionStatus = @Status
+ORDER BY UpdatedAt DESC",
+                new List<DbParameter>
+                {
+                    CreateParam(fixture, "@CompanyId", companyId),
+                    CreateParam(fixture, "@ChatSessionKey", chatSessionKey.Trim()),
+                    CreateParam(fixture, "@Status", SessionStatusInProgress)
+                });
+            if (dt == null || dt.Rows.Count == 0) return null;
+            return MapSessionRow(dt.Rows[0], includeConnection: false);
+        }
+
         private static PlmImportSessionDto LoadSessionById(DatabaseFixture fixture, int sessionId, bool includeConnection)
         {
             var p = fixture.CreateParameter("@SessionId");
@@ -1152,7 +1291,7 @@ WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Sta
             var dt = fixture.RetriveDataTable(@"
 SELECT SessionId, SessionGuid, CompanyId, SaasApplicationId, CreatedByUserId,
        CreatedAt, UpdatedAt, SessionStatus, CurrentStepCode, StepStateJson, DataSourceDiscoveryJson,
-       PlmConnectionEncrypted,
+       PlmConnectionEncrypted, ChatSessionKey,
        PlmDataSourceRegisterId, PlmDwDataSourceRegisterId, ErpDataSourceRegisterId, PlmExDbDataSourceRegisterId,
        CASE WHEN PlmDataSourceRegisterId IS NOT NULL AND PlmDataSourceRegisterId > 0 THEN 1
             WHEN PlmConnectionEncrypted IS NULL OR LEN(PlmConnectionEncrypted)=0 THEN 0 ELSE 1 END AS HasPlmConnection
@@ -1175,6 +1314,9 @@ FROM dbo.AppPlmImportSession WHERE SessionId = @SessionId",
                 UpdatedAt = row["UpdatedAt"] as DateTime?,
                 SessionStatus = row["SessionStatus"] as string,
                 CurrentStepCode = row["CurrentStepCode"] as string,
+                ChatSessionKey = row.Table.Columns.Contains("ChatSessionKey") && row["ChatSessionKey"] != DBNull.Value
+                    ? row["ChatSessionKey"] as string
+                    : null,
                 StepStateJson = row["StepStateJson"] as string,
                 DataSourceDiscoveryJson = row["DataSourceDiscoveryJson"] as string,
                 HasPlmConnection = Convert.ToInt32(row["HasPlmConnection"]) == 1,

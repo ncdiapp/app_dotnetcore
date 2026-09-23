@@ -3145,8 +3145,8 @@ namespace APP.Components.Dto
     //}
 
     /// <summary>
-    /// Agent chat UI shell selected on AppAgentSkillSet.AgentUi.
-    /// Unspecified (0) resolves to GenericChat at runtime.
+    /// Legacy AppAgentSkillSet.AgentUi values. Column is kept; chat shell is Generic Chat
+    /// and extra UI modules follow subscribed tool libraries.
     /// </summary>
     public enum EmAppAgentUi
     {

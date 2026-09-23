@@ -14,7 +14,7 @@ import {
 import AgentToolRegisterTab from './AgentToolRegisterTab';
 import AgentMcpServerTab from './AgentMcpServerTab';
 import AgentUiChatHost from './AgentUiChatHost';
-import { AGENT_UI_OPTIONS, EmAppAgentUi, resolveAgentUi } from './agentUiTypes';
+import { chatModulesFromLibraries } from './agentUiModules';
 import AgentLibraryTab from './AgentLibraryTab';
 
 type Tab = 'skills' | 'mcp' | 'libraries';
@@ -29,7 +29,7 @@ const emptySkillSet = (): AppAgentSkillSetDto => ({
     IsActive: true, SortOrder: 0, Version: 1,
     MaxHistoryTokens: 80000, SummarizeThreshold: 60000, MaxToolResultChars: 4000, RecentWindowSize: 10, MaxIterations: 40,
     ExecutionMode: 'Interactive',
-    AgentUi: EmAppAgentUi.GenericChat,
+    AgentUi: 1,
     AllowAgentFirstTurn: false,
 });
 
@@ -108,7 +108,7 @@ const AgentSkillSetManagement: React.FC = () => {
             if (syncEditFromServer) {
                 setEditItem({
                     ...fresh,
-                    AgentUi: resolveAgentUi(fresh.AgentUi),
+                    AgentUi: fresh.AgentUi > 0 ? fresh.AgentUi : 1,
                 });
                 setIsEditing(true);
                 setIsDirty(false);
@@ -208,7 +208,7 @@ const AgentSkillSetManagement: React.FC = () => {
         setSelected(item);
         setEditItem({
             ...item,
-            AgentUi: resolveAgentUi(item.AgentUi),
+            AgentUi: item.AgentUi > 0 ? item.AgentUi : 1,
         });
         setIsEditing(true);
         setIsDirty(false);
@@ -242,7 +242,7 @@ const handleSave = async () => {
                 setSelected(fresh);
                 setEditItem({
                     ...fresh,
-                    AgentUi: resolveAgentUi(fresh.AgentUi),
+                    AgentUi: fresh.AgentUi > 0 ? fresh.AgentUi : 1,
                 });
                 loadHistory(key);
             } else {
@@ -454,7 +454,7 @@ const handleSave = async () => {
                                                         MaxToolResultChars: tmpl.MaxToolResultChars,
                                                         MaxIterations: tmpl.MaxIterations,
                                                         ExecutionMode: tmpl.ExecutionMode || 'Interactive',
-                                                        AgentUi: resolveAgentUi(tmpl.AgentUi),
+                                                        AgentUi: tmpl.AgentUi > 0 ? tmpl.AgentUi : 1,
                                                         AllowAgentFirstTurn: !!tmpl.AllowAgentFirstTurn,
                                                     });
                                                     setSelected(null);
@@ -532,11 +532,6 @@ const handleSave = async () => {
                                     <i className="fa-solid fa-play mr-2" />
                                     <span className={`text-xs font-semibold ${theme.title} w-1 flex-auto`}>
                                         Preview: {testSkillKey}
-                                        <span className={`ml-2 font-normal ${theme.label}`}>
-                                            ({AGENT_UI_OPTIONS.find(o => o.value === resolveAgentUi(editItem.AgentUi))?.label
-                                              ?? AGENT_UI_OPTIONS.find(o => o.value === resolveAgentUi(selected?.AgentUi))?.label
-                                              ?? 'Generic Chat'})
-                                        </span>
                                     </span>
                                     <button type="button" className={btn} onClick={() => setTestSkillKey(null)}>
                                         <i className="fa-solid fa-xmark" />
@@ -545,7 +540,6 @@ const handleSave = async () => {
                                 <div className="w-full h-1 flex-auto overflow-hidden">
                                     <AgentUiChatHost
                                         skillKey={testSkillKey}
-                                        agentUi={editItem.SkillKey === testSkillKey ? editItem.AgentUi : selected?.AgentUi}
                                         testMode={true}
                                     />
                                 </div>
@@ -614,47 +608,39 @@ const handleSave = async () => {
                                                             <label className={lbl}>Display Name</label>
                                                             <input className={inp} value={editItem.DisplayName} onChange={e => update('DisplayName', e.target.value)} autoComplete="off" />
                                                         </div>
-                                                        <div className="flex items-center py-1 xl:col-span-2">
-                                                            <label className={lbl}>Agent UI</label>
-                                                            <select
-                                                                className={`h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox} focus:outline-none`}
-                                                                value={resolveAgentUi(editItem.AgentUi)}
-                                                                onChange={e => update('AgentUi', parseInt(e.target.value, 10) || EmAppAgentUi.GenericChat)}
-                                                            >
-                                                                {AGENT_UI_OPTIONS.map(o => (
-                                                                    <option key={o.value} value={o.value}>{o.label}</option>
-                                                                ))}
-                                                            </select>
+                                                    </div>
+                                                    <div className="flex items-start py-1">
+                                                        <label className={`${lbl} pt-1`}>Description</label>
+                                                        <textarea
+                                                            className={`w-1 flex-auto px-2 py-1 text-xs border resize-none ${theme.inputBox} focus:outline-none`}
+                                                            style={{ height: 80 }}
+                                                            value={editItem.Description}
+                                                            onChange={e => update('Description', e.target.value)}
+                                                        />
+                                                    </div>
+                                                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-1">
+                                                        <div className="flex items-center py-1">
+                                                            <label className={lbl} htmlFor="agent-is-active">Active</label>
+                                                            <input
+                                                                id="agent-is-active"
+                                                                type="checkbox"
+                                                                checked={editItem.IsActive}
+                                                                onChange={e => update('IsActive', e.target.checked)}
+                                                                className={`h-3 w-3 rounded ${theme.inputBox}`}
+                                                            />
                                                         </div>
-                                                        <div className="flex items-center py-1 xl:col-span-2">
-                                                            <label className={lbl}>Agent speaks first</label>
-                                                            <label
-                                                                className={`flex items-center gap-1.5 text-xs ${theme.label} cursor-pointer`}
-                                                                title="When on, the agent may greet or ask questions as soon as you open the chat. When off, it waits until you send a message."
-                                                            >
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={!!editItem.AllowAgentFirstTurn}
-                                                                    onChange={e => update('AllowAgentFirstTurn', e.target.checked)}
-                                                                />
-                                                                On
-                                                            </label>
+                                                        <div className="flex items-center py-1">
+                                                            <label className={lbl} htmlFor="agent-start-on-open">Agent Starts Chat First</label>
+                                                            <input
+                                                                id="agent-start-on-open"
+                                                                type="checkbox"
+                                                                checked={!!editItem.AllowAgentFirstTurn}
+                                                                onChange={e => update('AllowAgentFirstTurn', e.target.checked)}
+                                                                className={`h-3 w-3 rounded ${theme.inputBox}`}
+                                                                title="When on, the agent may greet or ask as soon as the chat opens. When off, it waits for your first message."
+                                                            />
                                                         </div>
                                                     </div>
-                                                    <div className="flex items-center py-1">
-                                                        <label className={`text-xs ${theme.label}`}>Description</label>
-                                                        <div className="w-1 flex-auto" />
-                                                        <label className={`flex items-center gap-1.5 text-xs ${theme.label} cursor-pointer shrink-0`}>
-                                                            <input type="checkbox" checked={editItem.IsActive} onChange={e => update('IsActive', e.target.checked)} />
-                                                            Active
-                                                        </label>
-                                                    </div>
-                                                    <textarea
-                                                        className={`w-full px-2 py-1 text-xs border resize-none ${theme.inputBox} focus:outline-none`}
-                                                        style={{ height: 80 }}
-                                                        value={editItem.Description}
-                                                        onChange={e => update('Description', e.target.value)}
-                                                    />
                                                 </div>
 
 
@@ -714,6 +700,9 @@ const handleSave = async () => {
                                                                 <input type="checkbox" checked={subscribedKeys.has(l.LibraryKey)} onChange={e => toggleLib(l.LibraryKey, e.target.checked)} />
                                                                 <span className="font-mono font-semibold">{l.LibraryKey}</span>
                                                                 <span className="opacity-70">{l.LibraryName && `— ${l.LibraryName}`}</span>
+                                                                {chatModulesFromLibraries([l.LibraryKey]).has('files') && (
+                                                                    <span className="opacity-50">+ Files UI</span>
+                                                                )}
                                                                 {l.ToolCount > 0 && <span className="ml-auto opacity-50">({l.ToolCount})</span>}
                                                             </label>
                                                         );

@@ -204,6 +204,34 @@ ELSE
             DeleteBySessionKey(MakeFixedKey(skillKey.Trim(), userId), skillKey.Trim(), userId);
         }
 
+        /// <summary>Wipe MessagesJson for a chat but keep the SessionKey row (Clear conversation).</summary>
+        public static bool ClearBySessionKey(string sessionKey, string skillKey, int userId)
+        {
+            if (string.IsNullOrWhiteSpace(sessionKey) || string.IsNullOrWhiteSpace(skillKey) || userId <= 0)
+                return false;
+            try
+            {
+                var fixture = GetFixture();
+                if (fixture == null) return false;
+                var n = fixture.ExecuteNonQueryResult(
+                    @"UPDATE dbo.AppGenericAgentSession
+                      SET MessagesJson=N'[]', UpdatedAt=GETUTCDATE()
+                      WHERE SessionKey=@K AND SkillKey=@S AND UserId=@U",
+                    new List<DbParameter>
+                    {
+                        P(fixture, "@K", sessionKey.Trim()),
+                        P(fixture, "@S", skillKey.Trim()),
+                        P(fixture, "@U", userId)
+                    });
+                return n > 0;
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, nameof(ClearBySessionKey));
+                return false;
+            }
+        }
+
         public static bool DeleteBySessionKey(string sessionKey, string skillKey, int userId)
         {
             if (string.IsNullOrWhiteSpace(sessionKey) || string.IsNullOrWhiteSpace(skillKey) || userId <= 0)

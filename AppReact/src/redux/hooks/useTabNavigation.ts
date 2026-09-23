@@ -7,6 +7,8 @@ import { addTab, activateTab, setDataModelToCache, updateTabPath } from '../feat
 import {
   buildRoutePathFromParamObj,
   getReactPathForRouteCode,
+  getAgentChatSkillKey,
+  isAgentChatPath,
   isTransactionFormGroupPath,
   isTransactionFolderNavigationPath,
   isTransactionFormInstancePath,
@@ -91,10 +93,11 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
     if (!activeTab) return;
     const targetPath = resolveTabNavigationPath(activeTab);
     if (!targetPath) return;
-    if (location.pathname === targetPath) return;
-    if (tabRoutePathsMatch(targetPath, location.pathname)) return;
+    const currentFull = `${location.pathname}${location.search || ''}`;
+    if (currentFull === targetPath || location.pathname === targetPath) return;
+    if (tabRoutePathsMatch(targetPath, currentFull)) return;
     navigate(targetPath);
-  }, [activeTabKey, tabs, navigate, location.pathname, userContext]);
+  }, [activeTabKey, tabs, navigate, location.pathname, location.search, userContext]);
 
   const value = useMemo((): TabNavigationApi => {
   const activateTabFlushing = (tabKey: string) => {
@@ -126,12 +129,13 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
     return paramObj;
   }
 
-  // Helper function to extract base route path (without parameters)
+  // Helper function to extract base route path (without parameters / query)
   const extractBaseRoutePath = (fullPath: string): string => {
     if (!fullPath) return '';
+    const noQuery = fullPath.split('?')[0];
     
     // Split by '/' and filter empty parts
-    const parts = fullPath.split('/').filter(p => p);
+    const parts = noQuery.split('/').filter(p => p);
     if (parts.length === 0) return '/';
     
     // Check if the last part looks like encoded JSON (starts with %)
@@ -198,9 +202,24 @@ export const TabNavigationProvider: React.FC<{ children: ReactNode }> = ({ child
 
     const targetBasePath = extractBaseRoutePath(routePath);
 
-    // TransactionFormGroup / transaction-folder-navigation: each instance gets its own tab.
+    // TransactionFormGroup / folder-nav / agent-chat: each instance gets its own tab
+    // (agent-chat is one tab per skillKey, not one tab for all agents).
     const allowBaseReuse =
-      !isTransactionFormGroupPath(routePath) && !isTransactionFolderNavigationPath(routePath);
+      !isTransactionFormGroupPath(routePath) &&
+      !isTransactionFolderNavigationPath(routePath) &&
+      !isAgentChatPath(routePath);
+
+    if (isAgentChatPath(routePath)) {
+      const skill = getAgentChatSkillKey(routePath);
+      const existingAgent = skill
+        ? tabs.find((tab) => isAgentChatPath(tab.path) && getAgentChatSkillKey(tab.path) === skill)
+        : undefined;
+      if (existingAgent) {
+        activateTabFlushing(existingAgent.tabKey);
+        navigate(existingAgent.path);
+        return;
+      }
+    }
 
     // Reuse tab with same base route (e.g. /company-security vs /company-security/%7B...%7D)
     const existingByBase = allowBaseReuse

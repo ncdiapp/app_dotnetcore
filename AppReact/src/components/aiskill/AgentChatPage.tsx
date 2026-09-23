@@ -1,11 +1,11 @@
 import React from 'react';
-import AgentUiChatHost from './AgentUiChatHost';
+import { useSearchParams } from 'react-router-dom';
+import AgentChatManagement from './AgentChatManagement';
 
-/** Standalone full-page chat for a dynamic agent reached via the sidebar. */
+/** Sidebar entry: Agent Chat Management (list + current chat). */
 const AgentChatPage: React.FC = () => {
-    const params = new URLSearchParams(window.location.search);
-    const skillKey = params.get('skillKey') ?? '';
-    const agentUi  = parseInt(params.get('agentUi') ?? '1', 10);
+    const [searchParams] = useSearchParams();
+    const skillKey = searchParams.get('skillKey') ?? '';
 
     if (!skillKey) {
         return (
@@ -17,7 +17,7 @@ const AgentChatPage: React.FC = () => {
 
     return (
         <div className="w-full h-full flex flex-col overflow-hidden">
-            <AgentUiChatHost skillKey={skillKey} agentUi={agentUi} />
+            <AgentChatManagement key={skillKey} skillKey={skillKey} />
         </div>
     );
 };

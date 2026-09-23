@@ -13,6 +13,10 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string SessionGuid { get; set; }
 
+        /// <summary>AppGenericAgentSession.SessionKey that owns this import job. One InProgress job per Chat.</summary>
+        [DataMember]
+        public string ChatSessionKey { get; set; }
+
         [DataMember]
         public int? CompanyId { get; set; }
 

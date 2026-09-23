@@ -10,7 +10,7 @@
 |---|---|
 | HITL only on ROOT | Child must not call `ask_user`. Missing input → structured error JSON for ROOT. |
 | call_agent is headless | New empty history each call; pass phase + ids in message; durable facts in shared context / session. |
-| Shared context | Same WorkflowId as ROOT for the live turn. After restart, prefer `AppPlmImportSession` (`get_plm_wizard_progress`) + re-write shared keys. |
+| Shared context | Same WorkflowId as ROOT for the live turn. After restart, `get_plm_wizard_progress` reads `AppAgentSharedContext` ScopeId=`ChatSessionKey`. |
 | Libraries | Child subscribes only to tools it needs (`integration-plm-import`, `agent-files`, …). ROOT keeps `platform-multi-agent`. |
 | Return shape | Short status JSON in FinalResponse (see below). No huge SQL/JSON dumps. |
 
