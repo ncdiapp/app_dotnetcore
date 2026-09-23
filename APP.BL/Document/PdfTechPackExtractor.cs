@@ -100,6 +100,15 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                     {
                         GcsUri = outputUri
                     }
+                },
+                ProcessOptions = new ProcessOptions
+                {
+                    LayoutConfig = new ProcessOptions.Types.LayoutConfig
+                    {
+                        EnableImageAnnotation = true,
+                        EnableTableAnnotation = true,
+                        ReturnImages = true
+                    }
                 }
             };
 
@@ -225,47 +234,55 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
             var purePages = GetToken(document, "pages")?.DeepClone() as JArray ?? new JArray();
             foreach (var purePage in purePages.OfType<JObject>())
                 purePage.Remove("image");
+            var layout = GetToken(document, "documentLayout")?.DeepClone();
+            var layoutText = ExtractLayoutText(layout);
             var normalized = new JObject
             {
-                ["text"] = GetToken(document, "text")?.DeepClone() ?? JValue.CreateNull(),
+                ["text"] = GetToken(document, "text")?.DeepClone()
+                    ?? (!string.IsNullOrWhiteSpace(layoutText) ? new JValue(layoutText) : JValue.CreateNull()),
                 ["pages"] = purePages,
                 ["entities"] = GetToken(document, "entities")?.DeepClone() ?? new JArray(),
-                ["tables"] = ExtractTables(document)
+                ["tables"] = ExtractTables(document, layout),
+                ["documentLayout"] = layout ?? JValue.CreateNull()
             };
             ((JArray)pureData["documents"]!).Add(normalized);
 
             var pages = GetToken(document, "pages") as JArray;
-            if (pages == null) continue;
-            pageCount += pages.Count;
-            for (var index = 0; index < pages.Count; index++)
+            if (pages != null)
             {
-                var pageNumber = index + 1;
-                var page = pages[index] as JObject;
-                var image = GetToken(page, "image") as JObject;
-                var content = GetToken(image, "content")?.Value<string>();
-                var mimeType = GetToken(image, "mimeType")?.Value<string>() ?? "image/png";
-                var relativePath = string.Empty;
-
-                if (!string.IsNullOrWhiteSpace(content))
+                pageCount += pages.Count;
+                for (var index = 0; index < pages.Count; index++)
                 {
-                    var bytes = Convert.FromBase64String(content);
-                    var extension = mimeType.Contains("jpeg", StringComparison.OrdinalIgnoreCase) ? "jpg" : "png";
-                    relativePath = GenericAgentFileBL.WriteBytes(
-                        sessionKey,
-                        $"output/pdf-images/{jobId}/page-{pageNumber:0000}.{extension}",
-                        bytes,
-                        companyId);
+                    var pageNumber = index + 1;
+                    var page = pages[index] as JObject;
+                    var image = GetToken(page, "image") as JObject;
+                    var content = GetToken(image, "content")?.Value<string>();
+                    var mimeType = GetToken(image, "mimeType")?.Value<string>() ?? "image/png";
+                    var relativePath = string.Empty;
+
+                    if (!string.IsNullOrWhiteSpace(content))
+                    {
+                        var bytes = Convert.FromBase64String(content);
+                        var extension = mimeType.Contains("jpeg", StringComparison.OrdinalIgnoreCase) ? "jpg" : "png";
+                        relativePath = GenericAgentFileBL.WriteBytes(
+                            sessionKey,
+                            $"output/pdf-images/{jobId}/page-{pageNumber:0000}.{extension}",
+                            bytes,
+                            companyId);
+                    }
+
+                    images.Add(new PdfTechPackImageDto
+                    {
+                        PageNumber = pageNumber,
+                        MimeType = mimeType,
+                        RelativePath = relativePath,
+                        SourceUri = GetToken(image, "gcsUri")?.Value<string>(),
+                        ImageText = GetToken(GetToken(page, "layout") as JObject, "textAnchor")?.ToString()
+                    });
                 }
-
-                images.Add(new PdfTechPackImageDto
-                {
-                    PageNumber = pageNumber,
-                    MimeType = mimeType,
-                    RelativePath = relativePath,
-                    SourceUri = GetToken(image, "gcsUri")?.Value<string>(),
-                    ImageText = GetToken(GetToken(page, "layout") as JObject, "textAnchor")?.ToString()
-                });
             }
+
+            AddLayoutImages(layout, jobId, sessionKey, companyId, images, ref pageCount);
         }
 
         return new PdfTechPackExtractionResultDto
@@ -278,7 +295,7 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         };
     }
 
-    private static JArray ExtractTables(JObject document)
+    private static JArray ExtractTables(JObject document, JToken? layout)
     {
         var tables = new JArray();
         foreach (var page in (GetToken(document, "pages") as JArray) ?? new JArray())
@@ -286,7 +303,94 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
             foreach (var table in (GetToken(page as JObject, "tables") as JArray) ?? new JArray())
                 tables.Add(table.DeepClone());
         }
+
+        foreach (var tableBlock in FindLayoutChildren(layout, "tableBlock"))
+            tables.Add(tableBlock.DeepClone());
         return tables;
+    }
+
+    private static string ExtractLayoutText(JToken? layout)
+    {
+        var text = FindLayoutChildren(layout, "textBlock")
+            .Select(block => GetToken(block, "text")?.Value<string>())
+            .Where(value => !string.IsNullOrWhiteSpace(value));
+        return string.Join(Environment.NewLine, text);
+    }
+
+    private static void AddLayoutImages(
+        JToken? layout,
+        string jobId,
+        string sessionKey,
+        int companyId,
+        List<PdfTechPackImageDto> images,
+        ref int pageCount)
+    {
+        foreach (var block in FindLayoutBlocks(layout, "imageBlock"))
+        {
+            var image = GetToken(block, "imageBlock") as JObject;
+            if (image == null) continue;
+
+            var pageNumber = GetToken(GetToken(block, "pageSpan") as JObject, "pageStart")?.Value<int>() ?? 0;
+            pageCount = Math.Max(pageCount, pageNumber);
+            var mimeType = GetToken(image, "mimeType")?.Value<string>() ?? "image/png";
+            var dataUri = GetToken(image, "dataUri")?.Value<string>();
+            var relativePath = string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(dataUri))
+            {
+                var comma = dataUri.IndexOf(',');
+                var base64 = comma >= 0 ? dataUri.Substring(comma + 1) : dataUri;
+                var bytes = Convert.FromBase64String(base64);
+                var extension = mimeType.Contains("jpeg", StringComparison.OrdinalIgnoreCase) ? "jpg" : "png";
+                relativePath = GenericAgentFileBL.WriteBytes(
+                    sessionKey,
+                    $"output/pdf-images/{jobId}/layout-image-{images.Count + 1:0000}.{extension}",
+                    bytes,
+                    companyId);
+            }
+
+            images.Add(new PdfTechPackImageDto
+            {
+                PageNumber = pageNumber,
+                MimeType = mimeType,
+                RelativePath = relativePath,
+                SourceUri = GetToken(image, "gcsUri")?.Value<string>(),
+                ImageText = GetToken(image, "imageText")?.Value<string>()
+                    ?? GetToken(GetToken(image, "annotations") as JObject, "description")?.Value<string>()
+            });
+        }
+    }
+
+    private static IEnumerable<JObject> FindLayoutBlocks(JToken? token, string childName)
+    {
+        if (token == null) yield break;
+        if (token is JObject obj)
+        {
+            if (GetToken(obj, childName) is JObject)
+                yield return obj;
+            foreach (var child in obj.Properties().Select(property => property.Value))
+            {
+                foreach (var found in FindLayoutBlocks(child, childName))
+                    yield return found;
+            }
+        }
+        else if (token is JArray array)
+        {
+            foreach (var child in array)
+            {
+                foreach (var found in FindLayoutBlocks(child, childName))
+                    yield return found;
+            }
+        }
+    }
+
+    private static IEnumerable<JObject> FindLayoutChildren(JToken? token, string childName)
+    {
+        foreach (var block in FindLayoutBlocks(token, childName))
+        {
+            if (GetToken(block, childName) is JObject child)
+                yield return child;
+        }
     }
 
     private static void Validate(PdfTechPackExtractionRequest request)
