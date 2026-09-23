@@ -25,50 +25,13 @@ public interface IPdfTechPackExtractor
 /// Extracts a PDF tech pack into two explicit outputs:
 /// PureData (Document AI JSON/text/tables/entities) and Images (page/figure artifacts).
 ///
-/// Credentials are obtained through Google Application Default Credentials. The service
-/// account should be attached to the hosting workload or supplied through GOOGLE_APPLICATION_CREDENTIALS;
-/// no private key belongs in tenant configuration.
+/// All Document AI settings, including the tenant credential file path or encrypted
+/// credential JSON, are resolved from AppTenantSetting for the current tenant.
 /// </summary>
 public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
 {
-    private readonly string _projectId;
-    private readonly string _location;
-    private readonly string _processorId;
-    private readonly string _bucket;
-    private readonly TimeSpan _pollTimeout;
-
-    public PdfTechPackExtractor(Microsoft.Extensions.Configuration.IConfiguration configuration)
-        : this(
-            configuration["Google:DocumentAI:ProjectId"],
-            configuration["Google:DocumentAI:Location"] ?? "us",
-            configuration["Google:DocumentAI:ProcessorId"],
-            configuration["Google:DocumentAI:Bucket"],
-            ParseTimeout(configuration["Google:DocumentAI:PollTimeoutMinutes"]))
-    {
-    }
-
     public PdfTechPackExtractor()
-        : this(
-            AppConfig.Get("Google:DocumentAI:ProjectId"),
-            AppConfig.Get("Google:DocumentAI:Location") ?? "us",
-            AppConfig.Get("Google:DocumentAI:ProcessorId"),
-            AppConfig.Get("Google:DocumentAI:Bucket"),
-            ParseTimeout(AppConfig.Get("Google:DocumentAI:PollTimeoutMinutes")))
     {
-    }
-
-    public PdfTechPackExtractor(
-        string projectId,
-        string location,
-        string processorId,
-        string bucket,
-        int pollTimeoutMinutes = 90)
-    {
-        _projectId = projectId?.Trim() ?? string.Empty;
-        _location = string.IsNullOrWhiteSpace(location) ? "us" : location.Trim();
-        _processorId = processorId?.Trim() ?? string.Empty;
-        _bucket = bucket?.Trim() ?? string.Empty;
-        _pollTimeout = TimeSpan.FromMinutes(Math.Clamp(pollTimeoutMinutes, 1, 240));
     }
 
     public async Task<PdfTechPackExtractionResultDto> ExtractAsync(
@@ -78,11 +41,14 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         Validate(request);
 
         var configuration = request.Configuration ?? ResolveTenantConfiguration();
-        var projectId = Required(Prefer(configuration.ProjectId, _projectId), "Google:DocumentAI:ProjectId");
-        var location = Prefer(configuration.Location, _location);
-        var processorId = Required(Prefer(configuration.ProcessorId, _processorId), "Google:DocumentAI:ProcessorId");
-        var bucket = Required(Prefer(configuration.Bucket, _bucket), "Google:DocumentAI:Bucket");
-        var pollTimeout = TimeSpan.FromMinutes(Math.Clamp(configuration.PollTimeoutMinutes ?? (int)_pollTimeout.TotalMinutes, 1, 240));
+        var projectId = Required(configuration.ProjectId, "GoogleDocumentAIProjectId");
+        var location = Required(configuration.Location, "GoogleDocumentAILocation");
+        var processorId = Required(configuration.ProcessorId, "GoogleDocumentAIProcessorId");
+        var bucket = Required(configuration.Bucket, "GoogleDocumentAIBucket");
+        var pollTimeoutMinutes = configuration.PollTimeoutMinutes.GetValueOrDefault();
+        if (pollTimeoutMinutes < 1 || pollTimeoutMinutes > 240)
+            throw new InvalidOperationException("GoogleDocumentAIPollTimeoutMinutes must be between 1 and 240.");
+        var pollTimeout = TimeSpan.FromMinutes(pollTimeoutMinutes);
 
         var jobId = Guid.NewGuid().ToString("N");
         var inputObject = $"document-ai/input/{request.CompanyId}/{jobId}/{SanitizeFileName(request.FileName)}";
@@ -93,12 +59,11 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         if (string.IsNullOrWhiteSpace(credentialJson) && !string.IsNullOrWhiteSpace(configuration.CredentialFilePath))
             credentialJson = File.ReadAllText(ResolveCredentialFilePath(configuration.CredentialFilePath));
 
-        var credential = string.IsNullOrWhiteSpace(credentialJson)
-            ? null
-            : GoogleCredential.FromJson(credentialJson);
-        var storage = credential == null
-            ? await StorageClient.CreateAsync()
-            : await new StorageClientBuilder { Credential = credential }.BuildAsync();
+        if (string.IsNullOrWhiteSpace(credentialJson))
+            throw new InvalidOperationException("Missing configuration: GoogleDocumentAICredentialJson");
+
+        var credential = GoogleCredential.FromJson(credentialJson);
+        var storage = await new StorageClientBuilder { Credential = credential }.BuildAsync();
         var outputObjects = new List<string>();
 
         try
@@ -216,18 +181,10 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
 
     private static string ResolveCredentialFilePath(string configuredPath)
     {
-        var root = AppConfig.Get("Google:DocumentAI:CredentialRoot");
-        if (string.IsNullOrWhiteSpace(root))
-            throw new InvalidOperationException("Google:DocumentAI:CredentialRoot must be configured on the server.");
+        if (!Path.IsPathRooted(configuredPath))
+            throw new InvalidOperationException("GoogleDocumentAICredentialJson must contain an absolute server file path.");
 
-        var rootFull = Path.GetFullPath(root.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-            + Path.DirectorySeparatorChar);
-        var candidate = Path.GetFullPath(Path.IsPathRooted(configuredPath)
-            ? configuredPath
-            : Path.Combine(rootFull, configuredPath));
-
-        if (!candidate.StartsWith(rootFull, StringComparison.OrdinalIgnoreCase))
-            throw new UnauthorizedAccessException("The tenant Google credential path is outside CredentialRoot.");
+        var candidate = Path.GetFullPath(configuredPath);
         if (!File.Exists(candidate))
             throw new FileNotFoundException("Tenant Google credential file was not found.", candidate);
         return candidate;
@@ -330,12 +287,6 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"Missing configuration: {key}")
             : value.Trim();
-
-    private static string Prefer(string? value, string fallback) =>
-        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
-
-    private static int ParseTimeout(string? value) =>
-        int.TryParse(value, out var minutes) ? minutes : 90;
 
     private static string SanitizeFileName(string fileName)
     {
