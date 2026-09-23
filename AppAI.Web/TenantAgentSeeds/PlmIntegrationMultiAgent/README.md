@@ -2,23 +2,28 @@
 
 **Folder:** `AppAI.Web/TenantAgentSeeds/PlmIntegrationMultiAgent/`
 
-For a **new or restored** tenant DB (structure through **V031+**). Do not mix with `PlmIntegration/Seed_PlmIntegrationOrchestrator.sql`.
+For a **new** tenant DB (structure through **V034+**). Do not mix with `PlmIntegration/Seed_PlmIntegrationOrchestrator.sql`.
+
+## Rules (keep forever)
+
+1. **INSERT only.** These scripts create the pack on empty tables. Do **not** add `UPDATE` / `DELETE` for existing tenants. When a prompt or tool changes, edit the `INSERT` values.
+2. **Only ROOT is on the left menu.** Child agents seed with `IsActive=0`. ROOT (`plm-integration-orchestrator`) is `IsActive=1`. `call_agent` loads children by SkillKey and does not require Active.
 
 ## Files (RUN_ALL order)
 
 | # | File | Purpose |
 |---|---|---|
-| 1 | `01_Seed_IntegrationPlmImportLibrary.sql` | Library + ExternalDll tools (Gate-0, wizard progress, import tools) |
-| 2 | `02_Seed_PlmIntegrationImportDw_Child.sql` | Child `plm-integration-import-dw` |
-| 3 | `03_Seed_PlmIntegrationOrchestrator_Root.sql` | ROOT Wizard (UPDATEs prompt on re-run; **MaxIterations=400**) |
-| 4 | `04_Seed_PlmIntegrationEntity_Child.sql` | Child `plm-integration-entity` |
-| 5 | `05_Seed_PlmIntegrationFolder_Child.sql` | Child `plm-integration-folder` (+ PHASE=PLACEMENT) |
-| 6 | `06_Seed_PlmIntegrationImage_Child.sql` | Child `plm-integration-image` |
-| 7 | `07_Seed_PlmIntegrationColor_Child.sql` | Child `plm-integration-color` |
-| 8 | `08_Seed_PlmIntegrationPom_Child.sql` | Child `plm-integration-pom` |
+| 1 | `01_Seed_IntegrationPlmImportLibrary.sql` | Library + ExternalDll tools |
+| 2 | `02_Seed_PlmIntegrationImportDw_Child.sql` | Child `plm-integration-import-dw` (inactive) |
+| 3 | `03_Seed_PlmIntegrationOrchestrator_Root.sql` | ROOT Wizard (`IsActive=1`, MaxIterations=400) |
+| 4 | `04_Seed_PlmIntegrationEntity_Child.sql` | Child `plm-integration-entity` (inactive) |
+| 5 | `05_Seed_PlmIntegrationFolder_Child.sql` | Child `plm-integration-folder` (inactive) |
+| 6 | `06_Seed_PlmIntegrationImage_Child.sql` | Child `plm-integration-image` (inactive) |
+| 7 | `07_Seed_PlmIntegrationColor_Child.sql` | Child `plm-integration-color` (inactive) |
+| 8 | `08_Seed_PlmIntegrationPom_Child.sql` | Child `plm-integration-pom` (inactive) |
 | 9 | `99_Verify.sql` | Smoke checks |
 | — | `CHILD_AGENT_CONTRACTS.md` | SkillKeys + `call_agent` contracts |
-| — | `RUN_ALL.bat` | Runs 01→08 → force ROOT MaxIterations=400 → 99 |
+| — | `RUN_ALL.bat` | Runs 01→08 → 99 |
 
 ## Apply
 
@@ -33,15 +38,15 @@ Prereqs: V022+ (`AppAgentSharedContext`); rebuild/copy `APP.AgentPlugins.PlmImpo
 
 ## What you get
 
-| SkillKey | Role |
-|---|---|
-| `plm-integration-orchestrator` | ROOT Interactive Wizard (`AllowAgentFirstTurn=1`) |
-| `plm-integration-import-dw` | Deterministic DW child |
-| `plm-integration-entity` | Deterministic Entity child |
-| `plm-integration-folder` | Deterministic Folder + placement child |
-| `plm-integration-image` | Deterministic Image / Sketch child |
-| `plm-integration-color` | Deterministic Color child |
-| `plm-integration-pom` | Deterministic POM child |
+| SkillKey | Role | Left menu |
+|---|---|---|
+| `plm-integration-orchestrator` | ROOT Interactive Wizard (`AllowAgentFirstTurn=1`) | Yes (`IsActive=1`) |
+| `plm-integration-import-dw` | Deterministic DW child (Phase A / B / APPLY) | No |
+| `plm-integration-entity` | Deterministic Entity child | No |
+| `plm-integration-folder` | Deterministic Folder + placement child | No |
+| `plm-integration-image` | Deterministic Image / Sketch child | No |
+| `plm-integration-color` | Deterministic Color child | No |
+| `plm-integration-pom` | Deterministic POM child | No |
 
 Gate-0: `list_tenant_saas_applications` + `list_tenant_data_sources` → `ask_user` selects (App + PLM/DW/ERP/ExDb).
 

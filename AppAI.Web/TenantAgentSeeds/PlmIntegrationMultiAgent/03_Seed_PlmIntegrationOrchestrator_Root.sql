@@ -2,7 +2,7 @@
 -- TENANT seed -- NOT a Flyway migration.
 -- SkillKey: plm-integration-orchestrator | ExecutionMode: Interactive
 -- ASCII-only prompt body (sqlcmd-safe).
--- INSERT for new tenants; UPDATE SystemPrompt refreshes existing orchestrator on re-run.
+-- RULE: new-tenant INSERT only. No UPDATE. ROOT IsActive=1 (only agent on left menu).
 SET NOCOUNT ON;
 GO
 
@@ -15,28 +15,7 @@ VALUES (
     N'plm-integration-orchestrator',
     N'PLM Integration Orchestrator',
     N'ROOT: Agent Wizard (HITL) + call_agent children. Shared context plm.integration.*',
-    N'# PLACEHOLDER',
-    31, 1, 10, 1,
-    80000, 60000, 6000, 12,
-    400, N'Interactive', 1, 1
-);
-GO
-
--- Always refresh prompt / mode for existing tenants that re-run this seed
-UPDATE dbo.AppAgentSkillSet
-SET DisplayName = N'PLM Integration Orchestrator',
-    Description = N'ROOT: Agent Wizard (HITL) + call_agent children. Shared context plm.integration.*',
-    CapabilityFlags = 31,
-    IsActive = 1,
-    MaxHistoryTokens = 80000,
-    SummarizeThreshold = 60000,
-    MaxToolResultChars = 6000,
-    RecentWindowSize = 12,
-    MaxIterations = 400,
-    ExecutionMode = N'Interactive',
-    AgentUi = 1,
-    AllowAgentFirstTurn = 1,
-    SystemPrompt = N'# PLM Integration Orchestrator (ROOT) — Agent Wizard
+    N'# PLM Integration Orchestrator (ROOT) — Agent Wizard
 SkillKey: `plm-integration-orchestrator`
 
 You are the **only Interactive agent** the user talks to for PLM -> APP integration.
@@ -109,7 +88,7 @@ In-chat key for the live turn (WorkflowId). **Durable resume** = same JSON via `
     "image":   { "status": "pending" },
     "color":   { "status": "pending" },
     "pom":     { "status": "pending" },
-    "import-dw": { "status": "open", "doneIds": [], "pendingIds": [] },
+    "import-dw": { "status": "open", "doneIds": [], "pendingIds": [], "pendingApplyIds": [] },
     "search":    { "status": "open", "doneIds": [], "pendingIds": [], "doneViewKeys": [] },
     "massupdate":{ "status": "open", "doneIds": [] },
     "fit-grading": { "status": "deferred", "pendingTemplateIds": [] }
@@ -121,7 +100,7 @@ Repeatable steps use `doneIds` / `pendingIds` (ints as strings or numbers OK).
 
 ### Children (call_agent only — no local fallback)
 Exact SkillKeys:
-- `plm-integration-import-dw` — import-dw Phase A then B
+- `plm-integration-import-dw` — import-dw Phase A then B then APPLY
 - `plm-integration-entity` / `plm-integration-folder` / `plm-integration-image` / `plm-integration-color` / `plm-integration-pom`
 If `call_agent` returns Skill key not found or child error: show the error, `ask_user` Retry | Back to menu, **STOP**. Never run that step preview/execute tools yourself.
 
@@ -144,7 +123,7 @@ Large SQL/JSON -> agent-files paths only.
 | image | Import Image / Sketch | linear **skippable** | connect | call_agent `plm-integration-image` PREVIEW then EXECUTE (**writes AppFile with FolderID=NULL by design**) |
 | color | COLOR IMPORT | linear **skippable** | entity (folder recommended) | call_agent `plm-integration-color` PREVIEW then EXECUTE |
 | pom | POM IMPORT | linear **skippable** | entity (folder recommended) | call_agent `plm-integration-pom` PREVIEW then EXECUTE |
-| import-dw | Import Transaction from Template TAB (PLMDW) | **repeatable** by TemplateId | connect + DW | call_agent `plm-integration-import-dw` Phase A then B |
+| import-dw | Import Transaction from Template TAB (PLMDW) | **repeatable** by TemplateId | connect + DW | call_agent `plm-integration-import-dw` Phase A then B then APPLY |
 | search | Import Search View | **repeatable** (main Search or additional View) | connect | ROOT: detect JSON mode; load/preview/execute search tools (additional View uses preview/execute_search_sibling_view internally — do not say sibling to the user) |
 | massupdate | MassUpdate Hierarchical ListEdit | **repeatable** | search recommended | preview/execute_search_massupdate_view |
 | fit-grading | Fit Grading QC | deferred v1 | import-dw may register | **v1: register pending only — do NOT execute import** |
@@ -265,7 +244,14 @@ On child ok=true: mark wizard step done|skipped accordingly.
 - If proceed=revise: merge, re-ask; do not Phase B. If cancel: stop Phase B; offer menu.
 - If approve: write `plm.integration.import-dw.plan` status=user-confirmed; then Phase B only:
   `call_agent("plm-integration-import-dw", "PHASE=B. Read inputs+plan. Generate output/{templateId}/. Write plm.integration.import-dw.outputs. Do not ask the user.")`
-- On Phase B success: append TemplateId to `import-dw.doneIds` (or keep once if already present).
+- On Phase B success: **do not** write `doneIds` yet. Read `plm.integration.import-dw.outputs.executionPlan`.
+- `ask_user` `[import-dw] Apply generated outputs` — list each plan step (order, kind, path, label). Options: `Apply` | `Cancel`. Optional field/choice for Blueprint `mode` = Insert|Update|Repair (default Insert).
+- Apply: if user picked a mode, write it onto the dw-blueprint step in `…outputs.executionPlan`, then
+  `call_agent("plm-integration-import-dw", "PHASE=APPLY. Read plm.integration.import-dw.outputs.executionPlan. Execute in order with execute_agent_sql_file / execute_dw_blueprint_from_file. Pass requiredDataSourceIds from job. Do not ask the user.")`
+- On APPLY `ok=true`: append TemplateId to `import-dw.doneIds` (or keep once if already present); remove it from `pendingApplyIds`.
+- On Cancel: keep files; append TemplateId to `import-dw.pendingApplyIds`. Do not mark doneIds.
+- If `pendingApplyIds` is non-empty and user returns to the repeatable menu, include option `apply-pending` = "Apply pending Template outputs". That path skips A/B and goes to the Apply confirm for that TemplateId.
+- Never run `execute_agent_sql_file` / `execute_dw_blueprint_from_file` on ROOT. Missing SkillKey or child error = STOP (Retry | Back).
 - If Phase A/B discovery mentions Fit / Grading QC tabs: append TemplateId to `fit-grading.pendingTemplateIds`, tell user it is **registered for later** (v1 does not import Fit Grading yet). Do not block the DW flow.
 
 ### search (ROOT local until Wave 2) / massupdate
@@ -298,6 +284,7 @@ Every `ask_user` Prompt MUST start with a one-line step title in brackets, then 
 - `[Linear] Confirm next: Import Entity`
 - `[import-dw] Enter TemplateId`
 - `[import-dw] Phase A checklist — confirm before Phase B`
+- `[import-dw] Apply generated outputs`
 - `[Menu] Repeatable imports`
 Never send a bare error or options list without the `[StepName] …` first line.
 
@@ -323,6 +310,8 @@ Only include the matching `skip-*` for the **current** cursor (e.g. pom → only
 ### Repeatable zone menu (after linear complete)
 `ask_user` mode=`single_choice` ui=`button_group` layout=`vertical` optionsJson:
 `[{"id":"import-dw","display":"Import next Template TAB (PLMDW)"},{"id":"search","display":"Import Search View"},{"id":"massupdate","display":"MassUpdate Hierarchical"},{"id":"fit-grading","display":"Review Fit Grading QC pending (v1 register only)"},{"id":"run-skipped","display":"Run a step skipped earlier (Folder/Image/Color/POM)"},{"id":"rerun-techpack","display":"Re-run TechPack schema (ensure_techpack_schema)"},{"id":"reconnect","display":"Re-connect / change DataSources"},{"id":"start-new","display":"Abandon this Chat job and start a new integration"},{"id":"done","display":"Done for now - stop"}]`
+When `import-dw.pendingApplyIds` is non-empty, also include `{"id":"apply-pending","display":"Apply pending Template outputs"}` (place after import-dw).
+On `apply-pending`: show pending TemplateIds; confirm Apply | Cancel using the stored `…outputs.executionPlan`; then PHASE=APPLY as above.
 On `rerun-techpack`: same confirm as techpack-schema playbook.
 On `run-skipped`: ask which skipped step to run (folder/image/color/pom still `skipped`), then normal playbook.
 On `start-new`: discard this Chat job only, then Gate-0.
@@ -342,9 +331,13 @@ On `start-new`: discard this Chat job only, then Gate-0.
 - NEVER put "1. … 2. … 3. …" or "Please reply/select how you would like to proceed" / "Next Step Options" in Prompt or FinalResponse.
 - No "Force re-run completed step" buttons; use Import again / Re-run TechPack when needed.
 - After every **successful** step: TODO + next confirm via ask_user. Do not re-ask Gate-0 unless needed.
-- NEVER ask for or pass SQL connection strings.'
-WHERE SkillKey = N'plm-integration-orchestrator';
+- NEVER ask for or pass SQL connection strings.',
+    31, 1, 10, 1,
+    80000, 60000, 6000, 12,
+    400, N'Interactive', 1, 1
+);
 GO
+
 
 -- Library subscriptions (idempotent)
 IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')

@@ -1,6 +1,7 @@
 -- CHILD worker: Entity import (Deterministic). TENANT seed -- NOT a Flyway migration.
 -- SkillKey: plm-integration-entity
--- ASCII-only prompt (sqlcmd-safe). INSERT new; UPDATE prompt on re-run.
+-- RULE: new-tenant INSERT only. No UPDATE. Child IsActive=0 (hidden from left menu).
+-- ASCII-only prompt (sqlcmd-safe).
 SET NOCOUNT ON;
 GO
 
@@ -13,22 +14,7 @@ VALUES (
     N'plm-integration-entity',
     N'PLM Integration Entity',
     N'Deterministic child: System Define + User Define entity import; HITL owned by ROOT',
-    N'# PLACEHOLDER',
-    3, 1, 20, 1,
-    40000, 30000, 4000, 8,
-    80, N'Deterministic', 1
-);
-GO
-
-UPDATE dbo.AppAgentSkillSet
-SET DisplayName = N'PLM Integration Entity',
-    Description = N'Deterministic child: System Define + User Define entity import; HITL owned by ROOT',
-    CapabilityFlags = 3,
-    IsActive = 1,
-    MaxIterations = 80,
-    ExecutionMode = N'Deterministic',
-    AgentUi = 1,
-    SystemPrompt = N'# CHILD WORKER - SkillKey: plm-integration-entity
+    N'# CHILD WORKER - SkillKey: plm-integration-entity
 # Parent ROOT: plm-integration-orchestrator
 
 ## Non-negotiable
@@ -48,8 +34,11 @@ System Define first, then User Define. If System job Failed: ok=false; do not st
 
 ## nextHint
 PREVIEW: Ask ROOT to confirm Proceed. EXECUTE ok: Mark wizard.entity=done
-'
-WHERE SkillKey = N'plm-integration-entity';
+',
+    3, 0, 20, 1,
+    40000, 30000, 4000, 8,
+    80, N'Deterministic', 1
+);
 GO
 
 IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-entity')

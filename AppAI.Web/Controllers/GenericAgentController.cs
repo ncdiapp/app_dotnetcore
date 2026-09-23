@@ -100,6 +100,9 @@ public class GenericAgentController : SecureBaseController
 
         var sessionId = GenericAgentSessionStore.CreateSession();
 
+        if (agentUserId > 0 && !string.IsNullOrWhiteSpace(chatSessionKey))
+            SessionBL.TryAutoTitle(chatSessionKey, request.SkillKey, agentUserId, request.UserMessage);
+
         // Mark the chat as started so reopening it does not fire a second [session_start].
         if (agentUserId > 0 && agentDsId > 0 && !string.IsNullOrWhiteSpace(chatSessionKey))
         {
@@ -191,6 +194,7 @@ public class GenericAgentController : SecureBaseController
                     SessionBL.SaveSession(
                         request.SkillKey, agentUserId, agentDsId, updated,
                         sessionKey: chatSessionKey);
+                    SessionBL.TryAutoTitle(chatSessionKey, request.SkillKey, agentUserId, request.UserMessage);
                     if (agentCompanyId > 0 && !string.IsNullOrWhiteSpace(chatSessionKey))
                     {
                         try { GenericAgentFileBL.EnsureRoot(chatSessionKey, agentCompanyId, request.SkillKey); }
@@ -518,6 +522,38 @@ public class GenericAgentController : SecureBaseController
         var identity = ServerContext.Instance.CurrnetClientIdentity;
         if (identity is not AppClientIdentity ai || ai.UserId == null) return result;
         result.Object = SessionBL.DeleteBySessionKey(sessionKey, skillKey, Convert.ToInt32(ai.UserId));
+        return result;
+    }
+
+    // POST /webapi/GenericAgent/RenameChat
+    [HttpPost]
+    public OperationCallResult<bool> RenameChat([FromBody] GenericAgentRenameChatDto request)
+    {
+        var result = new OperationCallResult<bool>();
+        var identity = ServerContext.Instance.CurrnetClientIdentity;
+        if (identity is not AppClientIdentity ai || ai.UserId == null)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "RenameChat_NoUser",
+                ValidationItemType.Error, "User identity required."));
+            return result;
+        }
+        if (request == null || string.IsNullOrWhiteSpace(request.SkillKey) || string.IsNullOrWhiteSpace(request.SessionKey))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "RenameChat_BadRequest",
+                ValidationItemType.Error, "SkillKey and SessionKey are required."));
+            return result;
+        }
+        if (string.IsNullOrWhiteSpace(request.Title))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "RenameChat_NoTitle",
+                ValidationItemType.Error, "Title is required."));
+            return result;
+        }
+        result.Object = SessionBL.Rename(
+            request.SessionKey, request.SkillKey, Convert.ToInt32(ai.UserId), request.Title);
         return result;
     }
 

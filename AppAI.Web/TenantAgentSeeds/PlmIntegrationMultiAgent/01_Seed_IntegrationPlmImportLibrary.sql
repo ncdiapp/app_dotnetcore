@@ -1,6 +1,7 @@
 -- TENANT seed for PlmIntegrationMultiAgent pack (RUN_ALL) — NOT a Flyway migration.
+-- RULE: new-tenant INSERT only. No UPDATE/DELETE. Change tools by editing INSERT values.
 -- Library: integration-plm-import (ExternalDll -> APP.AgentPlugins.PlmImport.dll).
--- New-tenant INSERT only (IF NOT EXISTS). Subscriptions are in 03_Seed_*_Root.sql.
+-- Subscriptions are in agent seed files (03 ROOT / 02+ children).
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
 INSERT INTO dbo.AppAgentToolLibrary
@@ -597,6 +598,36 @@ VALUES (
 );
 GO
 
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'preview_dw_blueprint_from_file')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'integration-plm-import',
+    N'preview_dw_blueprint_from_file',
+    N'Preview DW blueprint from an AgentOutput file path. Do NOT pass blueprintJson. BL reads the JSON from disk.',
+    N'{"type":"object","properties":{"relativePath":{"type":"string","description":"Relative path under AgentOutput, e.g. output/3359/4_PlmDw_ImportBlueprint.json"}},"required":["relativePath"]}',
+    N'ExternalDll',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.PreviewDwBlueprintFromFileTool"}',
+    1,
+    184
+);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'execute_dw_blueprint_from_file')
+INSERT INTO dbo.AppAgentLibraryTool
+    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
+VALUES (
+    N'integration-plm-import',
+    N'execute_dw_blueprint_from_file',
+    N'Execute DW blueprint from an AgentOutput file path. mode=Insert|Update|Repair. Do NOT pass blueprintJson. BL reads the JSON from disk.',
+    N'{"type":"object","properties":{"relativePath":{"type":"string","description":"Relative path under AgentOutput, e.g. output/3359/4_PlmDw_ImportBlueprint.json"},"saasApplicationId":{"type":"integer"},"mode":{"type":"string"},"includeSearchView":{"type":"boolean"},"includeNavigation":{"type":"boolean"},"includeTransactionGroup":{"type":"boolean"}},"required":["relativePath"]}',
+    N'ExternalDll',
+    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ExecuteDwBlueprintFromFileTool"}',
+    1,
+    185
+);
+GO
+
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'load_search_import_blueprint')
 INSERT INTO dbo.AppAgentLibraryTool
     (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
@@ -733,42 +764,3 @@ VALUES (
 );
 GO
 
--- discover_plm_data_sources removed
-IF EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources')
-DELETE FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'discover_plm_data_sources';
-GO
-
-UPDATE dbo.AppAgentLibraryTool SET
-    ToolDescription = N'Load wizard JSON for this Chat from AppAgentSharedContext (ScopeId=ChatSessionKey). Never reads another Chat. Returns {found, sessionId, wizardJson, currentStepCode}.'
-WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'get_plm_wizard_progress';
-GO
-
-UPDATE dbo.AppAgentLibraryTool SET
-    ToolDescription = N'Persist plm.integration.wizard JSON onto AppAgentSharedContext with ScopeId=this ChatSessionKey (durable across restart; not WorkflowId). Pass wizardJson. sessionId optional.'
-WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'update_plm_wizard_progress';
-GO
-
--- ensure_techpack_schema: refresh description/config on existing tenants
-UPDATE dbo.AppAgentLibraryTool SET
-    ToolDescription = N'Apply TechPack Tchp* DDL on the tenant DB (full POM_Grading_QC_NewSchema.sql from plugin Sql/TechPack). Optional includeInspectionAddon=true for QC addon. Idempotent IF OBJECT_ID. Run after Connect, before Entity. Requires SaasCompanyAdmin/SysAdmin.',
-    ParameterSchemaJson = N'{"type":"object","properties":{"includeInspectionAddon":{"type":"boolean","description":"Default false. When true also run InspectionAddon.sql"},"targetCompanyId":{"type":"integer"}}}',
-    ToolType = N'ExternalDll',
-    ToolConfig = N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.EnsureTechPackSchemaTool"}',
-    IsActive = 1
-WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'ensure_techpack_schema';
-GO
-
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'ensure_techpack_schema')
-INSERT INTO dbo.AppAgentLibraryTool
-    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
-VALUES (
-    N'integration-plm-import',
-    N'ensure_techpack_schema',
-    N'Apply TechPack Tchp* DDL on the tenant DB (full POM_Grading_QC_NewSchema.sql from plugin Sql/TechPack). Optional includeInspectionAddon=true for QC addon. Idempotent IF OBJECT_ID. Run after Connect, before Entity. Requires SaasCompanyAdmin/SysAdmin.',
-    N'{"type":"object","properties":{"includeInspectionAddon":{"type":"boolean","description":"Default false. When true also run InspectionAddon.sql"},"targetCompanyId":{"type":"integer"}}}',
-    N'ExternalDll',
-    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.EnsureTechPackSchemaTool"}',
-    1,
-    17
-);
-GO

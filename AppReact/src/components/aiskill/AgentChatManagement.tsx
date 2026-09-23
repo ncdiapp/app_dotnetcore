@@ -3,7 +3,7 @@ import { useDispatch } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { getCurrentActiveTab, updateTabPath } from '../../redux/features/ui/navigation/tabnavSlice';
-import { genericAgentSvc, type GenericAgentChatSummary } from '../../webapi/genericAgentSvc';
+import { genericAgentSvc, genericAgentChatTitle, type GenericAgentChatSummary } from '../../webapi/genericAgentSvc';
 import AgentChatList from './AgentChatList';
 import AgentUiChatHost from './AgentUiChatHost';
 
@@ -85,6 +85,24 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
         applyChatQuery(next?.SessionKey ?? null);
     };
 
+    const handleRename = async (sessionKey: string, title: string) => {
+        const next = title.trim();
+        if (!next) return;
+        setChats(prev => prev.map(c => c.SessionKey === sessionKey ? { ...c, Title: next } : c));
+        try {
+            const ok = await genericAgentSvc.RenameChat(skillKey, sessionKey, next);
+            if (!ok) {
+                setError('Failed to rename chat.');
+                await refreshList(selectedKey);
+                return;
+            }
+            setError(null);
+        } catch {
+            setError('Failed to rename chat.');
+            await refreshList(selectedKey);
+        }
+    };
+
     const selected = useMemo(
         () => chats.find(c => c.SessionKey === selectedKey) ?? null,
         [chats, selectedKey],
@@ -97,6 +115,7 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
                 selectedSessionKey={selectedKey}
                 onSelect={handleSelect}
                 onDelete={handleDelete}
+                onRename={(sessionKey, title) => { void handleRename(sessionKey, title); }}
                 onNewChat={() => { void handleNewChat(); }}
                 creating={creating}
             />
@@ -113,7 +132,7 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
                     />
                 ) : (
                     <div className={`w-full h-full flex items-center justify-center text-sm ${theme.label}`}>
-                        {selected ? selected.Title : 'Select a chat or click New Chat.'}
+                        {selected ? genericAgentChatTitle(selected) : 'Select a chat or click New Chat.'}
                     </div>
                 )}
             </div>

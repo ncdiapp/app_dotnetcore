@@ -1,5 +1,6 @@
 -- CHILD worker: Color import (Deterministic). TENANT seed -- NOT a Flyway migration.
 -- SkillKey: plm-integration-color
+-- RULE: new-tenant INSERT only. No UPDATE. Child IsActive=0 (hidden from left menu).
 SET NOCOUNT ON;
 GO
 
@@ -12,22 +13,7 @@ VALUES (
     N'plm-integration-color',
     N'PLM Integration Color',
     N'Deterministic child: PLM RGB color import; HITL owned by ROOT',
-    N'# PLACEHOLDER',
-    3, 1, 23, 1,
-    40000, 30000, 4000, 8,
-    40, N'Deterministic', 1
-);
-GO
-
-UPDATE dbo.AppAgentSkillSet
-SET DisplayName = N'PLM Integration Color',
-    Description = N'Deterministic child: PLM RGB color import; HITL owned by ROOT',
-    CapabilityFlags = 3,
-    IsActive = 1,
-    MaxIterations = 40,
-    ExecutionMode = N'Deterministic',
-    AgentUi = 1,
-    SystemPrompt = N'# CHILD WORKER - SkillKey: plm-integration-color
+    N'# CHILD WORKER - SkillKey: plm-integration-color
 # Parent ROOT: plm-integration-orchestrator
 
 ## Non-negotiable
@@ -44,8 +30,11 @@ SET DisplayName = N'PLM Integration Color',
 
 ## nextHint
 PREVIEW: Ask ROOT to confirm Proceed. EXECUTE ok: Mark wizard.color=done
-'
-WHERE SkillKey = N'plm-integration-color';
+',
+    3, 0, 23, 1,
+    40000, 30000, 4000, 8,
+    40, N'Deterministic', 1
+);
 GO
 
 IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-color')

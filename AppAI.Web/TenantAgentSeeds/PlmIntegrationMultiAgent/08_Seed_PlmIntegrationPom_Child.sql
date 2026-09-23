@@ -1,5 +1,6 @@
 -- CHILD worker: POM import (Deterministic). TENANT seed -- NOT a Flyway migration.
 -- SkillKey: plm-integration-pom
+-- RULE: new-tenant INSERT only. No UPDATE. Child IsActive=0 (hidden from left menu).
 SET NOCOUNT ON;
 GO
 
@@ -12,22 +13,7 @@ VALUES (
     N'plm-integration-pom',
     N'PLM Integration POM',
     N'Deterministic child: POM / body-part import; HITL owned by ROOT',
-    N'# PLACEHOLDER',
-    3, 1, 24, 1,
-    40000, 30000, 4000, 8,
-    40, N'Deterministic', 1
-);
-GO
-
-UPDATE dbo.AppAgentSkillSet
-SET DisplayName = N'PLM Integration POM',
-    Description = N'Deterministic child: POM / body-part import; HITL owned by ROOT',
-    CapabilityFlags = 3,
-    IsActive = 1,
-    MaxIterations = 40,
-    ExecutionMode = N'Deterministic',
-    AgentUi = 1,
-    SystemPrompt = N'# CHILD WORKER - SkillKey: plm-integration-pom
+    N'# CHILD WORKER - SkillKey: plm-integration-pom
 # Parent ROOT: plm-integration-orchestrator
 
 ## Non-negotiable
@@ -44,8 +30,11 @@ SET DisplayName = N'PLM Integration POM',
 
 ## nextHint
 PREVIEW: Ask ROOT to confirm Proceed. EXECUTE ok: Mark wizard.pom=done
-'
-WHERE SkillKey = N'plm-integration-pom';
+',
+    3, 0, 24, 1,
+    40000, 30000, 4000, 8,
+    40, N'Deterministic', 1
+);
 GO
 
 IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-pom')

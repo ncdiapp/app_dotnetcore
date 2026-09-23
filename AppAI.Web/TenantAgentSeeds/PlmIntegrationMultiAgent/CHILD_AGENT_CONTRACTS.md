@@ -1,8 +1,8 @@
 # PLM Multi-Agent — Child SkillKey / call_agent contracts
 
 **Status:** Wave 0+1 live. Search / MassUpdate children are Wave 2 (ROOT still runs those tools).  
-**ROOT:** `plm-integration-orchestrator` (Interactive, all HITL).  
-**Children:** Deterministic, never `ask_user` / PlanGate wait.  
+**ROOT:** `plm-integration-orchestrator` (Interactive, all HITL, `IsActive=1` — only agent on the left menu).  
+**Children:** Deterministic, `IsActive=0` (hidden from left menu). `call_agent` loads by SkillKey. Never `ask_user` / PlanGate wait.  
 **Missing SkillKey:** `call_agent` errors; ROOT stops (Retry / Back). No local preview/execute fallback.
 
 ## Platform rules (non-negotiable)
@@ -102,9 +102,47 @@ call_agent("<SkillKey>", "<PHASE=…>. Read plm.integration.<code>.inputs. <cons
 | Phase | Message (shape) | Child writes | ROOT after return |
 |---|---|---|---|
 | A | `PHASE=A only. Read …inputs. Return DETAILED Phase A checklist… Write …phase-a. No SQL.` | `…phase-a` | HITL checklist → write `…plan` |
-| B | `PHASE=B. Read inputs+plan. Generate output/{templateId}/. Write …outputs.` | `…outputs` | Append TemplateId to wizard `import-dw.doneIds`; `update_plm_wizard_progress` |
+| B | `PHASE=B. Read inputs+plan. Generate output/{templateId}/. Write …outputs (files + executionPlan).` | `…outputs` | **Do not** write `doneIds`. Show plan; `ask_user` Apply \| Cancel |
+| APPLY | `PHASE=APPLY. Read …outputs.executionPlan. Execute in order. Do not ask the user.` | `…outputs.apply` | `ok=true` → append TemplateId to `import-dw.doneIds`; Cancel → `pendingApplyIds` |
 
-Never A+B in one ROOT turn.
+Never A+B+APPLY in one ROOT turn. ROOT never runs `execute_agent_sql_file` / `execute_dw_blueprint_from_file`.
+
+### `executionPlan` (variable file count — only files that exist)
+
+Phase B writes this on `plm.integration.import-dw.outputs` (and compact FinalResponse). Do **not** parse chat prose.
+
+```json
+{
+  "ok": true,
+  "skillKey": "plm-integration-import-dw",
+  "phase": "B",
+  "templateId": 3359,
+  "files": [{ "path": "output/3359/1_PlmDw_Tables.sql", "sizeBytes": 400000 }],
+  "executionPlan": [
+    { "order": 1, "kind": "sql", "path": "output/3359/1_PlmDw_Tables.sql", "target": "app", "label": "Create Plm_* tables" },
+    { "order": 2, "kind": "sql", "path": "output/3359/2_PlmDw_FieldMapping.sql", "target": "app", "label": "Seed FieldMapping" },
+    { "order": 3, "kind": "sql", "path": "output/3359/3_PlmDw_ImportFromDW.sql", "target": "app", "label": "Import DW data" },
+    { "order": 4, "kind": "dw-blueprint", "path": "output/3359/4_PlmDw_ImportBlueprint.json", "mode": "Insert", "label": "Create TX/Form/Search" }
+  ]
+}
+```
+
+Assembly rules (do not hard-code a fixed step count):
+
+- `1_` / `2_` / `3_` `.sql` → `kind=sql`, `target=app`
+- `3b_Tchp_ImportFromDW.sql` if present → before blueprint
+- `4_*.json` → `kind=dw-blueprint` (ROOT may set `mode` Insert|Update|Repair before APPLY)
+- `5_` → after blueprint (BOM official order)
+- `6_` only if the file exists
+
+APPLY tool map:
+
+- `kind=sql` → `execute_agent_sql_file` (path only). Pass `requiredDataSourceIds` = job `plmDataSourceId,dwDataSourceId` (+ erp when present).
+- `kind=dw-blueprint` → `execute_dw_blueprint_from_file` (path + mode + saasApplicationId).
+
+**Cross-database SQL:** official scripts INSERT into APP and SELECT/JOIN PLM, plmDW, and sometimes ERP via three-part names (`[plmDW].dbo.Table`) and `DB_ID()`. They must run on the **APP** connection. All catalogs must live on the **same SQL Server instance** and be visible to the APP login. Different servers → tool error (no linked-server rewrite).
+
+Never `file_read` deliverables or pass SQL/JSON bodies through the LLM.
 
 ### Linear import children (entity / folder / image / color / pom)
 
@@ -149,8 +187,9 @@ Exact tool names must match `integration-plm-import` library seeds.
 1. ExecutionMode=Deterministic. Never ask_user. Never STOP for HITL.
 2. Missing inputs → ok=false + errors for ROOT; do not invent ids.
 3. Read plm.integration.job + plm.integration.<code>.inputs on start.
-4. Honor PHASE=PREVIEW | PHASE=EXECUTE from the call message.
+4. Honor PHASE=PREVIEW | PHASE=EXECUTE | PHASE=APPLY from the call message.
 5. Final reply = compact JSON (ok, summary, counts, errors). No connection strings.
+6. File-producing children write executionPlan; APPLY uses path-based tools only.
 ```
 
 Subscribe: `integration-plm-import` (+ `platform-multi-agent` only if child must read/write shared context — usually yes for inputs/outputs).
@@ -181,6 +220,21 @@ Wizard `search` only:
 Search child FinalResponse should include `"mode": "main" | "additional-view"` so ROOT appends the right id list.
 
 Until the search child is seeded, ROOT runs both tool sets **locally** under the search playbook.
+
+---
+
+## Reuse — Search / Grading / later file-producing children
+
+Same three steps; only the `kind` → tool map changes:
+
+1. Generating child writes `plm.integration.{code}.outputs.executionPlan` (only files that exist).
+2. ROOT shows the plan → `ask_user` Apply | Cancel → `call_agent(..., PHASE=APPLY)`.
+3. Same child executes path-based tools in `order`. `doneIds` only after APPLY `ok=true`. Cancel → `pendingApplyIds`.
+
+Typical later plans:
+
+- Search: one step `kind=search-blueprint`, `path=output/{searchId}/1_PlmSearch_ImportBlueprint.json` (add `execute_search_blueprint_from_file` when that child is seeded).
+- Grading QC: one or more `kind=sql`, `target=app` (same `execute_agent_sql_file`; pass ERP DataSourceId in `requiredDataSourceIds` when the script three-part-names ERP).
 
 ---
 

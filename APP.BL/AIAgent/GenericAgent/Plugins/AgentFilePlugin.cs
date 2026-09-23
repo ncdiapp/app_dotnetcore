@@ -135,6 +135,35 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
         }
 
+        public Task<string> ExecuteSqlFile(
+            AgentToolContext context,
+            CancellationToken ct,
+            string relativePath,
+            int? dataSourceId = null,
+            string requiredDataSourceIds = null)
+        {
+            try
+            {
+                RequireSession(context);
+                var result = GenericAgentSqlFileBL.Execute(
+                    context.ChatSessionKey,
+                    context.CompanyId,
+                    relativePath,
+                    dataSourceId,
+                    requiredDataSourceIds);
+                return Task.FromResult(JsonConvert.SerializeObject(result));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(JsonConvert.SerializeObject(new
+                {
+                    Ok = false,
+                    Path = relativePath,
+                    Error = ex.Message
+                }));
+            }
+        }
+
         public Task<string> Delete(AgentToolContext context, CancellationToken ct, string path)
         {
             try

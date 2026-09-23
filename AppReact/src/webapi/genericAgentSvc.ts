@@ -28,6 +28,11 @@ export interface GenericAgentChatSummary {
     IsFixedTestSession: boolean;
 }
 
+export function genericAgentChatTitle(item?: { Title?: string | null } | null): string {
+    const text = (item?.Title || '').trim();
+    return text || 'New Chat';
+}
+
 export interface GenericAgentFile {
     RelativePath: string;
     SizeBytes: number;
@@ -281,6 +286,21 @@ class GenericAgentService {
             `${BASE}/DeleteChat?skillKey=${encodeURIComponent(skillKey)}&sessionKey=${encodeURIComponent(sessionKey)}`,
             { method: 'POST', headers: getHeaders() }
         ).catch(() => {});
+    }
+
+    async RenameChat(skillKey: string, sessionKey: string, title: string): Promise<boolean> {
+        const res = await fetch(`${BASE}/RenameChat`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({
+                SkillKey: skillKey || '',
+                SessionKey: sessionKey || '',
+                Title: title || '',
+            }),
+        });
+        if (!res.ok) throw new Error('Failed to rename chat');
+        const data = await res.json();
+        return !!data?.Object;
     }
 
     fileScopeQuery(skillKey: string, sessionKey: string | null | undefined, path?: string, fileScope?: string): URLSearchParams {

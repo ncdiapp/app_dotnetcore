@@ -7,10 +7,17 @@ namespace APP.Components.EntityDto
     {
         public string   SessionKey { get; set; }
         public string   SkillKey   { get; set; }
-        /// <summary>Derived from first user message in MessagesJson — not a DB column.</summary>
+        /// <summary>DisplayTitle if renamed; otherwise first real user message.</summary>
         public string   Title      { get; set; }
         public DateTime UpdatedAt  { get; set; }
         public bool     IsFixedTestSession { get; set; }
+    }
+
+    public class GenericAgentRenameChatDto
+    {
+        public string SkillKey   { get; set; }
+        public string SessionKey { get; set; }
+        public string Title      { get; set; }
     }
 
     public class GenericAgentFileDto

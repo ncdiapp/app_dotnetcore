@@ -774,6 +774,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
             );
             setSessionId(sid);
             sessionIdRef.current = sid;
+            if (msg !== SESSION_START) onConversationChangedRef.current?.();
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : String(e));
             setPendingAskUser(null);

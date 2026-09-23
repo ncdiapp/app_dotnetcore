@@ -1,5 +1,6 @@
 -- CHILD worker: Image / Sketch import (Deterministic). TENANT seed -- NOT a Flyway migration.
 -- SkillKey: plm-integration-image
+-- RULE: new-tenant INSERT only. No UPDATE. Child IsActive=0 (hidden from left menu).
 SET NOCOUNT ON;
 GO
 
@@ -12,22 +13,7 @@ VALUES (
     N'plm-integration-image',
     N'PLM Integration Image',
     N'Deterministic child: tblSketch to AppFile import; HITL owned by ROOT',
-    N'# PLACEHOLDER',
-    3, 1, 22, 1,
-    40000, 30000, 4000, 8,
-    80, N'Deterministic', 1
-);
-GO
-
-UPDATE dbo.AppAgentSkillSet
-SET DisplayName = N'PLM Integration Image',
-    Description = N'Deterministic child: tblSketch to AppFile import; HITL owned by ROOT',
-    CapabilityFlags = 3,
-    IsActive = 1,
-    MaxIterations = 80,
-    ExecutionMode = N'Deterministic',
-    AgentUi = 1,
-    SystemPrompt = N'# CHILD WORKER - SkillKey: plm-integration-image
+    N'# CHILD WORKER - SkillKey: plm-integration-image
 # Parent ROOT: plm-integration-orchestrator
 
 ## Non-negotiable
@@ -47,8 +33,11 @@ INSERT writes AppFile with FolderID NULL by design. Do not call folder placement
 
 ## nextHint
 PREVIEW: Ask ROOT to confirm Proceed. EXECUTE ok: Mark wizard.image=done then ROOT must run folder placement
-'
-WHERE SkillKey = N'plm-integration-image';
+',
+    3, 0, 22, 1,
+    40000, 30000, 4000, 8,
+    80, N'Deterministic', 1
+);
 GO
 
 IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-image')

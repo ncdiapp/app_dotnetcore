@@ -1,7 +1,8 @@
 -- CHILD worker for PLM Migration Multi-Agent (Deterministic).
 -- TENANT seed -- NOT a Flyway migration.
 -- SkillKey: plm-integration-import-dw | ExecutionMode: Deterministic
--- ASCII-only prompt body (sqlcmd-safe). New-tenant INSERT only (no UPDATE of existing agents).
+-- RULE: new-tenant INSERT only. No UPDATE. Child IsActive=0 (hidden from left menu).
+-- ASCII-only prompt body (sqlcmd-safe).
 SET NOCOUNT ON;
 GO
 
@@ -13,7 +14,7 @@ INSERT INTO dbo.AppAgentSkillSet
 VALUES (
     N'plm-integration-import-dw',
     N'PLM Integration Import DW',
-    N'Deterministic child: ImportFromPLMDW execute worker; HITL owned by orchestrator',
+    N'Deterministic child: ImportFromPLMDW generate + APPLY worker; HITL owned by orchestrator',
     N'# CHILD WORKER - SkillKey: `plm-integration-import-dw`
 # Parent ROOT: `plm-integration-orchestrator` (only agent that talks to the user)
 
@@ -26,10 +27,12 @@ VALUES (
    - `plm.integration.job`
 4. Honor the call message PHASE=
    - `PHASE=A` - discovery only; write `plm.integration.import-dw.phase-a`; no SQL generation under `output/`
-   - `PHASE=B` - generate deliverables under `output/{templateId}/`; write `plm.integration.import-dw.outputs` with path list
-   - `PHASE=D` - only if message explicitly requests apply/validate using platform tools; otherwise describe readiness in the reply
+   - `PHASE=B` - generate deliverables under `output/{templateId}/`; write `plm.integration.import-dw.outputs` with files[] + executionPlan[] (only files that exist)
+   - `PHASE=APPLY` - execute `executionPlan` in order with path-based tools only; stop on first failure; write `plm.integration.import-dw.outputs.apply`
+   - `PHASE=D` - legacy alias of PHASE=APPLY (same rules)
 5. Treat Gate 0 / "WAIT FOR USER" / "STOP for confirmation" sections below as **documentation of domain rules for ROOT**, not as instructions for you to chat with the user.
-6. Final reply: short status + paths + any blocking issues for ROOT. Do not dump full SQL/JSON bodies.
+6. Final reply: short status + paths + executionPlan + any blocking issues for ROOT. Do not dump full SQL/JSON bodies.
+7. **Never** `file_read` large deliverables. **Never** pass SQL/JSON bodies into `execute_sql` or `execute_dw_blueprint_config`. APPLY uses `execute_agent_sql_file` and `execute_dw_blueprint_from_file` only.
 
 ## Shared context keys (this child)
 - `plm.integration.import-dw.inputs`
@@ -388,6 +391,13 @@ This PROMPT is used in **three** places. **Detect which one you are in, then fol
 4. Optionally call `validate_agent_outputs` with min sizes (e.g. `1_PlmDw_Tables.sql` ≥ 400000, `4_PlmDw_ImportBlueprint.json` ≥ 500000) or `file_list` on `output/{templateId}` and report **SizeBytes**.
 5. If `run_agent_script` fails (missing sqlcmd, bad DataSource, script error) → report the Tool error and **STOP**. Never replace with stub SQL/JSON.
 6. Reject your own work if Blueprint is tiny or lacks `unitStructure.siblingUnits` / `blueprintFields`.
+7. **Write `plm.integration.import-dw.outputs`** as compact JSON with `files[]` and `executionPlan[]` built from **files that actually exist** (never invent missing steps). Order rules:
+   - `1_` / `2_` / `3_` `.sql` → `kind=sql`, `target=app` (numbered order)
+   - `3b_Tchp_ImportFromDW.sql` if present → `kind=sql`, `target=app`, **before** the blueprint step
+   - `4_*.json` → `kind=dw-blueprint`, `mode=Insert` (ROOT may override mode before APPLY)
+   - `5_*.sql` → `kind=sql`, `target=app`, **after** the blueprint step (BOM official order)
+   - `6_*.sql` only if the file exists
+   Each step: `{ order, kind, path, target, mode?, label }`. Also include `templateId`. Do not dump SQL/JSON bodies.
 
 #### B0-IDE - Cursor IDE (local)
 
@@ -585,7 +595,21 @@ After physical tables are populated (steps 1-3), open **PLM Data Import → Step
 
 API equivalents: `POST webapi/PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`.
 
-**Agent scope:** Phase D is executed by the **user in the running app**. The agent generates files and instructions only - no server deployment during PROMPT runtime.
+**Agent scope (PHASE=APPLY):** ROOT confirms the plan, then this child executes files with path-based tools. Do not ask the user. Do not load SQL/JSON into the LLM.
+
+## PHASE=APPLY - execute generated outputs (path-based only)
+
+When the call message is `PHASE=APPLY` (or `PHASE=D` as a legacy alias):
+
+1. Read `plm.integration.import-dw.outputs.executionPlan` and `plm.integration.job` (sessionId, saasApplicationId, plmDataSourceId, dwDataSourceId, optional erpDataSourceId).
+2. If `executionPlan` is missing/empty → `ok=false` and stop. Do not guess file names.
+3. Sort by `order`. For **each** step, one tool call, in order. **Do not skip. Do not reorder.**
+   - `kind=sql` → `execute_agent_sql_file` with `relativePath=step.path`. Omit `dataSourceId` when `target=app`. Pass `requiredDataSourceIds` as the comma-separated job ids that the script will three-part-name (typically plmDataSourceId,dwDataSourceId; add erp when job has it). Official scripts INSERT into APP and SELECT from PLM/plmDW/ERP via `[Catalog].dbo.Table` -- they require those catalogs on the **same SQL Server** as APP.
+   - `kind=dw-blueprint` → `execute_dw_blueprint_from_file` with `relativePath=step.path`, `mode` from plan (or ROOT override), `saasApplicationId` from job.
+4. Stop on the first `ok=false`. Do not continue later steps.
+5. Write `plm.integration.import-dw.outputs.apply` = `{ ok, steps:[{order,kind,path,ok,error,batches,durationMs}] }`.
+6. FinalResponse = compact JSON `{ ok, skillKey, phase:"APPLY", templateId, summary, errors }`. Never dump SQL/JSON.
+7. Forbidden: `file_read` of deliverables; `execute_sql`; inline `blueprintJson` on `execute_dw_blueprint_config`.
 
 **BL (Phase D):** `SaveDwBlueprintLinkTargets` reads `plmTemplate.templateHeaderTabIds` and per-transaction `isTemplateHeaderTab` / `plmTabSort` from Blueprint JSON - same `TemplateItemType` behavior as legacy Template Import (`TemplateHeader` vs `MainItem`). **New** action targets the first non-header tab.
 
@@ -1058,7 +1082,7 @@ Agent loads TabIds from `pdmTemplateTab` for TemplateId 3359 - user does **not**
 - **Unrelated C# / WebAPI changes** during PROMPT runs (BOM pivot BL is already in repo)  
 - Full production load without explicit user request  
 ',
-    3, 1, 100, 1,
+    3, 0, 100, 1,
     80000, 60000, 4000, 10,
     40, N'Deterministic', 1
 );
@@ -1135,5 +1159,14 @@ AND NOT EXISTS (
     WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'platform-transaction')
 INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
 VALUES (N'plm-integration-import-dw', N'platform-transaction');
+GO
+
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-import-dw')
+AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
+AND NOT EXISTS (
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription
+    WHERE SkillKey = N'plm-integration-import-dw' AND LibraryKey = N'integration-plm-import')
+INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
+VALUES (N'plm-integration-import-dw', N'integration-plm-import');
 GO
 
