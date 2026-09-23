@@ -20,7 +20,8 @@
                            ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  GenericAgentController  (AppAI.Web/Controllers/)                   │
-│  • Validates request, creates session, fires Task.Run              │
+│  • Validates request, captures AgentExecutionContext                │
+│  • Creates session and starts background execution                  │
 │  • Wires GenericAgentCallbacks → GenericAgentSessionStore queue    │
 │  • StreamEvents: SSE loop draining queue until done/error          │
 │  • ConfirmPlan / ConfirmSchema: resolves TaskCompletionSource       │
@@ -64,7 +65,7 @@
                                 └────────────────────────────────────┘
 ```
 
-Existing agent controllers (`AppBuilderAgentController`, `AppReportAgentController`, `DbGenieController`) continue to expose their original routes. Their bodies now forward directly to `GenericAgentBL.RunAsync` with a hardcoded `skillKey`. The generic `GenericAgentController` additionally accepts any `skillKey` and is the entry point for the admin test UI.
+Existing agent controllers (`AppBuilderAgentController`, `AppReportAgentController`, `DbGenieController`) continue to expose their original routes. Their bodies now resolve the authenticated tenant execution context and forward it to `GenericAgentBL.RunAsync` with a hardcoded `skillKey`. The generic `GenericAgentController` additionally accepts any `skillKey` and is the entry point for the admin test UI.
 
 ---
 
@@ -72,11 +73,11 @@ Existing agent controllers (`AppBuilderAgentController`, `AppReportAgentControll
 
 | Class / File | Location | Purpose | Key Methods |
 |---|---|---|---|
-| `GenericAgentBL` | `APP.BL/AIAgent/GenericAgent/` | Public entry point. Validates inputs, delegates to engine. | `RunAsync(skillKey, userMessage, chatHistory, callbacks, identity, ct)` |
-| `GenericAgentEngine` | `APP.BL/AIAgent/GenericAgent/` | SK agentic loop. Loads config, builds kernel, runs streaming. | `RunAsync(...)`, `BuildKernel()`, `WrapRegisteredTool()`, `CreateMcpPluginAsync()`, `BuildChatHistory()` |
-| `AIConfigSettingBL` | `APP.BL/AIAgent/GenericAgent/` | Reads LLM provider/key/model from `AppTenantSetting`. No appsettings.json fallback. | `GetProvider()`, `GetApiKey()`, `GetModel()` — all have identity overloads for background threads |
-| `KernelProviderHelper` | `APP.BL/AIAgent/GenericAgent/` | Thin facade over `AIConfigSettingBL` for non-identity code paths. | `GetProvider()`, `GetApiKey()`, `GetModel()` |
-| `AppAgentSkillSetBL` | `APP.BL/AIAgent/AiSkill/` | CRUD over `AppAgentSkillSet` table. Parameterized queries, no ORM. | `GetAll()`, `GetByKey(skillKey)`, `GetByKey(skillKey, dataSourceId)`, `Upsert(dto)`, `Delete(skillKey)` |
+| `GenericAgentBL` | `APP.BL/AIAgent/GenericAgent/` | Public entry point. Validates inputs, captures/accepts tenant execution context, delegates to engine. | `RunAsync(executionContext, userMessage, chatHistory, callbacks, ct)` |
+| `GenericAgentEngine` | `APP.BL/AIAgent/GenericAgent/` | SK agentic loop. Loads tenant-scoped config, builds kernel, runs streaming. | `RunAsync(...)`, `BuildKernel()`, `WrapRegisteredTool()`, `CreateMcpPluginAsync()`, `BuildChatHistory()` |
+| `AIConfigSettingBL` | `APP.BL/AIAgent/GenericAgent/` | Reads LLM provider/key/model from the explicitly selected tenant's `AppTenantSetting`. No appsettings.json fallback. | `GetProvider(executionContext)`, `GetApiKey(executionContext)`, `GetModel(executionContext)` |
+| `KernelProviderHelper` | `APP.BL/AIAgent/GenericAgent/` | Optional facade over `AIConfigSettingBL` that accepts an explicit `AgentExecutionContext`; it must not resolve shared credentials without a tenant context. | `GetProvider(executionContext)`, `GetApiKey(executionContext)`, `GetModel(executionContext)` |
+| `AppAgentSkillSetBL` | `APP.BL/AIAgent/AiSkill/` | Tenant-scoped CRUD over `AppAgentSkillSet` in the current tenant database. Parameterized queries, no ORM. | `GetAll(executionContext)`, `GetByKey(executionContext, skillKey)`, `Upsert(executionContext, dto)`, `Delete(executionContext, skillKey)` |
 | `AppAgentToolEngine` | `APP.BL/TenantBusiness/` | Strategy dispatcher: routes tool calls by `ToolType` to the correct executor. | `Dispatch(toolType, toolConfig, args, context, ct)`, `BuildInvokersAsync()` |
 | `BuiltInToolExecutor` | `APP.BL/TenantBusiness/AgentToolExecutors/` | Reflects a C# method by `TypeName.MethodName` from `ToolConfig`. | `ExecuteAsync(toolConfig, args, context, ct)` |
 | `SqlQueryToolExecutor` | `APP.BL/TenantBusiness/AgentToolExecutors/` | Runs a parameterized SQL query from `ToolConfig.SqlBody`. Never string-concatenates. | `ExecuteAsync(toolConfig, args, context, ct)` |
@@ -85,7 +86,7 @@ Existing agent controllers (`AppBuilderAgentController`, `AppReportAgentControll
 | `ExternalDllToolExecutor` | `APP.BL/TenantBusiness/AgentToolExecutors/` | `Assembly.LoadFrom` external DLL, invokes `IAgentTool.ExecuteAsync`. | `ExecuteAsync(toolConfig, args, context, ct)` |
 | `PowerShellToolExecutor` | `APP.BL/TenantBusiness/AgentToolExecutors/` | Runs a PowerShell script file. Super-admin only. | `ExecuteAsync(toolConfig, args, context, ct)` |
 | `GenericAgentCallbacks` | `APP.BL/AIAgent/GenericAgent/` | Delegate container wired by the controller to the session queue. | `OnToken`, `OnStep`, `OnDone`, `OnError`, `OnPlanReady`, `OnSchemaReady` |
-| `GenericAgentSessionStore` | `APP.BL/AIAgent/GenericAgent/` | Static in-memory event queue + gate TCS per session. | `CreateSession()`, `Enqueue()`, `DequeueAll()`, `WaitForEventAsync()`, `RegisterPlanConfirmation()`, `ConfirmPlan()`, `ConfirmSchema()` |
+| `GenericAgentSessionStore` | `APP.BL/AIAgent/GenericAgent/` | Session event queue + gate state. An in-memory implementation is single-node only; distributed storage is required for multi-node deployment. | `CreateSession()`, `Enqueue()`, `DequeueAll()`, `WaitForEventAsync()`, `RegisterPlanConfirmation()`, `ConfirmPlan()`, `ConfirmSchema()` |
 | `GenericAgentController` | `AppAI.Web/Controllers/` | HTTP layer: creates session, fires background Task, streams SSE, resolves gates. | `RunAgent()`, `StreamEvents()`, `PollEvents()`, `ConfirmPlan()`, `ConfirmSchema()` |
 | `AgentSkillSetManagement.tsx` | `AppReact/src/components/aiskill/` | Admin UI: FlexGrid skill list, editor panel with capability checkboxes, Run button. | — |
 | `GenericAgentChat.tsx` | `AppReact/src/components/aiskill/` | Reusable streaming chat component. Handles tokens, steps, plan gate, session state. | — |
@@ -115,7 +116,7 @@ Created by migration V008.
 | `MaxToolResultChars` | INT | Hard cap on characters returned from any single tool call |
 | `RecentWindowSize` | INT | Always keep the last N turns unpruned when sliding the history window |
 
-**Seeded rows (V008):**
+**Seeded rows (V008, applied to each tenant schema during provisioning):**
 
 | SkillKey | CapabilityFlags | MaxHistoryTokens | MaxToolResultChars |
 |---|---|---|---|
@@ -152,6 +153,16 @@ V008 seeds approximately 37 tool rows for the four built-in agent personas.
 | `IsActive` | BIT | Inactive servers are skipped at session start |
 
 The engine currently handles `streamable-http` transport. `stdio` rows are skipped with a log warning until that executor is implemented.
+
+### 3.4 Tenant Database Ownership and Routing
+
+The existing App-netore tenancy model uses one tenant database per company. `AppMasterDB` owns identity, sessions, company registration, and `AppDataSourceRegister`; tenant databases own app definitions, security groups, business data, tenant settings, and tenant-scoped agent configuration.
+
+The Generic Agent tables `AppAgentSkillSet`, `AppAgentToolRegister`, and `AppAgentMcpServer` are tenant-scoped and should be created in the tenant schema/template. Built-in personas and tools are seeded into a tenant during provisioning. If platform-wide templates are introduced later, they must be copied or resolved into the target tenant before editing or execution.
+
+The controller resolves the authenticated session to a company and captures an immutable `AgentExecutionContext` before starting background work. The context contains the authenticated user ID, company ID, login type, tenant data-source identity, and authorization information. The engine and every tool executor use this context for tenant routing; no LLM argument or request-body field may select a database, connection string, or company.
+
+Tenant database access must use `AppTenantAdapterBL.GetTenantAdapter()` and the existing data-source routing rules. Direct construction of a data adapter from a request or from `SkillKey` is prohibited. SysAdmin has no implicit tenant context; a SysAdmin agent run must explicitly select a company and then create a scoped execution context.
 
 ---
 
@@ -221,29 +232,29 @@ All six executor results are truncated to `MaxToolResultChars` by `GenericAgentE
 
 ## 6. LLM Provider Configuration Chain
 
-`AIConfigSettingBL` is the single source of truth. It reads exclusively from `AppTenantSetting` rows seeded by V009. There is no `appsettings.json` fallback — a missing or empty key means the provider returns an empty string, which the engine will detect when building the kernel.
+`AIConfigSettingBL` is the single source of truth. It reads exclusively from the selected tenant's `AppTenantSetting` rows seeded by V009. There is no `appsettings.json` fallback — a missing or empty key means the provider returns an empty string, which the engine will detect when building the kernel.
 
-**Resolution order for a request with identity (background thread):**
+**Resolution order for a request with an `AgentExecutionContext` (including background execution):**
 
 ```
-AIConfigSettingBL.GetProvider(identity)
-  → AppTenantSettingBL.GetStringValue(EmTenantSettings.AIConfigProvider, identity)
+AIConfigSettingBL.GetProvider(executionContext)
+  → AppTenantSettingBL.GetStringValue(EmTenantSettings.AIConfigProvider, executionContext.tenantContext)
   → Default: "Gemini"
 
-AIConfigSettingBL.GetApiKey(identity)
+AIConfigSettingBL.GetApiKey(executionContext)
   → switch(provider):
       "openai"    → AIConfigOpenAIApiKey tenant setting
       "anthropic" → AIConfigAnthropicApiKey tenant setting
       default     → AIConfigGeminiApiKey tenant setting
 
-AIConfigSettingBL.GetModel(identity)
+AIConfigSettingBL.GetModel(executionContext)
   → switch(provider):
       "openai"    → AIConfigOpenAIModel (default: "gpt-4o")
       "anthropic" → AIConfigAnthropicModel (default: "claude-3-5-sonnet-20241022")
       default     → AIConfigGeminiModel (default: "gemini-2.0-flash")
 ```
 
-**Requests without identity** (admin test path without user context) fall back to `KernelProviderHelper` which delegates to `LLMProviderHelper.GetConfiguredProvider()` — the same `AIConfigSettingBL` methods without an identity parameter.
+**Requests without tenant identity** cannot use tenant-scoped settings. The admin test path must authenticate the caller and explicitly select a company before creating an `AgentExecutionContext`; a shared/global provider-key fallback is not permitted in production.
 
 **Kernel construction per provider** (`GenericAgentEngine.BuildKernel`):
 
@@ -324,22 +335,23 @@ MCP clients implement `IAsyncDisposable` (or `IDisposable` as fallback); all are
 
 **Session lifecycle:**
 
-1. `GenericAgentController.RunAgent` calls `GenericAgentSessionStore.CreateSession()` → returns a new GUID `sessionId`.
-2. A `GenericAgentCallbacks` object is constructed, wiring all delegates to enqueue events for that session ID.
-3. `Task.Run(...)` fires `GenericAgentBL.RunAsync` on a thread-pool thread. The HTTP response returns immediately with `{ IsStarted: true, SessionId: "..." }`.
-4. The client opens a GET `/StreamEvents?sessionId=...` SSE connection. The controller loops, calling `WaitForEventAsync` (up to 30s long-poll), dequeuing and flushing events.
-5. When `OnDone` or `OnError` is enqueued, the client closes the SSE connection; the controller's loop exits.
+1. `GenericAgentController.RunAgent` validates the caller, resolves the authenticated company, and creates an immutable `AgentExecutionContext` from the validated identity and tenant data-source registration.
+2. `GenericAgentSessionStore.CreateSession()` returns a new GUID `sessionId` bound to the user, company, and execution context.
+3. A `GenericAgentCallbacks` object is constructed, wiring all delegates to enqueue events for that session ID.
+4. Background execution starts with the captured context; it must not depend on thread-static `ServerContext` surviving across `Task.Run` or `async/await`. The HTTP response returns immediately with `{ IsStarted: true, SessionId: "..." }`.
+5. The client opens a GET `/StreamEvents?sessionId=...` SSE connection. The controller verifies session ownership and company ownership, then loops, calling `WaitForEventAsync` (up to 30s long-poll), dequeuing and flushing events.
+6. When `OnDone` or `OnError` is enqueued, the client closes the SSE connection; the controller's loop exits and the session is cleaned up after its retention period.
 
 **Multi-turn context:** The client (React component) maintains the conversation history locally. On each send, it builds a `Messages` array from all prior messages and includes it in the request body. `GenericAgentEngine.BuildChatHistory` converts this list into a `ChatHistory` object. There is no server-side history store between requests.
 
 **Plan gate flow:**
 
 1. The BuiltIn `propose_plan` tool calls `OnPlanReady(planEvent)`.
-2. The controller callback enqueues a `plan` event and calls `GenericAgentSessionStore.RegisterPlanConfirmation(sessionId)` → returns a `TaskCompletionSource<bool>`.
+2. The controller registers a gate ID and confirmation state atomically, then enqueues a `plan` event containing that gate ID. The event is bound to the session owner and company.
 3. `await tcs.Task` suspends the background thread (up to 10 minutes; then auto-rejects).
-4. The user clicks Approve or Reject → client POSTs to `ConfirmPlan`.
-5. `GenericAgentSessionStore.ConfirmPlan(sessionId, confirmed)` calls `tcs.TrySetResult(confirmed)`.
-6. The background thread resumes; the tool returns `{Confirmed:true/false}` to the LLM.
+4. The user clicks Approve or Reject → client POSTs to `ConfirmPlan` with the session ID, gate ID, and decision.
+5. The endpoint verifies session ownership, company ownership, gate freshness, and one-time use before resolving the gate.
+6. The background execution resumes; the tool returns `{Confirmed:true/false}` to the LLM.
 
 Schema gate follows the same pattern via `ConfirmSchema`.
 

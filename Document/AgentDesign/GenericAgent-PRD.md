@@ -39,6 +39,7 @@ The cumulative effect: building a sixth agent meant inheriting all the technical
 | Pluggable tools | New tools (SQL queries, REST calls, C# scripts) registered via admin UI without code |
 | MCP server integration | Any external MCP server auto-exposes its tools to any agent persona |
 | Per-tenant LLM config | Each SaaS tenant supplies their own API key and chooses their provider |
+| Existing tenant isolation | Agent configuration, credentials, tools, and execution remain inside the authenticated tenant context and use App-netore's existing tenant database routing |
 | Backward-compatible routes | All existing controller URL routes remain unchanged; no frontend migration required |
 | Reusable chat UI | A single `<GenericAgentChat />` component works for any agent, anywhere in the app |
 
@@ -104,7 +105,9 @@ Pain points solved: no more copy-paste agentic loops; a single codebase path to 
 
 Agent personas are stored as rows in the `AppAgentSkillSet` table. Each row holds the agent's identity (`SkillKey`, `DisplayName`), its complete system prompt (`SystemPrompt`), capability flags, and context-management thresholds. Creating a new persona requires only inserting a row — no C# class, no recompile.
 
-Four built-in personas are seeded by migration V008: `app-builder`, `app-report`, `db-genie`, and `data-integration`.
+Agent persona configuration is tenant-scoped by default and is stored in the current tenant database. Built-in personas may be seeded from the tenant template database during provisioning. Any platform-wide persona template must be copied or resolved into the target tenant context before it is edited or executed.
+
+Four built-in personas are seeded by migration V008 into the tenant schema during provisioning: `app-builder`, `app-report`, `db-genie`, and `data-integration`.
 
 ### 5.2 Capability Flags
 
@@ -114,6 +117,8 @@ Each agent persona has an integer bitmask (`CapabilityFlags`) that controls runt
 
 Tools are registered per agent in `AppAgentToolRegister`. Each row specifies a `ToolType` that determines how it is executed: BuiltIn (reflect a C# method), SqlQuery (parameterized SQL, no code required), HttpRest (HTTP call, no code required), DynamicCSharp (Roslyn sandbox), ExternalDll (drop a DLL), or PowerShell (script file). SqlQuery and HttpRest tools can be added entirely through the admin UI.
 
+Tool registrations and MCP registrations are tenant-scoped. Tool execution receives the authenticated user's tenant execution context; a tool must not select a tenant database, connection string, or company ID from LLM-provided arguments.
+
 ### 5.4 MCP Server Integration
 
 Any MCP-compatible server can be registered in `AppAgentMcpServer`. When a session starts, the engine connects to each registered server, discovers its tool list automatically, and makes all tools available to the agent. No per-tool registration is needed.
@@ -121,6 +126,8 @@ Any MCP-compatible server can be registered in `AppAgentMcpServer`. When a sessi
 ### 5.5 Per-Tenant LLM Configuration
 
 Each SaaS tenant stores their LLM settings in `AppTenantSetting` (migration V009). The tenant chooses a provider (OpenAI, Gemini, or Anthropic), enters the API key for that provider, and optionally overrides the default model name. All three providers' keys are stored independently so tenants can switch providers without losing their other keys.
+
+The tenant database is selected from the validated session and `AppDataSourceRegister`; it is never selected from the request body or `SkillKey`. SysAdmin requests have no implicit tenant context and must explicitly select a company before using tenant-scoped agent settings.
 
 ### 5.6 Streaming Chat UI
 
@@ -172,6 +179,7 @@ The `GenericAgentChat` React component connects to the backend via Server-Sent E
 | **GenericAgentEngine** | The Semantic Kernel–based agentic loop. Receives a fully configured kernel (provider + tools + MCP plugins) and runs `ChatCompletionAgent.InvokeStreamingAsync`. |
 | **GenericAgentBL** | The public entry point. Validates inputs and calls `GenericAgentEngine.RunAsync`. Called by all agent controllers and the generic `/GenericAgent/RunAgent` endpoint. |
 | **GenericAgentCallbacks** | A callback object passed through the stack carrying `OnToken`, `OnStep`, `OnDone`, `OnError`, `OnPlanReady`, `OnSchemaReady` delegates. The controller wires these to the session event queue. |
-| **GenericAgentSessionStore** | A static in-memory store keyed by session ID. Holds the event queue for SSE delivery and the TaskCompletionSource objects for plan/schema gate resolution. |
+| **AgentExecutionContext** | Immutable request context captured before background execution: authenticated user ID, company ID, login type, tenant database identity/connection reference, and authorization information. Agent tools use this context instead of relying on thread-local request state. |
+| **GenericAgentSessionStore** | A session store keyed by session ID, bound to the user and company. An in-memory implementation is single-node only; multi-node deployment requires distributed session/event state. |
 | **SK / Semantic Kernel** | Microsoft.SemanticKernel — the .NET agentic AI library that manages the LLM chat loop, tool definitions, function invocation, and streaming. Version 1.74.0 used here. |
 | **AppAISkill** | A separate, unrelated feature: a user-managed library of reusable prompt snippets. Not used for agent system prompts and not modified by this refactor. |
