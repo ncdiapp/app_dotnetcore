@@ -31,4 +31,15 @@ public sealed class PdfTechPackExtractionRequest
     public string SessionKey { get; set; } = string.Empty;
     public string FileName { get; set; } = string.Empty;
     public byte[] PdfBytes { get; set; } = Array.Empty<byte>();
+    public PdfTechPackConfiguration? Configuration { get; set; }
+}
+
+public sealed class PdfTechPackConfiguration
+{
+    public string? ProjectId { get; set; }
+    public string? Location { get; set; }
+    public string? ProcessorId { get; set; }
+    public string? Bucket { get; set; }
+    public int? PollTimeoutMinutes { get; set; }
+    public string? CredentialJson { get; set; }
 }

@@ -77,7 +77,8 @@ public sealed class PdfTechPackController : SecureBaseController
                 CompanyId = companyId,
                 SessionKey = sessionKey,
                 FileName = file.FileName,
-                PdfBytes = memory.ToArray()
+                PdfBytes = memory.ToArray(),
+                Configuration = PdfTechPackExtractor.ResolveTenantConfiguration()
             }, cancellationToken);
         }
         catch (Exception ex)

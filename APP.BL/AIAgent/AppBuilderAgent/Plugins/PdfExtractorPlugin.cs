@@ -46,7 +46,8 @@ public sealed class PdfExtractorPlugin
                 CompanyId = context.CompanyId,
                 SessionKey = context.ChatSessionKey,
                 FileName = path,
-                PdfBytes = bytes
+                PdfBytes = bytes,
+                Configuration = PdfTechPackExtractor.ResolveTenantConfiguration()
             }, ct).ConfigureAwait(false);
 
             return JsonConvert.SerializeObject(new
