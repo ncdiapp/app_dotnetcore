@@ -1,4 +1,5 @@
 using App.BL;
+using App.BL.Document;
 using APP.Framework;
 using AppAI.Web.Auth;
 using AppAI.Web.Endpoints;
@@ -101,6 +102,7 @@ try
     // IOcrService — LLM-vision OCR (replaces Tesseract; Phase 6)
     builder.Services.AddHttpClient();
     builder.Services.AddScoped<IOcrService, LLMOcrService>();
+    builder.Services.AddScoped<IPdfTechPackExtractor, PdfTechPackExtractor>();
 
     // IAiActionService — Generic AI Action Engine (skill-driven, multi-modal)
     builder.Services.AddScoped<IAiActionService, AiActionService>();
