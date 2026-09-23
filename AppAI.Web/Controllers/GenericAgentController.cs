@@ -100,8 +100,34 @@ public class GenericAgentController : SecureBaseController
 
         var sessionId = GenericAgentSessionStore.CreateSession();
 
+        // Mark the chat as started so reopening it does not fire a second [session_start].
+        if (agentUserId > 0 && agentDsId > 0 && !string.IsNullOrWhiteSpace(chatSessionKey))
+        {
+            try
+            {
+                var existing = SessionBL.LoadBySessionKey(chatSessionKey, request.SkillKey.Trim(), agentUserId);
+                if (existing != null && (existing.Messages == null || existing.Messages.Count == 0))
+                {
+                    SessionBL.SaveSession(
+                        request.SkillKey, agentUserId, agentDsId,
+                        new List<JObject>
+                        {
+                            new JObject
+                            {
+                                ["role"] = "system",
+                                ["content"] = "[run_in_progress]",
+                                ["runSessionId"] = sessionId
+                            }
+                        },
+                        sessionKey: chatSessionKey);
+                }
+            }
+            catch { /* must not block the run */ }
+        }
+
         // Accumulate tool steps for this run so they can be persisted with the chat session.
         var persistedToolSteps = new List<JObject>();
+        var tokenBuf = new System.Text.StringBuilder();
 
         var callbacks = new GenericAgentCallbacks
         {
@@ -137,7 +163,12 @@ public class GenericAgentController : SecureBaseController
                 }
                 return Task.CompletedTask;
             },
-            OnToken = token => { GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "token", Token = token }); return Task.CompletedTask; },
+            OnToken = token =>
+            {
+                if (!string.IsNullOrEmpty(token)) tokenBuf.Append(token);
+                GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "token", Token = token });
+                return Task.CompletedTask;
+            },
             OnDone = done =>
             {
                 GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "done", Done = new AgentDoneEvent { FinalResponse = done } });
@@ -182,6 +213,25 @@ public class GenericAgentController : SecureBaseController
             OnAskUser = async askEvent =>
             {
                 GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "ask_user", AskUser = askEvent });
+                if (agentUserId > 0 && agentDsId > 0)
+                {
+                    try
+                    {
+                        var updated = new List<JObject>(request.Messages ?? new List<JObject>());
+                        var draft = tokenBuf.ToString();
+                        updated.Add(new JObject
+                        {
+                            ["role"] = "assistant",
+                            ["content"] = draft,
+                            ["pendingAskUser"] = askEvent != null ? JObject.FromObject(askEvent) : null,
+                            ["runSessionId"] = sessionId
+                        });
+                        SessionBL.SaveSession(
+                            request.SkillKey, agentUserId, agentDsId, updated,
+                            sessionKey: chatSessionKey);
+                    }
+                    catch { /* persist HITL snapshot must not fail the gate */ }
+                }
                 var tcs = GenericAgentSessionStore.RegisterAskUserConfirmation(sessionId);
                 using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(60));
                 cts.Token.Register(() => tcs.TrySetResult(new AgentAskUserResponse { Cancelled = true }));

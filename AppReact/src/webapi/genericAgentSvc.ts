@@ -221,6 +221,10 @@ class GenericAgentService {
             role: string;
             content: string;
             toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
+            pendingAskUser?: AskUserEvent;
+            PendingAskUser?: AskUserEvent;
+            runSessionId?: string;
+            RunSessionId?: string;
         }>;
     } | null> {
         try {
@@ -387,6 +391,15 @@ class GenericAgentService {
     /** Rebind UI handlers after remount without starting a new RunAgent. */
     reattachHandlers(handlers: GenericAgentEventHandlers): void {
         this.activeHandlers = handlers;
+    }
+
+    /** Resume PollEvents for a live HITL / in-progress run after switching chats. */
+    resumePolling(sessionId: string, handlers: GenericAgentEventHandlers, chatSessionKey?: string | null): void {
+        if (!sessionId) return;
+        this.stopPolling();
+        this.currentSessionId = sessionId;
+        this.currentChatSessionKey = chatSessionKey ?? this.currentChatSessionKey;
+        this.startPolling(sessionId, handlers);
     }
 
     private startPolling(sessionId: string, handlers: GenericAgentEventHandlers): void {

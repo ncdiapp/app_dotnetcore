@@ -26,7 +26,7 @@ const parentPath = (p: string) => {
 };
 
 const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
-    const { theme } = useTheme();
+    const { theme, t } = useTheme();
     const [cwd, setCwd] = useState('');
     const [files, setFiles] = useState<GenericAgentFile[]>([]);
     const [loading, setLoading] = useState(false);
@@ -173,7 +173,7 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
     if (editingPath) {
         return (
             <div className="w-full h-full flex flex-col overflow-hidden min-h-0">
-                <div className={`flex items-center gap-1 px-2 py-1.5 border-b border-gray-200 shrink-0`}>
+                <div className={`flex items-center gap-1 px-2 py-1.5 border-b ${t('border_mainContentSection')} shrink-0`}>
                     <button type="button" className={btn} onClick={() => setEditingPath(null)} title="Back">
                         <i className="fa-solid fa-arrow-left" />
                     </button>
@@ -199,7 +199,7 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey }) => {
 
     return (
         <div className="w-full h-full flex flex-col overflow-hidden min-h-0">
-            <div className={`flex items-center gap-1 px-2 py-1.5 border-b border-gray-200 shrink-0`}>
+            <div className={`flex items-center gap-1 px-2 py-1.5 border-b ${t('border_mainContentSection')} shrink-0`}>
                 <button type="button" className={iconBtn} onClick={goUp} disabled={!cwd} title="Up">
                     <i className="fa-solid fa-arrow-up" />
                 </button>

@@ -26,7 +26,7 @@ const AgentChatList: React.FC<Props> = ({
     onNewChat,
     creating,
 }) => {
-    const { theme } = useTheme();
+    const { theme, t } = useTheme();
     const btn = `px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`;
 
     return (
@@ -55,8 +55,10 @@ const AgentChatList: React.FC<Props> = ({
                     return (
                         <div
                             key={chat.SessionKey}
-                            className={`w-full mb-1 px-2 py-2 rounded-[4px] border flex items-start gap-1 ${
-                                selected ? theme.button_default : theme.mainContentSection
+                            className={`w-full mb-1 px-2 py-2 rounded-[4px] flex items-start gap-1 ${
+                                selected
+                                    ? `${t('bg_default')} ${theme.sideBar_menu_active}`
+                                    : theme.sideBar_menu
                             }`}
                         >
                             <button
@@ -64,7 +66,7 @@ const AgentChatList: React.FC<Props> = ({
                                 className="w-1 flex-auto min-w-0 text-left"
                                 onClick={() => onSelect(chat.SessionKey)}
                             >
-                                <div className={`text-xs truncate ${theme.title}`}>
+                                <div className={`text-xs truncate ${theme.title}${selected ? ' font-semibold' : ''}`}>
                                     {chat.Title?.trim() || 'New Chat'}
                                 </div>
                                 <div className={`text-[10px] truncate ${theme.label}`}>

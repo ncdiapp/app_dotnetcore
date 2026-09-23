@@ -18,6 +18,13 @@ export function getActiveTabKey(): string | null {
   return getCurrentActiveTab()?.tabKey ?? null;
 }
 
+export function agentChatCacheKey(
+  tabKey: string,
+  chatSessionKey?: string | null,
+): string {
+  return `${tabKey}|agent-chat|${chatSessionKey ?? ''}`;
+}
+
 export function saveAgentChatToTabCache(
   tabKey: string | null | undefined,
   snapshot: GenericAgentChatUiSnapshot,
@@ -29,7 +36,10 @@ export function saveAgentChatToTabCache(
     version: 1,
     tabKey,
   };
-  store.dispatch(setDataModelToCache({ dataModelKey: tabKey, dataModel: payload }));
+  store.dispatch(setDataModelToCache({
+    dataModelKey: agentChatCacheKey(tabKey, snapshot.chatSessionKey),
+    dataModel: payload,
+  }));
 }
 
 export function loadAgentChatFromTabCache(
@@ -38,7 +48,7 @@ export function loadAgentChatFromTabCache(
   chatSessionKey?: string | null,
 ): GenericAgentChatUiSnapshot | null {
   if (!tabKey) return null;
-  const raw = getDataModelFromCache(tabKey) as AgentChatTabCache | null;
+  const raw = getDataModelFromCache(agentChatCacheKey(tabKey, chatSessionKey)) as AgentChatTabCache | null;
   if (!raw || raw.pageType !== AGENT_CHAT_PAGE_TYPE) return null;
   if (raw.skillKey && skillKey && raw.skillKey !== skillKey) return null;
   const cachedChat = raw.chatSessionKey ?? null;
@@ -53,10 +63,14 @@ export function loadAgentChatFromTabCache(
   return raw;
 }
 
-export function clearAgentChatTabCache(tabKey: string | null | undefined): void {
+export function clearAgentChatTabCache(
+  tabKey: string | null | undefined,
+  chatSessionKey?: string | null,
+): void {
   if (!tabKey) return;
-  const raw = getDataModelFromCache(tabKey) as AgentChatTabCache | null;
+  const key = agentChatCacheKey(tabKey, chatSessionKey);
+  const raw = getDataModelFromCache(key) as AgentChatTabCache | null;
   if (raw?.pageType === AGENT_CHAT_PAGE_TYPE) {
-    store.dispatch(setDataModelToCache({ dataModelKey: tabKey, dataModel: null }));
+    store.dispatch(setDataModelToCache({ dataModelKey: key, dataModel: null }));
   }
 }

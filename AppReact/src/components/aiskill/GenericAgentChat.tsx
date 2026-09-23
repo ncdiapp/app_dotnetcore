@@ -13,6 +13,55 @@ import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import { chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 
 const SESSION_START = '[session_start]';
+const RUN_IN_PROGRESS = '[run_in_progress]';
+
+type StoredChatMessage = {
+    role: string;
+    content?: string;
+    toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
+    pendingAskUser?: AskUserEvent;
+    PendingAskUser?: AskUserEvent;
+    runSessionId?: string;
+    RunSessionId?: string;
+};
+
+const parseAskUser = (raw: unknown): AskUserEvent | null => {
+    if (!raw || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    const prompt = (o.Prompt ?? o.prompt) as string | undefined;
+    if (typeof prompt !== 'string' && !o.Mode && !o.mode) return null;
+    return {
+        Prompt: String(prompt ?? ''),
+        Mode: String(o.Mode ?? o.mode ?? 'text'),
+        Ui: o.Ui != null || o.ui != null ? String(o.Ui ?? o.ui) : undefined,
+        Layout: o.Layout != null || o.layout != null ? String(o.Layout ?? o.layout) : undefined,
+        Fields: (o.Fields ?? o.fields) as AskUserEvent['Fields'],
+        Options: (o.Options ?? o.options) as AskUserEvent['Options'],
+        ContextKey: (o.ContextKey ?? o.contextKey) as string | undefined,
+    };
+};
+
+const findPendingAskUser = (messages: StoredChatMessage[]): AskUserEvent | null => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const ask = parseAskUser(messages[i]?.pendingAskUser ?? messages[i]?.PendingAskUser);
+        if (ask) return ask;
+    }
+    return null;
+};
+
+const findRunSessionId = (messages: StoredChatMessage[]): string | null => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        const sid = (m?.runSessionId ?? m?.RunSessionId ?? '').trim();
+        if (sid) return sid;
+        const content = typeof m?.content === 'string' ? m.content : '';
+        if ((m?.role || '').toLowerCase() === 'system' && content === RUN_IN_PROGRESS) {
+            const fromContent = (m as StoredChatMessage).runSessionId || (m as StoredChatMessage).RunSessionId;
+            if (fromContent) return String(fromContent);
+        }
+    }
+    return null;
+};
 
 interface ChatMessage {
     role: 'user' | 'assistant';
@@ -250,7 +299,7 @@ const toolTooltip = (toolName: string, args?: string | null, skillNames?: Record
 };
 
 const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey, onConversationChanged }) => {
-    const { theme } = useTheme();
+    const { theme, t } = useTheme();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [turnActivities, setTurnActivities] = useState<TurnActivity[]>([]);
     const [currentTurnIndex, setCurrentTurnIndex] = useState(0);
@@ -496,8 +545,8 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
             setSkillExecutionMode(snap.skillExecutionMode || 'Interactive');
             skillExecutionModeRef.current = snap.skillExecutionMode || 'Interactive';
             if (snap.error) setError(snap.error);
-            if (genericAgentSvc.isPolling() || snap.isRunning || snap.pendingAskUser) {
-                genericAgentSvc.reattachHandlers(buildLiveHandlers(snap.currentTurnIndex));
+            if (snap.sessionId && (genericAgentSvc.isPolling() || snap.isRunning || snap.pendingAskUser)) {
+                genericAgentSvc.resumePolling(snap.sessionId, buildLiveHandlers(snap.currentTurnIndex), chatSessionKey ?? null);
             }
             return true;
         };
@@ -584,14 +633,24 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
             }
 
             try {
+                const loaded = chatSessionKey
+                    ? await genericAgentSvc.LoadChat(skillKey, chatSessionKey)
+                    : null;
                 const prior = chatSessionKey
-                    ? (await genericAgentSvc.LoadChat(skillKey, chatSessionKey))?.Messages ?? []
+                    ? loaded?.Messages ?? []
                     : await genericAgentSvc.LoadSession(skillKey);
                 if (cancelled) return;
-                const meaningful = (prior ?? []).filter(
-                    m => !(m.role === 'user' && (typeof m.content === 'string' ? m.content : String(m.content ?? '')) === SESSION_START)
-                );
-                if (meaningful.length > 0) {
+                const meaningful = (prior ?? []).filter(m => {
+                    const role = (m.role || '').toLowerCase();
+                    const content = typeof m.content === 'string' ? m.content : String(m.content ?? '');
+                    if (role === 'system') return false;
+                    if (role === 'user' && content === SESSION_START) return false;
+                    return true;
+                });
+                const stored = (prior ?? []) as StoredChatMessage[];
+                const pendingFromStore = findPendingAskUser(stored);
+                const runSid = findRunSessionId(stored);
+                if (meaningful.length > 0 || pendingFromStore || runSid) {
                     sessionStartFiredRef.current = true;
                     const restoredMsgs: ChatMessage[] = [];
                     const restoredActs: TurnActivity[] = [];
@@ -615,7 +674,12 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                             userTurn++;
                             restoredMsgs.push({ role: 'user', content });
                         } else if (m.role === 'assistant') {
-                            restoredMsgs.push({ role: 'assistant', content, toolSteps: steps });
+                            const pendingOnMsg = parseAskUser(
+                                (m as StoredChatMessage).pendingAskUser ?? (m as StoredChatMessage).PendingAskUser,
+                            );
+                            if (!(pendingOnMsg && (!content || content === pendingOnMsg.Prompt))) {
+                                restoredMsgs.push({ role: 'assistant', content, toolSteps: steps });
+                            }
                             if (steps && steps.length > 0) {
                                 restoredActs.push({
                                     turnIndex: Math.max(0, userTurn),
@@ -625,9 +689,27 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                             }
                         }
                     }
+                    const userTurns = meaningful.filter(m => m.role === 'user').length;
                     setMessages(restoredMsgs);
                     setTurnActivities(restoredActs);
-                    setCurrentTurnIndex(meaningful.filter(m => m.role === 'user').length);
+                    setCurrentTurnIndex(userTurns);
+                    currentTurnIndexRef.current = userTurns;
+                    if (pendingFromStore) {
+                        setPendingAskUser(pendingFromStore);
+                        setIsRunning(true);
+                        isRunningRef.current = true;
+                        if (runSid) {
+                            setSessionId(runSid);
+                            sessionIdRef.current = runSid;
+                            genericAgentSvc.resumePolling(runSid, buildLiveHandlers(Math.max(0, userTurns)), chatSessionKey ?? null);
+                        }
+                    } else if (runSid) {
+                        setSessionId(runSid);
+                        sessionIdRef.current = runSid;
+                        setIsRunning(true);
+                        isRunningRef.current = true;
+                        genericAgentSvc.resumePolling(runSid, buildLiveHandlers(0), chatSessionKey ?? null);
+                    }
                 } else {
                     fireSessionStartIfAllowed(mode, allowFirstTurn);
                 }
@@ -775,7 +857,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
 
     const handleClear = async () => {
         genericAgentSvc.disconnect();
-        clearAgentChatTabCache(tabKeyRef.current ?? getActiveTabKey());
+        clearAgentChatTabCache(tabKeyRef.current ?? getActiveTabKey(), chatSessionKeyRef.current);
         setIsRunning(false);
         isRunningRef.current = false;
         setMessages([]);
@@ -805,6 +887,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
         `w-full text-left px-3 py-2.5 text-sm rounded-[4px] border transition-colors ${theme.button_default}`;
     const choiceCardPrimary =
         `w-full text-left px-3 py-2.5 text-sm rounded-[4px] border font-medium transition-colors ${theme.button_default}`;
+    const regionBorder = t('border_mainContentSection');
     const allActivities = turnActivities;
     const hasAnyTools = allActivities.some(t => t.steps.length > 0);
     const askMode = (pendingAskUser?.Mode || 'text').toLowerCase();
@@ -993,7 +1076,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                     <div ref={bottomRef} />
                 </div>
 
-                <div className={`flex items-end gap-2 px-3 py-2 border-t border-gray-200 ${theme.mainContentSection}`}>
+                <div className={`flex items-end gap-2 px-3 py-2 border-t ${regionBorder} ${theme.mainContentSection}`}>
                     <textarea
                         className={`w-1 flex-auto px-2 py-1 text-xs border rounded-[4px] ${theme.inputBox} focus:outline-none resize-none`}
                         rows={2}
@@ -1019,8 +1102,8 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
 
             {/* ── Right: Tool Activity | Files ── */}
             {sidebarOpen && (
-                <div className={`w-80 flex flex-col overflow-hidden border-l border-gray-200 ${theme.mainContentSection} shrink-0`}>
-                    <div className={`flex items-center gap-1 px-2 py-1.5 border-b border-gray-200`}>
+                <div className={`w-80 flex flex-col overflow-hidden border-l ${regionBorder} ${theme.mainContentSection} shrink-0`}>
+                    <div className={`flex items-center gap-1 px-2 py-1.5 border-b ${regionBorder}`}>
                         <button
                             type="button"
                             className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'tools' ? ' font-semibold' : ' opacity-70'}`}
@@ -1105,11 +1188,11 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                                             const title = toolTitle(toolName, argsText, skillDisplayNames, labelText);
                                             const tip = toolTooltip(toolName, argsText, skillDisplayNames, labelText);
                                             return (
-                                                <div key={pair.key} className={`mb-1 rounded border ${isSuccess ? 'border-green-200' : 'border-red-200'} overflow-hidden`}>
+                                                <div key={pair.key} className={`mb-1 rounded border ${regionBorder} overflow-hidden ${t('bg_default')}`}>
                                                     <button
                                                         type="button"
                                                         title={tip}
-                                                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left ${isSuccess ? 'bg-green-50 hover:bg-green-100' : 'bg-red-50 hover:bg-red-100'}`}
+                                                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left ${t('bg_default')} ${t('bg_default_hover')}`}
                                                         onClick={() => hasDetails && toggleExpand(expandKey)}
                                                     >
                                                         <i className={`fa-solid ${!hasResult ? 'fa-spinner fa-spin text-blue-400' : isSuccess ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-500'}`} />

@@ -276,6 +276,7 @@ ELSE
                 if (!string.Equals(role, "user", StringComparison.OrdinalIgnoreCase)) continue;
                 var content = m["content"]?.ToString();
                 if (string.IsNullOrWhiteSpace(content)) continue;
+                if (string.Equals(content.Trim(), "[session_start]", StringComparison.Ordinal)) continue;
                 content = content.Trim().Replace("\r", " ").Replace("\n", " ");
                 return content.Length > 80 ? content.Substring(0, 80) : content;
             }
