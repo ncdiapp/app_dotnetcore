@@ -138,6 +138,12 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                 throw new InvalidOperationException("Document AI completed without a JSON output document.");
 
             var result = BuildResult(jobId, request.FileName, request.SessionKey, request.CompanyId, documents);
+            result.PureDataPath = $"output/pdf-extraction/{jobId}/pure-data.json";
+            GenericAgentFileBL.WriteText(
+                request.SessionKey,
+                result.PureDataPath,
+                result.PureData.ToString(Newtonsoft.Json.Formatting.None),
+                request.CompanyId);
             result.Status = "Completed";
             return result;
         }

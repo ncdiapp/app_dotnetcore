@@ -10,6 +10,7 @@ public sealed class PdfTechPackExtractionResultDto
     public string SourceFileName { get; set; } = string.Empty;
     public string Status { get; set; } = "Completed";
     public int PageCount { get; set; }
+    public string PureDataPath { get; set; } = string.Empty;
     public JObject PureData { get; set; } = new JObject();
     public List<PdfTechPackImageDto> Images { get; set; } = new();
     public List<string> Warnings { get; set; } = new();

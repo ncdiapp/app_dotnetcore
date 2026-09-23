@@ -49,20 +49,13 @@ public sealed class PdfExtractorPlugin
                 PdfBytes = bytes
             }, ct).ConfigureAwait(false);
 
-            var pureDataPath = $"output/pdf-extraction/{extraction.JobId}/pure-data.json";
-            GenericAgentFileBL.WriteText(
-                context.ChatSessionKey,
-                pureDataPath,
-                extraction.PureData.ToString(Formatting.None),
-                context.CompanyId);
-
             return JsonConvert.SerializeObject(new
             {
                 extraction.JobId,
                 extraction.Status,
                 extraction.SourceFileName,
                 extraction.PageCount,
-                PureDataPath = pureDataPath,
+                extraction.PureDataPath,
                 Images = extraction.Images,
                 extraction.Warnings,
                 NextStep = "Read PureDataPath with file_read, then use the structured data to build or validate the application."
