@@ -36,15 +36,27 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
     private readonly TimeSpan _pollTimeout;
 
     public PdfTechPackExtractor(Microsoft.Extensions.Configuration.IConfiguration configuration)
+        : this(
+            Required(configuration["Google:DocumentAI:ProjectId"], "Google:DocumentAI:ProjectId"),
+            configuration["Google:DocumentAI:Location"] ?? "us",
+            Required(configuration["Google:DocumentAI:ProcessorId"], "Google:DocumentAI:ProcessorId"),
+            Required(configuration["Google:DocumentAI:Bucket"], "Google:DocumentAI:Bucket"),
+            ParseTimeout(configuration["Google:DocumentAI:PollTimeoutMinutes"]))
     {
-        _projectId = Required(configuration["Google:DocumentAI:ProjectId"], "Google:DocumentAI:ProjectId");
-        _location = configuration["Google:DocumentAI:Location"] ?? "us";
-        _processorId = Required(configuration["Google:DocumentAI:ProcessorId"], "Google:DocumentAI:ProcessorId");
-        _bucket = Required(configuration["Google:DocumentAI:Bucket"], "Google:DocumentAI:Bucket");
-        var timeoutMinutes = int.TryParse(configuration["Google:DocumentAI:PollTimeoutMinutes"], out var value)
-            ? Math.Clamp(value, 1, 240)
-            : 90;
-        _pollTimeout = TimeSpan.FromMinutes(timeoutMinutes);
+    }
+
+    public PdfTechPackExtractor(
+        string projectId,
+        string location,
+        string processorId,
+        string bucket,
+        int pollTimeoutMinutes = 90)
+    {
+        _projectId = Required(projectId, "Google:DocumentAI:ProjectId");
+        _location = string.IsNullOrWhiteSpace(location) ? "us" : location.Trim();
+        _processorId = Required(processorId, "Google:DocumentAI:ProcessorId");
+        _bucket = Required(bucket, "Google:DocumentAI:Bucket");
+        _pollTimeout = TimeSpan.FromMinutes(Math.Clamp(pollTimeoutMinutes, 1, 240));
     }
 
     public async Task<PdfTechPackExtractionResultDto> ExtractAsync(
@@ -241,6 +253,9 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         string.IsNullOrWhiteSpace(value)
             ? throw new InvalidOperationException($"Missing configuration: {key}")
             : value.Trim();
+
+    private static int ParseTimeout(string? value) =>
+        int.TryParse(value, out var minutes) ? minutes : 90;
 
     private static string SanitizeFileName(string fileName)
     {
