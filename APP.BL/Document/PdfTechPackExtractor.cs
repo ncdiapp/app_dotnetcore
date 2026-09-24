@@ -456,8 +456,9 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
 
             for (var pageIndex = 0; pageIndex < pdf.Pages.Count; pageIndex++)
             {
-                var element = pdf.Pages[pageIndex].Content.Elements.First;
-                while (element != null)
+                // All() walks the complete content tree, including images nested in
+                // Form XObjects. Walking only First/Next misses those images.
+                foreach (var element in pdf.Pages[pageIndex].Content.Elements.All())
                 {
                     if (element is PdfImageContent imageContent)
                     {
@@ -476,7 +477,6 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                             ImageText = "Embedded PDF image"
                         });
                     }
-                    element = element.Next;
                 }
             }
         }
