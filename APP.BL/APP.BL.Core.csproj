@@ -64,7 +64,7 @@
     <PackageReference Include="Google.Apis" Version="1.74.0" />
     <PackageReference Include="Google.Apis.Auth" Version="1.74.0" />
     <PackageReference Include="Google.Apis.Core" Version="1.74.0" />
-    <PackageReference Include="Google.Cloud.DocumentAI.V1" Version="3.25.0" />
+    <PackageReference Include="Google.Cloud.DocumentAI.V1Beta3" Version="2.0.0-beta30" />
     <PackageReference Include="Google.Cloud.Storage.V1" Version="4.16.0" />
     <PackageReference Include="Google.Protobuf" Version="3.31.1" />
   </ItemGroup>

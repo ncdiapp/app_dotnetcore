@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using App.BL.AIAgent.GenericAgent;
 using APP.Components.Dto.Document;
 using APP.Framework;
-using Google.Cloud.DocumentAI.V1;
+using Google.Cloud.DocumentAI.V1Beta3;
 using Google.Cloud.Storage.V1;
 using Google.Apis.Auth.OAuth2;
 using GemBox.Pdf;
@@ -101,6 +101,16 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                     GcsOutputConfig = new DocumentOutputConfig.Types.GcsOutputConfig
                     {
                         GcsUri = outputUri
+                    }
+                },
+                ProcessOptions = new ProcessOptions
+                {
+                    LayoutConfig = new ProcessOptions.Types.LayoutConfig
+                    {
+                        EnableImageExtraction = true,
+                        EnableImageAnnotation = true,
+                        EnableTableAnnotation = true,
+                        ReturnImages = true
                     }
                 }
             };
