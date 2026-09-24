@@ -10,6 +10,8 @@ using APP.Framework;
 using Google.Cloud.DocumentAI.V1;
 using Google.Cloud.Storage.V1;
 using Google.Apis.Auth.OAuth2;
+using GemBox.Pdf;
+using GemBox.Pdf.Content;
 using Newtonsoft.Json.Linq;
 
 namespace App.BL.Document;
@@ -146,6 +148,7 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                 throw new InvalidOperationException("Document AI completed without a JSON output document.");
 
             var result = BuildResult(jobId, request.FileName, request.SessionKey, request.CompanyId, documents);
+            ExtractEmbeddedPdfImages(request.PdfBytes, jobId, request.SessionKey, request.CompanyId, result);
             result.PureDataPath = $"output/pdf-extraction/{jobId}/pure-data.json";
             GenericAgentFileBL.WriteText(
                 request.SessionKey,
@@ -364,6 +367,51 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                 ImageText = GetToken(image, "imageText")?.Value<string>()
                     ?? GetToken(GetToken(image, "annotations") as JObject, "description")?.Value<string>()
             });
+        }
+    }
+
+    private static void ExtractEmbeddedPdfImages(
+        byte[] pdfBytes,
+        string jobId,
+        string sessionKey,
+        int companyId,
+        PdfTechPackExtractionResultDto result)
+    {
+        try
+        {
+            using var stream = new MemoryStream(pdfBytes, writable: false);
+            var pdf = PdfDocument.Load(stream);
+            result.PageCount = Math.Max(result.PageCount, pdf.Pages.Count);
+
+            for (var pageIndex = 0; pageIndex < pdf.Pages.Count; pageIndex++)
+            {
+                var element = pdf.Pages[pageIndex].Content.Elements.First;
+                while (element != null)
+                {
+                    if (element is PdfImageContent imageContent)
+                    {
+                        using var imageStream = new MemoryStream();
+                        imageContent.Save(imageStream, new ImageSaveOptions(ImageSaveFormat.Png));
+                        var relativePath = GenericAgentFileBL.WriteBytes(
+                            sessionKey,
+                            $"output/pdf-images/{jobId}/embedded-page-{pageIndex + 1:0000}-{result.Images.Count + 1:0000}.png",
+                            imageStream.ToArray(),
+                            companyId);
+                        result.Images.Add(new PdfTechPackImageDto
+                        {
+                            PageNumber = pageIndex + 1,
+                            MimeType = "image/png",
+                            RelativePath = relativePath,
+                            ImageText = "Embedded PDF image"
+                        });
+                    }
+                    element = element.Next;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            result.Warnings.Add($"Embedded PDF image extraction was unavailable: {ex.Message}");
         }
     }
 
