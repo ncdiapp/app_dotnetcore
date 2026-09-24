@@ -273,7 +273,7 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                 }
             }
 
-            AddLayoutImages(layout, jobId, sessionKey, companyId, images, ref pageCount);
+            AddLayoutImages(document, layout, jobId, sessionKey, companyId, images, ref pageCount);
         }
 
         return new PdfTechPackExtractionResultDto
@@ -309,6 +309,7 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
     }
 
     private static void AddLayoutImages(
+        JObject document,
         JToken? layout,
         string jobId,
         string sessionKey,
@@ -325,13 +326,27 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
             pageCount = Math.Max(pageCount, pageNumber);
             var mimeType = GetToken(image, "mimeType")?.Value<string>() ?? "image/png";
             var dataUri = GetToken(image, "dataUri")?.Value<string>();
+            var blobAssetId = GetToken(image, "blobAssetId")?.Value<string>();
             var relativePath = string.Empty;
 
-            if (!string.IsNullOrWhiteSpace(dataUri))
+            var base64 = dataUri;
+            if (string.IsNullOrWhiteSpace(base64) && !string.IsNullOrWhiteSpace(blobAssetId))
             {
-                var comma = dataUri.IndexOf(',');
-                var base64 = comma >= 0 ? dataUri.Substring(comma + 1) : dataUri;
-                var bytes = Convert.FromBase64String(base64);
+                var asset = (GetToken(document, "blobAssets") as JArray ?? new JArray())
+                    .OfType<JObject>()
+                    .FirstOrDefault(item => string.Equals(
+                        GetToken(item, "assetId")?.Value<string>(),
+                        blobAssetId,
+                        StringComparison.Ordinal));
+                base64 = GetToken(asset, "content")?.Value<string>();
+                mimeType = GetToken(asset, "mimeType")?.Value<string>() ?? mimeType;
+            }
+
+            if (!string.IsNullOrWhiteSpace(base64))
+            {
+                var comma = base64.IndexOf(',');
+                var encoded = comma >= 0 ? base64.Substring(comma + 1) : base64;
+                var bytes = Convert.FromBase64String(encoded);
                 var extension = mimeType.Contains("jpeg", StringComparison.OrdinalIgnoreCase) ? "jpg" : "png";
                 relativePath = GenericAgentFileBL.WriteBytes(
                     sessionKey,
