@@ -100,15 +100,6 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                     {
                         GcsUri = outputUri
                     }
-                },
-                ProcessOptions = new ProcessOptions
-                {
-                    LayoutConfig = new ProcessOptions.Types.LayoutConfig
-                    {
-                        EnableImageAnnotation = true,
-                        EnableTableAnnotation = true,
-                        ReturnImages = true
-                    }
                 }
             };
 
