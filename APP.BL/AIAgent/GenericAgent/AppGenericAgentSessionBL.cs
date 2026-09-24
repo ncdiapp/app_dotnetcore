@@ -358,6 +358,51 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             return string.Equals(m.Value<string>("content")?.Trim(), content.Trim(), StringComparison.Ordinal);
         }
 
+        /// <summary>
+        /// Removes persisted in-progress markers whose in-memory run was lost during an
+        /// application restart. The completed chat messages are preserved.
+        /// </summary>
+        public static void ClearStaleRunState(
+            string skillKey,
+            int userId,
+            int dataSourceId,
+            string sessionKey)
+        {
+            var detail = LoadBySessionKey(sessionKey, skillKey, userId);
+            if (detail?.Messages == null) return;
+
+            var changed = false;
+            var cleaned = new List<JObject>();
+            foreach (var message in detail.Messages)
+            {
+                if (message == null) continue;
+                var content = message.Value<string>("content");
+                if (string.Equals(message.Value<string>("role"), "system", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(content, "[run_in_progress]", StringComparison.Ordinal))
+                {
+                    changed = true;
+                    continue;
+                }
+
+                var copy = (JObject)message.DeepClone();
+                if (copy["runSessionId"] != null)
+                {
+                    copy.Remove("runSessionId");
+                    changed = true;
+                }
+                if (copy["pendingAskUser"] != null || copy["PendingAskUser"] != null)
+                {
+                    copy.Remove("pendingAskUser");
+                    copy.Remove("PendingAskUser");
+                    changed = true;
+                }
+                cleaned.Add(copy);
+            }
+
+            if (changed)
+                SaveSession(skillKey, userId, dataSourceId, cleaned, sessionKey);
+        }
+
         public static void SaveSession(
             string skillKey,
             int userId,

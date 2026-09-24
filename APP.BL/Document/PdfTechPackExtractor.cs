@@ -7,9 +7,11 @@ using System.Threading.Tasks;
 using App.BL.AIAgent.GenericAgent;
 using APP.Components.Dto.Document;
 using APP.Framework;
-using Google.Cloud.DocumentAI.V1;
+using Google.Cloud.DocumentAI.V1Beta3;
 using Google.Cloud.Storage.V1;
 using Google.Apis.Auth.OAuth2;
+using GemBox.Pdf;
+using GemBox.Pdf.Content;
 using Newtonsoft.Json.Linq;
 
 namespace App.BL.Document;
@@ -100,6 +102,16 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                     {
                         GcsUri = outputUri
                     }
+                },
+                ProcessOptions = new ProcessOptions
+                {
+                    LayoutConfig = new ProcessOptions.Types.LayoutConfig
+                    {
+                        EnableImageExtraction = true,
+                        EnableImageAnnotation = true,
+                        EnableTableAnnotation = true,
+                        ReturnImages = true
+                    }
                 }
             };
 
@@ -145,7 +157,17 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
             if (documents.Count == 0)
                 throw new InvalidOperationException("Document AI completed without a JSON output document.");
 
-            var result = BuildResult(jobId, request.FileName, request.SessionKey, request.CompanyId, documents);
+            var result = await BuildResultAsync(
+                jobId,
+                request.FileName,
+                request.SessionKey,
+                request.CompanyId,
+                bucket,
+                storage,
+                documents,
+                cancellationToken);
+            // GemBox fallback enabled for testing embedded bitmap images in the source PDF.
+            ExtractEmbeddedPdfImages(request.PdfBytes, jobId, request.SessionKey, request.CompanyId, result);
             result.PureDataPath = $"output/pdf-extraction/{jobId}/pure-data.json";
             GenericAgentFileBL.WriteText(
                 request.SessionKey,
@@ -204,12 +226,15 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         return candidate;
     }
 
-    private static PdfTechPackExtractionResultDto BuildResult(
+    private static async Task<PdfTechPackExtractionResultDto> BuildResultAsync(
         string jobId,
         string fileName,
         string sessionKey,
         int companyId,
-        List<JObject> documents)
+        string bucket,
+        StorageClient storage,
+        List<JObject> documents,
+        CancellationToken cancellationToken)
     {
         var pureData = new JObject
         {
@@ -273,7 +298,17 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                 }
             }
 
-            AddLayoutImages(document, layout, jobId, sessionKey, companyId, images, ref pageCount);
+            pageCount = Math.Max(pageCount, await AddLayoutImagesAsync(
+                document,
+                layout,
+                jobId,
+                sessionKey,
+                companyId,
+                bucket,
+                storage,
+                images,
+                pageCount,
+                cancellationToken));
         }
 
         return new PdfTechPackExtractionResultDto
@@ -308,14 +343,17 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         return string.Join(Environment.NewLine, text);
     }
 
-    private static void AddLayoutImages(
+    private static async Task<int> AddLayoutImagesAsync(
         JObject document,
         JToken? layout,
         string jobId,
         string sessionKey,
         int companyId,
+        string bucket,
+        StorageClient storage,
         List<PdfTechPackImageDto> images,
-        ref int pageCount)
+        int pageCount,
+        CancellationToken cancellationToken)
     {
         foreach (var block in FindLayoutBlocks(layout, "imageBlock"))
         {
@@ -354,6 +392,26 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                     bytes,
                     companyId);
             }
+            else
+            {
+                var sourceUri = GetToken(image, "gcsUri")?.Value<string>();
+                if (!string.IsNullOrWhiteSpace(sourceUri))
+                {
+                    var (sourceBucket, objectName) = ParseGcsUri(sourceUri, bucket);
+                    await using var imageStream = new MemoryStream();
+                    await storage.DownloadObjectAsync(
+                        sourceBucket,
+                        objectName,
+                        imageStream,
+                        cancellationToken: cancellationToken);
+                    var extension = mimeType.Contains("jpeg", StringComparison.OrdinalIgnoreCase) ? "jpg" : "png";
+                    relativePath = GenericAgentFileBL.WriteBytes(
+                        sessionKey,
+                        $"output/pdf-images/{jobId}/layout-image-{images.Count + 1:0000}.{extension}",
+                        imageStream.ToArray(),
+                        companyId);
+                }
+            }
 
             images.Add(new PdfTechPackImageDto
             {
@@ -364,6 +422,67 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                 ImageText = GetToken(image, "imageText")?.Value<string>()
                     ?? GetToken(GetToken(image, "annotations") as JObject, "description")?.Value<string>()
             });
+        }
+
+        return pageCount;
+    }
+
+    private static (string Bucket, string ObjectName) ParseGcsUri(string uri, string fallbackBucket)
+    {
+        const string prefix = "gs://";
+        if (!uri.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Document AI returned an unsupported image URI: {uri}");
+
+        var path = uri.Substring(prefix.Length);
+        var separator = path.IndexOf('/');
+        if (separator <= 0 || separator == path.Length - 1)
+            throw new InvalidOperationException($"Document AI returned an invalid image URI: {uri}");
+
+        return (path[..separator], path[(separator + 1)..]);
+    }
+
+    private static void ExtractEmbeddedPdfImages(
+        byte[] pdfBytes,
+        string jobId,
+        string sessionKey,
+        int companyId,
+        PdfTechPackExtractionResultDto result)
+    {
+        try
+        {
+            using var stream = new MemoryStream(pdfBytes, writable: false);
+            var pdf = PdfDocument.Load(stream);
+            result.PageCount = Math.Max(result.PageCount, pdf.Pages.Count);
+
+            for (var pageIndex = 0; pageIndex < pdf.Pages.Count; pageIndex++)
+            {
+                var element = pdf.Pages[pageIndex].Content.Elements.First;
+                while (element != null)
+                {
+                    if (element is PdfImageContent imageContent)
+                    {
+                        using var imageStream = new MemoryStream();
+                        imageContent.Save(imageStream, new ImageSaveOptions(ImageSaveFormat.Png));
+                        var relativePath = GenericAgentFileBL.WriteBytes(
+                            sessionKey,
+                            $"output/pdf-images/{jobId}/embedded-page-{pageIndex + 1:0000}-{result.Images.Count + 1:0000}.png",
+                            imageStream.ToArray(),
+                            companyId);
+                        result.Images.Add(new PdfTechPackImageDto
+                        {
+                            PageNumber = pageIndex + 1,
+                            MimeType = "image/png",
+                            RelativePath = relativePath,
+                            ImageText = "Embedded PDF image"
+                        });
+                    }
+                    element = element.Next;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            result.Warnings.Add($"Embedded PDF image extraction was unavailable: {ex.Message}");
         }
     }
 
