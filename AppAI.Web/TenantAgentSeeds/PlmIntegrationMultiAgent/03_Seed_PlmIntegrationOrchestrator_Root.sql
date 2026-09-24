@@ -245,10 +245,12 @@ On child ok=true: mark wizard step done|skipped accordingly.
 - If approve: write `plm.integration.import-dw.plan` status=user-confirmed; then Phase B only:
   `call_agent("plm-integration-import-dw", "PHASE=B. Read inputs+plan. Generate output/{templateId}/. Write plm.integration.import-dw.outputs. Do not ask the user.")`
 - On Phase B success: **do not** write `doneIds` yet. Read `plm.integration.import-dw.outputs.executionPlan`.
+- **Phase B succeeded only if files exist on disk** (`output/{templateId}/1_PlmDw_Tables.sql` and `4_PlmDw_ImportBlueprint.json` via `file_list` / `validate_agent_outputs` SizeBytes). An `executionPlan` that lists paths is **not** success. Then show Apply. Do **not** show `[import-dw] Phase B Generation Error` for Grid physical-name / `Fabric_BOM_prod_10_Colorways` / APP name != DW segment. That mapping is required (shared APP table). A previous locked Apply button is stale - offer a new Apply card.
+- Only Generation Error when those files are missing or `run_agent_script` failed.
 - `ask_user` `[import-dw] Apply generated outputs` — list each plan step (order, kind, path, label). Options: `Apply` | `Cancel`. Optional field/choice for Blueprint `mode` = Insert|Update|Repair (default Insert).
 - Apply: **HARD — next tool MUST be** `call_agent("plm-integration-import-dw", "PHASE=APPLY. Call apply_agent_output_plan once. Do not ask the user.")`. Forbidden before that result: write `doneIds`, show the repeatable menu, or say "imported successfully".
-- Child APPLY `ok=true` is valid only when the tool result has `ok=true` AND `executed == planned` AND every `steps[].ok`. If the child returns success without `steps[]`, treat as FAILED (Retry | Back).
-- On valid APPLY success: append TemplateId to `import-dw.doneIds`; remove it from `pendingApplyIds`. Summarize each step from `steps[]` / `logFile`.
+- Child APPLY `ok=true` is valid only when `apply_agent_output_plan` / `…outputs.apply` has `ok=true` AND `executed == planned` AND every `steps[].ok`. Chat text such as "6/6 steps executed" or "imported successfully" is **not** proof. If apply.Ok=false (file not found, executed=0), show that error (Retry | Back). Do not write `doneIds`. `update_plm_wizard_progress` will reject a fake doneIds write.
+- On valid APPLY success: append TemplateId to `import-dw.doneIds`; remove it from `pendingApplyIds`. Summarize each step from `steps[]` / `logFile` (include `txInserted` from the dw-blueprint step). If `txInserted=0` and mode=Insert, say so — do not claim Transaction/Form were created.
 - On Cancel: keep files; append TemplateId to `import-dw.pendingApplyIds`. Do not mark doneIds.
 - If `pendingApplyIds` is non-empty and user returns to the repeatable menu, include option `apply-pending` = "Apply pending Template outputs". That path skips A/B and goes to the Apply confirm for that TemplateId.
 - Never run `apply_agent_output_plan` / `execute_agent_sql_file` / `execute_dw_blueprint_from_file` on ROOT. Missing SkillKey or child error = STOP (Retry | Back).
@@ -383,4 +385,41 @@ AND NOT EXISTS (
     WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'agent-files')
 INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
 VALUES (N'plm-integration-orchestrator', N'agent-files');
+GO
+
+-- Existing tenants: files on disk = Phase B success (do not Retry on BOM physical name)
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: import-dw Phase B vs Apply
+If file_list shows output/{templateId}/1_PlmDw_Tables.sql and 4_PlmDw_ImportBlueprint.json exist (SizeBytes), Phase B succeeded. executionPlan listing paths is not enough.
+Do NOT show [import-dw] Phase B Generation Error for Grid physical-name / Fabric_BOM_prod_10_Colorways / APP name != DW segment.
+That mapping is required (shared APP table). A locked previous Apply button is stale; offer a new Apply card when files exist.
+Only Generation Error when those files are missing or run_agent_script failed.
+If the child says it failed while resolving a DW table name (Grid 3163 / Label and Packaging BOM) but never ran run_agent_script, that is a child process error: Retry Phase B. Do not treat it as a missing DW table.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: import-dw Phase B vs Apply%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+If the child says it failed while resolving a DW table name (Grid 3163 / Label and Packaging BOM) but never ran run_agent_script, that is a child process error: Retry Phase B. Do not treat it as a missing DW table.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt LIKE N'%HARD: import-dw Phase B vs Apply%'
+  AND SystemPrompt NOT LIKE N'%failed while resolving a DW table name%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: import-dw Apply success is outputs.apply only
+Never write import-dw.doneIds or say imported successfully from chat text (6/6 steps).
+Read plm.integration.import-dw.outputs.apply after PHASE=APPLY.
+ok=true AND executed==planned AND every steps[].ok required. apply.Ok=false / file not found / executed=0 = FAILED (Retry | Back).
+Phase B success requires file_list SizeBytes for 1_ and 4_. executionPlan listing a path is not enough.
+If dw-blueprint summary has txInserted=0 on Insert, do not claim Transaction/Form were created.
+update_plm_wizard_progress rejects fake doneIds when apply failed.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: import-dw Apply success is outputs.apply only%';
 GO

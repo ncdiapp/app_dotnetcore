@@ -156,7 +156,7 @@ If the user **only** references this file (e.g. `@Prompt_AppAgent.txt`) and does
 | **Blueprint shape** | Step-4 JSON must match official generator (`schemaVersion`, `rootUnit`, `unitStructure.siblingUnits` / `childUnits`, `blueprintFields`). Never emit config-shaped `appTable`/`unitType`-only transactions. |
 | **plmDW is truth** | Column names, SubItem IDs, TabIds from DW - not legacy PLM exports. |
 | **1 Tab → 1 sibling table + N grid tables** | Tab wide table (`PLM_DW_Tab_*_{TabId}`) = the tab''s regular sub-items → **sibling** (PK `ReferenceId`). Each materialized grid sub-item (`PLM_DW_Grid_*`) = a **grid table** (PK `RowId` identity). A tab with both yields 1 sibling + 1 grid table per grid; the tab table is never a child. Grid-only tabs (no DW Tab table): true PLM `parentPlmTabId` or orphan `Grid_{id}` as **Root+Child** - never Master Sibling. **Exception FX1 (Fit family):** see §TechPack Fit - do not emit `Plm_Fit_1`…`Plm_Fit_N`; fold into `Plm_FitSummary` + `Plm_FitRoundInfo` + `TchpFitRound` / `TchpFitMeasurement`. **Exception QX1 (Simple QC):** see §TechPack Simple QC - do not emit flat `Plm_SpecQCGrid` size slots; emit `Plm_SimpleQC` + `Plm_SimpleQCResult` (+ size VIEW). |
-| **Mapping drives import** | `{prefix}FieldMapping` stores `DwTableName` + `DwColumnName` per APP column. |
+| **Mapping drives import** | `{prefix}FieldMapping` stores `DwTableName` + `DwColumnName` per APP column. `ReferenceField.DwColumnName` is the physical DW column (e.g. `Article__22`), never the APP name `ReferenceCode` unless that exact column exists on the DW table. |
 | **Prefix is parameter** | `@TablePrefix` in all three SQL scripts (default `Plm_`). |
 
 ---
@@ -231,6 +231,7 @@ From DW tab table name `PLM_DW_Tab_{Segment}_{TabId}`:
 - **APP table name** = `{Segment}` (middle part), e.g. `Fabric_Header`, `Attributes`, `Testing____Compliance`
 - From DW grid `PLM_DW_Grid_{Segment}_{GridMetaId}`:
 - **APP grid table name** = `{Segment}` (e.g. `ProductDesignColorGrid`)
+- **BOM colorway exception (required, not an error):** DW table `PLM_DW_Grid_Fabric_BOM_prod_10_Colorways_3161` → APP table **`Fabric_BOM_prod`** (strip `_{N}_Colorways`). Same for Trim/Label/Packaging BOM. `dwTable` stays the full physical DW name. 10- and 20-colorway templates share one APP table. Never fail Phase B because APP name != DW segment.
 
 Present TabId inventory to user (merge PLM + DW):
 
@@ -261,7 +262,7 @@ Present scoped to **user TabIds only**:
 
 | APP object | Rule |
 |----------|------|
-| `{prefix}ReferenceBasicInfo` | `ReferenceId` = `ProductReferenceID`; scope = `pdmProductTemplate` for this `TemplateId`; `ReferenceCode` from header tab (§A1b) |
+| `{prefix}ReferenceBasicInfo` | `ReferenceId` = `ProductReferenceID`; scope = `pdmProductTemplate` for this `TemplateId`; APP `ReferenceCode` value comes from **`referenceScope.dwColumn`** (physical DW column on the header tab, e.g. `Article__22` - never the APP name `ReferenceCode` unless that exact column exists on the DW table) |
 | Each tab wide table (**sibling** - default) | 1:1 with root. PK = `[ReferenceId]` (NOT identity - value comes from import). Holds the tab''s **regular sub-items**. All columns, or exclusive SubItems if overlap rule applies |
 | Each grid (**child**) | 1:many under root. PK = `[RowId] INT IDENTITY` + `[ReferenceId]` FK + `[Sort]`. One grid table per materialized `PLM_DW_Grid_*` |
 | Grids without Tab wide table | No tab DDL; grid table only |
@@ -315,7 +316,7 @@ Ask user to confirm:
 
 1. **TemplateId** + `TemplateName` → Transaction Group / Search names  
 2. TabId → APP table mapping (all tabs from PLM for this template)  
-3. **IsTemplateHeaderTab** tab(s) → `referenceScope` DW table + column  
+3. **IsTemplateHeaderTab** tab(s) → `referenceScope` DW table + **physical** `dwColumn` (e.g. `Article__22`; never copy APP name `ReferenceCode`)  
 4. Overlap / exclusive SubItem split (if any)  
 5. Grid ↔ TabId associations - **true PLM parent from ExtraInfo** (grid-only tabs: no `PLM_DW_Tab_*`); never invent parent = template header; orphan = Root+Child `Grid_{id}` only when parent Tab is out of scope (see §A6 *Grid-only PLM tabs*)  
 6. Skip tabs/grids with no DW source  
@@ -387,10 +388,11 @@ This PROMPT is used in **three** places. **Detect which one you are in, then fol
 
 1. **Before Phase B:** `file_list` on `source`. Confirm every **Required** file in §Agent Management file area is present (especially `_gen_plmdw_import_sql.ps1`). If not → **STOP** and ask the user to upload official `ImportFromPLMDW/source/*` into **Files → source/**.
 2. After user confirms Phase A: `file_write` `source/dwTabImportConfig.json` (see §B1). Include `plmDataSourceId` / `dwDataSourceId`.
-3. **Producer (mandatory):** call `run_agent_script` with `relativePath=source/_gen_plmdw_import_sql.ps1`. The App server runs the official PowerShell generator (sqlcmd probes + full DDL/Blueprint). **Do not** hand-write `1_PlmDw_Tables.sql` / `4_PlmDw_ImportBlueprint.json` stubs. **Do not** invent columns from memory.
+3. **Producer (mandatory):** call `run_agent_script` with `relativePath=source/_gen_plmdw_import_sql.ps1` **before** any grid/tab name judgement. The official script resolves physical `PLM_DW_Grid_*` names. **Do not** pre-resolve grid dwTable (3161/3162/3163/3165 or Label and Packaging BOM). **Do not** hand-write `1_PlmDw_Tables.sql` / `4_PlmDw_ImportBlueprint.json` stubs. **Do not** invent columns from memory. **Do not** return ok=false until that script has been called and its exit code / log is known.
 4. Optionally call `validate_agent_outputs` with min sizes (e.g. `1_PlmDw_Tables.sql` ≥ 400000, `4_PlmDw_ImportBlueprint.json` ≥ 500000) or `file_list` on `output/{templateId}` and report **SizeBytes**.
-5. If `run_agent_script` fails (missing sqlcmd, bad DataSource, script error) → report the Tool error and **STOP**. Never replace with stub SQL/JSON.
+5. If `run_agent_script` fails (missing sqlcmd, bad DataSource, script error) → report the Tool error and **STOP**. Never replace with stub SQL/JSON. Never `file_write` debug/patch scripts or edit `_gen_plmdw_import_sql.ps1`.
 6. Reject your own work if Blueprint is tiny or lacks `unitStructure.siblingUnits` / `blueprintFields`.
+6b. **ok=true** when the script exits 0 and `output/{templateId}/1_PlmDw_Tables.sql` plus `4_PlmDw_ImportBlueprint.json` exist. Do **not** return ok=false because a grid APP table is shorter than the DW name (e.g. `Fabric_BOM_prod` / `Label_BOM_prod` vs `PLM_DW_Grid_*_10_Colorways_{id}`). That shortening is required. Never invent a Phase B Generation Error about resolving a DW table name.
 7. **Write `plm.integration.import-dw.outputs`** as compact JSON with `files[]` and `executionPlan[]` built from **files that actually exist** (never invent missing steps). Order rules:
    - `1_` / `2_` / `3_` `.sql` → `kind=sql`, `target=app` (numbered order)
    - `3b_Tchp_ImportFromDW.sql` if present → `kind=sql`, `target=app`, **before** the blueprint step
@@ -448,7 +450,7 @@ This PROMPT is used in **three** places. **Detect which one you are in, then fol
   },
   "referenceScope": {
     "dwTable": "PLM_DW_Tab_...",
-    "dwColumn": "...",
+    "dwColumn": "Article__22",
     "plmTabId": 0,
     "plmSubItemId": 0
   },
@@ -464,7 +466,7 @@ This PROMPT is used in **three** places. **Detect which one you are in, then fol
       "mode": "all"
     }
   ],
-  "grids": [ ... ],
+  "grids": [ { "gridId": 0, "appTable": "Fabric_BOM_prod", "dwTable": "PLM_DW_Grid_Fabric_BOM_prod_10_Colorways_3161", "parentPlmTabId": 0 } ],
   "blueprint": {
     "transactionGroupName": "...",
     "transactionGroupIntegrationId": "TG_...",
@@ -540,6 +542,8 @@ Generator details:
 
 `AppTableName`, `AppColumnName`, `DwTableName`, `DwColumnName`, `PlmTabId`, `PlmSubItemId`, `PlmGridSubItemId`, `PlmGridId`, `PlmMetaColumnId`, `PlmBlockId`, `DwFkTarget`, `FieldKind` (`TabField` | `GridColumn` | `ReferenceField` | `BomColorwayDwSlot` | `GrandchildPivot`) - **`FieldKind` is `NVARCHAR(32)`** (auto-widened on existing tables), `PlmControlType`, `PlmEntityId`, `DwDataType`.
 
+**`ReferenceField` row (root `ReferenceCode`):** `DwColumnName` **must** equal `referenceScope.dwColumn` and **must exist** on `referenceScope.dwTable` (probe `INFORMATION_SCHEMA.COLUMNS` / `sys.columns`). Typical values: `Article__22`, `Product_Code_5021`, `Request_Name_7154`. **Never** copy the APP column name `ReferenceCode` into `DwColumnName` unless that exact physical column exists on the DW table. Step 3 INSERT uses `src.[DwColumnName]`; a copied APP name fails as `Invalid column name ReferenceCode`.
+
 ### B3b. `4_PlmDw_ImportBlueprint.json`
 
 Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMasterSibling` for tab wide tables - the default; `RootPlusChild` only for `unitType: "child"` override tabs - child tab table goes in `unitStructure.childUnits`; grids always land in `gridBindings` / `childUnits`), `fieldPolicy` (`AllMappedColumns` | `ExclusiveSubItemsOnly`), grid bindings, field UI metadata (`blueprintFields`: `plmControlType`, `plmEntityId` / `entityIntegrationId`, `displayLabel`, `isVisible` from PLM), Search/View/navigation targets, and **`bomColorwayPivotBindings`** (host/grandchild/source table names, pivot column keys, staging column patterns). Generated from `dwTabImportConfig.json` + DW column probe + PLM sub-item/grid/extra-info metadata + BOM colorway probe. BL TOOLS: `PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`. On Execute, BL maps PLM control type → `AppTransactionField.ControlType`, resolves `plmEntityId` → tenant `AppEntityInfo.EntityInfoID` via `IntegrationId`, and applies pivot bindings (`ApplyBomColorwayPivotBindingsSql` - hides/deletes host staging fields, configures grandchild `EmGridViewDisplayType=7`).
@@ -550,7 +554,7 @@ Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMaster
 
 Template: `source/PlmDw_ImportFromDW.sql`. Generator patches `@DwDatabase`, `@PlmDatabase`, `@PlmTemplateId` from config, and injects `#Targets` filter = **this config''s tab/grid AppTables only** (same set as step 2 scoped DELETE, excluding root). That prevents residual `{prefix}FieldMapping` rows from a prior template from being imported under the wrong `@PlmTemplateId`.
 
-**Reference scope (required):** when `@PlmTemplateId` is set, `#RefFilter` = distinct `ProductReferenceID` from `pdmProductTemplate` for that template, **intersected** with rows present on the `referenceScope` DW tab table.
+**Reference scope (required):** when `@PlmTemplateId` is set, `#RefFilter` = distinct `ProductReferenceID` from `pdmProductTemplate` for that template, **intersected** with rows present on the `referenceScope` DW tab table. Before INSERT, the template checks that `ReferenceField.DwColumnName` exists on that DW table and fails with candidate column names if it does not.
 
 ```sql
 SELECT ProductReferenceID FROM dbo.pdmProductTemplate WHERE TemplateID = @PlmTemplateId;
@@ -603,8 +607,8 @@ When the call message is `PHASE=APPLY` (or `PHASE=D` as a legacy alias):
 
 1. Call `apply_agent_output_plan` **exactly once**. BL reads `plm.integration.import-dw.outputs.executionPlan` and runs every step in order (SQL files then blueprint). It writes AppPlmImportLog + `output/{templateId}/apply-log.json`.
 2. Do **not** call `execute_agent_sql_file` / `execute_dw_blueprint_from_file` yourself. Do not invent step results.
-3. `ok=true` only if the tool returns `ok=true` AND `executed == planned` AND every `steps[].ok` is true. Otherwise `ok=false` and copy `error`.
-4. FinalResponse = compact JSON `{ ok, skillKey, phase:"APPLY", templateId, planned, executed, errors, logFile }`. Never dump SQL/JSON.
+3. `ok=true` only if the tool returns `ok=true` AND `executed == planned` AND every `steps[].ok` is true. Otherwise `ok=false` and copy `error`. Never invent "6/6 steps executed" or "imported successfully" when files are missing or executed=0.
+4. FinalResponse = compact JSON `{ ok, skillKey, phase:"APPLY", templateId, planned, executed, errors, logFile }`. Copy planned/executed/error from the tool. Never dump SQL/JSON.
 5. Forbidden: `file_read` of deliverables; `execute_sql`; inline `blueprintJson`.
 
 **BL (Phase D):** `SaveDwBlueprintLinkTargets` reads `plmTemplate.templateHeaderTabIds` and per-transaction `isTemplateHeaderTab` / `plmTabSort` from Blueprint JSON - same `TemplateItemType` behavior as legacy Template Import (`TemplateHeader` vs `MainItem`). **New** action targets the first non-header tab.
@@ -1175,5 +1179,69 @@ SET SystemPrompt = REPLACE(
 WHERE SkillKey = N'plm-integration-import-dw'
   AND SystemPrompt LIKE N'%PHASE=APPLY%execute `executionPlan`%'
   AND SystemPrompt NOT LIKE N'%apply_agent_output_plan%';
+GO
+
+-- Existing tenants: BOM shared APP table is not a Phase B error
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: BOM shared APP table names
+BOM colorway DW tables look like PLM_DW_Grid_Fabric_BOM_prod_10_Colorways_3161.
+APP table MUST stay Fabric_BOM_prod (strip _N_Colorways) so 10- and 20-colorway templates share one APP table. Same for Trim/Label/Packaging BOM.
+grids.dwTable = full physical DW name. grids.appTable = short shared name.
+Phase B: this pair is correct. Never return ok=false because APP name != DW segment.
+ok=true when run_agent_script exits 0 and output/{templateId}/1_PlmDw_Tables.sql plus 4_PlmDw_ImportBlueprint.json exist.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: BOM shared APP table names%';
+GO
+
+-- Existing tenants: must run official generator; do not pre-resolve grid names
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: Phase B must run the official generator
+PHASE=B first tool after writing dwTabImportConfig.json is run_agent_script relativePath=source/_gen_plmdw_import_sql.ps1.
+Do not pre-resolve grid dwTable names (Grid 3161/3162/3163/3165, Fabric/Trim/Label/Packaging BOM).
+The generator maps Label BOM 3163 to PLM_DW_Grid_Label_BOM_prod_10_Colorways_3163 and APP table Label_BOM_prod.
+Packaging BOM is Grid 3165 / PLM_DW_Grid_Packaging_BOM_prod_3165, not 3163.
+Never return ok=false for resolving a DW table name before that script runs.
+Never return ok=false after the script exits 0 and output/{templateId}/1_ plus 4_ exist.
+If the script fails, copy the tool error (exit code / log tail). Do not invent a physical table mapping issue.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: Phase B must run the official generator%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: PHASE=APPLY never invent success
+ok=true only from apply_agent_output_plan: ok=true AND executed==planned AND every steps[].ok.
+If the tool says Agent file not found or executed=0, FinalResponse ok=false and copy error.
+Never say 6/6 steps executed or imported successfully without that tool result.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: PHASE=APPLY never invent success%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: Phase B do not patch the official generator
+Never file_write debug/patch scripts (check_line_*.ps1, patch_*.ps1, find_*.ps1, test_*.ps1, debug_*.ps1).
+Never edit source/_gen_plmdw_import_sql.ps1.
+If run_agent_script fails, FinalResponse ok=false and copy the tool error/stderr. Do not write outputs.files or executionPlan for files that file_list does not show.
+Do not invent sizeBytes from source/PlmDw_*.sql templates.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: Phase B do not patch the official generator%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: dwTabImportConfig.json must include grids[]
+Phase A checklist grid list (3161 Fabric BOM, 3163 Label BOM, 3165 Packaging, 7 Product Colors, etc.) must be written into source/dwTabImportConfig.json grids[].
+Omitting grids[] makes the generator skip BOM colorway 5_ and 6_ SQL even when the template has Colorways.
+appTable = short shared name (Fabric_BOM_prod). dwTable = full physical PLM_DW_Grid_*_{id}.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: dwTabImportConfig.json must include grids%';
 GO
 

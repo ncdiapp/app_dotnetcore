@@ -130,6 +130,7 @@ From DW tab table name `PLM_DW_Tab_{Segment}_{TabId}`:
 - **APP table name** = `{Segment}` (middle part), e.g. `Fabric_Header`, `Attributes`, `Testing____Compliance`
 - From DW grid `PLM_DW_Grid_{Segment}_{GridMetaId}`:
 - **APP grid table name** = `{Segment}` (e.g. `ProductDesignColorGrid`)
+- **BOM colorway exception (required, not an error):** DW table `PLM_DW_Grid_Fabric_BOM_prod_10_Colorways_3161` → APP table **`Fabric_BOM_prod`** (strip `_{N}_Colorways`). Same for Trim/Label/Packaging BOM. `dwTable` stays the **full physical** DW name. 10- and 20-colorway templates share one APP table. Never fail Phase B because APP name ≠ DW segment.
 
 Present TabId inventory to user (merge PLM + DW):
 
@@ -160,7 +161,7 @@ Present scoped to **user TabIds only**:
 
 | APP object | Rule |
 |----------|------|
-| `{prefix}ReferenceBasicInfo` | `ReferenceId` = `ProductReferenceID`; scope = `pdmProductTemplate` for this `TemplateId`; `ReferenceCode` from header tab (§A1b) |
+| `{prefix}ReferenceBasicInfo` | `ReferenceId` = `ProductReferenceID`; scope = `pdmProductTemplate` for this `TemplateId`; APP `ReferenceCode` value comes from **`referenceScope.dwColumn`** (physical DW column on the header tab, e.g. `Article__22` — never the APP name `ReferenceCode` unless that exact column exists on the DW table) |
 | Each tab wide table (**sibling** — default) | 1:1 with root. PK = `[ReferenceId]` (NOT identity — value comes from import). Holds the tab's **regular sub-items**. All columns, or exclusive SubItems if overlap rule applies |
 | Each grid (**child**) | 1:many under root. PK = `[RowId] INT IDENTITY` + `[ReferenceId]` FK + `[Sort]`. One grid table per materialized `PLM_DW_Grid_*` |
 | Grids without Tab wide table | No tab DDL; grid table only |
@@ -214,7 +215,7 @@ Ask user to confirm:
 
 1. **TemplateId** + `TemplateName` → Transaction Group / Search names  
 2. TabId → APP table mapping (all tabs from PLM for this template)  
-3. **IsTemplateHeaderTab** tab(s) → `referenceScope` DW table + column  
+3. **IsTemplateHeaderTab** tab(s) → `referenceScope` DW table + **physical** `dwColumn` (e.g. `Article__22`; never copy APP name `ReferenceCode`)  
 4. Overlap / exclusive SubItem split (if any)  
 5. Grid ↔ TabId associations — **true PLM parent from ExtraInfo** (grid-only tabs: no `PLM_DW_Tab_*`); never invent parent = template header; orphan = Root+Child `Grid_{id}` only when parent Tab is out of scope (see §A6 *Grid-only PLM tabs*)  
 6. Skip tabs/grids with no DW source  
@@ -329,7 +330,7 @@ This PROMPT is used in **two** places. **Detect which one you are in, then follo
   },
   "referenceScope": {
     "dwTable": "PLM_DW_Tab_...",
-    "dwColumn": "...",
+    "dwColumn": "Article__22",
     "plmTabId": 0,
     "plmSubItemId": 0
   },
@@ -370,7 +371,7 @@ This PROMPT is used in **two** places. **Detect which one you are in, then follo
 powershell -File AppReact/ImportDoc/ImportFromPLMDW/source/_gen_plmdw_import_sql.ps1
 ```
 
-Requires `source/dwTabImportConfig.json`. The script uses `sqlcmd` against `sqlServer` / `dwDatabase` / `plmDatabase` from that config.
+Requires `source/dwTabImportConfig.json`. The script uses `sqlcmd` against `sqlServer` / `dwDatabase` / `plmDatabase` from that config. **Do not** pre-resolve `grids[].dwTable` in chat; the script maps Grid 3163 → `PLM_DW_Grid_Label_BOM_prod_10_Colorways_3163` / APP `Label_BOM_prod`.
 
 **App Cloud Agent:**
 
@@ -414,6 +415,8 @@ Generator details:
 
 `AppTableName`, `AppColumnName`, `DwTableName`, `DwColumnName`, `PlmTabId`, `PlmSubItemId`, `PlmGridSubItemId`, `PlmGridId`, `PlmMetaColumnId`, `PlmBlockId`, `DwFkTarget`, `FieldKind` (`TabField` | `GridColumn` | `ReferenceField` | `BomColorwayDwSlot` | `GrandchildPivot`) — **`FieldKind` is `NVARCHAR(32)`** (auto-widened on existing tables), `PlmControlType`, `PlmEntityId`, `DwDataType`.
 
+**`ReferenceField` row (root `ReferenceCode`):** `DwColumnName` **must** equal `referenceScope.dwColumn` and **must exist** on `referenceScope.dwTable` (probe `INFORMATION_SCHEMA.COLUMNS` / `sys.columns`). Typical values: `Article__22`, `Product_Code_5021`, `Request_Name_7154`. **Never** copy the APP column name `ReferenceCode` into `DwColumnName` unless that exact physical column exists on the DW table. Step 3 INSERT uses `src.[DwColumnName]`; a copied APP name fails as `Invalid column name 'ReferenceCode'`.
+
 ### B3b. `4_PlmDw_ImportBlueprint.json`
 
 Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMasterSibling` for tab wide tables — the default; `RootPlusChild` only for `unitType: "child"` override tabs — child tab table goes in `unitStructure.childUnits`; grids always land in `gridBindings` / `childUnits`), `fieldPolicy` (`AllMappedColumns` | `ExclusiveSubItemsOnly`), grid bindings, field UI metadata (`blueprintFields`: `plmControlType`, `plmEntityId` / `entityIntegrationId`, `displayLabel`, `isVisible` from PLM), Search/View/navigation targets, and **`bomColorwayPivotBindings`** (host/grandchild/source table names, pivot column keys, staging column patterns). Generated from `dwTabImportConfig.json` + DW column probe + PLM sub-item/grid/extra-info metadata + BOM colorway probe. BL TOOLS: `PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`. On Execute, BL maps PLM control type → `AppTransactionField.ControlType`, resolves `plmEntityId` → tenant `AppEntityInfo.EntityInfoID` via `IntegrationId`, and applies pivot bindings (`ApplyBomColorwayPivotBindingsSql` — hides/deletes host staging fields, configures grandchild `EmGridViewDisplayType=7`).
@@ -424,7 +427,7 @@ Describes Transaction Group, per-Tab Transaction unit structure (`RootPlusMaster
 
 Template: `source/PlmDw_ImportFromDW.sql`. Generator patches `@DwDatabase`, `@PlmDatabase`, `@PlmTemplateId` from config, and injects `#Targets` filter = **this config's tab/grid AppTables only** (same set as step 2 scoped DELETE, excluding root). That prevents residual `{prefix}FieldMapping` rows from a prior template from being imported under the wrong `@PlmTemplateId`.
 
-**Reference scope (required):** when `@PlmTemplateId` is set, `#RefFilter` = distinct `ProductReferenceID` from `pdmProductTemplate` for that template, **intersected** with rows present on the `referenceScope` DW tab table.
+**Reference scope (required):** when `@PlmTemplateId` is set, `#RefFilter` = distinct `ProductReferenceID` from `pdmProductTemplate` for that template, **intersected** with rows present on the `referenceScope` DW tab table. Before INSERT, the template checks that `ReferenceField.DwColumnName` exists on that DW table and fails with candidate column names if it does not.
 
 ```sql
 SELECT ProductReferenceID FROM dbo.pdmProductTemplate WHERE TemplateID = @PlmTemplateId;

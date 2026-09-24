@@ -420,26 +420,26 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
     const buildLiveHandlers = (_turnIdx: number) => ({
         onToken: (token: string) => {
             if (!mountedRef.current) return;
-            setMessages(prev => {
-                const last = prev[prev.length - 1];
-                if (last?.role === 'assistant' && last.isStreaming) {
-                    return [...prev.slice(0, -1), { ...last, content: last.content + token }];
-                }
+                    setMessages(prev => {
+                        const last = prev[prev.length - 1];
+                        if (last?.role === 'assistant' && last.isStreaming) {
+                            return [...prev.slice(0, -1), { ...last, content: last.content + token }];
+                        }
                 return [...prev, { role: 'assistant' as const, content: token, isStreaming: true }];
-            });
-        },
+                    });
+                },
         onStep: (step: { Type: string; ToolName?: string; Description: string; IsSuccess: boolean; Details?: string }) => {
             if (!mountedRef.current) return;
             const s = step;
-            if (!s.ToolName) return;
+                    if (!s.ToolName) return;
             const idx = currentTurnIndexRef.current;
-            if (s.Type === 'tool_call') {
-                pendingCallRef.current.set(s.ToolName, { args: s.Details, startedAt: Date.now() });
+                    if (s.Type === 'tool_call') {
+                        pendingCallRef.current.set(s.ToolName, { args: s.Details, startedAt: Date.now() });
                 addStep(idx, { toolName: s.ToolName, label: s.Description, args: s.Details, isSuccess: true });
-            } else if (s.Type === 'tool_result') {
-                const pending = pendingCallRef.current.get(s.ToolName);
-                const durationMs = pending ? Date.now() - pending.startedAt : undefined;
-                pendingCallRef.current.delete(s.ToolName);
+                    } else if (s.Type === 'tool_result') {
+                        const pending = pendingCallRef.current.get(s.ToolName);
+                        const durationMs = pending ? Date.now() - pending.startedAt : undefined;
+                        pendingCallRef.current.delete(s.ToolName);
                 const resultLabel = extractCallAgentKeyFromLabel(s.Description)
                     ? s.Description.split('—')[0].trim()
                     : undefined;
@@ -508,6 +508,19 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
             setPendingAskUser(null);
             setIsRunning(false);
             isRunningRef.current = false;
+        },
+        onSessionGone: () => {
+            if (!mountedRef.current) return;
+            setSessionId(null);
+            sessionIdRef.current = null;
+            // Keep pending question + history. The in-memory run died with the web process.
+            if (!pendingAskUserRef.current) {
+                setIsRunning(false);
+                isRunningRef.current = false;
+                setError(
+                    'The agent run stopped when the server restarted. History is kept — send Continue to resume.',
+                );
+            }
         },
     });
 
@@ -807,10 +820,45 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
         const freeText = askFreeText;
         const mode = (ask?.Mode || 'text').toLowerCase();
 
+        const answerText = ask
+            ? formatAskUserAnswerSummary(ask, answers, selectedIds, freeText, cancelled)
+            : cancelled
+                ? '(cancelled)'
+                : '';
+
+        const appendQaAndClearCard = () => {
+            if (ask) {
+                setMessages(prev => [
+                    ...prev,
+                    { role: 'assistant', content: ask.Prompt || '(question)' },
+                    { role: 'user', content: answerText },
+                ]);
+            }
+            setPendingAskUser(null);
+            setAskAnswers({});
+            setAskSelectedIds([]);
+            setAskFreeText('');
+        };
+
         if (!sid) {
-            setError('No agent session for ConfirmAskUser. Re-open the chat or retry the step.');
-            setIsRunning(false);
+            appendQaAndClearCard();
             isRunningRef.current = false;
+            setIsRunning(false);
+            setError(null);
+            const historyBase = [
+                ...messagesRef.current,
+                ...(ask
+                    ? [
+                        { role: 'assistant' as const, content: ask.Prompt || '(question)' },
+                        { role: 'user' as const, content: answerText },
+                    ]
+                    : []),
+            ];
+            await runAgentTurnRef.current({
+                userMessage: answerText || 'Continue',
+                hideUserBubble: true,
+                historyBase,
+            });
             return;
         }
 
@@ -832,30 +880,29 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
         });
 
         if (!ok) {
-            // Pending HITL missing (timeout / remount / wrong SessionId) — do not spin forever.
-            setIsRunning(false);
+            // Live run died (web restart / timeout). Keep Q&A and start a new run with the answer.
+            appendQaAndClearCard();
             isRunningRef.current = false;
-            setError(
-                'ConfirmAskUser found no pending question (session timed out or was remounted). '
-                + 'Send a short message like "Continue" to resume, or Clear and re-open from wizard progress.',
-            );
+            setIsRunning(false);
+            setError(null);
+            const historyBase = [
+                ...messagesRef.current,
+                ...(ask
+                    ? [
+                        { role: 'assistant' as const, content: ask.Prompt || '(question)' },
+                        { role: 'user' as const, content: answerText },
+                    ]
+                    : []),
+            ];
+            await runAgentTurnRef.current({
+                userMessage: answerText || 'Continue',
+                hideUserBubble: true,
+                historyBase,
+            });
             return;
         }
 
-        // Keep Q&A in the transcript only after server accepted the answer.
-        if (ask) {
-            const answerText = formatAskUserAnswerSummary(ask, answers, selectedIds, freeText, cancelled);
-            setMessages(prev => [
-                ...prev,
-                { role: 'assistant', content: ask.Prompt || '(question)' },
-                { role: 'user', content: answerText },
-            ]);
-        }
-
-        setPendingAskUser(null);
-        setAskAnswers({});
-        setAskSelectedIds([]);
-        setAskFreeText('');
+        appendQaAndClearCard();
     };
 
     const handleClear = async () => {

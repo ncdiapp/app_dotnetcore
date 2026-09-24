@@ -68,6 +68,7 @@ ImportPLMSearchView/
   PROMPT.md                              ← first Search import (this file)
   PROMPT_SIBLING_VIEW.md                 ← extra display ReferenceView
   PROMPT_MASSUPDATE_VIEW.md              ← Mass Update View (after Search exists)
+  MultiAgent/                            ← Agent Mgt children (search + massupdate)
   source/
     _plm_probe_search.sql              ← PLM: Search / Parameter / ViewColumn / tab affinity
     _plm_probe_massupdate.sql          ← PLM: MassUpdateView + fields
@@ -353,4 +354,5 @@ PLM SearchTemplateId:
 - Template DW import: `AppReact/ImportDoc/ImportFromPLMDW/PROMPT.md`  
 - Sibling display View: [`PROMPT_SIBLING_VIEW.md`](PROMPT_SIBLING_VIEW.md)  
 - Mass Update View: [`PROMPT_MASSUPDATE_VIEW.md`](PROMPT_MASSUPDATE_VIEW.md)  
+- Multi-Agent children (search + massupdate): [`MultiAgent/README.md`](MultiAgent/README.md)  
 - POM search import (BL reference): `APP.BL/DataMigration/PlmMigration/PlmMigrationBL.PomImport.cs`

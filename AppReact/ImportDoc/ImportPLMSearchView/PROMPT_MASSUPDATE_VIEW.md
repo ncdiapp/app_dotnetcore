@@ -433,6 +433,7 @@ STOP. List blockers only (missing FieldMapping, no resolvable header/grid tables
 
 - [`PROMPT.md`](PROMPT.md) — first Search import (prerequisite)  
 - [`PROMPT_SIBLING_VIEW.md`](PROMPT_SIBLING_VIEW.md) — extra **display** ReferenceViews only  
+- Multi-Agent massupdate child: [`MultiAgent/Prompt_plm-integration-massupdate.txt`](MultiAgent/Prompt_plm-integration-massupdate.txt)  
 - Probe: [`source/_plm_probe_massupdate.sql`](source/_plm_probe_massupdate.sql), [`source/_app_probe_fieldmapping.sql`](source/_app_probe_fieldmapping.sql), [`source/_app_probe_search_context.sql`](source/_app_probe_search_context.sql)  
 - Blueprint examples: [`source/9_PlmSearch_MassUpdateView.example.json`](source/9_PlmSearch_MassUpdateView.example.json) (Mode A), [`source/9b_PlmSearch_MassUpdateView_ListEdit.example.json`](source/9b_PlmSearch_MassUpdateView_ListEdit.example.json) (Mode B)  
 - Phase D BL: `APP.BL/DataMigration/PlmMigration/PlmMigrationBL.SearchMassUpdateView.cs`  

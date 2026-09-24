@@ -157,7 +157,8 @@ public sealed class UpdatePlmWizardProgressTool : IAgentTool
         var chatSessionKey = PlmBlToolArgs.GetString(args, "chatSessionKey")
             ?? context?.ChatSessionKey;
         return Task.FromResult(PlmBlToolArgs.Serialize(
-            PlmImportEngine.UpdateWizardProgress(sessionId, wizardJson, currentStepCode, targetCompanyId, chatSessionKey)));
+            PlmImportEngine.UpdateWizardProgress(
+                sessionId, wizardJson, currentStepCode, targetCompanyId, chatSessionKey, context?.WorkflowId)));
     }
 }
 

@@ -1,0 +1,378 @@
+# CHILD WORKER - SkillKey: `plm-integration-massupdate`
+# Parent ROOT: `plm-integration-orchestrator`
+
+> **Folder:** `AppReact/ImportDoc/ImportPLMSearchView/MultiAgent/`
+> **Source pack:** `MultiAgent/source/` (seed into chat `source/` — do not invent replacements)
+> **From:** `../PROMPT_MASSUPDATE_VIEW.md`
+> **Prerequisite:** main Search already imported (`plm-integration-search` mode=main). Template DW + `{prefix}FieldMapping` must exist.
+> **Not a display View:** `pdmMassUpdateView` is a different PLM object. Do **not** emit `SiblingViewEnrichDataSet` or call the search-additional-view path.
+> **Runtime:** AppAI Agent Management GenericAgent (Deterministic child). Probes: `execute_sql` / `get_table_schema` with `dataSourceId`. Files: `agent-files`. Relative paths only.
+> **User-facing words:** Mass Update View. Never describe this as an additional display View.
+
+---
+
+## Non-negotiable runtime rules
+
+1. ExecutionMode=**Deterministic**. **Never** `ask_user`. **Never** STOP for HITL.
+2. Gate 0 / A/B1/B2/C checklists below are **for ROOT**. Write them to shared context + FinalResponse. ROOT confirms (including ListEdit pick / CreateNew structure).
+3. Missing ids → `ok=false` + `errors[]`. Do not invent SearchTemplateId, MassUpdateViewId, DataSourceId, or ListEdit IntegrationId. No connection strings.
+4. On start, read `plm.integration.job`, `plm.integration.massupdate.inputs`, and (for PHASE=B) `plm.integration.massupdate.plan`.
+5. Honor PHASE=. Never A+B+APPLY in one turn.
+6. Final reply = compact JSON only. Never dump Blueprint bodies. Never `file_read` large deliverables into the model.
+7. FieldMapping is truth. Never invent APP columns.
+8. If required `source/` files are missing → `ok=false`; ROOT must seed official `MultiAgent/source/`. Do not invent probe SQL or `9_` / `9b_` example schema.
+9. Never emit `listEditCreate.action=CreateNew` unless `plan` explicitly approves the unit tree + field list (B2).
+
+---
+
+## Shared context keys
+
+| Key | Who writes | When |
+|-----|------------|------|
+| `plm.integration.massupdate.inputs` | ROOT | Before PHASE=A |
+| `plm.integration.massupdate.phase-a` | this child | After PHASE=A |
+| `plm.integration.massupdate.plan` | ROOT | After user confirms |
+| `plm.integration.massupdate.outputs` | this child | After PHASE=B / APPLY |
+
+`inputs` minimum:
+
+```json
+{
+  "sessionId": 123,
+  "saasApplicationId": 1,
+  "plmDataSourceId": 12,
+  "appDataSourceId": 13,
+  "searchTemplateId": 28902,
+  "massUpdateViewId": 9,
+  "appSearchIntegrationId": "Search_28902",
+  "tablePrefix": "Plm_",
+  "setAsDefaultMassUpdateView": null
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|--------|
+| `plmDataSourceId` | yes | PLM (`pdmMassUpdateView`, fields, SearchTemplate links) |
+| `appDataSourceId` | yes | APP tenant (FieldMapping, Search, Transaction, ListEdit) |
+| `searchTemplateId` | yes | Already imported once |
+| `massUpdateViewId` | yes | One `pdmMassUpdateView` |
+| `appSearchIntegrationId` | preferred | Else `Search_{SearchTemplateId}` / prior README |
+| `setAsDefaultMassUpdateView` | optional | Default true if this id equals PLM `DefaultMassUpdateViewId` |
+
+`plan` after HITL:
+
+```json
+{
+  "option": "A",
+  "appSearchIntegrationId": "Search_28902",
+  "updateTransactionIntegrationId": "Tab_4258",
+  "updateBaseTransactionUnitId": 0,
+  "setAsDefaultMassUpdateView": true,
+  "listEdit": {
+    "action": "UseExisting",
+    "existingIntegrationId": null,
+    "create": null
+  }
+}
+```
+
+`option`: `A` = SingleTableAttach; `B1` = Hierarchical + existing ListEdit; `B2` = Hierarchical + CreateNew (structure in `plan.listEdit.create`); `C` = cancel.
+
+---
+
+## PHASE contract
+
+| PHASE | Do | Do not |
+|-------|----|--------|
+| **A** | Probe PLM MU + APP Search / FieldMapping / MasterDetail / ListEdit. Write `…massupdate.phase-a`. | Write `output/` JSON. APPLY. |
+| **B** | Read `plan`. Write `3_PlmSearch_MassUpdateView_{muId}.json`. Write `…outputs` + `executionPlan`. | B without `plan`. CreateNew without approved structure. |
+| **APPLY** | `apply_agent_output_plan` once. | Pass JSON body through the LLM. |
+
+`PHASE=PREVIEW` → A. `PHASE=EXECUTE` / `PHASE=D` → APPLY.
+
+If the JSON looks like a main Search blueprint or `SiblingViewEnrichDataSet` → `ok=false`: wrong child.
+
+---
+
+## Agent Management file area
+
+```text
+AgentOutput/{SessionKey}/
+  source/
+  output/{searchTemplateId}/
+    3_PlmSearch_MassUpdateView_{massUpdateViewId}.json
+    README_MassUpdate_{massUpdateViewId}.md   (optional)
+    apply-log.json                            (after APPLY)
+```
+
+### Required files under `source/` (this child)
+
+`file_list` `path=source` at PHASE=A start. Missing → `ok=false`.
+
+| File | Role |
+|------|------|
+| `_plm_probe_massupdate.sql` | PLM MassUpdateView shell + fields + SearchTemplate link |
+| `_app_probe_fieldmapping.sql` | Resolve SubItem / GridColumn |
+| `_app_probe_search_context.sql` | APP Search / transactions |
+| `9_PlmSearch_MassUpdateView.example.json` | Schema — Mode A SingleTable |
+| `9b_PlmSearch_MassUpdateView_ListEdit.example.json` | Schema — Mode B Hierarchical + listEditCreate |
+
+Search-only examples (`7_` / `8_` / `_plm_probe_search.sql`) are optional here.
+
+---
+
+## Conceptual map
+
+```text
+pdmSearchTemplate
+  ├─ ReferenceViewID              → display grid (already imported by search child)
+  ├─ DefaultMassUpdateViewId      → default MU
+  └─ pdmSearchTemplateReferenceView
+        ├─ ReferenceViewID        → additional display Views (search child)
+        └─ MassUpdateViewID       → THIS child
+
+pdmMassUpdateView
+  ├─ UpdateType   1=TabField  2=RegularGrid  3=DynamicMatrix
+  ├─ MainTabId / GridBlockId
+  └─ pdmMassUpdateViewField  (SubItemId | GridColumnId, Sort, IsReadonly, …)
+```
+
+| PLM | APP |
+|-----|-----|
+| `pdmMassUpdateView` | New `AppSearchView` `IsMassUpdateView=true`, **same** DataSet as the Search |
+| UpdateType TabField (flat header) | **Mode A** `SingleTableUpdate` — MasterDetail Transaction + Unit |
+| RegularGrid / Matrix (1:N) | **Mode B** `HierarchicalTableUpdate` — ListEdit (root PK only on SearchView) |
+| Field SubItem / GridColumn | `AppSearchViewField.MassUpdateTransactionFieldId` (A) or ListEdit unit fields (B) |
+| MainTab / update table | `UpdateTransctionId` + `UpdateBaseTranscationUnitId` |
+| Result-row Open | Copy `AppFormLinkTarget` from default **display** View |
+
+Runtime type is derived from Transaction (`MasterDetail` → SingleTable; `List` → Hierarchical).
+
+---
+
+## Hard rules
+
+| Rule | Detail |
+|------|--------|
+| **Search exists** | No `AppSearch` → `ok=false` (run search child main first). |
+| **MU ≠ display View** | Do not use additional-View Option A/B for this object. |
+| **PK required (Mode A)** | Must map the update Unit primary key (`MassUpdateTransactionFieldId` / `massUpdateDatabaseFieldName`). |
+| **DataSet enrich** | SELECT columns and/or **1:1** `LEFT OUTER JOIN` only. No 1:N grid joins. |
+| **Do not change display default** | Do not replace `AppSearch.SearchViewId`. |
+| **B2 gate** | `CreateNew` only when `plan` contains the approved `unitStructure` + fields. Never convert an existing `Tab_*` MasterDetail into List. Dedicated `ListEdit_MU{id}_{ShortName}`. |
+| **Prefix** | `@TablePrefix` default `Plm_`. |
+| **Cleanup** | Delete `output/_probe_*` scratch when done. |
+
+---
+
+## PHASE=A — Discovery
+
+**Tool rule:** `execute_sql` with matching `dataSourceId`. No claimed rows without tool_result.
+
+### A1. APP Search + candidates (`appDataSourceId`)
+
+Resolve Search. Load DataSet QueryText, existing Views (`IsMassUpdateView`, `UpdateTransctionId`).
+
+If this MassUpdateView is already imported → `ok=true` nothing-to-do (unless `inputs` asks update).
+
+MasterDetail candidates: `Tab_{MainTabId}` and FieldMapping-backed header tables.  
+ListEdit candidates: `AppTransaction.TransactionOrganizedType = 3` whose units touch MU header / grid tables.
+
+### A2. PLM Mass Update (`plmDataSourceId`)
+
+Run `source/_plm_probe_massupdate.sql` with `@SearchTemplateId` + `@MassUpdateViewId`.
+
+| Check | Detail |
+|-------|--------|
+| Shell | Name, UpdateType, MainTabId, GridBlockId, flags |
+| Link | Attached via `pdmSearchTemplateReferenceView` and/or `DefaultMassUpdateViewId` — warn if not linked |
+| Fields | SubItemId / GridColumnId, Sort, IsReadonly, display names |
+| Enrich | SubItem → Tab / Entity; GridColumn → GridMeta / Entity |
+
+APP resolve via FieldMapping. Mode A: prefer `Tab_{MainTabId}`; Unit = table owning most updatable fields; PK must resolve.
+
+Mode B (RegularGrid / DynamicMatrix / RequiresOneToN):
+
+1. Score existing ListEdits (root/child `SysTableName` vs MU tables).
+2. Put ranked list in `phase-a.listEditCandidates`.
+3. If none → draft **CreateNew** structure from FieldMapping + MU fields (root = header grain, child = 1:N grid). Put in `phase-a.proposedListEdit`. Do **not** write Blueprint yet.
+
+Classify each MU field:
+
+| Class | Meaning |
+|-------|---------|
+| `MappedToTxnField` | FieldMapping + matching `AppTransactionField` on chosen Unit |
+| `CoveredInDataSet` | Already in DataSet SELECT |
+| `AddColumn` | Table joined; add SELECT |
+| `AddOneToOneLeftJoin` | Extra 1:1 LEFT JOIN |
+| `RequiresOneToN` | Forces B |
+| `Unmapped` | No FieldMapping |
+| `ReadonlySkip` | PLM IsReadonly — display only |
+
+### A3. Report for ROOT (do not wait)
+
+```text
+Mass Update View import analysis
+PLM SearchTemplateId / MassUpdateViewId / UpdateType / MainTabId
+PLM DefaultMassUpdateViewId — this view default? yes|no
+APP Search / DataSet
+Recommended APP mode: SingleTableUpdate | HierarchicalTableUpdate | Blocked
+Proposed Update Transaction / Unit / PK
+Field coverage counts
+ListEdit candidates (B)
+Proposed CreateNew structure (B2) — CONFIRM before Phase B
+```
+
+Recommendation:
+
+| PLM UpdateType | Prefer |
+|----------------|--------|
+| TabField, majority on one header Unit | **A** |
+| RegularGrid / DynamicMatrix / RequiresOneToN | **B** + ListEdit discovery |
+| B + matching ListEdit | Recommend **B1** (ROOT picks which) |
+| B + no ListEdit | Propose **B2**; ROOT must approve structure |
+| Mixed header + grid | A for header-only subset, or B if grid is the point |
+| Unmapped grid / no PK-FK path | **C** |
+
+---
+
+## PHASE=B — Generate Blueprint
+
+Always: `mode` = **`MassUpdateViewAttach`**.  
+File: `output/{searchTemplateId}/3_PlmSearch_MassUpdateView_{MassUpdateViewId}.json`
+
+Do **not** rewrite Search criteria. Do **not** create a second Search. Do **not** change display default View.
+
+### Option A — SingleTableAttach
+
+Schema: `source/9_PlmSearch_MassUpdateView.example.json`
+
+- `massUpdate.appMode`: `SingleTableUpdate`
+- `dataSetPatch` — 1:1 LEFT JOIN only
+- `searchView.isMassUpdateView`: true; fields with `massUpdateTransactionFieldId` / `massUpdateDatabaseFieldName` when updatable
+- **Must include Unit PK** mapped
+- `linkTargets.copyFromDefaultSearchView`: true unless `plan` overrides
+- `setAsDefaultMassUpdateView` from plan / PLM default
+
+### Option B1 — existing ListEdit
+
+Schema: `source/9b_PlmSearch_MassUpdateView_ListEdit.example.json`
+
+- `massUpdate.appMode`: `HierarchicalTableUpdate`
+- `listEditCreate.action`: `UseExisting`
+- `listEditCreate.existingIntegrationId` / `existingTransactionId` from `plan`
+- SearchView maps **root PK only**
+- Other MU columns live on ListEdit units, not full SearchView MU maps
+- DataSet enrich only if root PK / filter columns missing (1:1)
+
+### Option B2 — CreateNew ListEdit
+
+Requires `plan.listEdit.create` (approved).
+
+- `listEditCreate.action`: `CreateNew`
+- `integrationId`: `ListEdit_MU{MassUpdateViewId}_{ShortName}`
+- `transactionOrganizedType`: `List` (3)
+- `unitStructure.root` + `children` from approved plan
+- Fields from PLM `pdmMassUpdateViewField` via FieldMapping:
+  - `sort` = PLM Sort
+  - `isVisible` = false when PLM `IsHide=1` (structural PK/FK always hidden except root identity exception)
+  - `isReadOnly` = PLM IsReadonly
+  - `controlType` / `entityIntegrationId` from FieldMapping
+  - Columns not in the MU field list → hidden
+  - **Root identity exception:** always show ReferenceId (or unit PK). Also show Product Code / Description aliases when those fields exist (`Article`, `ProductCode`, `Product_Code`, `ItemCode`, `TrimCode`, `StyleCode`, …). Do not invent missing columns.
+- `massUpdate.updateTransactionIntegrationId` = the new ListEdit IntegrationId
+- Dedicated ListEdit — never flip an existing `Tab_*` to List
+
+### Option C
+
+No files. `ok=false` + blockers.
+
+### executionPlan
+
+```json
+{
+  "executionPlan": [
+    {
+      "order": 1,
+      "kind": "search-massupdate",
+      "path": "output/28902/3_PlmSearch_MassUpdateView_9.json",
+      "label": "Attach Mass Update View"
+    }
+  ]
+}
+```
+
+APPLY: `apply_agent_output_plan` once. BL maps `kind=search-massupdate` → `execute_search_massupdate_view` / `ExecuteSearchMassUpdateViewConfig`.
+
+If tools are not subscribed → `ok=false` + `nextHint`: user can upload JSON in **PLM Data Import → Search Import**. Files stay on disk.
+
+Execute must (BL):
+
+1. Optional DataSet patch (1:1 only)
+2. B2: create ListEdit first
+3. Create `AppSearchView` IsMassUpdateView + Update Transaction/Unit
+4. Map MU fields (A: including PK; B: root PK only)
+5. Leave display `SearchViewId` unchanged
+6. Copy LinkTargets from default display View
+7. Note `setAsDefaultMassUpdateView` in execute messages
+
+---
+
+## PHASE=APPLY
+
+1. Read `…massupdate.outputs.executionPlan`.
+2. `apply_agent_output_plan` **once**.
+3. `ok=true` only when executed==planned.
+4. ROOT appends `massupdate.doneIds` (MassUpdateViewId or App SearchViewId — use what APPLY returns).
+
+---
+
+## FinalResponse (JSON text)
+
+```json
+{
+  "ok": true,
+  "skillKey": "plm-integration-massupdate",
+  "phase": "A",
+  "sessionId": 123,
+  "searchTemplateId": 28902,
+  "massUpdateViewId": 9,
+  "summary": "Phase A: recommend B1, 2 ListEdit candidates",
+  "counts": {},
+  "files": [],
+  "executionPlan": [],
+  "errors": [],
+  "nextHint": "ROOT: confirm A/B1/B2/C and write plm.integration.massupdate.plan"
+}
+```
+
+---
+
+## Agent checklist
+
+```text
+[ ] Read job + massupdate.inputs (two DataSourceIds + SearchTemplateId + MassUpdateViewId)
+[ ] file_list source/ — massupdate probe + 9_ + 9b_ present?
+[ ] APP Search exists
+[ ] PHASE=A: PLM MU + FieldMapping + MD / ListEdit candidates
+[ ] Recommend A / B1 / B2 / C in phase-a — no output/ yet
+[ ] PHASE=B: plan required. mode=MassUpdateViewAttach
+[ ] A includes Unit PK mapping; no 1:N in dataSetPatch
+[ ] B SearchView maps root PK only
+[ ] B2 CreateNew only with approved unitStructure; hide non-MU columns
+[ ] Do not change display SearchViewId
+[ ] executionPlan kind=search-massupdate
+[ ] PHASE=APPLY: apply_agent_output_plan once
+[ ] Delete output/_probe_* scratch
+```
+
+---
+
+## Out of scope
+
+- Main Search / additional display View (search child)
+- `pdmMassUpdateViewMember` security / `pdmMassUpdateViewCalFlow`
+- Full DynamicMatrix pivot UI parity (best-effort child unit + warn)
+- Converting existing MasterDetail `Tab_*` into ListEdit
+- C# / React edits during a run
+- Treating Mass Update as a display ReferenceView

@@ -904,7 +904,8 @@ VALUES
             string wizardJson,
             string currentStepCode,
             int? targetCompanyId,
-            string chatSessionKey = null)
+            string chatSessionKey = null,
+            string workflowId = null)
         {
             var result = new OperationCallResult<object>();
             try
@@ -915,13 +916,19 @@ VALUES
                 if (string.IsNullOrWhiteSpace(chatSessionKey))
                     throw new ArgumentException("ChatSessionKey is required (current Chat).");
 
-                try { JToken.Parse(wizardJson); }
+                JObject wizardObj;
+                try { wizardObj = JObject.Parse(wizardJson); }
                 catch (Exception ex)
                 {
                     throw new ArgumentException("wizardJson must be valid JSON: " + ex.Message);
                 }
 
                 var fixture = GetTenantFixture();
+                var sanitizeError = StripFailedImportDwDoneIds(
+                    fixture, chatSessionKey.Trim(), workflowId, wizardObj, out var wizardSanitized);
+                if (wizardSanitized)
+                    wizardJson = wizardObj.ToString(Formatting.None);
+
                 UpsertChatSharedContext(fixture, chatSessionKey.Trim(), WizardSharedContextKey, wizardJson);
 
                 string cursor = currentStepCode;
@@ -956,13 +963,23 @@ WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Sta
 
                 result.Object = new
                 {
-                    ok = true,
+                    ok = sanitizeError == null,
                     sessionId = jobSessionId,
                     chatSessionKey = chatSessionKey.Trim(),
                     currentStepCode = cursor,
                     wizardPersisted = true,
+                    wizardSanitized,
+                    error = sanitizeError,
                     scope = "chat"
                 };
+                if (sanitizeError != null)
+                {
+                    result.ValidationResult.Items.Add(new ValidationItem(
+                        typeof(PlmImportSessionDto),
+                        "Plm_Wizard_ImportDwApplyNotSuccessful",
+                        ValidationItemType.Error,
+                        sanitizeError));
+                }
             }
             catch (Exception ex)
             {
@@ -1040,6 +1057,94 @@ WHERE SessionId = @SessionId AND CompanyId = @CompanyId AND SessionStatus = @Sta
                     typeof(PlmImportSessionDto), "Plm_Wizard_GetFailed", ValidationItemType.Error, ex.Message));
             }
             return result;
+        }
+
+        /// <summary>
+        /// ROOT must not persist import-dw.doneIds when the latest apply for that
+        /// TemplateId failed or never ran. Strips the id and parks it on pendingApplyIds.
+        /// </summary>
+        private static string StripFailedImportDwDoneIds(
+            DatabaseFixture fixture,
+            string chatSessionKey,
+            string workflowId,
+            JObject wizard,
+            out bool stripped)
+        {
+            stripped = false;
+            var importDw = wizard?["steps"]?["import-dw"] as JObject;
+            var done = importDw?["doneIds"] as JArray;
+            if (importDw == null || done == null || done.Count == 0)
+                return null;
+
+            var outputsRaw = ReadChatSharedContext(fixture, chatSessionKey, "plm.integration.import-dw.outputs");
+            if (string.IsNullOrWhiteSpace(outputsRaw)
+                && !string.IsNullOrWhiteSpace(workflowId)
+                && !string.Equals(workflowId, chatSessionKey, StringComparison.OrdinalIgnoreCase))
+            {
+                outputsRaw = ReadChatSharedContext(fixture, workflowId.Trim(), "plm.integration.import-dw.outputs");
+            }
+            if (string.IsNullOrWhiteSpace(outputsRaw))
+                return null;
+
+            JObject outputs;
+            try { outputs = JObject.Parse(outputsRaw); }
+            catch { return null; }
+
+            var apply = outputs["apply"] as JObject;
+            if (apply == null)
+                return null;
+
+            var applyOk = apply.Value<bool?>("Ok") ?? apply.Value<bool?>("ok") ?? false;
+            if (applyOk)
+                return null;
+
+            var templateId = outputs.Value<int?>("templateId") ?? outputs.Value<int?>("TemplateId");
+            if (!templateId.HasValue)
+                return null;
+
+            var templateKey = templateId.Value.ToString();
+            var removed = false;
+            for (var i = done.Count - 1; i >= 0; i--)
+            {
+                var token = done[i];
+                var value = token.Type == JTokenType.Integer
+                    ? token.Value<int>().ToString()
+                    : (token.ToString() ?? string.Empty).Trim();
+                if (!string.Equals(value, templateKey, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                token.Remove();
+                removed = true;
+            }
+            if (!removed)
+                return null;
+
+            stripped = true;
+            var pending = importDw["pendingApplyIds"] as JArray;
+            if (pending == null)
+            {
+                pending = new JArray();
+                importDw["pendingApplyIds"] = pending;
+            }
+            var alreadyPending = false;
+            foreach (var token in pending)
+            {
+                var value = token.Type == JTokenType.Integer
+                    ? token.Value<int>().ToString()
+                    : (token.ToString() ?? string.Empty).Trim();
+                if (string.Equals(value, templateKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    alreadyPending = true;
+                    break;
+                }
+            }
+            if (!alreadyPending)
+                pending.Add(templateId.Value);
+
+            var err = apply.Value<string>("Error") ?? apply.Value<string>("error") ?? "apply.Ok=false";
+            var planned = apply.Value<int?>("Planned") ?? apply.Value<int?>("planned");
+            var executed = apply.Value<int?>("Executed") ?? apply.Value<int?>("executed");
+            return "Cannot mark import-dw TemplateId " + templateKey
+                + " done: apply failed (executed=" + executed + "/" + planned + "). " + err;
         }
 
         private static string ReadChatSharedContext(DatabaseFixture fixture, string chatSessionKey, string contextKey)

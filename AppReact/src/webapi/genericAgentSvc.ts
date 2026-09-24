@@ -125,6 +125,8 @@ export interface GenericAgentEventHandlers {
     onAskUser?: (ask: AskUserEvent) => void;
     onDone: (done: { FinalResponse: string }) => void;
     onError: (message: string) => void;
+    /** In-memory run gone (web recycle). History is still in the DB — do not treat as a hard error. */
+    onSessionGone?: () => void;
 }
 
 const BASE = `${endpoints.BASE_URL}/webapi/GenericAgent`;
@@ -442,6 +444,26 @@ class GenericAgentService {
         this.stopPolling();
         this.currentSessionId = sessionId;
         this.currentChatSessionKey = chatSessionKey ?? this.currentChatSessionKey;
+        void this.probeAndResume(sessionId, handlers);
+    }
+
+    async probeSession(sessionId: string): Promise<boolean> {
+        if (!sessionId) return false;
+        try {
+            const data = (await this.PollEvents(sessionId)) as { SessionExists?: boolean };
+            return data?.SessionExists !== false;
+        } catch {
+            return false;
+        }
+    }
+
+    private async probeAndResume(sessionId: string, handlers: GenericAgentEventHandlers): Promise<void> {
+        const alive = await this.probeSession(sessionId);
+        if (!alive) {
+            this.currentSessionId = null;
+            handlers.onSessionGone?.();
+            return;
+        }
         this.startPolling(sessionId, handlers);
     }
 
@@ -468,7 +490,9 @@ class GenericAgentService {
                 } = (await this.PollEvents(sessionId)) as never;
                 if (data?.SessionExists === false) {
                     this.stopPolling();
-                    h.onError('Session not found. Server may have restarted.');
+                    this.currentSessionId = null;
+                    if (h.onSessionGone) h.onSessionGone();
+                    else h.onError('Session not found. Server may have restarted.');
                     return;
                 }
                 consecutiveFailures = 0;

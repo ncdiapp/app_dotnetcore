@@ -14,6 +14,7 @@
     "templateHeaderTabIds": [4258]
   },
   "referenceScope": {
+    "_comment_dwColumn": "Physical DW column on dwTable (Article__22). Never the APP name ReferenceCode unless that exact column exists on the DW table.",
     "dwTable": "PLM_DW_Tab_Fabric_Header_4258",
     "dwColumn": "Article__22",
     "plmTabId": 4258,

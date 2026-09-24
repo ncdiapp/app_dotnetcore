@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Data.SqlClient;
+using System.IO;
 using System.Linq;
 using App.BL.AIAgent.GenericAgent;
 using APP.Components.EntityDto;
@@ -37,7 +39,7 @@ namespace APP.AgentPlugins.PlmImport
                 ? DefaultOutputsContextKey
                 : outputsContextKey.Trim();
 
-            var outputsRaw = AppAgentSharedContextBL.ReadContext(context.WorkflowId, key, context.DataSourceId);
+            var outputsRaw = ReadOutputsJson(context, key);
             JObject outputs = null;
             if (!string.IsNullOrWhiteSpace(outputsRaw))
             {
@@ -76,10 +78,49 @@ namespace APP.AgentPlugins.PlmImport
             try { logFixture = GetTenantFixture(); }
             catch { logFixture = null; }
 
+            var dwDataSourceId = job?.Value<int?>("dwDataSourceId") ?? job?.Value<int?>("DwDataSourceId");
+
+            var missing = new List<string>();
+            foreach (var step in steps)
+            {
+                if (string.IsNullOrWhiteSpace(step.Path))
+                    continue;
+                var full = GenericAgentFileBL.Resolve(context.ChatSessionKey, step.Path, context.CompanyId);
+                if (!File.Exists(full))
+                    missing.Add(step.Path.Replace('\\', '/'));
+            }
+            if (missing.Count > 0)
+            {
+                result.Ok = false;
+                result.Executed = 0;
+                result.Error = "Agent files not found under AgentOutput/" + context.ChatSessionKey
+                    + "/: " + string.Join(", ", missing)
+                    + ". executionPlan listing a path is not enough. Re-run Phase B so run_agent_script writes 1_PlmDw_Tables.sql and 4_PlmDw_ImportBlueprint.json.";
+                foreach (var step in steps.OrderBy(s => s.Order))
+                {
+                    result.Steps.Add(new AgentOutputApplyStepResult
+                    {
+                        Order = step.Order,
+                        Kind = step.Kind,
+                        Path = step.Path,
+                        Ok = false,
+                        Error = missing.Contains((step.Path ?? "").Replace('\\', '/'))
+                            ? "Agent file not found."
+                            : "Skipped because required output files are missing."
+                    });
+                }
+                result.SessionId = resolvedSessionId;
+                result.LogHint = resolvedSessionId.HasValue
+                    ? "AppPlmImportLog StepCode=import-dw for sessionId=" + resolvedSessionId.Value
+                    : "No sessionId; see AgentOutput apply-log.json and NLog.";
+                PersistApplyResult(context, key, outputs, result, steps);
+                return result;
+            }
+
             foreach (var step in steps.OrderBy(s => s.Order))
             {
                 var stepResult = RunOneStep(
-                    context, step, requiredIds, resolvedSaas, modeOverride);
+                    context, step, requiredIds, resolvedSaas, modeOverride, dwDataSourceId);
                 result.Steps.Add(stepResult);
 
                 if (logFixture != null && resolvedSessionId.HasValue && resolvedSessionId.Value > 0)
@@ -133,7 +174,8 @@ namespace APP.AgentPlugins.PlmImport
             AgentOutputPlanStep step,
             string requiredDataSourceIds,
             int? saasApplicationId,
-            string modeOverride)
+            string modeOverride,
+            int? dwDataSourceId)
         {
             var stepResult = new AgentOutputApplyStepResult
             {
@@ -150,6 +192,7 @@ namespace APP.AgentPlugins.PlmImport
                 var kind = (step.Kind ?? "").Trim().ToLowerInvariant();
                 if (kind == "sql")
                 {
+                    AssertImportFromDwReferenceColumn(step.Path, dwDataSourceId);
                     var sql = GenericAgentSqlFileBL.Execute(
                         context.ChatSessionKey,
                         context.CompanyId,
@@ -206,6 +249,93 @@ namespace APP.AgentPlugins.PlmImport
             }
         }
 
+        /// <summary>
+        /// Step 3 INSERT uses src.[FieldMapping.DwColumnName]. The APP column is always
+        /// ReferenceCode; DwColumnName must be the physical DW column (Article__22, etc.).
+        /// </summary>
+        private static void AssertImportFromDwReferenceColumn(string path, int? dwDataSourceId)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !dwDataSourceId.HasValue || dwDataSourceId.Value <= 0)
+                return;
+
+            var file = path.Replace('\\', '/');
+            var slash = file.LastIndexOf('/');
+            var name = slash >= 0 ? file.Substring(slash + 1) : file;
+            if (!name.Equals("3_PlmDw_ImportFromDW.sql", StringComparison.OrdinalIgnoreCase))
+                return;
+
+            string dwTable = null;
+            string dwColumn = null;
+            using (var conn = new SqlConnection(GetTenantConnectionString()))
+            {
+                conn.Open();
+                if (!TemplateTableExists(conn, null, "Plm_FieldMapping"))
+                    return;
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+SELECT TOP 1 DwTableName, DwColumnName
+FROM dbo.Plm_FieldMapping
+WHERE AppColumnName = N'ReferenceCode'
+  AND FieldKind = N'ReferenceField'";
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (!reader.Read())
+                            return;
+                        dwTable = reader.IsDBNull(0) ? null : reader.GetString(0);
+                        dwColumn = reader.IsDBNull(1) ? null : reader.GetString(1);
+                    }
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(dwTable) || string.IsNullOrWhiteSpace(dwColumn))
+                return;
+
+            var hints = new List<string>();
+            var exists = false;
+            using (var conn = new SqlConnection(ResolveConnectionStringFromRegisterId(dwDataSourceId.Value)))
+            {
+                conn.Open();
+                using (var cmd = conn.CreateCommand())
+                {
+                    cmd.CommandText = @"
+SELECT c.name
+FROM sys.columns c
+INNER JOIN sys.tables t ON t.object_id = c.object_id
+INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
+WHERE s.name = N'dbo' AND t.name = @table
+  AND c.name NOT IN (N'TabID', N'ProductReferenceID')
+ORDER BY c.name";
+                    cmd.Parameters.AddWithValue("@table", dwTable);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var col = reader.GetString(0);
+                            if (string.Equals(col, dwColumn, StringComparison.OrdinalIgnoreCase))
+                                exists = true;
+                            if (hints.Count < 12
+                                && (col.IndexOf("Article", StringComparison.OrdinalIgnoreCase) >= 0
+                                    || col.IndexOf("Code", StringComparison.OrdinalIgnoreCase) >= 0
+                                    || col.IndexOf("Name_", StringComparison.OrdinalIgnoreCase) >= 0))
+                            {
+                                hints.Add(col);
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (exists)
+                return;
+
+            var hintText = hints.Count > 0 ? string.Join(", ", hints) : "(none)";
+            throw new InvalidOperationException(
+                "ReferenceField DwColumnName [" + dwColumn + "] does not exist on dbo." + dwTable
+                + ". DwColumnName must be the physical DW column (e.g. Article__22), not the APP name ReferenceCode. Candidates: "
+                + hintText);
+        }
+
         private static void PersistApplyResult(
             AgentToolContext context,
             string outputsKey,
@@ -216,7 +346,7 @@ namespace APP.AgentPlugins.PlmImport
             var applyJson = JsonConvert.SerializeObject(result);
             var root = outputs ?? new JObject();
             root["apply"] = JToken.Parse(applyJson);
-            AppAgentSharedContextBL.WriteContext(context.WorkflowId, outputsKey, root.ToString(Formatting.None), context.DataSourceId);
+            WriteOutputsJson(context, outputsKey, root.ToString(Formatting.None));
 
             var folder = planned
                 .Select(s => s.Path)
@@ -237,9 +367,38 @@ namespace APP.AgentPlugins.PlmImport
             }
         }
 
+        private static string ReadOutputsJson(AgentToolContext context, string key)
+        {
+            var raw = AppAgentSharedContextBL.ReadContext(context.WorkflowId, key, context.DataSourceId);
+            if (!string.IsNullOrWhiteSpace(raw))
+                return raw;
+            if (!string.IsNullOrWhiteSpace(context.ChatSessionKey)
+                && !string.Equals(context.ChatSessionKey, context.WorkflowId, StringComparison.OrdinalIgnoreCase))
+            {
+                return AppAgentSharedContextBL.ReadContext(context.ChatSessionKey, key, context.DataSourceId);
+            }
+            return null;
+        }
+
+        private static void WriteOutputsJson(AgentToolContext context, string key, string json)
+        {
+            AppAgentSharedContextBL.WriteContext(context.WorkflowId, key, json, context.DataSourceId);
+            if (!string.IsNullOrWhiteSpace(context.ChatSessionKey)
+                && !string.Equals(context.ChatSessionKey, context.WorkflowId, StringComparison.OrdinalIgnoreCase))
+            {
+                AppAgentSharedContextBL.WriteContext(context.ChatSessionKey, key, json, context.DataSourceId);
+            }
+        }
+
         private static JObject ReadJob(AgentToolContext context)
         {
             var raw = AppAgentSharedContextBL.ReadContext(context.WorkflowId, JobContextKey, context.DataSourceId);
+            if (string.IsNullOrWhiteSpace(raw)
+                && !string.IsNullOrWhiteSpace(context.ChatSessionKey)
+                && !string.Equals(context.ChatSessionKey, context.WorkflowId, StringComparison.OrdinalIgnoreCase))
+            {
+                raw = AppAgentSharedContextBL.ReadContext(context.ChatSessionKey, JobContextKey, context.DataSourceId);
+            }
             if (string.IsNullOrWhiteSpace(raw))
                 return null;
             try { return JObject.Parse(raw); }

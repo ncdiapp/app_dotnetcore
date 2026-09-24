@@ -1,0 +1,450 @@
+# CHILD WORKER - SkillKey: `plm-integration-search`
+# Parent ROOT: `plm-integration-orchestrator`
+
+> **Folder:** `AppReact/ImportDoc/ImportPLMSearchView/MultiAgent/`
+> **Source pack:** `MultiAgent/source/` (seed into chat `source/` — do not invent replacements)
+> **Merged from:** `../PROMPT.md` (first Search) + `../PROMPT_SIBLING_VIEW.md` (additional display View) + `source/MULTI_VIEW_COVERAGE.md`
+> **Does NOT own:** Mass Update (`pdmMassUpdateView`) — that is `plm-integration-massupdate`
+> **Runtime:** AppAI Agent Management GenericAgent (Deterministic child). Probes use `execute_sql` / `get_table_schema` with `dataSourceId`. Files: `agent-files` (`file_list` / `file_read` / `file_write` / `file_mkdir` / `file_delete`). Paths are relative (`source/...`, `output/...`).
+> **User-facing words:** say **Import Search View** or **additional View**. Never say "sibling" in FinalResponse `summary` / `nextHint`. Internal JSON `mode` may still be `SiblingViewEnrichDataSet`.
+
+---
+
+## Non-negotiable runtime rules
+
+1. ExecutionMode=**Deterministic**. **Never** `ask_user`. **Never** STOP for HITL. Never wait in chat for confirmation.
+2. Gate 0 / "WAIT FOR USER" / A/B/C checklists below are **domain rules for ROOT**. You write them into shared context + compact FinalResponse. ROOT confirms.
+3. Missing ids → FinalResponse `ok=false` + `errors[]`. Do not invent SearchTemplateId, ReferenceViewId, or DataSourceId. Do not use connection strings.
+4. On start, read:
+   - `plm.integration.job`
+   - `plm.integration.search.inputs`
+   - `plm.integration.search.plan` (required for PHASE=B)
+5. Honor PHASE= from the call message. Never A+B+APPLY in one turn.
+6. Final reply = compact JSON only (see §FinalResponse). No huge SQL/JSON dumps. Never `file_read` large deliverables into the model.
+7. FieldMapping is truth. Never invent APP column names. Never copy `pdmBLQuery.SqlText` into DataSet `queryText`.
+8. If required files under `source/` are missing → `ok=false` and tell ROOT to seed official `MultiAgent/source/` (or parent `ImportPLMSearchView/source/`). Do not generate probe SQL or example JSON from memory.
+
+---
+
+## Shared context keys
+
+| Key | Who writes | When |
+|-----|------------|------|
+| `plm.integration.search.inputs` | ROOT | Before PHASE=A |
+| `plm.integration.search.phase-a` | this child | After PHASE=A |
+| `plm.integration.search.plan` | ROOT | After user confirms Phase A |
+| `plm.integration.search.outputs` | this child | After PHASE=B / APPLY |
+
+`inputs` minimum:
+
+```json
+{
+  "sessionId": 123,
+  "saasApplicationId": 1,
+  "plmDataSourceId": 12,
+  "appDataSourceId": 13,
+  "searchTemplateId": 23702,
+  "mode": "main",
+  "referenceViewId": null,
+  "appSearchIntegrationId": null,
+  "tablePrefix": "Plm_"
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|--------|
+| `plmDataSourceId` | yes | PLM (`pdmSearchTemplate`, DCU, ReferenceView, …) |
+| `appDataSourceId` | yes | APP tenant (`Plm_FieldMapping`, `AppSearch`, transactions). Omit `dataSourceId` on `execute_sql` only when querying the session default APP DB **and** it is this tenant. |
+| `searchTemplateId` | yes | Exactly one `pdmSearchTemplate.SearchTemplateID` |
+| `mode` | recommended | `main` \| `additional-view`. If omitted: existing APP Search + `referenceViewId` → `additional-view`; else `main`. |
+| `referenceViewId` | additional-view | Extra PLM `pdmReferenceView` to attach. Not used for first import (default View comes from SearchTemplate.`ReferenceViewID`). |
+| `appSearchIntegrationId` | additional-view preferred | Resolve existing Search. Else try `Search_{SearchTemplateId}` / prior README. |
+
+`plan` (ROOT after HITL) must include the user decision, e.g.:
+
+```json
+{
+  "mode": "main",
+  "selectedJoinPlanId": "A",
+  "gridColumnStrategy": "exclude",
+  "referenceScope": { "mode": "AllReferences" },
+  "missingFields": "ignore",
+  "linkTargetTransactionIntegrationId": "Tab_4250",
+  "searchIntegrationId": "Search_StyleSearch",
+  "registerInMainMenu": true
+}
+```
+
+For additional-view:
+
+```json
+{
+  "mode": "additional-view",
+  "option": "A",
+  "appSearchIntegrationId": "Search_Fabric"
+}
+```
+
+`option`: `A` = enrich DataSet + additional View on the **same** Search; `B` = new DataSet + new Search; `C` = cancel (child returns `ok=false`, no files).
+
+---
+
+## PHASE contract
+
+| PHASE | Do | Do not |
+|-------|----|--------|
+| **A** | Probe PLM + APP via `execute_sql`. Write `…search.phase-a` (coverage + JOIN plans **or** additional-View A/B/C report). Return detailed checklist for ROOT. | Write `output/` blueprints. APPLY. |
+| **B** | Read `inputs` + `plan`. Write official Blueprint JSON under `output/{searchTemplateId}/`. Write `…search.outputs` with `files[]` + `executionPlan[]` (only files that exist). | Start B without `plan`. Hand-write a stub that ignores `source/7_` / `source/8_` schema. |
+| **APPLY** | Call `apply_agent_output_plan` once (or the path-based search execute tool mapped by `executionPlan.kind`). Write `…search.outputs.apply`. | Pass SQL/JSON bodies through the LLM. Walk file contents yourself. |
+
+`PHASE=PREVIEW` is a legacy alias of **A** (analysis only).  
+`PHASE=EXECUTE` / `PHASE=D` are legacy aliases of **APPLY**.
+
+### Detect mode (do not ask the user to pick "sibling")
+
+1. If `inputs.mode` is `main` or `additional-view` → use it.
+2. Else if `referenceViewId` is set **and** APP Search already exists for this template → `additional-view`.
+3. Else → `main`.
+
+If `additional-view` but APP Search is missing → `ok=false`: ROOT must run **main** first.
+
+JSON mode detection (same as Search Import UI):
+
+| Blueprint `mode` / file | FinalResponse `mode` | `executionPlan.kind` |
+|-------------------------|----------------------|----------------------|
+| (omit / main schema) `1_PlmSearch_ImportBlueprint.json` | `main` | `search-blueprint` |
+| `SiblingViewEnrichDataSet` `2_PlmSearch_SiblingView_{viewId}.json` | `additional-view` | `search-additional-view` |
+| Option B full blueprint `1_PlmSearch_ImportBlueprint_V{ViewId}.json` | `main` (new Search) | `search-blueprint` |
+| `MassUpdateViewAttach` | **wrong child** | stop; tell ROOT to call `plm-integration-massupdate` |
+
+---
+
+## Agent Management file area
+
+```text
+AgentOutput/{SessionKey}/
+  source/     ← official probe SQL + example JSON (from MultiAgent/source/)
+  output/{searchTemplateId}/
+    1_PlmSearch_ImportBlueprint.json              ← main
+    2_PlmSearch_SiblingView_{viewId}.json         ← additional View Option A
+    1_PlmSearch_ImportBlueprint_V{ViewId}.json    ← additional View Option B (new Search)
+    README.md                                     ← optional
+```
+
+### Required files under `source/` (this child)
+
+Call `file_list` `path=source` at the start of PHASE=A. Missing → `ok=false`.
+
+| File | Role |
+|------|------|
+| `_plm_probe_search.sql` | PLM Search / DCU / View columns / tab affinity |
+| `_app_probe_fieldmapping.sql` | APP FieldMapping resolve |
+| `_app_probe_search_context.sql` | APP Search / transactions / data sources |
+| `7_PlmSearch_ImportBlueprint.example.json` | **Schema contract** for main / Option B |
+| `8_PlmSearch_SiblingView.example.json` | **Schema contract** for additional View Option A |
+| `plmSearchImportConfig.example.json` | Working config shape (write `source/plmSearchImportConfig.json` in Phase B) |
+
+`MULTI_VIEW_COVERAGE.md` is optional reference (rules are in this prompt).  
+Do **not** require Mass Update examples (`9_` / `9b_` / `_plm_probe_massupdate.sql`) on this child.
+
+**Producer of deliverables:** this child writes 8–16 KB Blueprint JSON after probes + `plan`. That is intended. What you must **not** invent: probe SQL and example schema.
+
+---
+
+## Hard rules (domain)
+
+| Rule | Detail |
+|------|--------|
+| **Prerequisite** | Template DW import done: `{prefix}FieldMapping` exists on APP. Else `ok=false`. |
+| **No server code** | Deliverables are JSON under `output/`. BL gap → still write Blueprint, set `ok=false` / warn in `errors` if Execute tools are missing. |
+| **Do not copy PLM BlQuery** | `pdmBLQuery.SqlText` is reference only. Synthesize DataSet from JOIN plan + FieldMapping. |
+| **Criteria ≠ View** | Score JOIN plans separately for criteria coverage and view coverage. |
+| **Grid 1:N** | `FieldKind = GridColumn` default `gridColumnStrategy = exclude`. Alternatives: `scalar` (TOP 1 subquery), `accept-1N` (only if `plan` says so). |
+| **Additional View Option A** | May add SELECT columns and/or **first-level 1:1** `LEFT OUTER JOIN` on `ReferenceId` / header key. **Forbidden:** 1:N grid joins that multiply rows. |
+| **Cross-grain → B** | Header×grid row multiplication → Option B (new DataSet + new Search). Never fat UNION mixing grains. |
+| **Do not change default View** | Option A adds another `AppSearchView`; keep existing `AppSearch.SearchViewId` unless `plan` explicitly switches default. |
+| **Prefix** | All APP tables use `@TablePrefix` (default `Plm_`). |
+| **Cleanup** | Delete `output/_probe_*` and other output-root scratch files when the run finishes. Keep `source/` probes. |
+
+### Grain rule (from MULTI_VIEW_COVERAGE)
+
+**Same row grain → 1 DataSet + 1 Search + N Views. Different row grain → N DataSets + N Searches (`Search_{Name}_V{ViewId}`).**
+
+Same grain (Grid vs Image Card) → usually Option A.  
+Cross grain (list vs list×color) → Option B or a fresh **main** import with `accept-1N`.
+
+---
+
+## PHASE=A — Discovery (write phase-a, then return)
+
+**Tool rule:** every probe must `execute_sql` with the matching `dataSourceId`. Never claim rows without a tool_result.
+
+Substitute `@SearchTemplateId` / wanted SubItem and MetaColumn lists in the SQL text. Official scripts live in `source/`.
+
+### A0. Verify FieldMapping (APP / `appDataSourceId`)
+
+If `{prefix}FieldMapping` is missing → `ok=false`: run Import DW first.
+
+### A1. Main mode — PLM probe
+
+Run `source/_plm_probe_search.sql` (or equivalent sections) on **PLM**.
+
+| Section | Use |
+|---------|-----|
+| Search template | Name, `ReferenceViewID`, `BLQueryID` |
+| DCU criteria | Criteria fields + tab affinity |
+| View columns | Result columns + grid/sub-item enrichment |
+| BLQuery | Reference only |
+| Tab affinity | JOIN plan ranking |
+
+### A2. Main mode — APP FieldMapping + context
+
+Run `_app_probe_fieldmapping.sql` with `#WantedSubItems` / `#WantedMetaColumns` from PLM §2/§4.  
+Run `_app_probe_search_context.sql` for `Tab_{id}` transactions and data sources.
+
+### A3. Coverage (mandatory before JOIN plans)
+
+For each PLM criteria parameter and view column:
+
+| Status | Meaning |
+|--------|---------|
+| **Mapped** | Exactly one `AppTableName` + `AppColumnName` |
+| **Ambiguous** | Same `PlmSubItemId` → multiple APP tables |
+| **Missing** | No FieldMapping row |
+| **Grid** | `FieldKind = GridColumn` — `gridColumnStrategy` |
+| **BuiltIn** | ReferenceId / ReferenceCode → `Plm_ReferenceBasicInfo` |
+
+If criteria mapped < 50% → warn strongly in `phase-a`.
+
+### A4. JOIN plans (main mode — core deliverable)
+
+Cardinality:
+
+| FieldKind | JOIN role | Default |
+|-----------|-----------|---------|
+| `ReferenceField`, root | `root` | `Plm_ReferenceBasicInfo` |
+| `TabField` on tab wide table | `sibling` | `INNER JOIN ON ReferenceId` (1:1) |
+| `GridColumn` | `grid` | exclude unless plan says `scalar` / `accept-1N` |
+
+Scoring (show breakdown):
+
+1. Criteria coverage 35%
+2. View coverage 35%
+3. Tab affinity 15%
+4. Header tab bonus 10%
+5. Simplicity 5% (fewer tables = higher)
+
+Prune: at most one APP table per `PlmSubItemId` per plan; no grid tables when exclude; prefer dominant `PlmTabId`.
+
+Output **3–10** plans (or fewer with explanation) into `phase-a.joinPlans`.
+
+Checklist for ROOT (do not wait yourself):
+
+```text
+[ ] Select JOIN plan: A / B / C / ...
+[ ] Grid column strategy: exclude | scalar | accept-1N
+[ ] Reference scope: AllReferences | ByTemplateIds [list] | CustomFilter
+[ ] Missing fields: ignore | stop and import Template ____ first
+[ ] Link target transaction: Tab_{id} for Open/Create
+[ ] Search IntegrationId: Search_{Name} (no collision)
+[ ] Register in main menu? yes/no
+```
+
+### A5. Additional-view mode — APP then PLM
+
+Locate APP Search: `inputs.appSearchIntegrationId` → else `Search_{SearchTemplateId}` → else prior `output/{id}/README.md`. Missing Search → `ok=false`.
+
+Load `SearchID`, `DataSetId`, `QueryText`, existing Views. If this `ReferenceViewId` is already imported → `ok=true` with `nextHint` nothing-to-do (or `ok=false` if ROOT asked re-import without a flag).
+
+PLM: `pdmReferenceView` + `pdmReferenceViewColumn` for `referenceViewId`. Warn if RefTxType family differs.
+
+Classify each View column vs **current** DataSet:
+
+| Class | Meaning |
+|-------|---------|
+| `Covered` | Already in SELECT |
+| `AddColumn` | Table already joined; add to SELECT |
+| `AddOneToOneLeftJoin` | One more 1:1 sibling via `LEFT OUTER JOIN` on header/`ReferenceId` |
+| `RequiresOneToN` | Grid / row multiply → **cannot** use Option A |
+| `Unmapped` | No FieldMapping |
+
+`phase-a` report shape:
+
+```text
+Additional View import analysis
+PLM SearchTemplateId / ReferenceViewId / names
+APP Search # / IntegrationId / DataSet tables
+Field coverage: Covered / AddColumn / AddOneToOneLeftJoin / RequiresOneToN / Unmapped
+Row-grain: Header1to1 | HeaderTimesGrid | Custom
+Recommended: A | B
+```
+
+If `RequiresOneToN > 0` → recommend **B**.  
+ROOT writes `plan.option` = A | B | C.
+
+---
+
+## PHASE=B — Generate Blueprint (after ROOT plan)
+
+### Main (or additional-view Option B)
+
+1. Write `source/plmSearchImportConfig.json` (include `plmDataSourceId` / `appDataSourceId`; no secrets).
+2. Synthesize `dataSet.queryText`:
+   - SELECT resolved view + criteria columns
+   - FROM root
+   - INNER JOIN 1:1 siblings on `ReferenceId`
+   - Grid `scalar`: `(SELECT TOP 1 col FROM grid WHERE grid.ReferenceId = root.ReferenceId)`
+   - WHERE from `referenceScope` if set
+3. `fieldResolution[]` from FieldMapping (`PlmControlType`, `PlmEntityId`).
+4. Split `criteriaFields[]` and `searchView.fields[]`.
+5. Copy PLM DCU `OperationID` as-is into `operationId` (`EmAppCriteriaOperatorType` — **not** Wijmo filter enum). Copy `DefaultValue` when non-empty.
+6. `entityIntegrationId` = string of `PlmEntityId`. `IsTransRootId = true` on `ReferenceId` when linking. Image: `ControlType = 5` when `PlmControlType = 5`.
+7. Write `output/{searchTemplateId}/1_PlmSearch_ImportBlueprint.json`  
+   Option B: `1_PlmSearch_ImportBlueprint_V{ViewId}.json`  
+   New Search IntegrationId: `Search_{Name}_V{ViewId}`; View: `Search_{Name}_V{ViewId}_View`.  
+   Option B: do not auto-register menu unless `plan` says so.
+
+**Schema:** match `source/7_PlmSearch_ImportBlueprint.example.json` (`schemaVersion`, `search`, `dataSet`, `joinPlan`, `fieldResolution`, `criteriaFields`, `searchView`, `linkTargets`, `coverage`).
+
+### Additional-view Option A
+
+Write `output/{searchTemplateId}/2_PlmSearch_SiblingView_{ReferenceViewId}.json`.
+
+**Schema:** match `source/8_PlmSearch_SiblingView.example.json`:
+
+- `mode`: `SiblingViewEnrichDataSet`
+- `dataSetPatch.addColumns[]` / `addLeftJoins[]` — **1:1 LEFT JOIN only**
+- `searchView.fields[]`, `linkTargets.copyFromDefaultSearchView` (default true)
+- Do **not** rewrite criteria. Do **not** create a second Search.
+
+### Option C
+
+No files. `ok=false`, list blockers in `errors`.
+
+### executionPlan (only files that exist)
+
+Main / Option B:
+
+```json
+{
+  "executionPlan": [
+    {
+      "order": 1,
+      "kind": "search-blueprint",
+      "path": "output/23702/1_PlmSearch_ImportBlueprint.json",
+      "mode": "Insert",
+      "label": "Create Search / DataSet / default View"
+    }
+  ]
+}
+```
+
+Additional-view Option A:
+
+```json
+{
+  "executionPlan": [
+    {
+      "order": 1,
+      "kind": "search-additional-view",
+      "path": "output/23702/2_PlmSearch_SiblingView_12.json",
+      "label": "Add additional Search View"
+    }
+  ]
+}
+```
+
+APPLY: `apply_agent_output_plan` once. BL maps:
+
+- `kind=search-blueprint` → `execute_search_blueprint_config` / `execute_search_blueprint_from_file`
+- `kind=search-additional-view` → `execute_search_sibling_view` (internal name; user-facing = additional View)
+
+If those tools are not subscribed yet → `ok=false` with `nextHint` for ROOT: user can upload JSON in **PLM Data Import → Search Import**. Still leave files on disk.
+
+---
+
+## Operator mapping (PLM DCU → APP)
+
+Copy `pdmSearchTemplateDCU.OperationID` as-is:
+
+| UI hint | `operationId` | `EmAppCriteriaOperatorType` |
+|---------|---------------|-----------------------------|
+| Equals | 0 | Equals |
+| Is null | 1 | Null |
+| Is not null | 2 | NotNull |
+| > | 3 | GreaterThan |
+| >= | 4 | GreaterThanOrEquals |
+| < | 5 | LessThan |
+| <= | 6 | LessThanOrEquals |
+| Like / Contains | 7 | Like |
+| Is empty | 8 | NullOrEmpty |
+| Is not empty | 9 | NotNullOrEmpty |
+| Starts with | 10 | StartWith |
+| Ends with | 11 | EndWith |
+| In | 12 | In |
+| Not equal | 13 | NotEqual |
+| Between | 14 | Between |
+
+---
+
+## PHASE=APPLY
+
+1. Read `…search.outputs.executionPlan`.
+2. Call `apply_agent_output_plan` **once**.
+3. Write `output/{searchTemplateId}/apply-log.json` if the tool does not.
+4. `ok=true` only when executed==planned.
+5. FinalResponse `mode` = `main` | `additional-view` so ROOT appends `search.doneIds` vs `search.doneViewKeys` (`"{searchId}:{viewName}"`).
+
+---
+
+## FinalResponse (JSON text)
+
+```json
+{
+  "ok": true,
+  "skillKey": "plm-integration-search",
+  "phase": "A",
+  "sessionId": 123,
+  "mode": "main",
+  "searchTemplateId": 23702,
+  "summary": "Phase A: 4 JOIN plans; criteria 12/12 mapped",
+  "counts": {},
+  "files": [],
+  "executionPlan": [],
+  "errors": [],
+  "nextHint": "ROOT: confirm JOIN plan and write plm.integration.search.plan"
+}
+```
+
+Phase B/APPLY: fill `files` (path + sizeBytes) and `executionPlan`. No Blueprint body in the reply.
+
+---
+
+## Agent checklist
+
+```text
+[ ] Read job + search.inputs. DataSourceIds + searchTemplateId present?
+[ ] file_list source/ — official probes + 7_ + 8_ present?
+[ ] Detect mode main | additional-view (never ask "sibling")
+[ ] PHASE=A: probe PLM + FieldMapping; coverage; JOIN plans OR additional-view A/B/C
+[ ] Write phase-a. Do not generate output/ in A
+[ ] PHASE=B: require plan. Write blueprint matching example schema
+[ ] Main: 1_PlmSearch_ImportBlueprint.json — queryText only FieldMapping columns
+[ ] Additional A: 2_… no 1:N joins in dataSetPatch; do not change default View
+[ ] Additional B: Search_{Name}_V{ViewId}
+[ ] executionPlan kinds match files
+[ ] PHASE=APPLY: apply_agent_output_plan once
+[ ] Delete output/_probe_* scratch
+[ ] FinalResponse includes mode
+```
+
+---
+
+## Out of scope
+
+- Mass Update (`MassUpdateViewAttach`) — other child
+- ImportFromPLMDW / physical tables
+- Copying PLM BlQuery verbatim
+- Saved searches / user views / pivot views
+- C# / React changes during a run
+- Showing the word "sibling" to the end user

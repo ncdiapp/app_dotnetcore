@@ -38,6 +38,25 @@ $GridSystemColumns = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase
 )
 
+function Get-SqlcmdOutputLines([string]$path) {
+    if (-not (Test-Path $path)) { return @() }
+    $bytes = [IO.File]::ReadAllBytes($path)
+    $enc = [Text.Encoding]::UTF8
+    if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+        $enc = [Text.Encoding]::Unicode
+    }
+    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
+        $enc = [Text.Encoding]::BigEndianUnicode
+    }
+    $text = $enc.GetString($bytes)
+    return @(
+        $text -split '\r\n|\n|\r' | ForEach-Object {
+            $s = ($_ -replace [char]0, '').Trim().Trim('|').Trim()
+            if ($s) { $s }
+        }
+    )
+}
+
 function Invoke-SqlQuery([string]$Database, [string]$Query) {
     $tmp = [System.IO.Path]::GetTempFileName() + '.sql'
     $out = [System.IO.Path]::GetTempFileName() + '.txt'
@@ -54,7 +73,7 @@ function Invoke-SqlQuery([string]$Database, [string]$Query) {
         }
         $p = Start-Process -FilePath 'sqlcmd' -ArgumentList $args -Wait -PassThru -NoNewWindow
         if ($p.ExitCode -ne 0) { throw "sqlcmd failed ($($p.ExitCode)) on $Database`: $Query" }
-        $lines = Get-Content $out | Where-Object { $_ -and $_ -notmatch '^\(\d+ rows affected\)$' }
+        $lines = Get-SqlcmdOutputLines $out | Where-Object { $_ -and $_ -notmatch '^\(\d+ rows affected\)$' }
         return ,$lines
     }
     finally {
@@ -833,6 +852,105 @@ function Build-TechPackFitMeasurementPivotBindings($config, $transactions) {
     return @($list.ToArray())
 }
 
+function Resolve-GridDwTableName([string]$Configured, [int]$GridId) {
+    if ($GridId -le 0) { return $Configured }
+    $q = @"
+SELECT name
+FROM sys.tables
+WHERE name LIKE N'PLM_DW_Grid[_]%'
+  AND name LIKE N'%[_]$GridId'
+ORDER BY name
+"@
+    $found = @(Invoke-DwQuery $q | ForEach-Object {
+        if ($_ -is [string]) { $_.Trim() } else { "$_".Trim() }
+    } | Where-Object { $_ -and $_ -notmatch 'rows affected' })
+    $exact = @($found | Where-Object { $_.EndsWith("_$GridId", [StringComparison]::OrdinalIgnoreCase) })
+    if ($Configured -and ($exact | Where-Object { [string]::Equals($_, $Configured, [StringComparison]::OrdinalIgnoreCase) })) {
+        return $Configured
+    }
+    if ($exact.Count -eq 1) {
+        if ($Configured -and -not [string]::Equals($Configured, $exact[0], [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "  Grid $GridId dwTable '$Configured' -> physical '$($exact[0])'"
+        }
+        return $exact[0]
+    }
+    if ($exact.Count -gt 1) {
+        $pick = $exact | Where-Object { $_ -eq $Configured } | Select-Object -First 1
+        if ($pick) { return $pick }
+        throw "Grid $GridId matches multiple DW tables: $($exact -join ', '). Set grids[].dwTable to the physical name."
+    }
+    if ($Configured) {
+        throw "Grid $GridId DW table not found. Configured '$Configured' (also looked for PLM_DW_Grid_*_$GridId)."
+    }
+    throw "Grid $GridId has no dwTable and no PLM_DW_Grid_*_$GridId table in $DwDatabase."
+}
+
+function Get-SharedBomAppTableName([string]$LogicalFromDw) {
+    if ([string]::IsNullOrWhiteSpace($LogicalFromDw)) { return $LogicalFromDw }
+    return ($LogicalFromDw -replace '_\d+_Colorways$', '')
+}
+
+# Phase B sometimes writes tabs[] but omits grids[]. BOM 5_/6_ then never emit.
+# Discover grids hosted on importTabIds that already exist as PLM_DW_Grid_*_{id}.
+function Ensure-ConfigGridsFromPlm {
+    if ($config.grids -and @($config.grids).Count -gt 0) { return }
+    $tabIds = @()
+    if ($config.importTabIds) { $tabIds = @($config.importTabIds | ForEach-Object { [int]$_ }) }
+    elseif ($config.tabs) { $tabIds = @($config.tabs | ForEach-Object { [int]$_.tabId }) }
+    if ($tabIds.Count -eq 0) {
+        Write-Host '  Auto-grid: skipped (no importTabIds / tabs).'
+        return
+    }
+    $inList = ($tabIds | Sort-Object -Unique) -join ','
+    $q = @"
+SELECT bsi.GridID, MAX(bsi.SubItemID) AS SubItemID, MIN(tb.TabID) AS TabID
+FROM dbo.PdmTabBlock tb
+INNER JOIN dbo.pdmBlock b ON b.BlockID = tb.BlockID
+INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.BlockID = b.BlockID AND bsi.ControlType = 6 AND bsi.GridID IS NOT NULL AND bsi.GridID > 0
+WHERE tb.TabID IN ($inList)
+GROUP BY bsi.GridID
+ORDER BY bsi.GridID
+"@
+    $discovered = @()
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = "$line" -split '\|'
+        if ($parts.Count -lt 3) { continue }
+        $gidRaw = $parts[0].Trim()
+        $sidRaw = $parts[1].Trim()
+        $tidRaw = $parts[2].Trim()
+        if ($gidRaw -notmatch '^\d+$') { continue }
+        $gid = [int]$gidRaw
+        $sid = if ($sidRaw -match '^\d+$') { [int]$sidRaw } else { 0 }
+        $tid = if ($tidRaw -match '^\d+$') { [int]$tidRaw } else { 0 }
+        $dw = $null
+        try { $dw = Resolve-GridDwTableName $null $gid }
+        catch {
+            Write-Host "  Auto-grid skip $gid : $($_.Exception.Message)"
+            continue
+        }
+        $logical = $dw
+        if ($logical -match '^PLM_DW_Grid_(.+)_\d+$') { $logical = $Matches[1] }
+        $app = Get-SharedBomAppTableName $logical
+        $discovered += [pscustomobject]@{
+            appTable                 = $app
+            dwTable                  = $dw
+            gridSubItemId            = $sid
+            gridId                   = $gid
+            parentPlmTabId           = $tid
+            transactionIntegrationId = "Tab_$tid"
+        }
+    }
+    if ($discovered.Count -eq 0) {
+        Write-Host '  Auto-grid: none (no PLM_DW_Grid_* for import tabs).'
+        return
+    }
+    $config | Add-Member -NotePropertyName grids -NotePropertyValue $discovered -Force
+    Write-Host "  Auto-grid: filled $($discovered.Count) grids[] because config.grids was empty."
+    foreach ($g in $discovered) {
+        Write-Host "    Grid $($g.gridId) $($g.dwTable) -> APP $($g.appTable) parent tab $($g.parentPlmTabId)"
+    }
+}
+
 function Get-DwTableColumns([string]$TableName) {
     $q = @"
 SELECT c.COLUMN_NAME, c.DATA_TYPE,
@@ -1131,6 +1249,50 @@ function SqlInt($n) {
     return [string]$n
 }
 
+function Assert-ReferenceScopePhysicalDwColumn {
+    if ($null -eq $refScope) {
+        throw 'dwTabImportConfig.json must set referenceScope (dwTable + dwColumn).'
+    }
+    $dwTable = [string]$refScope.dwTable
+    $dwColumn = [string]$refScope.dwColumn
+    if ([string]::IsNullOrWhiteSpace($dwTable) -or [string]::IsNullOrWhiteSpace($dwColumn)) {
+        throw 'referenceScope.dwTable and referenceScope.dwColumn are required.'
+    }
+    $safeTable = $dwTable.Replace("'", "''")
+    $safeColumn = $dwColumn.Replace("'", "''")
+    # COL_LENGTH is server-side; do not list 160 sqlcmd lines and compare in PowerShell
+    # (UTF-16 -o files / padding / '|' made Article__22 look missing and stopped Phase B before any output file).
+    $q = @"
+SELECT CAST(CASE
+    WHEN COL_LENGTH(N'dbo.$safeTable', N'$safeColumn') IS NOT NULL THEN 1
+    ELSE 0
+END AS INT)
+"@
+    $flags = @(Invoke-DwQuery $q | Where-Object { $_ -match '^\d+$' })
+    if ($flags.Count -gt 0 -and [int]$flags[0] -eq 1) {
+        Write-Host "  referenceScope OK: $dwTable.[$dwColumn]"
+        return
+    }
+    $tblFlags = @(Invoke-DwQuery "SELECT CAST(CASE WHEN OBJECT_ID(N'dbo.$safeTable', N'U') IS NULL THEN 0 ELSE 1 END AS INT)" | Where-Object { $_ -match '^\d+$' })
+    if ($tblFlags.Count -eq 0 -or [int]$tblFlags[0] -eq 0) {
+        throw "referenceScope DW table not found: $DwDatabase.dbo.$dwTable"
+    }
+    $hintQ = @"
+SELECT c.name
+FROM sys.columns c
+INNER JOIN sys.tables t ON t.object_id = c.object_id
+INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
+WHERE s.name = N'dbo' AND t.name = N'$safeTable'
+  AND (c.name LIKE N'%Article%' OR c.name LIKE N'%Code%' OR c.name LIKE N'%Name%')
+ORDER BY c.column_id
+"@
+    $hints = @(Invoke-DwQuery $hintQ | Select-Object -First 15)
+    if ($hints.Count -eq 0) { $hints = @('(none)') }
+    throw "referenceScope.dwColumn '$dwColumn' does not exist on $DwDatabase.dbo.$dwTable. DwColumn must be the physical DW column (e.g. Article__22), never the APP name ReferenceCode. Candidates: $($hints -join ', ')"
+}
+
+Assert-ReferenceScopePhysicalDwColumn
+
 $allFieldRows = New-Object System.Collections.Generic.List[object]
 $scopeAppTables = New-Object System.Collections.Generic.List[string]
 [void]$scopeAppTables.Add($config.rootTableSuffix)
@@ -1328,6 +1490,7 @@ if ($config.techPack -and $config.techPack.fitRoundInfo) {
 }
 
 Write-Host "Probing PLM for BOM ProductDesignColor colorway grids..."
+Ensure-ConfigGridsFromPlm
 $bomColorwayGrids = @(Get-BomColorwayGridsFromPlm $config.grids $config.tablePrefixDefault)
 Write-Host "  BOM colorway grid(s): $($bomColorwayGrids.Count)"
 $bomHostByAppTable = @{}
@@ -1351,6 +1514,10 @@ if ($config.techPack -and $config.techPack.systemBlockGrids) {
 }
 
 foreach ($grid in $config.grids) {
+    $resolvedDw = Resolve-GridDwTableName ([string]$grid.dwTable) ([int]$grid.gridId)
+    if ($resolvedDw -and -not [string]::Equals($resolvedDw, [string]$grid.dwTable, [StringComparison]::OrdinalIgnoreCase)) {
+        $grid | Add-Member -NotePropertyName dwTable -NotePropertyValue $resolvedDw -Force
+    }
     if ($systemBlockAppTables.Contains([string]$grid.appTable)) {
         if ($specQcBlockByAppTable.ContainsKey([string]$grid.appTable)) {
             $sb = $specQcBlockByAppTable[[string]$grid.appTable]

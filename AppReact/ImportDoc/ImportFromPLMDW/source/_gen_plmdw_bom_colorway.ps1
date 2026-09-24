@@ -277,7 +277,10 @@ function Complete-BomColorwayGridPivotSchema($bomGrid, $slotFieldRows, $gridMeta
 
 function Get-BomColorwayGridsFromPlm([array]$Grids, [string]$TablePrefix) {
     $result = @()
-    if (-not $Grids -or $Grids.Count -eq 0) { return $result }
+    if (-not $Grids -or $Grids.Count -eq 0) {
+        Write-Host '  BOM colorway probe: skipped because config.grids is empty. Phase B must write grids[] (or the generator auto-fills them from import tabs).'
+        return $result
+    }
 
     $gridIds = @($Grids | ForEach-Object { [int]$_.gridId } | Sort-Object -Unique)
     if ($gridIds.Count -eq 0) { return $result }

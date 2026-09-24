@@ -1,0 +1,72 @@
+{
+  "_comment": "Option A sibling View blueprint — enrich existing DataSet + add AppSearchView. Not for first import (use 1_PlmSearch_ImportBlueprint.json).",
+  "schemaVersion": 1,
+  "mode": "SiblingViewEnrichDataSet",
+  "generatedAt": "2026-07-10T00:00:00Z",
+  "source": {
+    "plmSearchTemplateId": 1,
+    "plmSearchName": "Fabric Search",
+    "plmReferenceViewId": 2,
+    "plmReferenceViewName": "Fabric Image Card",
+    "tablePrefix": "Plm_",
+    "rowGrain": "Header1to1"
+  },
+  "target": {
+    "appSearchIntegrationId": "Search_Fabric",
+    "appSearchId": null,
+    "appDataSetId": null
+  },
+  "dataSetPatch": {
+    "resultingQueryText": null,
+    "_comment_resultingQueryText": "Preferred: agent writes full enriched QueryText here. If null, BL applies addColumns/addLeftJoins best-effort.",
+    "addColumns": [
+      { "sysTableFiledPath": "Sketch", "appTableName": "Plm_Fabric_Header" }
+    ],
+    "addLeftJoins": [
+      {
+        "alias": "sum",
+        "appTableName": "Plm_Fabric_Summary",
+        "joinType": "LEFT",
+        "cardinality": "1:1",
+        "leftTable": "Plm_Fabric_Header",
+        "leftColumn": "ReferenceId",
+        "rightColumn": "ReferenceId",
+        "_comment": "1:1 only — never 1:N grid tables in Option A"
+      }
+    ]
+  },
+  "searchView": {
+    "name": "Fabric Image Card",
+    "integrationIdLabel": "Search_Fabric_V2_View",
+    "viewType": "CardView",
+    "gridOutputMode": 1,
+    "plmReferenceViewId": 2,
+    "fields": [
+      {
+        "displayText": "Ref No.",
+        "sysTableFiledPath": "ReferenceId",
+        "controlType": 20,
+        "isTransRootId": true,
+        "isVisible": true,
+        "sort": 5
+      },
+      {
+        "displayText": "Sketch",
+        "sysTableFiledPath": "Sketch",
+        "controlType": 5,
+        "isVisible": true,
+        "sort": 10
+      }
+    ]
+  },
+  "linkTargets": {
+    "copyFromDefaultSearchView": true
+  },
+  "coverage": {
+    "covered": 10,
+    "addColumn": 1,
+    "addOneToOneLeftJoin": 1,
+    "requiresOneToN": 0,
+    "unmapped": 0
+  }
+}

@@ -782,11 +782,19 @@ WHERE TABLE_SCHEMA = @Schema AND TABLE_NAME = @Table AND COLUMN_NAME = @Column";
                 return null;
             using (var cmd = conn.CreateCommand())
             {
+                // Pack / DW blueprint often pass PLM EntityId as EntityCode (e.g. "4735").
+                // Entity Import stores that value on AppEntityInfo.IntegrationId, not EntityCode.
                 cmd.CommandText = @"
 SELECT TOP 1 EntityInfoID
 FROM dbo.AppEntityInfo
-WHERE EntityCode = @Code OR Description = @Code
-ORDER BY CASE WHEN EntityCode = @Code THEN 0 ELSE 1 END";
+WHERE EntityCode = @Code
+   OR IntegrationId = @Code
+   OR Description = @Code
+ORDER BY CASE
+    WHEN EntityCode = @Code THEN 0
+    WHEN IntegrationId = @Code THEN 1
+    ELSE 2
+END";
                 cmd.Parameters.AddWithValue("@Code", entityCode.Trim());
                 var val = cmd.ExecuteScalar();
                 return val == null || val == DBNull.Value ? (int?)null : Convert.ToInt32(val);

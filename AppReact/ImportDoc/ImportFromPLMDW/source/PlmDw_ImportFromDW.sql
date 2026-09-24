@@ -96,6 +96,47 @@ BEGIN
     RETURN;
 END
 
+-- FieldMapping.DwColumnName must be the physical DW column (e.g. Article__22),
+-- not the APP name ReferenceCode. A missing column used to fail later as
+-- Invalid column name ReferenceCode on INSERT ReferenceBasicInfo.
+DECLARE @RefColExists INT = 0;
+SET @sql = N'
+SELECT @ok = CASE WHEN EXISTS (
+    SELECT 1
+    FROM ' + QUOTENAME(@DwDatabase) + N'.sys.columns AS c
+    WHERE c.object_id = OBJECT_ID(@full, N''U'')
+      AND c.name = @col
+) THEN 1 ELSE 0 END;';
+EXEC sp_executesql @sql,
+    N'@full nvarchar(512), @col nvarchar(256), @ok int OUTPUT',
+    @full = @FullRefScopeDw, @col = @RefCodeDwColumn, @ok = @RefColExists OUTPUT;
+
+IF @RefColExists = 0
+BEGIN
+    DECLARE @HintCols NVARCHAR(400);
+    SET @sql = N'
+    SELECT @h = STRING_AGG(x.[name], N'', '')
+    FROM (
+        SELECT TOP (12) c.[name]
+        FROM ' + QUOTENAME(@DwDatabase) + N'.sys.columns AS c
+        WHERE c.object_id = OBJECT_ID(@full, N''U'')
+          AND c.name NOT IN (N''TabID'', N''ProductReferenceID'')
+          AND (
+                c.name LIKE N''Article%''
+             OR c.name LIKE N''%Code%''
+             OR c.name LIKE N''%Name_%''
+          )
+        ORDER BY c.name
+    ) AS x;';
+    EXEC sp_executesql @sql,
+        N'@full nvarchar(512), @h nvarchar(400) OUTPUT',
+        @full = @FullRefScopeDw, @h = @HintCols OUTPUT;
+
+    RAISERROR(N'ReferenceField DwColumnName [%s] does not exist on %s. DwColumnName must be the physical DW column (e.g. Article__22), not the APP name ReferenceCode. Candidates: %s',
+        16, 1, @RefCodeDwColumn, @FullRefScopeDw, ISNULL(@HintCols, N'(none)'));
+    RETURN;
+END
+
 IF @ReferenceIdList IS NOT NULL AND LTRIM(RTRIM(@ReferenceIdList)) <> N''
 BEGIN
     INSERT INTO #RefFilter ([ReferenceId])
