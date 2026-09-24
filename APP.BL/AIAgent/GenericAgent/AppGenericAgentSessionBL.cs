@@ -356,6 +356,9 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             if (!string.Equals(m.Value<string>("role"), "user", StringComparison.OrdinalIgnoreCase))
                 return false;
             return string.Equals(m.Value<string>("content")?.Trim(), content.Trim(), StringComparison.Ordinal);
+        }
+
+        /// <summary>
         /// Removes persisted in-progress markers whose in-memory run was lost during an
         /// application restart. The completed chat messages are preserved.
         /// </summary>
