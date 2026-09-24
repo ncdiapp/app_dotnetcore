@@ -717,6 +717,22 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
     if ($config.plmTemplate -and $config.plmTemplate.templateHeaderTabIds) {
         $templateHeaderTabIds = @($config.plmTemplate.templateHeaderTabIds | ForEach-Object { [int]$_ })
     }
+    # If every imported tab is listed as PLM header (typical single-tab Graphic Requests),
+    # APP Shared Header would empty Main Items. Those tabs are MainItem, not TemplateHeader.
+    $readyTabIds = @()
+    if ($config.importTabIds) { $readyTabIds = @($config.importTabIds | ForEach-Object { [int]$_ }) }
+    elseif ($config.tabs) {
+        $readyTabIds = @($config.tabs | Where-Object { $_.importStatus -ne 'Skipped' } | ForEach-Object { [int]$_.tabId })
+    }
+    $readyTabIds = @($readyTabIds | Sort-Object -Unique)
+    $headerSet = @($templateHeaderTabIds | ForEach-Object { [int]$_ } | Sort-Object -Unique)
+    if ($readyTabIds.Count -gt 0 -and $headerSet.Count -gt 0) {
+        $nonHeaderReady = @($readyTabIds | Where-Object { $headerSet -notcontains $_ })
+        if ($nonHeaderReady.Count -eq 0) {
+            Write-Host "  templateHeaderTabIds cleared: all imported tabs were marked PLM header; APP MainItem cannot be empty."
+            $templateHeaderTabIds = @()
+        }
+    }
     $plmTemplateId = $null
     if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) {
         $plmTemplateId = [int]$config.plmTemplateId

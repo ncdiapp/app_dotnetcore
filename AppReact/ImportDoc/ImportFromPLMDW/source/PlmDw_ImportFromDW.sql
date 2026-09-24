@@ -132,8 +132,10 @@ BEGIN
         N'@full nvarchar(512), @h nvarchar(400) OUTPUT',
         @full = @FullRefScopeDw, @h = @HintCols OUTPUT;
 
+    -- RAISERROR substitution args must be variables or literals, not ISNULL(...).
+    SET @HintCols = ISNULL(@HintCols, N'(none)');
     RAISERROR(N'ReferenceField DwColumnName [%s] does not exist on %s. DwColumnName must be the physical DW column (e.g. Article__22), not the APP name ReferenceCode. Candidates: %s',
-        16, 1, @RefCodeDwColumn, @FullRefScopeDw, ISNULL(@HintCols, N'(none)'));
+        16, 1, @RefCodeDwColumn, @FullRefScopeDw, @HintCols);
     RETURN;
 END
 

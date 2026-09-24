@@ -606,10 +606,12 @@ public static class DwBlueprintAppConfigPackBuilder
                 headerTabIds.Add(tabId);
         }
 
+        var readyCount = 0;
         foreach (var tx in blueprint?.Transactions ?? Enumerable.Empty<PlmDwBlueprintTransactionDto>())
         {
             if (tx == null || string.Equals(tx.ImportStatus, "Skipped", StringComparison.OrdinalIgnoreCase))
                 continue;
+            readyCount++;
             if (tx.IsTemplateHeaderTab != true && !headerTabIds.Contains(tx.PlmTabId))
                 continue;
             string integrationId = string.IsNullOrWhiteSpace(tx.IntegrationId)
@@ -618,6 +620,11 @@ public static class DwBlueprintAppConfigPackBuilder
             if (seen.Add(integrationId))
                 ids.Add(integrationId);
         }
+
+        // Single-tab templates (e.g. Graphic Requests) often list the only tab as PLM header.
+        // APP Data Model Template needs that tab as MainItem, not Shared Header.
+        if (readyCount > 0 && ids.Count >= readyCount)
+            return new List<string>();
 
         return ids;
     }

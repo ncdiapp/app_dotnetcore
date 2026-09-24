@@ -157,6 +157,7 @@ ROOT after Proceed confirm:
 4. Execute:  
    `call_agent("plm-integration-<code>", "PHASE=EXECUTE. Read inputs. Call execute_*. Poll get_plm_import_job if async. Write …outputs. Do not ask the user.")`
 5. On `ok=true`: wizard step `done`; `write_shared_context` + `update_plm_wizard_progress`; Confirm next.
+   After Entity, Confirm next includes `skip-all-skippable` (button: Skip Folder / Image / Color / POM).
 
 Folder extra: after image `ok`, `call_agent("plm-integration-folder", "PHASE=PLACEMENT. …")` with `runPlacement=true`.
 

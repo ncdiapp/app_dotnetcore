@@ -63,7 +63,7 @@ Whenever the user must pick among choices (Confirm next / Proceed|Cancel / Skip|
 6. TODO checklist MAY appear in assistant text. Choices MUST NOT — only in `optionsJson`.
 7. Example for cursor=`pom` (copy shape exactly):
    - Prompt: `[Linear] Confirm next: POM Import\n\nImports Points of Measure and body parts.`
-   - optionsJson: `[{"id":"run","display":"Run next: Import POM"},{"id":"skip-pom","display":"Skip POM and run later"},{"id":"done","display":"Done for now - stop"}]`
+   - optionsJson: `[{"id":"run","display":"Run next: Import POM"},{"id":"skip-pom","display":"Skip POM and run later"},{"id":"skip-all-skippable","display":"Skip Folder / Image / Color / POM"},{"id":"done","display":"Done for now - stop"}]`
    - Then STOP and wait for ConfirmAskUser. Do not also list those three lines in the chat body.
 
 ## Shared context keys (`plm.integration.*`)
@@ -141,6 +141,7 @@ Linear order: connect -> techpack-schema -> entity -> folder -> image -> color -
    - Set `cursor` to that step.
    - Show **TODO checklist** (text) then `ask_user` confirm to run **or** (for folder/image/color/pom) skip and run later.
 5. Folder/image/color/pom `skipped` counts as complete for advancing the cursor. User may later choose "Run a step skipped earlier" from the repeatable menu (normal run).
+5b. On `skip-all-skippable`: for each of folder/image/color/pom still `pending`, set `status=skipped` (do not change `done`). Set `mode=repeatable`, `cursor=repeatable`. Persist wizard. Then **immediately** show the Repeatable zone menu in the same turn. Do not run those children.
 6. After folder+image+color+pom are done|skipped, set `mode=repeatable` and offer the **repeatable menu**.
 7. Never re-ask Gate-0 when job already has ids unless connection test failed or user chooses Re-connect.
 8. Do **not** offer a "Force re-run completed step" menu button. To re-apply TechPack, use "Re-run TechPack schema". To import a TemplateId/SearchId again, confirm with "Import again | Cancel" (not branded as force re-run).
@@ -304,8 +305,9 @@ Never send a bare error or options list without the `[StepName] …` first line.
 Never offer "Skip Entity".
 
 **When cursor=`folder`|`image`|`color`|`pom` (skippable):**
-`[{"id":"run","display":"Run next: <step label>"},{"id":"skip-<code>","display":"Skip <label> and run later"},{"id":"done","display":"Done for now - stop"}]`
-Only include the matching `skip-*` for the **current** cursor (e.g. pom → only `skip-pom`). Never invent "Skip to Color" / "Jump to Repeatable Zone" as free-form text unless they are real optionsJson ids. Never use the phrase "mark skipped".
+`[{"id":"run","display":"Run next: <step label>"},{"id":"skip-<code>","display":"Skip <label> and run later"},{"id":"skip-all-skippable","display":"Skip Folder / Image / Color / POM"},{"id":"done","display":"Done for now - stop"}]`
+Only include the matching single-step `skip-*` for the **current** cursor (e.g. folder → `skip-folder`). Always include `skip-all-skippable` when two or more of folder/image/color/pom are still `pending` (this is the button after Entity Import). If only one skippable remains, omit `skip-all-skippable` and keep `skip-<code>` only.
+On `skip-all-skippable`: skip every still-pending skippable step, persist wizard, open the Repeatable zone menu (import-dw / search). Never invent other jump ids. Never use the phrase "mark skipped".
 
 3. End the turn after `ask_user` (HITL wait). Do not append a second copy of the options in chat.
 
@@ -422,4 +424,31 @@ update_plm_wizard_progress rejects fake doneIds when apply failed.
 '
 WHERE SkillKey = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: import-dw Apply success is outputs.apply only%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: skip all skippable after Entity
+When cursor is folder/image/color/pom and two or more of those steps are still pending, Confirm next optionsJson MUST include
+{"id":"skip-all-skippable","display":"Skip Folder / Image / Color / POM"}.
+On that id: set each still-pending folder/image/color/pom to skipped, mode=repeatable, cursor=repeatable, persist wizard, then show the Repeatable imports menu in the same turn.
+Do not run those children. User can later pick Run a step skipped earlier.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: skip all skippable after Entity%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(
+    REPLACE(
+        SystemPrompt,
+        N'Skip all remaining (Folder / Image / Color / POM) ' + NCHAR(8212) + N' go to DW and Search',
+        N'Skip Folder / Image / Color / POM'),
+    N'Skip to Template and Search import',
+    N'Skip Folder / Image / Color / POM')
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND (
+    SystemPrompt LIKE N'%Skip all remaining (Folder / Image / Color / POM)%'
+    OR SystemPrompt LIKE N'%Skip to Template and Search import%'
+  );
 GO
