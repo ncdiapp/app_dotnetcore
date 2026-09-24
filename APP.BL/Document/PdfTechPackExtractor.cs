@@ -158,7 +158,9 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                 throw new InvalidOperationException("Document AI completed without a JSON output document.");
 
             var result = BuildResult(jobId, request.FileName, request.SessionKey, request.CompanyId, documents);
-            ExtractEmbeddedPdfImages(request.PdfBytes, jobId, request.SessionKey, request.CompanyId, result);
+            // Temporarily disabled while validating Google Document AI v1beta3 image extraction.
+            // Re-enable this GemBox.Pdf fallback if the processor does not return image blocks.
+            // ExtractEmbeddedPdfImages(request.PdfBytes, jobId, request.SessionKey, request.CompanyId, result);
             result.PureDataPath = $"output/pdf-extraction/{jobId}/pure-data.json";
             GenericAgentFileBL.WriteText(
                 request.SessionKey,
