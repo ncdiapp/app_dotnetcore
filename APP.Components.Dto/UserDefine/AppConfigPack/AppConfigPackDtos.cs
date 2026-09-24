@@ -843,8 +843,18 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string IntegrationId { get; set; }
 
+        /// <summary>
+        /// Default Form to open from Search. Not a Template Header flag.
+        /// </summary>
         [DataMember]
         public string PrimaryTransactionIntegrationId { get; set; }
+
+        /// <summary>
+        /// Template Shared Header tabs only (PLM / Blueprint IsTemplateHeaderTab).
+        /// Empty means every member is a Main Item — including single-tab templates.
+        /// </summary>
+        [DataMember]
+        public List<string> HeaderTransactionIntegrationIds { get; set; } = new List<string>();
 
         [DataMember]
         public List<string> MemberTransactionIntegrationIds { get; set; } = new List<string>();
@@ -988,6 +998,14 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public string TransactionIntegrationId { get; set; }
+
+        /// <summary>Form | FormGroup. Omit to derive: TemplateItemType ⇒ Form; else group ⇒ FormGroup.</summary>
+        [DataMember]
+        public string UsageType { get; set; }
+
+        /// <summary>1 = MainItem, 2 = TemplateHeader. Set on Data Model Template tab links (Usage Form).</summary>
+        [DataMember]
+        public int? TemplateItemType { get; set; }
 
         [DataMember]
         public string SourceColumn { get; set; }

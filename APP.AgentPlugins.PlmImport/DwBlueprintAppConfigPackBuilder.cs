@@ -95,11 +95,10 @@ public static class DwBlueprintAppConfigPackBuilder
                 .Where(id => !string.IsNullOrWhiteSpace(id))
                 .ToList();
 
-            string primary = memberIds.FirstOrDefault(id =>
-                blueprint.Transactions?.Any(t =>
-                    string.Equals(t.IntegrationId, id, StringComparison.OrdinalIgnoreCase)
-                    && t.IsTemplateHeaderTab == true) == true)
-                ?? memberIds.FirstOrDefault();
+            var headerIds = GetHeaderTransactionIntegrationIds(blueprint)
+                .Where(id => memberIds.Contains(id, StringComparer.OrdinalIgnoreCase))
+                .ToList();
+            string primary = headerIds.FirstOrDefault() ?? memberIds.FirstOrDefault();
 
             pack.TransactionGroup = new AppConfigPackTransactionGroupDto
             {
@@ -108,6 +107,7 @@ public static class DwBlueprintAppConfigPackBuilder
                     ? $"TG_{Sanitize(blueprint.TransactionGroup.Name)}"
                     : blueprint.TransactionGroup.IntegrationId,
                 PrimaryTransactionIntegrationId = primary,
+                HeaderTransactionIntegrationIds = headerIds,
                 MemberTransactionIntegrationIds = memberIds
             };
         }
@@ -563,19 +563,7 @@ public static class DwBlueprintAppConfigPackBuilder
                     }
                 }
             },
-            LinkTargets = string.IsNullOrWhiteSpace(primaryTx)
-                ? new List<AppConfigPackLinkTargetDto>()
-                : new List<AppConfigPackLinkTargetDto>
-                {
-                    new AppConfigPackLinkTargetDto
-                    {
-                        Name = "Edit",
-                        ActionType = "Edit",
-                        TransactionIntegrationId = primaryTx,
-                        SourceColumn = "ReferenceId",
-                        Sort = 1
-                    }
-                }
+            LinkTargets = BuildDataModelTemplateLinkTargets(blueprint, primaryTx)
         };
 
         if (options.IncludeNavigation)
@@ -596,12 +584,112 @@ public static class DwBlueprintAppConfigPackBuilder
 
     private static string packPrimaryTransactionIntegrationId(PlmDwImportBlueprintDto blueprint)
     {
-        var header = blueprint.Transactions?.FirstOrDefault(t => t?.IsTemplateHeaderTab == true);
-        if (header != null && !string.IsNullOrWhiteSpace(header.IntegrationId))
-            return header.IntegrationId;
+        var headers = GetHeaderTransactionIntegrationIds(blueprint);
+        if (headers.Count > 0)
+            return headers[0];
         return blueprint.Transactions?
-            .FirstOrDefault(t => !string.Equals(t?.ImportStatus, "Skipped", StringComparison.OrdinalIgnoreCase))
+            .FirstOrDefault(t => t != null && !string.Equals(t.ImportStatus, "Skipped", StringComparison.OrdinalIgnoreCase))
             ?.IntegrationId;
+    }
+
+    /// <summary>
+    /// Header tabs only. Never falls back to the first/only transaction — that is Primary, not Header.
+    /// </summary>
+    private static List<string> GetHeaderTransactionIntegrationIds(PlmDwImportBlueprintDto blueprint)
+    {
+        var ids = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var headerTabIds = new HashSet<int>();
+        if (blueprint?.PlmTemplate?.TemplateHeaderTabIds != null)
+        {
+            foreach (int tabId in blueprint.PlmTemplate.TemplateHeaderTabIds)
+                headerTabIds.Add(tabId);
+        }
+
+        foreach (var tx in blueprint?.Transactions ?? Enumerable.Empty<PlmDwBlueprintTransactionDto>())
+        {
+            if (tx == null || string.Equals(tx.ImportStatus, "Skipped", StringComparison.OrdinalIgnoreCase))
+                continue;
+            if (tx.IsTemplateHeaderTab != true && !headerTabIds.Contains(tx.PlmTabId))
+                continue;
+            string integrationId = string.IsNullOrWhiteSpace(tx.IntegrationId)
+                ? $"Tab_{tx.PlmTabId}"
+                : tx.IntegrationId.Trim();
+            if (seen.Add(integrationId))
+                ids.Add(integrationId);
+        }
+
+        return ids;
+    }
+
+    private static List<AppConfigPackLinkTargetDto> BuildDataModelTemplateLinkTargets(
+        PlmDwImportBlueprintDto blueprint,
+        string primaryTx)
+    {
+        var links = new List<AppConfigPackLinkTargetDto>();
+        var headerIds = new HashSet<string>(GetHeaderTransactionIntegrationIds(blueprint), StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(primaryTx))
+        {
+            links.Add(new AppConfigPackLinkTargetDto
+            {
+                Name = "Edit",
+                ActionType = "Edit",
+                UsageType = "FormGroup",
+                TransactionIntegrationId = primaryTx,
+                SourceColumn = "ReferenceId",
+                Sort = 0
+            });
+        }
+
+        var ready = (blueprint?.Transactions ?? Enumerable.Empty<PlmDwBlueprintTransactionDto>())
+            .Where(t => t != null && !string.Equals(t.ImportStatus, "Skipped", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(t => t.PlmTabSort ?? int.MaxValue)
+            .ThenBy(t => t.PlmTabId)
+            .ToList();
+
+        string firstMain = null;
+        int sort = 0;
+        foreach (var tx in ready)
+        {
+            string integrationId = string.IsNullOrWhiteSpace(tx.IntegrationId)
+                ? $"Tab_{tx.PlmTabId}"
+                : tx.IntegrationId.Trim();
+            bool isHeader = headerIds.Contains(integrationId);
+            sort++;
+            links.Add(new AppConfigPackLinkTargetDto
+            {
+                Name = string.IsNullOrWhiteSpace(tx.TransactionName)
+                    ? (tx.PlmTabName ?? integrationId)
+                    : tx.TransactionName,
+                ActionType = "Edit",
+                UsageType = "Form",
+                TemplateItemType = isHeader
+                    ? (int)EmAppTransactionTemplateItemType.TemplateHeader
+                    : (int)EmAppTransactionTemplateItemType.MainItem,
+                TransactionIntegrationId = integrationId,
+                SourceColumn = "ReferenceId",
+                Sort = tx.PlmTabSort ?? sort
+            });
+            if (!isHeader && firstMain == null)
+                firstMain = integrationId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(firstMain))
+        {
+            links.Add(new AppConfigPackLinkTargetDto
+            {
+                Name = "New",
+                ActionType = "Create",
+                UsageType = "Form",
+                TemplateItemType = (int)EmAppTransactionTemplateItemType.MainItem,
+                TransactionIntegrationId = firstMain,
+                SourceColumn = "ReferenceId",
+                Sort = 0
+            });
+        }
+
+        return links;
     }
 
     private static string ResolveMasterSiblingTable(PlmDwImportBlueprintDto blueprint, string prefix)

@@ -34,6 +34,10 @@ namespace App.BL.AIAgent.GenericAgent
             public ConcurrentQueue<AgentEventDto> Events    = new ConcurrentQueue<AgentEventDto>();
             public DateTime                       CreatedAt = DateTime.UtcNow;
             public SemaphoreSlim                  EventReady = new SemaphoreSlim(0, int.MaxValue);
+            public string SkillKey { get; set; }
+            public string ChatSessionKey { get; set; }
+            public int UserId { get; set; }
+            public int DataSourceId { get; set; }
         }
 
         public static string CreateSession()
@@ -42,6 +46,22 @@ namespace App.BL.AIAgent.GenericAgent
             Sessions[id] = new SessionData();
             CleanExpired();
             return id;
+        }
+
+        public static void BindChat(string sessionId, string skillKey, string chatSessionKey, int userId, int dataSourceId)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId) || !Sessions.TryGetValue(sessionId, out var session))
+                return;
+            session.SkillKey = skillKey;
+            session.ChatSessionKey = chatSessionKey;
+            session.UserId = userId;
+            session.DataSourceId = dataSourceId;
+        }
+
+        public static SessionData TryGet(string sessionId)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId)) return null;
+            return Sessions.TryGetValue(sessionId, out var session) ? session : null;
         }
 
         public static void Enqueue(string sessionId, AgentEventDto evt)

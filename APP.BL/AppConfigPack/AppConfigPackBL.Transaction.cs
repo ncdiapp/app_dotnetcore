@@ -1325,11 +1325,16 @@ ORDER BY CASE WHEN u.ParentTransactionUnitID IS NULL THEN 0 ELSE 1 END, f.Transa
             if (memberIds.Count == 0)
                 return null;
 
-            int? primaryTxId = null;
-            if (!string.IsNullOrWhiteSpace(group.PrimaryTransactionIntegrationId)
-                && txIdsByIntegration.TryGetValue(group.PrimaryTransactionIntegrationId.Trim(), out int primary))
+            // Header flags come only from explicit HeaderTransactionIntegrationIds
+            // (Blueprint / PLM IsTemplateHeaderTab). PrimaryTransaction is the default
+            // Form to open — it is not a Template Header.
+            var headerTxIds = new HashSet<int>();
+            foreach (var key in group.HeaderTransactionIntegrationIds ?? Enumerable.Empty<string>())
             {
-                primaryTxId = primary;
+                if (string.IsNullOrWhiteSpace(key))
+                    continue;
+                if (txIdsByIntegration.TryGetValue(key.Trim(), out int headerTxId))
+                    headerTxIds.Add(headerTxId);
             }
 
             using (var conn = OpenTenantConnection())
@@ -1376,7 +1381,7 @@ WHERE TransactionGroupID = @GroupId";
                 {
                     order++;
                     int itemId = EnsureAppTransactionItemId(conn, txId);
-                    bool isHeader = primaryTxId.HasValue && primaryTxId.Value == txId;
+                    bool isHeader = headerTxIds.Contains(txId);
                     using (var cmd = conn.CreateCommand())
                     {
                         cmd.CommandText = @"

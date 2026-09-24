@@ -820,6 +820,8 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
         const ok = await genericAgentSvc.ConfirmAskUser(sid, {
             SessionId: sid,
             Cancelled: cancelled,
+            SkillKey: skillKeyRef.current,
+            ChatSessionKey: chatSessionKeyRef.current || undefined,
             ...(cancelled
                 ? {}
                 : mode === 'single_choice' || mode === 'multi_choice'

@@ -73,6 +73,8 @@ export interface ConfirmAskUserDto {
     Answers?: Record<string, string>;
     SelectedIds?: string[];
     FreeText?: string;
+    SkillKey?: string;
+    ChatSessionKey?: string;
 }
 
 /** In-memory UI state so Agent Chat survives App-tab remount without restarting. */

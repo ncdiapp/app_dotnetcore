@@ -45,6 +45,7 @@ public static class SearchImportAppConfigPackBuilder
                 Name = blueprint.TransactionGroup.GroupName,
                 IntegrationId = $"TG_{Sanitize(blueprint.TransactionGroup.GroupName)}",
                 PrimaryTransactionIntegrationId = blueprint.TransactionGroup.PrimaryTransactionIntegrationId,
+                HeaderTransactionIntegrationIds = new List<string>(),
                 MemberTransactionIntegrationIds = members
             };
         }
@@ -87,6 +88,7 @@ public static class SearchImportAppConfigPackBuilder
                 {
                     Name = l.Name ?? l.ActionType ?? "Open",
                     ActionType = l.ActionType ?? "Edit",
+                    UsageType = pack.TransactionGroup != null ? "FormGroup" : "Form",
                     TransactionIntegrationId = l.TransactionIntegrationId,
                     SourceColumn = l.SourceColumn,
                     Sort = l.Sort ?? 0

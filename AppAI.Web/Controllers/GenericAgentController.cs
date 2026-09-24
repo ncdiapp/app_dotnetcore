@@ -99,6 +99,8 @@ public class GenericAgentController : SecureBaseController
         }
 
         var sessionId = GenericAgentSessionStore.CreateSession();
+        GenericAgentSessionStore.BindChat(
+            sessionId, request.SkillKey.Trim(), chatSessionKey, agentUserId, agentDsId);
 
         if (agentUserId > 0 && !string.IsNullOrWhiteSpace(chatSessionKey))
             SessionBL.TryAutoTitle(chatSessionKey, request.SkillKey, agentUserId, request.UserMessage);
@@ -179,21 +181,9 @@ public class GenericAgentController : SecureBaseController
                 {
                     var isSessionStart = string.Equals(
                         request.UserMessage?.Trim(), "[session_start]", StringComparison.Ordinal);
-                    var updated = new List<JObject>(request.Messages ?? new List<JObject>());
-                    // Do not persist the synthetic [session_start] marker as a user bubble.
-                    if (!isSessionStart)
-                        updated.Add(JObject.FromObject(new { role = "user", content = request.UserMessage }));
-                    var assistant = new JObject
-                    {
-                        ["role"] = "assistant",
-                        ["content"] = done ?? ""
-                    };
-                    if (persistedToolSteps.Count > 0)
-                        assistant["toolSteps"] = new JArray(persistedToolSteps);
-                    updated.Add(assistant);
-                    SessionBL.SaveSession(
-                        request.SkillKey, agentUserId, agentDsId, updated,
-                        sessionKey: chatSessionKey);
+                    SessionBL.PersistTurnDone(
+                        request.SkillKey, agentUserId, agentDsId, chatSessionKey,
+                        request.UserMessage, isSessionStart, done ?? "", persistedToolSteps);
                     SessionBL.TryAutoTitle(chatSessionKey, request.SkillKey, agentUserId, request.UserMessage);
                     if (agentCompanyId > 0 && !string.IsNullOrWhiteSpace(chatSessionKey))
                     {
@@ -221,18 +211,15 @@ public class GenericAgentController : SecureBaseController
                 {
                     try
                     {
-                        var updated = new List<JObject>(request.Messages ?? new List<JObject>());
                         var draft = tokenBuf.ToString();
-                        updated.Add(new JObject
-                        {
-                            ["role"] = "assistant",
-                            ["content"] = draft,
-                            ["pendingAskUser"] = askEvent != null ? JObject.FromObject(askEvent) : null,
-                            ["runSessionId"] = sessionId
-                        });
-                        SessionBL.SaveSession(
-                            request.SkillKey, agentUserId, agentDsId, updated,
-                            sessionKey: chatSessionKey);
+                        if (string.IsNullOrWhiteSpace(draft) && !string.IsNullOrWhiteSpace(askEvent?.Prompt))
+                            draft = askEvent.Prompt;
+                        SessionBL.PersistAskUserPending(
+                            request.SkillKey, agentUserId, agentDsId, chatSessionKey,
+                            draft,
+                            askEvent != null ? JObject.FromObject(askEvent) : null,
+                            sessionId,
+                            persistedToolSteps);
                     }
                     catch { /* persist HITL snapshot must not fail the gate */ }
                 }
@@ -398,6 +385,41 @@ public class GenericAgentController : SecureBaseController
             SelectedIds = request.SelectedIds ?? new List<string>(),
             FreeText = request.FreeText
         };
+
+        AppClientIdentity? identity = null;
+        if (ServerContext.Instance.CurrnetClientIdentity is AppClientIdentity ai)
+            identity = ai;
+        var userId = identity.HasValue && identity.Value.UserId != null
+            ? Convert.ToInt32(identity.Value.UserId) : 0;
+        var dsId = identity.HasValue ? identity.Value.DataSourceId : 0;
+        var bind = GenericAgentSessionStore.TryGet(request.SessionId);
+        var skillKey = !string.IsNullOrWhiteSpace(request.SkillKey)
+            ? request.SkillKey.Trim()
+            : bind?.SkillKey;
+        var chatKey = !string.IsNullOrWhiteSpace(request.ChatSessionKey)
+            ? request.ChatSessionKey.Trim()
+            : bind?.ChatSessionKey;
+        if (userId <= 0 && bind != null) userId = bind.UserId;
+        if (dsId <= 0 && bind != null) dsId = bind.DataSourceId;
+
+        if (userId > 0 && dsId > 0
+            && !string.IsNullOrWhiteSpace(skillKey)
+            && !string.IsNullOrWhiteSpace(chatKey))
+        {
+            try
+            {
+                var existing = SessionBL.LoadBySessionKey(chatKey, skillKey, userId);
+                JObject pending = null;
+                var last = existing?.Messages != null && existing.Messages.Count > 0
+                    ? existing.Messages[existing.Messages.Count - 1]
+                    : null;
+                if (last != null)
+                    pending = last["pendingAskUser"] as JObject ?? last["PendingAskUser"] as JObject;
+                var answerText = SessionBL.FormatAskUserAnswer(pending, response);
+                SessionBL.PersistAskUserAnswer(skillKey, userId, dsId, chatKey, answerText);
+            }
+            catch { /* answer persist must not block the gate */ }
+        }
 
         bool found = GenericAgentSessionStore.ConfirmAskUser(request.SessionId, response);
 

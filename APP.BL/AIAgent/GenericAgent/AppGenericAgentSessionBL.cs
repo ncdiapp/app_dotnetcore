@@ -160,6 +160,204 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             return detail?.Messages;
         }
 
+        /// <summary>
+        /// HITL gate: append or replace the pending assistant. Never overwrite prior turns
+        /// with the empty request.Messages from a long [session_start] run.
+        /// </summary>
+        public static void PersistAskUserPending(
+            string skillKey,
+            int userId,
+            int dataSourceId,
+            string sessionKey,
+            string assistantContent,
+            JObject pendingAskUser,
+            string runSessionId,
+            IList<JObject> toolSteps = null)
+        {
+            if (string.IsNullOrWhiteSpace(sessionKey)) return;
+            var list = CloneMessages(LoadBySessionKey(sessionKey, skillKey, userId)?.Messages);
+            StripEphemeralMarkers(list);
+
+            var assistant = new JObject
+            {
+                ["role"] = "assistant",
+                ["content"] = assistantContent ?? "",
+                ["pendingAskUser"] = pendingAskUser,
+                ["runSessionId"] = runSessionId
+            };
+            if (toolSteps != null && toolSteps.Count > 0)
+                assistant["toolSteps"] = new JArray(toolSteps);
+
+            if (IsPendingAskAssistant(Last(list)))
+                list[list.Count - 1] = assistant;
+            else
+                list.Add(assistant);
+
+            SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+        }
+
+        /// <summary>Finalize the pending ask and append the user's answer (same Chat, next line).</summary>
+        public static void PersistAskUserAnswer(
+            string skillKey,
+            int userId,
+            int dataSourceId,
+            string sessionKey,
+            string answerText)
+        {
+            if (string.IsNullOrWhiteSpace(sessionKey)) return;
+            var list = CloneMessages(LoadBySessionKey(sessionKey, skillKey, userId)?.Messages);
+            StripEphemeralMarkers(list);
+
+            var last = Last(list);
+            if (IsPendingAskAssistant(last))
+            {
+                var prompt = last["pendingAskUser"]?["Prompt"]?.ToString()
+                    ?? last["pendingAskUser"]?["prompt"]?.ToString();
+                var content = last.Value<string>("content");
+                if (string.IsNullOrWhiteSpace(content) && !string.IsNullOrWhiteSpace(prompt))
+                    last["content"] = prompt;
+                last.Remove("pendingAskUser");
+                last.Remove("PendingAskUser");
+            }
+
+            if (!string.IsNullOrWhiteSpace(answerText)
+                && !IsSameUserContent(Last(list), answerText))
+            {
+                list.Add(new JObject { ["role"] = "user", ["content"] = answerText });
+            }
+
+            SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+        }
+
+        /// <summary>
+        /// End of a Run: append this turn onto MessagesJson already on disk.
+        /// Do not replace the transcript with request.Messages (often [] on session_start).
+        /// </summary>
+        public static void PersistTurnDone(
+            string skillKey,
+            int userId,
+            int dataSourceId,
+            string sessionKey,
+            string userMessage,
+            bool isSessionStart,
+            string assistantContent,
+            IList<JObject> toolSteps = null)
+        {
+            if (string.IsNullOrWhiteSpace(sessionKey)) return;
+            var list = CloneMessages(LoadBySessionKey(sessionKey, skillKey, userId)?.Messages);
+            StripEphemeralMarkers(list);
+
+            if (!isSessionStart && !string.IsNullOrWhiteSpace(userMessage)
+                && !IsSameUserContent(Last(list), userMessage))
+            {
+                list.Add(new JObject { ["role"] = "user", ["content"] = userMessage });
+            }
+
+            var assistant = new JObject
+            {
+                ["role"] = "assistant",
+                ["content"] = assistantContent ?? ""
+            };
+            if (toolSteps != null && toolSteps.Count > 0)
+                assistant["toolSteps"] = new JArray(toolSteps);
+
+            if (IsPendingAskAssistant(Last(list)))
+                list[list.Count - 1] = assistant;
+            else
+                list.Add(assistant);
+
+            SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+        }
+
+        public static string FormatAskUserAnswer(JObject pendingAskUser, AgentAskUserResponse response)
+        {
+            if (response == null) return "(empty)";
+            if (response.Cancelled) return "(cancelled)";
+
+            var mode = (pendingAskUser?["Mode"] ?? pendingAskUser?["mode"])?.ToString()?.ToLowerInvariant();
+            if (mode == "single_choice" || mode == "multi_choice")
+            {
+                var labels = new List<string>();
+                var options = pendingAskUser?["Options"] ?? pendingAskUser?["options"] as JToken;
+                foreach (var id in response.SelectedIds ?? new List<string>())
+                {
+                    string label = id;
+                    if (options is JArray arr)
+                    {
+                        foreach (var opt in arr)
+                        {
+                            var optId = (opt?["Id"] ?? opt?["id"])?.ToString();
+                            if (string.Equals(optId, id, StringComparison.Ordinal))
+                            {
+                                label = (opt?["Display"] ?? opt?["display"])?.ToString() ?? id;
+                                break;
+                            }
+                        }
+                    }
+                    if (!string.IsNullOrWhiteSpace(label)) labels.Add(label);
+                }
+                return labels.Count > 0 ? string.Join(", ", labels) : "(no selection)";
+            }
+
+            var fields = pendingAskUser?["Fields"] ?? pendingAskUser?["fields"];
+            if (fields is JArray fieldArr && fieldArr.Count > 0 && response.Answers != null && response.Answers.Count > 0)
+            {
+                var lines = new List<string>();
+                foreach (var field in fieldArr)
+                {
+                    var name = (field?["Name"] ?? field?["name"])?.ToString();
+                    var label = (field?["Label"] ?? field?["label"])?.ToString() ?? name;
+                    if (string.IsNullOrWhiteSpace(name)) continue;
+                    response.Answers.TryGetValue(name, out var raw);
+                    lines.Add($"{label}: {(string.IsNullOrWhiteSpace(raw) ? "(empty)" : raw)}");
+                }
+                if (lines.Count > 0) return string.Join("\n", lines);
+            }
+
+            return string.IsNullOrWhiteSpace(response.FreeText) ? "(empty)" : response.FreeText.Trim();
+        }
+
+        private static List<JObject> CloneMessages(List<JObject> source)
+        {
+            var list = new List<JObject>();
+            if (source == null) return list;
+            foreach (var m in source)
+            {
+                if (m != null) list.Add((JObject)m.DeepClone());
+            }
+            return list;
+        }
+
+        private static void StripEphemeralMarkers(List<JObject> list)
+        {
+            if (list == null) return;
+            list.RemoveAll(m =>
+            {
+                if (m == null) return true;
+                var role = m.Value<string>("role");
+                var content = m.Value<string>("content");
+                return string.Equals(role, "system", StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(content, "[run_in_progress]", StringComparison.Ordinal);
+            });
+        }
+
+        private static JObject Last(List<JObject> list) =>
+            list == null || list.Count == 0 ? null : list[list.Count - 1];
+
+        private static bool IsAssistant(JObject m) =>
+            m != null && string.Equals(m.Value<string>("role"), "assistant", StringComparison.OrdinalIgnoreCase);
+
+        private static bool IsPendingAskAssistant(JObject m) =>
+            IsAssistant(m) && (m["pendingAskUser"] != null || m["PendingAskUser"] != null);
+
+        private static bool IsSameUserContent(JObject m, string content)
+        {
+            if (m == null || string.IsNullOrWhiteSpace(content)) return false;
+            if (!string.Equals(m.Value<string>("role"), "user", StringComparison.OrdinalIgnoreCase))
+                return false;
+            return string.Equals(m.Value<string>("content")?.Trim(), content.Trim(), StringComparison.Ordinal);
+        }
+
         public static void SaveSession(
             string skillKey,
             int userId,

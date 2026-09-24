@@ -708,11 +708,13 @@ ORDER BY CASE WHEN g.SaasApplicationID = @AppId THEN 0 ELSE 1 END, g.Transaction
                     reader.Close();
 
                     var members = new List<string>();
+                    var headers = new List<string>();
                     string primary = null;
                     using (var itemCmd = conn.CreateCommand())
                     {
                         itemCmd.CommandText = @"
-SELECT TransID, ISNULL(IsGroupSharedHeader, 0)
+SELECT TransID,
+       CAST(CASE WHEN ISNULL(IsGroupSharedHeader, 0) = 1 OR ISNULL(IsCrossGroupSharedHeader, 0) = 1 THEN 1 ELSE 0 END AS bit)
 FROM dbo.AppTransactionGroupItem
 WHERE TransactionGroupID = @GroupId
 ORDER BY ISNULL(TransactionLayoutOrder, 0), TransID";
@@ -727,8 +729,13 @@ ORDER BY ISNULL(TransactionLayoutOrder, 0), TransID";
                                 if (!txIdToIntegration.TryGetValue(txId, out string integrationId))
                                     continue;
                                 members.Add(integrationId);
-                                if (!itemReader.IsDBNull(1) && itemReader.GetBoolean(1) && primary == null)
-                                    primary = integrationId;
+                                bool isHeader = !itemReader.IsDBNull(1) && itemReader.GetBoolean(1);
+                                if (isHeader)
+                                {
+                                    headers.Add(integrationId);
+                                    if (primary == null)
+                                        primary = integrationId;
+                                }
                             }
                         }
                     }
@@ -741,6 +748,7 @@ ORDER BY ISNULL(TransactionLayoutOrder, 0), TransID";
                         Name = groupName,
                         IntegrationId = SlugIntegrationId("TG_", groupName ?? "Group"),
                         PrimaryTransactionIntegrationId = primary ?? members[0],
+                        HeaderTransactionIntegrationIds = headers,
                         MemberTransactionIntegrationIds = members
                     };
                 }
@@ -856,11 +864,12 @@ ORDER BY ISNULL(TransactionLayoutOrder, 0), TransID";
             int searchViewId,
             Dictionary<int, string> txIdToIntegration)
         {
-            var raw = new List<(string Name, int? ActionType, int TxId, string SourceCol, int? Sort)>();
+            var raw = new List<(string Name, int? ActionType, int TxId, string SourceCol, int? Sort, int? UsageType, string OtherSettings)>();
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText = @"
-SELECT NavigationActionName, ActionType, LinkTargetTransactionID, TargetColumn1, Sort
+SELECT NavigationActionName, ActionType, LinkTargetTransactionID, TargetColumn1, Sort,
+       LinkTargetUsageType, OtherSettings
 FROM dbo.AppFormLinkTarget
 WHERE SearchViewID = @SearchViewId
 ORDER BY ISNULL(Sort, 0), LinkTargetID";
@@ -876,7 +885,9 @@ ORDER BY ISNULL(Sort, 0), LinkTargetID";
                             reader.IsDBNull(1) ? (int?)null : reader.GetInt32(1),
                             reader.GetInt32(2),
                             reader.IsDBNull(3) ? null : reader.GetString(3),
-                            reader.IsDBNull(4) ? (int?)null : Convert.ToInt32(reader.GetValue(4))));
+                            reader.IsDBNull(4) ? (int?)null : Convert.ToInt32(reader.GetValue(4)),
+                            reader.IsDBNull(5) ? (int?)null : Convert.ToInt32(reader.GetValue(5)),
+                            reader.IsDBNull(6) ? null : reader.GetString(6)));
                     }
                 }
             }
@@ -896,17 +907,48 @@ ORDER BY ISNULL(Sort, 0), LinkTargetID";
                 else if (row.ActionType == (int)EmAppLinkTargetActionType.Delete)
                     action = "Delete";
 
+                string usageType = null;
+                if (row.UsageType == (int)EmAppLinkTargetUsageType.SearchViewLinkToFormGroup)
+                    usageType = "FormGroup";
+                else if (row.UsageType == (int)EmAppLinkTargetUsageType.SearchViewLinkToForm)
+                    usageType = "Form";
+
                 list.Add(new AppConfigPackLinkTargetDto
                 {
                     Name = row.Name,
                     ActionType = action,
                     TransactionIntegrationId = integrationId,
                     SourceColumn = row.SourceCol,
-                    Sort = row.Sort
+                    Sort = row.Sort,
+                    UsageType = usageType,
+                    TemplateItemType = ParseTemplateItemType(row.OtherSettings)
                 });
             }
 
             return list;
+        }
+
+        private static int? ParseTemplateItemType(string otherSettings)
+        {
+            if (string.IsNullOrWhiteSpace(otherSettings))
+                return null;
+            const string key = "\"TemplateItemType\":";
+            int idx = otherSettings.IndexOf(key, StringComparison.Ordinal);
+            if (idx < 0)
+                return null;
+            int start = idx + key.Length;
+            while (start < otherSettings.Length && (otherSettings[start] == ' ' || otherSettings[start] == '\t'))
+                start++;
+            int end = start;
+            while (end < otherSettings.Length && char.IsDigit(otherSettings[end]))
+                end++;
+            if (end == start)
+                return null;
+            if (int.TryParse(otherSettings.Substring(start, end - start), out int value)
+                && (value == (int)EmAppTransactionTemplateItemType.MainItem
+                    || value == (int)EmAppTransactionTemplateItemType.TemplateHeader))
+                return value;
+            return null;
         }
 
         private static AppConfigPackMenuDto ExportSearchMenu(SqlConnection conn, int searchId, string searchName)

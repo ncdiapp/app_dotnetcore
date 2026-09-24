@@ -241,22 +241,20 @@ export function hasDataModelTemplateFormGroup(viewDto: any): boolean {
 
 export function getFormGroupLinkTargetList(viewDto: any): any[] {
   const fromDto = viewDto?.FormGroupLinkTargetList;
-  if (Array.isArray(fromDto) && fromDto.length > 0) {
-    return [...fromDto].sort((a: any, b: any) => (a.Sort || 0) - (b.Sort || 0));
-  }
-  const list = viewDto?.AppFormLinkTargetList;
+  const list =
+    Array.isArray(fromDto) && fromDto.length > 0
+      ? fromDto
+      : viewDto?.AppFormLinkTargetList;
   if (!Array.isArray(list)) return [];
 
-  const templateItems = list.filter((o) => o?.OtherSettingsDto?.TemplateItemType != null);
-  if (templateItems.length > 0) {
-    return templateItems
-      .filter((o) => isFormGroupCandidateLinkTarget(o))
-      .sort((a: any, b: any) => (a.Sort || 0) - (b.Sort || 0));
-  }
-
-  return list
-    .filter((o) => isFormGroupCandidateLinkTarget(o))
-    .sort((a: any, b: any) => (a.Sort || 0) - (b.Sort || 0));
+  const candidates = list.filter(
+    (o: any) => isFormGroupCandidateLinkTarget(o) && !isCreateLikeLinkTarget(o),
+  );
+  // Data Model Template Main/Shared only. Search's Usage=2 "Edit" open-entry has no
+  // TemplateItemType and must not appear as a second left-nav transaction.
+  const templateItems = candidates.filter((o: any) => o?.OtherSettingsDto?.TemplateItemType != null);
+  const source = templateItems.length > 0 ? templateItems : candidates;
+  return [...source].sort((a: any, b: any) => (a.Sort || 0) - (b.Sort || 0));
 }
 
 export function shouldOpenAsFormGroup(linkTarget: any, viewDto: any): boolean {
@@ -352,9 +350,6 @@ export function buildTemplateItemLists(viewDto: any, clickedLinkTarget: any): {
       if (lt.OtherSettingsDto?.TemplateItemType === EmAppTransactionTemplateItemType.TemplateHeader) {
         templateHeaderList.push({ ...item, isTemplateHeader: true });
       } else if (lt.OtherSettingsDto?.TemplateItemType === EmAppTransactionTemplateItemType.MainItem) {
-        linkTargetList.push(item);
-      } else if (lt.OtherSettingsDto?.TemplateItemType == null && isFormGroupCandidateLinkTarget(lt)) {
-        // Untyped Edit/Preview still participate when mixed with typed items
         linkTargetList.push(item);
       }
     });

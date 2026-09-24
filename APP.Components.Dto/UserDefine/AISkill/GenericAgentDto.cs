@@ -62,5 +62,7 @@ namespace APP.Components.Dto
         public Dictionary<string, string> Answers { get; set; } = new Dictionary<string, string>();
         public List<string> SelectedIds { get; set; } = new List<string>();
         public string FreeText { get; set; }
+        public string SkillKey { get; set; }
+        public string ChatSessionKey { get; set; }
     }
 }
