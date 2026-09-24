@@ -157,7 +157,15 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
             if (documents.Count == 0)
                 throw new InvalidOperationException("Document AI completed without a JSON output document.");
 
-            var result = BuildResult(jobId, request.FileName, request.SessionKey, request.CompanyId, documents);
+            var result = await BuildResultAsync(
+                jobId,
+                request.FileName,
+                request.SessionKey,
+                request.CompanyId,
+                bucket,
+                storage,
+                documents,
+                cancellationToken);
             // Temporarily disabled while validating Google Document AI v1beta3 image extraction.
             // Re-enable this GemBox.Pdf fallback if the processor does not return image blocks.
             // ExtractEmbeddedPdfImages(request.PdfBytes, jobId, request.SessionKey, request.CompanyId, result);
@@ -219,12 +227,15 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         return candidate;
     }
 
-    private static PdfTechPackExtractionResultDto BuildResult(
+    private static async Task<PdfTechPackExtractionResultDto> BuildResultAsync(
         string jobId,
         string fileName,
         string sessionKey,
         int companyId,
-        List<JObject> documents)
+        string bucket,
+        StorageClient storage,
+        List<JObject> documents,
+        CancellationToken cancellationToken)
     {
         var pureData = new JObject
         {
@@ -288,7 +299,17 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                 }
             }
 
-            AddLayoutImages(document, layout, jobId, sessionKey, companyId, images, ref pageCount);
+            pageCount = Math.Max(pageCount, await AddLayoutImagesAsync(
+                document,
+                layout,
+                jobId,
+                sessionKey,
+                companyId,
+                bucket,
+                storage,
+                images,
+                pageCount,
+                cancellationToken));
         }
 
         return new PdfTechPackExtractionResultDto
@@ -323,14 +344,17 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
         return string.Join(Environment.NewLine, text);
     }
 
-    private static void AddLayoutImages(
+    private static async Task<int> AddLayoutImagesAsync(
         JObject document,
         JToken? layout,
         string jobId,
         string sessionKey,
         int companyId,
+        string bucket,
+        StorageClient storage,
         List<PdfTechPackImageDto> images,
-        ref int pageCount)
+        int pageCount,
+        CancellationToken cancellationToken)
     {
         foreach (var block in FindLayoutBlocks(layout, "imageBlock"))
         {
@@ -369,6 +393,26 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                     bytes,
                     companyId);
             }
+            else
+            {
+                var sourceUri = GetToken(image, "gcsUri")?.Value<string>();
+                if (!string.IsNullOrWhiteSpace(sourceUri))
+                {
+                    var (sourceBucket, objectName) = ParseGcsUri(sourceUri, bucket);
+                    await using var imageStream = new MemoryStream();
+                    await storage.DownloadObjectAsync(
+                        sourceBucket,
+                        objectName,
+                        imageStream,
+                        cancellationToken: cancellationToken);
+                    var extension = mimeType.Contains("jpeg", StringComparison.OrdinalIgnoreCase) ? "jpg" : "png";
+                    relativePath = GenericAgentFileBL.WriteBytes(
+                        sessionKey,
+                        $"output/pdf-images/{jobId}/layout-image-{images.Count + 1:0000}.{extension}",
+                        imageStream.ToArray(),
+                        companyId);
+                }
+            }
 
             images.Add(new PdfTechPackImageDto
             {
@@ -380,6 +424,22 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                     ?? GetToken(GetToken(image, "annotations") as JObject, "description")?.Value<string>()
             });
         }
+
+        return pageCount;
+    }
+
+    private static (string Bucket, string ObjectName) ParseGcsUri(string uri, string fallbackBucket)
+    {
+        const string prefix = "gs://";
+        if (!uri.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException($"Document AI returned an unsupported image URI: {uri}");
+
+        var path = uri.Substring(prefix.Length);
+        var separator = path.IndexOf('/');
+        if (separator <= 0 || separator == path.Length - 1)
+            throw new InvalidOperationException($"Document AI returned an invalid image URI: {uri}");
+
+        return (path[..separator], path[(separator + 1)..]);
     }
 
     private static void ExtractEmbeddedPdfImages(
