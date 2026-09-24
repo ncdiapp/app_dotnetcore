@@ -63,6 +63,8 @@ namespace App.BL.AIAgent.GenericAgent
             if (string.IsNullOrWhiteSpace(sessionId)) return null;
             return Sessions.TryGetValue(sessionId, out var session) ? session : null;
         }
+        public static bool Exists(string sessionId) =>
+            !string.IsNullOrWhiteSpace(sessionId) && Sessions.ContainsKey(sessionId);
 
         public static void Enqueue(string sessionId, AgentEventDto evt)
         {

@@ -462,7 +462,18 @@ public class GenericAgentController : SecureBaseController
         var result = new OperationCallResult<GenericAgentSessionDetailDto>();
         var identity = ServerContext.Instance.CurrnetClientIdentity;
         if (identity is not AppClientIdentity ai || ai.UserId == null) return result;
-        result.Object = SessionBL.LoadBySessionKey(sessionKey, skillKey, Convert.ToInt32(ai.UserId));
+        var userId = Convert.ToInt32(ai.UserId);
+        var detail = SessionBL.LoadBySessionKey(sessionKey, skillKey, userId);
+        var staleRun = detail?.Messages?
+            .Select(message => message?.Value<string>("runSessionId"))
+            .FirstOrDefault(runId => !string.IsNullOrWhiteSpace(runId)
+                && !GenericAgentSessionStore.Exists(runId));
+        if (!string.IsNullOrWhiteSpace(staleRun))
+        {
+            SessionBL.ClearStaleRunState(skillKey, userId, ai.DataSourceId, sessionKey);
+            detail = SessionBL.LoadBySessionKey(sessionKey, skillKey, userId);
+        }
+        result.Object = detail;
         return result;
     }
 
