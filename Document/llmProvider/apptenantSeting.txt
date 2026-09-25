@@ -1,0 +1,4 @@
+update AppTenantSetting set  setupvalue='plm-dev-506613' where SetupCode='GoogleDocumentAIProjectId'
+update AppTenantSetting set  setupvalue='2c31feac16da038d' where SetupCode='GoogleDocumentAIProcessorId'
+update AppTenantSetting set  setupvalue='plm_dev_storage' where SetupCode='GoogleDocumentAIBucket'
+update AppTenantSetting set  setupvalue='C:\Users\sean.zhang\dev-space\PLM\docs\plm\LLMProvider\Service-plm-dev-506613-d99869f3849f.json' where SetupCode='GoogleDocumentAICredentialJson'
