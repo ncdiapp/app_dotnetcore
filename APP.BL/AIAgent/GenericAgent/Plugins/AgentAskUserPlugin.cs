@@ -242,6 +242,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     // If the model supplied options but forgot type=select, still render DDL.
                     if (field.Options.Count > 0 && !string.Equals(field.Type, "select", StringComparison.OrdinalIgnoreCase))
                         field.Type = "select";
+                    EnsureDefaultSelectOptions(field);
                     list.Add(field);
                 }
             }
@@ -265,6 +266,44 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
             catch { /* ignore bad JSON */ }
             return list;
+        }
+
+        /// <summary>
+        /// Phase A *Ok / proceed / importMode often arrive as type=text with no options.
+        /// Empty options render as a text box — fill the standard dropdowns.
+        /// </summary>
+        private static void EnsureDefaultSelectOptions(AgentAskUserField field)
+        {
+            if (field == null || string.IsNullOrWhiteSpace(field.Name))
+                return;
+            field.Options ??= new List<LookupItemDto>();
+            if (field.Options.Count > 0)
+                return;
+            string name = field.Name.Trim();
+            if (name.EndsWith("Ok", StringComparison.OrdinalIgnoreCase)
+                || name.EndsWith("_ok", StringComparison.OrdinalIgnoreCase))
+            {
+                field.Type = "select";
+                field.Options.Add(new LookupItemDto { Id = "ok", Display = "OK" });
+                field.Options.Add(new LookupItemDto { Id = "revise", Display = "Revise" });
+                return;
+            }
+            if (name.Equals("proceed", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("action", StringComparison.OrdinalIgnoreCase))
+            {
+                field.Type = "select";
+                field.Options.Add(new LookupItemDto { Id = "approve", Display = "Approve — proceed to Phase B" });
+                field.Options.Add(new LookupItemDto { Id = "revise", Display = "Revise" });
+                field.Options.Add(new LookupItemDto { Id = "cancel", Display = "Cancel" });
+                return;
+            }
+            if (name.Equals("importMode", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("import_mode", StringComparison.OrdinalIgnoreCase))
+            {
+                field.Type = "select";
+                field.Options.Add(new LookupItemDto { Id = "APPEND", Display = "APPEND" });
+                field.Options.Add(new LookupItemDto { Id = "REPLACE", Display = "REPLACE" });
+            }
         }
 
         /// <summary>

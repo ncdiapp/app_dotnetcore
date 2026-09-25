@@ -73,13 +73,13 @@ public static class DwBlueprintAppConfigPackBuilder
                 : tx.IntegrationId.Trim();
 
             bool exists = existing.Contains(integrationId);
-            if (string.Equals(mode, "Insert", StringComparison.OrdinalIgnoreCase) && exists)
-                continue;
             if (string.Equals(mode, "Repair", StringComparison.OrdinalIgnoreCase) && !exists)
                 continue;
 
             pack.Transactions.Add(MapTransaction(tx, prefix, rootTable, blueprint));
         }
+
+        AttachOrphanGridTransactions(pack, blueprint, prefix, rootTable, mode, existing);
 
         // Blueprint-level field overlays (optional explicit list)
         MergeBlueprintFields(pack, blueprint, prefix);
@@ -208,6 +208,8 @@ public static class DwBlueprintAppConfigPackBuilder
             unit.ChildUnits.Add(childDto);
         }
 
+        AttachParentTabGridBindings(unit, tx, blueprint, prefix);
+
         var txDto = new AppConfigPackTransactionDto
         {
             IntegrationId = string.IsNullOrWhiteSpace(tx.IntegrationId)
@@ -222,6 +224,122 @@ public static class DwBlueprintAppConfigPackBuilder
 
         // Stash PlmTabId in Description space? Use IntegrationId matching only — tab id via blueprint lookup.
         return txDto;
+    }
+
+    /// <summary>
+    /// Official generator puts grids in top-level gridBindings, not unitStructure.childUnits.
+    /// Attach those host-grid tables as Child units on the parent Tab TX.
+    /// </summary>
+    private static void AttachParentTabGridBindings(
+        AppConfigPackUnitStructureDto unit,
+        PlmDwBlueprintTransactionDto tx,
+        PlmDwImportBlueprintDto blueprint,
+        string prefix)
+    {
+        if (unit == null || tx == null)
+            return;
+        unit.ChildUnits ??= new List<AppConfigPackChildUnitDto>();
+        foreach (var grid in blueprint.GridBindings ?? Enumerable.Empty<PlmDwBlueprintGridBindingDto>())
+        {
+            if (grid == null || string.IsNullOrWhiteSpace(grid.AppTableName))
+                continue;
+            if (!grid.ParentPlmTabId.HasValue || grid.ParentPlmTabId.Value != tx.PlmTabId)
+                continue;
+
+            string table = Qualify(grid.AppTableName, prefix, skipPrefix: false);
+            var existing = unit.ChildUnits.FirstOrDefault(c =>
+                c != null && string.Equals(c.TableName, table, StringComparison.OrdinalIgnoreCase));
+            var grands = (grid.GrandChildAppTableNames ?? new List<string>())
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Select(n => Qualify(n, prefix, skipPrefix: false))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (existing == null)
+            {
+                existing = new AppConfigPackChildUnitDto
+                {
+                    TableName = table,
+                    DisplayName = AppTransactionBL.ConvertDbNameToDisplayName(table)
+                };
+                unit.ChildUnits.Add(existing);
+            }
+            if (grands.Count == 0)
+                continue;
+            existing.GrandChildTableNames ??= new List<string>();
+            existing.GrandChildUnits ??= new List<AppConfigPackChildUnitDto>();
+            foreach (string grandTable in grands)
+            {
+                if (!existing.GrandChildTableNames.Any(g =>
+                    string.Equals(g, grandTable, StringComparison.OrdinalIgnoreCase)))
+                    existing.GrandChildTableNames.Add(grandTable);
+                if (!existing.GrandChildUnits.Any(g =>
+                    g != null && string.Equals(g.TableName, grandTable, StringComparison.OrdinalIgnoreCase)))
+                {
+                    existing.GrandChildUnits.Add(new AppConfigPackChildUnitDto
+                    {
+                        TableName = grandTable,
+                        DisplayName = AppTransactionBL.ConvertDbNameToDisplayName(grandTable)
+                    });
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Grids whose parent Tab is not in this blueprint become standalone Grid_{id} TXs (Root + Child).
+    /// </summary>
+    private static void AttachOrphanGridTransactions(
+        AppConfigPackDto pack,
+        PlmDwImportBlueprintDto blueprint,
+        string prefix,
+        string rootTable,
+        string mode,
+        HashSet<string> existing)
+    {
+        var tabIds = new HashSet<int>(
+            (blueprint.Transactions ?? Enumerable.Empty<PlmDwBlueprintTransactionDto>())
+                .Where(t => t != null && !string.Equals(t.ImportStatus, "Skipped", StringComparison.OrdinalIgnoreCase))
+                .Select(t => t.PlmTabId));
+
+        foreach (var grid in blueprint.GridBindings ?? Enumerable.Empty<PlmDwBlueprintGridBindingDto>())
+        {
+            if (grid == null || string.IsNullOrWhiteSpace(grid.AppTableName))
+                continue;
+            if (grid.ParentPlmTabId.HasValue && tabIds.Contains(grid.ParentPlmTabId.Value))
+                continue;
+
+            string integrationId = !string.IsNullOrWhiteSpace(grid.IntegrationId)
+                ? grid.IntegrationId.Trim()
+                : $"Grid_{grid.PlmGridId}";
+            bool exists = existing != null && existing.Contains(integrationId);
+            if (string.Equals(mode, "Repair", StringComparison.OrdinalIgnoreCase) && !exists)
+                continue;
+            if (pack.Transactions.Any(t =>
+                t != null && string.Equals(t.IntegrationId, integrationId, StringComparison.OrdinalIgnoreCase)))
+                continue;
+
+            string gridTable = Qualify(grid.AppTableName, prefix, skipPrefix: false);
+            pack.Transactions.Add(new AppConfigPackTransactionDto
+            {
+                IntegrationId = integrationId,
+                Name = AppTransactionBL.ConvertDbNameToDisplayName(gridTable),
+                Description = integrationId,
+                OrganizedType = "MasterDetail",
+                UnitStructure = new AppConfigPackUnitStructureDto
+                {
+                    RootTableName = rootTable,
+                    ChildUnits = new List<AppConfigPackChildUnitDto>
+                    {
+                        new AppConfigPackChildUnitDto
+                        {
+                            TableName = gridTable,
+                            DisplayName = AppTransactionBL.ConvertDbNameToDisplayName(gridTable)
+                        }
+                    }
+                },
+                Fields = new List<AppConfigPackFieldDto>()
+            });
+        }
     }
 
     private static void ApplyPivotOverlays(
@@ -246,6 +364,7 @@ public static class DwBlueprintAppConfigPackBuilder
             string colorway = binding.GrandchildColumns?.ColorwayKey ?? "Colorway";
             string parentLink = binding.GrandchildColumns?.ParentLink ?? "ParentRowId";
 
+            EnsureChildUnit(tx, source);
             EnsureGrandchildUnit(tx, host, grandchild, childUnitPivotColumns);
             UpsertPackField(tx, grandchild, colorway, f =>
             {
@@ -395,19 +514,45 @@ public static class DwBlueprintAppConfigPackBuilder
             t != null && string.Equals(t.IntegrationId, integrationId, StringComparison.OrdinalIgnoreCase));
     }
 
+    private static void EnsureChildUnit(AppConfigPackTransactionDto tx, string table)
+    {
+        if (tx?.UnitStructure == null || string.IsNullOrWhiteSpace(table))
+            return;
+        tx.UnitStructure.ChildUnits ??= new List<AppConfigPackChildUnitDto>();
+        if (tx.UnitStructure.SiblingTableNames?.Any(s =>
+            string.Equals(s, table, StringComparison.OrdinalIgnoreCase)) == true)
+            return;
+        if (tx.UnitStructure.ChildUnits.Any(c =>
+            c != null && string.Equals(c.TableName, table, StringComparison.OrdinalIgnoreCase)))
+            return;
+        tx.UnitStructure.ChildUnits.Add(new AppConfigPackChildUnitDto
+        {
+            TableName = table,
+            DisplayName = AppTransactionBL.ConvertDbNameToDisplayName(table)
+        });
+    }
+
     private static void EnsureGrandchildUnit(
         AppConfigPackTransactionDto tx,
         string hostTable,
         string grandchildTable,
         int gridDisplayType)
     {
-        if (tx?.UnitStructure?.ChildUnits == null || string.IsNullOrWhiteSpace(hostTable) || string.IsNullOrWhiteSpace(grandchildTable))
+        if (tx?.UnitStructure == null || string.IsNullOrWhiteSpace(hostTable) || string.IsNullOrWhiteSpace(grandchildTable))
             return;
 
+        tx.UnitStructure.ChildUnits ??= new List<AppConfigPackChildUnitDto>();
         var host = tx.UnitStructure.ChildUnits.FirstOrDefault(c =>
             c != null && string.Equals(c.TableName, hostTable, StringComparison.OrdinalIgnoreCase));
         if (host == null)
-            return;
+        {
+            host = new AppConfigPackChildUnitDto
+            {
+                TableName = hostTable,
+                DisplayName = AppTransactionBL.ConvertDbNameToDisplayName(hostTable)
+            };
+            tx.UnitStructure.ChildUnits.Add(host);
+        }
 
         host.GrandChildTableNames ??= new List<string>();
         if (!host.GrandChildTableNames.Any(g => string.Equals(g, grandchildTable, StringComparison.OrdinalIgnoreCase)))
@@ -680,6 +825,33 @@ public static class DwBlueprintAppConfigPackBuilder
             });
             if (!isHeader && firstMain == null)
                 firstMain = integrationId;
+        }
+
+        var readyTabIds = new HashSet<int>(ready.Select(t => t.PlmTabId));
+        foreach (var grid in blueprint.GridBindings ?? Enumerable.Empty<PlmDwBlueprintGridBindingDto>())
+        {
+            if (grid == null)
+                continue;
+            if (grid.ParentPlmTabId.HasValue && readyTabIds.Contains(grid.ParentPlmTabId.Value))
+                continue;
+            string gridIntegrationId = !string.IsNullOrWhiteSpace(grid.IntegrationId)
+                ? grid.IntegrationId.Trim()
+                : $"Grid_{grid.PlmGridId}";
+            if (links.Any(l => string.Equals(l.TransactionIntegrationId, gridIntegrationId, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            sort++;
+            links.Add(new AppConfigPackLinkTargetDto
+            {
+                Name = string.IsNullOrWhiteSpace(grid.AppTableName)
+                    ? gridIntegrationId
+                    : AppTransactionBL.ConvertDbNameToDisplayName(Qualify(grid.AppTableName, ResolvePrefix(blueprint), skipPrefix: false)),
+                ActionType = "Edit",
+                UsageType = "Form",
+                TemplateItemType = (int)EmAppTransactionTemplateItemType.MainItem,
+                TransactionIntegrationId = gridIntegrationId,
+                SourceColumn = "ReferenceId",
+                Sort = sort
+            });
         }
 
         if (!string.IsNullOrWhiteSpace(firstMain))

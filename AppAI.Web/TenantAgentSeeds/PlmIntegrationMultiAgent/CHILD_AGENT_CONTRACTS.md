@@ -102,7 +102,7 @@ call_agent("<SkillKey>", "<PHASE=…>. Read plm.integration.<code>.inputs. <cons
 | Phase | Message (shape) | Child writes | ROOT after return |
 |---|---|---|---|
 | A | `PHASE=A only. Read …inputs. Return DETAILED Phase A checklist… Write …phase-a. No SQL.` | `…phase-a` | HITL checklist → write `…plan` |
-| B | `PHASE=B. Read inputs+plan. Generate output/{templateId}/. Write …outputs (files + executionPlan).` First call `run_agent_script` `source/_gen_plmdw_import_sql.ps1`. Do not pre-resolve grid dwTable. Do not edit/patch that script. | `…outputs` only for files `file_list` shows | **Do not** write `doneIds`. Show Apply only when `file_list` proves `1_`+`4_` exist (SizeBytes). Script error / invented `executionPlan` = Retry. |
+| B | `PHASE=B. Read inputs+plan. Generate output/{templateId}/. Write …outputs (files + executionPlan).` First call `run_agent_script` `source/_gen_plmdw_import_sql.ps1`. Do not pre-resolve grid dwTable. Do not edit/patch that script. `grids[]`: empty **or** copy `dwTabImportConfig.{templateId}.json` in full — never a subset. 3167=`Artwork_BOM_prod`/4246; grid 7=`ProductDesignColorGrid`. `childUnits: []` is generator design; APPLY attaches `gridBindings` + BOM grandchild. | `…outputs` only for files `file_list` shows | **Do not** write `doneIds`. Show Apply only when `file_list` proves `1_`+`4_` exist (SizeBytes). Script error / invented `executionPlan` = Retry. |
 | APPLY | `PHASE=APPLY. Call apply_agent_output_plan once.` | `…outputs.apply` + `output/{id}/apply-log.json` | `outputs.apply.ok=true` **and** `executed==planned` → `doneIds`. Chat “6/6” is not proof. Cancel / apply failed → `pendingApplyIds`. |
 
 Never A+B+APPLY in one ROOT turn. ROOT never runs apply/execute file tools. After user clicks Apply, ROOT's next tool **must** be `call_agent` PHASE=APPLY.
@@ -133,7 +133,7 @@ Assembly rules (do not hard-code a fixed step count):
 - `3b_Tchp_ImportFromDW.sql` if present → before blueprint
 - `4_*.json` → `kind=dw-blueprint` (ROOT may set `mode` Insert|Update|Repair before APPLY)
 - `5_` → after blueprint (BOM official order)
-- `6_` only if the file exists
+- Do **not** include `6_PlmDw_CleanupBomColorwayStaging.sql` (retired; do not generate or execute)
 
 APPLY tool: child calls **`apply_agent_output_plan` once**. BL walks the plan:
 

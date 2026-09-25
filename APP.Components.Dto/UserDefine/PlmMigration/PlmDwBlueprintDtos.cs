@@ -529,6 +529,9 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public string TransactionIntegrationId { get; set; }
+
+        [DataMember]
+        public List<string> GrandChildAppTableNames { get; set; } = new List<string>();
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

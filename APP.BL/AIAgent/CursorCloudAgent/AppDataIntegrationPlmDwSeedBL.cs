@@ -25,7 +25,6 @@ namespace App.BL.CursorCloudAgent
             "ImportFromPLMDW/source/_gen_simple_qc.ps1",
             "ImportFromPLMDW/source/PlmDw_ImportFromDW.sql",
             "ImportFromPLMDW/source/PlmDw_ImportBomColorwayGrandchild.sql",
-            "ImportFromPLMDW/source/PlmDw_CleanupBomColorwayStaging.sql",
             "ImportFromPLMDW/source/dwTabImportConfig.example.json",
             "ImportFromPLMDW/source/bomColorwayImportConfig.example.json",
             "ImportFromPLMDW/source/_plm_probe_template.sql",
@@ -40,8 +39,7 @@ namespace App.BL.CursorCloudAgent
                 { "2_PlmDw_FieldMapping.sql", 100 * 1024L },
                 { "3_PlmDw_ImportFromDW.sql", 12 * 1024L },
                 { "4_PlmDw_ImportBlueprint.json", 500 * 1024L },
-                { "5_PlmDw_ImportBomColorwayGrandchild.sql", 40 * 1024L },
-                { "6_PlmDw_CleanupBomColorwayStaging.sql", 8 * 1024L }
+                { "5_PlmDw_ImportBomColorwayGrandchild.sql", 40 * 1024L }
             };
 
         public static bool IsPlmDwSkill(string skillKey)

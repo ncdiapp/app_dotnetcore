@@ -389,7 +389,6 @@ Requires `source/dwTabImportConfig.json`. The script uses `sqlcmd` against `sqlS
 | `3_PlmDw_ImportFromDW.sql` | DW → APP flat import (host/grid/tab tables; **excludes** `BomColorwayDwSlot`) |
 | `4_PlmDw_ImportBlueprint.json` | Transaction / Form / Search plan + `bomColorwayPivotBindings` for Phase D |
 | `5_PlmDw_ImportBomColorwayGrandchild.sql` | **When BOM colorway grids detected:** UNPIVOT DW slots → grandchild rows |
-| `6_PlmDw_CleanupBomColorwayStaging.sql` | **Optional legacy:** drop host `Colorway_N`/`ImageN` if an older import created them |
 
 Generator details:
 - Reads `INFORMATION_SCHEMA` from plmDW  
@@ -409,7 +408,7 @@ Generator details:
 - APP column names: strip `_SubItemId` / `_FK_*`; suffix `_SubItemId` on collisions  
 - Mapping DELETE scoped to **tables in config only** (no `LIKE Fabric_%`)  
 - INSERT values use doubled quotes inside `SET @sql = N'...'` → `N''@P@...''`  
-- **BOM colorway:** `_gen_plmdw_bom_colorway.ps1` (dot-sourced) probes PLM, appends grandchild DDL/field rows, emits steps 5–6, and adds `bomColorwayPivotBindings` to step-4 Blueprint JSON  
+- **BOM colorway:** `_gen_plmdw_bom_colorway.ps1` (dot-sourced) probes PLM, appends grandchild DDL/field rows, emits step 5, and adds `bomColorwayPivotBindings` to step-4 Blueprint JSON  
 
 ### B3. `{prefix}FieldMapping` schema
 
@@ -441,9 +440,9 @@ Parameters: `@TablePrefix`, `@RootTableSuffix`, `@DwDatabase`, `@PlmDatabase`, `
 
 Template: `source/PlmDw_ImportBomColorwayGrandchild.sql`. UNPIVOTs **DW** `Colorway_N` / `ImageN` via `pdmStyleColorWayMapping` into `{HostAppTable}GrandColorway` rows. **Prerequisite:** steps 1–3 completed; step 4 Execute completed; `ProductDesignColorGrid` imported for pivot headers. **FieldMapping:** slot lookup reads `FieldKind = BomColorwayDwSlot` rows from step 2 (legacy `BomColorwaySlot` still supported).
 
-### B6. `6_PlmDw_CleanupBomColorwayStaging.sql` (optional — legacy DBs only)
+### B6. Retired — do not generate or execute `6_PlmDw_CleanupBomColorwayStaging.sql`
 
-Template: `source/PlmDw_CleanupBomColorwayStaging.sql`. For databases that **already** have host `Colorway_N`/`ImageN` columns from an older pipeline. **Fresh imports do not need step 6.**
+Host `Colorway_N`/`ImageN` are no longer created on fresh imports. Phase D `ApplyDwBlueprintStagingCleanup` already removes residual TX staging fields. Do **not** emit step 6.
 
 ---
 
@@ -457,10 +456,9 @@ Run scripts from **`output/{templateId}/`** (e.g. `output/3351/`):
 3. output/{templateId}/3_PlmDw_ImportFromDW.sql
 4. output/{templateId}/4_PlmDw_ImportBlueprint.json — Phase D Validate & Execute
 5. output/{templateId}/5_PlmDw_ImportBomColorwayGrandchild.sql   (when BOM colorway grids detected)
-6. output/{templateId}/6_PlmDw_CleanupBomColorwayStaging.sql   (optional — legacy host staging columns only)
 ```
 
-**Order when BOM colorway is present:** steps 1–3 → **step 4 Execute** (or Execute + **Refresh Caches**) → step 5 (grandchild data). Step 6 only if upgrading an old tenant DB that still has host staging columns.
+**Order when BOM colorway is present:** steps 1–3 → **step 4 Execute** (or Execute + **Refresh Caches**) → step 5 (grandchild data).
 
 ## Phase D — APP configuration (BL TOOLS)
 
@@ -523,16 +521,14 @@ ImportFromPLMDW/
       3_PlmDw_ImportFromDW.sql
       4_PlmDw_ImportBlueprint.json
       5_PlmDw_ImportBomColorwayGrandchild.sql   (when BOM colorway detected)
-      6_PlmDw_CleanupBomColorwayStaging.sql     (when BOM colorway detected)
   source/
     dwTabImportConfig.example.json
     dwTabImportConfig.json          ← Phase B working config
     _gen_plmdw_import_sql.ps1       ← writes to ../output/{templateId}/
-    _gen_plmdw_bom_colorway.ps1     ← BOM colorway probe + steps 5–6
+    _gen_plmdw_bom_colorway.ps1     ← BOM colorway probe + step 5
     _plm_probe_template.sql         ← PLM: template + tabs + ref count
     PlmDw_ImportFromDW.sql          ← import template (step 3)
     PlmDw_ImportBomColorwayGrandchild.sql
-    PlmDw_CleanupBomColorwayStaging.sql
     _dw_probe_by_tabids.sql         ← plmDW: tab/grid probe (fill #TabInput from PLM)
 ```
 
@@ -553,7 +549,7 @@ ImportFromPLMDW/
 [ ] Write dwTabImportConfig.json (plmTemplateId + PLM tab metadata)
 [ ] Run _gen_plmdw_import_sql.ps1 → output/{templateId}/1_…6_ files
 [ ] Verify 3_PlmDw_ImportFromDW.sql has @PlmTemplateId + APPEND default
-[ ] Verify 4_PlmDw_ImportBlueprint.json includes bomColorwayPivotBindings when steps 5–6 exist
+[ ] Verify 4_PlmDw_ImportBlueprint.json includes bomColorwayPivotBindings when step 5 exists
 [ ] TechPack: run 3b (includes View_TchpStyleActiveSizeRunSizes + View_TchpFitMeasurementByPom) before Phase D
 [ ] TechPack Grading: SizeRunSizes view child + GradeValue pivot (P1) + golden fields (G1) + BaseSize cascade (S2)
 [ ] TechPack Fit: FX1 tables (slim FitSummary + FitRoundInfo) + F2 SUMMARY/ROUND TX + F3 read-only POM×Round pivot

@@ -48,10 +48,10 @@ function Get-SqlcmdOutputLines([string]$path) {
     elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
         $enc = [Text.Encoding]::BigEndianUnicode
     }
-    $text = $enc.GetString($bytes)
+    $text = $enc.GetString($bytes).TrimStart([char]0xFEFF, [char]0xFFFE)
     return @(
         $text -split '\r\n|\n|\r' | ForEach-Object {
-            $s = ($_ -replace [char]0, '').Trim().Trim('|').Trim()
+            $s = ($_ -replace [char]0, '').Trim().TrimStart([char]0xFEFF).Trim().Trim('|').Trim()
             if ($s) { $s }
         }
     )
@@ -64,7 +64,7 @@ function Invoke-SqlQuery([string]$Database, [string]$Query) {
         Set-Content -Path $tmp -Value $Query -Encoding UTF8
         $sqlUser = if ($config.sqlUser) { $config.sqlUser } else { $env:PLM_DW_SQL_USER }
         $sqlPassword = if ($config.sqlPassword) { $config.sqlPassword } else { $env:PLM_DW_SQL_PASSWORD }
-        $args = @('-S', $SqlServer, '-d', $Database, '-i', $tmp, '-o', $out, '-W', '-s', '|', '-h', '-1')
+        $args = @('-S', $SqlServer, '-d', $Database, '-i', $tmp, '-o', $out, '-W', '-s', '|', '-h', '-1', '-f', '65001')
         if ($sqlUser -and $sqlPassword) {
             $args = @('-S', $SqlServer, '-d', $Database, '-U', $sqlUser, '-P', $sqlPassword) + $args[4..($args.Length - 1)]
         }
@@ -658,6 +658,17 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
             } | Select-Object -First 1
             if ($sq) { $gridAppLogical = 'SimpleQC' }
         }
+        $gcNames = [System.Collections.Generic.List[string]]::new()
+        if ($gridAppLogical -eq 'SimpleQC') { [void]$gcNames.Add($prefix + 'SimpleQCResult') }
+        $bomGc = @($bomColorwayPivotBindings) | Where-Object {
+            $_ -and $_.plmGridId -and [int]$_.plmGridId -eq [int]$grid.gridId
+        } | Select-Object -First 1
+        if ($bomGc -and $bomGc.grandchildAppTableName) {
+            $gcFull = [string]$bomGc.grandchildAppTableName
+            if (-not ($gcNames | Where-Object { [string]::Equals($_, $gcFull, [StringComparison]::OrdinalIgnoreCase) })) {
+                [void]$gcNames.Add($gcFull)
+            }
+        }
         $gridBindings += [ordered]@{
             plmGridId                  = [int]$grid.gridId
             appTableName               = $prefix + $gridAppLogical
@@ -665,7 +676,7 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
             attachToRoot               = (-not $parentTabId)
             integrationId              = "Grid_$($grid.gridId)"
             transactionIntegrationId   = $txIntegrationId
-            grandChildAppTableNames    = if ($gridAppLogical -eq 'SimpleQC') { Get-JsonArrayForSerialize @($prefix + 'SimpleQCResult') } else { $null }
+            grandChildAppTableNames    = if ($gcNames.Count -gt 0) { Get-JsonArrayForSerialize @($gcNames.ToArray()) } else { $null }
         }
     }
 
@@ -906,18 +917,122 @@ function Get-SharedBomAppTableName([string]$LogicalFromDw) {
     return ($LogicalFromDw -replace '_\d+_Colorways$', '')
 }
 
-# Phase B sometimes writes tabs[] but omits grids[]. BOM 5_/6_ then never emit.
-# Discover grids hosted on importTabIds that already exist as PLM_DW_Grid_*_{id}.
-function Ensure-ConfigGridsFromPlm {
-    if ($config.grids -and @($config.grids).Count -gt 0) { return }
-    $tabIds = @()
-    if ($config.importTabIds) { $tabIds = @($config.importTabIds | ForEach-Object { [int]$_ }) }
-    elseif ($config.tabs) { $tabIds = @($config.tabs | ForEach-Object { [int]$_.tabId }) }
-    if ($tabIds.Count -eq 0) {
-        Write-Host '  Auto-grid: skipped (no importTabIds / tabs).'
+# Agent-written grids[] often mash ProductDesignColorGrid + another gridId (e.g. Artwork 3167
+# -> PLM_DW_Grid_ProductDesignColorGrid_3167). Physical table is always PLM_DW_Grid_*_{gridId}.
+function Repair-ConfigGridDwTables {
+    if (-not $config.grids) { return }
+    foreach ($grid in @($config.grids)) {
+        $gid = 0
+        if (-not [int]::TryParse("$($grid.gridId)", [ref]$gid) -or $gid -le 0) { continue }
+        $resolved = $null
+        try { $resolved = Resolve-GridDwTableName ([string]$grid.dwTable) $gid }
+        catch {
+            Write-Host "  Grid $gid : $($_.Exception.Message)"
+            continue
+        }
+        if ($resolved -and -not [string]::Equals($resolved, [string]$grid.dwTable, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "  Grid $gid dwTable '$($grid.dwTable)' -> '$resolved'"
+            $grid | Add-Member -NotePropertyName dwTable -NotePropertyValue $resolved -Force
+        }
+        $logical = $resolved
+        if ($logical -match '^PLM_DW_Grid_(.+)_\d+$') { $logical = $Matches[1] }
+        $expectedApp = Get-SharedBomAppTableName $logical
+        if ($expectedApp -and $grid.appTable -and -not [string]::Equals([string]$grid.appTable, $expectedApp, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "  Grid $gid appTable '$($grid.appTable)' -> '$expectedApp' (from physical $resolved)"
+            $grid | Add-Member -NotePropertyName appTable -NotePropertyValue $expectedApp -Force
+        }
+        $importTabs = [System.Collections.Generic.HashSet[int]]::new()
+        if ($config.importTabIds) {
+            foreach ($t in @($config.importTabIds)) {
+                $tid = 0
+                if ([int]::TryParse("$t", [ref]$tid) -and $tid -gt 0) { [void]$importTabs.Add($tid) }
+            }
+        }
+        elseif ($config.tabs) {
+            foreach ($t in @($config.tabs)) {
+                $tid = 0
+                if ([int]::TryParse("$($t.tabId)", [ref]$tid) -and $tid -gt 0) { [void]$importTabs.Add($tid) }
+            }
+        }
+        $curParent = 0
+        [void][int]::TryParse("$($grid.parentPlmTabId)", [ref]$curParent)
+        if ($curParent -gt 0 -and $importTabs.Contains($curParent)) {
+            # already on an imported tab (e.g. official 3351 grid 7 -> 4225)
+        }
+        else {
+            $inList = if ($importTabs.Count -gt 0) { ($importTabs | Sort-Object) -join ',' } else { '0' }
+            $parentQ = @"
+SELECT TOP 1 tb.TabID
+FROM dbo.PdmTabBlock tb
+INNER JOIN dbo.pdmBlock b ON b.BlockID = tb.BlockID
+INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.BlockID = b.BlockID AND bsi.ControlType = 6 AND bsi.GridID = $gid
+ORDER BY CASE WHEN tb.TabID IN ($inList) THEN 0 ELSE 1 END, tb.TabID, tb.OrderId
+"@
+            foreach ($line in (Invoke-PlmQuery $parentQ)) {
+                $tidRaw = ("$line" -split '\|')[0].Trim()
+                if ($tidRaw -notmatch '^\d+$') { continue }
+                $tid = [int]$tidRaw
+                if ($tid -le 0 -or $tid -eq $curParent) { break }
+                if ($importTabs.Count -gt 0 -and -not $importTabs.Contains($tid)) { break }
+                Write-Host "  Grid $gid parentPlmTabId $curParent -> $tid"
+                $grid | Add-Member -NotePropertyName parentPlmTabId -NotePropertyValue $tid -Force
+                break
+            }
+        }
+    }
+}
+
+# Do not return HashSet — PowerShell unwraps it to a fixed-size Object[] and .Add() throws.
+function Get-ConfigGridIds {
+    $acc = [System.Collections.Generic.List[int]]::new()
+    foreach ($g in @($config.grids)) {
+        $gid = 0
+        if ([int]::TryParse("$($g.gridId)", [ref]$gid) -and $gid -gt 0 -and -not $acc.Contains($gid)) {
+            $acc.Add($gid)
+        }
+    }
+    return @($acc.ToArray())
+}
+
+function Add-ConfigGrid($grid) {
+    $list = [System.Collections.Generic.List[object]]::new()
+    foreach ($g in @($config.grids)) { if ($g) { $list.Add($g) } }
+    $list.Add($grid)
+    $config | Add-Member -NotePropertyName grids -NotePropertyValue @($list.ToArray()) -Force
+}
+
+# Official dwTabImportConfig.{templateId}.json is the grids[] baseline (3351: 7, 3167->4246, 3161/3162/...).
+function Merge-OfficialTemplateGrids {
+    if (-not $templateId) { return }
+    $officialPath = Join-Path $PSScriptRoot ("dwTabImportConfig.{0}.json" -f $templateId)
+    if (-not (Test-Path $officialPath)) { return }
+    $official = $null
+    try { $official = Get-Content $officialPath -Raw | ConvertFrom-Json }
+    catch {
+        Write-Host "  Official-grid: skip $($_.Exception.Message)"
         return
     }
-    $inList = ($tabIds | Sort-Object -Unique) -join ','
+    if (-not $official.grids) { return }
+    $ids = @(Get-ConfigGridIds)
+    $added = 0
+    foreach ($og in @($official.grids)) {
+        $gid = 0
+        if (-not [int]::TryParse("$($og.gridId)", [ref]$gid) -or $gid -le 0) { continue }
+        if ($ids -contains $gid) { continue }
+        Add-ConfigGrid $og
+        $ids += $gid
+        $added++
+        Write-Host "  Official-grid: added $gid $($og.dwTable) parent $($og.parentPlmTabId) from dwTabImportConfig.$templateId.json"
+    }
+    if ($added -eq 0) {
+        Write-Host "  Official-grid: dwTabImportConfig.$templateId.json present; no new gridIds to merge."
+    }
+}
+
+function Discover-ImportTabGrids([int[]]$TabIds) {
+    $discovered = @()
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $discovered }
+    $inList = ($TabIds | Sort-Object -Unique) -join ','
     $q = @"
 SELECT bsi.GridID, MAX(bsi.SubItemID) AS SubItemID, MIN(tb.TabID) AS TabID
 FROM dbo.PdmTabBlock tb
@@ -927,7 +1042,6 @@ WHERE tb.TabID IN ($inList)
 GROUP BY bsi.GridID
 ORDER BY bsi.GridID
 "@
-    $discovered = @()
     foreach ($line in (Invoke-PlmQuery $q)) {
         $parts = "$line" -split '\|'
         if ($parts.Count -lt 3) { continue }
@@ -956,14 +1070,34 @@ ORDER BY bsi.GridID
             transactionIntegrationId = "Tab_$tid"
         }
     }
-    if ($discovered.Count -eq 0) {
-        Write-Host '  Auto-grid: none (no PLM_DW_Grid_* for import tabs).'
+    return $discovered
+}
+
+# Merge official template grids + DW-discovered grids. Never return early on a partial agent grids[].
+function Ensure-ConfigGridsFromPlm {
+    Merge-OfficialTemplateGrids
+    $tabIds = @()
+    if ($config.importTabIds) { $tabIds = @($config.importTabIds | ForEach-Object { [int]$_ }) }
+    elseif ($config.tabs) { $tabIds = @($config.tabs | ForEach-Object { [int]$_.tabId }) }
+    if ($tabIds.Count -eq 0) {
+        Write-Host '  Auto-grid: skipped (no importTabIds / tabs).'
         return
     }
-    $config | Add-Member -NotePropertyName grids -NotePropertyValue $discovered -Force
-    Write-Host "  Auto-grid: filled $($discovered.Count) grids[] because config.grids was empty."
-    foreach ($g in $discovered) {
-        Write-Host "    Grid $($g.gridId) $($g.dwTable) -> APP $($g.appTable) parent tab $($g.parentPlmTabId)"
+    $discovered = @(Discover-ImportTabGrids $tabIds)
+    $ids = @(Get-ConfigGridIds)
+    $added = 0
+    foreach ($d in $discovered) {
+        if ($ids -contains [int]$d.gridId) { continue }
+        Add-ConfigGrid $d
+        $ids += [int]$d.gridId
+        $added++
+        Write-Host "  Auto-grid: added $($d.gridId) $($d.dwTable) -> APP $($d.appTable) parent tab $($d.parentPlmTabId)"
+    }
+    if ($added -eq 0 -and $ids.Count -gt 0) {
+        Write-Host "  Auto-grid: no additional PLM_DW_Grid_* beyond $($ids.Count) config/official grid(s)."
+    }
+    elseif ($ids.Count -eq 0) {
+        Write-Host '  Auto-grid: none (no PLM_DW_Grid_* for import tabs).'
     }
 }
 
@@ -1064,19 +1198,38 @@ function Get-AppSqlType($col, [string]$DwColumn) {
     }
 }
 
+function Sanitize-AppColumnName([string]$name) {
+    if ([string]::IsNullOrEmpty($name)) { return 'Col' }
+    $chars = foreach ($ch in $name.ToCharArray()) {
+        $c = [int]$ch
+        if (($c -ge 48 -and $c -le 57) -or ($c -ge 65 -and $c -le 90) -or ($c -ge 97 -and $c -le 122) -or $c -eq 95) {
+            $ch
+        }
+        else { '_' }
+    }
+    $s = (($chars -join '') -replace '_+', '_').Trim('_')
+    if ([string]::IsNullOrWhiteSpace($s)) { $s = 'Col' }
+    if ($s -match '^\d') { $s = 'C_' + $s }
+    return $s
+}
+
 function Get-AppColumnNames($fieldRows) {
     $stemCounts = @{}
     foreach ($r in $fieldRows) {
         if (-not $stemCounts.ContainsKey($r.Stem)) { $stemCounts[$r.Stem] = 0 }
         $stemCounts[$r.Stem]++
     }
+    $used = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($r in $fieldRows) {
-        if ($stemCounts[$r.Stem] -eq 1) {
-            $r | Add-Member -NotePropertyName AppColumn -NotePropertyValue $r.Stem -Force
+        $raw = if ($stemCounts[$r.Stem] -eq 1) { [string]$r.Stem } else { [string]$r.NamePart }
+        $app = Sanitize-AppColumnName $raw
+        $base = $app
+        $n = 2
+        while (-not $used.Add($app)) {
+            $app = $base + '_' + $n
+            $n++
         }
-        else {
-            $r | Add-Member -NotePropertyName AppColumn -NotePropertyValue ($r.NamePart) -Force
-        }
+        $r | Add-Member -NotePropertyName AppColumn -NotePropertyValue $app -Force
     }
     return $fieldRows
 }
@@ -1198,19 +1351,21 @@ function Build-CreateTableBlock([string]$LogicalTable, $fieldRows, [string]$Unit
         }
     }
     foreach ($r in $fieldRows) {
-        [void]$colDefs.Add("[$($r.AppColumn)] $($r.SqlType) NULL")
+        [void]$colDefs.Add((Format-SqlColDefInCreate $r.AppColumn $r.SqlType))
     }
     [void]$colDefs.Add("CONSTRAINT [PK_$LogicalTable] PRIMARY KEY CLUSTERED ([$pk])")
     $innerCols = ($colDefs -join ', ')
     $alterLines = New-Object System.Collections.Generic.List[string]
     foreach ($r in $fieldRows) {
         # Shared physical tables (e.g. 3351 + 3360 APPEND): add missing columns, then widen nvarchar if needed.
+        $nameExpr = Format-SqlNvarcharExpr $r.AppColumn $false
+        $addIdent = Format-SqlIdentBreak $r.AppColumn
         [void]$alterLines.Add(@"
-    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = N'$($r.AppColumn)')
-    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD [$($r.AppColumn)] $($r.SqlType) NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = $nameExpr)
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD $addIdent $($r.SqlType) NULL;'; EXEC sp_executesql @sql; END
 "@.TrimEnd())
         if ($r.SqlType -match '^\[nvarchar\]') {
-            [void]$alterLines.Add("    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN [$($r.AppColumn)] $($r.SqlType) NULL;';`r`n    EXEC sp_executesql @sql;")
+            [void]$alterLines.Add("    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN $addIdent $($r.SqlType) NULL;';`r`n    EXEC sp_executesql @sql;")
         }
     }
     $alterBlock = if ($alterLines.Count -gt 0) {
@@ -1247,7 +1402,7 @@ SET @FkName = N'FK_' + @TableName + N'_Reference';
 
 IF OBJECT_ID(N'dbo.' + QUOTENAME(@TableName), N'U') IS NULL
 BEGIN
-    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@TableName) + N' ($innerCols );';
+    SET @sql = CAST(N'' AS NVARCHAR(MAX)) + N'CREATE TABLE dbo.' + QUOTENAME(@TableName) + N' ($innerCols );';
     EXEC sp_executesql @sql;
 END
 $alterBlock
@@ -1255,9 +1410,61 @@ $fkBlock
 "@
 }
 
+function Test-SqlIdentAscii([string]$s) {
+    if ($null -eq $s) { return $true }
+    foreach ($ch in $s.ToCharArray()) {
+        $c = [int]$ch
+        if ($c -lt 32 -or $c -gt 126) { return $false }
+    }
+    return $true
+}
+
+# Nested=$true: inside SET @sql = N'...' so quotes are doubled (N''text'').
+function Format-SqlNvarcharExpr([string]$s, [bool]$Nested) {
+    $nq = if ($Nested) { "N''" } else { "N'" }
+    $qe = if ($Nested) { "''" } else { "'" }
+    if ($null -eq $s) { return 'NULL' }
+    $parts = New-Object System.Collections.Generic.List[string]
+    $buf = New-Object System.Text.StringBuilder
+    foreach ($ch in $s.ToCharArray()) {
+        $code = [int]$ch
+        $asciiSafe = ($code -ge 32 -and $code -le 126 -and $ch -ne [char]39)
+        if ($asciiSafe) {
+            [void]$buf.Append($ch)
+        }
+        else {
+            if ($buf.Length -gt 0) {
+                $parts.Add("$nq$($buf.ToString().Replace("'", "''"))$qe")
+                [void]$buf.Clear()
+            }
+            $parts.Add("NCHAR($code)")
+        }
+    }
+    if ($buf.Length -gt 0) {
+        $parts.Add("$nq$($buf.ToString().Replace("'", "''"))$qe")
+    }
+    if ($parts.Count -eq 0) { return "$nq$qe" }
+    return ($parts -join ' + ')
+}
+
+# Break a CREATE/ALTER N'...' string so the identifier is QUOTENAME(N'a' + NCHAR(n) + N'b').
+function Format-SqlIdentBreak([string]$name) {
+    if (Test-SqlIdentAscii $name) {
+        return "[$($name.Replace("'", "''"))]"
+    }
+    return "' + QUOTENAME($(Format-SqlNvarcharExpr $name $false)) + N'"
+}
+
+function Format-SqlColDefInCreate([string]$name, [string]$sqlType) {
+    if (Test-SqlIdentAscii $name) {
+        return "[$name] $sqlType NULL"
+    }
+    return "' + QUOTENAME($(Format-SqlNvarcharExpr $name $false)) + N' $sqlType NULL"
+}
+
 function SqlStrDyn([string]$s) {
     if ($null -eq $s) { return 'NULL' }
-    return "N''$($s -replace "'", "''")''"
+    return (Format-SqlNvarcharExpr $s $true)
 }
 
 function SqlInt($n) {
@@ -1284,14 +1491,17 @@ SELECT CAST(CASE
     ELSE 0
 END AS INT)
 "@
-    $flags = @(Invoke-DwQuery $q | Where-Object { $_ -match '^\d+$' })
+    $flagLines = @(Invoke-DwQuery $q)
+    $flags = @($flagLines | Where-Object { $_ -match '^\d+$' })
     if ($flags.Count -gt 0 -and [int]$flags[0] -eq 1) {
         Write-Host "  referenceScope OK: $dwTable.[$dwColumn]"
         return
     }
-    $tblFlags = @(Invoke-DwQuery "SELECT CAST(CASE WHEN OBJECT_ID(N'dbo.$safeTable', N'U') IS NULL THEN 0 ELSE 1 END AS INT)" | Where-Object { $_ -match '^\d+$' })
+    $tblRaw = @(Invoke-DwQuery "SELECT CAST(CASE WHEN OBJECT_ID(N'dbo.$safeTable', N'U') IS NULL THEN 0 ELSE 1 END AS INT)")
+    $tblFlags = @($tblRaw | Where-Object { $_ -match '^\d+$' })
     if ($tblFlags.Count -eq 0 -or [int]$tblFlags[0] -eq 0) {
-        throw "referenceScope DW table not found: $DwDatabase.dbo.$dwTable"
+        $raw = ($tblRaw + $flagLines | Select-Object -First 8) -join ' | '
+        throw "referenceScope DW table not found: $DwDatabase.dbo.$dwTable. sqlcmd raw: $raw"
     }
     $hintQ = @"
 SELECT c.name
@@ -1326,7 +1536,6 @@ $ddlParts.Add(@"
 --   3c. 3c_PlmDw_ImportSimpleQc.sql (when SpecQC / Simple QC QX1 present)
 --   4. 4_PlmDw_ImportBlueprint.json + Phase D Execute
 --   5. 5_PlmDw_ImportBomColorwayGrandchild.sql  (when BOM colorway grids detected)
---   6. 6_PlmDw_CleanupBomColorwayStaging.sql
 -- USER SETTINGS (single batch - do not split with GO):
 --   @TablePrefix     table prefix, include trailing underscore (default Plm_)
 --   @RootTableSuffix root table name after prefix (default ReferenceBasicInfo)
@@ -1507,6 +1716,7 @@ if ($config.techPack -and $config.techPack.fitRoundInfo) {
 
 Write-Host "Probing PLM for BOM ProductDesignColor colorway grids..."
 Ensure-ConfigGridsFromPlm
+Repair-ConfigGridDwTables
 $bomColorwayGrids = @(Get-BomColorwayGridsFromPlm $config.grids $config.tablePrefixDefault)
 Write-Host "  BOM colorway grid(s): $($bomColorwayGrids.Count)"
 $bomHostByAppTable = @{}
@@ -1703,7 +1913,7 @@ foreach ($r in $allFieldRows) {
     $plmCtrl = SqlInt $r.PlmControlType
     $plmEnt = SqlInt $r.PlmEntityId
     $dwDt = if ($r.DwDataType) { SqlStrDyn $r.DwDataType } else { 'NULL' }
-    $line = "(N''@P@$appTable'', N''$($r.AppColumn -replace "'", "''")'', $(SqlStrDyn $r.DwTable), $(SqlStrDyn $r.DwColumn), $(SqlInt $r.PlmTabId), $(SqlInt $r.SubItemId), $(SqlInt $r.PlmGridSubItemId), $(SqlInt $r.PlmGridId), $(SqlInt $r.PlmMetaColumnId), NULL, $fkSql, $(SqlStrDyn $r.FieldKind), $plmCtrl, $plmEnt, $dwDt)"
+    $line = "(N''@P@$appTable'', $(SqlStrDyn $r.AppColumn), $(SqlStrDyn $r.DwTable), $(SqlStrDyn $r.DwColumn), $(SqlInt $r.PlmTabId), $(SqlInt $r.SubItemId), $(SqlInt $r.PlmGridSubItemId), $(SqlInt $r.PlmGridId), $(SqlInt $r.PlmMetaColumnId), NULL, $fkSql, $(SqlStrDyn $r.FieldKind), $plmCtrl, $plmEnt, $dwDt)"
     [void]$valuesLines.Add($line)
 }
 
@@ -1916,7 +2126,8 @@ Generate-BomColorwaySqlFiles $bomColorwayGrids $config $templateId $outDir
     'PlmDw_Tables.sql', 'PlmDw_FieldMapping.sql', 'PlmDw_ImportFromDW.sql',
     'PlmDw_ImportBlueprint.json', 'PlmDw_ImportBlueprint.sql',
     'PlmDw_ImportBomColorwayGrandchild.sql', 'PlmDw_CleanupBomColorwayStaging.sql',
-    '4_PlmDw_ImportBomColorwayGrandchild.sql', '5_PlmDw_CleanupBomColorwayStaging.sql', '6_PlmDw_ImportBlueprint.json'
+    '4_PlmDw_ImportBomColorwayGrandchild.sql', '5_PlmDw_CleanupBomColorwayStaging.sql',
+    '6_PlmDw_CleanupBomColorwayStaging.sql', '6_PlmDw_ImportBlueprint.json'
 ) | ForEach-Object {
     $legacy = Join-Path $outDir $_
     if (Test-Path $legacy) { Remove-Item $legacy -Force }
@@ -1929,7 +2140,6 @@ Write-Host "Generated: $blueprintPath"
 Write-Host "Generated: $importPath"
 if ($bomColorwayGrids.Count -gt 0) {
     Write-Host "Generated: $(Join-Path $outDir '5_PlmDw_ImportBomColorwayGrandchild.sql')"
-    Write-Host "Generated: $(Join-Path $outDir '6_PlmDw_CleanupBomColorwayStaging.sql')"
 }
 foreach ($t in $config.tabs) {
     $n = @($allFieldRows | Where-Object { $_.AppTable -eq $t.appTable }).Count

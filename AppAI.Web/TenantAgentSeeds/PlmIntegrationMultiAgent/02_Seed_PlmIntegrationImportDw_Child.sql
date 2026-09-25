@@ -84,10 +84,9 @@ Call `file_list` with `path=source` (or empty root). **If any required file is m
 | Required | Role |
 |----------|------|
 | `_gen_plmdw_import_sql.ps1` | **Official producer** of `1_`…`4_` (and BOM hooks) |
-| `_gen_plmdw_bom_colorway.ps1` | BOM colorway steps 5-6 + blueprint bindings |
+| `_gen_plmdw_bom_colorway.ps1` | BOM colorway step 5 + blueprint bindings |
 | `PlmDw_ImportFromDW.sql` | Template for step 3 |
 | `PlmDw_ImportBomColorwayGrandchild.sql` | Template for step 5 |
-| `PlmDw_CleanupBomColorwayStaging.sql` | Template for step 6 |
 | `_plm_probe_template.sql` | PLM probe helper (also usable as SQL text) |
 | `_dw_probe_by_tabids.sql` | DW probe helper |
 | Optional helpers | `_gen_tchp_import_sql.ps1`, `_gen_simple_qc.ps1`, `*.example.json` |
@@ -100,7 +99,7 @@ Call `file_list` with `path=source` (or empty root). **If any required file is m
 | Dynamic `INFORMATION_SCHEMA` DDL stubs as final `1_PlmDw_Tables.sql` | Not the official generator output; incomplete vs probe-driven DDL. |
 | `gen_plmdw_*.py` / inventing SQL from memory as the final producer | Same - stub deliverables. |
 
-**Correct:** after Phase A confirm → write `source/dwTabImportConfig.json` → run / faithfully apply official `_gen_plmdw_import_sql.ps1` (using `execute_sql` / `get_table_schema` for any probes the script would do against plmDW/PLM via DataSourceIds) → write full `output/{templateId}/1_`…`4_` (and `5_`/`6_` when BOM). Then `file_list` on `output/{templateId}` and report **SizeBytes**. Expect Blueprint ≫ 100 KB with hundreds of `blueprintFields` for a full apparel template - a ~10 KB JSON is **wrong**.
+**Correct:** after Phase A confirm → write `source/dwTabImportConfig.json` → run / faithfully apply official `_gen_plmdw_import_sql.ps1` (using `execute_sql` / `get_table_schema` for any probes the script would do against plmDW/PLM via DataSourceIds) → write full `output/{templateId}/1_`…`4_` (and `5_` when BOM). Then `file_list` on `output/{templateId}` and report **SizeBytes**. Expect Blueprint ≫ 100 KB with hundreds of `blueprintFields` for a full apparel template - a ~10 KB JSON is **wrong**.
 
 ---
 
@@ -398,7 +397,7 @@ This PROMPT is used in **three** places. **Detect which one you are in, then fol
    - `3b_Tchp_ImportFromDW.sql` if present → `kind=sql`, `target=app`, **before** the blueprint step
    - `4_*.json` → `kind=dw-blueprint`, `mode=Insert` (ROOT may override mode before APPLY)
    - `5_*.sql` → `kind=sql`, `target=app`, **after** the blueprint step (BOM official order)
-   - `6_*.sql` only if the file exists
+   - Do **not** include `6_PlmDw_CleanupBomColorwayStaging.sql` (retired)
    Each step: `{ order, kind, path, target, mode?, label }`. Also include `templateId`. Do not dump SQL/JSON bodies.
 
 #### B0-IDE - Cursor IDE (local)
@@ -419,7 +418,7 @@ This PROMPT is used in **three** places. **Detect which one you are in, then fol
 | Phase | Do | Do not |
 |-------|-----|--------|
 | **A** | Probe PLM + plmDW via MCP; draft `source/dwTabImportConfig.json`; **STOP** for user confirm | Generate `output/{templateId}/` in the same run |
-| **B** | After user confirms: patch official templates → six files under `output/{templateId}/` | Start Phase B before confirm |
+| **B** | After user confirms: patch official templates → files under `output/{templateId}/` (1_-4_, plus 5_ when BOM) | Start Phase B before confirm |
 
 1. Official generators/templates are **seeded** into workspace `source/` at session start. Confirm with `list_workspace_files`.
 2. **Producer:** patch `source/PlmDw_*.sql` and official templates from probe data - **never** `gen_plmdw_*.py`, `build_sql_cache.py`, or `sql_cache.json`.
@@ -504,7 +503,7 @@ Requires `source/dwTabImportConfig.json`. The script uses `sqlcmd` against `sqlS
 
 1. Use seeded workspace files under `source/` (same script + `PlmDw_*.sql` templates).
 2. **Do not expect `sqlcmd` on the VM to reach customer PLM/DW.** Prefer MCP `run_select` / `get_table_schema` on App DataSources for every probe the PS generator would run.
-3. Produce the same six deliverables (structure/content parity with IDE). Forbidden as final producer: ad-hoc `gen_plmdw_*.py` short scripts.
+3. Produce the same deliverables (structure/content parity with IDE). Forbidden as final producer: ad-hoc `gen_plmdw_*.py` short scripts.
 4. Publish via Cursor artifacts + `sync_cloud_artifacts` (see B0-APP). AppAI validates size + `blueprintFields` and marks the run incomplete if checks fail.
 
 **Produces in `output/{templateId}/`** (subfolder named from `plmTemplateId` in config):
@@ -516,7 +515,6 @@ Requires `source/dwTabImportConfig.json`. The script uses `sqlcmd` against `sqlS
 | `3_PlmDw_ImportFromDW.sql` | DW → APP flat import (host/grid/tab tables; **excludes** `BomColorwayDwSlot`) |
 | `4_PlmDw_ImportBlueprint.json` | Transaction / Form / Search plan + `bomColorwayPivotBindings` for Phase D |
 | `5_PlmDw_ImportBomColorwayGrandchild.sql` | **When BOM colorway grids detected:** UNPIVOT DW slots → grandchild rows |
-| `6_PlmDw_CleanupBomColorwayStaging.sql` | **Optional legacy:** drop host `Colorway_N`/`ImageN` if an older import created them |
 
 Generator details:
 - Reads `INFORMATION_SCHEMA` from plmDW  
@@ -568,9 +566,9 @@ Parameters: `@TablePrefix`, `@RootTableSuffix`, `@DwDatabase`, `@PlmDatabase`, `
 
 Template: `source/PlmDw_ImportBomColorwayGrandchild.sql`. UNPIVOTs **DW** `Colorway_N` / `ImageN` via `pdmStyleColorWayMapping` into `{HostAppTable}GrandColorway` rows. **Prerequisite:** steps 1-3 completed; step 4 Execute completed; `ProductDesignColorGrid` imported for pivot headers. **FieldMapping:** slot lookup reads `FieldKind = BomColorwayDwSlot` rows from step 2 (legacy `BomColorwaySlot` still supported).
 
-### B6. `6_PlmDw_CleanupBomColorwayStaging.sql` (optional - legacy DBs only)
+### B6. Retired — do not generate or execute `6_PlmDw_CleanupBomColorwayStaging.sql`
 
-Template: `source/PlmDw_CleanupBomColorwayStaging.sql`. For databases that **already** have host `Colorway_N`/`ImageN` columns from an older pipeline. **Fresh imports do not need step 6.**
+Host `Colorway_N`/`ImageN` are no longer created on fresh imports. Phase D already removes residual TX staging fields. Do **not** emit step 6.
 
 ---
 
@@ -584,10 +582,9 @@ Run scripts from **`output/{templateId}/`** (e.g. `output/3351/`):
 3. output/{templateId}/3_PlmDw_ImportFromDW.sql
 4. output/{templateId}/4_PlmDw_ImportBlueprint.json - Phase D Validate & Execute
 5. output/{templateId}/5_PlmDw_ImportBomColorwayGrandchild.sql   (when BOM colorway grids detected)
-6. output/{templateId}/6_PlmDw_CleanupBomColorwayStaging.sql   (optional - legacy host staging columns only)
 ```
 
-**Order when BOM colorway is present:** steps 1-3 → **step 4 Execute** (or Execute + **Refresh Caches**) → step 5 (grandchild data). Step 6 only if upgrading an old tenant DB that still has host staging columns.
+**Order when BOM colorway is present:** steps 1-3 → **step 4 Execute** (or Execute + **Refresh Caches**) → step 5 (grandchild data).
 
 ## Phase D - APP configuration (BL TOOLS)
 
@@ -667,7 +664,6 @@ AgentOutput/{SessionKey}/          e.g. …/Company_5042/AgentOutput/plm-integra
     _gen_plmdw_bom_colorway.ps1
     PlmDw_ImportFromDW.sql
     PlmDw_ImportBomColorwayGrandchild.sql
-    PlmDw_CleanupBomColorwayStaging.sql
     _plm_probe_template.sql
     _dw_probe_by_tabids.sql
     dwTabImportConfig.json         ← agent writes after Phase A confirm
@@ -677,7 +673,7 @@ AgentOutput/{SessionKey}/          e.g. …/Company_5042/AgentOutput/plm-integra
       2_PlmDw_FieldMapping.sql
       3_PlmDw_ImportFromDW.sql
       4_PlmDw_ImportBlueprint.json   ← must include unitStructure (not appTable/unitType stubs)
-      5_… / 6_…                     (when BOM colorway)
+      5_PlmDw_ImportBomColorwayGrandchild.sql  (when BOM colorway)
 ```
 
 **If `source/` is empty or missing generators:** Agent **STOP**s and asks the user to upload from repo `AppReact/ImportDoc/ImportFromPLMDW/source/` via the **Files** tab. Do **not** invent stub SQL/JSON.
@@ -1243,5 +1239,25 @@ appTable = short shared name (Fabric_BOM_prod). dwTable = full physical PLM_DW_G
 '
 WHERE SkillKey = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: dwTabImportConfig.json must include grids%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: grids[] empty or official file, never a subset
+Do not hand-write a partial grids[]. Leave grids[] empty (generator discovers PLM_DW_Grid_* on import tabs and merges source/dwTabImportConfig.{templateId}.json) OR copy that official file''s grids[] in full. A partial list used to block discovery (Artwork 3167, Trim 3162, grid 7).
+unitStructure.childUnits is empty by design. Agent APPLY (AppConfigPack) attaches gridBindings onto the parent Tab TX and bomColorwayPivotBindings grandchild + source ProductDesignColorGrid onto that Tab. Empty childUnits does not mean no GRID.
+3167 is Artwork_BOM_prod / parent Artworks 4246. ProductDesignColorGrid is only grid 7 / PLM_DW_Grid_ProductDesignColorGrid_7 / parent Colorways 4225.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: grids[] empty or official file%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: ProductDesignColorGrid is grid 7, never mash onto another gridId
+`ProductDesignColorGrid` physical DW table is `PLM_DW_Grid_ProductDesignColorGrid_7` (gridId 7, Colorways tab). Artwork BOM is grid 3167 / `PLM_DW_Grid_Artwork_BOM_prod_3167`. Never write `PLM_DW_Grid_ProductDesignColorGrid_3167` or any `PLM_DW_Grid_{sourceAppTable}_{otherGridId}`. grids[].dwTable must be the physical `PLM_DW_Grid_*_{that gridId}` name. The generator repairs a wrong name against sys.tables; do not invent the mash in config.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: ProductDesignColorGrid is grid 7%';
 GO
 

@@ -29,6 +29,7 @@ DECLARE @RefCodeDwColumn   NVARCHAR(256);
 DECLARE @sql               NVARCHAR(MAX);
 DECLARE @InsertCols        NVARCHAR(MAX);
 DECLARE @SelectExprs       NVARCHAR(MAX);
+DECLARE @UnresolvedDw      NVARCHAR(4000);
 DECLARE @RowCnt            INT;
 DECLARE @AppTableName      NVARCHAR(128);
 DECLARE @DwTableName       NVARCHAR(256);
@@ -257,23 +258,53 @@ BEGIN TRY
             @sc = STRING_AGG(CAST(
                 CASE
                     WHEN ty.[name] IN (N''decimal'',N''numeric'') THEN
-                        N''TRY_CAST(dw.''+QUOTENAME(m.[DwColumnName])+N'' AS ''+ty.[name]
+                        N''TRY_CAST(dw.''+QUOTENAME(ISNULL(dwphys.PhysDwCol,m.[DwColumnName]))+N'' AS ''+ty.[name]
                         +N''(''+CAST(c.[precision] AS NVARCHAR(10))+N'',''+CAST(c.[scale] AS NVARCHAR(10))+N''))''
                     WHEN ty.[name] IN (N''int'',N''bigint'',N''smallint'',N''datetime'',N''datetime2'',N''date'') THEN
-                        N''TRY_CAST(dw.''+QUOTENAME(m.[DwColumnName])+N'' AS ''+ty.[name]+N'')''
+                        N''TRY_CAST(dw.''+QUOTENAME(ISNULL(dwphys.PhysDwCol,m.[DwColumnName]))+N'' AS ''+ty.[name]+N'')''
                     WHEN ty.[name]=N''bit'' THEN
-                        N''CASE WHEN TRY_CAST(dw.''+QUOTENAME(m.[DwColumnName])+N'' AS int)=1
-                            OR TRY_CAST(dw.''+QUOTENAME(m.[DwColumnName])+N'' AS nvarchar(50)) IN (N''''1'''',N''''true'''',N''''Y'''')
+                        N''CASE WHEN TRY_CAST(dw.''+QUOTENAME(ISNULL(dwphys.PhysDwCol,m.[DwColumnName]))+N'' AS int)=1
+                            OR TRY_CAST(dw.''+QUOTENAME(ISNULL(dwphys.PhysDwCol,m.[DwColumnName]))+N'' AS nvarchar(50)) IN (N''''1'''',N''''true'''',N''''Y'''')
                          THEN CONVERT(bit,1) ELSE CONVERT(bit,0) END''
-                    ELSE N''dw.''+QUOTENAME(m.[DwColumnName])
+                    ELSE N''dw.''+QUOTENAME(ISNULL(dwphys.PhysDwCol,m.[DwColumnName]))
                 END AS NVARCHAR(MAX)), N'','')
-                WITHIN GROUP (ORDER BY m.[AppColumnName])
+                WITHIN GROUP (ORDER BY m.[AppColumnName]),
+            @bad = STRING_AGG(CASE WHEN dwphys.PhysDwCol IS NULL THEN m.[DwColumnName] END, N'', '')
         FROM dbo.' + QUOTENAME(@MappingTable) + N' m
         INNER JOIN sys.columns c ON c.object_id=OBJECT_ID(N''dbo.' + REPLACE(@AppTableName, N'''', N'''''') + N''') AND c.name=m.[AppColumnName]
         INNER JOIN sys.types ty ON ty.user_type_id=c.user_type_id
+        OUTER APPLY (
+            SELECT TOP (1) x.[name] AS PhysDwCol
+            FROM ' + QUOTENAME(@DwDatabase) + N'.sys.columns AS x
+            INNER JOIN ' + QUOTENAME(@DwDatabase) + N'.sys.tables AS xt ON xt.object_id = x.object_id
+            INNER JOIN ' + QUOTENAME(@DwDatabase) + N'.sys.schemas AS xs ON xs.schema_id = xt.schema_id
+            WHERE xs.name = N''dbo'' AND xt.name COLLATE DATABASE_DEFAULT = @dw COLLATE DATABASE_DEFAULT
+              AND (
+                    x.name COLLATE DATABASE_DEFAULT = m.[DwColumnName] COLLATE DATABASE_DEFAULT
+                 OR (
+                        LEN(x.name) = LEN(m.[DwColumnName])
+                    AND LEFT(x.name COLLATE DATABASE_DEFAULT, PATINDEX(N''%[^ -~]%'', x.name COLLATE DATABASE_DEFAULT + N''~'') - 1)
+                      = LEFT(m.[DwColumnName] COLLATE DATABASE_DEFAULT, PATINDEX(N''%[^ -~]%'', m.[DwColumnName] COLLATE DATABASE_DEFAULT + N''~'') - 1)
+                    AND RIGHT(x.name COLLATE DATABASE_DEFAULT, PATINDEX(N''%[^ -~]%'', REVERSE(x.name COLLATE DATABASE_DEFAULT) + N''~'') - 1)
+                      = RIGHT(m.[DwColumnName] COLLATE DATABASE_DEFAULT, PATINDEX(N''%[^ -~]%'', REVERSE(m.[DwColumnName] COLLATE DATABASE_DEFAULT) + N''~'') - 1)
+                 )
+              )
+            ORDER BY CASE
+                WHEN x.name COLLATE DATABASE_DEFAULT = m.[DwColumnName] COLLATE DATABASE_DEFAULT THEN 0
+                ELSE 1 END
+        ) dwphys
         WHERE m.[AppTableName]=@app AND m.[FieldKind]=@kind;';
-        EXEC sp_executesql @sql, N'@app nvarchar(128),@kind nvarchar(16),@ic nvarchar(max) OUTPUT,@sc nvarchar(max) OUTPUT',
-            @app=@AppTableName,@kind=@FieldKind,@ic=@InsertCols OUTPUT,@sc=@SelectExprs OUTPUT;
+        SET @UnresolvedDw = NULL;
+        EXEC sp_executesql @sql,
+            N'@app nvarchar(128),@kind nvarchar(16),@dw nvarchar(256),@ic nvarchar(max) OUTPUT,@sc nvarchar(max) OUTPUT,@bad nvarchar(4000) OUTPUT',
+            @app=@AppTableName,@kind=@FieldKind,@dw=@DwTableName,
+            @ic=@InsertCols OUTPUT,@sc=@SelectExprs OUTPUT,@bad=@UnresolvedDw OUTPUT;
+        IF @UnresolvedDw IS NOT NULL
+        BEGIN
+            RAISERROR(N'DW column not found for FieldMapping.DwColumnName [%s] on %s.dbo.%s. Mapping may have lost unicode (euro became U+FFFD). Re-run Phase B SQL as UTF-8, or repair DwColumnName to the physical DW column.',
+                16, 1, @UnresolvedDw, @DwDatabase, @DwTableName);
+            RETURN;
+        END
 
         IF @InsertCols IS NULL OR @SelectExprs IS NULL
         BEGIN

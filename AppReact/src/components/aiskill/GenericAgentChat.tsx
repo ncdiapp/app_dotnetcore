@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTheme } from '../../redux/hooks/useTheme';
-import { AskUserEvent, genericAgentSvc, type GenericAgentChatUiSnapshot } from '../../webapi/genericAgentSvc';
+import { AskUserEvent, genericAgentSvc, type GenericAgentChatUiSnapshot, type LookupItemDto } from '../../webapi/genericAgentSvc';
 import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
 import { registerTabDataSaver, unregisterTabDataSaver } from '../../redux/hooks/useTabNavigation';
 import {
@@ -23,6 +23,51 @@ type StoredChatMessage = {
     PendingAskUser?: AskUserEvent;
     runSessionId?: string;
     RunSessionId?: string;
+};
+
+const asLookupItems = (raw: unknown): LookupItemDto[] => {
+    if (!Array.isArray(raw)) return [];
+    return raw
+        .map((x: any) => ({
+            Id: String(x?.Id ?? x?.id ?? ''),
+            Display: String(x?.Display ?? x?.display ?? x?.label ?? x?.Id ?? x?.id ?? ''),
+        }))
+        .filter(x => x.Id);
+};
+
+/** Phase A *Ok / proceed / importMode: LLM often omits options → UI would show a text box. */
+const resolveAskUserField = (field: any): { name: string; label: string; required: boolean; isSelect: boolean; options: LookupItemDto[] } => {
+    const name = String(field?.Name ?? field?.name ?? '');
+    let options = asLookupItems(field?.Options ?? field?.options);
+    let type = String(field?.Type ?? field?.type ?? 'text').toLowerCase();
+    if (options.length === 0) {
+        if (/ok$/i.test(name) || /_ok$/i.test(name)) {
+            options = [{ Id: 'ok', Display: 'OK' }, { Id: 'revise', Display: 'Revise' }];
+            type = 'select';
+        } else if (/^(proceed|action)$/i.test(name)) {
+            options = [
+                { Id: 'approve', Display: 'Approve — proceed to Phase B' },
+                { Id: 'revise', Display: 'Revise' },
+                { Id: 'cancel', Display: 'Cancel' },
+            ];
+            type = 'select';
+        } else if (/^(importMode|import_mode)$/i.test(name)) {
+            options = [
+                { Id: 'APPEND', Display: 'APPEND' },
+                { Id: 'REPLACE', Display: 'REPLACE' },
+            ];
+            type = 'select';
+        }
+    } else if (type !== 'select') {
+        type = 'select';
+    }
+    return {
+        name,
+        label: String(field?.Label ?? field?.label ?? name),
+        required: !!(field?.Required ?? field?.required),
+        isSelect: type === 'select' && options.length > 0,
+        options,
+    };
 };
 
 const parseAskUser = (raw: unknown): AskUserEvent | null => {
@@ -138,14 +183,14 @@ const formatAskUserAnswerSummary = (
     }
     if (ask.Fields && ask.Fields.length > 0) {
         const lines = ask.Fields.map(field => {
-            const raw = answers[field.Name] ?? '';
-            if (!raw) return `${field.Label || field.Name}: (empty)`;
-            const fieldType = (field.Type || 'text').toLowerCase();
-            if (fieldType === 'select' && (field.Options?.length ?? 0) > 0) {
-                const opt = field.Options!.find(o => String(o.Id ?? '') === raw);
-                return `${field.Label || field.Name}: ${opt?.Display || raw}`;
+            const resolved = resolveAskUserField(field);
+            const raw = answers[resolved.name] ?? '';
+            if (!raw) return `${resolved.label}: (empty)`;
+            if (resolved.isSelect) {
+                const opt = resolved.options.find(o => String(o.Id ?? '') === raw);
+                return `${resolved.label}: ${opt?.Display || raw}`;
             }
-            return `${field.Label || field.Name}: ${raw}`;
+            return `${resolved.label}: ${raw}`;
         });
         return lines.join('\n');
     }
@@ -1060,22 +1105,21 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                                 (pendingAskUser.Fields && pendingAskUser.Fields.length > 0) ? (
                                     <div className="flex flex-col gap-2">
                                         {pendingAskUser.Fields.map(field => {
-                                            const fieldType = (field.Type || 'text').toLowerCase();
-                                            const isSelect = fieldType === 'select' && (field.Options?.length ?? 0) > 0;
+                                            const resolved = resolveAskUserField(field);
                                             return (
-                                            <div key={field.Name} className="flex items-center gap-2">
-                                                <label className={`w-32 text-xs shrink-0 ${theme.label}`}>
-                                                    {field.Label || field.Name}
-                                                    {field.Required ? ' *' : ''}
+                                            <div key={resolved.name} className="flex items-center gap-2">
+                                                <label className={`w-40 text-xs shrink-0 ${theme.label}`}>
+                                                    {resolved.label}
+                                                    {resolved.required ? ' *' : ''}
                                                 </label>
-                                                {isSelect ? (
+                                                {resolved.isSelect ? (
                                                     <select
                                                         className={`w-1 flex-auto h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox} focus:outline-none`}
-                                                        value={askAnswers[field.Name] || ''}
-                                                        onChange={e => setAskAnswers(prev => ({ ...prev, [field.Name]: e.target.value }))}
+                                                        value={askAnswers[resolved.name] || ''}
+                                                        onChange={e => setAskAnswers(prev => ({ ...prev, [resolved.name]: e.target.value }))}
                                                     >
-                                                        <option value="">{field.Required ? '— select —' : '— skip —'}</option>
-                                                        {field.Options!.map(opt => {
+                                                        <option value="">{resolved.required ? '— select —' : '— skip —'}</option>
+                                                        {resolved.options.map(opt => {
                                                             const id = String(opt.Id ?? '');
                                                             return (
                                                             <option key={id} value={id}>{opt.Display || id}</option>
@@ -1085,8 +1129,8 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                                                 ) : (
                                                     <input
                                                         className={`w-1 flex-auto h-7 px-2 text-xs border ${theme.inputBox} focus:outline-none`}
-                                                        value={askAnswers[field.Name] || ''}
-                                                        onChange={e => setAskAnswers(prev => ({ ...prev, [field.Name]: e.target.value }))}
+                                                        value={askAnswers[resolved.name] || ''}
+                                                        onChange={e => setAskAnswers(prev => ({ ...prev, [resolved.name]: e.target.value }))}
                                                     />
                                                 )}
                                             </div>

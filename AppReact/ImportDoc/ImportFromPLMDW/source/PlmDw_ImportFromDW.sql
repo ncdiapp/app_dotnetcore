@@ -7,7 +7,6 @@
 --   3. 3_PlmDw_ImportFromDW.sql    (this file)
 --   4. 4_PlmDw_ImportBlueprint.json + Phase D Execute
 --   5. 5_PlmDw_ImportBomColorwayGrandchild.sql  (when BOM colorway grids detected)
---   6. 6_PlmDw_CleanupBomColorwayStaging.sql
 -- =============================================================================
 SET ANSI_NULLS ON;
 SET QUOTED_IDENTIFIER ON;

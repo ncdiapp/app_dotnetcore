@@ -331,20 +331,47 @@ ORDER BY g.GridID, g.ColumnOrder, g.GridColumnID
         return $result
     }
 
-    $sourceGridQ = @"
-SELECT TOP 1 g.GridID, g.GridName
-FROM dbo.pdmGrid g
-WHERE g.GridName = N'ProductDesignColorGrid'
-ORDER BY g.GridID
-"@
     $sourceGridId = $null
     $sourceAppTable = 'ProductDesignColorGrid'
-    foreach ($line in (Invoke-PlmQuery $sourceGridQ)) {
-        $parts = $line -split '\|'
-        if ($parts.Count -ge 1) { $sourceGridId = [int]$parts[0].Trim() }
+    $cfgSource = @($Grids | Where-Object {
+        $dw = [string]$_.dwTable
+        $app = [string]$_.appTable
+        $gid = 0
+        [void][int]::TryParse("$($_.gridId)", [ref]$gid)
+        ($app -eq 'ProductDesignColorGrid' -or $dw -match '(?i)^PLM_DW_Grid_ProductDesignColorGrid_(\d+)$') -and
+            $dw -match '(?i)^PLM_DW_Grid_ProductDesignColorGrid_(\d+)$' -and
+            [int]$Matches[1] -eq $gid
+    } | Select-Object -First 1)
+    if ($cfgSource) {
+        $sourceGridId = [int]$cfgSource.gridId
+        if ($cfgSource.appTable) { $sourceAppTable = [string]$cfgSource.appTable }
+    }
+    if (-not $sourceGridId) {
+        $tabIds = @()
+        if ($config.importTabIds) { $tabIds = @($config.importTabIds | ForEach-Object { [int]$_ }) }
+        elseif ($config.tabs) { $tabIds = @($config.tabs | ForEach-Object { [int]$_.tabId }) }
+        $tabFilter = if ($tabIds.Count -gt 0) { "AND tb.TabID IN ($(($tabIds | Sort-Object -Unique) -join ','))" } else { '' }
+        $sourceGridQ = @"
+SELECT TOP 1 g.GridID, g.GridName
+FROM dbo.pdmGrid g
+INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.GridID = g.GridID AND bsi.ControlType = 6
+INNER JOIN dbo.PdmTabBlock tb ON tb.BlockID = bsi.BlockID
+WHERE g.GridName = N'ProductDesignColorGrid'
+  $tabFilter
+ORDER BY CASE WHEN g.GridID = 7 THEN 0 ELSE 1 END, g.GridID
+"@
+        foreach ($line in (Invoke-PlmQuery $sourceGridQ)) {
+            $parts = "$line" -split '\|'
+            if ($parts[0].Trim() -match '^\d+$') { $sourceGridId = [int]$parts[0].Trim(); break }
+        }
+    }
+    if (-not $sourceGridId) {
+        foreach ($line in (Invoke-PlmQuery "SELECT TOP 1 g.GridID FROM dbo.pdmGrid g WHERE g.GridName = N'ProductDesignColorGrid' AND g.GridID = 7")) {
+            if ("$line".Trim() -match '^\d+$') { $sourceGridId = [int]"$line".Trim() }
+        }
     }
     $sourceGridCfg = $Grids | Where-Object { $sourceGridId -and [int]$_.gridId -eq $sourceGridId } | Select-Object -First 1
-    if ($sourceGridCfg) { $sourceAppTable = $sourceGridCfg.appTable }
+    if ($sourceGridCfg -and $sourceGridCfg.appTable) { $sourceAppTable = [string]$sourceGridCfg.appTable }
 
     foreach ($gid in ($keysByGrid.Keys | Sort-Object)) {
         $gridCfg = $Grids | Where-Object { [int]$_.gridId -eq $gid } | Select-Object -First 1
@@ -373,7 +400,21 @@ ORDER BY tb.TabID, tb.OrderId
             continue
         }
 
+        $dwGridTable = [string]$gridCfg.dwTable
+        if (Get-Command Resolve-GridDwTableName -ErrorAction SilentlyContinue) {
+            try { $dwGridTable = Resolve-GridDwTableName $dwGridTable $gid }
+            catch {
+                Write-Host "  BOM colorway probe: skip Grid $gid - $($_.Exception.Message)"
+                continue
+            }
+        }
         $hostApp = $gridCfg.appTable
+        $logical = $dwGridTable
+        if ($logical -match '^PLM_DW_Grid_(.+)_\d+$') { $logical = $Matches[1] }
+        if (Get-Command Get-SharedBomAppTableName -ErrorAction SilentlyContinue) {
+            $fromDw = Get-SharedBomAppTableName $logical
+            if ($fromDw) { $hostApp = $fromDw }
+        }
         $grandchildApp = $hostApp + 'GrandColorway'
         $slots = @()
         $slotNo = 0
@@ -395,7 +436,7 @@ ORDER BY tb.TabID, tb.OrderId
             grandchildAppTable     = $grandchildApp
             sourceGridId           = $sourceGridId
             sourceAppTable         = $sourceAppTable
-            dwGridTable            = $gridCfg.dwTable
+            dwGridTable            = $dwGridTable
             slots                  = $slots
             gcParentLink           = 'ParentRowId'
             gcColorwayKey          = 'Colorway'
@@ -650,6 +691,17 @@ SET @GrandchildTable = @TablePrefix + @GrandchildAppTable;
 
 IF DB_ID(@PlmDatabase) IS NULL BEGIN RAISERROR(N'PLM database not found: %s', 16, 1, @PlmDatabase); RETURN; END
 IF DB_ID(@DwDatabase) IS NULL BEGIN RAISERROR(N'DW database not found: %s', 16, 1, @DwDatabase); RETURN; END
+IF OBJECT_ID(QUOTENAME(@DwDatabase) + N'.dbo.' + QUOTENAME(@DwGridTable), N'U') IS NULL
+BEGIN
+    PRINT N'SKIP BOM colorway grid ' + CAST(@PlmGridId AS NVARCHAR(20))
+        + N': DW table not found ' + @DwDatabase + N'.dbo.' + @DwGridTable
+        + N'. Use physical PLM_DW_Grid_*_' + CAST(@PlmGridId AS NVARCHAR(20))
+        + N' (ProductDesignColorGrid is grid 7 / PLM_DW_Grid_ProductDesignColorGrid_7).';
+    INSERT INTO #ImportLog VALUES (N'SKIP_DW_TABLE', @DwGridTable, 0);
+    EXEC (N'SELECT [Step], [TableName], [RowCount] FROM #ImportLog ORDER BY [Step], [TableName];');
+    PRINT N'PlmDw_ImportBomColorwayGrandchild skipped (missing DW table).';
+    RETURN;
+END
 IF OBJECT_ID(N'dbo.' + QUOTENAME(@HostTable), N'U') IS NULL BEGIN RAISERROR(N'Host table dbo.%s missing.', 16, 1, @HostTable); RETURN; END
 IF OBJECT_ID(N'dbo.' + QUOTENAME(@GrandchildTable), N'U') IS NULL BEGIN RAISERROR(N'Grandchild table dbo.%s missing.', 16, 1, @GrandchildTable); RETURN; END
 IF OBJECT_ID(QUOTENAME(@PlmDatabase) + N'.dbo.pdmStyleColorWayMapping', N'U') IS NULL BEGIN RAISERROR(N'PLM table pdmStyleColorWayMapping not found.', 16, 1); RETURN; END
@@ -817,21 +869,8 @@ PRINT N'PlmDw_ImportBomColorwayGrandchild completed.';
 "@
 }
 
-function Patch-CleanupBomColorwayTemplate([string]$TemplateSql, $bomGrid, $config) {
-    $sql = $TemplateSql
-    $pfx = if ($config.tablePrefixDefault) { $config.tablePrefixDefault } else { 'Plm_' }
-    $sql = $sql.Replace('DECLARE @TablePrefix     NVARCHAR(32)  = N''Plm_'';', ('DECLARE @TablePrefix     NVARCHAR(32)  = N''' + $pfx + ''';'))
-    $sql = $sql.Replace('DECLARE @HostAppTable    NVARCHAR(128) = NULL;', ('DECLARE @HostAppTable    NVARCHAR(128) = N''' + $bomGrid.hostAppTable + ''';'))
-    $sql = $sql.Replace('DECLARE @PlmTabId        INT           = NULL;', ('DECLARE @PlmTabId        INT           = ' + $bomGrid.plmTabId + ';'))
-    return $sql
-}
-
 function Generate-BomColorwaySqlFiles($bomGrids, $config, $templateId, [string]$OutDir) {
     if (-not $bomGrids -or $bomGrids.Count -eq 0) { return }
-
-    $cleanupTpl = Join-Path $PSScriptRoot 'PlmDw_CleanupBomColorwayStaging.sql'
-    if (-not (Test-Path $cleanupTpl)) { throw "Missing $cleanupTpl" }
-    $cleanupBody = Get-Content $cleanupTpl -Raw
 
     $importParts = New-Object System.Collections.Generic.List[string]
     $importParts.Add('')
@@ -841,14 +880,6 @@ function Generate-BomColorwaySqlFiles($bomGrids, $config, $templateId, [string]$
     $importParts.Add('-- =============================================================================')
     $importParts.Add('')
 
-    $cleanupParts = New-Object System.Collections.Generic.List[string]
-    $cleanupParts.Add('')
-    $cleanupParts.Add('-- =============================================================================')
-    $cleanupParts.Add("-- 6_PlmDw_CleanupBomColorwayStaging.sql - Template $templateId")
-    $cleanupParts.Add('-- Optional legacy cleanup: drops host Colorway_N / ImageN if present from older imports.')
-    $cleanupParts.Add('-- =============================================================================')
-    $cleanupParts.Add('')
-
     $idx = 0
     foreach ($bg in $bomGrids) {
         $idx++
@@ -856,18 +887,13 @@ function Generate-BomColorwaySqlFiles($bomGrids, $config, $templateId, [string]$
         if ($idx -gt 1) { [void]$importParts.Add("GO`r`n") }
         [void]$importParts.Add("-- ----- BOM grid $($bg.plmGridId) / block $($bg.productGridBlockId) -> $($bg.grandchildAppTable) -----`r`n")
         [void]$importParts.Add($section)
-
-        $csec = Patch-CleanupBomColorwayTemplate $cleanupBody $bg $config
-        $csec = $csec -replace '(?m)^-- =+.*\r?\n-- PLM BOM Colorway staging.*\r?\n(?:--.*\r?\n)*-- =+\r?\n', ''
-        if ($idx -gt 1) { [void]$cleanupParts.Add("GO`r`n") }
-        [void]$cleanupParts.Add("-- ----- Host $($bg.hostAppTable) -----`r`n")
-        [void]$cleanupParts.Add($csec)
     }
 
     $importPath = Join-Path $OutDir '5_PlmDw_ImportBomColorwayGrandchild.sql'
-    $cleanupPath = Join-Path $OutDir '6_PlmDw_CleanupBomColorwayStaging.sql'
     [System.IO.File]::WriteAllText($importPath, ($importParts -join "`r`n"), (New-Object System.Text.UTF8Encoding $false))
-    [System.IO.File]::WriteAllText($cleanupPath, ($cleanupParts -join "`r`n"), (New-Object System.Text.UTF8Encoding $false))
     Write-Host ('Generated: ' + $importPath + ' (' + $bomGrids.Count + ' BOM grid(s))')
-    Write-Host "Generated: $cleanupPath"
+
+    # Retired: do not emit 6_PlmDw_CleanupBomColorwayStaging.sql (Phase D cleans residual TX fields).
+    $cleanupPath = Join-Path $OutDir '6_PlmDw_CleanupBomColorwayStaging.sql'
+    if (Test-Path $cleanupPath) { Remove-Item $cleanupPath -Force }
 }

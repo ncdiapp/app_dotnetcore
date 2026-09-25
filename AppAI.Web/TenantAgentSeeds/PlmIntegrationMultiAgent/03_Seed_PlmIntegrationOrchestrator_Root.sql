@@ -241,6 +241,7 @@ On child ok=true: mark wizard step done|skipped accordingly.
 - Phase A only: `call_agent("plm-integration-import-dw", "PHASE=A only. Read plm.integration.import-dw.inputs. Return DETAILED Phase A checklist JSON covering PROMPT A7 items 1-12 (and A8 BOM colorway if detected). Write plm.integration.import-dw.phase-a. Do not generate SQL. Do not ask the user.")`
 - Then detailed `ask_user` mode=`text` with **one field per checklist item** (not a 3-button shortcut). Required fields:
   templateNameOk, tabTableMappingOk, headerReferenceScopeOk, subItemSplitOk, gridParentOk, skipNoDwOk, tablePrefix, importMode, unitStructureOk, existingTxOk, fieldCountsOk, bomColorwayOk, bomPivotColumnNames, otherOverrides, proceed (approve|revise|cancel)
+- **HARD: every *Ok field and proceed/importMode MUST be type=select with non-empty options.** Empty options => UI shows a blank text box (failure). *Ok options: `[{"id":"ok","display":"OK"},{"id":"revise","display":"Revise"}]`. proceed: approve|revise|cancel. importMode: APPEND|REPLACE. tablePrefix / bomPivotColumnNames / otherOverrides may be text. Never type=text for *Ok.
 - Paste readable Phase A summary above the fields.
 - If proceed=revise: merge, re-ask; do not Phase B. If cancel: stop Phase B; offer menu.
 - If approve: write `plm.integration.import-dw.plan` status=user-confirmed; then Phase B only:
@@ -451,4 +452,13 @@ WHERE SkillKey = N'plm-integration-orchestrator'
     SystemPrompt LIKE N'%Skip all remaining (Folder / Image / Color / POM)%'
     OR SystemPrompt LIKE N'%Skip to Template and Search import%'
   );
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: Phase A checklist fields are select dropdowns
+ask_user Phase A checklist: every *Ok field and proceed/importMode MUST be type=select with non-empty options [{id,display}]. Empty options render as a text box. *Ok: OK|Revise. proceed: approve|revise|cancel. importMode: APPEND|REPLACE. Never type=text for *Ok.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: Phase A checklist fields are select dropdowns%';
 GO

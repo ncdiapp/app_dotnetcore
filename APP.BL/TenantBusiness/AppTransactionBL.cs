@@ -3890,6 +3890,168 @@ namespace App.BL
             return SaveAppTransactionExDto(transactionDto, isIgnoreValidation, skipPostSaveCacheSync);
         }
 
+        /// <summary>
+        /// Adds pack Child / Grandchild tables that are missing on an existing hierarchy TX.
+        /// Used by AppConfigPack Update when the first Insert created Root+Sibling only.
+        /// </summary>
+        public static OperationCallResult<AppTransactionExDto> AddMissingChildTablesToExistingHierarchy(
+            int transactionId,
+            HierarchyTableSetupDto setupDto,
+            bool isIgnoreValidation = true)
+        {
+            var result = new OperationCallResult<AppTransactionExDto>();
+            var validation = new ValidationResult();
+            result.ValidationResult = validation;
+
+            if (setupDto == null || setupDto.ChildTables == null || setupDto.ChildTables.Count == 0)
+            {
+                result.Object = GetHierarchyTranscationFromDatabase(transactionId);
+                return result;
+            }
+
+            var tx = GetHierarchyTranscationFromDatabase(transactionId);
+            if (tx == null)
+            {
+                validation.Items.Add(new ValidationItem(typeof(AppTransactionEntity),
+                    "App_TransactionEntity_NotFound_Error", ValidationItemType.Error,
+                    "Transaction not found: " + transactionId));
+                return result;
+            }
+
+            var root = tx.AppTransactionUnitList?.FirstOrDefault(u =>
+                u != null && !(u.IsMasterSiblingUnit.HasValue && u.IsMasterSiblingUnit.Value));
+            if (root == null)
+            {
+                validation.Items.Add(new ValidationItem(typeof(AppTransactionEntity),
+                    "App_TransactionEntity_RootMissing_Error", ValidationItemType.Error,
+                    "Root unit missing on transaction " + transactionId));
+                return result;
+            }
+
+            if (string.IsNullOrWhiteSpace(setupDto.SchemaOwner) && setupDto.DataSourceRegisterId.HasValue)
+                setupDto.SchemaOwner = AppCacheManagerBL.GetOneDatabaseFixture(setupDto.DataSourceRegisterId.Value).CurrentOwner;
+            if (string.IsNullOrWhiteSpace(setupDto.SchemaOwner))
+                setupDto.SchemaOwner = "dbo";
+            if (!setupDto.DataSourceRegisterId.HasValue && tx.DataSourceFrom.HasValue)
+                setupDto.DataSourceRegisterId = tx.DataSourceFrom;
+
+            var missingNames = new List<string>();
+            foreach (var childDef in setupDto.ChildTables)
+            {
+                if (childDef == null || string.IsNullOrWhiteSpace(childDef.TableName))
+                    continue;
+                if (FindHierarchyUnitByTableName(tx, childDef.TableName) == null)
+                    missingNames.Add(childDef.TableName);
+                if (childDef.GrandChildTableNames == null)
+                    continue;
+                foreach (string grandName in childDef.GrandChildTableNames)
+                {
+                    if (!string.IsNullOrWhiteSpace(grandName)
+                        && FindHierarchyUnitByTableName(tx, grandName) == null)
+                        missingNames.Add(grandName);
+                }
+            }
+
+            if (missingNames.Count == 0)
+            {
+                result.Object = tx;
+                return result;
+            }
+
+            var ownerTablePairs = missingNames
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(n => new KeyValuePair<string, string>(setupDto.SchemaOwner, n))
+                .ToList();
+            Dictionary<string, DatabaseTable> dictDBTables =
+                AppMetaDataBL.GetDatabaseTableSchemaDictionaryBySchemaOwnerTableNames(
+                    ownerTablePairs, setupDto.DataSourceRegisterId);
+
+            if (tx.DictCurrentPKOrFKLinkToParentKeyGuidMap == null)
+                tx.DictCurrentPKOrFKLinkToParentKeyGuidMap = new Dictionary<Guid, Guid>();
+            if (root.Children == null)
+                root.Children = new List<AppTransactionUnitExDto>();
+
+            bool added = false;
+            foreach (var childDef in setupDto.ChildTables)
+            {
+                if (childDef == null || string.IsNullOrWhiteSpace(childDef.TableName))
+                    continue;
+
+                var childUnit = FindHierarchyUnitByTableName(tx, childDef.TableName);
+                if (childUnit == null)
+                {
+                    string childKey = AppMetaDataBL.GetOwnerTableKey(setupDto.SchemaOwner, childDef.TableName);
+                    if (!dictDBTables.ContainsKey(childKey))
+                        continue;
+                    childUnit = BuildHierarchyUnitWithFields(dictDBTables[childKey]);
+                    MarkLogicalPrimaryKeyIfMissing(childUnit, root);
+                    MarkParentLinkField(childUnit, dictDBTables[childKey], root,
+                        tx.DictCurrentPKOrFKLinkToParentKeyGuidMap);
+                    root.Children.Add(childUnit);
+                    added = true;
+                }
+
+                if (childUnit.Children == null)
+                    childUnit.Children = new List<AppTransactionUnitExDto>();
+
+                if (childDef.GrandChildTableNames == null)
+                    continue;
+                foreach (string grandName in childDef.GrandChildTableNames)
+                {
+                    if (string.IsNullOrWhiteSpace(grandName))
+                        continue;
+                    if (FindHierarchyUnitByTableName(tx, grandName) != null)
+                        continue;
+                    string grandKey = AppMetaDataBL.GetOwnerTableKey(setupDto.SchemaOwner, grandName);
+                    if (!dictDBTables.ContainsKey(grandKey))
+                        continue;
+                    var grandUnit = BuildHierarchyUnitWithFields(dictDBTables[grandKey]);
+                    MarkLogicalPrimaryKeyIfMissing(grandUnit, childUnit);
+                    MarkParentLinkField(grandUnit, dictDBTables[grandKey], childUnit,
+                        tx.DictCurrentPKOrFKLinkToParentKeyGuidMap);
+                    childUnit.Children.Add(grandUnit);
+                    added = true;
+                }
+            }
+
+            if (!added)
+            {
+                result.Object = tx;
+                return result;
+            }
+
+            return SaveAppTransactionExDto(tx, isIgnoreValidation, skipPostSaveCacheSync: false);
+        }
+
+        private static AppTransactionUnitExDto FindHierarchyUnitByTableName(AppTransactionExDto tx, string tableName)
+        {
+            if (tx?.AppTransactionUnitList == null || string.IsNullOrWhiteSpace(tableName))
+                return null;
+            foreach (var unit in tx.AppTransactionUnitList)
+            {
+                if (unit != null
+                    && string.Equals(unit.DataBaseTableName, tableName, StringComparison.OrdinalIgnoreCase))
+                    return unit;
+                if (unit?.Children == null)
+                    continue;
+                foreach (var child in unit.Children)
+                {
+                    if (child != null
+                        && string.Equals(child.DataBaseTableName, tableName, StringComparison.OrdinalIgnoreCase))
+                        return child;
+                    if (child?.Children == null)
+                        continue;
+                    foreach (var grand in child.Children)
+                    {
+                        if (grand != null
+                            && string.Equals(grand.DataBaseTableName, tableName, StringComparison.OrdinalIgnoreCase))
+                            return grand;
+                    }
+                }
+            }
+            return null;
+        }
+
         /// <summary>Builds an AppTransactionUnitExDto with fields populated from the given DatabaseTable.</summary>
         private static AppTransactionUnitExDto BuildHierarchyUnitWithFields(DatabaseTable dbTable)
         {

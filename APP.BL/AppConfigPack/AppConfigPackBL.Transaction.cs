@@ -101,6 +101,9 @@ WHERE TransactionID = @Id";
                     ApplyTransactionOrganizedType(conn, transactionId, tx);
                 }
 
+                if (!inserted)
+                    EnsureExistingTransactionHasPackChildUnits(transactionId, tx, tenantDataSourceId);
+
                 OverlayTransactionFields(transactionId, tx);
                 ApplyUnitOverlays(transactionId, tx);
                 WireLogicalParentKeys(transactionId, tx, pack.Tables);
@@ -377,6 +380,41 @@ WHERE u.TransactionID = @TxId
                         cmd.ExecuteNonQuery();
                     }
                 }
+            }
+        }
+
+        private static void EnsureExistingTransactionHasPackChildUnits(
+            int transactionId,
+            AppConfigPackTransactionDto tx,
+            int tenantDataSourceId)
+        {
+            var children = (tx?.UnitStructure?.ChildUnits ?? new List<AppConfigPackChildUnitDto>())
+                .Where(c => c != null && !string.IsNullOrWhiteSpace(c.TableName))
+                .ToList();
+            if (children.Count == 0)
+                return;
+
+            var setup = new HierarchyTableSetupDto
+            {
+                MasterTableName = tx.UnitStructure.RootTableName,
+                ChildTables = children
+                    .Select(c => new HierarchyChildTableDto
+                    {
+                        TableName = c.TableName,
+                        GrandChildTableNames = MergeGrandChildTableNames(c)
+                    })
+                    .ToList(),
+                DataSourceRegisterId = tenantDataSourceId,
+                SchemaOwner = "dbo"
+            };
+
+            var addResult = AppTransactionBL.AddMissingChildTablesToExistingHierarchy(
+                transactionId, setup, isIgnoreValidation: true);
+            if (addResult?.ValidationResult != null && addResult.ValidationResult.HasErrors)
+            {
+                string msg = addResult.ValidationResult.Items?.FirstOrDefault()?.Message
+                    ?? "Failed to add missing child units on transaction " + transactionId + ".";
+                throw new InvalidOperationException(msg);
             }
         }
 
