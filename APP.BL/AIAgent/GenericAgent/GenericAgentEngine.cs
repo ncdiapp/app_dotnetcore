@@ -100,6 +100,12 @@ namespace App.BL.AIAgent.GenericAgent
                     ChatSessionKey   = resolvedChatKey
                 };
 
+                if (companyId > 0 && !string.IsNullOrWhiteSpace(resolvedChatKey))
+                {
+                    try { GenericAgentFileBL.EnsureRoot(resolvedChatKey, companyId, skillKey); }
+                    catch { /* official source seed must not fail the run */ }
+                }
+
                 // Per-session instance pool keeps stateful plugin instances (e.g. SchemaDesignerPlugin)
                 // alive across multiple tool calls within the same agent run.
                 var instancePool = new Dictionary<string, object>(StringComparer.Ordinal);

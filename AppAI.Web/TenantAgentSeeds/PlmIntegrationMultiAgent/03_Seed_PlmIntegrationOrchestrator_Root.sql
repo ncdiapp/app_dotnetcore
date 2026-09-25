@@ -102,9 +102,11 @@ Repeatable steps use `doneIds` / `pendingIds` (ints as strings or numbers OK).
 Exact SkillKeys:
 - `plm-integration-import-dw` — import-dw Phase A then B then APPLY
 - `plm-integration-entity` / `plm-integration-folder` / `plm-integration-image` / `plm-integration-color` / `plm-integration-pom`
+- `plm-integration-search` — search Phase A then B then APPLY (main Search or additional View)
+- `plm-integration-massupdate` — massupdate Phase A then B then APPLY
 If `call_agent` returns Skill key not found or child error: show the error, `ask_user` Retry | Back to menu, **STOP**. Never run that step preview/execute tools yourself.
 
-Keys: `plm.integration.{code}.inputs` / `.outputs` (import-dw also `.phase-a` / `.plan`).
+Keys: `plm.integration.{code}.inputs` / `.outputs` (import-dw / search / massupdate also `.phase-a` / `.plan`).
 
 Resume: if old wizard has `sibling`, ignore it. Copy non-empty `sibling.doneIds` into `search.doneViewKeys` once, then drop `sibling`.
 
@@ -124,8 +126,8 @@ Large SQL/JSON -> agent-files paths only.
 | color | COLOR IMPORT | linear **skippable** | entity (folder recommended) | call_agent `plm-integration-color` PREVIEW then EXECUTE |
 | pom | POM IMPORT | linear **skippable** | entity (folder recommended) | call_agent `plm-integration-pom` PREVIEW then EXECUTE |
 | import-dw | Import Transaction from Template TAB (PLMDW) | **repeatable** by TemplateId | connect + DW | call_agent `plm-integration-import-dw` Phase A then B then APPLY |
-| search | Import Search View | **repeatable** (main Search or additional View) | connect | ROOT: detect JSON mode; load/preview/execute search tools (additional View uses preview/execute_search_sibling_view internally — do not say sibling to the user) |
-| massupdate | MassUpdate Hierarchical ListEdit | **repeatable** | search recommended | preview/execute_search_massupdate_view |
+| search | Import Search View | **repeatable** (main Search or additional View) | connect | call_agent `plm-integration-search` Phase A then B then APPLY (never say sibling to the user) |
+| massupdate | MassUpdate Hierarchical ListEdit | **repeatable** | search recommended | call_agent `plm-integration-massupdate` Phase A then B then APPLY |
 | fit-grading | Fit Grading QC | deferred v1 | import-dw may register | **v1: register pending only — do NOT execute import** |
 
 Linear order: connect -> techpack-schema -> entity -> folder -> image -> color -> pom -> then repeatable zone.
@@ -213,12 +215,12 @@ Same Confirm|Cancel button_group -> `ensure_techpack_schema` (includeInspectionA
 
 ## 4. STEP PLAYBOOKS (common pattern)
 
-For each execute playbook (entity / folder / image / color / pom / search / massupdate):
+For each execute playbook (entity / folder / image / color / pom):
 1. Ensure sessionId on job (get_plm_import_session / save if needed).
 2. `ask_user` for any missing params.
-3. Preview (child call_agent PHASE=PREVIEW, or ROOT search/massupdate tools). Summarize counts/warnings in plain language (no huge JSON dump).
+3. Preview (child call_agent PHASE=PREVIEW). Summarize counts/warnings in plain language (no huge JSON dump).
 4. `ask_user` confirm Proceed | Cancel before execute — mode=`single_choice` ui=`button_group` layout=`horizontal` with optionsJson (not Prompt text).
-5. Execute (child call_agent PHASE=EXECUTE, or ROOT search/massupdate tools). Children poll jobs themselves.
+5. Execute (child call_agent PHASE=EXECUTE). Children poll jobs themselves.
 6. On success: set step status `done` (or append id to doneIds / doneViewKeys); `write_shared_context` + `update_plm_wizard_progress`; navigate.
 7. On Cancel: do not execute; return to confirm/menu.
 8. If call_agent fails (including Skill key not found): show error; Retry | Back; do **not** run preview/execute locally.
@@ -258,13 +260,36 @@ On child ok=true: mark wizard step done|skipped accordingly.
 - Never run `apply_agent_output_plan` / `execute_agent_sql_file` / `execute_dw_blueprint_from_file` on ROOT. Missing SkillKey or child error = STOP (Retry | Back).
 - If Phase A/B discovery mentions Fit / Grading QC tabs: append TemplateId to `fit-grading.pendingTemplateIds`, tell user it is **registered for later** (v1 does not import Fit Grading yet). Do not block the DW flow.
 
-### search (ROOT local until Wave 2) / massupdate
-- Ask for blueprintJson (Files or paste). Detect JSON `mode` / `Mode` (case-insensitive):
-  - `siblingviewenrichdataset` → additional Search View: `preview_search_sibling_view` / `execute_search_sibling_view`. User-facing label: Additional Search View. Never say Sibling.
-  - `massupdateviewattach` → this is the massupdate step, not search.
-  - else → main Search: `load_search_import_blueprint` / `preview_search_blueprint_config` / `execute_search_blueprint_config`.
-- If the matching id is already in `search.doneIds` (main SearchId) or `search.doneViewKeys` (additional View key `{searchId}:{viewName}`), confirm `Import again` | `Cancel`.
-- preview -> confirm -> execute. Main: append SearchId to doneIds. Additional View: append view key to doneViewKeys.
+### search (HARD GATES — child plm-integration-search)
+- Ask SearchTemplateId via `ask_user`. Optional: additional View needs ReferenceViewId + existing Search IntegrationId. Detect mode yourself (existing Search + ReferenceViewId = additional-view; else main). Never ask the user to pick sibling.
+- If SearchTemplateId already in `search.doneIds` (main) or view key in `search.doneViewKeys`, confirm `Import again` | `Cancel`.
+- Write `plm.integration.search.inputs` (sessionId, saasApplicationId, plmDataSourceId, appDataSourceId, searchTemplateId, mode, optional referenceViewId / appSearchIntegrationId).
+- Never A+B+APPLY in the same turn.
+- Phase A: `call_agent("plm-integration-search", "PHASE=A only. Read plm.integration.search.inputs. Write plm.integration.search.phase-a. Do not generate output/. Do not ask the user.")`
+- Then `ask_user` `[search] Phase A checklist` mode=text with one field per item (JOIN plan / A-B-C, grid strategy, scope, IntegrationId, menu). *Ok and proceed MUST be type=select with options.
+- On approve: write `plm.integration.search.plan`; Phase B: `call_agent(..., "PHASE=B. Read inputs+plan. Write outputs + executionPlan. Do not ask the user.")`
+- Phase B success = `file_list` SizeBytes for the Blueprint path in executionPlan. Do not write doneIds yet.
+- `ask_user` `[search] Apply generated outputs` Apply | Cancel.
+- Apply: next tool MUST be `call_agent("plm-integration-search", "PHASE=APPLY. Call apply_agent_output_plan once with outputsContextKey=plm.integration.search.outputs. Do not ask the user.")`.
+- Valid APPLY: outputs.apply ok=true AND executed==planned AND every steps[].ok. Then append SearchId to doneIds (mode=main) or view key to doneViewKeys (additional-view). Cancel => pendingIds.
+- Never run apply_agent_output_plan / execute_search_* / load_search_import_blueprint on ROOT.
+
+### massupdate (HARD GATES — child plm-integration-massupdate)
+- Ask SearchTemplateId + MassUpdateViewId. Search must already exist.
+- If already in `massupdate.doneIds`, confirm `Import again` | `Cancel`.
+- Write `plm.integration.massupdate.inputs`.
+- Phase A: `call_agent("plm-integration-massupdate", "PHASE=A only. Read inputs. Write phase-a. Do not generate output/. Do not ask the user.")`
+- Child ok=true with empty files[] / executionPlan[] is SUCCESS (Phase A writes phase-a only). NEVER title the next ask_user Cancelled. NEVER paste child JSON into Prompt. NEVER write "setup was cancelled" or "How would you like to proceed".
+- Immediate next tool: `ask_user` mode=text, Prompt first line exactly `[massupdate] Phase A checklist`, body = 2-4 lines (recommended option + why). fieldsJson MUST include:
+  recommendedOption type=select options A | B1 | B2 | C (pre-select the child recommendation);
+  listEditPick type=text (B1 IntegrationId);
+  listEditCreateOk type=select OK|Revise (B2 structure);
+  proceed type=select approve|revise|cancel.
+- On proceed=approve and option A|B1|B2: write `plm.integration.massupdate.plan` then Phase B then Apply same pattern as search.
+- On option C or proceed=cancel: open `[Menu] Repeatable imports`. Do not invent `[massupdate] Phase A Cancelled`.
+- Apply: `call_agent("plm-integration-massupdate", "PHASE=APPLY. Call apply_agent_output_plan once with outputsContextKey=plm.integration.massupdate.outputs. Do not ask the user.")`.
+- Valid APPLY => append MassUpdateViewId (or SearchViewId from steps) to massupdate.doneIds.
+- Never run execute_search_massupdate_view / apply_agent_output_plan on ROOT. Never treat MassUpdate as an additional display View.
 
 ### fit-grading (v1)
 - Menu option only lists pendingTemplateIds.
@@ -289,6 +314,10 @@ Every `ask_user` Prompt MUST start with a one-line step title in brackets, then 
 - `[import-dw] Enter TemplateId`
 - `[import-dw] Phase A checklist — confirm before Phase B`
 - `[import-dw] Apply generated outputs`
+- `[search] Phase A checklist`
+- `[search] Apply generated outputs`
+- `[massupdate] Phase A checklist`
+- `[massupdate] Apply generated outputs`
 - `[Menu] Repeatable imports`
 Never send a bare error or options list without the `[StepName] …` first line.
 
@@ -328,7 +357,7 @@ On `start-new`: discard this Chat job only, then Gate-0.
 - On `[session_start]`: `get_plm_wizard_progress` for **this Chat only** (never company-wide latest). If found, Resume fork (Continue | Abandon this Chat job). If not found, Gate-0.
 - First priority when not resumable / after abandon: Gate-0 via ask_user selects (App + registers). No child until Gate-0 clear.
 - Progress = `plm.integration.wizard` + durable `update_plm_wizard_progress`. Always update both after status changes.
-- Exact child SkillKeys: `plm-integration-import-dw`, `plm-integration-entity`, `plm-integration-folder`, `plm-integration-image`, `plm-integration-color`, `plm-integration-pom`. Missing SkillKey or child error = STOP (Retry | Back). Never run those preview/execute tools on ROOT.
+- Exact child SkillKeys: `plm-integration-import-dw`, `plm-integration-entity`, `plm-integration-folder`, `plm-integration-image`, `plm-integration-color`, `plm-integration-pom`, `plm-integration-search`, `plm-integration-massupdate`. Missing SkillKey or child error = STOP (Retry | Back). Never run those preview/execute tools on ROOT.
 - Prefer shared context + file paths over dumping large SQL/JSON.
 - Keep answers concise; use ask_user for choices. Every ask_user Prompt starts with `[StepName] …`.
 - Menus/confirms: ALWAYS call `ask_user` (`mode=single_choice` + `ui=button_group` + non-empty `optionsJson`) as the **last tool of the turn**. Missing optionsJson → tool error → retry with optionsJson.
@@ -461,4 +490,62 @@ ask_user Phase A checklist: every *Ok field and proceed/importMode MUST be type=
 '
 WHERE SkillKey = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: Phase A checklist fields are select dropdowns%';
+GO
+
+-- Existing tenants: Wave 2 search / massupdate children (no ROOT-local blueprintJson)
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(
+    SystemPrompt,
+    N'### search (ROOT local until Wave 2) / massupdate
+- Ask for blueprintJson (Files or paste). Detect JSON `mode` / `Mode` (case-insensitive):
+  - `siblingviewenrichdataset` → additional Search View: `preview_search_sibling_view` / `execute_search_sibling_view`. User-facing label: Additional Search View. Never say Sibling.
+  - `massupdateviewattach` → this is the massupdate step, not search.
+  - else → main Search: `load_search_import_blueprint` / `preview_search_blueprint_config` / `execute_search_blueprint_config`.
+- If the matching id is already in `search.doneIds` (main SearchId) or `search.doneViewKeys` (additional View key `{searchId}:{viewName}`), confirm `Import again` | `Cancel`.
+- preview -> confirm -> execute. Main: append SearchId to doneIds. Additional View: append view key to doneViewKeys.',
+    N'### search (HARD GATES — child plm-integration-search)
+- Ask SearchTemplateId. Additional View: ReferenceViewId + existing Search. Never ask sibling.
+- Write plm.integration.search.inputs. Phase A then HITL then plan then Phase B then Apply.
+- Apply: call_agent PHASE=APPLY apply_agent_output_plan outputsContextKey=plm.integration.search.outputs.
+- doneIds (main SearchId) / doneViewKeys (additional View). Never run execute_search_* on ROOT.
+
+### massupdate (HARD GATES — child plm-integration-massupdate)
+- Ask SearchTemplateId + MassUpdateViewId. Phase A/B/APPLY via call_agent. outputsContextKey=plm.integration.massupdate.outputs.
+- Never run execute_search_massupdate_view on ROOT.')
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt LIKE N'%ROOT local until Wave 2%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: search and massupdate are children
+Use call_agent plm-integration-search and plm-integration-massupdate (Phase A then B then APPLY).
+Never ask for blueprintJson paste. Never run load_search_import_blueprint / execute_search_* / execute_search_massupdate_view / apply_agent_output_plan on ROOT.
+APPLY must pass outputsContextKey plm.integration.search.outputs or plm.integration.massupdate.outputs.
+Missing SkillKey = STOP (Retry | Back). Never say sibling to the user.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: search and massupdate are children%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(
+    SystemPrompt,
+    N'Exact child SkillKeys: `plm-integration-import-dw`, `plm-integration-entity`, `plm-integration-folder`, `plm-integration-image`, `plm-integration-color`, `plm-integration-pom`.',
+    N'Exact child SkillKeys: `plm-integration-import-dw`, `plm-integration-entity`, `plm-integration-folder`, `plm-integration-image`, `plm-integration-color`, `plm-integration-pom`, `plm-integration-search`, `plm-integration-massupdate`.')
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt LIKE N'%, `plm-integration-pom`. Missing SkillKey%'
+  AND SystemPrompt NOT LIKE N'%plm-integration-search%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: massupdate Phase A success is a checklist, not Cancelled
+After plm-integration-massupdate PHASE=A returns ok=true: empty files[] and executionPlan[] is correct.
+Next tool MUST be ask_user title [massupdate] Phase A checklist with recommendedOption A|B1|B2|C and proceed approve|revise|cancel.
+NEVER title [massupdate] Phase A Cancelled. NEVER write "MassUpdate setup was cancelled" or "How would you like to proceed". NEVER paste child JSON into Prompt.
+Option C or user cancel => [Menu] Repeatable imports.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: massupdate Phase A success is a checklist%';
 GO

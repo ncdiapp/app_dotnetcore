@@ -1,6 +1,6 @@
 # PLM Multi-Agent — Child SkillKey / call_agent contracts
 
-**Status:** Wave 0+1 live. Search / MassUpdate children are Wave 2 (ROOT still runs those tools).  
+**Status:** Wave 0+1+2 live. Search / MassUpdate are Deterministic children (`09_` / `10_`).  
 **ROOT:** `plm-integration-orchestrator` (Interactive, all HITL, `IsActive=1` — only agent on the left menu).  
 **Children:** Deterministic, `IsActive=0` (hidden from left menu). `call_agent` loads by SkillKey. Never `ask_user` / PlanGate wait.  
 **Missing SkillKey:** `call_agent` errors; ROOT stops (Retry / Back). No local preview/execute fallback.
@@ -45,8 +45,8 @@ On failure: `ok=false`, fill `errors[]`, leave wizard step unchanged (ROOT decid
 | `plm-integration-image` | `image` | **Yes** (`06_*.sql`) | Linear skippable |
 | `plm-integration-color` | `color` | **Yes** (`07_*.sql`) | Linear skippable |
 | `plm-integration-pom` | `pom` | **Yes** (`08_*.sql`) | Linear skippable |
-| `plm-integration-search` | `search` | Later | Repeatable (main Search **or** additional View on an existing Search) |
-| `plm-integration-massupdate` | `massupdate` | Later | Repeatable |
+| `plm-integration-search` | `search` | **Yes** (`09_*.sql`) | Repeatable (main Search **or** additional View on an existing Search) |
+| `plm-integration-massupdate` | `massupdate` | **Yes** (`10_*.sql`) | Repeatable |
 
 **No `plm-integration-sibling`.** Additional Search View (former Sibling View / Card attach) is **the same wizard step and the same child** as Import Search View. MassUpdate stays separate.
 
@@ -73,6 +73,8 @@ Pattern: `plm.integration.{code}.inputs` | `.plan` (if HITL mid-flight) | `.outp
 | image | `…image.inputs`, `.outputs` |
 | color | `…color.inputs`, `.outputs` |
 | pom | `…pom.inputs`, `.outputs` |
+| search | `…search.inputs`, `.phase-a`, `.plan`, `.outputs` |
+| massupdate | `…massupdate.inputs`, `.phase-a`, `.plan`, `.outputs` |
 
 `inputs` minimum:
 
@@ -106,6 +108,28 @@ call_agent("<SkillKey>", "<PHASE=…>. Read plm.integration.<code>.inputs. <cons
 | APPLY | `PHASE=APPLY. Call apply_agent_output_plan once.` | `…outputs.apply` + `output/{id}/apply-log.json` | `outputs.apply.ok=true` **and** `executed==planned` → `doneIds`. Chat “6/6” is not proof. Cancel / apply failed → `pendingApplyIds`. |
 
 Never A+B+APPLY in one ROOT turn. ROOT never runs apply/execute file tools. After user clicks Apply, ROOT's next tool **must** be `call_agent` PHASE=APPLY.
+
+### `plm-integration-search` (live)
+
+Same three-step gate as import-dw. `outputsContextKey=plm.integration.search.outputs`.
+
+| Phase | Message (shape) | Child writes | ROOT after return |
+|---|---|---|---|
+| A | `PHASE=A only. Read …search.inputs. Write …search.phase-a. No output/.` | `…phase-a` | HITL JOIN / A-B-C → write `…plan` |
+| B | `PHASE=B. Read inputs+plan. Write output/{searchTemplateId}/ + …outputs (files + executionPlan).` | `…outputs` only for `file_list` files | Show Apply when Blueprint SizeBytes exist |
+| APPLY | `PHASE=APPLY. Call apply_agent_output_plan once with outputsContextKey=plm.integration.search.outputs.` | `…outputs.apply` | `ok` + `executed==planned` → `doneIds` or `doneViewKeys` |
+
+FinalResponse **must** include `"mode": "main" | "additional-view"`.
+
+### `plm-integration-massupdate` (live)
+
+Same three-step gate. `outputsContextKey=plm.integration.massupdate.outputs`.
+
+| Phase | Message (shape) | Child writes | ROOT after return |
+|---|---|---|---|
+| A | `PHASE=A only. Read …massupdate.inputs. Write …phase-a.` | `…phase-a` | HITL A/B1/B2/C (+ ListEdit) → `…plan` |
+| B | `PHASE=B. Write 3_PlmSearch_MassUpdateView_{id}.json + executionPlan.` | `…outputs` | Apply confirm |
+| APPLY | `PHASE=APPLY. apply_agent_output_plan outputsContextKey=plm.integration.massupdate.outputs` | `…outputs.apply` | `doneIds` |
 
 ### `executionPlan` (variable file count — only files that exist)
 
@@ -222,7 +246,7 @@ Wizard `search` only:
 
 Search child FinalResponse should include `"mode": "main" | "additional-view"` so ROOT appends the right id list.
 
-Until the search child is seeded, ROOT runs both tool sets **locally** under the search playbook.
+ROOT never runs search/massupdate execute tools locally. Missing SkillKey → stop.
 
 ---
 
@@ -236,7 +260,18 @@ Same three steps; only the `kind` → tool map changes:
 
 Typical later plans:
 
-- Search: one step `kind=search-blueprint`, `path=output/{searchId}/1_PlmSearch_ImportBlueprint.json` (add `execute_search_blueprint_from_file` when that child is seeded).
+- Search main / Option B: `kind=search-blueprint`, `path=output/{searchTemplateId}/1_PlmSearch_ImportBlueprint.json` (or `_V{ViewId}.json`)
+- Additional View Option A: `kind=search-additional-view`, `path=output/{searchTemplateId}/2_PlmSearch_SiblingView_{viewId}.json`
+- MassUpdate: `kind=search-massupdate`, `path=output/{searchTemplateId}/3_PlmSearch_MassUpdateView_{muId}.json`
+
+APPLY: same `apply_agent_output_plan` once. Pass `outputsContextKey`:
+- search → `plm.integration.search.outputs`
+- massupdate → `plm.integration.massupdate.outputs`
+
+BL reads JSON from disk (do not pass `blueprintJson`). Maps:
+- `search-blueprint` → `ExecuteSearchBlueprintConfig`
+- `search-additional-view` → `ExecuteSearchSiblingViewConfig`
+- `search-massupdate` → `ExecuteSearchMassUpdateViewConfig`
 - Grading QC: one or more `kind=sql`, `target=app` (same `execute_agent_sql_file`; pass ERP DataSourceId in `requiredDataSourceIds` when the script three-part-names ERP).
 
 ---
@@ -249,15 +284,17 @@ Typical later plans:
 2. Children `04`…`08` seeded; ROOT `call_agent` only for entity/folder/image/color/pom. Missing SkillKey → stop.
 3. HITL stays on ROOT; children are Deterministic phase workers.
 
-### Wave 2 — not started
+### Wave 2 — done
 
-4. One search child `plm-integration-search` owning **both** tool sets. **Do not** add a sibling child.
-5. MassUpdate child `plm-integration-massupdate`.
-6. Re-run `RUN_ALL.bat` / verify SkillKeys in `99_Verify.sql`.
+4. One search child `plm-integration-search` (`09_*.sql`) owning **both** tool sets. **Do not** add a sibling child.
+5. MassUpdate child `plm-integration-massupdate` (`10_*.sql`).
+6. `apply_agent_output_plan` kinds: `search-blueprint` / `search-additional-view` / `search-massupdate`.
+7. Re-run `RUN_ALL.bat` / verify SkillKeys in `99_Verify.sql`.
 
-Draft SystemPrompts + official SOURCE pack (not seeded yet):  
+Human-readable prompts + official SOURCE pack:  
 `AppReact/ImportDoc/ImportPLMSearchView/MultiAgent/`  
 (`Prompt_plm-integration-search.txt`, `Prompt_plm-integration-massupdate.txt`, `source/`).
+Product auto-seeds `source/` + `AgentStarter` via `GenericAgentOfficialSourceSeedBL` — do not ask users to upload probe/example files.
 
 ## Out of scope (v1)
 

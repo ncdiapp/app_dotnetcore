@@ -30,6 +30,7 @@ namespace App.BL.AIAgent.GenericAgent
             Directory.CreateDirectory(Path.Combine(root, "output"));
             if (created && !string.IsNullOrWhiteSpace(skillKey))
                 CopyDefaultSourceToChat(skillKey, sessionKey, companyId, overwrite: false);
+            GenericAgentOfficialSourceSeedBL.SeedIfMissing(sessionKey, companyId, skillKey);
             return root;
         }
 
@@ -37,6 +38,7 @@ namespace App.BL.AIAgent.GenericAgent
         {
             var root = ResolveStarter(skillKey, null, companyId);
             Directory.CreateDirectory(root);
+            GenericAgentOfficialSourceSeedBL.SeedStarterIfMissing(skillKey, companyId);
             return root;
         }
 
@@ -145,9 +147,9 @@ namespace App.BL.AIAgent.GenericAgent
             return ListDir(root, dir);
         }
 
-        public static GenericAgentFileContentDto ReadText(string sessionKey, string relativePath, int companyId)
+        public static GenericAgentFileContentDto ReadText(string sessionKey, string relativePath, int companyId, string skillKey = null)
         {
-            var bytes = ReadBytes(sessionKey, relativePath, companyId);
+            var bytes = ReadBytes(sessionKey, relativePath, companyId, skillKey);
             var truncated = bytes.Length > MaxFileBytes;
             var take = truncated ? (int)Math.Min(MaxFileBytes, bytes.Length) : bytes.Length;
             return new GenericAgentFileContentDto
@@ -158,8 +160,9 @@ namespace App.BL.AIAgent.GenericAgent
             };
         }
 
-        public static byte[] ReadBytes(string sessionKey, string relativePath, int companyId)
+        public static byte[] ReadBytes(string sessionKey, string relativePath, int companyId, string skillKey = null)
         {
+            EnsureRoot(sessionKey, companyId, skillKey);
             var full = Resolve(sessionKey, relativePath, companyId);
             if (!File.Exists(full))
                 throw new FileNotFoundException("Agent file not found.", relativePath);

@@ -42,6 +42,12 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 return JsonConvert.SerializeObject(new { ok = false, error = "prompt is required." });
             }
 
+            var promptError = ValidateAskUserPrompt(prompt);
+            if (promptError != null)
+            {
+                return JsonConvert.SerializeObject(new { ok = false, error = promptError });
+            }
+
             var normalizedMode = string.IsNullOrWhiteSpace(mode) ? "text" : mode.Trim().ToLowerInvariant();
             if (normalizedMode != "text" && normalizedMode != "single_choice" && normalizedMode != "multi_choice")
                 normalizedMode = "text";
@@ -134,6 +140,40 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 selectedIds = response.SelectedIds ?? new List<string>(),
                 freeText = response.FreeText ?? ""
             });
+        }
+
+        /// <summary>
+        /// ROOT sometimes titles a successful Phase A as "Cancelled" and pastes child JSON.
+        /// Reject that so the model retries the real checklist (A/B1/B2/C).
+        /// </summary>
+        private static string ValidateAskUserPrompt(string prompt)
+        {
+            var trimmed = SanitizeAskUserPrompt(prompt);
+            if (string.IsNullOrWhiteSpace(trimmed))
+                return null;
+
+            var nl = trimmed.IndexOfAny(new[] { '\r', '\n' });
+            var firstLine = nl < 0 ? trimmed : trimmed.Substring(0, nl);
+
+            if (firstLine.IndexOf("Phase A Cancelled", StringComparison.OrdinalIgnoreCase) >= 0
+                || firstLine.IndexOf("Phase A Canceled", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Invalid ask_user title. A child Phase A JSON with ok=true is success — empty files/executionPlan is correct. "
+                    + "Retry ask_user with first line [massupdate] Phase A checklist (or [search] / [import-dw] Phase A checklist). "
+                    + "MassUpdate fieldsJson: recommendedOption select A|B1|B2|C plus proceed approve|revise|cancel. "
+                    + "Do not paste child JSON into Prompt. If the user actually cancelled, use [Menu] Repeatable imports.";
+            }
+
+            if (trimmed.IndexOf("How would you like to proceed", StringComparison.OrdinalIgnoreCase) >= 0
+                || trimmed.IndexOf("setup was cancelled", StringComparison.OrdinalIgnoreCase) >= 0
+                || trimmed.IndexOf("setup was canceled", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return "Invalid ask_user Prompt. Do not write 'setup was cancelled' or 'How would you like to proceed'. "
+                    + "After Phase A ok=true use [massupdate] Phase A checklist with recommendedOption A|B1|B2|C. "
+                    + "If the user cancelled, use [Menu] Repeatable imports with optionsJson buttons.";
+            }
+
+            return null;
         }
 
         /// <summary>
@@ -303,6 +343,18 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 field.Type = "select";
                 field.Options.Add(new LookupItemDto { Id = "APPEND", Display = "APPEND" });
                 field.Options.Add(new LookupItemDto { Id = "REPLACE", Display = "REPLACE" });
+                return;
+            }
+            if (name.Equals("recommendedOption", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("attachOption", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("muOption", StringComparison.OrdinalIgnoreCase)
+                || name.Equals("massUpdateOption", StringComparison.OrdinalIgnoreCase))
+            {
+                field.Type = "select";
+                field.Options.Add(new LookupItemDto { Id = "A", Display = "A — Single table update" });
+                field.Options.Add(new LookupItemDto { Id = "B1", Display = "B1 — Hierarchical, use existing ListEdit" });
+                field.Options.Add(new LookupItemDto { Id = "B2", Display = "B2 — Hierarchical, create new ListEdit" });
+                field.Options.Add(new LookupItemDto { Id = "C", Display = "C — Do not attach this Mass Update View" });
             }
         }
 

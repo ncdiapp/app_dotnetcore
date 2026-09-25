@@ -21,7 +21,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             {
                 RequireSession(context);
                 path = GenericAgentExcelFileHelper.NormalizeRelativePath(path);
-                var files = GenericAgentFileBL.List(context.ChatSessionKey, path, context.CompanyId);
+                var files = GenericAgentFileBL.List(context.ChatSessionKey, path, context.CompanyId, context.SkillKey);
                 return Task.FromResult(JsonConvert.SerializeObject(new { Path = path ?? "", Files = files }));
             }
             catch (Exception ex)
@@ -42,6 +42,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 // Previously text-written ".xlsx" cannot be opened by GemBox — report clearly.
                 if (GenericAgentExcelFileHelper.IsExcelPath(path))
                 {
+                    GenericAgentFileBL.EnsureRoot(context.ChatSessionKey, context.CompanyId, context.SkillKey);
                     var full = GenericAgentFileBL.Resolve(context.ChatSessionKey, path, context.CompanyId);
                     if (!File.Exists(full))
                         return Task.FromResult(JsonConvert.SerializeObject(new { Error = "FILE_NOT_FOUND", RelativePath = path }));
@@ -66,7 +67,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     }
                 }
 
-                var content = GenericAgentFileBL.ReadText(context.ChatSessionKey, path, context.CompanyId);
+                GenericAgentFileBL.EnsureRoot(context.ChatSessionKey, context.CompanyId, context.SkillKey);
+                var content = GenericAgentFileBL.ReadText(context.ChatSessionKey, path, context.CompanyId, context.SkillKey);
                 return Task.FromResult(JsonConvert.SerializeObject(content));
             }
             catch (Exception ex)
@@ -89,7 +91,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 if (GenericAgentExcelFileHelper.IsExcelPath(path))
                 {
-                    GenericAgentFileBL.EnsureRoot(context.ChatSessionKey, context.CompanyId);
+                    GenericAgentFileBL.EnsureRoot(context.ChatSessionKey, context.CompanyId, context.SkillKey);
                     var full = GenericAgentFileBL.Resolve(context.ChatSessionKey, path, context.CompanyId);
                     // Replace bogus text-as-xlsx left by older runs
                     if (File.Exists(full) && !IsZipSignature(full)

@@ -57,6 +57,14 @@ const resolveAskUserField = (field: any): { name: string; label: string; require
                 { Id: 'REPLACE', Display: 'REPLACE' },
             ];
             type = 'select';
+        } else if (/^(recommendedOption|attachOption|muOption|massUpdateOption)$/i.test(name)) {
+            options = [
+                { Id: 'A', Display: 'A — Single table update' },
+                { Id: 'B1', Display: 'B1 — Hierarchical, use existing ListEdit' },
+                { Id: 'B2', Display: 'B2 — Hierarchical, create new ListEdit' },
+                { Id: 'C', Display: 'C — Do not attach this Mass Update View' },
+            ];
+            type = 'select';
         }
     } else if (type !== 'select') {
         type = 'select';

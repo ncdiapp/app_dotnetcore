@@ -354,12 +354,12 @@ Additional-view Option A:
 }
 ```
 
-APPLY: `apply_agent_output_plan` once. BL maps:
+APPLY: call `apply_agent_output_plan` **once** with `outputsContextKey=plm.integration.search.outputs`. Do **not** pass `blueprintJson`. BL maps:
 
-- `kind=search-blueprint` → `execute_search_blueprint_config` / `execute_search_blueprint_from_file`
-- `kind=search-additional-view` → `execute_search_sibling_view` (internal name; user-facing = additional View)
+- `kind=search-blueprint` → `ExecuteSearchBlueprintConfig` (file on disk)
+- `kind=search-additional-view` → `ExecuteSearchSiblingViewConfig` (internal name; user-facing = additional View)
 
-If those tools are not subscribed yet → `ok=false` with `nextHint` for ROOT: user can upload JSON in **PLM Data Import → Search Import**. Still leave files on disk.
+If the tool is missing → `ok=false`. Still leave files on disk.
 
 ---
 
@@ -390,7 +390,7 @@ Copy `pdmSearchTemplateDCU.OperationID` as-is:
 ## PHASE=APPLY
 
 1. Read `…search.outputs.executionPlan`.
-2. Call `apply_agent_output_plan` **once**.
+2. Call `apply_agent_output_plan` **once** with `outputsContextKey=plm.integration.search.outputs`.
 3. Write `output/{searchTemplateId}/apply-log.json` if the tool does not.
 4. `ok=true` only when executed==planned.
 5. FinalResponse `mode` = `main` | `additional-view` so ROOT appends `search.doneIds` vs `search.doneViewKeys` (`"{searchId}:{viewName}"`).

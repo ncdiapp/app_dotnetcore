@@ -16,7 +16,10 @@ WHERE (
       N'test_plm_connection', N'save_plm_import_session',
       N'update_plm_wizard_progress', N'get_plm_wizard_progress',
       N'preview_dw_blueprint_from_file', N'execute_dw_blueprint_from_file',
-      N'apply_agent_output_plan')
+      N'apply_agent_output_plan',
+      N'preview_search_blueprint_config', N'execute_search_blueprint_config',
+      N'preview_search_sibling_view', N'execute_search_sibling_view',
+      N'preview_search_massupdate_view', N'execute_search_massupdate_view')
   )
   OR (LibraryKey = N'agent-files' AND ToolName = N'execute_agent_sql_file')
 ORDER BY LibraryKey, ToolName;
@@ -36,12 +39,16 @@ SELECT SkillKey, DisplayName, ExecutionMode, IsActive,
        CASE WHEN SystemPrompt LIKE N'%plm-integration-entity%' THEN 1 ELSE 0 END AS HasEntityChild,
        CASE WHEN SystemPrompt LIKE N'%Never run those preview/execute tools on ROOT%' THEN 1 ELSE 0 END AS HasNoLocalFallback,
        CASE WHEN SystemPrompt LIKE N'%PHASE=APPLY%' THEN 1 ELSE 0 END AS HasPhaseApply,
-       CASE WHEN SystemPrompt LIKE N'%pendingApplyIds%' THEN 1 ELSE 0 END AS HasPendingApply
+       CASE WHEN SystemPrompt LIKE N'%pendingApplyIds%' THEN 1 ELSE 0 END AS HasPendingApply,
+       CASE WHEN SystemPrompt LIKE N'%plm-integration-search%' THEN 1 ELSE 0 END AS HasSearchChild,
+       CASE WHEN SystemPrompt LIKE N'%plm-integration-massupdate%' THEN 1 ELSE 0 END AS HasMassUpdateChild,
+       CASE WHEN SystemPrompt LIKE N'%ROOT local until Wave 2%' THEN 1 ELSE 0 END AS HasLegacySearchLocal
 FROM dbo.AppAgentSkillSet
 WHERE SkillKey IN (
   N'plm-integration-orchestrator', N'plm-integration-import-dw',
   N'plm-integration-entity', N'plm-integration-folder', N'plm-integration-image',
-  N'plm-integration-color', N'plm-integration-pom')
+  N'plm-integration-color', N'plm-integration-pom',
+  N'plm-integration-search', N'plm-integration-massupdate')
 ORDER BY SkillKey;
 
 PRINT '=== Active flags (expect ROOT=1, children=0) ===';
@@ -49,7 +56,8 @@ SELECT SkillKey, IsActive FROM dbo.AppAgentSkillSet
 WHERE SkillKey IN (
   N'plm-integration-orchestrator', N'plm-integration-import-dw',
   N'plm-integration-entity', N'plm-integration-folder', N'plm-integration-image',
-  N'plm-integration-color', N'plm-integration-pom')
+  N'plm-integration-color', N'plm-integration-pom',
+  N'plm-integration-search', N'plm-integration-massupdate')
 ORDER BY CASE WHEN SkillKey = N'plm-integration-orchestrator' THEN 0 ELSE 1 END, SkillKey;
 
 PRINT '=== Subscriptions ===';
@@ -57,7 +65,8 @@ SELECT SkillKey, LibraryKey FROM dbo.AppAgentLibrarySubscription
 WHERE SkillKey IN (
   N'plm-integration-orchestrator', N'plm-integration-import-dw',
   N'plm-integration-entity', N'plm-integration-folder', N'plm-integration-image',
-  N'plm-integration-color', N'plm-integration-pom')
+  N'plm-integration-color', N'plm-integration-pom',
+  N'plm-integration-search', N'plm-integration-massupdate')
 ORDER BY SkillKey, LibraryKey;
 
 PRINT '=== Shared context table (platform; wizard durable scope = ChatSessionKey) ===';

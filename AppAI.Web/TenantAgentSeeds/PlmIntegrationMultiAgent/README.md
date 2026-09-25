@@ -21,9 +21,11 @@ For a **new** tenant DB (structure through **V034+**). Do not mix with `PlmInteg
 | 6 | `06_Seed_PlmIntegrationImage_Child.sql` | Child `plm-integration-image` (inactive) |
 | 7 | `07_Seed_PlmIntegrationColor_Child.sql` | Child `plm-integration-color` (inactive) |
 | 8 | `08_Seed_PlmIntegrationPom_Child.sql` | Child `plm-integration-pom` (inactive) |
-| 9 | `99_Verify.sql` | Smoke checks |
+| 9 | `09_Seed_PlmIntegrationSearch_Child.sql` | Child `plm-integration-search` (inactive) |
+| 10 | `10_Seed_PlmIntegrationMassUpdate_Child.sql` | Child `plm-integration-massupdate` (inactive) |
+| 11 | `99_Verify.sql` | Smoke checks |
 | — | `CHILD_AGENT_CONTRACTS.md` | SkillKeys + `call_agent` contracts |
-| — | `RUN_ALL.bat` | Runs 01→08 → 99 |
+| — | `RUN_ALL.bat` | Runs 01→10 → 99 |
 
 ## Apply
 
@@ -47,11 +49,13 @@ Prereqs: V022+ (`AppAgentSharedContext`); rebuild/copy `APP.AgentPlugins.PlmImpo
 | `plm-integration-image` | Deterministic Image / Sketch child | No |
 | `plm-integration-color` | Deterministic Color child | No |
 | `plm-integration-pom` | Deterministic POM child | No |
+| `plm-integration-search` | Deterministic Search + additional View (A / B / APPLY) | No |
+| `plm-integration-massupdate` | Deterministic Mass Update View (A / B / APPLY) | No |
 
 Gate-0: `list_tenant_saas_applications` + `list_tenant_data_sources` → `ask_user` selects (App + PLM/DW/ERP/ExDb).
 
 **Progress:** in-chat `write_shared_context` (WorkflowId, this turn) + durable `update_plm_wizard_progress` on `AppAgentSharedContext` with ScopeId=`ChatSessionKey`. PLM job table is plugin-only, not a Flyway Vxxx.
 
-**Search / MassUpdate:** still ROOT-local (Wave 2). Additional Search View is the same Search menu (JSON `mode=siblingviewenrichdataset`); no Sibling menu item.
+**Search / MassUpdate (Wave 2):** `call_agent` children. Additional Search View is the same Search menu (`mode=additional-view`); no Sibling menu item. APPLY uses `apply_agent_output_plan` with `outputsContextKey` = `plm.integration.search.outputs` or `plm.integration.massupdate.outputs`. Official probe/example files are auto-seeded from `AppReact/ImportDoc/ImportPLMSearchView/MultiAgent/source/` into chat `source/` — users do not upload them.
 
-If a child SkillKey is missing, ROOT must **stop** (Retry / Back). No local preview/execute fallback for entity/folder/image/color/pom/import-dw.
+If a child SkillKey is missing, ROOT must **stop** (Retry / Back). No local preview/execute fallback for entity/folder/image/color/pom/import-dw/search/massupdate.

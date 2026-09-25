@@ -54,7 +54,7 @@ namespace APP.AgentPlugins.PlmImport
             result.Planned = steps.Count;
             if (steps.Count == 0)
                 throw new InvalidOperationException(
-                    "executionPlan is missing or empty. Phase B must write plm.integration.import-dw.outputs.executionPlan.");
+                    "executionPlan is missing or empty. Phase B must write " + key + ".executionPlan.");
 
             var job = ReadJob(context);
             var resolvedSessionId = sessionId
@@ -73,6 +73,8 @@ namespace APP.AgentPlugins.PlmImport
                 if (ids.Count > 0)
                     requiredIds = string.Join(",", ids);
             }
+
+            var applyStepCode = ResolveApplyStepCode(key, steps);
 
             DatabaseFixture logFixture = null;
             try { logFixture = GetTenantFixture(); }
@@ -93,9 +95,12 @@ namespace APP.AgentPlugins.PlmImport
             {
                 result.Ok = false;
                 result.Executed = 0;
+                var hint = IsImportDwOutputsKey(key)
+                    ? " Re-run Phase B so run_agent_script writes 1_PlmDw_Tables.sql and 4_PlmDw_ImportBlueprint.json."
+                    : " Re-run Phase B so the child writes the Blueprint JSON under output/{id}/.";
                 result.Error = "Agent files not found under AgentOutput/" + context.ChatSessionKey
                     + "/: " + string.Join(", ", missing)
-                    + ". executionPlan listing a path is not enough. Re-run Phase B so run_agent_script writes 1_PlmDw_Tables.sql and 4_PlmDw_ImportBlueprint.json.";
+                    + ". executionPlan listing a path is not enough." + hint;
                 foreach (var step in steps.OrderBy(s => s.Order))
                 {
                     result.Steps.Add(new AgentOutputApplyStepResult
@@ -111,7 +116,7 @@ namespace APP.AgentPlugins.PlmImport
                 }
                 result.SessionId = resolvedSessionId;
                 result.LogHint = resolvedSessionId.HasValue
-                    ? "AppPlmImportLog StepCode=import-dw for sessionId=" + resolvedSessionId.Value
+                    ? "AppPlmImportLog StepCode=" + applyStepCode + " for sessionId=" + resolvedSessionId.Value
                     : "No sessionId; see AgentOutput apply-log.json and NLog.";
                 PersistApplyResult(context, key, outputs, result, steps);
                 return result;
@@ -131,7 +136,7 @@ namespace APP.AgentPlugins.PlmImport
                             logFixture,
                             resolvedSessionId.Value,
                             null,
-                            ApplyOutputsStepCode,
+                            applyStepCode,
                             step.Kind + ":" + step.Path,
                             stepResult.Ok ? "Success" : "Failed",
                             step.Path,
@@ -162,7 +167,7 @@ namespace APP.AgentPlugins.PlmImport
             result.Executed = result.Steps.Count(s => s.Ok);
             result.SessionId = resolvedSessionId;
             result.LogHint = resolvedSessionId.HasValue
-                ? "AppPlmImportLog StepCode=import-dw for sessionId=" + resolvedSessionId.Value
+                ? "AppPlmImportLog StepCode=" + applyStepCode + " for sessionId=" + resolvedSessionId.Value
                 : "No sessionId; see AgentOutput apply-log.json and NLog.";
 
             PersistApplyResult(context, key, outputs, result, steps);
@@ -236,6 +241,75 @@ namespace APP.AgentPlugins.PlmImport
                           + " searchId=" + obj?.SearchId
                         : null;
                     stepResult.TransactionIds = obj?.TransactionIds;
+                    return stepResult;
+                }
+
+                if (kind == "search-blueprint")
+                {
+                    var json = AgentOutputPathReader.ReadText(context, step.Path);
+                    var request = new PlmSearchImportExecuteRequestDto
+                    {
+                        Blueprint = JsonConvert.DeserializeObject<PlmSearchImportBlueprintDto>(json),
+                        SaasApplicationId = saasApplicationId
+                    };
+                    var exec = ExecuteSearchBlueprintConfig(request);
+                    var obj = exec?.Object;
+                    stepResult.Ok = obj?.IsSuccess == true;
+                    stepResult.Error = obj?.ErrorMessage
+                        ?? exec?.ValidationResult?.Items?.FirstOrDefault()?.Message;
+                    stepResult.Summary = stepResult.Ok
+                        ? "searchId=" + obj?.SearchId
+                          + " searchViewId=" + obj?.SearchViewId
+                          + " dataSetId=" + obj?.DataSetId
+                        : null;
+                    stepResult.SearchId = obj?.SearchId;
+                    stepResult.SearchViewId = obj?.SearchViewId;
+                    return stepResult;
+                }
+
+                if (kind == "search-additional-view" || kind == "search-sibling-view")
+                {
+                    var json = AgentOutputPathReader.ReadText(context, step.Path);
+                    var request = new PlmSearchSiblingViewExecuteRequestDto
+                    {
+                        Blueprint = JsonConvert.DeserializeObject<PlmSearchSiblingViewBlueprintDto>(json),
+                        SaasApplicationId = saasApplicationId
+                    };
+                    var exec = ExecuteSearchSiblingViewConfig(request);
+                    var obj = exec?.Object;
+                    stepResult.Ok = obj?.IsSuccess == true;
+                    stepResult.Error = obj?.ErrorMessage
+                        ?? exec?.ValidationResult?.Items?.FirstOrDefault()?.Message;
+                    stepResult.Summary = stepResult.Ok
+                        ? "searchId=" + obj?.SearchId
+                          + " searchViewId=" + obj?.SiblingSearchViewId
+                          + " dataSetId=" + obj?.DataSetId
+                        : null;
+                    stepResult.SearchId = obj?.SearchId;
+                    stepResult.SearchViewId = obj?.SiblingSearchViewId;
+                    return stepResult;
+                }
+
+                if (kind == "search-massupdate")
+                {
+                    var json = AgentOutputPathReader.ReadText(context, step.Path);
+                    var request = new PlmSearchMassUpdateViewExecuteRequestDto
+                    {
+                        Blueprint = JsonConvert.DeserializeObject<PlmSearchMassUpdateViewBlueprintDto>(json),
+                        SaasApplicationId = saasApplicationId
+                    };
+                    var exec = ExecuteSearchMassUpdateViewConfig(request);
+                    var obj = exec?.Object;
+                    stepResult.Ok = obj?.IsSuccess == true;
+                    stepResult.Error = obj?.ErrorMessage
+                        ?? exec?.ValidationResult?.Items?.FirstOrDefault()?.Message;
+                    stepResult.Summary = stepResult.Ok
+                        ? "searchId=" + obj?.SearchId
+                          + " massUpdateViewId=" + obj?.MassUpdateSearchViewId
+                          + " listEditTx=" + obj?.ListEditTransactionId
+                        : null;
+                    stepResult.SearchId = obj?.SearchId;
+                    stepResult.SearchViewId = obj?.MassUpdateSearchViewId;
                     return stepResult;
                 }
 
@@ -412,6 +486,34 @@ ORDER BY c.name";
                 ids.Add(n.Value.ToString());
         }
 
+        private static bool IsImportDwOutputsKey(string key)
+        {
+            return string.IsNullOrWhiteSpace(key)
+                || key.IndexOf("import-dw", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string ResolveApplyStepCode(string outputsKey, List<AgentOutputPlanStep> steps)
+        {
+            if (!string.IsNullOrWhiteSpace(outputsKey))
+            {
+                if (outputsKey.IndexOf("massupdate", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return "massupdate";
+                if (outputsKey.IndexOf(".search", StringComparison.OrdinalIgnoreCase) >= 0
+                    || outputsKey.EndsWith("search.outputs", StringComparison.OrdinalIgnoreCase))
+                    return "search";
+                if (outputsKey.IndexOf("import-dw", StringComparison.OrdinalIgnoreCase) >= 0)
+                    return ApplyOutputsStepCode;
+            }
+
+            var firstKind = (steps != null && steps.Count > 0 ? steps[0].Kind : null) ?? "";
+            firstKind = firstKind.Trim().ToLowerInvariant();
+            if (firstKind == "search-massupdate")
+                return "massupdate";
+            if (firstKind.StartsWith("search-", StringComparison.Ordinal))
+                return "search";
+            return ApplyOutputsStepCode;
+        }
+
         private static JToken TryParsePlan(string planJson)
         {
             try
@@ -481,5 +583,7 @@ ORDER BY c.name";
         public string Error { get; set; }
         public string Summary { get; set; }
         public List<int> TransactionIds { get; set; }
+        public int? SearchId { get; set; }
+        public int? SearchViewId { get; set; }
     }
 }

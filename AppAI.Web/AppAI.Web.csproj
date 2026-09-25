@@ -98,4 +98,63 @@
     </Content>
   </ItemGroup>
 
+  <!-- Official PLM SOURCE packs — auto-seeded into AgentOutput/source/ (users do not upload these). -->
+  <ItemGroup>
+    <Content Include="..\AppReact\ImportDoc\ImportPLMSearchView\MultiAgent\source\*">
+      <Link>AgentOfficialSource\ImportPLMSearchView\%(Filename)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\AppReact\ImportDoc\ImportFromPLMDW\source\_gen_plmdw_import_sql.ps1">
+      <Link>AgentOfficialSource\ImportFromPLMDW\_gen_plmdw_import_sql.ps1</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\AppReact\ImportDoc\ImportFromPLMDW\source\_gen_plmdw_bom_colorway.ps1">
+      <Link>AgentOfficialSource\ImportFromPLMDW\_gen_plmdw_bom_colorway.ps1</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\AppReact\ImportDoc\ImportFromPLMDW\source\_gen_tchp_import_sql.ps1">
+      <Link>AgentOfficialSource\ImportFromPLMDW\_gen_tchp_import_sql.ps1</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\AppReact\ImportDoc\ImportFromPLMDW\source\_gen_simple_qc.ps1">
+      <Link>AgentOfficialSource\ImportFromPLMDW\_gen_simple_qc.ps1</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\AppReact\ImportDoc\ImportFromPLMDW\source\PlmDw_ImportFromDW.sql">
+      <Link>AgentOfficialSource\ImportFromPLMDW\PlmDw_ImportFromDW.sql</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\AppReact\ImportDoc\ImportFromPLMDW\source\PlmDw_ImportBomColorwayGrandchild.sql">
+      <Link>AgentOfficialSource\ImportFromPLMDW\PlmDw_ImportBomColorwayGrandchild.sql</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\AppReact\ImportDoc\ImportFromPLMDW\source\dwTabImportConfig.example.json">
+      <Link>AgentOfficialSource\ImportFromPLMDW\dwTabImportConfig.example.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\AppReact\ImportDoc\ImportFromPLMDW\source\bomColorwayImportConfig.example.json">
+      <Link>AgentOfficialSource\ImportFromPLMDW\bomColorwayImportConfig.example.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\AppReact\ImportDoc\ImportFromPLMDW\source\_plm_probe_template.sql">
+      <Link>AgentOfficialSource\ImportFromPLMDW\_plm_probe_template.sql</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <Content Include="..\AppReact\ImportDoc\ImportFromPLMDW\source\_dw_probe_by_tabids.sql">
+      <Link>AgentOfficialSource\ImportFromPLMDW\_dw_probe_by_tabids.sql</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>

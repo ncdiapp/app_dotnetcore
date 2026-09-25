@@ -302,9 +302,9 @@ No files. `ok=false` + blockers.
 }
 ```
 
-APPLY: `apply_agent_output_plan` once. BL maps `kind=search-massupdate` → `execute_search_massupdate_view` / `ExecuteSearchMassUpdateViewConfig`.
+APPLY: call `apply_agent_output_plan` **once** with `outputsContextKey=plm.integration.massupdate.outputs`. Do **not** pass `blueprintJson`. BL maps `kind=search-massupdate` → `ExecuteSearchMassUpdateViewConfig` (file on disk).
 
-If tools are not subscribed → `ok=false` + `nextHint`: user can upload JSON in **PLM Data Import → Search Import**. Files stay on disk.
+If the tool is missing → `ok=false`. Files stay on disk.
 
 Execute must (BL):
 
@@ -321,7 +321,7 @@ Execute must (BL):
 ## PHASE=APPLY
 
 1. Read `…massupdate.outputs.executionPlan`.
-2. `apply_agent_output_plan` **once**.
+2. `apply_agent_output_plan` **once** with `outputsContextKey=plm.integration.massupdate.outputs`.
 3. `ok=true` only when executed==planned.
 4. ROOT appends `massupdate.doneIds` (MassUpdateViewId or App SearchViewId — use what APPLY returns).
 
@@ -342,7 +342,7 @@ Execute must (BL):
   "files": [],
   "executionPlan": [],
   "errors": [],
-  "nextHint": "ROOT: confirm A/B1/B2/C and write plm.integration.massupdate.plan"
+  "nextHint": "ROOT: Phase A succeeded (empty files is correct). ask_user [massupdate] Phase A checklist with recommendedOption A|B1|B2|C. Do not title Cancelled. Then write plm.integration.massupdate.plan"
 }
 ```
 

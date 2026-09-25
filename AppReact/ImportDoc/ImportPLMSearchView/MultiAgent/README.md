@@ -49,7 +49,7 @@ Official probe SQL and example JSON are **copies** of parent `../source/` (excep
 | `plmSearchImportConfig.example.json` | required | optional |
 | `MULTI_VIEW_COVERAGE.md` | optional (rules inlined) | — |
 
-When seeding `AgentStarter`, copy the **required** subset per SkillKey, or copy the whole `source/` pack into the ROOT session (children share the same chat file root).
+Product auto-seeds these files into chat `source/` and `AgentStarter/{skillKey}/` when the ROOT or child run starts (`GenericAgentOfficialSourceSeedBL`). Users must **not** upload probe/example scripts. After changing `ApplyAgentOutputPlan`, rebuild `APP.AgentPlugins.PlmImport` and restart AppAI.Web so APPLY can run Search/MassUpdate kinds.
 
 ## Inputs (ROOT writes shared context)
 
@@ -58,6 +58,8 @@ Search child: PLM DataSourceId + APP DataSourceId + one `searchTemplateId`. Addi
 MassUpdate child: same two DataSourceIds + `searchTemplateId` + `massUpdateViewId`.
 
 No connection strings. No user-uploaded scripts.
+
+Tenant seed (Wave 2): `AppAI.Web/TenantAgentSeeds/PlmIntegrationMultiAgent/09_Seed_PlmIntegrationSearch_Child.sql` and `10_Seed_PlmIntegrationMassUpdate_Child.sql`. APPLY uses `apply_agent_output_plan` with `outputsContextKey`.
 
 ## PHASE (same shape as import-dw)
 
