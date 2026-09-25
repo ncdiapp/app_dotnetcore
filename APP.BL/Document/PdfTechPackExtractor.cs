@@ -10,6 +10,7 @@ using APP.Framework;
 using Google.Cloud.DocumentAI.V1Beta3;
 using Google.Cloud.Storage.V1;
 using Google.Apis.Auth.OAuth2;
+using Grpc.Core;
 using GemBox.Pdf;
 using GemBox.Pdf.Content;
 using Newtonsoft.Json.Linq;
@@ -83,46 +84,70 @@ public sealed class PdfTechPackExtractor : IPdfTechPackExtractor
                 GoogleCredential = credential
             }.BuildAsync(cancellationToken: cancellationToken);
 
-            var batchRequest = new BatchProcessRequest
+            BatchProcessRequest CreateBatchRequest(bool includeLayoutOptions)
             {
-                Name = processorName,
-                InputDocuments = new BatchDocumentsInputConfig
+                var batchRequest = new BatchProcessRequest
                 {
-                    GcsDocuments = new GcsDocuments
+                    Name = processorName,
+                    InputDocuments = new BatchDocumentsInputConfig
                     {
-                        Documents =
+                        GcsDocuments = new GcsDocuments
                         {
-                            new GcsDocument { GcsUri = inputUri, MimeType = "application/pdf" }
+                            Documents =
+                            {
+                                new GcsDocument { GcsUri = inputUri, MimeType = "application/pdf" }
+                            }
+                        }
+                    },
+                    DocumentOutputConfig = new DocumentOutputConfig
+                    {
+                        GcsOutputConfig = new DocumentOutputConfig.Types.GcsOutputConfig
+                        {
+                            GcsUri = outputUri
                         }
                     }
-                },
-                DocumentOutputConfig = new DocumentOutputConfig
-                {
-                    GcsOutputConfig = new DocumentOutputConfig.Types.GcsOutputConfig
-                    {
-                        GcsUri = outputUri
-                    }
-                },
-                ProcessOptions = new ProcessOptions
-                {
-                    LayoutConfig = new ProcessOptions.Types.LayoutConfig
-                    {
-                        EnableImageExtraction = true,
-                        EnableImageAnnotation = true,
-                        EnableTableAnnotation = true,
-                        ReturnImages = true
-                    }
-                }
-            };
+                };
 
-            var operation = client.BatchProcessDocuments(batchRequest);
-            var pollTask = operation.PollUntilCompletedAsync();
-            var completed = await Task.WhenAny(
-                pollTask,
-                Task.Delay(pollTimeout, cancellationToken));
-            if (completed != pollTask)
-                throw new TimeoutException($"Document AI batch processing did not complete within {pollTimeout.TotalMinutes:0} minutes.");
-            await pollTask;
+                if (includeLayoutOptions)
+                {
+                    batchRequest.ProcessOptions = new ProcessOptions
+                    {
+                        LayoutConfig = new ProcessOptions.Types.LayoutConfig
+                        {
+                            EnableImageExtraction = true,
+                            EnableImageAnnotation = true,
+                            EnableTableAnnotation = true,
+                            ReturnImages = true
+                        }
+                    };
+                }
+
+                return batchRequest;
+            }
+
+            async Task ProcessBatchAsync(bool includeLayoutOptions)
+            {
+                var operation = client.BatchProcessDocuments(CreateBatchRequest(includeLayoutOptions));
+                var pollTask = operation.PollUntilCompletedAsync();
+                var completed = await Task.WhenAny(
+                    pollTask,
+                    Task.Delay(pollTimeout, cancellationToken));
+                if (completed != pollTask)
+                    throw new TimeoutException($"Document AI batch processing did not complete within {pollTimeout.TotalMinutes:0} minutes.");
+                await pollTask;
+            }
+
+            try
+            {
+                await ProcessBatchAsync(includeLayoutOptions: true);
+            }
+            catch (RpcException ex) when (ex.StatusCode == StatusCode.InvalidArgument)
+            {
+                // Some processor versions reject optional LayoutConfig fields. Retry the
+                // same document with the base request so extraction can still complete;
+                // the GemBox PDF fallback remains available for image files.
+                await ProcessBatchAsync(includeLayoutOptions: false);
+            }
 
             var documents = new List<JObject>();
             await foreach (var item in storage.ListObjectsAsync(bucket, outputPrefix)
