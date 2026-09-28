@@ -49,6 +49,16 @@ namespace APP.Components.EntityDto
         [DataMember]
         public List<PlmSearchImportUnmappedFieldDto> UnmappedPlmFields { get; set; } =
             new List<PlmSearchImportUnmappedFieldDto>();
+
+        /// <summary>Phase B working notes. BL maps role=view/criteria into SearchView / CriteriaFields when those are empty.</summary>
+        [DataMember]
+        public List<PlmSearchImportFieldResolutionDto> FieldResolution { get; set; } =
+            new List<PlmSearchImportFieldResolutionDto>();
+
+        /// <summary>Alternate SearchView shell (name / integrationId). Prefer SearchView.</summary>
+        [DataMember]
+        public List<PlmSearchImportViewShellDto> Views { get; set; } =
+            new List<PlmSearchImportViewShellDto>();
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -56,6 +66,10 @@ namespace APP.Components.EntityDto
     {
         [DataMember]
         public int? PlmSearchTemplateId { get; set; }
+
+        /// <summary>Alias used by some child outputs. Copied onto PlmSearchTemplateId during normalize.</summary>
+        [DataMember]
+        public int? PlmSearchId { get; set; }
 
         [DataMember]
         public string PlmSearchName { get; set; }
@@ -137,7 +151,30 @@ namespace APP.Components.EntityDto
         public string QueryText { get; set; }
 
         [DataMember]
+        public List<PlmSearchImportJoinDto> Joins { get; set; } =
+            new List<PlmSearchImportJoinDto>();
+
+        [DataMember]
         public int? TenantDataSourceRegisterId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchImportJoinDto
+    {
+        [DataMember]
+        public string Alias { get; set; }
+
+        [DataMember]
+        public string AppTableName { get; set; }
+
+        [DataMember]
+        public string LeftTable { get; set; }
+
+        [DataMember]
+        public string LeftColumn { get; set; }
+
+        [DataMember]
+        public string RightColumn { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -154,6 +191,20 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public string SemanticSummary { get; set; }
+
+        [DataMember]
+        public List<PlmSearchImportJoinPlanTableDto> Tables { get; set; } =
+            new List<PlmSearchImportJoinPlanTableDto>();
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchImportJoinPlanTableDto
+    {
+        [DataMember]
+        public string AppTableName { get; set; }
+
+        [DataMember]
+        public string Role { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -275,6 +326,10 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string Name { get; set; }
 
+        /// <summary>Alias for Name (child outputs sometimes emit actionName).</summary>
+        [DataMember]
+        public string ActionName { get; set; }
+
         /// <summary>Create | Edit | Delete</summary>
         [DataMember]
         public string ActionType { get; set; }
@@ -291,8 +346,88 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string SourceColumn { get; set; }
 
+        /// <summary>Alias for SourceColumn.</summary>
+        [DataMember]
+        public string RootColumn { get; set; }
+
         [DataMember]
         public int? Sort { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchImportFieldResolutionDto
+    {
+        [DataMember]
+        public string Role { get; set; }
+
+        [DataMember]
+        public PlmSearchImportFieldResolutionSourceDto PlmSource { get; set; }
+
+        [DataMember]
+        public PlmSearchImportFieldResolutionResolvedDto Resolved { get; set; }
+
+        [DataMember]
+        public int? ControlType { get; set; }
+
+        [DataMember]
+        public string EntityIntegrationId { get; set; }
+
+        [DataMember]
+        public int? OperationId { get; set; }
+
+        [DataMember]
+        public int? PositionRow { get; set; }
+
+        [DataMember]
+        public int? PositionColumn { get; set; }
+
+        [DataMember]
+        public bool IsTransRootId { get; set; }
+
+        [DataMember]
+        public bool IsVisible { get; set; } = true;
+
+        [DataMember]
+        public int? Sort { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchImportFieldResolutionSourceDto
+    {
+        [DataMember]
+        public string DisplayLabel { get; set; }
+
+        [DataMember]
+        public int? PlmSubItemId { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchImportFieldResolutionResolvedDto
+    {
+        [DataMember]
+        public string AppTableName { get; set; }
+
+        [DataMember]
+        public string AppColumnName { get; set; }
+
+        [DataMember]
+        public string SysTableFiledPath { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmSearchImportViewShellDto
+    {
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string IntegrationId { get; set; }
+
+        [DataMember]
+        public bool IsDefault { get; set; }
+
+        [DataMember]
+        public int? ReferenceViewId { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

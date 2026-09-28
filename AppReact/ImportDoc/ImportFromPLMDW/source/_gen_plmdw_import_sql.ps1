@@ -472,6 +472,10 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
             Write-Host "  Blueprint skip (FX1 fold): Tab_$($tab.tabId) $($tab.plmTabName)"
             continue
         }
+        if (Test-TabSkippedNoDw $tab) {
+            Write-Host "  Blueprint skip (no DW): Tab_$($tab.tabId) $($tab.plmTabName)"
+            continue
+        }
         $tabName = if ($tab.plmTabName) { $tab.plmTabName } else { Format-TabDisplayName $tab.appTable }
         $importStatus = if ($tab.importStatus) { $tab.importStatus } else { 'Ready' }
         $siblingUnits = [System.Collections.Generic.List[object]]::new()
@@ -1077,7 +1081,10 @@ ORDER BY bsi.GridID
 function Ensure-ConfigGridsFromPlm {
     Merge-OfficialTemplateGrids
     $tabIds = @()
-    if ($config.importTabIds) { $tabIds = @($config.importTabIds | ForEach-Object { [int]$_ }) }
+    if ($script:AllPlmTemplateTabIds -and $script:AllPlmTemplateTabIds.Count -gt 0) {
+        $tabIds = @($script:AllPlmTemplateTabIds)
+    }
+    elseif ($config.importTabIds) { $tabIds = @($config.importTabIds | ForEach-Object { [int]$_ }) }
     elseif ($config.tabs) { $tabIds = @($config.tabs | ForEach-Object { [int]$_.tabId }) }
     if ($tabIds.Count -eq 0) {
         Write-Host '  Auto-grid: skipped (no importTabIds / tabs).'
@@ -1472,6 +1479,199 @@ function SqlInt($n) {
     return [string]$n
 }
 
+function Test-TabSkippedNoDw($tab) {
+    if ($null -eq $tab) { return $false }
+    $status = [string]$tab.importStatus
+    if ($status -ne 'Skipped') { return $false }
+    $reason = [string]$tab.skipReason
+    if ($reason -match '(?i)no[\s-]?dw') { return $true }
+    return [string]::IsNullOrWhiteSpace([string]$tab.dwTable)
+}
+
+function Get-DwTabTableMap {
+    $map = @{}
+    $q = @"
+SELECT t.name
+FROM sys.tables t
+INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
+WHERE s.name = N'dbo' AND t.name LIKE N'PLM_DW_Tab_%'
+"@
+    foreach ($line in (Invoke-DwQuery $q)) {
+        $name = ("$line" -split '\|')[0].Trim()
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        if (-not $name.StartsWith('PLM_DW_Tab_')) { continue }
+        if ($name -match '_(\d+)$') {
+            $tid = [int]$Matches[1]
+            if (-not $map.ContainsKey($tid)) { $map[$tid] = $name }
+        }
+    }
+    return $map
+}
+
+function Convert-DwTabTableToAppTable([string]$DwTable, [string]$TabName, [int]$TabId) {
+    if ($DwTable -match '^PLM_DW_Tab_(.+)_\d+$') {
+        $fromDw = [string]$Matches[1]
+        if (-not [string]::IsNullOrWhiteSpace($fromDw)) { return $fromDw }
+    }
+    $s = [string]$TabName
+    if (-not [string]::IsNullOrWhiteSpace($s)) {
+        $s = $s -replace '[^A-Za-z0-9]+', '_'
+        $s = $s.Trim('_')
+        if (-not [string]::IsNullOrWhiteSpace($s)) { return $s }
+    }
+    return "Tab_$TabId"
+}
+
+# pdmTemplateTab is truth. Agent importTabIds/tabs[] may be a truncated probe (first 8 of 29).
+# Auto-add every PLM tab that has PLM_DW_Tab_* ; skipNoDw only when no DW table.
+function Ensure-ImportTabsFromPlm {
+    if (-not $templateId) {
+        throw 'plmTemplateId is required so the generator can load pdmTemplateTab.'
+    }
+    Write-Host "Loading pdmTemplateTab for TemplateId $templateId from $PlmDatabase (importTabIds must cover every tab)..."
+    $q = @"
+SELECT tt.TabID, tab.TabName, tt.Sort, CAST(ISNULL(tab.IsTemplateHeaderTab, 0) AS INT)
+FROM dbo.pdmTemplateTab tt
+INNER JOIN dbo.pdmTab tab ON tab.TabID = tt.TabID
+WHERE tt.TemplateID = $templateId
+ORDER BY tt.Sort, tt.TabID
+"@
+    $plmRows = @()
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = "$line" -split '\|'
+        if ($parts.Count -lt 4) { continue }
+        $tidRaw = $parts[0].Trim()
+        if ($tidRaw -notmatch '^\d+$') { continue }
+        $tid = [int]$tidRaw
+        $sortRaw = $parts[2].Trim()
+        $sort = if ($sortRaw -match '^\d+$') { [int]$sortRaw } else { 9999 }
+        $hdrRaw = $parts[3].Trim()
+        $isHeader = ($hdrRaw -eq '1')
+        $plmRows += [pscustomobject]@{
+            TabId    = $tid
+            TabName  = $parts[1].Trim()
+            Sort     = $sort
+            IsHeader = $isHeader
+        }
+    }
+    if ($plmRows.Count -eq 0) {
+        throw "pdmTemplateTab returned 0 tabs for TemplateId $templateId on $PlmDatabase. Check plmDatabase / PLM DataSource."
+    }
+
+    $script:AllPlmTemplateTabIds = @($plmRows | ForEach-Object { [int]$_.TabId })
+    $dwMap = Get-DwTabTableMap
+    $tabList = [System.Collections.Generic.List[object]]::new()
+    $byId = @{}
+    foreach ($t in @($config.tabs)) {
+        if (-not $t) { continue }
+        $tabList.Add($t)
+        $tid = 0
+        if ([int]::TryParse("$($t.tabId)", [ref]$tid) -and $tid -gt 0) { $byId[$tid] = $t }
+    }
+
+    $autoAdded = 0
+    $autoSkipped = 0
+    foreach ($plm in $plmRows) {
+        $tid = [int]$plm.TabId
+        $dw = $null
+        if ($dwMap.ContainsKey($tid)) { $dw = [string]$dwMap[$tid] }
+        $existing = $null
+        if ($byId.ContainsKey($tid)) { $existing = $byId[$tid] }
+
+        if ($existing) {
+            if ([string]::IsNullOrWhiteSpace([string]$existing.dwTable) -and $dw) {
+                $existing | Add-Member -NotePropertyName dwTable -NotePropertyValue $dw -Force
+            }
+            if ([string]::IsNullOrWhiteSpace([string]$existing.plmTabName)) {
+                $existing | Add-Member -NotePropertyName plmTabName -NotePropertyValue $plm.TabName -Force
+            }
+            if ($null -eq $existing.tabSort) {
+                $existing | Add-Member -NotePropertyName tabSort -NotePropertyValue $plm.Sort -Force
+            }
+            if ($null -eq $existing.isTemplateHeaderTab) {
+                $existing | Add-Member -NotePropertyName isTemplateHeaderTab -NotePropertyValue $plm.IsHeader -Force
+            }
+            continue
+        }
+
+        if ($dw) {
+            $app = Convert-DwTabTableToAppTable $dw $plm.TabName $tid
+            $tabList.Add([pscustomobject]@{
+                appTable             = $app
+                dwTable              = $dw
+                tabId                = $tid
+                plmTabName           = $plm.TabName
+                tabSort              = $plm.Sort
+                isTemplateHeaderTab  = $plm.IsHeader
+                importStatus         = 'Ready'
+                mode                 = 'all'
+            })
+            $autoAdded++
+            Write-Host "  Auto-tab: added Tab_$tid $($plm.TabName) -> $dw / APP $app"
+        }
+        else {
+            $tabList.Add([pscustomobject]@{
+                appTable             = (Convert-DwTabTableToAppTable $null $plm.TabName $tid)
+                dwTable              = $null
+                tabId                = $tid
+                plmTabName           = $plm.TabName
+                tabSort              = $plm.Sort
+                isTemplateHeaderTab  = $plm.IsHeader
+                importStatus         = 'Skipped'
+                skipReason           = 'no DW table (skipNoDw)'
+                mode                 = 'all'
+            })
+            $autoSkipped++
+            Write-Host "  Auto-tab: skipNoDw Tab_$tid $($plm.TabName) (no PLM_DW_Tab_*)"
+        }
+    }
+
+    $readyIds = @()
+    foreach ($t in $tabList) {
+        if (Test-TabSkippedNoDw $t) { continue }
+        $st = [string]$t.importStatus
+        if ($st -eq 'Skipped') { continue }
+        $tid = 0
+        if (-not [int]::TryParse("$($t.tabId)", [ref]$tid) -or $tid -le 0) { continue }
+        if ([string]::IsNullOrWhiteSpace([string]$t.dwTable)) { continue }
+        if ($readyIds -notcontains $tid) { $readyIds += $tid }
+    }
+
+    $dwPlmIds = @($plmRows | Where-Object { $dwMap.ContainsKey([int]$_.TabId) } | ForEach-Object { [int]$_.TabId })
+    $omittedWithDw = @($dwPlmIds | Where-Object { $readyIds -notcontains $_ })
+    # Explicit Skipped (already-imported TX) is allowed; missing Ready for a DW tab is not.
+    $omittedNotExplicitSkip = @()
+    foreach ($tid in $omittedWithDw) {
+        $ex = $null
+        if ($byId.ContainsKey($tid)) { $ex = $byId[$tid] }
+        if ($ex -and [string]$ex.importStatus -eq 'Skipped' -and -not (Test-TabSkippedNoDw $ex)) { continue }
+        $omittedNotExplicitSkip += $tid
+    }
+    if ($omittedNotExplicitSkip.Count -gt 0) {
+        $names = @($plmRows | Where-Object { $omittedNotExplicitSkip -contains [int]$_.TabId } | ForEach-Object { "$($_.TabId) $($_.TabName)" })
+        throw "importTabIds/tabs[] omitted $($omittedNotExplicitSkip.Count) pdmTemplateTab row(s) that have PLM_DW_Tab_* : $($names -join '; '). List every TabID (skipNoDw only when there is no DW table)."
+    }
+    if ($readyIds.Count -eq 0) {
+        throw "No Ready tabs with PLM_DW_Tab_* for TemplateId $templateId."
+    }
+
+    $config | Add-Member -NotePropertyName tabs -NotePropertyValue @($tabList.ToArray()) -Force
+    $config | Add-Member -NotePropertyName importTabIds -NotePropertyValue @($readyIds) -Force
+
+    $headerIds = @($plmRows | Where-Object { $_.IsHeader } | ForEach-Object { [int]$_.TabId })
+    if (-not $config.plmTemplate) {
+        $config | Add-Member -NotePropertyName plmTemplate -NotePropertyValue ([pscustomobject]@{
+            templateId           = $templateId
+            templateHeaderTabIds = @($headerIds)
+        }) -Force
+    }
+    elseif ($headerIds.Count -gt 0 -and -not $config.plmTemplate.templateHeaderTabIds) {
+        $config.plmTemplate | Add-Member -NotePropertyName templateHeaderTabIds -NotePropertyValue @($headerIds) -Force
+    }
+
+    Write-Host "  pdmTemplateTab=$($plmRows.Count); Ready with DW=$($readyIds.Count); skipNoDw=$autoSkipped; auto-added Ready=$autoAdded"
+}
+
 function Assert-ReferenceScopePhysicalDwColumn {
     if ($null -eq $refScope) {
         throw 'dwTabImportConfig.json must set referenceScope (dwTable + dwColumn).'
@@ -1517,6 +1717,7 @@ ORDER BY c.column_id
     throw "referenceScope.dwColumn '$dwColumn' does not exist on $DwDatabase.dbo.$dwTable. DwColumn must be the physical DW column (e.g. Article__22), never the APP name ReferenceCode. Candidates: $($hints -join ', ')"
 }
 
+Ensure-ImportTabsFromPlm
 Assert-ReferenceScopePhysicalDwColumn
 
 $allFieldRows = New-Object System.Collections.Generic.List[object]
@@ -1604,6 +1805,10 @@ foreach ($tab in $config.tabs) {
     # FX1: Fit1–N / Comments folded — no Plm_Fit_N APP table (sources only for RoundInfo later).
     if ($tab.fx1SkipAppTable -eq $true) {
         Write-Host "  DDL skip (FX1 fold): $($tab.appTable) Tab_$($tab.tabId)"
+        continue
+    }
+    if (Test-TabSkippedNoDw $tab) {
+        Write-Host "  DDL skip (no DW): Tab_$($tab.tabId) $($tab.plmTabName)"
         continue
     }
     [void]$scopeAppTables.Add($tab.appTable)

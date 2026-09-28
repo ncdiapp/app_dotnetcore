@@ -299,14 +299,26 @@ namespace App.BL.AIAgent.GenericAgent
                     continue;
 
                 var dest = Path.Combine(destDir, name);
-                if (!overwrite && File.Exists(dest))
+                var forceOverwrite = overwrite || IsOfficialProducerScript(name);
+                if (!forceOverwrite && File.Exists(dest))
                     continue;
 
                 Directory.CreateDirectory(Path.GetDirectoryName(dest) ?? destDir);
-                File.Copy(src, dest, overwrite);
+                File.Copy(src, dest, overwrite: true);
                 copied++;
             }
             return copied;
+        }
+
+        /// <summary>
+        /// Official _gen_*.ps1 producers must not stay stale in AgentOutput/source or AgentStarter.
+        /// The child is forbidden from patching them; refresh from ImportDoc on every seed.
+        /// </summary>
+        private static bool IsOfficialProducerScript(string name)
+        {
+            return !string.IsNullOrWhiteSpace(name)
+                && name.StartsWith("_gen_", StringComparison.OrdinalIgnoreCase)
+                && name.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase);
         }
 
         private static string Normalize(string skillKey)

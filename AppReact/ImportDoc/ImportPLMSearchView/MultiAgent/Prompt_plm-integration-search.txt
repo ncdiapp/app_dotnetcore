@@ -289,12 +289,13 @@ ROOT writes `plan.option` = A | B | C.
 ### Main (or additional-view Option B)
 
 1. Write `source/plmSearchImportConfig.json` (include `plmDataSourceId` / `appDataSourceId`; no secrets).
-2. Synthesize `dataSet.queryText`:
-   - SELECT resolved view + criteria columns
-   - FROM root
-   - INNER JOIN 1:1 siblings on `ReferenceId`
+2. Synthesize `dataSet.queryText` from FieldMapping **AppColumnName** values that exist on `sys.columns` of each FROM/JOIN **APP** table (probe before writing SQL):
+   - SELECT `[alias].[AppColumnName]` (optional `AS` binding name). Never PLM DisplayText or pdm names (`ReferenceBasicInfoID`, `Style_Name`, `Enterprise`, `Sub_Category`).
+   - FROM root APP table
+   - JOIN 1:1 siblings on `ReferenceId` (never `ReferenceBasicInfoID` / `ProductReferenceID`)
    - Grid `scalar`: `(SELECT TOP 1 col FROM grid WHERE grid.ReferenceId = root.ReferenceId)`
    - WHERE from `referenceScope` if set
+   - If the APP table is `Plm_Style_Header_V2K_ERP`, use that name — do not invent `Plm_Style_Header`.
 3. `fieldResolution[]` from FieldMapping (`PlmControlType`, `PlmEntityId`).
 4. Split `criteriaFields[]` and `searchView.fields[]`.
 5. Copy PLM DCU `OperationID` as-is into `operationId` (`EmAppCriteriaOperatorType` — **not** Wijmo filter enum). Copy `DefaultValue` when non-empty.
@@ -305,6 +306,8 @@ ROOT writes `plan.option` = A | B | C.
    Option B: do not auto-register menu unless `plan` says so.
 
 **Schema:** match `source/7_PlmSearch_ImportBlueprint.example.json` (`schemaVersion`, `search`, `dataSet`, `joinPlan`, `fieldResolution`, `criteriaFields`, `searchView`, `linkTargets`, `coverage`).
+
+**HARD — coverage vs emitted arrays:** `coverage.criteria.mapped` MUST equal `criteriaFields.length`. `coverage.view.mapped` MUST equal `searchView.fields` count excluding `isTransRootId`. Never copy Phase A coverage numbers into a stub (2 criteria / 4 view columns is invalid when coverage says mapped 13/28). Emit every active DCU and every visible `pdmReferenceViewColumn` via FieldMapping. True misses go in `unmappedPlmFields`. APPLY rejects `coverage.mapped` greater than emitted counts. FinalResponse `counts` must include `criteriaEmitted`, `viewEmitted`, `coverageCriteriaTotal`, `coverageViewTotal`.
 
 ### Additional-view Option A
 
@@ -429,7 +432,7 @@ Phase B/APPLY: fill `files` (path + sizeBytes) and `executionPlan`. No Blueprint
 [ ] PHASE=A: probe PLM + FieldMapping; coverage; JOIN plans OR additional-view A/B/C
 [ ] Write phase-a. Do not generate output/ in A
 [ ] PHASE=B: require plan. Write blueprint matching example schema
-[ ] Main: 1_PlmSearch_ImportBlueprint.json — queryText only FieldMapping columns
+[ ] Main: 1_PlmSearch_ImportBlueprint.json — queryText uses FieldMapping.AppColumnName + sys.columns
 [ ] Additional A: 2_… no 1:N joins in dataSetPatch; do not change default View
 [ ] Additional B: Search_{Name}_V{ViewId}
 [ ] executionPlan kinds match files

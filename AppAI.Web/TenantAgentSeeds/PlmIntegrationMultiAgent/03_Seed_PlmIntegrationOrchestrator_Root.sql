@@ -549,3 +549,14 @@ Option C or user cancel => [Menu] Repeatable imports.
 WHERE SkillKey = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: massupdate Phase A success is a checklist%';
 GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: import-dw all PLM tabs
+tabTableMappingOk=ok only when Phase A lists every pdmTemplateTab (plmTabCount equals listed tab count).
+skipNoDwOk documents tabs with no PLM_DW_Tab_* only. Do not approve a subset (for example 8 of 29).
+If child Phase B generator auto-fills omitted tabs, that is correct; Apply the full Blueprint. Do not APPLY a previous 8-tab Blueprint.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: import-dw all PLM tabs%';
+GO

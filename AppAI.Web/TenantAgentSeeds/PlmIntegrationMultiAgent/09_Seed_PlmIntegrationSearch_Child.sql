@@ -78,7 +78,8 @@ Require plan. Write files under output/{searchTemplateId}/. Write outputs.files 
 
 ### Main or additional-view Option B
 Match source/7_PlmSearch_ImportBlueprint.example.json.
-Synthesize dataSet.queryText from selected JOIN plan + FieldMapping only.
+MUST emit searchView.fields[] for EVERY visible pdmReferenceViewColumn on SearchTemplate.ReferenceViewID (map via FieldMapping). A views[] shell (name + referenceViewId) is NOT a substitute. criteriaFields[] from every active DCU. DataSet SELECT must include those columns plus ReferenceId (isTransRootId).
+Synthesize dataSet.queryText from selected JOIN plan + FieldMapping.AppColumnName only. Probe sys.columns on each FROM/JOIN APP table. JOIN ON ReferenceId never ReferenceBasicInfoID. Never use PLM DisplayText or pdm names (Style_Name, Enterprise, Sub_Category) as SQL columns.
 Copy PLM DCU OperationID as-is (EmAppCriteriaOperatorType 0-14). Not Wijmo filter enum.
 entityIntegrationId = string of PlmEntityId. IsTransRootId on ReferenceId. Image ControlType=5 when PlmControlType=5.
 Main file: 1_PlmSearch_ImportBlueprint.json
@@ -120,7 +121,7 @@ Write outputs.apply. FinalResponse mode=main|additional-view so ROOT appends sea
 [ ] Delete output/_probe_* scratch
 ',
     3, 0, 110, 1,
-    60000, 40000, 4000, 8,
+    60000, 40000, 48000, 8,
     60, N'Deterministic', 1
 );
 GO
@@ -159,4 +160,48 @@ AND NOT EXISTS (
     WHERE SkillKey = N'plm-integration-search' AND LibraryKey = N'platform-database')
 INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
 VALUES (N'plm-integration-search', N'platform-database');
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET MaxToolResultChars = 48000
+WHERE SkillKey IN (N'plm-integration-search', N'plm-integration-massupdate')
+  AND ISNULL(MaxToolResultChars, 0) < 48000;
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(
+    SystemPrompt,
+    N'Match source/7_PlmSearch_ImportBlueprint.example.json.
+Synthesize dataSet.queryText from selected JOIN plan + FieldMapping only.',
+    N'Match source/7_PlmSearch_ImportBlueprint.example.json.
+MUST emit searchView.fields[] for EVERY visible pdmReferenceViewColumn on SearchTemplate.ReferenceViewID (map via FieldMapping). A views[] shell (name + referenceViewId) is NOT a substitute. criteriaFields[] from every active DCU. DataSet SELECT must include those columns plus ReferenceId (isTransRootId).
+Synthesize dataSet.queryText from selected JOIN plan + FieldMapping.AppColumnName only. Probe sys.columns on each FROM/JOIN APP table. JOIN ON ReferenceId never ReferenceBasicInfoID. Never use PLM DisplayText or pdm names (Style_Name, Enterprise, Sub_Category) as SQL columns.')
+WHERE SkillKey = N'plm-integration-search'
+  AND SystemPrompt LIKE N'%Match source/7_PlmSearch_ImportBlueprint.example.json.
+Synthesize dataSet.queryText from selected JOIN plan + FieldMapping only.%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(
+    SystemPrompt,
+    N'Synthesize dataSet.queryText from selected JOIN plan + FieldMapping only.',
+    N'Synthesize dataSet.queryText from selected JOIN plan + FieldMapping.AppColumnName only. Probe sys.columns on each FROM/JOIN APP table. JOIN ON ReferenceId never ReferenceBasicInfoID. Never use PLM DisplayText or pdm names (Style_Name, Enterprise, Sub_Category) as SQL columns.')
+WHERE SkillKey = N'plm-integration-search'
+  AND SystemPrompt LIKE N'%Synthesize dataSet.queryText from selected JOIN plan + FieldMapping only.%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: coverage counts must equal emitted arrays
+PHASE=B 1_PlmSearch_ImportBlueprint.json:
+coverage.criteria.mapped MUST equal criteriaFields.Count.
+coverage.view.mapped MUST equal searchView.fields count excluding isTransRootId.
+Never copy Phase A coverage numbers when the arrays are shorter (a stub of 2 criteria / 4 view columns is invalid when coverage says mapped 13/28).
+Emit criteriaFields for every active DCU and searchView.fields for every visible pdmReferenceViewColumn via FieldMapping.AppColumnName.
+True misses go in unmappedPlmFields (role=criteria|view) and are counted in coverage.ignored.
+FinalResponse counts must include criteriaEmitted, viewEmitted, coverageCriteriaTotal, coverageViewTotal.
+APPLY BL rejects coverage.mapped greater than emitted counts.
+'
+WHERE SkillKey = N'plm-integration-search'
+  AND SystemPrompt NOT LIKE N'%HARD: coverage counts must equal emitted arrays%';
 GO

@@ -302,6 +302,15 @@ namespace APP.AgentPlugins.PlmImport
                         validation.Warnings.Add(
                             $"ListEdit IntegrationId '{blueprint.ListEditCreate.Create.IntegrationId}' already exists as Transaction #{existingList} — execute will reuse it (skip create).");
                 }
+
+                RewriteSiblingDataSetPatchQuery(
+                    new PlmSearchSiblingViewBlueprintDto
+                    {
+                        SearchView = blueprint.SearchView,
+                        DataSetPatch = blueprint.DataSetPatch
+                    },
+                    conn,
+                    validation);
             }
         }
 

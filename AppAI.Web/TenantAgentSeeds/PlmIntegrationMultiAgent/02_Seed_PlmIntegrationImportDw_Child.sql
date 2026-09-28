@@ -476,7 +476,7 @@ This PROMPT is used in **three** places. **Detect which one you are in, then fol
 }
 ```
 
-- `importTabIds` / `tabs` - **derived from PLM** for `plmTemplateId`, not typed by user  
+- `importTabIds` / `tabs` - **derived from PLM** for `plmTemplateId`, not typed by user. HARD: importTabIds and tabs[] MUST list every pdmTemplateTab TabID. The only allowed omission is importStatus=Skipped with skipReason no DW when that tab has no PLM_DW_Tab_* and no grid. Never copy the first N rows of a truncated probe.  
 - `tabSort`, `isTemplateHeaderTab` - copied from PLM probe  
 - `importStatus`: `Ready` | `Skipped` (existing `Tab_{id}` transaction - optional; Insert mode skips anyway)  
 - `mode`: `all` | `excludeSubItemsFromDwTable`  
@@ -1259,5 +1259,18 @@ SET SystemPrompt = SystemPrompt + N'
 '
 WHERE SkillKey = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: ProductDesignColorGrid is grid 7%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: importTabIds must cover every pdmTemplateTab
+PHASE=A JSON must include plmTabCount (COUNT from pdmTemplateTab) and every TabID / TabName / Sort.
+PHASE=B dwTabImportConfig.json importTabIds and tabs[] MUST list every pdmTemplateTab TabID.
+The only allowed omission is importStatus=Skipped with skipReason no DW when that tab has no PLM_DW_Tab_* and no grid.
+Never copy the first N rows of a truncated probe (template 3286 has 29 tabs; 8 is wrong).
+The official generator asserts against pdmTemplateTab and auto-adds missing Ready tabs from DW. If run_agent_script throws omitted tabs, fix config and rerun; do not patch the generator.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: importTabIds must cover every pdmTemplateTab%';
 GO
 

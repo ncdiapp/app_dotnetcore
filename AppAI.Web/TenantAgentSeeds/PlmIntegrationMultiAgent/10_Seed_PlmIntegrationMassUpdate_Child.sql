@@ -111,7 +111,7 @@ ROOT appends massupdate.doneIds from apply steps (massUpdateViewId / SearchViewI
 [ ] Delete output/_probe_* scratch
 ',
     3, 0, 111, 1,
-    60000, 40000, 4000, 8,
+    60000, 40000, 24000, 8,
     60, N'Deterministic', 1
 );
 GO

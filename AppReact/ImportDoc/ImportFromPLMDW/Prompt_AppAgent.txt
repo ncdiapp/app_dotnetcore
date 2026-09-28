@@ -424,7 +424,7 @@ This PROMPT is used in **three** places. **Detect which one you are in, then fol
 }
 ```
 
-- `importTabIds` / `tabs` — **derived from PLM** for `plmTemplateId`, not typed by user  
+- `importTabIds` / `tabs` — **derived from PLM** for `plmTemplateId`, not typed by user. **HARD:** `importTabIds` and `tabs[]` MUST list every `pdmTemplateTab.TabID`. The only allowed omission is `importStatus: "Skipped"` + `skipReason` containing `no DW` when that tab has no `PLM_DW_Tab_*` and no grid. Never copy the first N rows of a truncated probe (template 3286 has 29 tabs; 8 is wrong). The official generator asserts this against PLM and auto-adds missing Ready tabs from DW.  
 - `tabSort`, `isTemplateHeaderTab` — copied from PLM probe  
 - `importStatus`: `Ready` | `Skipped` (existing `Tab_{id}` transaction — optional; Insert mode skips anyway)  
 - `mode`: `all` | `excludeSubItemsFromDwTable`  

@@ -212,6 +212,8 @@ namespace APP.AgentPlugins.PlmImport
                         validation.Warnings.Add(
                             $"Sibling view '{blueprint.SearchView.Name}' already exists as SearchView #{existingSibling} — execute will update it.");
                 }
+
+                RewriteSiblingDataSetPatchQuery(blueprint, conn, validation);
             }
         }
 

@@ -9,6 +9,7 @@ using APP.Framework.Collections;
 using APP.Framework.Communication;
 using APP.Framework.Validation;
 using Newtonsoft.Json;
+using System.Text.RegularExpressions;
 
 namespace APP.AgentPlugins.PlmImport
 {
@@ -31,6 +32,8 @@ namespace APP.AgentPlugins.PlmImport
                 var blueprint = JsonConvert.DeserializeObject<PlmSearchImportBlueprintDto>(request.BlueprintJson);
                 if (blueprint == null)
                     throw new InvalidOperationException("Search blueprint JSON could not be deserialized.");
+
+                NormalizeSearchImportBlueprint(blueprint);
 
                 if (blueprint.SchemaVersion <= 0)
                     blueprint.SchemaVersion = 1;
@@ -82,6 +85,7 @@ namespace APP.AgentPlugins.PlmImport
                 if (blueprint == null)
                     throw new ArgumentException("Blueprint is required.");
 
+                NormalizeSearchImportBlueprint(blueprint);
                 string tenantConn = GetTenantConnectionString();
                 var validation = new PlmSearchImportValidationDto();
                 ValidateSearchImportBlueprintInternal(blueprint, tenantConn, validation);
@@ -139,6 +143,7 @@ namespace APP.AgentPlugins.PlmImport
                 if (request?.Blueprint == null)
                     throw new ArgumentException("Blueprint is required.");
 
+                NormalizeSearchImportBlueprint(request.Blueprint);
                 string tenantConn = GetTenantConnectionString();
                 var validation = new PlmSearchImportValidationDto();
                 ValidateSearchImportBlueprintInternal(request.Blueprint, tenantConn, validation);
@@ -187,9 +192,10 @@ namespace APP.AgentPlugins.PlmImport
             catch (Exception ex)
             {
                 result.Object.IsSuccess = false;
-                result.Object.ErrorMessage = ex.Message;
+                result.Object.ErrorMessage = FormatSearchImportException(ex);
                 result.ValidationResult.Items.Add(new ValidationItem(
-                    typeof(PlmImportEngine), "Plm_SearchImport_Execute_Error", ValidationItemType.Error, ex.Message));
+                    typeof(PlmImportEngine), "Plm_SearchImport_Execute_Error", ValidationItemType.Error,
+                    result.Object.ErrorMessage));
             }
 
             return result;
@@ -206,6 +212,8 @@ namespace APP.AgentPlugins.PlmImport
                 return;
             }
 
+            NormalizeSearchImportBlueprint(blueprint);
+
             if (blueprint.SchemaVersion <= 0)
                 validation.Warnings.Add("SchemaVersion missing — defaulting to 1 at execute time.");
 
@@ -216,13 +224,25 @@ namespace APP.AgentPlugins.PlmImport
                 validation.Errors.Add("dataSet.queryText is required.");
 
             if (blueprint.SearchView == null || string.IsNullOrWhiteSpace(blueprint.SearchView.IntegrationId))
-                validation.Errors.Add("searchView.integrationId is required.");
+                validation.Errors.Add("searchView.integrationId is required (or views[] with integrationId).");
 
-            if (blueprint.SearchView?.Fields == null || blueprint.SearchView.Fields.Count == 0)
-                validation.Errors.Add("searchView.fields must contain at least one column.");
-
-            if (!blueprint.SearchView.Fields.Any(f => f.IsTransRootId))
+            var viewFields = blueprint.SearchView?.Fields;
+            if (viewFields == null || viewFields.Count == 0)
+                validation.Errors.Add("searchView.fields must contain at least one column (or fieldResolution role=view).");
+            else if (!viewFields.Any(f => f != null && f.IsTransRootId))
                 validation.Errors.Add("searchView.fields must include one field with isTransRootId=true (typically ReferenceId).");
+            else
+            {
+                int mappedViewCols = viewFields.Count(f => f != null && !f.IsTransRootId);
+                bool hasDefaultViewShell = (blueprint.Views ?? new List<PlmSearchImportViewShellDto>())
+                    .Any(v => v != null && (v.IsDefault || v.ReferenceViewId.HasValue));
+                if (hasDefaultViewShell && mappedViewCols <= 1)
+                    validation.Errors.Add(
+                        "Default PLM view columns were not copied into searchView.fields (only a views[] shell). "
+                        + "Re-run Phase B: probe pdmReferenceViewColumn for SearchTemplate.ReferenceViewID and emit every visible column via FieldMapping.");
+            }
+
+            AssertSearchCoverageMatchesEmitted(blueprint, validation);
 
             using (var conn = new SqlConnection(tenantConn))
             {
@@ -260,6 +280,8 @@ namespace APP.AgentPlugins.PlmImport
                             validation.Errors.Add($"Transaction group id {groupId.Value} was not found.");
                     }
                 }
+
+                RewriteSearchImportQuery(blueprint, conn, validation);
             }
 
             if ((blueprint.CriteriaFields?.Count ?? 0) == 0)
@@ -269,28 +291,293 @@ namespace APP.AgentPlugins.PlmImport
                 validation.Warnings.Add($"{blueprint.UnmappedPlmFields.Count} PLM field(s) were intentionally unmapped.");
         }
 
+        private static int CountUnmappedSearchFields(PlmSearchImportBlueprintDto blueprint, string role)
+        {
+            return blueprint?.UnmappedPlmFields?.Count(u =>
+                u != null && string.Equals(u.Role, role, StringComparison.OrdinalIgnoreCase)) ?? 0;
+        }
+
+        private static void AssertSearchCoverageMatchesEmitted(
+            PlmSearchImportBlueprintDto blueprint,
+            PlmSearchImportValidationDto validation)
+        {
+            if (blueprint == null || validation == null)
+                return;
+
+            int criteriaEmitted = blueprint.CriteriaFields?.Count(f => f != null) ?? 0;
+            int viewEmitted = blueprint.SearchView?.Fields?.Count(f => f != null && !f.IsTransRootId) ?? 0;
+            var coverage = blueprint.Coverage;
+            int criteriaMapped = coverage?.Criteria?.Mapped ?? 0;
+            int criteriaTotal = coverage?.Criteria?.Total ?? 0;
+            int viewMapped = coverage?.View?.Mapped ?? 0;
+            int viewTotal = coverage?.View?.Total ?? 0;
+
+            if (criteriaMapped > 0 && criteriaEmitted < criteriaMapped)
+            {
+                validation.Errors.Add(
+                    $"coverage.criteria.mapped={criteriaMapped} but criteriaFields has {criteriaEmitted} item(s). "
+                    + "Phase B stubbed the criteria panel. Re-run Phase B: emit every mapped DCU into criteriaFields "
+                    + "(coverage.criteria.mapped must equal criteriaFields.Count).");
+            }
+
+            if (viewMapped > 0 && viewEmitted < viewMapped)
+            {
+                validation.Errors.Add(
+                    $"coverage.view.mapped={viewMapped} but searchView.fields has {viewEmitted} non-root column(s). "
+                    + "Phase B stubbed the default View. Re-run Phase B: emit every visible pdmReferenceViewColumn via FieldMapping "
+                    + "(coverage.view.mapped must equal searchView.fields count excluding isTransRootId).");
+            }
+
+            int criteriaUnmapped = CountUnmappedSearchFields(blueprint, "criteria");
+            int viewUnmapped = CountUnmappedSearchFields(blueprint, "view");
+
+            if (criteriaTotal >= 8
+                && criteriaEmitted < Math.Max(2, (criteriaTotal + 1) / 2)
+                && (criteriaEmitted + criteriaUnmapped) < criteriaTotal)
+            {
+                validation.Errors.Add(
+                    $"PLM criteria total={criteriaTotal} but only {criteriaEmitted} criteriaFields emitted "
+                    + $"(unmappedPlmFields criteria={criteriaUnmapped}). Import every active DCU; list true misses in unmappedPlmFields.");
+            }
+
+            if (viewTotal >= 8
+                && viewEmitted < Math.Max(2, (viewTotal + 1) / 2)
+                && (viewEmitted + viewUnmapped) < viewTotal)
+            {
+                validation.Errors.Add(
+                    $"PLM view total={viewTotal} but only {viewEmitted} searchView.fields emitted "
+                    + $"(unmappedPlmFields view={viewUnmapped}). Import every visible pdmReferenceViewColumn.");
+            }
+        }
+
         private static IEnumerable<string> EnumerateJoinTables(PlmSearchImportBlueprintDto blueprint)
         {
             var tables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            string primary = blueprint.DataSet?.PrimaryTableName
-                ?? blueprint.Source?.PrimaryTableName;
-            if (!string.IsNullOrWhiteSpace(primary))
-                tables.Add(primary);
-
-            if (!string.IsNullOrWhiteSpace(blueprint.DataSet?.RootTableName))
-                tables.Add(blueprint.DataSet.RootTableName);
-
-            // Infer from query text aliases is fragile — use known plan tables when present.
-            if (blueprint.JoinPlan?.Label != null)
+            void Add(string name)
             {
-                foreach (var known in new[] { "Plm_ReferenceBasicInfo", "Plm_Style_Header", "Plm_Style_Summary" })
-                {
-                    if (blueprint.DataSet?.QueryText?.IndexOf(known, StringComparison.OrdinalIgnoreCase) >= 0)
-                        tables.Add(known);
-                }
+                if (string.IsNullOrWhiteSpace(name))
+                    return;
+                var trimmed = name.Trim().Trim('[', ']');
+                if (trimmed.StartsWith("dbo.", StringComparison.OrdinalIgnoreCase))
+                    trimmed = trimmed.Substring(4);
+                if (!string.IsNullOrWhiteSpace(trimmed))
+                    tables.Add(trimmed);
+            }
+
+            Add(blueprint.DataSet?.PrimaryTableName);
+            Add(blueprint.Source?.PrimaryTableName);
+            Add(blueprint.DataSet?.RootTableName);
+
+            foreach (var fr in blueprint.FieldResolution ?? Enumerable.Empty<PlmSearchImportFieldResolutionDto>())
+                Add(fr?.Resolved?.AppTableName);
+
+            foreach (var join in blueprint.DataSet?.Joins ?? Enumerable.Empty<PlmSearchImportJoinDto>())
+                Add(join?.AppTableName);
+
+            foreach (var planTable in blueprint.JoinPlan?.Tables ?? Enumerable.Empty<PlmSearchImportJoinPlanTableDto>())
+                Add(planTable?.AppTableName);
+
+            // Bracketed identifiers only — IndexOf("Plm_Style_Header") must not match Plm_Style_Header_V2K_ERP.
+            var sql = blueprint.DataSet?.QueryText;
+            if (!string.IsNullOrWhiteSpace(sql))
+            {
+                foreach (Match m in Regex.Matches(sql, @"\[dbo\]\.\[([^\]]+)\]", RegexOptions.IgnoreCase))
+                    Add(m.Groups[1].Value);
+                foreach (Match m in Regex.Matches(
+                    sql,
+                    @"(?:FROM|JOIN)\s+(?:\[?dbo\]?\.)?\[([^\]]+)\]",
+                    RegexOptions.IgnoreCase))
+                    Add(m.Groups[1].Value);
             }
 
             return tables;
+        }
+
+        /// <summary>
+        /// Child Phase B often emits fieldResolution + views[] instead of searchView/criteriaFields.
+        /// Fill the execute shape so APPLY does not NullRef.
+        /// </summary>
+        private static void NormalizeSearchImportBlueprint(PlmSearchImportBlueprintDto blueprint)
+        {
+            if (blueprint == null)
+                return;
+
+            if (blueprint.Source != null
+                && !blueprint.Source.PlmSearchTemplateId.HasValue
+                && blueprint.Source.PlmSearchId.HasValue)
+            {
+                blueprint.Source.PlmSearchTemplateId = blueprint.Source.PlmSearchId;
+            }
+
+            if (blueprint.DataSet != null
+                && string.IsNullOrWhiteSpace(blueprint.DataSet.PrimaryTableName)
+                && !string.IsNullOrWhiteSpace(blueprint.DataSet.RootTableName))
+            {
+                blueprint.DataSet.PrimaryTableName = blueprint.DataSet.RootTableName;
+            }
+
+            blueprint.CriteriaFields ??= new List<PlmSearchImportCriteriaFieldDto>();
+            blueprint.FieldResolution ??= new List<PlmSearchImportFieldResolutionDto>();
+            blueprint.Views ??= new List<PlmSearchImportViewShellDto>();
+            blueprint.LinkTargets ??= new List<PlmSearchImportLinkTargetDto>();
+
+            if (blueprint.SearchView == null)
+            {
+                var shell = blueprint.Views.FirstOrDefault(v => v != null && v.IsDefault)
+                    ?? blueprint.Views.FirstOrDefault(v => v != null);
+                string searchName = blueprint.Search?.Name ?? "PLM Search";
+                string searchKey = blueprint.Search?.IntegrationId ?? "Search";
+                blueprint.SearchView = new PlmSearchImportSearchViewDto
+                {
+                    Name = shell?.Name ?? (searchName + " Grid"),
+                    IntegrationId = !string.IsNullOrWhiteSpace(shell?.IntegrationId)
+                        ? shell.IntegrationId
+                        : searchKey + "_View",
+                    ViewType = "GridView",
+                    GridOutputMode = 1,
+                    Fields = new List<PlmSearchImportSearchViewFieldDto>()
+                };
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(blueprint.SearchView.IntegrationId)
+                    && !string.IsNullOrWhiteSpace(blueprint.Search?.IntegrationId))
+                {
+                    blueprint.SearchView.IntegrationId = blueprint.Search.IntegrationId + "_View";
+                }
+                blueprint.SearchView.Fields ??= new List<PlmSearchImportSearchViewFieldDto>();
+            }
+
+            if (blueprint.SearchView.Fields.Count == 0)
+            {
+                foreach (var fr in blueprint.FieldResolution.Where(IsViewResolution))
+                {
+                    var field = MapResolutionToViewField(fr);
+                    if (field != null)
+                        blueprint.SearchView.Fields.Add(field);
+                }
+            }
+
+            if (blueprint.CriteriaFields.Count == 0)
+            {
+                foreach (var fr in blueprint.FieldResolution.Where(IsCriteriaResolution))
+                {
+                    var field = MapResolutionToCriteriaField(fr);
+                    if (field != null)
+                        blueprint.CriteriaFields.Add(field);
+                }
+            }
+
+            EnsureSearchViewRootField(blueprint.SearchView);
+
+            foreach (var link in blueprint.LinkTargets)
+            {
+                if (link == null)
+                    continue;
+                if (string.IsNullOrWhiteSpace(link.Name))
+                    link.Name = link.ActionName ?? link.ActionType ?? "Open";
+                if (string.IsNullOrWhiteSpace(link.SourceColumn))
+                    link.SourceColumn = string.IsNullOrWhiteSpace(link.RootColumn) ? "ReferenceId" : link.RootColumn;
+            }
+        }
+
+        private static bool IsViewResolution(PlmSearchImportFieldResolutionDto fr)
+        {
+            return fr != null
+                && string.Equals(fr.Role, "view", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(fr.Resolved?.SysTableFiledPath ?? fr.Resolved?.AppColumnName);
+        }
+
+        private static bool IsCriteriaResolution(PlmSearchImportFieldResolutionDto fr)
+        {
+            return fr != null
+                && string.Equals(fr.Role, "criteria", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(fr.Resolved?.SysTableFiledPath ?? fr.Resolved?.AppColumnName);
+        }
+
+        private static PlmSearchImportSearchViewFieldDto MapResolutionToViewField(PlmSearchImportFieldResolutionDto fr)
+        {
+            string path = fr.Resolved?.SysTableFiledPath ?? fr.Resolved?.AppColumnName;
+            if (string.IsNullOrWhiteSpace(path))
+                return null;
+            return new PlmSearchImportSearchViewFieldDto
+            {
+                DisplayText = fr.PlmSource?.DisplayLabel ?? path,
+                SysTableFiledPath = path.Trim(),
+                ControlType = fr.ControlType,
+                EntityIntegrationId = fr.EntityIntegrationId,
+                IsTransRootId = fr.IsTransRootId || IsRootColumnName(path),
+                IsVisible = fr.IsVisible,
+                Sort = fr.Sort
+            };
+        }
+
+        private static PlmSearchImportCriteriaFieldDto MapResolutionToCriteriaField(PlmSearchImportFieldResolutionDto fr)
+        {
+            string path = fr.Resolved?.SysTableFiledPath ?? fr.Resolved?.AppColumnName;
+            if (string.IsNullOrWhiteSpace(path))
+                return null;
+            return new PlmSearchImportCriteriaFieldDto
+            {
+                IntegrationKey = "criteria_" + path.Trim(),
+                DisplayText = fr.PlmSource?.DisplayLabel ?? path,
+                SysTableFiledPath = path.Trim(),
+                ControlType = fr.ControlType,
+                EntityIntegrationId = fr.EntityIntegrationId,
+                OperationId = fr.OperationId,
+                PositionRow = fr.PositionRow,
+                PositionColumn = fr.PositionColumn,
+                IsVisible = fr.IsVisible,
+                Sort = fr.Sort
+            };
+        }
+
+        private static void EnsureSearchViewRootField(PlmSearchImportSearchViewDto searchView)
+        {
+            if (searchView?.Fields == null)
+                return;
+
+            if (searchView.Fields.Any(f => f != null && f.IsTransRootId))
+                return;
+
+            var inferred = searchView.Fields.FirstOrDefault(f => f != null && IsRootColumnName(f.SysTableFiledPath));
+            if (inferred != null)
+            {
+                inferred.IsTransRootId = true;
+                return;
+            }
+
+            searchView.Fields.Insert(0, new PlmSearchImportSearchViewFieldDto
+            {
+                DisplayText = "Ref No.",
+                SysTableFiledPath = "ReferenceId",
+                ControlType = 20,
+                IsTransRootId = true,
+                IsVisible = true,
+                Sort = 5
+            });
+        }
+
+        private static bool IsRootColumnName(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return false;
+            var col = path.Trim();
+            var dot = col.LastIndexOf('.');
+            if (dot >= 0 && dot < col.Length - 1)
+                col = col.Substring(dot + 1);
+            return col.Equals("ReferenceId", StringComparison.OrdinalIgnoreCase)
+                || col.Equals("ReferenceBasicInfoID", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string FormatSearchImportException(Exception ex)
+        {
+            if (ex == null)
+                return "Unknown error.";
+            var msg = ex.GetType().Name + ": " + (ex.Message ?? "");
+            if (ex.InnerException != null && !string.IsNullOrWhiteSpace(ex.InnerException.Message))
+                msg += " | " + ex.InnerException.GetType().Name + ": " + ex.InnerException.Message;
+            return msg;
         }
 
         private static List<PlmSearchImportPreviewItemDto> BuildSearchImportPreviewItems(
