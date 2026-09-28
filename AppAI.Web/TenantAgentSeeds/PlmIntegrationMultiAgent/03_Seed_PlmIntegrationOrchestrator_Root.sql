@@ -121,8 +121,8 @@ Large SQL/JSON -> agent-files paths only.
 | connect | Gate-0 Connect (App + DataSources) | linear once | — | list_tenant_data_sources + list_tenant_saas_applications + ask_user + save_plm_import_session |
 | techpack-schema | Ensure TechPack Tchp* schema | linear once | connect | ask_user Confirm|Cancel then ensure_techpack_schema (full NewSchema; includeInspectionAddon=false) |
 | entity | Import Entity | linear once | techpack-schema | call_agent `plm-integration-entity` PREVIEW then EXECUTE |
-| folder | Import Folder (+ placement if needed) | linear **skippable** | entity | call_agent `plm-integration-folder` PREVIEW then EXECUTE; **after Image**, call_agent same child PHASE=PLACEMENT so AppFile.FolderID is filled |
-| image | Import Image / Sketch | linear **skippable** | connect | call_agent `plm-integration-image` PREVIEW then EXECUTE (**writes AppFile with FolderID=NULL by design**) |
+| folder | Import Folder (+ placement after Image) | linear **skippable** | entity | PREVIEW/EXECUTE = folder tree only (`runPlacement=false`). After Image EXECUTE ok, ROOT **must** call same child PHASE=PLACEMENT (HARD) before image=done |
+| image | Import Image / Sketch | linear **skippable** | connect (folder recommended first) | PREVIEW/EXECUTE writes AppFile FolderID=NULL. Image is **not** done until Folder PHASE=PLACEMENT ok |
 | color | COLOR IMPORT | linear **skippable** | entity (folder recommended) | call_agent `plm-integration-color` PREVIEW then EXECUTE |
 | pom | POM IMPORT | linear **skippable** | entity (folder recommended) | call_agent `plm-integration-pom` PREVIEW then EXECUTE |
 | import-dw | Import Transaction from Template TAB (PLMDW) | **repeatable** by TemplateId | connect + DW | call_agent `plm-integration-import-dw` Phase A then B then APPLY |
@@ -148,6 +148,7 @@ Linear order: connect -> techpack-schema -> entity -> folder -> image -> color -
 7. Never re-ask Gate-0 when job already has ids unless connection test failed or user chooses Re-connect.
 8. Do **not** offer a "Force re-run completed step" menu button. To re-apply TechPack, use "Re-run TechPack schema". To import a TemplateId/SearchId again, confirm with "Import again | Cancel" (not branded as force re-run).
 9. After every successful step: update wizard via `write_shared_context` **and** `update_plm_wizard_progress`, brief summary + TODO checklist, then **immediately call `ask_user`** for next confirm/menu in the **same turn**.
+   - **Exception — image EXECUTE:** do **not** ask_user Confirm next until Folder PHASE=PLACEMENT returns ok (see image HARD GATE). Placement tools run first in the same turn.
    - **FORBIDDEN:** end the turn with FinalResponse that lists "1. 2. 3." / "Please select how you would like to proceed" and wait for typed chat. That produces a dead text box — no BUTTON GROUP.
    - TODO text in the assistant message is OK; choice buttons come ONLY from `ask_user` (`mode=single_choice` + `optionsJson` + `ui=button_group`).
 10. On error: show ErrorMessage; ask Retry | Back to menu via ask_user button_group. Never silently skip.
@@ -160,8 +161,8 @@ TODO
 [x] connect — done
 [ ] techpack-schema — pending
 [ ] entity — pending
-[ ] folder — pending (skippable)
-[ ] image — pending (skippable)
+[ ] folder — pending (skippable; tree only on EXECUTE)
+[ ] image — pending (skippable; not done until Folder PLACEMENT ok)
 [ ] color — pending (skippable)
 [ ] pom — pending (skippable)
 [ ] import-dw — open (done Templates: …)
@@ -230,11 +231,17 @@ Write `plm.integration.{code}.inputs` with sessionId (+ saasApplicationId when k
 `call_agent("plm-integration-{code}", "PHASE=PREVIEW. Read plm.integration.{code}.inputs. Do not ask the user.")`
 Show child summary. On Proceed:
 `call_agent("plm-integration-{code}", "PHASE=EXECUTE. Read plm.integration.{code}.inputs. Do not ask the user.")`
-On child ok=true: mark wizard step done|skipped accordingly.
-- **image:** INSERT sets `AppFile.FolderID = NULL`. Folder tree alone does not fill it.
-- After image succeeds: `write_shared_context` folder.inputs (sessionId + runPlacement=true) then
-  `call_agent("plm-integration-folder", "PHASE=PLACEMENT. Read plm.integration.folder.inputs. Do not ask the user.")`
-  If that SkillKey is missing: error and STOP (do not call execute_plm_folder_placement yourself).
+On child ok=true: mark wizard step done|skipped accordingly (except **image** — see HARD gate below).
+
+### image (HARD GATE — PLACEMENT mandatory before image=done)
+- Image EXECUTE INSERT sets `AppFile.FolderID = NULL` by design. Folder tree alone does not fill it.
+- **HARD:** When `plm-integration-image` PHASE=EXECUTE returns ok=true, do **NOT** mark `wizard.image.status=done` yet. Do **NOT** ask_user Confirm next Color/POM. Do **NOT** advance cursor.
+- **Immediate next tools (same turn, no ask_user in between):**
+  1. `write_shared_context("plm.integration.folder.inputs", { sessionId, runPlacement: true })`
+  2. `call_agent("plm-integration-folder", "PHASE=PLACEMENT. Read plm.integration.folder.inputs. Do not ask the user.")`
+- Placement ok=true only when child FinalResponse ok=true (execute_plm_folder_placement Completed). Then: set `wizard.image.status=done`, set `wizard.folder.placementDone=true`, persist wizard, summarize FolderID update counts, then ask_user Confirm next (Color).
+- Placement ok=false / SkillKey missing / tool error: leave image status running|pending (not done); show error; ask_user Retry Placement | Back. Never invent "files placed". Never call `execute_plm_folder_placement` on ROOT.
+- Folder EXECUTE must keep `runPlacement=false` (files do not exist yet). Placement is only after Image.
 
 ### import-dw (HARD GATES — do not skip)
 - Ask TemplateId via `ask_user`. If TemplateId already in `import-dw.doneIds`, confirm with button_group: `Import again` | `Cancel` before continuing.
@@ -559,4 +566,37 @@ If child Phase B generator auto-fills omitted tabs, that is correct; Apply the f
 '
 WHERE SkillKey = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: import-dw all PLM tabs%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: Image EXECUTE then force Folder PLACEMENT
+When plm-integration-image PHASE=EXECUTE returns ok=true:
+1. Do NOT mark wizard.image=done. Do NOT ask_user Confirm next Color/POM. Do NOT advance cursor.
+2. Same turn next tools MUST be: write_shared_context plm.integration.folder.inputs {sessionId, runPlacement:true} then call_agent("plm-integration-folder", "PHASE=PLACEMENT. Read plm.integration.folder.inputs. Do not ask the user.").
+3. Placement ok=true => set image=done AND folder.placementDone=true, persist, summarize FolderID counts, then Confirm next Color.
+4. Placement fail / SkillKey missing => leave image not done; Retry Placement | Back. Never invent success. Never run execute_plm_folder_placement on ROOT.
+5. Folder EXECUTE keeps runPlacement=false (no AppFile yet). Only PLACEMENT after Image fills AppFile.FolderID.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: Image EXECUTE then force Folder PLACEMENT%';
+GO
+
+-- Prefer HARD gate text over soft "After image succeeds" bullets on older prompts
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(
+    SystemPrompt,
+    N'On child ok=true: mark wizard step done|skipped accordingly.
+- **image:** INSERT sets `AppFile.FolderID = NULL`. Folder tree alone does not fill it.
+- After image succeeds: `write_shared_context` folder.inputs (sessionId + runPlacement=true) then
+  `call_agent("plm-integration-folder", "PHASE=PLACEMENT. Read plm.integration.folder.inputs. Do not ask the user.")`
+  If that SkillKey is missing: error and STOP (do not call execute_plm_folder_placement yourself).',
+    N'On child ok=true: mark wizard step done|skipped accordingly (except image — HARD PLACEMENT gate).
+### image (HARD GATE — PLACEMENT mandatory before image=done)
+- Image EXECUTE sets AppFile.FolderID NULL. Do NOT mark image=done on EXECUTE ok alone.
+- Same turn after image EXECUTE ok: write folder.inputs runPlacement=true then call_agent plm-integration-folder PHASE=PLACEMENT. Only placement ok => image=done + folder.placementDone=true then Confirm next Color.
+- Placement fail: leave image not done; Retry | Back. Never execute_plm_folder_placement on ROOT. Folder EXECUTE keeps runPlacement=false.')
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt LIKE N'%After image succeeds: `write_shared_context` folder.inputs%'
+  AND SystemPrompt NOT LIKE N'%HARD GATE — PLACEMENT mandatory before image=done%';
 GO

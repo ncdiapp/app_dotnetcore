@@ -29,10 +29,11 @@ VALUES (
 - Write plm.integration.image.outputs
 
 ## Domain
-INSERT writes AppFile with FolderID NULL by design. Do not call folder placement from this child. ROOT must call plm-integration-folder PHASE=PLACEMENT after this EXECUTE succeeds.
+INSERT writes AppFile with FolderID NULL by design. Do not call folder placement from this child.
+ROOT HARD gate: after this EXECUTE ok, ROOT must call plm-integration-folder PHASE=PLACEMENT in the same turn before marking wizard.image=done. Do not tell ROOT to advance to Color yet.
 
 ## nextHint
-PREVIEW: Ask ROOT to confirm Proceed. EXECUTE ok: Mark wizard.image=done then ROOT must run folder placement
+PREVIEW: Ask ROOT to confirm Proceed. EXECUTE ok: nextHint must say ROOT must run folder PHASE=PLACEMENT now (do not mark image=done until placement ok)
 ',
     3, 0, 22, 1,
     40000, 30000, 4000, 8,
@@ -56,4 +57,13 @@ AND NOT EXISTS (
     WHERE SkillKey = N'plm-integration-image' AND LibraryKey = N'integration-plm-import')
 INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
 VALUES (N'plm-integration-image', N'integration-plm-import');
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: after EXECUTE ok ROOT must PLACEMENT
+EXECUTE ok does not mean image is done. FinalResponse nextHint must tell ROOT to call plm-integration-folder PHASE=PLACEMENT immediately. Do not suggest advancing to Color. Do not call folder placement from this child.
+'
+WHERE SkillKey = N'plm-integration-image'
+  AND SystemPrompt NOT LIKE N'%HARD: after EXECUTE ok ROOT must PLACEMENT%';
 GO

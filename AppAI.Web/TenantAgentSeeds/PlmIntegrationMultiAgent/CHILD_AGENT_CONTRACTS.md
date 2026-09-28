@@ -182,8 +182,12 @@ ROOT after Proceed confirm:
    `call_agent("plm-integration-<code>", "PHASE=EXECUTE. Read inputs. Call execute_*. Poll get_plm_import_job if async. Write …outputs. Do not ask the user.")`
 5. On `ok=true`: wizard step `done`; `write_shared_context` + `update_plm_wizard_progress`; Confirm next.
    After Entity, Confirm next includes `skip-all-skippable` (button: Skip Folder / Image / Color / POM).
+   **Exception — image:** EXECUTE ok alone does **not** mark `image=done`. See Folder + Image ordering below.
 
-Folder extra: after image `ok`, `call_agent("plm-integration-folder", "PHASE=PLACEMENT. …")` with `runPlacement=true`.
+**HARD after Image EXECUTE ok (same turn, no Confirm next yet):**  
+`write_shared_context("plm.integration.folder.inputs", { sessionId, runPlacement: true })` then  
+`call_agent("plm-integration-folder", "PHASE=PLACEMENT. Read plm.integration.folder.inputs. Do not ask the user.")`.  
+Only placement `ok=true` → set `image=done` + `folder.placementDone=true` → Confirm next Color. Placement fail → leave image not done (Retry | Back).
 
 If SkillKey is missing: ROOT stops. Do not run those tools on ROOT.
 
@@ -199,8 +203,9 @@ Exact tool names must match `integration-plm-import` library seeds.
 
 ### Folder + Image ordering note
 
-- Image INSERT leaves `AppFile.FolderID = NULL`.
-- After image `ok`, ROOT (or folder child with `runPlacement=true`) must run placement so FolderID is filled.
+- Folder EXECUTE: tree + `AppPlmFolderMap` only (`runPlacement=false`). Files do not exist yet.
+- Image EXECUTE: INSERT leaves `AppFile.FolderID = NULL` by design.
+- **HARD:** Image is not done until Folder `PHASE=PLACEMENT` succeeds and fills `AppFile.FolderID`. ROOT must not advance to Color until then.
 
 ---
 

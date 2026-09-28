@@ -30,10 +30,12 @@ VALUES (
 - Write plm.integration.folder.outputs
 
 ## Domain
-Image INSERT leaves AppFile.FolderID NULL. PLACEMENT maps PLM tblSketch.FolderID to tenant AppFolder and updates AppFile. ROOT calls PHASE=PLACEMENT after image succeeds.
+Folder EXECUTE: tree + AppPlmFolderMap only. Keep runPlacement=false on EXECUTE (AppFile rows do not exist yet).
+Image INSERT leaves AppFile.FolderID NULL. PHASE=PLACEMENT maps PLM tblSketch.FolderID via AppPlmFolderMap and UPDATEs AppFile.
+ROOT HARD: after image EXECUTE ok, ROOT calls PHASE=PLACEMENT before marking image=done.
 
 ## nextHint
-PREVIEW: Ask ROOT to confirm Proceed. EXECUTE ok: Mark wizard.folder=done. PLACEMENT ok: FolderID filled
+PREVIEW: Ask ROOT to confirm Proceed. EXECUTE ok: Mark wizard.folder=done (tree only). PLACEMENT ok: AppFile.FolderID filled; ROOT may mark image=done
 ',
     3, 0, 21, 1,
     40000, 30000, 4000, 8,
@@ -57,4 +59,14 @@ AND NOT EXISTS (
     WHERE SkillKey = N'plm-integration-folder' AND LibraryKey = N'integration-plm-import')
 INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
 VALUES (N'plm-integration-folder', N'integration-plm-import');
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: EXECUTE vs PLACEMENT
+Folder EXECUTE: runPlacement=false; tree + AppPlmFolderMap only. Do not place AppFile on EXECUTE.
+PHASE=PLACEMENT: execute_plm_folder_placement only (after Image). ROOT marks image=done only after this ok.
+'
+WHERE SkillKey = N'plm-integration-folder'
+  AND SystemPrompt NOT LIKE N'%HARD: EXECUTE vs PLACEMENT%';
 GO
