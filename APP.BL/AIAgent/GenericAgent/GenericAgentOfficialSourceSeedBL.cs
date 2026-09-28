@@ -311,14 +311,20 @@ namespace App.BL.AIAgent.GenericAgent
         }
 
         /// <summary>
-        /// Official _gen_*.ps1 producers must not stay stale in AgentOutput/source or AgentStarter.
-        /// The child is forbidden from patching them; refresh from ImportDoc on every seed.
+        /// Official producer scripts and SQL templates must not stay stale in AgentOutput/source.
+        /// Force-refresh _gen_*.ps1 and PlmDw_*.sql from ImportDoc on every seed.
         /// </summary>
         private static bool IsOfficialProducerScript(string name)
         {
-            return !string.IsNullOrWhiteSpace(name)
-                && name.StartsWith("_gen_", StringComparison.OrdinalIgnoreCase)
-                && name.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+            if (name.StartsWith("_gen_", StringComparison.OrdinalIgnoreCase)
+                && name.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
+                return true;
+            if (name.StartsWith("PlmDw_", StringComparison.OrdinalIgnoreCase)
+                && name.EndsWith(".sql", StringComparison.OrdinalIgnoreCase))
+                return true;
+            return false;
         }
 
         private static string Normalize(string skillKey)

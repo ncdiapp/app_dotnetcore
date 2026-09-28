@@ -35,6 +35,9 @@ DECLARE @DwTableName       NVARCHAR(256);
 DECLARE @FieldKind         NVARCHAR(16);
 DECLARE @GridIdFilter      INT;
 DECLARE @Step              NVARCHAR(128);
+DECLARE @AppHasSort        BIT;
+DECLARE @DwHasSort         BIT;
+DECLARE @DwFull            NVARCHAR(512);
 
 -- Drop leftover temp tables from a prior run in the same SSMS/sqlcmd connection
 IF OBJECT_ID(N'tempdb..#ImportLog') IS NOT NULL DROP TABLE #ImportLog;
@@ -378,11 +381,32 @@ BEGIN TRY
         END
         ELSE
         BEGIN
+            -- Grid APP tables always have [Sort] from 1_PlmDw_Tables; DW PLM_DW_Grid_* may not.
+            -- Never hardcode dw.[Sort] — Invalid column name 'Sort' when DW lacks it.
             SET @Step = N'INSERT Grid';
-            SET @sql = N'INSERT INTO dbo.' + QUOTENAME(@AppTableName) + N' ([ReferenceId],[Sort],'+@InsertCols+N')
+            SET @AppHasSort = CASE WHEN COL_LENGTH(N'dbo.' + @AppTableName, N'Sort') IS NOT NULL THEN 1 ELSE 0 END;
+            SET @DwHasSort = 0;
+            SET @DwFull = @DwDatabase + N'.dbo.' + @DwTableName;
+            SET @sql = N'SELECT @h = CASE WHEN COL_LENGTH(@full, N''Sort'') IS NOT NULL THEN 1 ELSE 0 END;';
+            EXEC sp_executesql @sql, N'@full nvarchar(512), @h bit OUTPUT', @full = @DwFull, @h = @DwHasSort OUTPUT;
+
+            IF @AppHasSort = 1 AND @DwHasSort = 1
+                SET @sql = N'INSERT INTO dbo.' + QUOTENAME(@AppTableName) + N' ([ReferenceId],[Sort],'+@InsertCols+N')
             SELECT dw.[ProductReferenceID],dw.[Sort],'+@SelectExprs+N'
             FROM ' + QUOTENAME(@DwDatabase) + N'.dbo.' + QUOTENAME(@DwTableName) + N' dw
             INNER JOIN #RefFilter rf ON rf.[ReferenceId]=dw.[ProductReferenceID]'
+            ELSE IF @AppHasSort = 1
+                SET @sql = N'INSERT INTO dbo.' + QUOTENAME(@AppTableName) + N' ([ReferenceId],[Sort],'+@InsertCols+N')
+            SELECT dw.[ProductReferenceID],CONVERT(int,NULL),'+@SelectExprs+N'
+            FROM ' + QUOTENAME(@DwDatabase) + N'.dbo.' + QUOTENAME(@DwTableName) + N' dw
+            INNER JOIN #RefFilter rf ON rf.[ReferenceId]=dw.[ProductReferenceID]'
+            ELSE
+                SET @sql = N'INSERT INTO dbo.' + QUOTENAME(@AppTableName) + N' ([ReferenceId],'+@InsertCols+N')
+            SELECT dw.[ProductReferenceID],'+@SelectExprs+N'
+            FROM ' + QUOTENAME(@DwDatabase) + N'.dbo.' + QUOTENAME(@DwTableName) + N' dw
+            INNER JOIN #RefFilter rf ON rf.[ReferenceId]=dw.[ProductReferenceID]'
+
+            SET @sql = @sql
             + CASE WHEN @GridIdFilter IS NOT NULL THEN N' WHERE dw.[GridID]='+CAST(@GridIdFilter AS NVARCHAR(20)) ELSE N'' END
             + CASE WHEN @ImportMode=N'APPEND' THEN
                 CASE WHEN @GridIdFilter IS NOT NULL THEN N' AND' ELSE N' WHERE' END
