@@ -2657,6 +2657,7 @@ if ($bomColorwayGrids.Count -gt 0) {
     $order++
 }
 
+$manifestNote = 'APPLY: 3_00_Root -> tabs/{tabId}/3_ data (continueOnError) -> tabs/{tabId}/4_TabBlueprint (continueOnError) -> 4_PlmDw_Assemble.json (merge ok tabs + Search/Nav) -> optional 5_ BOM. Legacy 3_ monolith is manual only. Full TX/fields live only under tabs/{tabId}.'
 $manifest = [ordered]@{
     schemaVersion = 1
     plmTemplateId = [int]$templateId
@@ -2664,8 +2665,8 @@ $manifest = [ordered]@{
     importMode = $importModeCfg
     rootImportPath = "output/$templateId/3_00_Root_ImportFromDW.sql"
     legacyMonolithImportPath = "output/$templateId/3_PlmDw_ImportFromDW.sql"
-    note = 'APPLY: 3_00_Root -> tabs/*/3_ data (continueOnError) -> tabs/*/4_TabBlueprint (continueOnError) -> 4_PlmDw_Assemble.json (merge ok tabs + Search/Nav) -> optional 5_ BOM. Legacy 3_ monolith is manual only. Full TX/fields live only under tabs/*.',
-    sharedAppTableOwners = @($appTableOwner.GetEnumerator() | ForEach-Object { [ordered]@{ appTable = $_.Key; ownerTabId = $_.Value } }),
+    note = $manifestNote
+    sharedAppTableOwners = @($appTableOwner.GetEnumerator() | ForEach-Object { [ordered]@{ appTable = $_.Key; ownerTabId = $_.Value } })
     tabs = @($manifestTabs.ToArray())
 }
 $manifestPath = Join-Path $outDir '0_TabManifest.json'
@@ -2673,10 +2674,18 @@ $manifestPath = Join-Path $outDir '0_TabManifest.json'
 Write-Host "Generated: $manifestPath ($($manifestTabs.Count) tab(s))"
 
 $readyTabCount = @($manifestTabs | Where-Object { $_.packageStatus -eq 'Ready' -and $_.importPath }).Count
+$optionalBomOverview = $null
+if ($bomColorwayGrids.Count -gt 0) {
+    $optionalBomOverview = [ordered]@{
+        file = "output/$templateId/5_PlmDw_ImportBomColorwayGrandchild.sql"
+        dependsOn = 'bomHost tabs'
+    }
+}
+$suggestedPlanNote = 'Phase B child: copy executionPlan into plm.integration.import-dw.outputs. In chat use applyOverview (summary) and say Authoritative executionPlan = this file.'
 $suggestedPlan = [ordered]@{
     schemaVersion = 1
     templateId = [int]$templateId
-    note = 'Phase B child: copy executionPlan into plm.integration.import-dw.outputs. In chat use applyOverview (summary) and say Authoritative executionPlan = this file.'
+    note = $suggestedPlanNote
     applyOverview = [ordered]@{
         title = 'APPLY overview'
         sharedOnce = @(
@@ -2698,9 +2707,7 @@ $suggestedPlan = [ordered]@{
             role = 'TG + Search/Nav; BL merges successful tab packages at APPLY'
             compatAlias = "output/$templateId/4_PlmDw_ImportBlueprint.json"
         }
-        optionalBom = if ($bomColorwayGrids.Count -gt 0) {
-            [ordered]@{ file = "output/$templateId/5_PlmDw_ImportBomColorwayGrandchild.sql"; dependsOn = 'bomHost tabs' }
-        } else { $null }
+        optionalBom = $optionalBomOverview
         authoritativePlan = "output/$templateId/0_ExecutionPlan.suggested.json"
         stepCount = $planSteps.Count
     }
