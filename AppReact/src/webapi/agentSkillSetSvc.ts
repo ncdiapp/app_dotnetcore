@@ -56,6 +56,16 @@ export interface AppAgentMcpServerDto {
     ServerUrl:   string;
     Command:     string;
     IsActive:    boolean;
+    BearerTokenEnvVar: string;
+    Headers:           string;   // JSON: {"Header":"value"}
+    HeadersFromEnv:    string;   // JSON: {"Header":"ENV_VAR_NAME"}
+}
+
+export interface McpTestResult {
+    Success:   boolean;
+    Message:   string;
+    ToolCount: number;
+    ToolNames: string[];
 }
 
 // Tool Library DTOs
@@ -237,6 +247,14 @@ class AgentSkillSetService {
             method: 'POST', headers: getHeaders(), body: JSON.stringify(dto),
         });
         if (!res.ok) throw new Error(`UpsertMcpServer failed (${res.status})`);
+        return res.json();
+    }
+
+    async TestMcpServer(dto: AppAgentMcpServerDto): Promise<OperationResult<McpTestResult>> {
+        const res = await fetch(`${BASE}/TestMcpServer`, {
+            method: 'POST', headers: getHeaders(), body: JSON.stringify(dto),
+        });
+        if (!res.ok) throw new Error(`TestMcpServer failed (${res.status})`);
         return res.json();
     }
 

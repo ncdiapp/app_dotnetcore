@@ -17,6 +17,8 @@ interface Props {
     /** 'agent' = tools owned by an agent (AppAgentToolRegister)
      *  'library' = tools owned by a library (AppAgentLibraryTool) */
     mode?: 'agent' | 'library';
+    /** e.g. "Domain › Library" — shown as the full path in the edit dialog */
+    pathPrefix?: string;
 }
 
 const TOOL_CONFIG_TEMPLATES: Record<string, string> = {
@@ -35,7 +37,7 @@ const emptyTool = (skillKey: string): AppAgentToolRegisterDto => ({
 
 interface TableInfo { name: string; schema: string; }
 
-const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHeader = false, mode = 'agent' }) => {
+const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHeader = false, mode = 'agent', pathPrefix }) => {
     const dispatch = useDispatch();
     const [toolsCV] = useState(() => new CollectionView<AppAgentToolRegisterDto>([]));
     const suppressSelectRef = useRef(false);
@@ -241,6 +243,11 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
                             <span><i className="fa-solid fa-key mr-2 opacity-70" />{editItem.Id ? `Edit: ${editItem.ToolName}` : 'New Tool'}</span>
                             <button className="opacity-50 hover:opacity-100 text-lg leading-none" onClick={() => setShowModal(false)}>×</button>
                         </div>
+                        {pathPrefix && (
+                            <div className={`px-4 py-1 text-xs border-b border-gray-200 ${theme.label} shrink-0`} title={`${pathPrefix} › Tools › ${editItem.ToolName || 'New Tool'}`}>
+                                <i className="fa-solid fa-sitemap mr-2 opacity-60" />{pathPrefix} › Tools › <span className="font-semibold">{editItem.ToolName || 'New Tool'}</span>
+                            </div>
+                        )}
 
                         {error && <div className="mx-4 mt-3 px-3 py-1 text-xs text-red-600 bg-red-50 border border-red-200 rounded shrink-0">{error}<button className="ml-2 font-bold" onClick={() => setError(null)}>x</button></div>}
 

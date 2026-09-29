@@ -9,7 +9,6 @@ import {
     GenerateAgentResult, LibraryToolPreviewDto,
 } from '../../webapi/agentSkillSetSvc';
 import AgentToolRegisterTab from './AgentToolRegisterTab';
-import AgentMcpServerTab from './AgentMcpServerTab';
 import AgentUiChatHost from './AgentUiChatHost';
 import { chatModulesFromLibraries } from './agentUiModules';
 import AgentLibraryTab from './AgentLibraryTab';
@@ -17,7 +16,7 @@ import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import AgentHierarchyPanel from './AgentHierarchyPanel';
 import AgentChildAgentTab from './AgentChildAgentTab';
 
-type Tab = 'skills' | 'mcp' | 'libraries';
+type Tab = 'skills' | 'libraries';
 type EditorTab = 'prompt' | 'child-agent' | 'tools' | 'files' | 'limits';
 
 const SPLIT_LEFT_DEFAULT_PX = 400;
@@ -505,7 +504,6 @@ const handleSave = async () => {
             <div className={`flex items-center gap-1 px-3 py-2 mb-1 mx-2 ${theme.mainContentSection}`}>
                 <span className={`text-md font-semibold mr-3 ${theme.title}`}>Agent Management</span>
                 <button type="button" className={tabCls('skills')} onClick={() => setActiveTab('skills')}>Agent Setting</button>
-                <button type="button" className={tabCls('mcp')} onClick={() => setActiveTab('mcp')}>MCP Servers</button>
                 <button type="button" className={tabCls('libraries')} onClick={() => setActiveTab('libraries')}>Tool Libraries</button>
             </div>
             {error && (
@@ -969,7 +967,6 @@ const handleSave = async () => {
                         )}
                     </div>
                 </div>
-                {activeTab === 'mcp'       && <AgentMcpServerTab theme={theme} />}
                 {activeTab === 'libraries' && <AgentLibraryTab />}
             </div>
 

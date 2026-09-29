@@ -10,6 +10,7 @@ import {
     AppAgentToolLibraryDto,
 } from '../../webapi/agentSkillSetSvc';
 import AgentToolRegisterTab from './AgentToolRegisterTab';
+import AgentMcpServerTab from './AgentMcpServerTab';
 
 const emptyDomain = (): AppAgentToolDomainDto => ({
     DomainKey: '', DomainName: '', Description: '', SortOrder: 0, IsActive: true,
@@ -22,6 +23,8 @@ const emptyLibrary = (domainKey: string): AppAgentToolLibraryDto => ({
 
 type RightMode = 'none' | 'library';
 
+const COLLAPSED_PX = 32;
+
 const AgentLibraryTab: React.FC = () => {
     const { theme } = useTheme();
     const dispatch = useDispatch();
@@ -33,6 +36,9 @@ const AgentLibraryTab: React.FC = () => {
     const [editDomain, setEditDomain] = useState<AppAgentToolDomainDto>(emptyDomain());
     const [editLib, setEditLib] = useState<AppAgentToolLibraryDto>(emptyLibrary(''));
     const [rightMode, setRightMode] = useState<RightMode>('none');
+    const [domainsCollapsed, setDomainsCollapsed] = useState(false);
+    const [libsCollapsed, setLibsCollapsed] = useState(false);
+    const [libPane, setLibPane] = useState<'tools' | 'mcp'>('tools');
     const [domainDirty, setDomainDirty] = useState(false);
     const [libDirty, setLibDirty] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -189,12 +195,27 @@ const AgentLibraryTab: React.FC = () => {
     const lbl = `w-28 text-xs ${theme.label} mr-2`;
     const btn = `px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`;
 
+    const focusMode = domainsCollapsed && libsCollapsed;
+    const libPath = [selectedDomain?.DomainName || selectedDomain?.DomainKey, selectedLib?.LibraryKey].filter(Boolean).join(' › ');
+
+    const collapsedStrip =(icon: string, title: string, onExpand: () => void) => (
+        <button className={`w-full h-full flex flex-col items-center gap-2 py-2 opacity-70 hover:opacity-100 ${theme.title}`} title={`Expand ${title}`} onClick={onExpand}>
+            <i className="fa-solid fa-angles-right text-xs" />
+            <i className={`fa-solid ${icon} text-xs`} />
+            <span className="text-xs font-semibold" style={{ writingMode: 'vertical-rl' }}>{title}</span>
+        </button>
+    );
+
     return (
         <div ref={splitContainerRef} className="w-full h-full flex px-2 pb-2 overflow-hidden">
             {/* Left: Domain list */}
-            <div className={`shrink-0 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`} style={{ width: leftWidthPx }}>
-                <div className={`px-2 py-1 text-xs font-semibold border-b border-gray-200 ${theme.title}`}>
-                    <i className="fa-solid fa-layer-group mr-1 opacity-60" />Domains
+            <div className={`shrink-0 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`} style={{ width: domainsCollapsed ? COLLAPSED_PX : leftWidthPx }}>
+                {domainsCollapsed ? collapsedStrip('fa-layer-group', 'Domains', () => setDomainsCollapsed(false)) : (<>
+                <div className={`flex items-center px-2 py-1 text-xs font-semibold border-b border-gray-200 ${theme.title}`}>
+                    <i className="fa-solid fa-layer-group mr-1 opacity-60" /><span className="flex-auto">Domains</span>
+                    <button className="opacity-60 hover:opacity-100 px-1" title="Collapse panel" onClick={() => setDomainsCollapsed(true)}>
+                        <i className="fa-solid fa-angles-left" />
+                    </button>
                 </div>
                 <div className="flex items-center px-2 py-1 gap-1 border-b border-gray-200">
                     <button className={btn} onClick={() => openDomainModal(emptyDomain())}>
@@ -229,10 +250,11 @@ const AgentLibraryTab: React.FC = () => {
                         </div>
                     ))}
                 </div>
+                </>)}
             </div>
 
             {/* Divider 1 */}
-            <div
+            {!domainsCollapsed && !libsCollapsed && <div
                 role="separator" aria-orientation="vertical" tabIndex={0}
                 onMouseDown={onDivider1MouseDown}
                 onKeyDown={(e) => {
@@ -240,12 +262,19 @@ const AgentLibraryTab: React.FC = () => {
                     if (e.key === 'ArrowRight') { e.preventDefault(); setLeftWidthPx(w => Math.min(w + 16, (splitContainerRef.current?.getBoundingClientRect().width ?? 800) - midWidthPx - SPLIT_MIN_PX - 16)); }
                 }}
                 className={`shrink-0 w-[2px] cursor-col-resize border-r-2 self-stretch min-h-0 border-gray-200 hover:border-blue-400 focus:outline-none`}
-            />
+            />}
+            {(domainsCollapsed || libsCollapsed) && <div className="shrink-0 w-[2px]" />}
 
             {/* Middle: Library list */}
-            <div className={`shrink-0 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`} style={{ width: midWidthPx }}>
+            <div className={`shrink-0 flex flex-col overflow-hidden rounded ${theme.mainContentSection}`} style={{ width: libsCollapsed ? COLLAPSED_PX : midWidthPx }}>
+                {libsCollapsed ? collapsedStrip('fa-book', 'Libraries', () => setLibsCollapsed(false)) : (<>
                 <div className={`px-2 py-1 border-b border-gray-200 ${theme.title}`}>
-                    <div className="text-xs font-semibold"><i className="fa-solid fa-book mr-1 opacity-60" />Libraries</div>
+                    <div className="flex items-center text-xs font-semibold">
+                        <i className="fa-solid fa-book mr-1 opacity-60" /><span className="flex-auto">Libraries</span>
+                        <button className="opacity-60 hover:opacity-100 px-1" title="Collapse panel" onClick={() => setLibsCollapsed(true)}>
+                            <i className="fa-solid fa-angles-left" />
+                        </button>
+                    </div>
                     {selectedDomain && <div className={`text-[10px] ${theme.label} opacity-70`}>in {selectedDomain.DomainName || selectedDomain.DomainKey}</div>}
                 </div>
                 <div className="flex items-center px-2 py-1 gap-1 border-b border-gray-200">
@@ -281,10 +310,11 @@ const AgentLibraryTab: React.FC = () => {
                         </div>
                     )}
                 </div>
+                </>)}
             </div>
 
             {/* Divider 2 */}
-            <div
+            {!libsCollapsed && <div
                 role="separator" aria-orientation="vertical" tabIndex={0}
                 onMouseDown={onDivider2MouseDown}
                 onKeyDown={(e) => {
@@ -292,7 +322,8 @@ const AgentLibraryTab: React.FC = () => {
                     if (e.key === 'ArrowRight') { e.preventDefault(); setMidWidthPx(w => Math.min(w + 16, (splitContainerRef.current?.getBoundingClientRect().width ?? 800) - leftWidthPx - SPLIT_MIN_PX - 16)); }
                 }}
                 className={`shrink-0 w-[2px] cursor-col-resize border-r-2 self-stretch min-h-0 border-gray-200 hover:border-blue-400 focus:outline-none`}
-            />
+            />}
+            {libsCollapsed && <div className="shrink-0 w-[2px]" />}
 
             {/* Right: Context panel */}
             <div className={`w-1 flex-auto flex flex-col overflow-hidden rounded ${theme.mainContentSection}`}>
@@ -306,12 +337,29 @@ const AgentLibraryTab: React.FC = () => {
 
                 {rightMode === 'library' && selectedLib && (
                     <div className="h-full flex flex-col overflow-hidden">
-                        <div className={`px-3 py-1 border-b border-gray-200 ${theme.title}`}>
-                            <div className="text-xs font-semibold"><i className="fa-solid fa-key mr-1 opacity-60" />Tools</div>
-                            <div className={`text-[10px] ${theme.label} opacity-70`}>in {selectedLib.LibraryKey}</div>
+                        <div className={`flex items-center gap-1 px-3 py-1 border-b border-gray-200 ${theme.title}`}>
+                            <button type="button" className={`px-3 py-1 text-xs rounded-[4px] ${theme.button_default}${libPane === 'tools' ? ' font-semibold border-b-2' : ''}`} onClick={() => setLibPane('tools')}>
+                                <i className="fa-solid fa-key mr-1 opacity-60" />Tools
+                            </button>
+                            <button type="button" className={`px-3 py-1 text-xs rounded-[4px] ${theme.button_default}${libPane === 'mcp' ? ' font-semibold border-b-2' : ''}`} onClick={() => setLibPane('mcp')}>
+                                <i className="fa-solid fa-plug mr-1 opacity-60" />MCP Servers
+                            </button>
+                            <span className={`ml-2 text-[11px] ${theme.label} flex-auto truncate`} title={`${libPath} › ${libPane === 'tools' ? 'Tools' : 'MCP Servers'}`}>
+                                <i className="fa-solid fa-sitemap mr-1 opacity-60" />{libPath}
+                            </span>
+                            <button
+                                type="button"
+                                className="opacity-60 hover:opacity-100 px-2"
+                                title={focusMode ? 'Restore Domains and Libraries panels' : 'Collapse Domains and Libraries panels for more space'}
+                                onClick={() => { setDomainsCollapsed(!focusMode); setLibsCollapsed(!focusMode); }}
+                            >
+                                <i className={`fa-solid ${focusMode ? 'fa-compress' : 'fa-expand'}`} />
+                            </button>
                         </div>
                         <div className="w-full h-1 flex-auto overflow-hidden">
-                            <AgentToolRegisterTab selectedSkillKey={selectedLib.LibraryKey} theme={theme} hideHeader mode="library" />
+                            {libPane === 'tools'
+                                ? <AgentToolRegisterTab selectedSkillKey={selectedLib.LibraryKey} theme={theme} hideHeader mode="library" pathPrefix={libPath} />
+                                : <AgentMcpServerTab key={selectedLib.LibraryKey} theme={theme} libraryKey={selectedLib.LibraryKey} pathPrefix={libPath} />}
                         </div>
                     </div>
                 )}

@@ -411,11 +411,7 @@ namespace App.BL.AIAgent.GenericAgent
         private static async Task<(McpClient Client, KernelPlugin Plugin)> CreateMcpPluginAsync(
             TbMcpDto server, int maxChars, CancellationToken ct)
         {
-            var transportOptions = new HttpClientTransportOptions
-            {
-                Endpoint      = new Uri(server.ServerUrl),
-                TransportMode = HttpTransportMode.StreamableHttp
-            };
+            var transportOptions = McpConnectionHelper.BuildTransportOptions(server);
             var transport = new HttpClientTransport(transportOptions, McpHttpClient, NullLoggerFactory.Instance, ownsHttpClient: false);
             var client    = await McpClient.CreateAsync(transport, cancellationToken: ct).ConfigureAwait(false);
             var tools     = await client.ListToolsAsync(cancellationToken: ct).ConfigureAwait(false);

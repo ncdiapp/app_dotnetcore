@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using App.BL.AppMgr.AiSkill;
@@ -238,7 +239,22 @@ public class AgentSkillSetController : SecureBaseController
                 "ServerName_Required", ValidationItemType.Error, "ServerName is required."));
             return result;
         }
+        if (!McpBL.LibraryExists(dto.SkillKey))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController),
+                "LibraryKey_Invalid", ValidationItemType.Error, "MCP servers must belong to an existing Tool Library."));
+            return result;
+        }
         result.Object = McpBL.Upsert(dto) >= 0;
+        return result;
+    }
+
+    [HttpPost]
+    public async Task<OperationCallResult<McpTestResult>> TestMcpServer([FromBody] McpDto dto, CancellationToken cancellationToken)
+    {
+        var result = new OperationCallResult<McpTestResult>();
+        result.Object = await McpConnectionHelper.TestConnectionAsync(dto, cancellationToken);
         return result;
     }
 

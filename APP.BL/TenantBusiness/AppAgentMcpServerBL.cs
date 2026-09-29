@@ -13,7 +13,10 @@ namespace App.BL.TenantBusiness
         string ServerType,
         string ServerUrl,
         string Command,
-        bool   IsActive);
+        bool   IsActive,
+        string BearerTokenEnvVar = "",
+        string Headers           = "",
+        string HeadersFromEnv    = "");
 
     public static class AppAgentMcpServerBL
     {
@@ -23,7 +26,7 @@ namespace App.BL.TenantBusiness
             if (fixture == null) return new List<AppAgentMcpServerDto>();
 
             var dt = fixture.RetriveDataTable(
-                "SELECT McpServerId,SkillKey,ServerName,ServerType,ServerUrl,Command,IsActive FROM dbo.AppAgentMcpServer ORDER BY McpServerId",
+                "SELECT McpServerId,SkillKey,ServerName,ServerType,ServerUrl,Command,IsActive,BearerTokenEnvVar,Headers,HeadersFromEnv FROM dbo.AppAgentMcpServer ORDER BY McpServerId",
                 new List<DbParameter>());
             return MapAll(dt);
         }
@@ -47,12 +50,13 @@ namespace App.BL.TenantBusiness
         private static List<AppAgentMcpServerDto> GetBySkillKey(string skillKey, DatabaseSchemaMrg.DatabaseFixture fixture)
         {
             var dt = fixture.RetriveDataTable(
-                "SELECT McpServerId,SkillKey,ServerName,ServerType,ServerUrl,Command,IsActive FROM dbo.AppAgentMcpServer WHERE SkillKey=@SkillKey AND IsActive=1 ORDER BY McpServerId",
+                "SELECT McpServerId,SkillKey,ServerName,ServerType,ServerUrl,Command,IsActive,BearerTokenEnvVar,Headers,HeadersFromEnv FROM dbo.AppAgentMcpServer WHERE SkillKey=@SkillKey AND IsActive=1 ORDER BY McpServerId",
                 new List<DbParameter> { P(fixture, "@SkillKey", skillKey.Trim()) });
             return MapAll(dt);
         }
 
-        // Returns agent-owned MCP servers UNION subscribed library MCP servers.
+        // MCP servers are library-owned (SkillKey column holds the LibraryKey).
+        // Returns the MCP servers of every library the agent subscribes to.
         public static List<AppAgentMcpServerDto> GetBySkillKeyWithLibraries(string skillKey)
         {
             if (string.IsNullOrWhiteSpace(skillKey)) return new List<AppAgentMcpServerDto>();
@@ -72,15 +76,12 @@ namespace App.BL.TenantBusiness
         private static List<AppAgentMcpServerDto> GetBySkillKeyWithLibraries(string skillKey, DatabaseSchemaMrg.DatabaseFixture fixture)
         {
             var dt = fixture.RetriveDataTable(@"
-SELECT m.McpServerId,m.SkillKey,m.ServerName,m.ServerType,m.ServerUrl,m.Command,m.IsActive
-FROM dbo.AppAgentMcpServer m
-WHERE m.SkillKey=@SkillKey AND m.IsActive=1
-UNION ALL
-SELECT m.McpServerId,m.SkillKey,m.ServerName,m.ServerType,m.ServerUrl,m.Command,m.IsActive
+SELECT m.McpServerId,m.SkillKey,m.ServerName,m.ServerType,m.ServerUrl,m.Command,m.IsActive,m.BearerTokenEnvVar,m.Headers,m.HeadersFromEnv
 FROM dbo.AppAgentMcpServer m
 INNER JOIN dbo.AppAgentLibrarySubscription s ON m.SkillKey=s.LibraryKey
+INNER JOIN dbo.AppAgentToolLibrary l ON l.LibraryKey=s.LibraryKey AND l.IsActive=1
 WHERE s.SkillKey=@SkillKey AND m.IsActive=1
-ORDER BY McpServerId",
+ORDER BY m.McpServerId",
                 new List<DbParameter> { P(fixture, "@SkillKey", skillKey.Trim()) });
             return MapAll(dt);
         }
@@ -91,11 +92,22 @@ ORDER BY McpServerId",
             if (fixture == null) return null;
 
             var dt = fixture.RetriveDataTable(
-                "SELECT McpServerId,SkillKey,ServerName,ServerType,ServerUrl,Command,IsActive FROM dbo.AppAgentMcpServer WHERE McpServerId=@McpServerId",
+                "SELECT McpServerId,SkillKey,ServerName,ServerType,ServerUrl,Command,IsActive,BearerTokenEnvVar,Headers,HeadersFromEnv FROM dbo.AppAgentMcpServer WHERE McpServerId=@McpServerId",
                 new List<DbParameter> { P(fixture, "@McpServerId", mcpServerId) });
 
             if (dt == null || dt.Rows.Count == 0) return null;
             return Map(dt.Rows[0]);
+        }
+
+        public static bool LibraryExists(string libraryKey)
+        {
+            if (string.IsNullOrWhiteSpace(libraryKey)) return false;
+            var fixture = GetFixture();
+            if (fixture == null) return false;
+            var dt = fixture.RetriveDataTable(
+                "SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey=@LibraryKey",
+                new List<DbParameter> { P(fixture, "@LibraryKey", libraryKey.Trim()) });
+            return dt != null && dt.Rows.Count > 0;
         }
 
         public static int Upsert(AppAgentMcpServerDto dto)
@@ -109,16 +121,17 @@ ORDER BY McpServerId",
                 fixture.ExecuteNonQueryResult(
                     @"UPDATE dbo.AppAgentMcpServer SET
                         SkillKey=@SkillKey, ServerName=@ServerName, ServerType=@ServerType,
-                        ServerUrl=@ServerUrl, Command=@Command, IsActive=@IsActive
+                        ServerUrl=@ServerUrl, Command=@Command, IsActive=@IsActive,
+                        BearerTokenEnvVar=@BearerTokenEnvVar, Headers=@Headers, HeadersFromEnv=@HeadersFromEnv
                       WHERE McpServerId=@McpServerId",
                     UpsertParams(fixture, dto));
                 return dto.McpServerId;
             }
 
             var dt = fixture.RetriveDataTable(
-                @"INSERT INTO dbo.AppAgentMcpServer (SkillKey,ServerName,ServerType,ServerUrl,Command,IsActive)
+                @"INSERT INTO dbo.AppAgentMcpServer (SkillKey,ServerName,ServerType,ServerUrl,Command,IsActive,BearerTokenEnvVar,Headers,HeadersFromEnv)
                   OUTPUT INSERTED.McpServerId
-                  VALUES (@SkillKey,@ServerName,@ServerType,@ServerUrl,@Command,@IsActive)",
+                  VALUES (@SkillKey,@ServerName,@ServerType,@ServerUrl,@Command,@IsActive,@BearerTokenEnvVar,@Headers,@HeadersFromEnv)",
                 UpsertParams(fixture, dto));
 
             if (dt != null && dt.Rows.Count > 0)
@@ -156,7 +169,10 @@ ORDER BY McpServerId",
                 ServerType:  row["ServerType"] as string ?? "streamable-http",
                 ServerUrl:   row["ServerUrl"] as string ?? "",
                 Command:     row["Command"] as string ?? "",
-                IsActive:    row["IsActive"] != DBNull.Value && Convert.ToBoolean(row["IsActive"]));
+                IsActive:    row["IsActive"] != DBNull.Value && Convert.ToBoolean(row["IsActive"]),
+                BearerTokenEnvVar: row["BearerTokenEnvVar"] as string ?? "",
+                Headers:           row["Headers"] as string ?? "",
+                HeadersFromEnv:    row["HeadersFromEnv"] as string ?? "");
         }
 
         private static List<DbParameter> UpsertParams(DatabaseSchemaMrg.DatabaseFixture f, AppAgentMcpServerDto d)
@@ -169,7 +185,10 @@ ORDER BY McpServerId",
                 P(f, "@ServerType",  d.ServerType),
                 P(f, "@ServerUrl",   d.ServerUrl),
                 P(f, "@Command",     d.Command),
-                P(f, "@IsActive",    d.IsActive)
+                P(f, "@IsActive",    d.IsActive),
+                P(f, "@BearerTokenEnvVar", d.BearerTokenEnvVar ?? ""),
+                P(f, "@Headers",           d.Headers ?? ""),
+                P(f, "@HeadersFromEnv",    d.HeadersFromEnv ?? "")
             };
         }
 
