@@ -1,7 +1,8 @@
 @echo off
 REM Apply PLM Migration Multi-Agent seeds to a NEW tenant DB (structure through V034+).
-REM Usage: RUN_ALL.bat ServerName TenantDbName
-REM Example: RUN_ALL.bat PC3B\MSSQLSERVER01 TenantDB_PLM34
+REM Usage: RUN_ALL.bat ServerName TenantDbName [CompanyId] [FileRepositoryRoot]
+REM Example: RUN_ALL.bat PC3B\MSSQLSERVER01 TenantDB_PLM34 1
+REM CompanyId + optional FileRepositoryRoot copy AgentStarter\_packs into FileRepository (not APP.BL).
 REM Windows auth (-E). SQL auth: add -U/-P.
 REM -f 65001 = UTF-8. INSERT only (IF NOT EXISTS) for new SkillKeys. Some scripts UPDATE existing ROOT/library text.
 REM ROOT IsActive=1. All child agents IsActive=0 (not on left menu). call_agent still finds them by SkillKey.
@@ -26,11 +27,20 @@ sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%09_Seed_PlmIntegrationSe
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%10_Seed_PlmIntegrationMassUpdate_Child.sql" || goto fail
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%11_Seed_ChildMappings.sql" || goto fail
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%99_Verify.sql" || goto fail
+if not "%~3"=="" (
+  echo === Copy AgentStarter files ===
+  if "%~4"=="" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%HERE%CopyAgentStarter.ps1" -CompanyId %3
+  ) else (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%HERE%CopyAgentStarter.ps1" -CompanyId %3 -FileRepositoryRoot "%~4"
+  )
+  if errorlevel 1 goto fail
+)
 echo === DONE ===
 goto end
 
 :usage
-echo Usage: RUN_ALL.bat ServerName TenantDbName
+echo Usage: RUN_ALL.bat ServerName TenantDbName [CompanyId] [FileRepositoryRoot]
 exit /b 1
 
 :fail

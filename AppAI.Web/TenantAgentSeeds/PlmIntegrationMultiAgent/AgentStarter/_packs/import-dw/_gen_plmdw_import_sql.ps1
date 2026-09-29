@@ -1,0 +1,2749 @@
+$ErrorActionPreference = 'Stop'
+$rootDir = Split-Path $PSScriptRoot -Parent
+$configPath = Join-Path $PSScriptRoot 'dwTabImportConfig.json'
+if (-not (Test-Path $configPath)) {
+    throw "Missing $configPath - copy dwTabImportConfig.example.json and fill from Phase B (see PROMPT.md)."
+}
+$config = Get-Content $configPath -Raw | ConvertFrom-Json
+
+. (Join-Path $PSScriptRoot '_gen_plmdw_bom_colorway.ps1')
+. (Join-Path $PSScriptRoot '_gen_tchp_import_sql.ps1')
+. (Join-Path $PSScriptRoot '_gen_simple_qc.ps1')
+
+$templateId = $null
+if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) {
+    $templateId = [int]$config.plmTemplateId
+}
+elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId -and [int]$config.plmTemplate.templateId -gt 0) {
+    $templateId = [int]$config.plmTemplate.templateId
+}
+if (-not $templateId) {
+    throw 'dwTabImportConfig.json must set plmTemplateId (or plmTemplate.templateId) for output folder output/{templateId}/.'
+}
+
+$outDir = Join-Path (Join-Path $rootDir 'output') ([string]$templateId)
+if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
+
+$SqlServer = $config.sqlServer
+$DwDatabase = $config.dwDatabase
+$PlmDatabase = if ($config.plmDatabase) { $config.plmDatabase } else { 'PLM' }
+$refScope = if ($config.referenceScope) { $config.referenceScope } else { $config.referenceCode }
+
+$TabSystemColumns = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]]@('TabID', 'ProductReferenceID'),
+    [StringComparer]::OrdinalIgnoreCase
+)
+$GridSystemColumns = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]]@('ProductReferenceID', 'BlockID', 'GridID', 'RowID', 'RowValueGUID', 'Sort'),
+    [StringComparer]::OrdinalIgnoreCase
+)
+
+function Get-SqlcmdOutputLines([string]$path) {
+    if (-not (Test-Path $path)) { return @() }
+    $bytes = [IO.File]::ReadAllBytes($path)
+    $enc = [Text.Encoding]::UTF8
+    if ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+        $enc = [Text.Encoding]::Unicode
+    }
+    elseif ($bytes.Length -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
+        $enc = [Text.Encoding]::BigEndianUnicode
+    }
+    $text = $enc.GetString($bytes).TrimStart([char]0xFEFF, [char]0xFFFE)
+    return @(
+        $text -split '\r\n|\n|\r' | ForEach-Object {
+            $s = ($_ -replace [char]0, '').Trim().TrimStart([char]0xFEFF).Trim().Trim('|').Trim()
+            if ($s) { $s }
+        }
+    )
+}
+
+function Invoke-SqlQuery([string]$Database, [string]$Query) {
+    $tmp = [System.IO.Path]::GetTempFileName() + '.sql'
+    $out = [System.IO.Path]::GetTempFileName() + '.txt'
+    try {
+        Set-Content -Path $tmp -Value $Query -Encoding UTF8
+        $sqlUser = if ($config.sqlUser) { $config.sqlUser } else { $env:PLM_DW_SQL_USER }
+        $sqlPassword = if ($config.sqlPassword) { $config.sqlPassword } else { $env:PLM_DW_SQL_PASSWORD }
+        $args = @('-S', $SqlServer, '-d', $Database, '-i', $tmp, '-o', $out, '-W', '-s', '|', '-h', '-1', '-f', '65001')
+        if ($sqlUser -and $sqlPassword) {
+            $args = @('-S', $SqlServer, '-d', $Database, '-U', $sqlUser, '-P', $sqlPassword) + $args[4..($args.Length - 1)]
+        }
+        else {
+            $args = @('-S', $SqlServer, '-d', $Database, '-E') + $args[4..($args.Length - 1)]
+        }
+        $p = Start-Process -FilePath 'sqlcmd' -ArgumentList $args -Wait -PassThru -NoNewWindow
+        if ($p.ExitCode -ne 0) { throw "sqlcmd failed ($($p.ExitCode)) on $Database`: $Query" }
+        $lines = Get-SqlcmdOutputLines $out | Where-Object { $_ -and $_ -notmatch '^\(\d+ rows affected\)$' }
+        return ,$lines
+    }
+    finally {
+        Remove-Item $tmp, $out -ErrorAction SilentlyContinue
+    }
+}
+
+function Invoke-DwQuery([string]$Query) {
+    return Invoke-SqlQuery -Database $DwDatabase -Query $Query
+}
+
+function Invoke-PlmQuery([string]$Query) {
+    return Invoke-SqlQuery -Database $PlmDatabase -Query $Query
+}
+
+function Get-PlmSubItemExtraInfoMap([int[]]$TabIds) {
+    $map = @{}
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $map }
+    $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT ei.TabID, ei.SubItemID, ei.AliasName, ei.Visible
+FROM dbo.pdmTabBlockSubItemExtraInfo ei
+WHERE ei.TabID IN ($inList)
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 4) { continue }
+        $tabId = [int]$parts[0].Trim()
+        $subItemId = [int]$parts[1].Trim()
+        $alias = $parts[2].Trim()
+        $visibleRaw = $parts[3].Trim()
+        $visible = $false
+        if ($visibleRaw -ne '' -and $visibleRaw -ne 'NULL') {
+            try { $visible = ([int]$visibleRaw -eq 1) } catch { $visible = $false }
+        }
+        $key = "$tabId|$subItemId"
+        $map[$key] = [pscustomobject]@{
+            AliasName = if ([string]::IsNullOrWhiteSpace($alias) -or $alias -eq 'NULL') { $null } else { $alias }
+            Visible   = $visible
+        }
+    }
+    return $map
+}
+
+function Parse-SqlIntOrNull([string]$Raw) {
+    $t = if ($null -eq $Raw) { '' } else { $Raw.Trim() }
+    if ([string]::IsNullOrWhiteSpace($t) -or $t -eq 'NULL') { return $null }
+    return [int]$t
+}
+
+function Get-PlmSubItemMetadataMap([int[]]$TabIds) {
+    $map = @{}
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $map }
+    $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT tb.TabID, bsi.SubItemID, bsi.ControlType, bsi.EntityId, bsi.Nbdecimal, bsi.SubItemName
+FROM dbo.PdmTabBlock tb
+INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.BlockID = tb.BlockID
+WHERE tb.TabID IN ($inList)
+ORDER BY tb.TabID, tb.OrderId, bsi.SortOrder, bsi.SubItemID
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 5) { continue }
+        $tabId = [int]$parts[0].Trim()
+        $subItemId = [int]$parts[1].Trim()
+        $key = "$tabId|$subItemId"
+        if ($map.ContainsKey($key)) { continue }
+        $subItemName = if ($parts.Count -ge 6) { $parts[5].Trim() } else { '' }
+        if ([string]::IsNullOrWhiteSpace($subItemName) -or $subItemName -eq 'NULL') { $subItemName = $null }
+        $map[$key] = [pscustomobject]@{
+            ControlType  = [int]$parts[2].Trim()
+            EntityId     = Parse-SqlIntOrNull $parts[3]
+            Nbdecimal    = Parse-SqlIntOrNull $parts[4]
+            SubItemName  = $subItemName
+        }
+    }
+    return $map
+}
+
+function Get-PlmGridColumnMetadataMap([int[]]$GridIds) {
+    $map = @{}
+    if (-not $GridIds -or $GridIds.Count -eq 0) { return $map }
+    $inList = ($GridIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT gmc.GridID, gmc.GridColumnID, gmc.ColumnTypeId, gmc.EntityId, gmc.Nbdecimal, gmc.ColumnOrder, gmc.ColumnName
+FROM dbo.pdmGridMetaColumn gmc
+WHERE gmc.GridID IN ($inList)
+ORDER BY gmc.GridID, gmc.ColumnOrder, gmc.GridColumnID
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 5) { continue }
+        $gridId = [int]$parts[0].Trim()
+        $gridColumnId = [int]$parts[1].Trim()
+        $key = "$gridId|$gridColumnId"
+        if ($map.ContainsKey($key)) { continue }
+        $columnName = if ($parts.Count -ge 7) { $parts[6].Trim() } else { '' }
+        if ([string]::IsNullOrWhiteSpace($columnName) -or $columnName -eq 'NULL') { $columnName = $null }
+        $map[$key] = [pscustomobject]@{
+            ControlType = [int]$parts[2].Trim()
+            EntityId    = Parse-SqlIntOrNull $parts[3]
+            Nbdecimal   = Parse-SqlIntOrNull $parts[4]
+            ColumnOrder = if ($parts.Count -ge 6) { Parse-SqlIntOrNull $parts[5] } else { $null }
+            ColumnName  = $columnName
+        }
+    }
+    return $map
+}
+
+function Get-PlmTabGridColumnVisibleMap([int[]]$TabIds) {
+    # Layer for GRID columns: pdmTabGridMetaColumn (TabID + GridColumnID + Visible). Key: "tabId|gridColumnId".
+    $map = @{}
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $map }
+    $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT tgc.TabID, tgc.GridColumnID, tgc.Visible, tgc.AliasName
+FROM dbo.pdmTabGridMetaColumn tgc
+WHERE tgc.TabID IN ($inList)
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 3) { continue }
+        $tabId = [int]$parts[0].Trim()
+        $gridColumnId = [int]$parts[1].Trim()
+        $visibleRaw = $parts[2].Trim()
+        $alias = if ($parts.Count -ge 4) { $parts[3].Trim() } else { '' }
+        $visible = $false
+        if ($visibleRaw -ne '' -and $visibleRaw -ne 'NULL') {
+            try { $visible = ([int]$visibleRaw -eq 1) } catch { $visible = $false }
+        }
+        $map["$tabId|$gridColumnId"] = [pscustomobject]@{
+            Visible   = $visible
+            AliasName = if ([string]::IsNullOrWhiteSpace($alias) -or $alias -eq 'NULL') { $null } else { $alias }
+        }
+    }
+    return $map
+}
+
+function Get-PlmTabsWithGridSubItem([int[]]$TabIds) {
+    # CHILD UNIT detection: a tab whose blocks contain a sub-item with ControlType = 6 (Grid)
+    # is a 1:many detail unit. Its APP tab table is generated as a child unit (own identity PK).
+    $set = [System.Collections.Generic.HashSet[int]]::new()
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $set }
+    $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT DISTINCT tb.TabID
+FROM dbo.PdmTabBlock tb
+INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.BlockID = tb.BlockID
+WHERE tb.TabID IN ($inList) AND bsi.ControlType = 6
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $t = if ($null -eq $line) { '' } else { $line.Trim() }
+        if ($t -eq '' -or $t -eq 'NULL') { continue }
+        $parsed = 0
+        if ([int]::TryParse($t, [ref]$parsed)) { [void]$set.Add($parsed) }
+    }
+    return $set
+}
+
+# Resolve a tab's unit kind. RULE: a tab's WIDE table (regular sub-items) is ALWAYS a 'sibling'
+# (PK = [ReferenceId], 1:1 with root). Grid sub-items become their own grid tables (RowId identity
+# PK) via $config.grids - hosting a Grid sub-item does NOT make the tab wide table a child.
+# 'unitType' in config is an OPTIONAL override: set 'child' to force an identity-PK child tab table.
+function Resolve-TabUnitKind($tab, $childTabIds) {
+    $ut = if ($tab.unitType) { ([string]$tab.unitType).Trim().ToLowerInvariant() } else { '' }
+    if ($ut -eq 'child') { return 'child' }
+    return 'sibling'
+}
+
+function Get-PlmTabLayoutSubItemSet([int[]]$TabIds) {
+    # Layer 2 (Tab Design): sub-items actually placed on the tab layout. Set of "tabId|subItemId".
+    $set = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $set }
+    $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT DISTINCT l.TabID, ls.SubItemID
+FROM dbo.pdmTabLayout l
+INNER JOIN dbo.pdmTabLayoutItem li ON li.LayoutID = l.LayoutID
+INNER JOIN dbo.pdmTabLayoutSubitem ls ON ls.LayoutItemID = li.LayoutItemID
+WHERE l.TabID IN ($inList)
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 2) { continue }
+        $tabId = $parts[0].Trim()
+        $subItemId = $parts[1].Trim()
+        if ($tabId -eq '' -or $subItemId -eq '' -or $tabId -eq 'NULL' -or $subItemId -eq 'NULL') { continue }
+        [void]$set.Add("$tabId|$subItemId")
+    }
+    return $set
+}
+
+function Apply-PlmFieldMetadata($fieldRow, $subItemMetaMap, $gridColMetaMap) {
+    $gridBackedKind = $fieldRow.FieldKind -eq 'GridColumn' -or $fieldRow.FieldKind -eq 'GrandchildPivot' -or $fieldRow.FieldKind -eq 'BomColorwayDwSlot'
+    if ($gridBackedKind -and $null -ne $fieldRow.PlmGridId) {
+        $gridColumnId = $null
+        if ($null -ne $fieldRow.PlmMetaColumnId) { $gridColumnId = [int]$fieldRow.PlmMetaColumnId }
+        elseif ($null -ne $fieldRow.SubItemId) { $gridColumnId = [int]$fieldRow.SubItemId }
+        if ($gridColumnId) {
+            $key = "$([int]$fieldRow.PlmGridId)|$gridColumnId"
+            if ($gridColMetaMap.ContainsKey($key)) {
+                $m = $gridColMetaMap[$key]
+                $fieldRow.PlmControlType = [int]$m.ControlType
+                $fieldRow.PlmEntityId = $m.EntityId
+                return
+            }
+        }
+    }
+    elseif ($fieldRow.PlmTabId -and $null -ne $fieldRow.SubItemId) {
+        $key = "$([int]$fieldRow.PlmTabId)|$([int]$fieldRow.SubItemId)"
+        if ($subItemMetaMap.ContainsKey($key)) {
+            $m = $subItemMetaMap[$key]
+            $fieldRow.PlmControlType = [int]$m.ControlType
+            $fieldRow.PlmEntityId = $m.EntityId
+        }
+    }
+}
+
+function Resolve-FieldExtraInfo($fieldRow, $extraInfoMap, $subItemMetaMap, $gridColMetaMap, $tabGridVisibleMap, $layoutSubItemSet) {
+    $tabId = if ($fieldRow.PlmTabId) { [int]$fieldRow.PlmTabId } else { $null }
+    $subItemId = $null
+    if ($null -ne $fieldRow.SubItemId) { $subItemId = [int]$fieldRow.SubItemId }
+    elseif ($null -ne $fieldRow.PlmSubItemId) { $subItemId = [int]$fieldRow.PlmSubItemId }
+    elseif ($null -ne $fieldRow.PlmMetaColumnId) { $subItemId = [int]$fieldRow.PlmMetaColumnId }
+
+    # displayLabel: AliasName when set; else PLM SubItemName / ColumnName — never App column name.
+    $displayLabel = $null
+    $isVisible = $false
+    if ($fieldRow.FieldKind -eq 'GridColumn' -and $null -ne $fieldRow.PlmGridId -and $subItemId) {
+        # GRID column visibility: pdmTabGridMetaColumn.Visible (TabID + GridColumnID). NOT pdmTabBlockSubItemExtraInfo.
+        $gridKey = "$([int]$fieldRow.PlmGridId)|$subItemId"
+        $plmColumnName = $null
+        if ($gridColMetaMap.ContainsKey($gridKey)) {
+            $plmColumnName = $gridColMetaMap[$gridKey].ColumnName
+            $resolved = $false
+            if ($tabId) {
+                $tgKey = "$tabId|$subItemId"
+                if ($tabGridVisibleMap.ContainsKey($tgKey)) {
+                    $tg = $tabGridVisibleMap[$tgKey]
+                    if ($tg.AliasName) { $displayLabel = $tg.AliasName }
+                    if ($tg.Visible) { $isVisible = $true }
+                    $resolved = $true
+                }
+            }
+            # Grid-only / wrong parentPlmTabId / orphan: fall back to ANY hosting tab that marks this column Visible.
+            if (-not $resolved) {
+                $suffix = "|$subItemId"
+                foreach ($k in @($tabGridVisibleMap.Keys)) {
+                    if (-not $k.EndsWith($suffix)) { continue }
+                    $tg = $tabGridVisibleMap[$k]
+                    if ($tg.AliasName -and -not $displayLabel) { $displayLabel = $tg.AliasName }
+                    if ($tg.Visible) { $isVisible = $true; break }
+                }
+            }
+        }
+        if (-not $displayLabel -and $plmColumnName) { $displayLabel = $plmColumnName }
+    }
+    elseif ($tabId -and $subItemId) {
+        # TAB field visibility: Layer 1 = pdmTabBlockSubItemExtraInfo.Visible=1; Layer 2 = placed in Tab Design (pdmTabLayoutSubitem).
+        $siKey = "$tabId|$subItemId"
+        $plmSubItemName = $null
+        if ($subItemMetaMap.ContainsKey($siKey)) {
+            $plmSubItemName = $subItemMetaMap[$siKey].SubItemName
+        }
+        if ($subItemMetaMap.ContainsKey($siKey) -and $extraInfoMap.ContainsKey($siKey)) {
+            $ei = $extraInfoMap[$siKey]
+            if ($ei.AliasName) { $displayLabel = $ei.AliasName }
+            if ($ei.Visible -and $layoutSubItemSet.Contains($siKey)) { $isVisible = $true }
+        }
+        if (-not $displayLabel -and $plmSubItemName) { $displayLabel = $plmSubItemName }
+    }
+    if (-not $displayLabel) { $displayLabel = $fieldRow.AppColumn }
+    return [pscustomobject]@{ DisplayLabel = $displayLabel; IsVisible = $isVisible }
+}
+
+function Get-PlmHostTabIdsForGrids([int[]]$GridIds) {
+    # True PLM tabs that host these grids (ExtraInfo Visible=1). Needed for grid-only tabs
+    # that are absent from importTabIds but still own pdmTabGridMetaColumn visibility.
+    $set = [System.Collections.Generic.HashSet[int]]::new()
+    if (-not $GridIds -or $GridIds.Count -eq 0) { return @() }
+    $inList = ($GridIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+    $q = @"
+SELECT DISTINCT e.TabID
+FROM dbo.pdmTabBlockSubItemExtraInfo e
+INNER JOIN dbo.pdmBlockSubItem bs ON bs.SubItemID = e.SubItemID
+WHERE bs.ControlType = 6
+  AND bs.GridID IN ($inList)
+  AND ISNULL(e.Visible, 0) = 1
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $raw = ($line -split '\|')[0].Trim()
+        if ($raw -match '^\d+$') { [void]$set.Add([int]$raw) }
+    }
+    return @($set)
+}
+
+function Infer-PlmControlType($meta, $dataType) {
+    if ($meta.FkTarget) { return 1 }
+    if ($dataType -and $dataType -match 'date') { return 7 }
+    return 2
+}
+
+function Infer-PlmEntityId($fkTarget) {
+    if ($null -eq $fkTarget) { return $null }
+    if ($fkTarget -match '^\d+$') { return [int]$fkTarget }
+    return $null
+}
+
+function Format-TabDisplayName([string]$appTable) {
+    if ([string]::IsNullOrWhiteSpace($appTable)) { return $appTable }
+    return ($appTable -replace '_', ' ').Trim()
+}
+
+# PS 5.1 ConvertTo-Json unwraps single-element arrays; unary comma preserves JSON array.
+function Get-JsonArrayForSerialize([array]$Items) {
+    # Always return a true Object[] so ConvertTo-Json emits a JSON array (never a bare object).
+    # Empty → zero-length array (caller / Fix-BomColorwayEmptyBindings normalizes to []).
+    if ($null -eq $Items) { return , @() }
+    $list = @($Items)
+    if ($list.Count -eq 0) { return , @() }
+    return , $list
+}
+
+function Fix-BomColorwayBindingsJsonArray([string]$json) {
+    $marker = '"bomColorwayPivotBindings"'
+    $idx = $json.IndexOf($marker)
+    if ($idx -lt 0) { return $json }
+    $colonIdx = $json.IndexOf(':', $idx + $marker.Length)
+    if ($colonIdx -lt 0) { return $json }
+    $pos = $colonIdx + 1
+    while ($pos -lt $json.Length -and [char]::IsWhiteSpace($json[$pos])) { $pos++ }
+    if ($pos -ge $json.Length) { return $json }
+
+    # Empty / null / empty-object / [{ }] → canonical []
+    # (PS ConvertTo-Json often emits null, {}, or [{ }] when there are zero bindings.)
+    $rest = $json.Substring($pos)
+    if ($rest -match '^(null|\{\s*\}|\[\s*\]|\[\s*\{\s*\}\s*\])') {
+        $end = $pos + $Matches[0].Length
+        return $json.Substring(0, $pos) + '[]' + $json.Substring($end)
+    }
+
+    if ($json[$pos] -eq '[') { return $json }
+    if ($json[$pos] -ne '{') { return $json }
+
+    # Single object → wrap as one-element array
+    $json = $json.Insert($pos, '[')
+    $depth = 0
+    for ($i = $pos + 1; $i -lt $json.Length; $i++) {
+        $ch = $json[$i]
+        if ($ch -eq '{') { $depth++ }
+        elseif ($ch -eq '}') {
+            $depth--
+            if ($depth -eq 0) {
+                return $json.Insert($i + 1, ']')
+            }
+        }
+    }
+    return $json
+}
+
+function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subItemMetaMap, $gridColMetaMap, $tabGridVisibleMap, $layoutSubItemSet, $childTabIds, $bomColorwayPivotBindings) {
+    $prefix = $config.tablePrefixDefault
+    if (-not $prefix.EndsWith('_')) { $prefix += '_' }
+    $rootSuffix = $config.rootTableSuffix
+    $refScope = if ($config.referenceScope) { $config.referenceScope } else { $config.referenceCode }
+    $templateName = if ($config.blueprint.transactionGroupName) { $config.blueprint.transactionGroupName }
+        elseif ($config.blueprint.templateName) { $config.blueprint.templateName }
+        elseif ($config.plmTemplate.templateName) { $config.plmTemplate.templateName }
+        elseif ($config.plmTemplateName) { $config.plmTemplateName }
+        else { 'PLM Import' }
+    $tgIntegration = if ($config.blueprint.transactionGroupIntegrationId) { $config.blueprint.transactionGroupIntegrationId }
+        else { 'TG_' + ($templateName -replace '[^a-zA-Z0-9]', '') }
+
+    $tabSharedGroups = @()
+    $infoTab = $config.tabs | Where-Object { $_.mode -eq 'excludeSubItemsFromDwTable' } | Select-Object -First 1
+    $headerTab = $null
+    if ($infoTab -and $infoTab.excludeSubItemsFromDwTable) {
+        $headerTab = $config.tabs | Where-Object { $_.dwTable -eq $infoTab.excludeSubItemsFromDwTable } | Select-Object -First 1
+        if ($headerTab) {
+            $tabSharedGroups += [ordered]@{
+                groupId             = 'shared_' + ($headerTab.appTable -replace '[^a-zA-Z0-9]', '_').ToLowerInvariant()
+                sharedAppTableName  = $prefix + $headerTab.appTable
+                primaryPlmTabId     = [int]$headerTab.tabId
+                secondaryPlmTabIds  = @([int]$infoTab.tabId)
+                rule                = 'SharedSubItemsOnPrimaryOnly'
+            }
+        }
+    }
+
+    $transactions = @()
+    $sortedTabs = @($config.tabs | Sort-Object { if ($null -ne $_.tabSort) { $_.tabSort } else { 9999 } }, { $_.tabId })
+    foreach ($tab in $sortedTabs) {
+        # FX1/F2: Fit1–N / Comments / folded member tabs are field sources only — no separate TX.
+        if ($tab.fx1SkipBlueprint -eq $true -or $tab.fx1Fold -eq $true) {
+            Write-Host "  Blueprint skip (FX1 fold): Tab_$($tab.tabId) $($tab.plmTabName)"
+            continue
+        }
+        if (Test-TabSkippedNoDw $tab) {
+            Write-Host "  Blueprint skip (no DW): Tab_$($tab.tabId) $($tab.plmTabName)"
+            continue
+        }
+        $tabName = if ($tab.plmTabName) { $tab.plmTabName } else { Format-TabDisplayName $tab.appTable }
+        $importStatus = if ($tab.importStatus) { $tab.importStatus } else { 'Ready' }
+        $siblingUnits = [System.Collections.Generic.List[object]]::new()
+        $childUnits = [System.Collections.Generic.List[object]]::new()
+        $isChildTab = ((Resolve-TabUnitKind $tab $childTabIds) -eq 'child')
+
+        if ($isChildTab) {
+            # Child unit: 1:many under root. Own table has its own identity PK; it is NOT a sibling.
+            $childUnits.Add([ordered]@{
+                appTableName = $prefix + $tab.appTable
+                attachToRoot = $true
+            })
+        }
+        else {
+            if ($tab.mode -eq 'excludeSubItemsFromDwTable' -and $tab.excludeSubItemsFromDwTable) {
+                $headerTab = $config.tabs | Where-Object { $_.dwTable -eq $tab.excludeSubItemsFromDwTable } | Select-Object -First 1
+                if ($headerTab) {
+                    $siblingUnits.Add([ordered]@{
+                        appTableName    = $prefix + $headerTab.appTable
+                        isMasterSibling = $true
+                        fieldPolicy     = 'AllMappedColumns'
+                    })
+                }
+            }
+
+            $fieldPolicy = if ($tab.mode -eq 'excludeSubItemsFromDwTable') { 'ExclusiveSubItemsOnly' } else { 'AllMappedColumns' }
+            $ownSibling = [ordered]@{
+                appTableName    = $prefix + $tab.appTable
+                isMasterSibling = ($siblingUnits.Count -eq 0)
+                fieldPolicy     = $fieldPolicy
+            }
+            if ($tab.excludeSubItemsFromDwTable) {
+                $ownSibling.excludeSubItemsFromDwTable = $tab.excludeSubItemsFromDwTable
+            }
+            $siblingUnits.Add($ownSibling)
+        }
+
+        # TechPack α bindings: shared TchpStyleSpec sibling (L2) + PomLine/FitRound children.
+        $tpBinding = $null
+        if ($config.techPack -and $config.techPack.bindings) {
+            $tpBinding = @($config.techPack.bindings) | Where-Object { [int]$_.plmTabId -eq [int]$tab.tabId } | Select-Object -First 1
+        }
+        if ($tpBinding -and -not $isChildTab) {
+            if ($tpBinding.includeStyleSpec -ne $false -and $config.techPack.styleSpecSibling) {
+                $ss = $config.techPack.styleSpecSibling
+                $ssName = if ($ss.appTableName) { [string]$ss.appTableName } else { 'TchpStyleSpec' }
+                $already = @($siblingUnits) | Where-Object {
+                    $n = [string]$_.appTableName
+                    $n -eq $ssName -or $n.EndsWith($ssName)
+                } | Select-Object -First 1
+                if (-not $already) {
+                    $siblingUnits.Add([ordered]@{
+                        appTableName           = $ssName
+                        isMasterSibling        = $false
+                        fieldPolicy            = 'AllMappedColumns'
+                        skipTablePrefix        = $true
+                        linkToParentField      = if ($ss.linkToParentField) { [string]$ss.linkToParentField } else { 'StyleSpecId' }
+                        parentPrimaryKeyField  = if ($ss.parentPrimaryKeyField) { [string]$ss.parentPrimaryKeyField } else { 'ReferenceId' }
+                    })
+                }
+            }
+            foreach ($cu in @($tpBinding.childUnits)) {
+                if (-not $cu -or -not $cu.appTableName) { continue }
+                # Platform: only ROOT hosts CHILD. StyleSpecId → Root.ReferenceId (StyleSpecId == ReferenceId).
+                $skipPrefix = $true
+                if ($null -ne $cu.PSObject.Properties['skipTablePrefix'] -and $null -ne $cu.skipTablePrefix) {
+                    $skipPrefix = [bool]$cu.skipTablePrefix
+                }
+                $childEntry = [ordered]@{
+                    appTableName            = [string]$cu.appTableName
+                    attachToRoot            = $true
+                    skipTablePrefix         = $skipPrefix
+                    linkToParentField       = if ($cu.linkToParentField) { [string]$cu.linkToParentField } else { 'StyleSpecId' }
+                    parentPrimaryKeyField   = if ($cu.parentPrimaryKeyField) { [string]$cu.parentPrimaryKeyField } else { 'ReferenceId' }
+                    grandChildAppTableNames = Get-JsonArrayForSerialize @(if ($cu.grandChildAppTableNames) { $cu.grandChildAppTableNames } else { @() })
+                }
+                if ($null -ne $cu.fitRoundNumberFilter -and "$($cu.fitRoundNumberFilter)" -ne '') {
+                    $childEntry.fitRoundNumberFilter = [int]$cu.fitRoundNumberFilter
+                }
+                if ($cu.linkTargetIntegrationId) {
+                    $childEntry.linkTargetIntegrationId = [string]$cu.linkTargetIntegrationId
+                }
+                if ($cu.isReadOnly -eq $true -or $cu.IsReadOnly -eq $true) {
+                    $childEntry.isReadOnly = $true
+                }
+                if ($cu.unitDisplayName) {
+                    $childEntry.unitDisplayName = [string]$cu.unitDisplayName
+                }
+                if ($cu.visibleFieldNames) {
+                    $childEntry.visibleFieldNames = @($cu.visibleFieldNames | ForEach-Object { [string]$_ })
+                }
+                $childUnits.Add($childEntry)
+            }
+        }
+
+        $transactions += [ordered]@{
+            plmTabId         = [int]$tab.tabId
+            plmTabName       = $tabName
+            integrationId    = "Tab_$($tab.tabId)"
+            transactionName  = $tabName
+            importStatus     = $importStatus
+            plmTabSort       = if ($null -ne $tab.tabSort) { [int]$tab.tabSort } else { $null }
+            isTemplateHeaderTab = if ($null -ne $tab.isTemplateHeaderTab) { [bool]$tab.isTemplateHeaderTab } else { $null }
+            unitStructure    = [ordered]@{
+                mode          = if ($isChildTab) { 'RootPlusChild' } else { 'RootPlusMasterSibling' }
+                rootTableName = $prefix + $rootSuffix
+                siblingUnits  = @($siblingUnits.ToArray())
+                childUnits    = @($childUnits.ToArray())
+            }
+        }
+    }
+
+    # F2: emit FIT ROUND child transaction (Root = TchpFitRound) when techPack.fitRoundTransaction present.
+    if ($config.techPack -and $config.techPack.fitRoundTransaction) {
+        $frTx = $config.techPack.fitRoundTransaction
+        $frIntegration = if ($frTx.integrationId) { [string]$frTx.integrationId } else { 'TX_FitRound' }
+        $frName = if ($frTx.transactionName) { [string]$frTx.transactionName } else { 'Fit Round' }
+        $frSiblings = [System.Collections.Generic.List[object]]::new()
+        $frChildren = [System.Collections.Generic.List[object]]::new()
+        $friName = 'FitRoundInfo'
+        if ($config.techPack.fitRoundInfo -and $config.techPack.fitRoundInfo.appTable) {
+            $friName = [string]$config.techPack.fitRoundInfo.appTable
+        }
+        $frSiblings.Add([ordered]@{
+            appTableName    = $prefix + $friName
+            isMasterSibling = $true
+            fieldPolicy     = 'AllMappedColumns'
+            linkToParentField = 'FitRoundId'
+            parentPrimaryKeyField = 'FitRoundId'
+        })
+        $frChildren.Add([ordered]@{
+            appTableName            = 'TchpFitMeasurement'
+            attachToRoot            = $true
+            skipTablePrefix         = $true
+            linkToParentField       = 'FitRoundId'
+            parentPrimaryKeyField   = 'FitRoundId'
+            grandChildAppTableNames = @()
+        })
+        $transactions += [ordered]@{
+            plmTabId         = 0
+            plmTabName       = $frName
+            integrationId    = $frIntegration
+            transactionName  = $frName
+            importStatus     = 'Ready'
+            plmTabSort       = 9000
+            isTemplateHeaderTab = $false
+            unitStructure    = [ordered]@{
+                mode          = 'RootPlusMasterSibling'
+                rootTableName = 'TchpFitRound'
+                siblingUnits  = @($frSiblings.ToArray())
+                childUnits    = @($frChildren.ToArray())
+            }
+        }
+        Write-Host "  Blueprint F2 Fit Round TX: $frIntegration"
+    }
+
+    $gridBindings = @()
+    foreach ($grid in ($config.grids | ForEach-Object { $_ })) {
+        $parentTabId = if ($grid.parentPlmTabId) { [int]$grid.parentPlmTabId } else { $null }
+        # Prefer Tab_{parent} when attached; orphan / grid-only → Grid_{id} (BL builds Root+Child).
+        $txIntegrationId = if ($grid.transactionIntegrationId) {
+            [string]$grid.transactionIntegrationId
+        }
+        elseif ($parentTabId) {
+            "Tab_$parentTabId"
+        }
+        else {
+            "Grid_$($grid.gridId)"
+        }
+        # FX1: Fit comment / folded parent tab — always orphan Grid_{id} (grid is ReferenceId-scoped, not FitRoundId).
+        if ($parentTabId) {
+            $foldedParent = @($config.tabs) | Where-Object {
+                $_.tabId -and [int]$_.tabId -eq $parentTabId -and ($_.fx1SkipBlueprint -eq $true -or $_.fx1Fold -eq $true)
+            } | Select-Object -First 1
+            if ($foldedParent) {
+                $parentTabId = $null
+                $txIntegrationId = "Grid_$($grid.gridId)"
+            }
+        }
+        $gridAppLogical = [string]$grid.appTable
+        if ($config.techPack -and $config.techPack.systemBlockGrids) {
+            $sq = @($config.techPack.systemBlockGrids) | Where-Object {
+                $_.role -eq 'SpecQC' -and [string]$_.appTable -eq $gridAppLogical
+            } | Select-Object -First 1
+            if ($sq) { $gridAppLogical = 'SimpleQC' }
+        }
+        $gcNames = [System.Collections.Generic.List[string]]::new()
+        if ($gridAppLogical -eq 'SimpleQC') { [void]$gcNames.Add($prefix + 'SimpleQCResult') }
+        $bomGc = @($bomColorwayPivotBindings) | Where-Object {
+            $_ -and $_.plmGridId -and [int]$_.plmGridId -eq [int]$grid.gridId
+        } | Select-Object -First 1
+        if ($bomGc -and $bomGc.grandchildAppTableName) {
+            $gcFull = [string]$bomGc.grandchildAppTableName
+            if (-not ($gcNames | Where-Object { [string]::Equals($_, $gcFull, [StringComparison]::OrdinalIgnoreCase) })) {
+                [void]$gcNames.Add($gcFull)
+            }
+        }
+        $gridBindings += [ordered]@{
+            plmGridId                  = [int]$grid.gridId
+            appTableName               = $prefix + $gridAppLogical
+            parentPlmTabId             = $parentTabId
+            attachToRoot               = (-not $parentTabId)
+            integrationId              = "Grid_$($grid.gridId)"
+            transactionIntegrationId   = $txIntegrationId
+            grandChildAppTableNames    = if ($gcNames.Count -gt 0) { Get-JsonArrayForSerialize @($gcNames.ToArray()) } else { $null }
+        }
+    }
+
+    $blueprintFields = @()
+    $orderByTable = @{}
+    foreach ($r in $allFieldRows) {
+        if ($r.FieldKind -eq 'BomColorwaySlot') { continue }
+        if ($r.FieldKind -eq 'BomColorwayDwSlot') { continue }
+        $isSimpleQcMeasure = $r.FieldKind -eq 'GrandchildPivot' -and ($script:SimpleQcResultMeasureStems -contains $r.AppColumn)
+        if ($r.FieldKind -eq 'GrandchildPivot' -and -not $isSimpleQcMeasure) { continue }
+        $appTableFull = if ($r.AppTable -eq $rootSuffix) { $prefix + $rootSuffix } else { $prefix + $r.AppTable }
+        if (-not $orderByTable.ContainsKey($appTableFull)) { $orderByTable[$appTableFull] = 0 }
+        $orderByTable[$appTableFull]++
+        $plmCtrl = if ($null -ne $r.PlmControlType) { [int]$r.PlmControlType } else { Infer-PlmControlType ([pscustomobject]@{ FkTarget = $r.FkTarget }) $r.DwDataType }
+        $entityId = if ($null -ne $r.PlmEntityId) { $r.PlmEntityId } else { Infer-PlmEntityId $r.FkTarget }
+        $tabIds = @()
+        if ($r.PlmTabId) { $tabIds = @([int]$r.PlmTabId) }
+        $extra = Resolve-FieldExtraInfo $r $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet
+        if ($isSimpleQcMeasure) {
+            $extra = Get-SimpleQcMeasureStemMeta $r.AppColumn $r.PlmGridId $r.PlmTabId $gridColMetaMap $tabGridVisibleMap
+        }
+        $fieldEntry = [ordered]@{
+            appTableName   = $appTableFull
+            appColumnName  = $r.AppColumn
+            plmTabIds      = $tabIds
+            plmControlType = $plmCtrl
+            plmEntityId    = $entityId
+            displayLabel   = $extra.DisplayLabel
+            displayOrder   = $orderByTable[$appTableFull]
+            includeInSearch = $false
+            isVisible      = [bool]$extra.IsVisible
+        }
+        if ($entityId) {
+            $fieldEntry.entityIntegrationId = [string]$entityId
+        }
+        $blueprintFields += $fieldEntry
+        $r | Add-Member -NotePropertyName PlmControlType -NotePropertyValue $plmCtrl -Force
+        $r | Add-Member -NotePropertyName PlmEntityId -NotePropertyValue $entityId -Force
+        if (-not $r.PSObject.Properties['DwDataType']) {
+            $r | Add-Member -NotePropertyName DwDataType -NotePropertyValue $null -Force
+        }
+    }
+
+    $searchName = if ($config.blueprint.searchName) { $config.blueprint.searchName } else { "$templateName References" }
+    $searchIntegration = if ($config.blueprint.searchIntegrationId) { $config.blueprint.searchIntegrationId }
+        else { 'Search_' + ($templateName -replace '[^a-zA-Z0-9]', '') }
+
+    $templateHeaderTabIds = @($config.tabs | Where-Object { $_.isTemplateHeaderTab -eq $true } | ForEach-Object { [int]$_.tabId })
+    if ($config.plmTemplate -and $config.plmTemplate.templateHeaderTabIds) {
+        $templateHeaderTabIds = @($config.plmTemplate.templateHeaderTabIds | ForEach-Object { [int]$_ })
+    }
+    # If every imported tab is listed as PLM header (typical single-tab Graphic Requests),
+    # APP Shared Header would empty Main Items. Those tabs are MainItem, not TemplateHeader.
+    $readyTabIds = @()
+    if ($config.importTabIds) { $readyTabIds = @($config.importTabIds | ForEach-Object { [int]$_ }) }
+    elseif ($config.tabs) {
+        $readyTabIds = @($config.tabs | Where-Object { $_.importStatus -ne 'Skipped' } | ForEach-Object { [int]$_.tabId })
+    }
+    $readyTabIds = @($readyTabIds | Sort-Object -Unique)
+    $headerSet = @($templateHeaderTabIds | ForEach-Object { [int]$_ } | Sort-Object -Unique)
+    if ($readyTabIds.Count -gt 0 -and $headerSet.Count -gt 0) {
+        $nonHeaderReady = @($readyTabIds | Where-Object { $headerSet -notcontains $_ })
+        if ($nonHeaderReady.Count -eq 0) {
+            Write-Host "  templateHeaderTabIds cleared: all imported tabs were marked PLM header; APP MainItem cannot be empty."
+            $templateHeaderTabIds = @()
+        }
+    }
+    $plmTemplateId = $null
+    if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) {
+        $plmTemplateId = [int]$config.plmTemplateId
+    }
+    elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId -and [int]$config.plmTemplate.templateId -gt 0) {
+        $plmTemplateId = [int]$config.plmTemplate.templateId
+    }
+
+    return [ordered]@{
+        schemaVersion         = 1
+        generatedAt           = (Get-Date).ToUniversalTime().ToString('o')
+        source                = [ordered]@{
+            plmTemplateId = $plmTemplateId
+            plmDatabase   = $config.plmDatabase
+            dwDatabase    = $config.dwDatabase
+            importTabIds  = @($config.importTabIds | ForEach-Object { [int]$_ })
+            tablePrefix   = $prefix
+            configFile    = "source/dwTabImportConfig.json"
+            outputFolder  = "output/$templateId"
+        }
+        plmTemplate           = if ($plmTemplateId) { [ordered]@{
+            templateId           = $plmTemplateId
+            templateName         = $templateName
+            templateHeaderTabIds = $templateHeaderTabIds
+        } } else { $null }
+        transactionGroup      = [ordered]@{
+            name           = $templateName
+            integrationId  = $tgIntegration
+            saasApplicationId = $null
+        }
+        rootUnit              = [ordered]@{
+            appTableName   = $prefix + $rootSuffix
+            integrationId  = 'Unit_ReferenceBasicInfo'
+            referenceScope = [ordered]@{
+                dwTable      = $refScope.dwTable
+                dwColumn     = $refScope.dwColumn
+                plmTabId     = [int]$refScope.plmTabId
+                plmSubItemId = [int]$refScope.plmSubItemId
+            }
+        }
+        tabSharedTableGroups  = $tabSharedGroups
+        transactions          = $transactions
+        gridBindings          = $gridBindings
+        bomColorwayPivotBindings = Get-JsonArrayForSerialize @(if ($bomColorwayPivotBindings) { $bomColorwayPivotBindings } else { @() })
+        techPackGradeValuePivotBindings = Get-JsonArrayForSerialize @(Build-TechPackGradeValuePivotBindings $config $transactions)
+        techPackFitMeasurementPivotBindings = Get-JsonArrayForSerialize @(Build-TechPackFitMeasurementPivotBindings $config $transactions)
+        techPackSimpleQcPivotBindings = Get-JsonArrayForSerialize @(Build-SimpleQcPivotBindings $config $transactions $gridColMetaMap $tabGridVisibleMap)
+        blueprintFields       = $blueprintFields
+        searchView            = [ordered]@{
+            search     = [ordered]@{
+                name           = $searchName
+                integrationId  = $searchIntegration
+                usageType      = 'DataModelTemplate'
+                rootTableName  = $prefix + $rootSuffix
+            }
+            searchView = [ordered]@{
+                integrationId = $searchIntegration + '_View'
+                fields        = 'DefaultReferenceBasicInfo'
+            }
+        }
+        navigation            = [ordered]@{
+            folderName               = if ($config.blueprint.folderName) { $config.blueprint.folderName } else { $templateName }
+            parentFolderIntegrationId = $null
+            menuOrder                = 100
+        }
+    }
+}
+
+function Build-TechPackGradeValuePivotBindings($config, $transactions) {
+    # Grading tab only: GradeValue ChildUnitPivotColumns ← View_TchpStyleActiveSizeRunSizes (locked V1+pivot).
+    $list = [System.Collections.Generic.List[object]]::new()
+    if (-not $config.techPack -or -not $config.techPack.bindings) { return @($list.ToArray()) }
+
+    foreach ($b in @($config.techPack.bindings)) {
+        if (-not $b) { continue }
+        $role = [string]$b.role
+        if ($role -ne 'Grading') { continue }
+        $hasView = $false
+        $hasPom = $false
+        foreach ($cu in @($b.childUnits)) {
+            if (-not $cu -or -not $cu.appTableName) { continue }
+            $n = [string]$cu.appTableName
+            if ($n -eq 'View_TchpStyleActiveSizeRunSizes' -or $n.EndsWith('View_TchpStyleActiveSizeRunSizes')) { $hasView = $true }
+            if ($n -eq 'TchpPomSpecLine' -or $n.EndsWith('TchpPomSpecLine')) { $hasPom = $true }
+        }
+        if (-not ($hasView -and $hasPom)) { continue }
+        $list.Add([ordered]@{
+            plmTabId                    = [int]$b.plmTabId
+            hostAppTableName            = 'TchpPomSpecLine'
+            grandchildAppTableName      = 'TchpGradeValue'
+            sourceAppTableName          = 'View_TchpStyleActiveSizeRunSizes'
+            sourcePivotKeyColumn        = 'SizeRunSizeId'
+            pivotColumnField            = 'SizeRunSizeId'
+            pivotValueField             = 'GradingDelta'
+            skipMatrixKeyVisibleFilter  = $false
+        })
+    }
+    return @($list.ToArray())
+}
+
+function Build-TechPackFitMeasurementPivotBindings($config, $transactions) {
+    # Fit SUMMARY (F3): FitMeasurementByPom ChildUnitPivotColumns ← TchpFitRound.RoundNumber.
+    $list = [System.Collections.Generic.List[object]]::new()
+    if (-not $config.techPack -or -not $config.techPack.bindings) { return @($list.ToArray()) }
+
+    foreach ($b in @($config.techPack.bindings)) {
+        if (-not $b) { continue }
+        $role = [string]$b.role
+        if ($role -ne 'FitSummary') { continue }
+        $hasRound = $false
+        $hasPomPivot = $false
+        foreach ($cu in @($b.childUnits)) {
+            if (-not $cu -or -not $cu.appTableName) { continue }
+            $n = [string]$cu.appTableName
+            if ($n -eq 'TchpFitRound' -or $n.EndsWith('TchpFitRound')) { $hasRound = $true }
+            if ($n -eq 'TchpPomSpecLine' -or $n.EndsWith('TchpPomSpecLine')) {
+                $gcs = @($cu.grandChildAppTableNames)
+                if ($gcs | Where-Object { $_ -match 'View_TchpFitMeasurementByPom' }) { $hasPomPivot = $true }
+            }
+        }
+        if (-not ($hasRound -and $hasPomPivot)) { continue }
+        $list.Add([ordered]@{
+            plmTabId                    = [int]$b.plmTabId
+            hostAppTableName            = 'TchpPomSpecLine'
+            grandchildAppTableName      = 'View_TchpFitMeasurementByPom'
+            sourceAppTableName          = 'TchpFitRound'
+            sourcePivotKeyColumn        = 'RoundNumber'
+            pivotColumnField            = 'RoundNumber'
+            pivotValueField             = 'ActualValue'
+            skipMatrixKeyVisibleFilter  = $true
+        })
+    }
+    return @($list.ToArray())
+}
+
+function Resolve-GridDwTableName([string]$Configured, [int]$GridId) {
+    if ($GridId -le 0) { return $Configured }
+    $q = @"
+SELECT name
+FROM sys.tables
+WHERE name LIKE N'PLM_DW_Grid[_]%'
+  AND name LIKE N'%[_]$GridId'
+ORDER BY name
+"@
+    $found = @(Invoke-DwQuery $q | ForEach-Object {
+        if ($_ -is [string]) { $_.Trim() } else { "$_".Trim() }
+    } | Where-Object { $_ -and $_ -notmatch 'rows affected' })
+    $exact = @($found | Where-Object { $_.EndsWith("_$GridId", [StringComparison]::OrdinalIgnoreCase) })
+    if ($Configured -and ($exact | Where-Object { [string]::Equals($_, $Configured, [StringComparison]::OrdinalIgnoreCase) })) {
+        return $Configured
+    }
+    if ($exact.Count -eq 1) {
+        if ($Configured -and -not [string]::Equals($Configured, $exact[0], [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "  Grid $GridId dwTable '$Configured' -> physical '$($exact[0])'"
+        }
+        return $exact[0]
+    }
+    if ($exact.Count -gt 1) {
+        $pick = $exact | Where-Object { $_ -eq $Configured } | Select-Object -First 1
+        if ($pick) { return $pick }
+        throw "Grid $GridId matches multiple DW tables: $($exact -join ', '). Set grids[].dwTable to the physical name."
+    }
+    if ($Configured) {
+        throw "Grid $GridId DW table not found. Configured '$Configured' (also looked for PLM_DW_Grid_*_$GridId)."
+    }
+    throw "Grid $GridId has no dwTable and no PLM_DW_Grid_*_$GridId table in $DwDatabase."
+}
+
+function Get-SharedBomAppTableName([string]$LogicalFromDw) {
+    if ([string]::IsNullOrWhiteSpace($LogicalFromDw)) { return $LogicalFromDw }
+    return ($LogicalFromDw -replace '_\d+_Colorways$', '')
+}
+
+# Agent-written grids[] often mash ProductDesignColorGrid + another gridId (e.g. Artwork 3167
+# -> PLM_DW_Grid_ProductDesignColorGrid_3167). Physical table is always PLM_DW_Grid_*_{gridId}.
+function Repair-ConfigGridDwTables {
+    if (-not $config.grids) { return }
+    foreach ($grid in @($config.grids)) {
+        $gid = 0
+        if (-not [int]::TryParse("$($grid.gridId)", [ref]$gid) -or $gid -le 0) { continue }
+        $resolved = $null
+        try { $resolved = Resolve-GridDwTableName ([string]$grid.dwTable) $gid }
+        catch {
+            Write-Host "  Grid $gid : $($_.Exception.Message)"
+            continue
+        }
+        if ($resolved -and -not [string]::Equals($resolved, [string]$grid.dwTable, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "  Grid $gid dwTable '$($grid.dwTable)' -> '$resolved'"
+            $grid | Add-Member -NotePropertyName dwTable -NotePropertyValue $resolved -Force
+        }
+        $logical = $resolved
+        if ($logical -match '^PLM_DW_Grid_(.+)_\d+$') { $logical = $Matches[1] }
+        $expectedApp = Get-SharedBomAppTableName $logical
+        if ($expectedApp -and $grid.appTable -and -not [string]::Equals([string]$grid.appTable, $expectedApp, [StringComparison]::OrdinalIgnoreCase)) {
+            Write-Host "  Grid $gid appTable '$($grid.appTable)' -> '$expectedApp' (from physical $resolved)"
+            $grid | Add-Member -NotePropertyName appTable -NotePropertyValue $expectedApp -Force
+        }
+        $importTabs = [System.Collections.Generic.HashSet[int]]::new()
+        if ($config.importTabIds) {
+            foreach ($t in @($config.importTabIds)) {
+                $tid = 0
+                if ([int]::TryParse("$t", [ref]$tid) -and $tid -gt 0) { [void]$importTabs.Add($tid) }
+            }
+        }
+        elseif ($config.tabs) {
+            foreach ($t in @($config.tabs)) {
+                $tid = 0
+                if ([int]::TryParse("$($t.tabId)", [ref]$tid) -and $tid -gt 0) { [void]$importTabs.Add($tid) }
+            }
+        }
+        $curParent = 0
+        [void][int]::TryParse("$($grid.parentPlmTabId)", [ref]$curParent)
+        if ($curParent -gt 0 -and $importTabs.Contains($curParent)) {
+            # already on an imported tab (e.g. official 3351 grid 7 -> 4225)
+        }
+        else {
+            $inList = if ($importTabs.Count -gt 0) { ($importTabs | Sort-Object) -join ',' } else { '0' }
+            $parentQ = @"
+SELECT TOP 1 tb.TabID
+FROM dbo.PdmTabBlock tb
+INNER JOIN dbo.pdmBlock b ON b.BlockID = tb.BlockID
+INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.BlockID = b.BlockID AND bsi.ControlType = 6 AND bsi.GridID = $gid
+ORDER BY CASE WHEN tb.TabID IN ($inList) THEN 0 ELSE 1 END, tb.TabID, tb.OrderId
+"@
+            foreach ($line in (Invoke-PlmQuery $parentQ)) {
+                $tidRaw = ("$line" -split '\|')[0].Trim()
+                if ($tidRaw -notmatch '^\d+$') { continue }
+                $tid = [int]$tidRaw
+                if ($tid -le 0 -or $tid -eq $curParent) { break }
+                if ($importTabs.Count -gt 0 -and -not $importTabs.Contains($tid)) { break }
+                Write-Host "  Grid $gid parentPlmTabId $curParent -> $tid"
+                $grid | Add-Member -NotePropertyName parentPlmTabId -NotePropertyValue $tid -Force
+                break
+            }
+        }
+    }
+}
+
+# Do not return HashSet — PowerShell unwraps it to a fixed-size Object[] and .Add() throws.
+function Get-ConfigGridIds {
+    $acc = [System.Collections.Generic.List[int]]::new()
+    foreach ($g in @($config.grids)) {
+        $gid = 0
+        if ([int]::TryParse("$($g.gridId)", [ref]$gid) -and $gid -gt 0 -and -not $acc.Contains($gid)) {
+            $acc.Add($gid)
+        }
+    }
+    return @($acc.ToArray())
+}
+
+function Add-ConfigGrid($grid) {
+    $list = [System.Collections.Generic.List[object]]::new()
+    foreach ($g in @($config.grids)) { if ($g) { $list.Add($g) } }
+    $list.Add($grid)
+    $config | Add-Member -NotePropertyName grids -NotePropertyValue @($list.ToArray()) -Force
+}
+
+# Official dwTabImportConfig.{templateId}.json is the grids[] baseline (3351: 7, 3167->4246, 3161/3162/...).
+function Merge-OfficialTemplateGrids {
+    if (-not $templateId) { return }
+    $officialPath = Join-Path $PSScriptRoot ("dwTabImportConfig.{0}.json" -f $templateId)
+    if (-not (Test-Path $officialPath)) { return }
+    $official = $null
+    try { $official = Get-Content $officialPath -Raw | ConvertFrom-Json }
+    catch {
+        Write-Host "  Official-grid: skip $($_.Exception.Message)"
+        return
+    }
+    if (-not $official.grids) { return }
+    $ids = @(Get-ConfigGridIds)
+    $added = 0
+    foreach ($og in @($official.grids)) {
+        $gid = 0
+        if (-not [int]::TryParse("$($og.gridId)", [ref]$gid) -or $gid -le 0) { continue }
+        if ($ids -contains $gid) { continue }
+        Add-ConfigGrid $og
+        $ids += $gid
+        $added++
+        Write-Host "  Official-grid: added $gid $($og.dwTable) parent $($og.parentPlmTabId) from dwTabImportConfig.$templateId.json"
+    }
+    if ($added -eq 0) {
+        Write-Host "  Official-grid: dwTabImportConfig.$templateId.json present; no new gridIds to merge."
+    }
+}
+
+function Discover-ImportTabGrids([int[]]$TabIds) {
+    $discovered = @()
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $discovered }
+    $inList = ($TabIds | Sort-Object -Unique) -join ','
+    $q = @"
+SELECT bsi.GridID, MAX(bsi.SubItemID) AS SubItemID, MIN(tb.TabID) AS TabID
+FROM dbo.PdmTabBlock tb
+INNER JOIN dbo.pdmBlock b ON b.BlockID = tb.BlockID
+INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.BlockID = b.BlockID AND bsi.ControlType = 6 AND bsi.GridID IS NOT NULL AND bsi.GridID > 0
+WHERE tb.TabID IN ($inList)
+GROUP BY bsi.GridID
+ORDER BY bsi.GridID
+"@
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = "$line" -split '\|'
+        if ($parts.Count -lt 3) { continue }
+        $gidRaw = $parts[0].Trim()
+        $sidRaw = $parts[1].Trim()
+        $tidRaw = $parts[2].Trim()
+        if ($gidRaw -notmatch '^\d+$') { continue }
+        $gid = [int]$gidRaw
+        $sid = if ($sidRaw -match '^\d+$') { [int]$sidRaw } else { 0 }
+        $tid = if ($tidRaw -match '^\d+$') { [int]$tidRaw } else { 0 }
+        $dw = $null
+        try { $dw = Resolve-GridDwTableName $null $gid }
+        catch {
+            Write-Host "  Auto-grid skip $gid : $($_.Exception.Message)"
+            continue
+        }
+        $logical = $dw
+        if ($logical -match '^PLM_DW_Grid_(.+)_\d+$') { $logical = $Matches[1] }
+        $app = Get-SharedBomAppTableName $logical
+        $discovered += [pscustomobject]@{
+            appTable                 = $app
+            dwTable                  = $dw
+            gridSubItemId            = $sid
+            gridId                   = $gid
+            parentPlmTabId           = $tid
+            transactionIntegrationId = "Tab_$tid"
+        }
+    }
+    return $discovered
+}
+
+# Merge official template grids + DW-discovered grids. Never return early on a partial agent grids[].
+function Ensure-ConfigGridsFromPlm {
+    Merge-OfficialTemplateGrids
+    $tabIds = @()
+    if ($script:AllPlmTemplateTabIds -and $script:AllPlmTemplateTabIds.Count -gt 0) {
+        $tabIds = @($script:AllPlmTemplateTabIds)
+    }
+    elseif ($config.importTabIds) { $tabIds = @($config.importTabIds | ForEach-Object { [int]$_ }) }
+    elseif ($config.tabs) { $tabIds = @($config.tabs | ForEach-Object { [int]$_.tabId }) }
+    if ($tabIds.Count -eq 0) {
+        Write-Host '  Auto-grid: skipped (no importTabIds / tabs).'
+        return
+    }
+    $discovered = @(Discover-ImportTabGrids $tabIds)
+    $ids = @(Get-ConfigGridIds)
+    $added = 0
+    foreach ($d in $discovered) {
+        if ($ids -contains [int]$d.gridId) { continue }
+        Add-ConfigGrid $d
+        $ids += [int]$d.gridId
+        $added++
+        Write-Host "  Auto-grid: added $($d.gridId) $($d.dwTable) -> APP $($d.appTable) parent tab $($d.parentPlmTabId)"
+    }
+    if ($added -eq 0 -and $ids.Count -gt 0) {
+        Write-Host "  Auto-grid: no additional PLM_DW_Grid_* beyond $($ids.Count) config/official grid(s)."
+    }
+    elseif ($ids.Count -eq 0) {
+        Write-Host '  Auto-grid: none (no PLM_DW_Grid_* for import tabs).'
+    }
+}
+
+function Get-DwTableColumns([string]$TableName) {
+    $q = @"
+SELECT c.COLUMN_NAME, c.DATA_TYPE,
+       ISNULL(CAST(c.CHARACTER_MAXIMUM_LENGTH AS NVARCHAR(20)), N''),
+       ISNULL(CAST(c.NUMERIC_PRECISION AS NVARCHAR(20)), N''),
+       ISNULL(CAST(c.NUMERIC_SCALE AS NVARCHAR(20)), N''),
+       CAST(c.ORDINAL_POSITION AS NVARCHAR(20))
+FROM INFORMATION_SCHEMA.COLUMNS c
+WHERE c.TABLE_NAME = N'$TableName'
+ORDER BY c.ORDINAL_POSITION;
+"@
+    $rows = Invoke-DwQuery $q
+    $cols = @()
+    foreach ($line in $rows) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 6) { continue }
+        $ordRaw = $parts[5].Trim()
+        if ($ordRaw -notmatch '^\d+$') { continue }
+        $cols += [pscustomobject]@{
+            DwColumn     = $parts[0].Trim()
+            DataType     = $parts[1].Trim().ToLowerInvariant()
+            CharMaxLen   = $parts[2].Trim()
+            NumPrecision = $parts[3].Trim()
+            NumScale     = $parts[4].Trim()
+            Ordinal      = [int]$ordRaw
+        }
+    }
+    if (-not $cols.Count) { throw "No columns found for DW table: $TableName" }
+    return $cols
+}
+
+function Get-DwColumnMeta([string]$DwColumn) {
+    $fkTarget = $null
+    $namePart = $DwColumn
+    $fkIdx = $DwColumn.IndexOf('_FK_')
+    if ($fkIdx -ge 0) {
+        $fkTarget = $DwColumn.Substring($fkIdx + 4)
+        $namePart = $DwColumn.Substring(0, $fkIdx)
+    }
+    $subItemId = $null
+    $stem = $namePart
+    if ($namePart -match '^(.+)_(\d+)$') {
+        $stem = $Matches[1].TrimEnd('_')
+        $subItemId = [int]$Matches[2]
+    }
+    return [pscustomobject]@{
+        DwColumn  = $DwColumn
+        Stem      = $stem
+        SubItemId = $subItemId
+        FkTarget  = $fkTarget
+        NamePart  = $namePart
+    }
+}
+
+function Get-DwStringLength($col) {
+    if (-not $col.CharMaxLen -or $col.CharMaxLen -eq 'NULL') { return 255 }
+    $parsed = 0
+    if (-not [int]::TryParse($col.CharMaxLen, [ref]$parsed)) { return 255 }
+    if ($parsed -lt 0) { return -1 }
+    if ($parsed -eq 0) { return 255 }
+    return $parsed
+}
+
+function Get-AppStringSqlType($col) {
+    $len = Get-DwStringLength $col
+    if ($len -lt 0 -or $len -gt 4000) { return '[nvarchar](max)' }
+    return "[nvarchar]($len)"
+}
+
+function Get-AppSqlType($col, [string]$DwColumn) {
+    $dt = $col.DataType
+    switch ($dt) {
+        'int' { return '[int]' }
+        'bigint' { return '[bigint]' }
+        'smallint' { return '[smallint]' }
+        'bit' { return '[bit]' }
+        'datetime' { return '[datetime]' }
+        'datetime2' { return '[datetime2]' }
+        'date' { return '[date]' }
+        'float' {
+            if ($DwColumn -match '(?i)Composition\d|Comp\d__|Comp\d_|Composition\d__') { return '[decimal](18, 1)' }
+            if ($DwColumn -match '(?i)Weight_') { return '[decimal](18, 2)' }
+            return '[decimal](18, 2)'
+        }
+        'decimal' {
+            $p = if ($col.NumPrecision -and $col.NumPrecision -ne 'NULL') { [int]$col.NumPrecision } else { 18 }
+            $s = if ($col.NumScale -and $col.NumScale -ne 'NULL') { [int]$col.NumScale } else { 2 }
+            return "[decimal]($p, $s)"
+        }
+        'nvarchar' { return Get-AppStringSqlType $col }
+        'varchar' { return Get-AppStringSqlType $col }
+        'nchar' { return Get-AppStringSqlType $col }
+        'char' { return Get-AppStringSqlType $col }
+        default { return '[nvarchar](255)' }
+    }
+}
+
+function Sanitize-AppColumnName([string]$name) {
+    if ([string]::IsNullOrEmpty($name)) { return 'Col' }
+    $chars = foreach ($ch in $name.ToCharArray()) {
+        $c = [int]$ch
+        if (($c -ge 48 -and $c -le 57) -or ($c -ge 65 -and $c -le 90) -or ($c -ge 97 -and $c -le 122) -or $c -eq 95) {
+            $ch
+        }
+        else { '_' }
+    }
+    $s = (($chars -join '') -replace '_+', '_').Trim('_')
+    if ([string]::IsNullOrWhiteSpace($s)) { $s = 'Col' }
+    if ($s -match '^\d') { $s = 'C_' + $s }
+    return $s
+}
+
+function Get-AppColumnNames($fieldRows) {
+    $stemCounts = @{}
+    foreach ($r in $fieldRows) {
+        if (-not $stemCounts.ContainsKey($r.Stem)) { $stemCounts[$r.Stem] = 0 }
+        $stemCounts[$r.Stem]++
+    }
+    $used = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($r in $fieldRows) {
+        $raw = if ($stemCounts[$r.Stem] -eq 1) { [string]$r.Stem } else { [string]$r.NamePart }
+        $app = Sanitize-AppColumnName $raw
+        $base = $app
+        $n = 2
+        while (-not $used.Add($app)) {
+            $app = $base + '_' + $n
+            $n++
+        }
+        $r | Add-Member -NotePropertyName AppColumn -NotePropertyValue $app -Force
+    }
+    return $fieldRows
+}
+
+function Get-SubItemIdSet([string]$DwTable) {
+    $set = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($c in (Get-DwTableColumns $DwTable)) {
+        if ($TabSystemColumns.Contains($c.DwColumn)) { continue }
+        $meta = Get-DwColumnMeta $c.DwColumn
+        if ($null -ne $meta.SubItemId) { [void]$set.Add($meta.SubItemId) }
+    }
+    return $set
+}
+
+function Get-AlsoExcludeSubItemIdSet($tab) {
+    $set = [System.Collections.Generic.HashSet[int]]::new()
+    if (-not $tab.alsoExcludeSubItemIds) { return $set }
+    foreach ($id in @($tab.alsoExcludeSubItemIds)) {
+        if ($null -ne $id) { [void]$set.Add([int]$id) }
+    }
+    return $set
+}
+
+function Merge-FieldRowsFromDwSources([string]$AppTable, $mergeFromList, [System.Collections.Generic.HashSet[string]]$existingDwColumns) {
+    $merged = [System.Collections.Generic.List[object]]::new()
+    if (-not $mergeFromList) { return $merged }
+    $seenSubItemIds = [System.Collections.Generic.HashSet[int]]::new()
+    foreach ($src in @($mergeFromList)) {
+        if (-not $src.dwTable) { continue }
+        $wantIds = $null
+        if ($src.subItemIds) {
+            $wantIds = [System.Collections.Generic.HashSet[int]]::new()
+            foreach ($id in @($src.subItemIds)) {
+                if ($null -ne $id) { [void]$wantIds.Add([int]$id) }
+            }
+        }
+        $srcTabId = if ($null -ne $src.plmTabId) { [int]$src.plmTabId } else { $null }
+        $dwCols = Get-DwTableColumns $src.dwTable
+        $pick = [System.Collections.Generic.List[object]]::new()
+        foreach ($col in $dwCols) {
+            if ($TabSystemColumns.Contains($col.DwColumn)) { continue }
+            if ($existingDwColumns -and $existingDwColumns.Contains($col.DwColumn)) { continue }
+            $meta = Get-DwColumnMeta $col.DwColumn
+            if ($null -eq $meta.SubItemId) { continue }
+            $sid = [int]$meta.SubItemId
+            if ($seenSubItemIds.Contains($sid)) { continue }
+            if ($wantIds -and -not $wantIds.Contains($sid)) { continue }
+            [void]$pick.Add($col)
+        }
+        if ($pick.Count -eq 0) { continue }
+        $rows = Build-FieldRows @($pick) $src.dwTable $srcTabId $AppTable 'TabField' $null $null
+        foreach ($r in $rows) {
+            if ($null -ne $r.SubItemId) { [void]$seenSubItemIds.Add([int]$r.SubItemId) }
+            [void]$merged.Add($r)
+        }
+        Write-Host "  merge -> $AppTable from $($src.dwTable): $($rows.Count) column(s)"
+    }
+    return $merged
+}
+
+function Build-FieldRows($dwCols, [string]$DwTable, $TabId, [string]$AppTable, [string]$FieldKind, $gridSubItemId, $gridId) {
+    $rows = @()
+    foreach ($c in $dwCols) {
+        if ($FieldKind -eq 'TabField' -and $TabSystemColumns.Contains($c.DwColumn)) { continue }
+        if ($FieldKind -eq 'GridColumn' -and $GridSystemColumns.Contains($c.DwColumn)) { continue }
+        $meta = Get-DwColumnMeta $c.DwColumn
+        $rows += [pscustomobject]@{
+            AppTable         = $AppTable
+            DwTable          = $DwTable
+            DwColumn         = $c.DwColumn
+            Stem             = $meta.Stem
+            NamePart         = $meta.NamePart
+            SubItemId        = $meta.SubItemId
+            FkTarget         = $meta.FkTarget
+            SqlType          = (Get-AppSqlType $c $c.DwColumn)
+            PlmTabId         = $TabId
+            PlmGridSubItemId = if ($FieldKind -eq 'GridColumn') { $gridSubItemId } else { $null }
+            PlmGridId        = if ($FieldKind -eq 'GridColumn') { $gridId } else { $null }
+            PlmMetaColumnId  = if ($FieldKind -eq 'GridColumn') { $meta.SubItemId } else { $null }
+            FieldKind        = $FieldKind
+            DwDataType       = $c.DataType
+            PlmControlType   = (Infer-PlmControlType $meta $c.DataType)
+            PlmEntityId      = (Infer-PlmEntityId $meta.FkTarget)
+        }
+    }
+    return Get-AppColumnNames $rows
+}
+
+function Build-CreateTableBlock([string]$LogicalTable, $fieldRows, [string]$UnitKind = 'sibling') {
+    # $UnitKind:
+    #   'sibling' -> 1:1 with root; PK = [ReferenceId] (NOT an identity, value comes from import).
+    #   'child'   -> 1:many under root; PK = [{LogicalTable}Id] INT IDENTITY (DB-filled),
+    #                [ReferenceId] is a plain FK column (value imported, links to parent).
+    #   'grid'    -> 1:many under root; PK = [RowId] INT IDENTITY, plus [ReferenceId] FK + [Sort].
+    $colDefs = New-Object System.Collections.Generic.List[string]
+    $pk = $null
+    switch ($UnitKind) {
+        'grid' {
+            [void]$colDefs.Add('[RowId] INT IDENTITY(1,1) NOT NULL')
+            [void]$colDefs.Add('[ReferenceId] INT NOT NULL')
+            [void]$colDefs.Add('[Sort] INT NULL')
+            $pk = 'RowId'
+        }
+        'child' {
+            $pk = "${LogicalTable}Id"
+            [void]$colDefs.Add("[$pk] INT IDENTITY(1,1) NOT NULL")
+            [void]$colDefs.Add('[ReferenceId] INT NOT NULL')
+        }
+        'fitRoundInfo' {
+            # FX1: 1:1 with TchpFitRound; PK = FitRoundId (non-identity, from TchpFitRound).
+            [void]$colDefs.Add('[FitRoundId] INT NOT NULL')
+            [void]$colDefs.Add('[AppCreatedDate] DATETIME NULL')
+            [void]$colDefs.Add('[AppModifiedDate] DATETIME NULL')
+            $pk = 'FitRoundId'
+        }
+        default {
+            [void]$colDefs.Add('[ReferenceId] INT NOT NULL')
+            $pk = 'ReferenceId'
+        }
+    }
+    foreach ($r in $fieldRows) {
+        [void]$colDefs.Add((Format-SqlColDefInCreate $r.AppColumn $r.SqlType))
+    }
+    [void]$colDefs.Add("CONSTRAINT [PK_$LogicalTable] PRIMARY KEY CLUSTERED ([$pk])")
+    $innerCols = ($colDefs -join ', ')
+    $alterLines = New-Object System.Collections.Generic.List[string]
+    foreach ($r in $fieldRows) {
+        # Shared physical tables (e.g. 3351 + 3360 APPEND): add missing columns, then widen nvarchar if needed.
+        $nameExpr = Format-SqlNvarcharExpr $r.AppColumn $false
+        $addIdent = Format-SqlIdentBreak $r.AppColumn
+        [void]$alterLines.Add(@"
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@TableName)) AND name = $nameExpr)
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ADD $addIdent $($r.SqlType) NULL;'; EXEC sp_executesql @sql; END
+"@.TrimEnd())
+        if ($r.SqlType -match '^\[nvarchar\]') {
+            [void]$alterLines.Add("    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName) + N' ALTER COLUMN $addIdent $($r.SqlType) NULL;';`r`n    EXEC sp_executesql @sql;")
+        }
+    }
+    $alterBlock = if ($alterLines.Count -gt 0) {
+        "ELSE`r`nBEGIN`r`n" + ($alterLines -join "`r`n") + "`r`nEND`r`n`r`n"
+    } else { '' }
+
+    $fkBlock = ''
+    if ($UnitKind -ne 'fitRoundInfo') {
+        $fkBlock = @"
+IF OBJECT_ID(N'dbo.' + QUOTENAME(@RootTable), N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.foreign_keys WHERE name = @FkName)
+BEGIN
+    SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@TableName)
+        + N' WITH CHECK ADD CONSTRAINT ' + QUOTENAME(@FkName)
+        + N' FOREIGN KEY ([ReferenceId]) REFERENCES dbo.' + QUOTENAME(@RootTable) + N' ([ReferenceId]);';
+    EXEC sp_executesql @sql;
+END
+ELSE IF OBJECT_ID(N'dbo.' + QUOTENAME(@RootTable), N'U') IS NULL
+BEGIN
+    PRINT N'Skipped FK ' + @FkName + N': root table dbo.' + @RootTable + N' does not exist.';
+END
+
+"@
+    }
+    else {
+        $fkBlock = "PRINT N'FX1 FitRoundInfo: no ReferenceId FK (PK = FitRoundId → TchpFitRound).';`r`n`r`n"
+    }
+
+    return @"
+-- $LogicalTable
+SET @TableName = @TablePrefix + N'$LogicalTable';
+SET @RootTable = @TablePrefix + @RootTableSuffix;
+SET @FkName = N'FK_' + @TableName + N'_Reference';
+
+IF OBJECT_ID(N'dbo.' + QUOTENAME(@TableName), N'U') IS NULL
+BEGIN
+    SET @sql = CAST(N'' AS NVARCHAR(MAX)) + N'CREATE TABLE dbo.' + QUOTENAME(@TableName) + N' ($innerCols );';
+    EXEC sp_executesql @sql;
+END
+$alterBlock
+$fkBlock
+"@
+}
+
+function Test-SqlIdentAscii([string]$s) {
+    if ($null -eq $s) { return $true }
+    foreach ($ch in $s.ToCharArray()) {
+        $c = [int]$ch
+        if ($c -lt 32 -or $c -gt 126) { return $false }
+    }
+    return $true
+}
+
+# Nested=$true: inside SET @sql = N'...' so quotes are doubled (N''text'').
+function Format-SqlNvarcharExpr([string]$s, [bool]$Nested) {
+    $nq = if ($Nested) { "N''" } else { "N'" }
+    $qe = if ($Nested) { "''" } else { "'" }
+    if ($null -eq $s) { return 'NULL' }
+    $parts = New-Object System.Collections.Generic.List[string]
+    $buf = New-Object System.Text.StringBuilder
+    foreach ($ch in $s.ToCharArray()) {
+        $code = [int]$ch
+        $asciiSafe = ($code -ge 32 -and $code -le 126 -and $ch -ne [char]39)
+        if ($asciiSafe) {
+            [void]$buf.Append($ch)
+        }
+        else {
+            if ($buf.Length -gt 0) {
+                $parts.Add("$nq$($buf.ToString().Replace("'", "''"))$qe")
+                [void]$buf.Clear()
+            }
+            $parts.Add("NCHAR($code)")
+        }
+    }
+    if ($buf.Length -gt 0) {
+        $parts.Add("$nq$($buf.ToString().Replace("'", "''"))$qe")
+    }
+    if ($parts.Count -eq 0) { return "$nq$qe" }
+    return ($parts -join ' + ')
+}
+
+# Break a CREATE/ALTER N'...' string so the identifier is QUOTENAME(N'a' + NCHAR(n) + N'b').
+function Format-SqlIdentBreak([string]$name) {
+    if (Test-SqlIdentAscii $name) {
+        return "[$($name.Replace("'", "''"))]"
+    }
+    return "' + QUOTENAME($(Format-SqlNvarcharExpr $name $false)) + N'"
+}
+
+function Format-SqlColDefInCreate([string]$name, [string]$sqlType) {
+    if (Test-SqlIdentAscii $name) {
+        return "[$name] $sqlType NULL"
+    }
+    return "' + QUOTENAME($(Format-SqlNvarcharExpr $name $false)) + N' $sqlType NULL"
+}
+
+function SqlStrDyn([string]$s) {
+    if ($null -eq $s) { return 'NULL' }
+    return (Format-SqlNvarcharExpr $s $true)
+}
+
+function SqlInt($n) {
+    if ($null -eq $n) { return 'NULL' }
+    return [string]$n
+}
+
+function Test-TabSkippedNoDw($tab) {
+    if ($null -eq $tab) { return $false }
+    $status = [string]$tab.importStatus
+    if ($status -ne 'Skipped') { return $false }
+    $reason = [string]$tab.skipReason
+    if ($reason -match '(?i)no[\s-]?dw') { return $true }
+    return [string]::IsNullOrWhiteSpace([string]$tab.dwTable)
+}
+
+function Get-DwTabTableMap {
+    $map = @{}
+    $q = @"
+SELECT t.name
+FROM sys.tables t
+INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
+WHERE s.name = N'dbo' AND t.name LIKE N'PLM_DW_Tab_%'
+"@
+    foreach ($line in (Invoke-DwQuery $q)) {
+        $name = ("$line" -split '\|')[0].Trim()
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        if (-not $name.StartsWith('PLM_DW_Tab_')) { continue }
+        if ($name -match '_(\d+)$') {
+            $tid = [int]$Matches[1]
+            if (-not $map.ContainsKey($tid)) { $map[$tid] = $name }
+        }
+    }
+    return $map
+}
+
+function Convert-DwTabTableToAppTable([string]$DwTable, [string]$TabName, [int]$TabId) {
+    if ($DwTable -match '^PLM_DW_Tab_(.+)_\d+$') {
+        $fromDw = [string]$Matches[1]
+        if (-not [string]::IsNullOrWhiteSpace($fromDw)) { return $fromDw }
+    }
+    $s = [string]$TabName
+    if (-not [string]::IsNullOrWhiteSpace($s)) {
+        $s = $s -replace '[^A-Za-z0-9]+', '_'
+        $s = $s.Trim('_')
+        if (-not [string]::IsNullOrWhiteSpace($s)) { return $s }
+    }
+    return "Tab_$TabId"
+}
+
+# pdmTemplateTab is truth. Agent importTabIds/tabs[] may be a truncated probe (first 8 of 29).
+# Auto-add every PLM tab that has PLM_DW_Tab_* ; skipNoDw only when no DW table.
+function Ensure-ImportTabsFromPlm {
+    if (-not $templateId) {
+        throw 'plmTemplateId is required so the generator can load pdmTemplateTab.'
+    }
+    Write-Host "Loading pdmTemplateTab for TemplateId $templateId from $PlmDatabase (importTabIds must cover every tab)..."
+    $q = @"
+SELECT tt.TabID, tab.TabName, tt.Sort, CAST(ISNULL(tab.IsTemplateHeaderTab, 0) AS INT)
+FROM dbo.pdmTemplateTab tt
+INNER JOIN dbo.pdmTab tab ON tab.TabID = tt.TabID
+WHERE tt.TemplateID = $templateId
+ORDER BY tt.Sort, tt.TabID
+"@
+    $plmRows = @()
+    foreach ($line in (Invoke-PlmQuery $q)) {
+        $parts = "$line" -split '\|'
+        if ($parts.Count -lt 4) { continue }
+        $tidRaw = $parts[0].Trim()
+        if ($tidRaw -notmatch '^\d+$') { continue }
+        $tid = [int]$tidRaw
+        $sortRaw = $parts[2].Trim()
+        $sort = if ($sortRaw -match '^\d+$') { [int]$sortRaw } else { 9999 }
+        $hdrRaw = $parts[3].Trim()
+        $isHeader = ($hdrRaw -eq '1')
+        $plmRows += [pscustomobject]@{
+            TabId    = $tid
+            TabName  = $parts[1].Trim()
+            Sort     = $sort
+            IsHeader = $isHeader
+        }
+    }
+    if ($plmRows.Count -eq 0) {
+        throw "pdmTemplateTab returned 0 tabs for TemplateId $templateId on $PlmDatabase. Check plmDatabase / PLM DataSource."
+    }
+
+    $script:AllPlmTemplateTabIds = @($plmRows | ForEach-Object { [int]$_.TabId })
+    $dwMap = Get-DwTabTableMap
+    $tabList = [System.Collections.Generic.List[object]]::new()
+    $byId = @{}
+    foreach ($t in @($config.tabs)) {
+        if (-not $t) { continue }
+        $tabList.Add($t)
+        $tid = 0
+        if ([int]::TryParse("$($t.tabId)", [ref]$tid) -and $tid -gt 0) { $byId[$tid] = $t }
+    }
+
+    $autoAdded = 0
+    $autoSkipped = 0
+    foreach ($plm in $plmRows) {
+        $tid = [int]$plm.TabId
+        $dw = $null
+        if ($dwMap.ContainsKey($tid)) { $dw = [string]$dwMap[$tid] }
+        $existing = $null
+        if ($byId.ContainsKey($tid)) { $existing = $byId[$tid] }
+
+        if ($existing) {
+            if ([string]::IsNullOrWhiteSpace([string]$existing.dwTable) -and $dw) {
+                $existing | Add-Member -NotePropertyName dwTable -NotePropertyValue $dw -Force
+            }
+            if ([string]::IsNullOrWhiteSpace([string]$existing.plmTabName)) {
+                $existing | Add-Member -NotePropertyName plmTabName -NotePropertyValue $plm.TabName -Force
+            }
+            if ($null -eq $existing.tabSort) {
+                $existing | Add-Member -NotePropertyName tabSort -NotePropertyValue $plm.Sort -Force
+            }
+            if ($null -eq $existing.isTemplateHeaderTab) {
+                $existing | Add-Member -NotePropertyName isTemplateHeaderTab -NotePropertyValue $plm.IsHeader -Force
+            }
+            continue
+        }
+
+        if ($dw) {
+            $app = Convert-DwTabTableToAppTable $dw $plm.TabName $tid
+            $tabList.Add([pscustomobject]@{
+                appTable             = $app
+                dwTable              = $dw
+                tabId                = $tid
+                plmTabName           = $plm.TabName
+                tabSort              = $plm.Sort
+                isTemplateHeaderTab  = $plm.IsHeader
+                importStatus         = 'Ready'
+                mode                 = 'all'
+            })
+            $autoAdded++
+            Write-Host "  Auto-tab: added Tab_$tid $($plm.TabName) -> $dw / APP $app"
+        }
+        else {
+            $tabList.Add([pscustomobject]@{
+                appTable             = (Convert-DwTabTableToAppTable $null $plm.TabName $tid)
+                dwTable              = $null
+                tabId                = $tid
+                plmTabName           = $plm.TabName
+                tabSort              = $plm.Sort
+                isTemplateHeaderTab  = $plm.IsHeader
+                importStatus         = 'Skipped'
+                skipReason           = 'no DW table (skipNoDw)'
+                mode                 = 'all'
+            })
+            $autoSkipped++
+            Write-Host "  Auto-tab: skipNoDw Tab_$tid $($plm.TabName) (no PLM_DW_Tab_*)"
+        }
+    }
+
+    $readyIds = @()
+    foreach ($t in $tabList) {
+        if (Test-TabSkippedNoDw $t) { continue }
+        $st = [string]$t.importStatus
+        if ($st -eq 'Skipped') { continue }
+        $tid = 0
+        if (-not [int]::TryParse("$($t.tabId)", [ref]$tid) -or $tid -le 0) { continue }
+        if ([string]::IsNullOrWhiteSpace([string]$t.dwTable)) { continue }
+        if ($readyIds -notcontains $tid) { $readyIds += $tid }
+    }
+
+    $dwPlmIds = @($plmRows | Where-Object { $dwMap.ContainsKey([int]$_.TabId) } | ForEach-Object { [int]$_.TabId })
+    $omittedWithDw = @($dwPlmIds | Where-Object { $readyIds -notcontains $_ })
+    # Explicit Skipped (already-imported TX) is allowed; missing Ready for a DW tab is not.
+    $omittedNotExplicitSkip = @()
+    foreach ($tid in $omittedWithDw) {
+        $ex = $null
+        if ($byId.ContainsKey($tid)) { $ex = $byId[$tid] }
+        if ($ex -and [string]$ex.importStatus -eq 'Skipped' -and -not (Test-TabSkippedNoDw $ex)) { continue }
+        $omittedNotExplicitSkip += $tid
+    }
+    if ($omittedNotExplicitSkip.Count -gt 0) {
+        $names = @($plmRows | Where-Object { $omittedNotExplicitSkip -contains [int]$_.TabId } | ForEach-Object { "$($_.TabId) $($_.TabName)" })
+        throw "importTabIds/tabs[] omitted $($omittedNotExplicitSkip.Count) pdmTemplateTab row(s) that have PLM_DW_Tab_* : $($names -join '; '). List every TabID (skipNoDw only when there is no DW table)."
+    }
+    if ($readyIds.Count -eq 0) {
+        throw "No Ready tabs with PLM_DW_Tab_* for TemplateId $templateId."
+    }
+
+    $config | Add-Member -NotePropertyName tabs -NotePropertyValue @($tabList.ToArray()) -Force
+    $config | Add-Member -NotePropertyName importTabIds -NotePropertyValue @($readyIds) -Force
+
+    $headerIds = @($plmRows | Where-Object { $_.IsHeader } | ForEach-Object { [int]$_.TabId })
+    if (-not $config.plmTemplate) {
+        $config | Add-Member -NotePropertyName plmTemplate -NotePropertyValue ([pscustomobject]@{
+            templateId           = $templateId
+            templateHeaderTabIds = @($headerIds)
+        }) -Force
+    }
+    elseif ($headerIds.Count -gt 0 -and -not $config.plmTemplate.templateHeaderTabIds) {
+        $config.plmTemplate | Add-Member -NotePropertyName templateHeaderTabIds -NotePropertyValue @($headerIds) -Force
+    }
+
+    Write-Host "  pdmTemplateTab=$($plmRows.Count); Ready with DW=$($readyIds.Count); skipNoDw=$autoSkipped; auto-added Ready=$autoAdded"
+}
+
+function Assert-ReferenceScopePhysicalDwColumn {
+    if ($null -eq $refScope) {
+        throw 'dwTabImportConfig.json must set referenceScope (dwTable + dwColumn).'
+    }
+    $dwTable = [string]$refScope.dwTable
+    $dwColumn = [string]$refScope.dwColumn
+    if ([string]::IsNullOrWhiteSpace($dwTable) -or [string]::IsNullOrWhiteSpace($dwColumn)) {
+        throw 'referenceScope.dwTable and referenceScope.dwColumn are required.'
+    }
+    $safeTable = $dwTable.Replace("'", "''")
+    $safeColumn = $dwColumn.Replace("'", "''")
+    # COL_LENGTH is server-side; do not list 160 sqlcmd lines and compare in PowerShell
+    # (UTF-16 -o files / padding / '|' made Article__22 look missing and stopped Phase B before any output file).
+    $q = @"
+SELECT CAST(CASE
+    WHEN COL_LENGTH(N'dbo.$safeTable', N'$safeColumn') IS NOT NULL THEN 1
+    ELSE 0
+END AS INT)
+"@
+    $flagLines = @(Invoke-DwQuery $q)
+    $flags = @($flagLines | Where-Object { $_ -match '^\d+$' })
+    if ($flags.Count -gt 0 -and [int]$flags[0] -eq 1) {
+        Write-Host "  referenceScope OK: $dwTable.[$dwColumn]"
+        return
+    }
+    $tblRaw = @(Invoke-DwQuery "SELECT CAST(CASE WHEN OBJECT_ID(N'dbo.$safeTable', N'U') IS NULL THEN 0 ELSE 1 END AS INT)")
+    $tblFlags = @($tblRaw | Where-Object { $_ -match '^\d+$' })
+    if ($tblFlags.Count -eq 0 -or [int]$tblFlags[0] -eq 0) {
+        $raw = ($tblRaw + $flagLines | Select-Object -First 8) -join ' | '
+        throw "referenceScope DW table not found: $DwDatabase.dbo.$dwTable. sqlcmd raw: $raw"
+    }
+    $hintQ = @"
+SELECT c.name
+FROM sys.columns c
+INNER JOIN sys.tables t ON t.object_id = c.object_id
+INNER JOIN sys.schemas s ON s.schema_id = t.schema_id
+WHERE s.name = N'dbo' AND t.name = N'$safeTable'
+  AND (c.name LIKE N'%Article%' OR c.name LIKE N'%Code%' OR c.name LIKE N'%Name%')
+ORDER BY c.column_id
+"@
+    $hints = @(Invoke-DwQuery $hintQ | Select-Object -First 15)
+    if ($hints.Count -eq 0) { $hints = @('(none)') }
+    throw "referenceScope.dwColumn '$dwColumn' does not exist on $DwDatabase.dbo.$dwTable. DwColumn must be the physical DW column (e.g. Article__22), never the APP name ReferenceCode. Candidates: $($hints -join ', ')"
+}
+
+Ensure-ImportTabsFromPlm
+Assert-ReferenceScopePhysicalDwColumn
+
+$allFieldRows = New-Object System.Collections.Generic.List[object]
+$scopeAppTables = New-Object System.Collections.Generic.List[string]
+[void]$scopeAppTables.Add($config.rootTableSuffix)
+
+$ddlParts = New-Object System.Collections.Generic.List[string]
+
+$ddlParts.Add(@"
+-- =============================================================================
+-- PLM DW → APP physical tables (generated — see ImportFromPLMDW/PROMPT.md)
+-- EXECUTION ORDER:
+--   1. 1_PlmDw_Tables.sql          (this file)
+--   2. 2_PlmDw_FieldMapping.sql
+--   3. 3_PlmDw_ImportFromDW.sql
+--   3b. 3b_Tchp_ImportFromDW.sql   (when techPack config present — StyleSpec/Pom/Fit)
+--   3c. 3c_PlmDw_ImportSimpleQc.sql (when SpecQC / Simple QC QX1 present)
+--   4. 4_PlmDw_ImportBlueprint.json + Phase D Execute
+--   5. 5_PlmDw_ImportBomColorwayGrandchild.sql  (when BOM colorway grids detected)
+-- USER SETTINGS (single batch - do not split with GO):
+--   @TablePrefix     table prefix, include trailing underscore (default Plm_)
+--   @RootTableSuffix root table name after prefix (default ReferenceBasicInfo)
+-- Source: plmDW Tab/Grid wide tables for user TabId set
+-- TechPack (optional techPack in dwTabImportConfig): SpecFit/SpecGrading → Tchp*;
+--   SpecQC → Plm_SimpleQC + Plm_SimpleQCResult (QX1); Size_Run/Base_Size/Measure_Unit → TchpStyleSpec.
+-- =============================================================================
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+DECLARE @TablePrefix     NVARCHAR(32)  = N'$($config.tablePrefixDefault)';  -- <<< USER SETTING
+DECLARE @RootTableSuffix NVARCHAR(128) = N'$($config.rootTableSuffix)';     -- <<< USER SETTING
+DECLARE @TableName       NVARCHAR(128);
+DECLARE @RootTable       NVARCHAR(128);
+DECLARE @FkName          NVARCHAR(128);
+DECLARE @HostTable       NVARCHAR(128);
+DECLARE @ParentFkName    NVARCHAR(128);
+DECLARE @OldRefFkName    NVARCHAR(128);
+DECLARE @sql             NVARCHAR(MAX);
+
+"@)
+
+$ddlParts.Add(@"
+-- ReferenceBasicInfo (root)
+SET @RootTable = @TablePrefix + @RootTableSuffix;
+
+IF OBJECT_ID(N'dbo.' + QUOTENAME(@RootTable), N'U') IS NULL
+BEGIN
+    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@RootTable) + N' (
+        [ReferenceId] INT IDENTITY(1,1) NOT NULL,
+        [ReferenceCode] NVARCHAR(255) NULL,
+        [MasterReferenceId] INT NULL,
+        [FolderId] INT NULL,
+        [AppCreatedByID] INT NULL,
+        [AppCreatedDate] DATETIME NULL,
+        [AppModifiedByID] INT NULL,
+        [AppModifiedDate] DATETIME NULL,
+        CONSTRAINT [PK_' + @RootTableSuffix + N'] PRIMARY KEY CLUSTERED ([ReferenceId])
+    );';
+    EXEC sp_executesql @sql;
+END
+ELSE
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + @RootTable) AND name = N'ReferenceCode')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@RootTable) + N' ADD [ReferenceCode] NVARCHAR(255) NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + @RootTable) AND name = N'MasterReferenceId')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@RootTable) + N' ADD [MasterReferenceId] INT NULL;'; EXEC sp_executesql @sql; END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + @RootTable) AND name = N'FolderId')
+    BEGIN SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@RootTable) + N' ADD [FolderId] INT NULL;'; EXEC sp_executesql @sql; END
+END
+
+"@)
+
+# Tab wide tables are ALWAYS siblings (regular sub-items). Grid sub-items become separate grid
+# tables (RowId identity PK) via $config.grids. The grid-sub-item probe below is INFORMATIONAL only
+# (reports which tabs host grids); it no longer forces the tab table to a child unit. Use an explicit
+# config "unitType": "child" override if you ever want an identity-PK child tab table.
+$tabIdListForChild = @($config.tabs | ForEach-Object { [int]$_.tabId })
+Write-Host "Probing tabs that host Grid sub-items (informational; tab tables stay sibling) from $PlmDatabase..."
+$childTabIds = Get-PlmTabsWithGridSubItem $tabIdListForChild
+Write-Host "  Tabs hosting grid sub-item(s): $((@($childTabIds) | Sort-Object) -join ', ')"
+
+foreach ($tab in $config.tabs) {
+    # FX1: Fit1–N / Comments folded — no Plm_Fit_N APP table (sources only for RoundInfo later).
+    if ($tab.fx1SkipAppTable -eq $true) {
+        Write-Host "  DDL skip (FX1 fold): $($tab.appTable) Tab_$($tab.tabId)"
+        continue
+    }
+    if (Test-TabSkippedNoDw $tab) {
+        Write-Host "  DDL skip (no DW): Tab_$($tab.tabId) $($tab.plmTabName)"
+        continue
+    }
+    [void]$scopeAppTables.Add($tab.appTable)
+    $dwCols = Get-DwTableColumns $tab.dwTable
+    $fieldRows = @()
+    if ($tab.mode -eq 'all') {
+        $fieldRows = Build-FieldRows $dwCols $tab.dwTable $tab.tabId $tab.appTable 'TabField' $null $null
+    }
+    elseif ($tab.mode -eq 'excludeSubItemsFromDwTable') {
+        $excludeIds = [System.Collections.Generic.HashSet[int]]::new()
+        foreach ($id in (Get-SubItemIdSet $tab.excludeSubItemsFromDwTable)) { [void]$excludeIds.Add([int]$id) }
+        foreach ($extraId in (Get-AlsoExcludeSubItemIdSet $tab)) { [void]$excludeIds.Add([int]$extraId) }
+        $filtered = @($dwCols | Where-Object {
+            -not $TabSystemColumns.Contains($_.DwColumn) -and (
+                $null -eq (Get-DwColumnMeta $_.DwColumn).SubItemId -or
+                -not $excludeIds.Contains((Get-DwColumnMeta $_.DwColumn).SubItemId)
+            )
+        })
+        $fieldRows = Build-FieldRows $filtered $tab.dwTable $tab.tabId $tab.appTable 'TabField' $null $null
+    }
+    else { throw "Unknown tab mode: $($tab.mode)" }
+
+    # QX1: Selected_Size lives on TchpStyleSpec.QcSelectedSizes only — strip from Plm_* sibling.
+    $sqcBinding = Get-SimpleQcBinding $config
+    if ($sqcBinding -and [int]$sqcBinding.plmTabId -eq [int]$tab.tabId) {
+        $before = @($fieldRows).Count
+        $fieldRows = @($fieldRows | Where-Object {
+            $stem = if ($_.DwColumn) { (Get-DwColumnMeta $_.DwColumn).Stem } else { [string]$_.Stem }
+            $col = [string]$_.AppColumn
+            -not (
+                $stem -eq 'Selected_Size' -or $stem -eq 'SelectedSize' -or $stem -eq 'SelectedSizes' -or
+                $col -eq 'Selected_Size' -or $col -eq 'SelectedSize' -or $col -eq 'SelectedSizes'
+            )
+        })
+        $stripped = $before - @($fieldRows).Count
+        if ($stripped -gt 0) {
+            Write-Host "  QX1: stripped Selected_Size from $($tab.appTable) (import -> TchpStyleSpec.QcSelectedSizes only)"
+        }
+    }
+
+    # FX1 slim FitSummary: keep only round-agnostic SubItems.
+    if ($tab.fx1KeepSubItemIds) {
+        $keep = [System.Collections.Generic.HashSet[int]]::new()
+        foreach ($id in @($tab.fx1KeepSubItemIds)) { [void]$keep.Add([int]$id) }
+        $fieldRows = @($fieldRows | Where-Object {
+            $sid = (Get-DwColumnMeta $_.DwColumn).SubItemId
+            ($null -ne $sid) -and $keep.Contains([int]$sid)
+        })
+        Write-Host "  FX1 slim $($tab.appTable): kept $($fieldRows.Count) column(s)"
+    }
+
+    # Optional: pull shared SubItem columns from other DW tables onto this APP table (e.g. Fit Summary hub).
+    # Disabled when fx1Slim / fx1KeepSubItemIds (round-specific fields go to FitRoundInfo, not Summary).
+    $existingDwColNames = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($r in $fieldRows) { if ($r.DwColumn) { [void]$existingDwColNames.Add([string]$r.DwColumn) } }
+    if ($tab.fx1KeepSubItemIds -or $tab.fx1Slim -eq $true) {
+        Write-Host "  FX1: skip mergeSubItemsFrom on $($tab.appTable)"
+    }
+    else {
+        $mergedRows = Merge-FieldRowsFromDwSources $tab.appTable $tab.mergeSubItemsFrom $existingDwColNames
+        if ($mergedRows.Count -gt 0) {
+            $fieldRows = @($fieldRows) + @($mergedRows)
+            $fieldRows = Get-AppColumnNames $fieldRows
+        }
+    }
+
+    # TechPack S1: Size_Run / Base_Size / Measure_Unit live on TchpStyleSpec only — strip from Plm_* DDL/mapping.
+    $ownedCols = @()
+    if ($config.techPack -and $config.techPack.styleSpecOwnedColumns) {
+        $ownedCols = @($config.techPack.styleSpecOwnedColumns | ForEach-Object { [string]$_ })
+    }
+    if ($ownedCols.Count -gt 0) {
+        $fieldRows = @($fieldRows | Where-Object {
+            $col = [string]$_.AppColumn
+            $stem = [string]$_.Stem
+            -not ($ownedCols | Where-Object { $_ -eq $col -or $_ -eq $stem })
+        })
+    }
+
+    $tabUnitKind = Resolve-TabUnitKind $tab $childTabIds
+    $ddlParts.Add((Build-CreateTableBlock $tab.appTable $fieldRows $tabUnitKind))
+    foreach ($r in $fieldRows) { [void]$allFieldRows.Add($r) }
+}
+
+# FX1: Plm_FitRoundInfo (1:1 with TchpFitRound.FitRoundId) — StyleSpecId + semantic columns (Fit N / Comments).
+if ($config.techPack -and $config.techPack.fitRoundInfo) {
+    $friApp = [string]$config.techPack.fitRoundInfo.appTable
+    if (-not $friApp) { $friApp = 'FitRoundInfo' }
+    [void]$scopeAppTables.Add($friApp)
+    $friFieldRows = @(
+        [pscustomobject]@{ AppColumn = 'StyleSpecId'; SqlType = '[int]'; DwColumn = $null; DwTable = $null; PlmTabId = $null; FieldKind = 'FitRoundInfo'; AppTable = $friApp }
+    )
+    $friSemCols = @(Resolve-FitRoundInfoSemanticColumns $config $PSScriptRoot)
+    foreach ($sc in $friSemCols) {
+        if (-not $sc -or -not $sc.appColumn) { continue }
+        $sqlType = if ($sc.sqlType) { [string]$sc.sqlType } else { '[nvarchar](4000)' }
+        $friFieldRows += [pscustomobject]@{
+            AppColumn = [string]$sc.appColumn
+            SqlType   = $sqlType
+            DwColumn  = $null
+            DwTable   = $null
+            PlmTabId  = $null
+            FieldKind = 'FitRoundInfo'
+            AppTable  = $friApp
+        }
+    }
+    $ddlParts.Add((Build-CreateTableBlock $friApp $friFieldRows 'fitRoundInfo'))
+    Write-Host "  FX1 DDL: $friApp (FitRoundId PK + $($friFieldRows.Count) column(s); semantic=$($friSemCols.Count))"
+}
+
+Write-Host "Probing PLM for BOM ProductDesignColor colorway grids..."
+Ensure-ConfigGridsFromPlm
+Repair-ConfigGridDwTables
+$bomColorwayGrids = @(Get-BomColorwayGridsFromPlm $config.grids $config.tablePrefixDefault)
+Write-Host "  BOM colorway grid(s): $($bomColorwayGrids.Count)"
+$bomHostByAppTable = @{}
+foreach ($bg in $bomColorwayGrids) {
+    Write-Host "    Grid $($bg.plmGridId) tab $($bg.plmTabId) block $($bg.productGridBlockId) -> $($bg.grandchildAppTable)"
+    $bomHostByAppTable[$bg.hostAppTable] = $bg
+}
+
+# SpecFit / SpecGrading are TechPack system-block sources (Tchp*), not Plm_* grid children.
+# SpecQC (QX1) emits Plm_SimpleQC + Plm_SimpleQCResult instead of flat size-slot grid.
+$systemBlockAppTables = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+$specQcBlockByAppTable = @{}
+if ($config.techPack -and $config.techPack.systemBlockGrids) {
+    foreach ($sb in @($config.techPack.systemBlockGrids)) {
+        if ($sb.appTable) {
+            [void]$systemBlockAppTables.Add([string]$sb.appTable)
+            if ($sb.role -eq 'SpecQC') { $specQcBlockByAppTable[[string]$sb.appTable] = $sb }
+        }
+    }
+    Write-Host "  TechPack systemBlockGrids (no flat Plm_* grid DDL): $($systemBlockAppTables -join ', ')"
+}
+
+foreach ($grid in $config.grids) {
+    $resolvedDw = Resolve-GridDwTableName ([string]$grid.dwTable) ([int]$grid.gridId)
+    if ($resolvedDw -and -not [string]::Equals($resolvedDw, [string]$grid.dwTable, [StringComparison]::OrdinalIgnoreCase)) {
+        $grid | Add-Member -NotePropertyName dwTable -NotePropertyValue $resolvedDw -Force
+    }
+    if ($systemBlockAppTables.Contains([string]$grid.appTable)) {
+        if ($specQcBlockByAppTable.ContainsKey([string]$grid.appTable)) {
+            $sb = $specQcBlockByAppTable[[string]$grid.appTable]
+            Write-Host "  QX1 Simple QC: SpecQCGrid $($grid.appTable) -> SimpleQC + SimpleQCResult"
+            $hostApp = 'SimpleQC'
+            $resultApp = 'SimpleQCResult'
+            [void]$scopeAppTables.Add($hostApp)
+            [void]$scopeAppTables.Add($resultApp)
+            $dwCols = Get-DwTableColumns $grid.dwTable
+            $parentTabId = if ($grid.parentPlmTabId) { [int]$grid.parentPlmTabId } else { [int]$sb.parentPlmTabId }
+            $hostRows = Build-SimpleQcHostFieldRows $dwCols $grid.dwTable $parentTabId $hostApp $grid.gridSubItemId $grid.gridId
+            $ddlParts.Add((Build-CreateTableBlock $hostApp $hostRows 'grid'))
+            foreach ($r in $hostRows) { [void]$allFieldRows.Add($r) }
+            $ddlParts.Add((Build-SimpleQcResultTableBlock $resultApp $hostApp))
+            Add-SimpleQcResultFieldRows $allFieldRows $resultApp $hostApp $grid.dwTable $parentTabId $grid.gridSubItemId $grid.gridId
+            continue
+        }
+        Write-Host "  Skip Plm_* grid DDL for TechPack system block: $($grid.appTable)"
+        continue
+    }
+    [void]$scopeAppTables.Add($grid.appTable)
+    $dwCols = Get-DwTableColumns $grid.dwTable
+    $parentTabId = if ($grid.parentPlmTabId) { [int]$grid.parentPlmTabId } else { $null }
+    $fieldRows = Build-FieldRows $dwCols $grid.dwTable $parentTabId $grid.appTable 'GridColumn' $grid.gridSubItemId $grid.gridId
+    $ddlRows = $fieldRows
+    if ($bomHostByAppTable.ContainsKey($grid.appTable)) {
+        $bomBg = $bomHostByAppTable[$grid.appTable]
+        $rgbEntityId = $bomBg.rgbColorPlmEntityId
+        if (-not $rgbEntityId) { $rgbEntityId = Get-PlmEntityIdBySysTableName 'pdmRGBColor' }
+        Complete-BomColorwayGridPivotSchema $bomBg $fieldRows $bomBg.gridMetaList $rgbEntityId $config
+
+        $stagingMetaIds = [System.Collections.Generic.HashSet[int]]::new()
+        foreach ($slot in @($bomBg.slots)) {
+            foreach ($sv in @($slot.slotValues)) {
+                if ($sv.plmMetaColumnId) { [void]$stagingMetaIds.Add([int]$sv.plmMetaColumnId) }
+            }
+        }
+        $slotRows = @($fieldRows | Where-Object { $_.PlmMetaColumnId -and $stagingMetaIds.Contains([int]$_.PlmMetaColumnId) })
+        $ddlRows = @($fieldRows | Where-Object { -not $_.PlmMetaColumnId -or -not $stagingMetaIds.Contains([int]$_.PlmMetaColumnId) })
+        foreach ($sr in $slotRows) {
+            $sr.FieldKind = 'BomColorwayDwSlot'
+            [void]$allFieldRows.Add($sr)
+        }
+    }
+    $ddlParts.Add((Build-CreateTableBlock $grid.appTable $ddlRows 'grid'))
+    foreach ($r in $ddlRows) { [void]$allFieldRows.Add($r) }
+}
+
+foreach ($bg in $bomColorwayGrids) {
+    [void]$scopeAppTables.Add($bg.grandchildAppTable)
+    if (-not $bg.pivotValueColumns -or $bg.pivotValueColumns.Count -eq 0) {
+        Write-Host "  WARN: BOM grid $($bg.plmGridId) has no pivot value columns - skipping grandchild DDL/fields."
+        continue
+    }
+    $ddlParts.Add((Build-GrandchildColorwayTableBlock $bg.grandchildAppTable $bg.hostAppTable $bg.pivotValueColumns))
+    $pivotCol = if ($bg.sourcePivotKeyColumn) { $bg.sourcePivotKeyColumn } else { 'Color' }
+    $srcRow = $allFieldRows | Where-Object {
+        $_.AppTable -eq $bg.sourceAppTable -and $_.AppColumn -eq $pivotCol -and $_.FieldKind -eq 'GridColumn'
+    } | Select-Object -First 1
+    if ($srcRow) {
+        $bg | Add-Member -NotePropertyName pivotKeyPlmMetaColumnId -NotePropertyValue $srcRow.PlmMetaColumnId -Force
+        if (-not $bg.rgbColorPlmEntityId -and $srcRow.PlmEntityId) {
+            $bg | Add-Member -NotePropertyName rgbColorPlmEntityId -NotePropertyValue $srcRow.PlmEntityId -Force
+        }
+    }
+    if (-not $bg.rgbColorPlmEntityId) {
+        $bg | Add-Member -NotePropertyName rgbColorPlmEntityId -NotePropertyValue (Get-PlmEntityIdBySysTableName 'pdmRGBColor') -Force
+    }
+    Add-GrandchildColorwayFieldRows $allFieldRows $bg
+    Write-BomColorwayPivotColumnNameReport $bg
+}
+
+$bomColorwayPivotBindings = Build-BomColorwayPivotBindings $bomColorwayGrids $config.tablePrefixDefault
+
+[void]$allFieldRows.Add([pscustomobject]@{
+    AppTable         = $config.rootTableSuffix
+    AppColumn        = 'ReferenceCode'
+    DwTable          = $refScope.dwTable
+    DwColumn         = $refScope.dwColumn
+    Stem             = 'ReferenceCode'
+    NamePart         = 'ReferenceCode'
+    SubItemId        = $refScope.plmSubItemId
+    FkTarget         = $null
+    SqlType          = $null
+    PlmTabId         = $refScope.plmTabId
+    PlmGridSubItemId = $null
+    PlmGridId        = $null
+    PlmMetaColumnId  = $null
+    FieldKind        = 'ReferenceField'
+    DwDataType       = 'nvarchar'
+    PlmControlType   = 2
+    PlmEntityId      = $null
+})
+
+$tabIdsForPlm = @()
+if ($config.importTabIds) {
+    $tabIdsForPlm += @($config.importTabIds | ForEach-Object { [int]$_ })
+}
+elseif ($config.tabs) {
+    $tabIdsForPlm += @($config.tabs | ForEach-Object { [int]$_.tabId })
+}
+$gridIdsForPlm = @()
+if ($config.grids) {
+    $gridIdsForPlm += @($config.grids | ForEach-Object { [int]$_.gridId })
+}
+Write-Host "Loading PLM pdmBlockSubItem metadata for $($tabIdsForPlm.Count) tab(s) from $PlmDatabase..."
+$subItemMetaMap = Get-PlmSubItemMetadataMap $tabIdsForPlm
+Write-Host "  Sub-item metadata rows: $($subItemMetaMap.Count)"
+if ($gridIdsForPlm.Count -gt 0) {
+    Write-Host "Loading PLM pdmGridMetaColumn metadata for $($gridIdsForPlm.Count) grid(s)..."
+}
+$gridColMetaMap = Get-PlmGridColumnMetadataMap $gridIdsForPlm
+Write-Host "  Grid column metadata rows: $($gridColMetaMap.Count)"
+
+# Re-order GRID columns by PLM pdmGridMetaColumn.ColumnOrder so the imported child-unit transaction
+# fields follow the PLM grid design order — NOT the plmDW physical column (ORDINAL_POSITION) order.
+# displayOrder is later assigned sequentially per table from $allFieldRows iteration order.
+$gridAppTableToId = @{}
+foreach ($g in $config.grids) { $gridAppTableToId[$g.appTable] = [int]$g.gridId }
+if ($gridAppTableToId.Count -gt 0) {
+    $tableGroups = [ordered]@{}
+    foreach ($r in $allFieldRows) {
+        if (-not $tableGroups.Contains($r.AppTable)) {
+            $tableGroups[$r.AppTable] = New-Object System.Collections.Generic.List[object]
+        }
+        [void]$tableGroups[$r.AppTable].Add($r)
+    }
+    $reordered = New-Object System.Collections.Generic.List[object]
+    foreach ($tblKey in $tableGroups.Keys) {
+        $group = $tableGroups[$tblKey]
+        if ($gridAppTableToId.ContainsKey($tblKey)) {
+            $gid = $gridAppTableToId[$tblKey]
+            $sorted = $group | Sort-Object `
+                @{ Expression = {
+                    $cid = if ($null -ne $_.PlmMetaColumnId) { [int]$_.PlmMetaColumnId } else { -1 }
+                    $mk = "$gid|$cid"
+                    if ($gridColMetaMap.ContainsKey($mk) -and $null -ne $gridColMetaMap[$mk].ColumnOrder) {
+                        $gridColMetaMap[$mk].ColumnOrder
+                    } else { [int]::MaxValue }
+                } }, `
+                @{ Expression = { if ($null -ne $_.PlmMetaColumnId) { [int]$_.PlmMetaColumnId } else { [int]::MaxValue } } }
+            foreach ($x in $sorted) { [void]$reordered.Add($x) }
+        }
+        else {
+            foreach ($x in $group) { [void]$reordered.Add($x) }
+        }
+    }
+    $allFieldRows = $reordered
+}
+
+foreach ($r in $allFieldRows) {
+    Apply-PlmFieldMetadata $r $subItemMetaMap $gridColMetaMap
+}
+
+$ddlParts.Add('GO')
+$ddlParts.Add('')
+
+$tablesPath = Join-Path $outDir '1_PlmDw_Tables.sql'
+Set-Content -Path $tablesPath -Value ($ddlParts -join "`n") -Encoding UTF8
+
+# SQL Server allows at most 1000 row-value expressions per INSERT … VALUES
+$insertBatchSize = 500
+$valuesLines = New-Object System.Collections.Generic.List[string]
+foreach ($r in $allFieldRows) {
+    $appTable = $r.AppTable
+    $fkSql = if ($r.FkTarget) { SqlStrDyn $r.FkTarget } else { 'NULL' }
+    $plmCtrl = SqlInt $r.PlmControlType
+    $plmEnt = SqlInt $r.PlmEntityId
+    $dwDt = if ($r.DwDataType) { SqlStrDyn $r.DwDataType } else { 'NULL' }
+    $line = "(N''@P@$appTable'', $(SqlStrDyn $r.AppColumn), $(SqlStrDyn $r.DwTable), $(SqlStrDyn $r.DwColumn), $(SqlInt $r.PlmTabId), $(SqlInt $r.SubItemId), $(SqlInt $r.PlmGridSubItemId), $(SqlInt $r.PlmGridId), $(SqlInt $r.PlmMetaColumnId), NULL, $fkSql, $(SqlStrDyn $r.FieldKind), $plmCtrl, $plmEnt, $dwDt)"
+    [void]$valuesLines.Add($line)
+}
+
+$insertBatches = New-Object System.Collections.Generic.List[string]
+for ($i = 0; $i -lt $valuesLines.Count; $i += $insertBatchSize) {
+    $take = [Math]::Min($insertBatchSize, $valuesLines.Count - $i)
+    $chunk = $valuesLines.GetRange($i, $take)
+    $valuesBlock = ($chunk -join ",`n        ")
+    $batchNo = [int]($i / $insertBatchSize) + 1
+    [void]$insertBatches.Add(@"
+-- FieldMapping INSERT batch $batchNo ($take row(s))
+SET @sql = N'
+INSERT INTO dbo.' + QUOTENAME(@MappingTable) + N' (
+    [AppTableName],[AppColumnName],[DwTableName],[DwColumnName],
+    [PlmTabId],[PlmSubItemId],[PlmGridSubItemId],[PlmGridId],[PlmMetaColumnId],
+    [PlmBlockId],[DwFkTarget],[FieldKind],[PlmControlType],[PlmEntityId],[DwDataType]
+)
+VALUES
+        $valuesBlock
+';
+SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
+EXEC sp_executesql @sql;
+"@)
+}
+$insertBatchesSql = $insertBatches -join "`n`n"
+
+$deleteInList = ($scopeAppTables | Select-Object -Unique | ForEach-Object { "N''@P@$_''" }) -join ', '
+
+$mappingSql = @"
+-- =============================================================================
+-- PLM DW → APP field mapping (generated — see ImportFromPLMDW/PROMPT.md)
+-- EXECUTION ORDER:
+--   1. 1_PlmDw_Tables.sql
+--   2. 2_PlmDw_FieldMapping.sql    (this file)
+-- USER SETTING: @TablePrefix (must match PlmDw_Tables.sql). Default: Plm_
+-- Table: {prefix}FieldMapping
+-- =============================================================================
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+DECLARE @TablePrefix NVARCHAR(32) = N'$($config.tablePrefixDefault)';   -- <<< USER SETTING
+DECLARE @MappingTable NVARCHAR(128) = @TablePrefix + N'FieldMapping';
+DECLARE @sql NVARCHAR(MAX);
+
+IF OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable), N'U') IS NOT NULL
+   AND NOT EXISTS (
+        SELECT 1 FROM sys.columns
+        WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable))
+          AND name = N'DwTableName'
+   )
+BEGIN
+    SET @sql = N'DROP TABLE dbo.' + QUOTENAME(@MappingTable) + N';';
+    EXEC sp_executesql @sql;
+END
+
+IF OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable), N'U') IS NULL
+BEGIN
+    SET @sql = N'CREATE TABLE dbo.' + QUOTENAME(@MappingTable) + N' (
+        [AppTableName]      NVARCHAR(128) NOT NULL,
+        [AppColumnName]     NVARCHAR(128) NOT NULL,
+        [DwTableName]       NVARCHAR(256) NOT NULL,
+        [DwColumnName]      NVARCHAR(256) NOT NULL,
+        [PlmTabId]          INT NULL,
+        [PlmSubItemId]      INT NULL,
+        [PlmGridSubItemId]  INT NULL,
+        [PlmGridId]         INT NULL,
+        [PlmMetaColumnId]   INT NULL,
+        [PlmBlockId]        INT NULL,
+        [DwFkTarget]        NVARCHAR(256) NULL,
+        [FieldKind]         NVARCHAR(32)  NOT NULL,
+        [PlmControlType]    INT NULL,
+        [PlmEntityId]       INT NULL,
+        [DwDataType]        NVARCHAR(32)  NULL,
+        CONSTRAINT [PK_FieldMapping] PRIMARY KEY CLUSTERED ([AppTableName], [AppColumnName])
+    );';
+    EXEC sp_executesql @sql;
+END
+ELSE
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable)) AND name = N'PlmControlType')
+    BEGIN
+        SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@MappingTable) + N' ADD [PlmControlType] INT NULL;';
+        EXEC sp_executesql @sql;
+    END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable)) AND name = N'PlmEntityId')
+    BEGIN
+        SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@MappingTable) + N' ADD [PlmEntityId] INT NULL;';
+        EXEC sp_executesql @sql;
+    END
+    IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable)) AND name = N'DwDataType')
+    BEGIN
+        SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@MappingTable) + N' ADD [DwDataType] NVARCHAR(32) NULL;';
+        EXEC sp_executesql @sql;
+    END
+    IF EXISTS (
+        SELECT 1 FROM sys.columns AS c
+        WHERE c.object_id = OBJECT_ID(N'dbo.' + QUOTENAME(@MappingTable))
+          AND c.name = N'FieldKind'
+          AND c.max_length < 64
+    )
+    BEGIN
+        SET @sql = N'ALTER TABLE dbo.' + QUOTENAME(@MappingTable) + N' ALTER COLUMN [FieldKind] NVARCHAR(32) NOT NULL;';
+        EXEC sp_executesql @sql;
+    END
+END
+
+SET @sql = N'DELETE FROM dbo.' + QUOTENAME(@MappingTable)
+    + N' WHERE [AppTableName] IN ($($deleteInList));';
+SET @sql = REPLACE(@sql, N'@P@', @TablePrefix);
+EXEC sp_executesql @sql;
+
+$insertBatchesSql
+GO
+
+"@
+
+$mappingPath = Join-Path $outDir '2_PlmDw_FieldMapping.sql'
+Set-Content -Path $mappingPath -Value $mappingSql -Encoding UTF8
+
+function Build-PlmDwImportSqlContent {
+    param(
+        [string[]]$ScopeAppTables,
+        [bool]$SkipRootInsert = $false,
+        [bool]$AllowEmptyTargets = $false,
+        [string]$ImportMode = 'APPEND'
+    )
+    $importTemplate = Join-Path $PSScriptRoot 'PlmDw_ImportFromDW.sql'
+    if (-not (Test-Path $importTemplate)) {
+        throw "Missing import template: $importTemplate"
+    }
+    $content = Get-Content $importTemplate -Raw
+    $content = $content -replace "DECLARE @DwDatabase\s+NVARCHAR\(128\)\s+= N'plmDW'", "DECLARE @DwDatabase        NVARCHAR(128) = N'$($config.dwDatabase)'"
+    $plmDbLocal = if ($config.plmDatabase) { $config.plmDatabase } else { 'PLM' }
+    $content = $content -replace "DECLARE @PlmDatabase\s+NVARCHAR\(128\)\s+= N'PLM'", "DECLARE @PlmDatabase       NVARCHAR(128) = N'$plmDbLocal'"
+    $tplIdLocal = if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) { [int]$config.plmTemplateId }
+        elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId -and [int]$config.plmTemplate.templateId -gt 0) { [int]$config.plmTemplate.templateId }
+        else { 'NULL' }
+    $content = $content -replace '(DECLARE @PlmTemplateId\s+INT\s+=\s*)NULL', "`${1}$tplIdLocal"
+    $mode = if ($ImportMode) { $ImportMode } else { 'APPEND' }
+    $content = $content -replace "DECLARE @ImportMode\s+NVARCHAR\(16\)\s+= N'APPEND'", "DECLARE @ImportMode        NVARCHAR(16)  = N'$mode'"
+    $skipBit = if ($SkipRootInsert) { '1' } else { '0' }
+    $emptyBit = if ($AllowEmptyTargets) { '1' } else { '0' }
+    $content = $content -replace '(DECLARE @SkipRootInsert\s+BIT\s+=\s*)0', "`${1}$skipBit"
+    $content = $content -replace '(DECLARE @AllowEmptyTargets\s+BIT\s+=\s*)0', "`${1}$emptyBit"
+    $scope = @($ScopeAppTables | Select-Object -Unique | Where-Object { $_ -and $_ -ne $config.rootTableSuffix })
+    if ($scope.Count -eq 0) {
+        # Root-only: keep a placeholder that matches nothing (AllowEmptyTargets=1).
+        $scopeInList = "N''__none__''"
+    }
+    else {
+        $scopeInList = ($scope | ForEach-Object { "N''@P@$_''" }) -join ', '
+    }
+    if ($content -notmatch '/\*<<SCOPE_APP_TABLES>>\*/') {
+        throw "Import template missing /*<<SCOPE_APP_TABLES>>*/ placeholder in #Targets filter."
+    }
+    $content = $content.Replace('/*<<SCOPE_APP_TABLES>>*/', $scopeInList)
+    $content = $content -replace '(?m)^--   1\. PlmDw_Tables\.sql', '--   1. 1_PlmDw_Tables.sql'
+    $content = $content -replace '(?m)^--   2\. PlmDw_FieldMapping\.sql', '--   2. 2_PlmDw_FieldMapping.sql'
+    $content = $content -replace '(?m)^--   3\. PlmDw_ImportFromDW\.sql', '--   3. 3_PlmDw_ImportFromDW.sql (or 3_00_Root / tabs/{tabId}/3_)'
+    return $content
+}
+
+$importModeCfg = 'APPEND'
+if ($config.importMode) { $importModeCfg = [string]$config.importMode }
+elseif ($config.blueprint -and $config.blueprint.importMode) { $importModeCfg = [string]$config.blueprint.importMode }
+
+$scopeImportTables = @($scopeAppTables | Select-Object -Unique | Where-Object {
+    $_ -and $_ -ne $config.rootTableSuffix
+})
+if ($scopeImportTables.Count -eq 0) {
+    throw "No tab/grid AppTables in config scope for Step 3 import filter."
+}
+
+# Legacy monolith (compat / manual run): all tabs in one script.
+$importPath = Join-Path $outDir '3_PlmDw_ImportFromDW.sql'
+Set-Content -Path $importPath -Value (Build-PlmDwImportSqlContent -ScopeAppTables $scopeImportTables -SkipRootInsert:$false -AllowEmptyTargets:$false -ImportMode $importModeCfg) -Encoding UTF8
+
+# Shared root package: ReferenceBasicInfo only (run once before per-tab packages).
+$rootImportPath = Join-Path $outDir '3_00_Root_ImportFromDW.sql'
+Set-Content -Path $rootImportPath -Value (Build-PlmDwImportSqlContent -ScopeAppTables @() -SkipRootInsert:$false -AllowEmptyTargets:$true -ImportMode $importModeCfg) -Encoding UTF8
+Write-Host "Generated: $rootImportPath (ReferenceBasicInfo only)"
+
+# Per-tab data packages: fail one tab without blocking others at APPLY.
+$tabsOutDir = Join-Path $outDir 'tabs'
+if (-not (Test-Path $tabsOutDir)) { New-Item -ItemType Directory -Path $tabsOutDir -Force | Out-Null }
+$manifestTabs = New-Object System.Collections.Generic.List[object]
+$planSteps = New-Object System.Collections.Generic.List[object]
+$order = 1
+[void]$planSteps.Add([ordered]@{
+    order = $order; kind = 'sql'; path = "output/$templateId/1_PlmDw_Tables.sql"; target = 'app'; label = 'DDL tables'; continueOnError = $false
+}); $order++
+[void]$planSteps.Add([ordered]@{
+    order = $order; kind = 'sql'; path = "output/$templateId/2_PlmDw_FieldMapping.sql"; target = 'app'; label = 'FieldMapping'; continueOnError = $false
+}); $order++
+[void]$planSteps.Add([ordered]@{
+    order = $order; kind = 'sql'; path = "output/$templateId/3_00_Root_ImportFromDW.sql"; target = 'app'; label = 'Import ReferenceBasicInfo (shared)'; continueOnError = $false
+}); $order++
+
+# Shared APP table ownership: first Ready tab by sort owns data import for that appTable.
+$appTableOwner = @{}
+foreach ($tab in @($config.tabs | Sort-Object { if ($null -ne $_.tabSort) { $_.tabSort } else { 9999 } }, { [int]$_.tabId })) {
+    if (-not $tab -or -not $tab.appTable) { continue }
+    if (Test-TabSkippedNoDw $tab) { continue }
+    if ([string]$tab.importStatus -eq 'Skipped') { continue }
+    if ($tab.fx1SkipAppTable -eq $true -or $tab.fx1Fold -eq $true) { continue }
+    $tid0 = 0
+    if (-not [int]::TryParse("$($tab.tabId)", [ref]$tid0) -or $tid0 -le 0) { continue }
+    $app0 = [string]$tab.appTable
+    if (-not $appTableOwner.ContainsKey($app0)) { $appTableOwner[$app0] = $tid0 }
+}
+foreach ($g in @($config.grids)) {
+    if (-not $g -or -not $g.appTable) { continue }
+    $parent0 = 0
+    [void][int]::TryParse("$($g.parentPlmTabId)", [ref]$parent0)
+    if ($parent0 -le 0) { continue }
+    $gApp0 = [string]$g.appTable
+    if (-not $appTableOwner.ContainsKey($gApp0)) { $appTableOwner[$gApp0] = $parent0 }
+}
+
+foreach ($tab in @($config.tabs | Sort-Object { if ($null -ne $_.tabSort) { $_.tabSort } else { 9999 } }, { [int]$_.tabId })) {
+    if (-not $tab) { continue }
+    $tid = 0
+    if (-not [int]::TryParse("$($tab.tabId)", [ref]$tid) -or $tid -le 0) { continue }
+    $status = 'Ready'
+    $skipReason = $null
+    $relPath = $null
+    $tabKind = 'normal'
+    if (Test-TabSkippedNoDw $tab) {
+        $status = 'Skipped'
+        $skipReason = if ($tab.skipReason) { [string]$tab.skipReason } else { 'no DW table' }
+        $tabKind = 'skipNoDw'
+    }
+    elseif ([string]$tab.importStatus -eq 'Skipped') {
+        $status = 'Skipped'
+        $skipReason = if ($tab.skipReason) { [string]$tab.skipReason } else { 'importStatus=Skipped' }
+    }
+    elseif ($tab.fx1SkipAppTable -eq $true -or $tab.fx1SkipBlueprint -eq $true -or $tab.fx1Fold -eq $true) {
+        $status = 'Skipped'
+        $skipReason = 'FX1/Fit fold — deferred to 3b TechPack'
+        $tabKind = 'fitFold'
+    }
+    else {
+        $tabScope = New-Object System.Collections.Generic.List[string]
+        if ($tab.appTable) {
+            $app = [string]$tab.appTable
+            $owner = if ($appTableOwner.ContainsKey($app)) { [int]$appTableOwner[$app] } else { $tid }
+            if ($owner -eq $tid) { [void]$tabScope.Add($app) }
+            else { Write-Host "  Tab_$tid skips shared APP table $app (data owned by Tab_$owner)" }
+        }
+        foreach ($g in @($config.grids)) {
+            if (-not $g) { continue }
+            $parent = 0
+            [void][int]::TryParse("$($g.parentPlmTabId)", [ref]$parent)
+            if ($parent -eq $tid -and $g.appTable) {
+                $gApp = [string]$g.appTable
+                if ([int]$appTableOwner[$gApp] -eq $tid) { [void]$tabScope.Add($gApp) }
+            }
+        }
+        foreach ($bg in @($bomColorwayGrids)) {
+            if ($bg -and [int]$bg.plmTabId -eq $tid) { $tabKind = 'bomHost'; break }
+        }
+        $tabScopeArr = @($tabScope | Select-Object -Unique)
+        if ($tabScopeArr.Count -eq 0) {
+            $status = 'Skipped'
+            $skipReason = 'no APP tables in data scope (shared owner or empty)'
+        }
+        else {
+            $tabDir = Join-Path $tabsOutDir ([string]$tid)
+            if (-not (Test-Path $tabDir)) { New-Item -ItemType Directory -Path $tabDir -Force | Out-Null }
+            $tabImportPath = Join-Path $tabDir '3_ImportFromDW.sql'
+            Set-Content -Path $tabImportPath -Value (Build-PlmDwImportSqlContent -ScopeAppTables $tabScopeArr -SkipRootInsert:$true -AllowEmptyTargets:$false -ImportMode $importModeCfg) -Encoding UTF8
+            $relPath = "output/$templateId/tabs/$tid/3_ImportFromDW.sql"
+            [void]$planSteps.Add([ordered]@{
+                order = $order
+                kind = 'sql'
+                path = $relPath
+                target = 'app'
+                label = "Import data Tab_$tid $($tab.plmTabName)"
+                tabId = $tid
+                continueOnError = $true
+            })
+            $order++
+            Write-Host "Generated: $tabImportPath (tables: $($tabScopeArr -join ', '))"
+        }
+    }
+    [void]$manifestTabs.Add([ordered]@{
+        tabId = $tid
+        plmTabName = [string]$tab.plmTabName
+        tabSort = if ($null -ne $tab.tabSort) { [int]$tab.tabSort } else { $null }
+        appTable = [string]$tab.appTable
+        dwTable = [string]$tab.dwTable
+        isTemplateHeaderTab = [bool]$tab.isTemplateHeaderTab
+        kind = $tabKind
+        packageStatus = $status
+        skipReason = $skipReason
+        importPath = $relPath
+        applyStatus = 'Pending'
+    })
+}
+
+$tchpImportPath = Generate-TchpImportSqlFile $config $outDir
+if ($tchpImportPath) {
+    Write-Host "Generated: $tchpImportPath"
+    $tchpRel = "output/$templateId/$(Split-Path $tchpImportPath -Leaf)"
+    [void]$planSteps.Add([ordered]@{
+        order = $order; kind = 'sql'; path = $tchpRel; target = 'app'; label = 'TechPack Tchp import'; continueOnError = $false
+    }); $order++
+}
+
+$simpleQcImportPath = Generate-SimpleQcImportSqlFile $config $outDir
+if ($simpleQcImportPath) {
+    Write-Host "Generated: $simpleQcImportPath"
+    $sqcRel = "output/$templateId/$(Split-Path $simpleQcImportPath -Leaf)"
+    [void]$planSteps.Add([ordered]@{
+        order = $order; kind = 'sql'; path = $sqcRel; target = 'app'; label = 'Simple QC import'; continueOnError = $false
+    }); $order++
+}
+
+# Blueprint + Assemble after data; per-tab TX blueprints before assemble.
+# $order continues from data/techpack steps above.
+
+if (-not $config.blueprint) {
+    $config | Add-Member -NotePropertyName blueprint -NotePropertyValue ([ordered]@{
+        templateName = 'Fabric'
+        transactionGroupName = 'Fabric'
+        folderName = 'Fabric'
+    }) -Force
+}
+$tabIdsForExtra = @()
+if ($config.importTabIds) {
+    $tabIdsForExtra += @($config.importTabIds | ForEach-Object { [int]$_ })
+}
+elseif ($config.tabs) {
+    $tabIdsForExtra += @($config.tabs | ForEach-Object { [int]$_.tabId })
+}
+# Include every grid parentPlmTabId + PLM hosting tabs (grid-only parents not in importTabIds).
+if ($config.grids) {
+    foreach ($g in $config.grids) {
+        if ($g.parentPlmTabId) { $tabIdsForExtra += [int]$g.parentPlmTabId }
+    }
+}
+if ($gridIdsForPlm.Count -gt 0) {
+    $hostTabs = @(Get-PlmHostTabIdsForGrids $gridIdsForPlm)
+    if ($hostTabs.Count -gt 0) {
+        Write-Host "  PLM host tabs for grids (visibility): $($hostTabs -join ', ')"
+        $tabIdsForExtra += $hostTabs
+    }
+}
+$tabIdsForExtra = @($tabIdsForExtra | Sort-Object -Unique)
+Write-Host "Loading PLM pdmTabBlockSubItemExtraInfo for $($tabIdsForExtra.Count) tab(s) from $PlmDatabase..."
+$extraInfoMap = Get-PlmSubItemExtraInfoMap $tabIdsForExtra
+Write-Host "  Extra info rows: $($extraInfoMap.Count)"
+Write-Host "Loading PLM pdmTabGridMetaColumn (grid column visibility)..."
+$tabGridVisibleMap = Get-PlmTabGridColumnVisibleMap $tabIdsForExtra
+Write-Host "  Tab grid column rows: $($tabGridVisibleMap.Count)"
+Write-Host "Loading PLM pdmTabLayoutSubitem (Tab Design layer)..."
+$layoutSubItemSet = Get-PlmTabLayoutSubItemSet $tabIdsForExtra
+Write-Host "  Tab layout sub-item placements: $($layoutSubItemSet.Count)"
+$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet $childTabIds $bomColorwayPivotBindings
+# Full blueprint stays in memory only. Disk: per-tab fragments + Assemble shell (no duplicate TX/fields).
+
+# Per-tab blueprint fragments (TX + fields; no Search/Nav — those are Assemble shell).
+function New-TabBlueprintObject($fullBp, [int]$TabId) {
+    $tx = @($fullBp.transactions | Where-Object { $_ -and [int]$_.plmTabId -eq $TabId })
+    if ($tx.Count -eq 0) { return $null }
+    $keepIds = @($tx | ForEach-Object { [string]$_.integrationId })
+    $grids = @($fullBp.gridBindings | Where-Object {
+        $_ -and (
+            ($null -ne $_.parentPlmTabId -and [int]$_.parentPlmTabId -eq $TabId) -or
+            ($_.transactionIntegrationId -and $keepIds -contains [string]$_.transactionIntegrationId)
+        )
+    })
+    $tables = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($t in $tx) {
+        if ($t.unitStructure -and $t.unitStructure.siblingUnits) {
+            foreach ($s in @($t.unitStructure.siblingUnits)) { if ($s.appTableName) { [void]$tables.Add([string]$s.appTableName) } }
+        }
+        if ($t.unitStructure -and $t.unitStructure.childUnits) {
+            foreach ($c in @($t.unitStructure.childUnits)) { if ($c.appTableName) { [void]$tables.Add([string]$c.appTableName) } }
+        }
+    }
+    foreach ($g in $grids) { if ($g.appTableName) { [void]$tables.Add([string]$g.appTableName) } }
+    $fields = @($fullBp.blueprintFields | Where-Object {
+        $_ -and (
+            ($_.plmTabIds -and (@($_.plmTabIds) -contains $TabId)) -or
+            ($_.appTableName -and $tables.Contains([string]$_.appTableName))
+        )
+    })
+    $bom = @($fullBp.bomColorwayPivotBindings | Where-Object { $_ -and [int]$_.plmTabId -eq $TabId })
+    return [ordered]@{
+        schemaVersion = 1
+        generatedAt = $fullBp.generatedAt
+        source = [ordered]@{
+            plmTemplateId = $fullBp.source.plmTemplateId
+            plmDatabase = $fullBp.source.plmDatabase
+            dwDatabase = $fullBp.source.dwDatabase
+            importTabIds = @($TabId)
+            tablePrefix = $fullBp.source.tablePrefix
+            configFile = $fullBp.source.configFile
+            outputFolder = $fullBp.source.outputFolder
+            tabPackage = $true
+        }
+        plmTemplate = $fullBp.plmTemplate
+        transactionGroup = $fullBp.transactionGroup
+        rootUnit = $fullBp.rootUnit
+        tabSharedTableGroups = @($fullBp.tabSharedTableGroups | Where-Object {
+            $_ -and ([int]$_.primaryPlmTabId -eq $TabId -or (@($_.secondaryPlmTabIds) -contains $TabId))
+        })
+        transactions = $tx
+        gridBindings = $grids
+        bomColorwayPivotBindings = Get-JsonArrayForSerialize $bom
+        techPackGradeValuePivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackGradeValuePivotBindings | Where-Object { $_ -and [int]$_.plmTabId -eq $TabId })
+        techPackFitMeasurementPivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackFitMeasurementPivotBindings | Where-Object { $_ -and [int]$_.plmTabId -eq $TabId })
+        techPackSimpleQcPivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackSimpleQcPivotBindings | Where-Object { $_ -and [int]$_.plmTabId -eq $TabId })
+        blueprintFields = $fields
+        searchView = $null
+        navigation = $null
+    }
+}
+
+# Assemble shell: TG + Search/Nav + special (plmTabId<=0) only — APPLY merges successful tab packages.
+function New-AssembleShellObject($fullBp) {
+    $specialTx = @($fullBp.transactions | Where-Object { $_ -and [int]$_.plmTabId -le 0 })
+    $keepIds = @($specialTx | ForEach-Object { [string]$_.integrationId })
+    $specialGrids = @($fullBp.gridBindings | Where-Object {
+        $_ -and $_.transactionIntegrationId -and $keepIds -contains [string]$_.transactionIntegrationId
+    })
+    $tables = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($t in $specialTx) {
+        if ($t.unitStructure -and $t.unitStructure.siblingUnits) {
+            foreach ($s in @($t.unitStructure.siblingUnits)) { if ($s.appTableName) { [void]$tables.Add([string]$s.appTableName) } }
+        }
+        if ($t.unitStructure -and $t.unitStructure.childUnits) {
+            foreach ($c in @($t.unitStructure.childUnits)) { if ($c.appTableName) { [void]$tables.Add([string]$c.appTableName) } }
+        }
+    }
+    foreach ($g in $specialGrids) { if ($g.appTableName) { [void]$tables.Add([string]$g.appTableName) } }
+    $specialFields = @($fullBp.blueprintFields | Where-Object {
+        $_ -and $_.appTableName -and $tables.Contains([string]$_.appTableName)
+    })
+    return [ordered]@{
+        schemaVersion = 1
+        generatedAt = $fullBp.generatedAt
+        source = [ordered]@{
+            plmTemplateId = $fullBp.source.plmTemplateId
+            plmDatabase = $fullBp.source.plmDatabase
+            dwDatabase = $fullBp.source.dwDatabase
+            importTabIds = @()
+            tablePrefix = $fullBp.source.tablePrefix
+            configFile = $fullBp.source.configFile
+            outputFolder = $fullBp.source.outputFolder
+            assembleShell = $true
+        }
+        plmTemplate = $fullBp.plmTemplate
+        transactionGroup = $fullBp.transactionGroup
+        rootUnit = $fullBp.rootUnit
+        tabSharedTableGroups = @($fullBp.tabSharedTableGroups)
+        transactions = $specialTx
+        gridBindings = $specialGrids
+        bomColorwayPivotBindings = Get-JsonArrayForSerialize @()
+        techPackGradeValuePivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackGradeValuePivotBindings | Where-Object { $_ -and [int]$_.plmTabId -le 0 })
+        techPackFitMeasurementPivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackFitMeasurementPivotBindings | Where-Object { $_ -and [int]$_.plmTabId -le 0 })
+        techPackSimpleQcPivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackSimpleQcPivotBindings | Where-Object { $_ -and [int]$_.plmTabId -le 0 })
+        blueprintFields = $specialFields
+        searchView = $fullBp.searchView
+        navigation = $fullBp.navigation
+    }
+}
+
+$bomHostTabIds = @()
+$tabBlueprintCount = 0
+foreach ($m in $manifestTabs) {
+    if ($m.packageStatus -ne 'Ready' -or -not $m.importPath) { continue }
+    $tid = [int]$m.tabId
+    $tabBp = New-TabBlueprintObject $blueprintObj $tid
+    if (-not $tabBp) { continue }
+    $tabDir = Join-Path $tabsOutDir ([string]$tid)
+    if (-not (Test-Path $tabDir)) { New-Item -ItemType Directory -Path $tabDir -Force | Out-Null }
+    $tabBpPath = Join-Path $tabDir '4_TabBlueprint.json'
+    (Fix-BomColorwayBindingsJsonArray ($tabBp | ConvertTo-Json -Depth 20)) | Set-Content -Path $tabBpPath -Encoding UTF8
+    [void]$planSteps.Add([ordered]@{
+        order = $order
+        kind = 'dw-blueprint'
+        path = "output/$templateId/tabs/$tid/4_TabBlueprint.json"
+        mode = 'Insert'
+        label = "Create TX Tab_$tid $($m.plmTabName)"
+        tabId = $tid
+        continueOnError = $true
+        includeSearchView = $false
+        includeNavigation = $false
+        includeTransactionGroup = $true
+    })
+    $order++
+    $tabBlueprintCount++
+    Write-Host "Generated: $tabBpPath"
+    if ($m.kind -eq 'bomHost') { $bomHostTabIds += $tid }
+}
+
+$assembleObj = New-AssembleShellObject $blueprintObj
+$assemblePath = Join-Path $outDir '4_PlmDw_Assemble.json'
+$assembleJson = Fix-BomColorwayBindingsJsonArray ($assembleObj | ConvertTo-Json -Depth 20)
+$assembleJson | Set-Content -Path $assemblePath -Encoding UTF8
+# Compat alias: same Assemble shell (small). Do not write the old full monolith JSON.
+$compatBlueprintPath = Join-Path $outDir '4_PlmDw_ImportBlueprint.json'
+$assembleJson | Set-Content -Path $compatBlueprintPath -Encoding UTF8
+Write-Host "Generated: $assemblePath (Assemble shell; TG+Search/Nav; no per-tab TX/fields)"
+Write-Host "Generated: $compatBlueprintPath (compat alias = Assemble shell)"
+
+[void]$planSteps.Add([ordered]@{
+    order = $order
+    kind = 'dw-blueprint-assemble'
+    path = "output/$templateId/4_PlmDw_Assemble.json"
+    mode = 'Update'
+    label = 'Assemble TG + Search/Nav (merge successful tab packages)'
+    continueOnError = $false
+    includeSearchView = $true
+    includeNavigation = $true
+    includeTransactionGroup = $true
+})
+$order++
+
+Generate-BomColorwaySqlFiles $bomColorwayGrids $config $templateId $outDir
+if ($bomColorwayGrids.Count -gt 0) {
+    $bomRel = "output/$templateId/5_PlmDw_ImportBomColorwayGrandchild.sql"
+    [void]$planSteps.Add([ordered]@{
+        order = $order
+        kind = 'sql'
+        path = $bomRel
+        target = 'app'
+        label = 'BOM colorway grandchild import'
+        continueOnError = $true
+        dependsOnTabIds = @($bomHostTabIds | Select-Object -Unique)
+    })
+    $order++
+}
+
+$manifestNote = 'APPLY: 3_00_Root -> tabs/{tabId}/3_ data (continueOnError) -> tabs/{tabId}/4_TabBlueprint (continueOnError) -> 4_PlmDw_Assemble.json (merge ok tabs + Search/Nav) -> optional 5_ BOM. Legacy 3_ monolith is manual only. Full TX/fields live only under tabs/{tabId}.'
+$manifest = [ordered]@{
+    schemaVersion = 1
+    plmTemplateId = [int]$templateId
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    importMode = $importModeCfg
+    rootImportPath = "output/$templateId/3_00_Root_ImportFromDW.sql"
+    legacyMonolithImportPath = "output/$templateId/3_PlmDw_ImportFromDW.sql"
+    note = $manifestNote
+    sharedAppTableOwners = @($appTableOwner.GetEnumerator() | ForEach-Object { [ordered]@{ appTable = $_.Key; ownerTabId = $_.Value } })
+    tabs = @($manifestTabs.ToArray())
+}
+$manifestPath = Join-Path $outDir '0_TabManifest.json'
+($manifest | ConvertTo-Json -Depth 8) | Set-Content -Path $manifestPath -Encoding UTF8
+Write-Host "Generated: $manifestPath ($($manifestTabs.Count) tab(s))"
+
+$readyTabCount = @($manifestTabs | Where-Object { $_.packageStatus -eq 'Ready' -and $_.importPath }).Count
+$optionalBomOverview = $null
+if ($bomColorwayGrids.Count -gt 0) {
+    $optionalBomOverview = [ordered]@{
+        file = "output/$templateId/5_PlmDw_ImportBomColorwayGrandchild.sql"
+        dependsOn = 'bomHost tabs'
+    }
+}
+$suggestedPlanNote = 'Phase B child: copy executionPlan into plm.integration.import-dw.outputs. In chat use applyOverview (summary) and say Authoritative executionPlan = this file.'
+$suggestedPlan = [ordered]@{
+    schemaVersion = 1
+    templateId = [int]$templateId
+    note = $suggestedPlanNote
+    applyOverview = [ordered]@{
+        title = 'APPLY overview'
+        sharedOnce = @(
+            [ordered]@{ file = "output/$templateId/1_PlmDw_Tables.sql"; role = 'DDL' }
+            [ordered]@{ file = "output/$templateId/2_PlmDw_FieldMapping.sql"; role = 'FieldMapping' }
+            [ordered]@{ file = "output/$templateId/3_00_Root_ImportFromDW.sql"; role = 'Root data' }
+        )
+        perTabPackages = [ordered]@{
+            readyTabCount = $readyTabCount
+            tabBlueprintCount = $tabBlueprintCount
+            dataPattern = "output/$templateId/tabs/{tabId}/3_ImportFromDW.sql"
+            blueprintPattern = "output/$templateId/tabs/{tabId}/4_TabBlueprint.json"
+            continueOnError = $true
+        }
+        assembleOnce = [ordered]@{
+            file = "output/$templateId/4_PlmDw_Assemble.json"
+            kind = 'dw-blueprint-assemble'
+            mode = 'Update'
+            role = 'TG + Search/Nav; BL merges successful tab packages at APPLY'
+            compatAlias = "output/$templateId/4_PlmDw_ImportBlueprint.json"
+        }
+        optionalBom = $optionalBomOverview
+        authoritativePlan = "output/$templateId/0_ExecutionPlan.suggested.json"
+        stepCount = $planSteps.Count
+    }
+    executionPlan = @($planSteps.ToArray())
+}
+$planPath = Join-Path $outDir '0_ExecutionPlan.suggested.json'
+($suggestedPlan | ConvertTo-Json -Depth 8) | Set-Content -Path $planPath -Encoding UTF8
+Write-Host "Generated: $planPath ($($planSteps.Count) step(s))"
+
+# Remove legacy unnumbered deliverables from prior generator runs
+@(
+    'PlmDw_Tables.sql', 'PlmDw_FieldMapping.sql', 'PlmDw_ImportFromDW.sql',
+    'PlmDw_ImportBlueprint.json', 'PlmDw_ImportBlueprint.sql',
+    'PlmDw_ImportBomColorwayGrandchild.sql', 'PlmDw_CleanupBomColorwayStaging.sql',
+    '4_PlmDw_ImportBomColorwayGrandchild.sql', '5_PlmDw_CleanupBomColorwayStaging.sql',
+    '6_PlmDw_CleanupBomColorwayStaging.sql', '6_PlmDw_ImportBlueprint.json'
+) | ForEach-Object {
+    $legacy = Join-Path $outDir $_
+    if (Test-Path $legacy) { Remove-Item $legacy -Force }
+}
+
+Write-Host "Output folder: $outDir"
+Write-Host "Generated: $tablesPath"
+Write-Host "Generated: $mappingPath ($($allFieldRows.Count) mappings)"
+Write-Host "Generated: $assemblePath + tabs/*/4_TabBlueprint.json (preferred APPLY path)"
+Write-Host "Generated: $importPath (legacy monolith)"
+Write-Host "Generated: $rootImportPath + tabs/*/3_ImportFromDW.sql (preferred APPLY path)"
+if ($bomColorwayGrids.Count -gt 0) {
+    Write-Host "Generated: $(Join-Path $outDir '5_PlmDw_ImportBomColorwayGrandchild.sql')"
+}
+foreach ($t in $config.tabs) {
+    $n = @($allFieldRows | Where-Object { $_.AppTable -eq $t.appTable }).Count
+    Write-Host "  $($t.appTable): $n columns"
+}
+foreach ($g in $config.grids) {
+    $n = @($allFieldRows | Where-Object { $_.AppTable -eq $g.appTable }).Count
+    Write-Host "  $($g.appTable): $n columns"
+}
+Write-Host "  $($config.rootTableSuffix): 1 mapping (ReferenceCode)"

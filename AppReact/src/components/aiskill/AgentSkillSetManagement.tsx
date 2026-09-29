@@ -54,6 +54,7 @@ const AgentSkillSetManagement: React.FC = () => {
     const [showToolsModal, setShowToolsModal] = useState(false);
     const [showInsertCallAgent, setShowInsertCallAgent] = useState(false);
     const [usedByParents, setUsedByParents] = useState<string[]>([]);
+    const [headerDetailsExpanded, setHeaderDetailsExpanded] = useState(true);
 
     // Templates
     const [templates, setTemplates] = useState<AppAgentSkillSetDto[]>([]);
@@ -163,6 +164,7 @@ const AgentSkillSetManagement: React.FC = () => {
         setSubsChanged(false);
         setShowHistory(false);
         setEditorTab('prompt');
+        setHeaderDetailsExpanded(true);
         loadSubscriptions(item.SkillKey);
         loadHistory(item.SkillKey);
         loadUsedBy(item.SkillKey);
@@ -223,16 +225,36 @@ const AgentSkillSetManagement: React.FC = () => {
     }, []);
 
     const update = (field: keyof AppAgentSkillSetDto, value: unknown) => {
-        setEditItem(prev => ({ ...prev, [field]: value }));
+        setEditItem(prev => {
+            const next = { ...prev, [field]: value } as AppAgentSkillSetDto;
+            if (field === 'ExecutionMode' && value !== 'Interactive') {
+                next.AllowAgentFirstTurn = false;
+            }
+            return next;
+        });
         setIsDirty(true);
+    };
+
+    const selectEditorTab = (tab: EditorTab) => {
+        setEditorTab(tab);
+        setHeaderDetailsExpanded(false);
+        setShowInsertCallAgent(false);
+        setShowHistory(false);
     };
 
     const childKeysForEdit = useMemo(
         () => mappings
             .filter(m => m.ParentSkillKey === editItem.SkillKey)
-            .sort((a, b) => a.SortOrder - b.SortOrder)
+            .slice()
+            .sort((a, b) => {
+                const aa = agents.find(x => x.SkillKey === a.ChildSkillKey);
+                const bb = agents.find(x => x.SkillKey === b.ChildSkillKey);
+                const an = (a.ChildDisplayName || aa?.DisplayName || a.ChildSkillKey).toLowerCase();
+                const bn = (b.ChildDisplayName || bb?.DisplayName || b.ChildSkillKey).toLowerCase();
+                return an.localeCompare(bn) || a.ChildSkillKey.localeCompare(b.ChildSkillKey);
+            })
             .map(m => m.ChildSkillKey),
-        [mappings, editItem.SkillKey],
+        [mappings, editItem.SkillKey, agents],
     );
 
     const unregisteredCallAgentKeys = useMemo(() => {
@@ -242,7 +264,10 @@ const AgentSkillSetManagement: React.FC = () => {
         const text = editItem.SystemPrompt || '';
         let m: RegExpExecArray | null;
         while ((m = re.exec(text)) !== null) {
-            if (m[1]) found.add(m[1]);
+            const key = (m[1] || '').trim();
+            // Skip documentation placeholders like plm-integration-{code}
+            if (!key || /[{}]/.test(key)) continue;
+            found.add(key);
         }
         return Array.from(found).filter(k => !registered.has(k));
     }, [editItem.SystemPrompt, childKeysForEdit]);
@@ -267,28 +292,6 @@ const AgentSkillSetManagement: React.FC = () => {
             await loadMappings();
             const skillRes = await agentSkillSetSvc.GetAllSkillSets();
             setAgents(skillRes.Object ?? []);
-        } catch (e: unknown) {
-            setError(e instanceof Error ? e.message : String(e));
-        } finally {
-            dispatch(setIsNotBusy());
-        }
-    };
-
-    const handleReorderChildren = async (parentSkillKey: string, orderedChildKeys: string[]) => {
-        setError(null);
-        dispatch(setIsBusy());
-        try {
-            const payload = orderedChildKeys.map((key, i) => ({
-                ParentSkillKey: parentSkillKey,
-                ChildSkillKey: key,
-                SortOrder: i + 1,
-            }));
-            const res = await agentSkillSetSvc.SetChildAgents(parentSkillKey, payload);
-            if (!res.IsSuccessful || res.Object === false) {
-                setError(res.ValidationResult?.Items?.[0]?.Message || 'Failed to reorder Child-Agents.');
-                return;
-            }
-            await loadMappings();
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : String(e));
         } finally {
@@ -391,6 +394,7 @@ const handleSave = async () => {
         setTestSkillKey(null);
         setUsedByParents([]);
         setEditorTab('prompt');
+        setHeaderDetailsExpanded(true);
         setShowTemplateMenu(false);
         setSubscribedKeys(new Set());
         setSubsChanged(false);
@@ -591,7 +595,6 @@ const handleSave = async () => {
                                 selectedSkillKey={selected?.SkillKey ?? (isEditing ? editItem.SkillKey || null : null)}
                                 onSelect={selectAgentByKey}
                                 onDropOntoOrchestrator={handleDropOntoOrchestrator}
-                                onReorderChildren={handleReorderChildren}
                                 theme={theme}
                                 borderCls={borderCls}
                             />
@@ -644,29 +647,46 @@ const handleSave = async () => {
                             </div>
                         ) : isEditing ? (
                             <div className="h-full flex flex-col overflow-hidden">
-                                {/* Header */}
-                                <div className={`shrink-0 border-b ${borderCls}`}>
-                                    <div className={`flex items-center justify-between px-3 py-2`}>
-                                        <div className="min-w-0 w-1 flex-auto pr-3">
-                                            <div className={`text-sm font-semibold truncate ${theme.title}`}>
+                                {/* Header identity — always visible; details collapsible */}
+                                <div
+                                    className={`shrink-0 border-b ${borderCls}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                >
+                                    <div className="flex items-center gap-2 px-3 py-1.5">
+                                        <button
+                                            type="button"
+                                            className={`w-5 h-5 shrink-0 rounded text-[10px] flex items-center justify-center ${theme.button_default}`}
+                                            onClick={() => setHeaderDetailsExpanded(v => !v)}
+                                            aria-expanded={headerDetailsExpanded}
+                                            title={headerDetailsExpanded ? 'Collapse agent details' : 'Expand agent details'}
+                                        >
+                                            <i className={`fa-solid fa-chevron-${headerDetailsExpanded ? 'down' : 'right'}`} aria-hidden />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className={`min-w-0 w-1 flex-auto flex items-center gap-2 text-left hover:opacity-90`}
+                                            onClick={() => setHeaderDetailsExpanded(v => !v)}
+                                            title={headerDetailsExpanded ? 'Collapse agent details' : 'Expand agent details'}
+                                        >
+                                            <span className={`text-sm font-semibold truncate ${theme.title}`}>
                                                 {editItem.DisplayName || editItem.SkillKey || 'New Agent'}
-                                            </div>
-                                            <div className={`flex flex-wrap items-center gap-1 mt-1 text-[10px] ${theme.label}`}>
-                                                {isOrchestrator && (
-                                                    <span className={`px-1.5 py-0.5 rounded border ${borderCls}`} title="Orchestrator (Primary) Agent">Orchestrator</span>
-                                                )}
-                                                {isChildAgent && (
-                                                    <span className={`px-1.5 py-0.5 rounded border ${borderCls}`} title="Child-Agent">Child-Agent{usedByParents.length ? ` · used by ${usedByParents.length}` : ''}</span>
-                                                )}
-                                                {usedByParents.length > 0 && (
-                                                    <span className="opacity-70 truncate" title={usedByParents.join(', ')}>
-                                                        {usedByParents.join(', ')}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        </div>
+                                            </span>
+                                            {isOrchestrator && (
+                                                <span className={`shrink-0 px-1.5 py-0.5 text-[10px] rounded border ${borderCls} ${theme.label}`} title="Orchestrator (Primary) Agent">Orchestrator</span>
+                                            )}
+                                            {isChildAgent && (
+                                                <span className={`shrink-0 px-1.5 py-0.5 text-[10px] rounded border ${borderCls} ${theme.label}`} title="Child-Agent">
+                                                    Child-Agent{usedByParents.length ? ` · ${usedByParents.length}` : ''}
+                                                </span>
+                                            )}
+                                            {usedByParents.length > 0 && (
+                                                <span className={`hidden xl:inline truncate text-[10px] opacity-60 ${theme.label}`} title={usedByParents.join(', ')}>
+                                                    {usedByParents.join(', ')}
+                                                </span>
+                                            )}
+                                        </button>
                                         <div className="flex items-center gap-2 shrink-0">
-                                            {isDirty && <span className={`text-xs ${theme.label}`}>Unsaved changes</span>}
+                                            {isDirty && <span className={`text-xs ${theme.label}`}>Unsaved</span>}
                                             {selected && !selected.SkillKey.startsWith('tmpl-') && (
                                                 <button type="button" className={btn} onClick={openSaveAsTemplate} title="Clone this agent as a reusable template">
                                                     <i className="fa-solid fa-star mr-1" />Save as Template
@@ -680,58 +700,77 @@ const handleSave = async () => {
                                             </button>
                                         </div>
                                     </div>
-                                    <div className="px-3 pb-2 grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-1">
-                                        <div className="flex items-center py-1">
-                                            <label className={lbl}>Agent Code *</label>
-                                            <input className={inp} value={editItem.SkillKey} onChange={e => update('SkillKey', e.target.value)} autoComplete="off" disabled={!!selected} />
+
+                                    {headerDetailsExpanded && (
+                                        <div className={`px-3 pb-2 pt-1 border-t grid grid-cols-1 xl:grid-cols-2 gap-x-6 gap-y-1 ${borderCls}`}>
+                                            <div className="flex items-center py-1">
+                                                <label className={lbl}>Agent Code *</label>
+                                                <input className={inp} value={editItem.SkillKey} onChange={e => update('SkillKey', e.target.value)} autoComplete="off" disabled={!!selected} />
+                                            </div>
+                                            <div className="flex items-center py-1">
+                                                <label className={lbl}>Display Name</label>
+                                                <input className={inp} value={editItem.DisplayName} onChange={e => update('DisplayName', e.target.value)} autoComplete="off" />
+                                            </div>
+                                            <div className="flex items-start py-1 xl:col-span-2">
+                                                <label className={`${lbl} pt-1`}>Description</label>
+                                                <textarea
+                                                    className={`w-1 flex-auto px-2 py-1 text-xs border resize-none ${theme.inputBox} focus:outline-none`}
+                                                    style={{ height: 56 }}
+                                                    value={editItem.Description}
+                                                    onChange={e => update('Description', e.target.value)}
+                                                />
+                                            </div>
+                                            <div className="flex items-center py-1">
+                                                <label className={lbl}>Execution Mode</label>
+                                                <select className={inp} value={editItem.ExecutionMode || 'Interactive'} onChange={e => update('ExecutionMode', e.target.value)}>
+                                                    <option value="Interactive">Interactive</option>
+                                                    <option value="Deterministic">Deterministic</option>
+                                                </select>
+                                            </div>
+                                            <div className="flex items-center py-1 gap-5 flex-wrap">
+                                                <label className={`flex items-center gap-1.5 text-xs cursor-pointer ${theme.label}`} htmlFor="agent-is-active">
+                                                    <input
+                                                        id="agent-is-active"
+                                                        type="checkbox"
+                                                        checked={editItem.IsActive}
+                                                        onChange={e => update('IsActive', e.target.checked)}
+                                                        className={`h-3.5 w-3.5 rounded shrink-0 ${theme.inputBox}`}
+                                                    />
+                                                    <span>Active</span>
+                                                </label>
+                                                {(editItem.ExecutionMode || 'Interactive') === 'Interactive' && (
+                                                    <label
+                                                        className={`flex items-center gap-1.5 text-xs cursor-pointer ${theme.label}`}
+                                                        htmlFor="agent-start-on-open"
+                                                        title="When on, the agent may greet or ask as soon as the chat opens. When off, it waits for your first message."
+                                                    >
+                                                        <input
+                                                            id="agent-start-on-open"
+                                                            type="checkbox"
+                                                            checked={!!editItem.AllowAgentFirstTurn}
+                                                            onChange={e => update('AllowAgentFirstTurn', e.target.checked)}
+                                                            className={`h-3.5 w-3.5 rounded shrink-0 ${theme.inputBox}`}
+                                                        />
+                                                        <span>Agent Starts Chat First</span>
+                                                    </label>
+                                                )}
+                                            </div>
                                         </div>
-                                        <div className="flex items-center py-1">
-                                            <label className={lbl}>Display Name</label>
-                                            <input className={inp} value={editItem.DisplayName} onChange={e => update('DisplayName', e.target.value)} autoComplete="off" />
-                                        </div>
-                                        <div className="flex items-start py-1 xl:col-span-2">
-                                            <label className={`${lbl} pt-1`}>Description</label>
-                                            <textarea
-                                                className={`w-1 flex-auto px-2 py-1 text-xs border resize-none ${theme.inputBox} focus:outline-none`}
-                                                style={{ height: 56 }}
-                                                value={editItem.Description}
-                                                onChange={e => update('Description', e.target.value)}
-                                            />
-                                        </div>
-                                        <div className="flex items-center py-1">
-                                            <label className={lbl} htmlFor="agent-is-active">Active</label>
-                                            <input id="agent-is-active" type="checkbox" checked={editItem.IsActive} onChange={e => update('IsActive', e.target.checked)} className={`h-3 w-3 rounded ${theme.inputBox}`} />
-                                        </div>
-                                        <div className="flex items-center py-1">
-                                            <label className={lbl}>Execution Mode</label>
-                                            <select className={inp} value={editItem.ExecutionMode || 'Interactive'} onChange={e => update('ExecutionMode', e.target.value)}>
-                                                <option value="Interactive">Interactive</option>
-                                                <option value="Deterministic">Deterministic</option>
-                                            </select>
-                                        </div>
-                                        <div className="flex items-center py-1">
-                                            <label className={lbl} htmlFor="agent-start-on-open">Agent Starts Chat First</label>
-                                            <input
-                                                id="agent-start-on-open"
-                                                type="checkbox"
-                                                checked={!!editItem.AllowAgentFirstTurn}
-                                                onChange={e => update('AllowAgentFirstTurn', e.target.checked)}
-                                                className={`h-3 w-3 rounded ${theme.inputBox}`}
-                                                disabled={(editItem.ExecutionMode || 'Interactive') !== 'Interactive'}
-                                                title="When on, the agent may greet or ask as soon as the chat opens. When off, it waits for your first message."
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className={`flex items-center gap-1 px-3 pb-2`}>
-                                        <button type="button" className={editorTabCls('prompt')} onClick={() => setEditorTab('prompt')}>Prompt</button>
-                                        <button type="button" className={editorTabCls('child-agent')} onClick={() => setEditorTab('child-agent')}>Child-Agent</button>
-                                        <button type="button" className={editorTabCls('tools')} onClick={() => setEditorTab('tools')}>Tools</button>
-                                        <button type="button" className={editorTabCls('files')} onClick={() => setEditorTab('files')}>Files</button>
-                                        <button type="button" className={editorTabCls('limits')} onClick={() => setEditorTab('limits')}>Limits</button>
+                                    )}
+
+                                    <div className={`flex items-center gap-1 px-3 pb-2 ${headerDetailsExpanded ? '' : 'pt-1'}`}>
+                                        <button type="button" className={editorTabCls('prompt')} onClick={() => selectEditorTab('prompt')}>Prompt</button>
+                                        <button type="button" className={editorTabCls('child-agent')} onClick={() => selectEditorTab('child-agent')}>Child-Agent</button>
+                                        <button type="button" className={editorTabCls('tools')} onClick={() => selectEditorTab('tools')}>Tools</button>
+                                        <button type="button" className={editorTabCls('files')} onClick={() => selectEditorTab('files')}>Files</button>
+                                        <button type="button" className={editorTabCls('limits')} onClick={() => selectEditorTab('limits')}>Limits</button>
                                     </div>
                                 </div>
 
-                                <div className="w-full h-1 flex-auto min-h-0 overflow-hidden flex flex-col">
+                                <div
+                                    className="w-full h-1 flex-auto min-h-0 overflow-hidden flex flex-col"
+                                    onClick={() => setHeaderDetailsExpanded(false)}
+                                >
                                     {editorTab === 'prompt' && (
                                         <div className="w-full h-full flex flex-col overflow-hidden px-3 py-2">
                                             {unregisteredCallAgentKeys.length > 0 && (
@@ -811,17 +850,31 @@ const handleSave = async () => {
                                     )}
 
                                     {editorTab === 'tools' && (
-                                        <div className="w-full h-full overflow-auto px-4 py-3">
-                                            <div className="mb-4">
-                                                <div className={sectionTitle}>Private Tools</div>
-                                                <div className="flex items-center py-1">
-                                                    <button type="button" className={`${btn} flex items-center gap-1.5`} disabled={!editItem.SkillKey.trim()} onClick={() => setShowToolsModal(true)}>
-                                                        <i className="fa-solid fa-screwdriver-wrench" />Manage Agent Tools
-                                                    </button>
-                                                    <span className={`ml-3 text-xs opacity-50 ${theme.label}`}>Tools private to this agent only</span>
-                                                </div>
+                                        <div className="w-full h-full min-h-0 flex flex-col overflow-hidden px-3 py-2">
+                                            <div className={`shrink-0 flex items-center gap-2 flex-wrap pb-2 mb-2 border-b ${borderCls}`}>
+                                                <button
+                                                    type="button"
+                                                    className={`${btn} flex items-center gap-1.5`}
+                                                    disabled={!editItem.SkillKey.trim()}
+                                                    onClick={() => setShowToolsModal(true)}
+                                                    title={editItem.SkillKey.trim() ? 'Manage private tools for this agent' : 'Save the agent first to manage its tools'}
+                                                >
+                                                    <i className="fa-solid fa-screwdriver-wrench" />Manage Agent Tools
+                                                </button>
+                                                <span className={`text-xs opacity-50 ${theme.label}`}>Private tools</span>
+                                                <span className={`text-xs opacity-30 ${theme.label}`}>|</span>
+                                                <span className={`text-xs font-semibold ${theme.title}`}>
+                                                    <i className="fa-solid fa-book mr-1" />Libraries
+                                                    <span className={`ml-1 font-normal ${theme.label}`}>({subscribedKeys.size} subscribed)</span>
+                                                </span>
+                                                <input
+                                                    className={`${inp} max-w-xs`}
+                                                    placeholder="Search libraries..."
+                                                    value={libSearch}
+                                                    onChange={e => setLibSearch(e.target.value)}
+                                                />
                                             </div>
-                                            {allLibraries.length > 0 && (() => {
+                                            {allLibraries.length > 0 ? (() => {
                                                 const q = libSearch.toLowerCase();
                                                 const filtered = allLibraries.filter(l =>
                                                     !q || l.LibraryKey.toLowerCase().includes(q) || l.LibraryName.toLowerCase().includes(q) || l.DomainKey.toLowerCase().includes(q)
@@ -851,13 +904,8 @@ const handleSave = async () => {
                                                     </label>
                                                 );
                                                 return (
-                                                    <div className={`border rounded p-2 flex flex-col gap-1 ${theme.mainContentSection} ${borderCls}`}>
-                                                        <div className={`text-xs font-semibold ${theme.title} mb-1`}>
-                                                            <i className="fa-solid fa-book mr-1" />Tool Libraries
-                                                            <span className={`ml-2 font-normal ${theme.label}`}>({subscribedKeys.size} subscribed)</span>
-                                                        </div>
-                                                        <input className={`${inp} mb-1`} placeholder="Search libraries..." value={libSearch} onChange={e => setLibSearch(e.target.value)} />
-                                                        <div className="max-h-80 overflow-y-auto flex flex-col gap-0">
+                                                    <div className={`w-full h-1 flex-auto min-h-0 overflow-y-auto border rounded ${theme.mainContentSection} ${borderCls}`}>
+                                                        <div className="p-2 flex flex-col gap-0">
                                                             {grouped.map(g => (
                                                                 <div key={g.domain.DomainKey} className="mb-1">
                                                                     <div className={`px-1 py-0.5 text-xs font-semibold uppercase tracking-wide opacity-50 ${theme.label}`}>
@@ -867,10 +915,15 @@ const handleSave = async () => {
                                                                 </div>
                                                             ))}
                                                             {ungrouped.map(libRow)}
+                                                            {filtered.length === 0 && (
+                                                                <div className={`px-2 py-3 text-xs ${theme.label}`}>No libraries match search.</div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 );
-                                            })()}
+                                            })() : (
+                                                <div className={`text-xs ${theme.label}`}>No tool libraries available.</div>
+                                            )}
                                         </div>
                                     )}
 

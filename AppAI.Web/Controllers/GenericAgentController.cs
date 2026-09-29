@@ -893,6 +893,49 @@ public class GenericAgentController : SecureBaseController
         return result;
     }
 
+    /// <summary>
+    /// Upsert optional file description into Default Source .agent-file-catalog.json (max 4000 chars).
+    /// Empty description removes the catalog entry. Chat scope is not editable (copied with New Chat).
+    /// </summary>
+    [HttpPost]
+    public OperationCallResult<bool> SetAgentFileDescription(
+        [FromQuery] string skillKey,
+        [FromQuery] string scope,
+        [FromBody] GenericAgentFileDescriptionDto body)
+    {
+        var result = new OperationCallResult<bool>();
+        if (!TryFilesIdentity(out var ai, out var companyId, out var err))
+        {
+            result.ValidationResult = err.ValidationResult;
+            return result;
+        }
+        if (!IsDefaultSourceScope(scope))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "Files_DescScope",
+                ValidationItemType.Error, "Descriptions can only be edited on Default Source Files."));
+            return result;
+        }
+        var boxed = new OperationCallResult<object>();
+        if (!AuthorizeAgentFiles(skillKey, null, scope, Convert.ToInt32(ai.UserId), boxed))
+        {
+            result.ValidationResult = boxed.ValidationResult;
+            return result;
+        }
+        try
+        {
+            GenericAgentFileCatalogBL.SetDescription(skillKey, body?.RelativePath, body?.Description, companyId);
+            result.Object = true;
+        }
+        catch (Exception ex)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "Files_SetDescription",
+                ValidationItemType.Error, ex.Message));
+        }
+        return result;
+    }
+
     [HttpPost]
     public async Task<OperationCallResult<string>> UploadAgentFile(
         [FromQuery] string skillKey,

@@ -26,6 +26,26 @@ namespace APP.Components.EntityDto
         public long     SizeBytes    { get; set; }
         public DateTime UpdatedAt    { get; set; }
         public bool     IsDirectory  { get; set; }
+        /// <summary>Optional registered description from .agent-file-catalog.json (Default Source / chat source).</summary>
+        public string   Description  { get; set; }
+    }
+
+    public class AgentFileCatalogDto
+    {
+        public int Version { get; set; } = 1;
+        public List<AgentFileCatalogEntryDto> Files { get; set; } = new List<AgentFileCatalogEntryDto>();
+    }
+
+    public class AgentFileCatalogEntryDto
+    {
+        public string Path { get; set; }
+        public string Description { get; set; }
+    }
+
+    public class GenericAgentFileDescriptionDto
+    {
+        public string RelativePath { get; set; }
+        public string Description { get; set; }
     }
 
     public class GenericAgentFileContentDto

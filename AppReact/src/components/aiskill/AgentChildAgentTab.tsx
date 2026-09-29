@@ -43,12 +43,18 @@ const AgentChildAgentTab: React.FC<AgentChildAgentTabProps> = ({
     const [createMode, setCreateMode] = useState('Deterministic');
     const [busy, setBusy] = useState(false);
 
-    const children = useMemo(
-        () => mappings
-            .filter(m => m.ParentSkillKey === parentSkillKey)
-            .sort((a, b) => a.SortOrder - b.SortOrder || a.ChildSkillKey.localeCompare(b.ChildSkillKey)),
-        [mappings, parentSkillKey],
-    );
+    const children = useMemo(() => {
+        const rows = mappings.filter(m => m.ParentSkillKey === parentSkillKey);
+        return rows.sort((a, b) => {
+            const aa = allAgents.find(x => x.SkillKey === a.ChildSkillKey);
+            const bb = allAgents.find(x => x.SkillKey === b.ChildSkillKey);
+            const an = (a.ChildDisplayName || aa?.DisplayName || a.ChildSkillKey).toLowerCase();
+            const bn = (b.ChildDisplayName || bb?.DisplayName || b.ChildSkillKey).toLowerCase();
+            const byName = an.localeCompare(bn);
+            if (byName !== 0) return byName;
+            return a.ChildSkillKey.localeCompare(b.ChildSkillKey);
+        });
+    }, [mappings, parentSkillKey, allAgents]);
 
     const childKeySet = useMemo(() => new Set(children.map(c => c.ChildSkillKey)), [children]);
 
@@ -72,42 +78,14 @@ const AgentChildAgentTab: React.FC<AgentChildAgentTabProps> = ({
             .filter(a => {
                 if (!q) return true;
                 return `${a.SkillKey} ${a.DisplayName}`.toLowerCase().includes(q);
+            })
+            .slice()
+            .sort((a, b) => {
+                const an = (a.DisplayName || a.SkillKey).toLowerCase();
+                const bn = (b.DisplayName || b.SkillKey).toLowerCase();
+                return an.localeCompare(bn) || a.SkillKey.localeCompare(b.SkillKey);
             });
     }, [allAgents, parentSkillKey, hideAlreadyInTeam, childKeySet, pickerSearch]);
-
-    const persistOrder = async (orderedKeys: string[]) => {
-        setBusy(true);
-        onError(null);
-        try {
-            const payload: AppAgentChildMappingDto[] = orderedKeys.map((key, i) => ({
-                ParentSkillKey: parentSkillKey,
-                ChildSkillKey: key,
-                SortOrder: i + 1,
-            }));
-            const res = await agentSkillSetSvc.SetChildAgents(parentSkillKey, payload);
-            if (!res.IsSuccessful || res.Object === false) {
-                const msg = res.ValidationResult?.Items?.[0]?.Message || 'Failed to save Child-Agents.';
-                onError(msg);
-                return;
-            }
-            await onMappingsChanged();
-        } catch (e: unknown) {
-            onError(e instanceof Error ? e.message : String(e));
-        } finally {
-            setBusy(false);
-        }
-    };
-
-    const move = async (index: number, dir: -1 | 1) => {
-        const keys = children.map(c => c.ChildSkillKey);
-        const j = index + dir;
-        if (j < 0 || j >= keys.length) return;
-        const next = [...keys];
-        const tmp = next[index];
-        next[index] = next[j];
-        next[j] = tmp;
-        await persistOrder(next);
-    };
 
     const removeChild = async (childSkillKey: string) => {
         setBusy(true);
@@ -223,7 +201,6 @@ const AgentChildAgentTab: React.FC<AgentChildAgentTabProps> = ({
                     <table className="w-full text-xs">
                         <thead>
                             <tr className={`border-b ${borderCls} ${theme.label}`}>
-                                <th className="text-left py-1 pr-2 font-semibold w-12">Sort</th>
                                 <th className="text-left py-1 pr-2 font-semibold">Display Name</th>
                                 <th className="text-left py-1 pr-2 font-semibold">Agent Code</th>
                                 <th className="text-left py-1 pr-2 font-semibold w-20">Mode</th>
@@ -232,28 +209,17 @@ const AgentChildAgentTab: React.FC<AgentChildAgentTabProps> = ({
                             </tr>
                         </thead>
                         <tbody>
-                            {children.map((c, index) => {
+                            {children.map((c) => {
                                 const agent = agentByKey.get(c.ChildSkillKey);
                                 const name = c.ChildDisplayName || agent?.DisplayName || c.ChildSkillKey;
                                 const mode = c.ChildExecutionMode || agent?.ExecutionMode || '—';
                                 const active = c.ChildIsActive ?? agent?.IsActive;
                                 return (
                                     <tr key={c.ChildSkillKey} className={`border-b ${borderCls}`}>
-                                        <td className="py-1.5 pr-2">
-                                            <div className="flex items-center gap-0.5">
-                                                <button type="button" className={`${btn} px-1.5`} disabled={busy || index === 0} onClick={() => move(index, -1)} title="Move up">
-                                                    <i className="fa-solid fa-arrow-up" />
-                                                </button>
-                                                <button type="button" className={`${btn} px-1.5`} disabled={busy || index === children.length - 1} onClick={() => move(index, 1)} title="Move down">
-                                                    <i className="fa-solid fa-arrow-down" />
-                                                </button>
-                                                <span className={theme.label}>{c.SortOrder || index + 1}</span>
-                                            </div>
-                                        </td>
                                         <td className={`py-1.5 pr-2 ${theme.title}`}>{name}</td>
                                         <td className={`py-1.5 pr-2 font-mono ${theme.label}`}>{c.ChildSkillKey}</td>
                                         <td className={`py-1.5 pr-2 ${theme.label}`}>{mode === 'Deterministic' ? 'Det' : mode === 'Interactive' ? 'Int' : mode}</td>
-                                        <td className={`py-1.5 pr-2 ${theme.label}`}>{active ? '●' : '○'}</td>
+                                        <td className={`py-1.5 pr-2 ${theme.label}`}>{active ? 'Yes' : 'No'}</td>
                                         <td className="py-1.5 text-right">
                                             <button type="button" className={`${btn} mr-1`} onClick={() => onOpenAgent(c.ChildSkillKey)}>Open</button>
                                             <button type="button" className={btn} disabled={busy} onClick={() => removeChild(c.ChildSkillKey)}>Remove</button>

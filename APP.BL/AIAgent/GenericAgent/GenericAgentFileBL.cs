@@ -30,7 +30,6 @@ namespace App.BL.AIAgent.GenericAgent
             Directory.CreateDirectory(Path.Combine(root, "output"));
             if (created && !string.IsNullOrWhiteSpace(skillKey))
                 CopyDefaultSourceToChat(skillKey, sessionKey, companyId, overwrite: false);
-            GenericAgentOfficialSourceSeedBL.SeedIfMissing(sessionKey, companyId, skillKey);
             return root;
         }
 
@@ -38,7 +37,6 @@ namespace App.BL.AIAgent.GenericAgent
         {
             var root = ResolveStarter(skillKey, null, companyId);
             Directory.CreateDirectory(root);
-            GenericAgentOfficialSourceSeedBL.SeedStarterIfMissing(skillKey, companyId);
             return root;
         }
 
@@ -67,7 +65,9 @@ namespace App.BL.AIAgent.GenericAgent
             var dir = string.IsNullOrWhiteSpace(relativePath)
                 ? root
                 : ResolveStarter(skillKey, relativePath, companyId);
-            return ListDir(root, dir);
+            var list = FilterHiddenFiles(ListDir(root, dir));
+            GenericAgentFileCatalogBL.AttachDescriptions(list, GenericAgentFileCatalogBL.LoadStarterCatalog(skillKey, companyId));
+            return list;
         }
 
         public static GenericAgentFileContentDto ReadDefaultSourceText(string skillKey, string relativePath, int companyId)
@@ -121,21 +121,30 @@ namespace App.BL.AIAgent.GenericAgent
         {
             if (string.IsNullOrWhiteSpace(relativePath) || string.IsNullOrWhiteSpace(newPath))
                 throw new ArgumentException("relativePath and newPath are required.");
+            if (GenericAgentFileCatalogBL.IsCatalogFileName(relativePath)
+                || GenericAgentFileCatalogBL.IsCatalogFileName(newPath))
+                throw new InvalidOperationException("Catalog file cannot be renamed.");
             var src = ResolveStarter(skillKey, relativePath, companyId);
             var dst = ResolveStarter(skillKey, newPath, companyId);
             Directory.CreateDirectory(Path.GetDirectoryName(dst) ?? dst);
             if (File.Exists(src)) File.Move(src, dst);
             else if (Directory.Exists(src)) Directory.Move(src, dst);
             else throw new FileNotFoundException("Path not found.", relativePath);
+            GenericAgentFileCatalogBL.OnRenamed(skillKey, relativePath, newPath, companyId);
         }
 
         public static void DeleteDefaultSource(string skillKey, string relativePath, int companyId)
         {
             if (string.IsNullOrWhiteSpace(relativePath))
                 throw new ArgumentException("relativePath is required.");
+            if (GenericAgentFileCatalogBL.IsCatalogFileName(relativePath))
+                throw new InvalidOperationException("Catalog file cannot be deleted from the UI.");
             var full = ResolveStarter(skillKey, relativePath, companyId);
-            if (File.Exists(full)) File.Delete(full);
-            else if (Directory.Exists(full)) Directory.Delete(full, true);
+            var deleted = false;
+            if (File.Exists(full)) { File.Delete(full); deleted = true; }
+            else if (Directory.Exists(full)) { Directory.Delete(full, true); deleted = true; }
+            if (deleted)
+                GenericAgentFileCatalogBL.OnDeleted(skillKey, relativePath, companyId);
         }
 
         public static List<GenericAgentFileDto> List(string sessionKey, string relativePath, int companyId, string skillKey = null)
@@ -144,7 +153,12 @@ namespace App.BL.AIAgent.GenericAgent
             var dir = string.IsNullOrWhiteSpace(relativePath)
                 ? root
                 : Resolve(sessionKey, relativePath, companyId);
-            return ListDir(root, dir);
+            var list = FilterHiddenFiles(ListDir(root, dir));
+            GenericAgentFileCatalogBL.AttachDescriptions(
+                list,
+                GenericAgentFileCatalogBL.LoadChatSourceCatalog(sessionKey, companyId),
+                "source");
+            return list;
         }
 
         public static GenericAgentFileContentDto ReadText(string sessionKey, string relativePath, int companyId, string skillKey = null)
@@ -276,6 +290,15 @@ namespace App.BL.AIAgent.GenericAgent
                 });
             }
             return list.OrderByDescending(f => f.IsDirectory).ThenBy(f => f.RelativePath, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        private static List<GenericAgentFileDto> FilterHiddenFiles(List<GenericAgentFileDto> list)
+        {
+            if (list == null || list.Count == 0)
+                return list ?? new List<GenericAgentFileDto>();
+            return list
+                .Where(f => f != null && !GenericAgentFileCatalogBL.IsCatalogFileName(f.RelativePath))
+                .ToList();
         }
 
         private static int CopyTree(string sourceDir, string destDir, bool overwrite)

@@ -104,6 +104,17 @@ namespace App.BL.AIAgent.GenericAgent
                 {
                     try { GenericAgentFileBL.EnsureRoot(resolvedChatKey, companyId, skillKey); }
                     catch { /* official source seed must not fail the run */ }
+
+                    try
+                    {
+                        var catalog = GenericAgentFileCatalogBL.LoadChatSourceCatalog(resolvedChatKey, companyId);
+                        if (catalog?.Files == null || catalog.Files.Count == 0)
+                            catalog = GenericAgentFileCatalogBL.LoadStarterCatalog(skillKey, companyId);
+                        var catalogSummary = GenericAgentFileCatalogBL.BuildPromptSummary(catalog, "source/");
+                        if (!string.IsNullOrWhiteSpace(catalogSummary))
+                            systemPrompt = (systemPrompt ?? "") + "\n\n" + catalogSummary;
+                    }
+                    catch { /* catalog inject must not fail the run */ }
                 }
 
                 // Per-session instance pool keeps stateful plugin instances (e.g. SchemaDesignerPlugin)

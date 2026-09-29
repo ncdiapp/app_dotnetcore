@@ -26,16 +26,20 @@ For a **new** tenant DB (structure through **V034+**). Do not mix with `PlmInteg
 | 11 | `11_Seed_ChildMappings.sql` | `AppAgentChildMapping` Orchestrator → Child-Agents |
 | 12 | `99_Verify.sql` | Smoke checks |
 | — | `CHILD_AGENT_CONTRACTS.md` | SkillKeys + `call_agent` contracts |
-| — | `RUN_ALL.bat` | Runs 01→11 → 99 |
+| — | `RUN_ALL.bat` | Runs 01→11 → 99; optional AgentStarter file copy |
+| — | `AgentStarter/` | Default Source `_packs` for this tenant agent config (not in web build, not APP.BL) |
+| — | `CopyAgentStarter.ps1` | Copies `_packs` → `FileRepository/Company_{id}/AgentStarter/{skillKey}/` |
 
 ## Apply
 
 ```bat
 cd AppAI.Web\TenantAgentSeeds\PlmIntegrationMultiAgent
-RUN_ALL.bat YourServer\Instance YourTenantDb
+RUN_ALL.bat YourServer\Instance YourTenantDb CompanyId
 ```
 
-Example: `RUN_ALL.bat PC3B\MSSQLSERVER01 TenantDB_PLM34`
+Example: `RUN_ALL.bat PC3B\MSSQLSERVER01 TenantDB_PLM34 1`
+
+Optional 4th arg: path to `FileRepository` (parent of `Company_{id}`). Default: `AppAI.Web\bin\Debug\net10.0\FileRepository`.
 
 Prereqs: V022+ (`AppAgentSharedContext`); **V036** (`AppAgentChildMapping`); rebuild/copy `APP.AgentPlugins.PlmImport.dll` (plugin Ensures PLM job tables only when those tools run). Tenant AI key set.
 
@@ -57,6 +61,6 @@ Gate-0: `list_tenant_saas_applications` + `list_tenant_data_sources` → `ask_us
 
 **Progress:** in-chat `write_shared_context` (WorkflowId, this turn) + durable `update_plm_wizard_progress` on `AppAgentSharedContext` with ScopeId=`ChatSessionKey`. PLM job table is plugin-only, not a Flyway Vxxx.
 
-**Search / MassUpdate (Wave 2):** `call_agent` children. Additional Search View is the same Search menu (`mode=additional-view`); no Sibling menu item. APPLY uses `apply_agent_output_plan` with `outputsContextKey` = `plm.integration.search.outputs` or `plm.integration.massupdate.outputs`. Official probe/example files are auto-seeded from `AppReact/ImportDoc/ImportPLMSearchView/MultiAgent/source/` into chat `source/` — users do not upload them.
+**Search / MassUpdate (Wave 2):** `call_agent` children. Additional Search View is the same Search menu (`mode=additional-view`); no Sibling menu item. APPLY uses `apply_agent_output_plan` with `outputsContextKey` = `plm.integration.search.outputs` or `plm.integration.massupdate.outputs`. Default Source probe/example files live under `AgentStarter/_packs/` and are copied to `FileRepository/.../AgentStarter/` when RUN_ALL is run with `CompanyId` (see `AgentStarter/README.md`).
 
 If a child SkillKey is missing, ROOT must **stop** (Retry / Back). No local preview/execute fallback for entity/folder/image/color/pom/import-dw/search/massupdate.

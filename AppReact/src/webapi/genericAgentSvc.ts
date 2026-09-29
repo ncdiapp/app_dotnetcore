@@ -38,6 +38,8 @@ export interface GenericAgentFile {
     SizeBytes: number;
     UpdatedAt: string;
     IsDirectory: boolean;
+    /** Optional registered description from Default Source catalog. */
+    Description?: string | null;
 }
 
 export interface AskUserField {
@@ -381,6 +383,21 @@ class GenericAgentService {
             headers: getHeaders(),
             body: JSON.stringify({ SessionKey: sessionKey || '', RelativePath: relativePath }),
         });
+    }
+
+    /** Upsert Default Source file description (empty clears). Chat scope is not supported. */
+    async SetAgentFileDescription(skillKey: string, relativePath: string, description: string): Promise<void> {
+        const q = new URLSearchParams({ skillKey: skillKey || '', scope: 'defaultSource' });
+        const res = await fetch(`${BASE}/SetAgentFileDescription?${q}`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify({ RelativePath: relativePath, Description: description ?? '' }),
+        });
+        if (!res.ok) throw new Error(`Set description failed (${res.status})`);
+        const data = await res.json();
+        const err = data?.ValidationResult?.Items?.find((i: any) => i.Type === 'Error' || i.ItemType === 1 || i.ValidationItemType === 1);
+        if (err?.Message) throw new Error(err.Message);
+        if (data?.Object === false) throw new Error('Set description failed.');
     }
 
     async UploadAgentFile(skillKey: string, sessionKey: string | null | undefined, path: string, file: File, fileScope?: string): Promise<void> {

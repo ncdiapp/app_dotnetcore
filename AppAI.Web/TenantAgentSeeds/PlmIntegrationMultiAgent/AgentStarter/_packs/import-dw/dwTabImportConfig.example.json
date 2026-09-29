@@ -1,0 +1,75 @@
+{
+  "_comment": "EXAMPLE ONLY — Phase B snapshot. TabIds/tabs come from PLM probe (pdmTemplateTab), not user input.",
+  "plmTemplateId": 0,
+  "plmSqlServer": "PC3B\\MSSQLSERVER01",
+  "plmDatabase": "PLM",
+  "sqlServer": "PC3B\\MSSQLSERVER01",
+  "dwDatabase": "plmDW",
+  "importTabIds": [4258, 4212, 4213, 4214, 4219, 4270, 4274],
+  "tablePrefixDefault": "Plm_",
+  "rootTableSuffix": "ReferenceBasicInfo",
+  "plmTemplate": {
+    "templateId": 0,
+    "templateName": "Fabric",
+    "templateHeaderTabIds": [4258]
+  },
+  "referenceScope": {
+    "_comment_dwColumn": "Physical DW column on dwTable (Article__22). Never the APP name ReferenceCode unless that exact column exists on the DW table.",
+    "dwTable": "PLM_DW_Tab_Fabric_Header_4258",
+    "dwColumn": "Article__22",
+    "plmTabId": 4258,
+    "plmSubItemId": 22
+  },
+  "tabs": [
+    {
+      "appTable": "Fabric_Header",
+      "dwTable": "PLM_DW_Tab_Fabric_Header_4258",
+      "tabId": 4258,
+      "plmTabName": "Fabric Header",
+      "tabSort": 1,
+      "isTemplateHeaderTab": true,
+      "importStatus": "Ready",
+      "mode": "all"
+    },
+    {
+      "appTable": "Fabric_Info",
+      "dwTable": "PLM_DW_Tab_Fabric_Info_4212",
+      "tabId": 4212,
+      "plmTabName": "Fabric Info",
+      "tabSort": 2,
+      "isTemplateHeaderTab": false,
+      "importStatus": "Ready",
+      "mode": "excludeSubItemsFromDwTable",
+      "excludeSubItemsFromDwTable": "PLM_DW_Tab_Fabric_Header_4258"
+    },
+    {
+      "_comment_unitType": "Child unit is AUTO-DETECTED: only a tab that hosts a Grid sub-item (PLM block sub-item with ControlType=6) gets its own identity PK [{appTable}Id] with ReferenceId as a plain FK (1:many). A tab merely bound to a grid via parentPlmTabId is NOT enough. 'unitType' is an OPTIONAL override: set 'child'/'sibling' to force; omit to let detection decide.",
+      "appTable": "Artworks",
+      "dwTable": "PLM_DW_Tab_Artworks_4246",
+      "tabId": 4246,
+      "plmTabName": "Artworks",
+      "tabSort": 3,
+      "isTemplateHeaderTab": false,
+      "importStatus": "Ready",
+      "mode": "all"
+    }
+  ],
+  "grids": [
+    {
+      "_comment_parent": "parentPlmTabId = true PLM hosting TabId from pdmTabBlockSubItemExtraInfo. Never use template header as a stand-in. If parent Tab has no PLM_DW_Tab_* and is out of import scope: parentPlmTabId null + transactionIntegrationId Grid_{id} → BL Root+Child orphan.",
+      "appTable": "ProductDesignColorGrid",
+      "dwTable": "PLM_DW_Grid_ProductDesignColorGrid_7",
+      "gridSubItemId": 7354,
+      "gridId": 7,
+      "parentPlmTabId": 4214,
+      "transactionIntegrationId": "Tab_4214"
+    }
+  ],
+  "blueprint": {
+    "transactionGroupName": "Fabric",
+    "transactionGroupIntegrationId": "TG_Fabric",
+    "searchName": "Fabric References",
+    "searchIntegrationId": "Search_Fabric",
+    "folderName": "Fabric"
+  }
+}

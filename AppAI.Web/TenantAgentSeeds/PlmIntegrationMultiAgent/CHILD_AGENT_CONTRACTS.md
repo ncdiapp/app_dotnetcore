@@ -301,7 +301,7 @@ BL reads JSON from disk (do not pass `blueprintJson`). Maps:
 Human-readable prompts + official SOURCE pack:  
 `AppReact/ImportDoc/ImportPLMSearchView/MultiAgent/`  
 (`Prompt_plm-integration-search.txt`, `Prompt_plm-integration-massupdate.txt`, `source/`).
-Product auto-seeds `source/` + `AgentStarter` via `GenericAgentOfficialSourceSeedBL` — do not ask users to upload probe/example files.
+Default Source files for this pack: `AgentStarter/_packs/` → copied to `FileRepository/Company_{id}/AgentStarter/{skillKey}/` by `RUN_ALL.bat` + `CopyAgentStarter.ps1` (not APP.BL). New Chat copies from AgentStarter into chat `source/`.
 
 ## Out of scope (v1)
 

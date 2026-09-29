@@ -1,0 +1,29 @@
+﻿{
+  "Version": 1,
+  "Files": [
+    {
+      "Path": "_plm_probe_massupdate.sql",
+      "Description": "PLM probe SQL for Mass Update View metadata. Substitute @MassUpdateViewId / SearchTemplateId, then execute_sql on PLM DataSourceId."
+    },
+    {
+      "Path": "_app_probe_fieldmapping.sql",
+      "Description": "APP FieldMapping probe helper. Run on APP DataSourceId to inspect existing mappings before Search / MassUpdate / DW import."
+    },
+    {
+      "Path": "_app_probe_search_context.sql",
+      "Description": "APP search-context probe (Search / DataSet / View ids). Run on APP DataSourceId when attaching Views or MassUpdate."
+    },
+    {
+      "Path": "9_PlmSearch_MassUpdateView.example.json",
+      "Description": "Schema contract for Mass Update View JSON. Match when writing 3_PlmSearch_MassUpdateView_{muId}.json."
+    },
+    {
+      "Path": "9b_PlmSearch_MassUpdateView_ListEdit.example.json",
+      "Description": "Schema contract for Mass Update ListEdit variant. Use when the MU mode requires ListEdit bindings."
+    },
+    {
+      "Path": "plmSearchImportConfig.example.json",
+      "Description": "Example Search/MU working config (plmDataSourceId / appDataSourceId, no secrets). Agent may write plmSearchImportConfig.json after confirm."
+    }
+  ]
+}

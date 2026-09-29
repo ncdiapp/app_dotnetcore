@@ -11,6 +11,8 @@ interface Props {
     emptyHint?: string;
 }
 
+const MAX_FILE_DESC = 4000;
+
 const formatSize = (n: number) => {
     if (n < 1024) return `${n} B`;
     if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -38,6 +40,8 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey, fileSco
     const [editContent, setEditContent] = useState('');
     const [editSaving, setEditSaving] = useState(false);
     const [restoring, setRestoring] = useState(false);
+    const [descDrafts, setDescDrafts] = useState<Record<string, string>>({});
+    const [descSavingPath, setDescSavingPath] = useState<string | null>(null);
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const isStarter = fileScope === 'defaultSource';
     const canUse = !!skillKey && (isStarter || !!sessionKey);
@@ -55,6 +59,11 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey, fileSco
         try {
             const list = await genericAgentSvc.ListAgentFiles(skillKey, sessionKey, path || '', fileScope);
             setFiles(list);
+            const next: Record<string, string> = {};
+            for (const f of list) {
+                if (!f.IsDirectory) next[f.RelativePath] = f.Description ?? '';
+            }
+            setDescDrafts(next);
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : String(e));
             setFiles([]);
@@ -137,6 +146,24 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey, fileSco
             await refresh(cwd);
         } catch (e: unknown) {
             setError(e instanceof Error ? e.message : String(e));
+        }
+    };
+
+    const saveDescription = async (f: GenericAgentFile) => {
+        if (!isStarter || f.IsDirectory) return;
+        const value = (descDrafts[f.RelativePath] ?? '').slice(0, MAX_FILE_DESC);
+        const original = f.Description ?? '';
+        if (value === original) return;
+        setDescSavingPath(f.RelativePath);
+        setError(null);
+        try {
+            await genericAgentSvc.SetAgentFileDescription(skillKey, f.RelativePath, value);
+            await refresh(cwd);
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : String(e));
+            setDescDrafts(prev => ({ ...prev, [f.RelativePath]: original }));
+        } finally {
+            setDescSavingPath(null);
         }
     };
 
@@ -272,34 +299,68 @@ const GenericAgentFilesPanel: React.FC<Props> = ({ skillKey, sessionKey, fileSco
                 {files.map(f => (
                     <div
                         key={f.RelativePath}
-                        className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs group ${theme.label}`}
+                        className={`flex flex-col gap-0.5 px-1.5 py-1 rounded text-xs ${theme.label}`}
                     >
-                        <button
-                            type="button"
-                            className="flex items-center gap-1.5 min-w-0 w-1 flex-auto text-left hover:underline"
-                            onClick={() => (f.IsDirectory ? openDir(f.RelativePath) : void openEdit(f))}
-                            title={f.RelativePath}
-                        >
-                            <i className={`fa-solid ${f.IsDirectory ? 'fa-folder' : 'fa-file'} shrink-0 opacity-70`} />
-                            <span className="truncate">{basename(f.RelativePath)}</span>
-                        </button>
-                        {!f.IsDirectory && (
-                            <span className="opacity-40 shrink-0">{formatSize(f.SizeBytes)}</span>
-                        )}
-                        <button type="button" className={`${iconBtn} opacity-0 group-hover:opacity-100`} title="Rename"
-                            onClick={() => void handleRename(f)}>
-                            <i className="fa-solid fa-pencil" />
-                        </button>
-                        {!f.IsDirectory && (
-                            <button type="button" className={`${iconBtn} opacity-0 group-hover:opacity-100`} title="Download"
-                                onClick={() => void genericAgentSvc.DownloadAgentFile(skillKey, sessionKey, f.RelativePath, fileScope)}>
-                                <i className="fa-solid fa-download" />
+                        <div className="flex items-center gap-1 group">
+                            <button
+                                type="button"
+                                className="flex items-center gap-1.5 min-w-0 w-1 flex-auto text-left hover:underline"
+                                onClick={() => (f.IsDirectory ? openDir(f.RelativePath) : void openEdit(f))}
+                                title={f.RelativePath}
+                            >
+                                <i className={`fa-solid ${f.IsDirectory ? 'fa-folder' : 'fa-file'} shrink-0 opacity-70`} />
+                                <span className="truncate">{basename(f.RelativePath)}</span>
                             </button>
+                            {!f.IsDirectory && (
+                                <span className="opacity-40 shrink-0">{formatSize(f.SizeBytes)}</span>
+                            )}
+                            <button type="button" className={`${iconBtn} opacity-0 group-hover:opacity-100`} title="Rename"
+                                onClick={() => void handleRename(f)}>
+                                <i className="fa-solid fa-pencil" />
+                            </button>
+                            {!f.IsDirectory && (
+                                <button type="button" className={`${iconBtn} opacity-0 group-hover:opacity-100`} title="Download"
+                                    onClick={() => void genericAgentSvc.DownloadAgentFile(skillKey, sessionKey, f.RelativePath, fileScope)}>
+                                    <i className="fa-solid fa-download" />
+                                </button>
+                            )}
+                            <button type="button" className={`${iconBtn} opacity-0 group-hover:opacity-100`} title="Delete"
+                                onClick={() => void handleDelete(f)}>
+                                <i className="fa-solid fa-trash" />
+                            </button>
+                        </div>
+                        {!f.IsDirectory && isStarter && (
+                            <div className="pl-5 flex items-center gap-1">
+                                <input
+                                    type="text"
+                                    className={`w-1 flex-auto h-6 px-1.5 text-xs border ${theme.inputBox}`}
+                                    placeholder="Description (optional)"
+                                    maxLength={MAX_FILE_DESC}
+                                    value={descDrafts[f.RelativePath] ?? ''}
+                                    disabled={descSavingPath === f.RelativePath}
+                                    onChange={e => setDescDrafts(prev => ({
+                                        ...prev,
+                                        [f.RelativePath]: e.target.value.slice(0, MAX_FILE_DESC),
+                                    }))}
+                                    onBlur={() => void saveDescription(f)}
+                                    onKeyDown={e => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            (e.target as HTMLInputElement).blur();
+                                        }
+                                    }}
+                                    title="File description for the agent (max 4000). Saved on blur."
+                                />
+                                {descSavingPath === f.RelativePath && (
+                                    <i className="fa-solid fa-spinner fa-spin opacity-50 shrink-0" />
+                                )}
+                            </div>
                         )}
-                        <button type="button" className={`${iconBtn} opacity-0 group-hover:opacity-100`} title="Delete"
-                            onClick={() => void handleDelete(f)}>
-                            <i className="fa-solid fa-trash" />
-                        </button>
+                        {!f.IsDirectory && !isStarter && !!f.Description && (
+                            <div className="pl-5 text-[11px] opacity-60 truncate" title={f.Description}>
+                                {f.Description}
+                            </div>
+                        )}
                     </div>
                 ))}
             </div>

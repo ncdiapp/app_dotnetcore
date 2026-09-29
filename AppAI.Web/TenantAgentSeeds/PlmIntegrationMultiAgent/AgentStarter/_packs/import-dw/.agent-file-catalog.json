@@ -1,0 +1,45 @@
+{
+  "Version": 1,
+  "Files": [
+    {
+      "Path": "_gen_plmdw_import_sql.ps1",
+      "Description": "Official Import-from-DW producer. Phase B must run via run_agent_script to emit output/{templateId}/1_…4_ (and related) deliverables."
+    },
+    {
+      "Path": "_gen_plmdw_bom_colorway.ps1",
+      "Description": "Official BOM colorway generator (step 5 + blueprint bindings). Use with PlmDw_ImportBomColorwayGrandchild.sql when colorway grids are present."
+    },
+    {
+      "Path": "_gen_tchp_import_sql.ps1",
+      "Description": "Optional TechPack (TCHP) import SQL generator helper for Fit / related TechPack tabs."
+    },
+    {
+      "Path": "_gen_simple_qc.ps1",
+      "Description": "Optional Simple QC generator helper. Use when Simple QC tabs are detected (do not emit flat SpecQCGrid size slots)."
+    },
+    {
+      "Path": "PlmDw_ImportFromDW.sql",
+      "Description": "SQL template for Import-from-DW step 3 (load DW → APP Plm_* tables). Consumed by the official _gen_plmdw_import_sql.ps1 producer."
+    },
+    {
+      "Path": "PlmDw_ImportBomColorwayGrandchild.sql",
+      "Description": "SQL template for BOM colorway grandchild UNPIVOT (step 5). Used when ProductDesignColor colorway grids are detected."
+    },
+    {
+      "Path": "dwTabImportConfig.example.json",
+      "Description": "Example Phase A→B DW tab import config shape. After user confirms Phase A, agent writes working source/dwTabImportConfig.json (not this example)."
+    },
+    {
+      "Path": "bomColorwayImportConfig.example.json",
+      "Description": "Example BOM colorway import config shape for step-5 generation. Working file is bomColorwayImportConfig.json after confirm."
+    },
+    {
+      "Path": "_plm_probe_template.sql",
+      "Description": "PLM Template/Tab probe helper (pdmTemplate + pdmTemplateTab). Substitute @TemplateId; execute_sql on PLM DataSourceId in Phase A."
+    },
+    {
+      "Path": "_dw_probe_by_tabids.sql",
+      "Description": "plmDW probe by TabIds. Substitute TabId list; execute_sql on plmDW DataSourceId during Phase A discovery."
+    }
+  ]
+}

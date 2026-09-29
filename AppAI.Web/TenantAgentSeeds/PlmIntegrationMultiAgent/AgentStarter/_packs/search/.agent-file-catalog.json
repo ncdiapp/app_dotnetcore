@@ -1,0 +1,29 @@
+{
+  "Version": 1,
+  "Files": [
+    {
+      "Path": "_plm_probe_search.sql",
+      "Description": "PLM probe SQL for SearchTemplate / View metadata. Substitute @SearchTemplateId (and related ids), then execute_sql on the PLM DataSourceId."
+    },
+    {
+      "Path": "_app_probe_fieldmapping.sql",
+      "Description": "APP FieldMapping probe helper. Run on APP DataSourceId to inspect existing mappings before Search / MassUpdate / DW import."
+    },
+    {
+      "Path": "_app_probe_search_context.sql",
+      "Description": "APP search-context probe (Search / DataSet / View ids). Run on APP DataSourceId when attaching Views or MassUpdate."
+    },
+    {
+      "Path": "7_PlmSearch_ImportBlueprint.example.json",
+      "Description": "Schema contract for main Search Import Blueprint (Phase B). Match this shape when writing 1_PlmSearch_ImportBlueprint.json; do not invent stubs."
+    },
+    {
+      "Path": "8_PlmSearch_SiblingView.example.json",
+      "Description": "Schema contract for additional Search View (sibling) JSON. Match when writing 2_PlmSearch_SiblingView_{viewId}.json."
+    },
+    {
+      "Path": "plmSearchImportConfig.example.json",
+      "Description": "Example Search/MU working config (plmDataSourceId / appDataSourceId, no secrets). Agent may write plmSearchImportConfig.json after confirm."
+    }
+  ]
+}
