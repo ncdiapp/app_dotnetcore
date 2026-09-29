@@ -20,6 +20,8 @@ DECLARE @PlmTemplateId     INT           = NULL;                   -- <<< USER S
 DECLARE @ImportMode        NVARCHAR(16)  = N'APPEND';             -- REPLACE | APPEND (APPEND skips existing ReferenceId per table)
 DECLARE @ReferenceIdList   NVARCHAR(MAX) = NULL;                   -- optional pilot, e.g. N'1536,2001'
 DECLARE @DryRun            BIT           = 0;
+DECLARE @SkipRootInsert    BIT           = 0;                      -- 1 = per-tab package (root already imported)
+DECLARE @AllowEmptyTargets BIT           = 0;                      -- 1 = root-only package (ReferenceBasicInfo only)
 
 DECLARE @MappingTable      NVARCHAR(128);
 DECLARE @RootTable         NVARCHAR(128);
@@ -227,11 +229,13 @@ EXEC sp_executesql @sql;
 
 SELECT @RowCnt = COUNT(*) FROM #Targets;
 PRINT N'Target tables in scope: ' + CAST(@RowCnt AS NVARCHAR(20));
-IF @RowCnt = 0
+IF @RowCnt = 0 AND @AllowEmptyTargets = 0
 BEGIN
     RAISERROR(N'No TabField/GridColumn targets in FieldMapping for this config scope. Re-run 2_PlmDw_FieldMapping.sql for the same template.', 16, 1);
     RETURN;
 END
+IF @RowCnt = 0 AND @AllowEmptyTargets = 1
+    PRINT N'Root-only package: no TabField/GridColumn targets (ReferenceBasicInfo only).';
 
 BEGIN TRY
     BEGIN TRANSACTION;
@@ -264,29 +268,37 @@ BEGIN TRY
         END
         CLOSE del_cur; DEALLOCATE del_cur;
 
-        SET @sql = N'
-        DELETE r FROM dbo.' + QUOTENAME(@RootTable) + N' AS r
-        WHERE EXISTS (SELECT 1 FROM #RefFilter rf WHERE rf.[ReferenceId] = r.[ReferenceId]);';
-        IF @DryRun = 0 EXEC sp_executesql @sql;
-        INSERT INTO #ImportLog VALUES (N'DELETE', @RootTable, CASE WHEN @DryRun = 0 THEN @@ROWCOUNT ELSE 0 END);
+        IF @SkipRootInsert = 0
+        BEGIN
+            SET @sql = N'
+            DELETE r FROM dbo.' + QUOTENAME(@RootTable) + N' AS r
+            WHERE EXISTS (SELECT 1 FROM #RefFilter rf WHERE rf.[ReferenceId] = r.[ReferenceId]);';
+            IF @DryRun = 0 EXEC sp_executesql @sql;
+            INSERT INTO #ImportLog VALUES (N'DELETE', @RootTable, CASE WHEN @DryRun = 0 THEN @@ROWCOUNT ELSE 0 END);
+        END
     END
 
-    SET @Step = N'INSERT ReferenceBasicInfo';
-    SET @sql = N'
-    SET IDENTITY_INSERT dbo.' + QUOTENAME(@RootTable) + N' ON;
-    INSERT INTO dbo.' + QUOTENAME(@RootTable) + N' (
-        [ReferenceId],[ReferenceCode],[MasterReferenceId],[FolderId],
-        [AppCreatedByID],[AppCreatedDate],[AppModifiedByID],[AppModifiedDate])
-    SELECT rf.[ReferenceId], src.[' + REPLACE(@RefCodeDwColumn, N']', N']]') + N'],
-        NULL,NULL,NULL,GETDATE(),NULL,NULL
-    FROM #RefFilter rf
-    INNER JOIN ' + QUOTENAME(@DwDatabase) + N'.dbo.' + QUOTENAME(@RefSourceDwTable) + N' src
-        ON src.[ProductReferenceID] = rf.[ReferenceId]
-    ' + CASE WHEN @ImportMode = N'APPEND' THEN N'
-    WHERE NOT EXISTS (SELECT 1 FROM dbo.' + QUOTENAME(@RootTable) + N' r WHERE r.[ReferenceId]=rf.[ReferenceId])' ELSE N'' END + N';
-    SET IDENTITY_INSERT dbo.' + QUOTENAME(@RootTable) + N' OFF;';
-    IF @DryRun = 0 EXEC sp_executesql @sql;
-    INSERT INTO #ImportLog VALUES (@Step, @RootTable, CASE WHEN @DryRun = 0 THEN @@ROWCOUNT ELSE 0 END);
+    IF @SkipRootInsert = 0
+    BEGIN
+        SET @Step = N'INSERT ReferenceBasicInfo';
+        SET @sql = N'
+        SET IDENTITY_INSERT dbo.' + QUOTENAME(@RootTable) + N' ON;
+        INSERT INTO dbo.' + QUOTENAME(@RootTable) + N' (
+            [ReferenceId],[ReferenceCode],[MasterReferenceId],[FolderId],
+            [AppCreatedByID],[AppCreatedDate],[AppModifiedByID],[AppModifiedDate])
+        SELECT rf.[ReferenceId], src.[' + REPLACE(@RefCodeDwColumn, N']', N']]') + N'],
+            NULL,NULL,NULL,GETDATE(),NULL,NULL
+        FROM #RefFilter rf
+        INNER JOIN ' + QUOTENAME(@DwDatabase) + N'.dbo.' + QUOTENAME(@RefSourceDwTable) + N' src
+            ON src.[ProductReferenceID] = rf.[ReferenceId]
+        ' + CASE WHEN @ImportMode = N'APPEND' THEN N'
+        WHERE NOT EXISTS (SELECT 1 FROM dbo.' + QUOTENAME(@RootTable) + N' r WHERE r.[ReferenceId]=rf.[ReferenceId])' ELSE N'' END + N';
+        SET IDENTITY_INSERT dbo.' + QUOTENAME(@RootTable) + N' OFF;';
+        IF @DryRun = 0 EXEC sp_executesql @sql;
+        INSERT INTO #ImportLog VALUES (@Step, @RootTable, CASE WHEN @DryRun = 0 THEN @@ROWCOUNT ELSE 0 END);
+    END
+    ELSE
+        PRINT N'SkipRootInsert=1: ReferenceBasicInfo already imported by root package.';
 
     DECLARE imp_cur CURSOR LOCAL FAST_FORWARD FOR
         SELECT [AppTableName],[FieldKind],[DwTableName],[GridIdFilter]

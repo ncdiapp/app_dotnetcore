@@ -151,6 +151,27 @@ BEGIN
     CREATE INDEX IX_AppPlmImportLog_SessionId ON dbo.AppPlmImportLog (SessionId);
 END";
 
+        private const string EnsureDwTabImportStatusTableSql = @"
+IF NOT EXISTS (SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA='dbo' AND TABLE_NAME='AppPlmDwTabImportStatus')
+BEGIN
+    CREATE TABLE dbo.AppPlmDwTabImportStatus (
+        StatusId            INT IDENTITY(1,1) NOT NULL,
+        SessionId           INT               NOT NULL,
+        TemplateId          INT               NOT NULL,
+        TabId               INT               NOT NULL,
+        Phase               NVARCHAR(32)      NOT NULL,
+        Status              NVARCHAR(20)      NOT NULL,
+        Path                NVARCHAR(400)     NULL,
+        ErrorMessage        NVARCHAR(MAX)     NULL,
+        UpdatedAt           DATETIME          NOT NULL,
+        CONSTRAINT PK_AppPlmDwTabImportStatus PRIMARY KEY (StatusId)
+    );
+    CREATE UNIQUE INDEX UX_AppPlmDwTabImportStatus_Key
+        ON dbo.AppPlmDwTabImportStatus (SessionId, TemplateId, TabId, Phase);
+    CREATE INDEX IX_AppPlmDwTabImportStatus_Session
+        ON dbo.AppPlmDwTabImportStatus (SessionId, TemplateId);
+END";
+
         #endregion
 
         #region Auth & fixture
@@ -203,6 +224,7 @@ END";
             fixture.ExecuteNonQueryResult(EnsureSessionRegisterColumnsSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(EnsureJobTableSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(EnsureLogTableSql, new List<DbParameter>());
+            fixture.ExecuteNonQueryResult(EnsureDwTabImportStatusTableSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(EnsureFolderMapTableSql, new List<DbParameter>());
             fixture.ExecuteNonQueryResult(EnsureColorGroupDetailTableSql, new List<DbParameter>());
         }
@@ -865,6 +887,40 @@ VALUES
                     CreateParam(fixture, "@DurationMs", (object)durationMs ?? DBNull.Value),
                     CreateParam(fixture, "@Message", (object)message ?? DBNull.Value),
                     CreateParam(fixture, "@CreatedAt", DateTime.UtcNow)
+                });
+        }
+
+        internal static void UpsertDwTabImportStatus(
+            DatabaseFixture fixture,
+            int sessionId,
+            int templateId,
+            int tabId,
+            string phase,
+            string status,
+            string path,
+            string errorMessage)
+        {
+            EnsurePlmImportSchema();
+            fixture.ExecuteNonQueryResult(@"
+MERGE dbo.AppPlmDwTabImportStatus AS t
+USING (SELECT @SessionId AS SessionId, @TemplateId AS TemplateId, @TabId AS TabId, @Phase AS Phase) AS s
+ON t.SessionId = s.SessionId AND t.TemplateId = s.TemplateId AND t.TabId = s.TabId AND t.Phase = s.Phase
+WHEN MATCHED THEN UPDATE SET
+    Status = @Status, Path = @Path, ErrorMessage = @ErrorMessage, UpdatedAt = @UpdatedAt
+WHEN NOT MATCHED THEN INSERT
+    (SessionId, TemplateId, TabId, Phase, Status, Path, ErrorMessage, UpdatedAt)
+VALUES
+    (@SessionId, @TemplateId, @TabId, @Phase, @Status, @Path, @ErrorMessage, @UpdatedAt);",
+                new List<DbParameter>
+                {
+                    CreateParam(fixture, "@SessionId", sessionId),
+                    CreateParam(fixture, "@TemplateId", templateId),
+                    CreateParam(fixture, "@TabId", tabId),
+                    CreateParam(fixture, "@Phase", phase ?? "data"),
+                    CreateParam(fixture, "@Status", status ?? "Failed"),
+                    CreateParam(fixture, "@Path", (object)path ?? DBNull.Value),
+                    CreateParam(fixture, "@ErrorMessage", (object)errorMessage ?? DBNull.Value),
+                    CreateParam(fixture, "@UpdatedAt", DateTime.UtcNow)
                 });
         }
 

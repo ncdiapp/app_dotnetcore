@@ -393,12 +393,11 @@ This PROMPT is used in **three** places. **Detect which one you are in, then fol
 6. Reject your own work if Blueprint is tiny or lacks `unitStructure.siblingUnits` / `blueprintFields`.
 6b. **ok=true** when the script exits 0 and `output/{templateId}/1_PlmDw_Tables.sql` plus `4_PlmDw_ImportBlueprint.json` exist. Do **not** return ok=false because a grid APP table is shorter than the DW name (e.g. `Fabric_BOM_prod` / `Label_BOM_prod` vs `PLM_DW_Grid_*_10_Colorways_{id}`). That shortening is required. Never invent a Phase B Generation Error about resolving a DW table name.
 7. **Write `plm.integration.import-dw.outputs`** as compact JSON with `files[]` and `executionPlan[]` built from **files that actually exist** (never invent missing steps). Order rules:
-   - `1_` / `2_` / `3_` `.sql` → `kind=sql`, `target=app` (numbered order)
-   - `3b_Tchp_ImportFromDW.sql` if present → `kind=sql`, `target=app`, **before** the blueprint step
-   - `4_*.json` → `kind=dw-blueprint`, `mode=Insert` (ROOT may override mode before APPLY)
-   - `5_*.sql` → `kind=sql`, `target=app`, **after** the blueprint step (BOM official order)
-   - Do **not** include `6_PlmDw_CleanupBomColorwayStaging.sql` (retired)
-   Each step: `{ order, kind, path, target, mode?, label }`. Also include `templateId`. Do not dump SQL/JSON bodies.
+   - Prefer `output/{templateId}/0_ExecutionPlan.suggested.json` from the generator (copy `executionPlan` as-is when every path exists via file_list).
+   - Preferred APPLY order: `1_` → `2_` → `3_00_Root` → `tabs/{tabId}/3_` (continueOnError) → optional `3b`/`3c` → `tabs/{tabId}/4_TabBlueprint.json` (continueOnError, includeSearchView=false) → `4_` as **kind=dw-blueprint-assemble** mode=Update → optional `5_` BOM with `dependsOnTabIds` = bomHost tabs.
+   - Do **not** put legacy monolith `3_PlmDw_ImportFromDW.sql` in executionPlan when per-tab packages exist.
+   - Tab data/TX steps MUST set `continueOnError: true`. Assemble is hard-fail.
+   Each step: `{ order, kind, path, target, mode?, label, tabId?, continueOnError?, includeSearchView?, dependsOnTabIds? }`. Also include `templateId`. Do not dump SQL/JSON bodies.
 
 #### B0-IDE - Cursor IDE (local)
 
@@ -1272,5 +1271,63 @@ The official generator asserts against pdmTemplateTab and auto-adds missing Read
 '
 WHERE SkillKey = N'plm-integration-import-dw'
   AND SystemPrompt NOT LIKE N'%HARD: importTabIds must cover every pdmTemplateTab%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: per-tab import packages (continueOnError)
+Phase B must prefer generator file output/{templateId}/0_ExecutionPlan.suggested.json for executionPlan (Authoritative executionPlan).
+Also copy applyOverview from that file into FinalResponse / chat as APPLY overview (summary).
+Order: 1_ + 2_ + 3_00_Root + tabs/{tabId}/3_ data (continueOnError) + optional 3b/3c + tabs/{tabId}/4_TabBlueprint (continueOnError, includeSearchView=false) + 4_PlmDw_Assemble.json kind=dw-blueprint-assemble mode=Update (BL merges successful tab packages) + optional 5_ BOM with dependsOnTabIds.
+Do not claim a single full 4_PlmDw_ImportBlueprint.json Insert for all tabs. That file is now an Assemble shell alias (small); per-tab TX/fields are under tabs/*/4_TabBlueprint.json.
+Do not put legacy monolith 3_PlmDw_ImportFromDW.sql in executionPlan when tabs/*/3_ exist.
+APPLY BL rejects monolith when per-tab packages exist on disk. Assemble merges + filters to successful data tabs only.
+Partial success: apply.Ok=true with Error starting Partial success; ROOT still doneIds when assemble ok.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: per-tab import packages (continueOnError)%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: PHASE=APPLY_TABS retry failed tabs
+When ROOT asks PHASE=APPLY_TABS: read output/{templateId}/tab-import-status.json (or AppPlmDwTabImportStatus).
+Build executionPlan ONLY for Failed tabIds: tabs/{tabId}/3_ImportFromDW.sql then tabs/{tabId}/4_TabBlueprint.json (continueOnError=true).
+Then one dw-blueprint-assemble step on 4_PlmDw_Assemble.json mode=Update (compat: 4_PlmDw_ImportBlueprint.json same shell).
+Call apply_agent_output_plan once with that planJson. Do not re-run 1_/2_/3_00 unless root missing.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: PHASE=APPLY_TABS retry failed tabs%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: APPLY overview chat format
+After Phase B ok: chat must show APPLY overview from 0_ExecutionPlan.suggested.json.applyOverview (Shared once / Per-tab packages N / Assemble once 4_PlmDw_Assemble.json). State Authoritative executionPlan = output/{templateId}/0_ExecutionPlan.suggested.json with stepCount. Do not summarize as only 4 steps pointing at a full monolith Blueprint Insert.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: APPLY overview chat format%';
+GO
+
+-- Existing tenants: refresh Assemble / APPLY overview wording inside prior HARD blocks
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(SystemPrompt,
+    N'+ 4_ kind=dw-blueprint-assemble mode=Update + optional 5_ BOM with dependsOnTabIds.
+Do not put legacy monolith 3_PlmDw_ImportFromDW.sql in executionPlan when tabs/*/3_ exist.
+APPLY BL rejects monolith when per-tab packages exist on disk. Assemble filters to successful data tabs only.',
+    N'+ 4_PlmDw_Assemble.json kind=dw-blueprint-assemble mode=Update (BL merges successful tab packages) + optional 5_ BOM with dependsOnTabIds.
+Do not claim a single full 4_PlmDw_ImportBlueprint.json Insert for all tabs. That file is now an Assemble shell alias (small); per-tab TX/fields are under tabs/*/4_TabBlueprint.json.
+Do not put legacy monolith 3_PlmDw_ImportFromDW.sql in executionPlan when tabs/*/3_ exist.
+APPLY BL rejects monolith when per-tab packages exist on disk. Assemble merges + filters to successful data tabs only.')
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt LIKE N'%4_ kind=dw-blueprint-assemble mode=Update + optional 5_ BOM%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(SystemPrompt,
+    N'Then one dw-blueprint-assemble step on 4_PlmDw_ImportBlueprint.json mode=Update.',
+    N'Then one dw-blueprint-assemble step on 4_PlmDw_Assemble.json mode=Update (compat: 4_PlmDw_ImportBlueprint.json same shell).')
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt LIKE N'%dw-blueprint-assemble step on 4_PlmDw_ImportBlueprint.json mode=Update.%';
 GO
 

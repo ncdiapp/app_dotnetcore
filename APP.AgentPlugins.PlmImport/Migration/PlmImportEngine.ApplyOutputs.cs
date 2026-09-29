@@ -96,7 +96,7 @@ namespace APP.AgentPlugins.PlmImport
                 result.Ok = false;
                 result.Executed = 0;
                 var hint = IsImportDwOutputsKey(key)
-                    ? " Re-run Phase B so run_agent_script writes 1_PlmDw_Tables.sql and 4_PlmDw_ImportBlueprint.json."
+                    ? " Re-run Phase B so run_agent_script writes 1_PlmDw_Tables.sql, tabs/*/4_TabBlueprint.json, and 4_PlmDw_Assemble.json."
                     : " Re-run Phase B so the child writes the Blueprint JSON under output/{id}/.";
                 result.Error = "Agent files not found under AgentOutput/" + context.ChatSessionKey
                     + "/: " + string.Join(", ", missing)
@@ -122,10 +122,53 @@ namespace APP.AgentPlugins.PlmImport
                 return result;
             }
 
+            if (IsImportDwOutputsKey(key))
+            {
+                var planError = ValidateImportDwExecutionPlan(context, steps);
+                if (!string.IsNullOrWhiteSpace(planError))
+                {
+                    result.Ok = false;
+                    result.Executed = 0;
+                    result.Error = planError;
+                    result.SessionId = resolvedSessionId;
+                    result.LogHint = "Fix Phase B executionPlan (use 0_ExecutionPlan.suggested.json).";
+                    PersistApplyResult(context, key, outputs, result, steps);
+                    return result;
+                }
+            }
+
+            int? templateIdFromPlan = TryParseTemplateIdFromSteps(steps);
+
             foreach (var step in steps.OrderBy(s => s.Order))
             {
+                // BOM / deferred steps: skip when required tab data failed.
+                if (step.DependsOnTabIds != null && step.DependsOnTabIds.Count > 0)
+                {
+                    var failedDeps = step.DependsOnTabIds
+                        .Where(tid => !WasTabDataSuccessful(result.Steps, tid))
+                        .ToList();
+                    if (failedDeps.Count > 0)
+                    {
+                        var skip = new AgentOutputApplyStepResult
+                        {
+                            Order = step.Order,
+                            Kind = step.Kind,
+                            Path = step.Path,
+                            Ok = false,
+                            ContinueOnError = true,
+                            TabId = step.TabId,
+                            Error = "Skipped: dependsOnTabIds failed data import: "
+                                + string.Join(",", failedDeps.Select(t => "Tab_" + t))
+                        };
+                        result.Steps.Add(skip);
+                        continue;
+                    }
+                }
+
                 var stepResult = RunOneStep(
-                    context, step, requiredIds, resolvedSaas, modeOverride, dwDataSourceId);
+                    context, step, requiredIds, resolvedSaas, modeOverride, dwDataSourceId, result.Steps, steps);
+                stepResult.ContinueOnError = step.ContinueOnError;
+                stepResult.TabId = step.TabId;
                 result.Steps.Add(stepResult);
 
                 if (logFixture != null && resolvedSessionId.HasValue && resolvedSessionId.Value > 0)
@@ -138,7 +181,7 @@ namespace APP.AgentPlugins.PlmImport
                             null,
                             applyStepCode,
                             step.Kind + ":" + step.Path,
-                            stepResult.Ok ? "Success" : "Failed",
+                            stepResult.Ok ? "Success" : (step.ContinueOnError ? "FailedOptional" : "Failed"),
                             step.Path,
                             step.Kind,
                             stepResult.Batches,
@@ -151,9 +194,27 @@ namespace APP.AgentPlugins.PlmImport
                     {
                         /* logging must not fail the apply */
                     }
+
+                    if (step.TabId.HasValue && templateIdFromPlan.HasValue)
+                    {
+                        try
+                        {
+                            string phase = IsBlueprintKind(step.Kind) ? "blueprint" : "data";
+                            UpsertDwTabImportStatus(
+                                logFixture,
+                                resolvedSessionId.Value,
+                                templateIdFromPlan.Value,
+                                step.TabId.Value,
+                                phase,
+                                stepResult.Ok ? "Ok" : "Failed",
+                                step.Path,
+                                stepResult.Ok ? null : stepResult.Error);
+                        }
+                        catch { /* best-effort */ }
+                    }
                 }
 
-                if (!stepResult.Ok)
+                if (!stepResult.Ok && !step.ContinueOnError)
                 {
                     result.Ok = false;
                     result.Error = "Stopped at order " + step.Order + " (" + step.Path + "): " + stepResult.Error;
@@ -161,16 +222,43 @@ namespace APP.AgentPlugins.PlmImport
                 }
             }
 
-            if (result.Steps.Count == steps.Count && result.Steps.All(s => s.Ok))
-                result.Ok = true;
+            var hardFailed = result.Steps.Where(s => !s.Ok && !s.ContinueOnError).ToList();
+            var optionalFailed = result.Steps.Where(s => !s.Ok && s.ContinueOnError).ToList();
+            result.Executed = result.Steps.Count;
 
-            result.Executed = result.Steps.Count(s => s.Ok);
+            if (hardFailed.Count > 0)
+            {
+                result.Ok = false;
+                if (string.IsNullOrWhiteSpace(result.Error))
+                {
+                    var first = hardFailed[0];
+                    result.Error = "Stopped at order " + first.Order + " (" + first.Path + "): " + first.Error;
+                }
+            }
+            else if (result.Steps.Count == steps.Count)
+            {
+                result.Ok = true;
+                if (optionalFailed.Count > 0)
+                {
+                    result.Error = "Partial success: " + optionalFailed.Count + " tab/data step(s) failed (continueOnError). "
+                        + string.Join("; ", optionalFailed.Select(s =>
+                            (s.TabId.HasValue ? "Tab_" + s.TabId.Value + " " : "") + s.Path + ": " + (s.Error ?? "failed")));
+                }
+            }
+            else
+            {
+                result.Ok = false;
+                if (string.IsNullOrWhiteSpace(result.Error))
+                    result.Error = "Apply incomplete: executed " + result.Steps.Count + " of " + steps.Count + " planned steps.";
+            }
+
             result.SessionId = resolvedSessionId;
             result.LogHint = resolvedSessionId.HasValue
                 ? "AppPlmImportLog StepCode=" + applyStepCode + " for sessionId=" + resolvedSessionId.Value
                 : "No sessionId; see AgentOutput apply-log.json and NLog.";
 
             PersistApplyResult(context, key, outputs, result, steps);
+            TryWriteTabImportStatus(context, steps, result);
             return result;
         }
 
@@ -180,7 +268,9 @@ namespace APP.AgentPlugins.PlmImport
             string requiredDataSourceIds,
             int? saasApplicationId,
             string modeOverride,
-            int? dwDataSourceId)
+            int? dwDataSourceId,
+            List<AgentOutputApplyStepResult> priorSteps,
+            List<AgentOutputPlanStep> planSteps)
         {
             var stepResult = new AgentOutputApplyStepResult
             {
@@ -214,20 +304,40 @@ namespace APP.AgentPlugins.PlmImport
                     return stepResult;
                 }
 
-                if (kind == "dw-blueprint")
+                if (kind == "dw-blueprint" || kind == "dw-blueprint-assemble")
                 {
                     var mode = !string.IsNullOrWhiteSpace(modeOverride)
                         ? modeOverride.Trim()
-                        : (string.IsNullOrWhiteSpace(step.Mode) ? "Insert" : step.Mode.Trim());
+                        : (string.IsNullOrWhiteSpace(step.Mode)
+                            ? (kind == "dw-blueprint-assemble" ? "Update" : "Insert")
+                            : step.Mode.Trim());
                     var json = AgentOutputPathReader.ReadText(context, step.Path);
+                    var blueprint = JsonConvert.DeserializeObject<PlmDwImportBlueprintDto>(json);
+                    if (kind == "dw-blueprint-assemble")
+                    {
+                        var okTabs = GetSuccessfulDataTabIds(priorSteps);
+                        blueprint = MergeAssembleShellWithTabPackages(
+                            context, blueprint, okTabs, planSteps, step.Path);
+                        blueprint = FilterBlueprintToTabIds(blueprint, okTabs);
+                        stepResult.Summary = "assemble tabs=" + string.Join(",", okTabs)
+                            + " mergedPackages=" + okTabs.Count;
+                    }
+
+                    bool includeSearch = step.IncludeSearchView
+                        ?? (kind == "dw-blueprint-assemble" || !step.TabId.HasValue);
+                    bool includeNav = step.IncludeNavigation
+                        ?? (kind == "dw-blueprint-assemble" || !step.TabId.HasValue);
+                    bool includeTg = step.IncludeTransactionGroup
+                        ?? (kind == "dw-blueprint-assemble" || !step.TabId.HasValue);
+
                     var request = new PlmDwBlueprintExecuteRequestDto
                     {
-                        Blueprint = JsonConvert.DeserializeObject<PlmDwImportBlueprintDto>(json),
+                        Blueprint = blueprint,
                         SaasApplicationId = saasApplicationId,
                         Mode = mode,
-                        IncludeSearchView = true,
-                        IncludeNavigation = true,
-                        IncludeTransactionGroup = true
+                        IncludeSearchView = includeSearch,
+                        IncludeNavigation = includeNav,
+                        IncludeTransactionGroup = includeTg
                     };
                     var exec = ExecuteDwBlueprintConfig(request);
                     var obj = exec?.Object;
@@ -235,11 +345,15 @@ namespace APP.AgentPlugins.PlmImport
                     stepResult.DurationMs = 0;
                     stepResult.Error = obj?.ErrorMessage
                         ?? exec?.ValidationResult?.Items?.FirstOrDefault()?.Message;
-                    stepResult.Summary = stepResult.Ok
+                    var summaryCore = stepResult.Ok
                         ? "txInserted=" + (obj?.TransactionsInserted ?? 0)
                           + " txUpdated=" + (obj?.TransactionsUpdated ?? 0)
                           + " searchId=" + obj?.SearchId
                         : null;
+                    if (!string.IsNullOrWhiteSpace(stepResult.Summary) && summaryCore != null)
+                        stepResult.Summary = stepResult.Summary + "; " + summaryCore;
+                    else if (summaryCore != null)
+                        stepResult.Summary = summaryCore;
                     stepResult.TransactionIds = obj?.TransactionIds;
                     return stepResult;
                 }
@@ -536,6 +650,17 @@ ORDER BY c.name";
                 return list;
             foreach (var item in arr.OfType<JObject>())
             {
+                var depends = new List<int>();
+                var depToken = item["dependsOnTabIds"] ?? item["DependsOnTabIds"];
+                if (depToken is JArray depArr)
+                {
+                    foreach (var d in depArr)
+                    {
+                        if (d != null && int.TryParse(d.ToString(), out int tid) && tid > 0)
+                            depends.Add(tid);
+                    }
+                }
+
                 list.Add(new AgentOutputPlanStep
                 {
                     Order = item.Value<int?>("order") ?? item.Value<int?>("Order") ?? 0,
@@ -543,10 +668,355 @@ ORDER BY c.name";
                     Path = item.Value<string>("path") ?? item.Value<string>("Path"),
                     Target = item.Value<string>("target") ?? item.Value<string>("Target"),
                     Mode = item.Value<string>("mode") ?? item.Value<string>("Mode"),
-                    Label = item.Value<string>("label") ?? item.Value<string>("Label")
+                    Label = item.Value<string>("label") ?? item.Value<string>("Label"),
+                    TabId = item.Value<int?>("tabId") ?? item.Value<int?>("TabId"),
+                    ContinueOnError = item.Value<bool?>("continueOnError")
+                        ?? item.Value<bool?>("ContinueOnError")
+                        ?? false,
+                    IncludeSearchView = item.Value<bool?>("includeSearchView")
+                        ?? item.Value<bool?>("IncludeSearchView"),
+                    IncludeNavigation = item.Value<bool?>("includeNavigation")
+                        ?? item.Value<bool?>("IncludeNavigation"),
+                    IncludeTransactionGroup = item.Value<bool?>("includeTransactionGroup")
+                        ?? item.Value<bool?>("IncludeTransactionGroup"),
+                    DependsOnTabIds = depends
                 });
             }
             return list;
+        }
+
+        private static bool IsBlueprintKind(string kind)
+        {
+            var k = (kind ?? "").Trim().ToLowerInvariant();
+            return k == "dw-blueprint" || k == "dw-blueprint-assemble";
+        }
+
+        private static int? TryParseTemplateIdFromSteps(List<AgentOutputPlanStep> steps)
+        {
+            foreach (var s in steps ?? Enumerable.Empty<AgentOutputPlanStep>())
+            {
+                var p = (s.Path ?? "").Replace('\\', '/');
+                var m = System.Text.RegularExpressions.Regex.Match(p, @"^output/(\d+)/", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (m.Success && int.TryParse(m.Groups[1].Value, out int id))
+                    return id;
+            }
+            return null;
+        }
+
+        private static string ValidateImportDwExecutionPlan(AgentToolContext context, List<AgentOutputPlanStep> steps)
+        {
+            if (steps == null || steps.Count == 0)
+                return "executionPlan is empty.";
+
+            bool hasPerTabData = steps.Any(s =>
+                (s.Path ?? "").Replace('\\', '/').IndexOf("/tabs/", StringComparison.OrdinalIgnoreCase) >= 0
+                && (s.Path ?? "").EndsWith("3_ImportFromDW.sql", StringComparison.OrdinalIgnoreCase));
+
+            bool hasRoot = steps.Any(s =>
+                (s.Path ?? "").Replace('\\', '/').EndsWith("3_00_Root_ImportFromDW.sql", StringComparison.OrdinalIgnoreCase));
+
+            bool hasMonolith = steps.Any(s =>
+            {
+                var p = (s.Path ?? "").Replace('\\', '/');
+                return p.EndsWith("3_PlmDw_ImportFromDW.sql", StringComparison.OrdinalIgnoreCase)
+                    && p.IndexOf("/tabs/", StringComparison.OrdinalIgnoreCase) < 0
+                    && p.IndexOf("3_00_Root", StringComparison.OrdinalIgnoreCase) < 0;
+            });
+
+            // If AgentOutput has any tabs/*/3_ package, plan must use per-tab path (not monolith).
+            string templateFolder = null;
+            foreach (var s in steps)
+            {
+                var p = (s.Path ?? "").Replace('\\', '/');
+                var m = System.Text.RegularExpressions.Regex.Match(p, @"^output/(\d+)/", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (m.Success) { templateFolder = m.Groups[1].Value; break; }
+            }
+            if (!string.IsNullOrWhiteSpace(templateFolder))
+            {
+                var tabsDir = GenericAgentFileBL.Resolve(
+                    context.ChatSessionKey, "output/" + templateFolder + "/tabs", context.CompanyId);
+                bool diskHasPerTab = Directory.Exists(tabsDir)
+                    && Directory.GetDirectories(tabsDir).Any(d =>
+                        File.Exists(Path.Combine(d, "3_ImportFromDW.sql")));
+                if (diskHasPerTab)
+                {
+                    if (hasMonolith)
+                        return "Invalid executionPlan: per-tab packages exist under output/"
+                            + templateFolder + "/tabs but plan still includes monolith 3_PlmDw_ImportFromDW.sql. "
+                            + "Copy output/" + templateFolder + "/0_ExecutionPlan.suggested.json instead.";
+                    if (!hasRoot)
+                        return "Invalid executionPlan: missing 3_00_Root_ImportFromDW.sql (required before per-tab data).";
+                    if (!hasPerTabData)
+                        return "Invalid executionPlan: output/" + templateFolder
+                            + "/tabs/*/3_ImportFromDW.sql exist but none are listed. Use 0_ExecutionPlan.suggested.json.";
+                }
+            }
+
+            return null;
+        }
+
+        private static bool WasTabDataSuccessful(List<AgentOutputApplyStepResult> prior, int tabId)
+        {
+            var dataSteps = (prior ?? new List<AgentOutputApplyStepResult>())
+                .Where(s => s.TabId == tabId
+                    && !IsBlueprintKind(s.Kind)
+                    && (s.Path ?? "").IndexOf("/tabs/", StringComparison.OrdinalIgnoreCase) >= 0)
+                .ToList();
+            if (dataSteps.Count == 0)
+                return true; // no data step for this tab in plan — don't block
+            return dataSteps.Any(s => s.Ok);
+        }
+
+        private static List<int> GetSuccessfulDataTabIds(List<AgentOutputApplyStepResult> prior)
+        {
+            return (prior ?? new List<AgentOutputApplyStepResult>())
+                .Where(s => s.Ok && s.TabId.HasValue
+                    && !IsBlueprintKind(s.Kind)
+                    && (s.Path ?? "").IndexOf("3_ImportFromDW.sql", StringComparison.OrdinalIgnoreCase) >= 0)
+                .Select(s => s.TabId.Value)
+                .Distinct()
+                .OrderBy(x => x)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Assemble shell (TG/Search/Nav + plmTabId&lt;=0) + successful tabs' 4_TabBlueprint packages.
+        /// </summary>
+        private static PlmDwImportBlueprintDto MergeAssembleShellWithTabPackages(
+            AgentToolContext context,
+            PlmDwImportBlueprintDto shell,
+            List<int> okTabIds,
+            List<AgentOutputPlanStep> planSteps,
+            string assemblePath)
+        {
+            if (shell == null)
+                return null;
+
+            shell.Transactions = shell.Transactions ?? new List<PlmDwBlueprintTransactionDto>();
+            shell.GridBindings = shell.GridBindings ?? new List<PlmDwBlueprintGridBindingDto>();
+            shell.BlueprintFields = shell.BlueprintFields ?? new List<PlmDwBlueprintFieldDto>();
+            shell.BomColorwayPivotBindings = shell.BomColorwayPivotBindings
+                ?? new List<PlmDwBlueprintBomColorwayPivotBindingDto>();
+            shell.TechPackGradeValuePivotBindings = shell.TechPackGradeValuePivotBindings
+                ?? new List<PlmDwBlueprintTechPackGradeValuePivotDto>();
+            shell.TechPackFitMeasurementPivotBindings = shell.TechPackFitMeasurementPivotBindings
+                ?? new List<PlmDwBlueprintTechPackFitMeasurementPivotDto>();
+            shell.TechPackSimpleQcPivotBindings = shell.TechPackSimpleQcPivotBindings
+                ?? new List<PlmDwBlueprintTechPackSimpleQcPivotDto>();
+            shell.TabSharedTableGroups = shell.TabSharedTableGroups
+                ?? new List<PlmDwBlueprintTabSharedTableGroupDto>();
+
+            string templateFolder = null;
+            var assembleNorm = (assemblePath ?? "").Replace('\\', '/');
+            var am = System.Text.RegularExpressions.Regex.Match(
+                assembleNorm, @"^output/(\d+)/", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            if (am.Success)
+                templateFolder = am.Groups[1].Value;
+            if (string.IsNullOrWhiteSpace(templateFolder))
+            {
+                foreach (var s in planSteps ?? new List<AgentOutputPlanStep>())
+                {
+                    var p = (s.Path ?? "").Replace('\\', '/');
+                    var m = System.Text.RegularExpressions.Regex.Match(
+                        p, @"^output/(\d+)/", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (m.Success) { templateFolder = m.Groups[1].Value; break; }
+                }
+            }
+
+            var txIds = new HashSet<string>(
+                shell.Transactions
+                    .Where(t => t != null && !string.IsNullOrWhiteSpace(t.IntegrationId))
+                    .Select(t => t.IntegrationId),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (var tabId in okTabIds ?? new List<int>())
+            {
+                string tabPath = null;
+                var planHit = (planSteps ?? new List<AgentOutputPlanStep>()).FirstOrDefault(s =>
+                    s.TabId == tabId
+                    && (s.Path ?? "").Replace('\\', '/').EndsWith(
+                        "4_TabBlueprint.json", StringComparison.OrdinalIgnoreCase));
+                if (planHit != null)
+                    tabPath = planHit.Path;
+                else if (!string.IsNullOrWhiteSpace(templateFolder))
+                    tabPath = "output/" + templateFolder + "/tabs/" + tabId + "/4_TabBlueprint.json";
+
+                if (string.IsNullOrWhiteSpace(tabPath))
+                    continue;
+
+                string tabJson;
+                try
+                {
+                    tabJson = AgentOutputPathReader.ReadText(context, tabPath);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                var tabBp = JsonConvert.DeserializeObject<PlmDwImportBlueprintDto>(tabJson);
+                if (tabBp == null)
+                    continue;
+
+                foreach (var t in tabBp.Transactions ?? Enumerable.Empty<PlmDwBlueprintTransactionDto>())
+                {
+                    if (t == null) continue;
+                    if (!string.IsNullOrWhiteSpace(t.IntegrationId) && !txIds.Add(t.IntegrationId))
+                        continue;
+                    shell.Transactions.Add(t);
+                }
+
+                foreach (var g in tabBp.GridBindings ?? Enumerable.Empty<PlmDwBlueprintGridBindingDto>())
+                {
+                    if (g != null)
+                        shell.GridBindings.Add(g);
+                }
+
+                foreach (var f in tabBp.BlueprintFields ?? Enumerable.Empty<PlmDwBlueprintFieldDto>())
+                {
+                    if (f != null)
+                        shell.BlueprintFields.Add(f);
+                }
+
+                foreach (var b in tabBp.BomColorwayPivotBindings
+                             ?? Enumerable.Empty<PlmDwBlueprintBomColorwayPivotBindingDto>())
+                {
+                    if (b != null)
+                        shell.BomColorwayPivotBindings.Add(b);
+                }
+
+                foreach (var b in tabBp.TechPackGradeValuePivotBindings
+                             ?? Enumerable.Empty<PlmDwBlueprintTechPackGradeValuePivotDto>())
+                {
+                    if (b != null)
+                        shell.TechPackGradeValuePivotBindings.Add(b);
+                }
+
+                foreach (var b in tabBp.TechPackFitMeasurementPivotBindings
+                             ?? Enumerable.Empty<PlmDwBlueprintTechPackFitMeasurementPivotDto>())
+                {
+                    if (b != null)
+                        shell.TechPackFitMeasurementPivotBindings.Add(b);
+                }
+
+                foreach (var b in tabBp.TechPackSimpleQcPivotBindings
+                             ?? Enumerable.Empty<PlmDwBlueprintTechPackSimpleQcPivotDto>())
+                {
+                    if (b != null)
+                        shell.TechPackSimpleQcPivotBindings.Add(b);
+                }
+
+                foreach (var g in tabBp.TabSharedTableGroups
+                             ?? Enumerable.Empty<PlmDwBlueprintTabSharedTableGroupDto>())
+                {
+                    if (g == null) continue;
+                    bool exists = shell.TabSharedTableGroups.Any(x =>
+                        x != null
+                        && x.PrimaryPlmTabId == g.PrimaryPlmTabId
+                        && string.Equals(x.SharedAppTableName, g.SharedAppTableName, StringComparison.OrdinalIgnoreCase));
+                    if (!exists)
+                        shell.TabSharedTableGroups.Add(g);
+                }
+            }
+
+            if (shell.Source == null)
+                shell.Source = new PlmDwBlueprintSourceDto();
+            shell.Source.ImportTabIds = (okTabIds ?? new List<int>()).OrderBy(x => x).ToList();
+
+            return shell;
+        }
+
+        private static PlmDwImportBlueprintDto FilterBlueprintToTabIds(
+            PlmDwImportBlueprintDto blueprint,
+            List<int> okTabIds)
+        {
+            if (blueprint == null)
+                return null;
+            var ok = new HashSet<int>(okTabIds ?? new List<int>());
+            // Always keep FitRound-style txs with plmTabId=0 if present when any tab ok; drop normal tabs not in ok.
+            blueprint.Transactions = (blueprint.Transactions ?? new List<PlmDwBlueprintTransactionDto>())
+                .Where(t => t != null && (t.PlmTabId <= 0 || ok.Contains(t.PlmTabId)))
+                .ToList();
+            var keepIntegration = new HashSet<string>(
+                blueprint.Transactions.Select(t => t.IntegrationId).Where(s => !string.IsNullOrWhiteSpace(s)),
+                StringComparer.OrdinalIgnoreCase);
+
+            blueprint.GridBindings = (blueprint.GridBindings ?? new List<PlmDwBlueprintGridBindingDto>())
+                .Where(g => g != null && (
+                    (g.ParentPlmTabId.HasValue && ok.Contains(g.ParentPlmTabId.Value))
+                    || (!string.IsNullOrWhiteSpace(g.TransactionIntegrationId)
+                        && keepIntegration.Contains(g.TransactionIntegrationId))))
+                .ToList();
+
+            if (blueprint.Source != null)
+                blueprint.Source.ImportTabIds = ok.OrderBy(x => x).ToList();
+
+            blueprint.BomColorwayPivotBindings = (blueprint.BomColorwayPivotBindings
+                    ?? new List<PlmDwBlueprintBomColorwayPivotBindingDto>())
+                .Where(b => b != null && ok.Contains(b.PlmTabId))
+                .ToList();
+
+            return blueprint;
+        }
+
+        private static void TryWriteTabImportStatus(
+            AgentToolContext context,
+            List<AgentOutputPlanStep> steps,
+            AgentOutputApplyResult result)
+        {
+            try
+            {
+                var tabSteps = steps
+                    .Where(s => s.TabId.HasValue || (s.Path != null && s.Path.IndexOf("/tabs/", StringComparison.OrdinalIgnoreCase) >= 0))
+                    .ToList();
+                if (tabSteps.Count == 0)
+                    return;
+
+                string templateFolder = null;
+                foreach (var s in steps)
+                {
+                    var p = (s.Path ?? "").Replace('\\', '/');
+                    var m = System.Text.RegularExpressions.Regex.Match(p, @"^output/(\d+)/", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (m.Success)
+                    {
+                        templateFolder = m.Groups[1].Value;
+                        break;
+                    }
+                }
+                if (string.IsNullOrWhiteSpace(templateFolder))
+                    return;
+
+                var rows = new List<object>();
+                foreach (var plan in tabSteps)
+                {
+                    var sr = result.Steps.FirstOrDefault(x => x.Order == plan.Order);
+                    rows.Add(new
+                    {
+                        tabId = plan.TabId,
+                        path = plan.Path,
+                        label = plan.Label,
+                        ok = sr?.Ok == true,
+                        error = sr?.Error,
+                        continueOnError = plan.ContinueOnError
+                    });
+                }
+
+                var payload = new
+                {
+                    generatedAt = DateTime.UtcNow.ToString("o"),
+                    applyOk = result.Ok,
+                    applyError = result.Error,
+                    tabs = rows
+                };
+                var rel = "output/" + templateFolder + "/tab-import-status.json";
+                var full = GenericAgentFileBL.Resolve(context.ChatSessionKey, rel, context.CompanyId);
+                Directory.CreateDirectory(Path.GetDirectoryName(full) ?? full);
+                File.WriteAllText(full, JsonConvert.SerializeObject(payload, Formatting.Indented));
+            }
+            catch
+            {
+                /* status file is best-effort */
+            }
         }
     }
 
@@ -558,6 +1028,12 @@ ORDER BY c.name";
         public string Target { get; set; }
         public string Mode { get; set; }
         public string Label { get; set; }
+        public int? TabId { get; set; }
+        public bool ContinueOnError { get; set; }
+        public bool? IncludeSearchView { get; set; }
+        public bool? IncludeNavigation { get; set; }
+        public bool? IncludeTransactionGroup { get; set; }
+        public List<int> DependsOnTabIds { get; set; } = new List<int>();
     }
 
     public sealed class AgentOutputApplyResult
@@ -585,5 +1061,7 @@ ORDER BY c.name";
         public List<int> TransactionIds { get; set; }
         public int? SearchId { get; set; }
         public int? SearchViewId { get; set; }
+        public int? TabId { get; set; }
+        public bool ContinueOnError { get; set; }
     }
 }

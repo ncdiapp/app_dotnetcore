@@ -256,7 +256,7 @@ On child ok=true: mark wizard step done|skipped accordingly (except **image** �
 - If approve: write `plm.integration.import-dw.plan` status=user-confirmed; then Phase B only:
   `call_agent("plm-integration-import-dw", "PHASE=B. Read inputs+plan. Generate output/{templateId}/. Write plm.integration.import-dw.outputs. Do not ask the user.")`
 - On Phase B success: **do not** write `doneIds` yet. Read `plm.integration.import-dw.outputs.executionPlan`.
-- **Phase B succeeded only if files exist on disk** (`output/{templateId}/1_PlmDw_Tables.sql` and `4_PlmDw_ImportBlueprint.json` via `file_list` / `validate_agent_outputs` SizeBytes). An `executionPlan` that lists paths is **not** success. Then show Apply. Do **not** show `[import-dw] Phase B Generation Error` for Grid physical-name / `Fabric_BOM_prod_10_Colorways` / APP name != DW segment. That mapping is required (shared APP table). A previous locked Apply button is stale - offer a new Apply card.
+- **Phase B succeeded only if files exist on disk** (`output/{templateId}/1_PlmDw_Tables.sql` and `4_PlmDw_Assemble.json` or compat `4_PlmDw_ImportBlueprint.json`, plus `tabs/*/3_` when suggested plan has them — via `file_list` / SizeBytes). Prefer showing APPLY overview from `0_ExecutionPlan.suggested.json.applyOverview` and Authoritative executionPlan path+stepCount. An `executionPlan` that lists paths is **not** success by itself. Then show Apply. Do **not** show `[import-dw] Phase B Generation Error` for Grid physical-name / `Fabric_BOM_prod_10_Colorways` / APP name != DW segment. That mapping is required (shared APP table). A previous locked Apply button is stale - offer a new Apply card.
 - Only Generation Error when those files are missing or `run_agent_script` failed.
 - `ask_user` `[import-dw] Apply generated outputs` — list each plan step (order, kind, path, label). Options: `Apply` | `Cancel`. Optional field/choice for Blueprint `mode` = Insert|Update|Repair (default Insert).
 - Apply: **HARD — next tool MUST be** `call_agent("plm-integration-import-dw", "PHASE=APPLY. Call apply_agent_output_plan once. Do not ask the user.")`. Forbidden before that result: write `doneIds`, show the repeatable menu, or say "imported successfully".
@@ -430,7 +430,7 @@ GO
 UPDATE dbo.AppAgentSkillSet
 SET SystemPrompt = SystemPrompt + N'
 ## HARD: import-dw Phase B vs Apply
-If file_list shows output/{templateId}/1_PlmDw_Tables.sql and 4_PlmDw_ImportBlueprint.json exist (SizeBytes), Phase B succeeded. executionPlan listing paths is not enough.
+If file_list shows output/{templateId}/1_PlmDw_Tables.sql and 4_PlmDw_Assemble.json (or compat 4_PlmDw_ImportBlueprint.json Assemble shell) exist (SizeBytes), Phase B succeeded. Prefer APPLY overview from 0_ExecutionPlan.suggested.json. executionPlan listing paths is not enough.
 Do NOT show [import-dw] Phase B Generation Error for Grid physical-name / Fabric_BOM_prod_10_Colorways / APP name != DW segment.
 That mapping is required (shared APP table). A locked previous Apply button is stale; offer a new Apply card when files exist.
 Only Generation Error when those files are missing or run_agent_script failed.
@@ -438,6 +438,14 @@ If the child says it failed while resolving a DW table name (Grid 3163 / Label a
 '
 WHERE SkillKey = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: import-dw Phase B vs Apply%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = REPLACE(SystemPrompt,
+    N'If file_list shows output/{templateId}/1_PlmDw_Tables.sql and 4_PlmDw_ImportBlueprint.json exist (SizeBytes), Phase B succeeded. executionPlan listing paths is not enough.',
+    N'If file_list shows output/{templateId}/1_PlmDw_Tables.sql and 4_PlmDw_Assemble.json (or compat 4_PlmDw_ImportBlueprint.json Assemble shell) exist (SizeBytes), Phase B succeeded. Prefer APPLY overview from 0_ExecutionPlan.suggested.json. executionPlan listing paths is not enough.')
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt LIKE N'%4_PlmDw_ImportBlueprint.json exist (SizeBytes), Phase B succeeded.%';
 GO
 
 UPDATE dbo.AppAgentSkillSet
@@ -580,6 +588,28 @@ When plm-integration-image PHASE=EXECUTE returns ok=true:
 '
 WHERE SkillKey = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: Image EXECUTE then force Folder PLACEMENT%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: import-dw per-tab APPLY partial success
+Valid APPLY when outputs.apply.ok=true AND executed==planned.
+Tab data steps may have steps[].ok=false when continueOnError=true; that is Partial success (Error text lists failed TabIds). Still append TemplateId to doneIds if blueprint step ok.
+Do NOT require every steps[].ok for import-dw when failed steps are continueOnError tab packages.
+If apply.Error starts with Partial success, show failed TabIds and offer Retry those tabs later; do not treat the whole Apply as hard failure.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: import-dw per-tab APPLY partial success%';
+GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: Retry failed Import DW tabs
+After import-dw APPLY with Partial success (or user asks to fix missing tab data): ask_user Retry failed tabs | Done.
+On Retry: call_agent plm-integration-import-dw PHASE=APPLY_TABS with templateId. Do not re-run full Phase B unless files missing.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: Retry failed Import DW tabs%';
 GO
 
 -- Prefer HARD gate text over soft "After image succeeds" bullets on older prompts

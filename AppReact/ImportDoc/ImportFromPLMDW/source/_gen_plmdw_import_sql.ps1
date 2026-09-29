@@ -2240,47 +2240,207 @@ GO
 $mappingPath = Join-Path $outDir '2_PlmDw_FieldMapping.sql'
 Set-Content -Path $mappingPath -Value $mappingSql -Encoding UTF8
 
-$importTemplate = Join-Path $PSScriptRoot 'PlmDw_ImportFromDW.sql'
-$importPath = Join-Path $outDir '3_PlmDw_ImportFromDW.sql'
-if (-not (Test-Path $importTemplate)) {
-    throw "Missing import template: $importTemplate"
+function Build-PlmDwImportSqlContent {
+    param(
+        [string[]]$ScopeAppTables,
+        [bool]$SkipRootInsert = $false,
+        [bool]$AllowEmptyTargets = $false,
+        [string]$ImportMode = 'APPEND'
+    )
+    $importTemplate = Join-Path $PSScriptRoot 'PlmDw_ImportFromDW.sql'
+    if (-not (Test-Path $importTemplate)) {
+        throw "Missing import template: $importTemplate"
+    }
+    $content = Get-Content $importTemplate -Raw
+    $content = $content -replace "DECLARE @DwDatabase\s+NVARCHAR\(128\)\s+= N'plmDW'", "DECLARE @DwDatabase        NVARCHAR(128) = N'$($config.dwDatabase)'"
+    $plmDbLocal = if ($config.plmDatabase) { $config.plmDatabase } else { 'PLM' }
+    $content = $content -replace "DECLARE @PlmDatabase\s+NVARCHAR\(128\)\s+= N'PLM'", "DECLARE @PlmDatabase       NVARCHAR(128) = N'$plmDbLocal'"
+    $tplIdLocal = if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) { [int]$config.plmTemplateId }
+        elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId -and [int]$config.plmTemplate.templateId -gt 0) { [int]$config.plmTemplate.templateId }
+        else { 'NULL' }
+    $content = $content -replace '(DECLARE @PlmTemplateId\s+INT\s+=\s*)NULL', "`${1}$tplIdLocal"
+    $mode = if ($ImportMode) { $ImportMode } else { 'APPEND' }
+    $content = $content -replace "DECLARE @ImportMode\s+NVARCHAR\(16\)\s+= N'APPEND'", "DECLARE @ImportMode        NVARCHAR(16)  = N'$mode'"
+    $skipBit = if ($SkipRootInsert) { '1' } else { '0' }
+    $emptyBit = if ($AllowEmptyTargets) { '1' } else { '0' }
+    $content = $content -replace '(DECLARE @SkipRootInsert\s+BIT\s+=\s*)0', "`${1}$skipBit"
+    $content = $content -replace '(DECLARE @AllowEmptyTargets\s+BIT\s+=\s*)0', "`${1}$emptyBit"
+    $scope = @($ScopeAppTables | Select-Object -Unique | Where-Object { $_ -and $_ -ne $config.rootTableSuffix })
+    if ($scope.Count -eq 0) {
+        # Root-only: keep a placeholder that matches nothing (AllowEmptyTargets=1).
+        $scopeInList = "N''__none__''"
+    }
+    else {
+        $scopeInList = ($scope | ForEach-Object { "N''@P@$_''" }) -join ', '
+    }
+    if ($content -notmatch '/\*<<SCOPE_APP_TABLES>>\*/') {
+        throw "Import template missing /*<<SCOPE_APP_TABLES>>*/ placeholder in #Targets filter."
+    }
+    $content = $content.Replace('/*<<SCOPE_APP_TABLES>>*/', $scopeInList)
+    $content = $content -replace '(?m)^--   1\. PlmDw_Tables\.sql', '--   1. 1_PlmDw_Tables.sql'
+    $content = $content -replace '(?m)^--   2\. PlmDw_FieldMapping\.sql', '--   2. 2_PlmDw_FieldMapping.sql'
+    $content = $content -replace '(?m)^--   3\. PlmDw_ImportFromDW\.sql', '--   3. 3_PlmDw_ImportFromDW.sql (or 3_00_Root / tabs/{tabId}/3_)'
+    return $content
 }
-$importContent = Get-Content $importTemplate -Raw
-$importContent = $importContent -replace "DECLARE @DwDatabase\s+NVARCHAR\(128\)\s+= N'plmDW'", "DECLARE @DwDatabase        NVARCHAR(128) = N'$($config.dwDatabase)'"
-$plmDb = if ($config.plmDatabase) { $config.plmDatabase } else { 'PLM' }
-$importContent = $importContent -replace "DECLARE @PlmDatabase\s+NVARCHAR\(128\)\s+= N'PLM'", "DECLARE @PlmDatabase       NVARCHAR(128) = N'$plmDb'"
-$tplId = if ($null -ne $config.plmTemplateId -and [int]$config.plmTemplateId -gt 0) { [int]$config.plmTemplateId }
-    elseif ($config.plmTemplate -and $null -ne $config.plmTemplate.templateId -and [int]$config.plmTemplate.templateId -gt 0) { [int]$config.plmTemplate.templateId }
-    else { 'NULL' }
-$importContent = $importContent -replace '(DECLARE @PlmTemplateId\s+INT\s+=\s*)NULL', "`${1}$tplId"
-# Restrict #Targets to this config's AppTables (same set as FieldMapping scoped DELETE).
-# Uses @P@ placeholder resolved at runtime via REPLACE(... @TablePrefix) in the SQL template.
+
+$importModeCfg = 'APPEND'
+if ($config.importMode) { $importModeCfg = [string]$config.importMode }
+elseif ($config.blueprint -and $config.blueprint.importMode) { $importModeCfg = [string]$config.blueprint.importMode }
+
 $scopeImportTables = @($scopeAppTables | Select-Object -Unique | Where-Object {
     $_ -and $_ -ne $config.rootTableSuffix
 })
 if ($scopeImportTables.Count -eq 0) {
     throw "No tab/grid AppTables in config scope for Step 3 import filter."
 }
-$scopeInList = ($scopeImportTables | ForEach-Object { "N''@P@$_''" }) -join ', '
-if ($importContent -notmatch '/\*<<SCOPE_APP_TABLES>>\*/') {
-    throw "Import template missing /*<<SCOPE_APP_TABLES>>*/ placeholder in #Targets filter."
+
+# Legacy monolith (compat / manual run): all tabs in one script.
+$importPath = Join-Path $outDir '3_PlmDw_ImportFromDW.sql'
+Set-Content -Path $importPath -Value (Build-PlmDwImportSqlContent -ScopeAppTables $scopeImportTables -SkipRootInsert:$false -AllowEmptyTargets:$false -ImportMode $importModeCfg) -Encoding UTF8
+
+# Shared root package: ReferenceBasicInfo only (run once before per-tab packages).
+$rootImportPath = Join-Path $outDir '3_00_Root_ImportFromDW.sql'
+Set-Content -Path $rootImportPath -Value (Build-PlmDwImportSqlContent -ScopeAppTables @() -SkipRootInsert:$false -AllowEmptyTargets:$true -ImportMode $importModeCfg) -Encoding UTF8
+Write-Host "Generated: $rootImportPath (ReferenceBasicInfo only)"
+
+# Per-tab data packages: fail one tab without blocking others at APPLY.
+$tabsOutDir = Join-Path $outDir 'tabs'
+if (-not (Test-Path $tabsOutDir)) { New-Item -ItemType Directory -Path $tabsOutDir -Force | Out-Null }
+$manifestTabs = New-Object System.Collections.Generic.List[object]
+$planSteps = New-Object System.Collections.Generic.List[object]
+$order = 1
+[void]$planSteps.Add([ordered]@{
+    order = $order; kind = 'sql'; path = "output/$templateId/1_PlmDw_Tables.sql"; target = 'app'; label = 'DDL tables'; continueOnError = $false
+}); $order++
+[void]$planSteps.Add([ordered]@{
+    order = $order; kind = 'sql'; path = "output/$templateId/2_PlmDw_FieldMapping.sql"; target = 'app'; label = 'FieldMapping'; continueOnError = $false
+}); $order++
+[void]$planSteps.Add([ordered]@{
+    order = $order; kind = 'sql'; path = "output/$templateId/3_00_Root_ImportFromDW.sql"; target = 'app'; label = 'Import ReferenceBasicInfo (shared)'; continueOnError = $false
+}); $order++
+
+# Shared APP table ownership: first Ready tab by sort owns data import for that appTable.
+$appTableOwner = @{}
+foreach ($tab in @($config.tabs | Sort-Object { if ($null -ne $_.tabSort) { $_.tabSort } else { 9999 } }, { [int]$_.tabId })) {
+    if (-not $tab -or -not $tab.appTable) { continue }
+    if (Test-TabSkippedNoDw $tab) { continue }
+    if ([string]$tab.importStatus -eq 'Skipped') { continue }
+    if ($tab.fx1SkipAppTable -eq $true -or $tab.fx1Fold -eq $true) { continue }
+    $tid0 = 0
+    if (-not [int]::TryParse("$($tab.tabId)", [ref]$tid0) -or $tid0 -le 0) { continue }
+    $app0 = [string]$tab.appTable
+    if (-not $appTableOwner.ContainsKey($app0)) { $appTableOwner[$app0] = $tid0 }
 }
-$importContent = $importContent.Replace('/*<<SCOPE_APP_TABLES>>*/', $scopeInList)
-# Annotate execution-order comments once (do not replace bare PlmDw_*.sql — that doubles prefixes).
-$importContent = $importContent -replace '(?m)^--   1\. PlmDw_Tables\.sql', '--   1. 1_PlmDw_Tables.sql'
-$importContent = $importContent -replace '(?m)^--   2\. PlmDw_FieldMapping\.sql', '--   2. 2_PlmDw_FieldMapping.sql'
-$importContent = $importContent -replace '(?m)^--   3\. PlmDw_ImportFromDW\.sql', '--   3. 3_PlmDw_ImportFromDW.sql'
-Set-Content -Path $importPath -Value $importContent -Encoding UTF8
+foreach ($g in @($config.grids)) {
+    if (-not $g -or -not $g.appTable) { continue }
+    $parent0 = 0
+    [void][int]::TryParse("$($g.parentPlmTabId)", [ref]$parent0)
+    if ($parent0 -le 0) { continue }
+    $gApp0 = [string]$g.appTable
+    if (-not $appTableOwner.ContainsKey($gApp0)) { $appTableOwner[$gApp0] = $parent0 }
+}
+
+foreach ($tab in @($config.tabs | Sort-Object { if ($null -ne $_.tabSort) { $_.tabSort } else { 9999 } }, { [int]$_.tabId })) {
+    if (-not $tab) { continue }
+    $tid = 0
+    if (-not [int]::TryParse("$($tab.tabId)", [ref]$tid) -or $tid -le 0) { continue }
+    $status = 'Ready'
+    $skipReason = $null
+    $relPath = $null
+    $tabKind = 'normal'
+    if (Test-TabSkippedNoDw $tab) {
+        $status = 'Skipped'
+        $skipReason = if ($tab.skipReason) { [string]$tab.skipReason } else { 'no DW table' }
+        $tabKind = 'skipNoDw'
+    }
+    elseif ([string]$tab.importStatus -eq 'Skipped') {
+        $status = 'Skipped'
+        $skipReason = if ($tab.skipReason) { [string]$tab.skipReason } else { 'importStatus=Skipped' }
+    }
+    elseif ($tab.fx1SkipAppTable -eq $true -or $tab.fx1SkipBlueprint -eq $true -or $tab.fx1Fold -eq $true) {
+        $status = 'Skipped'
+        $skipReason = 'FX1/Fit fold — deferred to 3b TechPack'
+        $tabKind = 'fitFold'
+    }
+    else {
+        $tabScope = New-Object System.Collections.Generic.List[string]
+        if ($tab.appTable) {
+            $app = [string]$tab.appTable
+            $owner = if ($appTableOwner.ContainsKey($app)) { [int]$appTableOwner[$app] } else { $tid }
+            if ($owner -eq $tid) { [void]$tabScope.Add($app) }
+            else { Write-Host "  Tab_$tid skips shared APP table $app (data owned by Tab_$owner)" }
+        }
+        foreach ($g in @($config.grids)) {
+            if (-not $g) { continue }
+            $parent = 0
+            [void][int]::TryParse("$($g.parentPlmTabId)", [ref]$parent)
+            if ($parent -eq $tid -and $g.appTable) {
+                $gApp = [string]$g.appTable
+                if ([int]$appTableOwner[$gApp] -eq $tid) { [void]$tabScope.Add($gApp) }
+            }
+        }
+        foreach ($bg in @($bomColorwayGrids)) {
+            if ($bg -and [int]$bg.plmTabId -eq $tid) { $tabKind = 'bomHost'; break }
+        }
+        $tabScopeArr = @($tabScope | Select-Object -Unique)
+        if ($tabScopeArr.Count -eq 0) {
+            $status = 'Skipped'
+            $skipReason = 'no APP tables in data scope (shared owner or empty)'
+        }
+        else {
+            $tabDir = Join-Path $tabsOutDir ([string]$tid)
+            if (-not (Test-Path $tabDir)) { New-Item -ItemType Directory -Path $tabDir -Force | Out-Null }
+            $tabImportPath = Join-Path $tabDir '3_ImportFromDW.sql'
+            Set-Content -Path $tabImportPath -Value (Build-PlmDwImportSqlContent -ScopeAppTables $tabScopeArr -SkipRootInsert:$true -AllowEmptyTargets:$false -ImportMode $importModeCfg) -Encoding UTF8
+            $relPath = "output/$templateId/tabs/$tid/3_ImportFromDW.sql"
+            [void]$planSteps.Add([ordered]@{
+                order = $order
+                kind = 'sql'
+                path = $relPath
+                target = 'app'
+                label = "Import data Tab_$tid $($tab.plmTabName)"
+                tabId = $tid
+                continueOnError = $true
+            })
+            $order++
+            Write-Host "Generated: $tabImportPath (tables: $($tabScopeArr -join ', '))"
+        }
+    }
+    [void]$manifestTabs.Add([ordered]@{
+        tabId = $tid
+        plmTabName = [string]$tab.plmTabName
+        tabSort = if ($null -ne $tab.tabSort) { [int]$tab.tabSort } else { $null }
+        appTable = [string]$tab.appTable
+        dwTable = [string]$tab.dwTable
+        isTemplateHeaderTab = [bool]$tab.isTemplateHeaderTab
+        kind = $tabKind
+        packageStatus = $status
+        skipReason = $skipReason
+        importPath = $relPath
+        applyStatus = 'Pending'
+    })
+}
 
 $tchpImportPath = Generate-TchpImportSqlFile $config $outDir
 if ($tchpImportPath) {
     Write-Host "Generated: $tchpImportPath"
+    $tchpRel = "output/$templateId/$(Split-Path $tchpImportPath -Leaf)"
+    [void]$planSteps.Add([ordered]@{
+        order = $order; kind = 'sql'; path = $tchpRel; target = 'app'; label = 'TechPack Tchp import'; continueOnError = $false
+    }); $order++
 }
 
 $simpleQcImportPath = Generate-SimpleQcImportSqlFile $config $outDir
 if ($simpleQcImportPath) {
     Write-Host "Generated: $simpleQcImportPath"
+    $sqcRel = "output/$templateId/$(Split-Path $simpleQcImportPath -Leaf)"
+    [void]$planSteps.Add([ordered]@{
+        order = $order; kind = 'sql'; path = $sqcRel; target = 'app'; label = 'Simple QC import'; continueOnError = $false
+    }); $order++
 }
+
+# Blueprint + Assemble after data; per-tab TX blueprints before assemble.
+# $order continues from data/techpack steps above.
 
 if (-not $config.blueprint) {
     $config | Add-Member -NotePropertyName blueprint -NotePropertyValue ([ordered]@{
@@ -2320,11 +2480,235 @@ Write-Host "Loading PLM pdmTabLayoutSubitem (Tab Design layer)..."
 $layoutSubItemSet = Get-PlmTabLayoutSubItemSet $tabIdsForExtra
 Write-Host "  Tab layout sub-item placements: $($layoutSubItemSet.Count)"
 $blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet $childTabIds $bomColorwayPivotBindings
-$blueprintPath = Join-Path $outDir '4_PlmDw_ImportBlueprint.json'
-$blueprintJsonPretty = Fix-BomColorwayBindingsJsonArray ($blueprintObj | ConvertTo-Json -Depth 20)
-$blueprintJsonPretty | Set-Content -Path $blueprintPath -Encoding UTF8
+# Full blueprint stays in memory only. Disk: per-tab fragments + Assemble shell (no duplicate TX/fields).
+
+# Per-tab blueprint fragments (TX + fields; no Search/Nav — those are Assemble shell).
+function New-TabBlueprintObject($fullBp, [int]$TabId) {
+    $tx = @($fullBp.transactions | Where-Object { $_ -and [int]$_.plmTabId -eq $TabId })
+    if ($tx.Count -eq 0) { return $null }
+    $keepIds = @($tx | ForEach-Object { [string]$_.integrationId })
+    $grids = @($fullBp.gridBindings | Where-Object {
+        $_ -and (
+            ($null -ne $_.parentPlmTabId -and [int]$_.parentPlmTabId -eq $TabId) -or
+            ($_.transactionIntegrationId -and $keepIds -contains [string]$_.transactionIntegrationId)
+        )
+    })
+    $tables = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($t in $tx) {
+        if ($t.unitStructure -and $t.unitStructure.siblingUnits) {
+            foreach ($s in @($t.unitStructure.siblingUnits)) { if ($s.appTableName) { [void]$tables.Add([string]$s.appTableName) } }
+        }
+        if ($t.unitStructure -and $t.unitStructure.childUnits) {
+            foreach ($c in @($t.unitStructure.childUnits)) { if ($c.appTableName) { [void]$tables.Add([string]$c.appTableName) } }
+        }
+    }
+    foreach ($g in $grids) { if ($g.appTableName) { [void]$tables.Add([string]$g.appTableName) } }
+    $fields = @($fullBp.blueprintFields | Where-Object {
+        $_ -and (
+            ($_.plmTabIds -and (@($_.plmTabIds) -contains $TabId)) -or
+            ($_.appTableName -and $tables.Contains([string]$_.appTableName))
+        )
+    })
+    $bom = @($fullBp.bomColorwayPivotBindings | Where-Object { $_ -and [int]$_.plmTabId -eq $TabId })
+    return [ordered]@{
+        schemaVersion = 1
+        generatedAt = $fullBp.generatedAt
+        source = [ordered]@{
+            plmTemplateId = $fullBp.source.plmTemplateId
+            plmDatabase = $fullBp.source.plmDatabase
+            dwDatabase = $fullBp.source.dwDatabase
+            importTabIds = @($TabId)
+            tablePrefix = $fullBp.source.tablePrefix
+            configFile = $fullBp.source.configFile
+            outputFolder = $fullBp.source.outputFolder
+            tabPackage = $true
+        }
+        plmTemplate = $fullBp.plmTemplate
+        transactionGroup = $fullBp.transactionGroup
+        rootUnit = $fullBp.rootUnit
+        tabSharedTableGroups = @($fullBp.tabSharedTableGroups | Where-Object {
+            $_ -and ([int]$_.primaryPlmTabId -eq $TabId -or (@($_.secondaryPlmTabIds) -contains $TabId))
+        })
+        transactions = $tx
+        gridBindings = $grids
+        bomColorwayPivotBindings = Get-JsonArrayForSerialize $bom
+        techPackGradeValuePivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackGradeValuePivotBindings | Where-Object { $_ -and [int]$_.plmTabId -eq $TabId })
+        techPackFitMeasurementPivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackFitMeasurementPivotBindings | Where-Object { $_ -and [int]$_.plmTabId -eq $TabId })
+        techPackSimpleQcPivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackSimpleQcPivotBindings | Where-Object { $_ -and [int]$_.plmTabId -eq $TabId })
+        blueprintFields = $fields
+        searchView = $null
+        navigation = $null
+    }
+}
+
+# Assemble shell: TG + Search/Nav + special (plmTabId<=0) only — APPLY merges successful tab packages.
+function New-AssembleShellObject($fullBp) {
+    $specialTx = @($fullBp.transactions | Where-Object { $_ -and [int]$_.plmTabId -le 0 })
+    $keepIds = @($specialTx | ForEach-Object { [string]$_.integrationId })
+    $specialGrids = @($fullBp.gridBindings | Where-Object {
+        $_ -and $_.transactionIntegrationId -and $keepIds -contains [string]$_.transactionIntegrationId
+    })
+    $tables = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
+    foreach ($t in $specialTx) {
+        if ($t.unitStructure -and $t.unitStructure.siblingUnits) {
+            foreach ($s in @($t.unitStructure.siblingUnits)) { if ($s.appTableName) { [void]$tables.Add([string]$s.appTableName) } }
+        }
+        if ($t.unitStructure -and $t.unitStructure.childUnits) {
+            foreach ($c in @($t.unitStructure.childUnits)) { if ($c.appTableName) { [void]$tables.Add([string]$c.appTableName) } }
+        }
+    }
+    foreach ($g in $specialGrids) { if ($g.appTableName) { [void]$tables.Add([string]$g.appTableName) } }
+    $specialFields = @($fullBp.blueprintFields | Where-Object {
+        $_ -and $_.appTableName -and $tables.Contains([string]$_.appTableName)
+    })
+    return [ordered]@{
+        schemaVersion = 1
+        generatedAt = $fullBp.generatedAt
+        source = [ordered]@{
+            plmTemplateId = $fullBp.source.plmTemplateId
+            plmDatabase = $fullBp.source.plmDatabase
+            dwDatabase = $fullBp.source.dwDatabase
+            importTabIds = @()
+            tablePrefix = $fullBp.source.tablePrefix
+            configFile = $fullBp.source.configFile
+            outputFolder = $fullBp.source.outputFolder
+            assembleShell = $true
+        }
+        plmTemplate = $fullBp.plmTemplate
+        transactionGroup = $fullBp.transactionGroup
+        rootUnit = $fullBp.rootUnit
+        tabSharedTableGroups = @($fullBp.tabSharedTableGroups)
+        transactions = $specialTx
+        gridBindings = $specialGrids
+        bomColorwayPivotBindings = Get-JsonArrayForSerialize @()
+        techPackGradeValuePivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackGradeValuePivotBindings | Where-Object { $_ -and [int]$_.plmTabId -le 0 })
+        techPackFitMeasurementPivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackFitMeasurementPivotBindings | Where-Object { $_ -and [int]$_.plmTabId -le 0 })
+        techPackSimpleQcPivotBindings = Get-JsonArrayForSerialize @($fullBp.techPackSimpleQcPivotBindings | Where-Object { $_ -and [int]$_.plmTabId -le 0 })
+        blueprintFields = $specialFields
+        searchView = $fullBp.searchView
+        navigation = $fullBp.navigation
+    }
+}
+
+$bomHostTabIds = @()
+$tabBlueprintCount = 0
+foreach ($m in $manifestTabs) {
+    if ($m.packageStatus -ne 'Ready' -or -not $m.importPath) { continue }
+    $tid = [int]$m.tabId
+    $tabBp = New-TabBlueprintObject $blueprintObj $tid
+    if (-not $tabBp) { continue }
+    $tabDir = Join-Path $tabsOutDir ([string]$tid)
+    if (-not (Test-Path $tabDir)) { New-Item -ItemType Directory -Path $tabDir -Force | Out-Null }
+    $tabBpPath = Join-Path $tabDir '4_TabBlueprint.json'
+    (Fix-BomColorwayBindingsJsonArray ($tabBp | ConvertTo-Json -Depth 20)) | Set-Content -Path $tabBpPath -Encoding UTF8
+    [void]$planSteps.Add([ordered]@{
+        order = $order
+        kind = 'dw-blueprint'
+        path = "output/$templateId/tabs/$tid/4_TabBlueprint.json"
+        mode = 'Insert'
+        label = "Create TX Tab_$tid $($m.plmTabName)"
+        tabId = $tid
+        continueOnError = $true
+        includeSearchView = $false
+        includeNavigation = $false
+        includeTransactionGroup = $true
+    })
+    $order++
+    $tabBlueprintCount++
+    Write-Host "Generated: $tabBpPath"
+    if ($m.kind -eq 'bomHost') { $bomHostTabIds += $tid }
+}
+
+$assembleObj = New-AssembleShellObject $blueprintObj
+$assemblePath = Join-Path $outDir '4_PlmDw_Assemble.json'
+$assembleJson = Fix-BomColorwayBindingsJsonArray ($assembleObj | ConvertTo-Json -Depth 20)
+$assembleJson | Set-Content -Path $assemblePath -Encoding UTF8
+# Compat alias: same Assemble shell (small). Do not write the old full monolith JSON.
+$compatBlueprintPath = Join-Path $outDir '4_PlmDw_ImportBlueprint.json'
+$assembleJson | Set-Content -Path $compatBlueprintPath -Encoding UTF8
+Write-Host "Generated: $assemblePath (Assemble shell; TG+Search/Nav; no per-tab TX/fields)"
+Write-Host "Generated: $compatBlueprintPath (compat alias = Assemble shell)"
+
+[void]$planSteps.Add([ordered]@{
+    order = $order
+    kind = 'dw-blueprint-assemble'
+    path = "output/$templateId/4_PlmDw_Assemble.json"
+    mode = 'Update'
+    label = 'Assemble TG + Search/Nav (merge successful tab packages)'
+    continueOnError = $false
+    includeSearchView = $true
+    includeNavigation = $true
+    includeTransactionGroup = $true
+})
+$order++
 
 Generate-BomColorwaySqlFiles $bomColorwayGrids $config $templateId $outDir
+if ($bomColorwayGrids.Count -gt 0) {
+    $bomRel = "output/$templateId/5_PlmDw_ImportBomColorwayGrandchild.sql"
+    [void]$planSteps.Add([ordered]@{
+        order = $order
+        kind = 'sql'
+        path = $bomRel
+        target = 'app'
+        label = 'BOM colorway grandchild import'
+        continueOnError = $true
+        dependsOnTabIds = @($bomHostTabIds | Select-Object -Unique)
+    })
+    $order++
+}
+
+$manifest = [ordered]@{
+    schemaVersion = 1
+    plmTemplateId = [int]$templateId
+    generatedAt = (Get-Date).ToUniversalTime().ToString('o')
+    importMode = $importModeCfg
+    rootImportPath = "output/$templateId/3_00_Root_ImportFromDW.sql"
+    legacyMonolithImportPath = "output/$templateId/3_PlmDw_ImportFromDW.sql"
+    note = 'APPLY: 3_00_Root -> tabs/*/3_ data (continueOnError) -> tabs/*/4_TabBlueprint (continueOnError) -> 4_PlmDw_Assemble.json (merge ok tabs + Search/Nav) -> optional 5_ BOM. Legacy 3_ monolith is manual only. Full TX/fields live only under tabs/*.',
+    sharedAppTableOwners = @($appTableOwner.GetEnumerator() | ForEach-Object { [ordered]@{ appTable = $_.Key; ownerTabId = $_.Value } }),
+    tabs = @($manifestTabs.ToArray())
+}
+$manifestPath = Join-Path $outDir '0_TabManifest.json'
+($manifest | ConvertTo-Json -Depth 8) | Set-Content -Path $manifestPath -Encoding UTF8
+Write-Host "Generated: $manifestPath ($($manifestTabs.Count) tab(s))"
+
+$readyTabCount = @($manifestTabs | Where-Object { $_.packageStatus -eq 'Ready' -and $_.importPath }).Count
+$suggestedPlan = [ordered]@{
+    schemaVersion = 1
+    templateId = [int]$templateId
+    note = 'Phase B child: copy executionPlan into plm.integration.import-dw.outputs. In chat use applyOverview (summary) and say Authoritative executionPlan = this file.'
+    applyOverview = [ordered]@{
+        title = 'APPLY overview'
+        sharedOnce = @(
+            [ordered]@{ file = "output/$templateId/1_PlmDw_Tables.sql"; role = 'DDL' }
+            [ordered]@{ file = "output/$templateId/2_PlmDw_FieldMapping.sql"; role = 'FieldMapping' }
+            [ordered]@{ file = "output/$templateId/3_00_Root_ImportFromDW.sql"; role = 'Root data' }
+        )
+        perTabPackages = [ordered]@{
+            readyTabCount = $readyTabCount
+            tabBlueprintCount = $tabBlueprintCount
+            dataPattern = "output/$templateId/tabs/{tabId}/3_ImportFromDW.sql"
+            blueprintPattern = "output/$templateId/tabs/{tabId}/4_TabBlueprint.json"
+            continueOnError = $true
+        }
+        assembleOnce = [ordered]@{
+            file = "output/$templateId/4_PlmDw_Assemble.json"
+            kind = 'dw-blueprint-assemble'
+            mode = 'Update'
+            role = 'TG + Search/Nav; BL merges successful tab packages at APPLY'
+            compatAlias = "output/$templateId/4_PlmDw_ImportBlueprint.json"
+        }
+        optionalBom = if ($bomColorwayGrids.Count -gt 0) {
+            [ordered]@{ file = "output/$templateId/5_PlmDw_ImportBomColorwayGrandchild.sql"; dependsOn = 'bomHost tabs' }
+        } else { $null }
+        authoritativePlan = "output/$templateId/0_ExecutionPlan.suggested.json"
+        stepCount = $planSteps.Count
+    }
+    executionPlan = @($planSteps.ToArray())
+}
+$planPath = Join-Path $outDir '0_ExecutionPlan.suggested.json'
+($suggestedPlan | ConvertTo-Json -Depth 8) | Set-Content -Path $planPath -Encoding UTF8
+Write-Host "Generated: $planPath ($($planSteps.Count) step(s))"
 
 # Remove legacy unnumbered deliverables from prior generator runs
 @(
@@ -2341,8 +2725,9 @@ Generate-BomColorwaySqlFiles $bomColorwayGrids $config $templateId $outDir
 Write-Host "Output folder: $outDir"
 Write-Host "Generated: $tablesPath"
 Write-Host "Generated: $mappingPath ($($allFieldRows.Count) mappings)"
-Write-Host "Generated: $blueprintPath"
-Write-Host "Generated: $importPath"
+Write-Host "Generated: $assemblePath + tabs/*/4_TabBlueprint.json (preferred APPLY path)"
+Write-Host "Generated: $importPath (legacy monolith)"
+Write-Host "Generated: $rootImportPath + tabs/*/3_ImportFromDW.sql (preferred APPLY path)"
 if ($bomColorwayGrids.Count -gt 0) {
     Write-Host "Generated: $(Join-Path $outDir '5_PlmDw_ImportBomColorwayGrandchild.sql')"
 }

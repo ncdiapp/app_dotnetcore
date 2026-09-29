@@ -38,7 +38,8 @@ namespace App.BL.CursorCloudAgent
                 { "1_PlmDw_Tables.sql", 400 * 1024L },
                 { "2_PlmDw_FieldMapping.sql", 100 * 1024L },
                 { "3_PlmDw_ImportFromDW.sql", 12 * 1024L },
-                { "4_PlmDw_ImportBlueprint.json", 500 * 1024L },
+                { "4_PlmDw_Assemble.json", 2 * 1024L },
+                { "4_PlmDw_ImportBlueprint.json", 2 * 1024L },
                 { "5_PlmDw_ImportBomColorwayGrandchild.sql", 40 * 1024L }
             };
 
@@ -153,21 +154,41 @@ namespace App.BL.CursorCloudAgent
                     }
                 }
 
-                if (kv.Key.Equals("4_PlmDw_ImportBlueprint.json", StringComparison.OrdinalIgnoreCase))
+                if (kv.Key.Equals("4_PlmDw_Assemble.json", StringComparison.OrdinalIgnoreCase)
+                    || kv.Key.Equals("4_PlmDw_ImportBlueprint.json", StringComparison.OrdinalIgnoreCase))
                 {
                     try
                     {
                         var content = CursorCloudAgentWorkspaceBL.ReadFile(
                             live.WorkspaceRelativePath, hit.RelativePath, live.CompanyId);
                         var jo = JObject.Parse(content.Content ?? "{}");
-                        var fields = jo["blueprintFields"] as JArray;
+                        // Assemble shell has Search/Nav; per-tab TX/fields live under tabs/*/4_TabBlueprint.json.
+                        var hasSearch = jo["searchView"] != null || jo["SearchView"] != null;
+                        var assembleFlag = jo["source"]?["assembleShell"]?.Value<bool?>() == true
+                            || jo["Source"]?["AssembleShell"]?.Value<bool?>() == true;
+                        var fields = jo["blueprintFields"] as JArray ?? jo["BlueprintFields"] as JArray;
                         var n = fields?.Count ?? 0;
-                        if (n < 200)
+                        // Legacy full monolith still has hundreds of fields; shell may have few.
+                        if (!assembleFlag && !hasSearch && n < 200)
                         {
                             result.Ok = false;
                             result.Errors.Add(hit.RelativePath
-                                + " missing full blueprintFields (found " + n
-                                + "; need hundreds/thousands from official generator).");
+                                + " missing Assemble shell (searchView) or full blueprintFields (found " + n
+                                + "). Re-run official generator.");
+                        }
+                        else if (templateId != null && assembleFlag)
+                        {
+                            var tabBpCount = files.Count(f =>
+                                !f.IsDirectory
+                                && (f.RelativePath ?? "").Replace('\\', '/')
+                                    .IndexOf("output/" + templateId + "/tabs/", StringComparison.OrdinalIgnoreCase) >= 0
+                                && (f.RelativePath ?? "").EndsWith("4_TabBlueprint.json", StringComparison.OrdinalIgnoreCase));
+                            if (tabBpCount < 1)
+                            {
+                                result.Ok = false;
+                                result.Errors.Add("Assemble shell present but no tabs/*/4_TabBlueprint.json under output/"
+                                    + templateId + "/tabs.");
+                            }
                         }
                     }
                     catch (Exception ex)
