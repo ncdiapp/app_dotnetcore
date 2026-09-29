@@ -169,7 +169,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
     const transactionId = paramObj.id ? Number(paramObj.id) : null;
     const rootPrimaryKeyValue = paramObj.param1 ?? null;
 
-    const param2Obj = (() => {
+    const param2Obj = useMemo(() => {
         if (!paramObj.param2) return {};
         if (typeof paramObj.param2 === 'string') {
             try {
@@ -179,7 +179,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
             }
         }
         return paramObj.param2;
-    })();
+    }, [paramObj.param2]);
 
     // Controller model state
     const [controllerModel, setControllerModel] = useState<any>({
@@ -213,14 +213,29 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
     // Keep controllerModel identity in sync with the live transaction so toolbar actions
     // (Configuration, Edit Workflow, Print, URL Link) target the CURRENTLY selected transaction,
     // not the first one. In a transaction form group the embedded <FormMasterDetail> instance is
-    // reused (no key) when switching sidebar items, so transactionId/rootPrimaryKeyValue change via
-    // props without a remount and controllerModel would otherwise stay pinned to the first one.
+    // reused (no key) when switching sidebar items, so transactionId/rootPrimaryKeyValue/param2
+    // change via props without a remount — stale param2Obj would otherwise leave a template-header
+    // form showing its own FormMainMenus (duplicate MENU BAR with the main form).
     useEffect(() => {
         setControllerModel((prev: any) => {
-            if (
+            const nextIsTemplateHeader = Boolean(param2Obj?.isTemplateHeader);
+            const nextIsPreview = Boolean(param2Obj?.isPreview);
+            const nextIsPrint = Boolean(param2Obj?.isPrint);
+            const nextIsFilePropertyEdit = Boolean(param2Obj?.isFilePropertyEdit);
+            const nextTemplateHeaderName = param2Obj?.TemplateHeaderName || '';
+            const nextAutoCmd = param2Obj?.opennedFormAutoExecuteCommandId || null;
+            const sameIdentity =
                 prev?.transactionId === transactionId &&
-                prev?.rootPrimaryKeyValue === rootPrimaryKeyValue
-            ) {
+                prev?.rootPrimaryKeyValue === rootPrimaryKeyValue;
+            const sameParam2Role =
+                prev?.isTemplateHeader === nextIsTemplateHeader &&
+                prev?.isPreview === nextIsPreview &&
+                prev?.isPrint === nextIsPrint &&
+                prev?.isFilePropertyEdit === nextIsFilePropertyEdit &&
+                prev?.TemplateHeaderName === nextTemplateHeaderName &&
+                prev?.opennedFormAutoExecuteCommandId === nextAutoCmd &&
+                prev?.param2Obj === param2Obj;
+            if (sameIdentity && sameParam2Role) {
                 return prev;
             }
             return {
@@ -228,9 +243,20 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                 transactionId,
                 rootPrimaryKeyValue,
                 formRequestMode: rootPrimaryKeyValue ? 'Edit' : 'New',
+                param2Obj,
+                isPreview: nextIsPreview,
+                isPrint: nextIsPrint,
+                isConfigTestRun: nextIsPreview,
+                isFormImportTemplate: Boolean(param2Obj?.isFormImportTemplate),
+                isFilePropertyEdit: nextIsFilePropertyEdit,
+                opennedFormAutoExecuteCommandId: nextAutoCmd,
+                isTemplateHeader: nextIsTemplateHeader,
+                TemplateHeaderName: nextTemplateHeaderName,
+                isNeedExecuteDataloadOnOpenNewForm: param2Obj?.isNeedExecuteDataloadOnOpenNewForm !== false,
+                isNeedPreSaveNewFormData: Boolean(param2Obj?.isNeedPreSaveNewFormData),
             };
         });
-    }, [transactionId, rootPrimaryKeyValue]);
+    }, [transactionId, rootPrimaryKeyValue, param2Obj]);
 
     // Template header forms follow the main form's "Enable Field Setting Buttons" toggle.
     useEffect(() => {
@@ -827,9 +853,13 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
     useEffect(() => {
         const tabKey = getCurrentActiveTab()?.tabKey || null;
         const isEmbeddedForm = isEmbedded || !!param2Obj?.isEmbeddedByOtherPage;
+        // Template-header role must be part of the cache key: the same transaction/pk is often
+        // loaded once as main (menu visible) and once as template header (menu hidden). Sharing
+        // one cache entry overwrites isHideHeaderAndFooter / isTemplateHeader and duplicates MENU BAR.
+        const formRole = param2Obj?.isTemplateHeader || param2Obj?.isHideHeaderAndFooter ? 'hdr' : 'main';
         const dataModelKey = tabKey
             ? (isEmbeddedForm
-                ? `${tabKey}|form|${transactionId ?? ''}|${rootPrimaryKeyValue ?? ''}`
+                ? `${tabKey}|form|${formRole}|${transactionId ?? ''}|${rootPrimaryKeyValue ?? ''}`
                 : tabKey)
             : null;
 
@@ -839,7 +869,19 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
                 // Only use cache if it's for the same transactionId and rootPrimaryKeyValue
                 if (cachedDataModel.controllerModel?.transactionId === transactionId &&
                     cachedDataModel.controllerModel?.rootPrimaryKeyValue === rootPrimaryKeyValue) {
-                    setControllerModel(cachedDataModel.controllerModel);
+                    // Always overlay live param2 role flags — never trust cached toolbar visibility.
+                    setControllerModel({
+                        ...cachedDataModel.controllerModel,
+                        param2Obj,
+                        isPreview: Boolean(param2Obj?.isPreview),
+                        isPrint: Boolean(param2Obj?.isPrint),
+                        isConfigTestRun: Boolean(param2Obj?.isPreview),
+                        isFormImportTemplate: Boolean(param2Obj?.isFormImportTemplate),
+                        isFilePropertyEdit: Boolean(param2Obj?.isFilePropertyEdit),
+                        opennedFormAutoExecuteCommandId: param2Obj?.opennedFormAutoExecuteCommandId || null,
+                        isTemplateHeader: Boolean(param2Obj?.isTemplateHeader),
+                        TemplateHeaderName: param2Obj?.TemplateHeaderName || '',
+                    });
                     setDataModel(cachedDataModel.dataModel);
                     formStructureDataRef.current = cachedDataModel.formStructureData;
                     // Restore transactionExDto from cache if available
@@ -865,7 +907,7 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
         // Load from server (will use transactionExDtoRef if already loaded)
         loadDataFromServer();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [transactionId, rootPrimaryKeyValue, isEmbedded, param2Obj?.isEmbeddedByOtherPage]);
+    }, [transactionId, rootPrimaryKeyValue, isEmbedded, param2Obj?.isEmbeddedByOtherPage, param2Obj?.isTemplateHeader, param2Obj?.isHideHeaderAndFooter]);
 
     // Snapshot for tab cache — keep reactive so useTabDataAutoCache sees field edits.
     const formCachePayload = useMemo(() => {
@@ -892,10 +934,11 @@ const FormMasterDetail: React.FC<FormMasterDetailProps> = ({
         if (!tabKey || !transactionId) return undefined;
         const isEmbeddedForm = isEmbedded || !!param2Obj?.isEmbeddedByOtherPage;
         if (isEmbeddedForm) {
-            return `${tabKey}|form|${transactionId}|${rootPrimaryKeyValue ?? ''}`;
+            const formRole = param2Obj?.isTemplateHeader || param2Obj?.isHideHeaderAndFooter ? 'hdr' : 'main';
+            return `${tabKey}|form|${formRole}|${transactionId}|${rootPrimaryKeyValue ?? ''}`;
         }
         return tabKey;
-    }, [transactionId, rootPrimaryKeyValue, isEmbedded, param2Obj?.isEmbeddedByOtherPage]);
+    }, [transactionId, rootPrimaryKeyValue, isEmbedded, param2Obj?.isEmbeddedByOtherPage, param2Obj?.isTemplateHeader, param2Obj?.isHideHeaderAndFooter]);
 
     // Auto-cache standalone and embedded forms (Form Group left-nav remount / tab switch).
     useTabDataAutoCache(formCachePayload, formCacheKey);

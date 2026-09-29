@@ -23,9 +23,10 @@ For a **new** tenant DB (structure through **V034+**). Do not mix with `PlmInteg
 | 8 | `08_Seed_PlmIntegrationPom_Child.sql` | Child `plm-integration-pom` (inactive) |
 | 9 | `09_Seed_PlmIntegrationSearch_Child.sql` | Child `plm-integration-search` (inactive) |
 | 10 | `10_Seed_PlmIntegrationMassUpdate_Child.sql` | Child `plm-integration-massupdate` (inactive) |
-| 11 | `99_Verify.sql` | Smoke checks |
+| 11 | `11_Seed_ChildMappings.sql` | `AppAgentChildMapping` Orchestrator → Child-Agents |
+| 12 | `99_Verify.sql` | Smoke checks |
 | — | `CHILD_AGENT_CONTRACTS.md` | SkillKeys + `call_agent` contracts |
-| — | `RUN_ALL.bat` | Runs 01→10 → 99 |
+| — | `RUN_ALL.bat` | Runs 01→11 → 99 |
 
 ## Apply
 
@@ -36,7 +37,7 @@ RUN_ALL.bat YourServer\Instance YourTenantDb
 
 Example: `RUN_ALL.bat PC3B\MSSQLSERVER01 TenantDB_PLM34`
 
-Prereqs: V022+ (`AppAgentSharedContext`); rebuild/copy `APP.AgentPlugins.PlmImport.dll` (plugin Ensures PLM job tables only when those tools run). Tenant AI key set.
+Prereqs: V022+ (`AppAgentSharedContext`); **V036** (`AppAgentChildMapping`); rebuild/copy `APP.AgentPlugins.PlmImport.dll` (plugin Ensures PLM job tables only when those tools run). Tenant AI key set.
 
 ## What you get
 

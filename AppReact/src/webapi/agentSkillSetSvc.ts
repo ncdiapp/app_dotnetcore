@@ -20,6 +20,21 @@ export interface AppAgentSkillSetDto {
     AgentUi:            number;
     /** When true + Interactive: empty chat fires hidden [session_start]. UI: "Agent Starts Chat First". */
     AllowAgentFirstTurn?: boolean;
+    /** Child-Agents under this agent (Orchestrator when > 0). */
+    ChildCount?:        number;
+    /** Orchestrators that list this agent as a Child-Agent. */
+    UsedByCount?:       number;
+}
+
+export interface AppAgentChildMappingDto {
+    ParentSkillKey: string;
+    ChildSkillKey: string;
+    SortOrder: number;
+    CreatedAt?: string;
+    UpdatedAt?: string;
+    ChildDisplayName?: string;
+    ChildExecutionMode?: string;
+    ChildIsActive?: boolean;
 }
 
 export interface AppAgentToolRegisterDto {
@@ -127,6 +142,63 @@ class AgentSkillSetService {
             method: 'DELETE', headers: getHeaders(),
         });
         if (!res.ok) throw new Error(`DeleteSkillSet failed (${res.status})`);
+        return res.json();
+    }
+
+    // ── Child-Agent mapping (Orchestrator → Child) ─────────────────────────
+
+    async GetAllChildMappings(): Promise<OperationResult<AppAgentChildMappingDto[]>> {
+        const res = await fetch(`${BASE}/GetAllChildMappings`, { headers: getHeaders() });
+        if (!res.ok) throw new Error(`GetAllChildMappings failed (${res.status})`);
+        return res.json();
+    }
+
+    async GetChildAgents(parentSkillKey: string): Promise<OperationResult<AppAgentChildMappingDto[]>> {
+        const res = await fetch(
+            `${BASE}/GetChildAgents?parentSkillKey=${encodeURIComponent(parentSkillKey || '')}`,
+            { headers: getHeaders() },
+        );
+        if (!res.ok) throw new Error(`GetChildAgents failed (${res.status})`);
+        return res.json();
+    }
+
+    async GetChildUsedBy(childSkillKey: string): Promise<OperationResult<string[]>> {
+        const res = await fetch(
+            `${BASE}/GetChildUsedBy?childSkillKey=${encodeURIComponent(childSkillKey || '')}`,
+            { headers: getHeaders() },
+        );
+        if (!res.ok) throw new Error(`GetChildUsedBy failed (${res.status})`);
+        return res.json();
+    }
+
+    async SetChildAgents(
+        parentSkillKey: string,
+        children: AppAgentChildMappingDto[],
+    ): Promise<OperationResult<boolean>> {
+        const res = await fetch(
+            `${BASE}/SetChildAgents?parentSkillKey=${encodeURIComponent(parentSkillKey || '')}`,
+            { method: 'PUT', headers: getHeaders(), body: JSON.stringify(children) },
+        );
+        if (!res.ok) throw new Error(`SetChildAgents failed (${res.status})`);
+        return res.json();
+    }
+
+    async AddChildAgents(parentSkillKey: string, childSkillKeys: string[]): Promise<OperationResult<boolean>> {
+        const res = await fetch(
+            `${BASE}/AddChildAgents?parentSkillKey=${encodeURIComponent(parentSkillKey || '')}`,
+            { method: 'POST', headers: getHeaders(), body: JSON.stringify(childSkillKeys) },
+        );
+        if (!res.ok) throw new Error(`AddChildAgents failed (${res.status})`);
+        return res.json();
+    }
+
+    async RemoveChildAgent(parentSkillKey: string, childSkillKey: string): Promise<OperationResult<boolean>> {
+        const res = await fetch(
+            `${BASE}/RemoveChildAgent?parentSkillKey=${encodeURIComponent(parentSkillKey || '')}` +
+            `&childSkillKey=${encodeURIComponent(childSkillKey || '')}`,
+            { method: 'DELETE', headers: getHeaders() },
+        );
+        if (!res.ok) throw new Error(`RemoveChildAgent failed (${res.status})`);
         return res.json();
     }
 

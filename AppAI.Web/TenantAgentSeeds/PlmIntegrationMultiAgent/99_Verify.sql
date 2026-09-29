@@ -69,6 +69,15 @@ WHERE SkillKey IN (
   N'plm-integration-search', N'plm-integration-massupdate')
 ORDER BY SkillKey, LibraryKey;
 
+PRINT '=== Child mappings (Orchestrator → Child-Agent) ===';
+IF OBJECT_ID(N'dbo.AppAgentChildMapping', N'U') IS NULL
+    SELECT 'MISSING' AS AppAgentChildMapping;
+ELSE
+    SELECT ParentSkillKey, ChildSkillKey, SortOrder
+    FROM dbo.AppAgentChildMapping
+    WHERE ParentSkillKey = N'plm-integration-orchestrator'
+    ORDER BY SortOrder, ChildSkillKey;
+
 PRINT '=== Shared context table (platform; wizard durable scope = ChatSessionKey) ===';
 SELECT CASE WHEN OBJECT_ID(N'dbo.AppAgentSharedContext', N'U') IS NULL THEN 'MISSING' ELSE 'OK' END AS AppAgentSharedContext;
 GO

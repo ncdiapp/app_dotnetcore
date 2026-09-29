@@ -2,8 +2,9 @@
 
 **Status:** Wave 0+1+2 live. Search / MassUpdate are Deterministic children (`09_` / `10_`).  
 **ROOT:** `plm-integration-orchestrator` (Interactive, all HITL, `IsActive=1` — only agent on the left menu).  
-**Children:** Deterministic, `IsActive=0` (hidden from left menu). `call_agent` loads by SkillKey. Never `ask_user` / PlanGate wait.  
-**Missing SkillKey:** `call_agent` errors; ROOT stops (Retry / Back). No local preview/execute fallback.
+**Children:** Deterministic, `IsActive=0` (hidden from left menu). `call_agent` loads by SkillKey and **only allows targets registered in `AppAgentChildMapping`** (Agent Management → Child-Agent tab). Never `ask_user` / PlanGate wait.  
+**Missing SkillKey / unregistered Child:** `call_agent` errors; ROOT stops (Retry / Back). No local preview/execute fallback.  
+**Mapping seed:** `11_Seed_ChildMappings.sql` (after agents exist). Table from migration `V036__AppAgentChildMapping_xhu`.
 
 ## Platform rules (non-negotiable)
 

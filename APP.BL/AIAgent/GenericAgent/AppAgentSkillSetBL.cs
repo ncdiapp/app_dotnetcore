@@ -31,6 +31,7 @@ namespace App.BL.AIAgent.GenericAgent
                 if (dt == null) return list;
                 foreach (DataRow row in dt.Rows)
                     list.Add(MapRow(row));
+                EnrichChildCounts(fixture, list);
             }
             catch (Exception ex) { Log.Error(ex, nameof(GetAllSkillSets)); }
             return list;
@@ -108,17 +109,52 @@ ELSE
 
         public static bool DeleteSkillSet(int dataSourceId, string skillKey)
         {
+            return TryDeleteSkillSet(dataSourceId, skillKey, out _);
+        }
+
+        /// <summary>
+        /// Deletes an agent. Blocks when the agent is registered as someone else's Child-Agent.
+        /// When deleting an Orchestrator, removes its AppAgentChildMapping rows first (Child agents kept).
+        /// </summary>
+        public static bool TryDeleteSkillSet(int dataSourceId, string skillKey, out string error)
+        {
+            error = null;
+            if (string.IsNullOrWhiteSpace(skillKey))
+            {
+                error = "SkillKey is required.";
+                return false;
+            }
+            skillKey = skillKey.Trim();
             try
             {
+                var usedBy = AppAgentChildMappingBL.GetUsedByParents(dataSourceId, skillKey);
+                if (usedBy.Count > 0)
+                {
+                    error = $"Cannot delete '{skillKey}': it is a Child-Agent of: {string.Join(", ", usedBy)}. Remove it from those Orchestrators first.";
+                    return false;
+                }
+
+                // Drop Orchestrator → Child links; keep Child-Agent skill rows.
+                AppAgentChildMappingBL.DeleteLinksForParent(dataSourceId, skillKey);
+
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
-                if (fixture == null) return false;
+                if (fixture == null)
+                {
+                    error = "Database fixture not available.";
+                    return false;
+                }
                 var p = fixture.CreateParameter("@SkillKey"); p.Value = skillKey;
                 fixture.ExecuteNonQueryResult(
                     "DELETE FROM dbo.AppAgentSkillSet WHERE SkillKey = @SkillKey",
                     new List<DbParameter> { p });
                 return true;
             }
-            catch { return false; }
+            catch (Exception ex)
+            {
+                Log.Error(ex, nameof(TryDeleteSkillSet));
+                error = ex.Message;
+                return false;
+            }
         }
 
         public static (string ConnStr, int RowCount) GetDebugInfo(int dataSourceId)
@@ -170,7 +206,40 @@ ELSE
             ExecutionMode      = ColStr(row, "ExecutionMode", "Interactive"),
             AgentUi            = ColInt(row, "AgentUi", 1),
             AllowAgentFirstTurn = ColBool(row, "AllowAgentFirstTurn", false),
+            ChildCount = 0,
+            UsedByCount = 0,
         };
+
+        private static void EnrichChildCounts(DatabaseFixture fixture, List<AppAgentSkillSetDto> list)
+        {
+            if (fixture == null || list == null || list.Count == 0) return;
+            if (!AppAgentChildMappingBL.TableExists(fixture)) return;
+            try
+            {
+                var dt = fixture.RetriveDataTable(
+                    "SELECT ParentSkillKey, ChildSkillKey FROM dbo.AppAgentChildMapping",
+                    new List<DbParameter>());
+                if (dt == null || dt.Rows.Count == 0) return;
+
+                var childCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                var usedByCount = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                foreach (DataRow row in dt.Rows)
+                {
+                    var parent = row["ParentSkillKey"] as string ?? "";
+                    var child = row["ChildSkillKey"] as string ?? "";
+                    if (!string.IsNullOrWhiteSpace(parent))
+                        childCount[parent] = childCount.TryGetValue(parent, out var pc) ? pc + 1 : 1;
+                    if (!string.IsNullOrWhiteSpace(child))
+                        usedByCount[child] = usedByCount.TryGetValue(child, out var uc) ? uc + 1 : 1;
+                }
+                foreach (var dto in list)
+                {
+                    if (childCount.TryGetValue(dto.SkillKey, out var cc)) dto.ChildCount = cc;
+                    if (usedByCount.TryGetValue(dto.SkillKey, out var ub)) dto.UsedByCount = ub;
+                }
+            }
+            catch (Exception ex) { Log.Warn(ex, nameof(EnrichChildCounts)); }
+        }
 
         private static int ColInt(DataRow row, string col, int fallback)
         {
@@ -223,4 +292,4 @@ ELSE
         }
     }
 }
-
+

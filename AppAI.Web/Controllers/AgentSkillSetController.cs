@@ -89,7 +89,102 @@ public class AgentSkillSetController : SecureBaseController
                 "SkillKey_Required", ValidationItemType.Error, "SkillKey is required."));
             return result;
         }
-        result.Object = AppAgentSkillSetBL.DeleteSkillSet(GetDsId(), skillKey);
+        if (!AppAgentSkillSetBL.TryDeleteSkillSet(GetDsId(), skillKey, out var error))
+        {
+            result.Object = false;
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController),
+                "DeleteSkillSet_Blocked", ValidationItemType.Error,
+                error ?? "Delete failed."));
+            return result;
+        }
+        result.Object = true;
+        return result;
+    }
+
+    [HttpGet]
+    public OperationCallResult<List<AppAgentChildMappingDto>> GetAllChildMappings()
+    {
+        var result = new OperationCallResult<List<AppAgentChildMappingDto>>();
+        result.Object = AppAgentChildMappingBL.GetAll(GetDsId());
+        return result;
+    }
+
+    [HttpGet]
+    public OperationCallResult<List<AppAgentChildMappingDto>> GetChildAgents(string parentSkillKey)
+    {
+        var result = new OperationCallResult<List<AppAgentChildMappingDto>>();
+        result.Object = AppAgentChildMappingBL.GetChildren(GetDsId(), parentSkillKey ?? "");
+        return result;
+    }
+
+    [HttpGet]
+    public OperationCallResult<List<string>> GetChildUsedBy(string childSkillKey)
+    {
+        var result = new OperationCallResult<List<string>>();
+        result.Object = AppAgentChildMappingBL.GetUsedByParents(GetDsId(), childSkillKey ?? "");
+        return result;
+    }
+
+    [HttpPut]
+    public OperationCallResult<bool> SetChildAgents(string parentSkillKey, [FromBody] List<AppAgentChildMappingDto> children)
+    {
+        var result = new OperationCallResult<bool>();
+        if (string.IsNullOrWhiteSpace(parentSkillKey))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController),
+                "ParentSkillKey_Required", ValidationItemType.Error, "ParentSkillKey is required."));
+            return result;
+        }
+        if (!AppAgentChildMappingBL.SetChildren(GetDsId(), parentSkillKey, children, out var error))
+        {
+            result.Object = false;
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController),
+                "SetChildAgents_Failed", ValidationItemType.Error, error ?? "SetChildAgents failed."));
+            return result;
+        }
+        result.Object = true;
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<bool> AddChildAgents(string parentSkillKey, [FromBody] List<string> childSkillKeys)
+    {
+        var result = new OperationCallResult<bool>();
+        if (string.IsNullOrWhiteSpace(parentSkillKey))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController),
+                "ParentSkillKey_Required", ValidationItemType.Error, "ParentSkillKey is required."));
+            return result;
+        }
+        if (!AppAgentChildMappingBL.AddChildren(GetDsId(), parentSkillKey, childSkillKeys, out var error))
+        {
+            result.Object = false;
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController),
+                "AddChildAgents_Failed", ValidationItemType.Error, error ?? "AddChildAgents failed."));
+            return result;
+        }
+        result.Object = true;
+        return result;
+    }
+
+    [HttpDelete]
+    public OperationCallResult<bool> RemoveChildAgent(string parentSkillKey, string childSkillKey)
+    {
+        var result = new OperationCallResult<bool>();
+        if (!AppAgentChildMappingBL.RemoveChild(GetDsId(), parentSkillKey, childSkillKey, out var error))
+        {
+            result.Object = false;
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController),
+                "RemoveChildAgent_Failed", ValidationItemType.Error, error ?? "RemoveChildAgent failed."));
+            return result;
+        }
+        result.Object = true;
         return result;
     }
 

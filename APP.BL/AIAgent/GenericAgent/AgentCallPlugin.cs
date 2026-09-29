@@ -26,6 +26,25 @@ namespace App.BL.AIAgent.GenericAgent
             AgentToolContext context,
             CancellationToken ct)
         {
+            targetSkillKey = (targetSkillKey ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(targetSkillKey))
+                return "[call_agent denied: targetSkillKey is required.]";
+
+            // Whitelist: caller may only invoke Child-Agents registered in AppAgentChildMapping.
+            var callerSkillKey = (context?.SkillKey ?? "").Trim();
+            int dsId = context?.DataSourceId ?? 0;
+            if (!string.IsNullOrWhiteSpace(callerSkillKey) && AppAgentChildMappingBL.TableExists(dsId))
+            {
+                if (!AppAgentChildMappingBL.IsRegisteredChild(dsId, callerSkillKey, targetSkillKey))
+                {
+                    var msg =
+                        $"[call_agent denied: '{targetSkillKey}' is not a registered Child-Agent of '{callerSkillKey}'. " +
+                        "Add it under Agent Management → Child-Agent tab.]";
+                    NLog.LogManager.GetCurrentClassLogger().Warn("AgentCallPlugin: {0}", msg);
+                    return msg;
+                }
+            }
+
             // Prefer AgentToolContext fields (includes DataSourceId). Falling back to
             // ServerContext alone is unsafe: older OverrideThreadIdentity omitted DataSourceId,
             // which made child GetFixture resolve register id 0 → ORMEntityOutOfSyncException.

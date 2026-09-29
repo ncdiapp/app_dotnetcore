@@ -473,6 +473,7 @@ namespace App.BL
                 "AppAgentLibrarySubscription",
                 "AppAgentSkillSet",
                 "AppAgentSkillSetHistory",
+                "AppAgentChildMapping",
             };
 
             // Connect via master catalog so we can issue cross-DB queries.
@@ -570,6 +571,7 @@ namespace App.BL
                 ("AppAgentToolRegister",        new[] { "SkillKey", "ToolName" }),
                 ("AppAgentLibrarySubscription", new[] { "SkillKey", "LibraryKey" }),
                 ("AppAgentSkillSet",            new[] { "SkillKey" }),
+                ("AppAgentChildMapping",        new[] { "ParentSkillKey", "ChildSkillKey" }),
             };
 
             // Load all tenant connections from AppMasterDB.

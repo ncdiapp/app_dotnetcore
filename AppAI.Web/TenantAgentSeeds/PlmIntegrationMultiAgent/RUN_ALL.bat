@@ -24,6 +24,7 @@ sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%07_Seed_PlmIntegrationCo
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%08_Seed_PlmIntegrationPom_Child.sql" || goto fail
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%09_Seed_PlmIntegrationSearch_Child.sql" || goto fail
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%10_Seed_PlmIntegrationMassUpdate_Child.sql" || goto fail
+sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%11_Seed_ChildMappings.sql" || goto fail
 sqlcmd -S "%SERVER%" -d "%DB%" -E -b -f 65001 -i "%HERE%99_Verify.sql" || goto fail
 echo === DONE ===
 goto end

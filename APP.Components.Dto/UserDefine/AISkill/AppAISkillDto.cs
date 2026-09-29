@@ -45,6 +45,12 @@ namespace APP.Components.EntityDto
         public int    AgentUi             { get; set; } = 1;
         /// <summary>When true and Interactive, empty chat sends [session_start] (UI: Agent Starts Chat First).</summary>
         public bool   AllowAgentFirstTurn { get; set; }
+
+        /// <summary>Count of Child-Agents mapped under this agent (Orchestrator when &gt; 0). Not a DB column.</summary>
+        public int ChildCount { get; set; }
+
+        /// <summary>Count of Orchestrators that list this agent as a Child-Agent. Not a DB column.</summary>
+        public int UsedByCount { get; set; }
     }
 
     public class AppAgentToolRegisterDto

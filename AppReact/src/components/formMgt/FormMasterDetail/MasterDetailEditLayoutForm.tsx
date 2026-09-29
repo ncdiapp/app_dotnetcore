@@ -348,8 +348,14 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
 
   // Desktop layout
   if (!isMobile) {
-    // Show menu: not in preview; for file property show minimal menu (Refresh, Save); for other embedded (isHideHeaderAndFooter) hide
-    const menuVisible = !controllerModel.isPreview && (controllerModel.isFilePropertyEdit || !controllerModel.param2Obj?.isHideHeaderAndFooter);
+    // Show menu: not in preview; for file property show minimal menu (Refresh, Save); for other embedded
+    // (isHideHeaderAndFooter / template header) hide. Template headers always use the main form toolbar.
+    const hideEmbeddedMenu =
+      Boolean(controllerModel.param2Obj?.isHideHeaderAndFooter) ||
+      Boolean(controllerModel.isTemplateHeader);
+    const menuVisible =
+      !controllerModel.isPreview &&
+      (controllerModel.isFilePropertyEdit || !hideEmbeddedMenu);
     return (
       <FormMasterDetailRuntimeConfigProvider
         value={runtimeFieldConfigApi ?? emptyFormMasterDetailRuntimeConfigApi}
@@ -625,8 +631,10 @@ const MasterDetailEditLayoutForm: React.FC<MasterDetailEditLayoutFormProps> = ({
       </div>
       )}
 
-      {/* Bottom Menu Button - Mobile - hidden when embedded (file property, isHideHeaderAndFooter) */}
-      {!controllerModel.isFilePropertyEdit && !controllerModel.param2Obj?.isHideHeaderAndFooter && (
+      {/* Bottom Menu Button - Mobile - hidden when embedded (file property, template header, isHideHeaderAndFooter) */}
+      {!controllerModel.isFilePropertyEdit &&
+        !controllerModel.param2Obj?.isHideHeaderAndFooter &&
+        !controllerModel.isTemplateHeader && (
         <>
       <div
         className="fixed bottom-4 right-4 w-12 h-12 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg cursor-pointer hover:bg-blue-600 z-50 transition-all"
