@@ -9,6 +9,7 @@ param(
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $packsRoot = Join-Path $here "AgentStarter\_packs"
+$catalogName = ".agent-file-catalog.json"
 
 if (-not (Test-Path $packsRoot)) {
     Write-Error "Missing AgentStarter\_packs under $here"
@@ -35,6 +36,27 @@ function Resolve-FileRepositoryRoot {
     throw "FileRepository not found. Pass -FileRepositoryRoot (folder that contains Company_{id})."
 }
 
+function Get-StarterDest {
+    param([string]$CompanyRoot, [string]$SkillKey)
+    Join-Path (Join-Path $CompanyRoot "AgentStarter") $SkillKey
+}
+
+function Copy-PackFiles {
+    param([string]$SrcDir, [string]$DestDir)
+    New-Item -ItemType Directory -Force -Path $DestDir | Out-Null
+    Get-ChildItem -LiteralPath $SrcDir -Force | Where-Object { -not $_.PSIsContainer } | ForEach-Object {
+        Copy-Item -LiteralPath $_.FullName -Destination $DestDir -Force
+    }
+}
+
+function Copy-PackCatalog {
+    param([string]$PackDir, [string]$DestDir)
+    $catSrc = Join-Path $PackDir $catalogName
+    if (Test-Path -LiteralPath $catSrc) {
+        Copy-Item -LiteralPath $catSrc -Destination (Join-Path $DestDir $catalogName) -Force
+    }
+}
+
 function Copy-PackToStarter {
     param(
         [string]$PackName,
@@ -47,11 +69,35 @@ function Copy-PackToStarter {
         return
     }
     foreach ($skillKey in $SkillKeys) {
-        $dest = Join-Path $DestCompanyRoot "AgentStarter" $skillKey
-        New-Item -ItemType Directory -Force -Path $dest | Out-Null
-        Copy-Item -Path (Join-Path $src "*") -Destination $dest -Recurse -Force
+        $dest = Get-StarterDest -CompanyRoot $DestCompanyRoot -SkillKey $skillKey
+        Copy-PackFiles -SrcDir $src -DestDir $dest
+        Copy-PackCatalog -PackDir $src -DestDir $dest
         Write-Host "  $PackName -> AgentStarter/$skillKey"
     }
+}
+
+function Write-MergedOrchestratorCatalog {
+    param([string]$OrchDest)
+    $catalogPaths = @("search", "massupdate", "import-dw") | ForEach-Object {
+        Join-Path (Join-Path $packsRoot $_) $catalogName
+    } | Where-Object { Test-Path -LiteralPath $_ }
+
+    if ($catalogPaths.Count -eq 0) { return }
+
+    $merged = [ordered]@{ Version = 1; Files = @() }
+    $seen = @{}
+    foreach ($cp in $catalogPaths) {
+        $cat = Get-Content -LiteralPath $cp -Raw | ConvertFrom-Json
+        foreach ($f in $cat.Files) {
+            if (-not $f.Path -or $seen.ContainsKey($f.Path)) { continue }
+            $seen[$f.Path] = $true
+            $merged.Files += $f
+        }
+    }
+    $outPath = Join-Path $OrchDest $catalogName
+    $json = $merged | ConvertTo-Json -Depth 8
+    [System.IO.File]::WriteAllText($outPath, $json, [System.Text.UTF8Encoding]::new($false))
+    Write-Host "  merged $catalogName -> plm-integration-orchestrator ($($merged.Files.Count) entries)"
 }
 
 $repoRoot = Resolve-FileRepositoryRoot -Override $FileRepositoryRoot
@@ -76,24 +122,9 @@ Copy-PackToStarter -PackName "import-dw" -SkillKeys @(
     "plm-integration-orchestrator"
 ) -DestCompanyRoot $companyRoot
 
-$orchDest = Join-Path $companyRoot "AgentStarter" "plm-integration-orchestrator"
-$catalogPaths = @("search", "massupdate", "import-dw") | ForEach-Object {
-    Join-Path $packsRoot $_ ".agent-file-catalog.json"
-} | Where-Object { Test-Path $_ }
-
-if ((Test-Path $orchDest) -and $catalogPaths.Count -gt 0) {
-    $merged = @{ Version = 1; Files = @() }
-    $seen = @{}
-    foreach ($cp in $catalogPaths) {
-        $cat = Get-Content $cp -Raw | ConvertFrom-Json
-        foreach ($f in $cat.Files) {
-            if (-not $f.Path -or $seen.ContainsKey($f.Path)) { continue }
-            $seen[$f.Path] = $true
-            $merged.Files += $f
-        }
-    }
-    $merged | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $orchDest ".agent-file-catalog.json") -Encoding UTF8
-    Write-Host "  merged .agent-file-catalog.json -> plm-integration-orchestrator"
+$orchDest = Get-StarterDest -CompanyRoot $companyRoot -SkillKey "plm-integration-orchestrator"
+if (Test-Path $orchDest) {
+    Write-MergedOrchestratorCatalog -OrchDest $orchDest
 }
 
 Write-Host "=== AgentStarter copy DONE ==="
