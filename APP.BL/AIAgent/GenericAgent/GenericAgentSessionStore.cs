@@ -34,6 +34,7 @@ namespace App.BL.AIAgent.GenericAgent
             public ConcurrentQueue<AgentEventDto> Events    = new ConcurrentQueue<AgentEventDto>();
             public DateTime                       CreatedAt = DateTime.UtcNow;
             public SemaphoreSlim                  EventReady = new SemaphoreSlim(0, int.MaxValue);
+            public CancellationTokenSource        RunCts { get; } = new CancellationTokenSource();
             public string SkillKey { get; set; }
             public string ChatSessionKey { get; set; }
             public int UserId { get; set; }
@@ -46,6 +47,45 @@ namespace App.BL.AIAgent.GenericAgent
             Sessions[id] = new SessionData();
             CleanExpired();
             return id;
+        }
+
+        /// <summary>
+        /// Stop the in-flight agent run (LLM + tools + nested call_agent) and any HITL waiters.
+        /// </summary>
+        public static bool CancelRun(string sessionId)
+        {
+            if (string.IsNullOrWhiteSpace(sessionId) || !Sessions.TryGetValue(sessionId, out var session))
+                return false;
+
+            try { session.RunCts.Cancel(); } catch { /* ignore */ }
+
+            if (PendingConfirmations.TryRemove(sessionId, out var planTcs))
+                planTcs.TrySetResult(false);
+
+            if (PendingSchema.TryRemove(sessionId, out var schemaTcs))
+                schemaTcs.TrySetResult(new AgentSchemaResponse
+                {
+                    Confirmed = false,
+                    Feedback = "Stopped by user."
+                });
+
+            if (PendingAskUser.TryRemove(sessionId, out var askTcs))
+                askTcs.TrySetResult(new AgentAskUserResponse { Cancelled = true });
+
+            Enqueue(sessionId, new AgentEventDto
+            {
+                EventType = "done",
+                Done = new AgentDoneEvent { FinalResponse = "Stopped by user." }
+            });
+            return true;
+        }
+
+        public static CancellationToken GetRunToken(string sessionId)
+        {
+            if (!string.IsNullOrWhiteSpace(sessionId)
+                && Sessions.TryGetValue(sessionId, out var session))
+                return session.RunCts.Token;
+            return CancellationToken.None;
         }
 
         public static void BindChat(string sessionId, string skillKey, string chatSessionKey, int userId, int dataSourceId)
@@ -154,6 +194,8 @@ namespace App.BL.AIAgent.GenericAgent
                 if (kv.Value.CreatedAt < cutoff)
                 {
                     Sessions.TryRemove(kv.Key, out var removed);
+                    try { removed?.RunCts.Cancel(); } catch { }
+                    try { removed?.RunCts.Dispose(); } catch { }
                     removed?.EventReady.Dispose();
 
                     if (PendingConfirmations.TryRemove(kv.Key, out var tcs))

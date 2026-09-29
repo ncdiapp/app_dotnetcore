@@ -156,6 +156,20 @@ class GenericAgentService {
         return sessionId;
     }
 
+    /** Stop the in-flight run (LLM / tools / nested call_agent / pending ask_user). */
+    async CancelRun(sessionId?: string | null): Promise<void> {
+        const id = (sessionId || this.currentSessionId || '').trim();
+        if (!id) return;
+        try {
+            await fetch(`${BASE}/CancelRun`, {
+                method: 'POST',
+                headers: getHeaders(),
+                body: JSON.stringify({ SessionId: id }),
+            });
+        } catch { /* best-effort */ }
+        // Polling will receive done "Stopped by user." — keep polling briefly so UI clears.
+    }
+
     getStreamUrl(sessionId: string): string {
         return `${endpoints.BASE_URL}/webapi/GenericAgent/StreamEvents?sessionId=${encodeURIComponent(sessionId)}`;
     }

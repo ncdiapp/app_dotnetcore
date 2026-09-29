@@ -196,8 +196,23 @@ namespace App.BL.AIAgent.GenericAgent
                         catch { }
                 }
             }
+            catch (OperationCanceledException)
+            {
+                runSw.Stop();
+                log.Info($"[Agent] STOPPED skill={skillKey} total={runSw.ElapsedMilliseconds}ms");
+                await Safe(callbacks?.OnDone, "Stopped by user.").ConfigureAwait(false);
+            }
             catch (Exception ex)
             {
+                if (ct.IsCancellationRequested
+                    || ex is OperationCanceledException
+                    || ex.GetBaseException() is OperationCanceledException)
+                {
+                    runSw.Stop();
+                    log.Info($"[Agent] STOPPED skill={skillKey} total={runSw.ElapsedMilliseconds}ms");
+                    await Safe(callbacks?.OnDone, "Stopped by user.").ConfigureAwait(false);
+                    return;
+                }
                 log.Error(ex, $"GenericAgentEngine [{skillKey}]");
                 var msg = ex.Message;
                 // SK's HttpOperationException carries the raw response body in ResponseContent
@@ -245,8 +260,13 @@ namespace App.BL.AIAgent.GenericAgent
                     builder.Services.AddSingleton<IChatCompletionService>(new AnthropicChatCompletionService(model, apiKey));
                     break;
                 case EmLLMProvider.Gemini:
-                    builder.AddGoogleAIGeminiChatCompletion(model, apiKey,
-                        httpClient: new HttpClient(new GeminiRoleFixHandler()));
+                    // Bound hang risk: default HttpClient timeout is 100s and can stall forever on
+                    // some streaming paths. Keep a hard ceiling; CancelRun still cancels via CT.
+                    var geminiHttp = new HttpClient(new GeminiRoleFixHandler())
+                    {
+                        Timeout = TimeSpan.FromMinutes(10)
+                    };
+                    builder.AddGoogleAIGeminiChatCompletion(model, apiKey, httpClient: geminiHttp);
                     break;
                 default:
                     builder.AddOpenAIChatCompletion(model, apiKey);

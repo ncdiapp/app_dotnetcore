@@ -40,6 +40,11 @@ namespace APP.Components.Dto
         public string ChatSessionKey { get; set; } = "";
     }
 
+    public class GenericAgentCancelRequestDto
+    {
+        public string SessionId { get; set; }
+    }
+
     public class GenericAgentConfirmPlanDto
     {
         public string SessionId { get; set; }

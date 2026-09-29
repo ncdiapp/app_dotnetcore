@@ -521,6 +521,11 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
         onDone: (done: { FinalResponse: string }) => {
             if (!mountedRef.current) return;
             const idx = currentTurnIndexRef.current;
+            const stopped = /stopped by user/i.test(done?.FinalResponse || '');
+            if (stopped) {
+                setPendingAskUser(null);
+                setPendingPlan(null);
+            }
             setTurnActivities(prev => {
                 const turn = prev.find(t => t.turnIndex === idx);
                 const stepsForMsg = turn?.steps ? [...turn.steps] : [];
@@ -857,6 +862,28 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
         await runAgentTurn({ userMessage: msg });
     };
 
+    const handleStop = async () => {
+        const sid = sessionIdRef.current || genericAgentSvc.currentSessionId;
+        if (!sid && !isRunning && !pendingAskUser) return;
+        await genericAgentSvc.CancelRun(sid);
+        // Optimistic UI clear; server also emits done "Stopped by user."
+        setPendingAskUser(null);
+        setPendingPlan(null);
+        setIsRunning(false);
+        isRunningRef.current = false;
+        setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'assistant' && last.isStreaming) {
+                return [...prev.slice(0, -1), {
+                    ...last,
+                    content: last.content || 'Stopped by user.',
+                    isStreaming: false,
+                }];
+            }
+            return [...prev, { role: 'assistant' as const, content: 'Stopped by user.' }];
+        });
+    };
+
     const handleConfirmPlan = async (confirmed: boolean) => {
         setPendingPlan(null);
         if (sessionId) await genericAgentSvc.ConfirmPlan(sessionId, confirmed);
@@ -1022,6 +1049,14 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                             <span>{turnActivities.find(t => t.turnIndex === currentTurnIndex)?.steps.length
                                 ? `Running tools…`
                                 : 'Thinking…'}</span>
+                            <button
+                                type="button"
+                                className={`${btn} ml-1`}
+                                onClick={() => { void handleStop(); }}
+                                title="Stop current agent run"
+                            >
+                                <i className="fa-solid fa-stop mr-1" />Stop
+                            </button>
                         </div>
                     )}
 
@@ -1191,6 +1226,16 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                     <button className={btn} onClick={handleSend} disabled={blocked || !input.trim()}>
                         {isRunning ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
                     </button>
+                    {(isRunning || pendingAskUser) && (
+                        <button
+                            type="button"
+                            className={btn}
+                            onClick={() => { void handleStop(); }}
+                            title="Stop current agent run (cancels LLM / tools / waiting ask_user)"
+                        >
+                            <i className="fa-solid fa-stop" />
+                        </button>
+                    )}
                     {(messages.length > 0 || pendingAskUser) && (
                         <button className={btn} onClick={() => { void handleClear(); }} title="Clear conversation">
                             <i className="fa-solid fa-rotate-left" />

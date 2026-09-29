@@ -241,12 +241,24 @@ public class GenericAgentController : SecureBaseController
 
         Task.Run(async () =>
         {
-            await GenericAgentBL.RunAsync(
-                request.SkillKey, request.UserMessage,
-                request.Messages ?? new List<JObject>(),
-                callbacks, agentIdentity,
-                CancellationToken.None,
-                chatSessionKey: chatSessionKey).ConfigureAwait(false);
+            var runCt = GenericAgentSessionStore.GetRunToken(sessionId);
+            try
+            {
+                await GenericAgentBL.RunAsync(
+                    request.SkillKey, request.UserMessage,
+                    request.Messages ?? new List<JObject>(),
+                    callbacks, agentIdentity,
+                    runCt,
+                    chatSessionKey: chatSessionKey).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto
+                {
+                    EventType = "done",
+                    Done = new AgentDoneEvent { FinalResponse = "Stopped by user." }
+                });
+            }
         });
 
         result.Object = new GenericAgentStartResultDto
@@ -255,6 +267,30 @@ public class GenericAgentController : SecureBaseController
             SessionId = sessionId,
             ChatSessionKey = chatSessionKey
         };
+        return result;
+    }
+
+    /// <summary>Stop the current run (LLM / tools / nested call_agent / pending ask_user).</summary>
+    [HttpPost]
+    public OperationCallResult<bool> CancelRun([FromBody] GenericAgentCancelRequestDto request)
+    {
+        var result = new OperationCallResult<bool>();
+        var sessionId = request?.SessionId?.Trim();
+        if (string.IsNullOrWhiteSpace(sessionId))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "GenericAgent_NoSession",
+                ValidationItemType.Error, "SessionId is required."));
+            return result;
+        }
+
+        result.Object = GenericAgentSessionStore.CancelRun(sessionId);
+        if (!result.Object)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(GenericAgentController), "GenericAgent_SessionGone",
+                ValidationItemType.Warning, "Session not found or already finished."));
+        }
         return result;
     }
 
