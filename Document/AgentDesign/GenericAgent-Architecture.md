@@ -2,8 +2,10 @@
 
 **Project:** App-netore  
 **Author:** Sean Zhang  
-**Date:** 2026-09-02  
+**Date:** 2026-09-02 (first version) · **Revised:** 2026-09-30  
 **Audience:** Senior developers, backend engineers  
+
+**Revision 2026-09-30 — what changed since the first version:** Tool Libraries and subscriptions (§3.5), library-owned MCP servers with auth headers and Test/Sync (§3.3, §8), per-agent tool exclusions and the unified tool catalog (§3.6, §12), server-side conversation persistence (§9), orchestrator/child agents and shared context (§3.7), MCP plugin-name rule (§8; see `ToolNameConvention-ProviderLimits.md`), and a prioritised improvement backlog (§13).
 
 ---
 
@@ -13,6 +15,7 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │  React UI (AppReact/src/components/aiskill/)                        │
 │  AgentSkillSetManagement.tsx    GenericAgentChat.tsx                │
+│  AgentLibraryTab / AgentLibraryRow / AgentMcpServerTab              │
 └──────────────────────────┬──────────────────────────────────────────┘
                            │  POST /webapi/GenericAgent/RunAgent
                            │  GET  /webapi/GenericAgent/StreamEvents  (SSE)
@@ -37,35 +40,40 @@
                            ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  GenericAgentEngine  (APP.BL/AIAgent/GenericAgent/)                 │
-│  1. Load SkillSet (AppAgentSkillSetBL)                              │
-│  2. Build SK Kernel (AIConfigSettingBL → KernelProviderHelper)      │
-│  3. Register AgentStepFilter (IFunctionInvocationFilter)           │
-│  4. Wrap AppAgentToolRegister rows → KernelFunctions               │
-│     (via AppAgentToolEngine.Dispatch → 6 ToolType executors)       │
-│  5. Connect MCP servers → McpClient → KernelPlugin                  │
-│  6. Run ChatCompletionAgent.InvokeStreamingAsync                    │
-│  7. Fire OnToken / OnDone / OnError callbacks                       │
+│  1. Load SkillSet (AppAgentSkillSetBL); resolve chat session key    │
+│  2. Inject file catalog into the system prompt (agent-files)        │
+│  3. Build SK Kernel (AIConfigSettingBL → provider connector)        │
+│  4. Register AgentStepFilter + GenericAgentPruneFilter              │
+│  5. Tools: agent-owned + subscribed-library tools, minus the        │
+│     agent's exclusions → KernelFunctions (plugin "tools")           │
+│  6. Interactive mode: add ask_user (plugin "hitl")                  │
+│  7. Subscribed-library MCP servers → McpClient → plugin             │
+│     "mcp<name>" (auth headers applied, excluded tools skipped)      │
+│  8. Run ChatCompletionAgent.InvokeStreamingAsync                    │
+│  9. Fire OnToken / OnStep / OnDone / OnError callbacks              │
 └────────┬───────────────────────────────────┬────────────────────────┘
          │                                   │
          ▼                                   ▼
 ┌─────────────────────┐         ┌────────────────────────────────────┐
 │  Semantic Kernel     │         │  External Systems                  │
 │  ChatCompletionAgent │         │  ┌─────────────────────────────┐  │
-│  + LLM provider     │         │  │ AppAgentToolRegister tools   │  │
-│  (Anthropic /       │         │  │  BuiltIn  → APP.BL plugins  │  │
-│   Gemini / OpenAI)  │         │  │  SqlQuery → tenant DB       │  │
-└─────────────────────┘         │  │  HttpRest → external API    │  │
+│  + LLM provider     │         │  │ Tool rows (AppAgentToolReg.  │  │
+│  (Anthropic /       │         │  │  / AppAgentLibraryTool)      │  │
+│   Gemini / OpenAI)  │         │  │  BuiltIn  → APP.BL plugins  │  │
+└─────────────────────┘         │  │  SqlQuery → tenant DB       │  │
+                                │  │  HttpRest → external API    │  │
                                 │  │  DynamicCSharp → Roslyn     │  │
+                                │  │  ExternalDll / PowerShell   │  │
                                 │  └─────────────────────────────┘  │
                                 │  ┌─────────────────────────────┐  │
-                                │  │ MCP Servers                 │  │
+                                │  │ MCP Servers (library-owned) │  │
                                 │  │  streamable-http transport  │  │
-                                │  │  auto-discovered tools      │  │
+                                │  │  bearer / custom headers    │  │
                                 │  └─────────────────────────────┘  │
                                 └────────────────────────────────────┘
 ```
 
-Existing agent controllers (`AppBuilderAgentController`, `AppReportAgentController`, `DbGenieController`) continue to expose their original routes. Their bodies now resolve the authenticated tenant execution context and forward it to `GenericAgentBL.RunAsync` with a hardcoded `skillKey`. The generic `GenericAgentController` additionally accepts any `skillKey` and is the entry point for the admin test UI.
+Existing agent controllers (`AppBuilderAgentController`, `AppReportAgentController`, `DbGenieController`) continue to expose their original routes. Their bodies resolve the authenticated tenant execution context and forward it to `GenericAgentBL.RunAsync` with a hardcoded `skillKey`. The generic `GenericAgentController` additionally accepts any `skillKey` and is the entry point for the admin test UI.
 
 ---
 
@@ -73,96 +81,119 @@ Existing agent controllers (`AppBuilderAgentController`, `AppReportAgentControll
 
 | Class / File | Location | Purpose | Key Methods |
 |---|---|---|---|
-| `GenericAgentBL` | `APP.BL/AIAgent/GenericAgent/` | Public entry point. Validates inputs, captures/accepts tenant execution context, delegates to engine. | `RunAsync(executionContext, userMessage, chatHistory, callbacks, ct)` |
-| `GenericAgentEngine` | `APP.BL/AIAgent/GenericAgent/` | SK agentic loop. Loads tenant-scoped config, builds kernel, runs streaming. | `RunAsync(...)`, `BuildKernel()`, `WrapRegisteredTool()`, `CreateMcpPluginAsync()`, `BuildChatHistory()` |
-| `AIConfigSettingBL` | `APP.BL/AIAgent/GenericAgent/` | Reads LLM provider/key/model from the explicitly selected tenant's `AppTenantSetting`. No appsettings.json fallback. | `GetProvider(executionContext)`, `GetApiKey(executionContext)`, `GetModel(executionContext)` |
-| `KernelProviderHelper` | `APP.BL/AIAgent/GenericAgent/` | Optional facade over `AIConfigSettingBL` that accepts an explicit `AgentExecutionContext`; it must not resolve shared credentials without a tenant context. | `GetProvider(executionContext)`, `GetApiKey(executionContext)`, `GetModel(executionContext)` |
-| `AppAgentSkillSetBL` | `APP.BL/AIAgent/AiSkill/` | Tenant-scoped CRUD over `AppAgentSkillSet` in the current tenant database. Parameterized queries, no ORM. | `GetAll(executionContext)`, `GetByKey(executionContext, skillKey)`, `Upsert(executionContext, dto)`, `Delete(executionContext, skillKey)` |
-| `AppAgentToolEngine` | `APP.BL/TenantBusiness/` | Strategy dispatcher: routes tool calls by `ToolType` to the correct executor. | `Dispatch(toolType, toolConfig, args, context, ct)`, `BuildInvokersAsync()` |
-| `BuiltInToolExecutor` | `APP.BL/TenantBusiness/AgentToolExecutors/` | Reflects a C# method by `TypeName.MethodName` from `ToolConfig`. | `ExecuteAsync(toolConfig, args, context, ct)` |
-| `SqlQueryToolExecutor` | `APP.BL/TenantBusiness/AgentToolExecutors/` | Runs a parameterized SQL query from `ToolConfig.SqlBody`. Never string-concatenates. | `ExecuteAsync(toolConfig, args, context, ct)` |
-| `HttpRestToolExecutor` | `APP.BL/TenantBusiness/AgentToolExecutors/` | HTTP GET/POST with `{argName}` URL substitution from `ToolConfig`. | `ExecuteAsync(toolConfig, args, context, ct)` |
-| `DynamicCSharpToolExecutor` | `APP.BL/TenantBusiness/AgentToolExecutors/` | Roslyn `CSharpScript.EvaluateAsync` with namespace whitelist and timeout. | `ExecuteAsync(toolConfig, args, context, ct)` |
-| `ExternalDllToolExecutor` | `APP.BL/TenantBusiness/AgentToolExecutors/` | `Assembly.LoadFrom` external DLL, invokes `IAgentTool.ExecuteAsync`. | `ExecuteAsync(toolConfig, args, context, ct)` |
-| `PowerShellToolExecutor` | `APP.BL/TenantBusiness/AgentToolExecutors/` | Runs a PowerShell script file. Super-admin only. | `ExecuteAsync(toolConfig, args, context, ct)` |
-| `GenericAgentCallbacks` | `APP.BL/AIAgent/GenericAgent/` | Delegate container wired by the controller to the session queue. | `OnToken`, `OnStep`, `OnDone`, `OnError`, `OnPlanReady`, `OnSchemaReady` |
-| `GenericAgentSessionStore` | `APP.BL/AIAgent/GenericAgent/` | Session event queue + gate state. An in-memory implementation is single-node only; distributed storage is required for multi-node deployment. | `CreateSession()`, `Enqueue()`, `DequeueAll()`, `WaitForEventAsync()`, `RegisterPlanConfirmation()`, `ConfirmPlan()`, `ConfirmSchema()` |
-| `GenericAgentController` | `AppAI.Web/Controllers/` | HTTP layer: creates session, fires background Task, streams SSE, resolves gates. | `RunAgent()`, `StreamEvents()`, `PollEvents()`, `ConfirmPlan()`, `ConfirmSchema()` |
-| `AgentSkillSetManagement.tsx` | `AppReact/src/components/aiskill/` | Admin UI: FlexGrid skill list, editor panel with capability checkboxes, Run button. | — |
-| `GenericAgentChat.tsx` | `AppReact/src/components/aiskill/` | Reusable streaming chat component. Handles tokens, steps, plan gate, session state. | — |
-| `agentSkillSetSvc.ts` | `AppReact/src/webapi/` | TypeScript service for SkillSet CRUD API calls. | `GetAllSkillSets()`, `UpsertSkillSet()`, `DeleteSkillSet()` |
-| `genericAgentSvc.ts` | `AppReact/src/webapi/` | TypeScript service for running agents. SSE via EventSource. | `RunAgent()`, `ConfirmPlan()`, `disconnect()` |
+| `GenericAgentBL` | `APP.BL/AIAgent/GenericAgent/` | Public entry point. Validates inputs, captures/accepts tenant execution context, delegates to engine. | `RunAsync(...)` |
+| `GenericAgentEngine` | `APP.BL/AIAgent/GenericAgent/` | SK agentic loop. Loads tenant-scoped config, builds kernel, runs streaming. | `RunAsync(...)`, `BuildKernel()`, `WrapRegisteredTool()`, `CreateMcpPluginAsync()`, `McpPluginName()`, `BuildChatHistoryAsync()` |
+| `McpConnectionHelper` | `APP.BL/AIAgent/GenericAgent/` | Builds MCP transport options (bearer/headers resolved from env vars), **Test connection**, and **list tools for the catalog**. | `BuildTransportOptions()`, `TestConnectionAsync()`, `ListCatalogToolsAsync()` |
+| `AIConfigSettingBL` | `APP.BL/AIAgent/GenericAgent/` | Reads LLM provider/key/model from the selected tenant's `AppTenantSetting`. No appsettings.json fallback. | `GetProvider/GetApiKey/GetModel(executionContext)` |
+| `KernelProviderHelper` | `APP.BL/AIAgent/GenericAgent/` | Optional facade over `AIConfigSettingBL` with an explicit `AgentExecutionContext`. | same |
+| `AppAgentSkillSetBL` | `APP.BL/AIAgent/GenericAgent/` | Tenant-scoped CRUD over `AppAgentSkillSet`. Parameterized queries, no ORM. | `GetAll`, `GetByKey`, `Upsert`, `Delete` |
+| `AppAgentToolRegisterBL` | `APP.BL/TenantBusiness/` | Agent-private tools; `GetBySkillKeyWithLibraries` merges private + subscribed-library tools, applies the agent's exclusions, de-duplicates by tool name (agent wins). | `GetBySkillKeyWithLibraries()` |
+| `AppAgentLibraryToolBL` / `AppAgentToolLibraryBL` | `APP.BL/TenantBusiness/` | Domains, libraries, library-owned tools, subscriptions. | `GetByLibraryKey()`, `SetSubscriptions()` |
+| `AppAgentMcpServerBL` | `APP.BL/TenantBusiness/` | MCP server registry. A server belongs to a **library**; `GetBySkillKeyWithLibraries` returns servers of the libraries an agent subscribes to. | `Upsert()`, `LibraryExists()` |
+| `AppAgentToolExclusionBL` | `APP.BL/TenantBusiness/` | Per-agent "do not use" list (library tools and MCP tools). Failure to read is logged and treated as "nothing excluded". | `GetBySkillKey()`, `ReplaceForSkill()` |
+| `AppAgentToolCatalogBL` + `ToolCatalogHelpers` | `APP.BL/TenantBusiness/` | Unified searchable tool catalog, risk guess (read/write/delete), retriever seam for RAG. | `SyncLibraryTools()`, `ReplaceMcpServerTools()`, `GetAll()` |
+| `AppAgentToolEngine` | `APP.BL/TenantBusiness/` | Strategy dispatcher: routes tool calls by `ToolType`. | `Dispatch(...)`, `BuildInvokersAsync()` |
+| `*ToolExecutor` (6) | `APP.BL/TenantBusiness/AgentToolExecutors/` | BuiltIn, ExternalDll, SqlQuery, PowerShell, HttpRest, DynamicCSharp. | `ExecuteAsync(...)` |
+| `AgentAskUserPlugin` / `AgentHitlBridge` | `APP.BL/AIAgent/GenericAgent/` | Structured ask-the-user tool for Interactive agents (plugin `hitl`). | `AskUser(...)` |
+| `AgentCallPlugin`, `AppAgentChildMappingBL`, `AppAgentSharedContextBL` | `APP.BL/AIAgent/GenericAgent/` | Orchestrator → child agent calls and the shared-context blackboard. | `call_agent`, `read/write_shared_context` |
+| `AppGenericAgentSessionBL` | `APP.BL/AIAgent/GenericAgent/` | Server-side conversation persistence per user and agent (see §9). | `MakeFixedKey()` |
+| `GenericAgentFileBL` and friends | `APP.BL/AIAgent/GenericAgent/` | Per-chat workspace files and the catalog injected into the prompt. | `EnsureRoot()` |
+| `GenericAgentCallbacks` / `GenericAgentSessionStore` | `APP.BL/AIAgent/GenericAgent/` | Event delegates and in-memory session queue + gate state (single-node). | `Enqueue()`, `WaitForEventAsync()`, `ConfirmPlan()` |
+| `GenericAgentController`, `AgentSkillSetController` | `AppAI.Web/Controllers/` | HTTP layer: run/stream/gates, and admin CRUD for agents, libraries, MCP servers, exclusions, catalog, AI design. | see controllers |
+| `AgentSkillSetManagement.tsx`, `AgentLibraryTab.tsx`, `AgentLibraryRow.tsx`, `AgentMcpServerTab.tsx`, `AiRecommendedTools.tsx` | `AppReact/src/components/aiskill/` | Admin UI: agent editor, library browser (Domains › Libraries › Tools / MCP), per-tool checkboxes, AI design review. | — |
+| `GenericAgentChat.tsx` | same | Reusable streaming chat component. | — |
+| `agentSkillSetSvc.ts`, `genericAgentSvc.ts` | `AppReact/src/webapi/` | Admin API client and run/stream client. | — |
 
 ---
 
 ## 3. Database Schema
 
+All tables below live in the **tenant database**. Migrations are applied by `AppTenantMigrationRunnerBL` (see §13 for the operational caveats).
+
 ### 3.1 AppAgentSkillSet — Agent Persona Registry
 
-Created by migration V008.
+Created by V008; later columns added by V011 (`MaxIterations`, default 40), V016 (`ExecutionMode`: `Interactive` | `Deterministic`) and V018 (`AgentUi`).
 
 | Column | Type | Description |
 |---|---|---|
-| `SkillKey` | NVARCHAR(100) PK | Unique identifier used in every API call (e.g. `app-builder`, `db-genie`) |
-| `DisplayName` | NVARCHAR(200) | Human-readable name shown in the admin UI |
-| `Description` | NVARCHAR(MAX) | Short description of what the agent does |
-| `SystemPrompt` | NVARCHAR(MAX) | Complete agent instruction text. Migrated from hardcoded C# strings. |
-| `CapabilityFlags` | INT | Bitmask of enabled behaviours (see §4) |
-| `IsActive` | BIT | Soft-delete flag; inactive agents are excluded from GetAll() |
-| `SortOrder` | INT | Display order in the admin list |
-| `Version` | INT | Schema version; incremented on significant prompt changes |
-| `MaxHistoryTokens` | INT | Prune conversation history when it exceeds this token estimate |
-| `SummarizeThreshold` | INT | LLM summarizes old turns when history exceeds this; 0 = off |
-| `MaxToolResultChars` | INT | Hard cap on characters returned from any single tool call |
-| `RecentWindowSize` | INT | Always keep the last N turns unpruned when sliding the history window |
+| `SkillKey` | NVARCHAR(100) PK | Unique identifier used in every API call |
+| `DisplayName`, `Description` | NVARCHAR | Shown in the admin UI |
+| `SystemPrompt` | NVARCHAR(MAX) | Complete instruction text. Prompt history kept in `AppAgentSkillSetHistory` (V019, last 10) |
+| `CapabilityFlags` | INT | Bitmask of behaviours (§4) |
+| `IsActive`, `SortOrder`, `Version` | | Soft-delete, ordering, prompt version |
+| `MaxHistoryTokens` / `SummarizeThreshold` / `RecentWindowSize` | INT | History pruning and summarisation |
+| `MaxToolResultChars` | INT | Hard cap on one tool result |
+| `MaxIterations` | INT | Max tool-call rounds before the run stops |
+| `ExecutionMode` | VARCHAR(20) | `Interactive` (gates wait for the user, `ask_user` available) or `Deterministic` (gates auto-approve, no `ask_user`) |
+| `AgentUi` | INT | Which chat shell runs the agent (GenericChat, ConfigurationAndIntegration, DbManagement, ImageAndFileProcess) |
 
-**Seeded rows (V008, applied to each tenant schema during provisioning):**
+**Seeded rows (V008):** `app-builder` (31), `app-report` (3), `db-genie` (35), `data-integration` (65), plus inactive templates from V019.
 
-| SkillKey | CapabilityFlags | MaxHistoryTokens | MaxToolResultChars |
-|---|---|---|---|
-| `app-builder` | 31 (Stream+MultiTurn+PlanGate+SchemaGate+InjectMemory) | 80 000 | 4 000 |
-| `app-report` | 3 (Stream+MultiTurn) | 40 000 | 2 000 |
-| `db-genie` | 35 (Stream+MultiTurn+InjectSchema) | 40 000 | 8 000 |
-| `data-integration` | 65 (Stream+ExternalBackend) | 20 000 | 2 000 |
-
-### 3.2 AppAgentToolRegister — Tool Registry
+### 3.2 AppAgentToolRegister — Agent-private Tools
 
 | Column | Type | Description |
 |---|---|---|
-| `ToolRegisterId` | INT IDENTITY PK | Auto-increment row ID |
-| `SkillKey` | NVARCHAR(100) | FK to AppAgentSkillSet.SkillKey |
-| `ToolName` | NVARCHAR(200) | LLM-facing function name (must be unique within SkillKey) |
-| `ToolDescription` | NVARCHAR(MAX) | LLM-facing description of what the tool does and when to call it |
-| `ParameterSchemaJson` | NVARCHAR(MAX) | JSON Schema `{"properties":{...},"required":[...]}` for the tool's parameters |
-| `ToolType` | NVARCHAR(50) | Executor strategy: BuiltIn, ExternalDll, SqlQuery, PowerShell, HttpRest, DynamicCSharp |
-| `ToolConfig` | NVARCHAR(MAX) | JSON configuration whose shape is determined by ToolType |
-| `IsActive` | BIT | Inactive tools are excluded from kernel loading |
+| `ToolRegisterId` | INT IDENTITY PK | |
+| `SkillKey` | NVARCHAR(100) | FK to `AppAgentSkillSet` |
+| `ToolName` | NVARCHAR(200) | LLM-facing function name (unique within the agent) |
+| `ToolDescription`, `ParameterSchemaJson` | NVARCHAR(MAX) | What the tool does; JSON Schema of its parameters |
+| `ToolType` | NVARCHAR(50) | BuiltIn, ExternalDll, SqlQuery, PowerShell, HttpRest, DynamicCSharp |
+| `ToolConfig` | NVARCHAR(MAX) | JSON whose shape depends on `ToolType` |
+| `IsActive` | BIT | Inactive tools are not loaded |
 
-V008 seeds approximately 37 tool rows for the four built-in agent personas.
+Most shared tools now live in **libraries** (§3.5); private tools are for one-off needs.
 
-### 3.3 AppAgentMcpServer — MCP Server Registry
+### 3.3 AppAgentMcpServer — MCP Server Registry (library-owned)
+
+An MCP server belongs to a **Tool Library**. An agent gets a server's tools by subscribing to that library (V037 moved earlier agent-owned rows into generated `<agent>-mcp` libraries and subscribed the agent).
 
 | Column | Type | Description |
 |---|---|---|
-| `McpServerId` | INT IDENTITY PK | Auto-increment row ID |
-| `SkillKey` | NVARCHAR(100) | FK to AppAgentSkillSet.SkillKey |
-| `ServerName` | NVARCHAR(200) | Display name; also used as the SK plugin group name prefix (`mcp_<name>`) |
-| `ServerType` | NVARCHAR(50) | Transport type: `streamable-http` or `stdio` |
-| `ServerUrl` | NVARCHAR(500) | Full HTTP URL for streamable-http servers |
-| `Command` | NVARCHAR(500) | Executable + arguments for stdio servers |
-| `IsActive` | BIT | Inactive servers are skipped at session start |
-
-The engine currently handles `streamable-http` transport. `stdio` rows are skipped with a log warning until that executor is implemented.
+| `McpServerId` | INT IDENTITY PK | |
+| `SkillKey` | NVARCHAR(100) | **Holds the LibraryKey** (name kept from the original schema) |
+| `ServerName` | NVARCHAR(200) | Display name; the SK plugin name is derived from it (§8). Prefer short names such as `plm`. |
+| `ServerType` | NVARCHAR(50) | `streamable-http` (supported). `stdio` rows are skipped. |
+| `ServerUrl`, `Command` | NVARCHAR(500) | HTTP endpoint; stdio command |
+| `IsActive` | BIT | Inactive servers are skipped |
+| `BearerTokenEnvVar` | NVARCHAR(200) | **Name** of an environment variable; its value is sent as `Authorization: Bearer <value>` (V036). Only names starting with `MCP_` are allowed. |
+| `Headers` | NVARCHAR(MAX) | JSON `{"Header":"value"}` — static headers, **stored encrypted** (`AES:` prefix, same key as tenant connection strings). The API returns every value masked (`********`); a masked value sent back on save keeps the stored one. Legacy plain-text rows still work and are encrypted on their next save. |
+| `HeadersFromEnv` | NVARCHAR(MAX) | JSON `{"Header":"MCP_ENV_VAR_NAME"}` — values read from the environment at connect time; names must start with `MCP_` |
 
 ### 3.4 Tenant Database Ownership and Routing
 
-The existing App-netore tenancy model uses one tenant database per company. `AppMasterDB` owns identity, sessions, company registration, and `AppDataSourceRegister`; tenant databases own app definitions, security groups, business data, tenant settings, and tenant-scoped agent configuration.
+The App-netore tenancy model uses one tenant database per company. `AppMasterDB` owns identity, sessions, company registration and `AppDataSourceRegister`; tenant databases own app definitions, security groups, business data, tenant settings and all agent configuration above.
 
-The Generic Agent tables `AppAgentSkillSet`, `AppAgentToolRegister`, and `AppAgentMcpServer` are tenant-scoped and should be created in the tenant schema/template. Built-in personas and tools are seeded into a tenant during provisioning. If platform-wide templates are introduced later, they must be copied or resolved into the target tenant before editing or execution.
+The controller resolves the authenticated session to a company and captures an immutable `AgentExecutionContext` before starting background work (user ID, company ID, login type, tenant data-source identity, authorization info). The engine and every tool executor use it for tenant routing; no LLM argument or request-body field may select a database, connection string or company.
 
-The controller resolves the authenticated session to a company and captures an immutable `AgentExecutionContext` before starting background work. The context contains the authenticated user ID, company ID, login type, tenant data-source identity, and authorization information. The engine and every tool executor use this context for tenant routing; no LLM argument or request-body field may select a database, connection string, or company.
+Tenant database access must use `AppTenantAdapterBL.GetTenantAdapter()` and the existing data-source routing rules. SysAdmin has no implicit tenant context; a SysAdmin agent run must explicitly select a company.
 
-Tenant database access must use `AppTenantAdapterBL.GetTenantAdapter()` and the existing data-source routing rules. Direct construction of a data adapter from a request or from `SkillKey` is prohibited. SysAdmin has no implicit tenant context; a SysAdmin agent run must explicitly select a company and then create a scoped execution context.
+### 3.5 Tool Libraries (V018, V020, V025)
+
+| Table | Purpose |
+|---|---|
+| `AppAgentToolDomain` | Grouping of libraries (`Platform Built-in`, `MCP Servers`, `Custom SQL Queries`, `External REST APIs`, …) |
+| `AppAgentToolLibrary` | A named set of tools (`LibraryKey`, `DomainKey`, `IsActive`, …) |
+| `AppAgentLibraryTool` | Tools owned by a library (same shape as `AppAgentToolRegister`, incl. `ToolType`/`ToolConfig`/`IsActive`) |
+| `AppAgentLibrarySubscription` | `(SkillKey, LibraryKey)` — the agent uses everything active in the library |
+
+Runtime rule: an agent receives a library tool when it subscribes to the library **and** the tool's `IsActive` is on **and** the agent has not excluded it. The library's own `IsActive` flag is **not** enforced at run time (same for MCP servers).
+
+### 3.6 Per-agent Tool Exclusions and the Tool Catalog (V038, V039)
+
+| Table | Purpose |
+|---|---|
+| `AppAgentToolExclusion` | `(SkillKey, LibraryKey, ToolName)` — tools an agent does **not** use from libraries it subscribes to. Default is allow-all; new tools on a library or MCP server are available automatically. |
+| `AppAgentToolCatalog` | One row per tool from every source: `Source`, `LibraryKey`, `ToolName`, `Description`, `InputSummary`, `Risk` (`read`/`write`/`delete`), `McpServerId`, `Embedding` (reserved for RAG), `SyncedAt`. Library tools sync automatically when AI design is generated; MCP tools via **Sync tools**. |
+
+### 3.7 Conversations, Orchestration and Shared State
+
+| Table | Purpose |
+|---|---|
+| `AppGenericAgentSession` (V021, V034, V035) | Persisted conversation per user and agent or chat: `SessionKey`, `SkillKey`, `UserId`, `MessagesJson`, `DisplayTitle`, `UpdatedAt` |
+| `AppAgentChildMapping` (V036) | Orchestrator → child agents (many-to-many, no self-reference) |
+| `AppAgentSharedContext` (V022) | Blackboard `(ScopeId = WorkflowId, ContextKey, DataJson)` for multi-agent workflows |
+| `AppAgentSkillSetHistory` (V019) | Last 10 system prompt versions per agent |
+| `CursorCloudAgentSession` (V023) | Separate external-backend path; not part of the SK loop |
 
 ---
 
@@ -185,177 +216,115 @@ public enum AgentCapabilityFlags
 
 | Flag | Value | Runtime effect | Example persona |
 |---|---|---|---|
-| `StreamTokens` | 1 | Engine fires `OnToken` callbacks; controller SSE-streams each token | All built-in agents |
-| `MultiTurn` | 2 | Client includes prior `Messages` in the request body; engine converts them to `ChatHistory` | All built-in agents |
-| `PlanGate` | 4 | `propose_plan` tool pauses execution via `TaskCompletionSource` until `ConfirmPlan` endpoint is called | `app-builder` |
-| `SchemaGate` | 8 | `propose_schema` tool pauses execution via `TaskCompletionSource` until `ConfirmSchema` endpoint is called | `app-builder` |
-| `InjectMemory` | 16 | `GenericAgentBL.BuildSystemPrompt` calls `AppBuilderAgentMemoryBL.SearchMemory()` and appends relevant context | `app-builder` |
-| `InjectSchema` | 32 | DB schema summary is injected into the system prompt (used by DB Genie to reason over table/column names) | `db-genie` |
-| `ExternalBackend` | 64 | SK loop is skipped; request delegated to Cursor cloud or other external backend | `data-integration` |
+| `StreamTokens` | 1 | Engine fires `OnToken`; controller SSE-streams each token | All built-in agents |
+| `MultiTurn` | 2 | Prior messages are converted to `ChatHistory` | All built-in agents |
+| `PlanGate` | 4 | `propose_plan` pauses until `ConfirmPlan` | `app-builder` |
+| `SchemaGate` | 8 | `propose_schema` pauses until `ConfirmSchema` | `app-builder` |
+| `InjectMemory` | 16 | Relevant memory appended to the system prompt | `app-builder` |
+| `InjectSchema` | 32 | DB schema summary injected into the system prompt | `db-genie` |
+| `ExternalBackend` | 64 | SK loop skipped; delegated to the Cursor cloud backend | `data-integration` |
 
-**Composite examples:**
-- `31` = 1+2+4+8+16 = Stream + MultiTurn + PlanGate + SchemaGate + InjectMemory (App Builder)
-- `35` = 1+2+32 = Stream + MultiTurn + InjectSchema (DB Genie)
-- `65` = 1+64 = Stream + ExternalBackend (Data Integration)
+Composite examples: `31` = App Builder, `35` = DB Genie, `65` = Data Integration.
 
 ---
 
 ## 5. ToolType Strategy Pattern
 
-`AppAgentToolEngine.Dispatch()` is the central dispatcher:
+`AppAgentToolEngine.Dispatch()` routes by `ToolType`. `BuiltIn` also receives the per-run **instance pool** so stateful plugin instances survive across tool calls in one run.
 
-```csharp
-return (toolType ?? "BuiltIn") switch
-{
-    "BuiltIn"       => BuiltInToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
-    "ExternalDll"   => ExternalDllToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
-    "SqlQuery"      => SqlQueryToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
-    "PowerShell"    => PowerShellToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
-    "HttpRest"      => HttpRestToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
-    "DynamicCSharp" => DynamicCSharpToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
-    _               => Task.FromResult("{\"Error\":\"Unknown ToolType\"}")
-};
-```
+| ToolType | ToolConfig shape | Mechanism | Security notes |
+|---|---|---|---|
+| `BuiltIn` | `{"TypeName":"Namespace.Class","MethodName":"Method"}` | Reflection; method takes `(IReadOnlyDictionary<string,string> args, AgentToolContext ctx, CancellationToken ct)` | In-process, full trust; developer-only |
+| `ExternalDll` | `{"AssemblyName":"Tenant.dll","TypeName":"...","MethodName":"Run"}` | `Assembly.LoadFrom`; type implements `IAgentTool` | Full trust; version-check the assembly |
+| `SqlQuery` | `{"SqlBody":"SELECT ... WHERE Col=@param","ReturnType":"json"}` | Parameterized `SqlCommand` against the tenant DB | Parameterized only; SELECT preferred |
+| `PowerShell` | `{"ScriptPath":"scripts/export.ps1"}` | Runs a script file, returns stdout | Super-admin only; restrict directory |
+| `HttpRest` | `{"Url":"https://.../{argName}","Method":"GET","TokenStoreKey":"key"}` | `HttpClient` with placeholder substitution; token from key store | URL validated; no arbitrary redirect |
+| `DynamicCSharp` | `{"ScriptBody":"...","AllowedNamespaces":["System"],"TimeoutSeconds":10}` | Roslyn script with namespace whitelist | Allowed: System, Linq, Collections.Generic, Text, Text.Json. Blocked: IO, Net, Reflection, Diagnostics. Every execution logged. |
 
-| ToolType | ToolConfig shape | Mechanism | Code required? | Security notes |
-|---|---|---|---|---|
-| `BuiltIn` | `{"TypeName":"Namespace.Class","MethodName":"Method"}` | Reflection into running assembly; method signature must accept `(IReadOnlyDictionary<string,string> args, AgentToolContext ctx, CancellationToken ct)` | Yes (C# class in APP.BL) | Runs in-process with full trust; developer-only |
-| `ExternalDll` | `{"AssemblyName":"Tenant.dll","TypeName":"...","MethodName":"Run"}` | `Assembly.LoadFrom` from `ExternalDllRepository\` directory; type must implement `IAgentTool` | Yes (implement `IAgentTool` interface) | Loaded with full trust; version-check the assembly |
-| `SqlQuery` | `{"SqlBody":"SELECT ... WHERE Col=@param","ReturnType":"json"}` | Parameterized `SqlCommand` against tenant DB; `@param` binding from LLM args | No (SQL only) | Never string-concatenates; parameterized only; SELECT preferred |
-| `PowerShell` | `{"ScriptPath":"scripts/export.ps1"}` | `PowerShell.Create()`, runs script file, returns stdout | Script file only | Super-admin use only; restrict directory |
-| `HttpRest` | `{"Url":"https://.../{argName}","Method":"GET","TokenStoreKey":"key"}` | `HttpClient` with `{argName}` placeholder substitution; token from key store | No (config only) | URL validated; no arbitrary redirect |
-| `DynamicCSharp` | `{"ScriptBody":"...","AllowedNamespaces":["System"],"TimeoutSeconds":10}` | Roslyn `CSharpScript.EvaluateAsync` with `ScriptOptions` namespace whitelist | No (LLM or admin writes script) | Allowed: System, Linq, Collections.Generic, Text, Text.Json. Blocked: IO, Net, Reflection, Diagnostics. Every execution logged with userId, skillKey, toolName, code. |
-
-All six executor results are truncated to `MaxToolResultChars` by `GenericAgentEngine` before being stored in chat history.
+All results are truncated to `MaxToolResultChars` before entering chat history.
 
 ---
 
 ## 6. LLM Provider Configuration Chain
 
-`AIConfigSettingBL` is the single source of truth. It reads exclusively from the selected tenant's `AppTenantSetting` rows seeded by V009. There is no `appsettings.json` fallback — a missing or empty key means the provider returns an empty string, which the engine will detect when building the kernel.
-
-**Resolution order for a request with an `AgentExecutionContext` (including background execution):**
+`AIConfigSettingBL` is the single source of truth. It reads only from the selected tenant's `AppTenantSetting` rows (V009, V017). There is no `appsettings.json` fallback.
 
 ```
 AIConfigSettingBL.GetProvider(executionContext)
-  → AppTenantSettingBL.GetStringValue(EmTenantSettings.AIConfigProvider, executionContext.tenantContext)
-  → Default: "Gemini"
-
-AIConfigSettingBL.GetApiKey(executionContext)
-  → switch(provider):
-      "openai"    → AIConfigOpenAIApiKey tenant setting
-      "anthropic" → AIConfigAnthropicApiKey tenant setting
-      default     → AIConfigGeminiApiKey tenant setting
-
-AIConfigSettingBL.GetModel(executionContext)
-  → switch(provider):
-      "openai"    → AIConfigOpenAIModel (default: "gpt-4o")
-      "anthropic" → AIConfigAnthropicModel (default: "claude-3-5-sonnet-20241022")
-      default     → AIConfigGeminiModel (default: "gemini-2.0-flash")
+  → tenant setting AIConfigProvider  → default "Gemini"
+AIConfigSettingBL.GetApiKey / GetModel
+  → per provider: OpenAI (gpt-4o), Anthropic (claude-3-5-sonnet-20241022), Gemini (gemini-2.0-flash)
 ```
 
-**Requests without tenant identity** cannot use tenant-scoped settings. The admin test path must authenticate the caller and explicitly select a company before creating an `AgentExecutionContext`; a shared/global provider-key fallback is not permitted in production.
-
-**Kernel construction per provider** (`GenericAgentEngine.BuildKernel`):
+Requests without tenant identity cannot use tenant settings; the admin test path must select a company first.
 
 | Provider | SK registration | Special handling |
 |---|---|---|
-| `Anthropic` | `builder.Services.AddSingleton<IChatCompletionService>(new AnthropicChatCompletionService(model, apiKey))` | Custom wrapper; no official SK connector package for Anthropic |
-| `Gemini` | `builder.AddGoogleAIGeminiChatCompletion(model, apiKey, httpClient: new HttpClient(new GeminiRoleFixHandler()))` | `GeminiRoleFixHandler` patches tool-result role from `"function"` to `"user"` in outgoing JSON body — workaround for SK Connectors.Google 1.74.0-alpha bug |
-| `OpenAI` | `builder.AddOpenAIChatCompletion(model, apiKey)` | Standard SK extension |
+| `Anthropic` | `AnthropicChatCompletionService(model, apiKey)` | Custom wrapper; sends the bare function name (plugin dropped) |
+| `Gemini` | `AddGoogleAIGeminiChatCompletion(...)` with `GeminiRoleFixHandler` | Tool-result role patched `function` → `user` (SK Google 1.74.0-alpha bug). Tool names are `plugin_function` split at the first `_` — see §8. |
+| `OpenAI` | `AddOpenAIChatCompletion(...)` | Standard; names are `plugin-function` |
 
 ---
 
 ## 7. Semantic Kernel Integration
 
-**Kernel construction** happens per-request in `GenericAgentEngine.BuildKernel`. The kernel is not cached — a fresh instance is built for each `RunAsync` call to avoid state leakage between sessions.
-
-**Tools are only registered when present.** `FunctionChoiceBehavior.Auto()` is set on `PromptExecutionSettings` only when `kernel.Plugins.Any(p => p.Any())` is true. Gemini (and some other providers) reject requests with an empty tools array; this guard prevents that error.
-
-**IFunctionInvocationFilter** (`AgentStepFilter`) is added to the kernel after construction. It fires `OnStep` callbacks before and after each tool invocation so the controller can emit step events to the client.
-
-**ChatCompletionAgent** is configured with:
-- `Kernel` — the built kernel with all plugins
-- `Instructions` — `skillSet.SystemPrompt`
-- `Arguments` — `KernelArguments` wrapping the `PromptExecutionSettings`
-
-**Streaming** uses `agent.InvokeStreamingAsync(thread, cancellationToken: ct)`. Each chunk's `Message.Content` is appended to `fullResponse` and fired as an `OnToken` callback.
-
-**ChatHistory** is built from the `chatHistory` parameter (a `List<JObject>` passed by the client from prior turns). Roles `"user"` and `"assistant"`/`"model"` are mapped; other roles are ignored.
+- The kernel is built **per request** and never cached.
+- `FunctionChoiceBehavior.Auto()` is set only when at least one plugin function exists (Gemini rejects an empty tools array).
+- `AgentStepFilter` fires `OnStep` before/after each tool call; `GenericAgentPruneFilter` enforces `MaxIterations` and `MaxHistoryTokens`.
+- `ChatCompletionAgent` uses `skillSet.SystemPrompt` (plus the injected file catalog) as instructions.
+- Streaming uses `agent.InvokeStreamingAsync(thread, …)`; each chunk is fired as `OnToken`.
+- Plugin layout seen by the model: `tools` (private + library tools), `hitl` (`ask_user`, Interactive only), `mcp<name>` (one per MCP server), plus feature plugins (files, scripts, call_agent, shared context) registered as library tools.
 
 ---
 
 ## 8. MCP Integration
 
-The engine uses `ModelContextProtocol` v1.2.0. The `AsKernelFunction()` extension method available in that package is **not used** — it causes `MissingMethodException` at runtime due to a `Microsoft.Extensions.AI` version conflict with the rest of the project's dependencies. Tools are wrapped manually instead.
+The engine uses `ModelContextProtocol` 1.2.0. `AsKernelFunction()` is **not** used (it throws `MissingMethodException` because of a `Microsoft.Extensions.AI` version conflict); tools are wrapped manually.
 
-**Connection flow (per MCP server row):**
+**Connection flow (per MCP server of a subscribed library):**
 
 ```csharp
-// 1. Build transport
-var transportOptions = new HttpClientTransportOptions
-{
-    Endpoint      = new Uri(server.ServerUrl),
-    TransportMode = HttpTransportMode.StreamableHttp
-};
-var transport = new HttpClientTransport(transportOptions, McpHttpClient,
-    NullLoggerFactory.Instance, ownsHttpClient: false);
+// 1. Transport: URL + bearer / custom headers (env vars resolved here)
+var options   = McpConnectionHelper.BuildTransportOptions(server);   // AdditionalHeaders
+var transport = new HttpClientTransport(options, McpHttpClient, NullLoggerFactory.Instance, ownsHttpClient: false);
 
-// 2. Connect and list tools
+// 2. Connect, list tools, drop the agent's excluded tools
 var client = await McpClient.CreateAsync(transport, cancellationToken: ct);
-var tools  = await client.ListToolsAsync(cancellationToken: ct);
+var tools  = (await client.ListToolsAsync(cancellationToken: ct))
+                 .Where(t => !excludedForThisLibrary.Contains(t.Name));
 
-// 3. Wrap each tool as KernelFunction
-var functions = tools.Select(t => KernelFunctionFactory.CreateFromMethod(
-    async (KernelArguments args, CancellationToken ct) => {
-        var result = await client.CallToolAsync(toolName, mcpArgs, ct);
-        return Truncate(text, cap);
-    },
-    functionName:    SanitizeName(toolName),
-    description:     description,
-    parameters:      parameters,      // parsed from tool.JsonSchema
-    returnParameter: returnParameter
-)).ToArray();
-
-// 4. Add plugin group
-kernel.Plugins.Add(KernelPluginFactory.CreateFromFunctions("mcp_" + serverName, functions));
+// 3. Wrap each as a KernelFunction (CreateFromMethod) → plugin
+kernel.Plugins.Add(KernelPluginFactory.CreateFromFunctions(McpPluginName(server.ServerName), functions));
 ```
 
-A single shared static `HttpClient` (`McpHttpClient`) with `Timeout = InfiniteTimeSpan` is used for all MCP connections. MCP tool calls have a 30-second per-call `CancellationTokenSource` timeout linked to the outer cancellation token.
+**Plugin naming rule.** Gemini's connector splits `plugin_function` at the first underscore, so a plugin name containing `_` makes every tool unresolvable (`Requested function could not be found`). `McpPluginName` returns `"mcp"` + the letters/digits of the server name, cut to 16 characters. Provider limit on the combined name is 64 characters. Full rules and provider table: `ToolNameConvention-ProviderLimits.md`.
 
-If `McpClient.CreateAsync` throws, the server is skipped with a `log.Warn` and the agent continues with remaining tools.
+**Headers.** `BuildHeaders` merges static `Headers` (decrypted), then `HeadersFromEnv` (env var values), then `BearerTokenEnvVar` as `Authorization`. Missing or disallowed env vars are reported as warnings by Test connection.
 
-MCP clients implement `IAsyncDisposable` (or `IDisposable` as fallback); all are disposed in the `finally` block of `RunAsync`.
+**Security policy (`McpSecurityPolicy`).** (1) Only environment variables named `MCP_*` can be read, so a registration cannot pull unrelated server secrets into a header; each resolve logs the variable *name* (never the value). (2) `ServerUrl` must be http(s) without embedded credentials, and must not resolve to link-local (including the cloud metadata address `169.254.169.254`), unspecified, broadcast or multicast addresses. Loopback and private networks stay allowed because PLM/ERP MCP servers usually run there; a per-tenant host allow-list is the next step. (3) HTTP redirects are not followed. The policy is enforced on save, Test connection, Sync tools and again before every agent connect.
 
-**Tool name sanitization:** `SanitizeName()` replaces any character that is not `[a-zA-Z0-9_]` with `_`, and prepends `_` if the name starts with a digit (Gemini requirement).
+**Operations.** A single static `HttpClient` (`Timeout = Infinite`) serves all MCP connections; each tool call has a 30 s linked timeout. A server that fails to connect is skipped with a `log.Warn` and the run continues. MCP clients are disposed in the `finally` of `RunAsync`.
+
+**Admin actions.** *Test Connection* (connect and list tool names) and *Sync tools* (store name, description, parameter names and risk hint in `AppAgentToolCatalog`; requires a saved server).
 
 ---
 
 ## 9. Session and Context Management
 
-**Session lifecycle:**
+**Run lifecycle:**
 
-1. `GenericAgentController.RunAgent` validates the caller, resolves the authenticated company, and creates an immutable `AgentExecutionContext` from the validated identity and tenant data-source registration.
-2. `GenericAgentSessionStore.CreateSession()` returns a new GUID `sessionId` bound to the user, company, and execution context.
-3. A `GenericAgentCallbacks` object is constructed, wiring all delegates to enqueue events for that session ID.
-4. Background execution starts with the captured context; it must not depend on thread-static `ServerContext` surviving across `Task.Run` or `async/await`. The HTTP response returns immediately with `{ IsStarted: true, SessionId: "..." }`.
-5. The client opens a GET `/StreamEvents?sessionId=...` SSE connection. The controller verifies session ownership and company ownership, then loops, calling `WaitForEventAsync` (up to 30s long-poll), dequeuing and flushing events.
-6. When `OnDone` or `OnError` is enqueued, the client closes the SSE connection; the controller's loop exits and the session is cleaned up after its retention period.
+1. `RunAgent` validates the caller, resolves the company and creates an immutable `AgentExecutionContext`.
+2. `GenericAgentSessionStore.CreateSession()` returns a GUID `sessionId` bound to user, company and context.
+3. `GenericAgentCallbacks` are wired to enqueue events for that session.
+4. Background execution starts with the captured context (no dependence on thread-static `ServerContext`). The HTTP response returns `{ IsStarted: true, SessionId }` immediately.
+5. The client opens `GET /StreamEvents?sessionId=…` (SSE). The controller verifies session and company ownership, then loops `WaitForEventAsync` (≤30 s), flushing events.
+6. On `OnDone`/`OnError` the client closes the connection; the session is cleaned up after a retention period.
 
-**Multi-turn context:** The client (React component) maintains the conversation history locally. On each send, it builds a `Messages` array from all prior messages and includes it in the request body. `GenericAgentEngine.BuildChatHistory` converts this list into a `ChatHistory` object. There is no server-side history store between requests.
+**Conversation persistence.** Conversations are stored server-side in `AppGenericAgentSession` (key `{SkillKey}:{UserId}` by default, or an explicit chat session key), so they survive refresh and tab switches; the auto-title lives in `DisplayTitle`. The client still sends the `Messages` array for the current turn, and `BuildChatHistoryAsync` converts it (with summarisation above `SummarizeThreshold`).
 
-**Plan gate flow:**
+**Plan gate flow:** `propose_plan` → `OnPlanReady` → controller registers a gate ID, enqueues a `plan` event → background task awaits (≤10 min, then auto-reject) → `ConfirmPlan` (verifies ownership, gate freshness, one-time use) resolves it. The schema gate follows the same pattern. In `Deterministic` mode both gates auto-approve.
 
-1. The BuiltIn `propose_plan` tool calls `OnPlanReady(planEvent)`.
-2. The controller registers a gate ID and confirmation state atomically, then enqueues a `plan` event containing that gate ID. The event is bound to the session owner and company.
-3. `await tcs.Task` suspends the background thread (up to 10 minutes; then auto-rejects).
-4. The user clicks Approve or Reject → client POSTs to `ConfirmPlan` with the session ID, gate ID, and decision.
-5. The endpoint verifies session ownership, company ownership, gate freshness, and one-time use before resolving the gate.
-6. The background execution resumes; the tool returns `{Confirmed:true/false}` to the LLM.
-
-Schema gate follows the same pattern via `ConfirmSchema`.
-
-**Tool result truncation:** Before being stored in chat history, every tool result is truncated at `skillSet.MaxToolResultChars` characters with a `…` suffix appended. This prevents runaway context growth from large SQL dumps or MCP payloads.
+**Tool result truncation:** every result is cut to `MaxToolResultChars` before it enters history.
 
 ---
 
@@ -363,38 +332,93 @@ Schema gate follows the same pattern via `ConfirmSchema`.
 
 | Package | Version | Purpose |
 |---|---|---|
-| `Microsoft.SemanticKernel` | 1.74.0 | Agentic loop, `ChatCompletionAgent`, kernel, plugins |
+| `Microsoft.SemanticKernel` | 1.74.0 | Agentic loop, kernel, plugins |
 | `Microsoft.SemanticKernel.Agents.Core` | 1.74.0 | `ChatCompletionAgent`, `ChatHistoryAgentThread` |
-| `Microsoft.SemanticKernel.Connectors.OpenAI` | 1.74.0 | OpenAI + Azure OpenAI provider |
-| `Microsoft.SemanticKernel.Connectors.Google` | 1.74.0-alpha | Gemini provider (requires `GeminiRoleFixHandler` workaround) |
-| `ModelContextProtocol` | 1.2.0 | MCP client — `McpClient`, `HttpClientTransport`, `HttpTransportMode.StreamableHttp`. Do NOT use `AsKernelFunction()`. |
-| `Microsoft.CodeAnalysis.CSharp.Scripting` | latest stable | `DynamicCSharp` ToolType — Roslyn sandbox |
-| `Anthropic` | 12.42.0 | Official Anthropic SDK (not community `Anthropic.SDK`) |
+| `Microsoft.SemanticKernel.Connectors.OpenAI` | 1.74.0 | OpenAI / Azure OpenAI |
+| `Microsoft.SemanticKernel.Connectors.Google` | 1.74.0-alpha | Gemini (needs `GeminiRoleFixHandler`) |
+| `ModelContextProtocol` | 1.2.0 | MCP client. Do NOT use `AsKernelFunction()`. |
+| `Microsoft.CodeAnalysis.CSharp.Scripting` | latest stable | `DynamicCSharp` Roslyn sandbox |
+| `Anthropic` | 12.42.0 | Official Anthropic SDK |
 
 ---
 
 ## 11. Key Design Decisions
 
 ### Why not extend AppAISkill?
-
-`AppAISkill` is a flat prompt library — individual prompt snippets users can store and retrieve. It has no concept of tools, MCP servers, capability flags, or context thresholds. Adding agent persona semantics to it would have required invasive schema changes to a stable feature used in production. The cleaner path was a dedicated `AppAgentSkillSet` table designed exactly for agent personas, with `AppAISkill` left completely untouched.
+`AppAISkill` is a flat prompt library with no notion of tools, MCP servers or capability flags. A dedicated `AppAgentSkillSet` avoids invasive schema changes to a stable production feature.
 
 ### Why no base-class / addon concept between agents?
+The duplication was infrastructure (the agentic loop), not persona configuration. One flat `AppAgentSkillSet` row with a full `SystemPrompt` is simpler to debug and edit. Reuse of *tools* is handled by libraries and subscriptions; reuse of *agents* by orchestrator/child mapping.
 
-The original design considered making agents composable (a base persona + optional addon modules). This was rejected because it added indirection without solving the core problem. The real duplication was infrastructure code (the agentic loop), not persona configuration. A single flat `AppAgentSkillSet` row with a full `SystemPrompt` is simpler to reason about, simpler to debug, and simpler to edit through the admin UI.
+### Why are MCP servers owned by libraries, not agents? (2026-09)
+One server registered once can serve many agents, and libraries are already the unit of sharing for tools. Agent-owned rows created duplication and an ambiguous "Agent Code" field. Trade-off: the column is still named `SkillKey` but holds a library key.
 
-### Why fire-and-forget with SSE instead of long-polling WebSocket?
+### Why exclusions (deny-list) instead of an allow-list?
+Subscribing stays simple and new tools appear automatically, which suits trusted read-only libraries. The cost is that an agent can silently gain new tools, including write tools. An allow-list mode is a backlog item (§13).
 
-WebSocket requires explicit session management across load balancer nodes. SSE is HTTP/1.1 compatible, works through most proxies without configuration, and is simpler to implement in ASP.NET Core. The polling fallback (`PollEvents`) is included for environments where SSE is blocked.
+### Why fire-and-forget with SSE?
+SSE is HTTP/1.1 compatible, works through most proxies and needs no load-balancer session handling. A polling fallback (`PollEvents`) exists.
 
 ### Why manual KernelFunction wrapping for MCP tools?
+`AsKernelFunction()` breaks at runtime on an `Microsoft.Extensions.AI.Abstractions` version conflict. Manual wrapping is a one-time cost, proven in the BC-MCP-Client codebase.
 
-The `AsKernelFunction()` extension in `ModelContextProtocol` 1.2.0 causes `MissingMethodException` at runtime because it references a version of `Microsoft.Extensions.AI.Abstractions` that conflicts with the version pulled in by `Microsoft.SemanticKernel`. Manual wrapping via `KernelFunctionFactory.CreateFromMethod` is a one-time implementation cost and is already proven by the BC-MCP-Client codebase that this project references.
-
-### Why is chat history passed client-side?
-
-Server-side history storage would require a distributed cache or database writes on every message exchange, adding latency and operational complexity. The client already renders all messages; including them in the next request adds negligible payload size for typical conversations. This approach also means the server is stateless between requests (except for active gate TCS objects), which simplifies horizontal scaling.
+### Why persist conversations server-side now?
+The first design kept history client-side to stay stateless. Users need conversations to survive refresh and device switches, and orchestrator flows need history on the server, so `AppGenericAgentSession` was added (V021). The run itself remains stateless apart from active gate objects.
 
 ### Why the GeminiRoleFixHandler?
+SK's Google connector 1.74.0-alpha sends tool-result turns with role `function`; Gemini accepts only `user`. The handler patches outgoing JSON. Remove it when the connector is fixed.
 
-Semantic Kernel's Google connector v1.74.0-alpha sets the role of tool-result turns to `"function"` in the JSON it sends to the Gemini API. The Gemini API only accepts `"user"` for that turn. The fix is a `DelegatingHandler` that intercepts every outgoing HTTP request and patches `contents[].role` from `"function"` to `"user"` before the bytes leave the process. This is a pure workaround for an upstream SDK bug and should be removed when the connector is fixed.
+---
+
+## 12. Tool Selection and AI Agent Design
+
+**Goal:** a domain expert describes a use case (for example "publish available PLM styles to the ERP") and the platform picks the right tools from thousands.
+
+```
+use case text
+   │
+   ▼  SyncLibraryTools (only changed rows)        ┌──────────────────────────┐
+AppAgentToolCatalog  ◄───────────────────────────┤ Sync tools (per MCP srv) │
+   │  IToolCatalogRetriever.Retrieve(useCase, 300)└──────────────────────────┘
+   ▼   (all tools if ≤300, otherwise keyword shortlist; embeddings later)
+LLM: plan Workflow → name exact tools → JSON { SystemPrompt, RecommendedTools, … }
+   │
+   ▼  server validation: drop any tool not in the catalog; drop ask_user; de-duplicate
+Review dialog: tools grouped by library with risk badge and reason (checkboxes)
+   │
+   ▼  Use this
+subscribe to the libraries of ticked tools  +  exclude that library's other tools
+```
+
+Rules given to the model: copy names exactly, choose the fewest tools, put a confirmation step (`ask_user`, always available at runtime, or `propose_plan`) before any `[write]`/`[delete]` tool, and never recommend `ask_user` as a registered tool.
+
+`risk` is a **hint only** (server annotations when sent, otherwise verbs in the tool name); it gates nothing at run time.
+
+**RAG path (not built):** implement `IToolCatalogRetriever` with an embedding lookup over `AppAgentToolCatalog.Embedding` and assign it to `ToolCatalogRetrieval.Current`. Nothing else changes.
+
+---
+
+## 13. Improvement Backlog
+
+Priority: **P1** fix soon (security or correctness), **P2** next, **P3** when scale demands.
+
+| # | Pri | Area | Problem | Recommendation |
+|---|---|---|---|---|
+| 1 | P1 | Security | `HeadersFromEnv` and `BearerTokenEnvVar` read **any** environment variable of the server process. A tenant admin could name a sensitive variable and point the server URL at a host they control, and the value is sent there. The same applies to *Test connection* and *Sync tools*. | **Done 2026-09-30:** only `MCP_*` variables readable; names logged on every resolve (§8). A tenant-scoped secret store is still an option. |
+| 2 | P1 | Security | `ServerUrl` is arbitrary (including internal addresses), so MCP connect/test/sync can reach internal hosts. | **Done 2026-09-30 (baseline):** scheme, credentials, link-local/metadata/multicast blocking and no redirects (§8). Still open: a per-tenant host allow-list. |
+| 3 | P1 | Security | Static `Headers` are stored in plain text in the tenant DB (the bearer/`IntergrationAccessToken` value is visible in the UI). | **Done 2026-09-30:** encrypted at rest, masked in API and UI (§3.3). Set a strong `AppConnectionStringEncryptionKey` in production. |
+| 4 | P1 | Ops | Migrations are **not applied at startup**; they run only for new tenants or via `POST RunMigrations`. After a deploy, screens fail with "Invalid column name" until someone runs it. `RunMigrationsOnAllTenants` also swallows the failure reason (returns `-1`). | **Done 2026-09-30:** `Migrations:RunOnStartup` (on in Development), startup warning per tenant with pending scripts, `GET TenantProvisioning/PendingMigrations`, failures now logged (`AppAI.Web/Migrations/README.md`). |
+| 5 | P1 | Ops | Migration numbers collide (two `V036`, two `V038`). They work only because the runner tracks the full filename; ordering between same-number files is alphabetical. | **Done 2026-09-30:** naming rules in `Migrations/README.md`, `check-duplicate-versions.ps1`, startup warning for duplicates. Wire the script into CI. |
+| 6 | P1 | Code rule | Silent `catch { }` blocks remain in the engine (for example around file-source seeding and catalog injection), against the handbook rule. | **Done 2026-09-30 for `APP.BL/AIAgent/GenericAgent`** via `SwallowLog.Write`. Other agents (App Builder, Report, Cursor, DbGenie) and `TenantBusiness` still have silent catches. |
+| 7 | P2 | Performance | Every run reconnects to every subscribed MCP server and calls `ListTools` before the LLM is invoked. A slow or down server delays each message. | Cache the tool list per server (short TTL, refresh on Sync), connect lazily on first call, and time-box connection (per-server timeout). |
+| 8 | P2 | Safety | Deny-list exclusions mean new tools on a server or library are silently available to agents, including write tools. | Add an allow-list mode per subscription (default for AI-designed agents), and require `Risk` review before a `write`/`delete` tool becomes available. |
+| 9 | P2 | Correctness | Exclusions are matched by tool **name**; a renamed MCP tool returns as available. Two subscribed libraries with the same tool name keep only the first, with no indication. | Show "shadowed/duplicate" in the library row; warn on name collisions at subscribe time. |
+| 10 | P2 | Correctness | Tool name collisions after `SanitizeName`, and plugin names truncated to 16 characters, can collide across servers (the second plugin is skipped with a warning). | Detect and report collisions in Test/Sync; consider a stable short id in the plugin name. |
+| 11 | P2 | Maintainability | `GenericAgentEngine.cs` is far above the 300-line file limit and mixes kernel building, tool wrapping, MCP, history and filters. | Split: `McpPluginFactory`, `ToolWrapper`, `ChatHistoryBuilder`, `KernelFactory`. |
+| 12 | P2 | Observability | No per-run record of which tools were offered, called and truncated, or of token use. | Persist a run summary (tools offered/used, iterations, truncations, duration) for debugging and cost review. |
+| 13 | P2 | Testing | No automated tests cover tool selection, exclusions, header resolution or plugin naming. | xUnit tests for `McpPluginName`, `BuildHeaders`, exclusion filtering, risk guess; a Playwright scenario for the library tools UI. |
+| 14 | P3 | Scale | The catalog prompt is capped at 300 tools with keyword scoring; beyond ~500 tools quality drops. | Implement the embedding retriever (§12), keep the two-stage pick (libraries then tools). |
+| 15 | P3 | Scale | `GenericAgentSessionStore` is in-memory (single node) and gate state lives in process. | Move to a distributed store (Redis/SQL) before multi-node deployment. |
+| 16 | P3 | MCP | Only `streamable-http` is supported; `stdio` rows are skipped, no `sse`, no OAuth. | Add transports as needed; OAuth client-credentials for enterprise MCP servers. |
+| 17 | P3 | Risk hint | Risk is guessed from names and is not editable. | Allow manual override in the library UI and show it next to every tool. |
+| 18 | P3 | Providers | The Google SK connector is an alpha with a role workaround, and tool naming differs per provider. | Track the connector fix, add a provider matrix test for tool calling, and keep `ToolNameConvention-ProviderLimits.md` current. |
