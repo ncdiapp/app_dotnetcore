@@ -67,6 +67,17 @@ const AgentMcpServerTab: React.FC<Props> = ({ theme, libraryKey, pathPrefix }) =
         } finally { setTesting(false); }
     };
 
+    // Stores the server's tool list in the tool catalog so "AI Generate Agent Design" can recommend its tools.
+    const handleSyncTools = async () => {
+        setTesting(true); setTestResult(null); setError(null);
+        try {
+            const res = await agentSkillSetSvc.SyncMcpTools(editItem);
+            setTestResult(res.Object ?? { Success: false, Message: 'No response from server.', ToolCount: 0, ToolNames: [] });
+        } catch (e: unknown) {
+            setTestResult({ Success: false, Message: e instanceof Error ? e.message : String(e), ToolCount: 0, ToolNames: [] });
+        } finally { setTesting(false); }
+    };
+
     const update = (field: keyof AppAgentMcpServerDto, value: unknown) => {
         setEditItem(prev => ({ ...prev, [field]: value }));
         setIsDirty(true);
@@ -182,6 +193,16 @@ const AgentMcpServerTab: React.FC<Props> = ({ theme, libraryKey, pathPrefix }) =
                             {isHttp && (
                                 <button className={btn} onClick={handleTest} disabled={testing}>
                                     <i className={`fa-solid ${testing ? 'fa-spinner fa-spin' : 'fa-plug'} mr-1`} />Test Connection
+                                </button>
+                            )}
+                            {isHttp && (
+                                <button
+                                    className={btn}
+                                    onClick={handleSyncTools}
+                                    disabled={testing || editItem.McpServerId <= 0 || isDirty}
+                                    title={editItem.McpServerId <= 0 || isDirty ? 'Save the server first, then sync its tools' : 'Read the tool list from the server into the tool catalog (used by AI agent design)'}
+                                >
+                                    <i className="fa-solid fa-rotate mr-1" />Sync tools
                                 </button>
                             )}
                             {isDirty && <span className="text-xs text-orange-500 ml-2">Unsaved changes</span>}

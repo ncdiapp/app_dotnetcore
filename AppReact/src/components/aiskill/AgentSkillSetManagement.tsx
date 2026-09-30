@@ -12,6 +12,8 @@ import AgentToolRegisterTab from './AgentToolRegisterTab';
 import AgentUiChatHost from './AgentUiChatHost';
 import { chatModulesFromLibraries } from './agentUiModules';
 import AgentLibraryTab from './AgentLibraryTab';
+import AgentLibraryRow from './AgentLibraryRow';
+import AiRecommendedTools, { recommendedToolKey } from './AiRecommendedTools';
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import AgentHierarchyPanel from './AgentHierarchyPanel';
 import AgentChildAgentTab from './AgentChildAgentTab';
@@ -73,6 +75,7 @@ const AgentSkillSetManagement: React.FC = () => {
     const [aiResult, setAiResult]                     = useState<GenerateAgentResult | null>(null);
     const [aiAcceptedLibs, setAiAcceptedLibs]         = useState<Set<string>>(new Set());
     const [aiAcceptedBuiltIns, setAiAcceptedBuiltIns] = useState<Set<string>>(new Set());
+    const [aiAcceptedTools, setAiAcceptedTools]       = useState<Set<string>>(new Set());
     const [showAiEdit, setShowAiEdit]                 = useState(false);
     const [aiEditInstruction, setAiEditInstruction]   = useState('');
     const [aiEditing, setAiEditing]                   = useState(false);
@@ -85,6 +88,9 @@ const AgentSkillSetManagement: React.FC = () => {
     const [subscribedKeys, setSubscribedKeys] = useState<Set<string>>(new Set());
     const [libSearch, setLibSearch] = useState('');
     const [subsChanged, setSubsChanged] = useState(false);
+    // Tools the agent does not use from subscribed libraries, keyed "libraryKey\u0001toolName"
+    const [excluded, setExcluded] = useState<Set<string>>(new Set());
+    const [exclChanged, setExclChanged] = useState(false);
 
     const applyListAndKeepSelection = useCallback((list: AppAgentSkillSetDto[], skillKeyToKeep: string | null | undefined, syncEditFromServer: boolean) => {
         setAgents(list);
@@ -146,6 +152,11 @@ const AgentSkillSetManagement: React.FC = () => {
             setSubscribedKeys(new Set((subRes.Object ?? []).map(s => s.LibraryKey)));
             setSubsChanged(false);
         } catch { /* non-critical */ }
+        try {
+            const exRes = await agentSkillSetSvc.GetToolExclusions(skillKey);
+            setExcluded(new Set((exRes.Object ?? []).map(x => `${x.LibraryKey}\u0001${x.ToolName}`)));
+            setExclChanged(false);
+        } catch { setExcluded(new Set()); }
     };
 
     const selectAgentByKey = useCallback((skillKey: string, list?: AppAgentSkillSetDto[]) => {
@@ -308,6 +319,13 @@ const handleSave = async () => {
                 await agentSkillSetSvc.SetSubscriptions(editItem.SkillKey, Array.from(subscribedKeys));
                 setSubsChanged(false);
             }
+            if (exclChanged) {
+                await agentSkillSetSvc.SetToolExclusions(editItem.SkillKey, Array.from(excluded).map(k => {
+                    const [LibraryKey, ToolName] = k.split('\u0001');
+                    return { LibraryKey, ToolName };
+                }));
+                setExclChanged(false);
+            }
             setIsDirty(false);
             const [skillRes, mapRes] = await Promise.all([
                 agentSkillSetSvc.GetAllSkillSets(),
@@ -395,7 +413,7 @@ const handleSave = async () => {
         setEditorTab('prompt');
         setHeaderDetailsExpanded(true);
         setShowTemplateMenu(false);
-        setSubscribedKeys(new Set());
+        setSubscribedKeys(new Set()); setExcluded(new Set()); setExclChanged(false);
         setSubsChanged(false);
         setPromptHistory([]);
         setShowHistory(false);
@@ -442,6 +460,7 @@ const handleSave = async () => {
                         .filter(n => n && n.toLowerCase() !== 'ask_user')
                         .filter(n => allBuiltInTools.some(t => t.ToolName === n))
                 ));
+                setAiAcceptedTools(new Set((res.Object.RecommendedTools ?? []).map(recommendedToolKey)));
             } else {
                 setError(res.ValidationResult?.Items?.[0]?.Message ?? 'Generation failed');
             }
@@ -466,10 +485,15 @@ const handleSave = async () => {
     const handleApplyAiResult = async () => {
         if (!aiResult) return;
         update('SystemPrompt', aiResult.SystemPrompt);
-        if (aiAcceptedLibs.size > 0) {
+
+        // A library with ticked tools is always subscribed; its other tools are excluded for this agent.
+        const pickedLibs = new Set<string>();
+        aiAcceptedTools.forEach(k => pickedLibs.add(k.split('\u0001')[0]));
+        const libsToSubscribe = new Set<string>([...Array.from(aiAcceptedLibs), ...Array.from(pickedLibs)]);
+        if (libsToSubscribe.size > 0) {
             setSubscribedKeys(prev => {
                 const next = new Set(prev);
-                aiAcceptedLibs.forEach(k => next.add(k));
+                libsToSubscribe.forEach(k => next.add(k));
                 return next;
             });
             setSubsChanged(true);
@@ -483,6 +507,23 @@ const handleSave = async () => {
                     (t.ToolName || '').toLowerCase() === 'ask_user');
                 await Promise.all(askUserRows.map(t => agentSkillSetSvc.DeleteTool(t.Id).catch(() => {})));
             } catch { /* non-critical cleanup */ }
+        }
+        if (pickedLibs.size > 0) {
+            try {
+                const catRes = await agentSkillSetSvc.GetToolCatalog(Array.from(pickedLibs));
+                const catalog = catRes.Object ?? [];
+                setExcluded(prev => {
+                    const next = new Set(prev);
+                    catalog.forEach(c => {
+                        const k = `${c.LibraryKey}\u0001${c.ToolName}`;
+                        if (aiAcceptedTools.has(k)) next.delete(k); else next.add(k);
+                    });
+                    return next;
+                });
+                setExclChanged(true);
+            } catch (e: unknown) {
+                setError(`Libraries were subscribed, but per-tool selection could not be applied: ${e instanceof Error ? e.message : String(e)}`);
+            }
         }
         if (aiAcceptedBuiltIns.size > 0 && editItem.SkillKey.trim()) {
             const names = Array.from(aiAcceptedBuiltIns).filter(n => !skipPrivateBuiltIns.has(n.toLowerCase()));
@@ -576,7 +617,7 @@ const handleSave = async () => {
                                                     setIsDirty(true);
                                                     setTestSkillKey(null);
                                                     setShowTemplateMenu(false);
-                                                    setSubscribedKeys(new Set());
+                                                    setSubscribedKeys(new Set()); setExcluded(new Set()); setExclChanged(false);
                                                     setSubsChanged(false);
                                                     setPromptHistory([]);
                                                 }}
@@ -904,15 +945,24 @@ const handleSave = async () => {
                                                     setSubsChanged(true); setIsDirty(true);
                                                 };
                                                 const libRow = (l: AppAgentToolLibraryDto) => (
-                                                    <label key={l.LibraryKey} className={`flex items-center gap-2 px-2 py-0.5 text-xs cursor-pointer hover:opacity-80 ${theme.label}`}>
-                                                        <input type="checkbox" checked={subscribedKeys.has(l.LibraryKey)} onChange={e => toggleLib(l.LibraryKey, e.target.checked)} />
-                                                        <span className="font-mono font-semibold">{l.LibraryKey}</span>
-                                                        <span className="opacity-70">{l.LibraryName && `— ${l.LibraryName}`}</span>
-                                                        {chatModulesFromLibraries([l.LibraryKey]).has('files') && (
-                                                            <span className="opacity-50">+ Files UI</span>
-                                                        )}
-                                                        {l.ToolCount > 0 && <span className="ml-auto opacity-50">({l.ToolCount})</span>}
-                                                    </label>
+                                                    <AgentLibraryRow
+                                                        key={l.LibraryKey}
+                                                        theme={theme}
+                                                        library={l}
+                                                        subscribed={subscribedKeys.has(l.LibraryKey)}
+                                                        onToggle={checked => toggleLib(l.LibraryKey, checked)}
+                                                        excluded={excluded}
+                                                        onToggleTool={(toolName, use) => {
+                                                            setExcluded(prev => {
+                                                                const next = new Set(prev);
+                                                                const k = `${l.LibraryKey}\u0001${toolName}`;
+                                                                if (use) next.delete(k); else next.add(k);
+                                                                return next;
+                                                            });
+                                                            setExclChanged(true); setIsDirty(true);
+                                                        }}
+                                                        filesUi={chatModulesFromLibraries([l.LibraryKey]).has('files')}
+                                                    />
                                                 );
                                                 return (
                                                     <div className={`w-full h-1 flex-auto min-h-0 overflow-y-auto border rounded ${theme.mainContentSection} ${borderCls}`}>
@@ -1097,6 +1147,23 @@ const handleSave = async () => {
                                         />
                                     </div>
 
+                                    {(aiResult.Warnings ?? []).length > 0 && (
+                                        <div className="text-xs text-orange-600 bg-orange-50 border border-orange-200 rounded px-2 py-1">
+                                            {(aiResult.Warnings ?? []).map((w, i) => <div key={i}><i className="fa-solid fa-triangle-exclamation mr-1" />{w}</div>)}
+                                        </div>
+                                    )}
+
+                                    <AiRecommendedTools
+                                        theme={theme}
+                                        tools={aiResult.RecommendedTools ?? []}
+                                        accepted={aiAcceptedTools}
+                                        onToggle={(key, checked) => setAiAcceptedTools(prev => {
+                                            const n = new Set(prev);
+                                            if (checked) n.add(key); else n.delete(key);
+                                            return n;
+                                        })}
+                                    />
+
                                     <div className="flex flex-col gap-1">
                                         <div className={`text-xs font-semibold ${theme.title}`}>
                                             <i className="fa-solid fa-book mr-1" />Recommended Tool Libraries:
@@ -1158,7 +1225,7 @@ const handleSave = async () => {
                                     </div>
 
                                     <div className={`text-xs opacity-40 ${theme.label} border-t border-gray-100 pt-2`}>
-                                        <i className="fa-solid fa-server mr-1" />MCP Servers need manual configuration — use the MCP Servers tab after saving.
+                                        <i className="fa-solid fa-server mr-1" />MCP servers live in Tool Libraries › MCP Servers. Register a server there and click Sync tools so its tools can be recommended here.
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-2 px-4 py-2 border-t border-gray-200">

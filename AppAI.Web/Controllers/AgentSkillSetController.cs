@@ -19,6 +19,11 @@ using LibToolBL    = App.BL.TenantBusiness.AppAgentLibraryToolBL;
 using ToolDto      = App.BL.TenantBusiness.AppAgentToolRegisterDto;
 using LibToolDto   = App.BL.TenantBusiness.AppAgentLibraryToolDto;
 using McpDto       = App.BL.TenantBusiness.AppAgentMcpServerDto;
+using CatalogBL    = App.BL.TenantBusiness.AppAgentToolCatalogBL;
+using CatalogDto   = App.BL.TenantBusiness.AppAgentToolCatalogDto;
+using ToolCatalogRetrieval = App.BL.TenantBusiness.ToolCatalogRetrieval;
+using ExclusionBL  = App.BL.TenantBusiness.AppAgentToolExclusionBL;
+using ExclusionDto = App.BL.TenantBusiness.AppAgentToolExclusionDto;
 using DomainDto    = App.BL.TenantBusiness.AppAgentToolDomainDto;
 using LibraryDto   = App.BL.TenantBusiness.AppAgentToolLibraryDto;
 using SubDto       = App.BL.TenantBusiness.AppAgentLibrarySubscriptionDto;
@@ -258,6 +263,39 @@ public class AgentSkillSetController : SecureBaseController
         return result;
     }
 
+    // Reads the tools the MCP server reports now and stores them in the tool catalog (used by AI agent design).
+    [HttpPost]
+    public async Task<OperationCallResult<McpTestResult>> SyncMcpTools([FromBody] McpDto dto, CancellationToken cancellationToken)
+    {
+        var result = new OperationCallResult<McpTestResult>();
+        if (dto == null || dto.McpServerId <= 0)
+        {
+            result.Object = new McpTestResult(false, "Save the server first, then sync its tools.", 0, new List<string>());
+            return result;
+        }
+        var (sync, tools) = await McpConnectionHelper.ListCatalogToolsAsync(dto, cancellationToken);
+        if (sync.Success)
+        {
+            try { CatalogBL.ReplaceMcpServerTools(GetDsId(), dto.McpServerId, tools); }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, nameof(SyncMcpTools));
+                sync = new McpTestResult(false, "Could not save to the tool catalog (is migration V039 applied?): " + ex.Message, 0, new List<string>());
+            }
+        }
+        result.Object = sync;
+        return result;
+    }
+
+    [HttpGet]
+    public OperationCallResult<List<CatalogDto>> GetToolCatalog(string libraryKeys)
+    {
+        var result = new OperationCallResult<List<CatalogDto>>();
+        var keys = (libraryKeys ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        result.Object = keys.Length == 0 ? CatalogBL.GetAll(GetDsId()) : CatalogBL.GetByLibraries(GetDsId(), keys);
+        return result;
+    }
+
     [HttpDelete]
     public OperationCallResult<bool> DeleteMcpServer(int mcpServerId)
     {
@@ -419,6 +457,38 @@ public class AgentSkillSetController : SecureBaseController
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // Per-agent tool exclusions (tools an agent does NOT use from its subscribed libraries)
+    // ─────────────────────────────────────────────────────────────────────
+
+    [HttpGet]
+    public OperationCallResult<List<ExclusionDto>> GetToolExclusions(string skillKey)
+    {
+        var result = new OperationCallResult<List<ExclusionDto>>();
+        result.Object = ExclusionBL.GetBySkillKey(skillKey ?? "", GetDsId());
+        return result;
+    }
+
+    [HttpPost]
+    public OperationCallResult<bool> SetToolExclusions([FromBody] SetToolExclusionsRequest req)
+    {
+        var result = new OperationCallResult<bool>();
+        if (string.IsNullOrWhiteSpace(req?.SkillKey))
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController), "SkillKey_Required", ValidationItemType.Error, "SkillKey is required."));
+            return result;
+        }
+        result.Object = ExclusionBL.ReplaceForSkill(req.SkillKey, req.Exclusions ?? new List<ExclusionDto>(), GetDsId());
+        return result;
+    }
+
+    public class SetToolExclusionsRequest
+    {
+        public string SkillKey { get; set; } = "";
+        public List<ExclusionDto> Exclusions { get; set; } = new();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
     // BuiltIn tool browser
     // ─────────────────────────────────────────────────────────────────────
 
@@ -484,13 +554,45 @@ public class AgentSkillSetController : SecureBaseController
         var toolCatalog = string.Join("\n", builtIns.Select(t =>
             $"- {t.ToolName}: {t.ToolDescription}"));
 
+        // Tool-level catalog (library tools + synced MCP tools). Shortlisted so the prompt stays small;
+        // swap ToolCatalogRetrieval.Current for an embedding retriever to add RAG later.
+        var warnings = new List<string>();
+        var fullCatalog = new List<CatalogDto>();
+        try
+        {
+            CatalogBL.SyncLibraryTools(dsId);
+            // ask_user is injected at runtime — never offer it as a pickable tool.
+            fullCatalog = CatalogBL.GetAll(dsId).Where(t => !autoInjectedBuiltIns.Contains(t.ToolName ?? "")).ToList();
+            foreach (var s in CatalogBL.GetUnsyncedMcpServers(dsId))
+                warnings.Add($"MCP server {s} has not been synced, so its tools cannot be recommended. Open Tool Libraries › MCP Servers and click Sync tools.");
+        }
+        catch (Exception ex)
+        {
+            NLog.LogManager.GetCurrentClassLogger().Warn(ex, "Tool catalog unavailable for AI agent design");
+            warnings.Add("Tool catalog is unavailable (migration V039 may not be applied) — only libraries were recommended.");
+        }
+
+        var shortlist = ToolCatalogRetrieval.Current.Retrieve(fullCatalog, req.Description, 300);
+        string ToolLine(CatalogDto t)
+        {
+            var desc = t.Description ?? "";
+            if (desc.Length > 140) desc = desc.Substring(0, 140) + "…";
+            var args = string.IsNullOrEmpty(t.InputSummary) ? "" : $" (args: {t.InputSummary})";
+            return $"- {t.ToolName} [{t.Risk}]{args}: {desc}";
+        }
+        var libToolCatalog = string.Join("\n", shortlist.GroupBy(t => t.LibraryKey)
+            .Select(g => $"## {g.Key}\n" + string.Join("\n", g.Select(ToolLine))));
+
         var metaPrompt = $@"You are an expert AI system prompt engineer for AppAI, an enterprise no-code platform.
-Given a domain expert's description of an agent, output a JSON object with exactly three fields.
+Given a domain expert's description of an agent, output a JSON object with exactly four fields.
 
 === Available Tool Libraries (subscribe via LibraryKey) ===
 {(string.IsNullOrEmpty(libCatalog) ? "(none configured)" : libCatalog)}
 
-=== Available Built-in Tools (register by ToolName as private agent tools) ===
+=== Tools inside libraries (grouped by LibraryKey; [read]/[write]/[delete] = what the tool does) ===
+{(string.IsNullOrEmpty(libToolCatalog) ? "(none synced)" : libToolCatalog)}
+
+=== Available Built-in Tools (register by ToolName as private agent tools; only for tools not found in a library above) ===
 {(string.IsNullOrEmpty(toolCatalog) ? "(none configured)" : toolCatalog)}
 
 IMPORTANT:
@@ -502,12 +604,13 @@ Output ONLY valid JSON — no markdown fences, no extra text:
 {{
   ""SystemPrompt"": ""..."",
   ""RecommendedLibraryKeys"": [""lib-key-1""],
-  ""RecommendedBuiltInToolNames"": [""ToolName1""]
+  ""RecommendedBuiltInToolNames"": [""ToolName1""],
+  ""RecommendedTools"": [{{""LibraryKey"": ""lib-key-1"", ""ToolName"": ""ToolName"", ""Reason"": ""why this step needs it""}}]
 }}
 
 SystemPrompt must use exactly four ## H2 sections:
 ## Role — 2-3 sentences: agent name, domain, primary job
-## Workflow — 4-6 numbered steps the agent follows
+## Workflow — 4-6 numbered steps the agent follows. Name the exact ToolName the agent calls in each step.
 ## Rules — constraints and guardrails as bullet list
 ## Output Format — how the agent structures its responses
 
@@ -539,8 +642,10 @@ ask_user is runtime-injected. SystemPrompt MUST tell the agent exactly how to ca
 4) Rules MUST restate: MUST use ask_user; MUST supply fieldsJson for forms; radio choices MUST use type=radio (not select); DDL MUST use type=select; NEVER put numbered choices only in FinalResponse text.
 5) Do not put ask_user in RecommendedBuiltInToolNames.
 
-RecommendedLibraryKeys: pick 0-3 keys from the Tool Libraries catalog that genuinely match. Never invent keys. No duplicates.
-RecommendedBuiltInToolNames: pick 0-5 tool names from the Built-in Tools catalog the agent clearly needs. Never invent names. Never include ask_user. No duplicates.
+RecommendedTools: plan the Workflow first, then list the tools its steps need, copying LibraryKey and ToolName exactly from the tools catalog. Choose the fewest tools that do the job. Never invent names. Never include ask_user. No duplicates.
+Before any [write] or [delete] tool, the Workflow must include a confirmation step (call ask_user, which is always available at runtime, or propose_plan if it appears in the catalog), and Rules must say so.
+RecommendedLibraryKeys: libraries of the recommended tools, plus up to 3 other libraries from the Tool Libraries catalog that genuinely match. Never invent keys. No duplicates.
+RecommendedBuiltInToolNames: pick 0-5 tool names from the Built-in Tools catalog only if no library tool covers the need. Never invent names. Never include ask_user. No duplicates.
 If nothing matches, return empty arrays.";
 
         var llmReq = new LLMRequestDto
@@ -550,7 +655,7 @@ If nothing matches, return empty arrays.";
             Model        = AIConfigSettingBL.GetModel(),
             SystemPrompt = metaPrompt,
             Prompt       = req.Description,
-            MaxTokens    = 3072,
+            MaxTokens    = 4096,
         };
 
         var llmRes = await LLMProviderHelper.CallLLMAsync(llmReq);
@@ -567,13 +672,35 @@ If nothing matches, return empty arrays.";
             var raw = llmRes.Content?.Trim() ?? "";
             if (raw.StartsWith("```"))
                 raw = Regex.Replace(raw, @"^```[a-z]*\r?\n?|```$", "", RegexOptions.Multiline).Trim();
-            var parsed = System.Text.Json.JsonSerializer.Deserialize<GenerateAgentResult>(
-                raw, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            result.Object = SanitizeGenerateAgentResult(parsed, autoInjectedBuiltIns);
+            var design = System.Text.Json.JsonSerializer.Deserialize<LlmAgentDesign>(
+                raw, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+
+            // Keep only tools that really exist in the catalog (the model sometimes invents names).
+            var byKey = fullCatalog.ToDictionary(t => t.LibraryKey + "\u0001" + t.ToolName, t => t, StringComparer.OrdinalIgnoreCase);
+            var picked = new List<RecommendedToolDto>();
+            int dropped = 0;
+            foreach (var r in design.RecommendedTools ?? new List<LlmToolPick>())
+            {
+                if (r?.LibraryKey == null || r.ToolName == null || !byKey.TryGetValue(r.LibraryKey + "\u0001" + r.ToolName, out var hit))
+                { dropped++; continue; }
+                if (picked.Any(p => p.LibraryKey == hit.LibraryKey && p.ToolName == hit.ToolName)) continue;
+                picked.Add(new RecommendedToolDto(hit.LibraryKey, hit.ToolName, r.Reason ?? "", hit.Source, hit.Risk, hit.Description));
+            }
+            if (dropped > 0)
+                warnings.Add($"{dropped} recommended tool(s) were not found in the catalog and were ignored.");
+
+            var libKeys = (design.RecommendedLibraryKeys ?? new List<string>())
+                .Concat(picked.Select(p => p.LibraryKey))
+                .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            result.Object = SanitizeGenerateAgentResult(
+                new GenerateAgentResult(
+                    design.SystemPrompt ?? "", libKeys, design.RecommendedBuiltInToolNames ?? new List<string>(), picked, warnings),
+                autoInjectedBuiltIns);
         }
-        catch
+        catch (Exception ex)
         {
-            result.Object = new GenerateAgentResult(llmRes.Content ?? "", new List<string>(), new List<string>());
+            NLog.LogManager.GetCurrentClassLogger().Warn(ex, "AI agent design response was not valid JSON");
+            result.Object = new GenerateAgentResult(llmRes.Content ?? "", new List<string>(), new List<string>(), new List<RecommendedToolDto>(), warnings);
         }
         return result;
     }
@@ -582,7 +709,7 @@ If nothing matches, return empty arrays.";
         GenerateAgentResult parsed, HashSet<string> autoInjectedBuiltIns)
     {
         if (parsed == null)
-            return new GenerateAgentResult("", new List<string>(), new List<string>());
+            return new GenerateAgentResult("", new List<string>(), new List<string>(), new List<RecommendedToolDto>(), new List<string>());
 
         static List<string> Dedup(IEnumerable<string> items, HashSet<string> exclude = null)
         {
@@ -602,7 +729,9 @@ If nothing matches, return empty arrays.";
         return new GenerateAgentResult(
             parsed.SystemPrompt ?? "",
             Dedup(parsed.RecommendedLibraryKeys),
-            Dedup(parsed.RecommendedBuiltInToolNames, autoInjectedBuiltIns));
+            Dedup(parsed.RecommendedBuiltInToolNames, autoInjectedBuiltIns),
+            parsed.RecommendedTools ?? new List<RecommendedToolDto>(),
+            parsed.Warnings ?? new List<string>());
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -675,7 +804,28 @@ public sealed class GenerateAgentRequest
 public sealed record GenerateAgentResult(
     string       SystemPrompt,
     List<string> RecommendedLibraryKeys,
-    List<string> RecommendedBuiltInToolNames);
+    List<string> RecommendedBuiltInToolNames,
+    List<RecommendedToolDto> RecommendedTools,
+    List<string> Warnings);
+
+public sealed record RecommendedToolDto(
+    string LibraryKey, string ToolName, string Reason, string Source, string Risk, string Description);
+
+// Shape the model is asked to return (validated and converted to GenerateAgentResult).
+public sealed class LlmAgentDesign
+{
+    public string SystemPrompt { get; set; }
+    public List<string> RecommendedLibraryKeys { get; set; }
+    public List<string> RecommendedBuiltInToolNames { get; set; }
+    public List<LlmToolPick> RecommendedTools { get; set; }
+}
+
+public sealed class LlmToolPick
+{
+    public string LibraryKey { get; set; }
+    public string ToolName { get; set; }
+    public string Reason { get; set; }
+}
 
 public sealed class EditSystemPromptRequest
 {

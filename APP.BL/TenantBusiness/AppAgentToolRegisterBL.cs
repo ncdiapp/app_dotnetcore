@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
+using System.Linq;
 using App.BL;
 
 namespace App.BL.TenantBusiness
@@ -83,6 +84,18 @@ ORDER BY IsLibraryTool, ToolRegisterId",
 
             // Agent-owned tools come first (IsLibraryTool=0); dedup by ToolName — agent wins on collision.
             var rows = MapAll(dt);
+
+            // Drop library tools this agent has excluded. Library rows carry the LibraryKey in SkillKey
+            // (agent-owned rows carry the agent key, which is never a library key in practice).
+            var excluded = AppAgentToolExclusionBL.GetBySkillKey(skillKey, fixture);
+            if (excluded.Count > 0)
+            {
+                var blocked = new System.Collections.Generic.HashSet<string>(
+                    excluded.Select(e => e.LibraryKey + "\u0001" + e.ToolName), StringComparer.OrdinalIgnoreCase);
+                rows = rows.Where(r => string.Equals(r.SkillKey, skillKey.Trim(), StringComparison.OrdinalIgnoreCase)
+                                       || !blocked.Contains(r.SkillKey + "\u0001" + r.ToolName)).ToList();
+            }
+
             var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var result = new List<AppAgentToolRegisterDto>();
             foreach (var r in rows)
