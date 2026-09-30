@@ -36,6 +36,12 @@ namespace App.BL.AIAgent.GenericAgent
         public Func<AgentAskUserEvent, Task<AgentAskUserResponse>> OnAskUser { get; set; }
 
         /// <summary>
+        /// Optional: fire-and-continue UI payload for data_render (grid/card/chart).
+        /// Does not block the agent; chat renders the panel while the run continues.
+        /// </summary>
+        public Func<AgentDataRenderEvent, Task> OnDataRender { get; set; }
+
+        /// <summary>
         /// Optional: blocks the agent until the user reviews the schema.
         /// Only invoked when CapabilityFlags has the SchemaGate bit (8).
         /// </summary>

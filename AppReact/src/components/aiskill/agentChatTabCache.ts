@@ -58,7 +58,8 @@ export function loadAgentChatFromTabCache(
     (raw.messages?.length ?? 0) > 0
     || !!raw.pendingAskUser
     || !!raw.pendingPlan
-    || raw.isRunning;
+    || raw.isRunning
+    || (raw.messages?.some(m => (m.dataRenders?.length ?? 0) > 0) ?? false);
   if (!hasUi) return null;
   return raw;
 }

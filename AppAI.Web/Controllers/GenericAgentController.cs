@@ -229,6 +229,16 @@ public class GenericAgentController : SecureBaseController
                 return await tcs.Task.ConfigureAwait(false);
             },
 
+            OnDataRender = dataRenderEvent =>
+            {
+                GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto
+                {
+                    EventType = "data_render",
+                    DataRender = dataRenderEvent
+                });
+                return Task.CompletedTask;
+            },
+
             OnSchemaReady = async schemaEvent =>
             {
                 GenericAgentSessionStore.Enqueue(sessionId, new AgentEventDto { EventType = "schema", Schema = schemaEvent });

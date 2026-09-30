@@ -3,7 +3,7 @@ using System.Threading;
 namespace App.BL.AIAgent.GenericAgent
 {
     /// <summary>
-    /// AsyncLocal bridge so BuiltIn ask_user (and other HITL tools) can reach the
+    /// AsyncLocal bridge so BuiltIn ask_user / data_render (and other HITL/UI tools) can reach the
     /// run's <see cref="GenericAgentCallbacks"/> without putting DTO-typed Funcs on
     /// <c>AgentToolContext</c> in APP.Framework.
     /// Set at the start of <see cref="GenericAgentEngine.RunAsync"/>; restored in finally.

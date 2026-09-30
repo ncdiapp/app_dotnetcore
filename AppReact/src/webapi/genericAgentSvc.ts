@@ -69,6 +69,21 @@ export interface AskUserEvent {
     ContextKey?: string;
 }
 
+/** Non-blocking data_render panel (grid | card | chart). */
+export interface DataRenderEvent {
+    RenderId: string;
+    Ui: string;
+    Title?: string | null;
+    DataJson?: string | null;
+    ColumnsJson?: string | null;
+    ChartConfigJson?: string | null;
+    ActionsJson?: string | null;
+    MetaJson?: string | null;
+    RowCount?: number;
+    Truncated?: boolean;
+    Timestamp?: string;
+}
+
 export interface ConfirmAskUserDto {
     SessionId: string;
     Cancelled: boolean;
@@ -95,6 +110,7 @@ export interface GenericAgentChatUiSnapshot {
             isSuccess: boolean;
             durationMs?: number;
         }>;
+        dataRenders?: DataRenderEvent[];
     }>;
     turnActivities: Array<{
         turnIndex: number;
@@ -125,6 +141,7 @@ export interface GenericAgentEventHandlers {
     onStep: (step: { Type: string; ToolName?: string; Description: string; IsSuccess: boolean }) => void;
     onPlan: (plan: { PlanSummary: string }) => void;
     onAskUser?: (ask: AskUserEvent) => void;
+    onDataRender?: (evt: DataRenderEvent) => void;
     onDone: (done: { FinalResponse: string }) => void;
     onError: (message: string) => void;
     /** In-memory run gone (web recycle). History is still in the DB — do not treat as a hard error. */
@@ -515,6 +532,7 @@ class GenericAgentService {
                         Step?: unknown;
                         Plan?: unknown;
                         AskUser?: AskUserEvent;
+                        DataRender?: DataRenderEvent;
                         Done?: { FinalResponse: string };
                         Error?: string;
                     }[];
@@ -532,6 +550,7 @@ class GenericAgentService {
                     if (evt.EventType === 'step' && evt.Step) h.onStep(evt.Step as never);
                     if (evt.EventType === 'plan' && evt.Plan) h.onPlan(evt.Plan as never);
                     if (evt.EventType === 'ask_user' && evt.AskUser) h.onAskUser?.(evt.AskUser);
+                    if (evt.EventType === 'data_render' && evt.DataRender) h.onDataRender?.(evt.DataRender);
                     if (evt.EventType === 'done') {
                         this.stopPolling();
                         h.onDone(evt.Done ?? { FinalResponse: '' });

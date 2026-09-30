@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTheme } from '../../redux/hooks/useTheme';
-import { AskUserEvent, genericAgentSvc, type GenericAgentChatUiSnapshot, type LookupItemDto } from '../../webapi/genericAgentSvc';
+import { AskUserEvent, DataRenderEvent, genericAgentSvc, type GenericAgentChatUiSnapshot, type LookupItemDto } from '../../webapi/genericAgentSvc';
 import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
 import { registerTabDataSaver, unregisterTabDataSaver } from '../../redux/hooks/useTabNavigation';
 import {
@@ -11,6 +11,7 @@ import {
 } from './agentChatTabCache';
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import { chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
+import { DataRenderPanel } from './dataRender';
 
 const SESSION_START = '[session_start]';
 const RUN_IN_PROGRESS = '[run_in_progress]';
@@ -129,6 +130,8 @@ interface ChatMessage {
     isStreaming?: boolean;
     /** Persisted with session; restored into Tool Activity on reload. */
     toolSteps?: ToolStep[];
+    /** Non-blocking data_render panels attached to this assistant turn. */
+    dataRenders?: DataRenderEvent[];
 }
 
 interface ToolStep {
@@ -430,6 +433,29 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, turnActivities, pendingAskUser]);
 
+    const appendDataRender = (evt: DataRenderEvent) => {
+        setMessages(prev => {
+            const last = prev[prev.length - 1];
+            if (last?.role === 'assistant') {
+                const dataRenders = [...(last.dataRenders ?? []), evt];
+                return [...prev.slice(0, -1), { ...last, dataRenders }];
+            }
+            return [...prev, { role: 'assistant', content: '', isStreaming: true, dataRenders: [evt] }];
+        });
+    };
+
+    const handleDataRenderAction = (evt: DataRenderEvent, actionId: string, selectionJson?: string) => {
+        if (isRunningRef.current || pendingAskUserRef.current) return;
+        const lines = [
+            '[data_render_action]',
+            `actionId=${actionId}`,
+            `renderId=${evt.RenderId || ''}`,
+            `ui=${evt.Ui || ''}`,
+        ];
+        if (selectionJson) lines.push(`selectionJson=${selectionJson}`);
+        void runAgentTurnRef.current({ userMessage: lines.join('\n') });
+    };
+
     useEffect(() => {
         if (rightTab === 'files' && !uiModules.has('files')) setRightTab('tools');
     }, [rightTab, uiModules]);
@@ -437,7 +463,11 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
     const buildSnapshot = (): GenericAgentChatUiSnapshot => ({
         skillKey: skillKeyRef.current,
         chatSessionKey: chatSessionKeyRef.current,
-        messages: messagesRef.current.map(m => ({ ...m, toolSteps: m.toolSteps ? [...m.toolSteps] : undefined })),
+        messages: messagesRef.current.map(m => ({
+            ...m,
+            toolSteps: m.toolSteps ? [...m.toolSteps] : undefined,
+            dataRenders: m.dataRenders ? [...m.dataRenders] : undefined,
+        })),
         turnActivities: turnActivitiesRef.current.map(t => ({
             ...t,
             steps: t.steps.map(s => ({ ...s })),
@@ -531,6 +561,10 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
             setIsRunning(true);
             isRunningRef.current = true;
         },
+        onDataRender: (evt: DataRenderEvent) => {
+            if (!mountedRef.current || !evt) return;
+            appendDataRender(evt);
+        },
         onDone: (done: { FinalResponse: string }) => {
             if (!mountedRef.current) return;
             const idx = currentTurnIndexRef.current;
@@ -550,6 +584,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                             content: done.FinalResponse || last.content,
                             isStreaming: false,
                             toolSteps: stepsForMsg.length > 0 ? stepsForMsg : undefined,
+                            dataRenders: last.dataRenders,
                         }];
                     }
                     if (done.FinalResponse) {
@@ -1048,11 +1083,27 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
             <div className="w-1 flex-auto flex flex-col overflow-hidden min-w-0">
                 <div className="w-full h-1 flex-auto overflow-auto p-3 flex flex-col gap-2">
                     {messages.map((m, i) => (
-                        <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-2xl px-3 py-2 rounded-lg text-xs whitespace-pre-wrap ${m.role === 'user' ? `${theme.button_default} ml-8` : `${theme.mainContentSection} mr-8`}`}>
-                                {m.role === 'assistant' ? sanitizeAgentDisplayText(m.content) : m.content}
-                                {m.isStreaming && <span className="animate-pulse ml-1">|</span>}
-                            </div>
+                        <div key={i} className="flex flex-col gap-1">
+                            {(m.content || m.isStreaming) && (
+                                <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`max-w-2xl px-3 py-2 rounded-lg text-xs whitespace-pre-wrap ${m.role === 'user' ? `${theme.button_default} ml-8` : `${theme.mainContentSection} mr-8`}`}>
+                                        {m.role === 'assistant' ? sanitizeAgentDisplayText(m.content) : m.content}
+                                        {m.isStreaming && <span className="animate-pulse ml-1">|</span>}
+                                    </div>
+                                </div>
+                            )}
+                            {m.role === 'assistant' && (m.dataRenders?.length ?? 0) > 0 && (
+                                <div className="w-full max-w-4xl mr-8">
+                                    {m.dataRenders!.map(dr => (
+                                        <DataRenderPanel
+                                            key={dr.RenderId || `${i}-${dr.Timestamp}`}
+                                            event={dr}
+                                            disabled={blocked}
+                                            onAction={(actionId, selectionJson) => handleDataRenderAction(dr, actionId, selectionJson)}
+                                        />
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     ))}
 

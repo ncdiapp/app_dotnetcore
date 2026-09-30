@@ -243,6 +243,37 @@ namespace APP.Components.EntityDto
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
+    // data_render: non-blocking UI panel in Agent Chat (grid | card | chart)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    public class AgentDataRenderAction
+    {
+        public string Id { get; set; }
+        public string Label { get; set; }
+    }
+
+    /// <summary>
+    /// Emitted when the agent calls data_render. UI renders immediately; agent does not wait.
+    /// Ui: "grid" | "card" | "chart"
+    /// </summary>
+    public class AgentDataRenderEvent
+    {
+        public string RenderId { get; set; }
+        /// <summary>"grid" | "card" | "chart"</summary>
+        public string Ui { get; set; }
+        public string Title { get; set; }
+        /// <summary>JSON array (grid/chart) or object / fields shape (card).</summary>
+        public string DataJson { get; set; }
+        public string ColumnsJson { get; set; }
+        public string ChartConfigJson { get; set; }
+        public string ActionsJson { get; set; }
+        public string MetaJson { get; set; }
+        public int RowCount { get; set; }
+        public bool Truncated { get; set; }
+        public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
     // Request body for POST /ConfirmPlan
     // ─────────────────────────────────────────────────────────────────────────────
 
@@ -313,11 +344,11 @@ namespace APP.Components.EntityDto
 
     /// <summary>
     /// A single event emitted by the agent, queued server-side and returned by polling.
-    /// EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user"
+    /// EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user" | "data_render"
     /// </summary>
     public class AgentEventDto
     {
-        /// <summary>EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user"</summary>
+        /// <summary>EventType: "step" | "token" | "done" | "error" | "plan" | "schema" | "ask_user" | "data_render"</summary>
         public string EventType { get; set; }
         public AgentStepEvent Step  { get; set; }
         public string Token         { get; set; }
@@ -332,6 +363,9 @@ namespace APP.Components.EntityDto
 
         /// <summary>Populated when EventType = "ask_user". UI must call POST /ConfirmAskUser to proceed.</summary>
         public AgentAskUserEvent AskUser { get; set; }
+
+        /// <summary>Populated when EventType = "data_render". Non-blocking UI panel.</summary>
+        public AgentDataRenderEvent DataRender { get; set; }
     }
 
     public class AgentPollResponseDto
