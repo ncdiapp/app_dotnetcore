@@ -229,7 +229,10 @@ public class AgentSkillSetController : SecureBaseController
     public OperationCallResult<List<McpDto>> GetAllMcpServers()
     {
         var result = new OperationCallResult<List<McpDto>>();
-        result.Object = McpBL.GetAll();
+        // Header values never leave the server; the UI gets a mask and sends it back unchanged to keep the stored value.
+        result.Object = McpBL.GetAll()
+            .Select(s => s with { Headers = App.BL.TenantBusiness.McpHeaderSecrets.MaskForClient(s.Headers) })
+            .ToList();
         return result;
     }
 
@@ -251,6 +254,13 @@ public class AgentSkillSetController : SecureBaseController
                 "LibraryKey_Invalid", ValidationItemType.Error, "MCP servers must belong to an existing Tool Library."));
             return result;
         }
+        var policyError = McpSecurityPolicy.Validate(dto);
+        if (policyError != null)
+        {
+            result.ValidationResult.Items.Add(new ValidationItem(
+                typeof(AgentSkillSetController), "McpServer_NotAllowed", ValidationItemType.Error, policyError));
+            return result;
+        }
         result.Object = McpBL.Upsert(dto) >= 0;
         return result;
     }
@@ -259,7 +269,7 @@ public class AgentSkillSetController : SecureBaseController
     public async Task<OperationCallResult<McpTestResult>> TestMcpServer([FromBody] McpDto dto, CancellationToken cancellationToken)
     {
         var result = new OperationCallResult<McpTestResult>();
-        result.Object = await McpConnectionHelper.TestConnectionAsync(dto, cancellationToken);
+        result.Object = await McpConnectionHelper.TestConnectionAsync(McpBL.ResolveMaskedHeaders(dto), cancellationToken);
         return result;
     }
 
@@ -273,7 +283,7 @@ public class AgentSkillSetController : SecureBaseController
             result.Object = new McpTestResult(false, "Save the server first, then sync its tools.", 0, new List<string>());
             return result;
         }
-        var (sync, tools) = await McpConnectionHelper.ListCatalogToolsAsync(dto, cancellationToken);
+        var (sync, tools) = await McpConnectionHelper.ListCatalogToolsAsync(McpBL.ResolveMaskedHeaders(dto), cancellationToken);
         if (sync.Success)
         {
             try { CatalogBL.ReplaceMcpServerTools(GetDsId(), dto.McpServerId, tools); }

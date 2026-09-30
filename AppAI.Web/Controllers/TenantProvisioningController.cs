@@ -30,6 +30,15 @@ public class TenantProvisioningController : SecureBaseController
         return AppTenantMigrationRunnerBL.RunMigrationsOnAllTenants();
     }
 
+    // GET /webapi/TenantProvisioning/PendingMigrations
+    // Per tenant: number of migration scripts not yet applied (-1 = could not be checked, see the log).
+    [HttpGet]
+    public Dictionary<string, int> PendingMigrations()
+    {
+        RequireSysAdmin();
+        return AppTenantMigrationRunnerBL.GetPendingCountsForAllTenants();
+    }
+
     // POST /webapi/TenantProvisioning/RepairAdminUsers
     // Back-fills IsRegisterCompleted and MyOwnCompnanyId for tenant admin accounts
     // provisioned before those fields were set. Returns the count of rows fixed.

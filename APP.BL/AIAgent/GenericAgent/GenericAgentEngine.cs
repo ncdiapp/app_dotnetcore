@@ -45,7 +45,7 @@ namespace App.BL.AIAgent.GenericAgent
     /// </summary>
     public static class GenericAgentEngine
     {
-        private static readonly HttpClient McpHttpClient = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        private static readonly HttpClient McpHttpClient = McpConnectionHelper.CreateHttpClient();
         private const int DefaultMaxToolResultChars = 4000;
         private const int McpToolCallTimeoutSeconds  = 30;
 
@@ -103,7 +103,7 @@ namespace App.BL.AIAgent.GenericAgent
                 if (companyId > 0 && !string.IsNullOrWhiteSpace(resolvedChatKey))
                 {
                     try { GenericAgentFileBL.EnsureRoot(resolvedChatKey, companyId, skillKey); }
-                    catch { /* official source seed must not fail the run */ }
+                    catch (Exception swallowed) { SwallowLog.Write(swallowed, "official source seed must not fail the run"); }
 
                     try
                     {
@@ -114,7 +114,7 @@ namespace App.BL.AIAgent.GenericAgent
                         if (!string.IsNullOrWhiteSpace(catalogSummary))
                             systemPrompt = (systemPrompt ?? "") + "\n\n" + catalogSummary;
                     }
-                    catch { /* catalog inject must not fail the run */ }
+                    catch (Exception swallowed) { SwallowLog.Write(swallowed, "catalog inject must not fail the run"); }
                 }
 
                 // Per-session instance pool keeps stateful plugin instances (e.g. SchemaDesignerPlugin)
@@ -218,7 +218,7 @@ namespace App.BL.AIAgent.GenericAgent
                             if (c is IAsyncDisposable d) await d.DisposeAsync().ConfigureAwait(false);
                             else if (c is IDisposable s) s.Dispose();
                         }
-                        catch { }
+                        catch (Exception swallowed) { SwallowLog.Write(swallowed); }
                 }
             }
             catch (OperationCanceledException)
@@ -436,6 +436,7 @@ namespace App.BL.AIAgent.GenericAgent
         private static async Task<(McpClient Client, KernelPlugin Plugin)> CreateMcpPluginAsync(
             TbMcpDto server, int maxChars, HashSet<string> excludedTools, CancellationToken ct)
         {
+            McpConnectionHelper.EnsureAllowed(server);
             var transportOptions = McpConnectionHelper.BuildTransportOptions(server);
             var transport = new HttpClientTransport(transportOptions, McpHttpClient, NullLoggerFactory.Instance, ownsHttpClient: false);
             var client    = await McpClient.CreateAsync(transport, cancellationToken: ct).ConfigureAwait(false);
@@ -638,7 +639,7 @@ namespace App.BL.AIAgent.GenericAgent
                         var desc     = prop.Value["description"]?.ToString();
                         var propJson = prop.Value.ToString(Newtonsoft.Json.Formatting.None);
                         KernelJsonSchema? ks = null;
-                        try { ks = KernelJsonSchema.Parse(propJson); } catch { }
+                        try { ks = KernelJsonSchema.Parse(propJson); } catch (Exception swallowed) { SwallowLog.Write(swallowed); }
                         result.Add(new KernelParameterMetadata(prop.Name)
                         {
                             Description   = desc,
@@ -662,7 +663,7 @@ namespace App.BL.AIAgent.GenericAgent
                     var cleanDef = new JObject(def.Properties().Where(p => p.Name != "required"));
                     var propJson = cleanDef.ToString(Newtonsoft.Json.Formatting.None);
                     KernelJsonSchema? ks = null;
-                    try { ks = KernelJsonSchema.Parse(propJson); } catch { }
+                    try { ks = KernelJsonSchema.Parse(propJson); } catch (Exception swallowed) { SwallowLog.Write(swallowed); }
                     result.Add(new KernelParameterMetadata(prop.Name)
                     {
                         Description   = desc,
@@ -672,7 +673,7 @@ namespace App.BL.AIAgent.GenericAgent
                     });
                 }
             }
-            catch { }
+            catch (Exception swallowed) { SwallowLog.Write(swallowed); }
             return result;
         }
 
@@ -699,7 +700,7 @@ namespace App.BL.AIAgent.GenericAgent
         private static async Task Safe<T>(Func<T, Task>? callback, T arg)
         {
             if (callback == null) return;
-            try { await callback(arg).ConfigureAwait(false); } catch { }
+            try { await callback(arg).ConfigureAwait(false); } catch (Exception swallowed) { SwallowLog.Write(swallowed); }
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -797,7 +798,7 @@ namespace App.BL.AIAgent.GenericAgent
                                 item["role"] = "user";
                     return j.ToString(Newtonsoft.Json.Formatting.None);
                 }
-                catch { return json; }
+                catch (Exception swallowed) { SwallowLog.Write(swallowed); return json; }
             }
         }
     }

@@ -109,11 +109,23 @@ ORDER BY m.McpServerId",
             return dt != null && dt.Rows.Count > 0;
         }
 
+        // Test/Sync send the form as-is, where saved header values appear masked — put the real values back.
+        public static AppAgentMcpServerDto ResolveMaskedHeaders(AppAgentMcpServerDto dto)
+        {
+            if (dto == null) return null;
+            var stored = dto.McpServerId > 0 ? GetById(dto.McpServerId) : null;
+            return dto with { Headers = McpHeaderSecrets.MergeMasked(dto.Headers, stored?.Headers) };
+        }
+
         public static int Upsert(AppAgentMcpServerDto dto)
         {
             if (dto == null) return 0;
             var fixture = GetFixture();
             if (fixture == null) return 0;
+
+            // Headers are stored encrypted; a masked value keeps what is already stored for that header.
+            var storedRow = dto.McpServerId > 0 ? GetById(dto.McpServerId) : null;
+            dto = dto with { Headers = McpHeaderSecrets.Protect(McpHeaderSecrets.MergeMasked(dto.Headers, storedRow?.Headers)) };
 
             if (dto.McpServerId > 0)
             {

@@ -57,7 +57,7 @@ namespace App.BL.AIAgent.GenericAgent
             if (string.IsNullOrWhiteSpace(sessionId) || !Sessions.TryGetValue(sessionId, out var session))
                 return false;
 
-            try { session.RunCts.Cancel(); } catch { /* ignore */ }
+            try { session.RunCts.Cancel(); } catch (Exception swallowed) { SwallowLog.Write(swallowed, "ignore"); }
 
             if (PendingConfirmations.TryRemove(sessionId, out var planTcs))
                 planTcs.TrySetResult(false);
@@ -194,8 +194,8 @@ namespace App.BL.AIAgent.GenericAgent
                 if (kv.Value.CreatedAt < cutoff)
                 {
                     Sessions.TryRemove(kv.Key, out var removed);
-                    try { removed?.RunCts.Cancel(); } catch { }
-                    try { removed?.RunCts.Dispose(); } catch { }
+                    try { removed?.RunCts.Cancel(); } catch (Exception swallowed) { SwallowLog.Write(swallowed); }
+                    try { removed?.RunCts.Dispose(); } catch (Exception swallowed) { SwallowLog.Write(swallowed); }
                     removed?.EventReady.Dispose();
 
                     if (PendingConfirmations.TryRemove(kv.Key, out var tcs))

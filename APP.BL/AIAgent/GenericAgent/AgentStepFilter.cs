@@ -123,25 +123,25 @@ namespace App.BL.AIAgent.GenericAgent
             {
                 if (ctx.Result == null) return null;
                 try { return ctx.Result.GetValue<string>(); }
-                catch { /* not a string */ }
+                catch (Exception swallowed) { SwallowLog.Write(swallowed, "not a string"); }
                 var obj = ctx.Result.GetValue<object>();
                 if (obj == null) return null;
                 if (obj is string s) return s;
                 return JsonConvert.SerializeObject(obj, Formatting.Indented);
             }
-            catch { return null; }
+            catch (Exception swallowed) { SwallowLog.Write(swallowed); return null; }
         }
 
         private static string SafeSerialize(object? obj)
         {
             try { return JsonConvert.SerializeObject(obj); }
-            catch { return ""; }
+            catch (Exception swallowed) { SwallowLog.Write(swallowed); return ""; }
         }
 
         private static async Task Fire(Func<AgentStepEvent, Task>? cb, AgentStepEvent e)
         {
             if (cb == null) return;
-            try { await cb(e).ConfigureAwait(false); } catch { }
+            try { await cb(e).ConfigureAwait(false); } catch (Exception swallowed) { SwallowLog.Write(swallowed); }
         }
 
         private static string? Truncate(string? s, int max)

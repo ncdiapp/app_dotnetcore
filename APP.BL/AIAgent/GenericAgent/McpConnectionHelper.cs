@@ -7,7 +7,6 @@ using System.Threading.Tasks;
 using App.BL.TenantBusiness;
 using Microsoft.Extensions.Logging.Abstractions;
 using ModelContextProtocol.Client;
-using Newtonsoft.Json;
 
 namespace App.BL.AIAgent.GenericAgent
 {
@@ -15,33 +14,39 @@ namespace App.BL.AIAgent.GenericAgent
 
     public static class McpConnectionHelper
     {
+        // Redirects are not followed: a registered URL must not be able to bounce the server to another (blocked) host.
+        public static HttpClient CreateHttpClient() =>
+            new HttpClient(new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = Timeout.InfiniteTimeSpan };
+
+        /// <summary>Throws when the registration breaks <see cref="McpSecurityPolicy"/> (used before every connect).</summary>
+        public static void EnsureAllowed(AppAgentMcpServerDto server)
+        {
+            var error = McpSecurityPolicy.Validate(server);
+            if (error != null) throw new InvalidOperationException(error);
+        }
+
         /// <summary>
         /// Builds request headers for a streamable-http MCP server:
-        /// static Headers, then HeadersFromEnv (header -> env var name), then Bearer env var as Authorization.
+        /// static Headers (stored encrypted), then HeadersFromEnv (header -> env var name), then Bearer env var as Authorization.
+        /// Only environment variables named MCP_* are readable.
         /// </summary>
         public static Dictionary<string, string> BuildHeaders(AppAgentMcpServerDto server, List<string> warnings = null)
         {
             var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var kv in ParseMap(server.Headers))
+            foreach (var kv in McpHeaderSecrets.Parse(McpHeaderSecrets.Unprotect(server.Headers)))
                 headers[kv.Key] = kv.Value;
 
-            foreach (var kv in ParseMap(server.HeadersFromEnv))
+            foreach (var kv in McpHeaderSecrets.Parse(server.HeadersFromEnv))
             {
-                var value = ReadEnv(kv.Value);
-                if (string.IsNullOrEmpty(value))
-                    warnings?.Add($"Environment variable '{kv.Value}' (header '{kv.Key}') is not set.");
-                else
-                    headers[kv.Key] = value;
+                var value = ReadEnv(kv.Value, $"header '{kv.Key}'", server, warnings);
+                if (!string.IsNullOrEmpty(value)) headers[kv.Key] = value;
             }
 
             if (!string.IsNullOrWhiteSpace(server.BearerTokenEnvVar))
             {
-                var token = ReadEnv(server.BearerTokenEnvVar.Trim());
-                if (string.IsNullOrEmpty(token))
-                    warnings?.Add($"Environment variable '{server.BearerTokenEnvVar.Trim()}' (bearer token) is not set.");
-                else
-                    headers["Authorization"] = "Bearer " + token;
+                var token = ReadEnv(server.BearerTokenEnvVar, "bearer token", server, warnings);
+                if (!string.IsNullOrEmpty(token)) headers["Authorization"] = "Bearer " + token;
             }
 
             return headers;
@@ -59,10 +64,9 @@ namespace App.BL.AIAgent.GenericAgent
 
         public static async Task<McpTestResult> TestConnectionAsync(AppAgentMcpServerDto server, CancellationToken ct)
         {
-            if (server == null || string.IsNullOrWhiteSpace(server.ServerUrl))
-                return new McpTestResult(false, "Server URL is required.", 0, new List<string>());
-            if (!Uri.TryCreate(server.ServerUrl.Trim(), UriKind.Absolute, out _))
-                return new McpTestResult(false, "Server URL is not a valid absolute URL.", 0, new List<string>());
+            var policyError = McpSecurityPolicy.Validate(server);
+            if (policyError != null)
+                return new McpTestResult(false, policyError, 0, new List<string>());
             if (!string.Equals(server.ServerType, "streamable-http", StringComparison.OrdinalIgnoreCase))
                 return new McpTestResult(false, "Test connection supports streamable-http servers only.", 0, new List<string>());
 
@@ -72,7 +76,7 @@ namespace App.BL.AIAgent.GenericAgent
             try
             {
                 var options   = BuildTransportOptions(server with { ServerUrl = server.ServerUrl.Trim() }, warnings);
-                using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+                using var http = CreateHttpClient();
                 var transport = new HttpClientTransport(options, http, NullLoggerFactory.Instance, ownsHttpClient: false);
                 await using var client = await McpClient.CreateAsync(transport, cancellationToken: cts.Token).ConfigureAwait(false);
                 var tools = await client.ListToolsAsync(cancellationToken: cts.Token).ConfigureAwait(false);
@@ -100,8 +104,9 @@ namespace App.BL.AIAgent.GenericAgent
             AppAgentMcpServerDto server, CancellationToken ct)
         {
             var none = new List<AppAgentToolCatalogDto>();
-            if (server == null || string.IsNullOrWhiteSpace(server.ServerUrl) || !Uri.TryCreate(server.ServerUrl.Trim(), UriKind.Absolute, out _))
-                return (new McpTestResult(false, "A valid Server URL is required.", 0, new List<string>()), none);
+            var policyError = McpSecurityPolicy.Validate(server);
+            if (policyError != null)
+                return (new McpTestResult(false, policyError, 0, new List<string>()), none);
             if (!string.Equals(server.ServerType, "streamable-http", StringComparison.OrdinalIgnoreCase))
                 return (new McpTestResult(false, "Sync supports streamable-http servers only.", 0, new List<string>()), none);
 
@@ -111,7 +116,7 @@ namespace App.BL.AIAgent.GenericAgent
             try
             {
                 var options = BuildTransportOptions(server with { ServerUrl = server.ServerUrl.Trim() }, warnings);
-                using var http = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+                using var http = CreateHttpClient();
                 var transport = new HttpClientTransport(options, http, NullLoggerFactory.Instance, ownsHttpClient: false);
                 await using var client = await McpClient.CreateAsync(transport, cancellationToken: cts.Token).ConfigureAwait(false);
                 var tools = await client.ListToolsAsync(cancellationToken: cts.Token).ConfigureAwait(false);
@@ -147,31 +152,29 @@ namespace App.BL.AIAgent.GenericAgent
         private static string WithWarnings(string message, List<string> warnings) =>
             warnings.Count == 0 ? message : message + " " + string.Join(" ", warnings);
 
-        private static string ReadEnv(string name)
+        // Reads an environment variable for a header. Only MCP_* names are allowed so a registration cannot be used to
+        // read unrelated server secrets. Names (never values) are logged.
+        private static string ReadEnv(string name, string purpose, AppAgentMcpServerDto server, List<string> warnings)
         {
+            name = name?.Trim();
             if (string.IsNullOrWhiteSpace(name)) return null;
-            return Environment.GetEnvironmentVariable(name.Trim())
-                ?? Environment.GetEnvironmentVariable(name.Trim(), EnvironmentVariableTarget.User)
-                ?? Environment.GetEnvironmentVariable(name.Trim(), EnvironmentVariableTarget.Machine);
-        }
 
-        private static Dictionary<string, string> ParseMap(string json)
-        {
-            var map = new Dictionary<string, string>();
-            if (string.IsNullOrWhiteSpace(json)) return map;
-            try
+            var log = NLog.LogManager.GetCurrentClassLogger();
+            if (!McpSecurityPolicy.IsAllowedEnvVarName(name))
             {
-                var parsed = JsonConvert.DeserializeObject<Dictionary<string, string>>(json);
-                if (parsed == null) return map;
-                foreach (var kv in parsed)
-                    if (!string.IsNullOrWhiteSpace(kv.Key) && kv.Value != null)
-                        map[kv.Key.Trim()] = kv.Value;
+                log.Warn("MCP server {0} asked for env var '{1}' ({2}) — blocked, names must start with {3}",
+                    server.ServerName, name, purpose, McpSecurityPolicy.EnvVarPrefix);
+                warnings?.Add($"Environment variable '{name}' ({purpose}) is not allowed — names must start with {McpSecurityPolicy.EnvVarPrefix}.");
+                return null;
             }
-            catch (Exception ex)
-            {
-                NLog.LogManager.GetCurrentClassLogger().Warn(ex, "Invalid MCP header JSON");
-            }
-            return map;
+
+            var value = Environment.GetEnvironmentVariable(name)
+                ?? Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.User)
+                ?? Environment.GetEnvironmentVariable(name, EnvironmentVariableTarget.Machine);
+            log.Info("MCP server {0}: env var '{1}' ({2}) {3}", server.ServerName, name, purpose, string.IsNullOrEmpty(value) ? "is not set" : "resolved");
+            if (string.IsNullOrEmpty(value))
+                warnings?.Add($"Environment variable '{name}' ({purpose}) is not set.");
+            return value;
         }
     }
 }

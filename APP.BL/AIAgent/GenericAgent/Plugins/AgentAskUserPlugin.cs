@@ -421,7 +421,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (!string.IsNullOrWhiteSpace(existing))
             {
                 try { merged = JObject.Parse(existing); }
-                catch { merged = new JObject(); }
+                catch (Exception swallowed) { SwallowLog.Write(swallowed); merged = new JObject(); }
             }
             else
             {
@@ -493,7 +493,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     list.Add(field);
                 }
             }
-            catch { /* ignore bad JSON — LLM gets empty fields */ }
+            catch (Exception swallowed) { SwallowLog.Write(swallowed, "ignore bad JSON — LLM gets empty fields"); }
             return list;
         }
 
@@ -511,7 +511,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         list.Add(item);
                 }
             }
-            catch { /* ignore bad JSON */ }
+            catch (Exception swallowed) { SwallowLog.Write(swallowed, "ignore bad JSON"); }
             return list;
         }
 

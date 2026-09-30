@@ -59,7 +59,7 @@ namespace App.BL.AIAgent.GenericAgent
         private static async Task SafeOnError(GenericAgentCallbacks callbacks, string message)
         {
             if (callbacks?.OnError == null) return;
-            try { await callbacks.OnError(message).ConfigureAwait(false); } catch { }
+            try { await callbacks.OnError(message).ConfigureAwait(false); } catch (Exception swallowed) { SwallowLog.Write(swallowed); }
         }
     }
 }

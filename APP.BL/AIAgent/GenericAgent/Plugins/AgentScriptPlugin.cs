@@ -67,7 +67,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         mins = JsonConvert.DeserializeObject<Dictionary<string, long>>(minSizeByFileNameJson)
                                ?? mins;
                     }
-                    catch { /* ignore bad json */ }
+                    catch (Exception swallowed) { SwallowLog.Write(swallowed, "ignore bad json"); }
                 }
 
                 var dir = string.IsNullOrWhiteSpace(relativeDir) ? "output" : relativeDir.Trim().TrimStart('/');

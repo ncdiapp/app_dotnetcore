@@ -185,7 +185,7 @@ ELSE
                     new List<DbParameter>());
                 return dt != null && dt.Rows.Count > 0;
             }
-            catch { return false; }
+            catch (Exception swallowed) { SwallowLog.Write(swallowed); return false; }
         }
 
         private static AppAgentSkillSetDto MapRow(DataRow row) => new AppAgentSkillSetDto

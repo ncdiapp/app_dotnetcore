@@ -1,3 +1,4 @@
+using System;
 using APP.Framework.Plugin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -32,7 +33,7 @@ namespace App.BL.AIAgent.GenericAgent
 
             JToken valueNode;
             try { valueNode = JToken.Parse(string.IsNullOrWhiteSpace(valueJson) ? "{}" : valueJson); }
-            catch { valueNode = new JValue(valueJson ?? ""); }
+            catch (Exception swallowed) { SwallowLog.Write(swallowed); valueNode = new JValue(valueJson ?? ""); }
 
             var payload = new JObject
             {

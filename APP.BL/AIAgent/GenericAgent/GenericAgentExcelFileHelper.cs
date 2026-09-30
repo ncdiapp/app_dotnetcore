@@ -767,7 +767,7 @@ namespace App.BL.AIAgent.GenericAgent
             // Same key used elsewhere in APP.BL. If invalid for GemBox 47, runtime stays on
             // whatever Program.cs set (often FREE-LIMITED-KEY → max 5 sheets). Flip UseOpenXml=true to bypass.
             try { SpreadsheetInfo.SetLicense("E1H5-CMM5-01EP-4OKK"); }
-            catch { /* second SetLicense is ignored; invalid key throws on first ExcelFile use */ }
+            catch (Exception swallowed) { SwallowLog.Write(swallowed, "second SetLicense is ignored; invalid key throws on first ExcelFile use"); }
         }
 
         private static WorkbookModel LoadWorkbookGemBox(string fullPath)

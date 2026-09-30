@@ -38,7 +38,7 @@ namespace App.BL.AIAgent.GenericAgent
                 var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
                 return TableExists(fixture);
             }
-            catch { return false; }
+            catch (Exception swallowed) { SwallowLog.Write(swallowed); return false; }
         }
 
         public static bool TableExists(DatabaseFixture fixture)
@@ -51,7 +51,7 @@ namespace App.BL.AIAgent.GenericAgent
                     new List<DbParameter>());
                 return dt != null && dt.Rows.Count > 0;
             }
-            catch { return false; }
+            catch (Exception swallowed) { SwallowLog.Write(swallowed); return false; }
         }
 
         public static List<AppAgentChildMappingDto> GetAll(int dataSourceId)

@@ -151,7 +151,7 @@ namespace App.BL.AIAgent.GenericAgent
                     if (configBackup != null && configPath != null)
                     {
                         try { File.WriteAllText(configPath, configBackup, Encoding.UTF8); }
-                        catch { /* best effort restore */ }
+                        catch (Exception swallowed) { SwallowLog.Write(swallowed, "best effort restore"); }
                     }
                 }
             }
@@ -178,7 +178,7 @@ namespace App.BL.AIAgent.GenericAgent
             var original = File.ReadAllText(configPath);
             JObject jo;
             try { jo = JObject.Parse(original); }
-            catch { return null; }
+            catch (Exception swallowed) { SwallowLog.Write(swallowed); return null; }
 
             var dwId = jo.Value<int?>("dwDataSourceId") ?? jo.Value<int?>("DwDataSourceId");
             var plmId = jo.Value<int?>("plmDataSourceId") ?? jo.Value<int?>("PlmDataSourceId");
@@ -287,7 +287,7 @@ namespace App.BL.AIAgent.GenericAgent
             }
             catch (OperationCanceledException)
             {
-                try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch { /* ignore */ }
+                try { if (!proc.HasExited) proc.Kill(entireProcessTree: true); } catch (Exception swallowed) { SwallowLog.Write(swallowed, "ignore"); }
                 sw.Stop();
                 throw new TimeoutException(
                     "Script timed out after " + timeoutSeconds + "s (or was cancelled).");

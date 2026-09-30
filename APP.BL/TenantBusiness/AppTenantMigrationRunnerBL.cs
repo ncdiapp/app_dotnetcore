@@ -106,13 +106,74 @@ namespace App.BL
                     string plain = AppConnectionStringEncryptionBL.Decrypt(tenant.ConnectionString);
                     results[key] = RunPendingMigrations(plain);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    NLog.LogManager.GetCurrentClassLogger().Error(ex, "Migration failed for tenant {0}", key);
                     results[key] = -1;
                 }
             }
 
             return results;
+        }
+
+        // Script versions on disk that this tenant DB has not applied yet (all of them if it has no tracking table).
+        public static List<string> GetPendingVersions(string tenantConnStr)
+        {
+            var pending = new List<string>();
+            string folder = GetMigrationsFolder();
+            if (string.IsNullOrWhiteSpace(tenantConnStr) || !Directory.Exists(folder)) return pending;
+
+            var onDisk = Directory.GetFiles(folder, "*.sql").Select(Path.GetFileNameWithoutExtension).OrderBy(v => v).ToList();
+            var applied = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            using (var conn = new SqlConnection(tenantConnStr))
+            {
+                conn.Open();
+                using (var cmd = new SqlCommand(
+                    "IF OBJECT_ID('dbo._SchemaMigrations','U') IS NULL SELECT CAST(NULL AS NVARCHAR(200)) WHERE 1=0 ELSE SELECT Version FROM dbo._SchemaMigrations", conn))
+                using (var reader = cmd.ExecuteReader())
+                    while (reader.Read()) applied.Add(reader.GetString(0));
+            }
+
+            pending.AddRange(onDisk.Where(v => !applied.Contains(v)));
+            return pending;
+        }
+
+        // DataSourceName -> number of pending scripts (-1 = could not be checked; the reason is logged).
+        public static Dictionary<string, int> GetPendingCountsForAllTenants()
+        {
+            var results = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var tenant in AppDataSourceRegisterBL.RetrieveAllAppDataSourceRegisterEntity())
+            {
+                string key = tenant.DataSourceName ?? tenant.DataSourceId.ToString();
+                if (string.IsNullOrEmpty(tenant.ConnectionString)) { results[key] = 0; continue; }
+                try
+                {
+                    results[key] = GetPendingVersions(AppConnectionStringEncryptionBL.Decrypt(tenant.ConnectionString)).Count;
+                }
+                catch (Exception ex)
+                {
+                    NLog.LogManager.GetCurrentClassLogger().Error(ex, "Could not check pending migrations for tenant {0}", key);
+                    results[key] = -1;
+                }
+            }
+            return results;
+        }
+
+        // Two scripts sharing a number (V036__a / V036__b) only work because versions are tracked by full file name.
+        // Returns the numbers used more than once, with the files that use them.
+        public static List<string> FindDuplicateVersionNumbers()
+        {
+            string folder = GetMigrationsFolder();
+            if (!Directory.Exists(folder)) return new List<string>();
+            return Directory.GetFiles(folder, "*.sql").Select(Path.GetFileNameWithoutExtension)
+                .Select(n => new { Name = n, Number = System.Text.RegularExpressions.Regex.Match(n, @"^V(\d+)").Groups[1].Value })
+                .Where(x => x.Number.Length > 0)
+                .GroupBy(x => int.Parse(x.Number))
+                .Where(g => g.Count() > 1)
+                .OrderBy(g => g.Key)
+                .Select(g => $"V{g.Key:000}: {string.Join(", ", g.Select(x => x.Name))}")
+                .ToList();
         }
 
         private static string GetMigrationsFolder()

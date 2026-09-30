@@ -9,6 +9,8 @@ interface Props {
     valuePlaceholder: string;
     addLabel: string;
     onChange: (json: string) => void;
+    /** Values are secrets: shown as dots. A saved value comes back from the server masked and stays unchanged if left as is. */
+    maskValues?: boolean;
 }
 
 interface Row { k: string; v: string; }
@@ -30,7 +32,7 @@ const serialize = (rows: Row[]): string => {
 };
 
 // Edits a JSON object string as key/value rows. Remount (change `key`) to reload from `value`.
-const McpKeyValueEditor: React.FC<Props> = ({ theme, label, value, keyPlaceholder, valuePlaceholder, addLabel, onChange }) => {
+const McpKeyValueEditor: React.FC<Props> = ({ theme, label, value, keyPlaceholder, valuePlaceholder, addLabel, onChange, maskValues }) => {
     const [rows, setRows] = useState<Row[]>(() => parse(value));
 
     const commit = (next: Row[]) => { setRows(next); onChange(serialize(next)); };
@@ -46,7 +48,8 @@ const McpKeyValueEditor: React.FC<Props> = ({ theme, label, value, keyPlaceholde
                 {rows.map((r, i) => (
                     <div key={i} className="flex items-center gap-1">
                         <input className={inp} value={r.k} placeholder={keyPlaceholder} autoComplete="off" onChange={e => setRow(i, { k: e.target.value })} />
-                        <input className={inp} value={r.v} placeholder={valuePlaceholder} autoComplete="off" onChange={e => setRow(i, { v: e.target.value })} />
+                        <input className={inp} type={maskValues ? 'password' : 'text'} value={r.v} placeholder={valuePlaceholder}
+                            autoComplete={maskValues ? 'new-password' : 'off'} onChange={e => setRow(i, { v: e.target.value })} />
                         <button className={btn} title="Remove" onClick={() => commit(rows.filter((_, idx) => idx !== i))}>
                             <i className="fa-solid fa-trash" />
                         </button>

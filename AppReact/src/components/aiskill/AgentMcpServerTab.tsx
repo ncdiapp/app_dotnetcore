@@ -166,12 +166,12 @@ const AgentMcpServerTab: React.FC<Props> = ({ theme, libraryKey, pathPrefix }) =
                                 <>
                                     <div className="flex items-center py-1">
                                         <label className={lbl}>Bearer token env var</label>
-                                        <input className={inp} value={editItem.BearerTokenEnvVar} onChange={e => update('BearerTokenEnvVar', e.target.value)} autoComplete="off" placeholder="MCP_BEARER_TOKEN (env var name, not the token)" />
+                                        <input className={inp} value={editItem.BearerTokenEnvVar} onChange={e => update('BearerTokenEnvVar', e.target.value)} autoComplete="off" placeholder="MCP_BEARER_TOKEN (env var name, must start with MCP_)" />
                                     </div>
                                     <McpKeyValueEditor key={`h-${editItem.McpServerId}-${resetKey}`} theme={theme} label="Headers" value={editItem.Headers}
-                                        keyPlaceholder="Header name" valuePlaceholder="Value" addLabel="Add header" onChange={v => update('Headers', v)} />
+                                        keyPlaceholder="Header name" valuePlaceholder="Value (stored encrypted)" addLabel="Add header" maskValues onChange={v => update('Headers', v)} />
                                     <McpKeyValueEditor key={`e-${editItem.McpServerId}-${resetKey}`} theme={theme} label="Headers from env vars" value={editItem.HeadersFromEnv}
-                                        keyPlaceholder="Header name" valuePlaceholder="Env var name" addLabel="Add variable" onChange={v => update('HeadersFromEnv', v)} />
+                                        keyPlaceholder="Header name" valuePlaceholder="MCP_… env var name" addLabel="Add variable" onChange={v => update('HeadersFromEnv', v)} />
                                 </>
                             )}
                             <div className="flex items-center py-1">

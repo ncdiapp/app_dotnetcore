@@ -199,7 +199,7 @@ namespace App.BL.AIAgent.GenericAgent
             {
                 var schema = p.Schema?.ToString() ?? "{\"type\":\"string\"}";
                 try { props[p.Name] = JObject.Parse(schema); }
-                catch { props[p.Name] = new { type = "string" }; }
+                catch (Exception swallowed) { SwallowLog.Write(swallowed, "tool parameter schema"); props[p.Name] = new { type = "string" }; }
                 if (p.IsRequired) required.Add(p.Name);
             }
             return new { type = "object", properties = props, required };

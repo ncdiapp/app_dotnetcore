@@ -309,6 +309,7 @@ try
 
     // ── Build ─────────────────────────────────────────────────────────────────
     var app = builder.Build();
+    MigrationStartup.Register(app);
 
     // Redirect bare root → /appai/health so the host status is visible at localhost:<port>/
     app.MapGet("/", () => Results.Redirect("/appai/health")).ExcludeFromDescription();
