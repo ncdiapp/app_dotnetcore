@@ -92,6 +92,12 @@ export interface AppAgentLibrarySubscriptionDto {
     LibraryKey: string;
 }
 
+/** A tool the agent does NOT use, from a library it subscribes to. */
+export interface AppAgentToolExclusionDto {
+    LibraryKey: string;
+    ToolName:   string;
+}
+
 export interface AppAgentLibraryToolDto {
     Id:                 number;
     LibraryKey:         string;
@@ -118,10 +124,32 @@ export interface AppAgentPromptHistoryDto {
     SavedBy?:     string;
 }
 
+export interface RecommendedToolDto {
+    LibraryKey:  string;
+    ToolName:    string;
+    Reason:      string;
+    Source:      string;
+    Risk:        string;   // read | write | delete
+    Description: string;
+}
+
+/** One row of the unified tool catalog (built-in, library and synced MCP tools). */
+export interface AppAgentToolCatalogDto {
+    Source:       string;
+    LibraryKey:   string;
+    ToolName:     string;
+    Description:  string;
+    InputSummary: string;
+    Risk:         string;
+    McpServerId:  number | null;
+}
+
 export interface GenerateAgentResult {
     SystemPrompt:                string;
     RecommendedLibraryKeys:      string[];
     RecommendedBuiltInToolNames: string[];
+    RecommendedTools:            RecommendedToolDto[];
+    Warnings:                    string[];
 }
 
 interface OperationResult<T> {
@@ -258,6 +286,20 @@ class AgentSkillSetService {
         return res.json();
     }
 
+    async SyncMcpTools(dto: AppAgentMcpServerDto): Promise<OperationResult<McpTestResult>> {
+        const res = await fetch(`${BASE}/SyncMcpTools`, {
+            method: 'POST', headers: getHeaders(), body: JSON.stringify(dto),
+        });
+        if (!res.ok) throw new Error(`SyncMcpTools failed (${res.status})`);
+        return res.json();
+    }
+
+    async GetToolCatalog(libraryKeys: string[] = []): Promise<OperationResult<AppAgentToolCatalogDto[]>> {
+        const res = await fetch(`${BASE}/GetToolCatalog?libraryKeys=${encodeURIComponent(libraryKeys.join(','))}`, { headers: getHeaders() });
+        if (!res.ok) throw new Error(`GetToolCatalog failed (${res.status})`);
+        return res.json();
+    }
+
     async DeleteMcpServer(mcpServerId: number): Promise<OperationResult<boolean>> {
         const res = await fetch(`${BASE}/DeleteMcpServer?mcpServerId=${mcpServerId}`, {
             method: 'DELETE', headers: getHeaders(),
@@ -337,6 +379,20 @@ class AgentSkillSetService {
     async GetSubscriptions(skillKey: string): Promise<OperationResult<AppAgentLibrarySubscriptionDto[]>> {
         const res = await fetch(`${BASE}/GetSubscriptions?skillKey=${encodeURIComponent(skillKey)}`, { headers: getHeaders() });
         if (!res.ok) throw new Error(`GetSubscriptions failed (${res.status})`);
+        return res.json();
+    }
+
+    async GetToolExclusions(skillKey: string): Promise<OperationResult<AppAgentToolExclusionDto[]>> {
+        const res = await fetch(`${BASE}/GetToolExclusions?skillKey=${encodeURIComponent(skillKey)}`, { headers: getHeaders() });
+        if (!res.ok) throw new Error(`GetToolExclusions failed (${res.status})`);
+        return res.json();
+    }
+
+    async SetToolExclusions(skillKey: string, exclusions: AppAgentToolExclusionDto[]): Promise<OperationResult<boolean>> {
+        const res = await fetch(`${BASE}/SetToolExclusions`, {
+            method: 'POST', headers: getHeaders(), body: JSON.stringify({ SkillKey: skillKey, Exclusions: exclusions }),
+        });
+        if (!res.ok) throw new Error(`SetToolExclusions failed (${res.status})`);
         return res.json();
     }
 

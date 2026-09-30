@@ -143,13 +143,27 @@ namespace App.BL.AIAgent.GenericAgent
                 // Connect MCP servers (agent-owned + subscribed library MCP servers)
                 var mcpClients = new List<McpClient>();
                 var mcpServers = (dsId > 0 ? TbMcpBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbMcpBL.GetBySkillKeyWithLibraries(skillKey)) ?? new List<TbMcpDto>();
+                List<App.BL.TenantBusiness.AppAgentToolExclusionDto> exclusions;
+                try
+                {
+                    exclusions = dsId > 0
+                        ? App.BL.TenantBusiness.AppAgentToolExclusionBL.GetBySkillKey(skillKey, dsId)
+                        : App.BL.TenantBusiness.AppAgentToolExclusionBL.GetBySkillKey(skillKey);
+                }
+                catch (Exception ex)
+                {
+                    log.Warn(ex, "Tool exclusions not loaded — using all tools");
+                    exclusions = new List<App.BL.TenantBusiness.AppAgentToolExclusionDto>();
+                }
+
                 foreach (var srv in mcpServers)
                 {
                     if (!string.Equals(srv.ServerType, "streamable-http", StringComparison.OrdinalIgnoreCase)) continue;
                     if (string.IsNullOrWhiteSpace(srv.ServerUrl)) continue;
                     try
                     {
-                        var (client, plugin) = await CreateMcpPluginAsync(srv, skillSet.MaxToolResultChars, ct).ConfigureAwait(false);
+                        var excludedMcp = App.BL.TenantBusiness.AppAgentToolExclusionBL.ExcludedNamesForLibrary(exclusions, srv.SkillKey);
+                        var (client, plugin) = await CreateMcpPluginAsync(srv, skillSet.MaxToolResultChars, excludedMcp, ct).ConfigureAwait(false);
                         mcpClients.Add(client);
                         kernel.Plugins.Add(plugin);
                     }
@@ -420,7 +434,7 @@ namespace App.BL.AIAgent.GenericAgent
         // ─────────────────────────────────────────────────────────────────────
 
         private static async Task<(McpClient Client, KernelPlugin Plugin)> CreateMcpPluginAsync(
-            TbMcpDto server, int maxChars, CancellationToken ct)
+            TbMcpDto server, int maxChars, HashSet<string> excludedTools, CancellationToken ct)
         {
             var transportOptions = McpConnectionHelper.BuildTransportOptions(server);
             var transport = new HttpClientTransport(transportOptions, McpHttpClient, NullLoggerFactory.Instance, ownsHttpClient: false);
@@ -428,7 +442,8 @@ namespace App.BL.AIAgent.GenericAgent
             var tools     = await client.ListToolsAsync(cancellationToken: ct).ConfigureAwait(false);
 
             var cap       = maxChars > 0 ? maxChars : DefaultMaxToolResultChars;
-            var functions = tools.Select(t => BuildMcpKernelFunction(client, t, cap)).ToArray();
+            var functions = tools.Where(t => excludedTools == null || !excludedTools.Contains(t.Name))
+                                 .Select(t => BuildMcpKernelFunction(client, t, cap)).ToArray();
             var plugin    = KernelPluginFactory.CreateFromFunctions(McpPluginName(server.ServerName), functions);
             return (client, plugin);
         }
