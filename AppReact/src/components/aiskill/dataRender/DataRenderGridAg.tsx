@@ -42,7 +42,8 @@ const dateFormatter = (p: { value?: unknown }) =>
         ? new Date(String(p.value)).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })
         : '';
 
-export const DataRenderGrid: React.FC<Props> = ({ colDefs, rowData, title, meta, onRowSelected }) => {
+/** AG Grid implementation — kept for future use; selected when DATA_RENDER_ENGINE === 'aggrid'. */
+export const DataRenderGridAg: React.FC<Props> = ({ colDefs, rowData, title, meta, onRowSelected }) => {
     const { theme } = useTheme();
     const gridRef = useRef<AgGridReact>(null);
 

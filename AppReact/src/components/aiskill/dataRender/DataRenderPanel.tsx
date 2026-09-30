@@ -2,8 +2,11 @@ import React, { useMemo, useState } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { adaptToCard, adaptToChart, adaptToGrid } from './adapters';
 import { DataRenderCard } from './DataRenderCard';
-import { DataRenderChart } from './DataRenderChart';
-import { DataRenderGrid } from './DataRenderGrid';
+import { DataRenderChartRecharts } from './DataRenderChartRecharts';
+import { DataRenderChartWijmo } from './DataRenderChartWijmo';
+import { DataRenderGridAg } from './DataRenderGridAg';
+import { DataRenderGridWijmo } from './DataRenderGridWijmo';
+import { DATA_RENDER_ENGINE } from './engine';
 import type { DataRenderEvent } from './types';
 import { parseActions } from './types';
 
@@ -19,6 +22,7 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
     const ui = (event.Ui || 'grid').toLowerCase();
     const actions = useMemo(() => parseActions(event.ActionsJson), [event.ActionsJson]);
     const btn = `px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`;
+    const useWijmo = DATA_RENDER_ENGINE === 'wijmo';
 
     const body = useMemo(() => {
         if (ui === 'card') {
@@ -36,7 +40,9 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
                 metaJson: event.MetaJson,
                 title: event.Title,
             });
-            return <DataRenderChart {...props} />;
+            return useWijmo
+                ? <DataRenderChartWijmo {...props} />
+                : <DataRenderChartRecharts {...props} />;
         }
         const props = adaptToGrid({
             dataJson: event.DataJson,
@@ -44,13 +50,14 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
             metaJson: event.MetaJson,
             title: event.Title,
         });
+        const Grid = useWijmo ? DataRenderGridWijmo : DataRenderGridAg;
         return (
-            <DataRenderGrid
+            <Grid
                 {...props}
                 onRowSelected={row => setSelectedRow(row)}
             />
         );
-    }, [event, ui]);
+    }, [event, ui, useWijmo]);
 
     const handleAction = (actionId: string) => {
         if (disabled || !onAction) return;

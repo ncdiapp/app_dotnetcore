@@ -1,22 +1,9 @@
 import React, { useMemo, useState } from 'react';
-import {
-    Area,
-    AreaChart,
-    Bar,
-    BarChart,
-    CartesianGrid,
-    Legend,
-    Line,
-    LineChart,
-    ResponsiveContainer,
-    Tooltip,
-    XAxis,
-    YAxis,
-} from 'recharts';
+import { FlexChart, FlexChartSeries, FlexPie } from '@mescius/wijmo.react.chart';
+import { ChartType } from '@mescius/wijmo.chart';
+import '@mescius/wijmo.styles/wijmo.css';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import type { DataRenderChartConfig, DataRenderMeta } from './types';
-
-const CHART_COLORS = ['#3b82f6', '#4ade80', '#fbbf24', '#f87171', '#a78bfa', '#22d3ee', '#f472b6', '#a3e635'];
 
 interface Props {
     meta?: DataRenderMeta;
@@ -24,7 +11,16 @@ interface Props {
     data: Record<string, unknown>[];
 }
 
-export const DataRenderChart: React.FC<Props> = ({ meta, chartConfig, data }) => {
+function mapTypeToWijmo(type: string): ChartType {
+    const t = (type || 'bar').toLowerCase();
+    if (t === 'line') return ChartType.Line;
+    if (t === 'area') return ChartType.Area;
+    // bar → Column (vertical bars); Wijmo ChartType.Bar is horizontal
+    return ChartType.Column;
+}
+
+/** Default Wijmo chart implementation for data_render (bar/line/area/pie). */
+export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data }) => {
     const { theme } = useTheme();
     const allowedTypes = chartConfig.allowedTypes ?? ['bar', 'line', 'area'];
     const [chartType, setChartType] = useState(chartConfig.type ?? allowedTypes[0] ?? 'bar');
@@ -50,17 +46,8 @@ export const DataRenderChart: React.FC<Props> = ({ meta, chartConfig, data }) =>
         return Object.values(acc);
     }, [data, groupBy, xField, yField]);
 
-    const formatValue = (val: unknown) => {
-        if (val == null) return '';
-        const measure = String(meta?.measure ?? yField);
-        if (['net_price', 'gross_profit', 'extended_cost', 'value'].includes(measure)) {
-            return `$${Number(val).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-        }
-        return Number(val).toLocaleString();
-    };
-
-    const ChartComponent = chartType === 'line' ? LineChart : chartType === 'area' ? AreaChart : BarChart;
     const btn = `px-2 py-0.5 text-xs rounded-[4px] border ${theme.button_default}`;
+    const isPie = (chartType || '').toLowerCase() === 'pie';
 
     return (
         <div className={`border rounded-[4px] p-3 ${theme.mainContentSection}`}>
@@ -89,26 +76,29 @@ export const DataRenderChart: React.FC<Props> = ({ meta, chartConfig, data }) =>
             {data.length === 0 ? (
                 <div className={`text-xs text-center py-8 ${theme.label}`}>No data available.</div>
             ) : (
-                <div style={{ width: '100%', height: 280 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                        <ChartComponent data={chartData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey={xField} tick={{ fontSize: 11 }} />
-                            <YAxis tickFormatter={formatValue} tick={{ fontSize: 11 }} width={70} />
-                            <Tooltip formatter={(val) => formatValue(val)} />
-                            {seriesKeys.length > 1 && <Legend />}
-                            {seriesKeys.map((key, i) => {
-                                const color = CHART_COLORS[i % CHART_COLORS.length];
-                                if (chartType === 'line') {
-                                    return <Line key={key} type="monotone" dataKey={key} stroke={color} strokeWidth={2} dot={false} />;
-                                }
-                                if (chartType === 'area') {
-                                    return <Area key={key} type="monotone" dataKey={key} stroke={color} fill={color} fillOpacity={0.15} />;
-                                }
-                                return <Bar key={key} dataKey={key} fill={color} radius={[4, 4, 0, 0]} />;
-                            })}
-                        </ChartComponent>
-                    </ResponsiveContainer>
+                <div className="w-full" style={{ height: 280 }}>
+                    {isPie ? (
+                        <FlexPie
+                            className="w-full h-full"
+                            style={{ width: '100%', height: '100%' }}
+                            itemsSource={chartData}
+                            binding={yField}
+                            bindingName={xField}
+                        />
+                    ) : (
+                        <FlexChart
+                            className="w-full h-full"
+                            style={{ width: '100%', height: '100%' }}
+                            itemsSource={chartData}
+                            bindingX={xField}
+                            chartType={mapTypeToWijmo(chartType)}
+                            legend={{ position: seriesKeys.length > 1 ? 'Right' : 'None' } as any}
+                        >
+                            {seriesKeys.map(key => (
+                                <FlexChartSeries key={key} binding={key} name={key} />
+                            ))}
+                        </FlexChart>
+                    )}
                 </div>
             )}
         </div>
