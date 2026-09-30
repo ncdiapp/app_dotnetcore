@@ -203,7 +203,7 @@ namespace APP.Components.EntityDto
         public string Name { get; set; }
         public string Label { get; set; }
         public bool Required { get; set; }
-        /// <summary>"text" (default) | "select" — select renders a dropdown; options on this field.</summary>
+        /// <summary>"text" (default) | "select" (dropdown) | "radio" — select/radio require Options.</summary>
         public string Type { get; set; } = "text";
         public List<LookupItemDto> Options { get; set; } = new List<LookupItemDto>();
     }

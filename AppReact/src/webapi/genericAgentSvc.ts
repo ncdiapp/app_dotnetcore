@@ -46,7 +46,7 @@ export interface AskUserField {
     Name: string;
     Label?: string;
     Required?: boolean;
-    /** text (default) | select — select uses Options as dropdown */
+    /** text (default) | select (dropdown) | radio — select/radio use Options */
     Type?: string;
     Options?: LookupItemDto[];
 }

@@ -460,7 +460,11 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     var name = o.Value<string>("name") ?? o.Value<string>("Name");
                     if (string.IsNullOrWhiteSpace(name)) continue;
                     var type = (o.Value<string>("type") ?? o.Value<string>("Type") ?? "text").Trim().ToLowerInvariant();
-                    if (type != "select" && type != "text")
+                    if (type == "ddl" || type == "dropdown" || type == "combobox")
+                        type = "select";
+                    else if (type == "radiobutton" || type == "radio_button" || type == "radio-buttons" || type == "radios")
+                        type = "radio";
+                    if (type != "select" && type != "text" && type != "radio")
                         type = "text";
                     var field = new AgentAskUserField
                     {
@@ -480,8 +484,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                                 field.Options.Add(item);
                         }
                     }
-                    // If the model supplied options but forgot type=select, still render DDL.
-                    if (field.Options.Count > 0 && !string.Equals(field.Type, "select", StringComparison.OrdinalIgnoreCase))
+                    // Options without an explicit choice type → dropdown. Keep type=radio as radio.
+                    if (field.Options.Count > 0
+                        && !string.Equals(field.Type, "select", StringComparison.OrdinalIgnoreCase)
+                        && !string.Equals(field.Type, "radio", StringComparison.OrdinalIgnoreCase))
                         field.Type = "select";
                     EnsureDefaultSelectOptions(field);
                     list.Add(field);

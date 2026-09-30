@@ -36,10 +36,15 @@ const asLookupItems = (raw: unknown): LookupItemDto[] => {
 };
 
 /** Phase A *Ok / proceed / importMode: LLM often omits options → UI would show a text box. */
-const resolveAskUserField = (field: any): { name: string; label: string; required: boolean; isSelect: boolean; options: LookupItemDto[] } => {
+const resolveAskUserField = (field: any): {
+    name: string; label: string; required: boolean;
+    isSelect: boolean; isRadio: boolean; options: LookupItemDto[];
+} => {
     const name = String(field?.Name ?? field?.name ?? '');
     let options = asLookupItems(field?.Options ?? field?.options);
     let type = String(field?.Type ?? field?.type ?? 'text').toLowerCase();
+    if (type === 'ddl' || type === 'dropdown' || type === 'combobox') type = 'select';
+    if (type === 'radiobutton' || type === 'radio_button' || type === 'radios') type = 'radio';
     if (options.length === 0) {
         if (/ok$/i.test(name) || /_ok$/i.test(name)) {
             options = [{ Id: 'ok', Display: 'OK' }, { Id: 'revise', Display: 'Revise' }];
@@ -66,7 +71,8 @@ const resolveAskUserField = (field: any): { name: string; label: string; require
             ];
             type = 'select';
         }
-    } else if (type !== 'select') {
+    } else if (type !== 'select' && type !== 'radio') {
+        // Options present but type omitted/unknown → dropdown (not radio).
         type = 'select';
     }
     return {
@@ -74,6 +80,7 @@ const resolveAskUserField = (field: any): { name: string; label: string; require
         label: String(field?.Label ?? field?.label ?? name),
         required: !!(field?.Required ?? field?.required),
         isSelect: type === 'select' && options.length > 0,
+        isRadio: type === 'radio' && options.length > 0,
         options,
     };
 };
@@ -194,7 +201,7 @@ const formatAskUserAnswerSummary = (
             const resolved = resolveAskUserField(field);
             const raw = answers[resolved.name] ?? '';
             if (!raw) return `${resolved.label}: (empty)`;
-            if (resolved.isSelect) {
+            if (resolved.isSelect || resolved.isRadio) {
                 const opt = resolved.options.find(o => String(o.Id ?? '') === raw);
                 return `${resolved.label}: ${opt?.Display || raw}`;
             }
@@ -1166,12 +1173,29 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                                         {pendingAskUser.Fields.map(field => {
                                             const resolved = resolveAskUserField(field);
                                             return (
-                                            <div key={resolved.name} className="flex items-center gap-2">
-                                                <label className={`w-40 text-xs shrink-0 ${theme.label}`}>
+                                            <div key={resolved.name} className={`flex gap-2 ${resolved.isRadio ? 'items-start' : 'items-center'}`}>
+                                                <label className={`w-40 text-xs shrink-0 ${theme.label}${resolved.isRadio ? ' pt-0.5' : ''}`}>
                                                     {resolved.label}
                                                     {resolved.required ? ' *' : ''}
                                                 </label>
-                                                {resolved.isSelect ? (
+                                                {resolved.isRadio ? (
+                                                    <div className="w-1 flex-auto flex flex-col gap-1">
+                                                        {resolved.options.map(opt => {
+                                                            const id = String(opt.Id ?? '');
+                                                            return (
+                                                                <label key={id} className={`flex items-center gap-2 text-xs cursor-pointer ${theme.label}`}>
+                                                                    <input
+                                                                        type="radio"
+                                                                        name={`ask-field-${resolved.name}`}
+                                                                        checked={(askAnswers[resolved.name] || '') === id}
+                                                                        onChange={() => setAskAnswers(prev => ({ ...prev, [resolved.name]: id }))}
+                                                                    />
+                                                                    <span>{opt.Display || id}</span>
+                                                                </label>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                ) : resolved.isSelect ? (
                                                     <select
                                                         className={`w-1 flex-auto h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox} focus:outline-none`}
                                                         value={askAnswers[resolved.name] || ''}

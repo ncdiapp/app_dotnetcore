@@ -511,7 +511,33 @@ SystemPrompt must use exactly four ## H2 sections:
 ## Rules — constraints and guardrails as bullet list
 ## Output Format — how the agent structures its responses
 
-For Interactive selection agents, SystemPrompt may instruct calling ask_user (runtime-injected) with mode=single_choice and ui=dropdown|radio|button_group — do not put ask_user in RecommendedBuiltInToolNames.
+=== ask_user contract (CRITICAL — include in SystemPrompt when the user description collects input) ===
+ask_user is runtime-injected. SystemPrompt MUST tell the agent exactly how to call it — vague phrases like ""structured text fields"" or ""standard options"" are FORBIDDEN because the UI will not render form controls.
+
+1) Fill-a-form (user says form / fill / fields / First Name + Last Name + a choice, etc.):
+   - Prefer ONE ask_user call with mode=text AND non-empty fieldsJson covering every form field.
+   - fieldsJson is a JSON array of {{name,label,required?,type?,options?}}.
+   - Text boxes: type=text.
+   - Drop-down inside the form (ddl / dropdown / combobox): type=select + non-empty options [{{""id"":""A"",""display"":""A""}},...].
+   - Radio buttons inside the form (user says radio / radio button): type=radio + non-empty options. NEVER use type=select for radio — select always renders a DDL.
+   - Example (name + preferred fruit RADIO on one form):
+     mode=text
+     fieldsJson=[
+       {{""name"":""firstName"",""label"":""First Name"",""required"":true,""type"":""text""}},
+       {{""name"":""lastName"",""label"":""Last Name"",""required"":true,""type"":""text""}},
+       {{""name"":""preferredFruit"",""label"":""Select your preferred fruit"",""required"":true,""type"":""radio"",""options"":[{{""id"":""A"",""display"":""A""}},{{""id"":""B"",""display"":""B""}},{{""id"":""C"",""display"":""C""}}]}}
+     ]
+   - NEVER ask for multiple fields only in conversational Prompt text without fieldsJson.
+   - Valid fieldsJson type values ONLY: text | select | radio. Do not invent other types.
+
+2) Standalone choice menus (confirm / Retry|Cancel / not part of a multi-field form):
+   - Call ask_user with mode=single_choice (or multi_choice), non-empty optionsJson, AND explicit ui.
+   - optionsJson MUST be [{{""id"":""A"",""display"":""A""}},...] — NEVER list choices only in Prompt text.
+   - ui: ddl/dropdown/combobox → ui=dropdown; radio → ui=radio; buttons/menu → ui=button_group.
+
+3) Workflow steps that collect input MUST paste the concrete mode / fieldsJson (type=radio or type=select + options) or optionsJson+ui shape — not prose summaries.
+4) Rules MUST restate: MUST use ask_user; MUST supply fieldsJson for forms; radio choices MUST use type=radio (not select); DDL MUST use type=select; NEVER put numbered choices only in FinalResponse text.
+5) Do not put ask_user in RecommendedBuiltInToolNames.
 
 RecommendedLibraryKeys: pick 0-3 keys from the Tool Libraries catalog that genuinely match. Never invent keys. No duplicates.
 RecommendedBuiltInToolNames: pick 0-5 tool names from the Built-in Tools catalog the agent clearly needs. Never invent names. Never include ask_user. No duplicates.
@@ -524,7 +550,7 @@ If nothing matches, return empty arrays.";
             Model        = AIConfigSettingBL.GetModel(),
             SystemPrompt = metaPrompt,
             Prompt       = req.Description,
-            MaxTokens    = 2048,
+            MaxTokens    = 3072,
         };
 
         var llmRes = await LLMProviderHelper.CallLLMAsync(llmReq);
