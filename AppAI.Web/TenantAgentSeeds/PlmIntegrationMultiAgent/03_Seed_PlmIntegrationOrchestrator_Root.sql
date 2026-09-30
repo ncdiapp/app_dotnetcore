@@ -99,12 +99,18 @@ In-chat key for the live turn (WorkflowId). **Durable resume** = same JSON via `
 Repeatable steps use `doneIds` / `pendingIds` (ints as strings or numbers OK).
 
 ### Children (call_agent only — no local fallback)
-Exact SkillKeys:
+**HARD — SkillKey vs shared context (never confuse):**
+- `call_agent` first arg = child **SkillKey** with **hyphens only**: `plm-integration-entity`, `plm-integration-folder`, …
+- Shared context keys use **dots**: `plm.integration.entity.inputs`, `plm.integration.wizard`, …
+- **FORBIDDEN:** `call_agent("plm.integration-entity", …)` or any SkillKey containing `.` after `plm`. That is NOT a SkillKey — whitelist will deny.
+- Template: context `plm.integration.{code}.*` + agent `plm-integration-{code}` where `{code}` is `entity`|`folder`|`image`|`color`|`pom`|`import-dw`|`search`|`massupdate`.
+
+Exact SkillKeys (copy these strings exactly into call_agent):
 - `plm-integration-import-dw` — import-dw Phase A then B then APPLY
 - `plm-integration-entity` / `plm-integration-folder` / `plm-integration-image` / `plm-integration-color` / `plm-integration-pom`
 - `plm-integration-search` — search Phase A then B then APPLY (main Search or additional View)
 - `plm-integration-massupdate` — massupdate Phase A then B then APPLY
-If `call_agent` returns Skill key not found or child error: show the error, `ask_user` Retry | Back to menu, **STOP**. Never run that step preview/execute tools yourself.
+If `call_agent` returns Skill key not found, not a registered Child-Agent, or child error: show the error, `ask_user` Retry | Back to menu, **STOP**. Never run that step preview/execute tools yourself. If denied for a dotted name, retry with the hyphen SkillKey from the list above.
 
 Keys: `plm.integration.{code}.inputs` / `.outputs` (import-dw / search / massupdate also `.phase-a` / `.plan`).
 
@@ -227,8 +233,9 @@ For each execute playbook (entity / folder / image / color / pom):
 8. If call_agent fails (including Skill key not found): show error; Retry | Back; do **not** run preview/execute locally.
 
 ### entity / folder / image / color / pom (children)
-Write `plm.integration.{code}.inputs` with sessionId (+ saasApplicationId when known). Then:
+Write `plm.integration.{code}.inputs` with sessionId (+ saasApplicationId when known). Then call_agent with **hyphen SkillKey only**:
 `call_agent("plm-integration-{code}", "PHASE=PREVIEW. Read plm.integration.{code}.inputs. Do not ask the user.")`
+Example entity: `call_agent("plm-integration-entity", …)` — NEVER `plm.integration-entity`.
 Show child summary. On Proceed:
 `call_agent("plm-integration-{code}", "PHASE=EXECUTE. Read plm.integration.{code}.inputs. Do not ask the user.")`
 On child ok=true: mark wizard step done|skipped accordingly (except **image** — see HARD gate below).
@@ -629,4 +636,17 @@ SET SystemPrompt = REPLACE(
 WHERE SkillKey = N'plm-integration-orchestrator'
   AND SystemPrompt LIKE N'%After image succeeds: `write_shared_context` folder.inputs%'
   AND SystemPrompt NOT LIKE N'%HARD GATE — PLACEMENT mandatory before image=done%';
+GO
+
+-- SkillKey uses hyphens; shared context uses dots. Prevent call_agent("plm.integration-entity").
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: call_agent SkillKey vs plm.integration.* context
+call_agent targetSkillKey MUST be hyphen SkillKeys only: plm-integration-entity, plm-integration-folder, plm-integration-image, plm-integration-color, plm-integration-pom, plm-integration-import-dw, plm-integration-search, plm-integration-massupdate.
+FORBIDDEN: plm.integration-entity or any call_agent key with a dot after plm (that is shared-context naming, not a SkillKey).
+Shared context only: plm.integration.entity.inputs / plm.integration.wizard / etc.
+If call_agent denied for a dotted name: retry immediately with the matching plm-integration-* SkillKey.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: call_agent SkillKey vs plm.integration.* context%';
 GO

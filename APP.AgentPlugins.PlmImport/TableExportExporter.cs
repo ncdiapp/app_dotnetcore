@@ -228,21 +228,35 @@ WHERE s.name = @Schema AND t.name = @Table";
         if (columns.Count == 0)
             throw new InvalidOperationException("No columns found.");
 
+        var skipRead = GetColumnsSkippedOnRead(schema, sourceTable);
+        foreach (var col in columns)
+        {
+            if (skipRead.Contains(col.Name))
+                col.IsNullable = true; // allow NULL when source binary is not copied
+        }
+
         var pkColumns = ReadPrimaryKeyColumns(source, schema, sourceTable);
         EnsureSchemaExists(target, schema);
         DropTableIfExists(target, schema, targetTable);
         CreateTable(target, schema, targetTable, columns, pkColumns);
 
+        var selectColumns = columns.Where(c => !skipRead.Contains(c.Name)).ToList();
+        if (selectColumns.Count == 0)
+            throw new InvalidOperationException("No readable columns remain after skip list.");
+
         using (var cmd = source.CreateCommand())
         {
-            cmd.CommandText = "SELECT * FROM " + Qualify(schema, sourceTable);
+            // Do not SELECT large binary columns (e.g. tblSketch images) — destination keeps NULL.
+            cmd.CommandText = "SELECT " + string.Join(", ", selectColumns.Select(c => "[" + c.Name.Replace("]", "]]") + "]"))
+                + " FROM " + Qualify(schema, sourceTable);
+            cmd.CommandTimeout = 0;
             using (var reader = cmd.ExecuteReader())
             using (var bulk = new SqlBulkCopy(target, SqlBulkCopyOptions.KeepIdentity | SqlBulkCopyOptions.TableLock, null))
             {
-                bulk.DestinationTableName = $"{schema}.{targetTable}";
+                bulk.DestinationTableName = Qualify(schema, targetTable);
                 bulk.BatchSize = 5000;
                 bulk.BulkCopyTimeout = 0;
-                foreach (var col in columns)
+                foreach (var col in selectColumns)
                     bulk.ColumnMappings.Add(col.Name, col.Name);
                 bulk.WriteToServer(reader);
             }
@@ -251,8 +265,26 @@ WHERE s.name = @Schema AND t.name = @Table";
         using (var countCmd = target.CreateCommand())
         {
             countCmd.CommandText = "SELECT COUNT(*) FROM " + Qualify(schema, targetTable);
+            countCmd.CommandTimeout = 0;
             return Convert.ToInt32(countCmd.ExecuteScalar());
         }
+    }
+
+    /// <summary>
+    /// Columns that must exist on the tenant copy but must not be read from PLM
+    /// (large binaries). Image import reads PLM tblSketch directly.
+    /// </summary>
+    private static HashSet<string> GetColumnsSkippedOnRead(string schema, string table)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (string.Equals(table, "tblSketch", StringComparison.OrdinalIgnoreCase)
+            && (string.IsNullOrWhiteSpace(schema) || string.Equals(schema, "dbo", StringComparison.OrdinalIgnoreCase)))
+        {
+            set.Add("SketchImage");
+            set.Add("Thumbnail");
+            set.Add("OriginalImage");
+        }
+        return set;
     }
 
     private static List<SqlColumnDefinition> ReadColumnDefinitions(SqlConnection conn, string schema, string table)
