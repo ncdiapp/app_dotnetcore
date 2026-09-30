@@ -220,8 +220,8 @@ namespace APP.Components.EntityDto
         /// <summary>"text" | "single_choice" | "multi_choice"</summary>
         public string Mode { get; set; } = "text";
         /// <summary>
-        /// Choice presentation: "radio" (default) | "button_group".
-        /// button_group: one click = select option + ConfirmAskUser (no separate Submit).
+        /// Choice presentation: "radio" | "button_group" | "dropdown".
+        /// button_group: one click = select + submit. dropdown: HTML select + Submit.
         /// </summary>
         public string Ui { get; set; } = "radio";
         /// <summary>"vertical" (default) | "horizontal" — applies when Ui=button_group.</summary>

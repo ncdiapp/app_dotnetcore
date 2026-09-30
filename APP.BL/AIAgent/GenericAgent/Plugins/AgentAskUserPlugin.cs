@@ -52,22 +52,41 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (normalizedMode != "text" && normalizedMode != "single_choice" && normalizedMode != "multi_choice")
                 normalizedMode = "text";
 
-            // single_choice menus default to button_group when ui omitted (model often forgets ui=).
-            var normalizedUi = string.IsNullOrWhiteSpace(ui)
-                ? (normalizedMode == "single_choice" ? "button_group" : "radio")
-                : ui.Trim().ToLowerInvariant();
-            if (normalizedUi != "radio" && normalizedUi != "button_group")
-                normalizedUi = normalizedMode == "single_choice" ? "button_group" : "radio";
+            var options = ParseOptions(optionsJson);
+            if (options.Count == 0)
+                options = TryParseOptionsFromPrompt(prompt);
+
+            // ask_user Prompt is often cleaned to "Please select…" — also read Skill SystemPrompt
+            // for phrases like: let user choose from ddl / radio buttons / button group.
+            var skillUiHint = InferChoiceUiFromSkillPrompt(TryLoadSkillSystemPrompt(context));
+            var promptUiHint = InferChoiceUiFromPrompt(prompt);
+            var inferredUi = promptUiHint ?? skillUiHint;
+
+            // Model often uses mode=text + free text when SystemPrompt says "choose from ddl …".
+            // Coerce to single_choice + dropdown when prompt lists choices.
+            if (options.Count >= 2
+                && normalizedMode == "text"
+                && (inferredUi != null || PromptLooksLikeChoiceList(prompt)))
+            {
+                normalizedMode = "single_choice";
+                if (string.IsNullOrWhiteSpace(ui))
+                    ui = inferredUi ?? "dropdown";
+            }
+
+            var normalizedUi = ResolveChoiceUi(prompt, ui, normalizedMode, skillUiHint);
 
             var normalizedLayout = string.IsNullOrWhiteSpace(layout) ? "vertical" : layout.Trim().ToLowerInvariant();
             if (normalizedLayout != "vertical" && normalizedLayout != "horizontal")
                 normalizedLayout = "vertical";
 
-            // button_group only applies to single_choice with options; otherwise fall back to radio.
-            if (normalizedMode != "single_choice")
+            // Choice UIs only apply to single_choice / multi_choice.
+            if (normalizedMode == "text")
+                normalizedUi = "radio";
+            else if (normalizedMode == "multi_choice" && normalizedUi == "button_group")
+                normalizedUi = "radio";
+            else if (normalizedMode == "multi_choice" && normalizedUi == "dropdown")
                 normalizedUi = "radio";
 
-            var options = ParseOptions(optionsJson);
             if ((normalizedMode == "single_choice" || normalizedMode == "multi_choice") && options.Count == 0)
             {
                 return JsonConvert.SerializeObject(new
@@ -75,7 +94,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     ok = false,
                     error = "mode=" + normalizedMode
                         + " requires non-empty optionsJson as [{id,display}]. "
-                        + "Do not put numbered choices in prompt text — retry ask_user with optionsJson + ui=button_group."
+                        + "Do not put numbered choices in prompt text — retry ask_user with optionsJson "
+                        + "(ui=button_group | radio | dropdown)."
                 });
             }
 
@@ -174,6 +194,187 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Map ui aliases + infer from ask_user prompt text (ddl / dropdown / radio / button).
+        /// </summary>
+        private static bool PromptLooksLikeChoiceList(string prompt)
+        {
+            if (string.IsNullOrWhiteSpace(prompt)) return false;
+            // At least two quoted tokens → treat as an option list.
+            return System.Text.RegularExpressions.Regex.Matches(prompt, "\"([^\"]+)\"").Count >= 2;
+        }
+
+        /// <summary>
+        /// Recover options when the model lists them in prompt text instead of optionsJson
+        /// (e.g. choose from ddl "A1", "B2", "C3").
+        /// </summary>
+        private static List<LookupItemDto> TryParseOptionsFromPrompt(string prompt)
+        {
+            var list = new List<LookupItemDto>();
+            if (string.IsNullOrWhiteSpace(prompt)) return list;
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (System.Text.RegularExpressions.Match m in
+                     System.Text.RegularExpressions.Regex.Matches(prompt, "\"([^\"]+)\""))
+            {
+                var raw = (m.Groups[1].Value ?? "").Trim().TrimEnd(',').Trim();
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                // Skip long narrative quotes
+                if (raw.Length > 80) continue;
+                if (!seen.Add(raw)) continue;
+
+                // Prefer first token / letter as id when display is like "A1" or "A — Apple"
+                var id = raw;
+                var dash = raw.IndexOfAny(new[] { '—', '-' });
+                if (dash > 0 && dash <= 8)
+                    id = raw.Substring(0, dash).Trim();
+                else if (raw.Length >= 2 && char.IsLetter(raw[0]) && char.IsDigit(raw[1]))
+                    id = raw.Substring(0, 1); // A1 → A (matches user's "If user selects A")
+
+                list.Add(new LookupItemDto { Id = id, Display = raw });
+            }
+
+            // Fallback: after ddl/dropdown keyword, split remaining tokens by comma
+            if (list.Count < 2)
+            {
+                list.Clear();
+                seen.Clear();
+                var m = System.Text.RegularExpressions.Regex.Match(
+                    prompt,
+                    @"(?:ddl|drop[\s-]*down|dropdown|combobox|combo\s*box|option\s*lists?|radio\s*buttons?|button\s*groups?)\s*(.+)$",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                if (m.Success)
+                {
+                    foreach (var part in m.Groups[1].Value.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+                    {
+                        var raw = part.Trim().Trim('"', '\'', '.', ' ');
+                        if (string.IsNullOrWhiteSpace(raw) || raw.Length > 80) continue;
+                        if (!seen.Add(raw)) continue;
+                        var id = raw.Length >= 1 && char.IsLetter(raw[0]) ? raw.Substring(0, 1) : raw;
+                        list.Add(new LookupItemDto { Id = id, Display = raw });
+                    }
+                }
+            }
+
+            return list;
+        }
+
+        private static string ResolveChoiceUi(string prompt, string requestedUi, string normalizedMode, string skillUiHint = null)
+        {
+            var fromAlias = NormalizeUiAlias(requestedUi);
+            var inferred = InferChoiceUiFromPrompt(prompt) ?? skillUiHint;
+
+            // Skill/SystemPrompt "choose from ddl" (and ask_user prompt keywords) win over
+            // omitted ui or model default button_group/radio.
+            string chosen;
+            if (inferred == "dropdown"
+                && (string.IsNullOrWhiteSpace(fromAlias) || fromAlias == "radio" || fromAlias == "button_group"))
+                chosen = "dropdown";
+            else if (inferred == "radio"
+                && (string.IsNullOrWhiteSpace(fromAlias) || fromAlias == "button_group"))
+                chosen = "radio";
+            else if (!string.IsNullOrWhiteSpace(fromAlias))
+                chosen = fromAlias;
+            else if (!string.IsNullOrWhiteSpace(inferred))
+                chosen = inferred;
+            else
+                chosen = normalizedMode == "single_choice" ? "button_group" : "radio";
+
+            if (chosen != "radio" && chosen != "button_group" && chosen != "dropdown")
+                chosen = normalizedMode == "single_choice" ? "button_group" : "radio";
+            return chosen;
+        }
+
+        /// <summary>
+        /// Detect explicit "choose from ddl/radio/buttons" instructions in the agent SystemPrompt.
+        /// Avoids scanning the whole PLM prompt for the word "dropdown" (too noisy).
+        /// </summary>
+        private static string InferChoiceUiFromSkillPrompt(string systemPrompt)
+        {
+            if (string.IsNullOrWhiteSpace(systemPrompt)) return null;
+            if (System.Text.RegularExpressions.Regex.IsMatch(
+                    systemPrompt,
+                    @"choose\s+from\s+(ddl|drop[\s-]*downs?|dropdowns?|combobox|combo\s*box|option\s*lists?|select\s*lists?)",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                return "dropdown";
+            if (System.Text.RegularExpressions.Regex.IsMatch(
+                    systemPrompt,
+                    @"choose\s+from\s+radio(\s*buttons?)?",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                return "radio";
+            if (System.Text.RegularExpressions.Regex.IsMatch(
+                    systemPrompt,
+                    @"choose\s+from\s+(buttons?|button\s*groups?)",
+                    System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+                return "button_group";
+            return null;
+        }
+
+        private static string TryLoadSkillSystemPrompt(AgentToolContext context)
+        {
+            try
+            {
+                if (context == null || string.IsNullOrWhiteSpace(context.SkillKey))
+                    return null;
+                var dto = context.DataSourceId > 0
+                    ? App.BL.AIAgent.AiSkill.AppAgentSkillSetBL.GetByKey(context.SkillKey, context.DataSourceId)
+                    : App.BL.AIAgent.AiSkill.AppAgentSkillSetBL.GetByKey(context.SkillKey);
+                return dto?.SystemPrompt;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string NormalizeUiAlias(string ui)
+        {
+            if (string.IsNullOrWhiteSpace(ui)) return null;
+            var u = ui.Trim().ToLowerInvariant().Replace('_', ' ').Replace('-', ' ');
+            while (u.Contains("  ")) u = u.Replace("  ", " ");
+
+            if (u == "radio" || u == "radios" || u == "radio button" || u == "radio buttons")
+                return "radio";
+            if (u == "button group" || u == "buttongroup" || u == "buttons" || u == "button")
+                return "button_group";
+            if (u == "dropdown" || u == "drop down" || u == "ddl" || u == "combobox" || u == "combo box"
+                || u == "select" || u == "option list" || u == "options list" || u == "list box" || u == "listbox")
+                return "dropdown";
+            if (u == "button_group")
+                return "button_group";
+            return null;
+        }
+
+        private static string InferChoiceUiFromPrompt(string prompt)
+        {
+            if (string.IsNullOrWhiteSpace(prompt)) return null;
+            var p = prompt.ToLowerInvariant();
+
+            // Prefer more specific phrases first.
+            if (ContainsAny(p,
+                    "dropdown", "drop down", "drop-down", "ddl", "combobox", "combo box",
+                    "option list", "options list", "select list", "listbox", "list box"))
+                return "dropdown";
+
+            if (ContainsAny(p, "radio button", "radio buttons", "radiobutton", " as radio", "from radio"))
+                return "radio";
+
+            if (ContainsAny(p, "button group", "buttongroup", "from buttons", "as buttons"))
+                return "button_group";
+
+            return null;
+        }
+
+        private static bool ContainsAny(string haystack, params string[] needles)
+        {
+            foreach (var n in needles)
+            {
+                if (!string.IsNullOrEmpty(n) && haystack.IndexOf(n, StringComparison.Ordinal) >= 0)
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>

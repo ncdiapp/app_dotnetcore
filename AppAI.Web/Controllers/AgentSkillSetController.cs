@@ -473,7 +473,11 @@ public class AgentSkillSetController : SecureBaseController
 
         var dsId = GetDsId();
         var libraries = LibBL.GetAllLibraries(dsId);
-        var builtIns  = LibBL.GetAvailableBuiltInTools(dsId);
+        // ask_user is auto-injected for Interactive agents — never recommend as a private BuiltIn register.
+        var autoInjectedBuiltIns = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "ask_user" };
+        var builtIns  = LibBL.GetAvailableBuiltInTools(dsId)
+            .Where(t => !autoInjectedBuiltIns.Contains(t.ToolName ?? ""))
+            .ToList();
 
         var libCatalog  = string.Join("\n", libraries.Select(l =>
             $"- {l.LibraryKey} ({l.ToolCategory}/{l.DomainKey}): {l.LibraryName} — {l.Description}"));
@@ -486,8 +490,13 @@ Given a domain expert's description of an agent, output a JSON object with exact
 === Available Tool Libraries (subscribe via LibraryKey) ===
 {(string.IsNullOrEmpty(libCatalog) ? "(none configured)" : libCatalog)}
 
-=== Available Built-in Tools (register by ToolName) ===
+=== Available Built-in Tools (register by ToolName as private agent tools) ===
 {(string.IsNullOrEmpty(toolCatalog) ? "(none configured)" : toolCatalog)}
+
+IMPORTANT:
+- Do NOT recommend ask_user. Interactive agents get ask_user automatically at runtime; it must not be registered as a private tool.
+- Each RecommendedLibraryKeys / RecommendedBuiltInToolNames entry must appear at most once (no duplicates).
+- Only pick tools the agent clearly needs beyond ask_user.
 
 Output ONLY valid JSON — no markdown fences, no extra text:
 {{
@@ -502,8 +511,10 @@ SystemPrompt must use exactly four ## H2 sections:
 ## Rules — constraints and guardrails as bullet list
 ## Output Format — how the agent structures its responses
 
-RecommendedLibraryKeys: pick 0-3 keys from the Tool Libraries catalog that genuinely match. Never invent keys.
-RecommendedBuiltInToolNames: pick 0-5 tool names from the Built-in Tools catalog the agent clearly needs. Never invent names.
+For Interactive selection agents, SystemPrompt may instruct calling ask_user (runtime-injected) with mode=single_choice and ui=dropdown|radio|button_group — do not put ask_user in RecommendedBuiltInToolNames.
+
+RecommendedLibraryKeys: pick 0-3 keys from the Tool Libraries catalog that genuinely match. Never invent keys. No duplicates.
+RecommendedBuiltInToolNames: pick 0-5 tool names from the Built-in Tools catalog the agent clearly needs. Never invent names. Never include ask_user. No duplicates.
 If nothing matches, return empty arrays.";
 
         var llmReq = new LLMRequestDto
@@ -530,14 +541,42 @@ If nothing matches, return empty arrays.";
             var raw = llmRes.Content?.Trim() ?? "";
             if (raw.StartsWith("```"))
                 raw = Regex.Replace(raw, @"^```[a-z]*\r?\n?|```$", "", RegexOptions.Multiline).Trim();
-            result.Object = System.Text.Json.JsonSerializer.Deserialize<GenerateAgentResult>(
-                raw, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+            var parsed = System.Text.Json.JsonSerializer.Deserialize<GenerateAgentResult>(
+                raw, new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            result.Object = SanitizeGenerateAgentResult(parsed, autoInjectedBuiltIns);
         }
         catch
         {
             result.Object = new GenerateAgentResult(llmRes.Content ?? "", new List<string>(), new List<string>());
         }
         return result;
+    }
+
+    private static GenerateAgentResult SanitizeGenerateAgentResult(
+        GenerateAgentResult parsed, HashSet<string> autoInjectedBuiltIns)
+    {
+        if (parsed == null)
+            return new GenerateAgentResult("", new List<string>(), new List<string>());
+
+        static List<string> Dedup(IEnumerable<string> items, HashSet<string> exclude = null)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var list = new List<string>();
+            foreach (var raw in items ?? Array.Empty<string>())
+            {
+                var s = (raw ?? "").Trim();
+                if (string.IsNullOrWhiteSpace(s)) continue;
+                if (exclude != null && exclude.Contains(s)) continue;
+                if (!seen.Add(s)) continue;
+                list.Add(s);
+            }
+            return list;
+        }
+
+        return new GenerateAgentResult(
+            parsed.SystemPrompt ?? "",
+            Dedup(parsed.RecommendedLibraryKeys),
+            Dedup(parsed.RecommendedBuiltInToolNames, autoInjectedBuiltIns));
     }
 
     // ─────────────────────────────────────────────────────────────────────

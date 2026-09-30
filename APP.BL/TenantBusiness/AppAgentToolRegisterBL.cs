@@ -109,15 +109,36 @@ ORDER BY IsLibraryTool, ToolRegisterId",
                         ToolConfig=@ToolConfig, IsActive=@IsActive
                       WHERE ToolRegisterId=@Id",
                     UpsertParams(fixture, dto));
+                return true;
             }
-            else
+
+            var existing = fixture.RetriveDataTable(
+                @"SELECT TOP 1 ToolRegisterId FROM dbo.AppAgentToolRegister
+                  WHERE SkillKey=@SkillKey AND ToolName=@ToolName",
+                new List<DbParameter>
+                {
+                    P(fixture, "@SkillKey", dto.SkillKey ?? ""),
+                    P(fixture, "@ToolName", dto.ToolName ?? ""),
+                });
+            if (existing != null && existing.Rows.Count > 0)
             {
+                var existingId = Convert.ToInt32(existing.Rows[0]["ToolRegisterId"]);
+                var updateDto = dto with { Id = existingId };
                 fixture.ExecuteNonQueryResult(
-                    @"INSERT INTO dbo.AppAgentToolRegister
-                        (SkillKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive)
-                      VALUES (@SkillKey, @ToolName, @Description, @ParameterSchemaJson, @ToolType, @ToolConfig, @IsActive)",
-                    UpsertParams(fixture, dto));
+                    @"UPDATE dbo.AppAgentToolRegister SET
+                        ToolDescription=@Description,
+                        ParameterSchemaJson=@ParameterSchemaJson, ToolType=@ToolType,
+                        ToolConfig=@ToolConfig, IsActive=@IsActive
+                      WHERE ToolRegisterId=@Id",
+                    UpsertParams(fixture, updateDto));
+                return true;
             }
+
+            fixture.ExecuteNonQueryResult(
+                @"INSERT INTO dbo.AppAgentToolRegister
+                    (SkillKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive)
+                  VALUES (@SkillKey, @ToolName, @Description, @ParameterSchemaJson, @ToolType, @ToolConfig, @IsActive)",
+                UpsertParams(fixture, dto));
             return true;
         }
 
@@ -148,6 +169,29 @@ ORDER BY IsLibraryTool, ToolRegisterId",
                       WHERE ToolRegisterId=@Id",
                     UpsertParams(fixture, dto));
                 return dto.Id;
+            }
+
+            // Id=0: update existing SkillKey+ToolName row instead of inserting a duplicate.
+            var existing = fixture.RetriveDataTable(
+                @"SELECT TOP 1 ToolRegisterId FROM dbo.AppAgentToolRegister
+                  WHERE SkillKey=@SkillKey AND ToolName=@ToolName",
+                new List<DbParameter>
+                {
+                    P(fixture, "@SkillKey", dto.SkillKey ?? ""),
+                    P(fixture, "@ToolName", dto.ToolName ?? ""),
+                });
+            if (existing != null && existing.Rows.Count > 0)
+            {
+                var existingId = Convert.ToInt32(existing.Rows[0]["ToolRegisterId"]);
+                var updateDto = dto with { Id = existingId };
+                fixture.ExecuteNonQueryResult(
+                    @"UPDATE dbo.AppAgentToolRegister SET
+                        ToolDescription=@Description,
+                        ParameterSchemaJson=@ParameterSchemaJson, ToolType=@ToolType,
+                        ToolConfig=@ToolConfig, IsActive=@IsActive
+                      WHERE ToolRegisterId=@Id",
+                    UpsertParams(fixture, updateDto));
+                return existingId;
             }
 
             var dt = fixture.RetriveDataTable(

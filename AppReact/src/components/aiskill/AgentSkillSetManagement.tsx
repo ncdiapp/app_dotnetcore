@@ -438,7 +438,9 @@ const handleSave = async () => {
                     (res.Object.RecommendedLibraryKeys ?? []).filter(k => allLibraries.some(l => l.LibraryKey === k))
                 ));
                 setAiAcceptedBuiltIns(new Set(
-                    (res.Object.RecommendedBuiltInToolNames ?? []).filter(n => allBuiltInTools.some(t => t.ToolName === n))
+                    (res.Object.RecommendedBuiltInToolNames ?? [])
+                        .filter(n => n && n.toLowerCase() !== 'ask_user')
+                        .filter(n => allBuiltInTools.some(t => t.ToolName === n))
                 ));
             } else {
                 setError(res.ValidationResult?.Items?.[0]?.Message ?? 'Generation failed');
@@ -472,9 +474,20 @@ const handleSave = async () => {
             });
             setSubsChanged(true);
         }
+        // ask_user is runtime-injected for Interactive — never register as a private BuiltIn.
+        const skipPrivateBuiltIns = new Set(['ask_user']);
+        if (editItem.SkillKey.trim()) {
+            try {
+                const existing = await agentSkillSetSvc.GetToolsBySkillKey(editItem.SkillKey);
+                const askUserRows = (existing.Object ?? []).filter(t =>
+                    (t.ToolName || '').toLowerCase() === 'ask_user');
+                await Promise.all(askUserRows.map(t => agentSkillSetSvc.DeleteTool(t.Id).catch(() => {})));
+            } catch { /* non-critical cleanup */ }
+        }
         if (aiAcceptedBuiltIns.size > 0 && editItem.SkillKey.trim()) {
+            const names = Array.from(aiAcceptedBuiltIns).filter(n => !skipPrivateBuiltIns.has(n.toLowerCase()));
             const newTools = allBuiltInTools
-                .filter(t => aiAcceptedBuiltIns.has(t.ToolName))
+                .filter(t => names.includes(t.ToolName))
                 .map(t => ({
                     Id: 0, SkillKey: editItem.SkillKey, ToolName: t.ToolName,
                     Description: t.ToolDescription, ToolType: 'BuiltIn',
@@ -1113,9 +1126,11 @@ const handleSave = async () => {
                                         <div className={`text-xs font-semibold ${theme.title}`}>
                                             <i className="fa-solid fa-screwdriver-wrench mr-1" />Recommended Built-in Tools:
                                         </div>
-                                        {aiResult.RecommendedBuiltInToolNames.length === 0 ? (
-                                            <div className={`text-xs opacity-40 ${theme.label} px-1`}>No matching built-in tools found</div>
-                                        ) : aiResult.RecommendedBuiltInToolNames.map(name => {
+                                        {aiResult.RecommendedBuiltInToolNames.filter(n => n?.toLowerCase() !== 'ask_user').length === 0 ? (
+                                            <div className={`text-xs opacity-40 ${theme.label} px-1`}>
+                                                No private built-in tools needed (ask_user is auto-injected for Interactive agents)
+                                            </div>
+                                        ) : aiResult.RecommendedBuiltInToolNames.filter(n => n?.toLowerCase() !== 'ask_user').map(name => {
                                             const tool = allBuiltInTools.find(t => t.ToolName === name);
                                             const disabled = !editItem.SkillKey.trim();
                                             return (

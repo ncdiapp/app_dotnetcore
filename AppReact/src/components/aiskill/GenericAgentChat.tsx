@@ -1104,7 +1104,23 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                                 </div>
                             )}
 
-                            {askMode === 'single_choice' && !isButtonGroup && (pendingAskUser.Options?.length ?? 0) > 0 && (
+                            {askMode === 'single_choice' && askUi === 'dropdown' && (pendingAskUser.Options?.length ?? 0) > 0 && (
+                                <select
+                                    className={`w-full max-w-xl h-8 px-2 text-xs border rounded-[4px] ${theme.inputBox} focus:outline-none`}
+                                    value={askSelectedIds[0] || ''}
+                                    onChange={e => setAskSelectedIds(e.target.value ? [e.target.value] : [])}
+                                >
+                                    <option value="">— select —</option>
+                                    {pendingAskUser.Options!.map(opt => {
+                                        const id = String(opt.Id ?? '');
+                                        return (
+                                            <option key={id} value={id}>{opt.Display || id}</option>
+                                        );
+                                    })}
+                                </select>
+                            )}
+
+                            {askMode === 'single_choice' && !isButtonGroup && askUi !== 'dropdown' && (pendingAskUser.Options?.length ?? 0) > 0 && (
                                 <div className="flex flex-col gap-1.5">
                                     {pendingAskUser.Options!.map(opt => {
                                         const id = String(opt.Id ?? '');

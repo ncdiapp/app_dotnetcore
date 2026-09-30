@@ -65,8 +65,30 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
             const res = mode === 'library'
                 ? await agentSkillSetSvc.GetLibraryTools(skillKey)
                 : await agentSkillSetSvc.GetToolsBySkillKey(skillKey);
-            // Normalize: library tools use LibraryKey; map to SkillKey field for unified form
-            toolsCV.sourceCollection = (res.Object ?? []) as AppAgentToolRegisterDto[];
+            let rows = (res.Object ?? []) as AppAgentToolRegisterDto[];
+            // ask_user is auto-injected at runtime for Interactive agents — drop private register copies.
+            if (mode === 'agent') {
+                const askUserRows = rows.filter(t => (t.ToolName || '').toLowerCase() === 'ask_user');
+                if (askUserRows.length > 0) {
+                    await Promise.all(askUserRows.map(t => agentSkillSetSvc.DeleteTool(t.Id).catch(() => {})));
+                    rows = rows.filter(t => (t.ToolName || '').toLowerCase() !== 'ask_user');
+                }
+                // Collapse accidental SkillKey+ToolName duplicates (keep lowest Id).
+                const seen = new Set<string>();
+                const deduped: AppAgentToolRegisterDto[] = [];
+                const extras: AppAgentToolRegisterDto[] = [];
+                for (const t of [...rows].sort((a, b) => (a.Id || 0) - (b.Id || 0))) {
+                    const key = (t.ToolName || '').toLowerCase();
+                    if (!key || seen.has(key)) { extras.push(t); continue; }
+                    seen.add(key);
+                    deduped.push(t);
+                }
+                if (extras.length > 0) {
+                    await Promise.all(extras.map(t => agentSkillSetSvc.DeleteTool(t.Id).catch(() => {})));
+                    rows = deduped;
+                }
+            }
+            toolsCV.sourceCollection = rows;
         } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
         finally {
             dispatch(setIsNotBusy());
@@ -188,8 +210,9 @@ const AgentToolRegisterTab: React.FC<Props> = ({ selectedSkillKey, theme, hideHe
     const btnSm = `px-2 py-1 text-xs rounded-[4px] ${theme.button_default}`;
 
     const filteredBuiltIn = builtInTools.filter(t =>
-        !builtInFilter || t.ToolName.toLowerCase().includes(builtInFilter.toLowerCase())
-            || t.ToolDescription.toLowerCase().includes(builtInFilter.toLowerCase()));
+        (mode !== 'agent' || (t.ToolName || '').toLowerCase() !== 'ask_user')
+        && (!builtInFilter || t.ToolName.toLowerCase().includes(builtInFilter.toLowerCase())
+            || t.ToolDescription.toLowerCase().includes(builtInFilter.toLowerCase())));
 
     const filteredSchema = schemaTables.filter(t =>
         !schemaFilter || t.name.toLowerCase().includes(schemaFilter.toLowerCase()));

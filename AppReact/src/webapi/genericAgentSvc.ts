@@ -60,7 +60,7 @@ export interface LookupItemDto {
 export interface AskUserEvent {
     Prompt: string;
     Mode: string;
-    /** radio (default) | button_group — button_group one-click select+submit */
+    /** radio | button_group | dropdown — button_group one-click; dropdown = HTML select + Submit */
     Ui?: string;
     /** vertical (default) | horizontal — button_group layout */
     Layout?: string;
