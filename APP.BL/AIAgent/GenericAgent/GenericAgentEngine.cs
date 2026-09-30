@@ -418,8 +418,18 @@ namespace App.BL.AIAgent.GenericAgent
 
             var cap       = maxChars > 0 ? maxChars : DefaultMaxToolResultChars;
             var functions = tools.Select(t => BuildMcpKernelFunction(client, t, cap)).ToArray();
-            var plugin    = KernelPluginFactory.CreateFromFunctions("mcp_" + SanitizeName(server.ServerName ?? "server"), functions);
+            var plugin    = KernelPluginFactory.CreateFromFunctions(McpPluginName(server.ServerName), functions);
             return (client, plugin);
+        }
+
+        // Plugin names must contain no "_" — SK's Gemini connector calls tools as "plugin_function" and
+        // splits at the FIRST "_", so "mcp_plm_Tool" would resolve to plugin "mcp" and never be found.
+        // Kept short because providers cap the combined "plugin_function" name at 64 chars.
+        private static string McpPluginName(string? serverName)
+        {
+            var alnum = Regex.Replace(serverName ?? "", @"[^a-zA-Z0-9]", "");
+            if (alnum.Length > 16) alnum = alnum.Substring(0, 16);
+            return "mcp" + (alnum.Length > 0 ? alnum : "server");
         }
 
         private static KernelFunction BuildMcpKernelFunction(McpClient client, McpClientTool tool, int cap)
