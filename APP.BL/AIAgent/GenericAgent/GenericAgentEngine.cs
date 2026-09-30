@@ -344,7 +344,9 @@ namespace App.BL.AIAgent.GenericAgent
                 },
                 new("fieldsJson")
                 {
-                    Description = "JSON array of {name,label,required?,type?,options?} — type=text|select; select options:[{id,display}] (LookupItemDto; label accepted as display alias)",
+                    Description =
+                        "JSON array of {name,label,required?,type?,options?} — type=text|select|radio. "
+                        + "select=HTML dropdown, radio=radio buttons; both require options [{id,display}].",
                     IsRequired = false,
                     ParameterType = typeof(string)
                 },
@@ -397,7 +399,8 @@ namespace App.BL.AIAgent.GenericAgent
                 },
                 functionName: "ask_user",
                 description:
-                    "Ask the user a structured question and wait for their answer (Interactive only). "
+                    "System built-in (auto-injected for Interactive agents — not a library/private tool). "
+                    + "Ask the user a structured question and wait for their answer. "
                     + "mode=text|single_choice|multi_choice. "
                     + "Choice UI (single_choice + optionsJson): "
                     + "ui=button_group (clickable buttons, default for menus), "
@@ -405,8 +408,10 @@ namespace App.BL.AIAgent.GenericAgent
                     + "ui=dropdown (HTML drop-down + Submit). "
                     + "When instructions say ddl / drop down / dropdown / combobox / option list / select list, "
                     + "MUST use mode=single_choice + ui=dropdown + optionsJson [{id,display}]. "
-                    + "When they say radio buttons, use ui=radio. When they say buttons/button group, use ui=button_group. "
-                    + "Never put choices only in prompt text. fieldsJson type=select also renders dropdowns for mode=text forms.",
+                    + "When they say radio buttons, use ui=radio (or fieldsJson type=radio on a form). "
+                    + "When they say buttons/button group, use ui=button_group. "
+                    + "Never put choices only in prompt text. "
+                    + "fieldsJson: type=text|select|radio (select=DDL, radio=radio buttons; both need options).",
                 parameters: parameters);
         }
 

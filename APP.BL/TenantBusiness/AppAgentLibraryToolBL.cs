@@ -102,7 +102,11 @@ ORDER BY t.SortOrder, t.LibraryToolId",
             var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
             if (fixture == null) return new List<LibraryToolPreviewDto>();
             var dt = fixture.RetriveDataTable(
-                "SELECT DISTINCT ToolName, ToolDescription, ToolConfig FROM dbo.AppAgentLibraryTool WHERE ToolType='BuiltIn' AND IsActive=1 ORDER BY ToolName",
+                @"SELECT DISTINCT ToolName, ToolDescription, ToolConfig
+                  FROM dbo.AppAgentLibraryTool
+                  WHERE ToolType='BuiltIn' AND IsActive=1
+                    AND ToolName <> N'ask_user'
+                  ORDER BY ToolName",
                 new List<DbParameter>());
             var result = new List<LibraryToolPreviewDto>();
             if (dt == null) return result;

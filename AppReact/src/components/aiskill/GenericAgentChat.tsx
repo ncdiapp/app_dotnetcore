@@ -348,7 +348,13 @@ const toolTitle = (toolName: string, args?: string | null, skillNames?: Record<s
     return display && display !== key ? `call_agent: ${display}` : `call_agent: ${key}`;
 };
 
+/** Runtime-injected platform tools (not from library subscription or private ToolRegister). */
+const isSystemBuiltInTool = (toolName: string) => /^ask_user$/i.test(toolName || '');
+
 const toolTooltip = (toolName: string, args?: string | null, skillNames?: Record<string, string>, label?: string) => {
+    if (isSystemBuiltInTool(toolName)) {
+        return 'ask_user — system built-in (auto-injected for Interactive agents). No library subscription or private tool registration needed.';
+    }
     let key = extractCallAgentKeyFromLabel(label);
     if (!key && /^call_agent$/i.test(toolName))
         key = parseCallAgentTarget(args, skillNames);
@@ -1383,7 +1389,16 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                                                         onClick={() => hasDetails && toggleExpand(expandKey)}
                                                     >
                                                         <i className={`fa-solid ${!hasResult ? 'fa-spinner fa-spin text-blue-400' : isSuccess ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-500'}`} />
-                                                        <span className="font-mono font-semibold flex-auto truncate">{title}</span>
+                                                        <span className="font-mono font-semibold truncate">{title}</span>
+                                                        {isSystemBuiltInTool(toolName) && (
+                                                            <span
+                                                                className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 opacity-70 border ${regionBorder} ${theme.label}`}
+                                                                title="System built-in — auto-injected; no library or private tool needed"
+                                                            >
+                                                                built-in
+                                                            </span>
+                                                        )}
+                                                        <span className="flex-auto" />
                                                         {pair.result?.durationMs != null && (
                                                             <span className="opacity-40 shrink-0">{pair.result.durationMs}ms</span>
                                                         )}

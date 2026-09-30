@@ -1,8 +1,12 @@
--- V038: ask_user ui=dropdown (choice modes) + fieldsJson type=radio (form radio) vs type=select (DDL).
--- Idempotent UPDATE of platform-multi-agent ask_user tool metadata.
-
-UPDATE dbo.AppAgentLibraryTool
-SET ToolDescription = N'Ask the user a structured question and wait for their answer (Interactive only). mode=text|single_choice|multi_choice. single_choice + optionsJson REQUIRED for standalone menus (never list choices only in prompt). ui=button_group (one-click buttons) | radio (radio+Submit) | dropdown (HTML drop-down+Submit). Synonyms for dropdown: ddl, drop down, combobox, option list, select list. fieldsJson type=text|select|radio — select=HTML dropdown, radio=radio buttons; both need non-empty options [{id,display}]. Synonyms: ddl/dropdown→select field; radio button→radio field. layout=vertical|horizontal for button_group. Optionally merge via contextKey.',
-    ParameterSchemaJson = N'{"type":"object","properties":{"prompt":{"type":"string","description":"Question shown to the user. If text mentions ddl/dropdown/combobox/option list, prefer ui=dropdown for choice modes."},"mode":{"type":"string","description":"text | single_choice | multi_choice"},"fieldsJson":{"type":"string","description":"JSON array of {name,label,required?,type?,options?} — type=text|select|radio; select=dropdown, radio=radio buttons; options LookupItemDto [{id,display}] required for select/radio"},"optionsJson":{"type":"string","description":"JSON array of LookupItemDto {id,display} for choice modes"},"contextKey":{"type":"string","description":"Optional shared-context key to merge answers into"},"ui":{"type":"string","description":"radio | button_group | dropdown (aliases: ddl, drop down, combobox, option list, select). button_group one-click; dropdown HTML select+Submit; only for single_choice"},"layout":{"type":"string","description":"vertical (default) | horizontal — button_group only"}},"required":["prompt"]}'
-WHERE LibraryKey = N'platform-multi-agent' AND ToolName = N'ask_user';
-GO
+-- V038: Remove ask_user from platform-multi-agent library (and stray private registers).
+-- ask_user is a system built-in auto-injected by GenericAgentEngine for Interactive agents —
+-- it must not appear as a library tool or private BuiltIn registration.
+-- Idempotent DELETE.
+
+DELETE FROM dbo.AppAgentLibraryTool
+WHERE LibraryKey = N'platform-multi-agent' AND ToolName = N'ask_user';
+GO
+
+DELETE FROM dbo.AppAgentToolRegister
+WHERE ToolName = N'ask_user';
+GO

@@ -1,6 +1,6 @@
 -- TENANT seed — NOT a Flyway migration.
 -- Interactive skill: app-config-pack-orchestrator
--- Requires: Seed_PlatformAppConfigPackLibrary.sql (+ platform ask_user for Interactive).
+-- Requires: Seed_PlatformAppConfigPackLibrary.sql (ask_user is system built-in for Interactive).
 -- IMPORTANT: Every UPDATE must include WHERE SkillKey = ... (never update all rows).
 -- ASCII-only prompting (avoid UTF-8 arrows/box-drawing — sqlcmd default code page mojibake).
 
