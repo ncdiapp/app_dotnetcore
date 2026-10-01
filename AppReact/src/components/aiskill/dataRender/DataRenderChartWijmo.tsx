@@ -21,7 +21,7 @@ function mapTypeToWijmo(type: string): ChartType {
 
 /** Default Wijmo chart implementation for data_render (bar/line/area/pie). */
 export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data }) => {
-    const { theme } = useTheme();
+    const { theme, t } = useTheme();
     const allowedTypes = chartConfig.allowedTypes ?? ['bar', 'line', 'area'];
     const [chartType, setChartType] = useState(chartConfig.type ?? allowedTypes[0] ?? 'bar');
 
@@ -48,9 +48,15 @@ export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data 
 
     const btn = `px-2 py-0.5 text-xs rounded-[4px] border ${theme.button_default}`;
     const isPie = (chartType || '').toLowerCase() === 'pie';
+    const chartHostStyle: React.CSSProperties = {
+        width: '100%',
+        height: '100%',
+        border: 'none',
+        outline: 'none',
+    };
 
     return (
-        <div className={`border rounded-[4px] p-3 ${theme.mainContentSection}`}>
+        <div className={`rounded-[4px] p-3 border ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
             <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                 <div>
                     {meta?.title && <div className={`text-sm font-medium ${theme.label}`}>{String(meta.title)}</div>}
@@ -60,14 +66,14 @@ export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data 
                 </div>
                 {allowedTypes.length > 1 && (
                     <div className="flex gap-1">
-                        {allowedTypes.map(t => (
+                        {allowedTypes.map(typeKey => (
                             <button
-                                key={t}
+                                key={typeKey}
                                 type="button"
-                                className={`${btn}${chartType === t ? ' font-semibold' : ''}`}
-                                onClick={() => setChartType(t)}
+                                className={`${btn}${chartType === typeKey ? ' font-semibold' : ''}`}
+                                onClick={() => setChartType(typeKey)}
                             >
-                                {t.charAt(0).toUpperCase() + t.slice(1)}
+                                {typeKey.charAt(0).toUpperCase() + typeKey.slice(1)}
                             </button>
                         ))}
                     </div>
@@ -80,7 +86,7 @@ export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data 
                     {isPie ? (
                         <FlexPie
                             className="w-full h-full"
-                            style={{ width: '100%', height: '100%' }}
+                            style={chartHostStyle}
                             itemsSource={chartData}
                             binding={yField}
                             bindingName={xField}
@@ -88,7 +94,7 @@ export const DataRenderChartWijmo: React.FC<Props> = ({ meta, chartConfig, data 
                     ) : (
                         <FlexChart
                             className="w-full h-full"
-                            style={{ width: '100%', height: '100%' }}
+                            style={chartHostStyle}
                             itemsSource={chartData}
                             bindingX={xField}
                             chartType={mapTypeToWijmo(chartType)}

@@ -17,7 +17,7 @@ interface Props {
 }
 
 export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) => {
-    const { theme } = useTheme();
+    const { theme, t } = useTheme();
     const [selectedRow, setSelectedRow] = useState<Record<string, unknown> | null>(null);
     const ui = (event.Ui || 'grid').toLowerCase();
     const actions = useMemo(() => parseActions(event.ActionsJson), [event.ActionsJson]);
@@ -66,7 +66,7 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
     };
 
     return (
-        <div className={`my-2 mx-2 border rounded-[4px] p-2 ${theme.mainContentSection}`}>
+        <div className={`my-2 mx-2 rounded-[4px] p-2 border ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
             <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
                 <div className={`text-xs ${theme.label}`}>
                     <span className="font-medium uppercase tracking-wide opacity-70 mr-2">{ui}</span>

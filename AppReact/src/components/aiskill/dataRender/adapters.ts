@@ -42,7 +42,7 @@ export function adaptToGrid(args: {
         colDefs = columns.map(col => ({
             field: col.field,
             headerName: col.header ?? col.headerName ?? toHeader(col.field),
-            width: col.width ?? 120,
+            width: col.width ?? 150,
             dataType: col.dataType,
             hide: col.hide ?? false,
         }));
@@ -50,7 +50,7 @@ export function adaptToGrid(args: {
         colDefs = Object.keys(rows[0]).map(field => ({
             field,
             headerName: toHeader(field),
-            width: 120,
+            width: 150,
         }));
     } else {
         colDefs = [];

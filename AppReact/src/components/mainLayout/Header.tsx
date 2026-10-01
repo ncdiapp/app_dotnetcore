@@ -363,11 +363,7 @@ const Header: React.FC = () => {
                         className={`w-8 h-8 flex items-center justify-center rounded-full ${theme.button_default}`}
                         title={userContext?.DisplayName || 'User'}
                     >
-                        <img
-                            className="w-8 h-8 rounded-full"
-                            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(userContext?.DisplayName || 'User')}&background=0D8ABC&color=fff`}
-                            alt="User"
-                        />
+                        <i className="fa-regular fa-user w-5 h-5 flex items-center justify-center" aria-hidden />
                     </button>
                     {isUserDropdownOpen && (
                         <div
