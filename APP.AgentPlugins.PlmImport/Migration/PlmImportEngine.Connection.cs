@@ -273,43 +273,25 @@ END";
             var result = new OperationCallResult<PlmConnectionTestResultDto> { Object = new PlmConnectionTestResultDto() };
             try
             {
-                RequirePlmMigrationAdmin();
+                // Platform catalog tool — no PLM migration-admin gate.
                 if (request != null)
                     ResolveCompanyId(request.TargetCompanyId);
 
-                if (request?.DataSourceRegisterId == null || request.DataSourceRegisterId.Value <= 0)
+                int registerId = request?.DataSourceRegisterId ?? 0;
+                var json = App.BL.TenantBusiness.TenantCatalogBL.TestDataSourceConnectionJson(
+                    registerId, request?.TargetCompanyId);
+                var parsed = JObject.Parse(json);
+                result.Object.IsSuccess = parsed.Value<bool?>("isSuccess") == true;
+                result.Object.DataSourceRegisterId = parsed.Value<int?>("dataSourceRegisterId") ?? registerId;
+                result.Object.DataSourceName = parsed.Value<string>("dataSourceName");
+                result.Object.DatabaseName = parsed.Value<string>("databaseName");
+                result.Object.ServerVersion = parsed.Value<string>("serverVersion");
+                result.Object.ErrorMessage = parsed.Value<string>("error");
+                if (!result.Object.IsSuccess && !string.IsNullOrWhiteSpace(result.Object.ErrorMessage))
                 {
                     result.ValidationResult.Items.Add(new ValidationItem(
-                        typeof(PlmConnectionTestRequestDto), "Plm_Connection_RegisterRequired", ValidationItemType.Error,
-                        "DataSourceRegisterId is required. Do not pass a connection string."));
-                    return result;
-                }
-
-                int registerId = request.DataSourceRegisterId.Value;
-                result.Object.DataSourceRegisterId = registerId;
-
-                var reg = AppDataSourceRegisterBL.RetrieveOneAppDataSourceRegisterExDto(registerId);
-                if (reg == null)
-                {
-                    result.Object.IsSuccess = false;
-                    result.Object.ErrorMessage = $"DataSourceRegisterId {registerId} was not found on this tenant.";
-                    result.ValidationResult.Items.Add(new ValidationItem(
-                        typeof(PlmConnectionTestRequestDto), "Plm_Connection_RegisterNotFound", ValidationItemType.Error,
+                        typeof(PlmConnectionTestRequestDto), "Plm_Connection_Test_Error", ValidationItemType.Error,
                         result.Object.ErrorMessage));
-                    return result;
-                }
-
-                result.Object.DataSourceName = reg.DataSourceName;
-                result.Object.DatabaseName = reg.DatabaseName;
-
-                string conn = ResolveConnectionStringFromRegisterId(registerId);
-                using (var sqlConn = new SqlConnection(conn))
-                {
-                    sqlConn.Open();
-                    result.Object.IsSuccess = true;
-                    result.Object.ServerVersion = sqlConn.ServerVersion;
-                    if (string.IsNullOrWhiteSpace(result.Object.DatabaseName))
-                        result.Object.DatabaseName = sqlConn.Database;
                 }
             }
             catch (Exception ex)
@@ -325,8 +307,7 @@ END";
 
         /// <summary>
         /// List tenant-visible DataSource registers for ask_user DDL (Id + Name only).
-        /// Same source as SQL Workbench / Database Management dropdown:
-        /// <see cref="AppDataSourceRegisterBL.GetDataSourceRegisterList"/> (no Admin gate; no connection strings).
+        /// Delegates to <see cref="App.BL.TenantBusiness.TenantCatalogBL"/> (platform BuiltIn).
         /// </summary>
         public static OperationCallResult<PlmListTenantDataSourcesResultDto> ListTenantDataSources(PlmListTenantDataSourcesRequestDto request)
         {
@@ -336,27 +317,29 @@ END";
             };
             try
             {
-                // Align with UI pages (Workbench etc.): company-scoped list, connection strings cleared.
-                // Do not require SaasCompanyAdmin — listing Ids/Names is not a PLM import write.
-                _ = request;
-
-                foreach (var reg in AppDataSourceRegisterBL.GetDataSourceRegisterList())
+                var json = App.BL.TenantBusiness.TenantCatalogBL.ListTenantDataSourcesJson(request?.TargetCompanyId);
+                var parsed = JObject.Parse(json);
+                result.Object.IsSuccess = parsed.Value<bool?>("isSuccess") == true;
+                result.Object.ErrorMessage = parsed.Value<string>("error");
+                var arr = parsed["dataSources"] as JArray;
+                if (arr != null)
                 {
-                    if (reg == null || reg.Id == null)
-                        continue;
-                    int id = Convert.ToInt32(reg.Id);
-                    if (id <= 0)
-                        continue;
-
-                    result.Object.DataSources.Add(new PlmTenantDataSourceItemDto
+                    foreach (var item in arr)
                     {
-                        DataSourceRegisterId = id,
-                        DataSourceName = reg.DataSourceName,
-                        DatabaseName = reg.DatabaseName
-                    });
+                        result.Object.DataSources.Add(new PlmTenantDataSourceItemDto
+                        {
+                            DataSourceRegisterId = item.Value<int?>("dataSourceRegisterId") ?? 0,
+                            DataSourceName = item.Value<string>("dataSourceName"),
+                            DatabaseName = item.Value<string>("databaseName")
+                        });
+                    }
                 }
-
-                result.Object.IsSuccess = true;
+                if (!result.Object.IsSuccess && !string.IsNullOrWhiteSpace(result.Object.ErrorMessage))
+                {
+                    result.ValidationResult.Items.Add(new ValidationItem(
+                        typeof(PlmListTenantDataSourcesRequestDto), "Plm_ListDataSources_Error", ValidationItemType.Error,
+                        result.Object.ErrorMessage));
+                }
             }
             catch (Exception ex)
             {
@@ -371,8 +354,7 @@ END";
 
         /// <summary>
         /// List tenant SaaS Application packages for ask_user DDL (Id + Name only).
-        /// Same ids as save_plm_import_session.saasApplicationId (root AppListMenu LinkType=ApplicationPackage).
-        /// Prefer this over platform list_applications (full TX/Search tree) for Gate-0.
+        /// Delegates to <see cref="App.BL.TenantBusiness.TenantCatalogBL"/> (platform BuiltIn).
         /// </summary>
         public static OperationCallResult<PlmListTenantSaasApplicationsResultDto> ListTenantSaasApplications(
             PlmListTenantSaasApplicationsRequestDto request)
@@ -383,51 +365,28 @@ END";
             };
             try
             {
-                _ = request;
-
-                // Canonical package list (MenuId = SaasApplicationId).
-                foreach (var app in AppSaasUserApplicationPackageBL.GetSaasApplicationList(excludeChildMenu: true))
+                var json = App.BL.TenantBusiness.TenantCatalogBL.ListTenantSaasApplicationsJson(request?.TargetCompanyId);
+                var parsed = JObject.Parse(json);
+                result.Object.IsSuccess = parsed.Value<bool?>("isSuccess") == true;
+                result.Object.ErrorMessage = parsed.Value<string>("error");
+                var arr = parsed["applications"] as JArray;
+                if (arr != null)
                 {
-                    if (app?.Id == null)
-                        continue;
-                    int id = Convert.ToInt32(app.Id);
-                    if (id <= 0)
-                        continue;
-                    result.Object.Applications.Add(new PlmTenantSaasApplicationItemDto
+                    foreach (var item in arr)
                     {
-                        SaasApplicationId = id,
-                        ApplicationName = app.Name
-                    });
-                }
-
-                // Fallback: root ApplicationPackage menus (LinkType=10) if BL returned empty.
-                if (result.Object.Applications.Count == 0)
-                {
-                    var fixture = GetTenantFixture();
-                    var dt = fixture.RetriveDataTable(@"
-SELECT MenuID, Name
-FROM dbo.AppListMenu
-WHERE (ParentID IS NULL OR ParentID = 0)
-  AND LinkType = 10
-ORDER BY MenuID",
-                        new List<DbParameter>());
-                    if (dt != null)
-                    {
-                        foreach (DataRow row in dt.Rows)
+                        result.Object.Applications.Add(new PlmTenantSaasApplicationItemDto
                         {
-                            int id = Convert.ToInt32(row["MenuID"]);
-                            if (id <= 0)
-                                continue;
-                            result.Object.Applications.Add(new PlmTenantSaasApplicationItemDto
-                            {
-                                SaasApplicationId = id,
-                                ApplicationName = row["Name"]?.ToString()
-                            });
-                        }
+                            SaasApplicationId = item.Value<int?>("saasApplicationId") ?? 0,
+                            ApplicationName = item.Value<string>("applicationName")
+                        });
                     }
                 }
-
-                result.Object.IsSuccess = true;
+                if (!result.Object.IsSuccess && !string.IsNullOrWhiteSpace(result.Object.ErrorMessage))
+                {
+                    result.ValidationResult.Items.Add(new ValidationItem(
+                        typeof(PlmListTenantSaasApplicationsRequestDto), "Plm_ListSaasApplications_Error",
+                        ValidationItemType.Error, result.Object.ErrorMessage));
+                }
             }
             catch (Exception ex)
             {

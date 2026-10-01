@@ -1,64 +1,35 @@
 -- TENANT seed for PlmIntegrationMultiAgent pack (RUN_ALL) — NOT a Flyway migration.
 -- RULE: new-tenant INSERT only. No UPDATE/DELETE. Change tools by editing INSERT values.
 -- Library: integration-plm-import (ExternalDll -> APP.AgentPlugins.PlmImport.dll).
+-- Domain: plm-integration (created here; existing tenants: run 00_Upgrade_CatalogExtract.sql).
+-- Reusable catalog tools (list_tenant_data_sources, list_tenant_saas_applications,
+-- test_data_source_connection) live under platform-database / platform-application (Flyway V040).
 -- Subscriptions are in agent seed files (03 ROOT / 02+ children).
+
+IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentToolDomain WHERE DomainKey = N'plm-integration')
+INSERT INTO dbo.AppAgentToolDomain (DomainKey, DomainName, Description, SortOrder, IsActive)
+VALUES (N'plm-integration', N'PLM Integration', N'PLM data import / migration agent libraries.', 5, 1);
+GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
 INSERT INTO dbo.AppAgentToolLibrary
     (LibraryKey, DomainKey, LibraryName, Description, ToolCategory, IsActive)
 VALUES (
     N'integration-plm-import',
-    N'platform',
+    N'plm-integration',
     N'PLM Integration Import',
-    N'PLM Data Import tools for Agent (Connect/Entity/Image/Folder/Color/POM/DW/Search). ExternalDll + sessionId. Subscribe plm-integration-orchestrator.',
+    N'PLM Data Import tools (session/wizard, Entity/Image/Folder/Color/POM/DW/Search). ExternalDll. Catalog list/test tools: platform-database / platform-application.',
     N'ExternalDll',
     1
 );
 GO
 
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'test_plm_connection')
-INSERT INTO dbo.AppAgentLibraryTool
-    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
-VALUES (
-    N'integration-plm-import',
-    N'test_plm_connection',
-    N'Test a tenant AppDataSourceRegister by id (PLM/PLMDW/ERP). Never pass a connection string. Returns IsSuccess, DataSourceName, DatabaseName, ServerVersion.',
-    N'{"type":"object","properties":{"dataSourceRegisterId":{"type":"integer","description":"Tenant AppDataSourceRegister id"},"targetCompanyId":{"type":"integer","description":"Optional target company id (SysAdmin)"}},"required":["dataSourceRegisterId"]}',
-    N'ExternalDll',
-    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.TestPlmConnectionTool"}',
-    1,
-    10
-);
-GO
-
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'list_tenant_data_sources')
-INSERT INTO dbo.AppAgentLibraryTool
-    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
-VALUES (
-    N'integration-plm-import',
-    N'list_tenant_data_sources',
-    N'List DataSourceRegisterId + name + databaseName for the current tenant company. Use for ask_user to pick PLM / PLMDW / ERP registers. Never returns connection strings.',
-    N'{"type":"object","properties":{"targetCompanyId":{"type":"integer"}}}',
-    N'ExternalDll',
-    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ListTenantDataSourcesTool"}',
-    1,
-    15
-);
-GO
-
-IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'list_tenant_saas_applications')
-INSERT INTO dbo.AppAgentLibraryTool
-    (LibraryKey, ToolName, ToolDescription, ParameterSchemaJson, ToolType, ToolConfig, IsActive, SortOrder)
-VALUES (
-    N'integration-plm-import',
-    N'list_tenant_saas_applications',
-    N'List SaasApplicationId + ApplicationName for Gate-0 ask_user DDL. Slim list only (no TX/Search tree). Prefer over list_applications for Connect.',
-    N'{"type":"object","properties":{"targetCompanyId":{"type":"integer"}}}',
-    N'ExternalDll',
-    N'{"AssemblyName":"APP.AgentPlugins.PlmImport.dll","TypeName":"APP.AgentPlugins.PlmImport.ListTenantSaasApplicationsTool"}',
-    1,
-    16
-);
+-- ensure domain if library already existed under platform
+IF EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import')
+UPDATE dbo.AppAgentToolLibrary
+SET DomainKey = N'plm-integration'
+WHERE LibraryKey = N'integration-plm-import'
+  AND DomainKey <> N'plm-integration';
 GO
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import' AND ToolName = N'ensure_techpack_schema')

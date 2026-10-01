@@ -8,6 +8,11 @@ using Newtonsoft.Json;
 
 namespace APP.AgentPlugins.PlmImport;
 
+/// <summary>
+/// Legacy ExternalDll entry points. Prefer platform BuiltIn tools:
+/// list_tenant_data_sources / list_tenant_saas_applications / test_data_source_connection
+/// (TenantCatalogPlugin). Kept for in-process callers of PlmImportEngine.
+/// </summary>
 public sealed class TestPlmConnectionTool : IAgentTool
 {
     public Task<string> ExecuteAsync(
@@ -15,16 +20,14 @@ public sealed class TestPlmConnectionTool : IAgentTool
         AgentToolContext context,
         CancellationToken cancellationToken)
     {
-        var request = new PlmConnectionTestRequestDto
-        {
-            DataSourceRegisterId = PlmBlToolArgs.ParseInt(args, "dataSourceRegisterId"),
-            TargetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId")
-        };
-        return Task.FromResult(PlmBlToolArgs.Serialize(PlmImportEngine.TestPlmConnection(request)));
+        var registerId = PlmBlToolArgs.ParseInt(args, "dataSourceRegisterId") ?? 0;
+        var targetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId");
+        return Task.FromResult(
+            App.BL.TenantBusiness.TenantCatalogBL.TestDataSourceConnectionJson(registerId, targetCompanyId));
     }
 }
 
-/// <summary>List tenant AppDataSourceRegister rows for ask_user (ids + names only; no connection strings).</summary>
+/// <summary>Legacy — prefer platform-database.list_tenant_data_sources.</summary>
 public sealed class ListTenantDataSourcesTool : IAgentTool
 {
     public Task<string> ExecuteAsync(
@@ -32,15 +35,13 @@ public sealed class ListTenantDataSourcesTool : IAgentTool
         AgentToolContext context,
         CancellationToken cancellationToken)
     {
-        var request = new PlmListTenantDataSourcesRequestDto
-        {
-            TargetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId")
-        };
-        return Task.FromResult(PlmBlToolArgs.Serialize(PlmImportEngine.ListTenantDataSources(request)));
+        var targetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId");
+        return Task.FromResult(
+            App.BL.TenantBusiness.TenantCatalogBL.ListTenantDataSourcesJson(targetCompanyId));
     }
 }
 
-/// <summary>List tenant SaaS Application packages for ask_user (SaasApplicationId + name only).</summary>
+/// <summary>Legacy — prefer platform-application.list_tenant_saas_applications.</summary>
 public sealed class ListTenantSaasApplicationsTool : IAgentTool
 {
     public Task<string> ExecuteAsync(
@@ -48,11 +49,9 @@ public sealed class ListTenantSaasApplicationsTool : IAgentTool
         AgentToolContext context,
         CancellationToken cancellationToken)
     {
-        var request = new PlmListTenantSaasApplicationsRequestDto
-        {
-            TargetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId")
-        };
-        return Task.FromResult(PlmBlToolArgs.Serialize(PlmImportEngine.ListTenantSaasApplications(request)));
+        var targetCompanyId = PlmBlToolArgs.ParseInt(args, "targetCompanyId");
+        return Task.FromResult(
+            App.BL.TenantBusiness.TenantCatalogBL.ListTenantSaasApplicationsJson(targetCompanyId));
     }
 }
 

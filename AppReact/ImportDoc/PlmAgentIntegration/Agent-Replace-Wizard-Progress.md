@@ -39,7 +39,7 @@
 
 ## Secure Connect
 
-- Tools: `list_tenant_data_sources`, `test_plm_connection(dataSourceRegisterId)`, `save_plm_import_session` with `plmDataSourceRegisterId` / `plmDwDataSourceRegisterId` / `erpDataSourceRegisterId`.
+- Tools: `list_tenant_data_sources`, `list_tenant_saas_applications`, `test_data_source_connection(dataSourceRegisterId)` (platform BuiltIn), `save_plm_import_session` with `plmDataSourceRegisterId` / `plmDwDataSourceRegisterId` / `erpDataSourceRegisterId`.
 - `discover_plm_data_sources` disabled. Session never returns connection strings.
 - Admins register PLM/DW/ERP in tenant Data Source Register UI before Agent Connect.
 

@@ -1,6 +1,7 @@
 @echo off
 setlocal EnableExtensions
-REM Apply PLM Migration Multi-Agent seeds to a NEW tenant DB (structure through V034+).
+REM Apply PLM Migration Multi-Agent seeds to a NEW tenant DB (structure through V040+).
+REM Existing tenants with old PLM tools: run 00_Upgrade_CatalogExtract.sql once (after Flyway V040), not via this bat.
 REM Usage: RUN_ALL.bat ServerName TenantDbName [CompanyId] [FileRepositoryRoot]
 REM Example: RUN_ALL.bat PC3B\MSSQLSERVER01 TenantDB_PLM34 1
 REM From PowerShell prefer: cmd /c RUN_ALL.bat "PC3B\MSSQLSERVER01" TenantDB_PLM34 1

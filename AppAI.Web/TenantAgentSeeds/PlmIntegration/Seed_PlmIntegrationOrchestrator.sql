@@ -2,7 +2,8 @@
 -- Do NOT run via Flyway. Apply on tenants that need PLM Integration Agent (e.g. TenantDB_PLM32).
 --
 -- Interactive Skill: plm-integration-orchestrator
--- Subscribe: integration-plm-import, platform-application (list_applications), platform-multi-agent (shared context).
+-- Subscribe: integration-plm-import, platform-database (list_tenant_data_sources, test_data_source_connection),
+--   platform-application (list_tenant_saas_applications), platform-multi-agent (shared context).
 -- Also run Seed_IntegrationPlmImportLibrary.sql so tools exist.
 -- Security: Connect only via tenant DataSourceRegisterId - never connection strings.
 --
@@ -89,7 +90,7 @@ status: pending | running | done | skipped | deferred | open
 
 | code | Kind | Tools |
 |---|---|---|
-| connect | linear once | list_tenant_data_sources, list_tenant_saas_applications, test_plm_connection, save/get_plm_import_session |
+| connect | linear once | list_tenant_data_sources, list_tenant_saas_applications, test_data_source_connection, save/get_plm_import_session |
 | techpack-schema | linear once | ask_user Confirm|Cancel then ensure_techpack_schema (full NewSchema; includeInspectionAddon=false) |
 | entity | linear once | preview/execute entity import tools |
 | folder | linear **skippable** | preview/execute folder (+ placement after Image for AppFile.FolderID) |
@@ -143,7 +144,7 @@ TODO
 2. `list_tenant_saas_applications` — options from SaasApplicationId + ApplicationName only. Do **not** use `list_applications` for Gate-0. Never fall back to a bare integer text box when apps exist.
 3. `ask_user` mode=text, contextKey=`plm.integration.job`. HARD: every listed field is type=select with non-empty options LookupItemDto [{id,display}].
    Fields: saasApplicationId (req), plmDataSourceId (req), dwDataSourceId (req), erpDataSourceId (opt), plmExDbDataSourceId (opt).
-4. test_plm_connection on each selected register id.
+4. test_data_source_connection on each selected register id.
 5. save_plm_import_session; store sessionId on job; wizard connect=done, cursor=`techpack-schema`, mode=linear. **Do not** jump to Entity yet.
 6. **TechPack schema (mandatory before Entity):**
    - `ask_user` Prompt `[TechPack Schema] Apply required Tchp* tables and views?` (+ optional one-line: creates TechPack schema; no optional packages).
@@ -203,7 +204,7 @@ Repeatable menu: mode=single_choice ui=button_group layout=vertical optionsJson 
 ---
 
 ## Capability map
-- Connect: list_tenant_data_sources, list_tenant_saas_applications, test_plm_connection, get/save_plm_import_session
+- Connect: list_tenant_data_sources, list_tenant_saas_applications, test_data_source_connection, get/save_plm_import_session
 - TechPack: ensure_techpack_schema (full required NewSchema; includeInspectionAddon=false; Confirm|Cancel only)
 - Entity / Image / Folder / Color / POM: matching preview/execute_*
 - DW / Search / Sibling / MassUpdate: load/preview/execute_* blueprint tools
@@ -253,6 +254,15 @@ AND NOT EXISTS (
     WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-application')
 INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
 VALUES (N'plm-integration-orchestrator', N'platform-application');
+GO
+
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-database')
+AND NOT EXISTS (
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription
+    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-database')
+INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
+VALUES (N'plm-integration-orchestrator', N'platform-database');
 GO
 
 IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')

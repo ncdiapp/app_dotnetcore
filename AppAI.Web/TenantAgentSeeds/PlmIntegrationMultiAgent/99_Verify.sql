@@ -8,12 +8,12 @@ WHERE LibraryKey IN (
 ORDER BY LibraryKey;
 
 PRINT '=== Gate-0 + wizard + path-based apply tools (must exist) ===';
-SELECT ToolName, ToolType, IsActive FROM dbo.AppAgentLibraryTool
+SELECT ToolName, LibraryKey, ToolType, IsActive FROM dbo.AppAgentLibraryTool
 WHERE (
     LibraryKey = N'integration-plm-import'
     AND ToolName IN (
-      N'list_tenant_data_sources', N'list_tenant_saas_applications', N'ensure_techpack_schema',
-      N'test_plm_connection', N'save_plm_import_session',
+      N'ensure_techpack_schema',
+      N'save_plm_import_session',
       N'update_plm_wizard_progress', N'get_plm_wizard_progress',
       N'preview_dw_blueprint_from_file', N'execute_dw_blueprint_from_file',
       N'apply_agent_output_plan',
@@ -21,11 +21,21 @@ WHERE (
       N'preview_search_sibling_view', N'execute_search_sibling_view',
       N'preview_search_massupdate_view', N'execute_search_massupdate_view')
   )
+  OR (LibraryKey = N'platform-database' AND ToolName IN (N'list_tenant_data_sources', N'test_data_source_connection'))
+  OR (LibraryKey = N'platform-application' AND ToolName = N'list_tenant_saas_applications')
   OR (LibraryKey = N'agent-files' AND ToolName = N'execute_agent_sql_file')
 ORDER BY LibraryKey, ToolName;
 
+PRINT '=== Domain for integration-plm-import (expect plm-integration) ===';
+SELECT LibraryKey, DomainKey FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'integration-plm-import';
+
 PRINT '=== integration-plm-import tool count ===';
 SELECT COUNT(*) AS ToolCount FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'integration-plm-import';
+
+PRINT '=== Orchestrator subscriptions (expect platform-database + platform-application) ===';
+SELECT LibraryKey FROM dbo.AppAgentLibrarySubscription
+WHERE SkillKey = N'plm-integration-orchestrator'
+ORDER BY LibraryKey;
 
 PRINT '=== Agents (ROOT IsActive=1; children IsActive=0) ===';
 SELECT SkillKey, DisplayName, ExecutionMode, IsActive,

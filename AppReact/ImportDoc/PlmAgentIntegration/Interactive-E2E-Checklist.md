@@ -50,7 +50,7 @@ Open skill **PLM Integration Orchestrator**. On `[session_start]` you should get
 
 | # | Menu / flow | Expect |
 |---|---|---|
-| 1 | **Connect** | `list_tenant_data_sources` → pick register ids → `test_plm_connection(dataSourceRegisterId)` → `save_plm_import_session` — session returns **ids only**, never connection strings |
+| 1 | **Connect** | `list_tenant_data_sources` → pick register ids → `test_data_source_connection(dataSourceRegisterId)` → `save_plm_import_session` — session returns **ids only**, never connection strings |
 | 2 | **Entity** (optional) | preview → confirm → execute (or job poll) |
 | 3 | **Image / Sketch** (optional) | preview counts → execute job → `get_plm_import_job` |
 | 4 | **Folder** (optional) | preview → execute |

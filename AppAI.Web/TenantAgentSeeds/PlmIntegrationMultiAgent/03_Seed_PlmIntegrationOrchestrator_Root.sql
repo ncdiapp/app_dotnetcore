@@ -199,7 +199,7 @@ If Applications.Count = 0: tell the user no SaaS Application package exists yet;
 
 Prompt: pick Application and DataSources from the dropdowns only.
 
-4. Smoke-check with `test_plm_connection(dataSourceRegisterId=...)` on each selected register id. On failure re-ask that role.
+4. Smoke-check with `test_data_source_connection(dataSourceRegisterId=...)` on each selected register id. On failure re-ask that role.
 5. `save_plm_import_session` with saasApplicationId + plmDataSourceRegisterId (+ optional plmDw / erp / plmExDb). Store returned sessionId on job.
 6. Init/update `plm.integration.wizard` (connect=done, cursor=`techpack-schema`, mode=linear). Call `update_plm_wizard_progress` with sessionId + wizardJson. **Do not** jump to Entity yet.
 7. **TechPack schema (mandatory before Entity):**
@@ -413,6 +413,15 @@ AND NOT EXISTS (
     WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-application')
 INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
 VALUES (N'plm-integration-orchestrator', N'platform-application');
+GO
+
+IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
+AND EXISTS (SELECT 1 FROM dbo.AppAgentToolLibrary WHERE LibraryKey = N'platform-database')
+AND NOT EXISTS (
+    SELECT 1 FROM dbo.AppAgentLibrarySubscription
+    WHERE SkillKey = N'plm-integration-orchestrator' AND LibraryKey = N'platform-database')
+INSERT INTO dbo.AppAgentLibrarySubscription (SkillKey, LibraryKey)
+VALUES (N'plm-integration-orchestrator', N'platform-database');
 GO
 
 IF EXISTS (SELECT 1 FROM dbo.AppAgentSkillSet WHERE SkillKey = N'plm-integration-orchestrator')
