@@ -94,6 +94,10 @@ export interface ConfirmAskUserDto {
     FreeText?: string;
     SkillKey?: string;
     ChatSessionKey?: string;
+    /** UI-computed question title — persisted even if server pending snapshot is missing. */
+    QuestionSummary?: string;
+    /** UI-computed answer text — persisted with askUserAnswer marker. */
+    AnswerSummary?: string;
 }
 
 /** In-memory UI state so Agent Chat survives App-tab remount without restarting. */

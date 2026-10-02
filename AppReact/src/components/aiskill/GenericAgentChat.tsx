@@ -1093,6 +1093,8 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
             Cancelled: cancelled,
             SkillKey: skillKeyRef.current,
             ChatSessionKey: chatSessionKeyRef.current || genericAgentSvc.currentChatSessionKey || undefined,
+            QuestionSummary: questionText,
+            AnswerSummary: answerText,
             ...(cancelled
                 ? {}
                 : mode === 'single_choice' || mode === 'multi_choice'

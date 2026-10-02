@@ -89,7 +89,7 @@ public class GenericAgentController : SecureBaseController
             chatSessionKey = request.ChatSessionKey.Trim();
             if (agentUserId > 0 &&
                 !SessionBL.IsFixedKey(chatSessionKey, request.SkillKey.Trim(), agentUserId) &&
-                SessionBL.LoadBySessionKey(chatSessionKey, request.SkillKey.Trim(), agentUserId) == null)
+                SessionBL.LoadBySessionKey(chatSessionKey, request.SkillKey.Trim(), agentUserId, agentDsId) == null)
             {
                 result.ValidationResult.Items.Add(new ValidationItem(
                     typeof(GenericAgentController), "GenericAgent_BadChat",
@@ -110,7 +110,7 @@ public class GenericAgentController : SecureBaseController
         {
             try
             {
-                var existing = SessionBL.LoadBySessionKey(chatSessionKey, request.SkillKey.Trim(), agentUserId);
+                var existing = SessionBL.LoadBySessionKey(chatSessionKey, request.SkillKey.Trim(), agentUserId, agentDsId);
                 if (existing != null && (existing.Messages == null || existing.Messages.Count == 0))
                 {
                     SessionBL.SaveSession(
@@ -461,7 +461,7 @@ public class GenericAgentController : SecureBaseController
         {
             try
             {
-                var existing = SessionBL.LoadBySessionKey(chatKey, skillKey, userId);
+                var existing = SessionBL.LoadBySessionKey(chatKey, skillKey, userId, dsId);
                 JObject pending = null;
                 if (existing?.Messages != null)
                 {
@@ -473,9 +473,14 @@ public class GenericAgentController : SecureBaseController
                         if (pending != null) break;
                     }
                 }
-                var answerText = SessionBL.FormatAskUserAnswer(pending, response);
-                var questionSummary = SessionBL.SummarizeAskUserQuestion(
-                    pending?["Prompt"]?.ToString() ?? pending?["prompt"]?.ToString());
+                // Prefer UI-computed summaries so Q&A still lands when pending snapshot is missing.
+                var answerText = !string.IsNullOrWhiteSpace(request.AnswerSummary)
+                    ? request.AnswerSummary.Trim()
+                    : SessionBL.FormatAskUserAnswer(pending, response);
+                var questionSummary = !string.IsNullOrWhiteSpace(request.QuestionSummary)
+                    ? request.QuestionSummary.Trim()
+                    : SessionBL.SummarizeAskUserQuestion(
+                        pending?["Prompt"]?.ToString() ?? pending?["prompt"]?.ToString());
                 SessionBL.PersistAskUserAnswer(skillKey, userId, dsId, chatKey, answerText, questionSummary);
             }
             catch { /* answer persist must not block the gate */ }
@@ -523,7 +528,7 @@ public class GenericAgentController : SecureBaseController
         var identity = ServerContext.Instance.CurrnetClientIdentity;
         if (identity is not AppClientIdentity ai || ai.UserId == null) return result;
         var userId = Convert.ToInt32(ai.UserId);
-        var detail = SessionBL.LoadBySessionKey(sessionKey, skillKey, userId);
+        var detail = SessionBL.LoadBySessionKey(sessionKey, skillKey, userId, ai.DataSourceId);
         var staleRun = detail?.Messages?
             .Select(message => message?.Value<string>("runSessionId"))
             .FirstOrDefault(runId => !string.IsNullOrWhiteSpace(runId)
@@ -531,7 +536,7 @@ public class GenericAgentController : SecureBaseController
         if (!string.IsNullOrWhiteSpace(staleRun))
         {
             SessionBL.ClearStaleRunState(skillKey, userId, ai.DataSourceId, sessionKey);
-            detail = SessionBL.LoadBySessionKey(sessionKey, skillKey, userId);
+            detail = SessionBL.LoadBySessionKey(sessionKey, skillKey, userId, ai.DataSourceId);
         }
         result.Object = detail;
         return result;
@@ -544,7 +549,7 @@ public class GenericAgentController : SecureBaseController
         var result = new OperationCallResult<List<GenericAgentSessionSummaryDto>>();
         var identity = ServerContext.Instance.CurrnetClientIdentity;
         if (identity is not AppClientIdentity ai || ai.UserId == null) return result;
-        result.Object = SessionBL.ListChats(skillKey, Convert.ToInt32(ai.UserId));
+        result.Object = SessionBL.ListChats(skillKey, Convert.ToInt32(ai.UserId), dataSourceId: ai.DataSourceId);
         return result;
     }
 

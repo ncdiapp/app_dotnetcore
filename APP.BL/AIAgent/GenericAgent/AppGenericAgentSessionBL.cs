@@ -68,13 +68,14 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             }
         }
 
-        public static List<GenericAgentSessionSummaryDto> ListChats(string skillKey, int userId, int take = 50)
+        public static List<GenericAgentSessionSummaryDto> ListChats(
+            string skillKey, int userId, int take = 50, int dataSourceId = 0)
         {
             var list = new List<GenericAgentSessionSummaryDto>();
             if (string.IsNullOrWhiteSpace(skillKey) || userId <= 0) return list;
             try
             {
-                var fixture = GetFixture();
+                var fixture = Fixture(dataSourceId);
                 if (fixture == null) return list;
                 EnsureSchema(fixture);
 
@@ -114,13 +115,17 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             return list;
         }
 
-        public static GenericAgentSessionDetailDto LoadBySessionKey(string sessionKey, string skillKey, int userId)
+        public static GenericAgentSessionDetailDto LoadBySessionKey(
+            string sessionKey, string skillKey, int userId, int dataSourceId = 0)
         {
             if (string.IsNullOrWhiteSpace(sessionKey) || string.IsNullOrWhiteSpace(skillKey) || userId <= 0)
                 return null;
             try
             {
-                var fixture = GetFixture();
+                // Must use the same fixture as SaveSession (caller's DataSourceId).
+                // Default-DS GetFixture() alone can read a different DB and cause PersistTurnDone
+                // to overwrite a good MessagesJson with a FinalResponse-only snapshot.
+                var fixture = Fixture(dataSourceId);
                 if (fixture == null) return null;
                 EnsureSchema(fixture);
 
@@ -176,7 +181,7 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             IList<JObject> dataRenders = null)
         {
             if (string.IsNullOrWhiteSpace(sessionKey)) return;
-            var list = CloneMessages(LoadBySessionKey(sessionKey, skillKey, userId)?.Messages);
+            var list = CloneMessages(LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId)?.Messages);
             StripEphemeralMarkers(list);
 
             var assistant = new JObject
@@ -217,7 +222,7 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             string questionSummary = null)
         {
             if (string.IsNullOrWhiteSpace(sessionKey)) return;
-            var list = CloneMessages(LoadBySessionKey(sessionKey, skillKey, userId)?.Messages);
+            var list = CloneMessages(LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId)?.Messages);
             StripEphemeralMarkers(list);
 
             var pendingMsg = FindPendingAskAssistant(list);
@@ -314,8 +319,13 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             IList<JObject> dataRenders = null)
         {
             if (string.IsNullOrWhiteSpace(sessionKey)) return;
-            var list = CloneMessages(LoadBySessionKey(sessionKey, skillKey, userId)?.Messages);
+            var detail = LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId);
+            var list = CloneMessages(detail?.Messages);
             StripEphemeralMarkers(list);
+
+            // GUID chats must already exist; empty load means wrong DS / missing row — do not invent a wipe.
+            if (detail == null && list.Count == 0 && !IsFixedKey(sessionKey, skillKey, userId))
+                return;
 
             if (!isSessionStart && !string.IsNullOrWhiteSpace(userMessage)
                 && !IsSameUserContent(Last(list), userMessage))
@@ -482,7 +492,7 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             int dataSourceId,
             string sessionKey)
         {
-            var detail = LoadBySessionKey(sessionKey, skillKey, userId);
+            var detail = LoadBySessionKey(sessionKey, skillKey, userId, dataSourceId);
             if (detail?.Messages == null) return;
 
             var changed = false;
@@ -538,7 +548,7 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
 
                 if (!IsFixedKey(key, skillKey.Trim(), userId))
                 {
-                    var existing = LoadBySessionKey(key, skillKey.Trim(), userId);
+                    var existing = LoadBySessionKey(key, skillKey.Trim(), userId, dataSourceId);
                     if (existing == null) return;
                 }
 

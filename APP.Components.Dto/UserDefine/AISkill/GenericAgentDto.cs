@@ -69,5 +69,9 @@ namespace APP.Components.Dto
         public string FreeText { get; set; }
         public string SkillKey { get; set; }
         public string ChatSessionKey { get; set; }
+        /// <summary>Optional UI-computed question title (preferred over re-summarizing pending Prompt).</summary>
+        public string QuestionSummary { get; set; }
+        /// <summary>Optional UI-computed answer text (preferred over reformatting SelectedIds/Answers).</summary>
+        public string AnswerSummary { get; set; }
     }
 }
