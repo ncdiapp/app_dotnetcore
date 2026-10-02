@@ -247,6 +247,15 @@ public static class DwBlueprintAppConfigPackBuilder
                 continue;
 
             string table = Qualify(grid.AppTableName, prefix, skipPrefix: false);
+            // Sibling already owns this table (e.g. Tab 4279 Plm_Revision_History). Attaching the
+            // same table as Child yields duplicate UnitDisplayName → ToDictionary crash on APPLY.
+            if (unit.SiblingTableNames?.Any(s =>
+                    string.Equals(s, table, StringComparison.OrdinalIgnoreCase)) == true
+                || unit.SiblingUnits?.Any(s =>
+                    s != null && string.Equals(s.TableName, table, StringComparison.OrdinalIgnoreCase)) == true)
+            {
+                continue;
+            }
             var existing = unit.ChildUnits.FirstOrDefault(c =>
                 c != null && string.Equals(c.TableName, table, StringComparison.OrdinalIgnoreCase));
             var grands = (grid.GrandChildAppTableNames ?? new List<string>())

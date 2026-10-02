@@ -315,7 +315,9 @@ namespace APP.AgentPlugins.PlmImport
                     var blueprint = JsonConvert.DeserializeObject<PlmDwImportBlueprintDto>(json);
                     if (kind == "dw-blueprint-assemble")
                     {
-                        var okTabs = GetSuccessfulDataTabIds(priorSteps);
+                        // Merge only tabs whose data AND tab blueprint succeeded. Data-ok but
+                        // blueprint-failed packages (e.g. duplicate sibling+grid) must not re-enter Assemble.
+                        var okTabs = GetSuccessfulAssembleTabIds(priorSteps);
                         blueprint = MergeAssembleShellWithTabPackages(
                             context, blueprint, okTabs, planSteps, step.Path);
                         blueprint = FilterBlueprintToTabIds(blueprint, okTabs);
@@ -777,6 +779,27 @@ ORDER BY c.name";
                 .Distinct()
                 .OrderBy(x => x)
                 .ToList();
+        }
+
+        /// <summary>
+        /// Tabs eligible for Assemble merge: data import succeeded and tab blueprint did not fail.
+        /// </summary>
+        private static List<int> GetSuccessfulAssembleTabIds(List<AgentOutputApplyStepResult> prior)
+        {
+            var dataOk = GetSuccessfulDataTabIds(prior);
+            if (dataOk.Count == 0)
+                return dataOk;
+
+            var blueprintFailed = new HashSet<int>(
+                (prior ?? new List<AgentOutputApplyStepResult>())
+                    .Where(s => s != null
+                        && !s.Ok
+                        && s.TabId.HasValue
+                        && IsBlueprintKind(s.Kind)
+                        && (s.Path ?? "").IndexOf("4_TabBlueprint", StringComparison.OrdinalIgnoreCase) >= 0)
+                    .Select(s => s.TabId.Value));
+
+            return dataOk.Where(id => !blueprintFailed.Contains(id)).ToList();
         }
 
         /// <summary>

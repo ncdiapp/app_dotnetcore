@@ -26,6 +26,10 @@ type StoredChatMessage = {
     PendingAskUser?: AskUserEvent;
     runSessionId?: string;
     RunSessionId?: string;
+    askUserSummary?: boolean;
+    AskUserSummary?: boolean;
+    askUserAnswer?: boolean;
+    AskUserAnswer?: boolean;
 }; 
 
 const parseStoredDataRenders = (m: StoredChatMessage): DataRenderEvent[] | undefined => {
@@ -153,6 +157,10 @@ interface ChatMessage {
     toolSteps?: ToolStep[];
     /** Non-blocking data_render panels attached to this assistant turn. */
     dataRenders?: DataRenderEvent[];
+    /** Read-only ask_user question bubble (controls dismissed). */
+    askUserSummary?: boolean;
+    /** Read-only ask_user answer bubble on the user side. */
+    askUserAnswer?: boolean;
 }
 
 interface ToolStep {
@@ -234,6 +242,17 @@ const formatAskUserAnswerSummary = (
         return lines.join('\n');
     }
     return freeText.trim() || '(empty)';
+};
+
+/** Short title / first line for long ask_user prompts (expand UI later). */
+const formatAskUserQuestionSummary = (prompt?: string | null, maxLen = 220): string => {
+    if (!prompt || !prompt.trim()) return '(question)';
+    const s = prompt.trim().replace(/\r\n/g, '\n');
+    const titleMatch = s.match(/^(?:#{1,6}\s*)?(\[[^\]]{1,80}\])/m);
+    let line = titleMatch?.[1]?.trim()
+        ?? (s.includes('\n') ? s.slice(0, s.indexOf('\n')).trim() : s);
+    if (line.length > maxLen) line = `${line.slice(0, maxLen).trimEnd()}…`;
+    return line || '(question)';
 };
 
 /** Try parse a string that may be JSON (including truncated / double-escaped blobs). */
@@ -575,6 +594,14 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
         },
         onAskUser: (ask: AskUserEvent) => {
             if (!mountedRef.current) return;
+            // Freeze any in-flight assistant bubble so post-answer Q&A / tokens don't merge into it.
+            setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last?.role === 'assistant' && last.isStreaming) {
+                    return [...prev.slice(0, -1), { ...last, isStreaming: false }];
+                }
+                return prev;
+            });
             setPendingAskUser(ask);
             setAskAnswers({});
             setAskSelectedIds([]);
@@ -765,9 +792,17 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                 }
             } catch { /* optional */ }
 
-            if (cancelled || restored) return;
+            if (cancelled) return;
 
-            if (testMode) {
+            // Mid-run tab switch: keep live cache (tokens not yet in DB).
+            // Completed / reopen: always LoadChat so ask_user Q&A + data_renders come from MessagesJson.
+            const keepLiveCache = restored
+                && (isRunningRef.current || !!pendingAskUserRef.current)
+                && genericAgentSvc.isPolling();
+            if (keepLiveCache) return;
+            if (restored && !chatSessionKey) return;
+
+            if (testMode && !chatSessionKey) {
                 fireSessionStartIfAllowed(mode, allowFirstTurn);
                 return;
             }
@@ -810,20 +845,34 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                                         durationMs: s.durationMs,
                                     }))
                                 : undefined;
+                        const storedMsg = m as StoredChatMessage;
+                        const isAskSummary = !!(storedMsg.askUserSummary ?? storedMsg.AskUserSummary);
+                        const isAskAnswer = !!(storedMsg.askUserAnswer ?? storedMsg.AskUserAnswer);
                         if (m.role === 'user') {
-                            userTurn++;
-                            restoredMsgs.push({ role: 'user', content });
+                            // ask_user answer bubbles are not agent turns — don't advance turn index.
+                            if (!isAskAnswer) userTurn++;
+                            restoredMsgs.push({
+                                role: 'user',
+                                content,
+                                askUserAnswer: isAskAnswer || undefined,
+                            });
                         } else if (m.role === 'assistant') {
                             const pendingOnMsg = parseAskUser(
-                                (m as StoredChatMessage).pendingAskUser ?? (m as StoredChatMessage).PendingAskUser,
+                                storedMsg.pendingAskUser ?? storedMsg.PendingAskUser,
                             );
-                            if (!(pendingOnMsg && (!content || content === pendingOnMsg.Prompt))) {
-                                const dataRenders = parseStoredDataRenders(m as StoredChatMessage);
+                            // Pending ask is shown as the live Question card — don't duplicate in history.
+                            // Finalized askUserSummary keeps its bubble after pendingAskUser is cleared.
+                            const skipPendingPlaceholder = !!pendingOnMsg && !isAskSummary;
+                            if (!skipPendingPlaceholder) {
+                                const dataRenders = parseStoredDataRenders(storedMsg);
                                 restoredMsgs.push({
                                     role: 'assistant',
-                                    content,
+                                    content: isAskSummary
+                                        ? formatAskUserQuestionSummary(content)
+                                        : content,
                                     toolSteps: steps,
                                     dataRenders,
+                                    askUserSummary: isAskSummary || undefined,
                                 });
                             }
                             if (steps && steps.length > 0) {
@@ -835,7 +884,11 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                             }
                         }
                     }
-                    const userTurns = meaningful.filter(m => m.role === 'user').length;
+                    const userTurns = meaningful.filter(m => {
+                        if (m.role !== 'user') return false;
+                        const sm = m as StoredChatMessage;
+                        return !(sm.askUserAnswer ?? sm.AskUserAnswer);
+                    }).length;
                     setMessages(restoredMsgs);
                     setTurnActivities(restoredActs);
                     setCurrentTurnIndex(userTurns);
@@ -980,14 +1033,29 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
             : cancelled
                 ? '(cancelled)'
                 : '';
+        const questionText = formatAskUserQuestionSummary(ask?.Prompt);
 
         const appendQaAndClearCard = () => {
             if (ask) {
-                setMessages(prev => [
-                    ...prev,
-                    { role: 'assistant', content: ask.Prompt || '(question)' },
-                    { role: 'user', content: answerText },
-                ]);
+                setMessages(prev => {
+                    // Avoid duplicate Q&A if Confirm already restored or double-click.
+                    const last = prev[prev.length - 1];
+                    const prevQ = prev[prev.length - 2];
+                    if (
+                        last?.role === 'user'
+                        && last.askUserAnswer
+                        && last.content === answerText
+                        && prevQ?.role === 'assistant'
+                        && prevQ.askUserSummary
+                    ) {
+                        return prev;
+                    }
+                    return [
+                        ...prev,
+                        { role: 'assistant', content: questionText, askUserSummary: true },
+                        { role: 'user', content: answerText, askUserAnswer: true },
+                    ];
+                });
             }
             setPendingAskUser(null);
             setAskAnswers({});
@@ -1004,8 +1072,8 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                 ...messagesRef.current,
                 ...(ask
                     ? [
-                        { role: 'assistant' as const, content: ask.Prompt || '(question)' },
-                        { role: 'user' as const, content: answerText },
+                        { role: 'assistant' as const, content: questionText, askUserSummary: true },
+                        { role: 'user' as const, content: answerText, askUserAnswer: true },
                     ]
                     : []),
             ];
@@ -1024,7 +1092,7 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
             SessionId: sid,
             Cancelled: cancelled,
             SkillKey: skillKeyRef.current,
-            ChatSessionKey: chatSessionKeyRef.current || undefined,
+            ChatSessionKey: chatSessionKeyRef.current || genericAgentSvc.currentChatSessionKey || undefined,
             ...(cancelled
                 ? {}
                 : mode === 'single_choice' || mode === 'multi_choice'
@@ -1044,8 +1112,8 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                 ...messagesRef.current,
                 ...(ask
                     ? [
-                        { role: 'assistant' as const, content: ask.Prompt || '(question)' },
-                        { role: 'user' as const, content: answerText },
+                        { role: 'assistant' as const, content: questionText, askUserSummary: true },
+                        { role: 'user' as const, content: answerText, askUserAnswer: true },
                     ]
                     : []),
             ];
@@ -1114,6 +1182,11 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                             {(m.content || m.isStreaming) && (
                                 <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                                     <div className={`max-w-2xl px-3 py-2 rounded-lg text-xs whitespace-pre-wrap ${m.role === 'user' ? `${theme.button_default} ml-8` : `${theme.mainContentSection} mr-8`}`}>
+                                        {(m.askUserSummary || m.askUserAnswer) && (
+                                            <div className={`text-[10px] uppercase tracking-wide opacity-60 mb-0.5 ${theme.label}`}>
+                                                {m.askUserSummary ? 'Question' : 'Answer'}
+                                            </div>
+                                        )}
                                         {m.role === 'assistant' ? sanitizeAgentDisplayText(m.content) : m.content}
                                         {m.isStreaming && <span className="animate-pulse ml-1">|</span>}
                                     </div>

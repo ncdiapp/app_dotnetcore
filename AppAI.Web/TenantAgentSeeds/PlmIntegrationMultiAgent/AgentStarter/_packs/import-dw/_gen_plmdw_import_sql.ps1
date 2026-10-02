@@ -2494,14 +2494,25 @@ function New-TabBlueprintObject($fullBp, [int]$TabId) {
         )
     })
     $tables = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
+    $siblingTables = New-Object System.Collections.Generic.HashSet[string] ([StringComparer]::OrdinalIgnoreCase)
     foreach ($t in $tx) {
         if ($t.unitStructure -and $t.unitStructure.siblingUnits) {
-            foreach ($s in @($t.unitStructure.siblingUnits)) { if ($s.appTableName) { [void]$tables.Add([string]$s.appTableName) } }
+            foreach ($s in @($t.unitStructure.siblingUnits)) {
+                if ($s.appTableName) {
+                    [void]$tables.Add([string]$s.appTableName)
+                    [void]$siblingTables.Add([string]$s.appTableName)
+                }
+            }
         }
         if ($t.unitStructure -and $t.unitStructure.childUnits) {
             foreach ($c in @($t.unitStructure.childUnits)) { if ($c.appTableName) { [void]$tables.Add([string]$c.appTableName) } }
         }
     }
+    # Drop grids whose table is already a sibling — same appTable as sibling+grid crashes APPLY
+    # (duplicate UnitDisplayName). Sibling wins; grid binding is redundant for that table.
+    $grids = @($grids | Where-Object {
+        $_ -and $_.appTableName -and -not $siblingTables.Contains([string]$_.appTableName)
+    })
     foreach ($g in $grids) { if ($g.appTableName) { [void]$tables.Add([string]$g.appTableName) } }
     $fields = @($fullBp.blueprintFields | Where-Object {
         $_ -and (

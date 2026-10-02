@@ -182,7 +182,15 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             var assistant = new JObject
             {
                 ["role"] = "assistant",
-                ["content"] = assistantContent ?? "",
+                // Prefer short question title while pending; full Prompt stays on pendingAskUser for the card.
+                ["content"] = !string.IsNullOrWhiteSpace(assistantContent)
+                    && !string.Equals(assistantContent.Trim(),
+                        (pendingAskUser?["Prompt"] ?? pendingAskUser?["prompt"])?.ToString()?.Trim(),
+                        StringComparison.Ordinal)
+                    ? assistantContent
+                    : SummarizeAskUserQuestion(
+                        (pendingAskUser?["Prompt"] ?? pendingAskUser?["prompt"])?.ToString()
+                        ?? assistantContent),
                 ["pendingAskUser"] = pendingAskUser,
                 ["runSessionId"] = runSessionId
             };
@@ -205,31 +213,89 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             int userId,
             int dataSourceId,
             string sessionKey,
-            string answerText)
+            string answerText,
+            string questionSummary = null)
         {
             if (string.IsNullOrWhiteSpace(sessionKey)) return;
             var list = CloneMessages(LoadBySessionKey(sessionKey, skillKey, userId)?.Messages);
             StripEphemeralMarkers(list);
 
-            var last = Last(list);
-            if (IsPendingAskAssistant(last))
+            var pendingMsg = FindPendingAskAssistant(list);
+            if (pendingMsg != null)
             {
-                var prompt = last["pendingAskUser"]?["Prompt"]?.ToString()
-                    ?? last["pendingAskUser"]?["prompt"]?.ToString();
-                var content = last.Value<string>("content");
-                if (string.IsNullOrWhiteSpace(content) && !string.IsNullOrWhiteSpace(prompt))
-                    last["content"] = prompt;
-                last.Remove("pendingAskUser");
-                last.Remove("PendingAskUser");
+                var prompt = pendingMsg["pendingAskUser"]?["Prompt"]?.ToString()
+                    ?? pendingMsg["pendingAskUser"]?["prompt"]?.ToString()
+                    ?? pendingMsg["PendingAskUser"]?["Prompt"]?.ToString()
+                    ?? pendingMsg["PendingAskUser"]?["prompt"]?.ToString();
+                var q = !string.IsNullOrWhiteSpace(questionSummary)
+                    ? questionSummary.Trim()
+                    : SummarizeAskUserQuestion(prompt);
+                if (string.IsNullOrWhiteSpace(q))
+                    q = "(question)";
+                pendingMsg["content"] = q;
+                pendingMsg["askUserSummary"] = true;
+                pendingMsg.Remove("pendingAskUser");
+                pendingMsg.Remove("PendingAskUser");
+                pendingMsg.Remove("runSessionId");
+                pendingMsg.Remove("RunSessionId");
+            }
+            else if (!string.IsNullOrWhiteSpace(questionSummary)
+                && !IsSameAssistantAskSummary(Last(list), questionSummary))
+            {
+                // Pending marker missing (rare) — still record Q then A.
+                list.Add(new JObject
+                {
+                    ["role"] = "assistant",
+                    ["content"] = questionSummary.Trim(),
+                    ["askUserSummary"] = true
+                });
             }
 
             if (!string.IsNullOrWhiteSpace(answerText)
                 && !IsSameUserContent(Last(list), answerText))
             {
-                list.Add(new JObject { ["role"] = "user", ["content"] = answerText });
+                list.Add(new JObject
+                {
+                    ["role"] = "user",
+                    ["content"] = answerText,
+                    ["askUserAnswer"] = true
+                });
             }
 
             SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
+        }
+
+        /// <summary>Short title / first line for long ask_user prompts (expand UI later).</summary>
+        public static string SummarizeAskUserQuestion(string prompt, int maxLen = 220)
+        {
+            if (string.IsNullOrWhiteSpace(prompt)) return "(question)";
+            var s = prompt.Trim().Replace("\r\n", "\n");
+            // Prefer a [Title] / ###[Title] line
+            var m = System.Text.RegularExpressions.Regex.Match(
+                s, @"^(?:#{1,6}\s*)?(\[[^\]]{1,80}\])", System.Text.RegularExpressions.RegexOptions.Multiline);
+            string line;
+            if (m.Success)
+                line = m.Groups[1].Value.Trim();
+            else
+            {
+                var nl = s.IndexOf('\n');
+                line = (nl > 0 ? s.Substring(0, nl) : s).Trim();
+            }
+            if (line.Length > maxLen)
+                line = line.Substring(0, maxLen).TrimEnd() + "…";
+            return string.IsNullOrWhiteSpace(line) ? "(question)" : line;
+        }
+
+        private static bool IsSameAssistantAskSummary(JObject m, string questionSummary)
+        {
+            if (m == null || !IsAssistant(m)) return false;
+            if (m["askUserSummary"]?.Value<bool>() != true
+                && m["AskUserSummary"]?.Value<bool>() != true)
+                return false;
+            return string.Equals(
+                (m.Value<string>("content") ?? "").Trim(),
+                (questionSummary ?? "").Trim(),
+                StringComparison.Ordinal);
         }
 
         /// <summary>
@@ -267,10 +333,22 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             if (dataRenders != null && dataRenders.Count > 0)
                 assistant["dataRenders"] = new JArray(dataRenders);
 
-            if (IsPendingAskAssistant(Last(list)))
-                list[list.Count - 1] = assistant;
-            else
-                list.Add(assistant);
+            // Never overwrite a finalized / still-pending ask_user Q with FinalResponse.
+            var pendingMsg = FindPendingAskAssistant(list);
+            if (pendingMsg != null)
+            {
+                var prompt = pendingMsg["pendingAskUser"]?["Prompt"]?.ToString()
+                    ?? pendingMsg["pendingAskUser"]?["prompt"]?.ToString()
+                    ?? pendingMsg["PendingAskUser"]?["Prompt"]?.ToString()
+                    ?? pendingMsg["PendingAskUser"]?["prompt"]?.ToString();
+                pendingMsg["content"] = SummarizeAskUserQuestion(prompt);
+                pendingMsg["askUserSummary"] = true;
+                pendingMsg.Remove("pendingAskUser");
+                pendingMsg.Remove("PendingAskUser");
+                pendingMsg.Remove("runSessionId");
+                pendingMsg.Remove("RunSessionId");
+            }
+            list.Add(assistant);
 
             SaveSession(skillKey, userId, dataSourceId, list, sessionKey);
         }
@@ -315,7 +393,26 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                     var label = (field?["Label"] ?? field?["label"])?.ToString() ?? name;
                     if (string.IsNullOrWhiteSpace(name)) continue;
                     response.Answers.TryGetValue(name, out var raw);
-                    lines.Add($"{label}: {(string.IsNullOrWhiteSpace(raw) ? "(empty)" : raw)}");
+                    if (string.IsNullOrWhiteSpace(raw))
+                    {
+                        lines.Add($"{label}: (empty)");
+                        continue;
+                    }
+                    var display = raw;
+                    var opts = field?["Options"] ?? field?["options"];
+                    if (opts is JArray optArr)
+                    {
+                        foreach (var opt in optArr)
+                        {
+                            var optId = (opt?["Id"] ?? opt?["id"])?.ToString();
+                            if (string.Equals(optId, raw, StringComparison.Ordinal))
+                            {
+                                display = (opt?["Display"] ?? opt?["display"])?.ToString() ?? raw;
+                                break;
+                            }
+                        }
+                    }
+                    lines.Add($"{label}: {display}");
                 }
                 if (lines.Count > 0) return string.Join("\n", lines);
             }
@@ -355,6 +452,17 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
 
         private static bool IsPendingAskAssistant(JObject m) =>
             IsAssistant(m) && (m["pendingAskUser"] != null || m["PendingAskUser"] != null);
+
+        private static JObject FindPendingAskAssistant(List<JObject> list)
+        {
+            if (list == null) return null;
+            for (int i = list.Count - 1; i >= 0; i--)
+            {
+                if (IsPendingAskAssistant(list[i]))
+                    return list[i];
+            }
+            return null;
+        }
 
         private static bool IsSameUserContent(JObject m, string content)
         {

@@ -463,13 +463,20 @@ public class GenericAgentController : SecureBaseController
             {
                 var existing = SessionBL.LoadBySessionKey(chatKey, skillKey, userId);
                 JObject pending = null;
-                var last = existing?.Messages != null && existing.Messages.Count > 0
-                    ? existing.Messages[existing.Messages.Count - 1]
-                    : null;
-                if (last != null)
-                    pending = last["pendingAskUser"] as JObject ?? last["PendingAskUser"] as JObject;
+                if (existing?.Messages != null)
+                {
+                    for (int i = existing.Messages.Count - 1; i >= 0; i--)
+                    {
+                        var row = existing.Messages[i];
+                        if (row == null) continue;
+                        pending = row["pendingAskUser"] as JObject ?? row["PendingAskUser"] as JObject;
+                        if (pending != null) break;
+                    }
+                }
                 var answerText = SessionBL.FormatAskUserAnswer(pending, response);
-                SessionBL.PersistAskUserAnswer(skillKey, userId, dsId, chatKey, answerText);
+                var questionSummary = SessionBL.SummarizeAskUserQuestion(
+                    pending?["Prompt"]?.ToString() ?? pending?["prompt"]?.ToString());
+                SessionBL.PersistAskUserAnswer(skillKey, userId, dsId, chatKey, answerText, questionSummary);
             }
             catch { /* answer persist must not block the gate */ }
         }
