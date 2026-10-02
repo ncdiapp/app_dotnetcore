@@ -11,7 +11,8 @@ export interface GenericAgentRunDto {
         role: string;
         content: unknown;
         toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
-    }>;
+        dataRenders?: DataRenderEvent[];
+    }>; 
 }
 
 export interface GenericAgentStartResult {
@@ -69,7 +70,7 @@ export interface AskUserEvent {
     ContextKey?: string;
 }
 
-/** Non-blocking data_render panel (grid | card | chart). */
+/** Non-blocking data_render panel (grid | card | chart | kpi_dashboard). */
 export interface DataRenderEvent {
     RenderId: string;
     Ui: string;
@@ -79,6 +80,7 @@ export interface DataRenderEvent {
     ChartConfigJson?: string | null;
     ActionsJson?: string | null;
     MetaJson?: string | null;
+    BlocksJson?: string | null;
     RowCount?: number;
     Truncated?: boolean;
     Timestamp?: string;
@@ -243,6 +245,12 @@ class GenericAgentService {
         role: string;
         content: string;
         toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
+        dataRenders?: DataRenderEvent[];
+        DataRenders?: DataRenderEvent[];
+        pendingAskUser?: AskUserEvent;
+        PendingAskUser?: AskUserEvent;
+        runSessionId?: string;
+        RunSessionId?: string;
     }> | null> {
         try {
             const res = await fetch(`${BASE}/LoadSession?skillKey=${encodeURIComponent(skillKey)}`, {
@@ -263,6 +271,8 @@ class GenericAgentService {
             role: string;
             content: string;
             toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
+            dataRenders?: DataRenderEvent[];
+            DataRenders?: DataRenderEvent[];
             pendingAskUser?: AskUserEvent;
             PendingAskUser?: AskUserEvent;
             runSessionId?: string;

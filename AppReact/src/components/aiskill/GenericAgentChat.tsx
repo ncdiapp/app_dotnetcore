@@ -20,10 +20,31 @@ type StoredChatMessage = {
     role: string;
     content?: string;
     toolSteps?: Array<{ toolName: string; label?: string; args?: string; result?: string; isSuccess?: boolean; durationMs?: number }>;
+    dataRenders?: DataRenderEvent[];
+    DataRenders?: DataRenderEvent[];
     pendingAskUser?: AskUserEvent;
     PendingAskUser?: AskUserEvent;
     runSessionId?: string;
     RunSessionId?: string;
+}; 
+
+const parseStoredDataRenders = (m: StoredChatMessage): DataRenderEvent[] | undefined => {
+    const raw = m.dataRenders ?? m.DataRenders;
+    if (!Array.isArray(raw) || raw.length === 0) return undefined;
+    return raw.map((dr: any) => ({
+        RenderId: String(dr?.RenderId ?? dr?.renderId ?? ''),
+        Ui: String(dr?.Ui ?? dr?.ui ?? 'grid'),
+        Title: dr?.Title ?? dr?.title ?? null,
+        DataJson: dr?.DataJson ?? dr?.dataJson ?? null,
+        ColumnsJson: dr?.ColumnsJson ?? dr?.columnsJson ?? null,
+        ChartConfigJson: dr?.ChartConfigJson ?? dr?.chartConfigJson ?? null,
+        ActionsJson: dr?.ActionsJson ?? dr?.actionsJson ?? null,
+        MetaJson: dr?.MetaJson ?? dr?.metaJson ?? null,
+        BlocksJson: dr?.BlocksJson ?? dr?.blocksJson ?? null,
+        RowCount: dr?.RowCount ?? dr?.rowCount,
+        Truncated: !!(dr?.Truncated ?? dr?.truncated),
+        Timestamp: dr?.Timestamp ?? dr?.timestamp,
+    })).filter(dr => dr.Ui);
 };
 
 const asLookupItems = (raw: unknown): LookupItemDto[] => {
@@ -797,7 +818,13 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                                 (m as StoredChatMessage).pendingAskUser ?? (m as StoredChatMessage).PendingAskUser,
                             );
                             if (!(pendingOnMsg && (!content || content === pendingOnMsg.Prompt))) {
-                                restoredMsgs.push({ role: 'assistant', content, toolSteps: steps });
+                                const dataRenders = parseStoredDataRenders(m as StoredChatMessage);
+                                restoredMsgs.push({
+                                    role: 'assistant',
+                                    content,
+                                    toolSteps: steps,
+                                    dataRenders,
+                                });
                             }
                             if (steps && steps.length > 0) {
                                 restoredActs.push({

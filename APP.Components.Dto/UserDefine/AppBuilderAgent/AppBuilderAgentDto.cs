@@ -254,20 +254,22 @@ namespace APP.Components.EntityDto
 
     /// <summary>
     /// Emitted when the agent calls data_render. UI renders immediately; agent does not wait.
-    /// Ui: "grid" | "card" | "chart"
+    /// Ui: "grid" | "card" | "chart" | "kpi_dashboard"
     /// </summary>
     public class AgentDataRenderEvent
     {
         public string RenderId { get; set; }
-        /// <summary>"grid" | "card" | "chart"</summary>
+        /// <summary>"grid" | "card" | "chart" | "kpi_dashboard"</summary>
         public string Ui { get; set; }
         public string Title { get; set; }
-        /// <summary>JSON array (grid/chart) or object / fields shape (card).</summary>
+        /// <summary>JSON array (grid/chart) or object / fields shape (card). For kpi_dashboard: compact summary.</summary>
         public string DataJson { get; set; }
         public string ColumnsJson { get; set; }
         public string ChartConfigJson { get; set; }
         public string ActionsJson { get; set; }
         public string MetaJson { get; set; }
+        /// <summary>kpi_dashboard: JSON array of blocks (markdown|kpi|chart|grid|card).</summary>
+        public string BlocksJson { get; set; }
         public int RowCount { get; set; }
         public bool Truncated { get; set; }
         public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");

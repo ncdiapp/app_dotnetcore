@@ -132,6 +132,7 @@ public class GenericAgentController : SecureBaseController
 
         // Accumulate tool steps for this run so they can be persisted with the chat session.
         var persistedToolSteps = new List<JObject>();
+        var persistedDataRenders = new List<JObject>();
         var tokenBuf = new System.Text.StringBuilder();
 
         var callbacks = new GenericAgentCallbacks
@@ -183,7 +184,7 @@ public class GenericAgentController : SecureBaseController
                         request.UserMessage?.Trim(), "[session_start]", StringComparison.Ordinal);
                     SessionBL.PersistTurnDone(
                         request.SkillKey, agentUserId, agentDsId, chatSessionKey,
-                        request.UserMessage, isSessionStart, done ?? "", persistedToolSteps);
+                        request.UserMessage, isSessionStart, done ?? "", persistedToolSteps, persistedDataRenders);
                     SessionBL.TryAutoTitle(chatSessionKey, request.SkillKey, agentUserId, request.UserMessage);
                     if (agentCompanyId > 0 && !string.IsNullOrWhiteSpace(chatSessionKey))
                     {
@@ -219,7 +220,8 @@ public class GenericAgentController : SecureBaseController
                             draft,
                             askEvent != null ? JObject.FromObject(askEvent) : null,
                             sessionId,
-                            persistedToolSteps);
+                            persistedToolSteps,
+                            persistedDataRenders);
                     }
                     catch { /* persist HITL snapshot must not fail the gate */ }
                 }
@@ -236,6 +238,11 @@ public class GenericAgentController : SecureBaseController
                     EventType = "data_render",
                     DataRender = dataRenderEvent
                 });
+                if (dataRenderEvent != null)
+                {
+                    try { persistedDataRenders.Add(JObject.FromObject(dataRenderEvent)); }
+                    catch { /* keep run going even if snapshot serialize fails */ }
+                }
                 return Task.CompletedTask;
             },
 

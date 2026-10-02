@@ -172,7 +172,8 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             string assistantContent,
             JObject pendingAskUser,
             string runSessionId,
-            IList<JObject> toolSteps = null)
+            IList<JObject> toolSteps = null,
+            IList<JObject> dataRenders = null)
         {
             if (string.IsNullOrWhiteSpace(sessionKey)) return;
             var list = CloneMessages(LoadBySessionKey(sessionKey, skillKey, userId)?.Messages);
@@ -187,6 +188,8 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             };
             if (toolSteps != null && toolSteps.Count > 0)
                 assistant["toolSteps"] = new JArray(toolSteps);
+            if (dataRenders != null && dataRenders.Count > 0)
+                assistant["dataRenders"] = new JArray(dataRenders);
 
             if (IsPendingAskAssistant(Last(list)))
                 list[list.Count - 1] = assistant;
@@ -241,7 +244,8 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             string userMessage,
             bool isSessionStart,
             string assistantContent,
-            IList<JObject> toolSteps = null)
+            IList<JObject> toolSteps = null,
+            IList<JObject> dataRenders = null)
         {
             if (string.IsNullOrWhiteSpace(sessionKey)) return;
             var list = CloneMessages(LoadBySessionKey(sessionKey, skillKey, userId)?.Messages);
@@ -260,6 +264,8 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
             };
             if (toolSteps != null && toolSteps.Count > 0)
                 assistant["toolSteps"] = new JArray(toolSteps);
+            if (dataRenders != null && dataRenders.Count > 0)
+                assistant["dataRenders"] = new JArray(dataRenders);
 
             if (IsPendingAskAssistant(Last(list)))
                 list[list.Count - 1] = assistant;
