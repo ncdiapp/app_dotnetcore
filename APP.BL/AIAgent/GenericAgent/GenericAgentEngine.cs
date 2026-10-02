@@ -49,6 +49,15 @@ namespace App.BL.AIAgent.GenericAgent
         private const int DefaultMaxToolResultChars = 4000;
         private const int McpToolCallTimeoutSeconds  = 30;
 
+        /// <summary>Capability marker tool in library data-analyze. Presence (subscribed, not excluded) enables followups inject.</summary>
+        private const string DataAnalyzeToolName = "data_analyze";
+        private const string PromptHintToolType = "PromptHint";
+        private const string FollowupsPromptHint = @"
+
+## Follow-up suggestions (soft chips)
+After a useful analysis / data_analyze / data_render / KPI answer, if there are natural next questions (deeper breakdown, related metric, drill-down), end your FinalResponse with a fenced code block whose language tag is followups, containing a JSON array of 2–3 short, specific questions (under ~12 words each). Example: [""Break this down by region"",""Which styles have negative margin?""].
+Skip the block for yes/no or clearly finished answers. Chips are non-blocking suggestions (not ask_user). Prefer data_analyze on cached datasets for aggregations (do not re-fetch large tables). Do NOT put chart/dashboard/visualize render requests in chips — use data_render for visuals. Keep ask_user for required Gate/confirmations only.";
+
         public static async Task RunAsync(
             string                skillKey,
             string                userMessage,
@@ -126,11 +135,18 @@ namespace App.BL.AIAgent.GenericAgent
                 kernel.FunctionInvocationFilters.Add(new AgentStepFilter(callbacks));
                 kernel.AutoFunctionInvocationFilters.Add(new GenericAgentPruneFilter(skillSet.MaxIterations, skillSet.MaxHistoryTokens));
 
-                // Wrap AppAgentToolRegister rows as KernelFunctions (agent-owned + subscribed library tools)
+                // Wrap AppAgentToolRegister rows as KernelFunctions (agent-owned + subscribed library tools).
+                // PromptHint rows gate prompt inject only — not registered as callable KernelFunctions.
                 var toolRows = (dsId > 0 ? TbToolBL.GetBySkillKeyWithLibraries(skillKey, dsId) : TbToolBL.GetBySkillKeyWithLibraries(skillKey)) ?? new List<TbToolDto>();
-                if (toolRows.Count > 0)
+                if (HasNamedTool(toolRows, DataAnalyzeToolName)
+                    && systemPrompt.IndexOf("Follow-up suggestions (soft chips)", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    systemPrompt += FollowupsPromptHint;
+                }
+                var callableTools = toolRows.Where(r => !IsPromptHintTool(r)).ToList();
+                if (callableTools.Count > 0)
                     kernel.Plugins.AddFromFunctions("tools",
-                        toolRows.Select(r => WrapRegisteredTool(r, context, skillSet.MaxToolResultChars, instancePool)).ToArray());
+                        callableTools.Select(r => WrapRegisteredTool(r, context, skillSet.MaxToolResultChars, instancePool)).ToArray());
 
                 // Interactive: ensure ask_user is always available (even if not subscribed via library).
                 // Deterministic: never inject — ask_user returns error if somehow invoked.
@@ -163,7 +179,7 @@ namespace App.BL.AIAgent.GenericAgent
                     try
                     {
                         var excludedMcp = App.BL.TenantBusiness.AppAgentToolExclusionBL.ExcludedNamesForLibrary(exclusions, srv.SkillKey);
-                        var (client, plugin) = await CreateMcpPluginAsync(srv, skillSet.MaxToolResultChars, excludedMcp, ct).ConfigureAwait(false);
+                        var (client, plugin) = await CreateMcpPluginAsync(srv, skillSet.MaxToolResultChars, excludedMcp, context, ct).ConfigureAwait(false);
                         mcpClients.Add(client);
                         kernel.Plugins.Add(plugin);
                     }
@@ -317,7 +333,7 @@ namespace App.BL.AIAgent.GenericAgent
                     var strArgs = args
                         .Where(kv => kv.Value != null)
                         .ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? "");
-                    var result = await AppAgentToolEngine.Dispatch(toolType, toolConfig, strArgs, context, ct, instancePool)
+                    var result = await AppAgentToolEngine.Dispatch(toolType, toolConfig, strArgs, context, ct, instancePool, row.ToolName)
                                                          .ConfigureAwait(false);
                     return CapResult(result, cap);
                 },
@@ -334,6 +350,14 @@ namespace App.BL.AIAgent.GenericAgent
                 .Any(f => string.Equals(f.Name, functionName, StringComparison.OrdinalIgnoreCase)
                        || string.Equals(f.Name, SanitizeName(functionName), StringComparison.OrdinalIgnoreCase));
         }
+
+        private static bool IsPromptHintTool(TbToolDto row) =>
+            row != null
+            && string.Equals(row.ToolType, PromptHintToolType, StringComparison.OrdinalIgnoreCase);
+
+        private static bool HasNamedTool(IEnumerable<TbToolDto> tools, string toolName) =>
+            tools != null
+            && tools.Any(t => string.Equals(t?.ToolName, toolName, StringComparison.OrdinalIgnoreCase));
 
         /// <summary>
         /// Auto-injected ask_user for Interactive agents when the library tool is not subscribed.
@@ -434,7 +458,7 @@ namespace App.BL.AIAgent.GenericAgent
         // ─────────────────────────────────────────────────────────────────────
 
         private static async Task<(McpClient Client, KernelPlugin Plugin)> CreateMcpPluginAsync(
-            TbMcpDto server, int maxChars, HashSet<string> excludedTools, CancellationToken ct)
+            TbMcpDto server, int maxChars, HashSet<string> excludedTools, AgentToolContext context, CancellationToken ct)
         {
             McpConnectionHelper.EnsureAllowed(server);
             var transportOptions = McpConnectionHelper.BuildTransportOptions(server);
@@ -444,7 +468,7 @@ namespace App.BL.AIAgent.GenericAgent
 
             var cap       = maxChars > 0 ? maxChars : DefaultMaxToolResultChars;
             var functions = tools.Where(t => excludedTools == null || !excludedTools.Contains(t.Name))
-                                 .Select(t => BuildMcpKernelFunction(client, t, cap)).ToArray();
+                                 .Select(t => BuildMcpKernelFunction(client, t, cap, context)).ToArray();
             var plugin    = KernelPluginFactory.CreateFromFunctions(McpPluginName(server.ServerName), functions);
             return (client, plugin);
         }
@@ -459,7 +483,7 @@ namespace App.BL.AIAgent.GenericAgent
             return "mcp" + (alnum.Length > 0 ? alnum : "server");
         }
 
-        private static KernelFunction BuildMcpKernelFunction(McpClient client, McpClientTool tool, int cap)
+        private static KernelFunction BuildMcpKernelFunction(McpClient client, McpClientTool tool, int cap, AgentToolContext context)
         {
             var toolName    = tool.Name;
             var description = tool.Description ?? toolName;
@@ -509,6 +533,7 @@ namespace App.BL.AIAgent.GenericAgent
                         .OfType<TextContentBlock>()
                         .Select(c => c.Text ?? ""));
 
+                    text = DataAnalyze.AgentDataAnalyzeHook.MaybeCacheAndRewrite(context, "MCP", toolName, text);
                     return CapResult(text, cap);
                 },
                 functionName:    SanitizeName(toolName),

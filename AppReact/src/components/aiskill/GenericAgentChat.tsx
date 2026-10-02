@@ -12,6 +12,7 @@ import {
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import { chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 import { DataRenderPanel } from './dataRender';
+import { AgentMarkdown, FollowupChips, splitFollowups } from './AgentMarkdown';
 
 const SESSION_START = '[session_start]';
 const RUN_IN_PROGRESS = '[run_in_progress]';
@@ -1178,24 +1179,44 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
         <div className="w-full h-full flex flex-row overflow-hidden">
             {/* ── Left: chat ── */}
             <div className="w-1 flex-auto flex flex-col overflow-hidden min-w-0">
-                <div className="w-full h-1 flex-auto overflow-auto p-3 flex flex-col gap-2">
-                    {messages.map((m, i) => (
-                        <div key={i} className="flex flex-col gap-1">
-                            {(m.content || m.isStreaming) && (
+                <div className="w-full h-1 flex-auto overflow-auto px-4 py-4 flex flex-col gap-4">
+                    {messages.map((m, i) => {
+                        const split = m.role === 'assistant'
+                            ? splitFollowups(sanitizeAgentDisplayText(m.content), m.isStreaming)
+                            : { body: m.content, followups: [] as string[] };
+                        const showBubble = !!(split.body || m.isStreaming || m.askUserSummary || m.askUserAnswer);
+                        return (
+                        <div key={i} className="flex flex-col gap-2">
+                            {showBubble && (
                                 <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-2xl px-3 py-2 rounded-lg text-xs whitespace-pre-wrap ${m.role === 'user' ? `${theme.button_default} ml-8` : `${theme.mainContentSection} mr-8`}`}>
+                                    {m.role === 'assistant' && (
+                                        <div className={`w-7 h-7 shrink-0 mr-2 mt-0.5 rounded-[4px] flex items-center justify-center text-[10px] ${theme.button_default}`}>
+                                            <i className="fa-solid fa-robot" aria-hidden />
+                                        </div>
+                                    )}
+                                    <div className={`max-w-3xl px-3.5 py-2.5 rounded-xl text-sm ${
+                                        m.role === 'user'
+                                            ? `${theme.button_default} ml-10`
+                                            : `${theme.mainContentSection} mr-6 w-1 flex-auto`
+                                    }`}>
                                         {(m.askUserSummary || m.askUserAnswer) && (
-                                            <div className={`text-[10px] uppercase tracking-wide opacity-60 mb-0.5 ${theme.label}`}>
+                                            <div className={`text-[10px] uppercase tracking-wide opacity-60 mb-1 ${theme.label}`}>
                                                 {m.askUserSummary ? 'Question' : 'Answer'}
                                             </div>
                                         )}
-                                        {m.role === 'assistant' ? sanitizeAgentDisplayText(m.content) : m.content}
+                                        {m.role === 'assistant' && !m.askUserSummary ? (
+                                            <AgentMarkdown content={split.body} />
+                                        ) : (
+                                            <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                                                {m.role === 'assistant' ? split.body : m.content}
+                                            </div>
+                                        )}
                                         {m.isStreaming && <span className="animate-pulse ml-1">|</span>}
                                     </div>
                                 </div>
                             )}
                             {m.role === 'assistant' && (m.dataRenders?.length ?? 0) > 0 && (
-                                <div className="w-full max-w-4xl mr-8">
+                                <div className="w-full max-w-4xl ml-9 mr-6">
                                     {m.dataRenders!.map(dr => (
                                         <DataRenderPanel
                                             key={dr.RenderId || `${i}-${dr.Timestamp}`}
@@ -1206,8 +1227,18 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                                     ))}
                                 </div>
                             )}
+                            {m.role === 'assistant' && !m.isStreaming && split.followups.length > 0 && (
+                                <div className="ml-9 mr-6 max-w-3xl">
+                                    <FollowupChips
+                                        items={split.followups}
+                                        disabled={blocked}
+                                        onSelect={(text) => { void runAgentTurn({ userMessage: text }); }}
+                                    />
+                                </div>
+                            )}
                         </div>
-                    ))}
+                        );
+                    })}
 
                     {isRunning && !pendingAskUser && (
                         <div className={`flex items-center gap-2 mx-2 text-xs ${theme.label}`}>
@@ -1412,9 +1443,9 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                     <div ref={bottomRef} />
                 </div>
 
-                <div className={`flex items-end gap-2 px-3 py-2 border-t ${regionBorder} ${theme.mainContentSection}`}>
+                <div className={`flex items-end gap-2 px-4 py-3 border-t ${regionBorder} ${theme.mainContentSection}`}>
                     <textarea
-                        className={`w-1 flex-auto px-2 py-1 text-xs border rounded-[4px] ${theme.inputBox} focus:outline-none resize-none`}
+                        className={`w-1 flex-auto min-h-[2.75rem] px-3 py-2 text-sm border rounded-xl ${theme.inputBox} focus:outline-none resize-none`}
                         rows={2}
                         value={input}
                         placeholder={`Message ${skillKey || 'agent'}…`}
@@ -1422,13 +1453,18 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                         disabled={blocked}
                     />
-                    <button className={btn} onClick={handleSend} disabled={blocked || !input.trim()}>
+                    <button
+                        className={`${btn} h-9 px-3`}
+                        onClick={handleSend}
+                        disabled={blocked || !input.trim()}
+                        title="Send"
+                    >
                         {isRunning ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
                     </button>
                     {(isRunning || pendingAskUser) && (
                         <button
                             type="button"
-                            className={btn}
+                            className={`${btn} h-9 opacity-80`}
                             onClick={() => { void handleStop(); }}
                             title="Stop current agent run (cancels LLM / tools / waiting ask_user)"
                         >
@@ -1436,11 +1472,15 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                         </button>
                     )}
                     {(messages.length > 0 || pendingAskUser) && (
-                        <button className={btn} onClick={() => { void handleClear(); }} title="Clear conversation">
+                        <button
+                            className={`${btn} h-9 opacity-80`}
+                            onClick={() => { void handleClear(); }}
+                            title="Clear conversation"
+                        >
                             <i className="fa-solid fa-rotate-left" />
                         </button>
                     )}
-                    <button className={`${btn} ml-auto`} onClick={() => setSidebarOpen(o => !o)} title="Toggle sidebar">
+                    <button className={`${btn} h-9 ml-auto opacity-80`} onClick={() => setSidebarOpen(o => !o)} title="Toggle sidebar">
                         <i className={`fa-solid fa-timeline`} />
                     </button>
                 </div>

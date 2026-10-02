@@ -28,7 +28,8 @@ namespace App.BL.TenantBusiness
             foreach (var row in rows)
             {
                 var captured = row;
-                result[captured.ToolName] = (args, ctx, token) => Dispatch(captured.ToolType, captured.ToolConfig, args, ctx, token);
+                result[captured.ToolName] = (args, ctx, token) =>
+                    Dispatch(captured.ToolType, captured.ToolConfig, args, ctx, token, toolName: captured.ToolName);
             }
 
             await Task.CompletedTask.ConfigureAwait(false);
@@ -37,16 +38,18 @@ namespace App.BL.TenantBusiness
 
         /// <summary>
         /// Dispatches a single tool call by ToolType.
+        /// After success, may session-cache tabular payloads for data_analyze.
         /// </summary>
-        public static Task<string> Dispatch(
+        public static async Task<string> Dispatch(
             string                              toolType,
             string                              toolConfig,
             IReadOnlyDictionary<string, string> args,
             AgentToolContext                    context,
             CancellationToken                  ct,
-            Dictionary<string, object>?        instancePool = null)
+            Dictionary<string, object>?        instancePool = null,
+            string                             toolName = null)
         {
-            return (toolType ?? "BuiltIn") switch
+            var raw = await ((toolType ?? "BuiltIn") switch
             {
                 "BuiltIn"       => BuiltInToolExecutor.ExecuteAsync(toolConfig, args, context, ct, instancePool),
                 "ExternalDll"   => ExternalDllToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
@@ -55,7 +58,10 @@ namespace App.BL.TenantBusiness
                 "HttpRest"      => HttpRestToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
                 "DynamicCSharp" => DynamicCSharpToolExecutor.ExecuteAsync(toolConfig, args, context, ct),
                 _               => Task.FromResult(JsonConvert.SerializeObject(new { Error = $"Unknown ToolType: {toolType}" }))
-            };
+            }).ConfigureAwait(false);
+
+            return App.BL.AIAgent.GenericAgent.DataAnalyze.AgentDataAnalyzeHook
+                .MaybeCacheAndRewrite(context, toolType, toolName, raw);
         }
     }
 }
