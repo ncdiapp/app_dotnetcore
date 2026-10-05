@@ -1153,14 +1153,17 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
         }
 
         /// <summary>
-        /// Map AppCacheManager DatabaseTable dictionary into DbGenie DTOs (shared App ↔ Agent schema source).
+        /// Map App schema cache into DbGenie DTOs when already warm.
+        /// Never forces AllTables load — cold miss returns null so caller uses INFORMATION_SCHEMA.
         /// </summary>
         private static List<DbGenieTableMetadataDto> TryBuildFromAppSchemaCache(int dataSourceRegisterId)
         {
             if (dataSourceRegisterId <= 0) return null;
 
-            var dict = AppCacheManagerBL.GetDictOwnerTablenameDataTable(dataSourceRegisterId);
-            if (dict == null || dict.Count == 0) return null;
+            if (!AppCacheManagerBL.TryGetCachedDictOwnerTablenameDataTable(dataSourceRegisterId, out var dict)
+                || dict == null
+                || dict.Count == 0)
+                return null;
 
             var tables = new List<DbGenieTableMetadataDto>(dict.Count);
             foreach (var table in dict.Values

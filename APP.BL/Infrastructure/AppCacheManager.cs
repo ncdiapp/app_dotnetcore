@@ -625,6 +625,38 @@ namespace App.BL
         }
 
         /// <summary>
+        /// Returns table dictionary only if already cached and not expired.
+        /// Does NOT trigger AllTables / schema reader load (avoids timeouts on large DBs for agent paths).
+        /// </summary>
+        internal static bool TryGetCachedDictOwnerTablenameDataTable(
+            int dataSourceRegisterId,
+            out Dictionary<string, DatabaseTable> tableDict)
+        {
+            tableDict = null;
+            if (dataSourceRegisterId <= 0) return false;
+
+            _schemaRefreshLock.EnterReadLock();
+            try
+            {
+                if (_dictRegisterIdTableBaseTable.TryGetValue(dataSourceRegisterId, out var entry)
+                    && !entry.IsExpired
+                    && entry.Value != null
+                    && entry.Value.Count > 0)
+                {
+                    Interlocked.Increment(ref _cacheHits);
+                    tableDict = entry.Value;
+                    return true;
+                }
+            }
+            finally
+            {
+                _schemaRefreshLock.ExitReadLock();
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Gets database fixture for a data source.
         /// </summary>
         internal static DatabaseFixture GetOneDatabaseFixture(int dataSourceRegisterId)
