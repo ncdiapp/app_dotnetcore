@@ -30,7 +30,7 @@ public sealed class SketchPreviewTool : IAgentTool
         }
         catch (System.Exception ex)
         {
-            return Task.FromResult(JsonConvert.SerializeObject(new APP.Components.EntityDto.PlmSketchImportPreviewDto
+            return Task.FromResult(JsonConvert.SerializeObject(new APP.AgentPlugins.PlmImport.Dtos.PlmSketchImportPreviewDto
             {
                 IsSuccess = false,
                 ErrorMessage = ex.Message

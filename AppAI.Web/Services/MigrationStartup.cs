@@ -4,8 +4,8 @@ namespace AppAI.Web.Services;
 
 // After the host starts (in the background, so startup is not delayed):
 //  - warns about migration scripts whose version number is used twice;
-//  - Migrations:RunOnStartup = true  -> applies pending migrations to every registered tenant database;
-//  - otherwise                        -> logs which tenants still have pending migrations, so a missing
+//  - Migrations:RunOnStartup = true  -> applies pending migrations to every company-master tenant DB;
+//  - otherwise                        -> logs which company-master tenants still have pending migrations, so a missing
 //                                        "Invalid column name" deploy step shows up in the log instead of the UI.
 public static class MigrationStartup
 {

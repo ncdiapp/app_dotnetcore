@@ -2,8 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.Serialization;
 using APP.Components.Dto;
+using APP.Components.EntityDto;
 
-namespace APP.Components.EntityDto
+namespace APP.AgentPlugins.PlmImport.Dtos
 {
     /// <summary>Import Blueprint schema version for PLM DW → APP transaction configuration.</summary>
     [DataContract(Namespace = ContractNamespaces.Dto)]
@@ -200,6 +201,43 @@ namespace APP.Components.EntityDto
 
         [DataMember]
         public PlmDwBlueprintUnitStructureDto UnitStructure { get; set; }
+
+        /// <summary>
+        /// Portable Flex form (non-grid fields from PLM Tab Design).
+        /// Grids are appended by DwBlueprintAppConfigPackBuilder (Auto Design bottom sub-tabs).
+        /// </summary>
+        [DataMember]
+        public AppConfigPackFormLayoutDto FormLayout { get; set; }
+
+        [DataMember]
+        public PlmDwBlueprintFormLayoutMetaDto FormLayoutMeta { get; set; }
+    }
+
+    [DataContract(Namespace = ContractNamespaces.Dto)]
+    public class PlmDwBlueprintFormLayoutMetaDto
+    {
+        /// <summary>plmTabDesign | none</summary>
+        [DataMember]
+        public string Source { get; set; }
+
+        [DataMember]
+        public int? PlmTabId { get; set; }
+
+        /// <summary>
+        /// autoBottomSubTabs = BL/ConfigPack appends child grids under a bottom TabContainer
+        /// (same UX as Form Design Reset &amp; Auto Design). Never place grids from PLM row/col.
+        /// </summary>
+        [DataMember]
+        public string GridLayoutMode { get; set; } = "autoBottomSubTabs";
+
+        [DataMember]
+        public int? BlockCount { get; set; }
+
+        [DataMember]
+        public int? FieldCount { get; set; }
+
+        [DataMember]
+        public int? LayoutCellCount { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

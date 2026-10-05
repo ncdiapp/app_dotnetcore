@@ -61,6 +61,8 @@ Gate-0: `list_tenant_saas_applications` + `list_tenant_data_sources` → `ask_us
 
 **Progress:** in-chat `write_shared_context` (WorkflowId, this turn) + durable `update_plm_wizard_progress` on `AppAgentSharedContext` with ScopeId=`ChatSessionKey`. PLM job table is plugin-only, not a Flyway Vxxx.
 
+**Import DW Form layout:** Phase B generator writes portable `formLayout` from PLM Tab Design (non-grid fields/blocks). APPLY appends child **Grids** as Auto Design bottom Sub Tabs. Users should not need Form Design → Reset & Auto Design for standard Template TABs.
+
 **Search / MassUpdate (Wave 2):** `call_agent` children. Additional Search View is the same Search menu (`mode=additional-view`); no Sibling menu item. APPLY uses `apply_agent_output_plan` with `outputsContextKey` = `plm.integration.search.outputs` or `plm.integration.massupdate.outputs`. Default Source probe/example files live under `AgentStarter/_packs/` and are copied to `FileRepository/.../AgentStarter/` when RUN_ALL is run with `CompanyId` (see `AgentStarter/README.md`).
 
 If a child SkillKey is missing, ROOT must **stop** (Retry / Back). No local preview/execute fallback for entity/folder/image/color/pom/import-dw/search/massupdate.

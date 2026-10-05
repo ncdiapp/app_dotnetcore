@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Runtime.Serialization;
 using APP.Components.Dto;
 
-namespace APP.Components.EntityDto
+namespace APP.AgentPlugins.PlmImport.Dtos
 {
     [DataContract(Namespace = ContractNamespaces.Dto)]
     public class PlmColorImportPreviewDto

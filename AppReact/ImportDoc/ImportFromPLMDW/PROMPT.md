@@ -468,6 +468,12 @@ After physical tables are populated (steps 1–3), open **PLM Data Import → St
 2. **Validate & Preview** — runs `ValidateDwImportBlueprint` + `PreviewDwBlueprintConfig`
 3. **Execute Insert** or **Execute Update** — `ExecuteDwBlueprintConfig`
 
+**Form layout on Execute (locked):**
+- Each `tabs/{tabId}/4_TabBlueprint.json` may include portable `formLayout` from PLM Tab Design (`pdmTabLayout` → Item → Subitem) for **non-grid** fields/blocks.
+- Child **Grids** are **not** placed from PLM coordinates. ConfigPack builder appends Auto Design bottom `TabContainer` + Sub Tabs (`formLayoutMeta.gridLayoutMode = autoBottomSubTabs`).
+- Do **not** insert orphan flat `AppFormLayoutItem` rows. Prefer ConfigPack `ReplaceFlexFormLayout`.
+- Missing Tab Design → full Auto Design fallback for that TX.
+
 API equivalents: `POST webapi/PlmMigration/ValidateDwImportBlueprint`, `PreviewDwBlueprintConfig`, `ExecuteDwBlueprintConfig`.
 
 **Agent scope:** Phase D is executed by the **user in the running app**. The agent generates files and instructions only — no server deployment during PROMPT runtime.
@@ -690,7 +696,7 @@ PK / link columns (`FitMeasurementId`, `FitRoundId`) stay hidden.
 
 **5) Phase D / Blueprint**
 
-`ApplyTechPackFitRoundMeasurementGoldenFieldTemplate` (after FitRoundInfo golden): ensure view entity, temp fields + subscribe, Diff assignment formula, Calculate button. Form layout still via Form Design Reset & Auto Design (do not insert orphan `AppFormLayoutItem`).
+`ApplyTechPackFitRoundMeasurementGoldenFieldTemplate` (after FitRoundInfo golden): ensure view entity, temp fields + subscribe, Diff assignment formula, Calculate button. Prefer portable `formLayout` from PLM Tab Design (non-grid) + Auto Design bottom Grid Sub Tabs on APPLY; do not insert orphan flat `AppFormLayoutItem` rows.
 
 Optional later: filter PomSpecLine DDL to current round’s `StyleSpecId` (not required for MVP if grid rows are already seeded by import).
 

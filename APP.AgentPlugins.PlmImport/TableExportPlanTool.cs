@@ -30,7 +30,7 @@ public sealed class TableExportPlanTool : IAgentTool
         }
         catch (System.Exception ex)
         {
-            return Task.FromResult(JsonConvert.SerializeObject(new APP.Components.EntityDto.PlmTableExportPlanDto
+            return Task.FromResult(JsonConvert.SerializeObject(new APP.AgentPlugins.PlmImport.Dtos.PlmTableExportPlanDto
             {
                 IsSuccess = false,
                 ErrorMessage = ex.Message

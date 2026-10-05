@@ -1331,3 +1331,18 @@ WHERE SkillKey = N'plm-integration-import-dw'
   AND SystemPrompt LIKE N'%dw-blueprint-assemble step on 4_PlmDw_ImportBlueprint.json mode=Update.%';
 GO
 
+-- Form layout: PLM Tab Design for fields; Auto Design bottom sub-tabs for grids
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: Form layout from PLM Tab Design (fields) + Auto bottom grids
+Phase B official generator writes formLayout on each tabs/{tabId}/4_TabBlueprint.json from pdmTabLayout/Item/Subitem (non-grid SubItems only).
+formLayoutMeta.gridLayoutMode = autoBottomSubTabs. Agent never hand-writes AppFormLayoutItem. Never file_read formLayout bodies.
+Grid child units are NOT placed from PLM row/col. APPLY BL appends Auto Design bottom TabContainer + sub-tabs (same as Reset & Auto Design grids).
+After APPLY ok: do NOT tell ROOT/user to open Form Design or Reset & Auto Design for standard DW tabs.
+If a tab has no pdmTabLayout cells: formLayout may be empty; BL falls back to full Auto Design for that TX (or grids-only hybrid).
+Required source helper: _plm_probe_tab_layout.sql (optional Phase A); generator loads Tab Design itself in Phase B.
+'
+WHERE SkillKey = N'plm-integration-import-dw'
+  AND SystemPrompt NOT LIKE N'%HARD: Form layout from PLM Tab Design%';
+GO
+

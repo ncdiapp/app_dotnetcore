@@ -85,7 +85,9 @@ namespace App.BL
             return applied;
         }
 
-        // Run pending migrations against every registered tenant DB.
+        // Run pending migrations against every company-master tenant DB (IsCompanyMasterDb).
+        // Satellite data sources (ERP / DataWS / PLM / …) are skipped — AppAI schema scripts
+        // only belong on the tenant master database.
         // Returns a map of DataSourceName → migrations applied (-1 on error).
         public static Dictionary<string, int> RunMigrationsOnAllTenants()
         {
@@ -94,6 +96,9 @@ namespace App.BL
 
             foreach (var tenant in tenants)
             {
+                if (tenant.IsCompanyMasterDb != true)
+                    continue;
+
                 string key = tenant.DataSourceName ?? tenant.DataSourceId.ToString();
                 if (string.IsNullOrEmpty(tenant.ConnectionString))
                 {
@@ -140,11 +145,15 @@ namespace App.BL
         }
 
         // DataSourceName -> number of pending scripts (-1 = could not be checked; the reason is logged).
+        // Only company-master tenant DBs are checked; satellite data sources are ignored.
         public static Dictionary<string, int> GetPendingCountsForAllTenants()
         {
             var results = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (var tenant in AppDataSourceRegisterBL.RetrieveAllAppDataSourceRegisterEntity())
             {
+                if (tenant.IsCompanyMasterDb != true)
+                    continue;
+
                 string key = tenant.DataSourceName ?? tenant.DataSourceId.ToString();
                 if (string.IsNullOrEmpty(tenant.ConnectionString)) { results[key] = 0; continue; }
                 try

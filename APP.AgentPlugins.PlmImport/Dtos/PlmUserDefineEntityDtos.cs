@@ -2,26 +2,10 @@ using System.Collections.Generic;
 using System.Runtime.Serialization;
 using APP.Components.Dto;
 
-namespace APP.Components.EntityDto
+namespace APP.AgentPlugins.PlmImport.Dtos
 {
     [DataContract(Namespace = ContractNamespaces.Dto)]
-    public class PlmSystemDefineDataSourceMapDto
-    {
-        [DataMember]
-        public int PlmDataSourceFrom { get; set; }
-
-        [DataMember]
-        public int DataSourceRegisterId { get; set; }
-
-        [DataMember]
-        public string DatabaseName { get; set; }
-
-        [DataMember]
-        public bool IsRegisterResolved { get; set; }
-    }
-
-    [DataContract(Namespace = ContractNamespaces.Dto)]
-    public class PlmSystemDefineEntityPreviewItemDto
+    public class PlmUserDefineEntityPreviewItemDto
     {
         [DataMember]
         public int PlmEntityId { get; set; }
@@ -38,29 +22,18 @@ namespace APP.Components.EntityDto
         [DataMember]
         public string TableName { get; set; }
 
+        /// <summary>SimpleValueList | SystemDefineTable</summary>
         [DataMember]
-        public string SchemaOwner { get; set; }
+        public string AppTargetType { get; set; }
 
         [DataMember]
-        public int? PlmDataSourceFrom { get; set; }
+        public int ColumnCount { get; set; }
 
         [DataMember]
-        public int? AppDataSourceFrom { get; set; }
+        public int PlmRowCount { get; set; }
 
         [DataMember]
-        public string TargetDatabaseName { get; set; }
-
-        [DataMember]
-        public string IdentityField { get; set; }
-
-        [DataMember]
-        public string DisplayFiled1 { get; set; }
-
-        [DataMember]
-        public string DisplayFiled2 { get; set; }
-
-        [DataMember]
-        public string DisplayFiled3 { get; set; }
+        public int ImportOrder { get; set; }
 
         /// <summary>Ready | Skipped | Blocked</summary>
         [DataMember]
@@ -75,7 +48,7 @@ namespace APP.Components.EntityDto
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
-    public class PlmSystemDefineEntityBlockerDto
+    public class PlmUserDefineEntityBlockerDto
     {
         [DataMember]
         public int PlmEntityId { get; set; }
@@ -87,14 +60,11 @@ namespace APP.Components.EntityDto
         public string TableName { get; set; }
 
         [DataMember]
-        public string TargetDatabaseName { get; set; }
-
-        [DataMember]
         public string Issue { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
-    public class PlmSystemDefineEntityPreviewDto
+    public class PlmUserDefineEntityPreviewDto
     {
         [DataMember]
         public bool IsSuccess { get; set; }
@@ -112,20 +82,16 @@ namespace APP.Components.EntityDto
         public int BlockerCount { get; set; }
 
         [DataMember]
-        public List<PlmSystemDefineDataSourceMapDto> DataSourceMaps { get; set; } =
-            new List<PlmSystemDefineDataSourceMapDto>();
+        public List<PlmUserDefineEntityPreviewItemDto> Entities { get; set; } =
+            new List<PlmUserDefineEntityPreviewItemDto>();
 
         [DataMember]
-        public List<PlmSystemDefineEntityPreviewItemDto> Entities { get; set; } =
-            new List<PlmSystemDefineEntityPreviewItemDto>();
-
-        [DataMember]
-        public List<PlmSystemDefineEntityBlockerDto> Blockers { get; set; } =
-            new List<PlmSystemDefineEntityBlockerDto>();
+        public List<PlmUserDefineEntityBlockerDto> Blockers { get; set; } =
+            new List<PlmUserDefineEntityBlockerDto>();
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]
-    public class PlmSystemDefineEntityImportResultDto
+    public class PlmUserDefineEntityImportResultDto
     {
         [DataMember]
         public bool IsSuccess { get; set; }
@@ -143,11 +109,14 @@ namespace APP.Components.EntityDto
         public int SkippedCount { get; set; }
 
         [DataMember]
-        public List<PlmSystemDefineEntityPreviewItemDto> SkippedEntities { get; set; } =
-            new List<PlmSystemDefineEntityPreviewItemDto>();
+        public int RowsImported { get; set; }
 
         [DataMember]
-        public List<PlmSystemDefineEntityBlockerDto> Blockers { get; set; } =
-            new List<PlmSystemDefineEntityBlockerDto>();
+        public List<PlmUserDefineEntityPreviewItemDto> SkippedEntities { get; set; } =
+            new List<PlmUserDefineEntityPreviewItemDto>();
+
+        [DataMember]
+        public List<PlmUserDefineEntityBlockerDto> Blockers { get; set; } =
+            new List<PlmUserDefineEntityBlockerDto>();
     }
 }

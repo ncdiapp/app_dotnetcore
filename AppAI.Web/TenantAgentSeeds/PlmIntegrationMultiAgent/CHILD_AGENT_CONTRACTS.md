@@ -105,9 +105,19 @@ call_agent("<SkillKey>", "<PHASE=…>. Read plm.integration.<code>.inputs. <cons
 | Phase | Message (shape) | Child writes | ROOT after return |
 |---|---|---|---|
 | A | `PHASE=A only. Read …inputs. Return DETAILED Phase A checklist… Write …phase-a. No SQL.` | `…phase-a` | HITL checklist → write `…plan` |
-| B | Prefer copy `0_ExecutionPlan.suggested.json` (Authoritative executionPlan). Chat: APPLY overview from `applyOverview`. Order: 1→2→3_00_Root→tabs/*/3_→tabs/*/4_TabBlueprint→`4_PlmDw_Assemble.json` (merge)→5_ BOM. | `…outputs` | Show Apply when `1_`+`4_PlmDw_Assemble.json` (or alias) + tabs exist |
-| APPLY | `PHASE=APPLY` once. Tab continueOnError; assemble filters to successful tabs. | apply-log + tab-import-status + AppPlmDwTabImportStatus | ok + executed==planned → doneIds |
+| B | Prefer copy `0_ExecutionPlan.suggested.json` (Authoritative executionPlan). Chat: APPLY overview from `applyOverview`. Order: 1→2→3_00_Root→tabs/*/3_→tabs/*/4_TabBlueprint→`4_PlmDw_Assemble.json` (merge)→5_ BOM. Official generator embeds **formLayout** (PLM Tab Design, non-grid) + `formLayoutMeta.gridLayoutMode=autoBottomSubTabs` on each TabBlueprint. | `…outputs` | Show Apply when `1_`+`4_PlmDw_Assemble.json` (or alias) + tabs exist |
+| APPLY | `PHASE=APPLY` once. Tab continueOnError; assemble filters to successful tabs. BL applies formLayout then appends Auto Design bottom Grid Sub Tabs. | apply-log + tab-import-status + AppPlmDwTabImportStatus | ok + executed==planned → doneIds; **do not** send user to Form Design Auto Design |
 | APPLY_TABS | Retry Failed tabs only then assemble | same | update doneIds if ok |
+
+### Form layout contract (import-dw)
+
+| Part | Source | APP Form result |
+|---|---|---|
+| Non-grid fields / Blocks | `pdmTabLayout` → Item → Subitem (ControlType ≠ 6) | Portable `formLayout` rows/stacks/fields in `4_TabBlueprint.json` |
+| Grid child units | `gridBindings` / child units | Bottom `TabContainer` + one Sub Tab per grid (same as Reset & Auto Design). **Not** PLM row/col. |
+| Pivot-domain views | `View_TchpStyleActiveSizeRunSizes` / SimpleQC selected sizes | Omitted from Form (MatrixKey only) |
+
+Agent never invents `AppFormLayoutItem` / never `file_read` formLayout bodies. Missing Tab Design → BL falls back to full Auto Design for that TX.
 
 Never A+B+APPLY in one ROOT turn. ROOT never runs apply/execute file tools. After user clicks Apply, ROOT's next tool **must** be `call_agent` PHASE=APPLY.
 

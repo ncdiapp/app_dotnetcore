@@ -659,3 +659,14 @@ If call_agent denied for a dotted name: retry immediately with the matching plm-
 WHERE SkillKey = N'plm-integration-orchestrator'
   AND SystemPrompt NOT LIKE N'%HARD: call_agent SkillKey vs plm.integration.* context%';
 GO
+
+UPDATE dbo.AppAgentSkillSet
+SET SystemPrompt = SystemPrompt + N'
+## HARD: import-dw Form layout (PLM Tab Design + Auto grids)
+After import-dw APPLY success: Form fields follow PLM Tab Design; child Grids sit in bottom Sub Tabs (Auto Design). Do NOT ask the user to open Form Design or Reset & Auto Design for that Template.
+Phase A optional one-liner: formLayoutPreview (blockCount/fieldCount) if child returns it — do not paste formLayout JSON into ask_user.
+Phase B success still = files on disk (1_ + Assemble + tabs/*/4_). formLayout inside TabBlueprint is produced by the official generator.
+'
+WHERE SkillKey = N'plm-integration-orchestrator'
+  AND SystemPrompt NOT LIKE N'%HARD: import-dw Form layout (PLM Tab Design%';
+GO

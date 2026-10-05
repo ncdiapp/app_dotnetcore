@@ -37,7 +37,12 @@ SELECT LibraryKey FROM dbo.AppAgentLibrarySubscription
 WHERE SkillKey = N'plm-integration-orchestrator'
 ORDER BY LibraryKey;
 
-PRINT '=== Agents (ROOT IsActive=1; children IsActive=0) ===';
+PRINT '=== Form layout HARD in import-dw / orchestrator prompts ===';
+SELECT SkillKey,
+  CASE WHEN SystemPrompt LIKE N'%HARD: Form layout from PLM Tab Design%' OR SystemPrompt LIKE N'%HARD: import-dw Form layout%' THEN 1 ELSE 0 END AS HasFormLayoutHard
+FROM dbo.AppAgentSkillSet
+WHERE SkillKey IN (N'plm-integration-import-dw', N'plm-integration-orchestrator');
+
 SELECT SkillKey, DisplayName, ExecutionMode, IsActive,
        AllowAgentFirstTurn,
        LEN(SystemPrompt) AS PromptLen,

@@ -40,7 +40,7 @@ public sealed class SketchExportTool : IAgentTool
         }
         catch (System.Exception ex)
         {
-            return Task.FromResult(JsonConvert.SerializeObject(new APP.Components.EntityDto.PlmSketchStagingManifestDto
+            return Task.FromResult(JsonConvert.SerializeObject(new APP.AgentPlugins.PlmImport.Dtos.PlmSketchStagingManifestDto
             {
                 IsSuccess = false,
                 ErrorMessage = ex.Message

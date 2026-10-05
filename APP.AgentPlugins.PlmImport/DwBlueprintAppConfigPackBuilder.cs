@@ -222,8 +222,175 @@ public static class DwBlueprintAppConfigPackBuilder
             Fields = new List<AppConfigPackFieldDto>()
         };
 
-        // Stash PlmTabId in Description space? Use IntegrationId matching only — tab id via blueprint lookup.
+        // PLM Tab Design → portable formLayout (fields). Grids always Auto Design bottom sub-tabs.
+        txDto.FormLayout = BuildHybridFormLayout(tx, unit);
+        if (txDto.FormLayout != null)
+            txDto.FormMode = "Flex";
+
         return txDto;
+    }
+
+    /// <summary>
+    /// Merge PLM non-grid formLayout with Auto Design-style bottom Grid TabContainer.
+    /// Grid units are never placed from PLM row/col coordinates.
+    /// </summary>
+    private static AppConfigPackFormLayoutDto BuildHybridFormLayout(
+        PlmDwBlueprintTransactionDto tx,
+        AppConfigPackUnitStructureDto unit)
+    {
+        var items = new List<AppConfigPackFormLayoutItemDto>();
+        if (tx?.FormLayout?.Items != null)
+        {
+            foreach (var node in tx.FormLayout.Items)
+            {
+                if (node != null)
+                    items.Add(node);
+            }
+        }
+
+        var gridSection = BuildAutoBottomGridSection(unit);
+        if (gridSection != null)
+            items.Add(gridSection);
+
+        if (items.Count == 0)
+            return null;
+
+        return new AppConfigPackFormLayoutDto
+        {
+            DefaultNbColumns = tx?.FormLayout?.DefaultNbColumns ?? 24,
+            DefaultWidth = tx?.FormLayout?.DefaultWidth,
+            Items = items
+        };
+    }
+
+    private static readonly HashSet<string> FormLayoutOmitGridTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "View_TchpStyleActiveSizeRunSizes",
+        "View_TchpSimpleQcSelectedSizes",
+        "View_TchpFitMeasurementByPom"
+    };
+
+    /// <summary>
+    /// Same placement as <c>AppFormFlexLayoutBL.BuildAppFormDefaultLayout</c> grid section:
+    /// bottom row → stack → TabContainer (when 2+ grids) or plain grid rows (when 1).
+    /// </summary>
+    private static AppConfigPackFormLayoutItemDto BuildAutoBottomGridSection(AppConfigPackUnitStructureDto unit)
+    {
+        var grids = (unit?.ChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())
+            .Where(c => c != null && !string.IsNullOrWhiteSpace(c.TableName))
+            .Where(c => !FormLayoutOmitGridTables.Contains(c.TableName.Trim())
+                && !c.TableName.Trim().StartsWith("View_TchpStyleActive", StringComparison.OrdinalIgnoreCase)
+                && !c.TableName.Trim().StartsWith("View_TchpSimpleQc", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (grids.Count == 0)
+            return null;
+
+        var gridsStackChildren = new List<AppConfigPackFormLayoutItemDto>();
+        if (grids.Count >= 2)
+        {
+            var tabs = new List<AppConfigPackFormLayoutItemDto>();
+            foreach (var grid in grids)
+            {
+                tabs.Add(new AppConfigPackFormLayoutItemDto
+                {
+                    Type = "tab",
+                    IsTab = true,
+                    DisplayName = string.IsNullOrWhiteSpace(grid.DisplayName)
+                        ? AppTransactionBL.ConvertDbNameToDisplayName(grid.TableName)
+                        : grid.DisplayName.Trim(),
+                    ColSpan = 24,
+                    DefaultNbColumns = 1,
+                    Children = new List<AppConfigPackFormLayoutItemDto>
+                    {
+                        new AppConfigPackFormLayoutItemDto
+                        {
+                            Type = "row",
+                            Children = new List<AppConfigPackFormLayoutItemDto>
+                            {
+                                new AppConfigPackFormLayoutItemDto
+                                {
+                                    Type = "stack",
+                                    ColSpan = 24,
+                                    DefaultNbColumns = 1,
+                                    Children = new List<AppConfigPackFormLayoutItemDto>
+                                    {
+                                        new AppConfigPackFormLayoutItemDto
+                                        {
+                                            Type = "row",
+                                            Children = new List<AppConfigPackFormLayoutItemDto>
+                                            {
+                                                BuildGridLayoutNode(grid)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+
+            gridsStackChildren.Add(new AppConfigPackFormLayoutItemDto
+            {
+                Type = "row",
+                Children = new List<AppConfigPackFormLayoutItemDto>
+                {
+                    new AppConfigPackFormLayoutItemDto
+                    {
+                        Type = "tabContainer",
+                        ColSpan = 24,
+                        DefaultNbColumns = 1,
+                        Children = tabs
+                    }
+                }
+            });
+        }
+        else
+        {
+            foreach (var grid in grids)
+            {
+                gridsStackChildren.Add(new AppConfigPackFormLayoutItemDto
+                {
+                    Type = "row",
+                    Children = new List<AppConfigPackFormLayoutItemDto>
+                    {
+                        BuildGridLayoutNode(grid)
+                    }
+                });
+            }
+        }
+
+        return new AppConfigPackFormLayoutItemDto
+        {
+            Type = "row",
+            Children = new List<AppConfigPackFormLayoutItemDto>
+            {
+                new AppConfigPackFormLayoutItemDto
+                {
+                    Type = "stack",
+                    ColSpan = 24,
+                    DefaultNbColumns = 1,
+                    DisplayName = "Grids",
+                    Children = gridsStackChildren
+                }
+            }
+        };
+    }
+
+    private static AppConfigPackFormLayoutItemDto BuildGridLayoutNode(AppConfigPackChildUnitDto grid)
+    {
+        return new AppConfigPackFormLayoutItemDto
+        {
+            Type = "grid",
+            TableName = grid.TableName.Trim(),
+            DisplayName = string.IsNullOrWhiteSpace(grid.DisplayName)
+                ? AppTransactionBL.ConvertDbNameToDisplayName(grid.TableName)
+                : grid.DisplayName.Trim(),
+            ColSpan = 24,
+            Height = 400,
+            IsBindingToDataField = true,
+            TranscationUnitLevel = 2
+        };
     }
 
     /// <summary>

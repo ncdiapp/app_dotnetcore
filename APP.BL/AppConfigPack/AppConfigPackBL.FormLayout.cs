@@ -54,8 +54,9 @@ namespace APP.BL.AppConfigPack
                     if (node == null)
                         continue;
                     sort++;
-                    formEx.AppFormLayoutItemList.Add(
-                        BuildRuntimeLayoutItem(conn, transactionId, node, null, hostIds, sort));
+                    var built = BuildRuntimeLayoutItem(conn, transactionId, node, null, hostIds, sort);
+                    if (built != null)
+                        formEx.AppFormLayoutItemList.Add(built);
                 }
             }
 
@@ -138,8 +139,9 @@ namespace APP.BL.AppConfigPack
                 int? fieldId = GetTransactionFieldId(conn, transactionId, tableName, columnName);
                 if (!fieldId.HasValue)
                 {
-                    throw new InvalidOperationException(
-                        $"Form layout field '{tableName}.{columnName}' was not found.");
+                    // PLM Tab Design may reference SubItems not present on this TX (shared/header split).
+                    // Skip the leaf so the rest of the portable layout still applies.
+                    return null;
                 }
                 item.TransactionFieldId = fieldId.Value;
                 if (!widget.HasValue)
@@ -154,10 +156,7 @@ namespace APP.BL.AppConfigPack
                 }
                 int? unitId = GetTransactionUnitId(conn, transactionId, tableName);
                 if (!unitId.HasValue)
-                {
-                    throw new InvalidOperationException(
-                        $"Form layout grid unit '{tableName}' was not found.");
-                }
+                    return null;
                 item.GridTransactionUnitId = unitId.Value;
                 if (!widget.HasValue)
                     widget = (int)EmAppFormLayoutItemType.Grid;
@@ -233,8 +232,18 @@ namespace APP.BL.AppConfigPack
                 if (child == null)
                     continue;
                 childSort++;
-                item.AppFormLayoutItem_List.Add(
-                    BuildRuntimeLayoutItem(conn, transactionId, child, item, hostIds, childSort));
+                var builtChild = BuildRuntimeLayoutItem(conn, transactionId, child, item, hostIds, childSort);
+                if (builtChild != null)
+                    item.AppFormLayoutItem_List.Add(builtChild);
+            }
+
+            // Drop empty structural containers that lost all children (e.g. all fields skipped).
+            bool isStructural = !isField && !isGrid && !isCommand && !isLinkedSearch;
+            if (isStructural
+                && (item.AppFormLayoutItem_List == null || item.AppFormLayoutItem_List.Count == 0)
+                && (node.Children != null && node.Children.Count > 0))
+            {
+                return null;
             }
 
             return item;

@@ -3,7 +3,7 @@
   "Files": [
     {
       "Path": "_gen_plmdw_import_sql.ps1",
-      "Description": "Official Import-from-DW producer. Phase B must run via run_agent_script to emit output/{templateId}/1_…4_ (and related) deliverables."
+      "Description": "Official Import-from-DW producer. Emits SQL + per-tab 4_TabBlueprint.json with formLayout from PLM Tab Design (non-grid). Grids use Auto Design bottom sub-tabs at APPLY."
     },
     {
       "Path": "_gen_plmdw_bom_colorway.ps1",
@@ -36,6 +36,10 @@
     {
       "Path": "_plm_probe_template.sql",
       "Description": "PLM Template/Tab probe helper (pdmTemplate + pdmTemplateTab). Substitute @TemplateId; execute_sql on PLM DataSourceId in Phase A."
+    },
+    {
+      "Path": "_plm_probe_tab_layout.sql",
+      "Description": "PLM Tab Design layout probe (pdmTabLayout / Item / Subitem). Used by generator to emit portable formLayout for non-grid fields. Set @TabIdList."
     },
     {
       "Path": "_dw_probe_by_tabids.sql",

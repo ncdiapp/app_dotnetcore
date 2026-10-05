@@ -21,8 +21,8 @@ public class TenantProvisioningController : SecureBaseController
     }
 
     // POST /webapi/TenantProvisioning/RunMigrations
-    // Runs any pending schema migrations against every registered tenant DB.
-    // Safe to call on every deployment — idempotent.
+    // Runs any pending schema migrations against every company-master tenant DB (IsCompanyMasterDb).
+    // Satellite data sources are skipped. Safe to call on every deployment — idempotent.
     [HttpPost]
     public Dictionary<string, int> RunMigrations()
     {
@@ -31,7 +31,8 @@ public class TenantProvisioningController : SecureBaseController
     }
 
     // GET /webapi/TenantProvisioning/PendingMigrations
-    // Per tenant: number of migration scripts not yet applied (-1 = could not be checked, see the log).
+    // Per company-master tenant: number of migration scripts not yet applied
+    // (-1 = could not be checked, see the log). Satellite data sources are omitted.
     [HttpGet]
     public Dictionary<string, int> PendingMigrations()
     {

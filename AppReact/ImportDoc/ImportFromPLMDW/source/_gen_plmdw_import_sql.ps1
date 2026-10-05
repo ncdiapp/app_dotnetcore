@@ -267,6 +267,281 @@ WHERE l.TabID IN ($inList)
     return $set
 }
 
+# Full Tab Design tree for formLayout generation (cells → blocks → sub-items).
+# Returns hashtable: TabId -> list of cell objects.
+function Get-PlmTabDesignLayoutMap([int[]]$TabIds) {
+    $map = @{}
+    if (-not $TabIds -or $TabIds.Count -eq 0) { return $map }
+    $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
+
+    $cellsByLayoutId = @{}
+    $qCells = @"
+SELECT l.TabID, l.LayoutID, ISNULL(l.RowIndex,0), ISNULL(l.ColumnIndex,0), ISNULL(l.RowSpan,1), ISNULL(l.ColumnSpan,1)
+FROM dbo.pdmTabLayout l
+WHERE l.TabID IN ($inList)
+ORDER BY l.TabID, l.RowIndex, l.ColumnIndex, l.LayoutID
+"@
+    foreach ($line in (Invoke-PlmQuery $qCells)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 6) { continue }
+        $tabId = [int]$parts[0].Trim()
+        $layoutId = [int]$parts[1].Trim()
+        $cell = [pscustomobject]@{
+            TabId       = $tabId
+            LayoutId    = $layoutId
+            RowIndex    = [int]$parts[2].Trim()
+            ColumnIndex = [int]$parts[3].Trim()
+            RowSpan     = [Math]::Max(1, [int]$parts[4].Trim())
+            ColumnSpan  = [Math]::Max(1, [int]$parts[5].Trim())
+            Blocks      = [System.Collections.Generic.List[object]]::new()
+        }
+        $cellsByLayoutId[$layoutId] = $cell
+        if (-not $map.ContainsKey($tabId)) { $map[$tabId] = [System.Collections.Generic.List[object]]::new() }
+        [void]$map[$tabId].Add($cell)
+    }
+
+    $itemsById = @{}
+    $qItems = @"
+SELECT li.LayoutItemID, li.LayoutID, li.BlockID, ISNULL(li.Sort,0), ISNULL(b.Name,N''), ISNULL(li.LabelText,N''), ISNULL(CAST(li.IsChildTableContainer AS INT),0)
+FROM dbo.pdmTabLayout l
+INNER JOIN dbo.pdmTabLayoutItem li ON li.LayoutID = l.LayoutID
+LEFT JOIN dbo.pdmBlock b ON b.BlockID = li.BlockID
+WHERE l.TabID IN ($inList)
+ORDER BY l.TabID, l.RowIndex, l.ColumnIndex, ISNULL(li.Sort,0), li.LayoutItemID
+"@
+    foreach ($line in (Invoke-PlmQuery $qItems)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 4) { continue }
+        $layoutItemId = [int]$parts[0].Trim()
+        $layoutId = [int]$parts[1].Trim()
+        if (-not $cellsByLayoutId.ContainsKey($layoutId)) { continue }
+        $blockId = Parse-SqlIntOrNull $parts[2]
+        $blockName = if ($parts.Count -ge 5) { $parts[4].Trim() } else { '' }
+        $labelText = if ($parts.Count -ge 6) { $parts[5].Trim() } else { '' }
+        if ($blockName -eq 'NULL') { $blockName = '' }
+        if ($labelText -eq 'NULL') { $labelText = '' }
+        $isChildContainer = $false
+        if ($parts.Count -ge 7) {
+            try { $isChildContainer = ([int]$parts[6].Trim() -eq 1) } catch { $isChildContainer = $false }
+        }
+        $block = [pscustomobject]@{
+            LayoutItemId         = $layoutItemId
+            BlockId              = $blockId
+            BlockName            = $blockName
+            LabelText            = $labelText
+            Sort                 = [int]$parts[3].Trim()
+            IsChildTableContainer = $isChildContainer
+            SubItems             = [System.Collections.Generic.List[object]]::new()
+        }
+        $itemsById[$layoutItemId] = $block
+        [void]$cellsByLayoutId[$layoutId].Blocks.Add($block)
+    }
+
+    $qSubs = @"
+SELECT ls.LayoutItemID, ls.SubItemID, ISNULL(ls.Sort,0), ISNULL(bsi.ControlType,0), ISNULL(ls.ImageOrMemoWidth,N''), ISNULL(ls.ImageOrMemoHight,N'')
+FROM dbo.pdmTabLayout l
+INNER JOIN dbo.pdmTabLayoutItem li ON li.LayoutID = l.LayoutID
+INNER JOIN dbo.pdmTabLayoutSubitem ls ON ls.LayoutItemID = li.LayoutItemID
+LEFT JOIN dbo.pdmBlockSubItem bsi ON bsi.SubItemID = ls.SubItemID
+WHERE l.TabID IN ($inList)
+ORDER BY ls.LayoutItemID, ISNULL(ls.Sort,0), ls.LayoutSubitemID
+"@
+    foreach ($line in (Invoke-PlmQuery $qSubs)) {
+        $parts = $line -split '\|'
+        if ($parts.Count -lt 3) { continue }
+        $layoutItemId = [int]$parts[0].Trim()
+        if (-not $itemsById.ContainsKey($layoutItemId)) { continue }
+        $subItemId = Parse-SqlIntOrNull $parts[1]
+        if (-not $subItemId) { continue }
+        $ctrl = 0
+        try { $ctrl = [int]$parts[3].Trim() } catch { $ctrl = 0 }
+        $w = if ($parts.Count -ge 5) { $parts[4].Trim() } else { '' }
+        $h = if ($parts.Count -ge 6) { $parts[5].Trim() } else { '' }
+        if ($w -eq 'NULL') { $w = '' }
+        if ($h -eq 'NULL') { $h = '' }
+        [void]$itemsById[$layoutItemId].SubItems.Add([pscustomobject]@{
+            SubItemId   = [int]$subItemId
+            Sort        = [int]$parts[2].Trim()
+            ControlType = $ctrl
+            ImageWidth  = $w
+            ImageHeight = $h
+        })
+    }
+    return $map
+}
+
+function Build-FieldLookupByTabSubItem($allFieldRows, $prefix, $rootSuffix) {
+    # Key: "tabId|subItemId" → @{ AppTableName; AppColumnName }
+    $map = @{}
+    foreach ($r in $allFieldRows) {
+        if (-not $r) { continue }
+        $kind = [string]$r.FieldKind
+        if ($kind -eq 'GridColumn' -or $kind -eq 'BomColorwayDwSlot' -or $kind -eq 'BomColorwaySlot' -or $kind -eq 'GrandchildPivot') { continue }
+        $tabId = $null
+        if ($r.PlmTabId) { $tabId = [int]$r.PlmTabId }
+        $subId = $null
+        if ($null -ne $r.PSObject.Properties['PlmSubItemId'] -and $null -ne $r.PlmSubItemId) { $subId = [int]$r.PlmSubItemId }
+        elseif ($null -ne $r.PSObject.Properties['SubItemId'] -and $null -ne $r.SubItemId) { $subId = [int]$r.SubItemId }
+        if (-not $tabId -or -not $subId) { continue }
+        $appTable = if ($r.AppTable -eq $rootSuffix) { $prefix + $rootSuffix } else { $prefix + $r.AppTable }
+        $key = "$tabId|$subId"
+        if (-not $map.ContainsKey($key)) {
+            $map[$key] = [pscustomobject]@{
+                AppTableName  = $appTable
+                AppColumnName = [string]$r.AppColumn
+            }
+        }
+    }
+    return $map
+}
+
+function Convert-PlmSpansToAppColSpans([int[]]$Spans) {
+    # Flat [int[]] App colSpans (sum = 24). Use -NoEnumerate so 1-cell rows stay [int[]]
+    # without nesting (plain `return ,$arr` + caller `@()` made $colSpans[i] an Object[]).
+    if (-not $Spans -or $Spans.Count -eq 0) {
+        Write-Output -NoEnumerate ([int[]]@())
+        return
+    }
+    $total = ($Spans | Measure-Object -Sum).Sum
+    if ($total -le 0) { $total = $Spans.Count }
+    $raw = [System.Collections.Generic.List[int]]::new()
+    foreach ($s in $Spans) {
+        [void]$raw.Add([Math]::Max(1, [int][Math]::Floor(24.0 * $s / $total)))
+    }
+    $sum = ($raw | Measure-Object -Sum).Sum
+    $diff = 24 - $sum
+    $i = 0
+    while ($diff -ne 0 -and $raw.Count -gt 0) {
+        $idx = $i % $raw.Count
+        if ($diff -gt 0) { $raw[$idx]++; $diff-- }
+        elseif ($raw[$idx] -gt 1) { $raw[$idx]--; $diff++ }
+        $i++
+        if ($i -gt 1000) { break }
+    }
+    Write-Output -NoEnumerate ([int[]]$raw.ToArray())
+}
+
+function New-FormLayoutFieldNode($lookup, [int]$Height = 0) {
+    $node = [ordered]@{
+        type       = 'field'
+        tableName  = [string]$lookup.AppTableName
+        columnName = [string]$lookup.AppColumnName
+        colSpan    = 24
+    }
+    if ($Height -gt 0) { $node.height = $Height }
+    return $node
+}
+
+function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemMetaMap) {
+    # Returns @{ formLayout; formLayoutMeta } or $null when no PLM cells.
+    if (-not $layoutMap -or -not $layoutMap.ContainsKey($TabId)) { return $null }
+    $cells = @($layoutMap[$TabId])
+    if ($cells.Count -eq 0) { return $null }
+
+    $rowsGrouped = $cells | Group-Object -Property RowIndex | Sort-Object { [int]$_.Name }
+    $rootItems = [System.Collections.Generic.List[object]]::new()
+    $fieldCount = 0
+    $blockCount = 0
+    $seenBlocks = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+
+    foreach ($rowGroup in $rowsGrouped) {
+        $rowCells = @($rowGroup.Group | Sort-Object ColumnIndex, LayoutId)
+        $spans = [int[]]@($rowCells | ForEach-Object { [int]$_.ColumnSpan })
+        $colSpans = Convert-PlmSpansToAppColSpans $spans
+        if ($null -eq $colSpans) { $colSpans = [int[]]@() }
+        elseif ($colSpans -isnot [int[]]) { $colSpans = [int[]]@($colSpans) }
+        $rowChildren = [System.Collections.Generic.List[object]]::new()
+
+        for ($ci = 0; $ci -lt $rowCells.Count; $ci++) {
+            $cell = $rowCells[$ci]
+            $cellColSpan = if ($ci -lt $colSpans.Length) { [int]$colSpans[$ci] } else { 1 }
+            $cellChildren = [System.Collections.Generic.List[object]]::new()
+
+            foreach ($block in @($cell.Blocks | Sort-Object Sort, LayoutItemId)) {
+                if ($block.IsChildTableContainer) { continue } # grids / child containers → Auto bottom tabs
+                $blockFieldRows = [System.Collections.Generic.List[object]]::new()
+                foreach ($si in @($block.SubItems | Sort-Object Sort, SubItemId)) {
+                    if ([int]$si.ControlType -eq 6) { continue } # Grid sub-item
+                    $metaKey = "$TabId|$($si.SubItemId)"
+                    if ($subItemMetaMap -and $subItemMetaMap.ContainsKey($metaKey)) {
+                        $m = $subItemMetaMap[$metaKey]
+                        if ($m -and [int]$m.ControlType -eq 6) { continue }
+                    }
+                    if (-not $fieldLookup.ContainsKey($metaKey)) { continue }
+                    $lookup = $fieldLookup[$metaKey]
+                    $h = 0
+                    if ($si.ImageHeight -match '^\d+$') { $h = [int]$si.ImageHeight }
+                    [void]$blockFieldRows.Add([ordered]@{
+                        type = 'row'
+                        children = @(,(New-FormLayoutFieldNode $lookup $h))
+                    })
+                    $fieldCount++
+                }
+                if ($blockFieldRows.Count -eq 0) { continue }
+
+                $title = $block.LabelText
+                if ([string]::IsNullOrWhiteSpace($title)) { $title = $block.BlockName }
+                if (-not [string]::IsNullOrWhiteSpace($title)) {
+                    $bk = if ($block.BlockId) { [string]$block.BlockId } else { $title }
+                    if ($seenBlocks.Add($bk)) { $blockCount++ }
+                }
+
+                if (@($cell.Blocks).Count -eq 1 -and [string]::IsNullOrWhiteSpace($title)) {
+                    foreach ($fr in $blockFieldRows) { [void]$cellChildren.Add($fr) }
+                }
+                else {
+                    $stack = [ordered]@{
+                        type             = 'stack'
+                        displayName      = if ([string]::IsNullOrWhiteSpace($title)) { 'Fields' } else { $title }
+                        colSpan          = 24
+                        defaultNbColumns = 1
+                        children         = @($blockFieldRows.ToArray())
+                    }
+                    [void]$cellChildren.Add($stack)
+                }
+            }
+
+            if ($cellChildren.Count -eq 0) { continue }
+            [void]$rowChildren.Add([ordered]@{
+                type             = 'stack'
+                colSpan          = $cellColSpan
+                defaultNbColumns = 1
+                children         = @($cellChildren.ToArray())
+            })
+        }
+
+        if ($rowChildren.Count -eq 0) { continue }
+        [void]$rootItems.Add([ordered]@{
+            type     = 'row'
+            children = @($rowChildren.ToArray())
+        })
+    }
+
+    $meta = [ordered]@{
+        source          = 'plmTabDesign'
+        plmTabId        = $TabId
+        gridLayoutMode  = 'autoBottomSubTabs'
+        blockCount      = $blockCount
+        fieldCount      = $fieldCount
+        layoutCellCount = $cells.Count
+    }
+
+    if ($rootItems.Count -eq 0) {
+        return [ordered]@{
+            formLayout = $null
+            formLayoutMeta = $meta
+        }
+    }
+
+    return [ordered]@{
+        formLayout = [ordered]@{
+            defaultNbColumns = 24
+            items            = @($rootItems.ToArray())
+        }
+        formLayoutMeta = $meta
+    }
+}
+
 function Apply-PlmFieldMetadata($fieldRow, $subItemMetaMap, $gridColMetaMap) {
     $gridBackedKind = $fieldRow.FieldKind -eq 'GridColumn' -or $fieldRow.FieldKind -eq 'GrandchildPivot' -or $fieldRow.FieldKind -eq 'BomColorwayDwSlot'
     if ($gridBackedKind -and $null -ne $fieldRow.PlmGridId) {
@@ -435,7 +710,7 @@ function Fix-BomColorwayBindingsJsonArray([string]$json) {
     return $json
 }
 
-function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subItemMetaMap, $gridColMetaMap, $tabGridVisibleMap, $layoutSubItemSet, $childTabIds, $bomColorwayPivotBindings) {
+function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subItemMetaMap, $gridColMetaMap, $tabGridVisibleMap, $layoutSubItemSet, $childTabIds, $bomColorwayPivotBindings, $tabDesignLayoutMap) {
     $prefix = $config.tablePrefixDefault
     if (-not $prefix.EndsWith('_')) { $prefix += '_' }
     $rootSuffix = $config.rootTableSuffix
@@ -571,7 +846,7 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
             }
         }
 
-        $transactions += [ordered]@{
+        $txEntry = [ordered]@{
             plmTabId         = [int]$tab.tabId
             plmTabName       = $tabName
             integrationId    = "Tab_$($tab.tabId)"
@@ -586,6 +861,34 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
                 childUnits    = @($childUnits.ToArray())
             }
         }
+
+        # Portable formLayout from PLM Tab Design (non-grid only). Grids → Auto bottom sub-tabs at APPLY.
+        if ($tabDesignLayoutMap -and $script:PlmFormFieldLookup) {
+            $fl = Build-PlmTabFormLayout ([int]$tab.tabId) $tabDesignLayoutMap $script:PlmFormFieldLookup $subItemMetaMap
+            if ($fl) {
+                if ($fl.formLayout) { $txEntry.formLayout = $fl.formLayout }
+                if ($fl.formLayoutMeta) { $txEntry.formLayoutMeta = $fl.formLayoutMeta }
+                elseif (-not $fl.formLayout) {
+                    $txEntry.formLayoutMeta = [ordered]@{
+                        source = 'none'
+                        plmTabId = [int]$tab.tabId
+                        gridLayoutMode = 'autoBottomSubTabs'
+                        blockCount = 0
+                        fieldCount = 0
+                        layoutCellCount = 0
+                    }
+                }
+            }
+        }
+        else {
+            $txEntry.formLayoutMeta = [ordered]@{
+                source = 'none'
+                plmTabId = [int]$tab.tabId
+                gridLayoutMode = 'autoBottomSubTabs'
+            }
+        }
+
+        $transactions += $txEntry
     }
 
     # F2: emit FIT ROUND child transaction (Root = TchpFitRound) when techPack.fitRoundTransaction present.
@@ -2479,7 +2782,15 @@ Write-Host "  Tab grid column rows: $($tabGridVisibleMap.Count)"
 Write-Host "Loading PLM pdmTabLayoutSubitem (Tab Design layer)..."
 $layoutSubItemSet = Get-PlmTabLayoutSubItemSet $tabIdsForExtra
 Write-Host "  Tab layout sub-item placements: $($layoutSubItemSet.Count)"
-$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet $childTabIds $bomColorwayPivotBindings
+Write-Host "Loading PLM Tab Design layout tree (cells/blocks/sub-items) for formLayout..."
+$tabDesignLayoutMap = Get-PlmTabDesignLayoutMap $tabIdsForExtra
+Write-Host "  Tabs with Tab Design cells: $($tabDesignLayoutMap.Keys.Count)"
+$prefixForLookup = $config.tablePrefixDefault
+if (-not $prefixForLookup.EndsWith('_')) { $prefixForLookup += '_' }
+$rootSuffixForLookup = $config.rootTableSuffix
+$script:PlmFormFieldLookup = Build-FieldLookupByTabSubItem $allFieldRows $prefixForLookup $rootSuffixForLookup
+Write-Host "  Form field lookup entries: $($script:PlmFormFieldLookup.Count)"
+$blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet $childTabIds $bomColorwayPivotBindings $tabDesignLayoutMap
 # Full blueprint stays in memory only. Disk: per-tab fragments + Assemble shell (no duplicate TX/fields).
 
 # Per-tab blueprint fragments (TX + fields; no Search/Nav — those are Assemble shell).
