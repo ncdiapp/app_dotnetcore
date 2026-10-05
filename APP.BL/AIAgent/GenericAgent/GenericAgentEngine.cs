@@ -126,6 +126,18 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                     catch (Exception swallowed) { SwallowLog.Write(swallowed, "catalog inject must not fail the run"); }
                 }
 
+                // If this chat already fetched get_database_schema for a DS, tell the model not to re-call.
+                if (!string.IsNullOrWhiteSpace(resolvedChatKey))
+                {
+                    try
+                    {
+                        var schemaHint = AgentSchemaCacheBL.BuildSessionPromptHint(resolvedChatKey);
+                        if (!string.IsNullOrWhiteSpace(schemaHint))
+                            systemPrompt = (systemPrompt ?? "") + schemaHint;
+                    }
+                    catch (Exception swallowed) { SwallowLog.Write(swallowed, "schema session hint must not fail the run"); }
+                }
+
                 // Per-session instance pool keeps stateful plugin instances (e.g. SchemaDesignerPlugin)
                 // alive across multiple tool calls within the same agent run.
                 var instancePool = new Dictionary<string, object>(StringComparer.Ordinal);

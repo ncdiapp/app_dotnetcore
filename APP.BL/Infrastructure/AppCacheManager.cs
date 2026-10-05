@@ -774,6 +774,12 @@ namespace App.BL
 
                 _dictRegisterIdTableBaseTable[dataSourceRegisterId] =
                     new CacheEntry<Dictionary<string, DatabaseTable>>(tableDict, SchemaCacheTtl);
+
+                if (isForceRefreshCache)
+                {
+                    try { App.BL.AIAgent.GenericAgent.AgentSchemaCacheBL.InvalidateDataSource(dataSourceRegisterId); }
+                    catch (Exception invEx) { Logger.Warn(invEx, "Agent schema text cache invalidate failed for DS {0}", dataSourceRegisterId); }
+                }
             }
             catch (Exception ex)
             {

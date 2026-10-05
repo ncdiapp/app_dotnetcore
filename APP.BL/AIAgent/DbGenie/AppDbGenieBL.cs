@@ -1042,12 +1042,24 @@ Be concise and build the query directly without unnecessary back-and-forth.";
         #region Schema Context from Database
 
         /// <summary>
-        /// Gets schema context from a data source
+        /// Gets schema context from a data source.
+        /// Prefers AppCacheManager table cache (shared with App UI); falls back to INFORMATION_SCHEMA.
         /// </summary>
         public static async Task<List<DbGenieTableMetadataDto>> GetSchemaContextAsync(int dataSourceRegisterId)
         {
             return await Task.Run(() =>
             {
+                try
+                {
+                    var fromApp = TryBuildFromAppSchemaCache(dataSourceRegisterId);
+                    if (fromApp != null && fromApp.Count > 0)
+                        return fromApp;
+                }
+                catch (Exception)
+                {
+                    // Fall through to INFORMATION_SCHEMA
+                }
+
                 var tables   = new List<DbGenieTableMetadataDto>();
                 var tableDict = new Dictionary<string, DbGenieTableMetadataDto>(StringComparer.OrdinalIgnoreCase);
 
@@ -1055,9 +1067,8 @@ Be concise and build the query directly without unnecessary back-and-forth.";
                 {
                     var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceRegisterId);
 
-                    // Query ALL tables/views + their columns directly from INFORMATION_SCHEMA.
-                    // This is the authoritative source — reflects the real DB, not just
-                    // what is registered in the AppAI system (so AppTransaction, etc. are included).
+                    // Fallback: query ALL tables/views + columns from INFORMATION_SCHEMA
+                    // when App schema cache is empty or unavailable.
                     const string colQuery = @"
 SELECT
     c.TABLE_SCHEMA,
@@ -1113,7 +1124,7 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
                 }
                 catch (Exception)
                 {
-                    // Fall back to app-registered tables if INFORMATION_SCHEMA query fails
+                    // Last resort: app-registered tables only
                     try
                     {
                         var dbTables = AppMetaDataBL.GetSaasDataSourceTableAndViewList(dataSourceRegisterId, null, null);
@@ -1139,6 +1150,56 @@ ORDER BY c.TABLE_SCHEMA, c.TABLE_NAME, c.ORDINAL_POSITION";
 
                 return tables;
             }).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Map AppCacheManager DatabaseTable dictionary into DbGenie DTOs (shared App ↔ Agent schema source).
+        /// </summary>
+        private static List<DbGenieTableMetadataDto> TryBuildFromAppSchemaCache(int dataSourceRegisterId)
+        {
+            if (dataSourceRegisterId <= 0) return null;
+
+            var dict = AppCacheManagerBL.GetDictOwnerTablenameDataTable(dataSourceRegisterId);
+            if (dict == null || dict.Count == 0) return null;
+
+            var tables = new List<DbGenieTableMetadataDto>(dict.Count);
+            foreach (var table in dict.Values
+                .Where(t => t != null && !string.IsNullOrWhiteSpace(t.Name))
+                .OrderBy(t => t.SchemaOwner ?? "", StringComparer.OrdinalIgnoreCase)
+                .ThenBy(t => t.Name, StringComparer.OrdinalIgnoreCase))
+            {
+                var meta = new DbGenieTableMetadataDto
+                {
+                    Name = table.Name,
+                    SchemaOwner = table.SchemaOwner,
+                    Columns = new List<DbGenieColumnMetadataDto>(),
+                    Relationships = new List<DbGenieRelationshipMetadataDto>()
+                };
+
+                if (table.Columns != null)
+                {
+                    foreach (var col in table.Columns.OrderBy(c => c.Ordinal))
+                    {
+                        if (col == null || string.IsNullOrWhiteSpace(col.Name)) continue;
+                        meta.Columns.Add(new DbGenieColumnMetadataDto
+                        {
+                            Name = col.Name,
+                            DataType = col.DbDataType,
+                            Length = col.Length,
+                            Precision = col.Precision,
+                            Scale = col.Scale,
+                            IsNullable = col.Nullable,
+                            IsPrimaryKey = col.IsPrimaryKey,
+                            IsAutoIncrement = col.IsAutoNumber,
+                            DefaultValue = col.DefaultValue
+                        });
+                    }
+                }
+
+                tables.Add(meta);
+            }
+
+            return tables.Count > 0 ? tables : null;
         }
 
         #endregion

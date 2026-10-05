@@ -600,6 +600,8 @@ ELSE
                         P(fixture, "@S", skillKey.Trim()),
                         P(fixture, "@U", userId)
                     });
+                if (n > 0)
+                    AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
                 return n > 0;
             }
             catch (Exception ex)
@@ -625,6 +627,8 @@ ELSE
                         P(fixture, "@S", skillKey.Trim()),
                         P(fixture, "@U", userId)
                     });
+                if (n > 0)
+                    AgentSchemaCacheBL.ClearSession(sessionKey.Trim());
                 return n > 0;
             }
             catch (Exception ex)
