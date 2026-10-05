@@ -257,8 +257,13 @@ public static class DwBlueprintAppConfigPackBuilder
 
         return new AppConfigPackFormLayoutDto
         {
-            DefaultNbColumns = tx?.FormLayout?.DefaultNbColumns ?? 24,
-            DefaultWidth = tx?.FormLayout?.DefaultWidth,
+            // PLM Tab Design: DefaultNbColumns = max cells in a PLM row; DefaultWidth = cols * 400.
+            DefaultNbColumns = tx?.FormLayout?.DefaultNbColumns > 0
+                ? tx.FormLayout.DefaultNbColumns
+                : 24,
+            DefaultWidth = !string.IsNullOrWhiteSpace(tx?.FormLayout?.DefaultWidth)
+                ? tx.FormLayout.DefaultWidth
+                : null,
             Items = items
         };
     }

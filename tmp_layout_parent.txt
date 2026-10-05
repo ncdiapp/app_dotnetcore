@@ -1,0 +1,26 @@
+FormLayoutItemID UIGridLayoutParentID ParentHostID CurrentHostID TransactionFieldID WidgetItemType FlowOrGridLayoutSortOrder DisplayTitle
+---------------- -------------------- ------------ ------------- ------------------ -------------- ------------------------- ------------
+25 NULL NULL aff8f439e1 NULL 101 1 NULL
+26 25 aff8f439e1 e006cd01ab NULL 102 1 NULL
+27 26 e006cd01ab 12408efa7b NULL 102 1 ProductSketch
+28 27 12408efa7b c55fae35a9 NULL 101 1 NULL
+29 28 c55fae35a9 ea62e9bb5d 6 5 1 NULL
+30 25 aff8f439e1 7659b9b5d6 NULL 102 2 NULL
+31 30 7659b9b5d6 b690bedb98 NULL 102 1 ProductCode
+32 31 b690bedb98 1bccdab84a NULL 101 1 NULL
+33 32 1bccdab84a 19b2b11770 7 2 1 NULL
+34 31 b690bedb98 a9b3f8c5a7 NULL 101 2 NULL
+35 34 a9b3f8c5a7 fa24d826ac 8 4 1 NULL
+36 31 b690bedb98 cdfcb41c9f NULL 101 3 NULL
+37 36 cdfcb41c9f aabc63b58d 9 4 1 NULL
+38 30 7659b9b5d6 596d039cb4 NULL 102 2 Image Type
+39 38 596d039cb4 bd53039fab NULL 101 1 NULL
+40 39 bd53039fab 4e71cce555 12 1 1 NULL
+41 30 7659b9b5d6 cec181e3f2 NULL 102 3 Keywords
+42 41 cec181e3f2 0508a94cb2 NULL 101 1 NULL
+43 42 0508a94cb2 80e1e23b85 13 4 1 NULL
+44 30 7659b9b5d6 2a380b742a NULL 102 4 Product Create/Revise Date
+45 44 2a380b742a 779aced85f NULL 101 1 NULL
+46 45 779aced85f 3d68acf10f 10 2 1 NULL
+47 44 2a380b742a 4ca89d065f NULL 101 2 NULL
+48 47 4ca89d065f 597086e8f0 11 2 1 NULL

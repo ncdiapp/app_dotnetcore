@@ -395,9 +395,20 @@ function Build-FieldLookupByTabSubItem($allFieldRows, $prefix, $rootSuffix) {
     return $map
 }
 
+function New-FormLayoutFieldNode($lookup, [int]$Height = 0) {
+    $node = [ordered]@{
+        type       = 'field'
+        tableName  = [string]$lookup.AppTableName
+        columnName = [string]$lookup.AppColumnName
+        colSpan    = 24
+    }
+    if ($Height -gt 0) { $node.height = $Height }
+    return $node
+}
+
 function Convert-PlmSpansToAppColSpans([int[]]$Spans) {
-    # Flat [int[]] App colSpans (sum = 24). Use -NoEnumerate so 1-cell rows stay [int[]]
-    # without nesting (plain `return ,$arr` + caller `@()` made $colSpans[i] an Object[]).
+    # Map PLM cell ColumnSpan proportions onto APP 24-grid (relative only; absolute px ignored).
+    # Use -NoEnumerate so 1-cell rows stay [int[]] without nesting.
     if (-not $Spans -or $Spans.Count -eq 0) {
         Write-Output -NoEnumerate ([int[]]@())
         return
@@ -421,19 +432,12 @@ function Convert-PlmSpansToAppColSpans([int[]]$Spans) {
     Write-Output -NoEnumerate ([int[]]$raw.ToArray())
 }
 
-function New-FormLayoutFieldNode($lookup, [int]$Height = 0) {
-    $node = [ordered]@{
-        type       = 'field'
-        tableName  = [string]$lookup.AppTableName
-        columnName = [string]$lookup.AppColumnName
-        colSpan    = 24
-    }
-    if ($Height -gt 0) { $node.height = $Height }
-    return $node
-}
-
 function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemMetaMap) {
-    # Returns @{ formLayout; formLayoutMeta } or $null when no PLM cells.
+    # PLM Tab Design → APP formLayout:
+    # - Structure follows PLM rows / cells / blocks / sub-items (not Auto Design flatten).
+    # - Form width = (max cells in any PLM row) * 400 (APP is wider than PLM ~300–350px cells).
+    # - Tree must be Section → LayoutRow → (field | Section). Wrap titled block stacks in a LayoutRow
+    #   so Form Design does not treat nested LayoutRows as leaf widgets (Placeholder bug).
     if (-not $layoutMap -or -not $layoutMap.ContainsKey($TabId)) { return $null }
     $cells = @($layoutMap[$TabId])
     if ($cells.Count -eq 0) { return $null }
@@ -442,26 +446,29 @@ function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemM
     $rootItems = [System.Collections.Generic.List[object]]::new()
     $fieldCount = 0
     $blockCount = 0
+    $maxColsInRow = 1
     $seenBlocks = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
 
     foreach ($rowGroup in $rowsGrouped) {
         $rowCells = @($rowGroup.Group | Sort-Object ColumnIndex, LayoutId)
+        if ($rowCells.Count -gt $maxColsInRow) { $maxColsInRow = $rowCells.Count }
+
         $spans = [int[]]@($rowCells | ForEach-Object { [int]$_.ColumnSpan })
         $colSpans = Convert-PlmSpansToAppColSpans $spans
         if ($null -eq $colSpans) { $colSpans = [int[]]@() }
         elseif ($colSpans -isnot [int[]]) { $colSpans = [int[]]@($colSpans) }
-        $rowChildren = [System.Collections.Generic.List[object]]::new()
 
+        $rowChildren = [System.Collections.Generic.List[object]]::new()
         for ($ci = 0; $ci -lt $rowCells.Count; $ci++) {
             $cell = $rowCells[$ci]
             $cellColSpan = if ($ci -lt $colSpans.Length) { [int]$colSpans[$ci] } else { 1 }
             $cellChildren = [System.Collections.Generic.List[object]]::new()
 
             foreach ($block in @($cell.Blocks | Sort-Object Sort, LayoutItemId)) {
-                if ($block.IsChildTableContainer) { continue } # grids / child containers → Auto bottom tabs
+                if ($block.IsChildTableContainer) { continue } # grids → Auto bottom tabs
                 $blockFieldRows = [System.Collections.Generic.List[object]]::new()
                 foreach ($si in @($block.SubItems | Sort-Object Sort, SubItemId)) {
-                    if ([int]$si.ControlType -eq 6) { continue } # Grid sub-item
+                    if ([int]$si.ControlType -eq 6) { continue }
                     $metaKey = "$TabId|$($si.SubItemId)"
                     if ($subItemMetaMap -and $subItemMetaMap.ContainsKey($metaKey)) {
                         $m = $subItemMetaMap[$metaKey]
@@ -472,7 +479,7 @@ function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemM
                     $h = 0
                     if ($si.ImageHeight -match '^\d+$') { $h = [int]$si.ImageHeight }
                     [void]$blockFieldRows.Add([ordered]@{
-                        type = 'row'
+                        type     = 'row'
                         children = @(,(New-FormLayoutFieldNode $lookup $h))
                     })
                     $fieldCount++
@@ -486,18 +493,23 @@ function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemM
                     if ($seenBlocks.Add($bk)) { $blockCount++ }
                 }
 
+                # Untitled single block: field rows can sit directly under the cell stack.
                 if (@($cell.Blocks).Count -eq 1 -and [string]::IsNullOrWhiteSpace($title)) {
                     foreach ($fr in $blockFieldRows) { [void]$cellChildren.Add($fr) }
                 }
                 else {
-                    $stack = [ordered]@{
+                    # Form Design-safe: Section(cell) → LayoutRow → Section(block) → field rows
+                    $blockStack = [ordered]@{
                         type             = 'stack'
                         displayName      = if ([string]::IsNullOrWhiteSpace($title)) { 'Fields' } else { $title }
                         colSpan          = 24
                         defaultNbColumns = 1
                         children         = @($blockFieldRows.ToArray())
                     }
-                    [void]$cellChildren.Add($stack)
+                    [void]$cellChildren.Add([ordered]@{
+                        type     = 'row'
+                        children = @(,$blockStack)
+                    })
                 }
             }
 
@@ -517,10 +529,15 @@ function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemM
         })
     }
 
+    $formWidth = [Math]::Max(1, $maxColsInRow) * 400
     $meta = [ordered]@{
         source          = 'plmTabDesign'
         plmTabId        = $TabId
         gridLayoutMode  = 'autoBottomSubTabs'
+        layoutMode      = 'plmTabDesign'
+        formWidthRule   = 'maxColsInRow * 400'
+        maxColsInRow    = $maxColsInRow
+        formWidth       = $formWidth
         blockCount      = $blockCount
         fieldCount      = $fieldCount
         layoutCellCount = $cells.Count
@@ -528,14 +545,15 @@ function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemM
 
     if ($rootItems.Count -eq 0) {
         return [ordered]@{
-            formLayout = $null
+            formLayout     = $null
             formLayoutMeta = $meta
         }
     }
 
     return [ordered]@{
         formLayout = [ordered]@{
-            defaultNbColumns = 24
+            defaultNbColumns = $maxColsInRow
+            defaultWidth     = [string]$formWidth
             items            = @($rootItems.ToArray())
         }
         formLayoutMeta = $meta
@@ -1523,13 +1541,23 @@ function Sanitize-AppColumnName([string]$name) {
     return $s
 }
 
-function Get-AppColumnNames($fieldRows) {
+function Get-AppColumnNames($fieldRows, [string[]]$ReservedNames = $null) {
     $stemCounts = @{}
     foreach ($r in $fieldRows) {
         if (-not $stemCounts.ContainsKey($r.Stem)) { $stemCounts[$r.Stem] = 0 }
         $stemCounts[$r.Stem]++
     }
     $used = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    # APP structural columns added by Build-CreateTableBlock — never let DW stems collide
+    # (e.g. grid meta column Sort__123 → Stem Sort vs system [Sort] INT on grid tables).
+    foreach ($n in @('ReferenceId', 'RowId', 'Sort', 'AppCreatedDate', 'AppModifiedDate', 'FitRoundId')) {
+        [void]$used.Add($n)
+    }
+    if ($ReservedNames) {
+        foreach ($n in $ReservedNames) {
+            if (-not [string]::IsNullOrWhiteSpace($n)) { [void]$used.Add($n.Trim()) }
+        }
+    }
     foreach ($r in $fieldRows) {
         $raw = if ($stemCounts[$r.Stem] -eq 1) { [string]$r.Stem } else { [string]$r.NamePart }
         $app = Sanitize-AppColumnName $raw
@@ -1539,7 +1567,33 @@ function Get-AppColumnNames($fieldRows) {
             $app = $base + '_' + $n
             $n++
         }
+        if ($app -ne (Sanitize-AppColumnName $raw)) {
+            Write-Host "  AppColumn '$raw' renamed to '$app' (reserved/duplicate)"
+        }
         $r | Add-Member -NotePropertyName AppColumn -NotePropertyValue $app -Force
+    }
+    return $fieldRows
+}
+
+function Ensure-FieldRowsAvoidReserved($fieldRows, [string[]]$ReservedNames) {
+    if (-not $fieldRows -or -not $ReservedNames -or $ReservedNames.Count -eq 0) { return $fieldRows }
+    $used = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($n in $ReservedNames) {
+        if (-not [string]::IsNullOrWhiteSpace($n)) { [void]$used.Add($n.Trim()) }
+    }
+    foreach ($r in @($fieldRows)) {
+        if (-not $r -or [string]::IsNullOrWhiteSpace($r.AppColumn)) { continue }
+        $app = [string]$r.AppColumn
+        $base = $app
+        $n = 2
+        while (-not $used.Add($app)) {
+            $app = $base + '_' + $n
+            $n++
+        }
+        if ($app -ne [string]$r.AppColumn) {
+            Write-Host "  AppColumn '$($r.AppColumn)' renamed to '$app' (table system column)"
+            $r.AppColumn = $app
+        }
     }
     return $fieldRows
 }
@@ -1634,6 +1688,14 @@ function Build-CreateTableBlock([string]$LogicalTable, $fieldRows, [string]$Unit
     #   'child'   -> 1:many under root; PK = [{LogicalTable}Id] INT IDENTITY (DB-filled),
     #                [ReferenceId] is a plain FK column (value imported, links to parent).
     #   'grid'    -> 1:many under root; PK = [RowId] INT IDENTITY, plus [ReferenceId] FK + [Sort].
+    $reserved = switch ($UnitKind) {
+        'grid' { @('RowId', 'ReferenceId', 'Sort') }
+        'child' { @("${LogicalTable}Id", 'ReferenceId') }
+        'fitRoundInfo' { @('FitRoundId', 'AppCreatedDate', 'AppModifiedDate') }
+        default { @('ReferenceId') }
+    }
+    $fieldRows = Ensure-FieldRowsAvoidReserved $fieldRows $reserved
+
     $colDefs = New-Object System.Collections.Generic.List[string]
     $pk = $null
     switch ($UnitKind) {

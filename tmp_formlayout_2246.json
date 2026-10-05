@@ -1,0 +1,4 @@
+Msg 207, Level 16, State 1, Server pc3b\MSSQLSERVER01, Line 1
+Invalid column name 'AppTransactionId'.
+Msg 207, Level 16, State 1, Server pc3b\MSSQLSERVER01, Line 1
+Invalid column name 'FormLayout'.
