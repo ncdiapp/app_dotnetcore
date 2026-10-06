@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using App.BL.AIAgent.GenericAgent;
 using APP.Framework.Plugin;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -38,11 +37,6 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
 
                 // Tiny results: leave for the model; still optional to cache for analyze continuity.
                 var ds = AgentDataAnalyzeCacheBL.Put(context.ChatSessionKey, toolName ?? toolType ?? "tool", rows);
-
-                // SP execute: push full-column grid via SSE (do not rely on LLM re-passing a column subset).
-                if (string.Equals(toolName, "stored_procedure_execute", StringComparison.OrdinalIgnoreCase))
-                    TryAutoRenderFullGrid(context, ds);
-
                 if (rows.Count < AgentDataAnalyzeCacheBL.AutoEnvelopeMinRows)
                 {
                     // Annotate without stripping — model can still see small tables (including null cells).
@@ -54,16 +48,14 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                             obj["dataset_cached"] = true;
                             obj["dataset_name"] = ds.Name;
                             obj["analysis_hint"] =
-                                $"Dataset cached as '{ds.Name}'. Grid with ALL columns was auto-pushed when possible. " +
-                                $"To re-render: data_render(ui=grid, dataset_name='{ds.Name}') — do not pass a column subset in dataJson.";
+                                $"Dataset cached as '{ds.Name}'. Call data_render ONCE with ui=grid and dataset_name='{ds.Name}' " +
+                                "(loads ALL columns including nulls). Do not pass a column subset in dataJson; do not call data_render twice.";
                             return obj.ToString(Formatting.None);
                         }
                     }
                     catch { /* keep original */ }
                     return result;
                 }
-
-                TryAutoRenderFullGrid(context, ds);
 
                 return JsonConvert.SerializeObject(new
                 {
@@ -76,47 +68,13 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                     truncated = rows.Count > AgentDataAnalyzeCacheBL.MaxCachedRows,
                     columns = ds.Columns.Select(c => c.Name).ToArray(),
                     analysis_hint =
-                        $"Dataset cached as '{ds.Name}'. Full-column grid auto-pushed when possible. " +
-                        $"Re-render with data_render(ui=grid, dataset_name='{ds.Name}'). " +
-                        "Use data_analyze for aggregations. Do not re-fetch the full table."
+                        $"Dataset cached as '{ds.Name}'. Call data_render ONCE with ui=grid and dataset_name='{ds.Name}'. " +
+                        "Use data_analyze for aggregations. Do not re-fetch or render twice."
                 }, Formatting.None);
             }
             catch
             {
                 return result;
-            }
-        }
-
-        private static void TryAutoRenderFullGrid(AgentToolContext context, AgentCachedDataset ds)
-        {
-            try
-            {
-                var onRender = AgentHitlBridge.Current?.OnDataRender;
-                if (onRender == null || ds == null) return;
-                if (!AgentDataAnalyzeCacheBL.TryExportDataJson(
-                        context.ChatSessionKey, ds.Name,
-                        out var dataJson, out var columnsJson, out var rowCount))
-                    return;
-
-                var title = string.IsNullOrWhiteSpace(ds.SourceTool)
-                    ? ds.Name
-                    : ds.SourceTool + " — " + ds.Name;
-                var evt = new APP.Components.EntityDto.AgentDataRenderEvent
-                {
-                    RenderId = Guid.NewGuid().ToString("N"),
-                    Ui = "grid",
-                    Title = title,
-                    DataJson = dataJson,
-                    ColumnsJson = columnsJson,
-                    RowCount = rowCount,
-                    Truncated = false,
-                    Timestamp = DateTime.UtcNow.ToString("o")
-                };
-                onRender(evt).ConfigureAwait(false).GetAwaiter().GetResult();
-            }
-            catch
-            {
-                /* auto-render must not fail the tool */
             }
         }
 

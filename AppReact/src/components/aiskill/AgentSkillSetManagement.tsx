@@ -25,6 +25,20 @@ const SPLIT_LEFT_DEFAULT_PX = 400;
 const SPLIT_LEFT_MIN_PX = 300;
 const SPLIT_RIGHT_MIN_PX = 280;
 
+/** Wide SQL/SP results (e.g. GetTab) need a high CapResult budget. */
+const HEAVY_DB_TOOL_NAMES = new Set(['execute_sql', 'stored_procedure_execute']);
+const MIN_MAX_TOOL_RESULT_CHARS_FOR_HEAVY_DB = 400000;
+
+function isHeavyDbToolName(name: string | null | undefined): boolean {
+    return !!name && HEAVY_DB_TOOL_NAMES.has(name.trim().toLowerCase());
+}
+
+function promptMentionsHeavyDbTools(prompt: string | null | undefined): boolean {
+    const p = (prompt || '').toLowerCase();
+    if (!p) return false;
+    return p.includes('execute_sql') || p.includes('stored_procedure_execute');
+}
+
 
 const emptySkillSet = (): AppAgentSkillSetDto => ({
     SkillKey: '', DisplayName: '', Description: '', SystemPrompt: '', CapabilityFlags: 3,
@@ -536,6 +550,19 @@ const handleSave = async () => {
                 }));
             await Promise.all(newTools.map(t => agentSkillSetSvc.UpsertTool(t).catch(() => {})));
         }
+
+        // Wide SQL/SP tool results need a high MaxToolResultChars so CapResult does not truncate.
+        const acceptsHeavyDb =
+            Array.from(aiAcceptedBuiltIns).some(isHeavyDbToolName)
+            || Array.from(aiAcceptedTools).some(k => isHeavyDbToolName(k.split('\u0001')[1]))
+            || promptMentionsHeavyDbTools(aiResult.SystemPrompt);
+        if (acceptsHeavyDb) {
+            const cur = editItem.MaxToolResultChars ?? 0;
+            if (cur < MIN_MAX_TOOL_RESULT_CHARS_FOR_HEAVY_DB) {
+                update('MaxToolResultChars', MIN_MAX_TOOL_RESULT_CHARS_FOR_HEAVY_DB);
+            }
+        }
+
         setShowAiGenerate(false);
     };
 
@@ -1305,7 +1332,16 @@ const handleSave = async () => {
                                     </button>
                                     <div className="flex-auto" />
                                     <button className={btn} onClick={() => setShowAiEdit(false)}>Cancel</button>
-                                    <button className={btn} onClick={() => { update('SystemPrompt', aiEditResult); setShowAiEdit(false); }}>
+                                    <button className={btn} onClick={() => {
+                                        update('SystemPrompt', aiEditResult);
+                                        if (promptMentionsHeavyDbTools(aiEditResult)) {
+                                            const cur = editItem.MaxToolResultChars ?? 0;
+                                            if (cur < MIN_MAX_TOOL_RESULT_CHARS_FOR_HEAVY_DB) {
+                                                update('MaxToolResultChars', MIN_MAX_TOOL_RESULT_CHARS_FOR_HEAVY_DB);
+                                            }
+                                        }
+                                        setShowAiEdit(false);
+                                    }}>
                                         <i className="fa-solid fa-check mr-1" />Apply
                                     </button>
                                 </div>
