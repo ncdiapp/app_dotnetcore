@@ -61,7 +61,7 @@ Gate-0: `list_tenant_saas_applications` + `list_tenant_data_sources` → `ask_us
 
 **Progress:** in-chat `write_shared_context` (WorkflowId, this turn) + durable `update_plm_wizard_progress` on `AppAgentSharedContext` with ScopeId=`ChatSessionKey`. PLM job table is plugin-only, not a Flyway Vxxx.
 
-**Import DW Form layout:** Phase B generator writes portable `formLayout` from PLM Tab Design (non-grid fields/blocks). APPLY appends child **Grids** as Auto Design bottom Sub Tabs. Users should not need Form Design → Reset & Auto Design for standard Template TABs.
+**Import DW Form layout:** Phase B generator writes portable `formLayout` from PLM Tab Design (width = min(cols×450, 1900)). Non-header: APPLY appends child **Grids** as Auto Design bottom Sub Tabs. Header tab: grids stay at Tab Design positions (height = PLM fixed ×1.5 when set). Users should not need Form Design → Reset & Auto Design for standard Template TABs.
 
 **Search / MassUpdate (Wave 2):** `call_agent` children. Additional Search View is the same Search menu (`mode=additional-view`); no Sibling menu item. APPLY uses `apply_agent_output_plan` with `outputsContextKey` = `plm.integration.search.outputs` or `plm.integration.massupdate.outputs`. Default Source probe/example files live under `AgentStarter/_packs/` and are copied to `FileRepository/.../AgentStarter/` when RUN_ALL is run with `CompanyId` (see `AgentStarter/README.md`).
 

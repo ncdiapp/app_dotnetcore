@@ -203,8 +203,9 @@ namespace APP.AgentPlugins.PlmImport.Dtos
         public PlmDwBlueprintUnitStructureDto UnitStructure { get; set; }
 
         /// <summary>
-        /// Portable Flex form (non-grid fields from PLM Tab Design).
-        /// Grids are appended by DwBlueprintAppConfigPackBuilder (Auto Design bottom sub-tabs).
+        /// Portable Flex form from PLM Tab Design.
+        /// Non-header: grids appended by DwBlueprintAppConfigPackBuilder (Auto Design bottom sub-tabs).
+        /// Header tab (<see cref="IsTemplateHeaderTab"/>): grids stay at Tab Design positions.
         /// </summary>
         [DataMember]
         public AppConfigPackFormLayoutDto FormLayout { get; set; }
@@ -224,8 +225,8 @@ namespace APP.AgentPlugins.PlmImport.Dtos
         public int? PlmTabId { get; set; }
 
         /// <summary>
-        /// autoBottomSubTabs = BL/ConfigPack appends child grids under a bottom TabContainer
-        /// (same UX as Form Design Reset &amp; Auto Design). Never place grids from PLM row/col.
+        /// autoBottomSubTabs = ConfigPack appends child grids under a bottom TabContainer.
+        /// headerTabDesignInline = header TX keeps grids at PLM Tab Design positions (no bottom Grids section).
         /// </summary>
         [DataMember]
         public string GridLayoutMode { get; set; } = "autoBottomSubTabs";
@@ -237,7 +238,27 @@ namespace APP.AgentPlugins.PlmImport.Dtos
         public int? FieldCount { get; set; }
 
         [DataMember]
+        public int? GridCount { get; set; }
+
+        [DataMember]
         public int? LayoutCellCount { get; set; }
+
+        /// <summary>min(maxColsInRow * 450, 1900)</summary>
+        [DataMember]
+        public string FormWidthRule { get; set; }
+
+        [DataMember]
+        public int? MaxColsInRow { get; set; }
+
+        [DataMember]
+        public int? FormWidth { get; set; }
+
+        /// <summary>APP table names already placed as type=grid in formLayout (header inline).</summary>
+        [DataMember]
+        public List<string> InlinedGridTables { get; set; }
+
+        [DataMember]
+        public bool? IsTemplateHeaderTab { get; set; }
     }
 
     [DataContract(Namespace = ContractNamespaces.Dto)]

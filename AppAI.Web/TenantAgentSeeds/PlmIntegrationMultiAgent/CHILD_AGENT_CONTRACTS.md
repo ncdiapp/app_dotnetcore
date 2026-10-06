@@ -105,7 +105,7 @@ call_agent("<SkillKey>", "<PHASE=…>. Read plm.integration.<code>.inputs. <cons
 | Phase | Message (shape) | Child writes | ROOT after return |
 |---|---|---|---|
 | A | `PHASE=A only. Read …inputs. Return DETAILED Phase A checklist… Write …phase-a. No SQL.` | `…phase-a` | HITL checklist → write `…plan` |
-| B | Prefer copy `0_ExecutionPlan.suggested.json` (Authoritative executionPlan). Chat: APPLY overview from `applyOverview`. Order: 1→2→3_00_Root→tabs/*/3_→tabs/*/4_TabBlueprint→`4_PlmDw_Assemble.json` (merge)→5_ BOM. Official generator embeds **formLayout** (PLM Tab Design, non-grid) + `formLayoutMeta.gridLayoutMode=autoBottomSubTabs` on each TabBlueprint. | `…outputs` | Show Apply when `1_`+`4_PlmDw_Assemble.json` (or alias) + tabs exist |
+| B | Prefer copy `0_ExecutionPlan.suggested.json` (Authoritative executionPlan). Chat: APPLY overview from `applyOverview`. Order: 1→2→3_00_Root→tabs/*/3_→tabs/*/4_TabBlueprint→`4_PlmDw_Assemble.json` (merge)→5_ BOM. Official generator embeds **formLayout** (PLM Tab Design; width min(cols×450,1900); non-header `gridLayoutMode=autoBottomSubTabs`; header `headerTabDesignInline` keeps grids at Tab Design positions). | `…outputs` | Show Apply when `1_`+`4_PlmDw_Assemble.json` (or alias) + tabs exist |
 | APPLY | `PHASE=APPLY` once. Tab continueOnError; assemble filters to successful tabs. BL applies formLayout then appends Auto Design bottom Grid Sub Tabs. | apply-log + tab-import-status + AppPlmDwTabImportStatus | ok + executed==planned → doneIds; **do not** send user to Form Design Auto Design |
 | APPLY_TABS | Retry Failed tabs only then assemble | same | update doneIds if ok |
 

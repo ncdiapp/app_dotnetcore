@@ -775,7 +775,7 @@ PK / link columns (`FitMeasurementId`, `FitRoundId`) stay hidden.
 
 **5) Phase D / Blueprint**
 
-`ApplyTechPackFitRoundMeasurementGoldenFieldTemplate` (after FitRoundInfo golden): ensure view entity, temp fields + subscribe, Diff assignment formula, Calculate button. Prefer portable formLayout from PLM Tab Design (non-grid) + Auto Design bottom Grid Sub Tabs on APPLY; do not insert orphan flat AppFormLayoutItem rows.
+`ApplyTechPackFitRoundMeasurementGoldenFieldTemplate` (after FitRoundInfo golden): ensure view entity, temp fields + subscribe, Diff assignment formula, Calculate button. Prefer portable formLayout from PLM Tab Design (width min(cols×450,1900); non-header Auto Design bottom Grid Sub Tabs; header tab grids stay at Tab Design positions) on APPLY; do not insert orphan flat AppFormLayoutItem rows.
 
 Optional later: filter PomSpecLine DDL to current round’s `StyleSpecId` (not required for MVP if grid rows are already seeded by import).
 

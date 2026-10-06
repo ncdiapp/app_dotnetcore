@@ -469,8 +469,9 @@ After physical tables are populated (steps 1–3), open **PLM Data Import → St
 3. **Execute Insert** or **Execute Update** — `ExecuteDwBlueprintConfig`
 
 **Form layout on Execute (locked):**
-- Each `tabs/{tabId}/4_TabBlueprint.json` may include portable `formLayout` from PLM Tab Design (`pdmTabLayout` → Item → Subitem) for **non-grid** fields/blocks.
-- Child **Grids** are **not** placed from PLM coordinates. ConfigPack builder appends Auto Design bottom `TabContainer` + Sub Tabs (`formLayoutMeta.gridLayoutMode = autoBottomSubTabs`).
+- Each `tabs/{tabId}/4_TabBlueprint.json` may include portable `formLayout` from PLM Tab Design (`pdmTabLayout` → Item → Subitem). Form width = `min(maxColsInRow * 450, 1900)`.
+- Non-header: child **Grids** are **not** placed from PLM coordinates. ConfigPack builder appends Auto Design bottom `TabContainer` + Sub Tabs (`formLayoutMeta.gridLayoutMode = autoBottomSubTabs`).
+- **Header tab** (`isTemplateHeaderTab`): grids stay at Tab Design positions (`gridLayoutMode = headerTabDesignInline`); no bottom Grids section. If PLM Style/Image height is a fixed px value, APP grid height = PLM × 1.5.
 - Do **not** insert orphan flat `AppFormLayoutItem` rows. Prefer ConfigPack `ReplaceFlexFormLayout`.
 - Missing Tab Design → full Auto Design fallback for that TX.
 

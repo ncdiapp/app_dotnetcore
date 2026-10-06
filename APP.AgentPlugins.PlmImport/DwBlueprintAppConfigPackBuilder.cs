@@ -222,7 +222,8 @@ public static class DwBlueprintAppConfigPackBuilder
             Fields = new List<AppConfigPackFieldDto>()
         };
 
-        // PLM Tab Design → portable formLayout (fields). Grids always Auto Design bottom sub-tabs.
+        // PLM Tab Design → portable formLayout. Non-header: Auto Design bottom grid sub-tabs.
+        // Header tab: grids already inlined at Tab Design positions — skip bottom Grids section.
         txDto.FormLayout = BuildHybridFormLayout(tx, unit);
         if (txDto.FormLayout != null)
             txDto.FormMode = "Flex";
@@ -231,8 +232,8 @@ public static class DwBlueprintAppConfigPackBuilder
     }
 
     /// <summary>
-    /// Merge PLM non-grid formLayout with Auto Design-style bottom Grid TabContainer.
-    /// Grid units are never placed from PLM row/col coordinates.
+    /// Merge PLM formLayout with Auto Design-style bottom Grid TabContainer (non-header only).
+    /// Header tabs (<c>headerTabDesignInline</c>) keep grids at PLM Tab Design positions.
     /// </summary>
     private static AppConfigPackFormLayoutDto BuildHybridFormLayout(
         PlmDwBlueprintTransactionDto tx,
@@ -248,16 +249,24 @@ public static class DwBlueprintAppConfigPackBuilder
             }
         }
 
-        var gridSection = BuildAutoBottomGridSection(unit);
-        if (gridSection != null)
-            items.Add(gridSection);
+        bool isHeaderInline =
+            tx?.IsTemplateHeaderTab == true
+            || string.Equals(tx?.FormLayoutMeta?.GridLayoutMode, "headerTabDesignInline", StringComparison.OrdinalIgnoreCase);
+
+        if (!isHeaderInline)
+        {
+            var inlined = CollectInlinedGridTableNames(tx);
+            var gridSection = BuildAutoBottomGridSection(unit, inlined);
+            if (gridSection != null)
+                items.Add(gridSection);
+        }
 
         if (items.Count == 0)
             return null;
 
         return new AppConfigPackFormLayoutDto
         {
-            // PLM Tab Design: DefaultNbColumns = max cells in a PLM row; DefaultWidth = cols * 400.
+            // PLM Tab Design: DefaultNbColumns = max cells in a PLM row; DefaultWidth = min(cols*450, 1900).
             DefaultNbColumns = tx?.FormLayout?.DefaultNbColumns > 0
                 ? tx.FormLayout.DefaultNbColumns
                 : 24,
@@ -266,6 +275,40 @@ public static class DwBlueprintAppConfigPackBuilder
                 : null,
             Items = items
         };
+    }
+
+    private static HashSet<string> CollectInlinedGridTableNames(PlmDwBlueprintTransactionDto tx)
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (tx?.FormLayoutMeta?.InlinedGridTables != null)
+        {
+            foreach (var t in tx.FormLayoutMeta.InlinedGridTables)
+            {
+                if (!string.IsNullOrWhiteSpace(t))
+                    set.Add(t.Trim());
+            }
+        }
+        CollectGridTableNamesFromItems(tx?.FormLayout?.Items, set);
+        return set;
+    }
+
+    private static void CollectGridTableNamesFromItems(
+        IEnumerable<AppConfigPackFormLayoutItemDto> items,
+        HashSet<string> set)
+    {
+        if (items == null || set == null)
+            return;
+        foreach (var node in items)
+        {
+            if (node == null)
+                continue;
+            if (string.Equals(node.Type, "grid", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(node.TableName))
+            {
+                set.Add(node.TableName.Trim());
+            }
+            CollectGridTableNamesFromItems(node.Children, set);
+        }
     }
 
     private static readonly HashSet<string> FormLayoutOmitGridTables = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
@@ -279,13 +322,17 @@ public static class DwBlueprintAppConfigPackBuilder
     /// Same placement as <c>AppFormFlexLayoutBL.BuildAppFormDefaultLayout</c> grid section:
     /// bottom row → stack → TabContainer (when 2+ grids) or plain grid rows (when 1).
     /// </summary>
-    private static AppConfigPackFormLayoutItemDto BuildAutoBottomGridSection(AppConfigPackUnitStructureDto unit)
+    private static AppConfigPackFormLayoutItemDto BuildAutoBottomGridSection(
+        AppConfigPackUnitStructureDto unit,
+        HashSet<string> excludeTableNames = null)
     {
         var grids = (unit?.ChildUnits ?? Enumerable.Empty<AppConfigPackChildUnitDto>())
             .Where(c => c != null && !string.IsNullOrWhiteSpace(c.TableName))
             .Where(c => !FormLayoutOmitGridTables.Contains(c.TableName.Trim())
                 && !c.TableName.Trim().StartsWith("View_TchpStyleActive", StringComparison.OrdinalIgnoreCase)
                 && !c.TableName.Trim().StartsWith("View_TchpSimpleQc", StringComparison.OrdinalIgnoreCase))
+            .Where(c => excludeTableNames == null
+                || !excludeTableNames.Contains(c.TableName.Trim()))
             .ToList();
         if (grids.Count == 0)
             return null;

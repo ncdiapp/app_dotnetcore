@@ -129,7 +129,7 @@ function Get-PlmSubItemMetadataMap([int[]]$TabIds) {
     if (-not $TabIds -or $TabIds.Count -eq 0) { return $map }
     $inList = ($TabIds | Sort-Object -Unique | ForEach-Object { [string]$_ }) -join ','
     $q = @"
-SELECT tb.TabID, bsi.SubItemID, bsi.ControlType, bsi.EntityId, bsi.Nbdecimal, bsi.SubItemName
+SELECT tb.TabID, bsi.SubItemID, bsi.ControlType, bsi.EntityId, bsi.Nbdecimal, bsi.SubItemName, bsi.GridID
 FROM dbo.PdmTabBlock tb
 INNER JOIN dbo.pdmBlockSubItem bsi ON bsi.BlockID = tb.BlockID
 WHERE tb.TabID IN ($inList)
@@ -149,6 +149,7 @@ ORDER BY tb.TabID, tb.OrderId, bsi.SortOrder, bsi.SubItemID
             EntityId     = Parse-SqlIntOrNull $parts[3]
             Nbdecimal    = Parse-SqlIntOrNull $parts[4]
             SubItemName  = $subItemName
+            GridId       = if ($parts.Count -ge 7) { Parse-SqlIntOrNull $parts[6] } else { $null }
         }
     }
     return $map
@@ -302,7 +303,7 @@ ORDER BY l.TabID, l.RowIndex, l.ColumnIndex, l.LayoutID
 
     $itemsById = @{}
     $qItems = @"
-SELECT li.LayoutItemID, li.LayoutID, li.BlockID, ISNULL(li.Sort,0), ISNULL(b.Name,N''), ISNULL(li.LabelText,N''), ISNULL(CAST(li.IsChildTableContainer AS INT),0)
+SELECT li.LayoutItemID, li.LayoutID, li.BlockID, ISNULL(li.Sort,0), ISNULL(b.Name,N''), ISNULL(li.LabelText,N''), ISNULL(CAST(li.IsChildTableContainer AS INT),0), ISNULL(li.Style,N'')
 FROM dbo.pdmTabLayout l
 INNER JOIN dbo.pdmTabLayoutItem li ON li.LayoutID = l.LayoutID
 LEFT JOIN dbo.pdmBlock b ON b.BlockID = li.BlockID
@@ -324,21 +325,24 @@ ORDER BY l.TabID, l.RowIndex, l.ColumnIndex, ISNULL(li.Sort,0), li.LayoutItemID
         if ($parts.Count -ge 7) {
             try { $isChildContainer = ([int]$parts[6].Trim() -eq 1) } catch { $isChildContainer = $false }
         }
+        $style = if ($parts.Count -ge 8) { $parts[7].Trim() } else { '' }
+        if ($style -eq 'NULL') { $style = '' }
         $block = [pscustomobject]@{
-            LayoutItemId         = $layoutItemId
-            BlockId              = $blockId
-            BlockName            = $blockName
-            LabelText            = $labelText
-            Sort                 = [int]$parts[3].Trim()
+            LayoutItemId          = $layoutItemId
+            BlockId               = $blockId
+            BlockName             = $blockName
+            LabelText             = $labelText
+            Sort                  = [int]$parts[3].Trim()
             IsChildTableContainer = $isChildContainer
-            SubItems             = [System.Collections.Generic.List[object]]::new()
+            Style                 = $style
+            SubItems              = [System.Collections.Generic.List[object]]::new()
         }
         $itemsById[$layoutItemId] = $block
         [void]$cellsByLayoutId[$layoutId].Blocks.Add($block)
     }
 
     $qSubs = @"
-SELECT ls.LayoutItemID, ls.SubItemID, ISNULL(ls.Sort,0), ISNULL(bsi.ControlType,0), ISNULL(ls.ImageOrMemoWidth,N''), ISNULL(ls.ImageOrMemoHight,N'')
+SELECT ls.LayoutItemID, ls.SubItemID, ISNULL(ls.Sort,0), ISNULL(bsi.ControlType,0), ISNULL(ls.ImageOrMemoWidth,N''), ISNULL(ls.ImageOrMemoHight,N''), bsi.GridID
 FROM dbo.pdmTabLayout l
 INNER JOIN dbo.pdmTabLayoutItem li ON li.LayoutID = l.LayoutID
 INNER JOIN dbo.pdmTabLayoutSubitem ls ON ls.LayoutItemID = li.LayoutItemID
@@ -359,12 +363,14 @@ ORDER BY ls.LayoutItemID, ISNULL(ls.Sort,0), ls.LayoutSubitemID
         $h = if ($parts.Count -ge 6) { $parts[5].Trim() } else { '' }
         if ($w -eq 'NULL') { $w = '' }
         if ($h -eq 'NULL') { $h = '' }
+        $gridId = if ($parts.Count -ge 7) { Parse-SqlIntOrNull $parts[6] } else { $null }
         [void]$itemsById[$layoutItemId].SubItems.Add([pscustomobject]@{
             SubItemId   = [int]$subItemId
             Sort        = [int]$parts[2].Trim()
             ControlType = $ctrl
             ImageWidth  = $w
             ImageHeight = $h
+            GridId      = $gridId
         })
     }
     return $map
@@ -406,6 +412,60 @@ function New-FormLayoutFieldNode($lookup, [int]$Height = 0) {
     return $node
 }
 
+function New-FormLayoutGridNode([string]$AppTableName, [string]$DisplayName, [int]$Height) {
+    return [ordered]@{
+        type                  = 'grid'
+        tableName             = $AppTableName
+        displayName           = $DisplayName
+        colSpan               = 24
+        height                = $Height
+        isBindingToDataField  = $true
+        transcationUnitLevel  = 2
+    }
+}
+
+function Get-PlmStyleFixedHeightPx([string]$Style) {
+    # Dead height from Tab Design Style (min-height preferred). Ignore decorative label heights (<=30).
+    if ([string]::IsNullOrWhiteSpace($Style)) { return 0 }
+    if ($Style -match 'min-height\s*:\s*(\d+)\s*px') {
+        $h = [int]$Matches[1]
+        if ($h -gt 30) { return $h }
+    }
+    if ($Style -match '(?<![a-z-])height\s*:\s*(\d+)\s*px') {
+        $h = [int]$Matches[1]
+        if ($h -gt 30) { return $h }
+    }
+    return 0
+}
+
+function Resolve-FormLayoutGridHeight($block, $si) {
+    # When PLM Tab Design gives a fixed grid height, APP height = PLM * 1.5; else default 400.
+    $plmH = 0
+    if ($si -and $si.ImageHeight -match '^\d+$') {
+        $raw = [int]$si.ImageHeight
+        if ($raw -gt 30) { $plmH = $raw }
+    }
+    if ($plmH -le 0 -and $block -and $block.Style) {
+        $plmH = Get-PlmStyleFixedHeightPx ([string]$block.Style)
+    }
+    if ($plmH -gt 0) { return [int][Math]::Round($plmH * 1.5) }
+    return 400
+}
+
+function Resolve-LayoutGridBinding([int]$TabId, $si, $subItemMetaMap, $gridLookup) {
+    if (-not $gridLookup) { return $null }
+    $gridId = $null
+    if ($si -and $null -ne $si.GridId) { $gridId = [int]$si.GridId }
+    if (-not $gridId -and $si -and $subItemMetaMap) {
+        $metaKey = "$TabId|$($si.SubItemId)"
+        if ($subItemMetaMap.ContainsKey($metaKey) -and $subItemMetaMap[$metaKey].GridId) {
+            $gridId = [int]$subItemMetaMap[$metaKey].GridId
+        }
+    }
+    if (-not $gridId -or -not $gridLookup.ContainsKey($gridId)) { return $null }
+    return $gridLookup[$gridId]
+}
+
 function Convert-PlmSpansToAppColSpans([int[]]$Spans) {
     # Map PLM cell ColumnSpan proportions onto APP 24-grid (relative only; absolute px ignored).
     # Use -NoEnumerate so 1-cell rows stay [int[]] without nesting.
@@ -432,11 +492,13 @@ function Convert-PlmSpansToAppColSpans([int[]]$Spans) {
     Write-Output -NoEnumerate ([int[]]$raw.ToArray())
 }
 
-function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemMetaMap) {
+function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemMetaMap, $gridLookup = $null, [bool]$IsHeaderTab = $false) {
     # PLM Tab Design → APP formLayout:
     # - Structure follows PLM rows / cells / blocks / sub-items (not Auto Design flatten).
-    # - Form width = (max cells in any PLM row) * 400 (APP is wider than PLM ~300–350px cells).
-    # - Tree must be Section → LayoutRow → (field | Section). Wrap titled block stacks in a LayoutRow
+    # - Form width = min((max cells in any PLM row) * 450, 1900).
+    # - Non-header: grids → Auto Design bottom sub-tabs (skipped here).
+    # - Header tab: grids stay at Tab Design positions; height = PLM fixed height * 1.5 when set.
+    # - Tree must be Section → LayoutRow → (field | Section | grid). Wrap titled block stacks in a LayoutRow
     #   so Form Design does not treat nested LayoutRows as leaf widgets (Placeholder bug).
     if (-not $layoutMap -or -not $layoutMap.ContainsKey($TabId)) { return $null }
     $cells = @($layoutMap[$TabId])
@@ -445,9 +507,11 @@ function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemM
     $rowsGrouped = $cells | Group-Object -Property RowIndex | Sort-Object { [int]$_.Name }
     $rootItems = [System.Collections.Generic.List[object]]::new()
     $fieldCount = 0
+    $gridCount = 0
     $blockCount = 0
     $maxColsInRow = 1
     $seenBlocks = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $inlinedGridTables = [System.Collections.Generic.List[string]]::new()
 
     foreach ($rowGroup in $rowsGrouped) {
         $rowCells = @($rowGroup.Group | Sort-Object ColumnIndex, LayoutId)
@@ -465,15 +529,50 @@ function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemM
             $cellChildren = [System.Collections.Generic.List[object]]::new()
 
             foreach ($block in @($cell.Blocks | Sort-Object Sort, LayoutItemId)) {
-                if ($block.IsChildTableContainer) { continue } # grids → Auto bottom tabs
+                # Header: IsChildTableContainer → inline grid at this cell position.
+                if ($block.IsChildTableContainer) {
+                    if (-not $IsHeaderTab) { continue }
+                    $containerSi = $block.SubItems | Where-Object { [int]$_.ControlType -eq 6 } | Select-Object -First 1
+                    $binding = Resolve-LayoutGridBinding $TabId $containerSi $subItemMetaMap $gridLookup
+                    if (-not $binding) { continue }
+                    $gh = Resolve-FormLayoutGridHeight $block $containerSi
+                    $gridNode = New-FormLayoutGridNode ([string]$binding.AppTableName) ([string]$binding.DisplayName) $gh
+                    [void]$cellChildren.Add([ordered]@{
+                        type     = 'row'
+                        children = @(,$gridNode)
+                    })
+                    $gridCount++
+                    if (-not $inlinedGridTables.Contains([string]$binding.AppTableName)) {
+                        [void]$inlinedGridTables.Add([string]$binding.AppTableName)
+                    }
+                    continue
+                }
+
                 $blockFieldRows = [System.Collections.Generic.List[object]]::new()
                 foreach ($si in @($block.SubItems | Sort-Object Sort, SubItemId)) {
-                    if ([int]$si.ControlType -eq 6) { continue }
                     $metaKey = "$TabId|$($si.SubItemId)"
-                    if ($subItemMetaMap -and $subItemMetaMap.ContainsKey($metaKey)) {
+                    $isGrid = ([int]$si.ControlType -eq 6)
+                    if (-not $isGrid -and $subItemMetaMap -and $subItemMetaMap.ContainsKey($metaKey)) {
                         $m = $subItemMetaMap[$metaKey]
-                        if ($m -and [int]$m.ControlType -eq 6) { continue }
+                        if ($m -and [int]$m.ControlType -eq 6) { $isGrid = $true }
                     }
+
+                    if ($isGrid) {
+                        if (-not $IsHeaderTab) { continue }
+                        $binding = Resolve-LayoutGridBinding $TabId $si $subItemMetaMap $gridLookup
+                        if (-not $binding) { continue }
+                        $gh = Resolve-FormLayoutGridHeight $block $si
+                        [void]$blockFieldRows.Add([ordered]@{
+                            type     = 'row'
+                            children = @(,(New-FormLayoutGridNode ([string]$binding.AppTableName) ([string]$binding.DisplayName) $gh))
+                        })
+                        $gridCount++
+                        if (-not $inlinedGridTables.Contains([string]$binding.AppTableName)) {
+                            [void]$inlinedGridTables.Add([string]$binding.AppTableName)
+                        }
+                        continue
+                    }
+
                     if (-not $fieldLookup.ContainsKey($metaKey)) { continue }
                     $lookup = $fieldLookup[$metaKey]
                     $h = 0
@@ -493,7 +592,7 @@ function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemM
                     if ($seenBlocks.Add($bk)) { $blockCount++ }
                 }
 
-                # Untitled single block: field rows can sit directly under the cell stack.
+                # Untitled single block: field/grid rows can sit directly under the cell stack.
                 if (@($cell.Blocks).Count -eq 1 -and [string]::IsNullOrWhiteSpace($title)) {
                     foreach ($fr in $blockFieldRows) { [void]$cellChildren.Add($fr) }
                 }
@@ -529,18 +628,22 @@ function Build-PlmTabFormLayout([int]$TabId, $layoutMap, $fieldLookup, $subItemM
         })
     }
 
-    $formWidth = [Math]::Max(1, $maxColsInRow) * 400
+    $formWidth = [Math]::Min(1900, [Math]::Max(1, $maxColsInRow) * 450)
+    $gridLayoutMode = if ($IsHeaderTab) { 'headerTabDesignInline' } else { 'autoBottomSubTabs' }
     $meta = [ordered]@{
-        source          = 'plmTabDesign'
-        plmTabId        = $TabId
-        gridLayoutMode  = 'autoBottomSubTabs'
-        layoutMode      = 'plmTabDesign'
-        formWidthRule   = 'maxColsInRow * 400'
-        maxColsInRow    = $maxColsInRow
-        formWidth       = $formWidth
-        blockCount      = $blockCount
-        fieldCount      = $fieldCount
-        layoutCellCount = $cells.Count
+        source             = 'plmTabDesign'
+        plmTabId           = $TabId
+        gridLayoutMode     = $gridLayoutMode
+        layoutMode         = 'plmTabDesign'
+        formWidthRule      = 'min(maxColsInRow * 450, 1900)'
+        maxColsInRow       = $maxColsInRow
+        formWidth          = $formWidth
+        blockCount         = $blockCount
+        fieldCount         = $fieldCount
+        gridCount          = $gridCount
+        layoutCellCount    = $cells.Count
+        inlinedGridTables  = @($inlinedGridTables.ToArray())
+        isTemplateHeaderTab = $IsHeaderTab
     }
 
     if ($rootItems.Count -eq 0) {
@@ -880,9 +983,11 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
             }
         }
 
-        # Portable formLayout from PLM Tab Design (non-grid only). Grids → Auto bottom sub-tabs at APPLY.
+        # Portable formLayout from PLM Tab Design. Non-header grids → Auto bottom sub-tabs at APPLY.
+        # Header tab: grids stay at Tab Design positions (no bottom Grids sub-tabs).
         if ($tabDesignLayoutMap -and $script:PlmFormFieldLookup) {
-            $fl = Build-PlmTabFormLayout ([int]$tab.tabId) $tabDesignLayoutMap $script:PlmFormFieldLookup $subItemMetaMap
+            $isHeaderTab = ($tab.isTemplateHeaderTab -eq $true)
+            $fl = Build-PlmTabFormLayout ([int]$tab.tabId) $tabDesignLayoutMap $script:PlmFormFieldLookup $subItemMetaMap $script:PlmFormGridLookup $isHeaderTab
             if ($fl) {
                 if ($fl.formLayout) { $txEntry.formLayout = $fl.formLayout }
                 if ($fl.formLayoutMeta) { $txEntry.formLayoutMeta = $fl.formLayoutMeta }
@@ -890,19 +995,22 @@ function Build-BlueprintFromConfig($config, $allFieldRows, $extraInfoMap, $subIt
                     $txEntry.formLayoutMeta = [ordered]@{
                         source = 'none'
                         plmTabId = [int]$tab.tabId
-                        gridLayoutMode = 'autoBottomSubTabs'
+                        gridLayoutMode = if ($isHeaderTab) { 'headerTabDesignInline' } else { 'autoBottomSubTabs' }
                         blockCount = 0
                         fieldCount = 0
                         layoutCellCount = 0
+                        isTemplateHeaderTab = $isHeaderTab
                     }
                 }
             }
         }
         else {
+            $isHeaderTab = ($tab.isTemplateHeaderTab -eq $true)
             $txEntry.formLayoutMeta = [ordered]@{
                 source = 'none'
                 plmTabId = [int]$tab.tabId
-                gridLayoutMode = 'autoBottomSubTabs'
+                gridLayoutMode = if ($isHeaderTab) { 'headerTabDesignInline' } else { 'autoBottomSubTabs' }
+                isTemplateHeaderTab = $isHeaderTab
             }
         }
 
@@ -2852,6 +2960,26 @@ if (-not $prefixForLookup.EndsWith('_')) { $prefixForLookup += '_' }
 $rootSuffixForLookup = $config.rootTableSuffix
 $script:PlmFormFieldLookup = Build-FieldLookupByTabSubItem $allFieldRows $prefixForLookup $rootSuffixForLookup
 Write-Host "  Form field lookup entries: $($script:PlmFormFieldLookup.Count)"
+$script:PlmFormGridLookup = @{}
+if ($config.grids) {
+    foreach ($g in @($config.grids)) {
+        if (-not $g -or -not $g.gridId -or -not $g.appTable) { continue }
+        $gid = [int]$g.gridId
+        $logical = [string]$g.appTable
+        if ($config.techPack -and $config.techPack.systemBlockGrids) {
+            $sq = @($config.techPack.systemBlockGrids) | Where-Object {
+                $_.role -eq 'SpecQC' -and [string]$_.appTable -eq $logical
+            } | Select-Object -First 1
+            if ($sq) { $logical = 'SimpleQC' }
+        }
+        $disp = if ($g.displayName) { [string]$g.displayName } elseif ($g.plmGridName) { [string]$g.plmGridName } else { $logical }
+        $script:PlmFormGridLookup[$gid] = [pscustomobject]@{
+            AppTableName = $prefixForLookup + $logical
+            DisplayName  = $disp
+        }
+    }
+}
+Write-Host "  Form grid lookup entries: $($script:PlmFormGridLookup.Count)"
 $blueprintObj = Build-BlueprintFromConfig $config $allFieldRows $extraInfoMap $subItemMetaMap $gridColMetaMap $tabGridVisibleMap $layoutSubItemSet $childTabIds $bomColorwayPivotBindings $tabDesignLayoutMap
 # Full blueprint stays in memory only. Disk: per-tab fragments + Assemble shell (no duplicate TX/fields).
 
