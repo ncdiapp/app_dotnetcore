@@ -281,11 +281,15 @@ namespace App.BL.AIAgent.GenericAgent
             {
                 var isDir = Directory.Exists(path);
                 var info = new FileInfo(path);
+                var utcUpdated = isDir ? Directory.GetLastWriteTimeUtc(path) : info.LastWriteTimeUtc;
                 list.Add(new GenericAgentFileDto
                 {
                     RelativePath = ToRelative(root, path).Replace('\\', '/'),
                     SizeBytes = isDir ? 0 : info.Exists ? info.Length : 0,
-                    UpdatedAt = isDir ? Directory.GetLastWriteTimeUtc(path) : info.LastWriteTimeUtc,
+                    // File system times are UTC; convert for client UI (Chat Mgt / files panel).
+                    UpdatedAt = ClientTimeZoneHelper.IsClientUsingTimeZone
+                        ? ClientTimeZoneHelper.ConvertUTCToClientDateTime(utcUpdated)
+                        : utcUpdated,
                     IsDirectory = isDir
                 });
             }

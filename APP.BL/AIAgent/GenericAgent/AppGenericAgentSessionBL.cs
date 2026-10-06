@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Data.Common;
 using APP.Components.EntityDto;
+using APP.Framework;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -103,7 +104,8 @@ VALUES (@K, @S, @U, N'[]', GETUTCDATE())";
                         SessionKey = key,
                         SkillKey   = row["SkillKey"] as string,
                         Title      = ResolveTitle(row),
-                        UpdatedAt  = ColDt(row, "UpdatedAt"),
+                        // DB stores UTC; UI expects client timezone (same as EntityConverter pattern).
+                        UpdatedAt  = ToClientDateTime(ColDt(row, "UpdatedAt")),
                         IsFixedTestSession = string.Equals(key, fixedKey, StringComparison.Ordinal)
                     });
                 }
@@ -831,6 +833,17 @@ ELSE
         {
             if (!row.Table.Columns.Contains(col) || row[col] == DBNull.Value) return default;
             return row[col] is DateTime dt ? dt : default;
+        }
+
+        /// <summary>
+        /// Convert UTC datetime from DB to the current user's client timezone for API/UI.
+        /// Writes always use GETUTCDATE() / UtcNow — no client→UTC needed on save.
+        /// </summary>
+        public static DateTime ToClientDateTime(DateTime utcDateTime)
+        {
+            if (utcDateTime == default || !ClientTimeZoneHelper.IsClientUsingTimeZone)
+                return utcDateTime;
+            return ClientTimeZoneHelper.ConvertUTCToClientDateTime(utcDateTime);
         }
     }
 }
