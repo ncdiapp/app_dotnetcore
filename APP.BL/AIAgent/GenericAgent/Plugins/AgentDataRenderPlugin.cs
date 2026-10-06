@@ -1,6 +1,7 @@
 using System;
 using APP.Components.EntityDto;
 using APP.Framework.Plugin;
+using App.BL.AIAgent.GenericAgent.DataAnalyze;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -10,6 +11,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// data_render — non-blocking UI panel in Agent Chat (grid | card | chart | kpi_dashboard).
     /// Emits <see cref="AgentDataRenderEvent"/> via <see cref="AgentHitlBridge"/> / OnDataRender,
     /// then returns immediately. Rich payload rides on SSE so MaxToolResultChars cannot truncate it.
+    /// Prefer <c>dataset_name</c> (session cache from a prior tool) so the grid gets ALL columns,
+    /// including nulls — do not pass an LLM-curated column subset via dataJson.
     /// </summary>
     public class AgentDataRenderPlugin
     {
@@ -20,8 +23,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
         public async System.Threading.Tasks.Task<string> Render(
             string ui,
-            string dataJson,
             AgentToolContext context,
+            string dataJson = null,
+            string dataset_name = null,
             string title = null,
             string columnsJson = null,
             string chartConfigJson = null,
@@ -43,6 +47,34 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             string normalizedBlocksJson = null;
             int rowCount = 0;
             bool truncated = false;
+            string resolvedFromDataset = null;
+
+            // Full tabular payload from session cache (includes every column / null cell).
+            if (!string.IsNullOrWhiteSpace(dataset_name)
+                && context != null
+                && !string.IsNullOrWhiteSpace(context.ChatSessionKey)
+                && (uiNorm == "grid" || uiNorm == "card" || uiNorm == "chart"))
+            {
+                if (AgentDataAnalyzeCacheBL.TryExportDataJson(
+                        context.ChatSessionKey, dataset_name.Trim(),
+                        out var exportedData, out var exportedCols, out var exportedRows))
+                {
+                    dataJson = exportedData;
+                    // Always use full column list from cache — ignore LLM subset columnsJson.
+                    columnsJson = exportedCols;
+                    resolvedFromDataset = AgentDataAnalyzeCacheBL.SanitizeName(dataset_name);
+                    rowCount = exportedRows;
+                }
+                else
+                {
+                    return JsonConvert.SerializeObject(new
+                    {
+                        ok = false,
+                        error = $"dataset_name '{dataset_name}' not found in this chat session. " +
+                                "Run a query/SP tool first (look for dataset_cached / dataset_name on the tool result)."
+                    });
+                }
+            }
 
             if (uiNorm == "kpi_dashboard")
             {
@@ -54,14 +86,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 normalizedBlocksJson = dash.BlocksJson;
                 rowCount = dash.RowCount;
                 truncated = dash.Truncated;
-                // Keep a compact summary in DataJson for older clients / logging.
                 cappedDataJson = dash.SummaryDataJson;
             }
             else
             {
                 if (string.IsNullOrWhiteSpace(dataJson))
                 {
-                    return JsonConvert.SerializeObject(new { ok = false, error = "dataJson is required." });
+                    return JsonConvert.SerializeObject(new
+                    {
+                        ok = false,
+                        error = "dataJson is required (or pass dataset_name from a prior tool that set dataset_cached)."
+                    });
                 }
 
                 cappedDataJson = dataJson.Trim();
@@ -150,11 +185,23 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 ui = uiNorm,
                 rowCount,
                 truncated,
+                dataset_name = resolvedFromDataset,
+                columnCount = CountColumns(columnsJson),
                 blockCount = uiNorm == "kpi_dashboard" ? CountBlocks(normalizedBlocksJson) : (int?)null,
                 pushed = onRender != null
             });
         }
 
+        private static int? CountColumns(string columnsJson)
+        {
+            if (string.IsNullOrWhiteSpace(columnsJson)) return null;
+            try
+            {
+                if (JToken.Parse(columnsJson) is JArray arr) return arr.Count;
+            }
+            catch { /* ignore */ }
+            return null;
+        }
         private sealed class DashboardNormalizeResult
         {
             public bool Ok;

@@ -46,7 +46,7 @@ namespace App.BL.AIAgent.GenericAgent
     public static class GenericAgentEngine
     {
         private static readonly HttpClient McpHttpClient = McpConnectionHelper.CreateHttpClient();
-        private const int DefaultMaxToolResultChars = 4000;
+        private const int DefaultMaxToolResultChars = 32000;
         private const int McpToolCallTimeoutSeconds  = 30;
 
         /// <summary>Capability marker tool in library data-analyze. Presence (subscribed, not excluded) enables followups inject.</summary>

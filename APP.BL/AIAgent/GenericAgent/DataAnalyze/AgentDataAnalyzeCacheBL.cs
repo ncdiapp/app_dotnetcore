@@ -68,6 +68,53 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
             return bag.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
         }
 
+        /// <summary>
+        /// Rebuild row objects (including empty/null cells) for data_render so the UI
+        /// gets every column from the session cache — not an LLM-curated subset.
+        /// </summary>
+        public static bool TryExportDataJson(string chatSessionKey, string datasetName, out string dataJson, out string columnsJson, out int rowCount)
+        {
+            dataJson = null;
+            columnsJson = null;
+            rowCount = 0;
+            var ds = Get(chatSessionKey, datasetName);
+            if (ds == null || ds.Columns == null || ds.Columns.Count == 0)
+                return false;
+
+            var arr = new JArray();
+            foreach (var cells in ds.Rows ?? new List<string[]>())
+            {
+                var obj = new JObject();
+                for (int i = 0; i < ds.Columns.Count; i++)
+                {
+                    var name = ds.Columns[i].Name;
+                    var cell = (cells != null && i < cells.Length) ? cells[i] : null;
+                    if (string.IsNullOrEmpty(cell))
+                        obj[name] = JValue.CreateNull();
+                    else
+                        obj[name] = cell;
+                }
+                arr.Add(obj);
+            }
+
+            var cols = new JArray();
+            foreach (var c in ds.Columns)
+            {
+                cols.Add(new JObject
+                {
+                    ["field"] = c.Name,
+                    ["header"] = c.Name,
+                    ["dataType"] = c.Type == AgentColumnType.Numeric ? "number"
+                        : c.Type == AgentColumnType.Date ? "date" : "string"
+                });
+            }
+
+            dataJson = arr.ToString(Newtonsoft.Json.Formatting.None);
+            columnsJson = cols.ToString(Newtonsoft.Json.Formatting.None);
+            rowCount = arr.Count;
+            return true;
+        }
+
         public static void ClearSession(string chatSessionKey)
         {
             if (string.IsNullOrWhiteSpace(chatSessionKey)) return;
@@ -96,15 +143,21 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                 return new AgentCachedDataset { Name = name, CachedAt = DateTime.UtcNow, SourceTool = sourceTool };
 
             var take = Math.Min(dataArray.Count, MaxCachedRows);
-            JObject firstObj = null;
+            var headerList = new List<string>();
+            var headerSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < take; i++)
             {
-                if (dataArray[i] is JObject o) { firstObj = o; break; }
+                if (dataArray[i] is not JObject o) continue;
+                foreach (var prop in o.Properties())
+                {
+                    if (headerSeen.Add(prop.Name))
+                        headerList.Add(prop.Name);
+                }
             }
-            if (firstObj == null)
+            if (headerList.Count == 0)
                 return new AgentCachedDataset { Name = name, CachedAt = DateTime.UtcNow, SourceTool = sourceTool };
 
-            var headers = firstObj.Properties().Select(p => p.Name).ToList();
+            var headers = headerList;
             int colCount = headers.Count;
             var colTypes = new AgentColumnType[colCount];
             var typeKnown = new bool[colCount];
