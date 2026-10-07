@@ -38,10 +38,69 @@ namespace ExchangeBL
 {
     public class DataExchangeWithoutJsonSchemaBL
     {
+        /// <summary>
+        /// Hook for future per-API ACL (Integration Token / role grants). V1: session only via SecureBaseController.
+        /// </summary>
+        private static void AuthorizeAppApi(AppIntergrationSettingParameterExDto setting)
+        {
+            // Intentionally empty — independent auth for DataIntegration ActionCodes comes later.
+            _ = setting;
+        }
+
+        private static string ExecuteStoredProcedureApi(AppIntergrationSettingParameterExDto setting, string requestBody)
+        {
+            if (setting == null || !setting.DataSourceId.HasValue)
+                throw new Exception("Stored Procedure API is missing DataSourceId.");
+
+            var cfg = setting.APIConfigParameters;
+            var spName = cfg?.SpName;
+            var schema = cfg?.SpSchema;
+            if (string.IsNullOrWhiteSpace(spName) && !string.IsNullOrWhiteSpace(setting.JsonQuery))
+            {
+                var parts = setting.JsonQuery.Split(new[] { '.' }, 2);
+                if (parts.Length == 2)
+                {
+                    schema = parts[0];
+                    spName = parts[1];
+                }
+                else
+                {
+                    spName = setting.JsonQuery;
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(spName))
+                throw new Exception("Stored Procedure API is missing SpName.");
+
+            var argsJson = AppStoredProcedureApiBL.BuildArgsJsonFromDefaultsAndBody(setting, requestBody);
+            return App.BL.AIAgent.GenericAgent.StoredProcedure.StoredProcedureExecuteBL.ExecuteJson(
+                setting.DataSourceId.Value,
+                spName,
+                schema,
+                argsJson);
+        }
+
         public async static Task<object> GetAsync(string actionCode, List<KeyValuePair<string, string>> parameters)
         {
 
             AppIntergrationSettingParameterExDto dataExchangeSetting = DataExchangeSettingBL.GetSetting(actionCode);
+            AuthorizeAppApi(dataExchangeSetting);
+
+            if (AppStoredProcedureApiBL.IsStoredProcedureApi(dataExchangeSetting))
+            {
+                // Prefer POST for SP APIs; GET merges query string as args for convenience.
+                var argsObj = new JObject();
+                if (parameters != null)
+                {
+                    foreach (var kv in parameters)
+                    {
+                        if (string.Equals(kv.Key, "wsdl", StringComparison.OrdinalIgnoreCase)) continue;
+                        argsObj[kv.Key] = kv.Value;
+                    }
+                }
+                var body = new JObject { ["args"] = argsObj }.ToString();
+                return ExecuteStoredProcedureApi(dataExchangeSetting, body);
+            }
 
             if (dataExchangeSetting.IsSimpleQuery.HasValue && dataExchangeSetting.IsSimpleQuery.Value)
             {
@@ -140,6 +199,13 @@ namespace ExchangeBL
         public static string ExecuteApiOperationSaveCommand(string actionCode, string strJson, List<KeyValuePair<string, string>> parameters)
         {
             AppIntergrationSettingParameterExDto dataExchangeSetting = DataExchangeSettingBL.GetSetting(actionCode);
+            AuthorizeAppApi(dataExchangeSetting);
+
+            if (AppStoredProcedureApiBL.IsStoredProcedureApi(dataExchangeSetting))
+            {
+                return ExecuteStoredProcedureApi(dataExchangeSetting, strJson);
+            }
+
             DatabaseFixture dataBaseFixture = AppCacheManagerBL.GetOneDatabaseFixture(dataExchangeSetting.DataSourceId.Value);
 
             if (dataExchangeSetting.IsSimpleQuery.HasValue && dataExchangeSetting.IsSimpleQuery.Value)

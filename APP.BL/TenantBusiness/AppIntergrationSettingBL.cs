@@ -360,6 +360,10 @@ END";
                     {
                         aExDto.APIType = "SQL JSON Query API";
                     }
+                    else if (AppStoredProcedureApiBL.IsStoredProcedureApi(aExDto))
+                    {
+                        aExDto.APIType = AppStoredProcedureApiBL.ApiTypeDisplayName;
+                    }
                     else if (aExDto.TranscationId.HasValue)
                     {
                         aExDto.APIType = "APP Data Model API";
@@ -385,7 +389,9 @@ END";
             }
 
 
-            if ((int)IntergrationSettingId == AppBuiltInProviderId) // App API Provider
+            if ((int)IntergrationSettingId == AppBuiltInProviderId // App API Provider
+                && aIntergrationSettingDto.AppIntergrationSettingParameterList != null
+                && aIntergrationSettingDto.AppIntergrationSettingParameterList.Count > 0)
             {
                 try
                 {

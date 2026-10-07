@@ -176,24 +176,32 @@ namespace APP.Components.EntityConverter
 
             if (aAppIntergrationSettingParameterDto.IsSimpleQuery.HasValue && aAppIntergrationSettingParameterDto.IsSimpleQuery.Value)
             {
-                aAppIntergrationSettingParameterDto.APIConfigParameters = new APIConfigParameterDTO();
-                aAppIntergrationSettingParameterDto.APIConfigParameters.QueryParams = new Dictionary<string, string>();
-
-                if (aAppIntergrationSettingParameterDto.SimpleQueryParameterNameList != null)
-                {                    
-                    aAppIntergrationSettingParameterDto.APIConfigParameters.QueryParams = aAppIntergrationSettingParameterDto.SimpleQueryParameterNameList.Distinct().ToDictionary(o => o, o=>"");
+                if (aAppIntergrationSettingParameterDto.APIConfigParameters == null)
+                {
+                    aAppIntergrationSettingParameterDto.APIConfigParameters = new APIConfigParameterDTO();
                 }
 
+                if (aAppIntergrationSettingParameterDto.APIConfigParameters.QueryParams == null)
+                {
+                    aAppIntergrationSettingParameterDto.APIConfigParameters.QueryParams = new Dictionary<string, string>();
+                }
+
+                if (aAppIntergrationSettingParameterDto.SimpleQueryParameterNameList != null)
+                {
+                    aAppIntergrationSettingParameterDto.APIConfigParameters.QueryParams = aAppIntergrationSettingParameterDto.SimpleQueryParameterNameList.Distinct().ToDictionary(o => o, o => "");
+                }
+            }
+
+            if (aAppIntergrationSettingParameterDto.APIConfigParameters != null)
+            {
                 try
                 {
                     aAppIntergrationSettingParameterEntity.ApiconfigParameters = JsonConvert.SerializeObject(aAppIntergrationSettingParameterDto.APIConfigParameters);
                 }
                 catch
                 {
-                    aAppIntergrationSettingParameterEntity.SchemaDataSetMapping = string.Empty;
+                    // keep existing ApiconfigParameters string if set on DTO
                 }
-
-
             }
         }
     }

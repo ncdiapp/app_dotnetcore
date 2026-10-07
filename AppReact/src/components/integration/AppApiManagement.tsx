@@ -20,6 +20,7 @@ import { addTab } from '../../redux/features/ui/navigation/tabnavSlice';
 import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
+import CreateStoredProcedureApisModal from './CreateStoredProcedureApisModal';
 
 const API_BUILDER_INTEGRATION_SETTING_ID = 1;
 const CONTEXT_MENU_ESTIMATED_WIDTH = 170;
@@ -70,6 +71,7 @@ const AppApiManagement: React.FC = () => {
   const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const [createDropdownOpen, setCreateDropdownOpen] = useState(false);
   const [sqlQuerySubmenuOpen, setSqlQuerySubmenuOpen] = useState(false);
+  const [spCreateModalOpen, setSpCreateModalOpen] = useState(false);
   const flexRef = useRef<wjGrid.FlexGrid | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const sqlQuerySubmenuTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -164,6 +166,10 @@ const AppApiManagement: React.FC = () => {
 
   const getEditorPathAndLabel = useCallback((dto: IntegrationSettingParameterItem): { path: string; label: string } => {
     const label = dto.ActionCode ? `API: ${dto.ActionCode}` : (dto.Id != null ? `API (${dto.Id})` : 'API (New)');
+    if ((dto.APIConfigParameters as any)?.IsStoredProcedureApi) {
+      // Dedicated SP editor not in V1 — stay on list (sample/params already stored).
+      return { path: '', label };
+    }
     if (dto.IsSimpleQuery) {
       const path = dto.Id != null ? `/api-builder-editor/${dto.Id}` : '/api-builder-editor';
       return { path, label };
@@ -187,10 +193,14 @@ const AppApiManagement: React.FC = () => {
   const openEditorInNewTab = useCallback(
     (dto: IntegrationSettingParameterItem) => {
       const { path, label } = getEditorPathAndLabel(dto);
+      if (!path) {
+        errorMessage.showInfo('Stored Procedure APIs have no separate editor yet. Use Capture sample / defaults at create time.', true);
+        return;
+      }
       dispatch(addTab({ tabPath: path, label, isClosable: true }));
       navigate(path);
     },
-    [dispatch, navigate, getEditorPathAndLabel],
+    [dispatch, navigate, getEditorPathAndLabel, errorMessage],
   );
 
   const contextMenuOpenEditor = useCallback(() => {
@@ -243,6 +253,41 @@ const AppApiManagement: React.FC = () => {
     navigate(path);
   }, [dispatch, navigate, defaultDataSourceId]);
 
+  const openSpCreateModal = useCallback(() => {
+    setCreateDropdownOpen(false);
+    setSpCreateModalOpen(true);
+  }, []);
+
+  const batchDeleteSelected = useCallback(async () => {
+    const flex = flexRef.current;
+    const selected = (flex?.selectedItems ?? []) as IntegrationSettingParameterItem[];
+    const ids = selected.map((x) => x.Id).filter((id): id is number => id != null);
+    if (!ids.length) {
+      errorMessage.showError('Select one or more API rows to delete (Ctrl/Shift click).');
+      return;
+    }
+    const confirmed = await showConfirm(
+      `Delete ${ids.length} selected API(s)?`,
+      { title: 'Batch Delete APIs' },
+    );
+    if (!confirmed) return;
+    try {
+      dispatch(setIsBusy());
+      const result = await integrationService.batchDeleteAppIntegrationSettingParameters(ids);
+      if (result?.ValidationResult?.HasErrors) {
+        const errs = result.ValidationResult.Items?.filter((i: any) => i.ItemType === 1) ?? [];
+        errs.forEach((e: any) => errorMessage.showError(e.LocalizedMessage ?? 'Delete failed'));
+        return;
+      }
+      errorMessage.showInfo(`Deleted ${result?.Object?.deletedCount ?? ids.length} API(s).`, true);
+      await loadData();
+    } catch (error) {
+      errorMessage.showError(error instanceof Error ? error.message : String(error));
+    } finally {
+      dispatch(setIsNotBusy());
+    }
+  }, [dispatch, errorMessage, showConfirm, loadData]);
+
   const handleRowDoubleClick = useCallback(
     (flex: wjGrid.FlexGrid) => {
       const row = flex.selection?.row;
@@ -290,7 +335,16 @@ const AppApiManagement: React.FC = () => {
             className="w-8 h-6 inline-flex items-center justify-center rounded-[4px] text-xs text-white transition disabled:cursor-not-allowed disabled:opacity-60 bg-blue-400 hover:bg-blue-500"
             title="Refresh"
           >
-            <i className="fa fa-refresh" aria-hidden />
+            <i className="fa-solid fa-rotate" aria-hidden />
+          </button>
+          <button
+            type="button"
+            onClick={batchDeleteSelected}
+            disabled={isLoading}
+            className="px-2 h-6 inline-flex items-center justify-center rounded-[4px] text-xs text-white bg-red-500 hover:bg-red-600 disabled:opacity-60"
+            title="Delete selected APIs"
+          >
+            <i className="fa-solid fa-trash mr-1" aria-hidden /> Delete selected
           </button>
           <div className="relative" ref={dropdownRef}>
             <button
@@ -379,6 +433,13 @@ const AppApiManagement: React.FC = () => {
                 >
                   <i className="fa fa-plus" aria-hidden /> Create App Report & View API
                 </button>
+                <button
+                  type="button"
+                  className={`w-full text-left px-4 py-2 text-xs ${theme.contextMenu} flex items-center gap-2`}
+                  onClick={openSpCreateModal}
+                >
+                  <i className="fa fa-plus" aria-hidden /> Create Stored Procedure APIs…
+                </button>
               </div>
             )}
           </div>
@@ -391,7 +452,7 @@ const AppApiManagement: React.FC = () => {
             ref={flexRef}
             itemsSource={collectionView ?? undefined}
             autoGenerateColumns={false}
-            selectionMode="Row"
+            selectionMode="ListBox"
             isReadOnly
             allowDelete={false}
             frozenColumns={3}
@@ -455,6 +516,14 @@ const AppApiManagement: React.FC = () => {
           </button>
         </div>
       )}
+
+      <CreateStoredProcedureApisModal
+        open={spCreateModalOpen}
+        dataSources={allDataSources}
+        defaultDataSourceId={defaultDataSourceId}
+        onClose={() => setSpCreateModalOpen(false)}
+        onCreated={loadData}
+      />
     </div>
   );
 };

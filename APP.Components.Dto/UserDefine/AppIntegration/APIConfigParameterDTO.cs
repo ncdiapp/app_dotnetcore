@@ -30,6 +30,18 @@ namespace APP.Components.EntityDto
 
         public List<string> ResponseHeaderNeedToSetCookieNames { get; set; }
 
+        /// <summary>True when this App API Provider operation invokes a stored procedure.</summary>
+        public bool IsStoredProcedureApi { get; set; }
+
+        public string SpName { get; set; }
+
+        public string SpSchema { get; set; }
+
+        public string SpEngine { get; set; }
+
+        /// <summary>SP parameters with configured default values for invoke / sample capture.</summary>
+        public List<StoredProcedureApiParameterDTO> SpParameters { get; set; }
+
         public APIConfigParameterDTO()
         {
             this.BaseUrl = string.Empty;
@@ -37,6 +49,19 @@ namespace APP.Components.EntityDto
             this.Headers = new Dictionary<string, string>();
             this.QueryParams = new Dictionary<string, string>();
             this.PathParams = new Dictionary<string, string>();
+            this.SpParameters = new List<StoredProcedureApiParameterDTO>();
         }
+    }
+
+    public partial class StoredProcedureApiParameterDTO
+    {
+        public string Name { get; set; }
+        public string Type { get; set; }
+        public string Direction { get; set; }
+        public int? MaxLength { get; set; }
+        public int Ordinal { get; set; }
+        public bool HasDefault { get; set; }
+        /// <summary>Configured default as string (empty / 0 / null token). Null means omit and let SP default apply when HasDefault.</summary>
+        public string DefaultValue { get; set; }
     }
 }

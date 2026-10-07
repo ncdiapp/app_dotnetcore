@@ -1,135 +1,110 @@
 using System;
 using System.Collections.Generic;
-using System.Dynamic;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
-using System.Text;
 using System.Threading.Tasks;
-using APP.Components.Dto;
-using APP.Components.EntityDto;
-using APP.Framework;
-using APP.Framework.Communication;
 using App.BL;
 using AppAI.Web.Controllers.Base;
 using ExchangeBL;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
 
 namespace AppAI.Web.Controllers;
 
-[Route("webapi/DataIntegration/[action]")]
+/// <summary>
+/// Public App API Provider invoke endpoint.
+/// Legacy URL: /webapi/DataIntegration/{ActionCode}
+/// </summary>
+[Route("webapi/DataIntegration")]
 public class DataIntegrationController : SecureBaseController
 {
-    ////http://localhost/AppBuilder/webapi/DataIntegration/Test
-    [HttpGet]
+    [HttpGet("Test")]
     public string Test()
     {
         return " Echo from App DataExchangeApi 111";
     }
 
-
-    private HttpResponseMessage _resposneMessage = null;
-
-
-    // !!!!!!!!!!!! For Simple Integration
-    /// <summary>
-    /// Get data from database
-    /// </summary>
-    /// <param name="actionName"></param>
-    /// <returns></returns>
-    public async Task<HttpResponseMessage> GetAsync(string actionName)
+    /// <summary>GET /webapi/DataIntegration/{actionName}</summary>
+    [HttpGet("{actionName}")]
+    public async Task<IActionResult> GetByActionName(string actionName)
     {
-        _resposneMessage = new HttpResponseMessage() { StatusCode = HttpStatusCode.OK, };
+        return await ExecuteGet(actionName);
+    }
 
+    /// <summary>Legacy method-style route kept for compatibility.</summary>
+    [HttpGet("GetAsync")]
+    public async Task<IActionResult> GetAsync([FromQuery] string actionName)
+    {
+        return await ExecuteGet(actionName);
+    }
+
+    /// <summary>POST /webapi/DataIntegration/{actionName}</summary>
+    [HttpPost("{actionName}")]
+    public async Task<IActionResult> PostByActionName(string actionName)
+    {
+        return await ExecutePost(actionName);
+    }
+
+    [HttpPost("PostAsync")]
+    public async Task<IActionResult> PostAsync([FromQuery] string actionName)
+    {
+        return await ExecutePost(actionName);
+    }
+
+    private async Task<IActionResult> ExecuteGet(string actionName)
+    {
         try
         {
             if (string.IsNullOrWhiteSpace(actionName))
-            {
-                throw new Exception("There is no action name");
-            }
+                return BadRequest("There is no action name");
 
-            var queryParameters = Request.Query.Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value.ToString())).ToList();
+            var queryParameters = Request.Query
+                .Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value.ToString()))
+                .ToList();
 
             if (queryParameters.Any(kv => kv.Key.Equals("wsdl", StringComparison.InvariantCultureIgnoreCase)))
             {
                 var exampleData = DataExchangeWithoutJsonSchemaBL.GetSample(actionName);
-
                 if (!string.IsNullOrWhiteSpace(exampleData))
-                {
-                    _resposneMessage.Content = new StringContent(exampleData.ToString());
-
-                    _resposneMessage.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-                }
+                    return Content(exampleData, "application/json");
+                return Content("{}", "application/json");
             }
-            else
-            {
-                var responseStream = await DataExchangeWithoutJsonSchemaBL.GetAsync(actionName, queryParameters);
 
-                if (responseStream.GetType() == typeof(MemoryStream))
-                {
-                    _resposneMessage.Content = new StreamContent((MemoryStream)responseStream);
-                }
-                else
-                {
-                    _resposneMessage.Content = new StringContent(responseStream.ToString());
-                }
+            var responseStream = await DataExchangeWithoutJsonSchemaBL.GetAsync(actionName, queryParameters);
+            if (responseStream is MemoryStream ms)
+                return File(ms.ToArray(), "application/json");
 
-
-                _resposneMessage.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-            }
+            return Content(responseStream?.ToString() ?? "", "application/json");
         }
         catch (Exception ex)
         {
-            _resposneMessage.Content = new StringContent(ex.Message);
-            _resposneMessage.StatusCode = HttpStatusCode.InternalServerError;
+            return StatusCode((int)HttpStatusCode.InternalServerError, ex.Message);
         }
-
-        return _resposneMessage;
     }
 
-    /// <summary>
-    /// Save json data
-    /// </summary>
-    /// <param name="actionName"></param>
-    /// <returns></returns>
-    public async Task<HttpResponseMessage> PostAsync(string actionName)
+    private async Task<IActionResult> ExecutePost(string actionName)
     {
-        _resposneMessage = new HttpResponseMessage() { StatusCode = HttpStatusCode.OK };
-
         try
         {
             if (string.IsNullOrWhiteSpace(actionName))
-            {
-                throw new Exception("THere is no action name");
-            }
+                return BadRequest("There is no action name");
 
-            var requestBody = await new System.IO.StreamReader(Request.Body).ReadToEndAsync();
-
+            var requestBody = await new StreamReader(Request.Body).ReadToEndAsync();
             if (string.IsNullOrWhiteSpace(requestBody))
-            {
-                throw new Exception("THere is post data");
-            }
+                return BadRequest("There is no post data");
 
-            var queryParameters = Request.Query.Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value.ToString())).ToList();
+            var queryParameters = Request.Query
+                .Select(kv => new KeyValuePair<string, string>(kv.Key, kv.Value.ToString()))
+                .ToList();
 
             var responseJson = DataExchangeWithoutJsonSchemaBL.ExecuteApiOperationSaveCommand(actionName, requestBody, queryParameters);
-
-            if (!string.IsNullOrWhiteSpace(responseJson))
-            {
-                _resposneMessage.Content = new StringContent(responseJson);
-
-                _resposneMessage.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-            }
+            return Content(responseJson ?? "", "application/json");
         }
         catch (Exception ex)
         {
-            _resposneMessage.Content = new StringContent(ex.Message);
-            _resposneMessage.StatusCode = HttpStatusCode.InternalServerError;
+            return StatusCode((int)HttpStatusCode.InternalServerError, ex.Message);
         }
-
-        return _resposneMessage;
     }
 }

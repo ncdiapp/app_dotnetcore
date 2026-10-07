@@ -246,6 +246,58 @@ class IntegrationService {
     if (!response.ok) throw new Error('Failed to drop staging tables');
     return response.json();
   }
+
+  async listStoredProceduresForApiBuilder(dataSourceId: number, schema?: string, take?: number): Promise<any[]> {
+    const q = new URLSearchParams();
+    q.set('dataSourceId', String(dataSourceId));
+    if (schema) q.set('schema', schema);
+    if (take != null) q.set('take', String(take));
+    const response = await fetch(
+      `${endpoints.BASE_URL}/webapi/Integration/ListStoredProceduresForApiBuilder?${q.toString()}`,
+      { headers: getHeaders() },
+    );
+    if (!response.ok) throw new Error('Failed to list stored procedures');
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
+  }
+
+  async batchCreateStoredProcedureApis(payload: {
+    DataSourceId: number;
+    Items: Array<{
+      Schema?: string;
+      SpName: string;
+      ActionCode?: string;
+      Description?: string;
+      CaptureSample?: boolean;
+      Parameters?: Array<{
+        Name?: string;
+        Type?: string;
+        Direction?: string;
+        MaxLength?: number | null;
+        Ordinal?: number;
+        HasDefault?: boolean;
+        DefaultValue?: string | null;
+      }>;
+    }>;
+  }): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Integration/BatchCreateStoredProcedureApis`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('Failed to batch create stored procedure APIs');
+    return response.json();
+  }
+
+  async batchDeleteAppIntegrationSettingParameters(ids: number[]): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Integration/BatchDeleteAppIntergrationSettingParameters`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ Ids: ids }),
+    });
+    if (!response.ok) throw new Error('Failed to batch delete APIs');
+    return response.json();
+  }
 }
 
 export const integrationService = new IntegrationService(); 

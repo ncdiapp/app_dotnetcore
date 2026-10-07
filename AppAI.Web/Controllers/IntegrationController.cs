@@ -209,6 +209,30 @@ public class IntegrationController : SecureBaseController
         return null;
     }
 
+    /// <summary>
+    /// List stored procedures (with parameter defaults) for App API Provider batch create.
+    /// </summary>
+    [HttpGet]
+    public List<AppStoredProcedureApiBL.SpCatalogListItemDto> ListStoredProceduresForApiBuilder(int? dataSourceId, string schema = null, int? take = null)
+    {
+        if (!dataSourceId.HasValue || dataSourceId.Value <= 0)
+            return new List<AppStoredProcedureApiBL.SpCatalogListItemDto>();
+
+        return AppStoredProcedureApiBL.ListProceduresForApiBuilder(dataSourceId.Value, schema, take ?? 500);
+    }
+
+    [HttpPost]
+    public OperationCallResult<object> BatchCreateStoredProcedureApis([FromBody] AppStoredProcedureApiBL.SpApiCreateRequest request)
+    {
+        return AppStoredProcedureApiBL.BatchCreate(request);
+    }
+
+    [HttpPost]
+    public OperationCallResult<object> BatchDeleteAppIntergrationSettingParameters([FromBody] AppStoredProcedureApiBL.SpApiBatchDeleteRequest request)
+    {
+        return AppStoredProcedureApiBL.BatchDelete(request);
+    }
+
     [HttpPost]
     public OperationCallResult<AppIntergrationSettingParameterExDto> GenerateSampleJsonDataFromApiConfig(AppIntergrationSettingParameterExDto dto)
     {
