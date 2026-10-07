@@ -17,7 +17,11 @@ class IntegrationService {
       headers: getHeaders()
     });
     if (!response.ok) throw new Error('Failed to retrieve integration setting');
-    return response.json();
+    // 204 / empty body (legacy null) — do not call response.json()
+    if (response.status === 204) return null;
+    const text = await response.text();
+    if (!text) return null;
+    return JSON.parse(text);
   }
 
   async retrieveAllJsonFileTableImportSettingDtoList(): Promise<any> {

@@ -39,6 +39,7 @@ using DatabaseSchemaMrg;
 using DatabaseSchemaMrg.DataSchema;
 using APP.Framework.Excel;
 using Stripe;
+using System.Data.SqlClient;
 
 
 using APP.Framework;
@@ -47,6 +48,9 @@ namespace App.BL
     public static class AppIntergrationSettingBL
     {
         public static readonly int AppBuiltInProviderId = 1;
+        public static readonly string AppBuiltInProviderName = "App API Provider";
+        public static readonly string AppBuiltInProviderInternalCode = "AppBuiltInApiProvider";
+        public static readonly string AppBuiltInProviderDescription = "Built-in App API Provider for published application APIs";
 
         public static readonly string App_IntergrationSettingEntity_Save_OK = "App_IntergrationSettingEntity_Save_OK";
         public static readonly string App_IntergrationSettingEntity_Save_Failed = "App_IntergrationSettingEntity_Save_Failed";
@@ -248,18 +252,12 @@ namespace App.BL
 
         /// <summary>
         /// Loads the built-in App API Provider integration (id = <see cref="AppBuiltInProviderId"/>).
-        /// Returns null when that row does not exist in the tenant database.
+        /// Auto-seeds the row when missing. Returns null only when seed/load fails.
         /// </summary>
         public static AppIntergrationSettingExDto TryRetrieveAppBuiltInProviderExDto()
         {
             try
             {
-                AppIntergrationSettingEntity entity = RetrieveOneAppIntergrationSettingEntity(AppBuiltInProviderId);
-                if (entity.IsNew)
-                {
-                    return null;
-                }
-
                 return RetrieveOneAppIntergrationSettingExDto(AppBuiltInProviderId);
             }
             catch
@@ -268,12 +266,83 @@ namespace App.BL
             }
         }
 
+        /// <summary>
+        /// Ensures tenant DB has the built-in App API Provider row (IntergrationSettingId = 1).
+        /// Safe to call repeatedly; concurrent callers are handled via IF NOT EXISTS.
+        /// </summary>
+        public static void EnsureAppBuiltInProviderExists()
+        {
+            AppIntergrationSettingEntity existing = RetrieveOneAppIntergrationSettingEntity(AppBuiltInProviderId);
+            if (!existing.IsNew)
+            {
+                return;
+            }
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                try
+                {
+                    const string sql = @"
+IF NOT EXISTS (SELECT 1 FROM dbo.AppIntergrationSetting WHERE IntergrationSettingID = @id)
+BEGIN
+    SET IDENTITY_INSERT dbo.AppIntergrationSetting ON;
+    INSERT INTO dbo.AppIntergrationSetting
+        (IntergrationSettingID, Name, InternalCode, Description, IntergrationType, AppCreatedDate, AppModifiedDate)
+    VALUES
+        (@id, @name, @code, @desc, @type, GETUTCDATE(), GETUTCDATE());
+    SET IDENTITY_INSERT dbo.AppIntergrationSetting OFF;
+END";
+                    var parameters = new List<SqlParameter>
+                    {
+                        new SqlParameter("@id", AppBuiltInProviderId),
+                        new SqlParameter("@name", AppBuiltInProviderName),
+                        new SqlParameter("@code", AppBuiltInProviderInternalCode),
+                        new SqlParameter("@desc", AppBuiltInProviderDescription),
+                        new SqlParameter("@type", (int)EmAppIntergrationType.ResstAPI),
+                    };
+                    adapter.ExecuteExecuteNonQuery(sql, parameters);
+                }
+                catch
+                {
+                    // Concurrent insert or transient DB error — caller re-fetches.
+                }
+            }
+        }
+
+        private static AppIntergrationSettingExDto CreateEmptyAppBuiltInProviderExDto()
+        {
+            return new AppIntergrationSettingExDto
+            {
+                Id = AppBuiltInProviderId,
+                Name = AppBuiltInProviderName,
+                InternalCode = AppBuiltInProviderInternalCode,
+                Description = AppBuiltInProviderDescription,
+                IntergrationType = (int)EmAppIntergrationType.ResstAPI,
+            };
+        }
+
         public static AppIntergrationSettingExDto RetrieveOneAppIntergrationSettingExDto(object IntergrationSettingId)
         {
             AppIntergrationSettingEntity aAppIntergrationSettingEntity = RetrieveOneAppIntergrationSettingEntity(IntergrationSettingId);
             if (aAppIntergrationSettingEntity.IsNew)
             {
-                return null;
+                int requestedId;
+                if (IntergrationSettingId != null
+                    && int.TryParse(IntergrationSettingId.ToString(), out requestedId)
+                    && requestedId == AppBuiltInProviderId)
+                {
+                    EnsureAppBuiltInProviderExists();
+                    aAppIntergrationSettingEntity = RetrieveOneAppIntergrationSettingEntity(AppBuiltInProviderId);
+                    if (aAppIntergrationSettingEntity.IsNew)
+                    {
+                        // Avoid ASP.NET Core null → HTTP 204 (breaks frontend response.json()).
+                        return CreateEmptyAppBuiltInProviderExDto();
+                    }
+                }
+                else
+                {
+                    return null;
+                }
             }
 
             AppIntergrationSettingExDto aIntergrationSettingDto = AppIntergrationSettingConverter.ConvertEntityToExDto(aAppIntergrationSettingEntity);
