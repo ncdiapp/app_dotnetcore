@@ -897,6 +897,28 @@ namespace App.BL
             return toReturn;
         }
 
+        /// <summary>
+        /// Integration tokens are company-owned. SysAdmin manages all; a company admin only its own company's.
+        /// </summary>
+        private static bool CanManageIntegrationToken(AppSecurityUserEntity userEntity)
+        {
+            var identity = ServerContext.Instance.CurrnetClientIdentity;
+            if (identity == null || userEntity == null || userEntity.DomainId != (int)EmAppUserType.Integration)
+            {
+                return false;
+            }
+
+            if (identity.CurrentLoginUserType == (int)EmAppUserType.SysAdmin)
+            {
+                return true;
+            }
+
+            int? workingCompanyId = ControlTypeValueConverter.ConvertValueToInt(identity.CurrentWorkingCompanyId);
+            return identity.CurrentLoginUserType == (int)EmAppUserType.SaasCompanyAdmin
+                && workingCompanyId.HasValue
+                && userEntity.AppCreatedByCompanyId == workingCompanyId;
+        }
+
         public static List<AppSecurityUserDto> RetrieveAllIntegrationTokenDto()
         {
             EntityCollection<AppSecurityUserEntity> list = RetrieveAllIntegrationTokenEntity();
@@ -984,7 +1006,7 @@ namespace App.BL
                             adapter.Commit();
                             aAppSecurityUserExDto.Id = aAppSecurityUserEntity.UserId;
 
-                            ResetIntegrationTokenSession(aAppSecurityUserExDto, aValidationResult);
+                            ResetIntegrationTokenSession(aAppSecurityUserExDto, aValidationResult, aAppSecurityUserEntity.AppCreatedByCompanyId);
 
                             if (aValidationResult.HasErrors)
                             {
@@ -1005,6 +1027,11 @@ namespace App.BL
                             aValidationResult.Items.Add(new ValidationItem(typeof(AppSecurityUserEntity), "plm_AppSecurityUserEntity_QueryExecution_Error", ValidationItemType.Error, ex.ToString()));
                         }
                     }
+                }
+                else if (!CanManageIntegrationToken(RetrieveOneAppSecurityUserEntity(aAppSecurityUserExDto.Id)))
+                {
+                    // Target is not an Integration user in the caller's company: never rotate or convert it.
+                    aValidationResult.AddItem(null, "plm_AppSecurityUserEntity_IntegrationToken_Forbidden", ValidationItemType.Error, "Integration token not found");
                 }
                 else
                 {
@@ -1034,14 +1061,17 @@ namespace App.BL
 
 
 
-        private static void ResetIntegrationTokenSession(AppSecurityUserExDto aAppSecurityUserExDto, ValidationResult aValidationResult)
+        private static void ResetIntegrationTokenSession(AppSecurityUserExDto aAppSecurityUserExDto, ValidationResult aValidationResult, int? ownerCompanyId)
         {
             AppSecurityUserSessionEntity aAppSecurityUserSessionEntity = new AppSecurityUserSessionEntity();
             aAppSecurityUserSessionEntity.UserId = (int)aAppSecurityUserExDto.Id;
             aAppSecurityUserSessionEntity.AppCreatedDate = System.DateTime.UtcNow;
             aAppSecurityUserSessionEntity.ExpirationDate = aAppSecurityUserExDto.TokenExpirationDate;
             aAppSecurityUserSessionEntity.ApplicationType = 1;
-            aAppSecurityUserSessionEntity.AppCreatedByCompanyId = ControlTypeValueConverter.ConvertValueToInt(ServerContext.Instance.CurrentCompanyId);
+            // Integration type keeps the admin-set expiry from being slid forward by UpdateLoginUserExpiredDate.
+            aAppSecurityUserSessionEntity.EmExternalSigninType = (int)EmAppExternalLoginType.Integration;
+            aAppSecurityUserSessionEntity.AppCreatedByCompanyId = ownerCompanyId
+                ?? ControlTypeValueConverter.ConvertValueToInt(ServerContext.Instance.CurrentCompanyId);
 
             //string sessionId = EnDeCrypt.Encrypt(aAppSecurityUserExDto.LoginName + aAppSecurityUserExDto.Password, aAppSecurityUserSessionEntity.AppCreatedDate.Value.ToString("s"));
             //sessionId = AppSecurityPasswordHashBL.HashPassword(sessionId);
@@ -1082,9 +1112,15 @@ namespace App.BL
             aAppSecurityUserExDto.LoginName = aAppSecurityUserEntity.LoginName;
             aAppSecurityUserExDto.Password = aAppSecurityUserEntity.Password;
 
+            int? ownerCompanyId = aAppSecurityUserEntity.AppCreatedByCompanyId;
+            int? ownCompanyId = aAppSecurityUserEntity.MyOwnCompnanyId;
+
             AppSecurityUserConverter.CopyDtoToEntity(aAppSecurityUserEntity, aAppSecurityUserExDto);
             aAppSecurityUserEntity.Password = aAppSecurityUserExDto.Password;
             aAppSecurityUserEntity.AppModifiedDate = System.DateTime.UtcNow;
+            // The DTO is client-supplied: never let it move the token to another company.
+            aAppSecurityUserEntity.AppCreatedByCompanyId = ownerCompanyId;
+            aAppSecurityUserEntity.MyOwnCompnanyId = ownCompanyId;
 
             using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
             {
@@ -1095,7 +1131,7 @@ namespace App.BL
 
                     adapter.Commit();
 
-                    ResetIntegrationTokenSession(aAppSecurityUserExDto, aValidationResult);
+                    ResetIntegrationTokenSession(aAppSecurityUserExDto, aValidationResult, ownerCompanyId);
 
                     if (aValidationResult.HasErrors)
                     {
@@ -1130,6 +1166,15 @@ namespace App.BL
                 IPrefetchPath2 rootPath = new PrefetchPath2(EntityType.AppSecurityUserEntity);
 
                 RelationPredicateBucket filter = new RelationPredicateBucket(AppSecurityUserFields.DomainId == (int)EmAppUserType.Integration);
+
+                var identity = ServerContext.Instance.CurrnetClientIdentity;
+                if (identity == null || identity.CurrentLoginUserType != (int)EmAppUserType.SysAdmin)
+                {
+                    // Non-SysAdmin: only the working company's tokens; no company means nothing is returned.
+                    int scopedCompanyId = ControlTypeValueConverter.ConvertValueToInt(identity?.CurrentWorkingCompanyId) ?? -1;
+                    filter.PredicateExpression.AddWithAnd(AppSecurityUserFields.AppCreatedByCompanyId == scopedCompanyId);
+                }
+
                 rootPath.Add(AppSecurityUserEntity.PrefetchPathAppSecurityUserSession);
 
                 adapter.FetchEntityCollection(list, filter, rootPath);

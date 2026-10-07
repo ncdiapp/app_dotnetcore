@@ -1027,13 +1027,21 @@ public class AdministrationController : SecureBaseController
     [HttpGet]
     public List<AppSecurityUserDto> RetrieveAllIntegrationTokenDto()
     {
+        RequireIntegrationTokenAdmin();
         return AppSecurityUserBL.RetrieveAllIntegrationTokenDto();
     }
 
     [HttpPost]
     public OperationCallResult<AppSecurityUserExDto> SaveOneIntegrationTokenExDto(AppSecurityUserExDto aAppSecurityUserExDto)
     {
+        RequireIntegrationTokenAdmin();
         return AppSecurityUserBL.SaveOneIntegrationTokenExDto(aAppSecurityUserExDto);
+    }
+
+    private static void RequireIntegrationTokenAdmin()
+    {
+        if (!AppSecurityUserBL.IsAdminUser())
+            throw new Microsoft.AspNetCore.Http.BadHttpRequestException("Forbidden", (int)HttpStatusCode.Forbidden);
     }
 
 
