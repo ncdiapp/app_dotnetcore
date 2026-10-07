@@ -84,7 +84,7 @@ public static class McpGatewayExtensions
 
         services.AddSingleton<IApiClient, ApiClient>();
 
-        // Audit: queued, per-tenant (dbo.AppMcpAuditLog, V040). One instance serves IAuditService and the background writer.
+        // Audit: queued, per-tenant (dbo.AppMcpAuditLog, V046). One instance serves IAuditService and the background writer.
         services.AddSingleton<IAuditSink, McpTenantAuditSink>();
         services.AddSingleton<QueuedAuditService>();
         services.AddSingleton<IAuditService>(sp => sp.GetRequiredService<QueuedAuditService>());
@@ -94,7 +94,7 @@ public static class McpGatewayExtensions
         services.AddSingleton<IAnalysisService, AnalysisService>();
         services.AddSingleton<IMcpCallerContext, McpCallerContext>();
 
-        // Which APIs an external user may see/call: security-group grants in the tenant DB (V041), cached briefly.
+        // Which APIs an external user may see/call: security-group grants in the tenant DB (V047), cached briefly.
         services.AddSingleton<IApiAccessProvider, McpApiAccessProvider>();
         services.AddSingleton<IApiAccessPolicy, ApiAccessPolicy>();
 

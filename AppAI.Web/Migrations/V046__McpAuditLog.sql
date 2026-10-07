@@ -1,4 +1,4 @@
--- V040: Audit trail for the MCP gateway (external users on Claude Desktop / ChatGPT Desktop etc.).
+-- V046: Audit trail for the MCP gateway (external users on Claude Desktop / ChatGPT Desktop etc.).
 -- One row per audited gateway event, written in the caller's tenant DB so each company only ever holds its own events.
 -- Replaces the gateway's old standalone AuditLog table, which had no user or company and a single global database.
 -- UserId refers to AppMasterDB.dbo.AppSecurityUser (no FK across databases). The access token is never stored.

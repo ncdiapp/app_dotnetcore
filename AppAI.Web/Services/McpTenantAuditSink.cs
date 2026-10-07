@@ -6,7 +6,7 @@ using McpGateway.Services;
 namespace AppAI.Web.Services;
 
 /// <summary>
-/// Stores MCP gateway audit events in the caller's tenant database (dbo.AppMcpAuditLog, V040) through
+/// Stores MCP gateway audit events in the caller's tenant database (dbo.AppMcpAuditLog, V046) through
 /// McpAuditBL. Plugged into the gateway's QueuedAuditService, which does the queueing and batching.
 /// </summary>
 public sealed class McpTenantAuditSink : IAuditSink

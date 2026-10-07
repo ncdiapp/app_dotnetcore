@@ -9,7 +9,7 @@ namespace App.BL.TenantBusiness
     /// <summary>Tenant DB connection captured on the request thread so a background writer can use it later.</summary>
     public sealed record McpAuditTarget(string ConnectionString, string DatabaseName);
 
-    /// <summary>One row of dbo.AppMcpAuditLog (V040__McpAuditLog.sql).</summary>
+    /// <summary>One row of dbo.AppMcpAuditLog (V046__McpAuditLog.sql).</summary>
     public sealed record McpAuditRow(
         DateTime CreatedUtc,
         string EventCode,

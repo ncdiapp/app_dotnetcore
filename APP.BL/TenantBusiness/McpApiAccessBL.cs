@@ -23,7 +23,7 @@ namespace App.BL.TenantBusiness
     }
 
     // Which APIs an external MCP user may use: catalogued + enabled + the user is in a granted security group.
-    // Tables: dbo.AppMcpExposedApi, dbo.AppMcpExposedApiGroup (V041__McpExposedApi.sql); membership comes from
+    // Tables: dbo.AppMcpExposedApi, dbo.AppMcpExposedApiGroup (V047__McpExposedApi.sql); membership comes from
     // dbo.AppSecurityGroupMember (V001). Everything runs in the registered identity's tenant DB.
     public static class McpApiAccessBL
     {

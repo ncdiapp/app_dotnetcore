@@ -1,4 +1,4 @@
--- V041: Which APIs external MCP users (Claude Desktop / ChatGPT Desktop, ...) may use, controlled by security group.
+-- V047: Which APIs external MCP users (Claude Desktop / ChatGPT Desktop, ...) may use, controlled by security group.
 -- An API is reachable through MCP only when it is catalogued here, enabled, AND the calling user belongs to at least
 -- one security group granted on it (AppSecurityGroupMember). No row = not exposed (deny by default).
 -- OperationId / AppSource are the gateway's Swagger identifiers (ApiSources:Sources[].Name and the operationId).

@@ -31,9 +31,9 @@ Decisions (confirmed by user):
 
 **Audit -> LLBLGen + tenant DB:**
 - Replace the raw ADO.NET `AuditService` with a tenant-scoped BL (`AppTenantAdapterBL.GetTenantAdapter()`; use `CreateTenantAdapter` in the background writer, which captures the identity first).
-- New migration **V040** adding an MCP audit table in the tenant DB with `TenantId`/`CompanyId`, `UserId`, `UserName`, `SessionId`, `CorrelationId`, event code and detail. Read the migration SQL before writing DTO/mapper (project DB rules 1-2), and log every catch (rule 3).
+- New migration **V046** adding an MCP audit table in the tenant DB with `TenantId`/`CompanyId`, `UserId`, `UserName`, `SessionId`, `CorrelationId`, event code and detail. Read the migration SQL before writing DTO/mapper (project DB rules 1-2), and log every catch (rule 3).
 - Writes go through a bounded `Channel<AuditEntry>` with a hosted writer, not `Task.Run`.
-- Confirm V040 is free with `check-duplicate-versions.ps1`.
+- Confirm V046 is free with `check-duplicate-versions.ps1`.
 
 **Host cleanup (remove `MCP_GATEWAY` flag):**
 - Move the McpGateway code into a proper project/folder (`APP.McpGateway` or `AppAI.Web/Mcp/`) so `Program.cs` only calls `AddMcpGateway()` / `MapMcpGateway()` extension methods.
@@ -52,17 +52,17 @@ Decisions (confirmed by user):
 - `AppAI.Web/Auth/SessionValidationFilter.cs`: source of the session-validation logic to share
 - `APP.BL/MasterAdmin/AppSaasUserSessionMgtBL.cs:73`: `ViladateSessionIdAndCompanyIdRegisterIdentity`
 - `APP.BL/Infrastructure/AppTenantAdapterBL.cs`: tenant adapter
-- `AppAI.Web/Migrations/V040__McpAuditLog.sql` (new)
+- `AppAI.Web/Migrations/V046__McpAuditLog.sql` (new)
 - Gateway sources: `ApiClient.cs`, `TokenStore.cs`, `AuthTools.cs`, `AuthController.cs`, `AuditService.cs`, `DataAnalysisCacheService.cs`, `McpGateway.csproj`
 
 ## Phases
 1. Auth: middleware + forwarding + remove old auth/static token. Rotate and remove committed secrets in gateway config.
 2. Tenant-partition caches and the session fallback fix.
-3. Audit -> V040 + LLBLGen BL + channel writer.
+3. Audit -> V046 + LLBLGen BL + channel writer.
 4. Host cleanup (drop flag, extensions, route cleanup) and docs update (`Document/AgentDesign`).
 
 ## Risks and open items
-- **Master DB**: tokens live in master DB session table, so no new master table is needed. Only the V040 tenant audit table is added. If audit should be cross-tenant, it needs a master-DB script (no master migration folder seen).
+- **Master DB**: tokens live in master DB session table, so no new master table is needed. Only the V046 tenant audit table is added. If audit should be cross-tenant, it needs a master-DB script (no master migration folder seen).
 - **Session lifetime**: `Home/ExternalLogin` session TTL governs the token. Long-running n8n/automation clients would need re-login. A dedicated long-lived API token (the rejected option) can be added later behind the same header.
 - **Out of scope**: per-tenant Swagger sources/registry, the pdf-ingestion plan (docs only, EF Core, would conflict with LLBLGen), and rotating the PLM/Azure/SQL secrets already committed in appsettings.
 - Stale gateway docs (`mcp-session-auth-flow.md`, `api endpoint.-exposed- MCP tool.md`, `CLAUDE.md`) describe code that does not exist and should not be used as a spec.
@@ -77,7 +77,7 @@ Decisions (confirmed by user):
 - `api_execute` against PLM: confirm outbound request carries the caller's token (check via audit row, not logs).
 - Two users in two tenants: confirm datasets and audit rows are isolated, and no `"default"` session sharing.
 - Confirm token is absent from logs and from MCP header API responses.
-- Run V040 on a test tenant via `POST /webapi/TenantProvisioning/RunMigrations`.
+- Run V046 on a test tenant via `POST /webapi/TenantProvisioning/RunMigrations`.
 - xUnit: middleware tests (header only, query string ignored), cache key partition tests. Gateway's 57 existing tests updated for removed auth.
 
 ---
@@ -102,7 +102,7 @@ Each external user has their own `IntergrationAccessToken`. We need a management
 Role permissions only protect data objects inside BL. They cannot decide which *endpoints* an external user may call through MCP, so an admin cannot say "this integration user may use only these 10 APIs". Decision needed (see chat): add a small tenant-DB **exposed-API allowlist** in addition to role permissions.
 
 ## Proposed management API (if allowlist is approved)
-Tenant migration V040 (alongside the audit table):
+Tenant migration V046 (alongside the audit table):
 - `AppMcpExposedApi` (operationId, source, controller/action route, HTTP method, description, IsEnabled)
 - `AppMcpTokenApiGrant` (integration UserId, ExposedApiId), or grant by group of APIs
 
@@ -135,7 +135,7 @@ React: extend `CompanyIntegrationTokenManagement.tsx` with an "API access" panel
 6. The downstream call is made with the caller's identity, so BL-level object permissions still apply as a second layer.
 7. Audit every allow/deny with user, roles, operationId, correlation id.
 
-## Data model (tenant DB, migration V040, next to audit table)
+## Data model (tenant DB, migration V046, next to audit table)
 - `AppMcpExposedApi`: operationId (unique), source, route, HTTP method, summary, IsEnabled
 - `AppMcpExposedApiRole`: ExposedApiId, RoleId (many-to-many)
 - Read the real role table definitions in migrations before writing DTOs/mappers (project DB rule 1). **RoleId must reference whichever role store AppAI actually uses** (see open question).
@@ -156,13 +156,13 @@ React: extend `CompanyIntegrationTokenManagement.tsx` with an "API access" panel
 - Cache per-request: user's role set (short TTL, invalidated on role change) and the endpoint->roles map per tenant. Filter search results after ranking, not before.
 
 ## Open question
-- Which role store is authoritative: tenant `AppSecurityGroup`/`AppSecurityGroupMember`, or legacy `AppSecurityUserRolePrevilege`? Confirm before V040.
+- Which role store is authoritative: tenant `AppSecurityGroup`/`AppSecurityGroupMember`, or legacy `AppSecurityUserRolePrevilege`? Confirm before V046.
 
 ## Resolved: role store = AppSecurityGroup
 - "Security role" means `AppSecurityGroup` (tenant DB), with users linked through `AppSecurityGroupMember`.
 - `AppMcpExposedApiRole.RoleId` becomes `SecurityGroupId` referencing `AppSecurityGroup`.
 - User's role set = groups the user belongs to via `AppSecurityGroupMember` (check whether membership can also come through organization/user-type mappings in `AppSecuritySysObjGroupUserBL`, and whether groups nest).
-- Before writing V040, DTOs or mappers: read the `AppSecurityGroup` / `AppSecurityGroupMember` CREATE TABLE statements in the V001 migration and copy column names exactly. Legacy `AppSecurityUserRolePrevilege` is not used.
+- Before writing V046, DTOs or mappers: read the `AppSecurityGroup` / `AppSecurityGroupMember` CREATE TABLE statements in the V001 migration and copy column names exactly. Legacy `AppSecurityUserRolePrevilege` is not used.
 
 ---
 
@@ -199,18 +199,18 @@ Existing PLM source: leave `ForwardCallerToken` false (PLM has its own master DB
 - `DataAnalysisStartupService` removed: it had no caller identity. Global datasets now fill on the first `api_execute` per company and reload from disk after restart.
 - New test project `APP.McpGateway.Tests` (xUnit + Moq, test-only packages): 58 tests, all passing - ported `SwaggerServiceTests`, rewritten `ApiClientTests` (token forwarding, two callers, no static token on calls), new `DataAnalysisCacheServiceTests` (user/company isolation, restart, no-caller, unsafe names). Run with `DOTNET_ROOT=C:\Program Files\dotnet` if the user-local .NET 9 install shadows the machine .NET 10.
 
-Remaining: phase 3 (tenant audit, V040), phase 4 (host cleanup, drop flag, management API/UI).
+Remaining: phase 3 (tenant audit, V046), phase 4 (host cleanup, drop flag, management API/UI).
 
 ---
 
 # Status: Phase 3 implemented (tenant audit)
 
-- **V040__McpAuditLog.sql**: tenant table `dbo.AppMcpAuditLog` (CompanyId, UserId, EventCode, Action, Success, McpSessionId (informational), IpAddress, CorrelationId, AppSource, HttpMethod, ResourcePath, HttpStatus, ErrorMessage, AdditionalContext JSON). The access token is never stored. **Not yet applied to any database** - run `POST /webapi/TenantProvisioning/RunMigrations` (or Migrations:RunOnStartup in Development) and check the table exists.
+- **V046__McpAuditLog.sql**: tenant table `dbo.AppMcpAuditLog` (CompanyId, UserId, EventCode, Action, Success, McpSessionId (informational), IpAddress, CorrelationId, AppSource, HttpMethod, ResourcePath, HttpStatus, ErrorMessage, AdditionalContext JSON). The access token is never stored. **Not yet applied to any database** - run `POST /webapi/TenantProvisioning/RunMigrations` (or Migrations:RunOnStartup in Development) and check the table exists.
 - `APP.BL/TenantBusiness/McpAuditBL.cs`: `CaptureTarget()` (tenant connection from the registered identity, request thread) and `WriteAsync()` (parameterized batch insert in one transaction). Plain SQL like the other recent tenant tables, because new tables have no generated LLBLGen entity.
 - Gateway `QueuedAuditService` (`IAuditService` + `IHostedService`): stamps CompanyId/UserId from the validated caller, bounded queue (`Audit:QueueCapacity`, default 10000), batched writes (`Audit:BatchSize`, 100), overflow counted (`DroppedCount`) and logged, failed writes logged, queue drained on shutdown. `IAuditSink` is implemented in AppAI.Web (`McpTenantAuditSink`).
 - Removed: old ADO.NET `AuditService` (single global `AuditLog` DB, `ConnectionStrings:AuditDb`), `McpNullAuditService`, and the audit toggle that rewrote appsettings.json (the runtime toggle is now in-memory only).
 - Bug found and fixed while testing: a `BackgroundService`-based writer lost queued events at shutdown (task cancelled before draining; 178/200 runs lost the event). Now a plain `IHostedService` that completes the queue and awaits the drain.
-- Tests: 67 passing (9 new for the queue). `check-duplicate-versions.ps1` still fails on the pre-existing V039 duplicate; V040 is unique.
+- Tests: 67 passing (9 new for the queue). `check-duplicate-versions.ps1` still fails on the pre-existing V039 duplicate; V046 is unique.
 
 Not done / known gaps:
 - Authentication failures (401 at the middleware) and role denials are not audited yet (middleware has no tenant context for a failed token). Role denials come with phase 4.
@@ -222,7 +222,7 @@ Not done / known gaps:
 # Status: Phase 4 implemented (role-based API access, management API + screen, flag removed)
 
 ## What exists now
-- **V041__McpExposedApi.sql**: `dbo.AppMcpExposedApi` (catalogued operations: AppSource, OperationId, IsEnabled, snapshot of method/path/summary) and `dbo.AppMcpExposedApiGroup` (ExposedApiId, GroupID -> `AppSecurityGroup.GroupID`, cascade delete). **Not yet applied to any database.**
+- **V047__McpExposedApi.sql**: `dbo.AppMcpExposedApi` (catalogued operations: AppSource, OperationId, IsEnabled, snapshot of method/path/summary) and `dbo.AppMcpExposedApiGroup` (ExposedApiId, GroupID -> `AppSecurityGroup.GroupID`, cascade delete). **Not yet applied to any database.**
 - **Rule** (`McpApiAccessBL.GetAllowedForUserAsync`): an operation is usable by an external user only if it is catalogued, enabled, AND the user is in a granted group via `AppSecurityGroupMember(GroupID, UserID)`. Direct membership only (no nesting exists in the schema). Deny by default.
 - **Enforcement in the gateway** (`ApiAccessPolicy`, cached per company+user for `Mcp:AccessCacheSeconds`, default 60, cleared immediately on admin changes): `semantic_search_endpoints` and `browse_endpoints` return only allowed operations; `get_endpoint_details` and `api_execute` answer "not found" for anything not allowed (identical to a missing operation, so ids cannot be probed) and write an `A022_AccessDenied` audit row. If grants cannot be loaded the answer is deny.
 - **Management API** `webapi/McpManagement/*` (`McpManagementController`, company admin only): `GetExposableApis`, `GetSecurityGroups`, `SaveExposedApi`, `DeleteExposedApi`, `GetUserEffectiveApis` (preview), `RefreshApiCatalog`. The catalogue entry is taken from the server's own spec, so only operations that really exist can be exposed. Changes are audited. The controller itself is excluded from the exposable spec.
@@ -231,7 +231,7 @@ Not done / known gaps:
 - **Compile flag removed.** `MCP_GATEWAY` / `EnableMcpGateway` are gone; the gateway always compiles and is wired by `AppAI.Web/Mcp/McpGatewayExtensions.cs`. It runs only when configuration sets `Mcp:Enabled=true` (default off). `Program.cs` shrank from ~460 to 270 lines.
 
 ## How to turn it on (appsettings is a credential file, so not edited by the agent)
-1. Apply V040 and V041 (`POST /webapi/TenantProvisioning/RunMigrations`, or Migrations:RunOnStartup in Development).
+1. Apply V046 and V047 (`POST /webapi/TenantProvisioning/RunMigrations`, or Migrations:RunOnStartup in Development).
 2. Add to appsettings: `"Mcp": { "Enabled": true }` and an AppAI source:
    `{ "Name": "AppAI", "BaseUrl": "http://localhost:52740/appai/", "SwaggerJsonPath": "swagger/v1/swagger.json", "AccessTokenHeaderName": "IntergrationAccessToken", "ForwardCallerToken": true }`
    Keep PLM's `ForwardCallerToken` false (PLM has its own master DB).
@@ -240,7 +240,7 @@ Not done / known gaps:
 
 ## Verified vs not
 - Verified: builds; 77 gateway tests + 18 BL tests pass; React type-check (0 errors) and ESLint clean on new files; spec generation and DI wiring checked with throwaway hosts (validated on build/scopes).
-- **Not verified**: V040/V041 against a real database; the end-to-end flow (token -> /mcp -> tools -> tenant DB); the React screen in a browser; Claude Desktop / ChatGPT actually sending the custom header.
+- **Not verified**: V046/V047 against a real database; the end-to-end flow (token -> /mcp -> tools -> tenant DB); the React screen in a browser; Claude Desktop / ChatGPT actually sending the custom header.
 
 ## Known gaps / follow-ups
 - A SysAdmin session cannot use the management API (tables are per tenant).
@@ -250,3 +250,7 @@ Not done / known gaps:
 - Dead code that can write appsettings.json remains: `RuntimeConfigService`, `AdminTools` (not registered as MCP tools) and the disabled `McpServerManagerController`.
 - Role denials are audited; failed token checks are not. No retention for `AppMcpAuditLog`.
 - Edits to a selected operation in the screen are discarded if another row is clicked before saving.
+
+---
+
+> **Migration numbers:** the audit and access-control scripts were first written as V040/V041, then renumbered to **V046/V047** because V040-V045 were taken on master in the meantime. Earlier sections of this document were updated to match.
