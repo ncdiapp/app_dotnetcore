@@ -221,6 +221,18 @@ public class IntegrationController : SecureBaseController
         return AppStoredProcedureApiBL.ListProceduresForApiBuilder(dataSourceId.Value, schema, take ?? 500);
     }
 
+    /// <summary>
+    /// Reload one stored procedure's parameters and placeholder defaults (editor Reset Parameters).
+    /// </summary>
+    [HttpGet]
+    public AppStoredProcedureApiBL.SpCatalogListItemDto GetStoredProcedureForApiBuilder(int? dataSourceId, string schema = null, string spName = null)
+    {
+        if (!dataSourceId.HasValue || dataSourceId.Value <= 0 || string.IsNullOrWhiteSpace(spName))
+            return null;
+
+        return AppStoredProcedureApiBL.GetProcedureForApiBuilder(dataSourceId.Value, schema, spName);
+    }
+
     [HttpPost]
     public OperationCallResult<object> BatchCreateStoredProcedureApis([FromBody] AppStoredProcedureApiBL.SpApiCreateRequest request)
     {

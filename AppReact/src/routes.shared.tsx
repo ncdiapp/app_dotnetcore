@@ -56,6 +56,7 @@ import {
   AppDataModelApiEditor,
   AppDataPresentationApiEditor,
   ExcelImportDataUpdateApiEditor,
+  AppStoredProcedureApiEditor,
 } from './components/integration';
 import { DbaGenie } from './components/dbgenie';
 import AISkillManagement from './components/aiskill/AISkillManagement';
@@ -248,6 +249,8 @@ export const AUTHENTICATED_ROUTES: SharedRouteDef[] = [
   { path: 'third-party-api-editor', element: <ThirdPartyApiEditor /> },
   { path: 'excel-import-data-update-api-editor/:param', element: <ExcelImportDataUpdateApiEditor /> },
   { path: 'excel-import-data-update-api-editor', element: <ExcelImportDataUpdateApiEditor /> },
+  { path: 'stored-procedure-api-editor/:param', element: <AppStoredProcedureApiEditor /> },
+  { path: 'stored-procedure-api-editor', element: <AppStoredProcedureApiEditor /> },
   { path: 'rest-api-import-editor/:param', element: <RestApiImportEditor /> },
   { path: 'rest-api-import-editor', element: <RestApiImportEditor /> },
   { path: 'excel-table-import-editor/:param', element: <ExcelTableImportEditor /> },

@@ -38,6 +38,7 @@ namespace App.BL
             public string SpName { get; set; }
             public string ActionCode { get; set; }
             public string Description { get; set; }
+            /// <summary>Ignored — sample capture is decided server-side for read-only SPs only.</summary>
             public bool CaptureSample { get; set; }
             public List<SpApiParameterItem> Parameters { get; set; }
         }
@@ -90,19 +91,50 @@ namespace App.BL
 
                 var paramMeta = StoredProcedureCatalogBL.LoadParameters(fixture, engine, sch, name);
                 var parameters = paramMeta.Select(ToApiParamWithDefault).ToList();
+                var fullName = p["FullName"]?.ToString() ?? StoredProcedureCatalogBL.FormatFull(sch, name);
+                var dbDescription = p["Description"]?.ToString() ?? p["description"]?.ToString();
 
                 result.Add(new SpCatalogListItemDto
                 {
                     Schema = sch,
                     Name = name,
-                    FullName = p["FullName"]?.ToString() ?? StoredProcedureCatalogBL.FormatFull(sch, name),
-                    Description = p["Description"]?.ToString(),
+                    FullName = fullName,
+                    Description = BuildApiDescription(fullName, dbDescription, parameters),
                     SuggestedActionCode = BuildDefaultActionCode(name),
                     Parameters = parameters,
                 });
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Reload one SP's metadata + placeholder defaults (for editor Reset Parameters).
+        /// </summary>
+        public static SpCatalogListItemDto GetProcedureForApiBuilder(int dataSourceId, string schema, string spName)
+        {
+            if (dataSourceId <= 0)
+                throw new ArgumentException("DataSourceId is required.", nameof(dataSourceId));
+            if (string.IsNullOrWhiteSpace(spName))
+                throw new ArgumentException("SpName is required.", nameof(spName));
+
+            var fixture = AppCacheManagerBL.GetOneDatabaseFixture(dataSourceId);
+            var engine = fixture.SqlServerType ?? EmSqlType.SqlServer;
+            StoredProcedureCatalogBL.ParseName(spName, schema, out var sch, out var name, dataSourceId);
+
+            var paramMeta = StoredProcedureCatalogBL.LoadParameters(fixture, engine, sch, name);
+            var parameters = paramMeta.Select(ToApiParamWithDefault).ToList();
+            var fullName = StoredProcedureCatalogBL.FormatFull(sch, name);
+
+            return new SpCatalogListItemDto
+            {
+                Schema = sch,
+                Name = name,
+                FullName = fullName,
+                Description = BuildApiDescription(fullName, null, parameters),
+                SuggestedActionCode = BuildDefaultActionCode(name),
+                Parameters = parameters,
+            };
         }
 
         public static OperationCallResult<object> BatchCreate(SpApiCreateRequest request)
@@ -125,6 +157,8 @@ namespace App.BL
 
             var created = new List<object>();
             var warnings = new List<string>();
+            var sampleCaptured = 0;
+            var sampleSkipped = 0;
 
             foreach (var item in request.Items)
             {
@@ -161,6 +195,35 @@ namespace App.BL
                     }).ToList(),
                 };
 
+                var fullName = StoredProcedureCatalogBL.FormatFull(item.Schema, item.SpName);
+                string sampleJson = null;
+                IList<string> returnColumns = null;
+                var captured = false;
+
+                var definition = StoredProcedureCatalogBL.TryLoadDefinition(
+                    fixture, fixture.SqlServerType ?? EmSqlType.SqlServer, item.Schema, item.SpName);
+                var readOnly = IsLikelyReadOnlyProcedure(definition);
+                if (readOnly)
+                {
+                    try
+                    {
+                        sampleJson = CaptureSampleJson(request.DataSourceId, item.Schema, item.SpName, parameters);
+                        returnColumns = TryExtractReturnColumns(sampleJson);
+                        if (returnColumns == null && !IsSampleOk(sampleJson))
+                            warnings.Add($"{actionCode}: sample capture returned an error payload.");
+                        else if (IsSampleOk(sampleJson))
+                            captured = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        warnings.Add($"{actionCode}: sample capture failed — {ex.Message}");
+                    }
+                }
+                else
+                {
+                    sampleSkipped++;
+                }
+
                 var dto = new AppIntergrationSettingParameterExDto
                 {
                     IntergrationSettingId = AppIntergrationSettingBL.AppBuiltInProviderId,
@@ -168,36 +231,25 @@ namespace App.BL
                     HttpMethd = "Post",
                     DataSourceId = request.DataSourceId,
                     ActionCode = actionCode,
-                    ActionDescription = string.IsNullOrWhiteSpace(item.Description)
-                        ? $"Stored procedure {StoredProcedureCatalogBL.FormatFull(item.Schema, item.SpName)}"
-                        : item.Description.Trim(),
-                    JsonQuery = StoredProcedureCatalogBL.FormatFull(item.Schema, item.SpName),
+                    ActionDescription = BuildApiDescription(fullName, item.Description, parameters, returnColumns),
+                    JsonQuery = fullName,
                     MappingInternalCode = EmAppIntergrationSettingParameterUsageType.ApiOperation.ToString(),
                     APIConfigParameters = apiConfig,
                     ApiconfigParameters = JsonConvert.SerializeObject(apiConfig),
+                    JsonSampleData = sampleJson,
                 };
-
-                if (item.CaptureSample)
-                {
-                    try
-                    {
-                        dto.JsonSampleData = CaptureSampleJson(request.DataSourceId, item.Schema, item.SpName, parameters);
-                    }
-                    catch (Exception ex)
-                    {
-                        warnings.Add($"{actionCode}: sample capture failed — {ex.Message}");
-                    }
-                }
 
                 var saveResult = AppIntergrationSettingBL.SaveAppIntergrationSettingParameterExDto(dto);
                 validation.Merge(saveResult.ValidationResult);
                 if (saveResult.IsSuccessfulWithResult)
                 {
+                    if (captured) sampleCaptured++;
                     created.Add(new
                     {
                         Id = saveResult.Object.Id,
                         ActionCode = saveResult.Object.ActionCode,
-                        CapturedSample = item.CaptureSample && !string.IsNullOrWhiteSpace(saveResult.Object.JsonSampleData),
+                        CapturedSample = captured && !string.IsNullOrWhiteSpace(saveResult.Object.JsonSampleData),
+                        SampleSkipped = !readOnly,
                     });
                 }
                 else
@@ -206,13 +258,19 @@ namespace App.BL
                 }
             }
 
+            if (sampleSkipped > 0)
+            {
+                warnings.Add(
+                    $"Sample auto-capture skipped for {sampleSkipped} SP(s) (definition missing or contains INSERT/UPDATE/DELETE/EXEC/…).");
+            }
+
             foreach (var w in warnings)
             {
                 validation.Items.Add(new ValidationItem(typeof(AppIntergrationSettingParameterEntity),
                     "SpApi_BatchCreate_Warning", ValidationItemType.Warning, w));
             }
 
-            result.Object = new { createdCount = created.Count, created, warnings };
+            result.Object = new { createdCount = created.Count, created, warnings, sampleCaptured, sampleSkipped };
             return result;
         }
 
@@ -295,6 +353,117 @@ namespace App.BL
             return "AppSp_" + bare;
         }
 
+        private static readonly Regex AutoReturnColumnsSuffix = new Regex(
+            @"\s*Returns columns:\s*.+$",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        /// <summary>
+        /// Prefer DB comment/MS_Description or user-edited text; otherwise synthesize from IN + OUTPUT params.
+        /// When <paramref name="returnColumns"/> is provided (after Run &amp; save sample), append result-set columns.
+        /// Truncated to ActionDescription max length (500).
+        /// </summary>
+        public static string BuildApiDescription(
+            string fullName,
+            string dbOrUserDescription,
+            IEnumerable<SpApiParameterItem> parameters,
+            IList<string> returnColumns = null)
+        {
+            string baseDesc;
+            if (!string.IsNullOrWhiteSpace(dbOrUserDescription))
+            {
+                baseDesc = AutoReturnColumnsSuffix.Replace(dbOrUserDescription.Trim(), string.Empty).Trim();
+                if (baseDesc.EndsWith(".", StringComparison.Ordinal))
+                    baseDesc = baseDesc.TrimEnd('.').TrimEnd();
+            }
+            else
+            {
+                baseDesc = SynthesizeApiDescription(fullName, parameters);
+            }
+
+            if (returnColumns != null && returnColumns.Count > 0)
+            {
+                var cols = string.Join(", ", returnColumns.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()));
+                if (!string.IsNullOrWhiteSpace(cols))
+                    baseDesc = $"{baseDesc}. Returns columns: {cols}.";
+            }
+            else if (!baseDesc.EndsWith(".", StringComparison.Ordinal))
+            {
+                baseDesc += ".";
+            }
+
+            return TruncateDescription(baseDesc, 500);
+        }
+
+        private static string SynthesizeApiDescription(string fullName, IEnumerable<SpApiParameterItem> parameters)
+        {
+            var proc = string.IsNullOrWhiteSpace(fullName) ? "stored procedure" : fullName.Trim();
+            var list = (parameters ?? Enumerable.Empty<SpApiParameterItem>())
+                .Where(p => p != null && !string.IsNullOrWhiteSpace(p.Name))
+                .OrderBy(p => p.Ordinal)
+                .ToList();
+
+            var inputs = list.Where(p => !IsOutputOnly(p.Direction)).ToList();
+            var outputs = list.Where(p => IsOutputOnly(p.Direction)).ToList();
+
+            var parts = new List<string>();
+            if (inputs.Count == 0)
+                parts.Add($"Execute {proc} (no input parameters)");
+            else
+                parts.Add($"Execute {proc} — params: {string.Join(", ", inputs.Select(FormatParamBrief))}");
+
+            if (outputs.Count > 0)
+                parts.Add($"OUTPUT: {string.Join(", ", outputs.Select(FormatParamBrief))}");
+
+            return string.Join(". ", parts);
+        }
+
+        private static string FormatParamBrief(SpApiParameterItem p)
+        {
+            var name = p.Name.Trim();
+            var type = string.IsNullOrWhiteSpace(p.Type) ? "unknown" : p.Type.Trim();
+            return $"{name} ({type})";
+        }
+
+        private static string TruncateDescription(string text, int maxLen)
+        {
+            if (string.IsNullOrEmpty(text) || text.Length <= maxLen) return text ?? string.Empty;
+            if (maxLen <= 3) return text.Substring(0, maxLen);
+            return text.Substring(0, maxLen - 3).TrimEnd() + "...";
+        }
+
+        private static bool IsSampleOk(string sampleJson)
+        {
+            if (string.IsNullOrWhiteSpace(sampleJson)) return false;
+            try
+            {
+                var jo = JObject.Parse(sampleJson);
+                return jo["ok"]?.Value<bool>() == true || jo["IsSuccess"]?.Value<bool>() == true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static IList<string> TryExtractReturnColumns(string sampleJson)
+        {
+            if (!IsSampleOk(sampleJson)) return null;
+            try
+            {
+                var jo = JObject.Parse(sampleJson);
+                var arr = jo["columnNames"] as JArray ?? jo["ColumnNames"] as JArray;
+                if (arr == null || arr.Count == 0) return null;
+                return arr.Select(t => t?.ToString())
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public static string PlaceholderDefault(string type, bool hasDefault)
         {
             // When SP declares a default, leave null so execute can omit and let the engine apply it.
@@ -334,6 +503,64 @@ namespace App.BL
             if (p.DefaultValue == null && !p.HasDefault)
                 p.DefaultValue = PlaceholderDefault(p.Type, false);
             return p;
+        }
+
+        /// <summary>
+        /// Conservative heuristic: only auto-execute when definition is present and has no
+        /// obvious mutating / dynamic-SQL markers. Missing definition → do not execute.
+        /// </summary>
+        public static bool IsLikelyReadOnlyProcedure(string definition)
+        {
+            if (string.IsNullOrWhiteSpace(definition)) return false;
+
+            var text = StripSqlNoiseForScan(definition);
+            if (string.IsNullOrWhiteSpace(text)) return false;
+
+            // Data-changing / DDL / nested CALL — any hit → unsafe.
+            if (MutatingSqlToken.IsMatch(text)) return false;
+
+            // Dynamic SQL / nested EXEC proc (not "EXECUTE AS caller/owner").
+            if (ExecDynamicOrNested.IsMatch(text)) return false;
+
+            // SELECT … INTO table/#temp (not INTO @variable) creates/writes data.
+            if (SelectIntoTable.IsMatch(text)) return false;
+
+            return true;
+        }
+
+        private static readonly Regex MutatingSqlToken = new Regex(
+            @"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|ALTER|DROP|CREATE|CALL|BULK|OPENROWSET|OPENDATASOURCE|WRITETEXT|UPDATETEXT|SP_EXECUTESQL)\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        // EXEC(...) / EXECUTE(...) / EXEC otherProc — exclude EXECUTE AS (impersonation).
+        private static readonly Regex ExecDynamicOrNested = new Regex(
+            @"\bEXEC(?:UTE)?\s*(?:\(|(?!AS\b)\S)",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        private static readonly Regex SelectIntoTable = new Regex(
+            @"\bINTO\s+(?!@)[\w#\[]",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+        private static string StripSqlNoiseForScan(string sql)
+        {
+            if (string.IsNullOrEmpty(sql)) return sql;
+
+            // Block comments
+            var s = Regex.Replace(sql, @"/\*.*?\*/", " ", RegexOptions.Singleline);
+            // Line comments
+            s = Regex.Replace(s, @"--.*?$", " ", RegexOptions.Multiline);
+            // Quoted strings (N'...', '...', "...")
+            s = Regex.Replace(s, @"N?'([^']|'')*'", " ", RegexOptions.IgnoreCase);
+            s = Regex.Replace(s, @"""([^""]|"""")*""", " ");
+
+            // Outer CREATE PROCEDURE header (always present; not a body mutation).
+            s = Regex.Replace(
+                s,
+                @"\bCREATE\s+(OR\s+REPLACE\s+)?(DEFINER\s*=\s*\S+\s+)?(PROC|PROCEDURE)\b[\s\S]*?(\bAS\b|\))",
+                " ",
+                RegexOptions.IgnoreCase);
+
+            return s;
         }
 
         private static string CaptureSampleJson(int dataSourceId, string schema, string spName, List<SpApiParameterItem> parameters)

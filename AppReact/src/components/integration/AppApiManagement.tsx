@@ -166,9 +166,12 @@ const AppApiManagement: React.FC = () => {
 
   const getEditorPathAndLabel = useCallback((dto: IntegrationSettingParameterItem): { path: string; label: string } => {
     const label = dto.ActionCode ? `API: ${dto.ActionCode}` : (dto.Id != null ? `API (${dto.Id})` : 'API (New)');
-    if ((dto.APIConfigParameters as any)?.IsStoredProcedureApi) {
-      // Dedicated SP editor not in V1 — stay on list (sample/params already stored).
-      return { path: '', label };
+    if (
+      (dto.APIConfigParameters as any)?.IsStoredProcedureApi ||
+      dto.APIType === 'Stored Procedure API'
+    ) {
+      const path = dto.Id != null ? `/stored-procedure-api-editor/${dto.Id}` : '/stored-procedure-api-editor';
+      return { path, label };
     }
     if (dto.IsSimpleQuery) {
       const path = dto.Id != null ? `/api-builder-editor/${dto.Id}` : '/api-builder-editor';
@@ -193,14 +196,11 @@ const AppApiManagement: React.FC = () => {
   const openEditorInNewTab = useCallback(
     (dto: IntegrationSettingParameterItem) => {
       const { path, label } = getEditorPathAndLabel(dto);
-      if (!path) {
-        errorMessage.showInfo('Stored Procedure APIs have no separate editor yet. Use Capture sample / defaults at create time.', true);
-        return;
-      }
+      if (!path) return;
       dispatch(addTab({ tabPath: path, label, isClosable: true }));
       navigate(path);
     },
-    [dispatch, navigate, getEditorPathAndLabel, errorMessage],
+    [dispatch, navigate, getEditorPathAndLabel],
   );
 
   const contextMenuOpenEditor = useCallback(() => {
@@ -337,15 +337,6 @@ const AppApiManagement: React.FC = () => {
           >
             <i className="fa-solid fa-rotate" aria-hidden />
           </button>
-          <button
-            type="button"
-            onClick={batchDeleteSelected}
-            disabled={isLoading}
-            className="px-2 h-6 inline-flex items-center justify-center rounded-[4px] text-xs text-white bg-red-500 hover:bg-red-600 disabled:opacity-60"
-            title="Delete selected APIs"
-          >
-            <i className="fa-solid fa-trash mr-1" aria-hidden /> Delete selected
-          </button>
           <div className="relative" ref={dropdownRef}>
             <button
               type="button"
@@ -443,6 +434,16 @@ const AppApiManagement: React.FC = () => {
               </div>
             )}
           </div>
+          <button
+            type="button"
+            onClick={batchDeleteSelected}
+            disabled={isLoading}
+            className="w-8 h-6 inline-flex items-center justify-center rounded-[4px] text-xs text-white bg-red-500 hover:bg-red-600 disabled:opacity-60"
+            title="Delete selected"
+            aria-label="Delete selected"
+          >
+            <i className="fa-solid fa-trash" aria-hidden />
+          </button>
         </div>
       </div>
 

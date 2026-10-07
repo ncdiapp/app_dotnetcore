@@ -419,7 +419,7 @@ ORDER BY POSITION";
             return list;
         }
 
-        private static string TryLoadDefinition(DatabaseFixture fixture, EmSqlType engine, string schema, string name)
+        internal static string TryLoadDefinition(DatabaseFixture fixture, EmSqlType engine, string schema, string name)
         {
             try
             {

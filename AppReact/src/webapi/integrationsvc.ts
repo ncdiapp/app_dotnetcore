@@ -261,6 +261,23 @@ class IntegrationService {
     return Array.isArray(data) ? data : [];
   }
 
+  async getStoredProcedureForApiBuilder(
+    dataSourceId: number,
+    spName: string,
+    schema?: string | null,
+  ): Promise<any> {
+    const q = new URLSearchParams();
+    q.set('dataSourceId', String(dataSourceId));
+    q.set('spName', spName || '');
+    if (schema) q.set('schema', schema);
+    const response = await fetch(
+      `${endpoints.BASE_URL}/webapi/Integration/GetStoredProcedureForApiBuilder?${q.toString()}`,
+      { headers: getHeaders() },
+    );
+    if (!response.ok) throw new Error('Failed to reload stored procedure parameters');
+    return response.json();
+  }
+
   async batchCreateStoredProcedureApis(payload: {
     DataSourceId: number;
     Items: Array<{
@@ -268,7 +285,6 @@ class IntegrationService {
       SpName: string;
       ActionCode?: string;
       Description?: string;
-      CaptureSample?: boolean;
       Parameters?: Array<{
         Name?: string;
         Type?: string;
