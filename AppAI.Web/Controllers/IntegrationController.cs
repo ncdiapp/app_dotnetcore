@@ -234,6 +234,13 @@ public class IntegrationController : SecureBaseController
     }
 
     [HttpPost]
+    public OperationCallResult<object> GenerateStoredProcedureApiDescription(
+        [FromBody] AppStoredProcedureApiBL.SpApiGenerateDescriptionRequest request)
+    {
+        return AppStoredProcedureApiBL.GenerateApiDescription(request);
+    }
+
+    [HttpPost]
     public OperationCallResult<object> BatchCreateStoredProcedureApis([FromBody] AppStoredProcedureApiBL.SpApiCreateRequest request)
     {
         return AppStoredProcedureApiBL.BatchCreate(request);

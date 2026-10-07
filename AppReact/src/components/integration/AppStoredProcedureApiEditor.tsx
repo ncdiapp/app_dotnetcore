@@ -8,7 +8,7 @@ import { FlexGrid, FlexGridColumn } from '@mescius/wijmo.react.grid';
 import { CollectionView } from '@mescius/wijmo';
 import * as wjGrid from '@mescius/wijmo.grid';
 import '@mescius/wijmo.styles/wijmo.css';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
@@ -19,6 +19,7 @@ import { getHeaders } from '../../helper/apiServiceHelper';
 import { prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
+import type { RootState } from '../../redux/store';
 
 const API_BUILDER_INTEGRATION_SETTING_ID = 1;
 
@@ -133,9 +134,13 @@ const AppStoredProcedureApiEditor: React.FC = () => {
   const dispatch = useDispatch();
   const { theme } = useTheme();
   const { showError, showValidationMessages, showInfo, showWarning } = useErrorMessage();
+  const isAiConfigured = useSelector(
+    (s: RootState) => !!s.userSession?.userContext?.IsAiConfigured,
+  );
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingDesc, setIsGeneratingDesc] = useState(false);
   const [isModified, setIsModified] = useState(false);
   const [currentOperation, setCurrentOperation] = useState<any>(null);
   const [dataSourceLabel, setDataSourceLabel] = useState('');
@@ -310,13 +315,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
       setInputJsonText(paramsToInputJson(params));
       setInputJsonError('');
       setInputTabIndex(0);
-      setCurrentOperation((prev: any) => {
-        if (!prev) return prev;
-        const next = applyParamsToOp(prev, params);
-        // Keep user ActionCode; refresh synthesized description from SP metadata when present.
-        const desc = fresh?.Description ?? fresh?.description;
-        return desc ? { ...next, ActionDescription: desc } : next;
-      });
+      setCurrentOperation((prev: any) => (prev ? applyParamsToOp(prev, params) : prev));
       markChange();
       showInfo('Parameters and defaults reset from stored procedure.', true);
     } catch (e) {
@@ -595,8 +594,8 @@ const AppStoredProcedureApiEditor: React.FC = () => {
                 className={`w-1 flex-auto min-w-0 h-7 px-2 text-xs border rounded-[4px] opacity-80 ${theme.inputBox}`}
               />
             </div>
-            <div className="flex items-center min-w-0 col-span-1 md:col-span-2 xl:col-span-4">
-              <label className={`w-28 shrink-0 text-xs mr-2 ${theme.label}`}>Description</label>
+            <div className="flex items-center min-w-0 col-span-1 md:col-span-2 xl:col-span-4 gap-2">
+              <label className={`w-28 shrink-0 text-xs ${theme.label}`}>Description</label>
               <input
                 type="text"
                 autoComplete="off"
@@ -607,6 +606,55 @@ const AppStoredProcedureApiEditor: React.FC = () => {
                 }}
                 className={`w-1 flex-auto min-w-0 h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`}
               />
+              {isAiConfigured && (
+                <button
+                  type="button"
+                  disabled={isGeneratingDesc || isSaving}
+                  title="Generate English API description with AI (max 500 characters)"
+                  className={`h-7 px-2 shrink-0 rounded-[4px] text-xs border inline-flex items-center gap-1 disabled:opacity-60 ${theme.button_default}`}
+                  onClick={async () => {
+                    const cfg = op.APIConfigParameters ?? {};
+                    const dataSourceId = Number(op.DataSourceId);
+                    const spName = (cfg.SpName as string) || '';
+                    if (!dataSourceId || !spName) {
+                      showWarning('Missing Data Source or Stored Procedure name.');
+                      return;
+                    }
+                    setIsGeneratingDesc(true);
+                    dispatch(setIsBusy());
+                    try {
+                      const result = await integrationService.generateStoredProcedureApiDescription({
+                        DataSourceId: dataSourceId,
+                        Schema: cfg.SpSchema ?? null,
+                        SpName: spName,
+                        Parameters: getCurrentParams(),
+                        ExistingDescription: op.ActionDescription ?? null,
+                      });
+                      if (result?.ValidationResult) {
+                        showValidationMessages(result.ValidationResult, true);
+                      }
+                      const text = result?.Object?.description ?? result?.Object?.Description;
+                      if (result?.IsSuccessful !== false && text) {
+                        setCurrentOperation((prev: any) =>
+                          prev ? { ...prev, ActionDescription: String(text) } : prev,
+                        );
+                        markChange();
+                        showInfo('API Description generated.', true);
+                      } else if (!text) {
+                        showError('AI did not return a description.');
+                      }
+                    } catch (e) {
+                      showError(e instanceof Error ? e.message : String(e));
+                    } finally {
+                      setIsGeneratingDesc(false);
+                      dispatch(setIsNotBusy());
+                    }
+                  }}
+                >
+                  <i className="fa-solid fa-wand-magic-sparkles" aria-hidden />
+                  {isGeneratingDesc ? 'AI…' : 'AI Generate'}
+                </button>
+              )}
             </div>
           </div>
         </div>

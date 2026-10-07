@@ -1,8 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using System.Text.RegularExpressions;
 using App.BL.AIAgent.GenericAgent.StoredProcedure;
+using App.BL.DbGenie;
+using App.BL.GenericAgent;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
 using APP.Framework.Communication;
@@ -37,6 +40,7 @@ namespace App.BL
             public string Schema { get; set; }
             public string SpName { get; set; }
             public string ActionCode { get; set; }
+            /// <summary>Not written to ActionDescription (generator Usage only).</summary>
             public string Description { get; set; }
             /// <summary>Ignored — sample capture is decided server-side for read-only SPs only.</summary>
             public bool CaptureSample { get; set; }
@@ -46,7 +50,18 @@ namespace App.BL
         public class SpApiCreateRequest
         {
             public int DataSourceId { get; set; }
+            /// <summary>When true and AI is configured, LLM writes ActionDescription (English, ≤500).</summary>
+            public bool GenerateAiDescription { get; set; }
             public List<SpApiCreateItem> Items { get; set; }
+        }
+
+        public class SpApiGenerateDescriptionRequest
+        {
+            public int DataSourceId { get; set; }
+            public string Schema { get; set; }
+            public string SpName { get; set; }
+            public List<SpApiParameterItem> Parameters { get; set; }
+            public string ExistingDescription { get; set; }
         }
 
         public class SpApiBatchDeleteRequest
@@ -59,6 +74,11 @@ namespace App.BL
             public string Schema { get; set; }
             public string Name { get; set; }
             public string FullName { get; set; }
+            /// <summary>DB MS_Description / comment only (for API Description when AI off).</summary>
+            public string DbComment { get; set; }
+            /// <summary>Generator grid Usage: DB comment + Execute/params (not API Description).</summary>
+            public string Usage { get; set; }
+            /// <summary>Backward-compatible alias of Usage.</summary>
             public string Description { get; set; }
             public string SuggestedActionCode { get; set; }
             public List<SpApiParameterItem> Parameters { get; set; }
@@ -92,14 +112,17 @@ namespace App.BL
                 var paramMeta = StoredProcedureCatalogBL.LoadParameters(fixture, engine, sch, name);
                 var parameters = paramMeta.Select(ToApiParamWithDefault).ToList();
                 var fullName = p["FullName"]?.ToString() ?? StoredProcedureCatalogBL.FormatFull(sch, name);
-                var dbDescription = p["Description"]?.ToString() ?? p["description"]?.ToString();
+                var dbComment = p["Description"]?.ToString() ?? p["description"]?.ToString();
+                var usage = BuildSpUsage(fullName, dbComment, parameters);
 
                 result.Add(new SpCatalogListItemDto
                 {
                     Schema = sch,
                     Name = name,
                     FullName = fullName,
-                    Description = BuildApiDescription(fullName, dbDescription, parameters),
+                    DbComment = dbComment,
+                    Usage = usage,
+                    Description = usage,
                     SuggestedActionCode = BuildDefaultActionCode(name),
                     Parameters = parameters,
                 });
@@ -125,13 +148,17 @@ namespace App.BL
             var paramMeta = StoredProcedureCatalogBL.LoadParameters(fixture, engine, sch, name);
             var parameters = paramMeta.Select(ToApiParamWithDefault).ToList();
             var fullName = StoredProcedureCatalogBL.FormatFull(sch, name);
+            var dbComment = StoredProcedureCatalogBL.LoadDescription(fixture, engine, sch, name);
+            var usage = BuildSpUsage(fullName, dbComment, parameters);
 
             return new SpCatalogListItemDto
             {
                 Schema = sch,
                 Name = name,
                 FullName = fullName,
-                Description = BuildApiDescription(fullName, null, parameters),
+                DbComment = dbComment,
+                Usage = usage,
+                Description = usage,
                 SuggestedActionCode = BuildDefaultActionCode(name),
                 Parameters = parameters,
             };
@@ -200,10 +227,17 @@ namespace App.BL
                 IList<string> returnColumns = null;
                 var captured = false;
 
+                var engineEnum = fixture.SqlServerType ?? EmSqlType.SqlServer;
                 var definition = StoredProcedureCatalogBL.TryLoadDefinition(
-                    fixture, fixture.SqlServerType ?? EmSqlType.SqlServer, item.Schema, item.SpName);
-                var readOnly = IsLikelyReadOnlyProcedure(definition);
-                if (readOnly)
+                    fixture, engineEnum, item.Schema, item.SpName);
+                var dbComment = StoredProcedureCatalogBL.LoadDescription(
+                    fixture, engineEnum, item.Schema, item.SpName);
+                // Auto-execute + persist JsonSampleData when body looks read-only, or name is Get/List/…
+                // (many Get* procs use #temp tables / sp_executesql and used to be skipped).
+                var readOnlyBody = IsLikelyReadOnlyProcedure(definition);
+                var readerName = IsReaderProcedureName(item.SpName);
+                var trySample = readOnlyBody || readerName;
+                if (trySample)
                 {
                     try
                     {
@@ -224,6 +258,31 @@ namespace App.BL
                     sampleSkipped++;
                 }
 
+                string actionDescription = null;
+                if (request.GenerateAiDescription && AIConfigSettingBL.IsConfigured())
+                {
+                    try
+                    {
+                        actionDescription = GenerateApiDescriptionWithLlm(
+                            fullName, dbComment, definition, parameters, returnColumns);
+                        if (!IsUsableApiDescription(actionDescription))
+                        {
+                            actionDescription = BuildFallbackApiDescription(fullName, dbComment, parameters);
+                            warnings.Add($"{actionCode}: AI description unusable — used fallback.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        actionDescription = BuildFallbackApiDescription(fullName, dbComment, parameters);
+                        warnings.Add($"{actionCode}: AI description failed — {ex.Message}");
+                    }
+                }
+                else
+                {
+                    // No AI: DB comment or SP/params fallback (never generator Usage / Execute…params).
+                    actionDescription = BuildFallbackApiDescription(fullName, dbComment, parameters);
+                }
+
                 var dto = new AppIntergrationSettingParameterExDto
                 {
                     IntergrationSettingId = AppIntergrationSettingBL.AppBuiltInProviderId,
@@ -231,7 +290,7 @@ namespace App.BL
                     HttpMethd = "Post",
                     DataSourceId = request.DataSourceId,
                     ActionCode = actionCode,
-                    ActionDescription = BuildApiDescription(fullName, item.Description, parameters, returnColumns),
+                    ActionDescription = actionDescription,
                     JsonQuery = fullName,
                     MappingInternalCode = EmAppIntergrationSettingParameterUsageType.ApiOperation.ToString(),
                     APIConfigParameters = apiConfig,
@@ -249,7 +308,7 @@ namespace App.BL
                         Id = saveResult.Object.Id,
                         ActionCode = saveResult.Object.ActionCode,
                         CapturedSample = captured && !string.IsNullOrWhiteSpace(saveResult.Object.JsonSampleData),
-                        SampleSkipped = !readOnly,
+                        SampleSkipped = !trySample,
                     });
                 }
                 else
@@ -353,48 +412,149 @@ namespace App.BL
             return "AppSp_" + bare;
         }
 
-        private static readonly Regex AutoReturnColumnsSuffix = new Regex(
-            @"\s*Returns columns:\s*.+$",
-            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+        /// <summary>
+        /// Generator Usage column: DB comment + Execute/params signature (not API ActionDescription).
+        /// </summary>
+        public static string BuildSpUsage(
+            string fullName,
+            string dbComment,
+            IEnumerable<SpApiParameterItem> parameters)
+        {
+            var signature = SynthesizeSpSignature(fullName, parameters);
+            if (!string.IsNullOrWhiteSpace(dbComment))
+            {
+                var comment = dbComment.Trim();
+                if (!comment.EndsWith(".", StringComparison.Ordinal)) comment += ".";
+                return $"{comment} {signature}";
+            }
+            return signature;
+        }
 
         /// <summary>
-        /// Prefer DB comment/MS_Description or user-edited text; otherwise synthesize from IN + OUTPUT params.
-        /// When <paramref name="returnColumns"/> is provided (after Run &amp; save sample), append result-set columns.
-        /// Truncated to ActionDescription max length (500).
+        /// LLM English API description for agent discovery. Requires AIConfigSettingBL.IsConfigured().
+        /// Result truncated to 500 chars. Returns empty string when the model output is unusable.
         /// </summary>
-        public static string BuildApiDescription(
+        public static string GenerateApiDescriptionWithLlm(
             string fullName,
-            string dbOrUserDescription,
+            string dbComment,
+            string definition,
             IEnumerable<SpApiParameterItem> parameters,
             IList<string> returnColumns = null)
         {
-            string baseDesc;
-            if (!string.IsNullOrWhiteSpace(dbOrUserDescription))
-            {
-                baseDesc = AutoReturnColumnsSuffix.Replace(dbOrUserDescription.Trim(), string.Empty).Trim();
-                if (baseDesc.EndsWith(".", StringComparison.Ordinal))
-                    baseDesc = baseDesc.TrimEnd('.').TrimEnd();
-            }
-            else
-            {
-                baseDesc = SynthesizeApiDescription(fullName, parameters);
-            }
+            if (!AIConfigSettingBL.IsConfigured())
+                throw new InvalidOperationException("AI is not configured (missing API key for default provider).");
 
-            if (returnColumns != null && returnColumns.Count > 0)
-            {
-                var cols = string.Join(", ", returnColumns.Where(c => !string.IsNullOrWhiteSpace(c)).Select(c => c.Trim()));
-                if (!string.IsNullOrWhiteSpace(cols))
-                    baseDesc = $"{baseDesc}. Returns columns: {cols}.";
-            }
-            else if (!baseDesc.EndsWith(".", StringComparison.Ordinal))
-            {
-                baseDesc += ".";
-            }
+            var paramList = (parameters ?? Enumerable.Empty<SpApiParameterItem>())
+                .Where(p => p != null && !string.IsNullOrWhiteSpace(p.Name))
+                .OrderBy(p => p.Ordinal)
+                .ToList();
+            var paramLines = paramList
+                .Select(p => $"{p.Name} ({p.Type ?? "unknown"}, {p.Direction ?? "IN"})")
+                .ToList();
+            var cols = returnColumns != null
+                ? string.Join(", ", returnColumns.Where(c => !string.IsNullOrWhiteSpace(c)))
+                : "";
 
-            return TruncateDescription(baseDesc, 500);
+            // Keep definition short — long templates cause label-echo junk from small models.
+            var defClip = definition ?? "";
+            if (defClip.Length > 2500) defClip = defClip.Substring(0, 2500) + "\n...[truncated]";
+
+            var userPrompt = new StringBuilder();
+            userPrompt.AppendLine($"Stored procedure: {fullName}");
+            if (!string.IsNullOrWhiteSpace(dbComment))
+                userPrompt.AppendLine($"Database comment: {dbComment.Trim()}");
+            userPrompt.AppendLine("Parameters:");
+            userPrompt.AppendLine(paramLines.Count > 0 ? string.Join("\n", paramLines) : "(none)");
+            if (!string.IsNullOrWhiteSpace(cols))
+                userPrompt.AppendLine($"Known result columns: {cols}");
+            userPrompt.AppendLine("Procedure body excerpt (for context only; do not copy headings or labels from it):");
+            userPrompt.AppendLine(string.IsNullOrWhiteSpace(defClip) ? "(unavailable)" : defClip);
+            userPrompt.AppendLine();
+            userPrompt.AppendLine("Good example (GetTab with @tabid, @referenceIds, @clientTimeZone): Returns tab data for the given tab id and reference ids; accepts client time zone.");
+            userPrompt.AppendLine("Bad example (over-claim): Retrieves tab details and layout information adjusted for the client time zone.");
+            userPrompt.AppendLine("Bad example (junk): Business Purpose: ** Name");
+            userPrompt.AppendLine("Write one plain-English sentence describing what this API does. No labels, no markdown.");
+
+            const string systemPrompt =
+                "You write short English API descriptions for a low-code platform so an AI agent can find the right API by natural language. " +
+                "Be conservative and factual. Prefer the procedure name and parameter names; use the body only when it clearly confirms behavior. " +
+                "Get/List/Select procedures usually only return data — say that. " +
+                "Do NOT invent business meaning (layout, adjusted, transformed, enriched, calculated, workflow) unless the definition or DB comment explicitly says so. " +
+                "Parameter names are inputs to pass, not proof of side effects. " +
+                "Output ONLY the description sentence. " +
+                "Hard rules: plain text; 1 sentence preferred (2 max); under 500 characters; " +
+                "NO markdown (** # ` -); NO section labels (Business Purpose, Name, Description, Parameters, Returns); " +
+                "NO Execute/params boilerplate; NO quotes or preamble like 'Here is'.";
+
+            var request = new LLMRequestDto
+            {
+                Provider = LLMProviderHelper.GetConfiguredProvider(),
+                ApiKey = LLMProviderHelper.GetConfiguredApiKey(),
+                Model = AIConfigSettingBL.GetModel(),
+                SystemPrompt = systemPrompt,
+                Prompt = userPrompt.ToString(),
+                Temperature = 0.1,
+                MaxTokens = 280,
+            };
+
+            var response = LLMProviderHelper.CallLLMAsync(request).ConfigureAwait(false).GetAwaiter().GetResult();
+            if (response == null || !response.IsSuccess)
+                throw new InvalidOperationException(response?.Error ?? "LLM call failed.");
+
+            var text = SanitizeLlmApiDescription(response.Content);
+            if (!IsUsableApiDescription(text))
+                return string.Empty;
+            return TruncateDescription(text, 500);
         }
 
-        private static string SynthesizeApiDescription(string fullName, IEnumerable<SpApiParameterItem> parameters)
+        /// <summary>Editor / API: generate ActionDescription via LLM for one SP.</summary>
+        public static OperationCallResult<object> GenerateApiDescription(SpApiGenerateDescriptionRequest request)
+        {
+            var result = new OperationCallResult<object>();
+            var validation = new ValidationResult();
+            result.ValidationResult = validation;
+
+            if (request == null || request.DataSourceId <= 0 || string.IsNullOrWhiteSpace(request.SpName))
+            {
+                validation.Items.Add(new ValidationItem(typeof(AppIntergrationSettingParameterEntity),
+                    "SpApi_GenerateDesc_Invalid", ValidationItemType.Error, "DataSourceId and SpName are required."));
+                return result;
+            }
+
+            if (!AIConfigSettingBL.IsConfigured())
+            {
+                validation.Items.Add(new ValidationItem(typeof(AppIntergrationSettingParameterEntity),
+                    "SpApi_GenerateDesc_NoAi", ValidationItemType.Error, "AI is not configured."));
+                return result;
+            }
+
+            try
+            {
+                var fixture = AppCacheManagerBL.GetOneDatabaseFixture(request.DataSourceId);
+                var engine = fixture.SqlServerType ?? EmSqlType.SqlServer;
+                StoredProcedureCatalogBL.ParseName(request.SpName, request.Schema, out var sch, out var name, request.DataSourceId);
+                var fullName = StoredProcedureCatalogBL.FormatFull(sch, name);
+                var definition = StoredProcedureCatalogBL.TryLoadDefinition(fixture, engine, sch, name);
+                var dbComment = StoredProcedureCatalogBL.LoadDescription(fixture, engine, sch, name);
+                var parameters = (request.Parameters != null && request.Parameters.Count > 0)
+                    ? request.Parameters.Select(NormalizeParam).ToList()
+                    : StoredProcedureCatalogBL.LoadParameters(fixture, engine, sch, name).Select(ToApiParamWithDefault).ToList();
+
+                var text = GenerateApiDescriptionWithLlm(fullName, dbComment, definition, parameters, null);
+                if (!IsUsableApiDescription(text))
+                    text = BuildFallbackApiDescription(fullName, dbComment, parameters);
+                result.Object = new { description = text, fullName, dbComment };
+            }
+            catch (Exception ex)
+            {
+                validation.Items.Add(new ValidationItem(typeof(AppIntergrationSettingParameterEntity),
+                    "SpApi_GenerateDesc_Failed", ValidationItemType.Error, ex.Message));
+            }
+
+            return result;
+        }
+
+        private static string SynthesizeSpSignature(string fullName, IEnumerable<SpApiParameterItem> parameters)
         {
             var proc = string.IsNullOrWhiteSpace(fullName) ? "stored procedure" : fullName.Trim();
             var list = (parameters ?? Enumerable.Empty<SpApiParameterItem>())
@@ -414,7 +574,9 @@ namespace App.BL
             if (outputs.Count > 0)
                 parts.Add($"OUTPUT: {string.Join(", ", outputs.Select(FormatParamBrief))}");
 
-            return string.Join(". ", parts);
+            var text = string.Join(". ", parts);
+            if (!text.EndsWith(".", StringComparison.Ordinal)) text += ".";
+            return text;
         }
 
         private static string FormatParamBrief(SpApiParameterItem p)
@@ -429,6 +591,69 @@ namespace App.BL
             if (string.IsNullOrEmpty(text) || text.Length <= maxLen) return text ?? string.Empty;
             if (maxLen <= 3) return text.Substring(0, maxLen);
             return text.Substring(0, maxLen - 3).TrimEnd() + "...";
+        }
+
+        /// <summary>Strip markdown / label junk from LLM API descriptions.</summary>
+        private static string SanitizeLlmApiDescription(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return string.Empty;
+            var text = raw.Trim().Trim('"', '\'', '`');
+            // Drop fenced blocks / leading bullets
+            text = Regex.Replace(text, @"```[\s\S]*?```", " ");
+            text = Regex.Replace(text, @"^\s*[-*•]\s+", "", RegexOptions.Multiline);
+            // Remove markdown emphasis / headings
+            text = Regex.Replace(text, @"[*_#`]+", " ");
+            // Remove common template labels the model echoes from SP header comments
+            text = Regex.Replace(text,
+                @"\b(Business\s*Purpose|Purpose|Description|Name|Parameters?|Returns?|Usage|Summary)\s*:\s*",
+                " ",
+                RegexOptions.IgnoreCase);
+            text = Regex.Replace(text, @"\s+", " ").Trim();
+            // Strip leading punctuation leftovers from broken markdown (e.g. "/Business Purpose:**")
+            text = Regex.Replace(text, @"^[\s/\\|<>\-–—*]+", "").Trim();
+            return text;
+        }
+
+        /// <summary>Reject empty, tiny, or label-only LLM leftovers.</summary>
+        private static bool IsUsableApiDescription(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return false;
+            var t = text.Trim();
+            if (t.Length < 24) return false;
+            if (Regex.IsMatch(t, @"[*_#`]{2,}")) return false;
+            // Mostly punctuation / leftovers
+            var letters = t.Count(char.IsLetter);
+            if (letters < 16) return false;
+            // Still just a label fragment
+            if (Regex.IsMatch(t, @"^(Business\s*Purpose|Purpose|Name|Description)\b", RegexOptions.IgnoreCase)
+                && t.Length < 60)
+                return false;
+            return true;
+        }
+
+        /// <summary>DB comment when useful; otherwise a short SP + params sentence (≤500).</summary>
+        public static string BuildFallbackApiDescription(
+            string fullName,
+            string dbComment,
+            IEnumerable<SpApiParameterItem> parameters)
+        {
+            var comment = SanitizeLlmApiDescription(dbComment ?? "");
+            if (IsUsableApiDescription(comment))
+                return TruncateDescription(comment, 500);
+
+            var proc = string.IsNullOrWhiteSpace(fullName) ? "stored procedure" : fullName.Trim();
+            var inputs = (parameters ?? Enumerable.Empty<SpApiParameterItem>())
+                .Where(p => p != null && !string.IsNullOrWhiteSpace(p.Name) && !IsOutputOnly(p.Direction))
+                .OrderBy(p => p.Ordinal)
+                .Select(FormatParamBrief)
+                .ToList();
+
+            string text;
+            if (inputs.Count == 0)
+                text = $"Runs {proc} and returns its result set.";
+            else
+                text = $"Runs {proc}. Key inputs: {string.Join(", ", inputs)}.";
+            return TruncateDescription(text, 500);
         }
 
         private static bool IsSampleOk(string sampleJson)
@@ -506,30 +731,46 @@ namespace App.BL
         }
 
         /// <summary>
-        /// Conservative heuristic: only auto-execute when definition is present and has no
-        /// obvious mutating / dynamic-SQL markers. Missing definition → do not execute.
+        /// True when body has no permanent-table mutations. Temp-table / table-variable ops are allowed.
+        /// Missing definition → false (caller may still sample via <see cref="IsReaderProcedureName"/>).
         /// </summary>
         public static bool IsLikelyReadOnlyProcedure(string definition)
         {
             if (string.IsNullOrWhiteSpace(definition)) return false;
 
             var text = StripSqlNoiseForScan(definition);
+            text = StripTempTableOps(text);
             if (string.IsNullOrWhiteSpace(text)) return false;
 
-            // Data-changing / DDL / nested CALL — any hit → unsafe.
+            // Permanent-table data-changing / DDL / nested CALL — any hit → unsafe.
             if (MutatingSqlToken.IsMatch(text)) return false;
 
-            // Dynamic SQL / nested EXEC proc (not "EXECUTE AS caller/owner").
+            // Dynamic SQL EXEC(...) / nested EXEC proc (not "EXECUTE AS caller/owner").
+            // sp_executesql is allowed (common for parameterized SELECT).
             if (ExecDynamicOrNested.IsMatch(text)) return false;
 
-            // SELECT … INTO table/#temp (not INTO @variable) creates/writes data.
+            // SELECT … INTO permanent table (temp INTO already stripped).
             if (SelectIntoTable.IsMatch(text)) return false;
 
             return true;
         }
 
+        /// <summary>Get/List/Select… names — try sample even if body heuristic is unsure.</summary>
+        public static bool IsReaderProcedureName(string spName)
+        {
+            if (string.IsNullOrWhiteSpace(spName)) return false;
+            var bare = spName.Trim();
+            var dot = bare.LastIndexOf('.');
+            if (dot >= 0 && dot < bare.Length - 1) bare = bare.Substring(dot + 1);
+            bare = Regex.Replace(bare, @"^usp_?", "", RegexOptions.IgnoreCase);
+            return Regex.IsMatch(
+                bare,
+                @"^(Get|List|Select|Fetch|Load|Read|Query|Retrieve|Find|Search|Lookup)",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
+
         private static readonly Regex MutatingSqlToken = new Regex(
-            @"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|ALTER|DROP|CREATE|CALL|BULK|OPENROWSET|OPENDATASOURCE|WRITETEXT|UPDATETEXT|SP_EXECUTESQL)\b",
+            @"\b(INSERT|UPDATE|DELETE|MERGE|TRUNCATE|ALTER|DROP|CREATE|CALL|BULK|OPENROWSET|OPENDATASOURCE|WRITETEXT|UPDATETEXT)\b",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
         // EXEC(...) / EXECUTE(...) / EXEC otherProc — exclude EXECUTE AS (impersonation).
@@ -560,6 +801,35 @@ namespace App.BL
                 " ",
                 RegexOptions.IgnoreCase);
 
+            return s;
+        }
+
+        /// <summary>Remove #temp / @table-variable write patterns so Get* procs are not treated as mutating.</summary>
+        private static string StripTempTableOps(string sql)
+        {
+            if (string.IsNullOrEmpty(sql)) return sql;
+            // #temp or [#temp]
+            const string tempIdent = @"(?:#\w+|\[#\w+\])";
+            var s = sql;
+            s = Regex.Replace(s, $@"\b(?:CREATE|DROP)\s+TABLE\s+(?:IF\s+EXISTS\s+)?{tempIdent}", " ",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            s = Regex.Replace(s, $@"\bINSERT\s+(?:INTO\s+)?{tempIdent}", " ",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            s = Regex.Replace(s, $@"\bUPDATE\s+{tempIdent}", " ",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            s = Regex.Replace(s, $@"\bDELETE\s+(?:FROM\s+)?{tempIdent}", " ",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            s = Regex.Replace(s, $@"\bINTO\s+{tempIdent}", " ",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            // Table variables
+            s = Regex.Replace(s, @"\bINSERT\s+(?:INTO\s+)?@\w+", " ",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            s = Regex.Replace(s, @"\bUPDATE\s+@\w+", " ",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            s = Regex.Replace(s, @"\bDELETE\s+(?:FROM\s+)?@\w+", " ",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            s = Regex.Replace(s, @"\bINTO\s+@\w+", " ",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             return s;
         }
 

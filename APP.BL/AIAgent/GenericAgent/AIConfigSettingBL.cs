@@ -30,6 +30,15 @@ namespace App.BL.GenericAgent
 
         public static string GetApiKey() => GetApiKeyForProvider(GetDefaultProvider());
 
+        /// <summary>
+        /// True when the default LLM provider has a non-empty API key configured.
+        /// </summary>
+        public static bool IsConfigured()
+            => !string.IsNullOrWhiteSpace(GetApiKey());
+
+        public static bool IsConfigured(AppClientIdentity identity)
+            => !string.IsNullOrWhiteSpace(GetApiKey(identity));
+
         public static string GetApiKeyForProvider(string provider)
         {
             switch ((provider ?? "").Trim().ToLowerInvariant())

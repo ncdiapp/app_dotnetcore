@@ -23,6 +23,7 @@ namespace APP.Components.Dto
         public static readonly string UserAvailableActionListProperty = ObjectInfoHelper.GetName<UserContext, HashSet<string>>(o => o.UserAvailableActionList);
         public static readonly string IsSystemAdminProperty = ObjectInfoHelper.GetName<UserContext, bool>(o => o.IsInSysAdminDomain);
         public static readonly string DictAppSetupProperty = ObjectInfoHelper.GetName<UserContext, Dictionary<string, string>>(o => o.DictAppSetup);
+        public static readonly string IsAiConfiguredProperty = ObjectInfoHelper.GetName<UserContext, bool>(o => o.IsAiConfigured);
         public static readonly string IsLoginFailedProperty = ObjectInfoHelper.GetName<UserContext, bool>(o => o.IsLoginFailed);
         public static readonly string IsExceededMaximumSessionProperty = ObjectInfoHelper.GetName<UserContext, bool>(o => o.IsExceededMaximumSession);
         public static readonly string ResourceIdProperty = ObjectInfoHelper.GetName<UserContext, Nullable<System.Int32>>(o => o.ResourceId);
@@ -122,9 +123,16 @@ namespace APP.Components.Dto
             set { SetValue(DictAppSetupProperty, value); }
         }
 
-
-
-
+        /// <summary>
+        /// True when tenant AI Config has a usable LLM API key for the default provider.
+        /// Set at login / GetUserContextBySessionId for UI; backend should re-check AIConfigSettingBL.IsConfigured().
+        /// </summary>
+        [DataMember]
+        public bool IsAiConfigured
+        {
+            get { return GetValue<bool>(IsAiConfiguredProperty); }
+            set { SetValue(IsAiConfiguredProperty, value); }
+        }
 
         /// <summary> The IsSystemAdmin property of the UserContext</summary>
         [DataMember(EmitDefaultValue = false)]

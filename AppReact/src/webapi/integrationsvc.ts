@@ -280,11 +280,11 @@ class IntegrationService {
 
   async batchCreateStoredProcedureApis(payload: {
     DataSourceId: number;
+    GenerateAiDescription?: boolean;
     Items: Array<{
       Schema?: string;
       SpName: string;
       ActionCode?: string;
-      Description?: string;
       Parameters?: Array<{
         Name?: string;
         Type?: string;
@@ -302,6 +302,30 @@ class IntegrationService {
       body: JSON.stringify(payload),
     });
     if (!response.ok) throw new Error('Failed to batch create stored procedure APIs');
+    return response.json();
+  }
+
+  async generateStoredProcedureApiDescription(payload: {
+    DataSourceId: number;
+    Schema?: string | null;
+    SpName: string;
+    Parameters?: Array<{
+      Name?: string;
+      Type?: string;
+      Direction?: string;
+      MaxLength?: number | null;
+      Ordinal?: number;
+      HasDefault?: boolean;
+      DefaultValue?: string | null;
+    }>;
+    ExistingDescription?: string | null;
+  }): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Integration/GenerateStoredProcedureApiDescription`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('Failed to generate stored procedure API description');
     return response.json();
   }
 

@@ -429,7 +429,7 @@ const AppApiManagement: React.FC = () => {
                   className={`w-full text-left px-4 py-2 text-xs ${theme.contextMenu} flex items-center gap-2`}
                   onClick={openSpCreateModal}
                 >
-                  <i className="fa fa-plus" aria-hidden /> Create Stored Procedure APIs…
+                  <i className="fa fa-plus" aria-hidden /> Create Stored Procedure APIs
                 </button>
               </div>
             )}

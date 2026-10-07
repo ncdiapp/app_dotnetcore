@@ -542,8 +542,14 @@ namespace App.BL
             }
 
             aUserContext.DictAppSetup = AppTenantSettingBL.GetOrLoadCache(sessionEntity?.AppCreatedByCompanyId ?? 0);
-
-
+            try
+            {
+                aUserContext.IsAiConfigured = App.BL.GenericAgent.AIConfigSettingBL.IsConfigured();
+            }
+            catch
+            {
+                aUserContext.IsAiConfigured = false;
+            }
 
             return aUserContext;
         }

@@ -502,7 +502,7 @@ ORDER BY LINE";
             return sb.ToString();
         }
 
-        private static string LoadDescription(DatabaseFixture fixture, EmSqlType engine, string schema, string name)
+        internal static string LoadDescription(DatabaseFixture fixture, EmSqlType engine, string schema, string name)
         {
             if (engine != EmSqlType.SqlServer) return null;
             try
