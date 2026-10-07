@@ -73,8 +73,7 @@
          PLM agent tools load via AgentPlugins folder + ExternalDllToolExecutor. -->
   </ItemGroup>
 
-  <!-- MCP gateway — exposes selected AppAI APIs as MCP tools via /appai/mcp. Always compiled; it only runs when
-       configuration sets Mcp:Enabled=true. -->
+  <!-- MCP gateway — exposes selected AppAI APIs as MCP tools via /appai/mcp. Always compiled and always on. -->
   <ItemGroup>
     <ProjectReference Include="..\APP.McpGateway\APP.McpGateway.csproj" />
   </ItemGroup>

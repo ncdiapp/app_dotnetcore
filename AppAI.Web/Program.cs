@@ -126,9 +126,8 @@ try
         });
     }
 
-    // ── McpGateway (off unless Mcp:Enabled=true) ──
-    var mcpEnabled = builder.Configuration.GetValue<bool>(McpGatewayExtensions.EnabledSetting);
-    if (mcpEnabled) builder.Services.AddMcpGateway(builder.Configuration);
+    // ── McpGateway (always on) ──
+    builder.Services.AddMcpGateway(builder.Configuration);
 
     // ── Build ─────────────────────────────────────────────────────────────────
     var app = builder.Build();
@@ -144,7 +143,7 @@ try
     app.UseRouting();
 
     // Correlation ID propagation (populates NLog MDLC for every request)
-    if (mcpEnabled) app.UseMcpGatewayEarly();
+    app.UseMcpGatewayEarly();
 
     // ── One-time startup calls (replacing Global.asax Application_Start) ──────
     // Wire IHttpContextAccessor into the legacy static ServerContext, then initialise
@@ -219,8 +218,8 @@ try
     app.UseAuthentication();
     app.UseAuthorization();
 
-    // ── McpGateway routes (only when Mcp:Enabled=true) ──
-    if (mcpEnabled) app.UseMcpGateway();
+    // ── McpGateway routes ──
+    app.UseMcpGateway();
 
     // ── Route registration ────────────────────────────────────────────────────
     app.MapControllers();

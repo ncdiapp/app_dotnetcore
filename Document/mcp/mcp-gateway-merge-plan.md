@@ -228,11 +228,11 @@ Not done / known gaps:
 - **Management API** `webapi/McpManagement/*` (`McpManagementController`, company admin only): `GetExposableApis`, `GetSecurityGroups`, `SaveExposedApi`, `DeleteExposedApi`, `GetUserEffectiveApis` (preview), `RefreshApiCatalog`. The catalogue entry is taken from the server's own spec, so only operations that really exist can be exposed. Changes are audited. The controller itself is excluded from the exposable spec.
 - **React**: tab "MCP API Access" next to "Integration Tokens" (`CompanyMcpApiAccess.tsx`, `mcpManagementSvc.ts`): searchable grid + detail pane (enable, tick security groups), warnings for sources that do not forward the caller token and for GET operations whose name suggests a change.
 - **OpenAPI for AppAI's own controllers** (`McpSwaggerSetup`): 875 operations, 0 duplicate operation ids (verified with a throwaway host). Actions without an explicit `[HttpGet]/[HttpPost]/...` are left out (Swagger cannot describe them; add a verb attribute to expose one). The document is served to loopback only (404 otherwise); Swagger UI only in Development.
-- **Compile flag removed.** `MCP_GATEWAY` / `EnableMcpGateway` are gone; the gateway always compiles and is wired by `AppAI.Web/Mcp/McpGatewayExtensions.cs`. It runs only when configuration sets `Mcp:Enabled=true` (default off). `Program.cs` shrank from ~460 to 270 lines.
+- **Compile flag removed.** `MCP_GATEWAY` / `EnableMcpGateway` are gone; the gateway always compiles and is wired by `AppAI.Web/Mcp/McpGatewayExtensions.cs`. It is always on (the earlier `Mcp:Enabled` switch was removed; a leftover `Mcp` section in appsettings.json is ignored). `Program.cs` shrank from ~460 to 270 lines.
 
-## How to turn it on (appsettings is a credential file, so not edited by the agent)
+## How to set it up (the gateway is always on; appsettings is a credential file, so not edited by the agent)
 1. Apply V046 and V047 (`POST /webapi/TenantProvisioning/RunMigrations`, or Migrations:RunOnStartup in Development).
-2. Add to appsettings: `"Mcp": { "Enabled": true }` and an AppAI source:
+2. Add an AppAI source under `ApiSources:Sources` in appsettings (no `Mcp` section is needed):
    `{ "Name": "AppAI", "BaseUrl": "http://localhost:52740/appai/", "SwaggerJsonPath": "swagger/v1/swagger.json", "AccessTokenHeaderName": "IntergrationAccessToken", "ForwardCallerToken": true }`
    Keep PLM's `ForwardCallerToken` false (PLM has its own master DB).
 3. Optional: `SemanticSearch:Provider=LocalOnnx` needs `all-MiniLM-L6-v2.onnx` in `APP.McpGateway/EmbedModels` (git-ignored). With 875 endpoints, expect a slower first load.
@@ -245,7 +245,6 @@ Not done / known gaps:
 ## Known gaps / follow-ups
 - A SysAdmin session cannot use the management API (tables are per tenant).
 - Group membership derived from organisation/user type (AppSecuritySysObjGroupUserBL) is not considered: only direct `AppSecurityGroupMember` rows.
-- `McpManagementController` is always registered; when `Mcp:Enabled` is false its calls fail with a DI error (500) instead of 404.
 - `/webapi` still accepts Integration tokens (decision: leave as is).
 - Dead code that can write appsettings.json remains: `RuntimeConfigService`, `AdminTools` (not registered as MCP tools) and the disabled `McpServerManagerController`.
 - Role denials are audited; failed token checks are not. No retention for `AppMcpAuditLog`.

@@ -16,12 +16,10 @@ namespace AppAI.Web.Mcp;
 
 /// <summary>
 /// Wires the MCP gateway (Swagger -> MCP tools for Claude Desktop / ChatGPT Desktop ...) into the host.
-/// Everything here is off unless configuration sets Mcp:Enabled=true (see Program.cs).
+/// Always on: Program.cs registers it unconditionally.
 /// </summary>
 public static class McpGatewayExtensions
 {
-    public const string EnabledSetting = "Mcp:Enabled";
-
     public static IServiceCollection AddMcpGateway(this IServiceCollection services, IConfiguration configuration)
     {
         // Config bindings
