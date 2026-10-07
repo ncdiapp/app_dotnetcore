@@ -15,7 +15,7 @@ import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { useAlertConfirm } from '../common/AlertConfirmProvider';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
-import { addTab } from '../../redux/features/ui/navigation/tabnavSlice';
+import { addTab, updateActiveTabPath, updateCurrentTabLabel } from '../../redux/features/ui/navigation/tabnavSlice';
 import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
@@ -188,11 +188,25 @@ const ThirdPartyApiProviderEditor: React.FC = () => {
       if (result?.IsSuccessful) {
         errorMessage.showInfo('Saved successfully.');
         setIsModified(false);
-        if (result?.Object?.Id != null) {
-          setCurrentSetting((prev) => ({ ...prev, Id: result.Object.Id }));
-          navigate(`/third-party-api-provider-editor/${result.Object.Id}`, { replace: true });
+        const saved = result?.Object;
+        const savedId = saved?.Id != null ? Number(saved.Id) : null;
+        if (savedId != null && !Number.isNaN(savedId)) {
+          const newPath = `/third-party-api-provider-editor/${savedId}`;
+          const tabLabel = saved?.Name ? `Provider: ${saved.Name}` : `Provider (${savedId})`;
+          // Must update tab path before/with navigate; otherwise useTabNavigation syncs
+          // the URL back to the old "New API Provider" tab path and remounts empty.
+          dispatch(updateActiveTabPath(newPath));
+          dispatch(updateCurrentTabLabel(tabLabel));
+          if (savedId !== integrationSettingId) {
+            navigate(newPath, { replace: true });
+            // Route param change remounts/reloads via useEffect — do not call loadData()
+            // with the stale null id (that resets the form to New).
+          } else {
+            await loadData();
+          }
+        } else {
+          await loadData();
         }
-        loadData();
       } else if (messages.length) {
         messages.forEach((msg) => errorMessage.showError(msg));
       } else {
@@ -204,7 +218,7 @@ const ThirdPartyApiProviderEditor: React.FC = () => {
       setIsSaving(false);
       dispatch(setIsNotBusy());
     }
-  }, [currentSetting, envVarList, cookieList, dispatch, errorMessage, loadData, navigate]);
+  }, [currentSetting, envVarList, cookieList, dispatch, errorMessage, loadData, navigate, integrationSettingId]);
 
   const addEnvVar = useCallback(() => {
     setEnvVarList((prev) => [...prev, { Key: '', Value: '' }]);

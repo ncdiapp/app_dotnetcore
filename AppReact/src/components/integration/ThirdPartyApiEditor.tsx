@@ -16,6 +16,7 @@ import { useDispatch } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
+import { updateActiveTabPath, updateCurrentTabLabel } from '../../redux/features/ui/navigation/tabnavSlice';
 import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import { schemaMetadataService } from '../../webapi/schemaMetaDataSvc';
@@ -215,10 +216,23 @@ const ThirdPartyApiEditor: React.FC = () => {
       if (result?.IsSuccessful) {
         errorMessage.showInfo('Saved successfully.');
         setIsModified(false);
-        if (result?.Object?.Id != null) {
-          navigate(`/third-party-api-editor/${result.Object.Id}`, { replace: true });
+        const saved = result?.Object;
+        const savedId = saved?.Id != null ? Number(saved.Id) : null;
+        if (savedId != null && !Number.isNaN(savedId)) {
+          const newPath = `/third-party-api-editor/${savedId}`;
+          const tabLabel = saved?.ActionCode ? `API: ${saved.ActionCode}` : `API (${savedId})`;
+          // Must update tab path before/with navigate; otherwise useTabNavigation syncs
+          // the URL back to the create URL (no operation id) and remounts empty.
+          dispatch(updateActiveTabPath(newPath));
+          dispatch(updateCurrentTabLabel(tabLabel));
+          if (savedId !== settingParameterId) {
+            navigate(newPath, { replace: true });
+          } else {
+            await loadData();
+          }
+        } else {
+          await loadData();
         }
-        loadData();
       } else if (messages.length) {
         messages.forEach((msg) => errorMessage.showError(msg));
       } else {
@@ -230,7 +244,7 @@ const ThirdPartyApiEditor: React.FC = () => {
       setIsSaving(false);
       dispatch(setIsNotBusy());
     }
-  }, [currentOperation, queryParameterCV, queryParameterList, responseJsonData, dispatch, errorMessage, loadData, navigate]);
+  }, [currentOperation, queryParameterCV, queryParameterList, responseJsonData, dispatch, errorMessage, loadData, navigate, settingParameterId]);
 
   const addQueryParameter = useCallback(() => {
     const next = [...queryParameterList, { ParameterName: '' }];
@@ -401,20 +415,20 @@ const ThirdPartyApiEditor: React.FC = () => {
       </div>
 
       <div className={`flex-1 flex flex-col min-h-0 overflow-auto p-3 ${theme.mainContentSection}`}>
-        <div className="flex flex-wrap gap-6 mb-3 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Operation Code</label>
-            <input type="text" value={op?.ActionCode ?? ''} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, ActionCode: e.target.value } : prev)); markChange(); }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs" />
+        <div className="flex items-center gap-4 mb-3 flex-shrink-0">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <label className={`flex-shrink-0 text-xs whitespace-nowrap ${theme.label}`}>Operation Code</label>
+            <input type="text" value={op?.ActionCode ?? ''} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, ActionCode: e.target.value } : prev)); markChange(); }} className={`w-[200px] flex-shrink-0 h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} />
           </div>
-          <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Description</label>
-            <input type="text" value={op?.ActionDescription ?? ''} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, ActionDescription: e.target.value } : prev)); markChange(); }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs" />
-          </div>
-          <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Http Method</label>
-            <select value={op?.HttpMethd ?? 'Get'} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, HttpMethd: e.target.value } : prev)); markChange(); }} className="w-32 px-2 py-1 border rounded-[4px] text-xs">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <label className={`flex-shrink-0 text-xs whitespace-nowrap ${theme.label}`}>Http Method</label>
+            <select value={op?.HttpMethd ?? 'Get'} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, HttpMethd: e.target.value } : prev)); markChange(); }} className={`w-[200px] flex-shrink-0 h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`}>
               {HTTP_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
+          </div>
+          <div className="flex items-center gap-2 w-1 flex-auto min-w-0">
+            <label className={`flex-shrink-0 text-xs whitespace-nowrap ${theme.label}`}>Description</label>
+            <input type="text" value={op?.ActionDescription ?? ''} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, ActionDescription: e.target.value } : prev)); markChange(); }} className={`w-1 flex-auto min-w-0 h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} />
           </div>
         </div>
 

@@ -765,7 +765,10 @@ namespace ExchangeBL
         {
             ValidationResult validationResult = new ValidationResult();
 
-            using (DataAccessAdapter adapter = new DataAccessAdapter(ServerContext.Instance.CurrentUserDbConnectionString))
+            // Must use GetTenantAdapter() so LLBL CatalogNameOverwrites rewrites the mapped
+            // catalog "AppMasterDB" to the current tenant DB. A raw DataAccessAdapter keeps
+            // three-part names as AppMasterDB.dbo.* and fails when the tenant DB differs.
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
             {
                 try
                 {
