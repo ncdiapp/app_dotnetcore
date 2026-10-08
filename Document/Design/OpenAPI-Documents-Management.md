@@ -1,6 +1,6 @@
 # OpenAPI Documents Management — 初步设计
 
-状态：列表、路由、存储和 OpenAPI Document Generator 已按 PLM Swagger 生成方式整理。表结构、选择界面和鉴权方案仍待下一步确认。
+状态：列表、路由、存储、成员关系、选择界面、Generator 和调用鉴权已定。读文档的 URL 现在不鉴权，以后再关。内部 Agent 接线放到后期。
 
 ## 目的
 
@@ -38,7 +38,7 @@ GET /openapi-doc/{doc-code}
 
 `doc-code` 是 Document 的 Code。只允许小写字母、数字和 `-`，全局唯一，创建后不改。开发时完整地址是 `http://localhost:52740/openapi-doc/app-weather`。发布后是调用方访问这台服务器时用的同一根地址加 `/openapi-doc/{doc-code}`，不写 `/appai`。
 
-仅 Status = Published 时返回已保存的 JSON，未登录的外部 AI 也可以读。Draft 不返回正文。这个 URL 只公开文档。文档里的 API 地址是 `{本次请求的根}/webapi/DataIntegration/{ActionCode}`，调用仍要登录或 Integration Token。
+仅 Status = Published 时返回已保存的 JSON。现在这个 URL 开口：不登录也能读到 Document 内容。Draft 不返回正文。以后再把这个 URL 闭上，改成要鉴权才能读；第一版不要把鉴权写死在这条路由上。这个 URL 只公开文档。文档里的 API 地址是 `{本次请求的根}/webapi/DataIntegration/{ActionCode}`，调用这些 API 仍要带登录会话。
 
 页面路由：
 
@@ -52,6 +52,35 @@ GET /openapi-doc/{doc-code}
 数据库是唯一来源。对外 URL 从数据库读出已保存的 OpenAPI JSON。Download 只是导出，不作为运行时来源。
 
 重新生成只在用户执行 Regenerate 时发生，并更新该记录。Save 只保存名称、代码、成员等，不重新生成 JSON。
+
+两张表，都不建外键。成员不保存 `AppIntergrationSettingParameter.Id`。一份 Document 和 API 的关系只是 ActionCode。
+
+`AppOpenApiDocument`：
+
+| 列 | 说明 |
+|---|---|
+| Id | |
+| Name | |
+| Code | `doc-code`，创建后不改 |
+| Version | |
+| Description | |
+| Status | Draft / Published |
+| OpenApiJson | Regenerate 写入的 JSON |
+| ApiCount | 写入 paths 的条数 |
+| LastGenerated | |
+| AppCreatedByID / AppCreatedDate / AppModifiedByID / AppModifiedDate | 与 Database Management 的审计列相同 |
+
+`AppOpenApiDocumentMember`：
+
+| 列 | 说明 |
+|---|---|
+| Id | |
+| DocumentId | 指向哪份 Document 的普通整数，不建外键 |
+| ActionCode | 成员唯一键。同一 Document 内不重复 |
+
+Save 按弹窗 Apply 的结果整份替换该 Document 的 ActionCode 列表。Regenerate 用每个 ActionCode 去找当前的 API 配置。找不到、或 ActionCode 已改名、已删除，就跳过该条并记下原因。不因 API 的 Id 变化而断开关系。
+
+实现时用当时下一个未占用的迁移号。V046、V047、V048 已占用。
 
 ## 列表页
 
@@ -89,21 +118,36 @@ GET /openapi-doc/{doc-code}
 
 行菜单（初步）：Open、Regenerate、Copy URL、Download、Publish / Unpublish、Delete。双击行等于 Open。Regenerate 更新 `AppModifiedByID` 和 `AppModifiedDate`。Last Generated 用来区分“只保存了成员或名称”和“重新生成了 JSON”。
 
-## 编辑页（初步）
+## 编辑页
 
 路由 `/openapi-doc-editor/{id}`。标题用 Name。
 
 属性：Name、Code（保存后只读）、Version、Description、Status、Public URL（只读，可复制）。
 
-已选 API 区域的列和按钮、Add APIs 的筛选方式，等待下一步设计。
+已选 API 按 ActionCode 排序。列：ActionCode、Http Method、来源（App API 写 API Type，3rd Party 写 Provider Name）、Description。按钮：Add APIs、Remove、Save、Regenerate、Download、Copy URL。
 
-初步按钮：Add APIs、Remove、Save、Regenerate、Download、Copy URL。
+### Add APIs 弹窗
+
+一个弹窗列出可选 API，两个 Tab：
+
+- App API Provider
+- 3rd Party Provider
+
+每个 Tab 一张表，多选。API 按 ActionCode 排序。3rd Party 那张表再按 Provider Name 分组。Apply 把选中的 ActionCode 加入当前 Document，已在 Document 里的不再重复加入。取消关闭弹窗，不改已选列表。
+
+Excel Import 不出现在弹窗里，第一版也不写入 OpenAPI Document。
+
+App API Provider 的列与 App API Provider 列表相同，去掉 Actions：Id、API Code、Description、API Type、Http Method、Data Source、Data Model、Application。
+
+3rd Party Provider 的列与该 Provider 编辑页里的 API 列表相同，并带上分组用的 Provider：Provider、ID、Method、Operation Code、Description、Data Source。
 
 Save 只保存 Document 和成员。Regenerate 调用下面的 Generator，把 JSON 写回该记录，并更新 Last Generated、API Count、`AppModifiedByID`、`AppModifiedDate`。已发布的 URL 立刻返回这份新 JSON。每次 Regenerate 把 Version 的最后一段加 1（`1.0.0` 变为 `1.0.1`）；Version 为空时先写成 `1.0.0` 再加。Publish 不重新生成，也不改 Version；没有已保存 JSON 时不允许 Publish。
 
 一份 Document 可以同时包含 3rd Party API 和 App API。
 
-第一版除了管理页面和对外 URL，还要把已发布的 Document 交给内部 Agent 使用。Agent 读的是这份已保存的 JSON，不在调用时重新生成。
+内部 Agent 后期再接。第一版只做管理页和对外 URL。已发布的 `/openapi-doc/{doc-code}` 就是 Agent 以后要读的那份 JSON，调用时不重新生成。
+
+后期接到 MCP Gateway 的 ApiSource，让它读取这个已发布 URL。Gateway 已经按 OpenAPI URL 取 spec。不为同一份 JSON 再做一套 Generic Agent 工具。
 
 ## PLM 的 Swagger 是怎么生成的
 
@@ -184,7 +228,7 @@ Schema 按 `EmApiScope`：
 | `info.title` | Name |
 | `info.version` | Version，空则 `1.0.0` |
 | `info.description` | Description |
-| `servers[0].url` | 发出这份 JSON 的这次请求的根地址 + `/webapi`。不读 `BASE_URL`，不读 ApplicationURL。path 是 `/DataIntegration/{ActionCode}` |
+| `servers[0].url` | 不跟 JSON 一起冻在生成当时的主机上。库里的 path 保持 `/DataIntegration/{ActionCode}`。每次读出这份 JSON（对外 URL 或 Download）时，用这次请求的根地址 + `/webapi` 填 `servers[0].url`。不读 `BASE_URL`，不读 ApplicationURL |
 
 成员来源是现有 `AppIntergrationSettingParameter`。3rd Party API 属于某个 Integration Setting。App API Provider 使用 Integration Setting Id = 1，类型包括 Stored Procedure、SQL Json Query、Data Model、Report & View。
 
@@ -215,17 +259,30 @@ Schema 按 `EmApiScope`：
 | Stored Procedure | `APIConfigParameters.IsStoredProcedureApi`。运行时 `ExecuteStoredProcedureApi`，不对应 PLM scope | POST body 固定为 `{ "args": { 参数名: 值 } }`。参数来自 `SpParameters` 的 IN / INOUT。GET 把 query string 收进同一个 `args` | 用已保存的 `JsonSampleData` 推断；没有则为通用 object |
 | 3rd Party API | `IntergrationSettingId` 不是 App API Provider（Id = 1）。运行时 GET 用 query 覆盖 `QueryParams`，再由包装层去调外部 URL | GET/DELETE：query 参数来自 `APIConfigParameters.QueryParams`。POST/PUT：body 用 `JsonSampleData`（编辑器里的 Payload Data，JSON 类型） | GET 用 `JsonSampleData`。POST/PUT 用 `PostResponseDto.ResponseJsonData`。没有样本则为通用 object |
 
-Excel Import Data Update（`ExcelDataImportDataSetId`）若被选入：POST body 用 `JsonSampleData`，列为导入源列；响应是导入结果字符串。它不对应任何 PLM scope。
+Excel Import Data Update 第一版不进入选择器，也不生成 operation。
 
 已保存的 JSON 样本需要转成 schema 时：object 的每个属性按值的类型写；数组写成 `array`；解析失败则 `{ "type": "object", "additionalProperties": true }`。SQL Json Query 的 GET 响应和 Report & View 的 GET 响应不用这条，规则见上表。
 
 生成结果除 JSON 外返回：成功条数、跳过列表（ActionCode + 原因）。编辑页在 Regenerate 后显示跳过列表。API Count 只计写入 paths 的条数。
 
+## 调用鉴权
+
+两件事分开。
+
+读 Document：`GET /openapi-doc/{doc-code}` 现在不鉴权，外部可以直接拿到已发布的 JSON。以后再闭口，第一版不实现这道鉴权。
+
+调用文档里的 API：`DataIntegration` 现在只认请求头 `CurrentUserSessionId`（或同名 Cookie），也就是登录会话。`IntergrationAccessToken` 只用于 `/mcp`，这条 API 还不认它。
+
+OpenAPI JSON 里写一个 apiKey scheme：
+
+- 名字：`CurrentUserSessionId`
+- `in: header`
+- 每个 operation 都带上这个 security
+- 文档里不写任何真实 session 值
+
+这个 scheme 描述的是调用 API，不是读文档。等 `DataIntegration` 也接受 `IntergrationAccessToken` 之后，再把 scheme 改成那个请求头。
+
 ## 待补充
 
-- 表结构、Entity，以及 Document 与 `AppIntergrationSettingParameter` 的成员关系怎么存。迁移号避开已占用的 V046、V047
-- Add APIs 的界面和筛选（Provider、API Type、Application）
-- 内部 Agent 具体接在 Generic Agent 的工具上，还是作为 MCP Gateway 的一个 ApiSource
-- 文档里如何写调用 DataIntegration 所需的鉴权（会话或 `IntergrationAccessToken`）。读文档的 URL 本身不鉴权
-- Data Model 的响应目前没有保存样本。第一版用通用 object
+- Data Model 的响应目前没有保存样本。第一版用通用 object，以后再按 Transaction Field 生成
 

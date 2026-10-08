@@ -7,3 +7,5 @@ export { default as AppDataModelApiEditor } from './AppDataModelApiEditor';
 export { default as AppDataPresentationApiEditor } from './AppDataPresentationApiEditor';
 export { default as ExcelImportDataUpdateApiEditor } from './ExcelImportDataUpdateApiEditor';
 export { default as AppStoredProcedureApiEditor } from './AppStoredProcedureApiEditor';
+export { default as OpenApiDocumentManagement } from './OpenApiDocumentManagement';
+export { default as OpenApiDocumentEditor } from './OpenApiDocumentEditor';

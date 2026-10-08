@@ -57,6 +57,8 @@ import {
   AppDataPresentationApiEditor,
   ExcelImportDataUpdateApiEditor,
   AppStoredProcedureApiEditor,
+  OpenApiDocumentManagement,
+  OpenApiDocumentEditor,
 } from './components/integration';
 import { DbaGenie } from './components/dbgenie';
 import AISkillManagement from './components/aiskill/AISkillManagement';
@@ -237,6 +239,10 @@ export const AUTHENTICATED_ROUTES: SharedRouteDef[] = [
   { path: 'third-party-api-provider-management', element: <ThirdPartyApiProviderManagement /> },
   { path: 'app-api-provider/:param', element: <AppApiManagement /> },
   { path: 'app-api-provider', element: <AppApiManagement /> },
+  { path: 'openapi-doc-management/:param', element: <OpenApiDocumentManagement /> },
+  { path: 'openapi-doc-management', element: <OpenApiDocumentManagement /> },
+  { path: 'openapi-doc-editor/:param', element: <OpenApiDocumentEditor /> },
+  { path: 'openapi-doc-editor', element: <OpenApiDocumentEditor /> },
   { path: 'third-party-api-provider-editor/:param', element: <ThirdPartyApiProviderEditor /> },
   { path: 'third-party-api-provider-editor', element: <ThirdPartyApiProviderEditor /> },
   { path: 'api-builder-editor/:param', element: <AppJsonQueryApiEditor /> },

@@ -199,6 +199,11 @@ const Sidebar: React.FC = () => {
           Id:'app-api-provider',
           Name: 'App API Provider',
           RouteCode: '/app-api-provider'
+        },
+        {
+          Id:'openapi-documents',
+          Name: 'OpenAPI Documents',
+          RouteCode: '/openapi-doc-management'
         }
       ]
     },
