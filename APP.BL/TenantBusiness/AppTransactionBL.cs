@@ -4093,20 +4093,16 @@ namespace App.BL
         }
 
         /// <summary>
-        /// Columns that must never become AppTransactionField when building a transaction from table schema
-        /// (audit columns + SQL Server timestamp/rowversion such as SystemTimeStamp).
+        /// SQL Server timestamp/rowversion (including a column named SystemTimeStamp). These values are
+        /// maintained by the database and must not become transaction fields or be written on save.
         /// </summary>
-        public static bool ShouldExcludeDatabaseColumnFromTransactionField(DatabaseColumn column)
+        public static bool IsSystemTimestampDatabaseColumn(DatabaseColumn column)
         {
-            if (column == null || string.IsNullOrWhiteSpace(column.Name))
-                return true;
+            if (column == null)
+                return false;
 
-            if (column.Name.Equals("AppCreatedByID", StringComparison.OrdinalIgnoreCase)
-                || column.Name.Equals("AppCreatedDate", StringComparison.OrdinalIgnoreCase)
-                || column.Name.Equals("AppModifiedDate", StringComparison.OrdinalIgnoreCase)
-                || column.Name.Equals("AppModifiedByID", StringComparison.OrdinalIgnoreCase)
-                || column.Name.Equals("AppCreatedByCompanyID", StringComparison.OrdinalIgnoreCase)
-                || column.Name.Equals("SystemTimeStamp", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(column.Name)
+                && column.Name.Equals("SystemTimeStamp", StringComparison.OrdinalIgnoreCase))
                 return true;
 
             if (!string.IsNullOrEmpty(column.DbDataType))
@@ -4115,6 +4111,28 @@ namespace App.BL
                 if (dbType == "timestamp" || dbType == "rowversion")
                     return true;
             }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Columns that must never become AppTransactionField when building a transaction from table schema
+        /// (audit columns + SQL Server timestamp/rowversion such as SystemTimeStamp).
+        /// </summary>
+        public static bool ShouldExcludeDatabaseColumnFromTransactionField(DatabaseColumn column)
+        {
+            if (column == null || string.IsNullOrWhiteSpace(column.Name))
+                return true;
+
+            if (IsSystemTimestampDatabaseColumn(column))
+                return true;
+
+            if (column.Name.Equals("AppCreatedByID", StringComparison.OrdinalIgnoreCase)
+                || column.Name.Equals("AppCreatedDate", StringComparison.OrdinalIgnoreCase)
+                || column.Name.Equals("AppModifiedDate", StringComparison.OrdinalIgnoreCase)
+                || column.Name.Equals("AppModifiedByID", StringComparison.OrdinalIgnoreCase)
+                || column.Name.Equals("AppCreatedByCompanyID", StringComparison.OrdinalIgnoreCase))
+                return true;
 
             return false;
         }

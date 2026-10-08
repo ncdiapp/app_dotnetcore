@@ -24,6 +24,13 @@ const CONTEXT_MENU_ESTIMATED_HEIGHT = 320;
 const ADD_MENU_ESTIMATED_WIDTH = 170;
 const ADD_MENU_ESTIMATED_HEIGHT = 120;
 
+function isSystemTimestampColumn(col: any): boolean {
+  const name = String(col?.Name ?? '');
+  if (name.toLowerCase() === 'systemtimestamp') return true;
+  const dbType = String(col?.DbDataType ?? '').trim().toLowerCase();
+  return dbType === 'timestamp' || dbType === 'rowversion';
+}
+
 // Cache for table and view list data (similar to angular.dictFilterKeyAndDbTableViewList)
 const dictFilterKeyAndDbTableViewList: { [key: string]: any[] } = {};
 
@@ -494,8 +501,8 @@ const MetaDataManagement: React.FC = () => {
 
       if (tableData) {
         tableData.isSelectAllTableColumn = false;
-        // Set all columns to unselected by default
         if (tableData.Columns) {
+          tableData.Columns = tableData.Columns.filter((column: any) => !isSystemTimestampColumn(column));
           tableData.Columns.forEach((column: any) => {
             column.isSelected = false;
           });

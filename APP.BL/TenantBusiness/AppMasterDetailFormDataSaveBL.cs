@@ -250,6 +250,7 @@ namespace App.BL
 
             //ROOT key nerver been changed for UnitPrimaryKeyIdentity
             AppMasterDetailDto orgAppMasterDetailDto = AppMasterDetailFormDataLoadBL.GetMasterDetailFormData(rootClientAppformDataDto.TransactionId, rootPkValue);
+            RemoveSystemTimestampValues(rootOneToOneFields, aAppTransactionExDto.RootMasterUnit);
             AppTransDataSystemTokenBL.AssignSystemTokenValueToUnitField(rootOneToOneFields, aAppTransactionExDto.RootMasterUnit);
 
             var sqlCmdDto = AppDbHelerBL.GetOneToOneUpdateWithPrimaryKeyValueSqlCmdDto(rootOneToOneFields, aAppTransactionExDto.RootMasterUnit);
@@ -309,13 +310,14 @@ namespace App.BL
         internal static void VerifyTransDataAndResetDataType(AppMasterDetailDto aformData, AppTransactionStructureDto formStructure)
         {
             object rootUnnitID = formStructure.HierarchyTransactionExdto.RootMasterUnit.Id;
+            AppTransactionExDto transaction = formStructure.HierarchyTransactionExdto;
 
             var rootUnitImageBinaryFieldNames = formStructure.DictUnitIdUnitImageBinaryFieldNames[rootUnnitID.ToString()];
 
 
             var dictOnToOne = aformData.DictOneToOneFields;
 
-            ValidaUnitValue(rootUnitImageBinaryFieldNames, dictOnToOne);
+            ValidaUnitValue(rootUnitImageBinaryFieldNames, dictOnToOne, FindTransactionUnit(transaction, rootUnnitID.ToString()));
 
             var dictChildDateSet = aformData.DictOneToManyFields;
 
@@ -327,7 +329,7 @@ namespace App.BL
                 foreach (AppChildDataDto appChildDataDto in listChid)
                 {
                     var childUnitImageBinaryFieldNames = formStructure.DictUnitIdUnitImageBinaryFieldNames[childUnitId];
-                    ValidaUnitValue(childUnitImageBinaryFieldNames, appChildDataDto.DictOneToOneFields);
+                    ValidaUnitValue(childUnitImageBinaryFieldNames, appChildDataDto.DictOneToOneFields, FindTransactionUnit(transaction, childUnitId));
 
                     if (!appChildDataDto.DictOneToManyFields.IsEmpty())
                     {
@@ -343,7 +345,7 @@ namespace App.BL
 
                                 var gd = aAppChildDataDto.DictOneToOneFields;
 
-                                ValidaUnitValue(grandchildUnitImageBinaryFieldNames, gd);
+                                ValidaUnitValue(grandchildUnitImageBinaryFieldNames, gd, FindTransactionUnit(transaction, grandUnit));
                             }
 
 
@@ -361,17 +363,62 @@ namespace App.BL
 
         }
 
-        private static void ValidaUnitValue(List<string> rootUnitImageBinaryFieldNames, Dictionary<string, object> dictOnToOne)
+        private static AppTransactionUnitExDto FindTransactionUnit(AppTransactionExDto transaction, string unitId)
         {
+            if (transaction?.AppTransactionUnitList == null || string.IsNullOrWhiteSpace(unitId))
+                return null;
+
+            return transaction.AppTransactionUnitList.FirstOrDefault(u => u != null && u.Id.ToString() == unitId);
+        }
+
+        private static void ValidaUnitValue(List<string> rootUnitImageBinaryFieldNames, Dictionary<string, object> dictOnToOne, AppTransactionUnitExDto unitExDto)
+        {
+            RemoveSystemTimestampValues(dictOnToOne, unitExDto);
+
+            if (rootUnitImageBinaryFieldNames == null || dictOnToOne == null)
+                return;
+
             foreach (string fieldName in rootUnitImageBinaryFieldNames)
             {
-                if (dictOnToOne.ContainsKey(fieldName) && dictOnToOne[fieldName] != null)
-                {
-                    string base64String = dictOnToOne[fieldName] as string;
+                if (!dictOnToOne.ContainsKey(fieldName) || dictOnToOne[fieldName] == null)
+                    continue;
 
-                    dictOnToOne[fieldName] = Convert.FromBase64String(base64String);
-                }
+                string base64String = dictOnToOne[fieldName] as string;
+                dictOnToOne[fieldName] = Convert.FromBase64String(base64String);
             }
+        }
+
+        private static bool IsSystemTimestampFieldName(string fieldName)
+        {
+            return !string.IsNullOrWhiteSpace(fieldName)
+                && fieldName.Equals("SystemTimeStamp", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static void RemoveSystemTimestampValues(Dictionary<string, object> dictOneToOneFields, AppTransactionUnitExDto unitExDto)
+        {
+            if (dictOneToOneFields == null || dictOneToOneFields.Count == 0)
+                return;
+
+            DatabaseTable table = unitExDto == null ? null : AppCacheManagerBL.GetDatabaseTable(unitExDto);
+            List<string> removeKeys = new List<string>();
+            foreach (string key in dictOneToOneFields.Keys)
+            {
+                if (IsSystemTimestampFieldName(key))
+                {
+                    removeKeys.Add(key);
+                    continue;
+                }
+
+                if (table?.Columns == null)
+                    continue;
+
+                DatabaseColumn column = table.Columns.FirstOrDefault(c => c.Name.Equals(key, StringComparison.OrdinalIgnoreCase));
+                if (column != null && AppTransactionBL.IsSystemTimestampDatabaseColumn(column))
+                    removeKeys.Add(key);
+            }
+
+            foreach (string key in removeKeys)
+                dictOneToOneFields.Remove(key);
         }
 
 
@@ -1339,8 +1386,7 @@ namespace App.BL
             Dictionary<string, object> rootOneToOneFields = rootAppformDataDto.DictOneToOneFields;
 
             var rootMasterUnit = appTransactionExDto.RootMasterUnit;
-            //string tableName = rootMasterUnit.DataBaseTableName;
-
+            RemoveSystemTimestampValues(rootOneToOneFields, rootMasterUnit);
             AppTransDataSystemTokenBL.AssignSystemTokenValueToUnitField(rootOneToOneFields, rootMasterUnit);
 
             AppTransDataSystemTokenBL.AssignAuntoGenerationCodeToUnitField(rootOneToOneFields, rootMasterUnit, true);
@@ -1580,9 +1626,7 @@ namespace App.BL
 
                             Dictionary<string, object> rootOneToOneFields = rootAppformDataDto.DictOneToOneFields;
 
-
-                            //string tableName = rootMasterUnit.DataBaseTableName;
-
+                            RemoveSystemTimestampValues(rootOneToOneFields, rootMasterUnit);
                             AppTransDataSystemTokenBL.AssignSystemTokenValueToUnitField(rootOneToOneFields, rootMasterUnit);
 
                             AppTransDataSystemTokenBL.AssignAuntoGenerationCodeToUnitField(rootOneToOneFields, rootMasterUnit, true);
@@ -1767,6 +1811,7 @@ namespace App.BL
             AppTransDataSystemTokenBL.AssignAuntoGenerationCodeToUnitField(siblingUnitOneToOneFields, siblingTransactionUnitExDto, true);
 
             PassRootKeyValueToSiblingOrChildUnit(siblingUnitOneToOneFields, rootPkValue, siblingTransactionUnitExDto);
+            RemoveSystemTimestampValues(siblingUnitOneToOneFields, siblingTransactionUnitExDto);
 
             try
             {
@@ -1865,6 +1910,7 @@ namespace App.BL
         {
             DatabaseTable childDatabaseTable = AppCacheManagerBL.GetDatabaseTable(childTransactionUnitExDto);
 
+            RemoveSystemTimestampValues(dictOneToOneFields, childTransactionUnitExDto);
             AppTransDataSystemTokenBL.AssignSystemTokenValueToUnitField(dictOneToOneFields, childTransactionUnitExDto);
 
             var sqlDto = AppDbHelerBL.GetOneToOneUpdateWithPrimaryKeyValueSqlCmdDto(dictOneToOneFields, childTransactionUnitExDto);
@@ -1878,6 +1924,7 @@ namespace App.BL
         internal static string InsertOneUnitChild(DatabaseFixture databaseFixtureInstance, AppTransactionUnitExDto childTransactionUnitExDto, Dictionary<string, object> childOneToOneFields, DbTransaction trans)
         {
             AppTransDataSystemTokenBL.AssignSystemTokenValueToUnitField(childOneToOneFields, childTransactionUnitExDto);
+            RemoveSystemTimestampValues(childOneToOneFields, childTransactionUnitExDto);
             ApplyEmptyFieldDefaults(childOneToOneFields, childTransactionUnitExDto);
 
 
@@ -2010,6 +2057,7 @@ namespace App.BL
 
             Dictionary<string, object> childOneToOneFields = appformChildDataDto.DictOneToOneFields;
 
+            RemoveSystemTimestampValues(childOneToOneFields, childTransactionUnitExDto);
             AppTransDataSystemTokenBL.AssignSystemTokenValueToUnitField(childOneToOneFields, childTransactionUnitExDto);
 
             // for list Edit  rootPkValue always is empty

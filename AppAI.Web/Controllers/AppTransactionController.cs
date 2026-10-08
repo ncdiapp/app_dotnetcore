@@ -1908,20 +1908,14 @@ public class AppTransactionController : SecureBaseController
                 int fieldSort = 0;
                 foreach (var aColumn in dbTable.Columns)
                 {
-                    if (!(aColumn.Name == "AppCreatedByID"
-                        || aColumn.Name == "AppCreatedDate"
-                        || aColumn.Name == "AppModifiedDate"
-                        || aColumn.Name == "AppCreatedByID"
-                        || aColumn.Name == "AppModifiedByID"
-                        || aColumn.Name == "AppCompanyID"
-                        || aColumn.Name == "AppCreatedByCompanyID"))
-                    {
-                        fieldSort += 10;
-                        var newTransactionField = ConvertTableColumnToTransactionFieldExDto(aColumn);
-                        newTransactionField.SortOrder = fieldSort;
-                        newUnit.AppTransactionFieldList.Add(newTransactionField);
-                        SetNewTransactionFieldForeignkey(dbTable, parentUnitDbTable, parentUnit, aColumn, newTransactionField);
-                    }
+                    if (AppTransactionBL.ShouldExcludeDatabaseColumnFromTransactionField(aColumn))
+                        continue;
+
+                    fieldSort += 10;
+                    var newTransactionField = ConvertTableColumnToTransactionFieldExDto(aColumn);
+                    newTransactionField.SortOrder = fieldSort;
+                    newUnit.AppTransactionFieldList.Add(newTransactionField);
+                    SetNewTransactionFieldForeignkey(dbTable, parentUnitDbTable, parentUnit, aColumn, newTransactionField);
                 }
 
                 return newUnit;
@@ -1953,6 +1947,9 @@ public class AppTransactionController : SecureBaseController
 
                 foreach (DatabaseColumn aColumn in converterDto.NeedToAddDbColumns)
                 {
+                    if (AppTransactionBL.ShouldExcludeDatabaseColumnFromTransactionField(aColumn))
+                        continue;
+
                     AppTransactionFieldExDto newTransactionField = ConvertTableColumnToTransactionFieldExDto(aColumn);
 
                     if (newTransactionField != null)

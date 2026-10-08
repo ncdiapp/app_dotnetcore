@@ -9,6 +9,13 @@ import { FlexGridFilter } from '@mescius/wijmo.react.grid.filter';
 import { CollectionView, SortDescription } from '@mescius/wijmo';
 import '@mescius/wijmo.styles/wijmo.css';
 
+function isSystemTimestampColumn(col: any): boolean {
+    const name = String(col?.Name ?? '');
+    if (name.toLowerCase() === 'systemtimestamp') return true;
+    const dbType = String(col?.DbDataType ?? '').trim().toLowerCase();
+    return dbType === 'timestamp' || dbType === 'rowversion';
+}
+
 interface TableColumnSelectorDialogProps {
     isOpen: boolean;
     tableName: string;
@@ -53,8 +60,8 @@ const TableColumnSelectorDialog: React.FC<TableColumnSelectorDialogProps> = ({
 
                 if (tableData && tableData.Columns) {
                     // Filter out columns that are already added (don't show them)
-                    const availableColumns = tableData.Columns.filter((col: any) => 
-                        !lockedColumnNames.includes(col.Name)
+                    const availableColumns = tableData.Columns.filter((col: any) =>
+                        !lockedColumnNames.includes(col.Name) && !isSystemTimestampColumn(col)
                     );
                     setColumns(availableColumns);
                 } else {
