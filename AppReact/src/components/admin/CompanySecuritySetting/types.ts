@@ -11,6 +11,8 @@ export const TAB = {
   IntegrationToken: 8,
   // SysAdmin-only: company-scoped user management from master DB
   TenantAdminUsers: 9,
+  // Tenant admin: which APIs external MCP users may call, per security group
+  McpApiAccess: 10,
 } as const;
 
 export type CompanyDto = {

@@ -103,6 +103,62 @@ namespace App.BL
             }
         }
 
+        /// <summary>
+        /// Validates an Integration access token (the IntergrationAccessToken header value used by external MCP
+        /// clients) and registers the owning user's identity for the current request.
+        /// Unlike ViladateSessionIdAndCompanyIdRegisterIdentity it checks expiry (cleanup of expired rows is only
+        /// periodic) and that the session belongs to an active Integration user, so a normal user's session id
+        /// cannot be replayed through this path. Never throws; returns false for any invalid token.
+        /// </summary>
+        public static bool TryRegisterIntegrationTokenIdentity(string token, out int userId, out int companyId)
+        {
+            userId = 0;
+            companyId = 0;
+            if (string.IsNullOrWhiteSpace(token)) return false;
+
+            try
+            {
+                AppSecurityUserSessionEntity sessionEntity = AppSecurityUserSessionBL.GetSessionEntityBySessionID(token);
+                if (sessionEntity == null
+                    || sessionEntity.ExpirationDate < DateTime.UtcNow
+                    || !sessionEntity.AppCreatedByCompanyId.HasValue)
+                {
+                    return false;
+                }
+
+                AppSecurityUserEntity userEntity = AppCacheManagerBL.GetCurrentUserEntityFromMasterDataSource(sessionEntity.UserId);
+                if (userEntity == null
+                    || userEntity.DomainId != (int)EmAppUserType.Integration
+                    || !userEntity.IsActive
+                    || userEntity.IsDeleted)
+                {
+                    return false;
+                }
+
+                // Sessions created before the Integration type was stamped would otherwise have their
+                // admin-set expiry slid forward by UpdateLoginUserExpiredDate.
+                if (sessionEntity.EmExternalSigninType != (int)EmAppExternalLoginType.Integration)
+                {
+                    using (DataAccessAdapter adapter = AppMasterAdapterBL.GetMasterAdapter())
+                    {
+                        AppSecurityUserSessionEntity update = new AppSecurityUserSessionEntity();
+                        update.EmExternalSigninType = (int)EmAppExternalLoginType.Integration;
+                        adapter.UpdateEntitiesDirectly(update, new RelationPredicateBucket(AppSecurityUserSessionFields.SessionId == token));
+                    }
+                }
+
+                RegisterUserIdentityTotheSystem(sessionEntity);
+                userId = sessionEntity.UserId;
+                companyId = sessionEntity.AppCreatedByCompanyId.Value;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, nameof(TryRegisterIntegrationTokenIdentity));
+                return false;
+            }
+        }
+
         public static void UpdateUserTimeZoneWithSession(UserContext userContext, string timzoneToken, string timezoneShortDisplayName, string timeZoneOffset)
         {
             if (userContext != null && userContext.SessionId != null && !string.IsNullOrWhiteSpace(timezoneShortDisplayName))

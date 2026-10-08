@@ -7,6 +7,7 @@ export { default as CompanyContactGroupSetup } from './CompanyContactGroupSetup'
 export { default as CompanyPrivilegeManagement } from './CompanyPrivilegeManagement';
 export { default as CompanyDashboardTab } from './CompanyDashboardTab';
 export { default as CompanyIntegrationTokenManagement } from './CompanyIntegrationTokenManagement';
+export { default as CompanyMcpApiAccess } from './CompanyMcpApiAccess';
 export { default as DomainAndUserMenuManagement } from './DomainAndUserMenuManagement';
 export { default as RoleEditorModal } from './RoleEditorModal';
 
