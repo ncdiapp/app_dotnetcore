@@ -53,3 +53,12 @@ export const endpoints = {
   buildEndpointUrl,
   toAbsoluteResourceUrl,
 };
+
+/** Turn a same-origin API call path into the public URL on the API server. */
+export function toApiDisplayUrl(serverRoot: string, callPath: string): string {
+  if (!serverRoot || !callPath) return callPath;
+  const root = serverRoot.replace(/\/$/, '');
+  const prefix = BASE_URL.endsWith('/') ? BASE_URL.slice(0, -1) : BASE_URL;
+  const path = prefix && callPath.startsWith(prefix) ? callPath.slice(prefix.length) : callPath;
+  return `${root}${path.startsWith('/') ? path : `/${path}`}`;
+}

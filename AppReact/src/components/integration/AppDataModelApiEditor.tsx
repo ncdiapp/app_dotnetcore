@@ -11,10 +11,13 @@ import { useDispatch } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
+import { updateActiveTabPath, updateCurrentTabLabel } from '../../redux/features/ui/navigation/tabnavSlice';
 import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
-import { endpoints } from '../../webapi/endpoints';
-import { getHeaders } from '../../helper/apiServiceHelper';
+import { endpoints, toApiDisplayUrl } from '../../webapi/endpoints';
+import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
+import { buildApiTestHeaders } from '../../helper/apiServiceHelper';
+import { prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
 
@@ -24,7 +27,7 @@ const HTTP_METHODS = ['Get', 'Post'];
 const DEFAULT_APICONFIG = `{
   "BaseUrl": "",
   "Url": "",
-  "Headers": { "CurrentUserSessionId": "" },
+  "Headers": { "CurrentUserSessionId": null },
   "QueryParams": { "id": 1 },
   "PathParams": {},
   "PostProcessMethodName": null,
@@ -45,10 +48,17 @@ function initNewDataModelApiDto(transcationId: number | null, dataSourceId: numb
   };
 }
 
+function withFormattedApiConfig(op: any): any {
+  if (!op || typeof op !== 'object') return op;
+  const raw = typeof op.ApiconfigParameters === 'string' ? op.ApiconfigParameters : op.apiconfigParameters;
+  if (typeof raw !== 'string' || !raw.trim()) return op;
+  return { ...op, ApiconfigParameters: prettyPrintJsonForDisplay(raw) };
+}
+
 /** Build API URL for DataIntegration: /webapi/DataIntegration/{ActionCode}, optional ?id= from ApiconfigParameters.QueryParams.id */
-function buildApiUrl(op: any): string {
+function buildApiUrl(op: any, includeGetQuery = false): string {
   const base = `${endpoints.BASE_URL}/webapi/DataIntegration/${op?.ActionCode ?? ''}`;
-  if (op?.HttpMethd !== 'Get') return base;
+  if (!includeGetQuery && op?.HttpMethd !== 'Get') return base;
   try {
     const config = JSON.parse(op?.ApiconfigParameters ?? '{}');
     const id = config?.QueryParams?.id;
@@ -60,13 +70,19 @@ function buildApiUrl(op: any): string {
 }
 
 /** Parse ApiconfigParameters and return Headers object for fetch */
-function getApiHeaders(op: any): Record<string, string> {
+function getApiHeaders(op: any): Record<string, unknown> {
   try {
     const config = JSON.parse(op?.ApiconfigParameters ?? '{}');
     return config?.Headers ?? {};
   } catch {
     return {};
   }
+}
+
+async function readFailedResponse(response: Response): Promise<string> {
+  const text = await response.text();
+  if (!text.trim()) return `HTTP ${response.status}: ${response.statusText}`;
+  return text;
 }
 
 const AppDataModelApiEditor: React.FC = () => {
@@ -81,6 +97,7 @@ const AppDataModelApiEditor: React.FC = () => {
   const dispatch = useDispatch();
   const { theme } = useTheme();
   const { showError, showValidationMessages, showInfo, showWarning } = useErrorMessage();
+  const serverRoot = useApiServerRoot();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -90,6 +107,7 @@ const AppDataModelApiEditor: React.FC = () => {
   const [mainSectionActiveTabIndex, setMainSectionActiveTabIndex] = useState(0);
   const [apiResponseText, setApiResponseText] = useState('');
   const latestOperationRef = useRef<any>(null);
+  const skipNextRouteLoadRef = useRef(false);
   useEffect(() => {
     latestOperationRef.current = currentOperation;
   }, [currentOperation]);
@@ -123,6 +141,10 @@ const AppDataModelApiEditor: React.FC = () => {
   }, [settingParameterId, dataSourceIdFromQuery, transactionIdFromQuery, dispatch, showError]);
 
   useEffect(() => {
+    if (skipNextRouteLoadRef.current) {
+      skipNextRouteLoadRef.current = false;
+      return;
+    }
     loadData();
   }, [loadData]);
 
@@ -147,7 +169,11 @@ const AppDataModelApiEditor: React.FC = () => {
     setIsSaving(true);
     if (manageBusy) dispatch(setIsBusy());
     try {
-      const payload = { ...op, IntergrationSettingId: op.IntergrationSettingId ?? API_BUILDER_INTEGRATION_SETTING_ID };
+      const payload = {
+        ...op,
+        IntergrationSettingId: op.IntergrationSettingId ?? API_BUILDER_INTEGRATION_SETTING_ID,
+        APIConfigParameters: null,
+      };
       const result = await integrationService.saveAppIntegrationSettingParameterExDto(payload);
       if (result?.ValidationResult) {
         showValidationMessages(result.ValidationResult, true);
@@ -155,13 +181,26 @@ const AppDataModelApiEditor: React.FC = () => {
       if (result?.IsSuccessful) {
         setIsModified(false);
         const saved = result?.Object;
-        if (saved?.Id != null) {
-          navigate(`/app-data-model-api-editor/${saved.Id}`, { replace: true });
+        const savedId = saved?.Id != null ? Number(saved.Id) : null;
+        const idChanged = savedId != null && !Number.isNaN(savedId) && savedId !== settingParameterId;
+        if (savedId != null && !Number.isNaN(savedId)) {
+          const newPath = `/app-data-model-api-editor/${savedId}`;
+          const tabLabel = saved?.ActionCode ? `API: ${saved.ActionCode}` : `API (${savedId})`;
+          // Update tab path before navigate. Otherwise useTabNavigation syncs the URL
+          // back to the create route and loadData() with a null id opens a blank New API.
+          dispatch(updateActiveTabPath(newPath));
+          dispatch(updateCurrentTabLabel(tabLabel));
+          if (idChanged) {
+            if (skipReloadAfterSave || afterSave) {
+              skipNextRouteLoadRef.current = true;
+            }
+            navigate(newPath, { replace: true });
+          }
         }
         if (afterSave && saved) {
           afterSave(saved);
-        } else if (!skipReloadAfterSave) {
-          loadData();
+        } else if (!skipReloadAfterSave && !idChanged) {
+          await loadData();
         }
         return saved ?? null;
       }
@@ -172,24 +211,22 @@ const AppDataModelApiEditor: React.FC = () => {
       if (manageBusy) dispatch(setIsNotBusy());
     }
     return null;
-  }, [currentOperation, dispatch, showError, showValidationMessages, showWarning, loadData, navigate]);
+  }, [currentOperation, dispatch, showError, showValidationMessages, showWarning, loadData, navigate, settingParameterId]);
 
   const callGetApi = useCallback(async (apiUrl: string, op: any): Promise<any> => {
-    const headers = new Headers(getHeaders());
-    const customHeaders = getApiHeaders(op);
-    Object.entries(customHeaders).forEach(([k, v]) => headers.set(k, String(v)));
-    const response = await fetch(apiUrl, { headers });
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-    return response.json();
+    const headers = buildApiTestHeaders(getApiHeaders(op));
+    const response = await fetch(apiUrl, { headers, credentials: 'include' });
+    if (!response.ok) throw new Error(await readFailedResponse(response));
+    const text = await response.text();
+    if (!text.trim()) throw new Error('GET returned an empty body. Set QueryParams.id and try again.');
+    return JSON.parse(text);
   }, []);
 
   const callPostApi = useCallback(async (apiUrl: string, op: any): Promise<any> => {
-    const headers = new Headers(getHeaders());
-    const customHeaders = getApiHeaders(op);
-    Object.entries(customHeaders).forEach(([k, v]) => headers.set(k, String(v)));
+    const headers = buildApiTestHeaders(getApiHeaders(op));
     const body = op.JsonSampleData?.trim() ? JSON.parse(op.JsonSampleData) : {};
-    const response = await fetch(apiUrl, { method: 'POST', headers, body: JSON.stringify(body) });
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const response = await fetch(apiUrl, { method: 'POST', headers, credentials: 'include', body: JSON.stringify(body) });
+    if (!response.ok) throw new Error(await readFailedResponse(response));
     return response.json();
   }, []);
 
@@ -211,12 +248,12 @@ const AppDataModelApiEditor: React.FC = () => {
     dispatch(setIsBusy());
     (async () => {
       try {
-        const savedOp = await handleSave(undefined, { manageBusy: false, skipReloadAfterSave: true });
+        const savedOp = withFormattedApiConfig(await handleSave(undefined, { manageBusy: false, skipReloadAfterSave: true }));
         if (!savedOp) return;
 
         setCurrentOperation(savedOp);
 
-        const apiUrl = buildApiUrl(savedOp);
+        const apiUrl = toApiDisplayUrl(serverRoot, buildApiUrl(savedOp));
         if (savedOp.HttpMethd === 'Get') {
           const data = await callGetApi(apiUrl, savedOp);
           const jsonStr = JSON.stringify(data ?? '', null, 2);
@@ -242,12 +279,12 @@ const AppDataModelApiEditor: React.FC = () => {
         dispatch(setIsNotBusy());
       }
     })();
-  }, [currentOperation, handleSave, callGetApi, callPostApi, dispatch, showError, showValidationMessages, showWarning]);
+  }, [currentOperation, serverRoot, handleSave, callGetApi, callPostApi, dispatch, showError, showValidationMessages, showWarning]);
 
   const handleRegeneratePayload = useCallback(async () => {
     const op = currentOperation;
     if (!op?.ActionCode) return;
-    const apiUrl = buildApiUrl(op);
+    const apiUrl = toApiDisplayUrl(serverRoot, buildApiUrl(op, true));
     dispatch(setIsBusy());
     try {
       const data = await callGetApi(apiUrl, op);
@@ -259,7 +296,7 @@ const AppDataModelApiEditor: React.FC = () => {
     } finally {
       dispatch(setIsNotBusy());
     }
-  }, [currentOperation, callGetApi, dispatch, showError]);
+  }, [currentOperation, serverRoot, callGetApi, dispatch, showError]);
 
   const markChange = useCallback(() => {
     setCurrentOperation((prev: any) => (prev ? { ...prev, IsModified: true } : null));
@@ -381,8 +418,7 @@ const AppDataModelApiEditor: React.FC = () => {
                 <div className="p-2 rounded font-mono text-xs bg-gray-50 break-all">
                   {(() => {
                     const pathWithQuery = buildApiUrl(op);
-                    const pathAfterBase = pathWithQuery.startsWith('http') ? '' : pathWithQuery.replace(/^\/appai\/?/, '') || '/';
-                    const fullUrl = pathWithQuery.startsWith('http') ? pathWithQuery : endpoints.buildEndpointUrl(pathAfterBase);
+                    const fullUrl = toApiDisplayUrl(serverRoot, pathWithQuery);
                     return fullUrl || pathWithQuery || '—';
                   })()}
                 </div>

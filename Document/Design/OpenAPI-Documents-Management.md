@@ -33,10 +33,12 @@
 对外读取已发布的 JSON：
 
 ```
-GET /appai/openapi-doc/{doc-code}
+GET /openapi-doc/{doc-code}
 ```
 
-`doc-code` 是 Document 的 Code，创建后不改。例如 `/appai/openapi-doc/app-weather`。仅 Status = Published 时返回已保存的 JSON。Draft 不对外。
+`doc-code` 是 Document 的 Code。只允许小写字母、数字和 `-`，全局唯一，创建后不改。开发时完整地址是 `http://localhost:52740/openapi-doc/app-weather`。发布后是调用方访问这台服务器时用的同一根地址加 `/openapi-doc/{doc-code}`，不写 `/appai`。
+
+仅 Status = Published 时返回已保存的 JSON，未登录的外部 AI 也可以读。Draft 不返回正文。这个 URL 只公开文档。文档里的 API 地址是 `{本次请求的根}/webapi/DataIntegration/{ActionCode}`，调用仍要登录或 Integration Token。
 
 页面路由：
 
@@ -68,7 +70,7 @@ GET /appai/openapi-doc/{doc-code}
 | Version | OpenAPI `info.version` |
 | API Count | 包含的 API 个数 |
 | Status | Draft / Published |
-| Public URL | 已发布时为 `/appai/openapi-doc/{doc-code}` |
+| Public URL | 已发布时为 `/openapi-doc/{doc-code}` |
 | Last Generated | 上次生成 JSON 的时间 |
 | Description | |
 | Created By | `AppCreatedByID`，界面用用户 DataMap 显示用户名 |
@@ -97,7 +99,11 @@ GET /appai/openapi-doc/{doc-code}
 
 初步按钮：Add APIs、Remove、Save、Regenerate、Download、Copy URL。
 
-Save 只保存 Document 和成员。Regenerate 调用下面的 Generator，把 JSON 写回该记录，并更新 Last Generated、API Count、`AppModifiedByID`、`AppModifiedDate`。Publish 不重新生成；没有已保存 JSON 时不允许 Publish。
+Save 只保存 Document 和成员。Regenerate 调用下面的 Generator，把 JSON 写回该记录，并更新 Last Generated、API Count、`AppModifiedByID`、`AppModifiedDate`。已发布的 URL 立刻返回这份新 JSON。每次 Regenerate 把 Version 的最后一段加 1（`1.0.0` 变为 `1.0.1`）；Version 为空时先写成 `1.0.0` 再加。Publish 不重新生成，也不改 Version；没有已保存 JSON 时不允许 Publish。
+
+一份 Document 可以同时包含 3rd Party API 和 App API。
+
+第一版除了管理页面和对外 URL，还要把已发布的 Document 交给内部 Agent 使用。Agent 读的是这份已保存的 JSON，不在调用时重新生成。
 
 ## PLM 的 Swagger 是怎么生成的
 
@@ -163,7 +169,7 @@ Schema 按 `EmApiScope`：
 
 - 不在每次 GET 时重新生成。JSON 在 Regenerate 时写入数据库，对外 URL 只读这份 JSON。
 - 不做“全部 API 一份文档”。成员由用户选择。
-- 不用每条 API 的 UrlPattern 当作发布。发布的是整份 Document，地址是 `/appai/openapi-doc/{doc-code}`。
+- 不用每条 API 的 UrlPattern 当作发布。发布的是整份 Document，地址是 `/openapi-doc/{doc-code}`。
 - 不扫描 Controller。成员只来自已保存的 3rd Party API 和 App API。
 - 不把诊断用的 `x-meta` 写入保存的 JSON。
 
@@ -178,7 +184,7 @@ Schema 按 `EmApiScope`：
 | `info.title` | Name |
 | `info.version` | Version，空则 `1.0.0` |
 | `info.description` | Description |
-| `servers[0].url` | 当前 App 站点 + `/webapi`。所有成员共用这一台服务器 |
+| `servers[0].url` | 发出这份 JSON 的这次请求的根地址 + `/webapi`。不读 `BASE_URL`，不读 ApplicationURL。path 是 `/DataIntegration/{ActionCode}` |
 
 成员来源是现有 `AppIntergrationSettingParameter`。3rd Party API 属于某个 Integration Setting。App API Provider 使用 Integration Setting Id = 1，类型包括 Stored Procedure、SQL Json Query、Data Model、Report & View。
 
@@ -192,33 +198,34 @@ Schema 按 `EmApiScope`：
 | summary | ActionCode |
 | description | ActionDescription |
 | tags | API Type。3rd Party 再用 Provider Name 做第二组 tag |
-| parameters | GET/DELETE：query 来自 `QueryParams` 或 `SimpleQueryParameterNameList`；path 来自 `PathParams` 或 URL 里的 `{name}` |
+| parameters | 按下面各类型分别取。不从 3rd Party 的外部 URL 拆 path 参数 |
 | requestBody | POST/PUT：schema `$ref` `#/components/schemas/{ActionCode}_Request` |
 | responses.200 | schema `$ref` `#/components/schemas/{ActionCode}_Response` |
-| responses.400 / 500 | 与 PLM 相同，固定 Bad Request 和 Internal Server Error |
+| responses.400 / 500 | 固定 Bad Request、Internal Server Error |
 
 同一 path + method 只保留一条。后加入的成员若冲突，生成时记为跳过。
 
-只有 SQL Json Query、Report & View 对应 PLM 的 JsonQuery、SearchView。其余类型按我们自己的调用方式生成，不套 PLM scope。
+每种 API 都按 App 自己的运行时来写 schema，不按 PLM 的 ApiScope 套。
 
 | 成员 | 怎么认 | Request | Response |
 |---|---|---|---|
-| SQL Json Query | `IsSimpleQuery`，对应 PLM JsonQuery | GET：query 参数来自 `SimpleQueryParameterNameList`（SQL 里的 `@name`）。POST：body 用 `JsonSampleData`，运行时作为 `@json` | 优先 `JsonSchema`，否则通用 object |
-| Report & View | `TranscationFieId` 指向 AppSearch，对应 PLM SearchView | GET：query 参数来自 `APIConfigParameters.QueryParams`。这些键在选择 Search 时从 `AppSearchFieldList.SysTableFiledPath` 写入 | 优先 `JsonSchema`，否则用 `JsonSampleData` 推断，都没有则为通用 object |
+| SQL Json Query | `IsSimpleQuery`。运行时执行 `JsonQuery`。编辑器不维护 `JsonSchema` | GET/DELETE：query 参数来自 `SimpleQueryParameterNameList`，去掉开头的 `@` 后作为参数名。SQL 里要有同名的 `@参数`。POST/PUT：body 用 `JsonSampleData`。运行时只有 SQL 含 `@json` 时，才把整个 body 传给 `@json` | GET/DELETE：取结果第一行里名为 `JSON` 的列，内容由 SQL 自己的 FOR JSON 决定。没有保存响应样本，schema 写成不限定结构的 JSON。POST/PUT：运行时返回一段文本，不是查询结果 |
+| Report & View | `TranscationFieId` 指向 AppSearch。运行时只有 GET 会执行 Search | GET：query 参数来自 `APIConfigParameters.QueryParams`。键是 Search 条件的 `SysTableFiledPath`，有值才套进条件，类型按 string。POST 在编辑器里可以发 `JsonSampleData`，但运行时不会执行 Search | GET：JSON 数组。每一行的属性名是默认 View 列的 `SysTableFiledPath`；子 View 嵌在 `{Display}_{Id}` 下；树行有 `Children`。生成时读这个 Search 的默认 View 来写 schema。`JsonSchema` / `JsonSampleData` 只是某次 Send Request 的副产品，Reset Config 会清掉，不作为来源 |
 | Data Model | `TranscationId` 指向 AppTransaction。运行时按 MasterDetail 或 List 分别处理，不对应 PLM DataSourceEntity | GET：query 参数来自 `APIConfigParameters.QueryParams`，新建时默认 `id`。POST：body 用 `JsonSampleData`（编辑器里的 Post Payload，可由 GET 结果再生成） | 编辑器不保存响应样本。schema 用通用 object |
 | Stored Procedure | `APIConfigParameters.IsStoredProcedureApi`。运行时 `ExecuteStoredProcedureApi`，不对应 PLM scope | POST body 固定为 `{ "args": { 参数名: 值 } }`。参数来自 `SpParameters` 的 IN / INOUT。GET 把 query string 收进同一个 `args` | 用已保存的 `JsonSampleData` 推断；没有则为通用 object |
 | 3rd Party API | `IntergrationSettingId` 不是 App API Provider（Id = 1）。运行时 GET 用 query 覆盖 `QueryParams`，再由包装层去调外部 URL | GET/DELETE：query 参数来自 `APIConfigParameters.QueryParams`。POST/PUT：body 用 `JsonSampleData`（编辑器里的 Payload Data，JSON 类型） | GET 用 `JsonSampleData`。POST/PUT 用 `PostResponseDto.ResponseJsonData`。没有样本则为通用 object |
 
 Excel Import Data Update（`ExcelDataImportDataSetId`）若被选入：POST body 用 `JsonSampleData`，列为导入源列；响应是导入结果字符串。它不对应任何 PLM scope。
 
-样本推断沿用 PLM `BuildJsonQuerySchemaFromSample` 的做法：JSON object 的每个属性按值的类型写成 schema；数组写成 `array`；无法解析则为 `{ "type": "object", "additionalProperties": true }`。
+已保存的 JSON 样本需要转成 schema 时：object 的每个属性按值的类型写；数组写成 `array`；解析失败则 `{ "type": "object", "additionalProperties": true }`。SQL Json Query 的 GET 响应和 Report & View 的 GET 响应不用这条，规则见上表。
 
 生成结果除 JSON 外返回：成功条数、跳过列表（ActionCode + 原因）。编辑页在 Regenerate 后显示跳过列表。API Count 只计写入 paths 的条数。
 
 ## 待补充
 
-- 表结构、Entity，以及 Document 与 `AppIntergrationSettingParameter` 的成员关系怎么存
+- 表结构、Entity，以及 Document 与 `AppIntergrationSettingParameter` 的成员关系怎么存。迁移号避开已占用的 V046、V047
 - Add APIs 的界面和筛选（Provider、API Type、Application）
-- 鉴权写入 OpenAPI `securitySchemes` 的方式。3rd Party 的外部鉴权留在包装层，不写进这份 Document 的 path
-- Data Model 的响应目前没有保存样本。若以后要从 Transaction 字段生成 response schema，另定
+- 内部 Agent 具体接在 Generic Agent 的工具上，还是作为 MCP Gateway 的一个 ApiSource
+- 文档里如何写调用 DataIntegration 所需的鉴权（会话或 `IntergrationAccessToken`）。读文档的 URL 本身不鉴权
+- Data Model 的响应目前没有保存样本。第一版用通用 object
 

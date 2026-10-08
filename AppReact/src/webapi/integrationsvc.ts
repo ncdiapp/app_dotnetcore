@@ -1,7 +1,13 @@
 import { endpoints } from './endpoints';
 import { getHeaders } from '../helper/apiServiceHelper';
-import { normalizeIntegrationSettingParameterForSave } from '../helper/integrationPayloadHelper';
+import { normalizeIntegrationSettingParameterForSave, prettyPrintJsonForDisplay } from '../helper/integrationPayloadHelper';
 class IntegrationService {
+
+  private withPrettyApiConfig(dto: any): any {
+    if (dto == null || typeof dto !== 'object') return dto;
+    if (typeof dto.ApiconfigParameters !== 'string' || !dto.ApiconfigParameters.trim()) return dto;
+    return { ...dto, ApiconfigParameters: prettyPrintJsonForDisplay(dto.ApiconfigParameters) };
+  }
   
 
   async retrieveAllAppIntegrationSettingDto(isIncludeAppBuiltInApi: boolean): Promise<any> {
@@ -71,7 +77,7 @@ class IntegrationService {
       headers: getHeaders()
     });
     if (!response.ok) throw new Error('Failed to retrieve integration setting parameter');
-    return response.json();
+    return this.withPrettyApiConfig(await response.json());
   }
 
   async getAppSearchDefaultProviderApi(searchId: string, isIncludeApiDataStructure: boolean = false, appBaseUrl: string): Promise<any> {
@@ -98,7 +104,9 @@ class IntegrationService {
       body: JSON.stringify(payload)
     });
     if (!response.ok) throw new Error('Failed to save integration setting parameter');
-    return response.json();
+    const result = await response.json();
+    if (result?.Object) result.Object = this.withPrettyApiConfig(result.Object);
+    return result;
   }
 
   async buildJsonImportTableDiagramFromSetting(data: any): Promise<any> {
@@ -435,6 +443,28 @@ class IntegrationService {
     });
     if (!response.ok) throw new Error('Failed to AI-train SP register');
     return response.json();
+  }
+
+  private apiServerRootPromise: Promise<string> | null = null;
+
+  /** Scheme and host of the API server that received this call, with no path prefix. */
+  loadApiServerRoot(): Promise<string> {
+    if (!this.apiServerRootPromise) {
+      this.apiServerRootPromise = fetch(`${endpoints.BASE_URL}/webapi/Integration/GetApiServerRoot`, {
+        headers: getHeaders(),
+        credentials: 'include',
+      })
+        .then(async (response) => {
+          if (!response.ok) throw new Error(String(response.status));
+          const data = await response.json();
+          return String(data?.ServerRoot ?? data?.serverRoot ?? '').replace(/\/$/, '');
+        })
+        .catch((error) => {
+          this.apiServerRootPromise = null;
+          throw error;
+        });
+    }
+    return this.apiServerRootPromise;
   }
 }
 

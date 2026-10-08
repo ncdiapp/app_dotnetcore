@@ -13,10 +13,12 @@ import { useDispatch } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
+import { updateActiveTabPath, updateCurrentTabLabel } from '../../redux/features/ui/navigation/tabnavSlice';
 import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import { schemaMetadataService } from '../../webapi/schemaMetaDataSvc';
-import { endpoints } from '../../webapi/endpoints';
+import { endpoints, toApiDisplayUrl } from '../../webapi/endpoints';
+import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { getHeaders } from '../../helper/apiServiceHelper';
 import { prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
@@ -68,6 +70,7 @@ const AppJsonQueryApiEditor: React.FC = () => {
   const dispatch = useDispatch();
   const { theme } = useTheme();
   const errorMessage = useErrorMessage();
+  const serverRoot = useApiServerRoot();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -185,10 +188,23 @@ const AppJsonQueryApiEditor: React.FC = () => {
       if (result?.IsSuccessful) {
         errorMessage.showInfo('Saved successfully.');
         setIsModified(false);
-        if (result?.Object?.Id != null) {
-          navigate(`/api-builder-editor/${result.Object.Id}`, { replace: true });
+        const saved = result?.Object;
+        const savedId = saved?.Id != null ? Number(saved.Id) : null;
+        if (savedId != null && !Number.isNaN(savedId)) {
+          const newPath = `/api-builder-editor/${savedId}`;
+          const tabLabel = saved?.ActionCode ? `API: ${saved.ActionCode}` : `API (${savedId})`;
+          // Update tab path before navigate. Otherwise useTabNavigation syncs the URL
+          // back to the create route and loadData() with a null id opens a blank New API.
+          dispatch(updateActiveTabPath(newPath));
+          dispatch(updateCurrentTabLabel(tabLabel));
+          if (savedId !== settingParameterId) {
+            navigate(newPath, { replace: true });
+          } else {
+            await loadData();
+          }
+        } else {
+          await loadData();
         }
-        loadData();
       } else if (messages.length) {
         messages.forEach((msg) => errorMessage.showError(msg));
       } else {
@@ -200,7 +216,7 @@ const AppJsonQueryApiEditor: React.FC = () => {
       setIsSaving(false);
       dispatch(setIsNotBusy());
     }
-  }, [currentOperation, queryParameterCV, queryParameterList, dispatch, errorMessage, loadData, navigate]);
+  }, [currentOperation, queryParameterCV, queryParameterList, dispatch, errorMessage, loadData, navigate, settingParameterId]);
 
   const addQueryParameter = useCallback(() => {
     const next = [...queryParameterList, { ParameterName: '@' }];
@@ -275,18 +291,9 @@ const AppJsonQueryApiEditor: React.FC = () => {
     return `${base}?${pairs.join('&')}`;
   }, [currentOperation, queryParameterCV, queryParameterList]);
 
-  const buildTestApiFullUrl = useCallback(() => {
-    const pathWithQuery = buildTestApiUrl();
-    if (!pathWithQuery) return '';
-    if (pathWithQuery.startsWith('http')) return pathWithQuery;
-
-    const normalizedBase = (endpoints.BASE_URL || '').replace(/\/$/, '');
-    const pathAfterBase = normalizedBase && pathWithQuery.startsWith(normalizedBase)
-      ? pathWithQuery.slice(normalizedBase.length)
-      : pathWithQuery;
-
-    return endpoints.buildEndpointUrl(pathAfterBase);
-  }, [buildTestApiUrl]);
+  const displayApiUrl = useCallback(() => {
+    return toApiDisplayUrl(serverRoot, buildTestApiUrl());
+  }, [buildTestApiUrl, serverRoot]);
 
   const handleTestApi = useCallback(async () => {
     const op = currentOperation;
@@ -294,7 +301,7 @@ const AppJsonQueryApiEditor: React.FC = () => {
       errorMessage.showWarning('Save the API first to test.');
       return;
     }
-    const apiUrl = buildTestApiFullUrl();
+    const apiUrl = displayApiUrl();
     setApiResponseText('');
     dispatch(setIsBusy());
     try {
@@ -327,7 +334,7 @@ const AppJsonQueryApiEditor: React.FC = () => {
     } finally {
       dispatch(setIsNotBusy());
     }
-  }, [currentOperation, buildTestApiFullUrl, dispatch, errorMessage]);
+  }, [currentOperation, displayApiUrl, dispatch, errorMessage]);
 
   if (isLoading) {
     return (
@@ -664,7 +671,7 @@ WHEN NOT MATCHED THEN
               <div className="flex flex-col gap-3 p-2 flex-1 min-h-0">
                 <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
                   <span className="text-xs font-semibold">API Url:</span>
-                  <span className="flex-1 min-w-0 text-xs underline select-all text-gray-700 truncate" title={buildTestApiFullUrl()}>{buildTestApiFullUrl() || '—'}</span>
+                  <span className="flex-1 min-w-0 text-xs underline select-all text-gray-700 truncate" title={displayApiUrl()}>{displayApiUrl() || '—'}</span>
                   <button type="button" onClick={handleTestApi} disabled={!currentOperation?.Id}
                     className="h-6 px-2 rounded text-xs border bg-white disabled:opacity-50 inline-flex items-center gap-1 flex-shrink-0">
                     <i className="fa fa-play" aria-hidden /> Click To Test Call API

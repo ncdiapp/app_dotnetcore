@@ -11,7 +11,8 @@ import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
 import { integrationService } from '../../webapi/integrationsvc';
-import { endpoints } from '../../webapi/endpoints';
+import { endpoints, toApiDisplayUrl } from '../../webapi/endpoints';
+import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { getHeaders } from '../../helper/apiServiceHelper';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
@@ -49,6 +50,7 @@ const ExcelImportDataUpdateApiEditor: React.FC = () => {
   const dispatch = useDispatch();
   const { theme } = useTheme();
   const errorMessage = useErrorMessage();
+  const serverRoot = useApiServerRoot();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -122,6 +124,7 @@ const ExcelImportDataUpdateApiEditor: React.FC = () => {
   const apiUrl = currentOperation?.ActionCode
     ? `${endpoints.BASE_URL}/webapi/DataIntegration/${currentOperation.ActionCode}`
     : '';
+  const displayApiUrl = toApiDisplayUrl(serverRoot, apiUrl);
 
   const handleTestApi = useCallback(async () => {
     const op = currentOperation;
@@ -129,12 +132,15 @@ const ExcelImportDataUpdateApiEditor: React.FC = () => {
       errorMessage.showWarning('Save the API first to test.');
       return;
     }
-    const url = `${endpoints.BASE_URL}/webapi/DataIntegration/${op.ActionCode}`;
+    const url = toApiDisplayUrl(
+      serverRoot,
+      `${endpoints.BASE_URL}/webapi/DataIntegration/${op.ActionCode}`,
+    );
     setApiResponseText('');
     dispatch(setIsBusy());
     try {
       if (op.HttpMethd === 'Get') {
-        const response = await fetch(url, { headers: getHeaders() });
+        const response = await fetch(url, { headers: getHeaders(), credentials: 'include' });
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const data = await response.json();
         setApiResponseText(JSON.stringify(data ?? '', null, 2));
@@ -143,6 +149,7 @@ const ExcelImportDataUpdateApiEditor: React.FC = () => {
         const response = await fetch(url, {
           method: 'POST',
           headers: getHeaders(),
+          credentials: 'include',
           body: JSON.stringify(body),
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -156,7 +163,7 @@ const ExcelImportDataUpdateApiEditor: React.FC = () => {
     } finally {
       dispatch(setIsNotBusy());
     }
-  }, [currentOperation, dispatch, errorMessage]);
+  }, [currentOperation, serverRoot, dispatch, errorMessage]);
 
   const tableNameDisplay = currentOperation?.ImportDataSetDto?.OtherSettingsDto?.TableImportSettingDto?.TableNameDisplay ?? '';
 
@@ -223,7 +230,7 @@ const ExcelImportDataUpdateApiEditor: React.FC = () => {
 
         <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
           <span className="font-semibold">Calling API Url:</span>
-          <span className="text-gray-600 select-all" title={apiUrl}>{apiUrl || '—'}</span>
+          <span className="text-gray-600 select-all" title={displayApiUrl}>{displayApiUrl || '—'}</span>
           <button type="button" onClick={handleTestApi} disabled={!op.Id}
             className="h-6 px-2 rounded text-xs border bg-white disabled:opacity-50">
             <i className="fa fa-bolt mr-1" aria-hidden /> Test API

@@ -13,6 +13,15 @@ namespace AppAI.Web.Controllers;
 [Route("webapi/[controller]/[action]")]
 public class IntegrationController : SecureBaseController
 {
+    /// <summary>
+    /// Root the caller should use for API URLs: scheme and host of this request, without a path prefix.
+    /// </summary>
+    [HttpGet]
+    public object GetApiServerRoot()
+    {
+        return new { ServerRoot = $"{Request.Scheme}://{Request.Host}" };
+    }
+
     [HttpGet]
     public List<AppIntergrationSettingExDto> RetrieveAllAppIntergrationSettingDto(bool? isIncludeAppBuiltInApi)
     {

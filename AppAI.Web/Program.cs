@@ -43,15 +43,23 @@ try
 
     // ── CORS ──────────────────────────────────────────────────────────────────
     var allowedOrigins = builder.Configuration["CorsAllowedOrigins"] ?? string.Empty;
-    if (!string.IsNullOrWhiteSpace(allowedOrigins))
+    // Dev SPA (for example localhost:3000) calls the API host shown on the editor (localhost:52740).
+    // That call is cross-origin, so the browser needs CORS. Production stays on the configured list.
+    var enableDevCors = builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(allowedOrigins);
+    if (!string.IsNullOrWhiteSpace(allowedOrigins) || enableDevCors)
     {
         builder.Services.AddCors(options =>
         {
             options.AddPolicy("AppAiCors", policy =>
-                policy.WithOrigins(allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries))
-                      .AllowAnyHeader()
+            {
+                if (enableDevCors)
+                    policy.SetIsOriginAllowed(_ => true);
+                else
+                    policy.WithOrigins(allowedOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries));
+                policy.AllowAnyHeader()
                       .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                      .AllowCredentials());
+                      .AllowCredentials();
+            });
         });
     }
 
@@ -192,7 +200,7 @@ try
     else
         app.UseHttpLogging();
 
-    if (!string.IsNullOrWhiteSpace(allowedOrigins))
+    if (!string.IsNullOrWhiteSpace(allowedOrigins) || enableDevCors)
         app.UseCors("AppAiCors");
 
     // OPTIONS pre-flight response (replaces Application_EndRequest)

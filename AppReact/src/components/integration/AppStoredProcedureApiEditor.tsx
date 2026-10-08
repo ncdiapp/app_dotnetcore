@@ -14,7 +14,8 @@ import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
 import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
-import { endpoints } from '../../webapi/endpoints';
+import { endpoints, toApiDisplayUrl } from '../../webapi/endpoints';
+import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { getHeaders } from '../../helper/apiServiceHelper';
 import { prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
@@ -134,6 +135,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
   const dispatch = useDispatch();
   const { theme } = useTheme();
   const { showError, showValidationMessages, showInfo, showWarning } = useErrorMessage();
+  const serverRoot = useApiServerRoot();
   const isAiConfigured = useSelector(
     (s: RootState) => !!s.userSession?.userContext?.IsAiConfigured,
   );
@@ -411,6 +413,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: getHeaders(),
+      credentials: 'include',
       body: JSON.stringify({ args }),
     });
     const text = await response.text();
@@ -444,7 +447,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
         setParamRows(items.map((x) => ({ ...x })));
         setInputJsonText(paramsToInputJson(items));
 
-        const apiUrl = buildApiUrl(withParams);
+        const apiUrl = toApiDisplayUrl(serverRoot, buildApiUrl(withParams));
         const args = buildArgsFromInputJson(inputJsonText, items);
         const data = await callPostApi(apiUrl, args);
         const jsonStr = prettyPrintJsonForDisplay(data) || JSON.stringify(data ?? '', null, 2);
@@ -487,6 +490,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
     })();
   }, [
     currentOperation,
+    serverRoot,
     handleSave,
     getCurrentParams,
     applyParamsToOp,
@@ -512,7 +516,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
 
   const cfg = op.APIConfigParameters ?? {};
   const spFullName = [cfg.SpSchema, cfg.SpName].filter(Boolean).join('.') || op.JsonQuery || '—';
-  const apiUrl = buildApiUrl(op);
+  const apiUrl = toApiDisplayUrl(serverRoot, buildApiUrl(op));
 
   return (
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">

@@ -17,6 +17,8 @@ import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
 import { updateActiveTabPath, updateCurrentTabLabel } from '../../redux/features/ui/navigation/tabnavSlice';
+import { endpoints, toApiDisplayUrl } from '../../webapi/endpoints';
+import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import { schemaMetadataService } from '../../webapi/schemaMetaDataSvc';
@@ -81,6 +83,7 @@ const ThirdPartyApiEditor: React.FC = () => {
   const dispatch = useDispatch();
   const { theme } = useTheme();
   const errorMessage = useErrorMessage();
+  const serverRoot = useApiServerRoot();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -392,6 +395,24 @@ const ThirdPartyApiEditor: React.FC = () => {
 
   const isPostOrPut = op?.HttpMethd === 'Post' || op?.HttpMethd === 'Put';
   const payloadDataType = op?.OtherSettingsDto?.PayloadDataType ?? 1;
+  const displayApiUrl = (() => {
+    if (!op?.ActionCode) return '';
+    const base = `${endpoints.BASE_URL}/webapi/DataIntegration/${op.ActionCode}`;
+    const method = String(op.HttpMethd ?? 'Get');
+    if (method !== 'Get' && method !== 'Delete') return toApiDisplayUrl(serverRoot, base);
+    try {
+      const cfg = JSON.parse(op.ApiconfigParameters || '{}');
+      const queryParams = cfg?.QueryParams;
+      if (!queryParams || typeof queryParams !== 'object') return toApiDisplayUrl(serverRoot, base);
+      const pairs = Object.entries(queryParams)
+        .filter(([key, value]) => key && value != null && String(value) !== '')
+        .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`);
+      const path = pairs.length ? `${base}?${pairs.join('&')}` : base;
+      return toApiDisplayUrl(serverRoot, path);
+    } catch {
+      return toApiDisplayUrl(serverRoot, base);
+    }
+  })();
 
 
   return (
@@ -430,6 +451,11 @@ const ThirdPartyApiEditor: React.FC = () => {
             <label className={`flex-shrink-0 text-xs whitespace-nowrap ${theme.label}`}>Description</label>
             <input type="text" value={op?.ActionDescription ?? ''} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, ActionDescription: e.target.value } : prev)); markChange(); }} className={`w-1 flex-auto min-w-0 h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} />
           </div>
+        </div>
+
+        <div className="flex items-center gap-2 mb-3 flex-shrink-0 min-w-0">
+          <span className={`flex-shrink-0 text-xs font-semibold ${theme.label}`}>API Url</span>
+          <span className="w-1 flex-auto min-w-0 text-xs underline select-all truncate" title={displayApiUrl}>{displayApiUrl || '—'}</span>
         </div>
 
         <div className="flex-1 flex gap-4 min-h-0">

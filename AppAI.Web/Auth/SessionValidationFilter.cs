@@ -17,11 +17,11 @@ public class SessionValidationFilter : IActionFilter
     {
         var request = context.HttpContext.Request;
 
-        // SECURITY: header-first (cross-domain XHR), then cookie.
-        // Query-string tokens are intentionally excluded — they leak via server logs.
-        var sessionId = request.Headers[ServerContext.CurrentUserSessionIdToken].FirstOrDefault()
-                     ?? request.Cookies[ServerContext.CurrentUserSessionIdToken]
-                     ?? string.Empty;
+        // A blank CurrentUserSessionId header must not replace a session already present on the cookie.
+        var headerSessionId = request.Headers[ServerContext.CurrentUserSessionIdToken].FirstOrDefault();
+        var sessionId = string.IsNullOrWhiteSpace(headerSessionId)
+            ? (request.Cookies[ServerContext.CurrentUserSessionIdToken] ?? string.Empty)
+            : headerSessionId;
 
         var anonymousTokens = AppCacheManagerBL.GetAllCompnayAnoymouToken();
         if (anonymousTokens.Contains(sessionId))

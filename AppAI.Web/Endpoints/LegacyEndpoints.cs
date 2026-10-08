@@ -546,9 +546,10 @@ public static class LegacyEndpoints
     {
         try
         {
-            var sessionId = ctx.Request.Headers[ServerContext.CurrentUserSessionIdToken].FirstOrDefault()
-                         ?? ctx.Request.Cookies[ServerContext.CurrentUserSessionIdToken]
-                         ?? string.Empty;
+            var headerSessionId = ctx.Request.Headers[ServerContext.CurrentUserSessionIdToken].FirstOrDefault();
+            var sessionId = string.IsNullOrWhiteSpace(headerSessionId)
+                ? (ctx.Request.Cookies[ServerContext.CurrentUserSessionIdToken] ?? string.Empty)
+                : headerSessionId;
             if (string.IsNullOrWhiteSpace(sessionId)) return false;
             var anonymous = AppCacheManagerBL.GetAllCompnayAnoymouToken();
             if (anonymous.Contains(sessionId)) return false;
@@ -565,10 +566,12 @@ public static class LegacyEndpoints
     {
         try
         {
-            var sessionId = ctx.Request.Headers[ServerContext.CurrentUserSessionIdToken].FirstOrDefault()
-                         ?? ctx.Request.Cookies[ServerContext.CurrentUserSessionIdToken]
-                         ?? ctx.Request.Query[ServerContext.CurrentUserSessionIdToken].FirstOrDefault()
-                         ?? string.Empty;
+            var headerSessionId = ctx.Request.Headers[ServerContext.CurrentUserSessionIdToken].FirstOrDefault();
+            var sessionId = string.IsNullOrWhiteSpace(headerSessionId)
+                ? (ctx.Request.Cookies[ServerContext.CurrentUserSessionIdToken]
+                    ?? ctx.Request.Query[ServerContext.CurrentUserSessionIdToken].FirstOrDefault()
+                    ?? string.Empty)
+                : headerSessionId;
             if (string.IsNullOrWhiteSpace(sessionId)) return false;
             var anonymous = AppCacheManagerBL.GetAllCompnayAnoymouToken();
             if (anonymous.Contains(sessionId)) return false;
