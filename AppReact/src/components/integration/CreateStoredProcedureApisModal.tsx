@@ -4,7 +4,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { FlexGrid, FlexGridColumn } from '@mescius/wijmo.react.grid';
+import { FlexGrid, FlexGridColumn, FlexGridCellTemplate } from '@mescius/wijmo.react.grid';
 import { FlexGridDetail } from '@mescius/wijmo.react.grid.detail';
 import { CollectionView } from '@mescius/wijmo';
 import * as wjGrid from '@mescius/wijmo.grid';
@@ -90,6 +90,7 @@ const CreateStoredProcedureApisModal: React.FC<Props> = ({
   const [saving, setSaving] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [generateAiDescription, setGenerateAiDescription] = useState(true);
+  const [captureSampleOnGenerate, setCaptureSampleOnGenerate] = useState(false);
   /** Bumps header counters without replacing CollectionView (avoids detail collapse). */
   const [uiTick, setUiTick] = useState(0);
   const flexRef = useRef<wjGrid.FlexGrid | null>(null);
@@ -133,6 +134,7 @@ const CreateStoredProcedureApisModal: React.FC<Props> = ({
     replaceRows([]);
     setIsFullscreen(false);
     setGenerateAiDescription(isAiConfigured);
+    setCaptureSampleOnGenerate(false);
 
     const loadDs = async () => {
       setLoadingDs(true);
@@ -170,43 +172,52 @@ const CreateStoredProcedureApisModal: React.FC<Props> = ({
     };
   }, [open, dataSourcesProp, defaultDataSourceId, normalizeDataSources, errorMessage, isAiConfigured, replaceRows]);
 
-  const loadProcedures = useCallback(async () => {
+  useEffect(() => {
+    if (!open) return;
     if (dataSourceId == null) {
-      errorMessage.showError('Select a data source first.');
+      replaceRows([]);
       return;
     }
-    setLoading(true);
-    try {
-      const list = await integrationService.listStoredProceduresForApiBuilder(dataSourceId);
-      const mapped: SpPreviewRow[] = list.map((p: any) => {
-        const suggested =
-          p.SuggestedActionCode ?? p.suggestedActionCode ?? `AppSp_${p.Name ?? p.name}`;
-        return {
-          Include: false,
-          Schema: p.Schema ?? p.schema,
-          SpName: p.Name ?? p.name,
-          FullName: p.FullName ?? p.fullName,
-          ActionCode: '',
-          DefaultActionCode: suggested,
-          Usage: p.Usage ?? p.usage ?? p.Description ?? p.description ?? '',
-          Parameters: (p.Parameters ?? p.parameters ?? []).map((x: any) => ({
-            Name: x.Name ?? x.name,
-            Type: x.Type ?? x.type,
-            Direction: x.Direction ?? x.direction,
-            MaxLength: x.MaxLength ?? x.maxLength,
-            Ordinal: x.Ordinal ?? x.ordinal,
-            HasDefault: x.HasDefault ?? x.hasDefault,
-            DefaultValue: x.DefaultValue ?? x.defaultValue,
-          })),
-        };
-      });
-      replaceRows(mapped);
-    } catch (e) {
-      errorMessage.showError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [dataSourceId, errorMessage, replaceRows]);
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      replaceRows([]);
+      try {
+        const list = await integrationService.listStoredProceduresForApiBuilder(dataSourceId);
+        if (cancelled) return;
+        const mapped: SpPreviewRow[] = list.map((p: any) => {
+          const suggested =
+            p.SuggestedActionCode ?? p.suggestedActionCode ?? `AppSp_${p.Name ?? p.name}`;
+          return {
+            Include: false,
+            Schema: p.Schema ?? p.schema,
+            SpName: p.Name ?? p.name,
+            FullName: p.FullName ?? p.fullName,
+            ActionCode: '',
+            DefaultActionCode: suggested,
+            Usage: p.Usage ?? p.usage ?? p.Description ?? p.description ?? '',
+            Parameters: (p.Parameters ?? p.parameters ?? []).map((x: any) => ({
+              Name: x.Name ?? x.name,
+              Type: x.Type ?? x.type,
+              Direction: x.Direction ?? x.direction,
+              MaxLength: x.MaxLength ?? x.maxLength,
+              Ordinal: x.Ordinal ?? x.ordinal,
+              HasDefault: x.HasDefault ?? x.hasDefault,
+              DefaultValue: x.DefaultValue ?? x.defaultValue,
+            })),
+          };
+        });
+        replaceRows(mapped);
+      } catch (e) {
+        if (!cancelled) errorMessage.showError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, dataSourceId, errorMessage, replaceRows]);
 
   const applyIncludeDefaults = useCallback((item: SpPreviewRow): void => {
     const included = !!item.Include;
@@ -232,12 +243,10 @@ const CreateStoredProcedureApisModal: React.FC<Props> = ({
   // uiTick ensures header re-reads Include flags after in-place edits
   void uiTick;
   const allSelected = rowsSnapshot.length > 0 && rowsSnapshot.every((r) => r.Include);
-  const toggleSelectAll = useCallback(() => {
-    const list = getRows();
-    const next = !(list.length > 0 && list.every((r) => r.Include));
-    list.forEach((r) => {
-      r.Include = next;
-      r.ActionCode = next ? r.DefaultActionCode || '' : '';
+  const setAllIncluded = useCallback((checked: boolean) => {
+    getRows().forEach((r) => {
+      r.Include = checked;
+      r.ActionCode = checked ? r.DefaultActionCode || '' : '';
       applyIncludeDefaults(r);
     });
     collectionView.refresh();
@@ -258,6 +267,7 @@ const CreateStoredProcedureApisModal: React.FC<Props> = ({
       const result = await integrationService.batchCreateStoredProcedureApis({
         DataSourceId: dataSourceId,
         GenerateAiDescription: isAiConfigured && generateAiDescription,
+        CaptureSampleOnGenerate: captureSampleOnGenerate,
         Items: items.map((r) => ({
           Schema: r.Schema,
           SpName: r.SpName,
@@ -292,7 +302,7 @@ const CreateStoredProcedureApisModal: React.FC<Props> = ({
       setSaving(false);
       dispatch(setIsNotBusy());
     }
-  }, [dataSourceId, getRows, errorMessage, onCreated, onClose, isAiConfigured, generateAiDescription, dispatch]);
+  }, [dataSourceId, getRows, errorMessage, onCreated, onClose, isAiConfigured, generateAiDescription, captureSampleOnGenerate, dispatch]);
 
   const detailTemplate = useCallback(
     (ctx: any) => {
@@ -383,7 +393,7 @@ const CreateStoredProcedureApisModal: React.FC<Props> = ({
           <select
             className={`h-8 min-w-[280px] w-1 flex-auto px-2 text-xs border rounded-[4px] ${theme.inputBox}`}
             value={dataSourceId ?? ''}
-            disabled={loadingDs}
+            disabled={loadingDs || saving}
             onChange={(e) => setDataSourceId(e.target.value ? Number(e.target.value) : null)}
           >
             <option value="">{loadingDs ? 'Loading data sources...' : 'Select data source...'}</option>
@@ -396,27 +406,9 @@ const CreateStoredProcedureApisModal: React.FC<Props> = ({
           {!loadingDs && dataSources.length === 0 && (
             <span className="text-xs text-red-600 shrink-0">No data sources found</span>
           )}
-          <button
-            type="button"
-            disabled={loading || loadingDs || dataSourceId == null}
-            className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default} disabled:opacity-60`}
-            onClick={loadProcedures}
-          >
-            {loading ? 'Loading...' : 'Load SPs'}
-          </button>
         </div>
 
         <div className={`px-3 py-1.5 text-xs border-b flex items-center gap-2 ${theme.label}`}>
-          {rows.length > 0 && (
-            <button
-              type="button"
-              className={`px-2 py-1 rounded-[4px] border ${theme.button_default}`}
-              title={allSelected ? 'Unselect all' : 'Select all'}
-              onClick={toggleSelectAll}
-            >
-              {allSelected ? 'Unselect all' : 'Select all'}
-            </button>
-          )}
           <span>
             Expand a row to edit parameters. Included: {includedCount} / {rows.length}
           </span>
@@ -425,7 +417,7 @@ const CreateStoredProcedureApisModal: React.FC<Props> = ({
         <div className="h-1 flex-auto min-h-0 overflow-hidden px-3 py-2">
           {rows.length === 0 ? (
             <div className={`text-xs py-8 text-center ${theme.label}`}>
-              {loading ? 'Loading stored procedures…' : 'Load SPs to begin.'}
+              {loading ? 'Loading stored procedures…' : dataSourceId == null ? 'Select a data source.' : 'No stored procedures.'}
             </div>
           ) : (
             <FlexGrid
@@ -480,7 +472,25 @@ const CreateStoredProcedureApisModal: React.FC<Props> = ({
                 rowHasDetail={() => true}
                 template={detailTemplate}
               />
-              <FlexGridColumn binding="Include" header="Include" width={70} />
+              <FlexGridColumn binding="Include" header="" width={46} allowSorting={false}>
+                <FlexGridCellTemplate
+                  cellType="ColumnHeader"
+                  template={() => (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = includedCount > 0 && !allSelected;
+                        }}
+                        title={allSelected ? 'Unselect all' : 'Select all'}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setAllIncluded(e.target.checked)}
+                      />
+                    </div>
+                  )}
+                />
+              </FlexGridColumn>
               <FlexGridColumn binding="Schema" header="Schema" width={90} isReadOnly />
               <FlexGridColumn binding="SpName" header="SP Name" width={160} isReadOnly />
               <FlexGridColumn binding="ActionCode" header="API Name" width={220} />
@@ -490,17 +500,35 @@ const CreateStoredProcedureApisModal: React.FC<Props> = ({
         </div>
 
         <div className="px-3 py-2 border-t flex items-center justify-end gap-3">
+          <div className={`flex sgap-1.5 mr-auto text-xs ${theme.label}`}>
           {isAiConfigured && (
-            <label className={`inline-flex items-center gap-1.5 text-xs mr-auto ${theme.label}`} title="When checked, Generate writes English ActionDescription via LLM (≤500 chars)">
+              <label
+                className="inline-flex items-center gap-1.5 mr-10"
+                title="When checked, Generate writes English ActionDescription via LLM (≤500 chars)"
+              >
+                <input
+                  type="checkbox"
+                  checked={generateAiDescription}
+                  onChange={(e) => setGenerateAiDescription(e.target.checked)}
+                  disabled={saving}
+                />
+                Populate API Description with AI
+              </label>
+            )}
+            <label
+              className="inline-flex items-center gap-1.5"
+              title="When checked, Generate executes read-like SPs (Get/List/…) and saves the response as JsonSampleData"
+            >
               <input
                 type="checkbox"
-                checked={generateAiDescription}
-                onChange={(e) => setGenerateAiDescription(e.target.checked)}
+                checked={captureSampleOnGenerate}
+                onChange={(e) => setCaptureSampleOnGenerate(e.target.checked)}
                 disabled={saving}
               />
-              Use AI to write API Description on Generate
+              Execute Read-Only SP & Save Response on Generate
             </label>
-          )}
+           
+          </div>
           <button
             type="button"
             className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default} disabled:opacity-60 inline-flex items-center gap-1.5`}

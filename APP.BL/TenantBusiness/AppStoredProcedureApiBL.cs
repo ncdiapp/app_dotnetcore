@@ -42,7 +42,7 @@ namespace App.BL
             public string ActionCode { get; set; }
             /// <summary>Not written to ActionDescription (generator Usage only).</summary>
             public string Description { get; set; }
-            /// <summary>Ignored — sample capture is decided server-side for read-only SPs only.</summary>
+            /// <summary>Legacy per-item flag; prefer <see cref="SpApiCreateRequest.CaptureSampleOnGenerate"/>.</summary>
             public bool CaptureSample { get; set; }
             public List<SpApiParameterItem> Parameters { get; set; }
         }
@@ -52,6 +52,11 @@ namespace App.BL
             public int DataSourceId { get; set; }
             /// <summary>When true and AI is configured, LLM writes ActionDescription (English, ≤500).</summary>
             public bool GenerateAiDescription { get; set; }
+            /// <summary>
+            /// When true (default), auto-execute read-like SPs and persist JsonSampleData.
+            /// Non-read SPs are never executed.
+            /// </summary>
+            public bool CaptureSampleOnGenerate { get; set; } = true;
             public List<SpApiCreateItem> Items { get; set; }
         }
 
@@ -232,11 +237,10 @@ namespace App.BL
                     fixture, engineEnum, item.Schema, item.SpName);
                 var dbComment = StoredProcedureCatalogBL.LoadDescription(
                     fixture, engineEnum, item.Schema, item.SpName);
-                // Auto-execute + persist JsonSampleData when body looks read-only, or name is Get/List/…
-                // (many Get* procs use #temp tables / sp_executesql and used to be skipped).
+                // Auto-execute + persist JsonSampleData when enabled and SP looks read-only / Get*/List*…
                 var readOnlyBody = IsLikelyReadOnlyProcedure(definition);
                 var readerName = IsReaderProcedureName(item.SpName);
-                var trySample = readOnlyBody || readerName;
+                var trySample = request.CaptureSampleOnGenerate && (readOnlyBody || readerName);
                 if (trySample)
                 {
                     try
@@ -252,6 +256,10 @@ namespace App.BL
                     {
                         warnings.Add($"{actionCode}: sample capture failed — {ex.Message}");
                     }
+                }
+                else if (!request.CaptureSampleOnGenerate)
+                {
+                    // User opted out — do not count as "unsafe SP skipped".
                 }
                 else
                 {
@@ -481,10 +489,9 @@ namespace App.BL
                 "Get/List/Select procedures usually only return data — say that. " +
                 "Do NOT invent business meaning (layout, adjusted, transformed, enriched, calculated, workflow) unless the definition or DB comment explicitly says so. " +
                 "Parameter names are inputs to pass, not proof of side effects. " +
-                "Output ONLY the description sentence. " +
-                "Hard rules: plain text; 1 sentence preferred (2 max); under 500 characters; " +
-                "NO markdown (** # ` -); NO section labels (Business Purpose, Name, Description, Parameters, Returns); " +
-                "NO Execute/params boilerplate; NO quotes or preamble like 'Here is'.";
+                "Reply with ONLY the description sentence itself (1 sentence preferred, 2 max, under 500 characters). " +
+                "Do not mention instructions, rules, markdown, labels, or formatting. " +
+                "Do not start with Here is / Check against / Plain text.";
 
             var request = new LLMRequestDto
             {
@@ -614,7 +621,7 @@ namespace App.BL
             return text;
         }
 
-        /// <summary>Reject empty, tiny, or label-only LLM leftovers.</summary>
+        /// <summary>Reject empty, tiny, label-only, or prompt-echo LLM leftovers.</summary>
         private static bool IsUsableApiDescription(string text)
         {
             if (string.IsNullOrWhiteSpace(text)) return false;
@@ -628,6 +635,12 @@ namespace App.BL
             if (Regex.IsMatch(t, @"^(Business\s*Purpose|Purpose|Name|Description)\b", RegexOptions.IgnoreCase)
                 && t.Length < 60)
                 return false;
+            // Model echoed instruction meta instead of a description
+            if (Regex.IsMatch(t,
+                    @"\b(hard\s*rules?|plain\s*text|check\s+against|no\s+markdown|section\s+labels?|output\s+only)\b",
+                    RegexOptions.IgnoreCase))
+                return false;
+            if (t.IndexOf('?') >= 0 && t.Length < 80) return false;
             return true;
         }
 

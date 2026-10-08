@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useTabDataAutoCache } from '../../redux/hooks/useTabNavigation';
 import { getDataModelFromCache, getCurrentActiveTab } from '../../redux/features/ui/navigation/tabnavSlice';
+import type { RootState } from '../../redux/store';
 
 // Section components
 import DatabaseManagement from './DatabaseManagement';
 import DatasetManagement from './DatasetManagement';
+import StoredProcedureAiRegisterManagement from './StoredProcedureAiRegisterManagement';
 import ErDiagramManagement from './ErDiagramManagement';
 import ExcelDataImportManagement from './ExcelDataImportManagement';
 import JsonFileTableImportManagement from './JsonFileTableImportManagement';
@@ -18,6 +21,7 @@ import ExtractViewManagement from './ExtractViewManagement';
 // Section code enum (matching AngularJS EmSectionCode)
 const EmSectionCode = {
   DatasetManagement: 'DatasetManagement',
+  StoredProcedureAiRegister: 'StoredProcedureAiRegister',
   ExtractViewManagement: 'ExtractViewManagement',
   DatabaseManagement: 'DatabaseManagement',
   ErDiagramManagement: 'ErDiagramManagement',
@@ -76,6 +80,8 @@ interface SectionConfig {
   icon: string;
   component: React.FC<any>;
   hidden?: boolean;
+  /** When true, section only appears if tenant AI (ApiKey) is configured. */
+  requiresAi?: boolean;
 }
 
 const SECTIONS: SectionConfig[] = [
@@ -90,6 +96,13 @@ const SECTIONS: SectionConfig[] = [
     label: 'Dataset Management',
     icon: 'fa-solid fa-table-list',
     component: DatasetManagement,
+  },
+  {
+    code: EmSectionCode.StoredProcedureAiRegister,
+    label: 'SP AI Register',
+    icon: 'fa-solid fa-flask',
+    component: StoredProcedureAiRegisterManagement,
+    requiresAi: true,
   },
   {
     code: EmSectionCode.ExtractViewManagement,
@@ -156,6 +169,17 @@ const DatabaseDesignManagement: React.FC = () => {
   const { theme } = useTheme();
   const { param } = useParams<{ param?: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
+  const isAiConfigured = useSelector(
+    (s: RootState) => !!s.userSession?.userContext?.IsAiConfigured,
+  );
+
+  const visibleSections = useMemo(
+    () =>
+      SECTIONS.filter(
+        (s) => !s.hidden && (!s.requiresAi || isAiConfigured),
+      ),
+    [isAiConfigured],
+  );
 
   const routeParamObj = useMemo(() => parseRouteParamObj(param), [param]);
   const sqlSeed = useMemo(() => sqlWorkbenchSeedFromParam(routeParamObj), [routeParamObj]);
@@ -164,6 +188,12 @@ const DatabaseDesignManagement: React.FC = () => {
   const [currentSectionCode, setCurrentSectionCode] = useState<string>(() =>
     getInitialSectionCode(searchParams, forceSqlWorkbench)
   );
+
+  useEffect(() => {
+    if (!visibleSections.some((s) => s.code === currentSectionCode)) {
+      setCurrentSectionCode(EmSectionCode.DatabaseManagement);
+    }
+  }, [visibleSections, currentSectionCode]);
 
   useEffect(() => {
     if (forceSqlWorkbench) {
@@ -199,7 +229,7 @@ const DatabaseDesignManagement: React.FC = () => {
 
   const renderSectionPanels = (): React.ReactNode => (
     <>
-      {SECTIONS.filter(s => !s.hidden).map((section) => {
+      {visibleSections.map((section) => {
         const SectionComponent = section.component;
         const isActive = currentSectionCode === section.code;
         const isSqlWorkbench = section.code === EmSectionCode.DatabaseManagement;
@@ -229,7 +259,7 @@ const DatabaseDesignManagement: React.FC = () => {
       <div className="w-full h-full overflow-hidden flex gap-1">
         <div className={`w-[90px] flex-none ${theme.mainContentSection} overflow-y-auto rounded-l-md`}>
           <div className="py-5">
-            {SECTIONS.filter(s => !s.hidden).map((section) => (
+            {visibleSections.map((section) => (
               <div
                 key={section.code}
                 onClick={() => handleSelectSection(section.code)}
@@ -237,7 +267,7 @@ const DatabaseDesignManagement: React.FC = () => {
                   cursor-pointer flex flex-col items-center py-3 px-2 mb-1.5 transition-colors
                   ${getSectionClass(section.code)}
                 `}
-                title={section.label}
+                title={section.label === 'SP AI Register' ? 'Stored Procedure AI Register' : section.label}
               >
                 <i className={`${section.icon} text-xl mb-1.5`}></i>
                 <div className="text-[10px] text-center leading-snug" style={{ wordBreak: 'break-word' }}>

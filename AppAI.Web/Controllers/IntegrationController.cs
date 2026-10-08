@@ -252,6 +252,57 @@ public class IntegrationController : SecureBaseController
         return AppStoredProcedureApiBL.BatchDelete(request);
     }
 
+    /// <summary>Ensure AppStoredProcedureRegister table exists (no data seed).</summary>
+    [HttpPost]
+    public OperationCallResult<object> EnsureStoredProcedureRegisterTable()
+    {
+        App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.EnsureTable();
+        var result = new OperationCallResult<object> { ValidationResult = new APP.Framework.Validation.ValidationResult() };
+        result.Object = new { ok = true };
+        return result;
+    }
+
+    [HttpGet]
+    public OperationCallResult<object> ListStoredProcedureRegister(int? dataSourceId = null)
+    {
+        return App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.ListForManagement(dataSourceId);
+    }
+
+    [HttpPost]
+    public OperationCallResult<object> SaveStoredProcedureRegister(
+        [FromBody] App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.SaveRequest request)
+    {
+        return App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.SaveOne(request);
+    }
+
+    [HttpPost]
+    public OperationCallResult<object> BatchDeleteStoredProcedureRegister(
+        [FromBody] App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.BatchDeleteRequest request)
+    {
+        return App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.BatchDelete(request);
+    }
+
+    [HttpPost]
+    public OperationCallResult<object> BatchSetPublishStoredProcedureRegister(
+        [FromBody] App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.BatchSetPublishRequest request)
+    {
+        return App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.BatchSetPublish(request);
+    }
+
+    [HttpPost]
+    public OperationCallResult<object> BatchSavePublishStoredProcedureRegister(
+        [FromBody] App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.BatchSavePublishRequest request)
+    {
+        return App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.BatchSavePublish(request);
+    }
+
+    [HttpPost]
+    public OperationCallResult<object> BatchTrainStoredProcedureRegister(
+        [FromBody] App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.TrainRequest request)
+    {
+        return App.BL.AIAgent.GenericAgent.StoredProcedure.AppStoredProcedureRegisterBL.BatchTrain(request);
+    }
+
     [HttpPost]
     public OperationCallResult<AppIntergrationSettingParameterExDto> GenerateSampleJsonDataFromApiConfig(AppIntergrationSettingParameterExDto dto)
     {

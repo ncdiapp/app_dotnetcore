@@ -281,6 +281,8 @@ class IntegrationService {
   async batchCreateStoredProcedureApis(payload: {
     DataSourceId: number;
     GenerateAiDescription?: boolean;
+    /** Default true: execute read-like SPs and save JsonSampleData. */
+    CaptureSampleOnGenerate?: boolean;
     Items: Array<{
       Schema?: string;
       SpName: string;
@@ -336,6 +338,102 @@ class IntegrationService {
       body: JSON.stringify({ Ids: ids }),
     });
     if (!response.ok) throw new Error('Failed to batch delete APIs');
+    return response.json();
+  }
+
+  async ensureStoredProcedureRegisterTable(): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Integration/EnsureStoredProcedureRegisterTable`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: '{}',
+    });
+    if (!response.ok) throw new Error('Failed to ensure SP register table');
+    return response.json();
+  }
+
+  async listStoredProcedureRegister(dataSourceId?: number | null): Promise<any> {
+    const q = new URLSearchParams();
+    if (dataSourceId != null && dataSourceId > 0) q.set('dataSourceId', String(dataSourceId));
+    const response = await fetch(
+      `${endpoints.BASE_URL}/webapi/Integration/ListStoredProcedureRegister?${q.toString()}`,
+      { headers: getHeaders() },
+    );
+    if (!response.ok) throw new Error('Failed to list SP register');
+    return response.json();
+  }
+
+  async saveStoredProcedureRegister(payload: {
+    Id: number;
+    Description?: string | null;
+    UsageText?: string | null;
+    IsPublishedToAgent?: boolean | null;
+    InputJson?: string | null;
+    OutputColumnsJson?: string | null;
+  }): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Integration/SaveStoredProcedureRegister`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('Failed to save SP register');
+    return response.json();
+  }
+
+  async batchDeleteStoredProcedureRegister(ids: number[]): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Integration/BatchDeleteStoredProcedureRegister`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ Ids: ids }),
+    });
+    if (!response.ok) throw new Error('Failed to delete SP register rows');
+    return response.json();
+  }
+
+  async batchSetPublishStoredProcedureRegister(ids: number[], isPublishedToAgent: boolean): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Integration/BatchSetPublishStoredProcedureRegister`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ Ids: ids, IsPublishedToAgent: isPublishedToAgent }),
+    });
+    if (!response.ok) throw new Error('Failed to update publish status');
+    return response.json();
+  }
+
+  async batchSavePublishStoredProcedureRegister(
+    items: Array<{ Id: number; IsPublishedToAgent: boolean }>,
+  ): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Integration/BatchSavePublishStoredProcedureRegister`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ Items: items }),
+    });
+    if (!response.ok) throw new Error('Failed to save publish changes');
+    return response.json();
+  }
+
+  async batchTrainStoredProcedureRegister(payload: {
+    DataSourceId: number;
+    PublishToAgent?: boolean;
+    Items: Array<{
+      Schema?: string;
+      SpName: string;
+      Parameters?: Array<{
+        Name?: string;
+        Type?: string;
+        Direction?: string;
+        MaxLength?: number | null;
+        Ordinal?: number;
+        HasDefault?: boolean;
+        DefaultValue?: string | null;
+      }>;
+    }>;
+  }): Promise<any> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/Integration/BatchTrainStoredProcedureRegister`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) throw new Error('Failed to AI-train SP register');
     return response.json();
   }
 }

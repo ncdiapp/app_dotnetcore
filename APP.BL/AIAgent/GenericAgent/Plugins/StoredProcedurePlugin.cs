@@ -32,9 +32,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             int take = 50)
         {
             _ = ct;
-            if (!TryResolveDs(dataSourceId, context, out var ds, out var err))
-                return Task.FromResult(err);
-            return Task.FromResult(StoredProcedureCatalogBL.ListJson(ds, schema, skip, take));
+            _ = schema;
+            // AI register only (published). Optional dataSourceId; else all DS / session default hint.
+            var ds = ResolveOptionalDs(dataSourceId, context);
+            return Task.FromResult(AppStoredProcedureRegisterBL.ListForAgentJson(ds, skip, take));
         }
 
         public Task<string> Search(
@@ -45,9 +46,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             int take = 30)
         {
             _ = ct;
-            if (!TryResolveDs(dataSourceId, context, out var ds, out var err))
-                return Task.FromResult(err);
-            return Task.FromResult(StoredProcedureCatalogBL.SearchJson(ds, query, take));
+            var ds = ResolveOptionalDs(dataSourceId, context);
+            return Task.FromResult(AppStoredProcedureRegisterBL.SearchForAgentJson(ds, query, take));
         }
 
         public Task<string> Detail(
@@ -58,9 +58,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             int? dataSourceId = null)
         {
             _ = ct;
-            if (!TryResolveDs(dataSourceId, context, out var ds, out var err))
-                return Task.FromResult(err);
-            return Task.FromResult(StoredProcedureCatalogBL.DetailJson(ds, procedureName, schema));
+            var ds = ResolveOptionalDs(dataSourceId, context);
+            return Task.FromResult(AppStoredProcedureRegisterBL.DetailForAgentJson(ds, procedureName, schema));
         }
 
         public Task<string> Execute(
@@ -75,6 +74,15 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             if (!TryResolveDs(dataSourceId, context, out var ds, out var err))
                 return Task.FromResult(err);
             return Task.FromResult(StoredProcedureExecuteBL.ExecuteJson(ds, procedureName, schema, argsJson));
+        }
+
+        /// <summary>Optional DS for register search/list/detail (null = all published registers).</summary>
+        private int? ResolveOptionalDs(int? dataSourceId, AgentToolContext context)
+        {
+            if (dataSourceId is > 0) return dataSourceId.Value;
+            if (_dataSourceId is > 0) return _dataSourceId.Value;
+            if (context != null && context.DataSourceId > 0) return context.DataSourceId;
+            return null;
         }
 
         private bool TryResolveDs(int? dataSourceId, AgentToolContext context, out int ds, out string errorJson)
