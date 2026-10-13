@@ -52,7 +52,15 @@ export function canUpdateTabPath(currentPath: string, newPath: string): boolean 
     const nextSkill = getAgentChatSkillKey(newPath);
     return !currentSkill || !nextSkill || currentSkill === nextSkill;
   }
-  return extractRouteBasePath(currentPath) === extractRouteBasePath(newPath);
+  if (extractRouteBasePath(currentPath) === extractRouteBasePath(newPath)) return true;
+  // Editor create route `/openapi-doc-editor` becomes `/openapi-doc-editor/{id}` after the first save.
+  const current = stripPathQuery(currentPath);
+  const next = stripPathQuery(newPath);
+  const longer = current.length >= next.length ? current : next;
+  const shorter = current.length >= next.length ? next : current;
+  if (!longer.startsWith(`${shorter}/`)) return false;
+  const extra = longer.slice(shorter.length + 1);
+  return extra.length > 0 && !extra.includes('/');
 }
 
 /** Compare tab stored path with current browser route (handles encoded JSON route params). */

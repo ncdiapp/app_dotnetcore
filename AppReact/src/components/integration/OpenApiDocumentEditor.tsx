@@ -7,7 +7,7 @@ import { useDispatch } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
 import { useErrorMessage } from '../../redux/hooks/useErrorMessage';
 import { setIsBusy, setIsNotBusy } from '../../redux/features/ui/feedback/busyLoaderSlice';
-import { addTab } from '../../redux/features/ui/navigation/tabnavSlice';
+import { updateActiveTabPath, updateCurrentTabLabel } from '../../redux/features/ui/navigation/tabnavSlice';
 import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { openApiDocumentService, OpenApiDocumentMember, OpenApiSelectableApi } from '../../webapi/openApiDocumentSvc';
 import OpenApiAddApisDialog from './OpenApiAddApisDialog';
@@ -43,6 +43,7 @@ const OpenApiDocumentEditor: React.FC = () => {
   const [skips, setSkips] = useState<string>('');
   const [openApiJson, setOpenApiJson] = useState('');
   const memberGridRef = useRef<any>(null);
+  const skipNextRouteLoadRef = useRef(false);
 
   const bindMembers = useCallback((rows: OpenApiDocumentMember[]) => {
     const sorted = [...rows].sort((a, b) => (a.ActionCode || '').localeCompare(b.ActionCode || ''));
@@ -74,6 +75,10 @@ const OpenApiDocumentEditor: React.FC = () => {
   }, [bindMembers, dispatch, errorMessage]);
 
   useEffect(() => {
+    if (skipNextRouteLoadRef.current) {
+      skipNextRouteLoadRef.current = false;
+      return;
+    }
     if (param && Number(param) > 0) load(Number(param));
   }, [param, load]);
 
@@ -98,10 +103,12 @@ const OpenApiDocumentEditor: React.FC = () => {
     setVersion(saved.Version || version);
     if (!preserveStatus) setStatus(saved.Status || status);
     bindMembers(saved.Members || []);
-    if (!param) {
-      const path = `/openapi-doc-editor/${saved.Id}`;
-      dispatch(addTab({ tabPath: path, label: `OpenAPI: ${saved.Name || ''}`, isClosable: true }));
-      navigate(path);
+    const path = `/openapi-doc-editor/${saved.Id}`;
+    dispatch(updateCurrentTabLabel(`OpenAPI: ${saved.Name || ''}`));
+    if (!param || String(saved.Id) !== String(param)) {
+      skipNextRouteLoadRef.current = true;
+      dispatch(updateActiveTabPath(path));
+      navigate(path, { replace: true });
     }
     return saved.Id;
   }, [bindMembers, code, description, dispatch, id, members, name, navigate, param, status, version]);
