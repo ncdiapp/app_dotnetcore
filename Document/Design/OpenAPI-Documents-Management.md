@@ -36,7 +36,7 @@
 GET /openapi-doc/{doc-code}
 ```
 
-`doc-code` 是 Document 的 Code。只允许小写字母、数字和 `-`，全局唯一，创建后不改。开发时完整地址是 `http://localhost:52740/openapi-doc/app-weather`。发布后是调用方访问这台服务器时用的同一根地址加 `/openapi-doc/{doc-code}`，不写 `/appai`。
+`doc-code` 是 Document 的 Code。只允许小写字母、数字和 `-`，全局唯一。可以随时改。保存时如果 Code 为空，用 Name 生成；如果不合法，先修成合法形式再保存。改 Code 会改变公开地址。开发时完整地址是 `http://localhost:52740/openapi-doc/app-weather`。发布后是调用方访问这台服务器时用的同一根地址加 `/openapi-doc/{doc-code}`，不写 `/appai`。
 
 仅 Status = Published 时返回已保存的 JSON。现在这个 URL 开口：不登录也能读到 Document 内容。Draft 不返回正文。以后再把这个 URL 闭上，改成要鉴权才能读；第一版不要把鉴权写死在这条路由上。这个 URL 只公开文档。文档里的 API 地址是 `{本次请求的根}/webapi/DataIntegration/{ActionCode}`，调用这些 API 仍要带登录会话。
 
@@ -61,7 +61,7 @@ GET /openapi-doc/{doc-code}
 |---|---|
 | Id | |
 | Name | |
-| Code | `doc-code`，创建后不改 |
+| Code | `doc-code`，可改。空或不合法时在保存前自动修好 |
 | Version | |
 | Description | |
 | Status | Draft / Published |
@@ -92,10 +92,10 @@ Save 按弹窗 Apply 的结果整份替换该 Document 的 ActionCode 列表。R
 
 | 列 | 说明 |
 |---|---|
-| Actions | 行菜单 |
+| Actions | Edit、Delete，按钮样式与 Search View 第一列相同 |
 | Id | |
 | Name | 例如 App Weather API |
-| Code | URL 中的 `doc-code`，创建后不改 |
+| Code | URL 中的 `doc-code`，可改。空或不合法时在保存前自动修好 |
 | Version | OpenAPI `info.version` |
 | API Count | 包含的 API 个数 |
 | Status | Draft / Published |
@@ -116,15 +116,19 @@ Save 按弹窗 Apply 的结果整份替换该 Document 的 ActionCode 列表。R
 | `AppModifiedByID` | int |
 | `AppModifiedDate` | datetime |
 
-行菜单（初步）：Open、Regenerate、Copy URL、Download、Publish / Unpublish、Delete。双击行等于 Open。Regenerate 更新 `AppModifiedByID` 和 `AppModifiedDate`。Last Generated 用来区分“只保存了成员或名称”和“重新生成了 JSON”。
+第一列只有 Edit 和 Delete，样式与 Search View 相同。双击行等于 Edit。Regenerate 在编辑页做，会更新 `AppModifiedByID` 和 `AppModifiedDate`。Last Generated 用来区分“只保存了成员或名称”和“重新生成了 JSON”。
 
 ## 编辑页
 
 路由 `/openapi-doc-editor/{id}`。标题用 Name。
 
-属性：Name、Code（保存后只读）、Version、Description、Status、Public URL（只读，可复制）。
+顶栏版式与 API Provider 编辑页相同：左边是 Name，旁边是只读 Version。Version 不手改。右边是彩色文字按钮：Refresh、Save & Generate OpenAPI Doc。这个按钮先保存名称、Code 和成员，再生成 JSON 并把 Version 最后一段加 1，然后写入 Is Published。
 
-已选 API 按 ActionCode 排序。列：ActionCode、Http Method、来源（App API 写 API Type，3rd Party 写 Provider Name）、Description。按钮：Add APIs、Remove、Save、Regenerate、Download、Copy URL。
+属性一行靠左：Name、Code、Description、Is Published（勾选框）。Code 可编辑。保存前若为空，按 Name 生成；若不合法，把空格和其它符号收成 `-`、转成小写后再保存。Description 占满剩余宽度。勾选不会立刻发布，要点 Save & Generate OpenAPI Doc 才写入。JSON 在发布之前生成，所以第一次保存就可以勾选发布。下一行是否出现，以数据库里已保存的 Is Published 为准。勾选但还没保存时不出现。Published URL 是标签加只读框，框的右边缘与 Description 输入框对齐。框右边是两个小按钮：Copy、Download。未勾选时这一行隐藏。
+
+Save & Generate OpenAPI Doc 保存名称、Code、成员和 Is Published，并写入 JSON。JSON 显示在右侧。Download 仍可导出文件。
+
+下方左右两个区。左边是 Selected API List，标题后是主题文字按钮 Add APIs、Delete APIs。表可多选，Delete APIs 删除所有选中行。表按 ActionCode 排序。列：ActionCode、Http Method、来源（App API 写 API Type，3rd Party 写 Provider Name）、Description。右边是 OpenAPI JSON，生成后直接显示在这里。生成时跳过的 API 显示在表下方。
 
 ### Add APIs 弹窗
 
@@ -285,4 +289,5 @@ OpenAPI JSON 里写一个 apiKey scheme：
 ## 待补充
 
 - Data Model 的响应目前没有保存样本。第一版用通用 object，以后再按 Transaction Field 生成
+- Swagger 风格的 HTML 页面第一版不做。已有的 JSON 以后可以交给 Swagger UI 这类前端库渲染，不需要改 Generator
 

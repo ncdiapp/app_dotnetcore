@@ -47,15 +47,15 @@ const OpenApiAddApisDialog: React.FC<Props> = ({ apis, onApply, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={onClose}>
-      <div className={`w-[960px] h-[640px] flex flex-col rounded-[4px] border ${theme.mainContentSection}`} onMouseDown={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={(e) => e.stopPropagation()}>
+      <div className={`w-[960px] h-[640px] flex flex-col rounded-[4px] border ${theme.mainContentSection}`} onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-3 py-2 border-b">
           <div className={`text-sm font-semibold ${theme.title}`}>Add APIs</div>
-          <button type="button" className={`px-2 py-1 text-xs ${theme.button_default}`} onClick={onClose}>Close</button>
+          <button type="button" className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`} onClick={onClose}>Close</button>
         </div>
-        <div className="flex items-center gap-2 px-3 py-2">
-          <button type="button" className={`px-3 py-1 text-xs rounded-[4px] ${tab === 'app' ? theme.button_default : theme.button_default}`} onClick={() => setTab('app')}>App API Provider</button>
-          <button type="button" className={`px-3 py-1 text-xs rounded-[4px] ${theme.button_default}`} onClick={() => setTab('thirdParty')}>3rd Party Provider</button>
+        <div className="flex items-center gap-0 px-3 pt-2 border-b">
+          <button type="button" className={`px-4 py-2 text-xs rounded-t-[4px] -mb-px ${tab === 'app' ? 'border-b-2 border-blue-500 font-medium' : ''} ${theme.tab}`} onClick={() => setTab('app')}>App API Provider</button>
+          <button type="button" className={`px-4 py-2 text-xs rounded-t-[4px] -mb-px ${tab === 'thirdParty' ? 'border-b-2 border-blue-500 font-medium' : ''} ${theme.tab}`} onClick={() => setTab('thirdParty')}>3rd Party Provider</button>
         </div>
         <div className="h-1 flex-auto px-3 pb-2 overflow-hidden">
           {tab === 'app' ? (
@@ -85,8 +85,8 @@ const OpenApiAddApisDialog: React.FC<Props> = ({ apis, onApply, onClose }) => {
           )}
         </div>
         <div className="flex justify-end gap-2 px-3 py-2 border-t">
-          <button type="button" className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`} onClick={onClose}>Cancel</button>
-          <button type="button" className={`px-3 py-1.5 text-sm rounded-[4px] ${theme.button_default}`} onClick={apply}>Apply</button>
+          <button type="button" className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`} onClick={onClose}>Cancel</button>
+          <button type="button" className={`px-3 py-1.5 text-sm rounded-[4px] border ${theme.button_default}`} onClick={apply}>Apply</button>
         </div>
       </div>
     </div>

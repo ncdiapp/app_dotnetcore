@@ -157,11 +157,11 @@ ORDER BY Name", conn))
             var userId = AppSecurityUserBL.CurrentUserId;
             using (var conn = OpenTenant())
             {
+                var code = RepairCode(request.Code, name);
+                if (CodeExists(conn, code, request.Id))
+                    throw new InvalidOperationException("Code is already used.");
                 if (request.Id <= 0)
                 {
-                    var code = NormalizeCode(request.Code);
-                    if (CodeExists(conn, code, 0))
-                        throw new InvalidOperationException("Code is already used.");
                     var version = string.IsNullOrWhiteSpace(request.Version) ? "1.0.0" : request.Version.Trim();
                     using (var cmd = new SqlCommand(@"
 INSERT INTO dbo.AppOpenApiDocument
@@ -182,6 +182,7 @@ SELECT CAST(SCOPE_IDENTITY() AS INT);", conn))
                     using (var cmd = new SqlCommand(@"
 UPDATE dbo.AppOpenApiDocument
 SET Name = @Name,
+    Code = @Code,
     Version = @Version,
     Description = @Description,
     AppModifiedByID = @UserId,
@@ -189,6 +190,7 @@ SET Name = @Name,
 WHERE Id = @Id", conn))
                     {
                         cmd.Parameters.AddWithValue("@Name", name);
+                        cmd.Parameters.AddWithValue("@Code", code);
                         cmd.Parameters.AddWithValue("@Version", (object)(request.Version ?? "").Trim() ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@Description", (object)request.Description ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@UserId", userId);
@@ -622,11 +624,12 @@ WHERE Code = @Code AND Status = N'Published'", conn))
             }
         }
 
-        private static string NormalizeCode(string code)
+        private static string RepairCode(string code, string name)
         {
-            var value = (code ?? "").Trim().ToLowerInvariant();
+            var source = string.IsNullOrWhiteSpace(code) ? (name ?? "") : code;
+            var value = Regex.Replace(source.Trim().ToLowerInvariant(), "[^a-z0-9]+", "-").Trim('-');
             if (!IsCodeShape(value))
-                throw new InvalidOperationException("Code may contain only lowercase letters, digits, and hyphens.");
+                throw new InvalidOperationException("Code could not be made from the name. Use letters or digits.");
             return value;
         }
 

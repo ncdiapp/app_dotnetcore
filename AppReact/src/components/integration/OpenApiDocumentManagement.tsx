@@ -14,10 +14,6 @@ import { addTab } from '../../redux/features/ui/navigation/tabnavSlice';
 import { adminSvc } from '../../webapi/adminsvc';
 import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { openApiDocumentService, OpenApiDocument } from '../../webapi/openApiDocumentSvc';
-import { clampContextMenuPosition, useRefineContextMenuPosition } from '../../hooks/useClampedContextMenuPosition';
-
-const CONTEXT_MENU_ESTIMATED_WIDTH = 180;
-const CONTEXT_MENU_ESTIMATED_HEIGHT = 220;
 
 function publicUrl(root: string, code?: string, status?: string): string {
   if (status !== 'Published' || !code || !root) return '';
@@ -34,10 +30,6 @@ const OpenApiDocumentManagement: React.FC = () => {
 
   const [collectionView, setCollectionView] = useState<CollectionView<any>>(() => new CollectionView<any>([]));
   const [userDataMap, setUserDataMap] = useState<DataMap | null>(null);
-  const [contextMenuOpen, setContextMenuOpen] = useState(false);
-  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
-  const [selectedRow, setSelectedRow] = useState<OpenApiDocument | null>(null);
-  const contextMenuRef = useRef<HTMLDivElement | null>(null);
   const flexRef = useRef<wjGrid.FlexGrid | null>(null);
 
   const loadData = useCallback(async () => {
@@ -80,82 +72,6 @@ const OpenApiDocumentManagement: React.FC = () => {
     navigate(path);
   }, [dispatch, navigate]);
 
-  const closeContextMenu = useCallback(() => {
-    setContextMenuOpen(false);
-    setSelectedRow(null);
-  }, []);
-
-  const openContextMenu = useCallback((e: React.MouseEvent, row: OpenApiDocument) => {
-    e.stopPropagation();
-    setSelectedRow(row);
-    const pos = clampContextMenuPosition(e.clientX - 20, e.clientY - 5, CONTEXT_MENU_ESTIMATED_WIDTH, CONTEXT_MENU_ESTIMATED_HEIGHT);
-    setContextMenuPos(pos);
-    setContextMenuOpen(true);
-  }, []);
-
-  useEffect(() => {
-    if (!contextMenuOpen) return;
-    const handler = () => closeContextMenu();
-    document.addEventListener('click', handler);
-    return () => document.removeEventListener('click', handler);
-  }, [contextMenuOpen, closeContextMenu]);
-
-  useRefineContextMenuPosition(contextMenuOpen, contextMenuRef, setContextMenuPos);
-
-  const copyUrl = useCallback(async (row: OpenApiDocument | null) => {
-    const url = publicUrl(serverRoot, row?.Code, row?.Status);
-    if (!url) {
-      errorMessage.showError('Publish the document before copying its URL.');
-      return;
-    }
-    await navigator.clipboard.writeText(url);
-    errorMessage.showInfo('Public URL copied.');
-  }, [errorMessage, serverRoot]);
-
-  const download = useCallback(async (row: OpenApiDocument | null) => {
-    if (!row?.Id) return;
-    const blob = await openApiDocumentService.download(row.Id);
-    const href = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = href;
-    link.download = `${row.Code || 'openapi'}.json`;
-    link.click();
-    URL.revokeObjectURL(href);
-  }, []);
-
-  const regenerate = useCallback(async (row: OpenApiDocument | null) => {
-    if (!row?.Id) return;
-    dispatch(setIsBusy());
-    try {
-      const result = await openApiDocumentService.regenerate(row.Id);
-      const skipped = result.Skipped || [];
-      if (skipped.length) {
-        errorMessage.showInfo(skipped.map((s) => `${s.ActionCode || '(blank)'}: ${s.Reason}`).join('\n'));
-      } else {
-        errorMessage.showInfo('Regenerated.');
-      }
-      await loadData();
-    } catch (error) {
-      errorMessage.showError(error instanceof Error ? error.message : String(error));
-    } finally {
-      dispatch(setIsNotBusy());
-    }
-  }, [dispatch, errorMessage, loadData]);
-
-  const publish = useCallback(async (row: OpenApiDocument | null) => {
-    if (!row?.Id) return;
-    const next = row.Status !== 'Published';
-    dispatch(setIsBusy());
-    try {
-      await openApiDocumentService.setPublished(row.Id, next);
-      await loadData();
-    } catch (error) {
-      errorMessage.showError(error instanceof Error ? error.message : String(error));
-    } finally {
-      dispatch(setIsNotBusy());
-    }
-  }, [dispatch, errorMessage, loadData]);
-
   const remove = useCallback(async (row: OpenApiDocument | null) => {
     if (!row?.Id) return;
     const confirmed = await showConfirm(`Please confirm to delete:\n${row.Name || row.Code}`, { title: 'Delete OpenAPI Document' });
@@ -171,20 +87,28 @@ const OpenApiDocumentManagement: React.FC = () => {
     }
   }, [dispatch, errorMessage, loadData, showConfirm]);
 
-  const menuRow = selectedRow;
-  const publishLabel = menuRow?.Status === 'Published' ? 'Unpublish' : 'Publish';
-
   const columns = useMemo(() => userDataMap, [userDataMap]);
+  const actionButtonClass = `w-8 h-6 ${theme.button_default} rounded-[4px] text-xs`;
 
   return (
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className={`text-md font-semibold ${theme.title}`}>OpenAPI Documents Management</div>
         <div className="flex items-center space-x-2">
-          <button type="button" onClick={loadData} className="w-8 h-6 inline-flex items-center justify-center rounded-[4px] text-xs text-white bg-blue-400 hover:bg-blue-500" title="Refresh">
+          <button
+            type="button"
+            onClick={loadData}
+            className="w-8 h-6 inline-flex items-center justify-center rounded-[4px] text-xs text-white transition disabled:cursor-not-allowed disabled:opacity-60 bg-blue-400 hover:bg-blue-500"
+            title="Refresh"
+          >
             <i className="fa-solid fa-rotate" aria-hidden />
           </button>
-          <button type="button" onClick={() => openEditor(null)} className="w-8 h-6 inline-flex items-center justify-center rounded-[4px] text-xs text-white bg-green-500 hover:bg-green-600" title="Create">
+          <button
+            type="button"
+            onClick={() => openEditor(null)}
+            className="w-8 h-6 inline-flex items-center justify-center rounded-[4px] text-xs text-white bg-green-500 hover:bg-green-600"
+            title="Create"
+          >
             <i className="fa-solid fa-plus" aria-hidden />
           </button>
         </div>
@@ -207,16 +131,23 @@ const OpenApiDocumentManagement: React.FC = () => {
           }}
           className="w-full h-full !border-0"
         >
-          <FlexGridColumn header="Actions" width={90} isReadOnly>
+          <FlexGridColumn header="Actions" width={80} isReadOnly>
             <FlexGridCellTemplate
               cellType="Cell"
-              template={(ctx: any) => (
-                <div className="flex justify-center w-full">
-                  <button type="button" className={theme.menu_default} title="More Options" onClick={(e) => openContextMenu(e, ctx.item)}>
-                    <i className="fa-solid fa-ellipsis" aria-hidden />
-                  </button>
-                </div>
-              )}
+              template={(ctx: any) => {
+                const item = ctx.item as OpenApiDocument | undefined;
+                if (!item) return null;
+                return (
+                  <div className="flex justify-center items-center gap-1 w-full">
+                    <button type="button" className={actionButtonClass} title="Edit" onClick={(e) => { e.stopPropagation(); openEditor(item); }}>
+                      <i className="fa-solid fa-pen-to-square" aria-hidden />
+                    </button>
+                    <button type="button" className={actionButtonClass} title="Delete" onClick={(e) => { e.stopPropagation(); remove(item); }}>
+                      <i className="fa-solid fa-trash" aria-hidden />
+                    </button>
+                  </div>
+                );
+              }}
             />
           </FlexGridColumn>
           <FlexGridColumn binding="Id" header="Id" width={70} />
@@ -235,16 +166,6 @@ const OpenApiDocumentManagement: React.FC = () => {
           <FlexGridColumn header="" binding="" width="*" />
         </FlexGrid>
       </div>
-      {contextMenuOpen && menuRow && (
-        <div ref={contextMenuRef} className={`fixed z-50 ${theme.mainContentSection} border rounded-[4px] shadow-lg py-1 min-w-[160px]`} style={{ left: contextMenuPos.x, top: contextMenuPos.y }} onClick={(e) => e.stopPropagation()}>
-          <button type="button" className={`w-full text-left px-4 py-2 text-xs ${theme.contextMenu}`} onClick={() => { openEditor(menuRow); closeContextMenu(); }}>Open</button>
-          <button type="button" className={`w-full text-left px-4 py-2 text-xs ${theme.contextMenu}`} onClick={() => { closeContextMenu(); regenerate(menuRow); }}>Regenerate</button>
-          <button type="button" className={`w-full text-left px-4 py-2 text-xs ${theme.contextMenu}`} onClick={() => { closeContextMenu(); copyUrl(menuRow); }}>Copy URL</button>
-          <button type="button" className={`w-full text-left px-4 py-2 text-xs ${theme.contextMenu}`} onClick={() => { closeContextMenu(); download(menuRow); }}>Download</button>
-          <button type="button" className={`w-full text-left px-4 py-2 text-xs ${theme.contextMenu}`} onClick={() => { closeContextMenu(); publish(menuRow); }}>{publishLabel}</button>
-          <button type="button" className={`w-full text-left px-4 py-2 text-xs ${theme.contextMenu}`} onClick={() => { closeContextMenu(); remove(menuRow); }}>Delete</button>
-        </div>
-      )}
     </div>
   );
 };
