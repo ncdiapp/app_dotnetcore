@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useTheme } from '../../redux/hooks/useTheme';
+import type { RootState } from '../../redux/store';
 import { AskUserEvent, DataRenderEvent, genericAgentSvc, type GenericAgentChatUiSnapshot, type LookupItemDto } from '../../webapi/genericAgentSvc';
 import { agentSkillSetSvc } from '../../webapi/agentSkillSetSvc';
 import { registerTabDataSaver, unregisterTabDataSaver } from '../../redux/hooks/useTabNavigation';
@@ -189,6 +191,9 @@ interface Props {
     testMode?: boolean;
     /** AppGenericAgentSession.SessionKey. Sidebar Chat Management passes a GUID; Agent Management Run omits it. */
     chatSessionKey?: string | null;
+    chatTitle?: string | null;
+    showChatListButton?: boolean;
+    onOpenChatList?: () => void;
     onConversationChanged?: () => void;
 }
 
@@ -408,8 +413,17 @@ const toolTooltip = (toolName: string, args?: string | null, skillNames?: Record
     return `SkillKey: ${key}`;
 };
 
-const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey, onConversationChanged }) => {
+const GenericAgentChat: React.FC<Props> = ({
+    skillKey,
+    testMode,
+    chatSessionKey,
+    chatTitle,
+    showChatListButton,
+    onOpenChatList,
+    onConversationChanged,
+}) => {
     const { theme, t } = useTheme();
+    const displayName = useSelector((s: RootState) => String(s.userSession?.userContext?.DisplayName || ''));
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [turnActivities, setTurnActivities] = useState<TurnActivity[]>([]);
     const [currentTurnIndex, setCurrentTurnIndex] = useState(0);
@@ -1174,12 +1188,92 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
         && askUi === 'button_group'
         && (pendingAskUser?.Options?.length ?? 0) > 0;
     const blocked = isRunning || !!pendingAskUser;
+    const skillLabel = skillDisplayNames[skillKey] || skillKey || 'Agent';
+    const hasConversation = messages.some(m => {
+        if (m.role === 'user' && (m.content || '').trim() === SESSION_START) return false;
+        if (m.askUserSummary || m.askUserAnswer || m.isStreaming) return true;
+        if ((m.dataRenders?.length ?? 0) > 0) return true;
+        return !!(m.content || '').trim();
+    });
+    const showWelcome = !hasConversation && !isRunning && !pendingAskUser && !pendingPlan;
+    const hour = new Date().getHours();
+    const greetingWord = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+    const firstName = (displayName || '').trim().split(/\s+/)[0];
+    const starterPrompts = [
+        'What can you help me with?',
+        'Which tools can you use?',
+        'Give me a short example of a request I can make.',
+        'What should I tell you to get started?',
+    ];
 
     return (
         <div className="w-full h-full flex flex-row overflow-hidden">
             {/* ── Left: chat ── */}
             <div className="w-1 flex-auto flex flex-col overflow-hidden min-w-0">
+                <div className={`flex items-center gap-2 px-3 py-2 border-b shrink-0 ${regionBorder} ${theme.mainContentSection}`}>
+                    {showChatListButton && (
+                        <button
+                            type="button"
+                            className={`w-8 h-6 rounded-[4px] text-xs ${theme.button_default}`}
+                            title="Chats"
+                            onClick={onOpenChatList}
+                        >
+                            <i className="fa-solid fa-bars" aria-hidden />
+                        </button>
+                    )}
+                    <div className="min-w-0">
+                        <div className={`text-sm font-semibold truncate ${theme.title}`}>{chatTitle || 'New chat'}</div>
+                        <div className={`text-[10px] truncate ${theme.label}`}>{skillLabel}</div>
+                    </div>
+                    <div className="w-1 flex-auto" />
+                    {(messages.length > 0 || pendingAskUser) && (
+                        <button
+                            type="button"
+                            className={`w-8 h-6 rounded-[4px] text-xs ${theme.button_default}`}
+                            onClick={() => { void handleClear(); }}
+                            title="Clear conversation"
+                        >
+                            <i className="fa-solid fa-rotate-left" aria-hidden />
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className={`w-8 h-6 rounded-[4px] text-xs ${theme.button_default}`}
+                        onClick={() => setSidebarOpen(o => !o)}
+                        title="Tool activity"
+                    >
+                        <i className="fa-solid fa-timeline" aria-hidden />
+                    </button>
+                </div>
                 <div className="w-full h-1 flex-auto overflow-auto px-4 py-4 flex flex-col gap-4">
+                    {showWelcome && (
+                        <div className="w-full max-w-3xl mx-auto h-1 flex-auto flex flex-col items-center justify-center gap-6 py-8">
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl ${theme.button_default}`}>
+                                <i className="fa-solid fa-robot" aria-hidden />
+                            </div>
+                            <div className="text-center">
+                                <div className={`text-2xl font-semibold ${theme.title}`}>
+                                    {greetingWord}{firstName ? `, ${firstName}` : ''}
+                                </div>
+                                <div className={`mt-2 text-sm ${theme.label}`}>
+                                    {skillLabel} is ready. Pick a starting point or type below.
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 w-full">
+                                {starterPrompts.map(prompt => (
+                                    <button
+                                        key={prompt}
+                                        type="button"
+                                        className={`text-left px-3 py-3 text-sm rounded-[4px] border ${theme.mainContentSection} ${theme.label} ${regionBorder}`}
+                                        onClick={() => { void runAgentTurn({ userMessage: prompt }); }}
+                                    >
+                                        {prompt}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    <div className="w-full max-w-3xl mx-auto flex flex-col gap-4">
                     {messages.map((m, i) => {
                         const split = m.role === 'assistant'
                             ? splitFollowups(sanitizeAgentDisplayText(m.content), m.isStreaming)
@@ -1194,10 +1288,10 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                                             <i className="fa-solid fa-robot" aria-hidden />
                                         </div>
                                     )}
-                                    <div className={`max-w-3xl px-3.5 py-2.5 rounded-xl text-sm ${
+                                    <div className={`px-3.5 py-2.5 rounded-xl text-sm ${
                                         m.role === 'user'
-                                            ? `${theme.button_default} ml-10`
-                                            : `${theme.mainContentSection} mr-6 w-1 flex-auto`
+                                            ? `max-w-xl ${theme.button_default}`
+                                            : `max-w-3xl border ${regionBorder} ${theme.mainContentSection}`
                                     }`}>
                                         {(m.askUserSummary || m.askUserAnswer) && (
                                             <div className={`text-[10px] uppercase tracking-wide opacity-60 mb-1 ${theme.label}`}>
@@ -1441,14 +1535,16 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                         </div>
                     )}
                     <div ref={bottomRef} />
+                    </div>
                 </div>
 
-                <div className={`flex items-end gap-2 px-4 py-3 border-t ${regionBorder} ${theme.mainContentSection}`}>
+                <div className={`px-4 py-3 border-t ${regionBorder} ${theme.mainContentSection}`}>
+                    <div className="w-full max-w-3xl mx-auto flex items-end gap-2">
                     <textarea
                         className={`w-1 flex-auto min-h-[2.75rem] px-3 py-2 text-sm border rounded-xl ${theme.inputBox} focus:outline-none resize-none`}
                         rows={2}
                         value={input}
-                        placeholder={`Message ${skillKey || 'agent'}…`}
+                        placeholder={`Message ${skillLabel}…`}
                         onChange={e => setInput(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                         disabled={blocked}
@@ -1466,23 +1562,12 @@ const GenericAgentChat: React.FC<Props> = ({ skillKey, testMode, chatSessionKey,
                             type="button"
                             className={`${btn} h-9 opacity-80`}
                             onClick={() => { void handleStop(); }}
-                            title="Stop current agent run (cancels LLM / tools / waiting ask_user)"
+                            title="Stop current agent run"
                         >
                             <i className="fa-solid fa-stop" />
                         </button>
                     )}
-                    {(messages.length > 0 || pendingAskUser) && (
-                        <button
-                            className={`${btn} h-9 opacity-80`}
-                            onClick={() => { void handleClear(); }}
-                            title="Clear conversation"
-                        >
-                            <i className="fa-solid fa-rotate-left" />
-                        </button>
-                    )}
-                    <button className={`${btn} h-9 ml-auto opacity-80`} onClick={() => setSidebarOpen(o => !o)} title="Toggle sidebar">
-                        <i className={`fa-solid fa-timeline`} />
-                    </button>
+                    </div>
                 </div>
             </div>
 

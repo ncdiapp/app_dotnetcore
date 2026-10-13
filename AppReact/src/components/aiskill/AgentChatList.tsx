@@ -10,13 +10,9 @@ interface Props {
     onRename: (sessionKey: string, title: string) => void;
     onNewChat: () => void;
     creating?: boolean;
+    collapsed?: boolean;
+    onToggleCollapse?: () => void;
 }
-
-const startOfToday = () => {
-    const d = new Date();
-    d.setHours(0, 0, 0, 0);
-    return d.getTime();
-};
 
 const formatWhen = (raw?: string) => {
     if (!raw) return '';
@@ -28,18 +24,25 @@ const formatWhen = (raw?: string) => {
 type ChatGroup = { key: string; label: string; items: GenericAgentChatSummary[] };
 
 const groupChats = (chats: GenericAgentChatSummary[]): ChatGroup[] => {
-    const today = startOfToday();
-    const todayItems: GenericAgentChatSummary[] = [];
-    const earlierItems: GenericAgentChatSummary[] = [];
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const day = 86400000;
+    const buckets: ChatGroup[] = [
+        { key: 'today', label: 'Today', items: [] },
+        { key: 'yesterday', label: 'Yesterday', items: [] },
+        { key: 'week', label: 'Previous 7 days', items: [] },
+        { key: 'month', label: 'Previous 30 days', items: [] },
+        { key: 'older', label: 'Older', items: [] },
+    ];
     for (const c of chats) {
         const t = c.UpdatedAt ? new Date(c.UpdatedAt).getTime() : 0;
-        if (t >= today) todayItems.push(c);
-        else earlierItems.push(c);
+        if (t >= startOfToday) buckets[0].items.push(c);
+        else if (t >= startOfToday - day) buckets[1].items.push(c);
+        else if (t >= startOfToday - 6 * day) buckets[2].items.push(c);
+        else if (t >= startOfToday - 29 * day) buckets[3].items.push(c);
+        else buckets[4].items.push(c);
     }
-    const groups: ChatGroup[] = [];
-    if (todayItems.length) groups.push({ key: 'today', label: 'Today', items: todayItems });
-    if (earlierItems.length) groups.push({ key: 'earlier', label: 'Earlier', items: earlierItems });
-    return groups;
+    return buckets.filter(b => b.items.length > 0);
 };
 
 const AgentChatList: React.FC<Props> = ({
@@ -50,10 +53,12 @@ const AgentChatList: React.FC<Props> = ({
     onRename,
     onNewChat,
     creating,
+    collapsed,
+    onToggleCollapse,
 }) => {
     const { theme, t } = useTheme();
     const borderCls = t('border_mainContentSection');
-    const btn = `w-full px-3 py-2 text-sm rounded-[4px] ${theme.button_default}`;
+    const btn = `px-3 py-2 text-sm rounded-[4px] ${theme.button_default}`;
     const iconBtn = `w-7 h-6 shrink-0 rounded-[4px] text-xs ${theme.button_default}`;
     const [query, setQuery] = useState('');
     const [menuKey, setMenuKey] = useState<string | null>(null);
@@ -114,19 +119,46 @@ const AgentChatList: React.FC<Props> = ({
         onRename(sessionKey, next);
     };
 
+    if (collapsed) {
+        return (
+            <div className={`w-10 shrink-0 h-full flex flex-col items-center pt-2 border-r ${borderCls} ${theme.mainContentSection}`}>
+                <button
+                    type="button"
+                    className={iconBtn}
+                    title="Show chats"
+                    onClick={onToggleCollapse}
+                >
+                    <i className="fa-solid fa-chevron-right" aria-hidden />
+                </button>
+            </div>
+        );
+    }
+
     return (
         <div className={`w-72 shrink-0 h-full flex flex-col overflow-hidden border-r ${borderCls} ${theme.mainContentSection}`}>
             <div className="px-3 pt-3 pb-2 shrink-0 flex flex-col gap-2">
-                <button
-                    type="button"
-                    className={btn}
-                    disabled={!!creating}
-                    onClick={onNewChat}
-                    title="New Chat"
-                >
-                    <i className="fa-solid fa-plus mr-1.5" />
-                    New Chat
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        className={`${btn} w-1 flex-auto`}
+                        disabled={!!creating}
+                        onClick={onNewChat}
+                        title="New Chat"
+                    >
+                        <i className="fa-solid fa-plus mr-1.5" />
+                        New Chat
+                    </button>
+                    {onToggleCollapse && (
+                        <button
+                            type="button"
+                            className={iconBtn}
+                            title="Hide chats"
+                            onClick={onToggleCollapse}
+                        >
+                            <i className="fa-solid fa-chevron-left" aria-hidden />
+                        </button>
+                    )}
+                </div>
                 <input
                     type="search"
                     value={query}

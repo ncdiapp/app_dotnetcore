@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { useSearchParams } from 'react-router-dom';
 import { useTheme } from '../../redux/hooks/useTheme';
@@ -107,18 +107,59 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
         () => chats.find(c => c.SessionKey === selectedKey) ?? null,
         [chats, selectedKey],
     );
+    const shellRef = useRef<HTMLDivElement | null>(null);
+    const [narrow, setNarrow] = useState(false);
+    const [listCollapsed, setListCollapsed] = useState(false);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+
+    useEffect(() => {
+        const el = shellRef.current;
+        if (!el) return;
+        const update = () => setNarrow(el.clientWidth < 900);
+        update();
+        const obs = new ResizeObserver(update);
+        obs.observe(el);
+        return () => obs.disconnect();
+    }, []);
+
+    const selectChat = (sessionKey: string) => {
+        handleSelect(sessionKey);
+        setDrawerOpen(false);
+    };
+
+    const list = (
+        <AgentChatList
+            chats={chats}
+            selectedSessionKey={selectedKey}
+            onSelect={selectChat}
+            onDelete={handleDelete}
+            onRename={(sessionKey, title) => { void handleRename(sessionKey, title); }}
+            onNewChat={() => { void handleNewChat(); }}
+            creating={creating}
+            collapsed={!narrow && listCollapsed}
+            onToggleCollapse={() => {
+                if (narrow) setDrawerOpen(false);
+                else setListCollapsed(v => !v);
+            }}
+        />
+    );
 
     return (
-        <div className="w-full h-full flex flex-row overflow-hidden">
-            <AgentChatList
-                chats={chats}
-                selectedSessionKey={selectedKey}
-                onSelect={handleSelect}
-                onDelete={handleDelete}
-                onRename={(sessionKey, title) => { void handleRename(sessionKey, title); }}
-                onNewChat={() => { void handleNewChat(); }}
-                creating={creating}
-            />
+        <div ref={shellRef} className="relative w-full h-full flex flex-row overflow-hidden">
+            {!narrow && list}
+            {narrow && drawerOpen && (
+                <>
+                    <button
+                        type="button"
+                        className={`absolute inset-0 z-10 opacity-60 ${theme.mainContentSection}`}
+                        aria-label="Close chats"
+                        onClick={() => setDrawerOpen(false)}
+                    />
+                    <div className="absolute left-0 top-0 z-20 h-full">
+                        {list}
+                    </div>
+                </>
+            )}
             <div className="w-1 flex-auto h-full min-w-0 overflow-hidden flex flex-col">
                 {error && (
                     <div className={`px-3 py-1 text-xs ${theme.label}`}>{error}</div>
@@ -128,6 +169,12 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
                         key={`${skillKey}:${selectedKey}`}
                         skillKey={skillKey}
                         chatSessionKey={selectedKey}
+                        chatTitle={selected ? genericAgentChatTitle(selected) : 'New chat'}
+                        showChatListButton={narrow || listCollapsed}
+                        onOpenChatList={() => {
+                            if (narrow) setDrawerOpen(true);
+                            else setListCollapsed(false);
+                        }}
                         onConversationChanged={() => { void refreshList(selectedKey); }}
                     />
                 ) : (

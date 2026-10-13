@@ -1,6 +1,6 @@
 # AI Chat 界面产品化 — 对照建议（待确认）
 
-状态：建议，未改代码。对照对象是 BlueCherry MCP Client 的聊天界面，以及我们现有的 Agent Chat（`GenericAgentChat`）。
+状态：欢迎页、会话侧栏、版心和顶栏已改。结果面板（第 5 项）还没做。
 
 ## 两个项目各自做什么
 
