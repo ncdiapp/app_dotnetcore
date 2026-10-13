@@ -147,6 +147,14 @@ try
     // Match the /appai path prefix used by the old IIS deployment and React proxy.
     // UseRouting MUST be called explicitly here — if omitted, ASP.NET Core auto-inserts it
     // before UsePathBase, so the router sees "/appai/health" instead of "/health".
+    // OpenAPI documents and Try it out use host-root /openapi-doc and /webapi (no /appai).
+    app.Use(async (context, next) =>
+    {
+        var path = context.Request.Path;
+        if (path.StartsWithSegments("/openapi-doc") || path.StartsWithSegments("/webapi"))
+            context.Request.Path = new PathString("/appai") + path;
+        await next();
+    });
     app.UsePathBase("/appai");
     app.UseRouting();
 

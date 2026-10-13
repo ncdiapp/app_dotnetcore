@@ -75,6 +75,16 @@ public class OpenApiDocumentController : SecureBaseController
     }
 
     [HttpGet]
+    public IActionResult Spec(int id)
+    {
+        var root = $"{Request.Scheme}://{Request.Host}";
+        var json = AppOpenApiDocumentBL.ReadForDownload(id, root);
+        if (string.IsNullOrWhiteSpace(json))
+            return NotFound();
+        return Content(json, "application/json");
+    }
+
+    [HttpGet]
     public IActionResult Download(int id)
     {
         var root = $"{Request.Scheme}://{Request.Host}";

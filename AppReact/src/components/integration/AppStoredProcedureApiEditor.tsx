@@ -64,15 +64,15 @@ function coerceDefaultToken(v: unknown): unknown {
   return s;
 }
 
-/** Build POST body `{ args: { ... } }` from parameter DefaultValues (IN / INOUT). */
+/** Build POST body from parameter DefaultValues (IN / INOUT). Parameters sit on the object itself. */
 function paramsToInputJson(params: SpParamRow[]): string {
-  const args: Record<string, unknown> = {};
+  const body: Record<string, unknown> = {};
   for (const p of params ?? []) {
     if (!p?.Name || isOutputOnly(p.Direction)) continue;
     const bare = p.Name.replace(/^[@:]/, '');
-    args[bare] = coerceDefaultToken(p.DefaultValue);
+    body[bare] = coerceDefaultToken(p.DefaultValue);
   }
-  return JSON.stringify({ args }, null, 2);
+  return JSON.stringify(body, null, 2);
 }
 
 /** Apply Input JSON args onto matching parameter DefaultValues. */
@@ -80,7 +80,7 @@ function applyInputJsonToParams(jsonText: string, params: SpParamRow[]): SpParam
   const parsed = JSON.parse(jsonText);
   const argsObj = (parsed?.args && typeof parsed.args === 'object' ? parsed.args : parsed) as Record<string, unknown>;
   if (!argsObj || typeof argsObj !== 'object' || Array.isArray(argsObj)) {
-    throw new Error('Input JSON must be an object or { "args": { ... } }.');
+    throw new Error('Input JSON must be an object.');
   }
   return (params ?? []).map((p) => {
     if (!p?.Name || isOutputOnly(p.Direction)) return { ...p };
@@ -149,7 +149,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
   const [inputTabIndex, setInputTabIndex] = useState(0); // 0 Parameter List, 1 Input JSON
   const [apiResponseText, setApiResponseText] = useState('');
   const [paramRows, setParamRows] = useState<SpParamRow[]>([]);
-  const [inputJsonText, setInputJsonText] = useState('{\n  "args": {}\n}');
+  const [inputJsonText, setInputJsonText] = useState('{}');
   const [inputJsonError, setInputJsonError] = useState('');
   const latestOperationRef = useRef<any>(null);
   const flexRef = useRef<wjGrid.FlexGrid | null>(null);
@@ -409,12 +409,12 @@ const AppStoredProcedureApiEditor: React.FC = () => {
     ],
   );
 
-  const callPostApi = useCallback(async (apiUrl: string, args: Record<string, unknown>): Promise<any> => {
+  const callPostApi = useCallback(async (apiUrl: string, body: Record<string, unknown>): Promise<any> => {
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: getHeaders(),
       credentials: 'include',
-      body: JSON.stringify({ args }),
+      body: JSON.stringify(body),
     });
     const text = await response.text();
     let data: any = text;
@@ -740,7 +740,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
                   <JsonCodeEditor
                     value={inputJsonText}
                     onChange={handleInputJsonChange}
-                    placeholder='{ "args": { "paramName": "value" } }'
+                    placeholder='{ "paramName": "value" }'
                     className="w-full h-full"
                   />
                 </div>

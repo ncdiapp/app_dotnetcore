@@ -111,15 +111,22 @@ namespace App.BL
 
                     if (requestSchema != null && (method == "post" || method == "put"))
                     {
+                        var media = new JObject
+                        {
+                            ["schema"] = new JObject { ["$ref"] = "#/components/schemas/" + requestName }
+                        };
+                        if (!AppStoredProcedureApiBL.IsStoredProcedureApi(dto))
+                        {
+                            var example = ParseJsonOrNull(dto.JsonSampleData);
+                            if (example != null)
+                                media["example"] = example;
+                        }
                         operation["requestBody"] = new JObject
                         {
                             ["required"] = true,
                             ["content"] = new JObject
                             {
-                                ["application/json"] = new JObject
-                                {
-                                    ["schema"] = new JObject { ["$ref"] = "#/components/schemas/" + requestName }
-                                }
+                                ["application/json"] = media
                             }
                         };
                     }
@@ -218,12 +225,17 @@ namespace App.BL
             if (dto.TranscationFieId.HasValue && (dto.IntergrationSettingId ?? 0) == AppIntergrationSettingBL.AppBuiltInProviderId)
             {
                 var query = dto.APIConfigParameters?.QueryParams;
+                var fieldDefaults = SearchFieldDefaults(dto.TranscationFieId.Value);
                 if (query != null)
                 {
                     foreach (var key in query.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
                     {
-                        if (!string.IsNullOrWhiteSpace(key))
-                            parameters.Add(QueryParameter(key));
+                        if (string.IsNullOrWhiteSpace(key))
+                            continue;
+                        var value = query[key];
+                        if (string.IsNullOrWhiteSpace(value))
+                            fieldDefaults.TryGetValue(key, out value);
+                        parameters.Add(QueryParameter(key, value));
                     }
                 }
                 responseSchema = SearchResponseSchema(dto.TranscationFieId.Value);
@@ -233,17 +245,20 @@ namespace App.BL
             if (dto.TranscationId.HasValue && (dto.IntergrationSettingId ?? 0) == AppIntergrationSettingBL.AppBuiltInProviderId)
             {
                 var query = dto.APIConfigParameters?.QueryParams;
-                if (query != null && query.Count > 0)
+                if (method == "get" || method == "delete")
                 {
-                    foreach (var key in query.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
+                    if (query != null && query.Count > 0)
                     {
-                        if (!string.IsNullOrWhiteSpace(key))
-                            parameters.Add(QueryParameter(key));
+                        foreach (var key in query.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
+                        {
+                            if (!string.IsNullOrWhiteSpace(key))
+                                parameters.Add(QueryParameter(key, query[key]));
+                        }
                     }
-                }
-                else if (method == "get")
-                {
-                    parameters.Add(QueryParameter("id"));
+                    else if (method == "get")
+                    {
+                        parameters.Add(QueryParameter("id"));
+                    }
                 }
 
                 if (method == "post" || method == "put")
@@ -258,7 +273,7 @@ namespace App.BL
                 foreach (var key in thirdQuery.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase))
                 {
                     if (!string.IsNullOrWhiteSpace(key))
-                        parameters.Add(QueryParameter(key));
+                        parameters.Add(QueryParameter(key, thirdQuery[key]));
                 }
             }
 
@@ -322,25 +337,79 @@ namespace App.BL
             {
                 foreach (var parameter in list.Where(IsInputParameter).OrderBy(p => p.Ordinal))
                 {
-                    if (string.IsNullOrWhiteSpace(parameter.Name) || args[parameter.Name] != null)
+                    var name = (parameter.Name ?? "").Trim().TrimStart('@', ':');
+                    if (string.IsNullOrWhiteSpace(name) || args[name] != null)
                         continue;
-                    args[parameter.Name] = new JObject { ["type"] = "string" };
+                    args[name] = SpArgumentSchema(parameter);
                 }
             }
 
             return new JObject
             {
                 ["type"] = "object",
-                ["properties"] = new JObject
-                {
-                    ["args"] = new JObject
-                    {
-                        ["type"] = "object",
-                        ["properties"] = args
-                    }
-                },
-                ["required"] = new JArray("args")
+                ["properties"] = args
             };
+        }
+
+        private static JObject SpArgumentSchema(StoredProcedureApiParameterDTO parameter)
+        {
+            var schema = new JObject { ["type"] = OpenApiTypeForSql(parameter?.Type) };
+            if (IsNullDefault(parameter?.DefaultValue))
+            {
+                schema["nullable"] = true;
+                schema["example"] = JValue.CreateNull();
+                return schema;
+            }
+
+            var example = ExampleFromDefault(parameter.DefaultValue, (string)schema["type"]);
+            if (example != null)
+                schema["example"] = example;
+            return schema;
+        }
+
+        private static string OpenApiTypeForSql(string sqlType)
+        {
+            var name = SqlTypeName(sqlType);
+            if (name == "bit" || name == "bool" || name == "boolean")
+                return "boolean";
+            if (name == "tinyint" || name == "smallint" || name == "int" || name == "bigint" || name == "integer")
+                return "integer";
+            if (name == "decimal" || name == "numeric" || name == "float" || name == "real"
+                || name == "money" || name == "smallmoney" || name == "number" || name == "double")
+                return "number";
+            return "string";
+        }
+
+        private static string SqlTypeName(string sqlType)
+        {
+            var text = (sqlType ?? "").Trim().ToLowerInvariant();
+            var paren = text.IndexOf('(');
+            if (paren >= 0)
+                text = text.Substring(0, paren);
+            return text.Trim();
+        }
+
+        private static bool IsNullDefault(string value)
+        {
+            return value == null
+                || value.Trim().Length == 0
+                || value.Trim().Equals("null", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static JToken ExampleFromDefault(string value, string openApiType)
+        {
+            var text = (value ?? "").Trim();
+            if (openApiType == "boolean")
+            {
+                if (text.Equals("true", StringComparison.OrdinalIgnoreCase)) return new JValue(true);
+                if (text.Equals("false", StringComparison.OrdinalIgnoreCase)) return new JValue(false);
+                return new JValue(text);
+            }
+            if (openApiType == "integer" && long.TryParse(text, out var whole))
+                return new JValue(whole);
+            if (openApiType == "number" && decimal.TryParse(text, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var number))
+                return new JValue(number);
+            return new JValue(text);
         }
 
         private static bool IsInputParameter(StoredProcedureApiParameterDTO parameter)
@@ -384,10 +453,40 @@ namespace App.BL
                 }
             }
 
+            var queryValues = dto.APIConfigParameters?.QueryParams;
             var parameters = new JArray();
             foreach (var name in names)
-                parameters.Add(QueryParameter(name));
+                parameters.Add(QueryParameter(name, QueryValue(queryValues, name)));
             return parameters;
+        }
+
+        private static string QueryValue(Dictionary<string, string> query, string name)
+        {
+            if (query == null || string.IsNullOrWhiteSpace(name))
+                return null;
+            string value;
+            if (query.TryGetValue(name, out value) && !string.IsNullOrWhiteSpace(value))
+                return value;
+            if (query.TryGetValue("@" + name, out value) && !string.IsNullOrWhiteSpace(value))
+                return value;
+            return null;
+        }
+
+        private static Dictionary<string, string> SearchFieldDefaults(int searchId)
+        {
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var search = AppSearchConfigBL.RetrieveOneAppSearchExDto(searchId);
+            if (search?.AppSearchFieldList == null)
+                return map;
+            foreach (var field in search.AppSearchFieldList)
+            {
+                var path = field?.SysTableFiledPath;
+                if (string.IsNullOrWhiteSpace(path) || map.ContainsKey(path))
+                    continue;
+                if (!string.IsNullOrWhiteSpace(field.DefaultValue))
+                    map[path] = field.DefaultValue;
+            }
+            return map;
         }
 
         private static JArray QueryParamsFromObject(JObject properties)
@@ -396,19 +495,51 @@ namespace App.BL
             if (properties == null)
                 return parameters;
             foreach (var property in properties.Properties())
-                parameters.Add(QueryParameter(property.Name));
+            {
+                var propertySchema = property.Value as JObject;
+                var parameter = QueryParameter(property.Name);
+                if (propertySchema != null)
+                {
+                    parameter["schema"] = (JObject)propertySchema.DeepClone();
+                    if (propertySchema["example"] != null)
+                        parameter["example"] = propertySchema["example"].DeepClone();
+                }
+                parameters.Add(parameter);
+            }
             return parameters;
         }
 
-        private static JObject QueryParameter(string name)
+        private static JObject QueryParameter(string name, string defaultValue = null)
         {
-            return new JObject
+            var schema = new JObject { ["type"] = "string" };
+            var parameter = new JObject
             {
                 ["name"] = name,
                 ["in"] = "query",
                 ["required"] = false,
-                ["schema"] = new JObject { ["type"] = "string" }
+                ["schema"] = schema
             };
+            if (!string.IsNullOrWhiteSpace(defaultValue))
+            {
+                schema["default"] = defaultValue;
+                schema["example"] = defaultValue;
+                parameter["example"] = defaultValue;
+            }
+            return parameter;
+        }
+
+        private static JToken ParseJsonOrNull(string sample)
+        {
+            if (string.IsNullOrWhiteSpace(sample))
+                return null;
+            try
+            {
+                return JToken.Parse(sample);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static JArray Tags(AppIntergrationSettingParameterExDto dto)
@@ -486,7 +617,9 @@ namespace App.BL
 
         private static JObject SchemaFromToken(JToken token, int depth)
         {
-            if (token == null || token.Type == JTokenType.Null || depth > 6)
+            if (token == null || token.Type == JTokenType.Null)
+                return new JObject { ["nullable"] = true };
+            if (depth > 6)
                 return GenericObject();
 
             if (token.Type == JTokenType.Object)

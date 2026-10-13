@@ -116,15 +116,15 @@ Save 按弹窗 Apply 的结果整份替换该 Document 的 ActionCode 列表。R
 | `AppModifiedByID` | int |
 | `AppModifiedDate` | datetime |
 
-第一列只有 Edit 和 Delete，样式与 Search View 相同。双击行等于 Edit。Regenerate 在编辑页做，会更新 `AppModifiedByID` 和 `AppModifiedDate`。Last Generated 用来区分“只保存了成员或名称”和“重新生成了 JSON”。
+第一列只有 Edit 和 Delete，样式与 Search View 相同。双击行等于 Edit。Swagger 从编辑页顶栏的 View Swagger 打开。Regenerate 在编辑页做，会更新 `AppModifiedByID` 和 `AppModifiedDate`。Last Generated 用来区分“只保存了成员或名称”和“重新生成了 JSON”。
 
 ## 编辑页
 
 路由 `/openapi-doc-editor/{id}`。标题用 Name。
 
-顶栏版式与 API Provider 编辑页相同：左边是 Name，旁边是只读 Version。Version 不手改。右边是彩色文字按钮：Refresh、Save & Generate OpenAPI Doc。这个按钮先保存名称、Code 和成员，再生成 JSON 并把 Version 最后一段加 1，然后写入 Is Published。
+顶栏版式与 API Provider 编辑页相同：左边是 Name，旁边是只读 Version。Version 不手改。右边是彩色文字按钮：Refresh、Save & Generate OpenAPI Doc，最右边是 Download JSON、View Swagger。后两个在还没有生成 JSON 时禁用。View Swagger 与列表的 View 相同：已发布打开公开地址，草稿打开登录后的 Spec。这个按钮先保存名称、Code 和成员，再生成 JSON 并把 Version 最后一段加 1，然后写入 Is Published。
 
-属性一行靠左：Name、Code、Description、Is Published（勾选框）。Code 可编辑。保存前若为空，按 Name 生成；若不合法，把空格和其它符号收成 `-`、转成小写后再保存。Description 占满剩余宽度。勾选不会立刻发布，要点 Save & Generate OpenAPI Doc 才写入。JSON 在发布之前生成，所以第一次保存就可以勾选发布。下一行是否出现，以数据库里已保存的 Is Published 为准。勾选但还没保存时不出现。Published URL 是标签加只读框，框的右边缘与 Description 输入框对齐。框右边是两个小按钮：Copy、Download。未勾选时这一行隐藏。
+属性一行靠左：Name、Code、Description、Is Published（勾选框）。Code 可编辑。保存前若为空，按 Name 生成；若不合法，把空格和其它符号收成 `-`、转成小写后再保存。Description 占满剩余宽度。勾选不会立刻发布，要点 Save & Generate OpenAPI Doc 才写入。JSON 在发布之前生成，所以第一次保存就可以勾选发布。下一行是否出现，以数据库里已保存的 Is Published 为准。勾选但还没保存时不出现。Published URL 是标签加只读框，框的右边缘与 Description 输入框对齐。框右边是两个小按钮：Copy、Download。未勾选时这一行隐藏。Swagger 只从顶栏 View Swagger 打开。它新开浏览器标签，用已打包的 Swagger UI 打开公开地址 `/openapi-doc/{doc-code}`。参数可以直接填，Execute 带上当前登录会话，会话只放在页面地址的 hash 里，不写进公开 URL。
 
 Save & Generate OpenAPI Doc 保存名称、Code、成员和 Is Published，并写入 JSON。JSON 显示在右侧。Download 仍可导出文件。
 
@@ -258,9 +258,9 @@ Schema 按 `EmApiScope`：
 | 成员 | 怎么认 | Request | Response |
 |---|---|---|---|
 | SQL Json Query | `IsSimpleQuery`。运行时执行 `JsonQuery`。编辑器不维护 `JsonSchema` | GET/DELETE：query 参数来自 `SimpleQueryParameterNameList`，去掉开头的 `@` 后作为参数名。SQL 里要有同名的 `@参数`。POST/PUT：body 用 `JsonSampleData`。运行时只有 SQL 含 `@json` 时，才把整个 body 传给 `@json` | GET/DELETE：取结果第一行里名为 `JSON` 的列，内容由 SQL 自己的 FOR JSON 决定。没有保存响应样本，schema 写成不限定结构的 JSON。POST/PUT：运行时返回一段文本，不是查询结果 |
-| Report & View | `TranscationFieId` 指向 AppSearch。运行时只有 GET 会执行 Search | GET：query 参数来自 `APIConfigParameters.QueryParams`。键是 Search 条件的 `SysTableFiledPath`，有值才套进条件，类型按 string。POST 在编辑器里可以发 `JsonSampleData`，但运行时不会执行 Search | GET：JSON 数组。每一行的属性名是默认 View 列的 `SysTableFiledPath`；子 View 嵌在 `{Display}_{Id}` 下；树行有 `Children`。生成时读这个 Search 的默认 View 来写 schema。`JsonSchema` / `JsonSampleData` 只是某次 Send Request 的副产品，Reset Config 会清掉，不作为来源 |
-| Data Model | `TranscationId` 指向 AppTransaction。运行时按 MasterDetail 或 List 分别处理，不对应 PLM DataSourceEntity | GET：query 参数来自 `APIConfigParameters.QueryParams`，新建时默认 `id`。POST：body 用 `JsonSampleData`（编辑器里的 Post Payload，可由 GET 结果再生成） | 编辑器不保存响应样本。schema 用通用 object |
-| Stored Procedure | `APIConfigParameters.IsStoredProcedureApi`。运行时 `ExecuteStoredProcedureApi`，不对应 PLM scope | POST body 固定为 `{ "args": { 参数名: 值 } }`。参数来自 `SpParameters` 的 IN / INOUT。GET 把 query string 收进同一个 `args` | 用已保存的 `JsonSampleData` 推断；没有则为通用 object |
+| Report & View | `TranscationFieId` 指向 AppSearch。运行时只有 GET 会执行 Search | GET：query 参数来自 `APIConfigParameters.QueryParams`。键是 Search 条件的 `SysTableFiledPath`。值为空时用该 Search 字段的 DefaultValue。有值时写入参数的 default 和 example，Swagger 的输入框显示这个值。POST 在编辑器里可以发 `JsonSampleData`，但运行时不会执行 Search | GET：JSON 数组。每一行的属性名是默认 View 列的 `SysTableFiledPath`；子 View 嵌在 `{Display}_{Id}` 下；树行有 `Children`。生成时读这个 Search 的默认 View 来写 schema。`JsonSchema` / `JsonSampleData` 只是某次 Send Request 的副产品，Reset Config 会清掉，不作为来源 |
+| Data Model | `TranscationId` 指向 AppTransaction。运行时按 MasterDetail 或 List 分别处理，不对应 PLM DataSourceEntity | GET / DELETE：query 参数来自 `APIConfigParameters.QueryParams`，没有时 GET 默认 `id`。有值时写入参数的 default 和 example。POST 不写这些 query 参数。POST / PUT：body schema 用 `JsonSampleData`，并把这份 JSON 原样写成 request body 的 example | 编辑器不保存响应样本。schema 用通用 object |
+| Stored Procedure | `APIConfigParameters.IsStoredProcedureApi`。运行时 `ExecuteStoredProcedureApi`，不对应 PLM scope | POST body 是参数对象本身，例如 `{ "tabId": 3992 }`，不再包一层 `args`。参数来自 `SpParameters` 的 IN / INOUT，名字去掉开头的 `@`。类型按 SQL 类型写：`int` / `bigint` 等为 integer，`decimal` / `float` 等为 number，`bit` 为 boolean，其余为 string。Default Value 写入 `example`；空或 `null` 写成 nullable 且 example 为 null。GET 的 query 参数是这些同名参数，服务器收进调用参数 | 用已保存的 `JsonSampleData` 推断；没有则为通用 object |
 | 3rd Party API | `IntergrationSettingId` 不是 App API Provider（Id = 1）。运行时 GET 用 query 覆盖 `QueryParams`，再由包装层去调外部 URL | GET/DELETE：query 参数来自 `APIConfigParameters.QueryParams`。POST/PUT：body 用 `JsonSampleData`（编辑器里的 Payload Data，JSON 类型） | GET 用 `JsonSampleData`。POST/PUT 用 `PostResponseDto.ResponseJsonData`。没有样本则为通用 object |
 
 Excel Import Data Update 第一版不进入选择器，也不生成 operation。
@@ -289,5 +289,5 @@ OpenAPI JSON 里写一个 apiKey scheme：
 ## 待补充
 
 - Data Model 的响应目前没有保存样本。第一版用通用 object，以后再按 Transaction Field 生成
-- Swagger 风格的 HTML 页面第一版不做。已有的 JSON 以后可以交给 Swagger UI 这类前端库渲染，不需要改 Generator
+- Swagger UI 只渲染已保存的 JSON，不改 Generator。脚本来自项目里的 Swashbuckle，不从 CDN 加载。列表和编辑页的 View 打开 `/appai/openapi-ui`。
 

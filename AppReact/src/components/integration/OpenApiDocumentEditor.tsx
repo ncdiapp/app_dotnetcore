@@ -11,6 +11,7 @@ import { updateActiveTabPath, updateCurrentTabLabel } from '../../redux/features
 import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { openApiDocumentService, OpenApiDocumentMember, OpenApiSelectableApi } from '../../webapi/openApiDocumentSvc';
 import OpenApiAddApisDialog from './OpenApiAddApisDialog';
+import { openOpenApiSwaggerView } from './openApiSwaggerView';
 
 function repairCode(code: string, name: string): string {
   const source = code.trim() ? code : name;
@@ -236,6 +237,24 @@ const OpenApiDocumentEditor: React.FC = () => {
           <button type="button" onClick={onSaveAndGenerate}
             className="h-6 px-2 inline-flex items-center gap-1 rounded-[4px] text-xs text-white transition disabled:cursor-not-allowed disabled:opacity-60 bg-green-500 hover:bg-green-600" title="Save & Generate OpenAPI Doc">
             <i className="fa-solid fa-floppy-disk" aria-hidden /> Save &amp; Generate OpenAPI Doc
+          </button>
+          <button
+            type="button"
+            onClick={onDownload}
+            disabled={!id || !openApiJson}
+            className="h-6 px-2 inline-flex items-center gap-1 rounded-[4px] text-xs text-white transition disabled:cursor-not-allowed disabled:opacity-60 bg-amber-500 hover:bg-amber-600"
+            title="Download JSON"
+          >
+            <i className="fa-solid fa-download" aria-hidden /> Download JSON
+          </button>
+          <button
+            type="button"
+            onClick={() => openOpenApiSwaggerView(serverRoot, { Id: id, Code: code, Status: savedStatus })}
+            disabled={!id || !openApiJson || !serverRoot}
+            className="h-6 px-2 inline-flex items-center gap-1 rounded-[4px] text-xs text-white transition disabled:cursor-not-allowed disabled:opacity-60 bg-violet-500 hover:bg-violet-600"
+            title="View Swagger"
+          >
+            <i className="fa-solid fa-eye" aria-hidden /> View Swagger
           </button>
         </div>
       </div>
