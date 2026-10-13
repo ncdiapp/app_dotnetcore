@@ -12,6 +12,7 @@ interface Props {
     creating?: boolean;
     collapsed?: boolean;
     onToggleCollapse?: () => void;
+    widthPx?: number;
 }
 
 const formatWhen = (raw?: string) => {
@@ -55,8 +56,9 @@ const AgentChatList: React.FC<Props> = ({
     creating,
     collapsed,
     onToggleCollapse,
+    widthPx,
 }) => {
-    const { theme, t } = useTheme();
+    const { theme, t, param } = useTheme();
     const borderCls = t('border_mainContentSection');
     const btn = `px-3 py-2 text-sm rounded-[4px] ${theme.button_default}`;
     const iconBtn = `w-7 h-6 shrink-0 rounded-[4px] text-xs ${theme.button_default}`;
@@ -121,7 +123,7 @@ const AgentChatList: React.FC<Props> = ({
 
     if (collapsed) {
         return (
-            <div className={`w-10 shrink-0 h-full flex flex-col items-center pt-2 border-r ${borderCls} ${theme.mainContentSection}`}>
+            <div className={`w-10 shrink-0 h-full mr-2 flex flex-col items-center pt-3 rounded-[8px] border shadow-sm ${borderCls} ${theme.mainContentSection}`}>
                 <button
                     type="button"
                     className={iconBtn}
@@ -135,7 +137,7 @@ const AgentChatList: React.FC<Props> = ({
     }
 
     return (
-        <div className={`w-72 shrink-0 h-full flex flex-col overflow-hidden border-r ${borderCls} ${theme.mainContentSection}`}>
+        <div style={{ width: widthPx ?? 288 }} className={`shrink-0 h-full flex flex-col overflow-hidden rounded-[8px] border shadow-sm ${borderCls} ${theme.mainContentSection}`}>
             <div className="px-3 pt-3 pb-2 shrink-0 flex flex-col gap-2">
                 <div className="flex items-center gap-2">
                     <button
@@ -177,8 +179,8 @@ const AgentChatList: React.FC<Props> = ({
                     </div>
                 )}
                 {groups.map(g => (
-                    <div key={g.key} className="mb-3">
-                        <div className={`px-2 py-1 text-[10px] uppercase tracking-wide opacity-60 ${theme.label}`}>
+                    <div key={g.key} className="mt-4 first:mt-1">
+                        <div className={`px-2 pb-1.5 text-[11px] uppercase tracking-wide ${theme.label}`}>
                             {g.label}
                         </div>
                         {g.items.map(chat => {
@@ -189,11 +191,12 @@ const AgentChatList: React.FC<Props> = ({
                             return (
                                 <div
                                     key={chat.SessionKey}
-                                    className={`group relative w-full mb-0.5 rounded-[4px] flex items-stretch border-l-2 ${
+                                    className={`group relative w-full mb-1 rounded-[4px] flex items-stretch border ${borderCls} ${
                                         selected
-                                            ? `${t('bg_default')} ${theme.sideBar_menu_active} ${borderCls}`
-                                            : `border-transparent ${theme.sideBar_menu}`
+                                            ? `${t('bg_default_active')} ${theme.sideBar_menu_active}`
+                                            : theme.sideBar_menu
                                     }`}
+                                    style={selected ? { borderLeftWidth: 2, borderLeftColor: param.border_default_active } : undefined}
                                 >
                                     <div className="w-1 flex-auto min-w-0 flex items-start gap-1 px-2 py-2">
                                         <div className="w-1 flex-auto min-w-0">
@@ -233,7 +236,7 @@ const AgentChatList: React.FC<Props> = ({
                                                     <div className={`text-sm truncate ${theme.title}${selected ? ' font-semibold' : ''}`}>
                                                         {title}
                                                     </div>
-                                                    <div className={`text-[10px] truncate mt-0.5 ${theme.label}`}>
+                                                    <div className={`text-xs truncate mt-0.5 ${theme.label}`}>
                                                         {chat.IsFixedTestSession ? 'Test session · ' : ''}
                                                         {formatWhen(chat.UpdatedAt)}
                                                     </div>

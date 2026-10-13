@@ -437,13 +437,17 @@ const GenericAgentChat: React.FC<Props> = ({
     const [sessionId, setSessionId] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [toolsWidth, setToolsWidth] = useState(288);
+    const toolsDragRef = useRef(false);
+    const chatRootRef = useRef<HTMLDivElement | null>(null);
+    const [showEarlierTurns, setShowEarlierTurns] = useState(false);
     const [rightTab, setRightTab] = useState<'tools' | 'files'>('tools');
     const [uiModules, setUiModules] = useState<Set<AgentChatUiModule>>(() => new Set());
     const [fileSessionKey, setFileSessionKey] = useState<string | null>(null);
     const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
     const [skillDisplayNames, setSkillDisplayNames] = useState<Record<string, string>>({});
     const [skillExecutionMode, setSkillExecutionMode] = useState<string>('Interactive');
-    const bottomRef = useRef<HTMLDivElement | null>(null);
+    const scrollRef = useRef<HTMLDivElement | null>(null);
     // Track in-progress tool calls (call event received, result pending)
     const pendingCallRef = useRef<Map<string, { args?: string; startedAt: number }>>(new Map());
     const sessionStartFiredRef = useRef(false);
@@ -485,7 +489,9 @@ const GenericAgentChat: React.FC<Props> = ({
     onConversationChangedRef.current = onConversationChanged;
 
     useEffect(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+        const el = scrollRef.current;
+        if (!el) return;
+        el.scrollTop = el.scrollHeight;
     }, [messages, turnActivities, pendingAskUser]);
 
     const appendDataRender = (evt: DataRenderEvent) => {
@@ -1206,15 +1212,41 @@ const GenericAgentChat: React.FC<Props> = ({
         'What should I tell you to get started?',
     ];
 
+    const windowCard = `flex flex-col overflow-hidden min-w-0 min-h-0 rounded-[8px] shadow-sm ${theme.mainContentSection}`;
+
+    const startToolsResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        toolsDragRef.current = true;
+        const startX = e.clientX;
+        const startW = toolsWidth;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        const onMove = (ev: MouseEvent) => {
+            if (!toolsDragRef.current) return;
+            const hostW = chatRootRef.current?.clientWidth ?? 900;
+            const max = Math.min(560, Math.max(220, hostW - 320));
+            setToolsWidth(Math.min(max, Math.max(220, startW - (ev.clientX - startX))));
+        };
+        const onUp = () => {
+            toolsDragRef.current = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    };
+
     return (
-        <div className="w-full h-full flex flex-row overflow-hidden">
+        <div ref={chatRootRef} className="w-full h-full flex flex-row overflow-hidden">
             {/* ── Left: chat ── */}
-            <div className="w-1 flex-auto flex flex-col overflow-hidden min-w-0">
-                <div className={`flex items-center gap-2 px-3 py-2 border-b shrink-0 ${regionBorder} ${theme.mainContentSection}`}>
+            <div className={`w-1 flex-auto border ${regionBorder} ${windowCard}`}>
+                <div className={`flex items-center gap-3 px-3 py-2.5 border-b shrink-0 ${regionBorder}`}>
                     {showChatListButton && (
                         <button
                             type="button"
-                            className={`w-8 h-6 rounded-[4px] text-xs ${theme.button_default}`}
+                            className={`w-8 h-8 rounded-[4px] text-sm shrink-0 ${theme.button_default}`}
                             title="Chats"
                             onClick={onOpenChatList}
                         >
@@ -1222,30 +1254,31 @@ const GenericAgentChat: React.FC<Props> = ({
                         </button>
                     )}
                     <div className="min-w-0">
-                        <div className={`text-sm font-semibold truncate ${theme.title}`}>{chatTitle || 'New chat'}</div>
-                        <div className={`text-[10px] truncate ${theme.label}`}>{skillLabel}</div>
+                        <div className={`text-base font-semibold truncate leading-tight ${theme.title}`}>{chatTitle || 'New chat'}</div>
+                        <div className={`text-xs truncate mt-0.5 ${theme.label}`}>{skillLabel}</div>
                     </div>
-                    <div className="w-1 flex-auto" />
-                    {(messages.length > 0 || pendingAskUser) && (
+                    <div className="ml-auto flex items-center gap-2 shrink-0">
+                        {(messages.length > 0 || pendingAskUser) && (
+                            <button
+                                type="button"
+                                className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}`}
+                                onClick={() => { void handleClear(); }}
+                                title="Clear conversation"
+                            >
+                                <i className="fa-solid fa-rotate-left" aria-hidden />
+                            </button>
+                        )}
                         <button
                             type="button"
-                            className={`w-8 h-6 rounded-[4px] text-xs ${theme.button_default}`}
-                            onClick={() => { void handleClear(); }}
-                            title="Clear conversation"
+                            className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}${sidebarOpen ? ' font-semibold' : ''}`}
+                            onClick={() => setSidebarOpen(o => !o)}
+                            title="Tool activity"
                         >
-                            <i className="fa-solid fa-rotate-left" aria-hidden />
+                            <i className="fa-solid fa-timeline" aria-hidden />
                         </button>
-                    )}
-                    <button
-                        type="button"
-                        className={`w-8 h-6 rounded-[4px] text-xs ${theme.button_default}`}
-                        onClick={() => setSidebarOpen(o => !o)}
-                        title="Tool activity"
-                    >
-                        <i className="fa-solid fa-timeline" aria-hidden />
-                    </button>
+                    </div>
                 </div>
-                <div className="w-full h-1 flex-auto overflow-auto px-4 py-4 flex flex-col gap-4">
+                <div ref={scrollRef} className="w-full h-1 flex-auto overflow-auto px-3 py-3 flex flex-col">
                     {showWelcome && (
                         <div className="w-full max-w-3xl mx-auto h-1 flex-auto flex flex-col items-center justify-center gap-6 py-8">
                             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl ${theme.button_default}`}>
@@ -1264,7 +1297,7 @@ const GenericAgentChat: React.FC<Props> = ({
                                     <button
                                         key={prompt}
                                         type="button"
-                                        className={`text-left px-3 py-3 text-sm rounded-[4px] border ${theme.mainContentSection} ${theme.label} ${regionBorder}`}
+                                        className={`text-left px-3 py-2.5 text-sm leading-relaxed rounded-[8px] border ${theme.mainContentSection} ${t('text_mainContentSection')} ${regionBorder}`}
                                         onClick={() => { void runAgentTurn({ userMessage: prompt }); }}
                                     >
                                         {prompt}
@@ -1273,44 +1306,41 @@ const GenericAgentChat: React.FC<Props> = ({
                             </div>
                         </div>
                     )}
-                    <div className="w-full max-w-3xl mx-auto flex flex-col gap-4">
+                    <div className="w-full flex flex-col gap-3">
                     {messages.map((m, i) => {
                         const split = m.role === 'assistant'
                             ? splitFollowups(sanitizeAgentDisplayText(m.content), m.isStreaming)
                             : { body: m.content, followups: [] as string[] };
                         const showBubble = !!(split.body || m.isStreaming || m.askUserSummary || m.askUserAnswer);
+                        const hasRenders = m.role === 'assistant' && (m.dataRenders?.length ?? 0) > 0;
+                        const hasFollowups = m.role === 'assistant' && !m.isStreaming && split.followups.length > 0;
+                        if (!showBubble && !hasRenders && !hasFollowups) return null;
                         return (
-                        <div key={i} className="flex flex-col gap-2">
+                        <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                            <div className={m.role === 'user' ? 'max-w-xl' : 'w-full min-w-0 flex flex-col gap-2'}>
                             {showBubble && (
-                                <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    {m.role === 'assistant' && (
-                                        <div className={`w-7 h-7 shrink-0 mr-2 mt-0.5 rounded-[4px] flex items-center justify-center text-[10px] ${theme.button_default}`}>
-                                            <i className="fa-solid fa-robot" aria-hidden />
-                                        </div>
-                                    )}
-                                    <div className={`px-3.5 py-2.5 rounded-xl text-sm ${
+                                    <div className={
                                         m.role === 'user'
-                                            ? `max-w-xl ${theme.button_default}`
-                                            : `max-w-3xl border ${regionBorder} ${theme.mainContentSection}`
-                                    }`}>
+                                            ? `px-3 py-2 rounded-[8px] border text-[15px] leading-relaxed ${regionBorder}`
+                                            : `w-full px-3 py-2.5 rounded-[8px] border text-[15px] leading-relaxed ${regionBorder}`
+                                    }>
                                         {(m.askUserSummary || m.askUserAnswer) && (
-                                            <div className={`text-[10px] uppercase tracking-wide opacity-60 mb-1 ${theme.label}`}>
+                                            <div className={`text-xs mb-1 ${theme.label}`}>
                                                 {m.askUserSummary ? 'Question' : 'Answer'}
                                             </div>
                                         )}
                                         {m.role === 'assistant' && !m.askUserSummary ? (
                                             <AgentMarkdown content={split.body} />
                                         ) : (
-                                            <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                                            <div className="whitespace-pre-wrap leading-relaxed">
                                                 {m.role === 'assistant' ? split.body : m.content}
                                             </div>
                                         )}
                                         {m.isStreaming && <span className="animate-pulse ml-1">|</span>}
                                     </div>
-                                </div>
                             )}
-                            {m.role === 'assistant' && (m.dataRenders?.length ?? 0) > 0 && (
-                                <div className="w-full max-w-4xl ml-9 mr-6">
+                            {hasRenders && (
+                                <div className="w-full flex flex-col gap-3">
                                     {m.dataRenders!.map(dr => (
                                         <DataRenderPanel
                                             key={dr.RenderId || `${i}-${dr.Timestamp}`}
@@ -1321,21 +1351,20 @@ const GenericAgentChat: React.FC<Props> = ({
                                     ))}
                                 </div>
                             )}
-                            {m.role === 'assistant' && !m.isStreaming && split.followups.length > 0 && (
-                                <div className="ml-9 mr-6 max-w-3xl">
-                                    <FollowupChips
-                                        items={split.followups}
-                                        disabled={blocked}
-                                        onSelect={(text) => { void runAgentTurn({ userMessage: text }); }}
-                                    />
-                                </div>
+                            {hasFollowups && (
+                                <FollowupChips
+                                    items={split.followups}
+                                    disabled={blocked}
+                                    onSelect={(text) => { void runAgentTurn({ userMessage: text }); }}
+                                />
                             )}
+                            </div>
                         </div>
                         );
                     })}
 
                     {isRunning && !pendingAskUser && (
-                        <div className={`flex items-center gap-2 mx-2 text-xs ${theme.label}`}>
+                        <div className={`flex items-center gap-2 text-xs ${theme.label}`}>
                             <i className="fa-solid fa-spinner fa-spin" />
                             <span>{turnActivities.find(t => t.turnIndex === currentTurnIndex)?.steps.length
                                 ? `Running tools…`
@@ -1534,14 +1563,13 @@ const GenericAgentChat: React.FC<Props> = ({
                             {error}<button className="ml-2 font-bold" onClick={() => setError(null)}>x</button>
                         </div>
                     )}
-                    <div ref={bottomRef} />
                     </div>
                 </div>
 
-                <div className={`px-4 py-3 border-t ${regionBorder} ${theme.mainContentSection}`}>
-                    <div className="w-full max-w-3xl mx-auto flex items-end gap-2">
+                <div className="px-3 pb-3 pt-1 shrink-0">
+                    <div className={`flex items-center rounded-[8px] border ${theme.inputBox}`}>
                     <textarea
-                        className={`w-1 flex-auto min-h-[2.75rem] px-3 py-2 text-sm border rounded-xl ${theme.inputBox} focus:outline-none resize-none`}
+                        className="w-1 flex-auto min-h-[2.5rem] px-3 py-2 text-[15px] leading-relaxed bg-transparent border-0 rounded-[8px] focus:outline-none resize-none"
                         rows={2}
                         value={input}
                         placeholder={`Message ${skillLabel}…`}
@@ -1549,31 +1577,43 @@ const GenericAgentChat: React.FC<Props> = ({
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                         disabled={blocked}
                     />
-                    <button
-                        className={`${btn} h-9 px-3`}
-                        onClick={handleSend}
-                        disabled={blocked || !input.trim()}
-                        title="Send"
-                    >
-                        {isRunning ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
-                    </button>
+                    <div className="flex items-center gap-1 pr-1.5 shrink-0">
                     {(isRunning || pendingAskUser) && (
                         <button
                             type="button"
-                            className={`${btn} h-9 opacity-80`}
+                            className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}`}
                             onClick={() => { void handleStop(); }}
                             title="Stop current agent run"
                         >
                             <i className="fa-solid fa-stop" />
                         </button>
                     )}
+                    <button
+                        type="button"
+                        className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}`}
+                        onClick={handleSend}
+                        disabled={blocked || !input.trim()}
+                        title="Send"
+                    >
+                        {isRunning ? <i className="fa-solid fa-spinner fa-spin" /> : <i className="fa-solid fa-paper-plane" />}
+                    </button>
+                    </div>
                     </div>
                 </div>
             </div>
 
             {/* ── Right: Tool Activity | Files ── */}
             {sidebarOpen && (
-                <div className={`w-80 flex flex-col overflow-hidden border-l ${regionBorder} ${theme.mainContentSection} shrink-0`}>
+                <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    title="Drag to resize tools"
+                    className="w-2 shrink-0 cursor-col-resize"
+                    onMouseDown={startToolsResize}
+                />
+            )}
+            {sidebarOpen && (
+                <div style={{ width: toolsWidth }} className={`shrink-0 border ${regionBorder} ${windowCard}`}>
                     <div className={`flex items-center gap-1 px-2 py-1.5 border-b ${regionBorder}`}>
                         <button
                             type="button"
@@ -1614,7 +1654,16 @@ const GenericAgentChat: React.FC<Props> = ({
                                 </div>
                             )}
 
-                            {allActivities.map((turn) => (
+                            {allActivities.length > 1 && (
+                                <button
+                                    type="button"
+                                    className={`mb-2 px-1 text-xs text-left ${theme.label}`}
+                                    onClick={() => setShowEarlierTurns(v => !v)}
+                                >
+                                    {showEarlierTurns ? 'Hide earlier turns' : `Earlier turns (${allActivities.length - 1})`}
+                                </button>
+                            )}
+                            {(showEarlierTurns ? allActivities : allActivities.slice(-1)).map((turn) => (
                                 <div key={turn.turnIndex} className="mb-3">
                                     {allActivities.length > 1 && (
                                         <div className={`text-xs opacity-40 px-1 mb-1 ${theme.label}`}>Turn {turn.turnIndex + 1}</div>
@@ -1659,14 +1708,14 @@ const GenericAgentChat: React.FC<Props> = ({
                                             const title = toolTitle(toolName, argsText, skillDisplayNames, labelText);
                                             const tip = toolTooltip(toolName, argsText, skillDisplayNames, labelText);
                                             return (
-                                                <div key={pair.key} className={`mb-1 rounded border ${regionBorder} overflow-hidden ${t('bg_default')}`}>
+                                                <div key={pair.key} className={`mb-1 rounded-[4px] overflow-hidden border ${regionBorder}`}>
                                                     <button
                                                         type="button"
                                                         title={tip}
-                                                        className={`w-full flex items-center gap-2 px-2 py-1.5 text-xs text-left ${t('bg_default')} ${t('bg_default_hover')}`}
+                                                        className="w-full flex items-center gap-2 px-2.5 py-2 text-xs text-left"
                                                         onClick={() => hasDetails && toggleExpand(expandKey)}
                                                     >
-                                                        <i className={`fa-solid ${!hasResult ? 'fa-spinner fa-spin text-blue-400' : isSuccess ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-500'}`} />
+                                                        <i className={`fa-solid ${!hasResult ? `fa-spinner fa-spin ${t('text_default_active')}` : isSuccess ? `fa-circle-check ${t('text_default_active')}` : 'fa-circle-xmark text-red-600'}`} />
                                                         <span className="font-mono font-semibold truncate">{title}</span>
                                                         {isSystemBuiltInTool(toolName) && (
                                                             <span
@@ -1677,8 +1726,8 @@ const GenericAgentChat: React.FC<Props> = ({
                                                             </span>
                                                         )}
                                                         <span className="flex-auto" />
-                                                        {pair.result?.durationMs != null && (
-                                                            <span className="opacity-40 shrink-0">{pair.result.durationMs}ms</span>
+                                                        {(pair.result?.durationMs ?? 0) > 0 && (
+                                                            <span className={`shrink-0 ${theme.label}`}>{pair.result!.durationMs}ms</span>
                                                         )}
                                                         {hasDetails && (
                                                             <i className={`fa-solid fa-chevron-${isExpanded ? 'up' : 'down'} opacity-40 shrink-0`} />

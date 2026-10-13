@@ -184,7 +184,7 @@ export const AgentMarkdown: React.FC<{
     const blocks = parseBlocks(content);
 
     return (
-        <div className={`agent-md text-sm leading-relaxed ${className || ''}`}>
+        <div className={`agent-md text-[15px] leading-relaxed ${className || ''}`}>
             {blocks.map((b, idx) => {
                 if (b.type === 'p') {
                     return (

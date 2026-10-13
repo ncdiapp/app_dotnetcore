@@ -105,9 +105,10 @@ function DashboardBlockView(props: {
         body = <DataRenderCard {...cardProps} />;
     }
 
+    const framed = block.type !== 'card';
     return (
-        <div className={`rounded-[4px] border p-2 ${t('border_mainContentSection')}`}>
-            {block.title && block.type !== 'kpi' && block.type !== 'chart' && block.type !== 'grid' && block.type !== 'card' && (
+        <div className={framed ? `rounded-[4px] border p-3 ${t('border_mainContentSection')}` : ''}>
+            {block.title && framed && block.type !== 'kpi' && block.type !== 'chart' && block.type !== 'grid' && (
                 <div className={`text-xs font-medium mb-1 ${theme.label}`}>{block.title}</div>
             )}
             {body}
@@ -190,14 +191,15 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
         onAction(actionId, selectionJson);
     };
 
+    const cardOnly = ui === 'card';
     return (
-        <div className={`my-2 mx-2 rounded-[4px] p-2 border ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
-            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-                <div className={`text-xs ${theme.label}`}>
-                    <span className="font-medium uppercase tracking-wide opacity-70 mr-2">{ui}</span>
-                    {event.Title && <span className="font-medium">{event.Title}</span>}
+        <div className={cardOnly ? '' : `rounded-[4px] p-4 border ${t('border_mainContentSection')} ${theme.mainContentSection}`}>
+            {!cardOnly && (
+            <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                <div className={`text-sm font-semibold ${theme.title}`}>
+                    {event.Title || 'Result'}
                     {event.Truncated && (
-                        <span className="ml-2 opacity-70">(truncated)</span>
+                        <span className={`ml-2 text-xs font-normal ${theme.label}`}>(truncated)</span>
                     )}
                 </div>
                 {actions.length > 0 && (
@@ -216,7 +218,23 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
                     </div>
                 )}
             </div>
+            )}
             {body}
+            {cardOnly && actions.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2">
+                    {actions.map(a => (
+                        <button
+                            key={a.Id}
+                            type="button"
+                            className={btn}
+                            disabled={disabled}
+                            onClick={() => handleAction(a.Id)}
+                        >
+                            {a.Label || a.Id}
+                        </button>
+                    ))}
+                </div>
+            )}
         </div>
     );
 };

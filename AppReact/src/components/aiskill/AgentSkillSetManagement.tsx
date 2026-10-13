@@ -717,7 +717,7 @@ const handleSave = async () => {
                                         <i className="fa-solid fa-xmark" />
                                     </button>
                                 </div>
-                                <div className="w-full h-1 flex-auto overflow-hidden">
+                                <div className={`w-full h-1 flex-auto overflow-hidden ${t('bg_default')}`}>
                                     <AgentUiChatHost
                                         skillKey={testSkillKey}
                                         testMode={true}

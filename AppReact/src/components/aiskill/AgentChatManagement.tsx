@@ -12,7 +12,7 @@ interface Props {
 }
 
 const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
-    const { theme } = useTheme();
+    const { theme, t } = useTheme();
     const dispatch = useDispatch();
     const [searchParams, setSearchParams] = useSearchParams();
     const chatFromUrl = searchParams.get('chat');
@@ -108,6 +108,8 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
         [chats, selectedKey],
     );
     const shellRef = useRef<HTMLDivElement | null>(null);
+    const listDragRef = useRef(false);
+    const [listWidth, setListWidth] = useState(288);
     const [narrow, setNarrow] = useState(false);
     const [listCollapsed, setListCollapsed] = useState(false);
     const [drawerOpen, setDrawerOpen] = useState(false);
@@ -121,6 +123,30 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
         obs.observe(el);
         return () => obs.disconnect();
     }, []);
+
+    const startListResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        listDragRef.current = true;
+        const startX = e.clientX;
+        const startW = listWidth;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        const onMove = (ev: MouseEvent) => {
+            if (!listDragRef.current) return;
+            const shellW = shellRef.current?.clientWidth ?? 1200;
+            const max = Math.min(520, Math.max(220, shellW - 420));
+            setListWidth(Math.min(max, Math.max(220, startW + (ev.clientX - startX))));
+        };
+        const onUp = () => {
+            listDragRef.current = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    };
 
     const selectChat = (sessionKey: string) => {
         handleSelect(sessionKey);
@@ -136,6 +162,7 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
             onRename={(sessionKey, title) => { void handleRename(sessionKey, title); }}
             onNewChat={() => { void handleNewChat(); }}
             creating={creating}
+            widthPx={listWidth}
             collapsed={!narrow && listCollapsed}
             onToggleCollapse={() => {
                 if (narrow) setDrawerOpen(false);
@@ -145,8 +172,17 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
     );
 
     return (
-        <div ref={shellRef} className="relative w-full h-full flex flex-row overflow-hidden">
+        <div ref={shellRef} className={`relative w-full h-full flex flex-row overflow-hidden ${t('bg_default')}`}>
             {!narrow && list}
+            {!narrow && !listCollapsed && (
+                <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    title="Drag to resize chats"
+                    className="w-2 shrink-0 cursor-col-resize"
+                    onMouseDown={startListResize}
+                />
+            )}
             {narrow && drawerOpen && (
                 <>
                     <button
@@ -178,7 +214,7 @@ const AgentChatManagement: React.FC<Props> = ({ skillKey }) => {
                         onConversationChanged={() => { void refreshList(selectedKey); }}
                     />
                 ) : (
-                    <div className={`w-full h-full flex items-center justify-center text-sm ${theme.label}`}>
+                    <div className={`w-full h-full flex items-center justify-center text-sm rounded-[8px] border shadow-sm ${t('border_mainContentSection')} ${theme.mainContentSection} ${theme.label}`}>
                         {selected ? genericAgentChatTitle(selected) : 'Select a chat or click New Chat.'}
                     </div>
                 )}
