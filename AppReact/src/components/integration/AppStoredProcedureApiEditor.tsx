@@ -18,6 +18,9 @@ import { endpoints, toApiDisplayUrl } from '../../webapi/endpoints';
 import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { getHeaders } from '../../helper/apiServiceHelper';
 import { prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
+import { ensureSessionHeader, isUsedByMcpValue } from '../../helper/apiConfigForm';
+import { IsUsedByMcpCheckbox } from './ApiConfigParametersForm';
+import { ApiEditorWorkArea } from './ApiEditorWorkArea';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 import type { RootState } from '../../redux/store';
@@ -35,7 +38,7 @@ type SpParamRow = {
 };
 
 function ensureApiConfig(op: any): any {
-  const cfg = { ...(op?.APIConfigParameters ?? {}) };
+  const cfg = ensureSessionHeader({ ...(op?.APIConfigParameters ?? {}) });
   if (!cfg.IsStoredProcedureApi) cfg.IsStoredProcedureApi = true;
   if (!Array.isArray(cfg.SpParameters)) cfg.SpParameters = [];
   return {
@@ -146,8 +149,12 @@ const AppStoredProcedureApiEditor: React.FC = () => {
   const [isModified, setIsModified] = useState(false);
   const [currentOperation, setCurrentOperation] = useState<any>(null);
   const [dataSourceLabel, setDataSourceLabel] = useState('');
-  const [inputTabIndex, setInputTabIndex] = useState(0); // 0 Parameter List, 1 Input JSON
   const [apiResponseText, setApiResponseText] = useState('');
+  const [configJsonText, setConfigJsonText] = useState('{}');
+  const [configJsonError, setConfigJsonError] = useState('');
+  const configJsonEditingRef = useRef(false);
+  const payloadJsonActiveRef = useRef(false);
+  const [payloadTab, setPayloadTab] = useState<'parameters' | 'json'>('parameters');
   const [paramRows, setParamRows] = useState<SpParamRow[]>([]);
   const [inputJsonText, setInputJsonText] = useState('{}');
   const [inputJsonError, setInputJsonError] = useState('');
@@ -161,17 +168,25 @@ const AppStoredProcedureApiEditor: React.FC = () => {
     latestOperationRef.current = currentOperation;
   }, [currentOperation]);
 
+  useEffect(() => {
+    if (configJsonEditingRef.current) return;
+    const cfg = currentOperation?.APIConfigParameters;
+    if (!cfg) return;
+    setConfigJsonText(JSON.stringify(cfg, null, 2));
+    setConfigJsonError('');
+  }, [currentOperation?.APIConfigParameters]);
+
   const getCurrentParams = useCallback((): SpParamRow[] => {
     const flex = flexRef.current;
     return (flex?.collectionView?.items ?? paramRows) as SpParamRow[];
   }, [paramRows]);
 
   const applyParamsToOp = useCallback((op: any, items: SpParamRow[]) => {
-    const cfg = {
+    const cfg = ensureSessionHeader({
       ...(op?.APIConfigParameters ?? {}),
       IsStoredProcedureApi: true,
       SpParameters: items.map((x) => ({ ...x })),
-    };
+    });
     return {
       ...op,
       APIConfigParameters: cfg,
@@ -316,7 +331,6 @@ const AppStoredProcedureApiEditor: React.FC = () => {
       setParamRows(params);
       setInputJsonText(paramsToInputJson(params));
       setInputJsonError('');
-      setInputTabIndex(0);
       setCurrentOperation((prev: any) => (prev ? applyParamsToOp(prev, params) : prev));
       markChange();
       showInfo('Parameters and defaults reset from stored procedure.', true);
@@ -327,21 +341,6 @@ const AppStoredProcedureApiEditor: React.FC = () => {
     }
   }, [currentOperation, applyParamsToOp, dispatch, markChange, showError, showInfo, showWarning]);
 
-  const handleSwitchInputTab = useCallback(
-    (idx: number) => {
-      if (idx === inputTabIndex) return;
-      if (idx === 1) {
-        // Leaving Parameter List → refresh JSON from grid
-        syncJsonFromParams();
-      } else {
-        // Leaving Input JSON → push into parameters
-        syncParamsFromJson(inputJsonText);
-      }
-      setInputTabIndex(idx);
-    },
-    [inputTabIndex, syncJsonFromParams, syncParamsFromJson, inputJsonText],
-  );
-
   const handleSave = useCallback(
     async (
       afterSave?: (saved: any) => void,
@@ -351,15 +350,24 @@ const AppStoredProcedureApiEditor: React.FC = () => {
       const skipReloadAfterSave = opts?.skipReloadAfterSave ?? false;
 
       // Prefer latest from active input tab
+      if (configJsonError) {
+        showWarning('API Config JSON is invalid.');
+        return null;
+      }
       let items = getCurrentParams();
-      if (inputTabIndex === 1) {
+      if (payloadJsonActiveRef.current) {
         const fromJson = syncParamsFromJson(inputJsonText);
-        if (fromJson) items = fromJson;
+        if (!fromJson) {
+          showWarning(inputJsonError || 'Input JSON is invalid.');
+          return null;
+        }
+        items = fromJson;
       }
 
       let op = ensureApiConfig(latestOperationRef.current ?? currentOperation);
       if (!op) return null;
       op = applyParamsToOp(op, items);
+      op = { ...op, IsUsedByMcp: isUsedByMcpValue(op.IsUsedByMcp) };
       if (!op.ActionCode?.trim()) {
         showWarning('You must enter an Operation Code.');
         return null;
@@ -396,7 +404,8 @@ const AppStoredProcedureApiEditor: React.FC = () => {
     [
       currentOperation,
       getCurrentParams,
-      inputTabIndex,
+      configJsonError,
+      inputJsonError,
       inputJsonText,
       syncParamsFromJson,
       applyParamsToOp,
@@ -597,6 +606,13 @@ const AppStoredProcedureApiEditor: React.FC = () => {
                 value={op.HttpMethd ?? 'Post'}
                 className={`w-1 flex-auto min-w-0 h-7 px-2 text-xs border rounded-[4px] opacity-80 ${theme.inputBox}`}
               />
+              <IsUsedByMcpCheckbox
+                checked={isUsedByMcpValue(op.IsUsedByMcp)}
+                onChange={(checked) => {
+                  setCurrentOperation((prev: any) => (prev ? { ...prev, IsUsedByMcp: checked } : prev));
+                  markChange();
+                }}
+              />
             </div>
             <div className="flex items-center min-w-0 col-span-1 md:col-span-2 xl:col-span-4 gap-2">
               <label className={`w-28 shrink-0 text-xs ${theme.label}`}>Description</label>
@@ -663,105 +679,156 @@ const AppStoredProcedureApiEditor: React.FC = () => {
           </div>
         </div>
 
-        <div className={`flex flex-col border rounded flex-shrink-0 mb-3 ${theme.mainContentSection}`}>
-          <div className="px-2 py-1.5 border-b bg-gray-100 flex-shrink-0">
-            <span className="text-xs font-semibold">API Url</span>
-          </div>
-          <div className="p-2">
-            <div className="p-2 rounded font-mono text-xs bg-gray-50 break-all select-all">{apiUrl || '—'}</div>
-          </div>
-        </div>
-
-        <div className="h-1 flex-auto flex gap-4 min-h-0">
-          {/* Left INPUT */}
-          <div className={`w-1 flex-auto flex flex-col border rounded min-h-0 ${theme.mainContentSection}`}>
-            <div className="flex items-center justify-between px-2 py-1.5 border-b bg-gray-100 flex-shrink-0">
-              <span className="text-xs font-semibold">Input</span>
-              <button
-                type="button"
-                onClick={handleResetParameters}
-                className={`h-6 px-2 rounded-[4px] text-xs border ${theme.button_default}`}
-                title="Reload parameters and default values from the stored procedure, and refresh Input JSON"
-              >
-                <i className="fa-solid fa-rotate-left mr-1" aria-hidden /> Reset Parameters
-              </button>
-            </div>
-            <div className="flex gap-0 border-b flex-shrink-0">
-              <button
-                type="button"
-                onClick={() => handleSwitchInputTab(0)}
-                className={`px-3 py-1.5 text-xs rounded-t-[4px] -mb-px ${
-                  inputTabIndex === 0 ? 'border-b-2 border-blue-500 font-medium' : ''
-                } ${theme.tab}`}
-              >
-                Parameter List
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSwitchInputTab(1)}
-                className={`px-3 py-1.5 text-xs rounded-t-[4px] -mb-px ${
-                  inputTabIndex === 1 ? 'border-b-2 border-blue-500 font-medium' : ''
-                } ${theme.tab}`}
-              >
-                Input JSON
-              </button>
-            </div>
-
-            {inputTabIndex === 0 && (
-              <div className="h-1 flex-auto p-2 min-h-0 overflow-hidden">
-                <FlexGrid
-                  itemsSource={paramCV}
-                  autoGenerateColumns={false}
-                  selectionMode="Row"
-                  isReadOnly={false}
-                  headersVisibility="Column"
-                  className="w-full h-full !border-0"
-                  initialized={(s: any) => {
-                    flexRef.current = s?.control ?? s;
-                  }}
-                  cellEditEnded={() => syncParamsFromGrid()}
-                >
-                  <FlexGridColumn binding="Name" header="Name" width={120} isReadOnly />
-                  <FlexGridColumn binding="Type" header="Type" width={100} isReadOnly />
-                  <FlexGridColumn binding="Direction" header="Direction" width={80} isReadOnly />
-                  <FlexGridColumn binding="HasDefault" header="HasDefault" width={90} isReadOnly />
-                  <FlexGridColumn binding="DefaultValue" header="DefaultValue" width={140} />
-                  <FlexGridColumn header="" binding="" width="*" />
-                </FlexGrid>
-              </div>
-            )}
-
-            {inputTabIndex === 1 && (
-              <div className="h-1 flex-auto flex flex-col p-2 min-h-0">
-                {inputJsonError ? (
-                  <div className="mb-1 text-xs text-red-600 flex-shrink-0">{inputJsonError}</div>
-                ) : null}
-                <div className="w-full h-1 flex-auto min-h-0 border rounded overflow-hidden bg-white">
-                  <JsonCodeEditor
-                    value={inputJsonText}
-                    onChange={handleInputJsonChange}
-                    placeholder='{ "paramName": "value" }'
-                    className="w-full h-full"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Right OUTPUT */}
-          <div className={`w-1 flex-auto flex flex-col border rounded min-h-0 min-w-0 ${theme.mainContentSection}`}>
-            <div className="px-2 py-1.5 border-b bg-gray-100 flex-shrink-0">
-              <span className="text-xs font-semibold">API Response Data</span>
-            </div>
-            <div className="h-1 flex-auto flex flex-col p-2 min-h-0">
-              <JsonCodeViewer
-                text={apiResponseText || prettyPrintJsonForDisplay(op.JsonSampleData ?? '')}
-                placeholder="Response will appear after Send Request"
-                className="w-full h-1 flex-auto min-h-0 p-2 border rounded font-mono text-xs bg-gray-50"
+        <ApiEditorWorkArea
+          apiUrl={toApiDisplayUrl(serverRoot, apiUrl) || apiUrl}
+          showPayload
+          onOuterTabChange={(next, previous) => {
+            if (previous === 'payload' && next === 'config' && payloadJsonActiveRef.current) syncParamsFromJson(inputJsonText);
+            if (previous === 'config' && next === 'payload' && payloadJsonActiveRef.current) syncJsonFromParams();
+          }}
+          form={(
+            <div className="flex items-center gap-2">
+              <label className={`w-48 shrink-0 text-xs ${theme.label}`}>CurrentUserSessionId</label>
+              <input
+                type="text"
+                autoComplete="off"
+                spellCheck={false}
+                value={(() => {
+                  const session = op.APIConfigParameters?.Headers?.CurrentUserSessionId;
+                  return session == null ? '' : String(session);
+                })()}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  configJsonEditingRef.current = false;
+                  setCurrentOperation((prev: any) => {
+                    if (!prev) return prev;
+                    const cfg = { ...(prev.APIConfigParameters ?? {}) };
+                    const headers = { ...(cfg.Headers ?? {}) };
+                    headers.CurrentUserSessionId = value.trim() === '' ? null : value;
+                    cfg.Headers = headers;
+                    return { ...prev, APIConfigParameters: cfg, ApiconfigParameters: JSON.stringify(cfg) };
+                  });
+                  markChange();
+                }}
+                className={`w-1 flex-auto min-w-0 h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`}
               />
             </div>
-          </div>
-        </div>
+          )}
+          jsonText={configJsonText}
+          jsonError={configJsonError}
+          onJsonChange={(text) => {
+            configJsonEditingRef.current = true;
+            setConfigJsonText(text);
+            try {
+              const parsed = JSON.parse(text);
+              if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('JSON must be an object.');
+              }
+              const params = (Array.isArray(parsed.SpParameters) ? parsed.SpParameters : getCurrentParams()) as SpParamRow[];
+              const headers = { ...(parsed.Headers ?? {}) };
+              if (!Object.prototype.hasOwnProperty.call(headers, 'CurrentUserSessionId')) headers.CurrentUserSessionId = null;
+              const cfg = { ...parsed, IsStoredProcedureApi: true, Headers: headers, SpParameters: params.map((x) => ({ ...x })) };
+              setParamRows(params.map((x) => ({ ...x })));
+              setInputJsonText(paramsToInputJson(params));
+              setInputJsonError('');
+              setCurrentOperation((prev: any) => (prev ? { ...prev, APIConfigParameters: cfg, ApiconfigParameters: JSON.stringify(cfg) } : prev));
+              setConfigJsonError('');
+              markChange();
+            } catch (e) {
+              setConfigJsonError(e instanceof Error ? e.message : 'Invalid JSON');
+            }
+          }}
+          onJsonBlur={() => {
+            if (configJsonError) return;
+            configJsonEditingRef.current = false;
+            const cfg = latestOperationRef.current?.APIConfigParameters;
+            if (cfg) setConfigJsonText(JSON.stringify(cfg, null, 2));
+          }}
+          payload={(
+            <div className="flex flex-col h-full min-h-0">
+              <div className="flex items-center justify-between border-b flex-shrink-0">
+                <div className="flex gap-0">
+                  <button
+                    type="button"
+                    className={`px-3 py-1.5 text-xs rounded-t-[4px] -mb-px ${payloadTab === 'parameters' ? 'border-b-2 border-blue-500 font-medium' : ''} ${theme.tab}`}
+                    onClick={() => {
+                      if (payloadTab === 'parameters') return;
+                      syncParamsFromJson(inputJsonText);
+                      payloadJsonActiveRef.current = false;
+                      setPayloadTab('parameters');
+                    }}
+                  >
+                    Parameters
+                  </button>
+                  <button
+                    type="button"
+                    className={`px-3 py-1.5 text-xs rounded-t-[4px] -mb-px ${payloadTab === 'json' ? 'border-b-2 border-blue-500 font-medium' : ''} ${theme.tab}`}
+                    onClick={() => {
+                      if (payloadTab === 'json') return;
+                      syncJsonFromParams();
+                      payloadJsonActiveRef.current = true;
+                      setPayloadTab('json');
+                    }}
+                  >
+                    JSON
+                  </button>
+                </div>
+                {payloadTab === 'parameters' ? (
+                  <button
+                    type="button"
+                    onClick={handleResetParameters}
+                    className={`h-6 px-2 mr-2 rounded-[4px] text-xs border ${theme.button_default}`}
+                    title="Reload parameters and default values from the stored procedure. Keeps CurrentUserSessionId."
+                  >
+                    <i className="fa-solid fa-rotate-left mr-1" aria-hidden /> Reset Parameters
+                  </button>
+                ) : null}
+              </div>
+              {payloadTab === 'parameters' ? (
+                <div className="h-1 flex-auto min-h-0 overflow-hidden p-2">
+                  <FlexGrid
+                    itemsSource={paramCV}
+                    autoGenerateColumns={false}
+                    selectionMode="Row"
+                    isReadOnly={false}
+                    headersVisibility="Column"
+                    className="w-full h-full !border-0"
+                    initialized={(s: any) => {
+                      flexRef.current = s?.control ?? s;
+                    }}
+                    cellEditEnded={() => syncParamsFromGrid()}
+                  >
+                    <FlexGridColumn binding="Name" header="Name" width={120} isReadOnly />
+                    <FlexGridColumn binding="Type" header="Type" width={100} isReadOnly />
+                    <FlexGridColumn binding="Direction" header="Direction" width={80} isReadOnly />
+                    <FlexGridColumn binding="HasDefault" header="HasDefault" width={90} isReadOnly />
+                    <FlexGridColumn binding="DefaultValue" header="DefaultValue" width={140} />
+                    <FlexGridColumn header="" binding="" width="*" />
+                  </FlexGrid>
+                </div>
+              ) : (
+                <div className="h-1 flex-auto flex flex-col min-h-0 p-2">
+                  {inputJsonError ? <div className="mb-1 text-xs text-red-600 flex-shrink-0">{inputJsonError}</div> : null}
+                  <div className="w-full h-1 flex-auto min-h-0 border rounded overflow-hidden bg-white">
+                    <JsonCodeEditor
+                      value={inputJsonText}
+                      onChange={handleInputJsonChange}
+                      placeholder='{ "paramName": "value" }'
+                      className="w-full h-full"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          result={(
+            <JsonCodeViewer
+              text={apiResponseText || prettyPrintJsonForDisplay(op.JsonSampleData ?? '')}
+              placeholder="Response will appear after Send Request"
+              className="w-full h-1 flex-auto min-h-0 p-2 border rounded font-mono text-xs bg-gray-50"
+            />
+          )}
+        />
       </div>
     </div>
   );

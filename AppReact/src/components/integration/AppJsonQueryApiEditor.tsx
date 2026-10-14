@@ -21,6 +21,8 @@ import { endpoints, toApiDisplayUrl } from '../../webapi/endpoints';
 import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { getHeaders } from '../../helper/apiServiceHelper';
 import { prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
+import { ensureSessionHeader, isUsedByMcpValue } from '../../helper/apiConfigForm';
+import { IsUsedByMcpCheckbox } from './ApiConfigParametersForm';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
 
@@ -45,6 +47,7 @@ function initNewApiDto(dataSourceId: number | null, dataSourceMap: Record<number
     DataSourceId: dataSourceId,
     HttpMethd: 'Get',
     ActionCode: 'NewAPI',
+    IsUsedByMcp: false,
     JsonQuery: 'SELECT * FROM [MyTableName] FOR JSON PATH',
     SimpleQueryParameterNameList: [] as string[],
     DataSourceType: ds?.DataSourceType ?? null,
@@ -170,12 +173,13 @@ const AppJsonQueryApiEditor: React.FC = () => {
       .map((p) => ensureParamNameStartsWithAt(p.ParameterName || ''))
       .filter((n) => n && n !== '@');
     const queryParams = paramNames.reduce<Record<string, string>>((acc, n) => ({ ...acc, [n]: '' }), {});
-    const apiConfigObj = {
+    const apiConfigObj = ensureSessionHeader({
       ...(op.APIConfigParameters && typeof op.APIConfigParameters === 'object' ? op.APIConfigParameters : {}),
       QueryParams: queryParams,
-    };
+    });
     const payload = {
       ...op,
+      IsUsedByMcp: isUsedByMcpValue(op.IsUsedByMcp),
       SimpleQueryParameterNameList: paramNames,
       APIConfigParameters: apiConfigObj,
       ApiconfigParameters: JSON.stringify(apiConfigObj),
@@ -390,6 +394,13 @@ const AppJsonQueryApiEditor: React.FC = () => {
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
+            <IsUsedByMcpCheckbox
+              checked={isUsedByMcpValue(currentOperation?.IsUsedByMcp)}
+              onChange={(checked) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, IsUsedByMcp: checked } : prev));
+                setIsModified(true);
+              }}
+            />
           </div>
           <div className="flex items-center gap-2">
             <label className={`w-24 text-xs ${theme.label}`}>Database</label>

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Data;
+using System.Data.SqlClient;
 using System.Linq;
 using APP.LBL;
 using APP.LBL.DatabaseSpecific;
@@ -1363,7 +1364,8 @@ END";
                 }
             }
 
-
+            ReadUnmappedColumns(dto);
+            FillApiConfigEditor(dto);
             return dto;
         }
 
@@ -1483,6 +1485,8 @@ END";
                     AppIntergrationSettingParameterExDto dto = AppIntergrationSettingParameterConverter.ConvertEntityToExDto(list.First());
 
                     PrepareAppIntergrationSettingParameterInheriedProperties(dto);
+                    ReadUnmappedColumns(dto);
+                    FillApiConfigEditor(dto);
                     return dto;
                 }
                 else
@@ -1577,6 +1581,7 @@ END";
             ValidationResult aValidationResult = new ValidationResult();
             aOperationCallResult.ValidationResult = aValidationResult;
 
+            ApplyApiConfigEditorToJson(aAppIntergrationSettingParameterExDto);
 
             //if (aAppIntergrationSettingParameterExDto.IntergrationSettingId == 1 
             //    && aAppIntergrationSettingParameterExDto.TranscationId.HasValue
@@ -1650,6 +1655,7 @@ END";
             // if no any errors, refresh all entity from DBMS server
             if (!aValidationResult.HasErrors)
             {
+                WriteUnmappedColumns(aAppIntergrationSettingParameterExDto);
                 aOperationCallResult.Object = RetrieveOneAppIntergrationSettingParameterExDto(aAppIntergrationSettingParameterExDto.Id);
             }
 
@@ -2839,6 +2845,217 @@ END";
             return aValidationResult;
         }
 
+        /// <summary>
+        /// One column on AppIntergrationSettingParameter that is not on the LLBL entity.
+        /// Add or remove an entry here when a migration adds or drops such a column.
+        /// ColumnName is a fixed identifier from this list, never external input.
+        /// GetValue returns null to leave the column unchanged on save.
+        /// </summary>
+        private sealed class UnmappedColumn
+        {
+            public string ColumnName;
+            public SqlDbType DbType;
+            public Func<AppIntergrationSettingParameterExDto, object> GetValue;
+            public Action<AppIntergrationSettingParameterExDto, object> SetValue;
+        }
+
+        private static readonly UnmappedColumn[] UnmappedColumns =
+        {
+            new UnmappedColumn
+            {
+                ColumnName = "IsUsedByMcp",
+                DbType = SqlDbType.Bit,
+                GetValue = dto => dto.IsUsedByMcp.HasValue ? (object)dto.IsUsedByMcp.Value : null,
+                SetValue = (dto, value) =>
+                {
+                    dto.IsUsedByMcp = value == null || value == DBNull.Value ? (bool?)null : Convert.ToBoolean(value);
+                },
+            },
+        };
+
+        /// <summary>
+        /// Search APIs only. Builds labeled editor fields from stored JSON and the search criteria names.
+        /// </summary>
+        private static void FillApiConfigEditor(AppIntergrationSettingParameterExDto dto)
+        {
+            if (dto == null || dto.IsSimpleQuery == true) return;
+            if (!dto.TranscationFieId.HasValue || dto.TranscationFieId.Value <= 0) return;
+
+            JObject root = ParseConfigObject(dto.ApiconfigParameters);
+            JToken sessionToken = (root["Headers"] as JObject)?["CurrentUserSessionId"];
+            string sessionText = sessionToken == null || sessionToken.Type == JTokenType.Null ? null : sessionToken.ToString();
+            JObject query = root["QueryParams"] as JObject;
+
+            var criteria = new List<ApiConfigEditorFieldDto>();
+            try
+            {
+                AppSearchExDto search = AppSearchConfigBL.RetrieveOneAppSearchExDto(dto.TranscationFieId.Value);
+                if (search?.AppSearchFieldList != null)
+                {
+                    foreach (var field in search.AppSearchFieldList)
+                    {
+                        string name = field?.SysTableFiledPath;
+                        if (string.IsNullOrWhiteSpace(name)) continue;
+                        JToken stored = query?[name];
+                        string value = stored != null && stored.Type != JTokenType.Null
+                            ? stored.ToString()
+                            : (field.DefaultValue ?? "");
+                        criteria.Add(new ApiConfigEditorFieldDto { Name = name, DefaultValue = value });
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, "FillApiConfigEditor search " + dto.TranscationFieId);
+            }
+
+            if (criteria.Count == 0 && query != null)
+            {
+                foreach (JProperty property in query.Properties())
+                {
+                    criteria.Add(new ApiConfigEditorFieldDto
+                    {
+                        Name = property.Name,
+                        DefaultValue = property.Value == null || property.Value.Type == JTokenType.Null ? "" : property.Value.ToString(),
+                    });
+                }
+            }
+
+            dto.ApiConfigEditor = new ApiConfigEditorDto
+            {
+                CurrentUserSessionId = sessionText,
+                Criteria = criteria,
+            };
+        }
+
+        /// <summary>
+        /// Writes Search editor fields back into APIConfigParameters. Other JSON keys stay.
+        /// Clears the object form so the entity copy keeps this string.
+        /// </summary>
+        private static void ApplyApiConfigEditorToJson(AppIntergrationSettingParameterExDto dto)
+        {
+            if (dto?.ApiConfigEditor == null) return;
+
+            JObject root = ParseConfigObject(dto.ApiconfigParameters);
+            JObject headers = root["Headers"] as JObject ?? new JObject();
+            if (string.IsNullOrEmpty(dto.ApiConfigEditor.CurrentUserSessionId))
+                headers["CurrentUserSessionId"] = JValue.CreateNull();
+            else
+                headers["CurrentUserSessionId"] = dto.ApiConfigEditor.CurrentUserSessionId;
+            root["Headers"] = headers;
+
+            JObject query = root["QueryParams"] as JObject ?? new JObject();
+            if (dto.ApiConfigEditor.Criteria != null)
+            {
+                foreach (ApiConfigEditorFieldDto field in dto.ApiConfigEditor.Criteria)
+                {
+                    if (field == null || string.IsNullOrWhiteSpace(field.Name)) continue;
+                    query[field.Name] = field.DefaultValue ?? "";
+                }
+            }
+            root["QueryParams"] = query;
+
+            dto.ApiconfigParameters = root.ToString(Formatting.Indented);
+            dto.APIConfigParameters = null;
+        }
+
+        private static JObject ParseConfigObject(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return new JObject();
+            try
+            {
+                return JObject.Parse(json);
+            }
+            catch
+            {
+                return new JObject();
+            }
+        }
+
+        private static void ReadUnmappedColumns(AppIntergrationSettingParameterExDto dto)
+        {
+            if (dto?.Id == null || UnmappedColumns.Length == 0) return;
+            try
+            {
+                using (var conn = OpenTenantConnection())
+                using (var cmd = new SqlCommand(
+                    "SELECT " + UnmappedColumnList() + " FROM dbo.AppIntergrationSettingParameter WHERE SettingParameterID = @Id",
+                    conn))
+                {
+                    cmd.Parameters.Add("@Id", SqlDbType.Int).Value = Convert.ToInt32(dto.Id);
+                    using (var reader = cmd.ExecuteReader())
+                    {
+                        if (!reader.Read()) return;
+                        for (int i = 0; i < UnmappedColumns.Length; i++)
+                        {
+                            var raw = reader.IsDBNull(i) ? null : reader.GetValue(i);
+                            UnmappedColumns[i].SetValue(dto, raw);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, "ReadUnmappedColumns");
+            }
+        }
+
+        private static void WriteUnmappedColumns(AppIntergrationSettingParameterExDto dto)
+        {
+            if (dto?.Id == null || UnmappedColumns.Length == 0) return;
+            var pending = new List<UnmappedColumn>();
+            var values = new List<object>();
+            foreach (var column in UnmappedColumns)
+            {
+                var value = column.GetValue(dto);
+                if (value == null) continue;
+                pending.Add(column);
+                values.Add(value);
+            }
+            if (pending.Count == 0) return;
+            try
+            {
+                var assignments = new List<string>();
+                for (int i = 0; i < pending.Count; i++)
+                    assignments.Add(QuoteColumn(pending[i].ColumnName) + " = @p" + i);
+
+                using (var conn = OpenTenantConnection())
+                using (var cmd = new SqlCommand(
+                    "UPDATE dbo.AppIntergrationSettingParameter SET " + string.Join(", ", assignments) + " WHERE SettingParameterID = @Id",
+                    conn))
+                {
+                    cmd.Parameters.Add("@Id", SqlDbType.Int).Value = Convert.ToInt32(dto.Id);
+                    for (int i = 0; i < pending.Count; i++)
+                        cmd.Parameters.Add("@p" + i, pending[i].DbType).Value = values[i];
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, "WriteUnmappedColumns");
+            }
+        }
+
+        private static string UnmappedColumnList()
+        {
+            return string.Join(", ", UnmappedColumns.Select(c => QuoteColumn(c.ColumnName)));
+        }
+
+        private static string QuoteColumn(string name)
+        {
+            if (string.IsNullOrEmpty(name) || !Regex.IsMatch(name, "^[A-Za-z_][A-Za-z0-9_]*$"))
+                throw new InvalidOperationException("Unmapped column name is not a safe identifier.");
+            return "[" + name + "]";
+        }
+
+        private static SqlConnection OpenTenantConnection()
+        {
+            var info = AppTenantAdapterBL.GetTenantConnectionInfo();
+            var conn = new SqlConnection(info.connStr);
+            conn.Open();
+            return conn;
+        }
+
         private static void PrepareAppIntergrationSettingParameterInheriedProperties(AppIntergrationSettingParameterExDto dto)
         {
             dto.ActionId = (int)dto.Id;
@@ -3324,6 +3541,7 @@ END";
             newDto.IntergrationSettingId = 1;
             newDto.DataSourceId = searchDto.DataSourceFrom;
             newDto.ActionCode = "AppSearch" + searchDto.Id + "_" + searchDto.Name.Replace(" ", "").Trim();
+            newDto.IsUsedByMcp = false;
 
 
             newDto.JsonSampleData = "";
@@ -3398,6 +3616,7 @@ END";
             newDto.IntergrationSettingId = 1;
             newDto.DataSourceId = transactionDto.DataSourceFrom;
             newDto.ActionCode = "GetAppForm" + transactionDto.Id + "_" + transactionDto.TransactionName.Replace(" ", "").Trim();
+            newDto.IsUsedByMcp = false;
 
             newDto.JsonSampleData = "";
             newDto.JsonSchema = "";            
@@ -3451,6 +3670,7 @@ END";
             newDto.IntergrationSettingId = 1;
             newDto.DataSourceId = transactionDto.DataSourceFrom;
             newDto.ActionCode = "SaveAppForm" + transactionDto.Id + "_" + transactionDto.TransactionName.Replace(" ", "").Trim();
+            newDto.IsUsedByMcp = false;
 
             newDto.JsonSampleData = "";
             newDto.JsonSchema = "";

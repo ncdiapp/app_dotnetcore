@@ -18,6 +18,16 @@ import { endpoints, toApiDisplayUrl } from '../../webapi/endpoints';
 import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { buildApiTestHeaders } from '../../helper/apiServiceHelper';
 import { prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
+import {
+  isUsedByMcpValue,
+  missingPathPlaceholders,
+  parseApiConfig,
+  queryParamValue,
+  serializeApiConfig,
+  type ApiConfigFormModel,
+} from '../../helper/apiConfigForm';
+import { IsUsedByMcpCheckbox, TransactionApiConfigForm } from './ApiConfigParametersForm';
+import { ApiEditorWorkArea } from './ApiEditorWorkArea';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
 
@@ -44,6 +54,7 @@ function initNewDataModelApiDto(transcationId: number | null, dataSourceId: numb
     DataSourceId: dataSourceId,
     ActionCode: 'NewDataModelAPI',
     ApiconfigParameters: DEFAULT_APICONFIG,
+    IsUsedByMcp: false,
     JsonSampleData: '',
   };
 }
@@ -104,9 +115,41 @@ const AppDataModelApiEditor: React.FC = () => {
   const [isModified, setIsModified] = useState(false);
   const [currentOperation, setCurrentOperation] = useState<any>(null);
   const [transactionList, setTransactionList] = useState<{ Id: number; Display?: string }[]>([]);
-  const [mainSectionActiveTabIndex, setMainSectionActiveTabIndex] = useState(0);
   const [apiResponseText, setApiResponseText] = useState('');
+  const [jsonDraft, setJsonDraft] = useState(DEFAULT_APICONFIG);
+  const [jsonError, setJsonError] = useState('');
+  const jsonEditingRef = useRef(false);
   const latestOperationRef = useRef<any>(null);
+  const writtenConfigRef = useRef<string | null>(null);
+  const [configModel, setConfigModel] = useState<ApiConfigFormModel>(() => parseApiConfig(DEFAULT_APICONFIG));
+  const configModelRef = useRef(configModel);
+  useEffect(() => {
+    configModelRef.current = configModel;
+  }, [configModel]);
+  useEffect(() => {
+    const source = currentOperation?.ApiconfigParameters ?? '';
+    if (writtenConfigRef.current === source) return;
+    const parsed = parseApiConfig(source);
+    const saved = serializeApiConfig(parsed);
+    writtenConfigRef.current = saved.json;
+    setConfigModel(parsed);
+    if (!jsonEditingRef.current) {
+      setJsonDraft(saved.json);
+      setJsonError('');
+    }
+  }, [currentOperation?.ApiconfigParameters]);
+
+  const applyConfigModel = useCallback((model: ApiConfigFormModel, canonical = false) => {
+    const saved = serializeApiConfig(model);
+    const nextModel = canonical ? saved.model : model;
+    writtenConfigRef.current = saved.json;
+    setConfigModel(nextModel);
+    setCurrentOperation((prev: any) => (prev ? { ...prev, ApiconfigParameters: saved.json } : prev));
+    if (!jsonEditingRef.current) {
+      setJsonDraft(saved.json);
+      setJsonError('');
+    }
+  }, []);
   const skipNextRouteLoadRef = useRef(false);
   useEffect(() => {
     latestOperationRef.current = currentOperation;
@@ -166,11 +209,22 @@ const AppDataModelApiEditor: React.FC = () => {
       showWarning('You must select an HTTP method.');
       return null;
     }
+    const savedConfig = serializeApiConfig(configModelRef.current);
+    if (!queryParamValue(savedConfig.model, 'id')) {
+      showWarning('Query Params must include id.');
+      return null;
+    }
+    const missing = missingPathPlaceholders(savedConfig.model);
+    if (missing.length) {
+      showWarning(`Path param ${missing.join(', ')} is not in the API URL.`);
+    }
     setIsSaving(true);
     if (manageBusy) dispatch(setIsBusy());
     try {
       const payload = {
         ...op,
+        ApiconfigParameters: savedConfig.json,
+        IsUsedByMcp: isUsedByMcpValue(op.IsUsedByMcp),
         IntergrationSettingId: op.IntergrationSettingId ?? API_BUILDER_INTEGRATION_SETTING_ID,
         APIConfigParameters: null,
       };
@@ -242,7 +296,6 @@ const AppDataModelApiEditor: React.FC = () => {
       return;
     }
 
-    setMainSectionActiveTabIndex(1);
     setApiResponseText('');
 
     dispatch(setIsBusy());
@@ -336,7 +389,7 @@ const AppDataModelApiEditor: React.FC = () => {
         </div>
       </div>
 
-      <div className={`flex-1 flex flex-col min-h-0 overflow-auto p-3 ${theme.mainContentSection}`}>
+      <div className={`h-1 flex-auto flex flex-col min-h-0 overflow-hidden p-3 ${theme.mainContentSection}`}>
         <div className="flex flex-wrap gap-6 mb-3 flex-shrink-0">
           <div className="flex items-center gap-2">
             <label className={`w-24 text-xs ${theme.label}`}>Operation Code</label>
@@ -373,97 +426,82 @@ const AppDataModelApiEditor: React.FC = () => {
             }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs">
               {HTTP_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
+            <IsUsedByMcpCheckbox
+              checked={isUsedByMcpValue(op.IsUsedByMcp)}
+              onChange={(checked) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, IsUsedByMcp: checked } : prev));
+                markChange();
+              }}
+            />
           </div>
         </div>
 
-        <div className="flex gap-0 border-b flex-shrink-0 mb-3">
-          <button type="button" onClick={() => setMainSectionActiveTabIndex(0)}
-            className={`px-4 py-2 text-xs rounded-t-[4px] -mb-px ${mainSectionActiveTabIndex === 0 ? 'border-b-2 border-blue-500 font-medium' : ''} ${theme.tab}`}>
-            API Config Parameters
-          </button>
-          <button type="button" onClick={() => setMainSectionActiveTabIndex(1)}
-            className={`px-4 py-2 text-xs rounded-t-[4px] -mb-px ${mainSectionActiveTabIndex === 1 ? 'border-b-2 border-blue-500 font-medium' : ''} ${theme.tab}`}>
-            API Call Test
-          </button>
-        </div>
-
-        {mainSectionActiveTabIndex === 0 && (
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className={`flex-1 flex flex-col border rounded min-h-0 ${theme.mainContentSection}`}>
-              <div className="px-2 py-1.5 border-b bg-gray-100 flex-shrink-0">
-                <span className="text-xs font-semibold">Api Config Parameters</span>
+        <ApiEditorWorkArea
+          apiUrl={(() => {
+            const pathWithQuery = buildApiUrl(op);
+            return toApiDisplayUrl(serverRoot, pathWithQuery) || pathWithQuery;
+          })()}
+          showPayload={op.HttpMethd === 'Post' || op.HttpMethd === 'Put'}
+          form={(
+            <TransactionApiConfigForm
+              model={configModel}
+              onChange={(model) => {
+                jsonEditingRef.current = false;
+                applyConfigModel(model, false);
+                markChange();
+              }}
+            />
+          )}
+          jsonText={jsonDraft}
+          jsonError={jsonError}
+          onJsonChange={(text) => {
+            jsonEditingRef.current = true;
+            setJsonDraft(text);
+            try {
+              JSON.parse(text);
+              applyConfigModel(parseApiConfig(text), false);
+              setJsonError('');
+              markChange();
+            } catch {
+              setJsonError('Invalid JSON');
+            }
+          }}
+          onJsonBlur={() => {
+            jsonEditingRef.current = false;
+            if (!jsonError) {
+              const saved = serializeApiConfig(configModelRef.current);
+              setJsonDraft(saved.json);
+            }
+          }}
+          payload={(
+            <div className="h-full flex flex-col min-h-0 p-2">
+              <div className="flex items-center justify-end mb-2 flex-shrink-0">
+                <button type="button" onClick={handleRegeneratePayload} disabled={!op.Id}
+                  className={`h-6 px-2 rounded-[4px] text-xs border ${theme.button_default} disabled:opacity-50`} title="Re-generate payload from Get">
+                  <i className="fa-solid fa-database mr-1" aria-hidden /> Re-generate Payload
+                </button>
               </div>
-              <div className="flex-1 flex flex-col p-2 min-h-0">
-                <textarea
-                  value={op.ApiconfigParameters ?? ''}
-                  onChange={(e) => {
-                    setCurrentOperation((prev: any) => (prev ? { ...prev, ApiconfigParameters: e.target.value } : prev));
+              <div className="w-full h-1 flex-auto min-h-0 border rounded overflow-hidden bg-white">
+                <JsonCodeEditor
+                  value={op.JsonSampleData ?? ''}
+                  onChange={(next) => {
+                    setCurrentOperation((prev: any) => (prev ? { ...prev, JsonSampleData: next } : prev));
                     markChange();
                   }}
-                  className="w-full flex-1 min-h-0 p-2 border rounded font-mono text-xs resize-none"
-                  spellCheck={false}
+                  placeholder='e.g. {"key": "value"}'
+                  className="w-full h-full"
                 />
               </div>
             </div>
-          </div>
-        )}
-
-        {mainSectionActiveTabIndex === 1 && (
-          <div className="flex-1 flex flex-col gap-3 min-h-0">
-            <div className={`flex flex-col border rounded flex-shrink-0 ${theme.mainContentSection}`}>
-              <div className="px-2 py-1.5 border-b bg-gray-100 flex-shrink-0">
-                <span className="text-xs font-semibold">API Url</span>
-              </div>
-              <div className="p-2">
-                <div className="p-2 rounded font-mono text-xs bg-gray-50 break-all">
-                  {(() => {
-                    const pathWithQuery = buildApiUrl(op);
-                    const fullUrl = toApiDisplayUrl(serverRoot, pathWithQuery);
-                    return fullUrl || pathWithQuery || '—';
-                  })()}
-                </div>
-              </div>
-            </div>
-            <div className="flex-1 flex gap-4 min-h-0">
-            {(op.HttpMethd === 'Post' || op.HttpMethd === 'Put') && (
-              <div className={`flex-1 flex flex-col border rounded min-h-0 ${theme.mainContentSection}`}>
-                <div className="flex items-center justify-between px-2 py-1.5 border-b bg-gray-100">
-                  <span className="text-xs font-semibold">Post Payload Json Data</span>
-                  <button type="button" onClick={handleRegeneratePayload} disabled={!op.Id}
-                    className="h-6 px-2 rounded text-xs border bg-white disabled:opacity-50" title="Re-generate payload from Get">
-                    <i className="fa fa-database mr-1" aria-hidden /> Re-generate Payload
-                  </button>
-                </div>
-                <div className="flex-1 flex flex-col p-2 min-h-0">
-                  <div className="w-full flex-1 min-h-0 border rounded overflow-hidden bg-white">
-                    <JsonCodeEditor
-                      value={op.JsonSampleData ?? ''}
-                      onChange={(next) => {
-                        setCurrentOperation((prev: any) => (prev ? { ...prev, JsonSampleData: next } : prev));
-                        markChange();
-                      }}
-                      placeholder='e.g. {"key": "value"}'
-                      className="w-full h-full"
-                    />
-                  </div>
-                </div>
-              </div>
-            )}
-            <div className={`flex-1 flex flex-col border rounded min-h-0 min-w-0 ${theme.mainContentSection}`}>
-              <div className="px-2 py-1.5 border-b bg-gray-100 flex-shrink-0">
-                <span className="text-xs font-semibold">API Response Data</span>
-              </div>
-              <div className="flex-1 flex flex-col p-2 min-h-0">
-                <JsonCodeViewer
-                  text={apiResponseText}
-                  placeholder="Response will appear after Send Request"
-                  className="w-full flex-1 min-h-0 p-2 border rounded font-mono text-xs bg-gray-50 resize-none"
-                />
-              </div>
-            </div>
-            </div>
-          </div>
-        )}
+          )}
+          result={(
+            <JsonCodeViewer
+              text={apiResponseText}
+              placeholder="Response will appear after Send Request"
+              className="w-full h-1 flex-auto min-h-0 p-2 border rounded font-mono text-xs bg-gray-50 resize-none"
+            />
+          )}
+        />
 
      
       </div>

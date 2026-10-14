@@ -23,6 +23,16 @@ import { integrationService } from '../../webapi/integrationsvc';
 import { adminSvc } from '../../webapi/adminsvc';
 import { schemaMetadataService } from '../../webapi/schemaMetaDataSvc';
 import { normalizeIntegrationSettingParameterForSave, prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
+import {
+  isAbsoluteHttpUrl,
+  isUsedByMcpValue,
+  missingPathPlaceholders,
+  parseApiConfig,
+  serializeApiConfig,
+  type ApiConfigFormModel,
+} from '../../helper/apiConfigForm';
+import { ApiConfigParametersForm, IsUsedByMcpCheckbox, type ApiConfigFormHandle } from './ApiConfigParametersForm';
+import { ApiEditorWorkArea } from './ApiEditorWorkArea';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
 
@@ -101,7 +111,40 @@ const ThirdPartyApiEditor: React.FC = () => {
   const [envVarDropdownOpen, setEnvVarDropdownOpen] = useState(false);
   const [pathParamDropdownOpen, setPathParamDropdownOpen] = useState(false);
   const flexRef = useRef<wjGrid.FlexGrid | null>(null);
-  const apiConfigTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const configFormRef = useRef<ApiConfigFormHandle | null>(null);
+  const writtenConfigRef = useRef<string | null>(null);
+  const jsonEditingRef = useRef(false);
+  const [jsonDraft, setJsonDraft] = useState('');
+  const [jsonError, setJsonError] = useState('');
+  const [configModel, setConfigModel] = useState<ApiConfigFormModel>(() => parseApiConfig(DEFAULT_APICONFIG_PARAMETERS));
+  const configModelRef = useRef(configModel);
+  useEffect(() => {
+    configModelRef.current = configModel;
+  }, [configModel]);
+  useEffect(() => {
+    if (!currentOperation) return;
+    const source = currentOperation.ApiconfigParameters ?? '';
+    if (writtenConfigRef.current === source) return;
+    const parsed = parseApiConfig(source);
+    const saved = serializeApiConfig(parsed);
+    writtenConfigRef.current = saved.json;
+    setConfigModel(parsed);
+    if (!jsonEditingRef.current) {
+      setJsonDraft(saved.json);
+      setJsonError('');
+    }
+  }, [currentOperation?.ApiconfigParameters]);
+
+  const applyConfigModel = useCallback((model: ApiConfigFormModel, canonical = false) => {
+    const saved = serializeApiConfig(model);
+    writtenConfigRef.current = saved.json;
+    setConfigModel(canonical ? saved.model : model);
+    setCurrentOperation((prev: any) => (prev ? { ...prev, ApiconfigParameters: saved.json, APIConfigParameters: null } : prev));
+    if (!jsonEditingRef.current) {
+      setJsonDraft(saved.json);
+      setJsonError('');
+    }
+  }, []);
 
   const loadData = useCallback(async () => {
     setIsLoading(true);
@@ -151,6 +194,7 @@ const ThirdPartyApiEditor: React.FC = () => {
           JsonSampleData: '',
           SimpleQueryParameterNameList: [],
           IsSimpleQuery: false,
+          IsUsedByMcp: false,
           ApiconfigParameters: DEFAULT_APICONFIG_PARAMETERS,
           OtherSettingsDto: { PayloadDataType: 1, IsNeedToGenerateStagingTables: false },
         });
@@ -206,11 +250,27 @@ const ThirdPartyApiEditor: React.FC = () => {
     const paramNames = (queryParameterCV?.items as QueryParameterItem[] ?? queryParameterList)
       .map((p) => (p.ParameterName || '').trim())
       .filter((n) => n && n !== '@');
+    const savedConfig = serializeApiConfig(configModelRef.current);
+    if (!isAbsoluteHttpUrl(savedConfig.model.apiUrl)) {
+      errorMessage.showWarning('API URL must start with http:// or https://.');
+      return;
+    }
+    const missing = missingPathPlaceholders(savedConfig.model);
+    if (missing.length) {
+      errorMessage.showWarning(`Path param ${missing.join(', ')} is not in the API URL.`);
+    }
     const methodSave = (op.HttpMethd ?? '').toString().toLowerCase();
     const isPostOrPut = methodSave === 'post' || methodSave === 'put';
+    const configPayload = {
+      ...op,
+      ApiconfigParameters: savedConfig.json,
+      APIConfigParameters: null,
+      IsUsedByMcp: isUsedByMcpValue(op.IsUsedByMcp),
+      SimpleQueryParameterNameList: paramNames,
+    };
     const payload = isPostOrPut
-      ? { ...op, SimpleQueryParameterNameList: paramNames, PostResponseDto: { ...(op as any).PostResponseDto, ResponseJsonData: responseJsonData } }
-      : { ...op, SimpleQueryParameterNameList: paramNames, JsonSampleData: responseJsonData };
+      ? { ...configPayload, PostResponseDto: { ...(op as any).PostResponseDto, ResponseJsonData: responseJsonData } }
+      : { ...configPayload, JsonSampleData: responseJsonData };
     setIsSaving(true);
     dispatch(setIsBusy());
     try {
@@ -305,43 +365,18 @@ const ThirdPartyApiEditor: React.FC = () => {
     }
   }, [currentOperation, dispatch, errorMessage]);
 
-  const pathParamsList = React.useMemo(() => {
-    const op = currentOperation;
-    if (!op?.ApiconfigParameters) return [];
-    try {
-      const obj = JSON.parse(op.ApiconfigParameters);
-      const pathParams = obj?.PathParams;
-      if (pathParams && typeof pathParams === 'object') return Object.keys(pathParams).filter(Boolean);
-    } catch {
-      /* ignore */
-    }
-    return [];
-  }, [currentOperation?.ApiconfigParameters]);
+  const pathParamsList = configModel.pathParams.map((row) => row.key.trim()).filter(Boolean);
 
   const insertEnvironmentVariable = useCallback((key: string) => {
     if (!key) return;
-    const token = `{{Env.${key}}}`;
-    setCurrentOperation((prev: any) => {
-      if (!prev) return prev;
-      const current = prev.ApiconfigParameters ?? '';
-      const insertAt = apiConfigTextareaRef.current?.selectionStart ?? current.length;
-      const next = current.slice(0, insertAt) + token + current.slice(insertAt);
-      return { ...prev, ApiconfigParameters: next };
-    });
+    configFormRef.current?.insertIntoApiUrl(`{{Env.${key}}}`);
     setEnvVarDropdownOpen(false);
     markChange();
   }, [markChange]);
 
   const insertPathParameter = useCallback((paramName: string) => {
     if (!paramName) return;
-    const token = `{{PathParams.${paramName}}}`;
-    setCurrentOperation((prev: any) => {
-      if (!prev) return prev;
-      const current = prev.ApiconfigParameters ?? '';
-      const insertAt = apiConfigTextareaRef.current?.selectionStart ?? current.length;
-      const next = current.slice(0, insertAt) + token + current.slice(insertAt);
-      return { ...prev, ApiconfigParameters: next };
-    });
+    configFormRef.current?.insertIntoApiUrl(`{{PathParams.${paramName}}}`);
     setPathParamDropdownOpen(false);
     markChange();
   }, [markChange]);
@@ -350,6 +385,10 @@ const ThirdPartyApiEditor: React.FC = () => {
     const op = currentOperation;
     if (!op?.Id) {
       errorMessage.showWarning('Save the operation first, then use Send Request.');
+      return;
+    }
+    if (!isAbsoluteHttpUrl(configModelRef.current.apiUrl)) {
+      errorMessage.showWarning('API URL must start with http:// or https://.');
       return;
     }
     setResponseJsonData('');
@@ -435,7 +474,7 @@ const ThirdPartyApiEditor: React.FC = () => {
         </div>
       </div>
 
-      <div className={`flex-1 flex flex-col min-h-0 overflow-auto p-3 ${theme.mainContentSection}`}>
+      <div className={`h-1 flex-auto flex flex-col min-h-0 overflow-hidden p-3 ${theme.mainContentSection}`}>
         <div className="flex items-center gap-4 mb-3 flex-shrink-0">
           <div className="flex items-center gap-2 flex-shrink-0">
             <label className={`flex-shrink-0 text-xs whitespace-nowrap ${theme.label}`}>Operation Code</label>
@@ -446,6 +485,13 @@ const ThirdPartyApiEditor: React.FC = () => {
             <select value={op?.HttpMethd ?? 'Get'} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, HttpMethd: e.target.value } : prev)); markChange(); }} className={`w-[200px] flex-shrink-0 h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`}>
               {HTTP_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
+            <IsUsedByMcpCheckbox
+              checked={isUsedByMcpValue(op?.IsUsedByMcp)}
+              onChange={(checked) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, IsUsedByMcp: checked } : prev));
+                markChange();
+              }}
+            />
           </div>
           <div className="flex items-center gap-2 w-1 flex-auto min-w-0">
             <label className={`flex-shrink-0 text-xs whitespace-nowrap ${theme.label}`}>Description</label>
@@ -453,137 +499,130 @@ const ThirdPartyApiEditor: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 mb-3 flex-shrink-0 min-w-0">
-          <span className={`flex-shrink-0 text-xs font-semibold ${theme.label}`}>API Url</span>
-          <span className="w-1 flex-auto min-w-0 text-xs underline select-all truncate" title={displayApiUrl}>{displayApiUrl || '—'}</span>
-        </div>
-
-        <div className="flex-1 flex gap-4 min-h-0">
-          <div className="flex-1 flex flex-col gap-4 min-w-0 min-h-0">
-            <div className={`flex-1 flex flex-col border rounded min-h-0 ${theme.mainContentSection}`}>
-              <div className="flex items-center justify-between px-2 py-1.5 border-b bg-gray-100">
-                <span className="text-xs font-semibold">Api Config Parameters</span>
-                <div className="flex items-center gap-1">
-                  {environmentVariableList.length > 0 && (
-                    <div className="relative">
-                      <button type="button" onClick={() => { setEnvVarDropdownOpen((v) => !v); setPathParamDropdownOpen(false); }} className="h-6 px-2 rounded text-xs border bg-white">
-                        <i className="fa fa-file-code-o mr-1" aria-hidden /> Insert Environment Variable <i className="fa fa-caret-down ml-1" aria-hidden />
-                      </button>
-                      {envVarDropdownOpen && (
-                        <div className="absolute right-0 top-full mt-1 z-10 min-w-[160px] border rounded shadow-lg bg-white py-1 max-h-48 overflow-auto">
-                          {environmentVariableList.filter((e) => e.Key).map((e) => (
-                            <button key={e.Key} type="button" className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 flex items-center" onClick={() => insertEnvironmentVariable(e.Key)} title={`${e.Key}: ${e.Value}`}>
-                              <i className="fa fa-copy mr-2" aria-hidden /> {e.Key}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {pathParamsList.length > 0 && (
-                    <div className="relative">
-                      <button type="button" onClick={() => { setPathParamDropdownOpen((v) => !v); setEnvVarDropdownOpen(false); }} className="h-6 px-2 rounded text-xs border bg-white">
-                        <i className="fa fa-file-code-o mr-1" aria-hidden /> Insert Path Parameter <i className="fa fa-caret-down ml-1" aria-hidden />
-                      </button>
-                      {pathParamDropdownOpen && (
-                        <div className="absolute right-0 top-full mt-1 z-10 min-w-[140px] border rounded shadow-lg bg-white py-1">
-                          {pathParamsList.map((name) => (
-                            <button key={name} type="button" className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 flex items-center" onClick={() => insertPathParameter(name)}>
-                              <i className="fa fa-copy mr-2" aria-hidden /> {name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
+        <ApiEditorWorkArea
+          apiUrl={displayApiUrl}
+          showPayload={isPostOrPut}
+          formExtra={(
+            <>
+              {environmentVariableList.length > 0 && (
+                <div className="relative">
+                  <button type="button" onClick={() => { setEnvVarDropdownOpen((v) => !v); setPathParamDropdownOpen(false); }} className={`h-6 px-2 rounded-[4px] text-xs border ${theme.button_default}`}>
+                    <i className="fa-solid fa-file-code mr-1" aria-hidden /> Insert Environment Variable <i className="fa-solid fa-caret-down ml-1" aria-hidden />
+                  </button>
+                  {envVarDropdownOpen && (
+                    <div className="absolute right-0 top-full mt-1 z-10 min-w-[160px] border rounded shadow-lg bg-white py-1 max-h-48 overflow-auto">
+                      {environmentVariableList.filter((e) => e.Key).map((e) => (
+                        <button key={e.Key} type="button" className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 flex items-center" onClick={() => insertEnvironmentVariable(e.Key)} title={`${e.Key}: ${e.Value}`}>
+                          <i className="fa-solid fa-copy mr-2" aria-hidden /> {e.Key}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
-              </div>
-              <div className="flex-1 p-2 min-h-0">
-                <textarea
-                  ref={apiConfigTextareaRef}
-                  value={op?.ApiconfigParameters ?? ''}
-                  onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, ApiconfigParameters: e.target.value } : prev)); markChange(); }}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Tab') return;
-                    e.preventDefault();
-                    const ta = e.currentTarget;
-                    const start = ta.selectionStart;
-                    const end = ta.selectionEnd;
-                    const text = op?.ApiconfigParameters ?? '';
-                    const insert = e.shiftKey ? '' : '\t';
-                    const newText = text.slice(0, start) + insert + text.slice(end);
-                    setCurrentOperation((prev: any) => (prev ? { ...prev, ApiconfigParameters: newText } : prev));
+              )}
+              {pathParamsList.length > 0 && (
+                <div className="relative">
+                  <button type="button" onClick={() => { setPathParamDropdownOpen((v) => !v); setEnvVarDropdownOpen(false); }} className={`h-6 px-2 rounded-[4px] text-xs border ${theme.button_default}`}>
+                    <i className="fa-solid fa-file-code mr-1" aria-hidden /> Insert Path Parameter <i className="fa-solid fa-caret-down ml-1" aria-hidden />
+                  </button>
+                  {pathParamDropdownOpen && (
+                    <div className="absolute right-0 top-full mt-1 z-10 min-w-[140px] border rounded shadow-lg bg-white py-1">
+                      {pathParamsList.map((name) => (
+                        <button key={name} type="button" className="w-full text-left px-3 py-1.5 text-xs hover:bg-gray-100 flex items-center" onClick={() => insertPathParameter(name)}>
+                          <i className="fa-solid fa-copy mr-2" aria-hidden /> {name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+          form={(
+            <ApiConfigParametersForm
+              ref={configFormRef}
+              model={configModel}
+              onChange={(model) => {
+                jsonEditingRef.current = false;
+                applyConfigModel(model, false);
+                markChange();
+              }}
+              onApiUrlBlur={() => {
+                jsonEditingRef.current = false;
+                applyConfigModel(configModelRef.current, true);
+                markChange();
+              }}
+            />
+          )}
+          jsonText={jsonDraft}
+          jsonError={jsonError}
+          onJsonChange={(text) => {
+            jsonEditingRef.current = true;
+            setJsonDraft(text);
+            try {
+              JSON.parse(text);
+              applyConfigModel(parseApiConfig(text), false);
+              setJsonError('');
+              markChange();
+            } catch {
+              setJsonError('Invalid JSON');
+            }
+          }}
+          onJsonBlur={() => {
+            jsonEditingRef.current = false;
+            if (!jsonError) setJsonDraft(serializeApiConfig(configModelRef.current).json);
+          }}
+          payload={(
+            <div className="flex flex-col h-full min-h-0 p-2">
+              <div className="flex items-center flex-wrap gap-2 mb-2 flex-shrink-0">
+                <span className={`text-xs ${theme.label}`}>Type</span>
+                <select
+                  value={payloadDataType}
+                  onChange={(e) => {
+                    const v = Number(e.target.value);
+                    setCurrentOperation((prev: any) => (prev ? { ...prev, OtherSettingsDto: { ...prev.OtherSettingsDto, PayloadDataType: v } } : prev));
                     markChange();
-                    setTimeout(() => {
-                      const pos = start + insert.length;
-                      ta.setSelectionRange(pos, pos);
-                    }, 0);
                   }}
-                  className="w-full h-full min-h-[200px] p-2 border rounded font-mono text-xs"
-                  spellCheck={false}
-                />
+                  className={`h-7 px-2 border rounded-[4px] text-xs w-[280px] ${theme.inputBox}`}
+                >
+                  {PAYLOAD_DATA_TYPES.map((t) => (
+                    <option key={t.Id} value={t.Id}>{t.Display}</option>
+                  ))}
+                </select>
+                {(payloadDataType === 2 || payloadDataType === 3) && (
+                  <label className={`flex items-center gap-1 text-xs ${theme.label}`}>
+                    <input type="checkbox" checked={!!op?.OtherSettingsDto?.IsMultipartFormDataContent} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, OtherSettingsDto: { ...prev.OtherSettingsDto, IsMultipartFormDataContent: e.target.checked } } : prev)); markChange(); }} />
+                    Is Multipart Form Data Content
+                  </label>
+                )}
+              </div>
+              <div className="h-1 flex-auto min-h-0">
+                {payloadDataType === 1 && (
+                  <div className="w-full h-full border rounded overflow-hidden bg-white">
+                    <JsonCodeEditor
+                      value={op?.JsonSampleData ?? ''}
+                      onChange={(next) => {
+                        setCurrentOperation((prev: any) => (prev ? { ...prev, JsonSampleData: next } : prev));
+                        markChange();
+                      }}
+                      placeholder='e.g. {"key": "value"}'
+                      className="w-full h-full"
+                    />
+                  </div>
+                )}
+                {payloadDataType === 2 && <div className={`p-2 text-xs ${theme.label}`}>Use Angular app or attach file for Binary File payload.</div>}
+                {payloadDataType === 3 && <div className={`p-2 text-xs ${theme.label}`}>Use Angular app for Server File Path / Web URL / Ftp.</div>}
               </div>
             </div>
-
-            {isPostOrPut && (
-              <div className={`flex-1 flex flex-col border rounded min-h-0 ${theme.mainContentSection}`}>
-                <div className="flex items-center flex-wrap gap-2 px-2 py-1.5 border-b bg-gray-100">
-                  <span className="text-xs font-semibold">Payload Data</span>
-                  <span className="text-xs">- Type</span>
-                  <select
-                    value={payloadDataType}
-                    onChange={(e) => {
-                      const v = Number(e.target.value);
-                      setCurrentOperation((prev: any) => (prev ? { ...prev, OtherSettingsDto: { ...prev.OtherSettingsDto, PayloadDataType: v } } : prev));
-                      markChange();
-                    }}
-                    className="h-7 px-2 border rounded text-xs w-[280px]"
-                  >
-                    {PAYLOAD_DATA_TYPES.map((t) => (
-                      <option key={t.Id} value={t.Id}>{t.Display}</option>
-                    ))}
-                  </select>
-                  {(payloadDataType === 2 || payloadDataType === 3) && (
-                    <label className="flex items-center gap-1 text-xs">
-                      <input type="checkbox" checked={!!op?.OtherSettingsDto?.IsMultipartFormDataContent} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, OtherSettingsDto: { ...prev.OtherSettingsDto, IsMultipartFormDataContent: e.target.checked } } : prev)); markChange(); }} />
-                      Is Multipart Form Data Content
-                    </label>
-                  )}
-                </div>
-                <div className="flex-1 p-2 min-h-0">
-                  {payloadDataType === 1 && (
-                    <div className="w-full h-full min-h-[160px] border rounded overflow-hidden bg-white">
-                      <JsonCodeEditor
-                        value={op?.JsonSampleData ?? ''}
-                        onChange={(next) => {
-                          setCurrentOperation((prev: any) => (prev ? { ...prev, JsonSampleData: next } : prev));
-                          markChange();
-                        }}
-                        placeholder='e.g. {"key": "value"}'
-                        className="w-full h-full"
-                      />
-                    </div>
-                  )}
-                  {payloadDataType === 2 && <div className="p-2 text-xs text-gray-500">Use Angular app or attach file for Binary File payload.</div>}
-                  {payloadDataType === 3 && <div className="p-2 text-xs text-gray-500">Use Angular app for Server File Path / Web URL / Ftp.</div>}
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className={`flex-1 flex flex-col border rounded min-h-0 min-w-0 ${theme.mainContentSection}`}>
-            <div className="px-2 py-1.5 border-b bg-gray-100">
-              <span className="text-xs font-semibold">Response Json Data</span>
-            </div>
-            <div className="flex-1 p-2 min-h-0">
-              <JsonCodeViewer
-                text={responseJsonData}
-                placeholder="Response will appear after Send Request"
-                className="w-full h-full min-h-[260px] p-2 border rounded font-mono text-xs bg-gray-50"
-              />
-            </div>
-          </div>
-        </div>
+          )}
+          result={(
+            <JsonCodeViewer
+              text={responseJsonData}
+              placeholder="Response will appear after Send Request"
+              className="w-full h-1 flex-auto min-h-0 p-2 border rounded font-mono text-xs bg-gray-50"
+            />
+          )}
+        />
       </div>
     </div>
   );

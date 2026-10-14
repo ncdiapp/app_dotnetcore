@@ -19,6 +19,9 @@ import { endpoints, toApiDisplayUrl } from '../../webapi/endpoints';
 import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { buildApiTestHeaders } from '../../helper/apiServiceHelper';
 import { prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
+import { isUsedByMcpValue } from '../../helper/apiConfigForm';
+import { IsUsedByMcpCheckbox, SearchApiConfigForm, type ApiConfigEditorDto } from './ApiConfigParametersForm';
+import { ApiEditorWorkArea } from './ApiEditorWorkArea';
 import { buildRoutePathFromParamObj } from '../../helper/navigationHelper';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 
@@ -45,6 +48,7 @@ function initNewDataPresentationApiDto(transcationFieId: number | null, dataSour
     DataSourceId: dataSourceId,
     ActionCode: 'NewSearchViewAPI',
     ApiconfigParameters: DEFAULT_APICONFIG,
+    IsUsedByMcp: false,
     JsonSampleData: '',
     JsonSchema: '',
   };
@@ -57,28 +61,83 @@ function withFormattedApiConfig(op: any): any {
   return { ...op, ApiconfigParameters: prettyPrintJsonForDisplay(raw) };
 }
 
-function buildApiUrl(op: any): string {
-  const base = `${endpoints.BASE_URL}/webapi/DataIntegration/${op?.ActionCode ?? ''}`;
-  if (op?.HttpMethd !== 'Get') return base;
+function emptySearchEditor(): ApiConfigEditorDto {
+  return { CurrentUserSessionId: '', Criteria: [] };
+}
+
+function editorFromOperation(op: any): ApiConfigEditorDto {
+  const editor = op?.ApiConfigEditor;
+  if (editor && Array.isArray(editor.Criteria)) {
+    return {
+      CurrentUserSessionId: editor.CurrentUserSessionId ?? '',
+      Criteria: editor.Criteria.map((row: any) => ({
+        Name: row?.Name ?? '',
+        DefaultValue: row?.DefaultValue ?? '',
+      })),
+    };
+  }
   try {
     const config = JSON.parse(op?.ApiconfigParameters ?? '{}');
-    const q = config?.QueryParams ?? {};
-    const pairs = Object.entries(q).filter(([k, v]) => v != null && v !== '' && String(k).trim() !== '');
-    if (pairs.length === 0) return base;
-    const search = pairs.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`).join('&');
-    return `${base}?${search}`;
+    const query = config?.QueryParams ?? {};
+    const session = config?.Headers?.CurrentUserSessionId;
+    return {
+      CurrentUserSessionId: session == null ? '' : String(session),
+      Criteria: Object.entries(query).map(([name, value]) => ({
+        Name: name,
+        DefaultValue: value == null ? '' : String(value),
+      })),
+    };
   } catch {
-    return base;
+    return emptySearchEditor();
   }
 }
 
-function getApiHeaders(op: any): Record<string, string> {
+function mergeSearchEditorIntoJson(source: string, editor: ApiConfigEditorDto): string {
+  let root: any = {};
   try {
-    const config = JSON.parse(op?.ApiconfigParameters ?? '{}');
-    return config?.Headers ?? {};
+    root = JSON.parse(source || '{}');
   } catch {
-    return {};
+    root = {};
   }
+  if (!root || typeof root !== 'object' || Array.isArray(root)) root = {};
+  const headers = { ...(root.Headers ?? {}) };
+  const session = (editor.CurrentUserSessionId ?? '').trim();
+  headers.CurrentUserSessionId = session === '' ? null : editor.CurrentUserSessionId;
+  const query = { ...(root.QueryParams ?? {}) };
+  for (const row of editor.Criteria ?? []) {
+    if (!row.Name) continue;
+    query[row.Name] = row.DefaultValue ?? '';
+  }
+  root.Headers = headers;
+  root.QueryParams = query;
+  return JSON.stringify(root, null, 2);
+}
+
+function editorFromConfigJson(source: string, current: ApiConfigEditorDto): ApiConfigEditorDto {
+  const root = JSON.parse(source);
+  const session = root?.Headers?.CurrentUserSessionId;
+  const query = root?.QueryParams ?? {};
+  return {
+    CurrentUserSessionId: session == null ? '' : String(session),
+    Criteria: (current.Criteria ?? []).map((row) => ({
+      Name: row.Name,
+      DefaultValue: query?.[row.Name ?? ''] == null ? '' : String(query[row.Name ?? '']),
+    })),
+  };
+}
+
+function buildApiUrl(op: any, editor?: ApiConfigEditorDto | null): string {
+  const base = `${endpoints.BASE_URL}/webapi/DataIntegration/${op?.ActionCode ?? ''}`;
+  if (op?.HttpMethd !== 'Get') return base;
+  const pairs = (editor?.Criteria ?? []).filter((row) => (row.Name ?? '').trim() !== '' && (row.DefaultValue ?? '') !== '');
+  if (pairs.length === 0) return base;
+  const search = pairs.map((row) => `${encodeURIComponent(row.Name ?? '')}=${encodeURIComponent(String(row.DefaultValue ?? ''))}`).join('&');
+  return `${base}?${search}`;
+}
+
+function getApiHeaders(editor?: ApiConfigEditorDto | null): Record<string, string> {
+  const session = editor?.CurrentUserSessionId;
+  return { CurrentUserSessionId: session == null ? '' : String(session) };
 }
 
 const AppDataPresentationApiEditor: React.FC = () => {
@@ -100,9 +159,16 @@ const AppDataPresentationApiEditor: React.FC = () => {
   const [isModified, setIsModified] = useState(false);
   const [currentOperation, setCurrentOperation] = useState<any>(null);
   const [searchList, setSearchList] = useState<{ Id: number; Display?: string }[]>([]);
-  const [mainSectionActiveTabIndex, setMainSectionActiveTabIndex] = useState(0);
   const [apiResponseText, setApiResponseText] = useState('');
+  const [jsonDraft, setJsonDraft] = useState(DEFAULT_APICONFIG);
+  const [jsonError, setJsonError] = useState('');
+  const jsonEditingRef = useRef(false);
   const latestOperationRef = useRef<any>(null);
+  const [searchEditor, setSearchEditor] = useState<ApiConfigEditorDto>(emptySearchEditor);
+  const searchEditorRef = useRef(searchEditor);
+  useEffect(() => {
+    searchEditorRef.current = searchEditor;
+  }, [searchEditor]);
   const skipNextRouteLoadRef = useRef(false);
   useEffect(() => {
     latestOperationRef.current = currentOperation;
@@ -113,36 +179,30 @@ const AppDataPresentationApiEditor: React.FC = () => {
     dispatch(setIsBusy());
     try {
       if (!searchId) {
+        const editor = emptySearchEditor();
+        setSearchEditor(editor);
+        setJsonDraft(DEFAULT_APICONFIG);
+        setJsonError('');
         setCurrentOperation((prev: any) =>
-          prev ? { ...prev, ApiconfigParameters: DEFAULT_APICONFIG, JsonSampleData: '', JsonSchema: '' } : null,
+          prev ? { ...prev, ApiconfigParameters: DEFAULT_APICONFIG, ApiConfigEditor: editor, JsonSampleData: '', JsonSchema: '' } : null,
         );
         setIsModified(true);
         return;
       }
       const searchDto = await searchSvc.retrieveOneAppSearchExDto(String(searchId));
-      let queryParams = '';
+      const criteria: { Name: string; DefaultValue: string }[] = [];
       const fields = searchDto?.AppSearchFieldList ?? [];
-      for (let i = 0; i < fields.length; i++) {
-        const f = fields[i];
+      for (const f of fields) {
         const path = f?.SysTableFiledPath ?? '';
-        const def = f?.DefaultValue ?? '';
-        if (path) {
-          queryParams += `"${path}": "${def}"`;
-          if (i < fields.length - 1) queryParams += ', ';
-        }
+        if (path) criteria.push({ Name: path, DefaultValue: f?.DefaultValue ?? '' });
       }
-      const newConfig = `{
-  "BaseUrl": "",
-  "Url": "",
-  "Headers": { "CurrentUserSessionId": null },
-  "QueryParams": { ${queryParams} },
-  "PathParams": {},
-  "PostProcessMethodName": null,
-  "ResponseObjectMapToEnvionmentVariable": {},
-  "ResponseHeaderNeedToSetCookieNames": []
-}`;
+      const editor: ApiConfigEditorDto = { CurrentUserSessionId: '', Criteria: criteria };
+      const json = mergeSearchEditorIntoJson(DEFAULT_APICONFIG, editor);
+      setSearchEditor(editor);
+      setJsonDraft(json);
+      setJsonError('');
       setCurrentOperation((prev: any) =>
-        prev ? { ...prev, ApiconfigParameters: newConfig, JsonSampleData: '', JsonSchema: '' } : null,
+        prev ? { ...prev, ApiconfigParameters: json, ApiConfigEditor: editor, JsonSampleData: '', JsonSchema: '' } : null,
       );
       setIsModified(true);
     } catch (err) {
@@ -164,11 +224,19 @@ const AppDataPresentationApiEditor: React.FC = () => {
         const settingData = await integrationService.retrieveOneAppIntegrationSettingParameterExDto(String(settingParameterId), false);
         if (settingData) {
           setCurrentOperation(settingData);
+          const loadedEditor = editorFromOperation(settingData);
+          setSearchEditor(loadedEditor);
+          setJsonDraft(mergeSearchEditorIntoJson(settingData.ApiconfigParameters ?? DEFAULT_APICONFIG, loadedEditor));
+          setJsonError('');
         } else {
-          setCurrentOperation(initNewDataPresentationApiDto(searchIdFromQuery ?? null, dataSourceIdFromQuery ?? null));
+          const created = initNewDataPresentationApiDto(searchIdFromQuery ?? null, dataSourceIdFromQuery ?? null);
+          setCurrentOperation(created);
+          setSearchEditor(emptySearchEditor());
         }
       } else {
-        setCurrentOperation(initNewDataPresentationApiDto(searchIdFromQuery ?? null, dataSourceIdFromQuery ?? null));
+        const created = initNewDataPresentationApiDto(searchIdFromQuery ?? null, dataSourceIdFromQuery ?? null);
+        setCurrentOperation(created);
+        setSearchEditor(emptySearchEditor());
         if (searchIdFromQuery != null) {
           resetConfigBySearchId(searchIdFromQuery);
         }
@@ -209,11 +277,14 @@ const AppDataPresentationApiEditor: React.FC = () => {
       showWarning('You must select an HTTP method.');
       return null;
     }
+    const editor = searchEditorRef.current;
     setIsSaving(true);
     if (manageBusy) dispatch(setIsBusy());
     try {
       const payload = {
         ...op,
+        ApiConfigEditor: editor,
+        IsUsedByMcp: isUsedByMcpValue(op.IsUsedByMcp),
         IntergrationSettingId: op.IntergrationSettingId ?? API_BUILDER_INTEGRATION_SETTING_ID,
         APIConfigParameters: null,
       };
@@ -245,6 +316,7 @@ const AppDataPresentationApiEditor: React.FC = () => {
         } else if (!skipReloadAfterSave && !idChanged) {
           await loadData();
         }
+        if (saved?.ApiConfigEditor) setSearchEditor(editorFromOperation(saved));
         return saved ?? null;
       }
     } catch (e: any) {
@@ -256,8 +328,8 @@ const AppDataPresentationApiEditor: React.FC = () => {
     return null;
   }, [currentOperation, dispatch, showError, showValidationMessages, showWarning, loadData, navigate, settingParameterId]);
 
-  const callGetApi = useCallback(async (apiUrl: string, op: any): Promise<any> => {
-    const response = await fetch(apiUrl, { headers: buildApiTestHeaders(getApiHeaders(op)), credentials: 'include' });
+  const callGetApi = useCallback(async (apiUrl: string, _op: any): Promise<any> => {
+    const response = await fetch(apiUrl, { headers: buildApiTestHeaders(getApiHeaders(searchEditorRef.current)), credentials: 'include' });
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     return response.json();
   }, []);
@@ -266,7 +338,7 @@ const AppDataPresentationApiEditor: React.FC = () => {
     const body = op.JsonSampleData?.trim() ? JSON.parse(op.JsonSampleData) : {};
     const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: buildApiTestHeaders(getApiHeaders(op)),
+      headers: buildApiTestHeaders(getApiHeaders(searchEditorRef.current)),
       credentials: 'include',
       body: JSON.stringify(body),
     });
@@ -278,7 +350,6 @@ const AppDataPresentationApiEditor: React.FC = () => {
     const op = currentOperation;
     if (!op) return;
 
-    setMainSectionActiveTabIndex(1);
     setApiResponseText('');
 
     dispatch(setIsBusy());
@@ -288,8 +359,9 @@ const AppDataPresentationApiEditor: React.FC = () => {
         if (!savedOp) return;
 
         setCurrentOperation(savedOp);
+        if (savedOp?.ApiConfigEditor) setSearchEditor(editorFromOperation(savedOp));
 
-        const apiUrl = toApiDisplayUrl(serverRoot, buildApiUrl(savedOp));
+        const apiUrl = toApiDisplayUrl(serverRoot, buildApiUrl(savedOp, savedOp?.ApiConfigEditor ?? searchEditorRef.current));
         if (savedOp.HttpMethd === 'Get') {
           const data = await callGetApi(apiUrl, savedOp);
           const jsonStr = JSON.stringify(data ?? '', null, 2);
@@ -352,8 +424,6 @@ const AppDataPresentationApiEditor: React.FC = () => {
   const op = currentOperation;
   if (!op) return null;
 
-  const apiUrl = buildApiUrl(op);
-
   return (
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
@@ -378,7 +448,7 @@ const AppDataPresentationApiEditor: React.FC = () => {
         </div>
       </div>
 
-      <div className={`flex-1 flex flex-col min-h-0 overflow-auto p-3 ${theme.mainContentSection}`}>
+      <div className={`h-1 flex-auto flex flex-col min-h-0 overflow-hidden p-3 ${theme.mainContentSection}`}>
         <div className="flex flex-wrap gap-6 mb-3 flex-shrink-0">
           <div className="flex items-center gap-2">
             <label className={`w-24 text-xs ${theme.label}`}>Operation Code</label>
@@ -424,70 +494,66 @@ const AppDataPresentationApiEditor: React.FC = () => {
             }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs">
               {HTTP_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
+            <IsUsedByMcpCheckbox
+              checked={isUsedByMcpValue(op.IsUsedByMcp)}
+              onChange={(checked) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, IsUsedByMcp: checked } : prev));
+                markChange();
+              }}
+            />
           </div>
         </div>
 
-        <div className="flex gap-0 border-b flex-shrink-0 mb-3">
-          <button type="button" onClick={() => setMainSectionActiveTabIndex(0)}
-            className={`px-4 py-2 text-xs rounded-t-[4px] -mb-px ${mainSectionActiveTabIndex === 0 ? 'border-b-2 border-blue-500 font-medium' : ''} ${theme.tab}`}>
-            API Config Parameters
-          </button>
-          <button type="button" onClick={() => setMainSectionActiveTabIndex(1)}
-            className={`px-4 py-2 text-xs rounded-t-[4px] -mb-px ${mainSectionActiveTabIndex === 1 ? 'border-b-2 border-blue-500 font-medium' : ''} ${theme.tab}`}>
-            API Call Test
-          </button>
-        </div>
-
-        {mainSectionActiveTabIndex === 0 && (
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className={`flex-1 flex flex-col border rounded min-h-0 ${theme.mainContentSection}`}>
-              <div className="px-2 py-1.5 border-b bg-gray-100 flex-shrink-0">
-                <span className="text-xs font-semibold">Api Config Parameters</span>
-              </div>
-              <div className="flex-1 flex flex-col p-2 min-h-0">
-                <textarea
-                  value={op.ApiconfigParameters ?? ''}
-                  onChange={(e) => {
-                    setCurrentOperation((prev: any) => (prev ? { ...prev, ApiconfigParameters: e.target.value } : prev));
-                    markChange();
-                  }}
-                  className="w-full flex-1 min-h-0 p-2 border rounded font-mono text-xs resize-none"
-                  spellCheck={false}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {mainSectionActiveTabIndex === 1 && (
-          <div className="flex-1 flex flex-col gap-3 min-h-0">
-            <div className={`flex flex-col border rounded flex-shrink-0 ${theme.mainContentSection}`}>
-              <div className="px-2 py-1.5 border-b bg-gray-100 flex-shrink-0">
-                <span className="text-xs font-semibold">API Url</span>
-              </div>
-              <div className="p-2">
-                <div className="p-2 rounded font-mono text-xs bg-gray-50 break-all">
-                  {(() => {
-                    const pathWithQuery = buildApiUrl(op);
-                    return toApiDisplayUrl(serverRoot, pathWithQuery) || pathWithQuery || '—';
-                  })()}
-                </div>
-              </div>
-            </div>
-            <div className={`flex-1 flex flex-col border rounded min-h-0 min-w-0 ${theme.mainContentSection}`}>
-              <div className="px-2 py-1.5 border-b bg-gray-100 flex-shrink-0">
-                <span className="text-xs font-semibold">API Response Data</span>
-              </div>
-              <div className="flex-1 flex flex-col p-2 min-h-0">
-                <JsonCodeViewer
-                  text={apiResponseText}
-                  placeholder="Response will appear after Send Request"
-                  className="w-full flex-1 min-h-0 p-2 border rounded font-mono text-xs bg-gray-50 resize-none"
-                />
-              </div>
-            </div>
-          </div>
-        )}
+        <ApiEditorWorkArea
+          apiUrl={(() => {
+            const pathWithQuery = buildApiUrl(op, searchEditor);
+            return toApiDisplayUrl(serverRoot, pathWithQuery) || pathWithQuery;
+          })()}
+          showPayload={false}
+          form={(
+            <SearchApiConfigForm
+              editor={searchEditor}
+              onChange={(editor) => {
+                jsonEditingRef.current = false;
+                setSearchEditor(editor);
+                const json = mergeSearchEditorIntoJson(latestOperationRef.current?.ApiconfigParameters ?? DEFAULT_APICONFIG, editor);
+                setJsonDraft(json);
+                setJsonError('');
+                setCurrentOperation((prev: any) => (prev ? { ...prev, ApiConfigEditor: editor, ApiconfigParameters: json } : prev));
+                markChange();
+              }}
+            />
+          )}
+          jsonText={jsonDraft}
+          jsonError={jsonError}
+          onJsonChange={(text) => {
+            jsonEditingRef.current = true;
+            setJsonDraft(text);
+            try {
+              const next = editorFromConfigJson(text, searchEditorRef.current);
+              setSearchEditor(next);
+              setCurrentOperation((prev: any) => (prev ? { ...prev, ApiConfigEditor: next, ApiconfigParameters: text } : prev));
+              setJsonError('');
+              markChange();
+            } catch {
+              setJsonError('Invalid JSON');
+            }
+          }}
+          onJsonBlur={() => {
+            if (jsonError) return;
+            jsonEditingRef.current = false;
+            const json = mergeSearchEditorIntoJson(jsonDraft, searchEditorRef.current);
+            setJsonDraft(json);
+            setCurrentOperation((prev: any) => (prev ? { ...prev, ApiconfigParameters: json } : prev));
+          }}
+          result={(
+            <JsonCodeViewer
+              text={apiResponseText}
+              placeholder="Response will appear after Send Request"
+              className="w-full h-1 flex-auto min-h-0 p-2 border rounded font-mono text-xs bg-gray-50 resize-none"
+            />
+          )}
+        />
 
         
       </div>

@@ -16,6 +16,20 @@ namespace APP.Components.EntityDto
         [DataMember(EmitDefaultValue = false)]
         public APIConfigParameterDTO APIConfigParameters { get; set; }
 
+        /// <summary>
+        /// Stored in dbo.AppIntergrationSettingParameter.IsUsedByMcp (BIT NULL), not in APIConfigParameters.
+        /// Not mapped on the LLBL entity. Null means not set; later logic treats null as false.
+        /// </summary>
+        [DataMember]
+        public bool? IsUsedByMcp { get; set; }
+
+        /// <summary>
+        /// Search API editor fields. Filled on read from APIConfigParameters plus the search criteria.
+        /// On save, written back into APIConfigParameters. Not a database column.
+        /// </summary>
+        [DataMember]
+        public ApiConfigEditorDto ApiConfigEditor { get; set; }
+
 
         [DataMember(EmitDefaultValue = false)]
         public string ConnectionString { get; set; }
@@ -429,6 +443,29 @@ namespace APP.Components.EntityDto
             set;
         }
 
+    }
+
+    /// <summary>
+    /// Search API config shown as labeled inputs. Criteria names come from the search definition.
+    /// </summary>
+    [DataContract]
+    public class ApiConfigEditorDto
+    {
+        [DataMember]
+        public string CurrentUserSessionId { get; set; }
+
+        [DataMember]
+        public List<ApiConfigEditorFieldDto> Criteria { get; set; }
+    }
+
+    [DataContract]
+    public class ApiConfigEditorFieldDto
+    {
+        [DataMember]
+        public string Name { get; set; }
+
+        [DataMember]
+        public string DefaultValue { get; set; }
     }
 
 

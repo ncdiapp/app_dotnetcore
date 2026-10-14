@@ -304,6 +304,7 @@ namespace App.BL
                     APIConfigParameters = apiConfig,
                     ApiconfigParameters = JsonConvert.SerializeObject(apiConfig),
                     JsonSampleData = sampleJson,
+                    IsUsedByMcp = false,
                 };
 
                 var saveResult = AppIntergrationSettingBL.SaveAppIntergrationSettingParameterExDto(dto);
