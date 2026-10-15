@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.RegularExpressions;
+using APP.Components.Dto;
 using APP.Components.EntityDto;
 using Newtonsoft.Json.Linq;
 
@@ -31,6 +32,8 @@ namespace App.BL
             var skipped = new List<Skip>();
             var paths = new JObject();
             var schemas = new JObject();
+            var tagOrder = new List<string>();
+            var seenTags = new HashSet<string>(StringComparer.Ordinal);
             var seenPathMethod = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var seenOperationId = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -76,14 +79,18 @@ namespace App.BL
                     var responseName = code + "_Response";
                     if (requestSchema != null)
                         schemas[requestName] = requestSchema;
-                    schemas[responseName] = responseSchema ?? GenericObject();
+                    schemas[responseName] = responseSchema ?? ClosedObject();
+
+                    var tag = TagName(dto);
+                    if (seenTags.Add(tag))
+                        tagOrder.Add(tag);
 
                     var operation = new JObject
                     {
                         ["operationId"] = operationId,
                         ["summary"] = code,
                         ["description"] = dto.ActionDescription ?? "",
-                        ["tags"] = Tags(dto),
+                        ["tags"] = new JArray(tag),
                         ["responses"] = new JObject
                         {
                             ["200"] = new JObject
@@ -150,6 +157,8 @@ namespace App.BL
                     ["version"] = string.IsNullOrWhiteSpace(version) ? "1.0.0" : version,
                     ["description"] = description ?? ""
                 },
+                ["tags"] = TagDefinitions(tagOrder),
+                ["x-tagGroups"] = TagGroups(tagOrder),
                 ["servers"] = new JArray
                 {
                     new JObject { ["url"] = "" }
@@ -196,12 +205,12 @@ namespace App.BL
         {
             parameters = new JArray();
             requestSchema = null;
-            responseSchema = GenericObject();
+            responseSchema = ClosedObject();
 
             if (AppStoredProcedureApiBL.IsStoredProcedureApi(dto))
             {
                 requestSchema = StoredProcedureRequest(dto);
-                responseSchema = SchemaFromSample(dto.JsonSampleData) ?? GenericObject();
+                responseSchema = SchemaFromSample(dto.JsonSampleData) ?? StoredProcedureResponseSchema(dto);
                 if (method == "get")
                     parameters = QueryParamsFromObject(requestSchema["properties"] as JObject);
                 return;
@@ -212,12 +221,15 @@ namespace App.BL
                 parameters = SimpleQueryParameters(dto);
                 if (method == "post" || method == "put")
                 {
-                    requestSchema = SchemaFromSample(dto.JsonSampleData) ?? GenericObject();
+                    requestSchema = SchemaFromSample(dto.JsonSampleData) ?? ClosedObject();
                     responseSchema = new JObject { ["type"] = "string" };
                 }
                 else
                 {
-                    responseSchema = GenericObject();
+                    var sample = ParseJsonOrNull(dto.JsonSampleData);
+                    responseSchema = SchemaFromSample(dto.JsonSampleData) ?? SimpleQueryResponseSchema(dto.JsonQuery);
+                    if (sample != null)
+                        responseSchema["example"] = sample;
                 }
                 return;
             }
@@ -238,10 +250,37 @@ namespace App.BL
                         parameters.Add(QueryParameter(key, value));
                     }
                 }
+                ReferenceViewDto view = null;
+                try
+                {
+                    view = AppSearchBL.RetrieveOneSearchDto(dto.TranscationFieId.Value, false, false)?.DefaultView;
+                }
+                catch
+                {
+                }
                 var mcpGet = dto.IsUsedByMcp == true && method == "get";
-                responseSchema = SearchResponseSchema(dto.TranscationFieId.Value, mcpGet);
+                responseSchema = SearchResponseSchema(view, mcpGet);
                 if (mcpGet)
+                {
+                    var fields = McpApiResponseBL.SearchFields(view);
                     responseSchema = McpApiResponseBL.EnvelopeSchema(responseSchema);
+                    var fieldsSchema = responseSchema["properties"]?["fields"] as JObject;
+                    if (fieldsSchema != null)
+                        fieldsSchema["example"] = fields;
+                    var sample = ParseJsonOrNull(dto.JsonSampleData);
+                    if (sample is JObject envelope && envelope["fields"] != null && envelope["data"] != null)
+                        responseSchema["example"] = envelope;
+                    else if (sample is JArray rows)
+                        responseSchema["example"] = new JObject { ["fields"] = fields, ["data"] = rows };
+                    else
+                        responseSchema["example"] = new JObject { ["fields"] = fields, ["data"] = new JArray() };
+                }
+                else
+                {
+                    var sample = ParseJsonOrNull(dto.JsonSampleData);
+                    if (sample != null)
+                        responseSchema["example"] = sample;
+                }
                 return;
             }
 
@@ -264,11 +303,31 @@ namespace App.BL
                     }
                 }
 
+                AppTransactionExDto transaction = null;
+                try
+                {
+                    transaction = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(dto.TranscationId.Value);
+                }
+                catch
+                {
+                }
+                var dataSchema = McpApiResponseBL.TransactionDataSchema(transaction);
                 if (method == "post" || method == "put")
-                    requestSchema = SchemaFromSample(dto.JsonSampleData) ?? GenericObject();
-                responseSchema = GenericObject();
+                    requestSchema = SchemaFromSample(dto.JsonSampleData) ?? dataSchema;
+                responseSchema = dataSchema;
+                if (method == "post" || method == "put")
+                {
+                    var savedResponse = SchemaFromSample(dto.PostResponseDto?.ResponseJsonData);
+                    if (savedResponse != null)
+                        responseSchema = savedResponse;
+                }
                 if (dto.IsUsedByMcp == true && method == "get")
-                    responseSchema = McpApiResponseBL.EnvelopeSchema(responseSchema);
+                {
+                    responseSchema = McpApiResponseBL.TransactionEnvelopeSchema(transaction);
+                    var sample = ParseJsonOrNull(dto.JsonSampleData) as JObject;
+                    if (sample != null && sample["fields"] != null && sample["data"] != null)
+                        responseSchema["example"] = sample;
+                }
                 return;
             }
 
@@ -284,54 +343,261 @@ namespace App.BL
 
             if (method == "post" || method == "put")
             {
-                requestSchema = SchemaFromSample(dto.JsonSampleData) ?? GenericObject();
-                responseSchema = SchemaFromSample(dto.PostResponseDto?.ResponseJsonData) ?? GenericObject();
+                requestSchema = SchemaFromSample(dto.JsonSampleData) ?? ClosedObject();
+                responseSchema = SchemaFromSample(dto.PostResponseDto?.ResponseJsonData) ?? ClosedObject();
             }
             else
             {
-                responseSchema = SchemaFromSample(dto.JsonSampleData) ?? GenericObject();
+                responseSchema = SchemaFromSample(dto.JsonSampleData) ?? ClosedObject();
             }
         }
 
-        private static JObject SearchResponseSchema(int searchId, bool includeFieldHints = false)
+        private static JObject SearchResponseSchema(ReferenceViewDto view, bool includeFieldHints = false)
         {
-            var search = AppSearchConfigBL.RetrieveOneAppSearchExDto(searchId);
-            var view = search?.DefaultSearchViewExDto;
-            var properties = new JObject();
-            var tree = false;
-            if (view?.AppSearchViewFieldList != null)
+            return new JObject
             {
-                foreach (var viewField in view.AppSearchViewFieldList)
+                ["type"] = "array",
+                ["items"] = SearchRowSchema(view, includeFieldHints, true)
+            };
+        }
+
+        private static JObject SearchRowSchema(ReferenceViewDto view, bool includeFieldHints, bool includeChildren)
+        {
+            var properties = new JObject();
+            if (view?.Columns != null)
+            {
+                foreach (var column in view.Columns)
                 {
-                    if (viewField == null)
-                        continue;
-                    if (viewField.IsTreeNodeId == true)
-                        tree = true;
-                    var field = viewField.ForeignAppSearchFieldExDto ?? viewField.ForeignAppSearchField_ExDto;
-                    var path = field?.SysTableFiledPath;
+                    var path = column?.SysTableFiledPath;
                     if (string.IsNullOrWhiteSpace(path) || properties[path] != null)
                         continue;
-                    properties[path] = McpApiResponseBL.PropertySchema(viewField.ControlType, viewField.EntityId, includeFieldHints);
+                    properties[path] = McpApiResponseBL.PropertySchema(column.ControlType, column.EntityId, includeFieldHints);
                 }
             }
 
-            var item = new JObject
+            if (view?.ChildReferenceViewDtoList != null)
             {
-                ["type"] = "object",
-                ["properties"] = properties
-            };
-            if (!properties.Properties().Any())
-                item["additionalProperties"] = true;
-            if (tree)
-            {
-                properties["Children"] = new JObject
+                foreach (var child in view.ChildReferenceViewDtoList)
                 {
-                    ["type"] = "array",
-                    ["items"] = new JObject { ["type"] = "object", ["additionalProperties"] = true }
-                };
+                    if (child == null)
+                        continue;
+                    var name = (child.Display ?? "").Replace(" ", "") + "_" + child.Id;
+                    if (string.IsNullOrWhiteSpace(name) || properties[name] != null)
+                        continue;
+                    properties[name] = new JObject
+                    {
+                        ["type"] = "array",
+                        ["items"] = SearchRowSchema(child, includeFieldHints, true)
+                    };
+                }
             }
 
-            return new JObject { ["type"] = "array", ["items"] = item };
+            if (view != null && view.ViewType == (int)EmAppViewType.FlatDataSetTreeView)
+            {
+                if (properties["TreeNodeId"] == null)
+                    properties["TreeNodeId"] = new JObject { ["type"] = "string" };
+                if (properties["TreeNodeDisplay"] == null)
+                    properties["TreeNodeDisplay"] = new JObject { ["type"] = "string" };
+                if (includeChildren && properties["Children"] == null)
+                {
+                    properties["Children"] = new JObject
+                    {
+                        ["type"] = "array",
+                        ["items"] = SearchRowSchema(view, includeFieldHints, false)
+                    };
+                }
+            }
+
+            return ClosedObject(properties);
+        }
+
+        private static JObject StoredProcedureResponseSchema(AppIntergrationSettingParameterExDto dto)
+        {
+            var row = ClosedObject();
+            var rows = new JObject { ["type"] = "array", ["items"] = row };
+            var outputs = new JObject();
+            var list = dto.APIConfigParameters?.SpParameters;
+            if (list != null)
+            {
+                foreach (var parameter in list.Where(p => !IsInputParameter(p)))
+                {
+                    var name = (parameter.Name ?? "").Trim().TrimStart('@', ':');
+                    if (string.IsNullOrWhiteSpace(name) || outputs[name] != null)
+                        continue;
+                    outputs[name] = SpArgumentSchema(parameter);
+                }
+            }
+
+            if (dto.IsUsedByMcp == true)
+            {
+                return ClosedObject(new JObject
+                {
+                    ["ok"] = new JObject { ["type"] = "boolean" },
+                    ["IsSuccess"] = new JObject { ["type"] = "boolean" },
+                    ["dataSourceId"] = new JObject { ["type"] = "integer", ["nullable"] = true },
+                    ["procedure"] = new JObject { ["type"] = "string" },
+                    ["columnNames"] = new JObject { ["type"] = "array", ["items"] = new JObject { ["type"] = "string" } },
+                    ["rowCount"] = new JObject { ["type"] = "integer" },
+                    ["truncated"] = new JObject { ["type"] = "boolean" },
+                    ["rows"] = rows,
+                    ["outputParameters"] = outputs.Count > 0 ? ClosedObject(outputs) : ClosedObject()
+                });
+            }
+
+            if (outputs.Count > 0)
+            {
+                return ClosedObject(new JObject
+                {
+                    ["rows"] = rows,
+                    ["outputParameters"] = ClosedObject(outputs)
+                });
+            }
+
+            return rows;
+        }
+
+        private static JObject SimpleQueryResponseSchema(string sql)
+        {
+            var properties = new JObject();
+            foreach (var name in ForJsonColumnNames(sql))
+            {
+                if (properties[name] == null)
+                    properties[name] = new JObject { ["type"] = "string", ["nullable"] = true };
+            }
+
+            var row = ClosedObject(properties);
+            if (string.IsNullOrWhiteSpace(sql))
+                return row;
+            var hasForJson = sql.IndexOf("FOR JSON", StringComparison.OrdinalIgnoreCase) >= 0;
+            var withoutWrapper = sql.IndexOf("WITHOUT_ARRAY_WRAPPER", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (hasForJson && !withoutWrapper)
+                return new JObject { ["type"] = "array", ["items"] = row };
+            return row;
+        }
+
+        private static List<string> ForJsonColumnNames(string sql)
+        {
+            var names = new List<string>();
+            if (string.IsNullOrWhiteSpace(sql))
+                return names;
+            var forJson = sql.IndexOf("FOR JSON", StringComparison.OrdinalIgnoreCase);
+            if (forJson < 0)
+                return names;
+            var selectAt = -1;
+            var scan = 0;
+            while (scan < forJson)
+            {
+                var found = IndexOfWord(sql, "SELECT", scan);
+                if (found < 0 || found >= forJson)
+                    break;
+                selectAt = found;
+                scan = found + 6;
+            }
+            if (selectAt < 0)
+                return names;
+
+            var listStart = selectAt + 6;
+            while (listStart < sql.Length && char.IsWhiteSpace(sql[listStart]))
+                listStart++;
+            if (sql.IndexOf("DISTINCT", listStart, StringComparison.OrdinalIgnoreCase) == listStart)
+                listStart += 8;
+            while (listStart < sql.Length && char.IsWhiteSpace(sql[listStart]))
+                listStart++;
+            if (sql.IndexOf("TOP", listStart, StringComparison.OrdinalIgnoreCase) == listStart)
+            {
+                listStart += 3;
+                while (listStart < sql.Length && (char.IsWhiteSpace(sql[listStart]) || char.IsDigit(sql[listStart]) || sql[listStart] == '(' || sql[listStart] == ')'))
+                    listStart++;
+            }
+
+            var fromAt = IndexOfWord(sql, "FROM", listStart);
+            var listEnd = fromAt > listStart && fromAt < forJson ? fromAt : forJson;
+            foreach (var piece in SplitTopLevel(sql.Substring(listStart, Math.Max(0, listEnd - listStart)), ','))
+            {
+                var name = ColumnAlias(piece);
+                if (string.IsNullOrWhiteSpace(name) || name == "*" || name.Equals("JSON", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (!names.Any(n => n.Equals(name, StringComparison.OrdinalIgnoreCase)))
+                    names.Add(name);
+            }
+            return names;
+        }
+
+        private static string ColumnAlias(string expression)
+        {
+            var text = (expression ?? "").Trim();
+            if (text.Length == 0)
+                return null;
+            var aliasAt = -1;
+            var depth = 0;
+            for (int i = 0; i < text.Length; i++)
+            {
+                var ch = text[i];
+                if (ch == '(') depth++;
+                else if (ch == ')' && depth > 0) depth--;
+                else if (depth == 0 && IsWordAt(text, i, "AS"))
+                    aliasAt = i + 2;
+            }
+            if (aliasAt >= 0)
+                text = text.Substring(aliasAt).Trim();
+            else
+            {
+                var parts = SplitTopLevel(text, ' ');
+                text = parts.Count == 0 ? text : parts[parts.Count - 1];
+            }
+
+            text = text.Trim().Trim('[', ']', '"', '`');
+            if (text.Length == 0 || text.IndexOfAny(new[] { ' ', '(', ')', '.', ',' }) >= 0)
+                return null;
+            return text;
+        }
+
+        private static List<string> SplitTopLevel(string text, char separator)
+        {
+            var parts = new List<string>();
+            if (text == null)
+                return parts;
+            var depth = 0;
+            var start = 0;
+            for (int i = 0; i < text.Length; i++)
+            {
+                var ch = text[i];
+                if (ch == '(') depth++;
+                else if (ch == ')' && depth > 0) depth--;
+                else if (ch == separator && depth == 0)
+                {
+                    parts.Add(text.Substring(start, i - start));
+                    start = i + 1;
+                }
+            }
+            parts.Add(text.Substring(start));
+            return parts;
+        }
+
+        private static int IndexOfWord(string text, string word, int start)
+        {
+            if (text == null || word == null)
+                return -1;
+            for (int i = Math.Max(0, start); i <= text.Length - word.Length; i++)
+            {
+                if (IsWordAt(text, i, word))
+                    return i;
+            }
+            return -1;
+        }
+
+        private static bool IsWordAt(string text, int index, string word)
+        {
+            if (index < 0 || index + word.Length > text.Length)
+                return false;
+            if (string.Compare(text, index, word, 0, word.Length, StringComparison.OrdinalIgnoreCase) != 0)
+                return false;
+            if (index > 0 && (char.IsLetterOrDigit(text[index - 1]) || text[index - 1] == '_'))
+                return false;
+            var after = index + word.Length;
+            if (after < text.Length && (char.IsLetterOrDigit(text[after]) || text[after] == '_'))
+                return false;
+            return true;
         }
 
         private static JObject StoredProcedureRequest(AppIntergrationSettingParameterExDto dto)
@@ -349,11 +615,7 @@ namespace App.BL
                 }
             }
 
-            return new JObject
-            {
-                ["type"] = "object",
-                ["properties"] = args
-            };
+            return ClosedObject(args);
         }
 
         private static JObject SpArgumentSchema(StoredProcedureApiParameterDTO parameter)
@@ -547,18 +809,106 @@ namespace App.BL
             }
         }
 
-        private static JArray Tags(AppIntergrationSettingParameterExDto dto)
+        /// <summary>
+        /// Splits an App API tag into provider and type. Swagger UI has one tag level, so the page groups on this mark.
+        /// </summary>
+        public const string TagLevelSeparator = " » ";
+
+        /// <summary>
+        /// One tag per operation. A second tag makes Swagger list the same API twice.
+        /// Third-party tag is the provider name. App API tag is provider, then API type.
+        /// </summary>
+        private static string TagName(AppIntergrationSettingParameterExDto dto)
+        {
+            if ((dto.IntergrationSettingId ?? 0) == AppIntergrationSettingBL.AppBuiltInProviderId)
+            {
+                var typeName = Classify(dto);
+                if (string.IsNullOrWhiteSpace(typeName))
+                    typeName = "Standard API";
+                return AppIntergrationSettingBL.AppBuiltInProviderName + TagLevelSeparator + typeName;
+            }
+
+            var provider = dto.ProviderName?.Trim();
+            if (string.IsNullOrWhiteSpace(provider))
+                provider = "3rd Party API";
+            return provider;
+        }
+
+        private static JArray TagDefinitions(List<string> tagOrder)
         {
             var tags = new JArray();
-            var apiType = Classify(dto);
-            if (!string.IsNullOrWhiteSpace(apiType))
-                tags.Add(apiType);
-            if ((dto.IntergrationSettingId ?? 0) != AppIntergrationSettingBL.AppBuiltInProviderId
-                && !string.IsNullOrWhiteSpace(dto.ProviderName))
-                tags.Add(dto.ProviderName);
-            if (tags.Count == 0)
-                tags.Add("API");
+            foreach (var name in OrderTags(tagOrder))
+            {
+                var tag = new JObject { ["name"] = name };
+                var separator = name.IndexOf(TagLevelSeparator, StringComparison.Ordinal);
+                if (separator >= 0)
+                {
+                    tag["x-provider"] = name.Substring(0, separator);
+                    tag["x-api-type"] = name.Substring(separator + TagLevelSeparator.Length);
+                }
+                tags.Add(tag);
+            }
             return tags;
+        }
+
+        private static JArray TagGroups(List<string> tagOrder)
+        {
+            var ordered = OrderTags(tagOrder);
+            var groups = new JArray();
+            var appTags = new JArray();
+            var appPrefix = AppIntergrationSettingBL.AppBuiltInProviderName + TagLevelSeparator;
+            foreach (var name in ordered)
+            {
+                if (name.StartsWith(appPrefix, StringComparison.Ordinal))
+                    appTags.Add(name);
+            }
+            if (appTags.Count > 0)
+            {
+                groups.Add(new JObject
+                {
+                    ["name"] = AppIntergrationSettingBL.AppBuiltInProviderName,
+                    ["tags"] = appTags
+                });
+            }
+            foreach (var name in ordered)
+            {
+                if (name.StartsWith(appPrefix, StringComparison.Ordinal))
+                    continue;
+                groups.Add(new JObject
+                {
+                    ["name"] = name,
+                    ["tags"] = new JArray(name)
+                });
+            }
+            return groups;
+        }
+
+        private static List<string> OrderTags(List<string> tagOrder)
+        {
+            var appPrefix = AppIntergrationSettingBL.AppBuiltInProviderName + TagLevelSeparator;
+            var appTags = tagOrder
+                .Where(name => name.StartsWith(appPrefix, StringComparison.Ordinal))
+                .OrderBy(name => AppTypeRank(name.Substring(appPrefix.Length)))
+                .ThenBy(name => name, StringComparer.Ordinal)
+                .ToList();
+            var otherTags = tagOrder
+                .Where(name => !name.StartsWith(appPrefix, StringComparison.Ordinal))
+                .ToList();
+            appTags.AddRange(otherTags);
+            return appTags;
+        }
+
+        private static int AppTypeRank(string typeName)
+        {
+            switch (typeName)
+            {
+                case "Stored Procedure API": return 0;
+                case "APP Data Presentation API": return 1;
+                case "APP Data Model API": return 2;
+                case "SQL JSON Query API": return 3;
+                case "Standard API": return 4;
+                default: return 10;
+            }
         }
 
         public static string Classify(AppIntergrationSettingParameterExDto dto)
@@ -596,12 +946,13 @@ namespace App.BL
             return "get";
         }
 
-        private static JObject GenericObject()
+        private static JObject ClosedObject(JObject properties = null)
         {
             return new JObject
             {
                 ["type"] = "object",
-                ["additionalProperties"] = true
+                ["properties"] = properties ?? new JObject(),
+                ["additionalProperties"] = false
             };
         }
 
@@ -616,7 +967,7 @@ namespace App.BL
             }
             catch
             {
-                return GenericObject();
+                return ClosedObject();
             }
         }
 
@@ -625,18 +976,14 @@ namespace App.BL
             if (token == null || token.Type == JTokenType.Null)
                 return new JObject { ["nullable"] = true };
             if (depth > 6)
-                return GenericObject();
+                return ClosedObject();
 
             if (token.Type == JTokenType.Object)
             {
                 var properties = new JObject();
                 foreach (var property in ((JObject)token).Properties())
                     properties[property.Name] = SchemaFromToken(property.Value, depth + 1);
-                return new JObject
-                {
-                    ["type"] = "object",
-                    ["properties"] = properties
-                };
+                return ClosedObject(properties);
             }
 
             if (token.Type == JTokenType.Array)
@@ -645,7 +992,7 @@ namespace App.BL
                 return new JObject
                 {
                     ["type"] = "array",
-                    ["items"] = first == null ? GenericObject() : SchemaFromToken(first, depth + 1)
+                    ["items"] = first == null ? ClosedObject() : SchemaFromToken(first, depth + 1)
                 };
             }
 

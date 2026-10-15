@@ -121,17 +121,24 @@ const AppJsonQueryApiEditor: React.FC = () => {
             .map((n: string) => ({ ParameterName: n, defaultValue: '' }));
           setQueryParameterList(params);
           setQueryParameterCV(new CollectionView(params));
+          const method = (settingData.HttpMethd ?? '').toString().toLowerCase();
+          const savedResponse = method === 'post' || method === 'put'
+            ? (settingData.PostResponseDto?.ResponseJsonData ?? '')
+            : (settingData.JsonSampleData ?? '');
+          setApiResponseText(savedResponse);
         } else {
           const dataSourceId = (list[0] as any)?.Id ?? null;
           setCurrentOperation(initNewApiDto(dataSourceId, dict));
           setQueryParameterList([]);
           setQueryParameterCV(new CollectionView<QueryParameterItem>([]));
+          setApiResponseText('');
         }
       } else {
         const dataSourceId = initialDataSourceId ?? (list[0] as any)?.Id ?? null;
         setCurrentOperation(initNewApiDto(dataSourceId, dict));
         setQueryParameterList([]);
         setQueryParameterCV(new CollectionView<QueryParameterItem>([]));
+        setApiResponseText('');
       }
       setQueryResultText('');
       setQueryResultError('');
@@ -164,7 +171,7 @@ const AppJsonQueryApiEditor: React.FC = () => {
 
   const handleRefresh = useCallback(() => loadData(), [loadData]);
 
-  const handleSave = useCallback(async () => {
+  const handleSave = useCallback(async (opts?: { skipReloadAfterSave?: boolean }) => {
     const op = latestOperationRef.current ?? currentOperation;
     if (!op) return;
     const cv = latestQueryParameterCVRef.current ?? queryParameterCV;
@@ -203,10 +210,10 @@ const AppJsonQueryApiEditor: React.FC = () => {
           dispatch(updateCurrentTabLabel(tabLabel));
           if (savedId !== settingParameterId) {
             navigate(newPath, { replace: true });
-          } else {
+          } else if (!opts?.skipReloadAfterSave) {
             await loadData();
           }
-        } else {
+        } else if (!opts?.skipReloadAfterSave) {
           await loadData();
         }
       } else if (messages.length) {
@@ -299,6 +306,18 @@ const AppJsonQueryApiEditor: React.FC = () => {
     return toApiDisplayUrl(serverRoot, buildTestApiUrl());
   }, [buildTestApiUrl, serverRoot]);
 
+  const storeApiResponse = useCallback(async (op: any, displayed: string) => {
+    setApiResponseText(displayed);
+    const method = (op?.HttpMethd ?? '').toString().toLowerCase();
+    const withResponse = method === 'post' || method === 'put'
+      ? { ...op, PostResponseDto: { ...(op.PostResponseDto || {}), ResponseJsonData: displayed } }
+      : { ...op, JsonSampleData: displayed };
+    latestOperationRef.current = withResponse;
+    setCurrentOperation(withResponse);
+    setIsModified(true);
+    await handleSave({ skipReloadAfterSave: true });
+  }, [handleSave]);
+
   const handleTestApi = useCallback(async () => {
     const op = currentOperation;
     if (!op?.Id || !op?.ActionCode) {
@@ -318,7 +337,7 @@ const AppJsonQueryApiEditor: React.FC = () => {
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const rawText = await response.text();
         const displayed = rawText.trim() ? prettyPrintJsonForDisplay(rawText) : rawText || '""';
-        setApiResponseText(displayed);
+        await storeApiResponse(op, displayed);
       } else {
         const body = op.JsonSampleData?.trim() ? JSON.parse(op.JsonSampleData) : {};
         const response = await fetch(apiUrl, {
@@ -329,7 +348,7 @@ const AppJsonQueryApiEditor: React.FC = () => {
         if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         const rawText = await response.text();
         const displayed = rawText.trim() ? prettyPrintJsonForDisplay(rawText) : rawText || '""';
-        setApiResponseText(displayed);
+        await storeApiResponse(op, displayed);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -338,7 +357,7 @@ const AppJsonQueryApiEditor: React.FC = () => {
     } finally {
       dispatch(setIsNotBusy());
     }
-  }, [currentOperation, displayApiUrl, dispatch, errorMessage]);
+  }, [currentOperation, displayApiUrl, dispatch, errorMessage, storeApiResponse]);
 
   if (isLoading) {
     return (
@@ -361,7 +380,7 @@ const AppJsonQueryApiEditor: React.FC = () => {
             className="h-6 px-2 inline-flex items-center gap-1 rounded-[4px] text-xs text-white transition disabled:cursor-not-allowed disabled:opacity-60 bg-blue-400 hover:bg-blue-500" title="Refresh">
             <i className="fa fa-refresh" aria-hidden /> Refresh
           </button>
-          <button type="button" onClick={handleSave} disabled={!isModified || isSaving}
+          <button type="button" onClick={() => { void handleSave(); }} disabled={!isModified || isSaving}
             className="h-6 px-2 inline-flex items-center justify-center gap-1 rounded-[4px] text-xs text-white transition disabled:cursor-not-allowed disabled:opacity-60 bg-green-500 hover:bg-green-600" title="Save Setting">
             <i className="fa fa-save" aria-hidden /> Save Setting
           </button>

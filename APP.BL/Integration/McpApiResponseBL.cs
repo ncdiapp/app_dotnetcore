@@ -61,6 +61,7 @@ namespace App.BL
             return new JObject
             {
                 ["type"] = "object",
+                ["additionalProperties"] = false,
                 ["properties"] = new JObject
                 {
                     ["fields"] = new JObject
@@ -74,12 +75,110 @@ namespace App.BL
                                 ["name"] = new JObject { ["type"] = "string" },
                                 ["controlType"] = new JObject { ["type"] = "string" },
                                 ["entityId"] = new JObject { ["type"] = "integer", ["nullable"] = true }
-                            }
+                            },
+                            ["additionalProperties"] = false
                         }
                     },
-                    ["data"] = dataSchema ?? new JObject { ["type"] = "object", ["additionalProperties"] = true }
+                    ["data"] = dataSchema ?? TransactionDataSchema(null)
                 }
             };
+        }
+
+        /// <summary>
+        /// MCP Data Model GET. fields and data use the same transaction field names as the live response.
+        /// </summary>
+        public static JObject TransactionDataSchema(AppTransactionExDto transaction)
+        {
+            JObject example;
+            return TransactionDataSchema(transaction, out example);
+        }
+
+        public static JObject TransactionDataSchema(AppTransactionExDto transaction, out JObject example)
+        {
+            var properties = new JObject();
+            example = new JObject();
+            foreach (JObject field in TransactionFields(transaction))
+            {
+                var name = field["name"]?.ToString();
+                if (string.IsNullOrWhiteSpace(name))
+                    continue;
+                SetDataProperty(properties, example, name, DataPropertySchema(field));
+            }
+
+            return new JObject
+            {
+                ["type"] = "object",
+                ["properties"] = properties,
+                ["additionalProperties"] = false
+            };
+        }
+
+        public static JObject TransactionEnvelopeSchema(AppTransactionExDto transaction)
+        {
+            var fields = TransactionFields(transaction);
+            JObject dataExample;
+            var dataSchema = TransactionDataSchema(transaction, out dataExample);
+            var schema = EnvelopeSchema(dataSchema);
+            var fieldsSchema = schema["properties"]?["fields"] as JObject;
+            if (fieldsSchema != null)
+                fieldsSchema["example"] = fields;
+            schema["example"] = new JObject
+            {
+                ["fields"] = fields,
+                ["data"] = dataExample
+            };
+            return schema;
+        }
+
+        private static JObject DataPropertySchema(JObject field)
+        {
+            var hint = field["controlType"]?.ToString();
+            var schema = new JObject { ["nullable"] = true };
+            if (string.Equals(hint, "CheckBox", StringComparison.OrdinalIgnoreCase))
+                schema["type"] = "boolean";
+            else if (string.Equals(hint, "Numeric", StringComparison.OrdinalIgnoreCase))
+                schema["type"] = "number";
+            else
+                schema["type"] = "string";
+            if (!string.IsNullOrWhiteSpace(hint))
+                schema["x-ui-hint"] = hint;
+            var entityId = field["entityId"];
+            if (entityId != null && entityId.Type == JTokenType.Integer && entityId.Value<int>() > 0)
+                schema["x-entityid"] = entityId.Value<int>();
+            return schema;
+        }
+
+        private static void SetDataProperty(JObject properties, JObject example, string path, JObject schema)
+        {
+            var parts = path.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0)
+                return;
+            var props = properties;
+            var sample = example;
+            for (int i = 0; i < parts.Length - 1; i++)
+            {
+                var child = props[parts[i]] as JObject;
+                if (child == null || child["properties"] == null)
+                {
+                    child = new JObject
+                    {
+                        ["type"] = "object",
+                        ["properties"] = new JObject(),
+                        ["additionalProperties"] = false
+                    };
+                    props[parts[i]] = child;
+                }
+                props = (JObject)child["properties"];
+                var sampleChild = sample[parts[i]] as JObject;
+                if (sampleChild == null)
+                {
+                    sampleChild = new JObject();
+                    sample[parts[i]] = sampleChild;
+                }
+                sample = sampleChild;
+            }
+            props[parts[parts.Length - 1]] = schema;
+            sample[parts[parts.Length - 1]] = JValue.CreateNull();
         }
 
         public static string ControlTypeName(int controlType)

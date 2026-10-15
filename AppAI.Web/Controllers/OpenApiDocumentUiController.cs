@@ -50,7 +50,12 @@ public class OpenApiDocumentUiController : ControllerBase
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>OpenAPI</title>
     <link rel="stylesheet" href="/appai/openapi-ui/asset?name=swagger-ui.css" />
-    <style>body { margin: 0; }</style>
+    <style>
+        body { margin: 0; }
+        .appai-provider-body { margin: 0 0 8px 16px; }
+        .appai-provider-body > .opblock-tag-section > .opblock-tag { font-size: 14px; }
+        .appai-provider > h3.opblock-tag { cursor: pointer; }
+    </style>
 </head>
 <body>
     <div id="swagger-ui"></div>
@@ -78,17 +83,104 @@ public class OpenApiDocumentUiController : ControllerBase
                 document.body.textContent = 'This page only loads an OpenAPI document from this server.';
                 return;
             }
+            var tagOrder = {};
             window.ui = SwaggerUIBundle({
                 url: spec,
                 dom_id: '#swagger-ui',
                 deepLinking: false,
+                tagsSorter: function (a, b) {
+                    var ai = Object.prototype.hasOwnProperty.call(tagOrder, a) ? tagOrder[a] : 1000;
+                    var bi = Object.prototype.hasOwnProperty.call(tagOrder, b) ? tagOrder[b] : 1000;
+                    return ai - bi;
+                },
+                responseInterceptor: function (res) {
+                    try {
+                        var body = res && (res.data || res.body);
+                        if (typeof body === 'string') body = JSON.parse(body);
+                        if (!body && res && typeof res.text === 'string') body = JSON.parse(res.text);
+                        tagOrder = {};
+                        ((body && body.tags) || []).forEach(function (tag, index) {
+                            if (tag && tag.name) tagOrder[tag.name] = index;
+                        });
+                    } catch (e) { }
+                    return res;
+                },
                 requestInterceptor: function (req) {
                     if (sid) req.headers['CurrentUserSessionId'] = sid;
                     return req;
                 },
+                onComplete: function () { nestProviderTags(); },
                 presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
                 layout: 'StandaloneLayout'
             });
+
+            var nesting = false;
+            var separator = ' » ';
+            function nestProviderTags() {
+                if (nesting) return;
+                var root = document.getElementById('swagger-ui');
+                if (!root) return;
+                var sections = Array.prototype.slice.call(root.querySelectorAll('.opblock-tag-section'));
+                var groups = {};
+                var groupOrder = [];
+                sections.forEach(function (section) {
+                    if (section.classList.contains('appai-provider')) return;
+                    if (section.closest('.appai-provider-body')) return;
+                    var heading = section.querySelector(':scope > h3.opblock-tag');
+                    if (!heading) return;
+                    var tag = heading.getAttribute('data-tag') || '';
+                    var splitAt = tag.indexOf(separator);
+                    if (splitAt < 0) return;
+                    var provider = tag.slice(0, splitAt);
+                    var typeName = tag.slice(splitAt + separator.length);
+                    var label = heading.querySelector('a span');
+                    if (label) label.textContent = typeName;
+                    if (!groups[provider]) {
+                        groups[provider] = [];
+                        groupOrder.push(provider);
+                    }
+                    groups[provider].push(section);
+                });
+                if (!groupOrder.length) return;
+                nesting = true;
+                try {
+                    groupOrder.forEach(function (provider) {
+                        var list = groups[provider];
+                        var first = list[0];
+                        var parent = first.parentNode;
+                        var sample = first.querySelector(':scope > h3.opblock-tag');
+                        var header = sample.cloneNode(true);
+                        header.removeAttribute('id');
+                        header.setAttribute('data-tag', provider);
+                        header.setAttribute('data-is-open', 'true');
+                        var headerLabel = header.querySelector('a span');
+                        if (headerLabel) headerLabel.textContent = provider;
+                        var note = header.querySelector('small');
+                        if (note) note.textContent = '';
+                        var wrap = document.createElement('div');
+                        wrap.className = 'opblock-tag-section is-open appai-provider';
+                        var body = document.createElement('div');
+                        body.className = 'appai-provider-body';
+                        wrap.appendChild(header);
+                        wrap.appendChild(body);
+                        parent.insertBefore(wrap, first);
+                        list.forEach(function (section) { body.appendChild(section); });
+                        header.addEventListener('click', function (event) {
+                            event.preventDefault();
+                            var open = body.style.display !== 'none';
+                            body.style.display = open ? 'none' : '';
+                            header.setAttribute('data-is-open', open ? 'false' : 'true');
+                            wrap.classList.toggle('is-open', !open);
+                        });
+                    });
+                } finally {
+                    nesting = false;
+                }
+            }
+            var watch = new MutationObserver(function () {
+                if (!nesting) nestProviderTags();
+            });
+            watch.observe(document.getElementById('swagger-ui'), { childList: true, subtree: true });
         })();
     </script>
 </body>

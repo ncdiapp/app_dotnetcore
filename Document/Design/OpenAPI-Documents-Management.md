@@ -1,376 +1,152 @@
-# OpenAPI Documents Management — 初步设计
+# OpenAPI Documents Management
 
-状态：列表、路由、存储、成员关系、选择界面、Generator 和调用鉴权已定。Document 的 `IsUsedByMcp`、API 的 `McpUiHint` / `McpUsageNotes`，以及 Search / Data Model GET 响应外壳已于 2026-10-15 实施。读文档的 URL 现在不鉴权，以后再关。内部 Agent 接线放到后期。
+状态：管理页、存储、Generator、Swagger 分组和 MCP GET 外壳已实施（2026-10-15）。读文档的 URL 现在不鉴权。`McpUsageNotes` 以及 Pivot / Chart 参数还没写入 Generator。内部 Agent 接线放到后期。
 
 ## 目的
 
-在 API Management 中管理多份 OpenAPI Document。每份 Document 由用户选出的多个 API 组成，生成一次后存入数据库。外部和内部 AI 通过固定 URL 读取已保存的 JSON，调用时不重新生成。
+在 API Management 里管理多份 OpenAPI Document。每份由用户选出的 API 组成，生成后存进数据库。外部通过固定 URL 读取已保存的 JSON，读取时不重新生成。
 
-示例：
+侧栏在 API Management 下，与 3rd Party API Provider、App API Provider 并列，菜单名是 OpenAPI Documents。
 
-- 从 3rd Party API Provider 里选出查天气的 API，生成一份 App Weather API。
-- 从 App API Provider 里选出与 PLM 相关的 Stored Procedure API、Report & View API、Data Model API，合成一份 Document。
+## 地址
 
-可以再次打开同一份 Document，重新生成并更新已保存的 JSON。
-
-## 已定名称
-
-| 用途 | 名称 |
-|---|---|
-| 侧栏菜单（API Management 下） | OpenAPI Documents |
-| 页面标题 | OpenAPI Documents Management |
-| 一条记录 | OpenAPI Document |
-| 生成并保存的内容 | OpenAPI Document（JSON） |
-
-侧栏与现有两项并列：
-
-- 3rd Party API Provider
-- App API Provider
-- OpenAPI Documents
-
-## 已定地址与路由
-
-对外读取已发布的 JSON：
+已发布的 JSON：
 
 ```
 GET /openapi-doc/{doc-code}
 ```
 
-`doc-code` 是 Document 的 Code。只允许小写字母、数字和 `-`，全局唯一。可以随时改。保存时如果 Code 为空，用 Name 生成；如果不合法，先修成合法形式再保存。改 Code 会改变公开地址。开发时完整地址是 `http://localhost:52740/openapi-doc/app-weather`。发布后是调用方访问这台服务器时用的同一根地址加 `/openapi-doc/{doc-code}`，不写 `/appai`。
+`doc-code` 只允许小写字母、数字和 `-`，全局唯一，可以改。保存时若为空，用 Name 生成；若不合法，先收成合法形式再保存。只有 Status = Published 才返回正文。Draft 不返回。开发地址形如 `http://localhost:52740/openapi-doc/app-weather`，路径里没有 `/appai`。
 
-仅 Status = Published 时返回已保存的 JSON。现在这个 URL 开口：不登录也能读到 Document 内容。Draft 不返回正文。以后再把这个 URL 闭上，改成要鉴权才能读；第一版不要把鉴权写死在这条路由上。这个 URL 只公开文档。文档里的 API 地址是 `{本次请求的根}/webapi/DataIntegration/{ActionCode}`，调用这些 API 仍要带登录会话。
-
-页面路由：
+文档里的 API 地址是 `{这次请求的根}/webapi/DataIntegration/{ActionCode}`。调用这些 API 仍要带登录会话。
 
 | 页面 | 路由 |
 |---|---|
 | 列表 | `/openapi-doc-management` |
 | 编辑 | `/openapi-doc-editor/{id}` |
 
+Swagger 页面是 `/appai/openapi-ui`。脚本来自项目里的 Swashbuckle，不从 CDN 加载。
+
 ## 存储
 
-数据库是唯一来源。对外 URL 从数据库读出已保存的 OpenAPI JSON。Download 只是导出，不作为运行时来源。
+数据库是唯一来源。Download 只是导出。
 
-重新生成只在用户执行 Regenerate 时发生，并更新该记录。Save 只保存名称、代码、成员等，不重新生成 JSON。
+`AppOpenApiDocument`：Id、Name、Code、Version、Description、`IsUsedByMcp`（`BIT NULL`，无默认值）、Status（Draft / Published）、OpenApiJson、ApiCount、LastGenerated，以及 `AppCreatedByID`、`AppCreatedDate`、`AppModifiedByID`、`AppModifiedDate`。
 
-两张表，都不建外键。成员不保存 `AppIntergrationSettingParameter.Id`。一份 Document 和 API 的关系只是 ActionCode。
+`AppOpenApiDocumentMember`：Id、DocumentId、ActionCode。不建外键，不存 API 的 Id。同一 Document 内 ActionCode 不重复。Save 整份替换成员列表。Regenerate 按 ActionCode 找当前 API；找不到就跳过并记下原因。
 
-`AppOpenApiDocument`：
+这三列在 V051：Document.`IsUsedByMcp`，以及 API 上的 `McpUiHint`、`McpUsageNotes`。已有行保持 `NULL`。
 
-| 列 | 说明 |
-|---|---|
-| Id | |
-| Name | |
-| Code | `doc-code`，可改。空或不合法时在保存前自动修好 |
-| Version | |
-| Description | |
-| IsUsedByMcp | `BIT NULL`。勾选后这份 Document 只收 `IsUsedByMcp = true` 的 API。已有行保持 `NULL`，按未勾选处理。见下方「MCP Document」 |
-| Status | Draft / Published |
-| OpenApiJson | Regenerate 写入的 JSON |
-| ApiCount | 写入 paths 的条数 |
-| LastGenerated | |
-| AppCreatedByID / AppCreatedDate / AppModifiedByID / AppModifiedDate | 与 Database Management 的审计列相同 |
+## 列表和编辑
 
-`AppOpenApiDocumentMember`：
+列表列：Actions（Edit、Delete）、Id、Name、Code、Version、API Count、Status、Is Used By MCP（`NULL` 显示为未勾选）、Public URL、Last Generated、Description、Created By、Created Date、Modified By、Modified Date。双击行等于 Edit。
 
-| 列 | 说明 |
-|---|---|
-| Id | |
-| DocumentId | 指向哪份 Document 的普通整数，不建外键 |
-| ActionCode | 成员唯一键。同一 Document 内不重复 |
+编辑页顶栏：Name、只读 Version，然后是 Refresh、Save & Generate OpenAPI Doc、Download JSON、View Swagger。后两个在还没有 JSON 时禁用。
 
-Save 按弹窗 Apply 的结果整份替换该 Document 的 ActionCode 列表。Regenerate 用每个 ActionCode 去找当前的 API 配置。找不到、或 ActionCode 已改名、已删除，就跳过该条并记下原因。不因 API 的 Id 变化而断开关系。
+属性第一行：Name、Code、Description、Is Used By MCP、Is Published。Is Published 在最右边，不另起一行。Published URL 在下一行，只在库里已发布时显示，旁边是 Copy、Download。
 
-实现时用当时下一个未占用的迁移号。V046、V047、V048 已占用。
+左边是已选 API：ActionCode、Http Method、来源（App API 写 API Type，3rd Party 写 Provider Name）、Description。Add APIs 有两个 Tab：App API Provider、3rd Party Provider。Excel Import 不出现。右边是生成后的 JSON。跳过的 API 显示在表下方。
 
-## 列表页
+Save & Generate OpenAPI Doc 同时保存名称、Code、成员、Is Published，并生成 JSON。Version 最后一段加 1（空则先写成 `1.0.0` 再加）。已发布的 URL 立刻返回这份新 JSON。
 
-标题：OpenAPI Documents Management。版式与 3rd Party API Provider 列表相同：顶栏标题和按钮，下面一张表。
+Document 勾选 Is Used By MCP 时，Add APIs 只列出 API 上 `IsUsedByMcp = true` 的行。保存时再删掉已经不是 `true` 的成员，并在编辑页列出被删的 ActionCode。取消勾选后，当时的成员保留。生成时若 API 已取消勾选，跳过，原因是 “Not used by MCP”。
 
-顶栏按钮：Refresh、Create。
+## Generator
 
-列：
+输出 OpenAPI 3.0.0。每个成员一个 operation，path 一律 `/DataIntegration/{ActionCode}`。`operationId` 和 summary 用 ActionCode。schema 放在 `components.schemas`，名为 `{ActionCode}_Request`、`{ActionCode}_Response`。一条失败只跳过该条。同一 path + method 只留一条。
 
-| 列 | 说明 |
-|---|---|
-| Actions | Edit、Delete，按钮样式与 Search View 第一列相同 |
-| Id | |
-| Name | 例如 App Weather API |
-| Code | URL 中的 `doc-code`，可改。空或不合法时在保存前自动修好 |
-| Version | OpenAPI `info.version` |
-| API Count | 包含的 API 个数 |
-| Status | Draft / Published |
-| Is Used By MCP | Document 的 `IsUsedByMcp`。`NULL` 显示为未勾选 |
-| Public URL | 已发布时为 `/openapi-doc/{doc-code}` |
-| Last Generated | 上次生成 JSON 的时间 |
-| Description | |
-| Created By | `AppCreatedByID`，界面用用户 DataMap 显示用户名 |
-| Created Date | `AppCreatedDate` |
-| Modified By | `AppModifiedByID`，界面用用户 DataMap 显示用户名 |
-| Modified Date | `AppModifiedDate` |
+库里的 JSON 不写死主机。读出或 Download 时，用这次请求的根地址加 `/webapi` 填 `servers[0].url`。
 
-审计四列与 Database Management 中 “Created By & Modified By” 自动添加的列一致，Entity 使用同名字段：
+每个 operation 只挂一个 tag，避免 Swagger 把同一 API 画两次。
 
-| 字段 | 类型 |
-|---|---|
-| `AppCreatedByID` | int |
-| `AppCreatedDate` | datetime |
-| `AppModifiedByID` | int |
-| `AppModifiedDate` | datetime |
+- 3rd Party：tag 是 Provider Name，下面直接是 API。
+- App API：tag 是 `App API Provider » {API Type}`。Swagger 页面收成三层：Provider、Type、API。
 
-第一列只有 Edit 和 Delete，样式与 Search View 相同。双击行等于 Edit。Swagger 从编辑页顶栏的 View Swagger 打开。Regenerate 在编辑页做，会更新 `AppModifiedByID` 和 `AppModifiedDate`。Last Generated 用来区分“只保存了成员或名称”和“重新生成了 JSON”。
+不按 PLM 的 ApiScope 套。不把同一 API 写成内部路径和发布路径两条。不用 `additionalProperties: true`。Swagger 因此不会生成 `additionalProp1`。对象列出已知属性，并设 `additionalProperties: false`。没有属性时是空 object。
 
-## 编辑页
+样本转 schema 时，按值的类型写属性。Swagger 的 Example Value 用 schema 上的 `example`。没有 `example` 时，Swagger 会用类型名（例如 `"string"`）填示例，所以有已保存响应时必须把那份 JSON 写成 `example`。
 
-路由 `/openapi-doc-editor/{id}`。标题用 Name。
+### 响应存在哪
 
-顶栏版式与 API Provider 编辑页相同：左边是 Name，旁边是只读 Version。Version 不手改。右边是彩色文字按钮：Refresh、Save & Generate OpenAPI Doc，最右边是 Download JSON、View Swagger。后两个在还没有生成 JSON 时禁用。View Swagger 与列表的 View 相同：已发布打开公开地址，草稿打开登录后的 Spec。这个按钮先保存名称、Code 和成员，再生成 JSON 并把 Version 最后一段加 1，然后写入 Is Published。
+| API | GET / DELETE 的响应 | POST / PUT 的 Payload | POST / PUT 的响应 |
+|---|---|---|---|
+| SQL Json Query | `JsonSampleData` | `JsonSampleData` | `PostResponseDto.ResponseJsonData` |
+| Report & View（Search） | `JsonSampleData` | `JsonSampleData` | `PostResponseDto.ResponseJsonData` |
+| Data Model | `JsonSampleData` | `JsonSampleData` | `PostResponseDto.ResponseJsonData` |
+| Stored Procedure | `JsonSampleData` | 参数网格 / 入参 JSON | `JsonSampleData` |
+| 3rd Party | `JsonSampleData` | `JsonSampleData` | `PostResponseDto.ResponseJsonData` |
 
-属性一行靠左：Name、Code、Description、Is Used By MCP（勾选框）、Is Published（勾选框）。Is Used By MCP 的筛选见下方「MCP Document」。Code 可编辑。保存前若为空，按 Name 生成；若不合法，把空格和其它符号收成 `-`、转成小写后再保存。Description 占满剩余宽度。勾选不会立刻发布，要点 Save & Generate OpenAPI Doc 才写入。JSON 在发布之前生成，所以第一次保存就可以勾选发布。下一行是否出现，以数据库里已保存的 Is Published 为准。勾选但还没保存时不出现。Published URL 是标签加只读框，框的右边缘与 Description 输入框对齐。框右边是两个小按钮：Copy、Download。未勾选时这一行隐藏。Swagger 只从顶栏 View Swagger 打开。它新开浏览器标签，用已打包的 Swagger UI 打开公开地址 `/openapi-doc/{doc-code}`。参数可以直接填，Execute 带上当前登录会话，会话只放在页面地址的 hash 里，不写进公开 URL。
+测试调用成功后写回上表对应字段，重新打开仍然显示。Data Model 的 Re-generate Payload 只改 `JsonSampleData`，不改 Result。
 
-Save & Generate OpenAPI Doc 保存名称、Code、成员和 Is Published，并写入 JSON。JSON 显示在右侧。Download 仍可导出文件。
-
-下方左右两个区。左边是 Selected API List，标题后是主题文字按钮 Add APIs、Delete APIs。表可多选，Delete APIs 删除所有选中行。表按 ActionCode 排序。列：ActionCode、Http Method、来源（App API 写 API Type，3rd Party 写 Provider Name）、Description。右边是 OpenAPI JSON，生成后直接显示在这里。生成时跳过的 API 显示在表下方。
-
-### Add APIs 弹窗
-
-一个弹窗列出可选 API，两个 Tab：
-
-- App API Provider
-- 3rd Party Provider
-
-每个 Tab 一张表，多选。API 按 ActionCode 排序。3rd Party 那张表再按 Provider Name 分组。Apply 把选中的 ActionCode 加入当前 Document，已在 Document 里的不再重复加入。取消关闭弹窗，不改已选列表。
-
-Document 勾选了 Is Used By MCP 时，两个 Tab 从一开始就只列出 API 上 `IsUsedByMcp = true` 的行。`null` 和 `false` 不出现。未勾选时，可选范围与现在相同。
-
-Excel Import 不出现在弹窗里，第一版也不写入 OpenAPI Document。
-
-App API Provider 的列与 App API Provider 列表相同，去掉 Actions：Id、API Code、Description、API Type、Http Method、Data Source、Data Model、Application。
-
-3rd Party Provider 的列与该 Provider 编辑页里的 API 列表相同，并带上分组用的 Provider：Provider、ID、Method、Operation Code、Description、Data Source。
-
-Save 只保存 Document 和成员。Regenerate 调用下面的 Generator，把 JSON 写回该记录，并更新 Last Generated、API Count、`AppModifiedByID`、`AppModifiedDate`。已发布的 URL 立刻返回这份新 JSON。每次 Regenerate 把 Version 的最后一段加 1（`1.0.0` 变为 `1.0.1`）；Version 为空时先写成 `1.0.0` 再加。Publish 不重新生成，也不改 Version；没有已保存 JSON 时不允许 Publish。
-
-一份 Document 可以同时包含 3rd Party API 和 App API。
-
-内部 Agent 后期再接。第一版只做管理页和对外 URL。已发布的 `/openapi-doc/{doc-code}` 就是 Agent 以后要读的那份 JSON，调用时不重新生成。
-
-后期接到 MCP Gateway 的 ApiSource，让它读取这个已发布 URL。Gateway 已经按 OpenAPI URL 取 spec。不为同一份 JSON 再做一套 Generic Agent 工具。
-
-## PLM 的 Swagger 是怎么生成的
-
-参考代码在 `C:\Dev\PLM3\PLM\PlmAGApplication\Server\WebApi\`：
-
-- `SwaggerGenerator.cs`：拼出 OpenAPI 3.0.0 JSON
-- `SwaggerController.cs`：全部 Data Exchange API
-- `McpSwaggerController.cs`：只含 `IsMcpApi = true` 的 API
-
-每次 `GET /webapi/Swagger/json` 或 `GET /webapi/McpSwagger/json` 都重新生成，不把 JSON 存进数据库。
-
-生成步骤：
-
-1. 新建文档：`openapi: 3.0.0`，`info.title` / `info.version`，`servers[0].url` 为当前站点加 `/webapi`。
-2. 读出 API 配置列表。Swagger 用全部 `PdmWebApidataExchangeSetting`。McpSwagger 只用 `APIConfigParameterDTO.IsMcpApi = true`。
-3. 每条 API 按 `ApiScope` 做 request / response schema，再 `AddDynamicAction`。
-4. 一条 API 失败只跳过该条，不让整份文档失败。
-5. 按操作出现顺序写 `tags`，并把 `Published API` 放在最前。
-
-一条 API 变成一个 operation：
-
-| OpenAPI 字段 | PLM 来源 |
-|---|---|
-| path | 无 UrlPattern 时 `/{ControllerSegment}/{ActionCode}`，默认段名 `DataExchange`。有 UrlPattern 时用 `/{UrlPattern}` |
-| method | `HttpMethd`，空则 GET |
-| operationId | 默认 `{segment}_{ActionCode}`；发布路径用 UrlPattern 去掉 `/`、`-`、`.` 后的字符串 |
-| summary | ActionCode |
-| description | ActionDescription；McpSwagger 再附上 Prompt |
-| tags | 内部路径用 `DataExchange`；发布路径用 `Published API` |
-| parameters | query / path 参数 |
-| requestBody | POST/PUT 的 request schema，`$ref` 到 `components.schemas` |
-| responses | 200 加 response schema；另外固定 400、500 |
-
-Schema 按 `EmApiScope`：
-
-| Scope | Request | Response |
-|---|---|---|
-| ReferenceTab | Tab 布局（POST/PUT） | Tab 布局；Delete 为 string |
-| JsonQuery | `JsonSampleData` 推断 | 优先 `JsonSchema`，否则 `PostProcessScript` 样本，否则通用 object |
-| SearchView | `JsonSampleData`；没有则为空 object | Search 列定义 |
-| DataSourceEntity | Update/Delete 用实体列或样本 | Update/Delete 固定结果；按行读取用实体列 |
-| SystemBuiltInApi | POST/PUT 的 `JsonSampleData` | `JsonSchema`，否则样本，否则 `additionalProperties: true` |
-
-发布在 PLM 里是每条 API 自己的 `UrlPattern`，不是一份独立文档。运行时把 `/webapi/{UrlPattern}` 转到 `/webapi/DataExchange/{ActionCode}`。
-
-两套 UI 对发布路径的处理不同：
-
-- Swagger：内部路径和发布路径各写一条 operation。
-- McpSwagger：已有 UrlPattern 时只写发布路径，tag 为 `Published API`，避免同一操作出现两次。
-
-## 我们的 Generator 采用什么、不采用什么
-
-采用：
-
-- 输出 OpenAPI 3.0.0。
-- 每个选中的 API 变成一个 operation：path、method、operationId、summary、description、parameters、requestBody、responses。
-- Schema 放在 `components.schemas`，名字为 `{ActionCode}_Request`、`{ActionCode}_Response`。
-- Schema 从该 API 已保存的样本、JsonSchema、参数定义推断，不在生成时调用外部接口。
-- 一条成员失败就跳过，并在生成结果里返回跳过原因。
-- 文档里每个 API 只出现一条可调用 path。对应 McpSwagger 只保留发布路径的做法。
-
-不采用：
-
-- 不在每次 GET 时重新生成。JSON 在 Regenerate 时写入数据库，对外 URL 只读这份 JSON。
-- 不做“全部 API 一份文档”。成员由用户选择。
-- 不为 MCP 再存第二份 JSON，也不另开 `/openapi-doc/{doc-code}/mcp`。MCP 用 Document 上的 `IsUsedByMcp` 决定成员，公开地址仍是 `/openapi-doc/{doc-code}`。
-- 不用每条 API 的 UrlPattern 当作发布。发布的是整份 Document，地址是 `/openapi-doc/{doc-code}`。
-- 不扫描 Controller。成员只来自已保存的 3rd Party API 和 App API。
-- 不把诊断用的 `x-meta` 写入保存的 JSON。
-
-## OpenAPI Document Generator
-
-输入是一份 OpenAPI Document 和它的成员列表。输出是 OpenAPI JSON，写回该 Document。
-
-文档头：
-
-| OpenAPI | 来源 |
-|---|---|
-| `info.title` | Name |
-| `info.version` | Version，空则 `1.0.0` |
-| `info.description` | Description |
-| `servers[0].url` | 不跟 JSON 一起冻在生成当时的主机上。库里的 path 保持 `/DataIntegration/{ActionCode}`。每次读出这份 JSON（对外 URL 或 Download）时，用这次请求的根地址 + `/webapi` 填 `servers[0].url`。不读 `BASE_URL`，不读 ApplicationURL |
-
-成员来源是现有 `AppIntergrationSettingParameter`。3rd Party API 属于某个 Integration Setting。App API Provider 使用 Integration Setting Id = 1，类型包括 Stored Procedure、SQL Json Query、Data Model、Report & View。
-
-每个成员生成一个 operation：
-
-| OpenAPI 字段 | 规则 |
-|---|---|
-| path | 一律 `/DataIntegration/{ActionCode}`，对应 `DataIntegrationController`。3rd Party API 已经包装成我们自己的 API，对外 path 不用 Provider 的 Url，也不单独写 BaseUrl |
-| method | `HttpMethd`，空则 GET |
-| operationId | `{ActionCode}`，同文档内重复时加来源前缀 |
-| summary | ActionCode |
-| description | ActionDescription |
-| tags | API Type。3rd Party 再用 Provider Name 做第二组 tag |
-| parameters | 按下面各类型分别取。不从 3rd Party 的外部 URL 拆 path 参数 |
-| requestBody | POST/PUT：schema `$ref` `#/components/schemas/{ActionCode}_Request` |
-| responses.200 | schema `$ref` `#/components/schemas/{ActionCode}_Response` |
-| responses.400 / 500 | 固定 Bad Request、Internal Server Error |
-
-同一 path + method 只保留一条。后加入的成员若冲突，生成时记为跳过。
-
-每种 API 都按 App 自己的运行时来写 schema，不按 PLM 的 ApiScope 套。
+### 每种 API 的 schema
 
 | 成员 | 怎么认 | Request | Response |
 |---|---|---|---|
-| SQL Json Query | `IsSimpleQuery`。运行时执行 `JsonQuery`。编辑器不维护 `JsonSchema` | GET/DELETE：query 参数来自 `SimpleQueryParameterNameList`，去掉开头的 `@` 后作为参数名。SQL 里要有同名的 `@参数`。POST/PUT：body 用 `JsonSampleData`。运行时只有 SQL 含 `@json` 时，才把整个 body 传给 `@json` | GET/DELETE：取结果第一行里名为 `JSON` 的列，内容由 SQL 自己的 FOR JSON 决定。没有保存响应样本，schema 写成不限定结构的 JSON。POST/PUT：运行时返回一段文本，不是查询结果 |
-| Report & View | `TranscationFieId` 指向 AppSearch。运行时只有 GET 会执行 Search | GET：query 参数来自 `APIConfigParameters.QueryParams`。键是 Search 条件的 `SysTableFiledPath`。值为空时用该 Search 字段的 DefaultValue。有值时写入参数的 default 和 example，Swagger 的输入框显示这个值。POST 在编辑器里可以发 `JsonSampleData`，但运行时不会执行 Search | GET：JSON 数组。每一行的属性名是默认 View 列的 `SysTableFiledPath`；子 View 嵌在 `{Display}_{Id}` 下；树行有 `Children`。生成时读这个 Search 的默认 View 来写 schema。`JsonSchema` / `JsonSampleData` 只是某次 Send Request 的副产品，Reset Config 会清掉，不作为来源 |
-| Data Model | `TranscationId` 指向 AppTransaction。运行时按 MasterDetail 或 List 分别处理，不对应 PLM DataSourceEntity | GET / DELETE：query 参数来自 `APIConfigParameters.QueryParams`，没有时 GET 默认 `id`。有值时写入参数的 default 和 example。POST 不写这些 query 参数。POST / PUT：body schema 用 `JsonSampleData`，并把这份 JSON 原样写成 request body 的 example | 编辑器不保存响应样本。schema 用通用 object |
-| Stored Procedure | `APIConfigParameters.IsStoredProcedureApi`。运行时 `ExecuteStoredProcedureApi`，不对应 PLM scope | POST body 是参数对象本身，例如 `{ "tabId": 3992 }`，不再包一层 `args`。参数来自 `SpParameters` 的 IN / INOUT，名字去掉开头的 `@`。类型按 SQL 类型写：`int` / `bigint` 等为 integer，`decimal` / `float` 等为 number，`bit` 为 boolean，其余为 string。Default Value 写入 `example`；空或 `null` 写成 nullable 且 example 为 null。GET 的 query 参数是这些同名参数，服务器收进调用参数 | 用已保存的 `JsonSampleData` 推断；没有则为通用 object |
-| 3rd Party API | `IntergrationSettingId` 不是 App API Provider（Id = 1）。运行时 GET 用 query 覆盖 `QueryParams`，再由包装层去调外部 URL | GET/DELETE：query 参数来自 `APIConfigParameters.QueryParams`。POST/PUT：body 用 `JsonSampleData`（编辑器里的 Payload Data，JSON 类型） | GET 用 `JsonSampleData`。POST/PUT 用 `PostResponseDto.ResponseJsonData`。没有样本则为通用 object |
+| SQL Json Query | `IsSimpleQuery` | GET/DELETE 的 query 来自 `SimpleQueryParameterNameList`，去掉开头的 `@`。POST/PUT body 用 `JsonSampleData`。SQL 含 `@json` 时才把 body 传给 `@json` | GET/DELETE：有已保存响应时，用它写 schema 和 example。没有时，从 `FOR JSON` 前的 SELECT 列名写 string 属性；有 `WITHOUT_ARRAY_WRAPPER` 时是 object，否则是数组。POST/PUT 运行时返回一段文本 |
+| Report & View | `TranscationFieId` 指向 AppSearch。运行时只有 GET 会执行 Search | GET 的 query 来自 `QueryParams`，键是条件的 `SysTableFiledPath`。空值用该字段的 DefaultValue，并写入参数的 default 和 example | GET 是行数组。属性名是默认 View `Columns` 的 `SysTableFiledPath`。子 View 在 `{Display去空格}_{Id}` 下，值是数组。树行另有 `TreeNodeId`、`TreeNodeDisplay`、`Children`。example 用已保存的 GET 响应。没有样本时 MCP 的 `data` 为 `[]` |
+| Data Model | `TranscationId` 指向 AppTransaction | GET/DELETE 的 query 来自 `QueryParams`，没有时 GET 默认 `id`。POST/PUT body 优先用 `JsonSampleData`，没有时用 Transaction 字段 | GET/DELETE 按 Transaction 字段写属性、类型和 nullable。POST/PUT 响应优先用已保存的 `ResponseJsonData`，没有时用同一套字段 |
+| Stored Procedure | `APIConfigParameters.IsStoredProcedureApi` | body 是参数对象本身，例如 `{ "tabId": 3992 }`，不再包一层 `args`。参数来自 `SpParameters` 的 IN / INOUT，名字去掉 `@`。`int` 为 integer，`decimal` / `float` 为 number，`bit` 为 boolean，其余为 string。Default Value 写入 example；空或 `null` 则 nullable 且 example 为 null。GET 的 query 是这些同名参数 | 优先用已保存的 `JsonSampleData`。没有样本时：普通 API 是行数组；有 OUTPUT 时是 `{ rows, outputParameters }`。MCP 是 `ok`、`IsSuccess`、`dataSourceId`、`procedure`、`columnNames`、`rowCount`、`truncated`、`rows`、`outputParameters` |
+| 3rd Party | `IntergrationSettingId` 不是 1 | GET/DELETE 的 query 来自 `QueryParams`。POST/PUT body 用 `JsonSampleData` | GET 用 `JsonSampleData`。POST/PUT 用 `ResponseJsonData`。没有样本时是空 object |
 
-Excel Import Data Update 第一版不进入选择器，也不生成 operation。
+Excel Import 不进入选择器，也不生成 operation。
 
-Document 的 `IsUsedByMcp` 为 true 时，按下方「MCP Document」生成。普通 Document 不读 `McpUiHint` 和 `McpUsageNotes`。
+运行时：普通 Stored Procedure API 只返回行数组（有输出参数时带 `outputParameters`，失败时 `{ error }`）。`IsUsedByMcp = true` 的 SP 仍返回完整 ExecuteJson 外壳。Agent 自己的 ExecuteJson 不改。
 
-## MCP Document
+## MCP
 
-确认于 2026-10-15。Document 勾选、成员筛选和 API 的 Hint / Notes 列已实施。
+一份 Document 只存一份 JSON。公开地址仍是 `GET /openapi-doc/{doc-code}`。不另做第二份，也不另开 `/openapi-doc/{doc-code}/mcp`。
 
-一份 Document 仍然只存一份 OpenAPI JSON，公开地址仍然是 `GET /openapi-doc/{doc-code}`。Gateway 以后读的就是勾选了 Is Used By MCP 的那份 Document，不另做第二份 JSON。
+API 上只有 `IsUsedByMcp = true` 算 MCP。`null` 和 `false` 都不算。
 
-`AppOpenApiDocument` 增加列 `IsUsedByMcp BIT NULL`，无默认值。与 API 的 `McpUiHint`、`McpUsageNotes` 同在 V051。已有 Document 保持 `NULL`，按未勾选处理，已有成员不动。新建 Document 不勾选。
-
-API 上的 `IsUsedByMcp` 仍是 `AppIntergrationSettingParameter` 的列。只有 `true` 算 MCP。`null` 和 `false` 都不算。
-
-| Document 上的勾选 | 行为 |
-|---|---|
-| 未勾选（`NULL` 或 `false`） | Add APIs 的范围与现在相同。保存不按 MCP 删成员。 |
-| 勾选（`true`） | Add APIs 的两个 Tab 只列出 API `IsUsedByMcp = true` 的行。Excel Import 仍然不出现。 |
-
-每次保存，若 Document 为勾选状态，再筛一遍成员：API 上已经不是 `true` 的 ActionCode 从成员表删除。编辑页列出这次删掉的 ActionCode 和原因。保存之后，库里的成员和将要生成的 JSON 一致。
-
-取消 Document 上的勾选之后，当时的成员保留。之后可以再加入普通 API。
-
-生成时再查一次。API 在上次保存之后被取消勾选时，Regenerate 跳过它，原因是「Not used by MCP」。
-
-### API 上的三列
-
-都在 `AppIntergrationSettingParameter`，不写进 `APIConfigParameters`。读写不新写方法，在现有 `UnmappedColumns` 里再加两项，和 `IsUsedByMcp` 一样：Retrieve 之后 `ReadUnmappedColumns`，SaveEntity 成功后 `WriteUnmappedColumns`。`GetValue` 返回 null 时不更新该列。
+API 三列都在 `AppIntergrationSettingParameter`，用现有 `UnmappedColumns` 读写，不进 `APIConfigParameters`。`GetValue` 为 null 时不更新该列。空字符串写成 NULL，用来清空。
 
 | 列 | 类型 | 含义 |
 |---|---|---|
-| `IsUsedByMcp` | `BIT NULL` | 已有。只有 `true` 进入 MCP Document |
-| `McpUiHint` | `NVARCHAR(100) NULL` | MCP UI Hint。空，或 PLM `EmAiUiHint`：`SelectorGrid`、`DateRangeFilter`、`RecordCard`、`FlexGrid`、`ActionMenu`、`Form`、`ChartView`、`PivotTable`、`DataAnalysis` |
-| `McpUsageNotes` | `NVARCHAR(MAX) NULL` | AI Usage Notes For MCP。给模型看的用法说明 |
+| `IsUsedByMcp` | `BIT NULL` | 只有 `true` 进入勾选了 MCP 的 Document |
+| `McpUiHint` | `NVARCHAR(100) NULL` | 空，或 `SelectorGrid`、`DateRangeFilter`、`RecordCard`、`FlexGrid`、`ActionMenu`、`Form`、`ChartView`、`PivotTable`、`DataAnalysis` |
+| `McpUsageNotes` | `NVARCHAR(MAX) NULL` | 给模型看的用法说明 |
 
-与 Document 的 `IsUsedByMcp` 同在 V051。已有 API 这两列保持 `NULL`。
+五个编辑页（Data Model、Search、3rd Party、SQL Json Query、Stored Procedure）在勾选 Is Used By MCP 后显示 Hint 和 Notes。标签宽度与上面的标签相同，输入框单行等高。勾选框在表头行最右。Stored Procedure 的这两项在上方边框内。Excel Import 不加。取消勾选后隐藏，已存的值保留。
 
-五个 API 编辑页（Data Model、Search、3rd Party、Simple Query、Stored Procedure）在 Is Used By MCP 勾选后显示 Hint 下拉和 Notes。Excel Import 不加。取消勾选后界面可藏起这两项，已存的值保留。
+### GET 外壳
 
-### 生成 MCP 的 OpenAPI 时改什么
-
-只在这份 Document 的 `IsUsedByMcp` 为 true 时做。先按上面的规则丢掉 API 上不是 `true` 的成员。留下来的 operation，path、method、参数、request、response 仍用上方 Generator 表。然后按该 API 的另外两列改这一条 operation：
-
-| 列 | 写入 OpenAPI |
-|---|---|
-| `McpUsageNotes` 有内容 | `description` = `ActionDescription`，空一行，再接 Notes。空白则只有 `ActionDescription` |
-| `McpUiHint` = `PivotTable` | 增加 `pivot_row_field`、`pivot_column_field`、`pivot_measure_field`、`pivot_aggregation`。`pivot_aggregation` 默认 `count`，取值 `sum` 或 `count`。GET / DELETE 放 query。POST / PUT 放 request body 的 properties |
-| `McpUiHint` = `ChartView` | 增加 `chart_x_label_field`、`chart_y_value_field`、`chart_group_by_field`。GET / DELETE 放 query。POST / PUT 放 request body |
-| 其它或空白 | 不改参数 |
-
-普通 Document 不追加 Notes，也不加这些字段。
-
-不写 `x-mcp-route`，不搬 PLM 的 `SealMcpResponse`（不把响应改成 RecordCard、Pivot 行或 Chart config）。下拉可以选 PLM 的全部整页 Hint。其中只有 `PivotTable` 和 `ChartView` 会增加上面的参数，其余值不改 OpenAPI 参数。
-
-### MCP 的 GET 响应
-
-确认于 2026-10-15，已实施。只在 API 的 `IsUsedByMcp` 为 `true` 时改变 GET 响应。`null` 和 `false` 保持原来的 JSON。Search 和 Data Model（Master Detail、List）都包同一层。行里的值不改，类型不复制进每一行。
+只在该 API 的 `IsUsedByMcp = true` 时，Search 和 Data Model 的 GET 包一层。`null` 和 `false` 保持原来的 JSON。正文为空时不包。
 
 ```json
 {
   "fields": [
-    { "name": "Customer.Name", "controlType": "TextBox", "entityId": null }
+    { "name": "BodyPartId", "controlType": "Numeric", "entityId": null }
   ],
-  "data": []
+  "data": {}
 }
 ```
 
+`controlType` 是 `EmAppControlType` 的名字。`entityId` 只在大于 0 时写出，否则 null。行里的值不改。
+
 | API | `fields[].name` | `data` |
 |---|---|---|
-| Search | 默认 View 列的 `SysTableFiledPath`，与行里的键相同。层级子 View 用 `{Display去空格}_{Id}.{SysTableFiledPath}` | 原来的行数组，含 `Children` |
-| Data Model | 与 GET JSON 里的字段路径相同。根字段用字段自己的路径。Sibling 前缀是单元 `JsonPath`。子表前缀是子单元 `JsonPath` | 原来的 Master Detail 或 List 对象 |
+| Search | 默认 View 列的 `SysTableFiledPath`。子 View 用 `{Display去空格}_{Id}.{SysTableFiledPath}` | 原来的行数组，含 `Children` |
+| Data Model | 与 GET JSON 的字段路径相同。根字段用自己的路径。Sibling 前缀是单元 `JsonPath`。子表前缀是子单元 `JsonPath` | 原来的 Master Detail 或 List 对象 |
 
-`controlType` 是 `EmAppControlType` 的名字。`entityId` 只在大于 0 时写出，否则为 null。
+Data Model 的 POST / PUT 用来保存。Re-generate Payload 再调 GET，并带 `forPayload=1`。这次 GET 不当作 MCP，返回普通表单 JSON。这个参数不写入 OpenAPI。Send Request 和不带这个参数的调用仍返回外壳。
 
-没有取到数据、GET 正文为空时不包这一层。
+OpenAPI：MCP 的 Search / Data Model GET 写成这个外壳。`fields` 的 example 用真实列名和控件类型，不用 `"string"`。`data` 的 example 用已保存的 GET 响应；没有响应时 Search 的 `data` 为 `[]`。Search 列属性带 `x-ui-hint` 和 `x-entityid`（有实体时）。Data Model 的 `data` 按字段写类型和 `x-ui-hint`。POST / PUT 的 request body 仍是表单 JSON，不是外壳。
 
-Transaction 的 POST / PUT 用来保存。Re-generate Payload 会再调一次 GET。这次 GET 带查询参数 `forPayload=1`，服务器不把它当成 MCP，返回和普通 API 一样的表单 JSON，供 Payload 使用。Send Request 和不带这个参数的调用仍返回外壳。这个参数不写入 OpenAPI。
+### 还没做
 
-OpenAPI：该 API 的 `IsUsedByMcp` 为 true 时，GET 的 response schema 写成这个外壳。Search 的 `data` 仍是行数组，每个列属性加 `x-ui-hint`（控件类型名）和 `x-entityid`（有实体时）。Data Model 的 `data` 仍是通用 object，字段类型放在 `fields`。POST / PUT 的 request body 仍是原来的表单 JSON，不是这个外壳。普通 API 不写 `x-ui-hint`。
+只在 Document 的 `IsUsedByMcp` 为 true 时才做，现在 Generator 还没写：
 
-已保存的 JSON 样本需要转成 schema 时：object 的每个属性按值的类型写；数组写成 `array`；解析失败则 `{ "type": "object", "additionalProperties": true }`。SQL Json Query 的 GET 响应和 Report & View 的 GET 响应不用这条，规则见上表。
+- `McpUsageNotes` 追加到 `description`，与 ActionDescription 之间空一行。
+- `McpUiHint = PivotTable` 时增加 `pivot_row_field`、`pivot_column_field`、`pivot_measure_field`、`pivot_aggregation`（默认 `count`，取值 `sum` 或 `count`）。
+- `McpUiHint = ChartView` 时增加 `chart_x_label_field`、`chart_y_value_field`、`chart_group_by_field`。
+- GET / DELETE 放 query，POST / PUT 放 request body。其它 Hint 不加参数。
 
-生成结果除 JSON 外返回：成功条数、跳过列表（ActionCode + 原因）。编辑页在 Regenerate 后显示跳过列表。API Count 只计写入 paths 的条数。
+不写 `x-mcp-route`。不搬 PLM 的 `SealMcpResponse`。
 
 ## 调用鉴权
 
-两件事分开。
+读 Document：`GET /openapi-doc/{doc-code}` 现在不鉴权。以后再闭口。
 
-读 Document：`GET /openapi-doc/{doc-code}` 现在不鉴权，外部可以直接拿到已发布的 JSON。以后再闭口，第一版不实现这道鉴权。
+调用文档里的 API：`DataIntegration` 认请求头 `CurrentUserSessionId`（或同名 Cookie）。`IntergrationAccessToken` 只用于 `/mcp`，这条 API 还不认它。
 
-调用文档里的 API：`DataIntegration` 现在只认请求头 `CurrentUserSessionId`（或同名 Cookie），也就是登录会话。`IntergrationAccessToken` 只用于 `/mcp`，这条 API 还不认它。
-
-OpenAPI JSON 里写一个 apiKey scheme：
-
-- 名字：`CurrentUserSessionId`
-- `in: header`
-- 每个 operation 都带上这个 security
-- 文档里不写任何真实 session 值
-
-这个 scheme 描述的是调用 API，不是读文档。等 `DataIntegration` 也接受 `IntergrationAccessToken` 之后，再把 scheme 改成那个请求头。
-
-## 待补充
-
-- Data Model 的响应目前没有保存样本。第一版用通用 object，以后再按 Transaction Field 生成
-- Swagger UI 只渲染已保存的 JSON，不改 Generator。脚本来自项目里的 Swashbuckle，不从 CDN 加载。列表和编辑页的 View 打开 `/appai/openapi-ui`。
-
+OpenAPI 里写一个 apiKey scheme，名字 `CurrentUserSessionId`，`in: header`。每个 operation 都带上。文档里不写真实 session。Swagger 的 Execute 从页面地址的 hash 带上当前登录会话，不写进公开 URL。

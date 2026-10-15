@@ -371,19 +371,17 @@ const AppDataPresentationApiEditor: React.FC = () => {
           const data = await callGetApi(apiUrl, savedOp);
           const jsonStr = JSON.stringify(data ?? '', null, 2);
           setApiResponseText(jsonStr);
-          setCurrentOperation((prev: any) => (prev ? { ...prev, JsonSampleData: jsonStr } : null));
-
-          const schemaResult = await integrationService.generateDefaultSchemaAndDataSetMappingFromSampleJson({
-            ...savedOp,
-            JsonSampleData: jsonStr,
-          });
+          let withSample = { ...savedOp, JsonSampleData: jsonStr };
+          const schemaResult = await integrationService.generateDefaultSchemaAndDataSetMappingFromSampleJson(withSample);
           if (schemaResult?.Object) {
-            setCurrentOperation((prev: any) => (prev ? withFormattedApiConfig({ ...prev, ...schemaResult.Object }) : null));
-            setIsModified(true);
+            withSample = withFormattedApiConfig({ ...withSample, ...schemaResult.Object, JsonSampleData: jsonStr });
           }
           if (schemaResult?.ValidationResult) {
             showValidationMessages(schemaResult.ValidationResult, true);
           }
+          latestOperationRef.current = withSample;
+          setCurrentOperation(withSample);
+          await handleSave(undefined, { manageBusy: false, skipReloadAfterSave: true });
         } else if (savedOp.HttpMethd === 'Post' || savedOp.HttpMethd === 'Put') {
           const data = await callPostApi(apiUrl, savedOp);
           const jsonStr = JSON.stringify(data ?? '', null, 2);
