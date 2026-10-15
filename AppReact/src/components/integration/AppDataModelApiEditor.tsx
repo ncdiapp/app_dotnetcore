@@ -26,7 +26,7 @@ import {
   serializeApiConfig,
   type ApiConfigFormModel,
 } from '../../helper/apiConfigForm';
-import { IsUsedByMcpCheckbox, TransactionApiConfigForm } from './ApiConfigParametersForm';
+import { IsUsedByMcpCheckbox, McpUsageFields, TransactionApiConfigForm } from './ApiConfigParametersForm';
 import { ApiEditorWorkArea } from './ApiEditorWorkArea';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
@@ -67,17 +67,20 @@ function withFormattedApiConfig(op: any): any {
 }
 
 /** Build API URL for DataIntegration: /webapi/DataIntegration/{ActionCode}, optional ?id= from ApiconfigParameters.QueryParams.id */
-function buildApiUrl(op: any, includeGetQuery = false): string {
+function buildApiUrl(op: any, includeGetQuery = false, forPayload = false): string {
   const base = `${endpoints.BASE_URL}/webapi/DataIntegration/${op?.ActionCode ?? ''}`;
-  if (!includeGetQuery && op?.HttpMethd !== 'Get') return base;
-  try {
-    const config = JSON.parse(op?.ApiconfigParameters ?? '{}');
-    const id = config?.QueryParams?.id;
-    if (id != null && id !== '') return `${base}?id=${encodeURIComponent(String(id))}`;
-  } catch {
-    // ignore
+  let url = base;
+  if (includeGetQuery || op?.HttpMethd === 'Get') {
+    try {
+      const config = JSON.parse(op?.ApiconfigParameters ?? '{}');
+      const id = config?.QueryParams?.id;
+      if (id != null && id !== '') url = `${base}?id=${encodeURIComponent(String(id))}`;
+    } catch {
+      // ignore
+    }
   }
-  return base;
+  if (forPayload) url += `${url.includes('?') ? '&' : '?'}forPayload=1`;
+  return url;
 }
 
 /** Parse ApiconfigParameters and return Headers object for fetch */
@@ -167,13 +170,18 @@ const AppDataModelApiEditor: React.FC = () => {
         const settingData = await integrationService.retrieveOneAppIntegrationSettingParameterExDto(String(settingParameterId), false);
         if (settingData) {
           setCurrentOperation(settingData);
+          const method = (settingData.HttpMethd ?? '').toString().toLowerCase();
+          const savedResponse = method === 'post' || method === 'put'
+            ? (settingData.PostResponseDto?.ResponseJsonData ?? '')
+            : (settingData.JsonSampleData ?? '');
+          setApiResponseText(savedResponse);
         } else {
           setCurrentOperation(initNewDataModelApiDto(transactionIdFromQuery ?? null, dataSourceIdFromQuery ?? null));
         }
       } else {
         setCurrentOperation(initNewDataModelApiDto(transactionIdFromQuery ?? null, dataSourceIdFromQuery ?? null));
       }
-      setApiResponseText('');
+      if (settingParameterId == null) setApiResponseText('');
       setIsModified(false);
     } catch (error) {
       showError(error instanceof Error ? error.message : String(error));
@@ -320,9 +328,17 @@ const AppDataModelApiEditor: React.FC = () => {
           if (schemaResult?.ValidationResult) {
             showValidationMessages(schemaResult.ValidationResult, true);
           }
-        } else if (savedOp.HttpMethd === 'Post') {
+        } else if (savedOp.HttpMethd === 'Post' || savedOp.HttpMethd === 'Put') {
           const data = await callPostApi(apiUrl, savedOp);
-          setApiResponseText(JSON.stringify(data ?? '', null, 2));
+          const jsonStr = JSON.stringify(data ?? '', null, 2);
+          setApiResponseText(jsonStr);
+          const withResponse = {
+            ...savedOp,
+            PostResponseDto: { ...(savedOp.PostResponseDto || {}), ResponseJsonData: jsonStr },
+          };
+          latestOperationRef.current = withResponse;
+          setCurrentOperation(withResponse);
+          await handleSave(undefined, { manageBusy: false, skipReloadAfterSave: true });
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -337,7 +353,7 @@ const AppDataModelApiEditor: React.FC = () => {
   const handleRegeneratePayload = useCallback(async () => {
     const op = currentOperation;
     if (!op?.ActionCode) return;
-    const apiUrl = toApiDisplayUrl(serverRoot, buildApiUrl(op, true));
+    const apiUrl = toApiDisplayUrl(serverRoot, buildApiUrl(op, true, true));
     dispatch(setIsBusy());
     try {
       const data = await callGetApi(apiUrl, op);
@@ -392,26 +408,26 @@ const AppDataModelApiEditor: React.FC = () => {
       <div className={`h-1 flex-auto flex flex-col min-h-0 overflow-hidden p-3 ${theme.mainContentSection}`}>
         <div className="flex flex-wrap gap-6 mb-3 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Operation Code</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Operation Code</label>
             <input type="text" autoComplete="off" value={op.ActionCode ?? ''} onChange={(e) => {
               setCurrentOperation((prev: any) => (prev ? { ...prev, ActionCode: e.target.value } : prev));
               markChange();
-            }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs" />
+            }}             className="w-[200px] h-7 px-2 border rounded-[4px] text-xs" />
           </div>
           <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Description</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Description</label>
             <input type="text" autoComplete="off" value={op.ActionDescription ?? ''} onChange={(e) => {
               setCurrentOperation((prev: any) => (prev ? { ...prev, ActionDescription: e.target.value } : prev));
               markChange();
-            }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs" />
+            }}             className="w-[200px] h-7 px-2 border rounded-[4px] text-xs" />
           </div>
           <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Data Model</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Data Model</label>
             <select value={op.TranscationId ?? ''} onChange={(e) => {
               const v = e.target.value;
               setCurrentOperation((prev: any) => (prev ? { ...prev, TranscationId: v === '' ? null : Number(v) } : prev));
               markChange();
-            }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs">
+            }} className="w-[200px] h-7 px-2 border rounded-[4px] text-xs">
               <option value="">—</option>
               {transactionList.map((t) => (
                 <option key={t.Id} value={t.Id}>{t.Display ?? t.Id}</option>
@@ -419,13 +435,15 @@ const AppDataModelApiEditor: React.FC = () => {
             </select>
           </div>
           <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Http Method</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Http Method</label>
             <select value={op.HttpMethd ?? 'Get'} onChange={(e) => {
               setCurrentOperation((prev: any) => (prev ? { ...prev, HttpMethd: e.target.value } : prev));
               markChange();
-            }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs">
+            }} className="w-[200px] h-7 px-2 border rounded-[4px] text-xs">
               {HTTP_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
+          </div>
+          <div className="ml-auto flex items-center">
             <IsUsedByMcpCheckbox
               checked={isUsedByMcpValue(op.IsUsedByMcp)}
               onChange={(checked) => {
@@ -435,6 +453,22 @@ const AppDataModelApiEditor: React.FC = () => {
             />
           </div>
         </div>
+        {isUsedByMcpValue(op.IsUsedByMcp) && (
+          <div className="mb-3">
+            <McpUsageFields
+              hint={op.McpUiHint ?? ''}
+              notes={op.McpUsageNotes ?? ''}
+              onHintChange={(value) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, McpUiHint: value } : prev));
+                markChange();
+              }}
+              onNotesChange={(value) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, McpUsageNotes: value } : prev));
+                markChange();
+              }}
+            />
+          </div>
+        )}
 
         <ApiEditorWorkArea
           apiUrl={(() => {

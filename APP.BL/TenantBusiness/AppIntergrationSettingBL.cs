@@ -2855,6 +2855,7 @@ END";
         {
             public string ColumnName;
             public SqlDbType DbType;
+            public int Size;
             public Func<AppIntergrationSettingParameterExDto, object> GetValue;
             public Action<AppIntergrationSettingParameterExDto, object> SetValue;
         }
@@ -2869,6 +2870,28 @@ END";
                 SetValue = (dto, value) =>
                 {
                     dto.IsUsedByMcp = value == null || value == DBNull.Value ? (bool?)null : Convert.ToBoolean(value);
+                },
+            },
+            new UnmappedColumn
+            {
+                ColumnName = "McpUiHint",
+                DbType = SqlDbType.NVarChar,
+                Size = 100,
+                GetValue = dto => dto.McpUiHint == null ? null : (object)(string.IsNullOrWhiteSpace(dto.McpUiHint) ? DBNull.Value : dto.McpUiHint.Trim()),
+                SetValue = (dto, value) =>
+                {
+                    dto.McpUiHint = value == null || value == DBNull.Value ? null : Convert.ToString(value);
+                },
+            },
+            new UnmappedColumn
+            {
+                ColumnName = "McpUsageNotes",
+                DbType = SqlDbType.NVarChar,
+                Size = -1,
+                GetValue = dto => dto.McpUsageNotes == null ? null : (object)(string.IsNullOrWhiteSpace(dto.McpUsageNotes) ? DBNull.Value : dto.McpUsageNotes),
+                SetValue = (dto, value) =>
+                {
+                    dto.McpUsageNotes = value == null || value == DBNull.Value ? null : Convert.ToString(value);
                 },
             },
         };
@@ -2972,6 +2995,52 @@ END";
             }
         }
 
+        public static void FillUnmappedColumns(IList<AppIntergrationSettingParameterExDto> dtos)
+        {
+            if (dtos == null || dtos.Count == 0 || UnmappedColumns.Length == 0) return;
+            var pending = dtos.Where(d => d?.Id != null).ToList();
+            if (pending.Count == 0) return;
+            try
+            {
+                using (var conn = OpenTenantConnection())
+                {
+                    for (int offset = 0; offset < pending.Count; offset += 200)
+                    {
+                        var batch = pending.Skip(offset).Take(200).ToList();
+                        var names = new List<string>();
+                        using (var cmd = new SqlCommand { Connection = conn })
+                        {
+                            for (int i = 0; i < batch.Count; i++)
+                            {
+                                names.Add("@id" + i);
+                                cmd.Parameters.Add("@id" + i, SqlDbType.Int).Value = Convert.ToInt32(batch[i].Id);
+                            }
+                            cmd.CommandText = "SELECT SettingParameterID, " + UnmappedColumnList()
+                                + " FROM dbo.AppIntergrationSettingParameter WHERE SettingParameterID IN (" + string.Join(", ", names) + ")";
+                            using (var reader = cmd.ExecuteReader())
+                            {
+                                var byId = batch.ToDictionary(d => Convert.ToInt32(d.Id));
+                                while (reader.Read())
+                                {
+                                    AppIntergrationSettingParameterExDto dto;
+                                    if (!byId.TryGetValue(reader.GetInt32(0), out dto)) continue;
+                                    for (int i = 0; i < UnmappedColumns.Length; i++)
+                                    {
+                                        var raw = reader.IsDBNull(i + 1) ? null : reader.GetValue(i + 1);
+                                        UnmappedColumns[i].SetValue(dto, raw);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, "FillUnmappedColumns");
+            }
+        }
+
         private static void ReadUnmappedColumns(AppIntergrationSettingParameterExDto dto)
         {
             if (dto?.Id == null || UnmappedColumns.Length == 0) return;
@@ -3026,7 +3095,12 @@ END";
                 {
                     cmd.Parameters.Add("@Id", SqlDbType.Int).Value = Convert.ToInt32(dto.Id);
                     for (int i = 0; i < pending.Count; i++)
-                        cmd.Parameters.Add("@p" + i, pending[i].DbType).Value = values[i];
+                    {
+                        var parameter = cmd.Parameters.Add("@p" + i, pending[i].DbType);
+                        if (pending[i].Size != 0)
+                            parameter.Size = pending[i].Size;
+                        parameter.Value = values[i];
+                    }
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -3053,7 +3127,30 @@ END";
             var info = AppTenantAdapterBL.GetTenantConnectionInfo();
             var conn = new SqlConnection(info.connStr);
             conn.Open();
+            EnsureUnmappedColumns(conn);
             return conn;
+        }
+
+        private static int _unmappedColumnsEnsured;
+
+        private static void EnsureUnmappedColumns(SqlConnection conn)
+        {
+            if (System.Threading.Interlocked.CompareExchange(ref _unmappedColumnsEnsured, 1, 0) != 0)
+                return;
+            try
+            {
+                using (var cmd = new SqlCommand(@"
+IF COL_LENGTH('dbo.AppIntergrationSettingParameter', 'McpUiHint') IS NULL
+    ALTER TABLE dbo.AppIntergrationSettingParameter ADD McpUiHint NVARCHAR(100) NULL;
+IF COL_LENGTH('dbo.AppIntergrationSettingParameter', 'McpUsageNotes') IS NULL
+    ALTER TABLE dbo.AppIntergrationSettingParameter ADD McpUsageNotes NVARCHAR(MAX) NULL;", conn))
+                    cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                System.Threading.Interlocked.Exchange(ref _unmappedColumnsEnsured, 0);
+                NLog.LogManager.GetCurrentClassLogger().Error(ex, "EnsureUnmappedColumns");
+            }
         }
 
         private static void PrepareAppIntergrationSettingParameterInheriedProperties(AppIntergrationSettingParameterExDto dto)

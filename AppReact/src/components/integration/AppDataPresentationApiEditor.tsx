@@ -20,7 +20,7 @@ import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { buildApiTestHeaders } from '../../helper/apiServiceHelper';
 import { prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
 import { isUsedByMcpValue } from '../../helper/apiConfigForm';
-import { IsUsedByMcpCheckbox, SearchApiConfigForm, type ApiConfigEditorDto } from './ApiConfigParametersForm';
+import { IsUsedByMcpCheckbox, McpUsageFields, SearchApiConfigForm, type ApiConfigEditorDto } from './ApiConfigParametersForm';
 import { ApiEditorWorkArea } from './ApiEditorWorkArea';
 import { buildRoutePathFromParamObj } from '../../helper/navigationHelper';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
@@ -228,6 +228,11 @@ const AppDataPresentationApiEditor: React.FC = () => {
           setSearchEditor(loadedEditor);
           setJsonDraft(mergeSearchEditorIntoJson(settingData.ApiconfigParameters ?? DEFAULT_APICONFIG, loadedEditor));
           setJsonError('');
+          const method = (settingData.HttpMethd ?? '').toString().toLowerCase();
+          const savedResponse = method === 'post' || method === 'put'
+            ? (settingData.PostResponseDto?.ResponseJsonData ?? '')
+            : (settingData.JsonSampleData ?? '');
+          setApiResponseText(savedResponse);
         } else {
           const created = initNewDataPresentationApiDto(searchIdFromQuery ?? null, dataSourceIdFromQuery ?? null);
           setCurrentOperation(created);
@@ -241,7 +246,7 @@ const AppDataPresentationApiEditor: React.FC = () => {
           resetConfigBySearchId(searchIdFromQuery);
         }
       }
-      setApiResponseText('');
+      if (settingParameterId == null) setApiResponseText('');
       setIsModified(false);
     } catch (error) {
       showError(error instanceof Error ? error.message : String(error));
@@ -379,9 +384,17 @@ const AppDataPresentationApiEditor: React.FC = () => {
           if (schemaResult?.ValidationResult) {
             showValidationMessages(schemaResult.ValidationResult, true);
           }
-        } else if (savedOp.HttpMethd === 'Post' || (savedOp as any).HttpMethd === 'Put') {
+        } else if (savedOp.HttpMethd === 'Post' || savedOp.HttpMethd === 'Put') {
           const data = await callPostApi(apiUrl, savedOp);
-          setApiResponseText(JSON.stringify(data ?? '', null, 2));
+          const jsonStr = JSON.stringify(data ?? '', null, 2);
+          setApiResponseText(jsonStr);
+          const withResponse = {
+            ...savedOp,
+            PostResponseDto: { ...(savedOp.PostResponseDto || {}), ResponseJsonData: jsonStr },
+          };
+          latestOperationRef.current = withResponse;
+          setCurrentOperation(withResponse);
+          await handleSave(undefined, { manageBusy: false, skipReloadAfterSave: true });
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -451,21 +464,21 @@ const AppDataPresentationApiEditor: React.FC = () => {
       <div className={`h-1 flex-auto flex flex-col min-h-0 overflow-hidden p-3 ${theme.mainContentSection}`}>
         <div className="flex flex-wrap gap-6 mb-3 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Operation Code</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Operation Code</label>
             <input type="text" autoComplete="off" value={op.ActionCode ?? ''} onChange={(e) => {
               setCurrentOperation((prev: any) => (prev ? { ...prev, ActionCode: e.target.value } : prev));
               markChange();
-            }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs" />
+            }}             className="w-[200px] h-7 px-2 border rounded-[4px] text-xs" />
           </div>
           <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Description</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Description</label>
             <input type="text" autoComplete="off" value={op.ActionDescription ?? ''} onChange={(e) => {
               setCurrentOperation((prev: any) => (prev ? { ...prev, ActionDescription: e.target.value } : prev));
               markChange();
-            }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs" />
+            }}             className="w-[200px] h-7 px-2 border rounded-[4px] text-xs" />
           </div>
           <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Data Search</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Data Search</label>
             <div className="flex items-center gap-1">
               <select value={op.TranscationFieId ?? ''} onChange={(e) => {
                 const v = e.target.value;
@@ -473,7 +486,7 @@ const AppDataPresentationApiEditor: React.FC = () => {
                 setCurrentOperation((prev: any) => (prev ? { ...prev, TranscationFieId: newSearchId } : prev));
                 markChange();
                 resetConfigBySearchId(newSearchId);
-              }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs">
+              }} className="w-[200px] h-7 px-2 border rounded-[4px] text-xs">
                 <option value="">—</option>
                 {searchList.map((s) => (
                   <option key={s.Id} value={s.Id}>{s.Display ?? s.Id}</option>
@@ -487,13 +500,15 @@ const AppDataPresentationApiEditor: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Http Method</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Http Method</label>
             <select value={op.HttpMethd ?? 'Get'} onChange={(e) => {
               setCurrentOperation((prev: any) => (prev ? { ...prev, HttpMethd: e.target.value } : prev));
               markChange();
-            }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs">
+            }} className="w-[200px] h-7 px-2 border rounded-[4px] text-xs">
               {HTTP_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
+          </div>
+          <div className="ml-auto flex items-center">
             <IsUsedByMcpCheckbox
               checked={isUsedByMcpValue(op.IsUsedByMcp)}
               onChange={(checked) => {
@@ -503,6 +518,22 @@ const AppDataPresentationApiEditor: React.FC = () => {
             />
           </div>
         </div>
+        {isUsedByMcpValue(op.IsUsedByMcp) && (
+          <div className="mb-3">
+            <McpUsageFields
+              hint={op.McpUiHint ?? ''}
+              notes={op.McpUsageNotes ?? ''}
+              onHintChange={(value) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, McpUiHint: value } : prev));
+                markChange();
+              }}
+              onNotesChange={(value) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, McpUsageNotes: value } : prev));
+                markChange();
+              }}
+            />
+          </div>
+        )}
 
         <ApiEditorWorkArea
           apiUrl={(() => {

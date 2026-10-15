@@ -23,9 +23,9 @@ public class OpenApiDocumentController : SecureBaseController
     }
 
     [HttpGet]
-    public IActionResult ListSelectableApis()
+    public IActionResult ListSelectableApis([FromQuery] bool mcpOnly = false)
     {
-        return Ok(AppOpenApiDocumentBL.ListSelectableApis());
+        return Ok(AppOpenApiDocumentBL.ListSelectableApis(mcpOnly));
     }
 
     [HttpPost]

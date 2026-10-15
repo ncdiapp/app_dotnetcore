@@ -19,7 +19,7 @@ import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { getHeaders } from '../../helper/apiServiceHelper';
 import { prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
 import { ensureSessionHeader, isUsedByMcpValue } from '../../helper/apiConfigForm';
-import { IsUsedByMcpCheckbox } from './ApiConfigParametersForm';
+import { IsUsedByMcpCheckbox, McpUsageFields } from './ApiConfigParametersForm';
 import { ApiEditorWorkArea } from './ApiEditorWorkArea';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
@@ -566,7 +566,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
         <div className="w-full max-w-full min-w-0 mb-3 flex-shrink-0 border rounded-[4px] p-3 box-border">
           <div className="w-full max-w-full min-w-0 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-x-4 gap-y-2">
             <div className="flex items-center min-w-0">
-              <label className={`w-28 shrink-0 text-xs mr-2 ${theme.label}`}>Operation Code</label>
+              <label className={`w-48 shrink-0 text-xs mr-2 ${theme.label}`}>Operation Code</label>
               <input
                 type="text"
                 autoComplete="off"
@@ -579,7 +579,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
               />
             </div>
             <div className="flex items-center min-w-0">
-              <label className={`w-28 shrink-0 text-xs mr-2 ${theme.label}`}>Stored Proc</label>
+              <label className={`w-48 shrink-0 text-xs mr-2 ${theme.label}`}>Stored Proc</label>
               <input
                 type="text"
                 readOnly
@@ -589,7 +589,7 @@ const AppStoredProcedureApiEditor: React.FC = () => {
               />
             </div>
             <div className="flex items-center min-w-0">
-              <label className={`w-28 shrink-0 text-xs mr-2 ${theme.label}`}>Data Source</label>
+              <label className={`w-48 shrink-0 text-xs mr-2 ${theme.label}`}>Data Source</label>
               <input
                 type="text"
                 readOnly
@@ -599,23 +599,16 @@ const AppStoredProcedureApiEditor: React.FC = () => {
               />
             </div>
             <div className="flex items-center min-w-0">
-              <label className={`w-28 shrink-0 text-xs mr-2 ${theme.label}`}>Http Method</label>
+              <label className={`w-48 shrink-0 text-xs mr-2 ${theme.label}`}>Http Method</label>
               <input
                 type="text"
                 readOnly
                 value={op.HttpMethd ?? 'Post'}
                 className={`w-1 flex-auto min-w-0 h-7 px-2 text-xs border rounded-[4px] opacity-80 ${theme.inputBox}`}
               />
-              <IsUsedByMcpCheckbox
-                checked={isUsedByMcpValue(op.IsUsedByMcp)}
-                onChange={(checked) => {
-                  setCurrentOperation((prev: any) => (prev ? { ...prev, IsUsedByMcp: checked } : prev));
-                  markChange();
-                }}
-              />
             </div>
             <div className="flex items-center min-w-0 col-span-1 md:col-span-2 xl:col-span-4 gap-2">
-              <label className={`w-28 shrink-0 text-xs ${theme.label}`}>Description</label>
+              <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Description</label>
               <input
                 type="text"
                 autoComplete="off"
@@ -675,8 +668,31 @@ const AppStoredProcedureApiEditor: React.FC = () => {
                   {isGeneratingDesc ? 'AI…' : 'AI Generate'}
                 </button>
               )}
+              <IsUsedByMcpCheckbox
+                checked={isUsedByMcpValue(op.IsUsedByMcp)}
+                onChange={(checked) => {
+                  setCurrentOperation((prev: any) => (prev ? { ...prev, IsUsedByMcp: checked } : prev));
+                  markChange();
+                }}
+              />
             </div>
           </div>
+          {isUsedByMcpValue(op.IsUsedByMcp) && (
+            <div className="mt-2">
+              <McpUsageFields
+                hint={op.McpUiHint ?? ''}
+                notes={op.McpUsageNotes ?? ''}
+                onHintChange={(value) => {
+                  setCurrentOperation((prev: any) => (prev ? { ...prev, McpUiHint: value } : prev));
+                  markChange();
+                }}
+                onNotesChange={(value) => {
+                  setCurrentOperation((prev: any) => (prev ? { ...prev, McpUsageNotes: value } : prev));
+                  markChange();
+                }}
+              />
+            </div>
+          )}
         </div>
 
         <ApiEditorWorkArea

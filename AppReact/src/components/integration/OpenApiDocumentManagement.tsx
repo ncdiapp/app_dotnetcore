@@ -47,6 +47,7 @@ const OpenApiDocumentManagement: React.FC = () => {
       const list = (rows || []).map((row) => ({
         ...row,
         PublicUrl: publicUrl(serverRoot, row.Code, row.Status),
+        IsUsedByMcp: row.IsUsedByMcp === true,
         LastGenerated: row.LastGenerated ? new Date(row.LastGenerated) : null,
         AppCreatedDate: row.AppCreatedDate ? new Date(row.AppCreatedDate) : null,
         AppModifiedDate: row.AppModifiedDate ? new Date(row.AppModifiedDate) : null,
@@ -93,7 +94,7 @@ const OpenApiDocumentManagement: React.FC = () => {
   return (
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
-        <div className={`text-md font-semibold ${theme.title}`}>OpenAPI Documents Management</div>
+        <div className={`text-md font-semibold ${theme.title}`}>OpenAPI (Swagger) Documents Management</div>
         <div className="flex items-center space-x-2">
           <button
             type="button"
@@ -156,6 +157,7 @@ const OpenApiDocumentManagement: React.FC = () => {
           <FlexGridColumn binding="Version" header="Version" width={90} />
           <FlexGridColumn binding="ApiCount" header="API Count" width={90} />
           <FlexGridColumn binding="Status" header="Status" width={100} />
+          <FlexGridColumn binding="IsUsedByMcp" header="Is Used By MCP" width={130} dataType="Boolean" />
           <FlexGridColumn binding="PublicUrl" header="Public URL" width={280} />
           <FlexGridColumn binding="LastGenerated" header="Last Generated" width={160} dataType="Date" format="yyyy-MM-dd HH:mm" />
           <FlexGridColumn binding="Description" header="Description" width={180} />

@@ -202,7 +202,7 @@ const Sidebar: React.FC = () => {
         },
         {
           Id:'openapi-documents',
-          Name: 'OpenAPI Documents',
+          Name: 'OpenAPI (Swagger) Documents',
           RouteCode: '/openapi-doc-management'
         }
       ]

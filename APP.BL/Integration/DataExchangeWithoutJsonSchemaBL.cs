@@ -73,11 +73,53 @@ namespace ExchangeBL
                 throw new Exception("Stored Procedure API is missing SpName.");
 
             var argsJson = AppStoredProcedureApiBL.BuildArgsJsonFromDefaultsAndBody(setting, requestBody);
-            return App.BL.AIAgent.GenericAgent.StoredProcedure.StoredProcedureExecuteBL.ExecuteJson(
+            var json = App.BL.AIAgent.GenericAgent.StoredProcedure.StoredProcedureExecuteBL.ExecuteJson(
                 setting.DataSourceId.Value,
                 spName,
                 schema,
                 argsJson);
+            if (setting.IsUsedByMcp == true)
+                return json;
+            return PlainStoredProcedureApiResult(json);
+        }
+
+        /// <summary>
+        /// Agent execution wraps the result with ok, procedure, and columnNames.
+        /// A normal Stored Procedure API returns the result rows. Output parameters stay beside the rows.
+        /// </summary>
+        private static string PlainStoredProcedureApiResult(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+                return "[]";
+            try
+            {
+                var obj = JObject.Parse(json);
+                var failed = obj["ok"]?.Type == JTokenType.Boolean && obj["ok"].Value<bool>() == false;
+                if (failed)
+                {
+                    var error = obj["error"]?.ToString();
+                    return new JObject
+                    {
+                        ["error"] = string.IsNullOrWhiteSpace(error) ? "Stored procedure failed." : error
+                    }.ToString(Newtonsoft.Json.Formatting.None);
+                }
+
+                var rows = obj["rows"] as JArray ?? new JArray();
+                var outputs = obj["outputParameters"];
+                if (outputs != null && outputs.Type != JTokenType.Null && outputs.HasValues)
+                {
+                    return new JObject
+                    {
+                        ["rows"] = rows,
+                        ["outputParameters"] = outputs
+                    }.ToString(Newtonsoft.Json.Formatting.None);
+                }
+                return rows.ToString(Newtonsoft.Json.Formatting.None);
+            }
+            catch
+            {
+                return json;
+            }
         }
 
         public async static Task<object> GetAsync(string actionCode, List<KeyValuePair<string, string>> parameters)
@@ -151,13 +193,14 @@ namespace ExchangeBL
 
                 if (transactionExDto.TransactionOrganizedType.HasValue)
                 {
+                    var forPayload = McpApiResponseBL.IsForPayload(parameters);
                     if (transactionExDto.TransactionOrganizedType.Value == (int)EmTransactionOrganizedType.MasterDetail)
                     {
-                        jsonData = PrepareJsonData_MasterDetailDataModelGetApi(parameters, dataExchangeSetting);
+                        jsonData = PrepareJsonData_MasterDetailDataModelGetApi(parameters, dataExchangeSetting, forPayload);
                     }
                     else if (transactionExDto.TransactionOrganizedType.Value == (int)EmTransactionOrganizedType.List)
                     {
-                        jsonData = PrepareJsonData_ListEditDataModelGetApi(parameters, dataExchangeSetting);
+                        jsonData = PrepareJsonData_ListEditDataModelGetApi(parameters, dataExchangeSetting, forPayload);
                     }
 
                 }
@@ -166,7 +209,7 @@ namespace ExchangeBL
             }
             else if (dataExchangeSetting.TranscationFieId.HasValue)
             {
-                string jsonData = PrepareJsonData_SearchResultGetApi(parameters, dataExchangeSetting);
+                string jsonData = PrepareJsonData_SearchResultGetApi(parameters, dataExchangeSetting, McpApiResponseBL.IsForPayload(parameters));
                 return jsonData;
             }
             else
@@ -430,7 +473,7 @@ namespace ExchangeBL
             return Newtonsoft.Json.JsonConvert.SerializeObject(apiSample);
         }
 
-        private static string PrepareJsonData_MasterDetailDataModelGetApi(List<KeyValuePair<string, string>> parameters, AppIntergrationSettingParameterExDto dataExchangeSetting)
+        private static string PrepareJsonData_MasterDetailDataModelGetApi(List<KeyValuePair<string, string>> parameters, AppIntergrationSettingParameterExDto dataExchangeSetting, bool forPayload)
         {
             AppTransactionExDto transactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(dataExchangeSetting.TranscationId.Value);
             var rootIdParam = parameters.FirstOrDefault(o => o.Key.ToLower() == "id");
@@ -443,8 +486,7 @@ namespace ExchangeBL
                 dynamic postDynamicData = ConvertMasterDetailFormDataToDynamicJsonObj(dataExchangeSetting, transactionExDto, formDataDto);
 
                 string jsonData = Newtonsoft.Json.JsonConvert.SerializeObject(postDynamicData);
-
-                return jsonData;
+                return McpApiResponseBL.ApplyEnvelope(dataExchangeSetting, forPayload, jsonData, McpApiResponseBL.TransactionFields(transactionExDto));
             }
 
             return "";
@@ -561,7 +603,7 @@ namespace ExchangeBL
             }
         }
 
-        private static string PrepareJsonData_ListEditDataModelGetApi(List<KeyValuePair<string, string>> parameters, AppIntergrationSettingParameterExDto dataExchangeSetting)
+        private static string PrepareJsonData_ListEditDataModelGetApi(List<KeyValuePair<string, string>> parameters, AppIntergrationSettingParameterExDto dataExchangeSetting, bool forPayload)
         {
             AppTransactionExDto transactionExDto = AppCacheManagerBL.GetOnetHierarchyTranscationFromCache(dataExchangeSetting.TranscationId.Value);
 
@@ -606,8 +648,7 @@ namespace ExchangeBL
             GenerateLookupItemDataSourceNode(dataExchangeSetting, dictRootData);
 
             string jsonData = Newtonsoft.Json.JsonConvert.SerializeObject(dynamicData);
-
-            return jsonData;
+            return McpApiResponseBL.ApplyEnvelope(dataExchangeSetting, forPayload, jsonData, McpApiResponseBL.TransactionFields(transactionExDto));
 
         }
 
@@ -859,7 +900,7 @@ namespace ExchangeBL
         }
 
 
-        private static string PrepareJsonData_SearchResultGetApi(List<KeyValuePair<string, string>> parameters, AppIntergrationSettingParameterExDto dataExchangeSetting)
+        private static string PrepareJsonData_SearchResultGetApi(List<KeyValuePair<string, string>> parameters, AppIntergrationSettingParameterExDto dataExchangeSetting, bool forPayload)
         {
             int searchId = dataExchangeSetting.TranscationFieId.Value;
             string jsonData = Newtonsoft.Json.JsonConvert.SerializeObject("");
@@ -889,8 +930,7 @@ namespace ExchangeBL
             ConvertSearchResultRowsToJsonArray(referenceViewDto, searchResultDto.SearchResultRowList.ToList(), rootListData);
 
             jsonData = Newtonsoft.Json.JsonConvert.SerializeObject(rootListData);
-
-            return jsonData;
+            return McpApiResponseBL.ApplyEnvelope(dataExchangeSetting, forPayload, jsonData, McpApiResponseBL.SearchFields(referenceViewDto));
         }
 
         private static void ConvertSearchResultRowsToJsonArray(ReferenceViewDto referenceViewDto, List<StaticSearchResultRowJsonDto> searchResultRowList, List<ExpandoObject> rootListData)

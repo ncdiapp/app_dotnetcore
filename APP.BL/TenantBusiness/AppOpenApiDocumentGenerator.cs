@@ -146,7 +146,7 @@ namespace App.BL
                 ["openapi"] = "3.0.0",
                 ["info"] = new JObject
                 {
-                    ["title"] = string.IsNullOrWhiteSpace(title) ? "OpenAPI Document" : title,
+                    ["title"] = string.IsNullOrWhiteSpace(title) ? "OpenAPI Swagger Document" : title,
                     ["version"] = string.IsNullOrWhiteSpace(version) ? "1.0.0" : version,
                     ["description"] = description ?? ""
                 },
@@ -238,7 +238,10 @@ namespace App.BL
                         parameters.Add(QueryParameter(key, value));
                     }
                 }
-                responseSchema = SearchResponseSchema(dto.TranscationFieId.Value);
+                var mcpGet = dto.IsUsedByMcp == true && method == "get";
+                responseSchema = SearchResponseSchema(dto.TranscationFieId.Value, mcpGet);
+                if (mcpGet)
+                    responseSchema = McpApiResponseBL.EnvelopeSchema(responseSchema);
                 return;
             }
 
@@ -264,6 +267,8 @@ namespace App.BL
                 if (method == "post" || method == "put")
                     requestSchema = SchemaFromSample(dto.JsonSampleData) ?? GenericObject();
                 responseSchema = GenericObject();
+                if (dto.IsUsedByMcp == true && method == "get")
+                    responseSchema = McpApiResponseBL.EnvelopeSchema(responseSchema);
                 return;
             }
 
@@ -288,7 +293,7 @@ namespace App.BL
             }
         }
 
-        private static JObject SearchResponseSchema(int searchId)
+        private static JObject SearchResponseSchema(int searchId, bool includeFieldHints = false)
         {
             var search = AppSearchConfigBL.RetrieveOneAppSearchExDto(searchId);
             var view = search?.DefaultSearchViewExDto;
@@ -306,7 +311,7 @@ namespace App.BL
                     var path = field?.SysTableFiledPath;
                     if (string.IsNullOrWhiteSpace(path) || properties[path] != null)
                         continue;
-                    properties[path] = new JObject { ["type"] = "string" };
+                    properties[path] = McpApiResponseBL.PropertySchema(viewField.ControlType, viewField.EntityId, includeFieldHints);
                 }
             }
 

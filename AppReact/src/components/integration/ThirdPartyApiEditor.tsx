@@ -31,7 +31,7 @@ import {
   serializeApiConfig,
   type ApiConfigFormModel,
 } from '../../helper/apiConfigForm';
-import { ApiConfigParametersForm, IsUsedByMcpCheckbox, type ApiConfigFormHandle } from './ApiConfigParametersForm';
+import { ApiConfigParametersForm, IsUsedByMcpCheckbox, McpUsageFields, type ApiConfigFormHandle } from './ApiConfigParametersForm';
 import { ApiEditorWorkArea } from './ApiEditorWorkArea';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
@@ -477,27 +477,43 @@ const ThirdPartyApiEditor: React.FC = () => {
       <div className={`h-1 flex-auto flex flex-col min-h-0 overflow-hidden p-3 ${theme.mainContentSection}`}>
         <div className="flex items-center gap-4 mb-3 flex-shrink-0">
           <div className="flex items-center gap-2 flex-shrink-0">
-            <label className={`flex-shrink-0 text-xs whitespace-nowrap ${theme.label}`}>Operation Code</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Operation Code</label>
             <input type="text" value={op?.ActionCode ?? ''} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, ActionCode: e.target.value } : prev)); markChange(); }} className={`w-[200px] flex-shrink-0 h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} />
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            <label className={`flex-shrink-0 text-xs whitespace-nowrap ${theme.label}`}>Http Method</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Http Method</label>
             <select value={op?.HttpMethd ?? 'Get'} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, HttpMethd: e.target.value } : prev)); markChange(); }} className={`w-[200px] flex-shrink-0 h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`}>
               {HTTP_METHODS.map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
-            <IsUsedByMcpCheckbox
-              checked={isUsedByMcpValue(op?.IsUsedByMcp)}
-              onChange={(checked) => {
-                setCurrentOperation((prev: any) => (prev ? { ...prev, IsUsedByMcp: checked } : prev));
+          </div>
+          <div className="flex items-center gap-2 w-1 flex-auto min-w-0">
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Description</label>
+            <input type="text" value={op?.ActionDescription ?? ''} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, ActionDescription: e.target.value } : prev)); markChange(); }} className={`w-1 flex-auto min-w-0 h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} />
+          </div>
+          <IsUsedByMcpCheckbox
+            checked={isUsedByMcpValue(op?.IsUsedByMcp)}
+            onChange={(checked) => {
+              setCurrentOperation((prev: any) => (prev ? { ...prev, IsUsedByMcp: checked } : prev));
+              markChange();
+            }}
+          />
+        </div>
+        {isUsedByMcpValue(op?.IsUsedByMcp) && (
+          <div className="mb-3">
+            <McpUsageFields
+              hint={op?.McpUiHint ?? ''}
+              notes={op?.McpUsageNotes ?? ''}
+              onHintChange={(value) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, McpUiHint: value } : prev));
+                markChange();
+              }}
+              onNotesChange={(value) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, McpUsageNotes: value } : prev));
                 markChange();
               }}
             />
           </div>
-          <div className="flex items-center gap-2 w-1 flex-auto min-w-0">
-            <label className={`flex-shrink-0 text-xs whitespace-nowrap ${theme.label}`}>Description</label>
-            <input type="text" value={op?.ActionDescription ?? ''} onChange={(e) => { setCurrentOperation((prev: any) => (prev ? { ...prev, ActionDescription: e.target.value } : prev)); markChange(); }} className={`w-1 flex-auto min-w-0 h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`} />
-          </div>
-        </div>
+        )}
 
         <ApiEditorWorkArea
           apiUrl={displayApiUrl}

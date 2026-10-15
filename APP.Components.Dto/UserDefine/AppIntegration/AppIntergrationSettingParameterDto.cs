@@ -24,6 +24,18 @@ namespace APP.Components.EntityDto
         public bool? IsUsedByMcp { get; set; }
 
         /// <summary>
+        /// MCP UI hint. Stored in McpUiHint (NVARCHAR(100) NULL). Empty, PivotTable, or ChartView.
+        /// </summary>
+        [DataMember]
+        public string McpUiHint { get; set; }
+
+        /// <summary>
+        /// Notes appended to the MCP OpenAPI operation description. Stored in McpUsageNotes (NVARCHAR(MAX) NULL).
+        /// </summary>
+        [DataMember]
+        public string McpUsageNotes { get; set; }
+
+        /// <summary>
         /// Search API editor fields. Filled on read from APIConfigParameters plus the search criteria.
         /// On save, written back into APIConfigParameters. Not a database column.
         /// </summary>

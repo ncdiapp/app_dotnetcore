@@ -292,13 +292,52 @@ export const TransactionApiConfigForm: React.FC<{
   );
 };
 
+export const McpUsageFields: React.FC<{
+  hint: string;
+  notes: string;
+  onHintChange: (value: string) => void;
+  onNotesChange: (value: string) => void;
+}> = ({ hint, notes, onHintChange, onNotesChange }) => {
+  const { theme } = useTheme();
+  const labelClass = `w-48 shrink-0 text-xs ${theme.label}`;
+  const boxClass = `h-7 px-2 text-xs border rounded-[4px] ${theme.inputBox}`;
+  return (
+    <div className="flex items-center gap-4 w-full min-w-0">
+      <div className="flex items-center gap-2 shrink-0">
+        <span className={labelClass}>MCP UI Hint</span>
+        <select value={hint} onChange={(e) => onHintChange(e.target.value)} className={`w-52 ${boxClass}`}>
+          <option value=""> </option>
+          <option value="SelectorGrid">SelectorGrid</option>
+          <option value="DateRangeFilter">DateRangeFilter</option>
+          <option value="RecordCard">RecordCard</option>
+          <option value="FlexGrid">FlexGrid</option>
+          <option value="ActionMenu">ActionMenu</option>
+          <option value="Form">Form</option>
+          <option value="ChartView">ChartView</option>
+          <option value="PivotTable">PivotTable</option>
+          <option value="DataAnalysis">DataAnalysis</option>
+        </select>
+      </div>
+      <div className="flex items-center gap-2 w-1 flex-auto min-w-0">
+        <span className={labelClass}>AI Usage Notes For MCP</span>
+        <input
+          type="text"
+          value={notes}
+          onChange={(e) => onNotesChange(e.target.value)}
+          className={`w-1 flex-auto min-w-0 ${boxClass}`}
+        />
+      </div>
+    </div>
+  );
+};
+
 export const IsUsedByMcpCheckbox: React.FC<{
   checked: boolean;
   onChange: (checked: boolean) => void;
 }> = ({ checked, onChange }) => {
   const { theme } = useTheme();
   return (
-    <label className={`inline-flex items-center gap-2 text-xs ${theme.label}`}>
+    <label className={`inline-flex items-center gap-2 shrink-0 whitespace-nowrap text-xs ${theme.label}`}>
       <input
         type="checkbox"
         checked={checked}

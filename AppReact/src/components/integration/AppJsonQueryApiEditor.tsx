@@ -22,7 +22,7 @@ import { useApiServerRoot } from '../../redux/hooks/useApiServerRoot';
 import { getHeaders } from '../../helper/apiServiceHelper';
 import { prettyPrintJsonForDisplay } from '../../helper/integrationPayloadHelper';
 import { ensureSessionHeader, isUsedByMcpValue } from '../../helper/apiConfigForm';
-import { IsUsedByMcpCheckbox } from './ApiConfigParametersForm';
+import { IsUsedByMcpCheckbox, McpUsageFields } from './ApiConfigParametersForm';
 import { JsonCodeViewer } from '../common/JsonCodeViewer';
 import { JsonCodeEditor } from '../common/JsonCodeEditor';
 
@@ -371,29 +371,35 @@ const AppJsonQueryApiEditor: React.FC = () => {
       <div className={`flex-1 flex flex-col min-h-0 overflow-auto p-3 ${theme.mainContentSection}`}>
         <div className="flex flex-wrap gap-6 mb-3 flex-shrink-0">
           <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Operation Code</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Operation Code</label>
             <input type="text" autoComplete="off" value={currentOperation?.ActionCode ?? ''} onChange={(e) => {
               setCurrentOperation((prev: any) => (prev ? { ...prev, ActionCode: e.target.value } : prev));
               setIsModified(true);
-            }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs" />
+            }}             className="w-[200px] h-7 px-2 border rounded-[4px] text-xs" />
           </div>
           <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Description</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Description</label>
             <input type="text" autoComplete="off" value={currentOperation?.ActionDescription ?? ''} onChange={(e) => {
               setCurrentOperation((prev: any) => (prev ? { ...prev, ActionDescription: e.target.value } : prev));
               setIsModified(true);
-            }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs" />
+            }}             className="w-[200px] h-7 px-2 border rounded-[4px] text-xs" />
           </div>
           <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Http Method</label>
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Http Method</label>
             <select value={currentOperation?.HttpMethd ?? 'Get'} onChange={(e) => {
               setCurrentOperation((prev: any) => (prev ? { ...prev, HttpMethd: e.target.value } : prev));
               setIsModified(true);
-            }} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs">
+            }} className="w-[200px] h-7 px-2 border rounded-[4px] text-xs">
               {HTTP_METHODS.map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <label className={`w-48 shrink-0 text-xs ${theme.label}`}>Database</label>
+            <input type="text" readOnly value={databaseName} className="w-[200px] h-7 px-2 border rounded-[4px] text-xs" />
+          </div>
+          <div className="ml-auto flex items-center">
             <IsUsedByMcpCheckbox
               checked={isUsedByMcpValue(currentOperation?.IsUsedByMcp)}
               onChange={(checked) => {
@@ -402,11 +408,23 @@ const AppJsonQueryApiEditor: React.FC = () => {
               }}
             />
           </div>
-          <div className="flex items-center gap-2">
-            <label className={`w-24 text-xs ${theme.label}`}>Database</label>
-            <input type="text" readOnly value={databaseName} className="w-[200px] px-2 py-1 border rounded-[4px] text-xs" />
-          </div>
         </div>
+        {isUsedByMcpValue(currentOperation?.IsUsedByMcp) && (
+          <div className="mb-3">
+            <McpUsageFields
+              hint={currentOperation?.McpUiHint ?? ''}
+              notes={currentOperation?.McpUsageNotes ?? ''}
+              onHintChange={(value) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, McpUiHint: value } : prev));
+                setIsModified(true);
+              }}
+              onNotesChange={(value) => {
+                setCurrentOperation((prev: any) => (prev ? { ...prev, McpUsageNotes: value } : prev));
+                setIsModified(true);
+              }}
+            />
+          </div>
+        )}
 
         <div className="flex gap-0 border-b flex-shrink-0 mb-3">
           <button type="button" onClick={() => setActiveTabIndex(0)}

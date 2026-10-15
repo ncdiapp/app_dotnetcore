@@ -22,6 +22,8 @@ export type OpenApiDocument = {
   AppCreatedByID?: number | null;
   AppModifiedByID?: number | null;
   OpenApiJson?: string;
+  IsUsedByMcp?: boolean | null;
+  RemovedActionCodes?: string[];
   Members?: OpenApiDocumentMember[];
 };
 
@@ -64,8 +66,8 @@ class OpenApiDocumentService {
     return response.json();
   }
 
-  async listSelectableApis(): Promise<OpenApiSelectableApi[]> {
-    const response = await fetch(`${endpoints.BASE_URL}/webapi/OpenApiDocument/ListSelectableApis`, { headers: getHeaders() });
+  async listSelectableApis(mcpOnly = false): Promise<OpenApiSelectableApi[]> {
+    const response = await fetch(`${endpoints.BASE_URL}/webapi/OpenApiDocument/ListSelectableApis?mcpOnly=${mcpOnly ? 'true' : 'false'}`, { headers: getHeaders() });
     if (!response.ok) throw new Error(await readError(response));
     return response.json();
   }
@@ -76,6 +78,7 @@ class OpenApiDocumentService {
     Code: string;
     Version: string;
     Description: string;
+    IsUsedByMcp?: boolean | null;
     ActionCodes: string[];
   }): Promise<OpenApiDocument> {
     const response = await fetch(`${endpoints.BASE_URL}/webapi/OpenApiDocument/Save`, {

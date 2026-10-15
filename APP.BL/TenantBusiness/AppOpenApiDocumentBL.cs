@@ -65,6 +65,8 @@ END";
             public int? AppCreatedByID { get; set; }
             public int? AppModifiedByID { get; set; }
             public string OpenApiJson { get; set; }
+            public bool? IsUsedByMcp { get; set; }
+            public List<string> RemovedActionCodes { get; set; } = new List<string>();
             public List<MemberDto> Members { get; set; } = new List<MemberDto>();
         }
 
@@ -83,6 +85,7 @@ END";
             public string Code { get; set; }
             public string Version { get; set; }
             public string Description { get; set; }
+            public bool? IsUsedByMcp { get; set; }
             public List<string> ActionCodes { get; set; }
         }
 
@@ -115,7 +118,7 @@ END";
             using (var conn = OpenTenant())
             using (var cmd = new SqlCommand(@"
 SELECT Id, Name, Code, Version, Description, Status, ApiCount, LastGenerated,
-       AppCreatedDate, AppModifiedDate, AppCreatedByID, AppModifiedByID
+       AppCreatedDate, AppModifiedDate, AppCreatedByID, AppModifiedByID, IsUsedByMcp
 FROM dbo.AppOpenApiDocument
 ORDER BY Name", conn))
             using (var reader = cmd.ExecuteReader())
@@ -153,6 +156,9 @@ ORDER BY Name", conn))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            var removed = FilterMembersForMcp(request.IsUsedByMcp == true, codes);
+            if (request.IsUsedByMcp == true)
+                codes = codes.Where(c => !removed.Contains(c, StringComparer.OrdinalIgnoreCase)).ToList();
 
             var userId = AppSecurityUserBL.CurrentUserId;
             using (var conn = OpenTenant())
@@ -165,14 +171,15 @@ ORDER BY Name", conn))
                     var version = string.IsNullOrWhiteSpace(request.Version) ? "1.0.0" : request.Version.Trim();
                     using (var cmd = new SqlCommand(@"
 INSERT INTO dbo.AppOpenApiDocument
-    (Name, Code, Version, Description, Status, ApiCount, AppCreatedByID, AppModifiedByID)
-VALUES (@Name, @Code, @Version, @Description, N'Draft', 0, @UserId, @UserId);
+    (Name, Code, Version, Description, Status, ApiCount, IsUsedByMcp, AppCreatedByID, AppModifiedByID)
+VALUES (@Name, @Code, @Version, @Description, N'Draft', 0, @IsUsedByMcp, @UserId, @UserId);
 SELECT CAST(SCOPE_IDENTITY() AS INT);", conn))
                     {
                         cmd.Parameters.AddWithValue("@Name", name);
                         cmd.Parameters.AddWithValue("@Code", code);
                         cmd.Parameters.AddWithValue("@Version", version);
                         cmd.Parameters.AddWithValue("@Description", (object)request.Description ?? DBNull.Value);
+                        cmd.Parameters.Add("@IsUsedByMcp", SqlDbType.Bit).Value = request.IsUsedByMcp.HasValue ? (object)request.IsUsedByMcp.Value : DBNull.Value;
                         cmd.Parameters.AddWithValue("@UserId", userId);
                         request.Id = (int)cmd.ExecuteScalar();
                     }
@@ -185,6 +192,7 @@ SET Name = @Name,
     Code = @Code,
     Version = @Version,
     Description = @Description,
+    IsUsedByMcp = @IsUsedByMcp,
     AppModifiedByID = @UserId,
     AppModifiedDate = SYSUTCDATETIME()
 WHERE Id = @Id", conn))
@@ -193,6 +201,7 @@ WHERE Id = @Id", conn))
                         cmd.Parameters.AddWithValue("@Code", code);
                         cmd.Parameters.AddWithValue("@Version", (object)(request.Version ?? "").Trim() ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@Description", (object)request.Description ?? DBNull.Value);
+                        cmd.Parameters.Add("@IsUsedByMcp", SqlDbType.Bit).Value = request.IsUsedByMcp.HasValue ? (object)request.IsUsedByMcp.Value : DBNull.Value;
                         cmd.Parameters.AddWithValue("@UserId", userId);
                         cmd.Parameters.AddWithValue("@Id", request.Id);
                         if (cmd.ExecuteNonQuery() == 0)
@@ -203,7 +212,10 @@ WHERE Id = @Id", conn))
                 ReplaceMembers(conn, request.Id, codes);
             }
 
-            return Get(request.Id);
+            var saved = Get(request.Id);
+            if (saved != null)
+                saved.RemovedActionCodes = removed;
+            return saved;
         }
 
         public static void Delete(int id)
@@ -280,6 +292,15 @@ WHERE Id = @Id", conn))
                     });
                     continue;
                 }
+                if (doc.IsUsedByMcp == true && api.IsUsedByMcp != true)
+                {
+                    missing.Add(new AppOpenApiDocumentGenerator.Skip
+                    {
+                        ActionCode = member.ActionCode,
+                        Reason = "Not used by MCP."
+                    });
+                    continue;
+                }
                 members.Add(api);
             }
 
@@ -353,7 +374,7 @@ WHERE Code = @Code AND Status = N'Published'", conn))
             return null;
         }
 
-        public static List<SelectableApiDto> ListSelectableApis()
+        public static List<SelectableApiDto> ListSelectableApis(bool mcpOnly = false)
         {
             var operations = LoadOperations();
             var dataSources = SafeDataSources();
@@ -367,6 +388,8 @@ WHERE Code = @Code AND Status = N'Published'", conn))
                 if (AppOpenApiDocumentGenerator.IsExcelImport(dto))
                     continue;
                 if (string.IsNullOrWhiteSpace(dto.ActionCode))
+                    continue;
+                if (mcpOnly && dto.IsUsedByMcp != true)
                     continue;
 
                 var providerId = dto.IntergrationSettingId ?? 0;
@@ -450,6 +473,7 @@ WHERE Code = @Code AND Status = N'Published'", conn))
                     result.Add(dto);
                 }
             }
+            AppIntergrationSettingBL.FillUnmappedColumns(result);
             return result;
         }
 
@@ -575,10 +599,10 @@ WHERE Code = @Code AND Status = N'Published'", conn))
         {
             var sql = includeJson
                 ? @"SELECT Id, Name, Code, Version, Description, Status, ApiCount, LastGenerated,
-                           AppCreatedDate, AppModifiedDate, AppCreatedByID, AppModifiedByID, OpenApiJson
+                           AppCreatedDate, AppModifiedDate, AppCreatedByID, AppModifiedByID, OpenApiJson, IsUsedByMcp
                     FROM dbo.AppOpenApiDocument WHERE Id = @Id"
                 : @"SELECT Id, Name, Code, Version, Description, Status, ApiCount, LastGenerated,
-                           AppCreatedDate, AppModifiedDate, AppCreatedByID, AppModifiedByID
+                           AppCreatedDate, AppModifiedDate, AppCreatedByID, AppModifiedByID, IsUsedByMcp
                     FROM dbo.AppOpenApiDocument WHERE Id = @Id";
             using (var cmd = new SqlCommand(sql, conn))
             {
@@ -609,8 +633,11 @@ WHERE Code = @Code AND Status = N'Published'", conn))
                 AppCreatedByID = reader.IsDBNull(10) ? (int?)null : reader.GetInt32(10),
                 AppModifiedByID = reader.IsDBNull(11) ? (int?)null : reader.GetInt32(11)
             };
+            var mcpOrdinal = includeJson ? 13 : 12;
             if (includeJson)
                 doc.OpenApiJson = reader.IsDBNull(12) ? "" : reader.GetString(12);
+            if (reader.FieldCount > mcpOrdinal && !reader.IsDBNull(mcpOrdinal))
+                doc.IsUsedByMcp = reader.GetBoolean(mcpOrdinal);
             return doc;
         }
 
@@ -659,7 +686,30 @@ WHERE Code = @Code AND Status = N'Published'", conn))
                     cmd.ExecuteNonQuery();
                 using (var cmd = new SqlCommand(CreateMemberSql, conn))
                     cmd.ExecuteNonQuery();
+                using (var cmd = new SqlCommand(@"
+IF COL_LENGTH('dbo.AppOpenApiDocument', 'IsUsedByMcp') IS NULL
+    ALTER TABLE dbo.AppOpenApiDocument ADD IsUsedByMcp BIT NULL;", conn))
+                    cmd.ExecuteNonQuery();
             }
+        }
+
+        private static List<string> FilterMembersForMcp(bool mcpDocument, List<string> codes)
+        {
+            var removed = new List<string>();
+            if (!mcpDocument || codes == null || codes.Count == 0)
+                return removed;
+            var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var api in LoadOperations())
+            {
+                if (api != null && api.IsUsedByMcp == true && !string.IsNullOrWhiteSpace(api.ActionCode))
+                    allowed.Add(api.ActionCode);
+            }
+            foreach (var code in codes)
+            {
+                if (!allowed.Contains(code))
+                    removed.Add(code);
+            }
+            return removed;
         }
 
         private static SqlConnection OpenTenant()

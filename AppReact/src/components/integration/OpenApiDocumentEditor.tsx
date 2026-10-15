@@ -36,6 +36,7 @@ const OpenApiDocumentEditor: React.FC = () => {
   const [version, setVersion] = useState('1.0.0');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('Draft');
+  const [isUsedByMcp, setIsUsedByMcp] = useState(false);
   const [savedStatus, setSavedStatus] = useState('Draft');
   const [members, setMembers] = useState<OpenApiDocumentMember[]>([]);
   const [memberView, setMemberView] = useState<CollectionView<any>>(() => new CollectionView<any>([]));
@@ -66,6 +67,7 @@ const OpenApiDocumentEditor: React.FC = () => {
       setDescription(doc.Description || '');
       setStatus(doc.Status || 'Draft');
       setSavedStatus(doc.Status || 'Draft');
+      setIsUsedByMcp(doc.IsUsedByMcp === true);
       setOpenApiJson(doc.OpenApiJson || '');
       bindMembers(doc.Members || []);
     } catch (error) {
@@ -97,12 +99,18 @@ const OpenApiDocumentEditor: React.FC = () => {
       Code: nextCode,
       Version: version,
       Description: description,
+      IsUsedByMcp: isUsedByMcp,
       ActionCodes: members.map((m) => m.ActionCode || '').filter(Boolean),
     });
+    if (saved.RemovedActionCodes?.length) {
+      setSkips(saved.RemovedActionCodes.map((code) => `${code}: Not used by MCP.`).join('\n'));
+      errorMessage.showInfo('Saved. APIs that are not used by MCP were removed.');
+    }
     setId(saved.Id);
     setCode(saved.Code || code);
     setVersion(saved.Version || version);
     if (!preserveStatus) setStatus(saved.Status || status);
+    setIsUsedByMcp(saved.IsUsedByMcp === true);
     bindMembers(saved.Members || []);
     const path = `/openapi-doc-editor/${saved.Id}`;
     dispatch(updateCurrentTabLabel(`OpenAPI: ${saved.Name || ''}`));
@@ -112,7 +120,7 @@ const OpenApiDocumentEditor: React.FC = () => {
       navigate(path, { replace: true });
     }
     return saved.Id;
-  }, [bindMembers, code, description, dispatch, id, members, name, navigate, param, status, version]);
+  }, [bindMembers, code, description, dispatch, errorMessage, id, isUsedByMcp, members, name, navigate, param, status, version]);
 
   const onSaveAndGenerate = async () => {
     const wantPublished = status === 'Published';
@@ -169,7 +177,7 @@ const OpenApiDocumentEditor: React.FC = () => {
   const openPicker = async () => {
     dispatch(setIsBusy());
     try {
-      const rows = await openApiDocumentService.listSelectableApis();
+      const rows = await openApiDocumentService.listSelectableApis(isUsedByMcp);
       const taken = new Set(members.map((m) => (m.ActionCode || '').toLowerCase()));
       setSelectable(rows.filter((r) => r.ActionCode && !taken.has(r.ActionCode.toLowerCase())));
       setPickerOpen(true);
@@ -226,7 +234,7 @@ const OpenApiDocumentEditor: React.FC = () => {
     <div className="w-full h-full flex flex-col rounded-t-md rounded-b-md overflow-hidden">
       <div className={`flex items-center justify-between px-3 py-2 mb-1 ${theme.mainContentSection}`}>
         <div className="flex items-center gap-4">
-          <div className={`text-md font-semibold ${theme.title}`}>{name || 'OpenAPI Document'}</div>
+          <div className={`text-md font-semibold ${theme.title}`}>{name || 'OpenAPI Swagger Document'}</div>
           <div className={`text-xs ${theme.label}`}>Version {version || '1.0.0'}</div>
         </div>
         <div className="flex items-center space-x-2">
@@ -272,10 +280,16 @@ const OpenApiDocumentEditor: React.FC = () => {
             <span className={`w-28 text-xs shrink-0 ${theme.label}`}>Description</span>
             <input className={`w-1 flex-auto min-w-0 px-2 py-1 border rounded-[4px] text-xs`} value={description} onChange={(e) => setDescription(e.target.value)} />
           </label>
-          <label className="flex items-center gap-1">
-            <input type="checkbox" className="h-3.5 w-3.5" checked={published} onChange={(e) => setStatus(e.target.checked ? 'Published' : 'Draft')} />
-            <span className={`text-xs ${theme.label}`}>Is Published</span>
-          </label>
+          <div className="flex items-center justify-end gap-4">
+            <label className="flex items-center gap-1 whitespace-nowrap">
+              <input type="checkbox" className="h-3.5 w-3.5" checked={isUsedByMcp} onChange={(e) => setIsUsedByMcp(e.target.checked)} />
+              <span className={`text-xs ${theme.label}`}>Is Used By MCP</span>
+            </label>
+            <label className="flex items-center gap-1 whitespace-nowrap">
+              <input type="checkbox" className="h-3.5 w-3.5" checked={published} onChange={(e) => setStatus(e.target.checked ? 'Published' : 'Draft')} />
+              <span className={`text-xs ${theme.label}`}>Is Published</span>
+            </label>
+          </div>
           {showPublishedUrl && (
             <>
               <div className="col-span-3 flex items-center gap-2 min-w-0">
