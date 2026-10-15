@@ -66,6 +66,7 @@ const OpenApiAddApisDialog: React.FC<Props> = ({ apis, onApply, onClose }) => {
               <FlexGridColumn binding="Description" header="Description" width={180} isReadOnly />
               <FlexGridColumn binding="ApiType" header="API Type" width={160} isReadOnly />
               <FlexGridColumn binding="HttpMethod" header="Http Method" width={110} isReadOnly />
+              <FlexGridColumn binding="IsUsedByMcp" header="Is Used By MCP" width={130} dataType="Boolean" isReadOnly />
               <FlexGridColumn binding="DataSourceName" header="Data Source" width={160} isReadOnly />
               <FlexGridColumn binding="DataModelName" header="Data Model" width={160} isReadOnly />
               <FlexGridColumn binding="Application" header="Application" width={140} isReadOnly />
@@ -77,6 +78,7 @@ const OpenApiAddApisDialog: React.FC<Props> = ({ apis, onApply, onClose }) => {
               <FlexGridColumn binding="ProviderName" header="Provider" width={160} isReadOnly />
               <FlexGridColumn binding="Id" header="ID" width={70} isReadOnly />
               <FlexGridColumn binding="HttpMethod" header="Method" width={90} isReadOnly />
+              <FlexGridColumn binding="IsUsedByMcp" header="Is Used By MCP" width={130} dataType="Boolean" isReadOnly />
               <FlexGridColumn binding="ActionCode" header="Operation Code" width={220} isReadOnly />
               <FlexGridColumn binding="Description" header="Description" width={220} isReadOnly />
               <FlexGridColumn binding="DataSourceName" header="Data Source" width={160} isReadOnly />

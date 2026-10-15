@@ -197,6 +197,7 @@ const OpenApiDocumentEditor: React.FC = () => {
         HttpMethod: row?.HttpMethod || '',
         Source: row?.ProviderKind === 'app' ? (row.ApiType || '') : (row?.ProviderName || ''),
         Description: row?.Description || '',
+        IsUsedByMcp: row?.IsUsedByMcp === true,
       };
     });
     bindMembers([...members, ...added]);
@@ -321,6 +322,7 @@ const OpenApiDocumentEditor: React.FC = () => {
             <FlexGrid itemsSource={memberView} autoGenerateColumns={false} isReadOnly selectionMode="ListBox" initialized={(flex: any) => { memberGridRef.current = flex; }} className="w-full h-full">
               <FlexGridColumn binding="ActionCode" header="ActionCode" width={240} />
               <FlexGridColumn binding="HttpMethod" header="Http Method" width={120} />
+              <FlexGridColumn binding="IsUsedByMcp" header="Is Used By MCP" width={130} dataType="Boolean" />
               <FlexGridColumn binding="Source" header="Source" width={200} />
               <FlexGridColumn binding="Description" header="Description" width={280} />
               <FlexGridColumn header="" binding="" width="*" />

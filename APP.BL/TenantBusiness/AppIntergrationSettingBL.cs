@@ -386,9 +386,11 @@ END";
 
                     aIntergrationSettingDto.AppIntergrationSettingParameterList.Add(aExDto);
                 }
-            }
+                }
             }
 
+            if (aIntergrationSettingDto.AppIntergrationSettingParameterList != null)
+                FillUnmappedColumns(aIntergrationSettingDto.AppIntergrationSettingParameterList.ToList());
 
             if ((int)IntergrationSettingId == AppBuiltInProviderId // App API Provider
                 && aIntergrationSettingDto.AppIntergrationSettingParameterList != null

@@ -6,6 +6,7 @@ export type OpenApiDocumentMember = {
   HttpMethod?: string;
   Source?: string;
   Description?: string;
+  IsUsedByMcp?: boolean;
 };
 
 export type OpenApiDocument = {
@@ -40,6 +41,7 @@ export type OpenApiSelectableApi = {
   Application?: string;
   ProviderName?: string;
   ProviderKind?: string;
+  IsUsedByMcp?: boolean;
 };
 
 async function readError(response: Response): Promise<string> {

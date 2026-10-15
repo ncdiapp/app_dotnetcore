@@ -111,8 +111,12 @@ const ThirdPartyApiProviderEditor: React.FC = () => {
             AppIntergrationSettingParameterList: settingData.AppIntergrationSettingParameterList ?? settingData.AppIntegrationSettingParameterList ?? [],
           });
           const params = settingData.AppIntergrationSettingParameterList ?? settingData.AppIntegrationSettingParameterList ?? [];
-          setParameterList(Array.isArray(params) ? params : []);
-          setParameterCV(new CollectionView<any>(Array.isArray(params) ? params : []));
+          const list = (Array.isArray(params) ? params : []).map((row: any) => ({
+            ...row,
+            IsUsedByMcp: row?.IsUsedByMcp === true,
+          }));
+          setParameterList(list);
+          setParameterCV(new CollectionView<any>(list));
           setEnvVarList(
             Object.entries(settingData.OtherSettingsDto?.DictEnvironmentVariable ?? {}).map(([Key, Value]) => ({
               Key,
@@ -620,6 +624,7 @@ const ThirdPartyApiProviderEditor: React.FC = () => {
                     </FlexGridColumn>
                     <FlexGridColumn binding="Id" header="ID" width={80} />
                     <FlexGridColumn binding="HttpMethd" header="Method" width={100} />
+                    <FlexGridColumn binding="IsUsedByMcp" header="Is Used By MCP" width={130} dataType="Boolean" isReadOnly />
                     <FlexGridColumn binding="ActionCode" header="Operation Code" width={300} />
                     <FlexGridColumn binding="ActionDescription" header="Description" width={300} />
                     <FlexGridColumn binding="DataSourceId" header="Data Source" width={200} dataMap={dataSourceDataMap ?? undefined} />

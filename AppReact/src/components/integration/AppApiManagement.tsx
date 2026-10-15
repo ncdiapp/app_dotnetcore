@@ -106,7 +106,10 @@ const AppApiManagement: React.FC = () => {
       setDataSourceDataMap(new DataMap(dataSources, 'Id', 'Display'));
 
       const params = settingData?.AppIntergrationSettingParameterList ?? settingData?.AppIntegrationSettingParameterList ?? [];
-      const list = Array.isArray(params) ? params : [];
+      const list = (Array.isArray(params) ? params : []).map((row: any) => ({
+        ...row,
+        IsUsedByMcp: row?.IsUsedByMcp === true,
+      }));
       setParameterList(list);
       const cv = new CollectionView(list);
       cv.sortDescriptions.push(new SortDescription('ApplicatoinDisplay', true));
@@ -487,6 +490,7 @@ const AppApiManagement: React.FC = () => {
             <FlexGridColumn binding="ActionDescription" header="Description" width={150} />
             <FlexGridColumn binding="APIType" header="API Type" width={150} />
             <FlexGridColumn binding="HttpMethd" header="Http Method" width={150} />
+            <FlexGridColumn binding="IsUsedByMcp" header="Is Used By MCP" width={130} dataType="Boolean" />
             <FlexGridColumn binding="DataSourceId" header="Data Source" width={200} dataMap={dataSourceDataMap ?? undefined} />
             <FlexGridColumn binding="TranscationId" header="Data Model" width={200} dataMap={transactionDataMap ?? undefined} />
             <FlexGridColumn binding="ApplicatoinDisplay" header="Application" width={200} />

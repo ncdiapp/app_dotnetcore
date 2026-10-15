@@ -76,6 +76,7 @@ END";
             public string HttpMethod { get; set; }
             public string Source { get; set; }
             public string Description { get; set; }
+            public bool IsUsedByMcp { get; set; }
         }
 
         public class SaveRequest
@@ -103,6 +104,7 @@ END";
             public string Application { get; set; }
             public string ProviderName { get; set; }
             public string ProviderKind { get; set; }
+            public bool IsUsedByMcp { get; set; }
         }
 
         public class RegenerateResult
@@ -431,7 +433,8 @@ WHERE Code = @Code AND Status = N'Published'", conn))
                     DataModelName = dataModelName ?? "",
                     Application = isApp ? application : "",
                     ProviderName = string.IsNullOrWhiteSpace(dto.ProviderName) ? (isApp ? AppIntergrationSettingBL.AppBuiltInProviderName : "") : dto.ProviderName,
-                    ProviderKind = isApp ? "app" : "thirdParty"
+                    ProviderKind = isApp ? "app" : "thirdParty",
+                    IsUsedByMcp = dto.IsUsedByMcp == true
                 });
             }
 
@@ -572,7 +575,8 @@ WHERE Code = @Code AND Status = N'Published'", conn))
                     ActionCode = code,
                     HttpMethod = api == null || string.IsNullOrWhiteSpace(api.HttpMethd) ? "" : api.HttpMethd,
                     Source = api == null ? "" : (isApp ? AppOpenApiDocumentGenerator.Classify(api) : api.ProviderName),
-                    Description = api?.ActionDescription ?? ""
+                    Description = api?.ActionDescription ?? "",
+                    IsUsedByMcp = api?.IsUsedByMcp == true
                 };
             }).ToList();
         }

@@ -45,7 +45,9 @@ Swagger 页面是 `/appai/openapi-ui`。脚本来自项目里的 Swashbuckle，�
 
 属性第一行：Name、Code、Description、Is Used By MCP、Is Published。Is Published 在最右边，不另起一行。Published URL 在下一行，只在库里已发布时显示，旁边是 Copy、Download。
 
-左边是已选 API：ActionCode、Http Method、来源（App API 写 API Type，3rd Party 写 Provider Name）、Description。Add APIs 有两个 Tab：App API Provider、3rd Party Provider。Excel Import 不出现。右边是生成后的 JSON。跳过的 API 显示在表下方。
+App API Provider 列表、3rd Party Provider 里的 API 表、Document 已选 API 和 Add APIs 弹窗都有 Is Used By MCP 列。`NULL` 显示为未勾选。
+
+左边是已选 API：ActionCode、Http Method、Is Used By MCP、来源（App API 写 API Type，3rd Party 写 Provider Name）、Description。Add APIs 有两个 Tab：App API Provider、3rd Party Provider。Excel Import 不出现。右边是生成后的 JSON。跳过的 API 显示在表下方。
 
 Save & Generate OpenAPI Doc 同时保存名称、Code、成员、Is Published，并生成 JSON。Version 最后一段加 1（空则先写成 `1.0.0` 再加）。已发布的 URL 立刻返回这份新 JSON。
 
