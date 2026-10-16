@@ -4,7 +4,7 @@ This document specifies agent tools that turn structured data into files, so the
 
 The data looks like a transaction form: a title, label/value fields, sections, and grids. The tool picks the font, size, color, alignment, and blank lines from the level of each part. The same tree can be written as HTML, CSV, Excel, Word, PDF, or PowerPoint, and read back.
 
-How to use it: subscribe the agent to the library `platform-document-export`. In chat, the model calls `export_html`, `export_excel`, or the matching tool, and passes the form JSON (or a path to a file already in the session). The tool saves the file under the chat folder and returns the path, row count, and byte size. The user downloads it from the files panel. `read_html`, `read_excel`, and the other read tools load a file this library wrote and return the form again. `read_pdf` returns text only.
+How to use it: enable any tool from the library `platform-document-export` on the agent. The chat Files tab opens when at least one of those tools is on. In chat, the model calls `export_html`, `export_excel`, or the matching tool, and passes the form JSON (or a path to a file already in the session). The tool saves the file under the chat folder's `output/` directory when the path is only a file name. A path that already includes a folder is kept. The saved name is the requested name plus `_yyyyMMdd_HHmmss` before the extension. The tool returns that path, the row count, and the byte size. Names in the reply that match a file from that turn are download links. The Files tab lists the same files. `read_html`, `read_excel`, and the other read tools load a file this library wrote and return the form again. `read_pdf` returns text only.
 
 The model does not send HTML, fonts, or colors. One walker assigns a level to each node. Each writer applies the same style table for that level.
 
@@ -37,7 +37,7 @@ Same shape as a transaction form: a title, header fields, sections, and grids in
 
 `rows` may be objects. If `columns` is omitted, use the first object's keys. Cells are string, number, bool, ISO-8601 date, or null. Limits: 5000 data rows, 50 columns, section depth rendered only to 3. Over the limit, return an error and write no file. Read preview to the model is 500 rows.
 
-Shared export arguments: `path` (session-relative) and `sourcePath` (one of `content` or `sourcePath`). `sourcePath` may be this JSON, or a `.csv` / `.xlsx` that becomes a single table under the title.
+Shared export arguments: `path` (session-relative; a bare name is written to `output/`) and `sourcePath` (one of `content` or `sourcePath`). `sourcePath` may be this JSON, or a `.csv` / `.xlsx` that becomes a single table under the title.
 
 ## Style table
 
@@ -65,7 +65,7 @@ One tree, one style table, a writer per format. Do not style Word or PDF by hopi
 | HTML | One outer table. Blocks are `<tr><td>`. Field pairs and grids are nested tables. Every font, size, color, align, and padding is an inline `style` on `td` / `th`. No `<style>` block, no class-based layout, no `display`, no flex, no grid, no float. This is what email and rich-text editors keep. |
 | Word | GemBox.Document. Paragraph and table-cell formatting uses the sizes and colors above. Not an HTML round-trip. |
 | PDF | Save that Word model with GemBox.Document. PDF matches Word. |
-| Excel | One worksheet, not one sheet per grid. A fixed grid of 4 columns. Title and section rows are merged across. Field pairs occupy the four cells. Each grid sits below its section with a filled header row and borders. A short empty row is the blank line. Open XML write, so the GemBox free cap (about 5 sheets / 150 rows) does not apply. Do not flip global `UseOpenXml`. |
+| Excel | One worksheet, not one sheet per grid. A fixed grid of 4 columns. Title and section rows are merged across. The title is 13pt bold, centered. Every data row height is set from the font size and the wrapped line count so text is not clipped. Section rows still use the style table. Field pairs occupy the four cells. Each grid sits below its section with a filled header row and borders. A short empty row is the blank line. Open XML write, so the GemBox free cap (about 5 sheets / 150 rows) does not apply. Do not flip global `UseOpenXml`. |
 | CSV | Values only. A section name on its own row, then the grid. No fonts. |
 | PowerPoint | ShapeCrawler. One title slide, then one slide per section: section title, field pairs as a table, grid as a table. Split a grid after about 12 rows onto the next slide. |
 
@@ -155,7 +155,7 @@ JSON tree → FormDocument (levels assigned here)
 ## Checks
 
 - HTML source is tables and inline styles only.
-- The same tree produces a centered 18pt title in HTML, Word, PDF, and Excel.
+- The same tree produces a centered 18pt title in HTML, Word, and PDF. Excel title text is 13pt bold, centered. Excel row heights follow the font and the wrapped lines.
 - Two fields share one row. A section sits above its grid.
 - 5001 data rows: error, no partial file.
 - Tool result has no file body. `../` is rejected.
@@ -164,3 +164,17 @@ JSON tree → FormDocument (levels assigned here)
 ## Out of scope
 
 SQL inside the tool. Charts, pivot, merged input cells, logos, images, and per-call colors. Embedding the file in the chat. Replacing the report engine. Changing `file_write`.
+
+## Export libraries
+
+| Format | Write | Read | File |
+|---|---|---|---|
+| HTML | Our code | AngleSharp | `APP.BL/AIAgent/GenericAgent/Documents/HtmlForm.cs` |
+| CSV | Our code | Our code | `APP.BL/AIAgent/GenericAgent/Documents/CsvForm.cs` |
+| Excel `.xlsx` | DocumentFormat.OpenXml | DocumentFormat.OpenXml | `APP.BL/AIAgent/GenericAgent/Documents/ExcelForm.cs` |
+| Excel `.xls` | — | GemBox.Spreadsheet | `APP.BL/AIAgent/GenericAgent/Documents/ExcelForm.cs` |
+| Word | GemBox.Document | GemBox.Document | `APP.BL/AIAgent/GenericAgent/Documents/WordForm.cs` |
+| PDF | GemBox.Document | GemBox.Document | `APP.BL/AIAgent/GenericAgent/Documents/WordForm.cs` |
+| PowerPoint | ShapeCrawler | ShapeCrawler | `APP.BL/AIAgent/GenericAgent/Documents/PptxForm.cs` |
+
+The tools are called from `APP.BL/AIAgent/GenericAgent/Plugins/AgentDocumentPlugin.cs`. Files are saved by `APP.BL/AIAgent/GenericAgent/GenericAgentFileBL.cs`.

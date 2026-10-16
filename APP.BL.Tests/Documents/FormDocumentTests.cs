@@ -1,5 +1,7 @@
+using System;
 using System.Text;
 using App.BL.AIAgent.GenericAgent.Documents;
+using App.BL.AIAgent.GenericAgent.Plugins;
 using GemBox.Document;
 
 namespace APP.BL.Tests.Documents;
@@ -123,5 +125,16 @@ public class FormDocumentTests
         var back = PptxForm.Read(bytes);
         Assert.Equal("Sales Order", back.Title);
         Assert.Contains(back.Sections, s => s.Tables.Any(t => t.Rows.Any(r => r.Any(c => c.Text == "Widget"))));
+    }
+
+    [Fact]
+    public void StampExportPath_puts_time_before_extension()
+    {
+        var when = new DateTime(2026, 10, 16, 9, 34, 5);
+        Assert.Equal("hello_world_20261016_093405.docx", AgentDocumentPlugin.StampExportPath("hello_world.docx", when));
+        Assert.Equal("out/hello_world_20261016_093405.pdf", AgentDocumentPlugin.StampExportPath("out/hello_world.pdf", when));
+        Assert.Equal("output/hello_world.docx", AgentDocumentPlugin.PlaceInOutputFolder("hello_world.docx"));
+        Assert.Equal("output/hello_world.docx", AgentDocumentPlugin.PlaceInOutputFolder("output/hello_world.docx"));
+        Assert.Equal("reports/hello_world.docx", AgentDocumentPlugin.PlaceInOutputFolder("reports/hello_world.docx"));
     }
 }

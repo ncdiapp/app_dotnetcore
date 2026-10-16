@@ -249,8 +249,13 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     line.Add((fields[i + 1].Value ?? "", fields[i + 1].IsNumber ? StyleNumber : StyleValue));
                 }
                 var xrow = new Row { RowIndex = row };
+                double height = 0;
                 for (var c = 0; c < line.Count; c++)
+                {
                     xrow.Append(Inline(c + 1, row, line[c].text, line[c].style));
+                    height = Math.Max(height, ContentHeight(line[c].text, FontPt(line[c].style), ColumnWidth(c + 1)));
+                }
+                ApplyHeight(xrow, height);
                 data.Append(xrow);
                 row++;
             }
@@ -260,12 +265,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         private static void WriteCells(SheetData data, uint row, List<FormCell> cells, uint headerStyle, bool header)
         {
             var xrow = new Row { RowIndex = row };
+            double height = 0;
             for (var i = 0; i < cells.Count; i++)
             {
                 var cell = cells[i] ?? new FormCell();
                 var style = header ? headerStyle : (cell.IsNumber ? StyleNumber : StyleCell);
                 xrow.Append(Inline(i + 1, row, cell.Text, style));
+                height = Math.Max(height, ContentHeight(cell.Text, FontPt(style), ColumnWidth(i + 1)));
             }
+            ApplyHeight(xrow, height);
             data.Append(xrow);
         }
 
@@ -273,6 +281,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         {
             var xrow = new Row { RowIndex = row };
             xrow.Append(Inline(1, row, text, style));
+            var width = 0d;
+            for (var i = 1; i <= span; i++) width += ColumnWidth(i);
+            ApplyHeight(xrow, ContentHeight(text, FontPt(style), width));
             data.Append(xrow);
             if (span > 1)
                 merges.Append(new MergeCell { Reference = "A" + row.ToString(CultureInfo.InvariantCulture) + ":" + ColumnName(span) + row.ToString(CultureInfo.InvariantCulture) });
@@ -341,6 +352,45 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return s;
         }
 
+        private static double FontPt(uint style)
+        {
+            if (style == StyleTitle || style == StyleSection) return 13;
+            if (style == StyleNested) return 12;
+            return 10;
+        }
+
+        private static double ColumnWidth(int col)
+        {
+            return col % 2 == 1 ? 22 : 28;
+        }
+
+        /// <summary>Points. Counts wrapped lines from column width so the row is tall enough for the font.</summary>
+        private static double ContentHeight(string text, double fontPt, double widthChars)
+        {
+            var charsPerLine = Math.Max(1d, widthChars * (10d / Math.Max(fontPt, 1)));
+            var lines = 0;
+            foreach (var part in (text ?? "").Replace("\r\n", "\n").Split('\n'))
+            {
+                if (part.Length == 0)
+                {
+                    lines++;
+                    continue;
+                }
+                var units = 0;
+                foreach (var ch in part)
+                    units += ch > 255 ? 2 : 1;
+                lines += (int)Math.Ceiling(units / charsPerLine);
+            }
+            if (lines < 1) lines = 1;
+            return lines * (fontPt * 1.45) + 4;
+        }
+
+        private static void ApplyHeight(Row row, double points)
+        {
+            row.Height = points;
+            row.CustomHeight = true;
+        }
+
         private static Columns BuildColumns(int span)
         {
             var columns = new Columns();
@@ -361,7 +411,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         {
             var fonts = new Fonts(
                 Font(10, false, "1a1a1a"),
-                Font(18, true, "1a1a1a"),
+                Font(13, true, "1a1a1a"),
                 Font(13, true, "1a1a1a"),
                 Font(12, true, "1a1a1a"),
                 Font(10, true, "555555"),

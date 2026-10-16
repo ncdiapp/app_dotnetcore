@@ -45,7 +45,7 @@ VALUES (
 GO
 
 DECLARE @type nvarchar(300) = N'App.BL.AIAgent.GenericAgent.Plugins.AgentDocumentPlugin';
-DECLARE @exportSchema nvarchar(max) = N'{"path":{"type":"string","description":"Session-relative file path. Extension is added when missing.","required":true},"content":{"type":"string","description":"Form JSON: title, fields[{label,value}], sections[{title,fields,tables[{columns,rows}],sections}], notes. Pass this or sourcePath."},"sourcePath":{"type":"string","description":"Session file (.json, .csv, .xlsx, .html) to export instead of content."}}';
+DECLARE @exportSchema nvarchar(max) = N'{"path":{"type":"string","description":"File name or session-relative path. A bare name is saved under output/. Extension is added when missing. The saved name adds _yyyyMMdd_HHmmss before the extension. Tell the user the relativePath from the result.","required":true},"content":{"type":"string","description":"Form JSON: title, fields[{label,value}], sections[{title,fields,tables[{columns,rows}],sections}], notes. Pass this or sourcePath."},"sourcePath":{"type":"string","description":"Session file (.json, .csv, .xlsx, .html) to export instead of content."}}';
 DECLARE @readSchema nvarchar(200) = N'{"path":{"type":"string","description":"Session-relative file path.","required":true}}';
 
 IF NOT EXISTS (SELECT 1 FROM dbo.AppAgentLibraryTool WHERE LibraryKey = N'platform-document-export' AND ToolName = N'export_html')

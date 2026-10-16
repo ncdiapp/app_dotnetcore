@@ -12,9 +12,9 @@ import {
     saveAgentChatToTabCache,
 } from './agentChatTabCache';
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
-import { chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
+import { chatModulesFromEnabledTools, chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 import { DataRenderPanel } from './dataRender';
-import { AgentMarkdown, FollowupChips, splitFollowups } from './AgentMarkdown';
+import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
 
 const SESSION_START = '[session_start]';
 const RUN_IN_PROGRESS = '[run_in_progress]';
@@ -175,6 +175,22 @@ interface ToolStep {
     isSuccess: boolean;
     durationMs?: number;
 }
+
+/** File names this turn actually wrote, so the reply can link them to download. */
+const exportFileLinks = (steps?: ToolStep[]): AgentFileLink[] => {
+    const byName = new Map<string, string>();
+    for (const s of steps ?? []) {
+        const raw = s.result || '';
+        const re = /"relativePath"\s*:\s*"([^"\\]+)"/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(raw)) !== null) {
+            const path = m[1].replace(/\\/g, '/');
+            const name = path.split('/').filter(Boolean).pop();
+            if (name) byName.set(name, path);
+        }
+    }
+    return Array.from(byName.entries()).map(([name, path]) => ({ name, path }));
+};
 
 interface TurnActivity {
     turnIndex: number;  // which user message this belongs to
@@ -806,7 +822,30 @@ const GenericAgentChat: React.FC<Props> = ({
                     }
                 }
                 setSkillDisplayNames(map);
-                setUiModules(chatModulesFromLibraries((subRes?.Object ?? []).map(s => s.LibraryKey)));
+                const libraryKeys = (subRes?.Object ?? []).map(s => s.LibraryKey);
+                const fileLibs = libraryKeys.filter(k => chatModulesFromLibraries([k]).has('files'));
+                if (fileLibs.length === 0) {
+                    setUiModules(new Set());
+                } else {
+                    try {
+                        const [exclRes, ...toolRes] = await Promise.all([
+                            agentSkillSetSvc.GetToolExclusions(skillKey),
+                            ...fileLibs.map(k => agentSkillSetSvc.GetLibraryTools(k)),
+                        ]);
+                        const excluded = new Set(
+                            (exclRes?.Object ?? []).map(e => `${e.LibraryKey}\u0001${e.ToolName}`),
+                        );
+                        const toolsByLibrary = fileLibs.map((k, i) => ({
+                            libraryKey: k,
+                            toolNames: (toolRes[i]?.Object ?? [])
+                                .filter(t => t.IsActive !== false)
+                                .map(t => t.ToolName),
+                        }));
+                        setUiModules(chatModulesFromEnabledTools(libraryKeys, toolsByLibrary, excluded));
+                    } catch {
+                        setUiModules(chatModulesFromLibraries(libraryKeys));
+                    }
+                }
                 if (!restored) {
                     setSkillExecutionMode(mode);
                     skillExecutionModeRef.current = mode;
@@ -1330,7 +1369,13 @@ const GenericAgentChat: React.FC<Props> = ({
                                             </div>
                                         )}
                                         {m.role === 'assistant' && !m.askUserSummary ? (
-                                            <AgentMarkdown content={split.body} />
+                                            <AgentMarkdown
+                                                content={split.body}
+                                                fileLinks={exportFileLinks(m.toolSteps)}
+                                                onFileDownload={(path) => {
+                                                    if (fileSessionKey) void genericAgentSvc.DownloadAgentFile(skillKey, fileSessionKey, path);
+                                                }}
+                                            />
                                         ) : (
                                             <div className="whitespace-pre-wrap leading-relaxed">
                                                 {m.role === 'assistant' ? split.body : m.content}

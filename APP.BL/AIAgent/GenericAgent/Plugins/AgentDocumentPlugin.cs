@@ -185,10 +185,30 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 throw new InvalidOperationException("path is required.");
             var current = Path.GetExtension(path);
             if (string.IsNullOrEmpty(current))
-                return path + extension;
-            if (!string.Equals(current, extension, StringComparison.OrdinalIgnoreCase))
-                return path.Substring(0, path.Length - current.Length) + extension;
-            return path;
+                path += extension;
+            else if (!string.Equals(current, extension, StringComparison.OrdinalIgnoreCase))
+                path = path.Substring(0, path.Length - current.Length) + extension;
+            return StampExportPath(PlaceInOutputFolder(path), DateTime.Now);
+        }
+
+        /// <summary>A bare file name is saved under output/. A path that already names a folder is left as given.</summary>
+        public static string PlaceInOutputFolder(string path)
+        {
+            var norm = (path ?? "").Replace('\\', '/').TrimStart('/');
+            if (norm.StartsWith("output/", StringComparison.OrdinalIgnoreCase))
+                return norm;
+            if (norm.IndexOf('/') >= 0)
+                return norm;
+            return "output/" + norm;
+        }
+
+        /// <summary>Inserts _yyyyMMdd_HHmmss before the extension so each export is a new file.</summary>
+        public static string StampExportPath(string path, DateTime when)
+        {
+            var ext = Path.GetExtension(path ?? "");
+            var stem = string.IsNullOrEmpty(ext) ? (path ?? "") : path.Substring(0, path.Length - ext.Length);
+            var stamp = when.ToString("yyyyMMdd_HHmmss", System.Globalization.CultureInfo.InvariantCulture);
+            return stem + "_" + stamp + ext;
         }
 
         private static string Normalize(string path)

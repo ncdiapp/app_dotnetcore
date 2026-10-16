@@ -42,12 +42,31 @@ export function splitFollowups(content: string, isStreaming?: boolean): {
 const escapeHtml = (s: string) =>
     s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/** Inline: **bold**, *italic*, `code` */
-const formatInline = (text: string): string => {
+export type AgentFileLink = { name: string; path: string };
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** Inline: **bold**, *italic*, `code`, and download links for exported file names. */
+const formatInline = (text: string, files?: AgentFileLink[]): string => {
     let s = escapeHtml(text);
+    const tokens: string[] = [];
+    const sorted = [...(files ?? [])].filter(f => f.name).sort((a, b) => b.name.length - a.name.length);
+    for (const f of sorted) {
+        const re = new RegExp(escapeRegExp(escapeHtml(f.name)), 'g');
+        s = s.replace(re, () => {
+            const id = tokens.length;
+            tokens.push(
+                `<a href="#" data-agent-file="${escapeHtml(f.path)}" class="underline cursor-pointer">${escapeHtml(f.name)}</a>`,
+            );
+            return `\u0000${id}\u0000`;
+        });
+    }
     s = s.replace(/`([^`]+)`/g, '<code class="agent-md-code">$1</code>');
     s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     s = s.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1<em>$2</em>');
+    if (tokens.length) {
+        s = s.replace(/\u0000(\d+)\u0000/g, (_, n) => tokens[Number(n)] ?? '');
+    }
     return s;
 };
 
@@ -178,20 +197,31 @@ export const FollowupChips: React.FC<{
 export const AgentMarkdown: React.FC<{
     content: string;
     className?: string;
-}> = ({ content, className }) => {
+    fileLinks?: AgentFileLink[];
+    onFileDownload?: (relativePath: string) => void;
+}> = ({ content, className, fileLinks, onFileDownload }) => {
     const { theme, t } = useTheme();
     const borderCls = t('border_mainContentSection');
     const blocks = parseBlocks(content);
 
     return (
-        <div className={`agent-md text-[15px] leading-relaxed ${className || ''}`}>
+        <div
+            className={`agent-md text-[15px] leading-relaxed ${className || ''}`}
+            onClick={e => {
+                const a = (e.target as HTMLElement).closest('a[data-agent-file]');
+                if (!a) return;
+                e.preventDefault();
+                const path = a.getAttribute('data-agent-file');
+                if (path) onFileDownload?.(path);
+            }}
+        >
             {blocks.map((b, idx) => {
                 if (b.type === 'p') {
                     return (
                         <p
                             key={idx}
                             className={`mb-2 last:mb-0 whitespace-pre-wrap ${theme.label}`}
-                            dangerouslySetInnerHTML={{ __html: formatInline(b.text) }}
+                            dangerouslySetInnerHTML={{ __html: formatInline(b.text, fileLinks) }}
                         />
                     );
                 }
@@ -201,7 +231,7 @@ export const AgentMarkdown: React.FC<{
                         <div
                             key={idx}
                             className={`mb-2 font-semibold ${size} ${theme.title}`}
-                            dangerouslySetInnerHTML={{ __html: formatInline(b.text) }}
+                            dangerouslySetInnerHTML={{ __html: formatInline(b.text, fileLinks) }}
                         />
                     );
                 }
@@ -209,7 +239,7 @@ export const AgentMarkdown: React.FC<{
                     return (
                         <ul key={idx} className={`mb-2 pl-4 list-disc space-y-1 ${theme.label}`}>
                             {b.items.map((it, j) => (
-                                <li key={j} dangerouslySetInnerHTML={{ __html: formatInline(it) }} />
+                                <li key={j} dangerouslySetInnerHTML={{ __html: formatInline(it, fileLinks) }} />
                             ))}
                         </ul>
                     );
@@ -218,7 +248,7 @@ export const AgentMarkdown: React.FC<{
                     return (
                         <ol key={idx} className={`mb-2 pl-4 list-decimal space-y-1 ${theme.label}`}>
                             {b.items.map((it, j) => (
-                                <li key={j} dangerouslySetInnerHTML={{ __html: formatInline(it) }} />
+                                <li key={j} dangerouslySetInnerHTML={{ __html: formatInline(it, fileLinks) }} />
                             ))}
                         </ol>
                     );
@@ -243,7 +273,7 @@ export const AgentMarkdown: React.FC<{
                                         <th
                                             key={hi}
                                             className={`px-2.5 py-2 text-left font-medium border-b ${borderCls} ${theme.title} whitespace-nowrap`}
-                                            dangerouslySetInnerHTML={{ __html: formatInline(h) }}
+                                            dangerouslySetInnerHTML={{ __html: formatInline(h, fileLinks) }}
                                         />
                                     ))}
                                 </tr>
@@ -255,7 +285,7 @@ export const AgentMarkdown: React.FC<{
                                             <td
                                                 key={ci}
                                                 className={`px-2.5 py-2 ${theme.label} ${/^-?\$?[\d,.]+%?$/.test(cell.trim()) ? 'text-right' : 'text-left'}`}
-                                                dangerouslySetInnerHTML={{ __html: formatInline(cell) }}
+                                                dangerouslySetInnerHTML={{ __html: formatInline(cell, fileLinks) }}
                                             />
                                         ))}
                                     </tr>
