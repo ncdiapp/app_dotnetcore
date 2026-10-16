@@ -27,6 +27,98 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return ms.ToArray();
         }
 
+        public static byte[] WriteCards(CardSheet sheet)
+        {
+            var perRow = CardSheet.ClampPerRow(sheet.CardsPerRow);
+            var pageRows = CardSheet.ClampPageRows(sheet.CardRows);
+            var pageSize = pageRows * perRow;
+            var pages = Math.Max(1, (int)Math.Ceiling(sheet.Cards.Count / (double)Math.Max(1, pageSize)));
+            if (sheet.Cards.Count == 0) pages = 1;
+            var pres = new Presentation(draft =>
+            {
+                for (var p = 0; p < pages; p++)
+                {
+                    var page = p;
+                    draft.Slide(slide =>
+                    {
+                        var title = string.IsNullOrEmpty(sheet.Title) ? "Cards" : sheet.Title;
+                        if (pages > 1) title = title + " (" + (page + 1).ToString() + "/" + pages.ToString() + ")";
+                        slide.Shape(box =>
+                        {
+                            box.X(36).Y(24).Width(640).Height(36);
+                            box.TextBox(title);
+                            box.Font(font => { font.Size(20); font.Bold(); });
+                        });
+                        slide.TableShape(shape =>
+                        {
+                            shape.X(36).Y(72);
+                            shape.Table(table =>
+                            {
+                                table.Columns(perRow);
+                                for (var r = 0; r < pageRows; r++)
+                                {
+                                    table.Row(row =>
+                                    {
+                                        for (var c = 0; c < perRow; c++)
+                                        {
+                                            var index = page * pageSize + r * perRow + c;
+                                            var text = index < sheet.Cards.Count ? CardText(sheet.Cards[index]) : "";
+                                            row.Cell(cell => cell.TextBox(text));
+                                        }
+                                    });
+                                }
+                            });
+                        });
+                        for (var r = 0; r < pageRows; r++)
+                        {
+                            for (var c = 0; c < perRow; c++)
+                            {
+                                var index = page * pageSize + r * perRow + c;
+                                if (index >= sheet.Cards.Count) continue;
+                                byte[] image = null;
+                                foreach (var field in sheet.Cards[index])
+                                {
+                                    if (field.ImageBytes != null && field.ImageBytes.Length > 0)
+                                    {
+                                        image = field.ImageBytes;
+                                        break;
+                                    }
+                                }
+                                if (image == null) continue;
+                                var cardW = Math.Max(40, 640 / perRow);
+                                var cardH = Math.Max(48, 360 / pageRows);
+                                var px = 40 + c * cardW;
+                                var py = 78 + r * cardH;
+                                var bytes = image;
+                                slide.Picture(pic =>
+                                {
+                                    pic.X(px).Y(py).Width(120).Height(90);
+                                    pic.Image(new MemoryStream(bytes));
+                                });
+                            }
+                        }
+                    });
+                }
+            });
+            using var ms = new MemoryStream();
+            pres.Save(ms);
+            pres.Dispose();
+            return ms.ToArray();
+        }
+
+        private static string CardText(List<CardField> fields)
+        {
+            var lines = new List<string>();
+            foreach (var field in fields)
+            {
+                if (field.IsImage || (field.ImageBytes != null && field.ImageBytes.Length > 0))
+                    lines.Add(field.Label ?? "");
+                else
+                    lines.Add((field.Label ?? "") + ": " + (field.Value ?? ""));
+            }
+            return string.Join("\n", lines);
+        }
+
         public static FormDocument Read(byte[] bytes)
         {
             using var ms = new MemoryStream(bytes ?? Array.Empty<byte>());

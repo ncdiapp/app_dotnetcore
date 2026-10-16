@@ -1,8 +1,12 @@
 using System;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Text;
 using App.BL.AIAgent.GenericAgent.Documents;
 using App.BL.AIAgent.GenericAgent.Plugins;
 using GemBox.Document;
+using Newtonsoft.Json.Linq;
 
 namespace APP.BL.Tests.Documents;
 
@@ -136,5 +140,47 @@ public class FormDocumentTests
         Assert.Equal("output/hello_world.docx", AgentDocumentPlugin.PlaceInOutputFolder("hello_world.docx"));
         Assert.Equal("output/hello_world.docx", AgentDocumentPlugin.PlaceInOutputFolder("output/hello_world.docx"));
         Assert.Equal("reports/hello_world.docx", AgentDocumentPlugin.PlaceInOutputFolder("reports/hello_world.docx"));
+    }
+
+    [Fact]
+    public void Cards_wrap_html_by_cards_per_row_and_keep_images()
+    {
+        var rows = JArray.Parse("[{\"Name\":\"Widget\",\"Photo\":\"https://cdn.test/a.png\",\"Division_186\":\"DoD;01\"},{\"Name\":\"Bolt\",\"Photo\":\"n/a\"}]");
+        var sheet = CardSheet.FromRows("Items", rows, 9, 0);
+        Assert.Equal(6, sheet.CardsPerRow);
+        Assert.Equal(3, sheet.CardRows);
+        Assert.True(sheet.Cards[0][1].IsImage);
+        Assert.False(sheet.Cards[1][1].IsImage);
+        sheet.CardsPerRow = 2;
+        var html = HtmlForm.WriteCards(sheet);
+        Assert.Contains("data-doc=\"cards\"", html);
+        Assert.Contains("<img ", html);
+        Assert.Contains("height:180px", html);
+        Assert.Contains("Division 186", html);
+        Assert.Contains(">Widget</td>", html);
+        Assert.DoesNotContain("display:", html, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Card_picture_bytes_are_embedded_in_office_files()
+    {
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+        var sheet = CardSheet.FromRows("Item", JArray.Parse("[{\"Photo\":\"12\",\"Name\":\"Widget\"}]"), 1, 1);
+        sheet.Cards[0][0].ImageBytes = png;
+        var html = HtmlForm.WriteCards(sheet);
+        Assert.Contains("data:image/png;base64,", html);
+        var wrapped = CardSheet.FromRows("Item", JArray.Parse("[{\"Note\":\"line1\\nline2\\tmore\"}]"), 1, 1);
+        Assert.True(WordForm.WriteCardPdf(wrapped).Length > 100);
+        Assert.Contains("media", ZipNames(WordForm.WriteCardDocx(sheet)));
+        Assert.True(WordForm.WriteCardPdf(sheet).Length > 100);
+        Assert.Contains("media", ZipNames(ExcelForm.WriteCards(sheet)));
+        Assert.Contains("media", ZipNames(PptxForm.WriteCards(sheet)));
+    }
+
+    private static string ZipNames(byte[] zip)
+    {
+        using var ms = new MemoryStream(zip);
+        using var archive = new ZipArchive(ms, ZipArchiveMode.Read);
+        return string.Join("\n", archive.Entries.Select(e => e.FullName));
     }
 }

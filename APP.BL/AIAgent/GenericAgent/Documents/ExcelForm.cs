@@ -6,6 +6,8 @@ using System.Linq;
 using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using A = DocumentFormat.OpenXml.Drawing;
+using Xdr = DocumentFormat.OpenXml.Drawing.Spreadsheet;
 
 namespace App.BL.AIAgent.GenericAgent.Documents
 {
@@ -77,6 +79,123 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 wb.Workbook.Save();
             }
             return ms.ToArray();
+        }
+
+        /// <summary>One sheet. Each row of the sheet holds cardsPerRow cards. cardRows is ignored.</summary>
+        public static byte[] WriteCards(CardSheet sheet)
+        {
+            var perRow = CardSheet.ClampPerRow(sheet.CardsPerRow);
+            using var ms = new MemoryStream();
+            using (var workbook = SpreadsheetDocument.Create(ms, SpreadsheetDocumentType.Workbook, true))
+            {
+                var wb = workbook.AddWorkbookPart();
+                wb.Workbook = new Workbook();
+                var styles = wb.AddNewPart<WorkbookStylesPart>();
+                styles.Stylesheet = BuildStyles();
+                styles.Stylesheet.Save();
+
+                var ws = wb.AddNewPart<WorksheetPart>();
+                var data = new SheetData();
+                var pictures = new List<(int Column, uint Row, byte[] Bytes)>();
+                uint row = 1;
+                if (!string.IsNullOrEmpty(sheet.Title))
+                {
+                    var title = new Row { RowIndex = row };
+                    title.Append(Inline(1, row, sheet.Title, StyleTitle));
+                    ApplyHeight(title, ContentHeight(sheet.Title, 13, ColumnWidth(1) * perRow));
+                    data.Append(title);
+                    row++;
+                }
+                for (var i = 0; i < sheet.Cards.Count; i += perRow)
+                {
+                    var slice = new List<List<CardField>>();
+                    var fieldCount = 0;
+                    for (var c = 0; c < perRow && i + c < sheet.Cards.Count; c++)
+                    {
+                        slice.Add(sheet.Cards[i + c]);
+                        fieldCount = Math.Max(fieldCount, sheet.Cards[i + c].Count);
+                    }
+                    for (var f = 0; f < fieldCount; f++)
+                    {
+                        var xrow = new Row { RowIndex = row };
+                        double height = 0;
+                        for (var c = 0; c < slice.Count; c++)
+                        {
+                            var field = f < slice[c].Count ? slice[c][f] : new CardField();
+                            var hasPicture = field.ImageBytes != null && field.ImageBytes.Length > 0;
+                            var imageSlot = hasPicture || field.IsImage;
+                            var text = hasPicture || field.IsImage
+                                ? (field.Label ?? "")
+                                : (string.IsNullOrEmpty(field.Label) ? field.Value : field.Label + ": " + field.Value);
+                            xrow.Append(Inline(c + 1, row, text, field.IsImage ? StyleValue : StyleCell));
+                            if (hasPicture)
+                                pictures.Add((c + 1, row, field.ImageBytes));
+                            height = Math.Max(height, imageSlot ? 96 : ContentHeight(text, 10, ColumnWidth(c + 1)));
+                        }
+                        ApplyHeight(xrow, height);
+                        data.Append(xrow);
+                        row++;
+                    }
+                    WriteBlank(data, row, perRow);
+                    row++;
+                }
+
+                var worksheet = new Worksheet();
+                worksheet.Append(BuildColumns(Math.Max(perRow, 1)));
+                worksheet.Append(data);
+                ws.Worksheet = worksheet;
+                if (pictures.Count > 0)
+                    AddCardPictures(ws, pictures);
+                ws.Worksheet.Save();
+                var sheets = wb.Workbook.AppendChild(new Sheets());
+                sheets.Append(new Sheet { Id = wb.GetIdOfPart(ws), SheetId = 1, Name = "Cards" });
+                wb.Workbook.Save();
+            }
+            return ms.ToArray();
+        }
+
+        private static void AddCardPictures(WorksheetPart worksheetPart, List<(int Column, uint Row, byte[] Bytes)> pictures)
+        {
+            var drawings = worksheetPart.AddNewPart<DrawingsPart>();
+            var drawing = new Xdr.WorksheetDrawing();
+            uint index = 1;
+            foreach (var picture in pictures)
+            {
+                var part = drawings.AddImagePart(PickImagePart(picture.Bytes));
+                using (var stream = new MemoryStream(picture.Bytes))
+                    part.FeedData(stream);
+                var marker = new Xdr.FromMarker(
+                    new Xdr.ColumnId((picture.Column - 1).ToString(CultureInfo.InvariantCulture)),
+                    new Xdr.ColumnOffset("80000"),
+                    new Xdr.RowId((picture.Row - 1).ToString(CultureInfo.InvariantCulture)),
+                    new Xdr.RowOffset("200000"));
+                var extent = new Xdr.Extent { Cx = 1200000, Cy = 800000 };
+                var blip = new A.Blip { Embed = drawings.GetIdOfPart(part) };
+                var pic = new Xdr.Picture(
+                    new Xdr.NonVisualPictureProperties(
+                        new Xdr.NonVisualDrawingProperties { Id = index + 1, Name = "Card" + index.ToString(CultureInfo.InvariantCulture) },
+                        new Xdr.NonVisualPictureDrawingProperties(new A.PictureLocks { NoChangeAspect = true })),
+                    new Xdr.BlipFill(blip, new A.Stretch(new A.FillRectangle())),
+                    new Xdr.ShapeProperties(
+                        new A.Transform2D(new A.Offset { X = 0, Y = 0 }, new A.Extents { Cx = extent.Cx, Cy = extent.Cy }),
+                        new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }));
+                drawing.Append(new Xdr.OneCellAnchor(marker, extent, pic, new Xdr.ClientData()));
+                index++;
+            }
+            drawings.WorksheetDrawing = drawing;
+            drawings.WorksheetDrawing.Save();
+            worksheetPart.Worksheet.Append(new Drawing { Id = worksheetPart.GetIdOfPart(drawings) });
+        }
+
+        private static PartTypeInfo PickImagePart(byte[] bytes)
+        {
+            if (bytes != null && bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xD8)
+                return ImagePartType.Jpeg;
+            if (bytes != null && bytes.Length >= 3 && bytes[0] == (byte)'G')
+                return ImagePartType.Gif;
+            if (bytes != null && bytes.Length >= 2 && bytes[0] == (byte)'B')
+                return ImagePartType.Bmp;
+            return ImagePartType.Png;
         }
 
         public static FormDocument ReadXls(byte[] bytes)

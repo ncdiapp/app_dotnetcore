@@ -4,13 +4,13 @@ This document specifies agent tools that turn structured data into files, so the
 
 Part 1 writes a transaction form: a title, label/value fields, sections, and grids. The tool picks the font, size, color, alignment, and blank lines from the level. The same tree is written as HTML, CSV, Excel, Word, PDF, or PowerPoint, and read back.
 
-Part 2 adds a plain table layout, a card page, images, and an optional document preview. Chat widgets stay as they are, including Wijmo FlexGrid and charts. The file follows our layout. Export writes the file immediately unless the user asks to preview first, or the agent sets `preview` on the call. That preview is the document, and the downloaded file matches it.
+Part 2 adds a plain table layout, a card page, images, and an optional document preview. The chat card panel is already built: `data_render` with `ui=card`, `cardsPerRow` (1–6, default 1), and image fields. Export uses that same card and the same `cardsPerRow`. PDF, Word, and PowerPoint also take how many card rows fit on one page. HTML and Excel only take `cardsPerRow`. Chat widgets stay as they are. The file follows our layout, not a screenshot of the panel. Export writes the file immediately unless the user asks to preview first, or the agent sets `preview` on the call. That preview is the document, and the downloaded file matches it.
 
 How to use it: enable any tool from the library `platform-document-export` on the agent. One enabled tool opens the chat Files tab. The model calls `export_html`, `export_excel`, or the matching tool, and passes the form JSON or a path to a file already in the session. A bare file name is saved under the chat folder's `output/` directory. A path that already includes a folder is kept. The saved name adds `_yyyyMMdd_HHmmss` before the extension. The tool returns the path, the row count, and the byte size. Names in the reply that match a file from that turn are download links. `read_html`, `read_excel`, and the other read tools load a file this library wrote and return the form again. `read_pdf` returns text only.
 
 The model does not send HTML, fonts, or colors.
 
-Status: Part 1 implemented. Session-cache export and Part 2 are agreed, not built. Seed: `AppAI.Web/Migrations/V050__AgentDocumentExportTools_xhu.sql`. Date: 2026-10-16. Update this file when the plan changes.
+Status: Part 1 implemented. Chat `ui=card` takes `dataset_name`, `cardsPerRow`, and `limit` (`V056__CardRenderLimit_xhu.sql`). Top 20 is `limit=20`, not the whole cache. `layout=cards` exports that card panel, including image fields. Seed: `AppAI.Web/Migrations/V050__AgentDocumentExportTools_xhu.sql`. Date: 2026-10-16. Update this file when the plan changes.
 
 `file_write` / `file_read` stay for plain text and the older Excel branch. The tool result is capped by the agent's `MaxToolResultChars`, so the file body is never returned.
 
@@ -141,7 +141,7 @@ SQL inside the tool. Pivot, merged input cells, logos, and per-call colors. Repl
 
 ## Export from the chat cache
 
-Agreed. Not built. Do this before Part 2 layouts. Part 1 calls that pass `content` or `sourcePath` keep working.
+Implemented. Part 1 calls that pass `content` or `sourcePath` keep working.
 
 A query, stored procedure, or API tool that returns a table is stored by `AgentDataAnalyzeCacheBL` on the chat session. The model receives a short envelope: `dataset_cached`, `dataset_name`, row count, and column names. It does not receive every row. `data_render` already loads that name for the grid.
 
@@ -157,7 +157,7 @@ The cache row objects become one table under the document title. `dataset_name` 
 
 ## Part 2 — table, cards, images
 
-Agreed. Not built.
+Card files draw an image field from the resolved bytes: a `fileId`, an app image URL, or an `http(s)` image URL. HTML uses a data-URI `<img>`. Word and PDF use a GemBox picture. Excel anchors a picture on the cell. PowerPoint places a picture on the card. A picture that cannot be read is listed in `missingImages` and the file is still written.
 
 The chat screen and the file are two views of the same data. Wijmo FlexGrid, charts, and later widgets stay in the chat. Do not replace them, and do not turn their pixels into the file. The model fills data and parameters. It still does not send fonts, colors, or HTML.
 
@@ -173,17 +173,25 @@ Set `preview` true only when the user asks to see the document before export, or
 |---|---|---|
 | `form` | Part 1 tree | One document |
 | `table` | Columns and rows | One grid. Repeat the header when a format breaks a page |
-| `cards` | One record per card | `rows` by `columns` cards on each page |
+| `cards` | One record per card, same rows as `ui=card` | See below. HTML and Excel wrap by `cardsPerRow`. PDF, Word, and PowerPoint also take `cardRows` per page. |
 
-`layout` defaults to `form`, so current calls stay valid. A `dataset_name` on a `table` export is the cache from the previous section.
+`layout` defaults to `form`, so current calls stay valid. A `dataset_name` on a `table` or `cards` export is the cache from the previous section. Pass the same `dataset_name` the chat used for `data_render`, so the file is not built from the truncated tool text.
 
 ### Cards
 
-`rows` and `columns` are the card grid for one page. The agent passes them from the user, or from a Search card view it has already read. Omitted values default to 2 and 2. Cards on a page = `rows × columns`. Page count = record count divided by that, rounded up.
+`data_render` `ui=card` is one card per result row. `cardsPerRow` is how many cards share a row (1–6, default 1). A field value that is an app file or resource image URL, or an `http(s)` URL ending in an image extension, is drawn as the picture. Export keeps that rule and that parameter name.
 
-Each card has the same slots: an image, a title, and field lines. The slot list is fixed for the call. Records only fill those slots. Search Card View on screen stays the existing component.
+| Format | Parameters | How the cards are placed |
+|---|---|---|
+| HTML | `cardsPerRow` | One flowing table. Each row holds that many cards, then the next row. No page size. |
+| Excel | `cardsPerRow` | One sheet. Each sheet row holds that many cards, then the next row. No page size. |
+| PDF, Word | `cardRows`, `cardsPerRow` | One page is `cardRows` rows by `cardsPerRow` columns. Example: 3 and 2 is six cards on a page. The next page repeats the grid. |
+| PowerPoint | `cardRows`, `cardsPerRow` | One slide is one page, same grid as PDF and Word. |
+| CSV | — | One flat row per record. No card grid. |
 
-HTML, Word, and PDF: one page is one table of `rows` by `columns` cards. PowerPoint: one slide is one page. Excel: one sheet, each page in its own block. CSV: one flat row per record, no card grid.
+`cardsPerRow` omitted is 1, matching the chat default. Values above 6 are treated as 6. `cardRows` is only for PDF, Word, and PowerPoint. Omitted, it is 3. Cards on one of those pages = `cardRows × cardsPerRow`. Page count = record count divided by that, rounded up. HTML and Excel ignore `cardRows`.
+
+Each card is one cached or passed record. Field order follows the row. Image fields use the full width of that card. Other fields are label and value. The on-screen card component is not replaced. The file draws the same fields with the style table.
 
 ### Images
 
@@ -191,10 +199,10 @@ A slot may be `{ "fileId": 123 }` or `{ "url": "https://..." }`. The model does 
 
 | Format | Picture |
 |---|---|
-| HTML | `<img>` with the resolved source. Email uses a reachable URL, or the image inlined when the client allows it |
-| Word, PDF | GemBox picture |
-| PowerPoint | ShapeCrawler picture |
-| Excel | Picture anchored at the cell |
+| HTML | Email card: picture centered on a gray band, then label and value on one row. Column names such as `Division_186` are shown as “Division 186”. The picture is a data-URI `<img>`, or the URL when the bytes were not loaded |
+| Word, PDF | GemBox picture from the bytes |
+| PowerPoint | ShapeCrawler picture from the bytes |
+| Excel | Picture anchored on the card cell |
 | CSV | The `fileId` or URL as text |
 
 Missing or oversized images leave the slot empty. The tool result names the slot. Do not fail the whole file for one image.
@@ -205,25 +213,31 @@ A chart on screen stays the chat widget. Export writes the chart's data as a `ta
 
 ### Part 2 input
 
+Chat card, then a paged export of the same dataset. `cardsPerRow` is the value already sent to `data_render`. `cardRows` is extra, and only the paged formats use it.
+
+```json
+{ "path": "orders.pdf", "layout": "cards", "dataset_name": "sql_query_2", "cardsPerRow": 2, "cardRows": 3 }
+```
+
+HTML or Excel of that same card:
+
+```json
+{ "path": "orders.html", "layout": "cards", "dataset_name": "sql_query_2", "cardsPerRow": 2 }
+```
+
+Records may be passed inline when there is no cache. A picture field is the same string the chat card already shows, or `{ "fileId": 123 }`.
+
 ```json
 {
   "layout": "cards",
-  "preview": false,
-  "rows": 2,
-  "columns": 3,
-  "card": ["image", "title", "Price", "City"],
+  "cardsPerRow": 2,
   "records": [
-    {
-      "image": { "fileId": 123 },
-      "title": "Widget",
-      "Price": 20,
-      "City": "Boston"
-    }
+    { "Photo": "/api/files/image/123", "Name": "Widget", "Price": 20 }
   ]
 }
 ```
 
-For `layout: "table"`, `columns` is the header list and `rows` is the data. For `layout: "cards"`, `rows` and `columns` are the page shape. The tool tells them apart by `layout`.
+For `layout: "table"`, `columns` is the header list and `rows` is the data. Those names are not the card grid. Card shape is only `cardsPerRow` and `cardRows`.
 
 ### Part 2 out of scope
 

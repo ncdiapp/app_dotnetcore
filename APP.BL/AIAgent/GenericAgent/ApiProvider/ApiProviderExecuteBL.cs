@@ -254,11 +254,6 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                 return false;
 
             var ds = AgentDataAnalyzeCacheBL.Put(context.ChatSessionKey, actionCode, rows);
-            var preview = new JArray();
-            var previewCount = Math.Min(3, rows.Count);
-            for (int i = 0; i < previewCount; i++)
-                preview.Add(rows[i]);
-
             var cachedCount = ds.Rows?.Count ?? 0;
             var overCacheCap = rows.Count > AgentDataAnalyzeCacheBL.MaxCachedRows;
             envelopeJson = JsonConvert.SerializeObject(new
@@ -272,11 +267,12 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                 totalRows = rows.Count,
                 truncated = overCacheCap,
                 columns = ds.Columns?.Select(c => c.Name).ToArray(),
-                preview,
                 next =
-                    $"API returned {rows.Count} rows. Call data_render ONCE with ui=grid and dataset_name='{ds.Name}'. " +
-                    "Do not pass dataJson or a column subset — dataset_name loads every cached row and column. " +
-                    $"Tell the user the total is {rows.Count}, not the preview length."
+                    $"API returned {rows.Count} rows. Call data_render ONCE with dataset_name='{ds.Name}'. " +
+                    "Use ui=card and cardsPerRow when the user asked for cards. When the user asked for the top N, pass limit=N (the panel must not show every row). " +
+                    "Do not pass dataJson and do not copy rows — image columns such as Sketch stay on the cached rows. " +
+                    "Export that panel with layout=cards, the same cardsPerRow, cardRows, and limit. Do not pass content. " +
+                    $"Tell the user the total cached is {rows.Count}."
             }, Formatting.Indented);
             return true;
         }

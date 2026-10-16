@@ -32,7 +32,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             string actionsJson = null,
             string metaJson = null,
             string blocksJson = null,
-            int? cardsPerRow = null)
+            int? cardsPerRow = null,
+            int? limit = null)
         {
             var uiNorm = (ui ?? "").Trim().ToLowerInvariant();
             if (uiNorm != "grid" && uiNorm != "card" && uiNorm != "chart" && uiNorm != "kpi_dashboard")
@@ -74,6 +75,27 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                         error = $"dataset_name '{dataset_name}' not found in this chat session. " +
                                 "Run a query/SP tool first (look for dataset_cached / dataset_name on the tool result)."
                     });
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(dataJson)
+                && context != null
+                && !string.IsNullOrWhiteSpace(context.ChatSessionKey)
+                && (uiNorm == "grid" || uiNorm == "card" || uiNorm == "chart"))
+            {
+                try
+                {
+                    if (JToken.Parse(dataJson) is JArray inline
+                        && AgentDataAnalyzeCacheBL.TryRestoreRows(context.ChatSessionKey, inline, false, out var restored, out var restoredName))
+                    {
+                        dataJson = restored.ToString(Formatting.None);
+                        columnsJson = ColumnsFromObjects(restored);
+                        resolvedFromDataset = restoredName;
+                        rowCount = restored.Count;
+                    }
+                }
+                catch
+                {
+                    // Keep the model payload when it is not a row array.
                 }
             }
 
@@ -145,6 +167,38 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             actionsJson = NormalizeOptionalJson(actionsJson);
             metaJson = MergeCardsPerRow(NormalizeOptionalJson(metaJson), cardsPerRow);
 
+            if (limit.HasValue && limit.Value > 0 && uiNorm != "kpi_dashboard" && !string.IsNullOrWhiteSpace(cappedDataJson))
+            {
+                try
+                {
+                    if (JToken.Parse(cappedDataJson) is JArray arr && arr.Count > limit.Value)
+                    {
+                        cappedDataJson = AgentDataAnalyzeCacheBL.TakeFirst(arr, limit.Value).ToString(Formatting.None);
+                        rowCount = limit.Value;
+                    }
+                }
+                catch
+                {
+                    // Leave the payload unchanged when it is not a row array.
+                }
+            }
+
+            if (uiNorm == "card"
+                && context != null
+                && !string.IsNullOrWhiteSpace(context.ChatSessionKey)
+                && !string.IsNullOrWhiteSpace(cappedDataJson))
+            {
+                try
+                {
+                    if (JToken.Parse(cappedDataJson) is JArray shown && shown.Count > 0)
+                        AgentDataAnalyzeCacheBL.RememberCardRender(context.ChatSessionKey, shown, title);
+                }
+                catch
+                {
+                    // A non-array card payload is still shown; export falls back to dataset_name.
+                }
+            }
+
             var renderId = Guid.NewGuid().ToString("N");
             var evt = new AgentDataRenderEvent
             {
@@ -187,10 +241,34 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 rowCount,
                 truncated,
                 dataset_name = resolvedFromDataset,
+                note = uiNorm != "card"
+                    ? null
+                    : "Card panel is " + rowCount + " rows with every column, including images. " +
+                      "Export this panel with layout=cards, the same cardsPerRow, and cardRows. Do not pass content or a rewritten row list. " +
+                      (limit.HasValue && limit.Value > 0 ? "limit=" + limit.Value + " was applied. " : "") +
+                      (resolvedFromDataset == null ? "" : "dataset_name='" + resolvedFromDataset + "'."),
                 columnCount = CountColumns(columnsJson),
                 blockCount = uiNorm == "kpi_dashboard" ? CountBlocks(normalizedBlocksJson) : (int?)null,
                 pushed = onRender != null
             });
+        }
+
+        private static string ColumnsFromObjects(JArray rows)
+        {
+            var cols = new JArray();
+            var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var token in rows)
+            {
+                if (token is not JObject obj)
+                    continue;
+                foreach (var prop in obj.Properties())
+                {
+                    if (!seen.Add(prop.Name))
+                        continue;
+                    cols.Add(new JObject { ["field"] = prop.Name, ["header"] = prop.Name });
+                }
+            }
+            return cols.ToString(Formatting.None);
         }
 
         private static int? CountColumns(string columnsJson)

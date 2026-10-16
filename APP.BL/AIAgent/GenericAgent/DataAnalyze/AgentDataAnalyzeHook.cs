@@ -48,8 +48,11 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                             obj["dataset_cached"] = true;
                             obj["dataset_name"] = ds.Name;
                             obj["analysis_hint"] =
-                                $"Dataset cached as '{ds.Name}'. Call data_render ONCE with ui=grid and dataset_name='{ds.Name}' " +
-                                "(loads ALL columns including nulls). Do not pass a column subset in dataJson; do not call data_render twice.";
+                                $"Dataset cached as '{ds.Name}'. Call data_render ONCE with dataset_name='{ds.Name}'. " +
+                                "Use ui=card and cardsPerRow when the user asked for cards. " +
+                                "When the user asked for the top N, pass limit=N so the panel is N cards, not the whole cache. " +
+                                "Do not copy rows into dataJson — image columns such as Sketch are dropped. " +
+                                "Export that panel with layout=cards, the same cardsPerRow and cardRows, and the same limit. Do not pass content.";
                             return obj.ToString(Formatting.None);
                         }
                     }
@@ -68,8 +71,9 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                     truncated = rows.Count > AgentDataAnalyzeCacheBL.MaxCachedRows,
                     columns = ds.Columns.Select(c => c.Name).ToArray(),
                     analysis_hint =
-                        $"Dataset cached as '{ds.Name}'. Call data_render ONCE with ui=grid and dataset_name='{ds.Name}'. " +
-                        "Use data_analyze for aggregations. Do not re-fetch or render twice."
+                        $"Dataset cached as '{ds.Name}'. Call data_render ONCE with dataset_name='{ds.Name}'. " +
+                        "Use ui=card and cardsPerRow when the user asked for cards. When the user asked for the top N, pass limit=N. " +
+                        "Do not copy rows into dataJson. Export that panel with layout=cards and the same limit. Do not pass content."
                 }, Formatting.None);
             }
             catch

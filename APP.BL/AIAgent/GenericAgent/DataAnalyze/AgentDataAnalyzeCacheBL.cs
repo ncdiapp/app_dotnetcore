@@ -24,6 +24,9 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
         private static readonly ConcurrentDictionary<string, int> NameCounters
             = new(StringComparer.OrdinalIgnoreCase);
 
+        private static readonly ConcurrentDictionary<string, CardRenderSnapshot> CardRenders
+            = new(StringComparer.OrdinalIgnoreCase);
+
         public static AgentCachedDataset Put(string chatSessionKey, string sourceTool, JArray rows)
         {
             if (string.IsNullOrWhiteSpace(chatSessionKey))
@@ -66,6 +69,146 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
             if (!Sessions.TryGetValue(chatSessionKey.Trim(), out var bag))
                 return Array.Empty<string>();
             return bag.Keys.OrderBy(k => k, StringComparer.OrdinalIgnoreCase).ToList();
+        }
+
+        /// <summary>
+        /// The model often copies a short preview or drops image URLs when it rebuilds dataJson.
+        /// Put the cached row back, including Sketch and other columns it omitted.
+        /// A short renamed summary (few rows, few fields) is replaced by the whole latest dataset when <paramref name="expandShortSummary"/> is true.
+        /// </summary>
+        public static bool TryRestoreRows(string chatSessionKey, JArray inline, bool expandShortSummary, out JArray rows, out string datasetName)
+        {
+            rows = null;
+            datasetName = null;
+            var ds = Latest(chatSessionKey);
+            if (ds?.Rows == null || ds.Rows.Count == 0 || ds.Columns == null || ds.Columns.Count == 0)
+                return false;
+            if (!TryExportDataJson(chatSessionKey, ds.Name, out var dataJson, out _, out _))
+                return false;
+
+            var cached = JArray.Parse(dataJson);
+            var cachedRows = cached.OfType<JObject>().ToList();
+            if (cachedRows.Count == 0)
+                return false;
+
+            var inlineRows = inline?.OfType<JObject>().ToList() ?? new List<JObject>();
+            if (inlineRows.Count == 0)
+            {
+                if (!expandShortSummary)
+                    return false;
+                rows = cached;
+                datasetName = ds.Name;
+                return true;
+            }
+
+            string inlineKey = null;
+            string cacheKey = null;
+            var bestHits = 0;
+            foreach (var prop in inlineRows[0].Properties())
+            {
+                var values = inlineRows
+                    .Select(o => o[prop.Name]?.ToString() ?? "")
+                    .Where(v => v.Length > 0)
+                    .ToList();
+                if (values.Count == 0)
+                    continue;
+                foreach (var column in ds.Columns)
+                {
+                    var set = new HashSet<string>(
+                        cachedRows.Select(o => o[column.Name]?.ToString() ?? ""),
+                        StringComparer.OrdinalIgnoreCase);
+                    var hits = values.Count(v => set.Contains(v));
+                    if (hits > bestHits)
+                    {
+                        bestHits = hits;
+                        inlineKey = prop.Name;
+                        cacheKey = column.Name;
+                    }
+                }
+            }
+
+            var matched = bestHits >= Math.Max(1, inlineRows.Count / 2);
+            var lossy = IsLossy(inlineRows, cachedRows, matched, inlineKey, cacheKey, ds.Columns.Count);
+            if (!lossy || !matched)
+                return false;
+            _ = expandShortSummary;
+
+            var map = new Dictionary<string, JObject>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in cachedRows)
+            {
+                var key = row[cacheKey]?.ToString() ?? "";
+                if (key.Length > 0 && !map.ContainsKey(key))
+                    map[key] = row;
+            }
+
+            var restored = new JArray();
+            foreach (var row in inlineRows)
+            {
+                var key = row[inlineKey]?.ToString() ?? "";
+                restored.Add(key.Length > 0 && map.TryGetValue(key, out var full) ? full.DeepClone() : row);
+            }
+            rows = restored;
+            datasetName = ds.Name;
+            return true;
+        }
+
+        private static AgentCachedDataset Latest(string chatSessionKey)
+        {
+            if (string.IsNullOrWhiteSpace(chatSessionKey))
+                return null;
+            if (!Sessions.TryGetValue(chatSessionKey.Trim(), out var bag))
+                return null;
+            return bag.Values
+                .OrderByDescending(d => d.CachedAt)
+                .FirstOrDefault(d => d.Rows != null && d.Rows.Count > 0);
+        }
+
+        private static bool IsLossy(List<JObject> inlineRows, List<JObject> cachedRows, bool matched, string inlineKey, string cacheKey, int cacheColumnCount)
+        {
+            var inlineColumnCount = inlineRows[0].Properties().Count();
+            if (inlineColumnCount + 1 < cacheColumnCount)
+                return true;
+            if (!matched || string.IsNullOrEmpty(inlineKey) || string.IsNullOrEmpty(cacheKey))
+                return false;
+
+            var map = new Dictionary<string, JObject>(StringComparer.OrdinalIgnoreCase);
+            foreach (var row in cachedRows)
+            {
+                var key = row[cacheKey]?.ToString() ?? "";
+                if (key.Length > 0 && !map.ContainsKey(key))
+                    map[key] = row;
+            }
+
+            foreach (var row in inlineRows)
+            {
+                var key = row[inlineKey]?.ToString() ?? "";
+                if (key.Length == 0 || !map.TryGetValue(key, out var full))
+                    continue;
+                foreach (var prop in full.Properties())
+                {
+                    var cachedText = prop.Value?.Type == JTokenType.Null ? "" : prop.Value?.ToString() ?? "";
+                    if (cachedText.Length == 0)
+                        continue;
+                    var inlineProp = row.Properties().FirstOrDefault(p => string.Equals(p.Name, prop.Name, StringComparison.OrdinalIgnoreCase));
+                    if (inlineProp == null)
+                        return true;
+                    var inlineText = inlineProp.Value?.ToString() ?? "";
+                    if (LooksLikeImage(cachedText) && !LooksLikeImage(inlineText))
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        private static bool LooksLikeImage(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return false;
+            var text = value.Trim();
+            return text.IndexOf("/api/resources/", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.IndexOf("/api/files/", StringComparison.OrdinalIgnoreCase) >= 0
+                || text.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -118,8 +261,45 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
         public static void ClearSession(string chatSessionKey)
         {
             if (string.IsNullOrWhiteSpace(chatSessionKey)) return;
-            Sessions.TryRemove(chatSessionKey.Trim(), out _);
-            NameCounters.TryRemove(chatSessionKey.Trim(), out _);
+            var key = chatSessionKey.Trim();
+            Sessions.TryRemove(key, out _);
+            NameCounters.TryRemove(key, out _);
+            CardRenders.TryRemove(key, out _);
+        }
+
+        /// <summary>The card panel last shown in this chat. Export uses it instead of a rewritten summary.</summary>
+        public static void RememberCardRender(string chatSessionKey, JArray rows, string title)
+        {
+            if (string.IsNullOrWhiteSpace(chatSessionKey) || rows == null)
+                return;
+            CardRenders[chatSessionKey.Trim()] = new CardRenderSnapshot
+            {
+                Title = title ?? "",
+                Rows = (JArray)rows.DeepClone()
+            };
+        }
+
+        public static bool TryGetCardRender(string chatSessionKey, out JArray rows, out string title)
+        {
+            rows = null;
+            title = null;
+            if (string.IsNullOrWhiteSpace(chatSessionKey))
+                return false;
+            if (!CardRenders.TryGetValue(chatSessionKey.Trim(), out var shot) || shot?.Rows == null || shot.Rows.Count == 0)
+                return false;
+            rows = (JArray)shot.Rows.DeepClone();
+            title = shot.Title;
+            return true;
+        }
+
+        public static JArray TakeFirst(JArray rows, int limit)
+        {
+            if (rows == null || limit <= 0 || rows.Count <= limit)
+                return rows;
+            var slice = new JArray();
+            for (var i = 0; i < limit; i++)
+                slice.Add(rows[i]);
+            return slice;
         }
 
         private static string NextDatasetName(string chatSessionKey, string sourceTool)
@@ -262,6 +442,12 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                 && DateTime.TryParse(val.ToString(), CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt))
                 return dt.ToOADate();
             return null;
+        }
+
+        private sealed class CardRenderSnapshot
+        {
+            public string Title;
+            public JArray Rows;
         }
     }
 }
