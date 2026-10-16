@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- AppAI OAuth 2.1 authorization server building blocks: OpenIddict configuration, discovery metadata, and the
+       OpenIddict stores as plain parameterized ADO.NET on AppMasterDB (no EF Core).
+       Tables: Document/Design/MasterDB_OAuthTables.sql. Plan: Document/mcp/mcp-oauth-plan.md. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>APP.OAuth</RootNamespace>
+    <AssemblyName>APP.OAuth</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <InternalsVisibleTo Include="APP.OAuth.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="7.0.1" />
+    <PackageReference Include="OpenIddict.AspNetCore" Version="7.7.2" />
+  </ItemGroup>
+
+</Project>

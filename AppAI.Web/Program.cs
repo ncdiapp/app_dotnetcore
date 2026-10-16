@@ -12,6 +12,7 @@ using NLog;
 using NLog.Web;
 using SD.LLBLGen.Pro.ORMSupportClasses;
 using AppAI.Web.Mcp;
+using APP.OAuth;
 
 // Early NLog init for startup logging
 var logger = LogManager.Setup().LoadConfigurationFromAppSettings().GetCurrentClassLogger();
@@ -137,6 +138,10 @@ try
     // ── McpGateway (always on) ──
     builder.Services.AddMcpGateway(builder.Configuration);
 
+    // ── OAuth server for MCP clients (off unless OAuth:Enabled; see Document/mcp/mcp-oauth-plan.md) ──
+    builder.Services.AddSingleton<APP.OAuth.IOAuthIdentityBridge, AppAI.Web.Services.OAuthIdentityBridge>();
+    builder.Services.AddAppOAuth(builder.Configuration, masterConnStr, builder.Environment.IsDevelopment());
+
     // ── Build ─────────────────────────────────────────────────────────────────
     var app = builder.Build();
     MigrationStartup.Register(app);
@@ -148,10 +153,12 @@ try
     // UseRouting MUST be called explicitly here — if omitted, ASP.NET Core auto-inserts it
     // before UsePathBase, so the router sees "/appai/health" instead of "/health".
     // OpenAPI documents and Try it out use host-root /openapi-doc and /webapi (no /appai).
+    // OAuth discovery (/.well-known/...) is requested at the host root by MCP clients, so it is rewritten too.
     app.Use(async (context, next) =>
     {
         var path = context.Request.Path;
-        if (path.StartsWithSegments("/openapi-doc") || path.StartsWithSegments("/webapi"))
+        if (path.StartsWithSegments("/openapi-doc") || path.StartsWithSegments("/webapi")
+            || path.StartsWithSegments("/.well-known"))
             context.Request.Path = new PathString("/appai") + path;
         await next();
     });
@@ -160,6 +167,7 @@ try
 
     // Correlation ID propagation (populates NLog MDLC for every request)
     app.UseMcpGatewayEarly();
+    app.UseAppOAuthAgentTokens();
 
     // ── One-time startup calls (replacing Global.asax Application_Start) ──────
     // Wire IHttpContextAccessor into the legacy static ServerContext, then initialise
@@ -239,6 +247,8 @@ try
 
     // ── Route registration ────────────────────────────────────────────────────
     app.MapControllers();
+    app.MapAppOAuthDiscovery();   // protected-resource metadata; no-op unless OAuth:Enabled
+    app.MapAppOAuthEndpoints();   // /oauth/authorize, /oauth/token, /oauth/register; no-op unless OAuth:Enabled
     app.MapHub<AppBuilderAgentHub>("/signalr/apphub");
 
     // Health endpoint — /health returns JSON with db probe status

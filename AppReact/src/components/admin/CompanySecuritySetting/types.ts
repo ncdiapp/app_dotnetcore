@@ -13,6 +13,8 @@ export const TAB = {
   TenantAdminUsers: 9,
   // Tenant admin: which APIs external MCP users may call, per security group
   McpApiAccess: 10,
+  // Tenant admin: AI applications (Claude, ChatGPT, ...) users connected to AppAI
+  AiConnections: 11,
 } as const;
 
 export type CompanyDto = {

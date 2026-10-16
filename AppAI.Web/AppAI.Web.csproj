@@ -36,15 +36,6 @@
     <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.13.0" />
   </ItemGroup>
 
-  <!-- EF Core (AppMasterDB — replaces Entity Framework 6) -->
-  <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.0">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
-    </PackageReference>
-  </ItemGroup>
-
   <!-- Redis session (optional — swap AddDistributedMemoryCache for this in production) -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.0" />
@@ -76,6 +67,7 @@
   <!-- MCP gateway — exposes selected AppAI APIs as MCP tools via /appai/mcp. Always compiled and always on. -->
   <ItemGroup>
     <ProjectReference Include="..\APP.McpGateway\APP.McpGateway.csproj" />
+    <ProjectReference Include="..\APP.OAuth\APP.OAuth.csproj" />
   </ItemGroup>
 
   <!-- Copy ONNX embedding models from McpGateway source so LocalOnnx provider can find them at runtime.

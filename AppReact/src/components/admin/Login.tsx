@@ -12,6 +12,7 @@ import { getDefaultAuthenticatedPath, getDefaultAuthenticatedTab } from '../../h
 import { store } from '../../redux/store';
 import type { TenantBrandingState } from '../../redux/features/ui/tenantBrandingSlice';
 import CompanyPicker from './CompanyPicker';
+import { takePostLoginPath } from '../../helper/postLoginRedirect';
 
 const DEFAULT_LOGIN_BACKGROUND = '/img/LoginImage.png';
 
@@ -58,7 +59,8 @@ const Login: React.FC = () => {
     const ctx = store.getState().userSession.userContext;
     const landingTab = getDefaultAuthenticatedTab(ctx);
     dispatch(resetTabs(landingTab));
-    navigate(getDefaultAuthenticatedPath(ctx), { replace: true });
+    const back = takePostLoginPath();
+    navigate(back ?? getDefaultAuthenticatedPath(ctx), { replace: true });
   };
 
   const handleLogin = async () => {

@@ -474,7 +474,11 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
             TbMcpDto server, int maxChars, HashSet<string> excludedTools, AgentToolContext context, CancellationToken ct)
         {
             McpConnectionHelper.EnsureAllowed(server);
-            var transportOptions = McpConnectionHelper.BuildTransportOptions(server);
+            // The in-house gateway is called as the signed-in user, never with a shared stored credential.
+            var userToken = McpConnectionHelper.RequiresUserToken(server.ServerUrl)
+                ? McpConnectionHelper.GetUserToken(server, context.UserId, context.CompanyId)
+                : null;
+            var transportOptions = McpConnectionHelper.BuildTransportOptions(server, userToken: userToken);
             var transport = new HttpClientTransport(transportOptions, McpHttpClient, NullLoggerFactory.Instance, ownsHttpClient: false);
             var client    = await McpClient.CreateAsync(transport, cancellationToken: ct).ConfigureAwait(false);
             var tools     = await client.ListToolsAsync(cancellationToken: ct).ConfigureAwait(false);

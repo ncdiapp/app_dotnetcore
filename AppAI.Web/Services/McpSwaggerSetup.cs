@@ -15,7 +15,10 @@ public static class McpSwaggerSetup
     // Controllers that must never be offered to external MCP users, even to an admin choosing what to expose.
     private static readonly HashSet<string> ExcludedControllers = new(StringComparer.OrdinalIgnoreCase)
     {
-        "McpManagement"
+        "McpManagement",
+        // OAuth sign-in/consent and connection admin are never callable by an AI client through the gateway.
+        "OAuthConsent",
+        "OAuthAdmin"
     };
 
     public static void Configure(SwaggerGenOptions options)

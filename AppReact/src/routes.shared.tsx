@@ -3,6 +3,8 @@ import React, { Suspense } from 'react';
 import PageNotFoundErrorPage from './components/public/PageNotFoundErrorPage';
 import WijmoTheme from './components/themeTemplate/wijmoTheme';
 import UserManagement from './components/admin/UserManagement';
+import AiConnections from './components/mcp/AiConnections';
+import OAuthClients from './components/mcp/OAuthClients';
 import UserLoginInfoEditor from './components/admin/UserLoginInfoEditor';
 import AppSearch from './components/search/AppSearch';
 import SearchEditor from './components/search/SearchEditor';
@@ -126,6 +128,9 @@ export const AUTHENTICATED_ROUTES: SharedRouteDef[] = [
 
   { path: 'company-security/:param', element: <CompanySecuritySetting /> },
   { path: 'company-security', element: <CompanySecuritySetting /> },
+
+  { path: 'my-ai-connections', element: <AiConnections mode="mine" /> },
+  { path: 'oauth-clients', element: <OAuthClients />, sysAdminOnly: true },
 
   { path: 'tenant-provisioning/:param', element: <TenantProvisioning />, sysAdminOnly: true },
   { path: 'tenant-provisioning', element: <TenantProvisioning />, sysAdminOnly: true },

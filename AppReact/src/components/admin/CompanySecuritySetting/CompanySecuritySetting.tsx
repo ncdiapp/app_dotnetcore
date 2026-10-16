@@ -19,6 +19,7 @@ import DomainAndUserMenuManagement from './DomainAndUserMenuManagement';
 import CompanyPrivilegeManagement from './CompanyPrivilegeManagement';
 import CompanyIntegrationTokenManagement from './CompanyIntegrationTokenManagement';
 import CompanyMcpApiAccess from './CompanyMcpApiAccess';
+import AiConnections from '../../mcp/AiConnections';
 import CompanyDashboardTab from './CompanyDashboardTab';
 
 // All sections available to a tenant admin.
@@ -33,6 +34,7 @@ const ALL_SECTIONS = [
   { id: TAB.Privilege,        name: 'Application Privileges',icon: 'fa-key' },
   { id: TAB.IntegrationToken, name: 'Integration Tokens',    icon: 'fa-plug' },
   { id: TAB.McpApiAccess,     name: 'MCP API Access',        icon: 'fa-shield-halved' },
+  { id: TAB.AiConnections,    name: 'AI Connections',        icon: 'fa-link' },
 ];
 
 // SysAdmin manages platform infrastructure, not tenant-level roles/menus/dashboards.
@@ -359,6 +361,8 @@ const CompanySecuritySetting: React.FC = () => {
                 )}
 
                 {selectedTab === TAB.McpApiAccess && <CompanyMcpApiAccess />}
+
+                {selectedTab === TAB.AiConnections && <AiConnections mode="company" />}
 
                 {selectedTab === TAB.TenantAdminUsers && companyId && (
                   <TenantAdminUsersTab companyId={companyId} />
