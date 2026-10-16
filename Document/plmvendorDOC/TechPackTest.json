@@ -1,0 +1,120 @@
+{
+  "source_file": "TechPackTest.pdf",
+  "printed_date": "2024-05-31",
+  "copyright": "Closet Clothing Co Ltd",
+  "style": {
+    "style_number": "S9803",
+    "description": "Closet London Pleated Skirt",
+    "style_name": "1/2 CIRCLE",
+    "product_status": "Pending Approval",
+    "product_class": "Closet",
+    "type_group": "Skirt",
+    "product_type": "Full Skirt",
+    "season": "Ss23",
+    "collection": "Asos Add",
+    "fabric_group": "Woven",
+    "supplier": null,
+    "coo": "United Kingdom",
+    "size_range": "6-18",
+    "designer": "Katy Edney"
+  },
+  "sketch_and_details": { "images": ["sketch (image only, no text)"] },
+  "design_details": { "notes": null },
+  "bill_of_materials": {
+    "cmt": [
+      { "description": "Labour Charge", "labour_type": null, "qty": 1.00, "cost": 4.30, "total": 4.30, "comments": "Closet" },
+      { "description": "Labour Charge", "labour_type": null, "qty": 1.00, "cost": 0.30, "total": 0.30, "comments": null },
+      { "description": "Pleating Charge", "labour_type": null, "qty": 1.00, "cost": 1.50, "total": 1.50, "comments": null }
+    ],
+    "cmt_total": 6.10,
+    "fabrics": [
+      {
+        "position": "Main Fabric",
+        "code": "FAB2669",
+        "description": "UK DTM PENINSULA CREPE",
+        "supplier": "PREMIERQUILT | Premier Quilting Co Ltd",
+        "quality_ref": "UK DTM PENINSULA CREPE",
+        "fabric_type": "Woven",
+        "composition": "100% Polyester",
+        "construction": null,
+        "width": [1.460, 1.520],
+        "uom": null,
+        "placement": null,
+        "qty": 1.73,
+        "comments": "ab"
+      },
+      {
+        "position": "Fusing",
+        "code": "FAB2042",
+        "description": "V100 FUSING - LIGHT WEIGHT WOVEN",
+        "supplier": "VANTEX | Vantex Ltd",
+        "quality_ref": "V100 FUSING - LIGHT WEIGHT WOVEN",
+        "fabric_type": "Woven",
+        "composition": null,
+        "construction": null,
+        "width": null,
+        "uom": null,
+        "placement": null,
+        "qty": 0.07,
+        "comments": null
+      }
+    ],
+    "trims": [
+      {
+        "code": "ZIP0091",
+        "description": "CLOSED END CONCEALED ZIPPER",
+        "supplier": null,
+        "supplier_art_no": "0006082",
+        "supplier_description": "CHC-36 DA E Zip",
+        "trim_type": null,
+        "material": "Plastic",
+        "width": null,
+        "uom": "Inch",
+        "placement": null,
+        "qty": 1.00,
+        "comments": null
+      },
+      {
+        "code": "Bin0441",
+        "description": "FLAT POLY BINDING (SUFI CARD)",
+        "supplier": null,
+        "supplier_art_no": "P12 N-ANTI",
+        "supplier_description": "FLAT POLYESTER BINDING",
+        "trim_type": "Binding",
+        "material": "Fabric",
+        "width": null,
+        "uom": "Centimeter",
+        "placement": null,
+        "qty": 1.00,
+        "comments": null
+      }
+    ],
+    "labels": [
+      { "code": "LBL0008", "description": "Closet Neck Label / Size Tab / Closet Swing / Made In London string / REMOVE ME Swing", "label_type": null, "material": "Paper", "construction": "Paper", "width": null, "uom": null, "placement": null, "qty": null, "comments": null },
+      { "code": "LBL0012", "description": "LABELON WASHCARE", "label_type": null, "material": "Paper", "construction": "Paper", "width": 0.000, "uom": null, "placement": null, "qty": 2.11, "comments": null },
+      { "code": "LBL0004", "description": null, "label_type": null, "material": "Paper", "construction": "Paper", "width": 0.000, "uom": null, "placement": null, "qty": null, "comments": null },
+      { "code": "LBL0017", "description": null, "label_type": null, "material": "Cotton", "construction": "Cotton", "width": 0.000, "uom": "Each", "placement": null, "qty": null, "comments": null },
+      { "code": "LBL0023", "description": null, "label_type": null, "material": "Paper", "construction": "Paper", "width": 0.000, "uom": null, "placement": null, "qty": null, "comments": null },
+      { "code": "LBL0084", "description": null, "label_type": "Washcare", "material": "Cotton", "construction": "Cotton", "width": 0.000, "uom": null, "placement": null, "qty": null, "comments": null }
+    ],
+    "label_line_qtys_seen": [1.00, 1.00, 1.00, 1.00, 1.00],
+    "packaging": [
+      { "code": "PKG0015", "description": "POLY BAGS - PD0055", "type": "Bag", "material": null, "construction": null, "width": 12.500, "uom": "Inch", "placement": null, "qty": 1.00, "comments": null }
+    ]
+  },
+  "construction": {
+    "instructions": [
+      "ZIP = 8\" INVISIBLE",
+      "SATIN BIND = 100CM",
+      "SEAM ALLOWANCE = 1CM",
+      "HEM ALLOWANCE = BABY OVERLOCK"
+    ],
+    "construction_type": null,
+    "images": ["construction image (image only)"]
+  },
+  "extraction_notes": [
+    "Extracted with pdftotext -layout; table columns were misaligned, so some cell-to-column mappings (labels, trims, fabric widths) are best-effort.",
+    "Item images (fabric/trim/label/packaging/sketch) are not text and are not included.",
+    "Label rows are the least reliable: stacked descriptions and quantities could not be matched to specific LBL codes."
+  ]
+}
