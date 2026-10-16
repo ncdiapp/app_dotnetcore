@@ -40,3 +40,24 @@ BEGIN
     );
 END
 GO
+
+
+-- Nullable flag for a later MCP vs non-MCP response. Null means false until an editor saves the row.
+-- Existing rows stay NULL. No default constraint.
+
+IF COL_LENGTH(N'dbo.AppIntergrationSettingParameter', N'IsUsedByMcp') IS NULL
+BEGIN
+    ALTER TABLE dbo.AppIntergrationSettingParameter
+        ADD IsUsedByMcp BIT NULL;
+END
+GO
+
+-- MCP document flag, plus API hint and usage notes.
+-- Existing rows stay NULL. No default.
+IF COL_LENGTH('dbo.AppOpenApiDocument', 'IsUsedByMcp') IS NULL
+    ALTER TABLE dbo.AppOpenApiDocument ADD IsUsedByMcp BIT NULL;
+
+IF COL_LENGTH('dbo.AppIntergrationSettingParameter', 'McpUiHint') IS NULL
+    ALTER TABLE dbo.AppIntergrationSettingParameter ADD McpUiHint NVARCHAR(100) NULL;
+IF COL_LENGTH('dbo.AppIntergrationSettingParameter', 'McpUsageNotes') IS NULL
+    ALTER TABLE dbo.AppIntergrationSettingParameter ADD McpUsageNotes NVARCHAR(MAX) NULL;
