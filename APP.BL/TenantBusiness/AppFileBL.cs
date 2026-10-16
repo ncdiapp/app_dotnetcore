@@ -131,6 +131,123 @@ namespace App.BL
         }
 
         /// <summary>
+        /// Transaction save: keep a numeric FileId, or turn an API image URL back into FileId.
+        /// Returns false when the value is not a FileId or one of our image URLs, so the caller keeps the normal type conversion.
+        /// Empty resolves to null. A file URL that does not match an AppFile row throws.
+        /// </summary>
+        public static bool TryResolveImageFileIdForSave(object raw, out object fileId)
+        {
+            fileId = null;
+            if (raw == null)
+                return true;
+
+            string text = raw.ToString();
+            if (string.IsNullOrWhiteSpace(text) || string.Equals(text, "null", StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            text = text.Trim();
+            if (text.IndexOf('/') < 0 && text.IndexOf('\\') < 0)
+            {
+                if (int.TryParse(text, out int direct) && direct > 0)
+                {
+                    fileId = direct;
+                    return true;
+                }
+                return false;
+            }
+
+            string path = text;
+            int scheme = path.IndexOf("://", StringComparison.Ordinal);
+            if (scheme >= 0)
+            {
+                int hostSlash = path.IndexOf('/', scheme + 3);
+                path = hostSlash >= 0 ? path.Substring(hostSlash) : path;
+            }
+
+            int query = path.IndexOfAny(new[] { '?', '#' });
+            if (query >= 0)
+                path = path.Substring(0, query);
+
+            const string filesPrefix = "/api/files/";
+            int filesAt = path.IndexOf(filesPrefix, StringComparison.OrdinalIgnoreCase);
+            if (filesAt >= 0)
+            {
+                string rest = path.Substring(filesAt + filesPrefix.Length).Trim('/');
+                int slash = rest.LastIndexOf('/');
+                string kind = slash >= 0 ? rest.Substring(0, slash) : "";
+                string idPart = slash >= 0 ? rest.Substring(slash + 1) : rest;
+                if ((kind.Equals("regular", StringComparison.OrdinalIgnoreCase)
+                        || kind.Equals("image", StringComparison.OrdinalIgnoreCase)
+                        || kind.Equals("thumbnail", StringComparison.OrdinalIgnoreCase)
+                        || kind.Equals("latest", StringComparison.OrdinalIgnoreCase))
+                    && int.TryParse(idPart, out int parsedFileId)
+                    && parsedFileId > 0)
+                {
+                    fileId = parsedFileId;
+                    return true;
+                }
+            }
+
+            const string resourcesPrefix = "/api/resources/";
+            int resourcesAt = path.IndexOf(resourcesPrefix, StringComparison.OrdinalIgnoreCase);
+            if (resourcesAt >= 0)
+            {
+                string rest = path.Substring(resourcesAt + resourcesPrefix.Length);
+                const string imageSegment = "/Image/";
+                int imageAt = rest.IndexOf(imageSegment, StringComparison.OrdinalIgnoreCase);
+                if (imageAt >= 0)
+                {
+                    string relative = rest.Substring(imageAt + imageSegment.Length).Trim().Trim('/');
+                    int? found = FindFileIdByImageRelativePath(relative);
+                    if (!found.HasValue)
+                        throw new InvalidOperationException("Image file was not found for '" + text + "'.");
+                    fileId = found.Value;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int? FindFileIdByImageRelativePath(string relative)
+        {
+            if (string.IsNullOrWhiteSpace(relative))
+                return null;
+
+            string rel = relative.Trim().Replace('\\', '/').Trim('/');
+            if (rel.Length == 0)
+                return null;
+
+            string slash = "/" + rel;
+            string back = "\\" + rel.Replace('/', '\\');
+
+            using (DataAccessAdapter adapter = AppTenantAdapterBL.GetTenantAdapter())
+            {
+                EntityCollection<AppFileEntity> list = new EntityCollection<AppFileEntity>();
+                ExcludeFieldsList excludeFieldsList = new ExcludeFieldsList();
+                excludeFieldsList.Add(AppFileFields.FileContent);
+
+                RelationPredicateBucket filter = new RelationPredicateBucket();
+                filter.PredicateExpression.Add(
+                    AppFileFields.RegularImageFilepath == rel
+                    | AppFileFields.RegularImageFilepath == slash
+                    | AppFileFields.RegularImageFilepath == back
+                    | AppFileFields.OriginalFilePath == rel
+                    | AppFileFields.OriginalFilePath == slash
+                    | AppFileFields.OriginalFilePath == back
+                    | AppFileFields.ThumbnailFilePath == rel
+                    | AppFileFields.ThumbnailFilePath == slash
+                    | AppFileFields.ThumbnailFilePath == back);
+
+                adapter.FetchEntityCollection(list, filter, 1, null, null, excludeFieldsList);
+                if (list.Count > 0)
+                    return list[0].FileId;
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// Maps AppFile image path (e.g. /thumbnail/guid) to FileRepository-relative resource path.
         /// </summary>
         internal static string? BuildCompanyImageResourcePath(string companySegment, string? imageRelativePath)

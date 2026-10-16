@@ -347,6 +347,7 @@ Skip the block for yes/no or clearly finished answers. Chips are non-blocking su
                         .ToDictionary(kv => kv.Key, kv => kv.Value?.ToString() ?? "");
                     var result = await AppAgentToolEngine.Dispatch(toolType, toolConfig, strArgs, context, ct, instancePool, row.ToolName)
                                                          .ConfigureAwait(false);
+                    result = DataAnalyze.AgentDataAnalyzeHook.MaybeCacheAndRewrite(context, toolType, row.ToolName, result);
                     return CapResult(result, cap);
                 },
                 functionName: SanitizeName(row.ToolName),

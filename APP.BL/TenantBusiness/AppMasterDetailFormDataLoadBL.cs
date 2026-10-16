@@ -2933,6 +2933,13 @@ namespace App.BL
                 tgtOneToOneFields.Add(targetTransFieldExDto.DataBaseFieldName, null);
             }
 
+            if (targetTransFieldExDto.ControlType == (int)EmAppControlType.Image
+                && AppFileBL.TryResolveImageFileIdForSave(jsonPropertyValue, out object imageFileId))
+            {
+                tgtOneToOneFields[targetTransFieldExDto.DataBaseFieldName] = imageFileId;
+                return tgtOneToOneFields;
+            }
+
             if (targetTransFieldExDto.DataType.HasValue)
             {
                 if (targetTransFieldExDto.DataType == (int)EmAppDataType.Boolean)

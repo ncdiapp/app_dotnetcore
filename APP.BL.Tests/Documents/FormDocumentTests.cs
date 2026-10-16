@@ -49,12 +49,12 @@ public class FormDocumentTests
     }
 
     [Fact]
-    public void Parse_rejects_5001_rows()
+    public void Parse_rejects_50001_rows()
     {
-        var rows = string.Join(",", Enumerable.Range(0, 5001).Select(i => "[" + i + "]"));
+        var rows = string.Join(",", Enumerable.Range(0, 50001).Select(i => "[" + i + "]"));
         var json = "{\"columns\":[\"N\"],\"rows\":[" + rows + "]}";
         var ex = Assert.Throws<InvalidOperationException>(() => FormDocument.Parse(json));
-        Assert.Contains("5000", ex.Message);
+        Assert.Contains("50000", ex.Message);
     }
 
     [Fact]

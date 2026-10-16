@@ -4,6 +4,8 @@ import { AllCommunityModule, ModuleRegistry, type ColDef, type RowClickedEvent }
 import 'ag-grid-community/styles/ag-grid.css';
 import 'ag-grid-community/styles/ag-theme-alpine.css';
 import { useTheme } from '../../../redux/hooks/useTheme';
+import { DataRenderImage } from './DataRenderImage';
+import { imageUrlKind } from './imageValue';
 
 ModuleRegistry.registerModules([AllCommunityModule]);
 
@@ -47,18 +49,35 @@ export const DataRenderGridAg: React.FC<Props> = ({ colDefs, rowData, title, met
     const { theme } = useTheme();
     const gridRef = useRef<AgGridReact>(null);
 
+    const imageFields = useMemo(() => {
+        const fields = new Set<string>();
+        for (const col of colDefs) {
+            if ((rowData ?? []).some(row => imageUrlKind(row?.[col.field]) != null))
+                fields.add(col.field);
+        }
+        return fields;
+    }, [colDefs, rowData]);
+
     const enrichedColDefs = useMemo<ColDef[]>(() => colDefs.map(col => {
         const enriched: ColDef = {
             field: col.field,
             headerName: col.headerName,
-            width: col.width ?? 120,
+            width: imageFields.has(col.field) ? Math.max(col.width ?? 90, 90) : (col.width ?? 120),
             hide: col.hide,
         };
+        if (imageFields.has(col.field)) {
+            enriched.cellRenderer = (p: { value?: unknown }) => {
+                if (imageUrlKind(p.value) == null)
+                    return p.value == null ? '' : String(p.value);
+                return <DataRenderImage url={String(p.value)} alt={col.headerName} />;
+            };
+            return enriched;
+        }
         if (col.dataType === 'currency') enriched.valueFormatter = currencyFormatter;
         else if (col.dataType === 'number') enriched.valueFormatter = numberFormatter;
         else if (col.dataType === 'date') enriched.valueFormatter = dateFormatter;
         return enriched;
-    }), [colDefs]);
+    }), [colDefs, imageFields]);
 
     const onRowClicked = useCallback((event: RowClickedEvent) => {
         if (event.data) onRowSelected?.(event.data as Record<string, unknown>);
@@ -74,7 +93,7 @@ export const DataRenderGridAg: React.FC<Props> = ({ colDefs, rowData, title, met
                     <span>{total} row{total === 1 ? '' : 's'}</span>
                 </div>
             )}
-            <div className="ag-theme-alpine w-full" style={{ height: Math.min(360, 48 + rowData.length * 36), minHeight: 160 }}>
+            <div className="ag-theme-alpine w-full" style={{ height: Math.min(420, 48 + rowData.length * (imageFields.size > 0 ? 68 : 36)), minHeight: 160 }}>
                 <AgGridReact
                     ref={gridRef}
                     rowData={rowData}
@@ -84,6 +103,7 @@ export const DataRenderGridAg: React.FC<Props> = ({ colDefs, rowData, title, met
                     animateRows={false}
                     rowSelection="single"
                     suppressCellFocus
+                    rowHeight={imageFields.size > 0 ? 68 : undefined}
                 />
             </div>
         </div>

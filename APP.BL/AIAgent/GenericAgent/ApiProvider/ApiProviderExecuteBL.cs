@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using App.BL;
+using App.BL.AIAgent.GenericAgent.DataAnalyze;
 using App.BL.AIAgent.GenericAgent.Plugins;
 using APP.Components.Dto;
 using APP.Components.EntityDto;
@@ -87,7 +88,11 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                         code, payload, null);
                 }
 
-                var truncated = responseText ?? "";
+                var fullText = responseText ?? "";
+                if (TryCacheTabularResponse(context, code, fullText, out var cachedJson))
+                    return cachedJson;
+
+                var truncated = fullText;
                 var wasTruncated = truncated.Length > MaxResponseChars;
                 if (wasTruncated)
                     truncated = truncated.Substring(0, MaxResponseChars) + "…";
@@ -223,6 +228,57 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
             }
 
             return null; // approved
+        }
+
+        /// <summary>
+        /// Large API tables must not be sliced into an invalid JSON string for the model.
+        /// Cache every row on the chat session and return a short envelope so data_render
+        /// can load the full set via dataset_name (grid cap is AgentDataRenderPlugin).
+        /// </summary>
+        private static bool TryCacheTabularResponse(
+            AgentToolContext context,
+            string actionCode,
+            string responseText,
+            out string envelopeJson)
+        {
+            envelopeJson = null;
+            if (context == null || string.IsNullOrWhiteSpace(context.ChatSessionKey))
+                return false;
+            if (string.IsNullOrWhiteSpace(responseText))
+                return false;
+            if (!AgentDataAnalyzeHook.TryExtractRowArray(responseText, out var rows) || rows == null || rows.Count == 0)
+                return false;
+
+            var tooWideForPrompt = responseText.Length > MaxResponseChars;
+            if (rows.Count < AgentDataAnalyzeCacheBL.AutoEnvelopeMinRows && !tooWideForPrompt)
+                return false;
+
+            var ds = AgentDataAnalyzeCacheBL.Put(context.ChatSessionKey, actionCode, rows);
+            var preview = new JArray();
+            var previewCount = Math.Min(3, rows.Count);
+            for (int i = 0; i < previewCount; i++)
+                preview.Add(rows[i]);
+
+            var cachedCount = ds.Rows?.Count ?? 0;
+            var overCacheCap = rows.Count > AgentDataAnalyzeCacheBL.MaxCachedRows;
+            envelopeJson = JsonConvert.SerializeObject(new
+            {
+                ok = true,
+                actionCode,
+                dataset_cached = true,
+                dataset_name = ds.Name,
+                cache_scope = "chat_session",
+                rows = cachedCount,
+                totalRows = rows.Count,
+                truncated = overCacheCap,
+                columns = ds.Columns?.Select(c => c.Name).ToArray(),
+                preview,
+                next =
+                    $"API returned {rows.Count} rows. Call data_render ONCE with ui=grid and dataset_name='{ds.Name}'. " +
+                    "Do not pass dataJson or a column subset — dataset_name loads every cached row and column. " +
+                    $"Tell the user the total is {rows.Count}, not the preview length."
+            }, Formatting.Indented);
+            return true;
         }
 
         private static string NormalizeBody(string bodyJson)

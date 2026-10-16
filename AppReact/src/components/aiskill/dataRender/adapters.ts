@@ -64,6 +64,31 @@ export function adaptToGrid(args: {
     };
 }
 
+export type DataRenderCardFields = Array<{ label: string; value: string }>;
+
+function fieldsFromObject(obj: Record<string, unknown>): DataRenderCardFields {
+    return Object.entries(obj).map(([key, value]) => ({
+        label: toHeader(key),
+        value: value != null ? String(value) : '',
+    }));
+}
+
+function fieldsFromLabeled(raw: unknown): DataRenderCardFields | null {
+    if (!Array.isArray(raw)) return null;
+    return raw.map((f: { label?: string; value?: unknown }) => ({
+        label: String(f?.label ?? ''),
+        value: f?.value != null ? String(f.value) : '',
+    }));
+}
+
+/** 1–6 cards per row. Missing or invalid values use 1. */
+export function cardsPerRowFromMeta(meta?: DataRenderMeta | null): number {
+    const raw = meta?.cardsPerRow;
+    const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10);
+    if (!Number.isFinite(n) || n < 1) return 1;
+    return Math.min(6, Math.floor(n));
+}
+
 export function adaptToCard(args: {
     dataJson?: string | null;
     metaJson?: string | null;
@@ -71,52 +96,25 @@ export function adaptToCard(args: {
 }) {
     const meta = parseJsonSafe<DataRenderMeta>(args.metaJson, {});
     const data = parseJsonSafe<unknown>(args.dataJson, null);
+    const title = args.title ?? meta.title;
+    const status = typeof meta.subtitle === 'string' ? meta.subtitle : undefined;
+    const cardsPerRow = cardsPerRowFromMeta(meta);
+    const cards: DataRenderCardFields[] = [];
 
-    if (data && typeof data === 'object' && !Array.isArray(data)) {
-        const obj = data as Record<string, unknown>;
-        if (Array.isArray(obj.fields)) {
-            return {
-                title: args.title ?? meta.title,
-                status: typeof meta.subtitle === 'string' ? meta.subtitle : undefined,
-                fields: (obj.fields as Array<{ label?: string; value?: unknown }>).map(f => ({
-                    label: String(f.label ?? ''),
-                    value: f.value != null ? String(f.value) : '',
-                })),
-                meta,
-            };
+    if (Array.isArray(data)) {
+        for (const item of data) {
+            if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+            const obj = item as Record<string, unknown>;
+            const labeled = fieldsFromLabeled(obj.fields);
+            cards.push(labeled ?? fieldsFromObject(obj));
         }
-        const fields = Object.entries(obj).map(([key, value]) => ({
-            label: toHeader(key),
-            value: value != null ? String(value) : '',
-        }));
-        return {
-            title: args.title ?? meta.title,
-            status: typeof meta.subtitle === 'string' ? meta.subtitle : undefined,
-            fields,
-            meta,
-        };
+    } else if (data && typeof data === 'object') {
+        const obj = data as Record<string, unknown>;
+        const labeled = fieldsFromLabeled(obj.fields);
+        cards.push(labeled ?? fieldsFromObject(obj));
     }
 
-    if (Array.isArray(data) && data.length > 0 && typeof data[0] === 'object') {
-        const obj = data[0] as Record<string, unknown>;
-        const fields = Object.entries(obj).map(([key, value]) => ({
-            label: toHeader(key),
-            value: value != null ? String(value) : '',
-        }));
-        return {
-            title: args.title ?? meta.title,
-            status: typeof meta.subtitle === 'string' ? meta.subtitle : undefined,
-            fields,
-            meta,
-        };
-    }
-
-    return {
-        title: args.title ?? meta.title,
-        status: typeof meta.subtitle === 'string' ? meta.subtitle : undefined,
-        fields: [] as Array<{ label: string; value: string }>,
-        meta,
-    };
+    return { title, status, cardsPerRow, cards, meta };
 }
 
 export function adaptToChart(args: {

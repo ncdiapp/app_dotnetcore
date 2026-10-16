@@ -5,7 +5,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     /// </summary>
     public static class DocumentStyles
     {
-        public const int MaxDataRows = 5000;
+        public const int MaxDataRows = 50000;
         public const int MaxPreviewRows = 500;
         public const int MaxColumns = 50;
         public const int MaxSectionLevel = 3;

@@ -1,10 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CollectionView } from '@mescius/wijmo';
-import { FlexGrid, FlexGridColumn } from '@mescius/wijmo.react.grid';
+import { FlexGrid, FlexGridCellTemplate, FlexGridColumn } from '@mescius/wijmo.react.grid';
 import { FlexGridFilter } from '@mescius/wijmo.react.grid.filter';
 import '@mescius/wijmo.styles/wijmo.css';
 import FlexGridAddOn from '../../common/FlexGridAddOn';
 import { useTheme } from '../../../redux/hooks/useTheme';
+import { DataRenderImage } from './DataRenderImage';
+import { imageUrlKind } from './imageValue';
 
 const MIN_COL_WIDTH = 150;
 
@@ -50,9 +52,23 @@ export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, 
         () => visibleCols.map(c => c.field),
         [visibleCols],
     );
+    const imageFields = useMemo(() => {
+        const fields = new Set<string>();
+        for (const col of visibleCols) {
+            if ((rowData ?? []).some(row => imageUrlKind(row?.[col.field]) != null))
+                fields.add(col.field);
+        }
+        return fields;
+    }, [visibleCols, rowData]);
 
     const total = meta?.total ?? rowData.length;
-    const height = Math.min(360, 48 + Math.max(rowData.length, 1) * 28);
+    const rowHeight = imageFields.size > 0 ? 64 : 28;
+    const height = Math.min(420, 48 + Math.max(rowData.length, 1) * rowHeight);
+
+    useEffect(() => {
+        const flex = flexGridRef.current?.control;
+        if (flex?.rows) flex.rows.defaultSize = rowHeight;
+    }, [rowHeight]);
 
     const onSelectionChanged = (s: any) => {
         const flex = s?.control ?? s;
@@ -90,10 +106,22 @@ export const DataRenderGridWijmo: React.FC<Props> = ({ colDefs, rowData, title, 
                             key={col.field}
                             header={col.headerName || col.field}
                             binding={col.field}
-                            width={Math.max(col.width ?? MIN_COL_WIDTH, MIN_COL_WIDTH)}
-                            minWidth={MIN_COL_WIDTH}
+                            width={imageFields.has(col.field) ? Math.max(col.width ?? 90, 90) : Math.max(col.width ?? MIN_COL_WIDTH, MIN_COL_WIDTH)}
+                            minWidth={imageFields.has(col.field) ? 90 : MIN_COL_WIDTH}
                             format={wijmoFormat(col.dataType)}
-                        />
+                        >
+                            {imageFields.has(col.field) && (
+                                <FlexGridCellTemplate
+                                    cellType="Cell"
+                                    template={(cell: any) => {
+                                        const value = cell.item?.[col.field];
+                                        if (imageUrlKind(value) == null)
+                                            return <span>{value == null ? '' : String(value)}</span>;
+                                        return <DataRenderImage url={String(value)} alt={col.headerName || col.field} />;
+                                    }}
+                                />
+                            )}
+                        </FlexGridColumn>
                     ))}
                     <FlexGridColumn header="" binding="" width="*" />
                     <FlexGridFilter filterColumns={filterColumns} />

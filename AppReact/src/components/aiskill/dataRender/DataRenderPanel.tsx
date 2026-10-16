@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useTheme } from '../../../redux/hooks/useTheme';
 import { adaptToCard, adaptToChart, adaptToGrid } from './adapters';
-import { DataRenderCard } from './DataRenderCard';
+import { DataRenderCardList } from './DataRenderCard';
 import { DataRenderChartRecharts } from './DataRenderChartRecharts';
 import { DataRenderChartWijmo } from './DataRenderChartWijmo';
 import { DataRenderGridAg } from './DataRenderGridAg';
@@ -102,7 +102,14 @@ function DashboardBlockView(props: {
             metaJson: JSON.stringify(block.meta ?? {}),
             title: block.title,
         });
-        body = <DataRenderCard {...cardProps} />;
+        body = (
+            <DataRenderCardList
+                title={cardProps.title}
+                status={cardProps.status}
+                cards={cardProps.cards}
+                cardsPerRow={cardProps.cardsPerRow}
+            />
+        );
     }
 
     const framed = block.type !== 'card';
@@ -157,7 +164,14 @@ export const DataRenderPanel: React.FC<Props> = ({ event, disabled, onAction }) 
                 metaJson: event.MetaJson,
                 title: event.Title,
             });
-            return <DataRenderCard {...props} />;
+            return (
+                <DataRenderCardList
+                    title={props.title}
+                    status={props.status}
+                    cards={props.cards}
+                    cardsPerRow={props.cardsPerRow}
+                />
+            );
         }
         if (ui === 'chart') {
             const props = adaptToChart({

@@ -41,6 +41,8 @@ export interface DataRenderMeta {
     subtitle?: string;
     measure?: string;
     total?: number;
+    /** Card view: how many cards share one row. Default 1. */
+    cardsPerRow?: number;
     [key: string]: unknown;
 }
 

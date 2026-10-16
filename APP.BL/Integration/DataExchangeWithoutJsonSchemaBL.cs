@@ -498,9 +498,11 @@ namespace ExchangeBL
             object formRootData = ((IDictionary<String, Object>)postDynamicData);
 
             var rootUnit = transactionExDto.RootMasterUnit;
+            Dictionary<int, string> imageUrls = ResolveMasterDetailImageUrls(transactionExDto, formDataDto);
 
             // Root Unit
             AppMasterDetailApiFormDataSaveBL.ConvertOneUnitDataRowToDictObject(formDataDto.DictOneToOneFields, (IDictionary<String, Object>)formRootData);
+            ApplyImageUrls((IDictionary<string, object>)formRootData, rootUnit.AppTransactionFieldList, imageUrls);
 
             //Sibling Unit
             foreach (var aUnit in transactionExDto.AppTransactionUnitList)
@@ -511,6 +513,7 @@ namespace ExchangeBL
                     string[] levelPathList = aUnit.JsonPath.Split(new string[] { "." }, StringSplitOptions.None);
                     var siblingNode = AppMasterDetailApiFormDataSaveBL.CreateDictNodeFromPathLevel((IDictionary<String, Object>)formRootData, levelPathList, 0);
                     AppMasterDetailApiFormDataSaveBL.ConvertOneUnitDataRowToDictObject(formDataDto.DictSiblingOneToOneFields[aUnit.Id.ToString()], (IDictionary<String, Object>)siblingNode);
+                    ApplyImageUrls((IDictionary<string, object>)siblingNode, aUnit.AppTransactionFieldList, imageUrls);
                 }
             }
 
@@ -536,6 +539,7 @@ namespace ExchangeBL
                     else
                     {
                         AppMasterDetailApiFormDataSaveBL.ConvertOneUnitDataRowToDictObject(childDataRow.DictOneToOneFields, (IDictionary<String, Object>)dictChildRowData);
+                        ApplyImageUrls((IDictionary<string, object>)dictChildRowData, childUnit.AppTransactionFieldList, imageUrls);
                         ((List<ExpandoObject>)childUnitArrayNode).Add(dictChildRowData);
 
                         // Grandchild Uit
@@ -560,14 +564,19 @@ namespace ExchangeBL
                                 {
                                     ExpandoObject dictGcRowData = new ExpandoObject();
                                     AppMasterDetailApiFormDataSaveBL.ConvertOneUnitDataRowToDictObject(gcDataRow.DictOneToOneFields, (IDictionary<String, Object>)dictGcRowData);
+                                    ApplyImageUrls((IDictionary<string, object>)dictGcRowData, grandchildUnit.AppTransactionFieldList, imageUrls);
                                     ((List<ExpandoObject>)gcUnitArrayNode).Add(dictGcRowData);
                                 }
                             }
+
+                            if (isGcUnitSimpleList && IsImageFieldList(grandchildUnit))
+                                RewriteSimpleImageList((List<object>)gcUnitArrayNode, imageUrls);
                         }
                     }
                 }
 
-
+                if (isChildUnitSimpleList && IsImageFieldList(childUnit))
+                    RewriteSimpleImageList((List<object>)childUnitArrayNode, imageUrls);
             }
 
 
@@ -618,6 +627,7 @@ namespace ExchangeBL
             IDictionary<String, Object> dictRootData = ((IDictionary<String, Object>)dynamicData);
 
             dictRootData["ListData"] = new List<ExpandoObject>();
+            Dictionary<int, string> imageUrls = ResolveListEditImageUrls(transactionExDto, formDataDto);
 
 
             foreach (AppChildDataDto childDataDto in formDataDto.ListData)
@@ -625,6 +635,7 @@ namespace ExchangeBL
                 dynamic dynamicRowData = new ExpandoObject();
                 object dictRowData = ((IDictionary<String, Object>)dynamicRowData);
                 AppMasterDetailApiFormDataSaveBL.ConvertOneUnitDataRowToDictObject(childDataDto.DictOneToOneFields, (IDictionary<String, Object>)dictRowData);
+                ApplyImageUrls((IDictionary<string, object>)dictRowData, transactionExDto.RootMasterUnit.AppTransactionFieldList, imageUrls);
 
                 foreach (var childUnit in transactionExDto.RootMasterUnit.Children)
                 {
@@ -638,6 +649,7 @@ namespace ExchangeBL
                     {
                         ExpandoObject dictChildRowData = new ExpandoObject();
                         AppMasterDetailApiFormDataSaveBL.ConvertOneUnitDataRowToDictObject(childDataRow.DictOneToOneFields, (IDictionary<String, Object>)dictChildRowData);
+                        ApplyImageUrls((IDictionary<string, object>)dictChildRowData, childUnit.AppTransactionFieldList, imageUrls);
                         ((List<ExpandoObject>)childUnitArrayNode).Add(dictChildRowData);
                     }
                 }
@@ -927,13 +939,19 @@ namespace ExchangeBL
 
             //dynamic dynamicData = new ExpandoObject();
             List<ExpandoObject> rootListData = new List<ExpandoObject>();
-            ConvertSearchResultRowsToJsonArray(referenceViewDto, searchResultDto.SearchResultRowList.ToList(), rootListData);
+            List<StaticSearchResultRowJsonDto> searchRows = searchResultDto.SearchResultRowList.ToList();
+            HashSet<int> imageFileIds = new HashSet<int>();
+            CollectSearchImageFileIds(referenceViewDto, searchRows, imageFileIds);
+            Dictionary<int, string> imageUrls = imageFileIds.Count == 0
+                ? new Dictionary<int, string>()
+                : ToAbsoluteImageUrls(AppFileBL.RetrieveImageResourceUrlsByFileIds(imageFileIds));
+            ConvertSearchResultRowsToJsonArray(referenceViewDto, searchRows, rootListData, imageUrls);
 
             jsonData = Newtonsoft.Json.JsonConvert.SerializeObject(rootListData);
             return McpApiResponseBL.ApplyEnvelope(dataExchangeSetting, forPayload, jsonData, McpApiResponseBL.SearchFields(referenceViewDto));
         }
 
-        private static void ConvertSearchResultRowsToJsonArray(ReferenceViewDto referenceViewDto, List<StaticSearchResultRowJsonDto> searchResultRowList, List<ExpandoObject> rootListData)
+        private static void ConvertSearchResultRowsToJsonArray(ReferenceViewDto referenceViewDto, List<StaticSearchResultRowJsonDto> searchResultRowList, List<ExpandoObject> rootListData, Dictionary<int, string> imageUrls)
         {
             foreach (StaticSearchResultRowJsonDto resultRowDto in searchResultRowList)
             {
@@ -967,7 +985,11 @@ namespace ExchangeBL
                             path = path + "_" + count.ToString();
                         }
 
-                        dictRowData[path] = ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(resultRowDto.DictViewColumnIDKeyValue[viewColumnId]);
+                        object cellValue = resultRowDto.DictViewColumnIDKeyValue[viewColumnId];
+                        if (viewColumnDto.ControlType == (int)EmAppControlType.Image)
+                            dictRowData[path] = ImageCellValue(cellValue, imageUrls);
+                        else
+                            dictRowData[path] = ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(cellValue);
 
                         if (referenceViewDto.ViewType == (int)EmAppViewType.FlatDataSetTreeView)
                         {
@@ -994,7 +1016,7 @@ namespace ExchangeBL
 
                         var chlidSearchResultRows = resultRowDto.DictViewIdAndChildRowList[childViewId];
 
-                        ConvertSearchResultRowsToJsonArray(childViewDto, chlidSearchResultRows, (List<ExpandoObject>)dictRowData[path]);
+                        ConvertSearchResultRowsToJsonArray(childViewDto, chlidSearchResultRows, (List<ExpandoObject>)dictRowData[path], imageUrls);
 
                     }
                 }
@@ -1002,13 +1024,232 @@ namespace ExchangeBL
                 if (resultRowDto.Children != null)
                 {
                     List<ExpandoObject> childListData = new List<ExpandoObject>();
-                    ConvertSearchResultRowsToJsonArray(referenceViewDto, resultRowDto.Children.ToList(), childListData);
+                    ConvertSearchResultRowsToJsonArray(referenceViewDto, resultRowDto.Children.ToList(), childListData, imageUrls);
 
                     dynamicRowData.Children = childListData;
                 }
 
                 rootListData.Add(dynamicRowData);
             }
+        }
+
+        private static Dictionary<int, string> ResolveMasterDetailImageUrls(AppTransactionExDto transactionExDto, AppMasterDetailDto formDataDto)
+        {
+            HashSet<int> ids = new HashSet<int>();
+            AppTransactionUnitExDto rootUnit = transactionExDto.RootMasterUnit;
+            CollectImageIds(formDataDto.DictOneToOneFields, rootUnit?.AppTransactionFieldList, ids);
+
+            if (transactionExDto.AppTransactionUnitList != null && formDataDto.DictSiblingOneToOneFields != null)
+            {
+                foreach (AppTransactionUnitExDto unit in transactionExDto.AppTransactionUnitList)
+                {
+                    if (unit == null || unit.IsMasterSiblingUnit != true)
+                        continue;
+                    if (formDataDto.DictSiblingOneToOneFields.TryGetValue(unit.Id.ToString(), out Dictionary<string, object> siblingRow))
+                        CollectImageIds(siblingRow, unit.AppTransactionFieldList, ids);
+                }
+            }
+
+            if (rootUnit?.Children != null && formDataDto.DictOneToManyFields != null)
+            {
+                foreach (AppTransactionUnitExDto child in rootUnit.Children)
+                    CollectChildImageIds(child, formDataDto.DictOneToManyFields, ids);
+            }
+
+            return LoadImageUrls(ids);
+        }
+
+        private static Dictionary<int, string> ResolveListEditImageUrls(AppTransactionExDto transactionExDto, AppListDataDto formDataDto)
+        {
+            HashSet<int> ids = new HashSet<int>();
+            AppTransactionUnitExDto rootUnit = transactionExDto.RootMasterUnit;
+            if (formDataDto.ListData != null)
+            {
+                foreach (AppChildDataDto row in formDataDto.ListData)
+                {
+                    CollectImageIds(row.DictOneToOneFields, rootUnit?.AppTransactionFieldList, ids);
+                    if (rootUnit?.Children == null || row.DictOneToManyFields == null)
+                        continue;
+                    foreach (AppTransactionUnitExDto child in rootUnit.Children)
+                        CollectChildImageIds(child, row.DictOneToManyFields, ids);
+                }
+            }
+
+            return LoadImageUrls(ids);
+        }
+
+        private static void CollectChildImageIds(AppTransactionUnitExDto unit, Dictionary<string, List<AppChildDataDto>> rowsByUnit, HashSet<int> ids)
+        {
+            if (unit == null || rowsByUnit == null || !rowsByUnit.TryGetValue(unit.Id.ToString(), out List<AppChildDataDto> rows) || rows == null)
+                return;
+
+            foreach (AppChildDataDto row in rows)
+            {
+                CollectImageIds(row.DictOneToOneFields, unit.AppTransactionFieldList, ids);
+                if (unit.Children == null || row.DictOneToManyFields == null)
+                    continue;
+                foreach (AppTransactionUnitExDto child in unit.Children)
+                    CollectChildImageIds(child, row.DictOneToManyFields, ids);
+            }
+        }
+
+        private static void CollectImageIds(Dictionary<string, object> row, IEnumerable<AppTransactionFieldExDto> fields, HashSet<int> ids)
+        {
+            if (row == null || fields == null)
+                return;
+
+            foreach (AppTransactionFieldExDto field in fields)
+            {
+                if (field == null || field.ControlType != (int)EmAppControlType.Image || string.IsNullOrWhiteSpace(field.DataBaseFieldName))
+                    continue;
+                if (!row.TryGetValue(field.DataBaseFieldName, out object raw))
+                    continue;
+                int? fileId = ControlTypeValueConverter.ConvertValueToInt(raw);
+                if (fileId.HasValue && fileId.Value > 0)
+                    ids.Add(fileId.Value);
+            }
+        }
+
+        private static Dictionary<int, string> LoadImageUrls(HashSet<int> ids)
+        {
+            if (ids == null || ids.Count == 0)
+                return new Dictionary<int, string>();
+            return ToAbsoluteImageUrls(AppFileBL.RetrieveImageResourceUrlsByFileIds(ids));
+        }
+
+        private static Dictionary<int, string> ToAbsoluteImageUrls(Dictionary<int, string> urls)
+        {
+            if (urls == null || urls.Count == 0)
+                return urls ?? new Dictionary<int, string>();
+
+            string root = ServerContext.CurrentRequestRoot;
+            if (string.IsNullOrWhiteSpace(root))
+                return urls;
+
+            var absolute = new Dictionary<int, string>(urls.Count);
+            foreach (KeyValuePair<int, string> pair in urls)
+            {
+                string url = pair.Value;
+                if (string.IsNullOrWhiteSpace(url)
+                    || url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                    || url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                {
+                    absolute[pair.Key] = url;
+                    continue;
+                }
+
+                absolute[pair.Key] = root + (url.StartsWith("/") ? url : "/" + url);
+            }
+
+            return absolute;
+        }
+
+        private static void ApplyImageUrls(IDictionary<string, object> row, IEnumerable<AppTransactionFieldExDto> fields, IDictionary<int, string> imageUrls)
+        {
+            if (row == null || fields == null || imageUrls == null || imageUrls.Count == 0)
+                return;
+
+            foreach (AppTransactionFieldExDto field in fields)
+            {
+                if (field == null || field.ControlType != (int)EmAppControlType.Image || string.IsNullOrWhiteSpace(field.DataBaseFieldName))
+                    continue;
+                if (!TryLocateField(row, field.DataBaseFieldName, out IDictionary<string, object> parent, out string leaf, out object raw))
+                    continue;
+                int? fileId = ControlTypeValueConverter.ConvertValueToInt(raw);
+                if (fileId.HasValue && fileId.Value > 0 && imageUrls.TryGetValue(fileId.Value, out string url) && !string.IsNullOrWhiteSpace(url))
+                    parent[leaf] = url;
+            }
+        }
+
+        private static bool TryLocateField(IDictionary<string, object> row, string fieldKey, out IDictionary<string, object> parent, out string leaf, out object raw)
+        {
+            parent = row;
+            leaf = fieldKey;
+            raw = null;
+            string[] path = fieldKey.Replace("___", ".").Split(new[] { '.' }, StringSplitOptions.None);
+            if (path.Length == 0)
+                return false;
+
+            IDictionary<string, object> current = row;
+            for (int i = 0; i < path.Length - 1; i++)
+            {
+                if (!current.TryGetValue(path[i], out object next) || !(next is IDictionary<string, object> nextDict))
+                    return false;
+                current = nextDict;
+            }
+
+            leaf = path[path.Length - 1];
+            parent = current;
+            return current.TryGetValue(leaf, out raw);
+        }
+
+        private static bool IsImageFieldList(AppTransactionUnitExDto unit)
+        {
+            AppTransactionFieldExDto field = unit?.AppTransactionFieldList?.FirstOrDefault();
+            return field != null && field.ControlType == (int)EmAppControlType.Image;
+        }
+
+        private static void RewriteSimpleImageList(List<object> items, IDictionary<int, string> imageUrls)
+        {
+            if (items == null || imageUrls == null || imageUrls.Count == 0)
+                return;
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                int? fileId = ControlTypeValueConverter.ConvertValueToInt(items[i]);
+                if (fileId.HasValue && fileId.Value > 0 && imageUrls.TryGetValue(fileId.Value, out string url) && !string.IsNullOrWhiteSpace(url))
+                    items[i] = url;
+            }
+        }
+
+        private static void CollectSearchImageFileIds(ReferenceViewDto view, List<StaticSearchResultRowJsonDto> rows, HashSet<int> ids)
+        {
+            if (view?.Columns == null || rows == null)
+                return;
+
+            List<int> imageColumnIds = view.Columns
+                .Where(column => column != null && column.ControlType == (int)EmAppControlType.Image)
+                .Select(column => (int)column.Id)
+                .ToList();
+
+            foreach (StaticSearchResultRowJsonDto row in rows)
+            {
+                if (row == null)
+                    continue;
+
+                if (row.DictViewColumnIDKeyValue != null)
+                {
+                    foreach (int columnId in imageColumnIds)
+                    {
+                        if (!row.DictViewColumnIDKeyValue.TryGetValue(columnId, out object raw))
+                            continue;
+                        int? fileId = ControlTypeValueConverter.ConvertValueToInt(raw);
+                        if (fileId.HasValue && fileId.Value > 0)
+                            ids.Add(fileId.Value);
+                    }
+                }
+
+                if (row.Children != null && row.Children.Any())
+                    CollectSearchImageFileIds(view, row.Children.ToList(), ids);
+
+                if (row.DictViewIdAndChildRowList == null)
+                    continue;
+
+                foreach (int childViewId in row.DictViewIdAndChildRowList.Keys)
+                {
+                    AppSearchViewEntity childViewEntity = AppSearchViewConfigBL.RetrieveOneAppSearchViewEntity(childViewId);
+                    ReferenceViewDto childViewDto = AppSearchViewConfigBL.ConvertReverenceViewEntityToReferenceViewDto(childViewEntity);
+                    CollectSearchImageFileIds(childViewDto, row.DictViewIdAndChildRowList[childViewId], ids);
+                }
+            }
+        }
+
+        private static object ImageCellValue(object raw, IDictionary<int, string> imageUrls)
+        {
+            int? fileId = ControlTypeValueConverter.ConvertValueToInt(raw);
+            if (fileId.HasValue && fileId.Value > 0 && imageUrls != null && imageUrls.TryGetValue(fileId.Value, out string url) && !string.IsNullOrWhiteSpace(url))
+                return url;
+            return ControlTypeValueConverter.ConvertValueToStringWithDefaultEmptyString(raw);
         }
     }
 }

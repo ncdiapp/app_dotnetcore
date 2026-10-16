@@ -33,6 +33,21 @@ namespace APP.Framework
         private static IHttpContextAccessor? _httpContextAccessor;
         public static void SetHttpContextAccessor(IHttpContextAccessor accessor) =>
             _httpContextAccessor = accessor;
+
+        /// <summary>
+        /// Scheme, host, and path base of the current request, with no trailing slash.
+        /// Empty when there is no HTTP request.
+        /// </summary>
+        public static string CurrentRequestRoot
+        {
+            get
+            {
+                var request = _httpContextAccessor?.HttpContext?.Request;
+                if (request == null || !request.Host.HasValue)
+                    return "";
+                return $"{request.Scheme}://{request.Host}{request.PathBase}".TrimEnd('/');
+            }
+        }
 #endif
 
         // Per-async-flow identity override for code running outside an HTTP request

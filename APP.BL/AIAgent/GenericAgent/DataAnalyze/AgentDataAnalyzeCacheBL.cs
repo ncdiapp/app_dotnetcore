@@ -14,7 +14,7 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
     /// </summary>
     public static class AgentDataAnalyzeCacheBL
     {
-        public const int MaxCachedRows = 5000;
+        public const int MaxCachedRows = 50000;
         /// <summary>When extracted row count &gt;= this, replace tool result with a cache envelope.</summary>
         public const int AutoEnvelopeMinRows = 15;
 

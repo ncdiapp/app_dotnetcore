@@ -16,7 +16,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class AgentDataRenderPlugin
     {
-        private const int MaxRows = 500;
+        private const int MaxRows = 50000;
         private const int MaxKpiItems = 12;
         private const int MaxChartBlocks = 9;
         private const int MaxGridBlocks = 3;
@@ -31,7 +31,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             string chartConfigJson = null,
             string actionsJson = null,
             string metaJson = null,
-            string blocksJson = null)
+            string blocksJson = null,
+            int? cardsPerRow = null)
         {
             var uiNorm = (ui ?? "").Trim().ToLowerInvariant();
             if (uiNorm != "grid" && uiNorm != "card" && uiNorm != "chart" && uiNorm != "kpi_dashboard")
@@ -142,7 +143,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             columnsJson = NormalizeOptionalJson(columnsJson);
             chartConfigJson = NormalizeOptionalJson(chartConfigJson);
             actionsJson = NormalizeOptionalJson(actionsJson);
-            metaJson = NormalizeOptionalJson(metaJson);
+            metaJson = MergeCardsPerRow(NormalizeOptionalJson(metaJson), cardsPerRow);
 
             var renderId = Guid.NewGuid().ToString("N");
             var evt = new AgentDataRenderEvent
@@ -409,6 +410,26 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 return arr.Count;
             }
             catch { return 0; }
+        }
+
+        private static string MergeCardsPerRow(string metaJson, int? cardsPerRow)
+        {
+            if (!cardsPerRow.HasValue || cardsPerRow.Value < 1)
+                return metaJson;
+
+            JObject meta;
+            try
+            {
+                meta = string.IsNullOrWhiteSpace(metaJson) ? new JObject() : JObject.Parse(metaJson);
+            }
+            catch
+            {
+                meta = new JObject();
+            }
+
+            int columns = cardsPerRow.Value > 6 ? 6 : cardsPerRow.Value;
+            meta["cardsPerRow"] = columns;
+            return meta.ToString(Formatting.None);
         }
 
         private static string NormalizeOptionalJson(string raw)
