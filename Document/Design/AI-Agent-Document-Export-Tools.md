@@ -4,7 +4,7 @@ This document specifies agent tools that turn structured data into files, so the
 
 The data looks like a transaction form: a title, label/value fields, sections, and grids. The tool picks the font, size, color, alignment, and blank lines from the level of each part. The same tree can be written as HTML, CSV, Excel, Word, PDF, or PowerPoint, and read back.
 
-How to use it: subscribe the agent to the library `agent-documents`. In chat, the model calls `export_html`, `export_excel`, or the matching tool, and passes the form JSON (or a path to a file already in the session). The tool saves the file under the chat folder and returns the path, row count, and byte size. The user downloads it from the files panel. `read_html`, `read_excel`, and the other read tools load a file this library wrote and return the form again. `read_pdf` returns text only.
+How to use it: subscribe the agent to the library `platform-document-export`. In chat, the model calls `export_html`, `export_excel`, or the matching tool, and passes the form JSON (or a path to a file already in the session). The tool saves the file under the chat folder and returns the path, row count, and byte size. The user downloads it from the files panel. `read_html`, `read_excel`, and the other read tools load a file this library wrote and return the form again. `read_pdf` returns text only.
 
 The model does not send HTML, fonts, or colors. One walker assigns a level to each node. Each writer applies the same style table for that level.
 
@@ -102,7 +102,7 @@ Leave the report engine (Playwright) alone. Do not add ClosedXML, EPPlus, NPOI, 
 
 | | |
 |---|---|
-| LibraryKey | `agent-documents` |
+| LibraryKey | `platform-document-export` |
 | Class | `App.BL.AIAgent.GenericAgent.Plugins.AgentDocumentPlugin` |
 | ToolType | `BuiltIn` |
 | Seed | New migration into `AppAgentToolLibrary` and `AppAgentLibraryTool`. No auto-subscribe |

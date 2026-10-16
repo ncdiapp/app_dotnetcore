@@ -963,13 +963,45 @@ const handleSave = async () => {
                                                     .map(d => ({ domain: d, libs: filtered.filter(l => l.DomainKey === d.DomainKey) }))
                                                     .filter(g => g.libs.length > 0);
                                                 const ungrouped = filtered.filter(l => !allDomains.some(d => d.DomainKey === l.DomainKey));
-                                                const toggleLib = (libraryKey: string, checked: boolean) => {
+                                                const applyLibraryTools = (libraryKey: string, subscribe: boolean, nextExcluded: Set<string>) => {
                                                     setSubscribedKeys(prev => {
                                                         const next = new Set(prev);
-                                                        if (checked) next.add(libraryKey); else next.delete(libraryKey);
+                                                        if (subscribe) next.add(libraryKey); else next.delete(libraryKey);
                                                         return next;
                                                     });
-                                                    setSubsChanged(true); setIsDirty(true);
+                                                    setExcluded(nextExcluded);
+                                                    setSubsChanged(true); setExclChanged(true); setIsDirty(true);
+                                                };
+                                                const toggleLib = (libraryKey: string, checked: boolean, picks: { name: string; active: boolean }[]) => {
+                                                    const nextExcluded = new Set(excluded);
+                                                    const prefix = `${libraryKey}\u0001`;
+                                                    if (picks.length === 0) {
+                                                        for (const k of Array.from(nextExcluded)) if (k.startsWith(prefix)) nextExcluded.delete(k);
+                                                    } else if (checked) {
+                                                        for (const p of picks) {
+                                                            const k = prefix + p.name;
+                                                            if (p.active) nextExcluded.delete(k); else nextExcluded.add(k);
+                                                        }
+                                                    } else {
+                                                        for (const p of picks) nextExcluded.add(prefix + p.name);
+                                                    }
+                                                    applyLibraryTools(libraryKey, checked, nextExcluded);
+                                                };
+                                                const toggleTool = (libraryKey: string, toolName: string, use: boolean, picks: { name: string; active: boolean }[]) => {
+                                                    const prefix = `${libraryKey}\u0001`;
+                                                    const wasSubscribed = subscribedKeys.has(libraryKey);
+                                                    const nextExcluded = new Set(excluded);
+                                                    if (use && !wasSubscribed) {
+                                                        for (const p of picks) {
+                                                            const k = prefix + p.name;
+                                                            if (p.name === toolName) nextExcluded.delete(k); else nextExcluded.add(k);
+                                                        }
+                                                    } else {
+                                                        const k = prefix + toolName;
+                                                        if (use) nextExcluded.delete(k); else nextExcluded.add(k);
+                                                    }
+                                                    const anyUsed = picks.some(p => p.active && !nextExcluded.has(prefix + p.name));
+                                                    applyLibraryTools(libraryKey, use || anyUsed, nextExcluded);
                                                 };
                                                 const libRow = (l: AppAgentToolLibraryDto) => (
                                                     <AgentLibraryRow
@@ -977,17 +1009,9 @@ const handleSave = async () => {
                                                         theme={theme}
                                                         library={l}
                                                         subscribed={subscribedKeys.has(l.LibraryKey)}
-                                                        onToggle={checked => toggleLib(l.LibraryKey, checked)}
+                                                        onToggle={(checked, picks) => toggleLib(l.LibraryKey, checked, picks)}
                                                         excluded={excluded}
-                                                        onToggleTool={(toolName, use) => {
-                                                            setExcluded(prev => {
-                                                                const next = new Set(prev);
-                                                                const k = `${l.LibraryKey}\u0001${toolName}`;
-                                                                if (use) next.delete(k); else next.add(k);
-                                                                return next;
-                                                            });
-                                                            setExclChanged(true); setIsDirty(true);
-                                                        }}
+                                                        onToggleTool={(toolName, use, picks) => toggleTool(l.LibraryKey, toolName, use, picks)}
                                                         filesUi={chatModulesFromLibraries([l.LibraryKey]).has('files')}
                                                     />
                                                 );

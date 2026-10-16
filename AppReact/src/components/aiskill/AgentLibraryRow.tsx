@@ -7,15 +7,22 @@ import {
 } from '../../webapi/agentSkillSetSvc';
 import { Theme } from '../../redux/features/ui/theme/types';
 
+export interface AgentLibraryToolPick {
+    name: string;
+    active: boolean;
+}
+
 interface Props {
     theme: Theme;
     library: AppAgentToolLibraryDto;
     subscribed: boolean;
-    onToggle: (checked: boolean) => void;
+    /** checked = select every active tool; unchecked = clear every tool. */
+    onToggle: (checked: boolean, tools: AgentLibraryToolPick[]) => void;
     filesUi?: boolean;
     /** Tools this agent does not use, keyed "libraryKey\u0001toolName" */
     excluded: Set<string>;
-    onToggleTool: (toolName: string, use: boolean) => void;
+    /** tools is every tool currently listed, so the first tick can subscribe the library and leave the others off. */
+    onToggleTool: (toolName: string, use: boolean, tools: AgentLibraryToolPick[]) => void;
 }
 
 interface McpState {
@@ -25,8 +32,8 @@ interface McpState {
     error: string | null;
 }
 
-// One library row in the agent's Tools tab: checkbox to subscribe + [+]/[-] to see the tools
-// the agent would get from this library, with a checkbox per tool to exclude it for this agent.
+// One library row in the agent's Tools tab. The library checkbox selects or clears every tool.
+// Tool checkboxes stay enabled when the library is off; ticking one selects that tool and the library.
 const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle, filesUi, excluded, onToggleTool }) => {
     const [open, setOpen] = useState(false);
     const [loading, setLoading] = useState(false);
@@ -35,20 +42,40 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
     const [servers, setServers] = useState<McpState[]>([]);
     const [error, setError] = useState<string | null>(null);
 
-    const load = async () => {
+    const load = async (): Promise<{ tools: AppAgentLibraryToolDto[]; servers: McpState[] }> => {
         setLoading(true); setError(null);
         try {
             const [toolRes, mcpRes] = await Promise.all([
                 agentSkillSetSvc.GetLibraryTools(library.LibraryKey),
                 agentSkillSetSvc.GetAllMcpServers(),
             ]);
-            setTools(toolRes.Object ?? []);
-            setServers((mcpRes.Object ?? [])
+            const nextTools = toolRes.Object ?? [];
+            const nextServers = (mcpRes.Object ?? [])
                 .filter(s => s.SkillKey === library.LibraryKey)
-                .map(server => ({ server, loading: false, tools: null, error: null })));
+                .map(server => ({ server, loading: false, tools: null as string[] | null, error: null as string | null }));
+            setTools(nextTools);
+            setServers(nextServers);
             setLoaded(true);
-        } catch (e: unknown) { setError(e instanceof Error ? e.message : String(e)); }
-        finally { setLoading(false); }
+            return { tools: nextTools, servers: nextServers };
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : String(e));
+            return { tools, servers };
+        } finally { setLoading(false); }
+    };
+
+    const toPicks = (toolRows: AppAgentLibraryToolDto[], serverRows: McpState[]): AgentLibraryToolPick[] => {
+        const picks: AgentLibraryToolPick[] = toolRows.map(t => ({ name: t.ToolName, active: t.IsActive }));
+        serverRows.forEach(s => s.tools?.forEach(name => picks.push({ name, active: s.server.IsActive })));
+        return picks;
+    };
+
+    const handleLibraryChange = async (checked: boolean) => {
+        let picks = toPicks(tools, servers);
+        if (!loaded) {
+            const data = await load();
+            picks = toPicks(data.tools, data.servers);
+        }
+        onToggle(checked, picks);
     };
 
     const toggleOpen = () => {
@@ -72,13 +99,11 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
         }
     };
 
-    // Mirrors the engine: an item is used when the agent subscribes to the library, the item itself is
-    // active and the agent has not excluded it. (The library's own Active flag is not enforced at run time.)
+    // A tool is used when it is active, the library is selected, and this agent has not excluded it.
     const isExcluded = (toolName: string) => excluded.has(`${library.LibraryKey}\u0001${toolName}`);
     const usedInfo = (toolName: string, toolActive: boolean): { used: boolean; tip: string } => {
-        if (!subscribed) return { used: false, tip: 'Not used — library not subscribed' };
         if (!toolActive) return { used: false, tip: 'Not used — inactive in the library' };
-        if (isExcluded(toolName)) return { used: false, tip: 'Not used — excluded for this agent (tick to use)' };
+        if (!subscribed || isExcluded(toolName)) return { used: false, tip: 'Tick to use this tool. The library is selected automatically.' };
         return { used: true, tip: 'Used by this agent (untick to exclude)' };
     };
     const toolCheckbox = (toolName: string, toolActive: boolean) => (
@@ -87,10 +112,14 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
             className="mt-0.5"
             title={usedInfo(toolName, toolActive).tip}
             checked={usedInfo(toolName, toolActive).used}
-            disabled={!subscribed || !toolActive}
-            onChange={e => onToggleTool(toolName, e.target.checked)}
+            disabled={!toolActive}
+            onChange={e => onToggleTool(toolName, e.target.checked, toPicks(tools, servers))}
         />
     );
+
+    const activePicks = toPicks(tools, servers).filter(p => p.active);
+    const anyToolSelected = activePicks.some(p => subscribed && !isExcluded(p.name));
+    const libraryChecked = loaded && activePicks.length > 0 ? anyToolSelected : subscribed;
 
     const usedToolCount = tools.filter(t => usedInfo(t.ToolName, t.IsActive).used).length;
     const activeServerCount = servers.filter(s => s.server.IsActive).length;
@@ -107,7 +136,12 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
                     <i className={`fa-solid ${open ? 'fa-square-minus' : 'fa-square-plus'}`} />
                 </button>
                 <label className="flex items-center gap-2 flex-auto cursor-pointer">
-                    <input type="checkbox" checked={subscribed} onChange={e => onToggle(e.target.checked)} />
+                    <input
+                        type="checkbox"
+                        checked={libraryChecked}
+                        title={libraryChecked ? 'Uncheck all tools in this library' : 'Check all tools in this library'}
+                        onChange={e => { void handleLibraryChange(e.target.checked); }}
+                    />
                     <span className="font-mono font-semibold">{library.LibraryKey}</span>
                     <span className="opacity-70">{library.LibraryName && `— ${library.LibraryName}`}</span>
                     {filesUi && <span className="opacity-50">+ Files UI</span>}
@@ -126,7 +160,7 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
                     {tools.length > 0 && (
                         <div className="py-0.5">
                             <div className="opacity-60 mb-0.5">
-                                Tools — {subscribed ? `${usedToolCount} of ${tools.length} used by this agent` : 'none used (not subscribed)'}
+                                Tools — {usedToolCount > 0 ? `${usedToolCount} of ${tools.length} used by this agent` : 'none selected'}
                             </div>
                             {tools.map(t => {
                                 const info = usedInfo(t.ToolName, t.IsActive);
@@ -144,13 +178,13 @@ const AgentLibraryRow: React.FC<Props> = ({ theme, library, subscribed, onToggle
                     {servers.length > 0 && (
                         <div className="py-0.5">
                             <div className="opacity-60 mb-0.5">
-                                MCP servers — {subscribed ? `${activeServerCount} of ${servers.length} connected for this agent` : 'none used (not subscribed)'}
+                                MCP servers — {subscribed ? `${activeServerCount} of ${servers.length} connected for this agent` : 'none selected'}
                             </div>
                             {servers.map(s => {
                                 const serverUsed = subscribed && s.server.IsActive;
                                 return (
                                     <div key={s.server.McpServerId} className="py-px">
-                                        <div className="flex items-center gap-1.5" title={serverUsed ? 'Connected for this agent' : 'Not used — server inactive or library not subscribed'}>
+                                            <div className="flex items-center gap-1.5" title={serverUsed ? 'Connected for this agent' : 'Not used — tick the library or a tool to connect'}>
                                             <i className={`fa-solid fa-plug ${serverUsed ? 'text-green-600' : 'opacity-40'}`} />
                                             <span className="font-mono">{s.server.ServerName}</span>
                                             <span className="opacity-50 truncate">{s.server.ServerUrl}</span>
