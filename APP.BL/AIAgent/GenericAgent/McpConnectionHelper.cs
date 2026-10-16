@@ -52,13 +52,50 @@ namespace App.BL.AIAgent.GenericAgent
             return headers;
         }
 
-        public static HttpClientTransportOptions BuildTransportOptions(AppAgentMcpServerDto server, List<string> warnings = null)
+        // ── calling an MCP server as the signed-in user ────────────────────────────────────────────────────────────
+        // A server registration holds ONE set of static headers for everybody. For the in-house gateway that would run
+        // every user's agent with the same identity. Servers listed here instead get a short-lived token minted for the
+        // user who started the run. Both are set once by the host (Program.cs) from the OAuth settings.
+
+        /// <summary>Exact MCP server URLs that must be called with the signed-in user's own token. Empty = none.</summary>
+        public static ISet<string> UserTokenServerUrls { get; set; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Mints a token that makes the gateway act as (userId, companyId); set by the host. Null result = cannot.</summary>
+        public static Func<int, int, string> UserTokenFactory { get; set; }
+
+        public static bool RequiresUserToken(string serverUrl) =>
+            !string.IsNullOrWhiteSpace(serverUrl) && UserTokenServerUrls.Contains(serverUrl.Trim());
+
+        /// <summary>
+        /// The user token for this run, or throws. It never falls back to the server's stored headers: a run without a
+        /// signed-in user must not borrow a shared identity (unattended jobs use a server registration without this setting).
+        /// </summary>
+        public static string GetUserToken(AppAgentMcpServerDto server, int userId, int companyId)
         {
+            if (userId <= 0 || companyId <= 0)
+                throw new InvalidOperationException($"MCP server '{server.ServerName}' acts as the signed-in user, but this run has no signed-in user.");
+            var token = UserTokenFactory?.Invoke(userId, companyId);
+            if (string.IsNullOrEmpty(token))
+                throw new InvalidOperationException($"MCP server '{server.ServerName}' acts as the signed-in user, but no user token could be issued.");
+            return token;
+        }
+
+        public static HttpClientTransportOptions BuildTransportOptions(AppAgentMcpServerDto server, List<string> warnings = null, string userToken = null)
+        {
+            var headers = BuildHeaders(server, warnings);
+            if (userToken != null)
+            {
+                // Only the user's token identifies the caller: drop every stored credential so none can take precedence.
+                foreach (var credential in new[] { "Authorization", "IntergrationAccessToken", "CurrentUserSessionId", "X-Api-Key" })
+                    headers.Remove(credential);
+                headers["Authorization"] = "Bearer " + userToken;
+            }
+
             return new HttpClientTransportOptions
             {
                 Endpoint          = new Uri(server.ServerUrl),
                 TransportMode     = HttpTransportMode.StreamableHttp,
-                AdditionalHeaders = BuildHeaders(server, warnings)
+                AdditionalHeaders = headers
             };
         }
 

@@ -96,20 +96,21 @@ public static class McpGatewayExtensions
         services.AddSingleton<IApiAccessProvider, McpApiAccessProvider>();
         services.AddSingleton<IApiAccessPolicy, ApiAccessPolicy>();
 
-        // Rate limiter — scoped to /mcp* paths only (never affects /webapi/* routes)
+        // Rate limiter — per client IP, only for /mcp* and the OAuth endpoints (never affects other /webapi/* routes).
+        // Client registration is anonymous by design, so it gets the strictest limit.
         services.AddRateLimiter(options =>
         {
             options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
             {
                 var path = ctx.Request.Path.Value ?? "";
-                if (!path.StartsWith("/mcp", StringComparison.OrdinalIgnoreCase))
-                    return RateLimitPartition.GetNoLimiter("bypass");
+                var (bucket, permits) = RateBucket(path);
+                if (bucket == null) return RateLimitPartition.GetNoLimiter("bypass");
 
                 var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-                return RateLimitPartition.GetSlidingWindowLimiter(ip, _ => new SlidingWindowRateLimiterOptions
+                return RateLimitPartition.GetSlidingWindowLimiter(bucket + ":" + ip, _ => new SlidingWindowRateLimiterOptions
                 {
-                    PermitLimit          = 120,
+                    PermitLimit          = permits,
                     Window               = TimeSpan.FromMinutes(1),
                     SegmentsPerWindow    = 6,
                     QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
@@ -135,6 +136,19 @@ public static class McpGatewayExtensions
             .WithToolsFromAssembly(typeof(SwaggerTools).Assembly);
 
         return services;
+    }
+
+    /// <summary>Which rate-limit bucket a path belongs to (null = unlimited) and its permits per minute per IP.</summary>
+    internal static (string? Bucket, int Permits) RateBucket(string path)
+    {
+        bool Is(string prefix) => path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase);
+        if (Is("/mcp")) return ("mcp", 120);
+        if (Is("/oauth/register")) return ("oauth-register", 10);
+        if (Is("/oauth/token")) return ("oauth-token", 30);
+        if (Is("/oauth/authorize")) return ("oauth-authorize", 60);
+        if (Is("/webapi/OAuthConsent") || Is("/webapi/OAuthAdmin")) return ("oauth-api", 60);
+        if (Is("/.well-known")) return ("oauth-metadata", 120);
+        return (null, 0);
     }
 
     /// <summary>Early in the pipeline: correlation id for logs, and the /mcp rate limiter.</summary>

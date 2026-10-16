@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Developer tool, not part of the solution: runs the OAuth flow end to end against LocalDB with a FAKE AppAI
+       session bridge (see README.md). Never deploy. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\APP.OAuth\APP.OAuth.csproj" />
+  </ItemGroup>
+
+</Project>

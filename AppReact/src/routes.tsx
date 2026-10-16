@@ -12,6 +12,8 @@ import { AUTHENTICATED_ROUTES } from './routes.shared';
 import FormMasterDetailPrint from './components/formMgt/FormMasterDetailPrint';
 import FormMasterDetailStandalone from './components/formMgt/FormMasterDetailStandalone';
 import SearchEditorStandalone from './components/search/SearchEditorStandalone';
+import McpAuthorize from './components/mcp/McpAuthorize';
+import { rememberPostLoginPath } from './helper/postLoginRedirect';
 import { getDefaultAuthenticatedPath, isMasterSysAdminFromContext } from './helper/adminPermissionHelper';
 
 const SysAdminGuard: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -20,6 +22,13 @@ const SysAdminGuard: React.FC<{ children: React.ReactElement }> = ({ children })
     return <Navigate to={getDefaultAuthenticatedPath(userContext)} replace />;
   }
   return children;
+};
+
+// The AI-application consent page needs a signed-in user: remember it, show the login, and the login returns here.
+const RememberPathThenLogin: React.FC = () => {
+  const location = useLocation();
+  rememberPostLoginPath(location.pathname + location.search);
+  return <Navigate to="/login" replace />;
 };
 
 const DefaultAuthenticatedRedirect: React.FC = () => {
@@ -124,6 +133,7 @@ const AppRoutes: React.FC = () => {
       {!isAuthenticated ? (
         <>
           <Route path="/login" element={<Login />} />
+          <Route path="/mcp-authorize" element={<RememberPathThenLogin />} />
           <Route path="*" element={<Navigate to="/login" replace />} />
         </>
       ) : (
@@ -137,6 +147,8 @@ const AppRoutes: React.FC = () => {
           {/* Standalone search editor route: MUST NOT mount LandingPage (tab cache). */}
           <Route path="/SearchEditorStandalone/:param" element={<SearchEditorStandalone />} />
           <Route path="/SearchEditorStandalone" element={<SearchEditorStandalone />} />
+          {/* AI-application consent page: standalone, no menu or tabs. */}
+          <Route path="/mcp-authorize" element={<McpAuthorize />} />
 
           <Route element={<LandingPage />}>
             {AUTHENTICATED_ROUTES.map((r) => (
