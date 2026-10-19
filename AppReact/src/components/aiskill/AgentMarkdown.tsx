@@ -62,7 +62,7 @@ const formatInline = (text: string, files?: AgentFileLink[]): string => {
         });
     }
     s = s.replace(/`([^`]+)`/g, '<code class="agent-md-code">$1</code>');
-    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong class="font-medium">$1</strong>');
     s = s.replace(/(^|[^*])\*([^*]+)\*(?!\*)/g, '$1<em>$2</em>');
     if (tokens.length) {
         s = s.replace(/\u0000(\d+)\u0000/g, (_, n) => tokens[Number(n)] ?? '');
@@ -206,7 +206,7 @@ export const AgentMarkdown: React.FC<{
 
     return (
         <div
-            className={`agent-md text-[15px] leading-relaxed ${className || ''}`}
+            className={`agent-md text-sm leading-6 ${className || ''}`}
             onClick={e => {
                 const a = (e.target as HTMLElement).closest('a[data-agent-file]');
                 if (!a) return;
@@ -226,11 +226,11 @@ export const AgentMarkdown: React.FC<{
                     );
                 }
                 if (b.type === 'h') {
-                    const size = b.level === 1 ? 'text-base' : b.level === 2 ? 'text-sm' : 'text-sm';
+                    const size = 'text-sm';
                     return (
                         <div
                             key={idx}
-                            className={`mb-2 font-semibold ${size} ${theme.title}`}
+                            className={`mb-2 font-medium leading-6 ${size}`}
                             dangerouslySetInnerHTML={{ __html: formatInline(b.text, fileLinks) }}
                         />
                     );

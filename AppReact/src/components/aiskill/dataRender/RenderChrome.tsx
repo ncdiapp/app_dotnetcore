@@ -51,7 +51,7 @@ interface ToolsProps {
 }
 
 export const TurnToolHeader: React.FC<ToolsProps> = ({ steps, running }) => {
-    const { theme } = useTheme();
+    const { theme, t } = useTheme();
     const [open, setOpen] = useState(running);
     const [touched, setTouched] = useState(false);
     React.useEffect(() => {
@@ -68,9 +68,11 @@ export const TurnToolHeader: React.FC<ToolsProps> = ({ steps, running }) => {
                 className="w-full flex items-center gap-2 px-3 py-2 text-left"
                 onClick={() => { setTouched(true); setOpen(v => !v); }}
             >
-                <i className={running ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-circle'} aria-hidden />
-                <span className={theme.label}>{label}</span>
-                <i className={`ml-auto fa-solid ${open ? 'fa-chevron-down' : 'fa-chevron-right'}`} aria-hidden />
+                {running
+                    ? <i className={`fa-solid fa-spinner fa-spin text-xs ${t('text_label')}`} aria-hidden />
+                    : <span className={`inline-block w-1.5 h-1.5 rounded-full bg-current opacity-40 ${t('text_label')}`} aria-hidden />}
+                <span className={`font-normal ${t('text_label')}`}>{label}</span>
+                <i className={`ml-auto text-xs fa-solid ${open ? 'fa-chevron-down' : 'fa-chevron-right'} ${t('text_label')}`} aria-hidden />
             </button>
             {open && steps.length > 0 && (
                 <div className="px-3 pb-2 flex flex-col gap-1">

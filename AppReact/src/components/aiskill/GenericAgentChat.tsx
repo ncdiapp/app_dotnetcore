@@ -461,16 +461,15 @@ const GenericAgentChat: React.FC<Props> = ({
     const [error, setError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [toolsWidth, setToolsWidth] = useState(288);
-    const [renderWidth, setRenderWidth] = useState(() => {
+    const [renderWidth, setRenderWidth] = useState<number | null>(() => {
         const stored = Number(localStorage.getItem('agentRenderPanelPx'));
-        return stored >= 280 ? stored : 560;
+        return stored >= 280 ? stored : null;
     });
     const toolsDragRef = useRef(false);
-    const renderDragRef = useRef(false);
     const composerRef = useRef<HTMLTextAreaElement | null>(null);
     const chatRootRef = useRef<HTMLDivElement | null>(null);
     const [showEarlierTurns, setShowEarlierTurns] = useState(false);
-    const [rightTab, setRightTab] = useState<'tools' | 'files'>('tools');
+    const [rightTab, setRightTab] = useState<'result' | 'tools' | 'files'>('tools');
     const [uiModules, setUiModules] = useState<Set<AgentChatUiModule>>(() => new Set());
     const [fileSessionKey, setFileSessionKey] = useState<string | null>(null);
     const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
@@ -532,6 +531,7 @@ const GenericAgentChat: React.FC<Props> = ({
     useEffect(() => {
         setOpenRender(null);
         setOpenRenderKey(null);
+        setRightTab('tools');
         autoOpenedRender.current = null;
         liveResultOpen.current = false;
         historyRenderKeys.current = new Set();
@@ -554,6 +554,8 @@ const GenericAgentChat: React.FC<Props> = ({
                 autoOpenedRender.current = key;
                 setOpenRenderKey(key);
                 setOpenRender(placed.panel);
+                setRightTab('result');
+                setSidebarOpen(true);
                 return;
             }
         }
@@ -591,8 +593,8 @@ const GenericAgentChat: React.FC<Props> = ({
     };
 
     useEffect(() => {
-        if (rightTab === 'files' && !uiModules.has('files')) setRightTab('tools');
-    }, [rightTab, uiModules]);
+        if ((rightTab === 'files' && !uiModules.has('files')) || (rightTab === 'result' && !openRender)) setRightTab('tools');
+    }, [rightTab, uiModules, openRender]);
 
     const buildSnapshot = (): GenericAgentChatUiSnapshot => ({
         skillKey: skillKeyRef.current,
@@ -1320,44 +1322,24 @@ const GenericAgentChat: React.FC<Props> = ({
         ta.style.overflowY = ta.scrollHeight > 200 ? 'auto' : 'hidden';
     }, [input]);
 
-    const startRenderResize = (e: React.MouseEvent) => {
-        e.preventDefault();
-        renderDragRef.current = true;
-        const startX = e.clientX;
-        let nextW = renderWidth;
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-        const onMove = (ev: MouseEvent) => {
-            if (!renderDragRef.current) return;
-            const hostW = chatRootRef.current?.clientWidth ?? 900;
-            const max = Math.min(960, Math.max(320, hostW - 360));
-            nextW = Math.min(max, Math.max(280, renderWidth - (ev.clientX - startX)));
-            setRenderWidth(nextW);
-        };
-        const onUp = () => {
-            renderDragRef.current = false;
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-            document.removeEventListener('mousemove', onMove);
-            document.removeEventListener('mouseup', onUp);
-            localStorage.setItem('agentRenderPanelPx', String(nextW));
-        };
-        document.addEventListener('mousemove', onMove);
-        document.addEventListener('mouseup', onUp);
-    };
-
     const startToolsResize = (e: React.MouseEvent) => {
         e.preventDefault();
         toolsDragRef.current = true;
         const startX = e.clientX;
-        const startW = toolsWidth;
+        const hostW = chatRootRef.current?.clientWidth ?? 900;
+        const usingResult = openRender != null;
+        const startW = usingResult
+            ? (renderWidth ?? Math.max(280, Math.round((hostW - 8) / 2)))
+            : toolsWidth;
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
+        let nextW = startW;
         const onMove = (ev: MouseEvent) => {
             if (!toolsDragRef.current) return;
-            const hostW = chatRootRef.current?.clientWidth ?? 900;
-            const max = Math.min(560, Math.max(220, hostW - 320));
-            setToolsWidth(Math.min(max, Math.max(220, startW - (ev.clientX - startX))));
+            const max = Math.max(320, hostW - 280);
+            nextW = Math.min(max, Math.max(280, startW - (ev.clientX - startX)));
+            if (usingResult) setRenderWidth(nextW);
+            else setToolsWidth(nextW);
         };
         const onUp = () => {
             toolsDragRef.current = false;
@@ -1365,6 +1347,7 @@ const GenericAgentChat: React.FC<Props> = ({
             document.body.style.userSelect = '';
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
+            if (usingResult) localStorage.setItem('agentRenderPanelPx', String(nextW));
         };
         document.addEventListener('mousemove', onMove);
         document.addEventListener('mouseup', onUp);
@@ -1386,9 +1369,9 @@ const GenericAgentChat: React.FC<Props> = ({
                         </button>
                     )}
                     <div className={`min-w-0 flex items-center gap-2 px-2 py-1 rounded-[4px] border ${regionBorder}`}>
-                        <i className="fa-solid fa-comments text-sm" aria-hidden />
+                        <i className={`fa-solid fa-comments text-xs ${t('text_label')}`} aria-hidden />
                         <div className="min-w-0">
-                            <div className={`text-base font-semibold truncate leading-tight ${theme.title}`}>{chatTitle || 'New Conversation'}</div>
+                            <div className={`text-sm font-medium truncate leading-tight ${t('text_default')}`}>{chatTitle || 'New Conversation'}</div>
                             <div className={`text-xs truncate mt-0.5 ${theme.label}`}>{skillLabel}</div>
                         </div>
                     </div>
@@ -1413,14 +1396,14 @@ const GenericAgentChat: React.FC<Props> = ({
                         </button>
                     </div>
                 </div>
-                <div ref={scrollRef} className="w-full h-1 flex-auto overflow-auto px-3 py-3 flex flex-col">
+                <div ref={scrollRef} className="w-full h-1 flex-auto overflow-auto px-6 py-4 flex flex-col">
                     {showWelcome && (
                         <div className="w-full max-w-3xl mx-auto h-1 flex-auto flex flex-col items-center justify-center gap-6 py-8">
                             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl ${theme.button_default}`}>
                                 <i className="fa-solid fa-robot" aria-hidden />
                             </div>
                             <div className="text-center">
-                                <div className={`text-2xl font-semibold ${theme.title}`}>
+                                <div className={`text-xl font-medium ${t('text_default')}`}>
                                     {greetingWord}{firstName ? `, ${firstName}` : ''}
                                 </div>
                                 <div className={`mt-2 text-sm ${theme.label}`}>
@@ -1461,8 +1444,8 @@ const GenericAgentChat: React.FC<Props> = ({
                             {showBubble && (
                                     <div className={
                                         m.role === 'user'
-                                            ? `px-3 py-2 rounded-tl-[8px] rounded-tr-[8px] rounded-bl-[8px] rounded-br-none border text-[15px] leading-relaxed ${regionBorder}`
-                                            : `w-full text-[15px] leading-relaxed`
+                                            ? `px-3 py-2 rounded-tl-[8px] rounded-tr-[8px] rounded-bl-[8px] rounded-br-none border text-sm leading-6 ${t('text_default')} ${regionBorder}`
+                                            : `w-full text-sm leading-6 ${t('text_default')}`
                                     }>
                                         {(m.askUserSummary || m.askUserAnswer) && (
                                             <div className={`text-xs mb-1 ${theme.label}`}>
@@ -1503,7 +1486,7 @@ const GenericAgentChat: React.FC<Props> = ({
                                                     <RenderChip
                                                         event={placed.panel}
                                                         open={openRenderKey === key}
-                                                        onOpen={() => { setOpenRenderKey(key); setOpenRender(placed.panel!); }}
+                                                        onOpen={() => { setOpenRenderKey(key); setOpenRender(placed.panel!); setRightTab('result'); setSidebarOpen(true); }}
                                                     />
                                                 )}
                                             </React.Fragment>
@@ -1545,7 +1528,7 @@ const GenericAgentChat: React.FC<Props> = ({
 
                     {pendingPlan && (
                         <div className={`mx-2 p-3 rounded border ${theme.mainContentSection} flex flex-col gap-2`}>
-                            <div className={`text-xs font-semibold ${theme.title}`}>Plan Review</div>
+                            <div className={`text-xs font-medium ${t('text_default')}`}>Plan Review</div>
                             <div className={`text-xs ${theme.label} whitespace-pre-wrap`}>{pendingPlan.PlanSummary}</div>
                             <div className="flex gap-2">
                                 <button className={btn} onClick={() => handleConfirmPlan(true)}><i className="fa-solid fa-check mr-1" />Approve</button>
@@ -1556,7 +1539,7 @@ const GenericAgentChat: React.FC<Props> = ({
 
                     {pendingAskUser && (
                         <div className={`mx-2 p-3 rounded border ${theme.mainContentSection} flex flex-col gap-2`}>
-                            <div className={`text-xs font-semibold ${theme.title}`}>Question</div>
+                            <div className={`text-xs font-medium ${t('text_default')}`}>Question</div>
                             <div className={`text-xs ${theme.label} whitespace-pre-wrap`}>{sanitizeAgentDisplayText(pendingAskUser.Prompt)}</div>
 
                             {isButtonGroup && (
@@ -1729,11 +1712,11 @@ const GenericAgentChat: React.FC<Props> = ({
                     </div>
                 </div>
 
-                <div className="px-3 pb-2 pt-1 shrink-0 w-full max-w-3xl mx-auto">
+                <div className="px-6 pb-2 pt-1 shrink-0 w-full max-w-3xl mx-auto">
                     <div className={`relative min-h-[100px] px-3 pt-2 pb-2 rounded-[8px] border ${theme.inputBox}${composerFocus ? ' ring-1' : ''}`}>
                     <textarea
                         ref={composerRef}
-                        className={`w-full px-0 py-1 text-[15px] leading-relaxed bg-transparent border-0 focus:outline-none resize-none ${isRunning || pendingAskUser ? 'pr-20' : 'pr-12'}`}
+                        className={`w-full px-0 py-1 text-sm leading-6 bg-transparent border-0 focus:outline-none resize-none ${isRunning || pendingAskUser ? 'pr-20' : 'pr-12'}`}
                         rows={2}
                         value={input}
                         placeholder={`Message ${skillLabel}…`}
@@ -1769,49 +1752,30 @@ const GenericAgentChat: React.FC<Props> = ({
                 </div>
             </div>
 
-            {openRender && (
-                <div
-                    role="separator"
-                    aria-orientation="vertical"
-                    title="Drag to resize result"
-                    className="w-2 shrink-0 cursor-col-resize"
-                    onMouseDown={startRenderResize}
-                />
-            )}
-            {openRender && (
-                <div style={{ width: renderWidth }} className={`shrink-0 border flex flex-col ${regionBorder} ${windowCard}`}>
-                    <div className={`flex items-center gap-2 px-3 py-2 border-b shrink-0 ${regionBorder}`}>
-                        <div className={`text-sm font-semibold truncate w-1 flex-auto ${theme.title}`}>{openRender.Title || 'Result'}</div>
-                        <button type="button" className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}`} title="Close" onClick={() => { setOpenRender(null); setOpenRenderKey(null); }}>
-                            <i className="fa-solid fa-xmark" />
-                        </button>
-                    </div>
-                    <div className="w-full h-1 flex-auto overflow-auto p-2">
-                        <DataRenderPanel
-                            event={openRender}
-                            disabled={blocked}
-                            onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
-                        />
-                    </div>
-                </div>
-            )}
-
-            {/* ── Right: Tool Activity | Files ── */}
             {sidebarOpen && (
                 <div
                     role="separator"
                     aria-orientation="vertical"
-                    title="Drag to resize tools"
+                    title="Drag to resize"
                     className="w-2 shrink-0 cursor-col-resize"
                     onMouseDown={startToolsResize}
                 />
             )}
             {sidebarOpen && (
-                <div style={{ width: toolsWidth }} className={`shrink-0 border ${regionBorder} ${windowCard}`}>
+                <div style={{ width: openRender ? (renderWidth ?? Math.max(280, Math.round(((chatRootRef.current?.clientWidth ?? 900) - 8) / 2))) : toolsWidth }} className={`shrink-0 border flex flex-col min-w-0 min-h-0 ${regionBorder} ${windowCard}`}>
                     <div className={`flex items-center gap-1 px-2 py-1.5 border-b ${regionBorder}`}>
+                        {openRender && (
                         <button
                             type="button"
-                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'tools' ? ' font-semibold' : ' opacity-70'}`}
+                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'result' ? ' font-medium' : ' opacity-70'}`}
+                            onClick={() => setRightTab('result')}
+                        >
+                            Result
+                        </button>
+                        )}
+                        <button
+                            type="button"
+                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'tools' ? ' font-medium' : ' opacity-70'}`}
                             onClick={() => setRightTab('tools')}
                         >
                             Tool Activity
@@ -1819,7 +1783,7 @@ const GenericAgentChat: React.FC<Props> = ({
                         {uiModules.has('files') && (
                         <button
                             type="button"
-                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'files' ? ' font-semibold' : ' opacity-70'}`}
+                            className={`px-2 py-1 text-xs rounded-[4px] ${theme.button_default}${rightTab === 'files' ? ' font-medium' : ' opacity-70'}`}
                             onClick={() => setRightTab('files')}
                         >
                             Files
@@ -1830,7 +1794,15 @@ const GenericAgentChat: React.FC<Props> = ({
                         </button>
                     </div>
 
-                    {rightTab === 'files' && uiModules.has('files') ? (
+                    {rightTab === 'result' && openRender ? (
+                        <div className="w-full h-1 flex-auto overflow-auto p-2">
+                            <DataRenderPanel
+                                event={openRender}
+                                disabled={blocked}
+                                onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
+                            />
+                        </div>
+                    ) : rightTab === 'files' && uiModules.has('files') ? (
                         <div className="w-full h-1 flex-auto overflow-hidden min-h-0">
                             <GenericAgentFilesPanel skillKey={skillKey} sessionKey={fileSessionKey} />
                         </div>
@@ -1840,7 +1812,7 @@ const GenericAgentChat: React.FC<Props> = ({
                                 <div className={`p-3 rounded text-xs ${theme.label} flex flex-col gap-1`}>
                                     <div className="flex items-center gap-2 opacity-60">
                                         <i className="fa-solid fa-circle-info" />
-                                        <span className="font-semibold">No tool activity</span>
+                                        <span className="font-medium">No tool activity</span>
                                     </div>
                                     <p className="opacity-50 leading-relaxed">
                                         No tool steps are stored for this chat view. New runs save tool activity with the session; chats saved before that change will not show past tools after reload.
@@ -1910,7 +1882,7 @@ const GenericAgentChat: React.FC<Props> = ({
                                                         onClick={() => hasDetails && toggleExpand(expandKey)}
                                                     >
                                                         <i className={`fa-solid ${!hasResult ? `fa-spinner fa-spin ${t('text_default_active')}` : isSuccess ? `fa-circle-check ${t('text_default_active')}` : 'fa-circle-xmark text-red-600'}`} />
-                                                        <span className="font-mono font-semibold truncate">{title}</span>
+                                                        <span className={`font-mono font-medium truncate ${t('text_default')}`}>{title}</span>
                                                         {isSystemBuiltInTool(toolName) && (
                                                             <span
                                                                 className={`text-[10px] px-1.5 py-0.5 rounded shrink-0 opacity-70 border ${regionBorder} ${theme.label}`}
