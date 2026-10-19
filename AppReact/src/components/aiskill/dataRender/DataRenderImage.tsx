@@ -5,7 +5,7 @@ import { imageUrlKind, toAppResourcePath } from './imageValue';
 interface Props {
     url: string;
     alt?: string;
-    size?: 'cell' | 'card';
+    size?: 'cell' | 'compact' | 'card';
 }
 
 /** Renders an image URL. App resource URLs are loaded with the session header. */
@@ -27,8 +27,10 @@ export const DataRenderImage: React.FC<Props> = ({ url, alt, size = 'cell' }) =>
     }, [url, kind]);
 
     const box = size === 'card'
-        ? 'relative h-52 w-full'
-        : 'relative h-[60px] w-[60px]';
+        ? 'relative h-44 w-full'
+        : size === 'compact'
+            ? 'relative h-32 w-full'
+            : 'relative h-[60px] w-[60px]';
 
     if (!src) {
         return <div className={box} style={{ background: 'rgba(0,0,0,0.04)' }} />;

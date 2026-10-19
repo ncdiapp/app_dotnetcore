@@ -270,6 +270,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         public static string WriteCards(CardSheet sheet, bool forPrint)
         {
+            if (forPrint)
+                return WriteFittedCards(sheet);
             var perRow = CardSheet.ClampPerRow(sheet.CardsPerRow);
             var imageWidth = perRow <= 1 ? 320 : perRow == 2 ? 220 : 160;
             var sb = new StringBuilder();
@@ -289,17 +291,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 sb.Append("<tr><td style=\"padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280;\">No records.</td></tr>");
             }
-            var pageRows = CardSheet.ClampPageRows(sheet.CardRows);
-            var visualRow = 0;
             for (var i = 0; i < sheet.Cards.Count; i += perRow)
             {
-                if (forPrint && visualRow > 0 && visualRow % pageRows == 0)
-                {
-                    sb.Append("<tr style=\"page-break-before:always\"><td colspan=\"");
-                    sb.Append(perRow.ToString(CultureInfo.InvariantCulture));
-                    sb.Append("\"></td></tr>");
-                }
-                visualRow++;
                 var slice = new List<List<CardField>>();
                 for (var c = 0; c < perRow; c++)
                     slice.Add(i + c < sheet.Cards.Count ? sheet.Cards[i + c] : null);
@@ -360,9 +353,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                         sb.Append("<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;border-collapse:collapse;\"><tr>");
                         var field = t < texts[c].Count ? texts[c][t] : null;
                         var value = field == null || string.IsNullOrWhiteSpace(field.Value) ? "\u2014" : field.Value;
-                        sb.Append("<td valign=\"top\" width=\"108\" height=\"36\" style=\"width:108px;height:36px;padding:6px 12px 6px 14px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:16px;color:#6b7280;vertical-align:top;\">");
+                        sb.Append("<td valign=\"top\" width=\"108\" style=\"width:108px;padding:1px 8px 1px 12px;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:14px;color:#6b7280;vertical-align:top;\">");
                         sb.Append(WebUtility.HtmlEncode(field == null ? "" : PrettyLabel(field.Label)));
-                        sb.Append("</td><td valign=\"top\" height=\"36\" style=\"height:36px;padding:6px 14px 6px 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;color:#111827;vertical-align:top;\">");
+                        sb.Append("</td><td valign=\"top\" style=\"padding:1px 12px 1px 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:14px;color:#111827;vertical-align:top;\">");
                         sb.Append(WebUtility.HtmlEncode(value));
                         sb.Append("</td></tr></table></td>");
                     }
@@ -375,6 +368,122 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append("</table></body></html>");
             return sb.ToString();
         }
+
+        /// <summary>
+        /// One printed page holds cardRows by cardsPerRow. Each card is given an equal slice of the A4 content box.
+        /// </summary>
+        private static string WriteFittedCards(CardSheet sheet)
+        {
+            var perRow = CardSheet.ClampPerRow(sheet.CardsPerRow);
+            var pageRows = CardSheet.ClampPageRows(sheet.CardRows);
+            var pageSize = Math.Max(1, pageRows * perRow);
+            var pages = Math.Max(1, (int)Math.Ceiling(sheet.Cards.Count / (double)pageSize));
+            if (sheet.Cards.Count == 0) pages = 1;
+            var pageW = CardPageFit.PageWidthMm;
+            var pageH = CardPageFit.PageHeightMm;
+            var titleH = CardPageFit.TitleMm;
+            var rowH = (pageH - titleH) / pageRows;
+            var sb = new StringBuilder();
+            sb.Append("<!DOCTYPE html><html><head><meta charset=\"utf-8\">");
+            sb.Append("<style>.card-page{width:").Append(Mm(pageW)).Append(";height:").Append(Mm(pageH));
+            sb.Append(";overflow:hidden;page-break-after:always;break-after:page;}");
+            sb.Append(".card-page table,.card-page tr,.card-page td{page-break-inside:auto;break-inside:auto;}");
+            sb.Append("</style></head>");
+            sb.Append("<body style=\"margin:0;padding:0;background-color:#ffffff;\">");
+            for (var p = 0; p < pages; p++)
+            {
+                if (p > 0)
+                    sb.Append("<div style=\"page-break-before:always\"></div>");
+                sb.Append("<div class=\"card-page\">");
+                sb.Append("<table data-doc=\"cards\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:");
+                sb.Append(Mm(pageW));
+                sb.Append(";height:");
+                sb.Append(Mm(pageH));
+                sb.Append(";border-collapse:collapse;table-layout:fixed;background-color:#ffffff;font-family:Arial,Helvetica,sans-serif;\">");
+                var title = string.IsNullOrEmpty(sheet.Title) ? "Cards" : sheet.Title;
+                if (pages > 1) title = title + " (" + (p + 1).ToString(CultureInfo.InvariantCulture) + "/" + pages.ToString(CultureInfo.InvariantCulture) + ")";
+                sb.Append("<tr style=\"height:").Append(Mm(titleH)).Append("\"><td colspan=\"").Append(perRow.ToString(CultureInfo.InvariantCulture));
+                sb.Append("\" data-role=\"title\" align=\"center\" height=\"").Append(Mm(titleH));
+                sb.Append("\" style=\"height:").Append(Mm(titleH)).Append(";padding:0 4px;font-size:14px;line-height:16px;font-weight:bold;color:#111827;vertical-align:middle;\">");
+                sb.Append(WebUtility.HtmlEncode(title));
+                sb.Append("</td></tr>");
+                for (var r = 0; r < pageRows; r++)
+                {
+                    sb.Append("<tr style=\"height:").Append(Mm(rowH)).Append("\">");
+                    for (var c = 0; c < perRow; c++)
+                    {
+                        var index = p * pageSize + r * perRow + c;
+                        var card = index < sheet.Cards.Count ? sheet.Cards[index] : null;
+                        sb.Append("<td valign=\"top\" width=\"").Append((100 / perRow).ToString(CultureInfo.InvariantCulture));
+                        sb.Append("%\" height=\"").Append(Mm(rowH));
+                        sb.Append("\" bgcolor=\"#ffffff\" style=\"width:").Append((100 / perRow).ToString(CultureInfo.InvariantCulture));
+                        sb.Append("%;height:").Append(Mm(rowH)).Append(";background-color:#ffffff;border:1px solid #e6e8eb;vertical-align:top;padding:0;\">");
+                        sb.Append("<div style=\"height:").Append(Mm(rowH)).Append(";overflow:hidden;\">");
+                        if (card != null)
+                            AppendFittedCard(sb, card, rowH, perRow);
+                        sb.Append("</div></td>");
+                    }
+                    sb.Append("</tr>");
+                }
+                sb.Append("</table></div>");
+            }
+            sb.Append("</body></html>");
+            return sb.ToString();
+        }
+
+        private static void AppendFittedCard(StringBuilder sb, List<CardField> card, double rowMm, int perRow)
+        {
+            var images = new List<CardField>();
+            var texts = new List<CardField>();
+            foreach (var field in card)
+            {
+                if (field.IsImage || (field.ImageBytes != null && field.ImageBytes.Length > 0))
+                    images.Add(field);
+                else
+                    texts.Add(field);
+            }
+            var textCount = Math.Max(1, texts.Count);
+            var slot = CardPageFit.Measure(rowMm, CardPageFit.CardMm(perRow), textCount, images.Count > 0);
+            var imageBand = images.Count > 0 ? slot.ImageMm : 0;
+            var labelH = images.Count > 0 ? slot.LabelMm : 0;
+            var each = slot.FieldMm;
+            var font = slot.FontPx;
+            var line = font + 2;
+            sb.Append("<table width=\"100%\" height=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;height:100%;border-collapse:collapse;\">");
+            if (images.Count > 0 && imageBand > 0)
+            {
+                var field = images[0];
+                sb.Append("<tr style=\"height:").Append(Mm(labelH)).Append("\"><td style=\"height:").Append(Mm(labelH));
+                sb.Append(";padding:1px 8px;font-size:9px;line-height:11px;color:#6b7280;\">");
+                sb.Append(WebUtility.HtmlEncode(PrettyLabel(field.Label)));
+                sb.Append("</td></tr><tr style=\"height:").Append(Mm(imageBand)).Append("\"><td align=\"center\" valign=\"middle\" height=\"");
+                sb.Append(Mm(imageBand)).Append("\" bgcolor=\"#f3f4f6\" style=\"height:").Append(Mm(imageBand));
+                sb.Append(";background-color:#f3f4f6;text-align:center;vertical-align:middle;\">");
+                AppendCardImage(sb, field, 0, imageBand);
+                sb.Append("</td></tr>");
+            }
+            var used = texts.Count == 0 ? 1 : texts.Count;
+            for (var t = 0; t < used; t++)
+            {
+                var field = t < texts.Count ? texts[t] : null;
+                var value = field == null || string.IsNullOrWhiteSpace(field.Value) ? "\u2014" : field.Value;
+                sb.Append("<tr style=\"height:").Append(Mm(each)).Append("\"><td style=\"height:").Append(Mm(each)).Append(";padding:0 6px;vertical-align:middle;overflow:hidden;\">");
+                sb.Append("<table width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"width:100%;border-collapse:collapse;\"><tr>");
+                sb.Append("<td width=\"42%\" style=\"width:42%;font-size:").Append(font.ToString(CultureInfo.InvariantCulture));
+                sb.Append("px;line-height:").Append(line.ToString(CultureInfo.InvariantCulture));
+                sb.Append("px;color:#6b7280;vertical-align:middle;\">");
+                sb.Append(WebUtility.HtmlEncode(field == null ? "" : PrettyLabel(field.Label)));
+                sb.Append("</td><td style=\"font-size:").Append(font.ToString(CultureInfo.InvariantCulture));
+                sb.Append("px;line-height:").Append(line.ToString(CultureInfo.InvariantCulture));
+                sb.Append("px;color:#111827;vertical-align:middle;\">");
+                sb.Append(WebUtility.HtmlEncode(value));
+                sb.Append("</td></tr></table></td></tr>");
+            }
+            sb.Append("</table>");
+        }
+
+        private static string Mm(double value)
+            => value.ToString("0.##", CultureInfo.InvariantCulture) + "mm";
 
         private static void OpenCardCell(StringBuilder sb, int perRow, bool first, bool last)
         {
@@ -391,6 +500,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         }
 
         private static void AppendCardImage(StringBuilder sb, CardField field, int imageWidth)
+            => AppendCardImage(sb, field, imageWidth, 0);
+
+        private static void AppendCardImage(StringBuilder sb, CardField field, int imageWidth, double maxHeightMm)
         {
             string src = null;
             if (field.ImageBytes != null && field.ImageBytes.Length > 0)
@@ -406,7 +518,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             sb.Append(WebUtility.HtmlEncode(src));
             sb.Append("\" alt=\"");
             sb.Append(WebUtility.HtmlEncode(PrettyLabel(field.Label)));
-            sb.Append("\" width=\"");
+            sb.Append("\"");
+            if (maxHeightMm > 0)
+            {
+                sb.Append(" style=\"border:0;max-width:100%;max-height:");
+                sb.Append(Mm(maxHeightMm));
+                sb.Append(";width:auto;height:auto;object-fit:contain;\" />");
+                return;
+            }
+            sb.Append(" width=\"");
             sb.Append(imageWidth.ToString(CultureInfo.InvariantCulture));
             sb.Append("\" height=\"148\" style=\"border:0;width:");
             sb.Append(imageWidth.ToString(CultureInfo.InvariantCulture));

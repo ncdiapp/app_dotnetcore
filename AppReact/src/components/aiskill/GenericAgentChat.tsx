@@ -450,6 +450,7 @@ const GenericAgentChat: React.FC<Props> = ({
     const [openRenderKey, setOpenRenderKey] = useState<string | null>(null);
     const [openRender, setOpenRender] = useState<DataRenderEvent | null>(null);
     const autoOpenedRender = useRef<string | null>(null);
+    const liveResultOpen = useRef(false);
     const [isRunning, setIsRunning] = useState(false);
     const [pendingPlan, setPendingPlan] = useState<PlanEvent | null>(null);
     const [pendingAskUser, setPendingAskUser] = useState<AskUserEvent | null>(null);
@@ -514,13 +515,33 @@ const GenericAgentChat: React.FC<Props> = ({
     const chatSessionKeyRef = useRef<string | null>(chatSessionKey ?? null);
     chatSessionKeyRef.current = chatSessionKey ?? null;
 
+    const historyRenderKeys = useRef<Set<string>>(new Set());
+
+    const collectPanelKeys = (list: ChatMessage[]) => {
+        const keys: string[] = [];
+        list.forEach(m => {
+            if (m.role !== 'assistant' || !m.dataRenders?.length) return;
+            m.dataRenders.forEach((dr, r) => {
+                const placed = placeRender(dr);
+                if (placed.panel) keys.push(renderKey(placed.panel, r));
+            });
+        });
+        return keys;
+    };
+
     useEffect(() => {
         setOpenRender(null);
         setOpenRenderKey(null);
         autoOpenedRender.current = null;
+        liveResultOpen.current = false;
+        historyRenderKeys.current = new Set();
     }, [chatSessionKey, skillKey]);
 
     useEffect(() => {
+        if (!liveResultOpen.current) {
+            historyRenderKeys.current = new Set(collectPanelKeys(messages));
+            return;
+        }
         for (let i = messages.length - 1; i >= 0; i--) {
             const m = messages[i];
             if (m.role !== 'assistant' || !m.dataRenders?.length) continue;
@@ -528,13 +549,13 @@ const GenericAgentChat: React.FC<Props> = ({
                 const placed = placeRender(m.dataRenders[r]);
                 if (!placed.panel) continue;
                 const key = renderKey(placed.panel, r);
+                if (historyRenderKeys.current.has(key)) continue;
                 if (autoOpenedRender.current === key) return;
                 autoOpenedRender.current = key;
                 setOpenRenderKey(key);
                 setOpenRender(placed.panel);
                 return;
             }
-            return;
         }
     }, [messages]);
     const onConversationChangedRef = useRef(onConversationChanged);
@@ -1036,6 +1057,7 @@ const GenericAgentChat: React.FC<Props> = ({
     }) => {
         const msg = opts.userMessage.trim();
         if (!msg || isRunningRef.current) return;
+        liveResultOpen.current = true;
         setError(null);
         setIsRunning(true);
         isRunningRef.current = true;

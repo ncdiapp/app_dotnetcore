@@ -174,7 +174,28 @@ public class FormDocumentTests
         Assert.Contains("media", ZipNames(WordForm.WriteCardDocx(sheet)));
         Assert.True(WordForm.WriteCardPdf(sheet).Length > 100);
         Assert.Contains("media", ZipNames(ExcelForm.WriteCards(sheet)));
-        Assert.Contains("media", ZipNames(PptxForm.WriteCards(sheet)));
+        var pptx = PptxForm.WriteCards(sheet);
+        using (var ms = new MemoryStream(pptx))
+        using (var zip = new ZipArchive(ms, ZipArchiveMode.Read))
+        {
+            var slide = zip.GetEntry("ppt/slides/slide1.xml");
+            using var reader = new StreamReader(slide!.Open());
+            var xml = reader.ReadToEnd();
+            var picAt = xml.IndexOf("<p:pic", StringComparison.Ordinal);
+            Assert.True(picAt > 0);
+            var picY = OffY(xml, picAt);
+            var textAt = xml.IndexOf("name=\"Text Box\"", picAt, StringComparison.Ordinal);
+            Assert.True(textAt > picAt);
+            Assert.True(picY < OffY(xml, textAt));
+        }
+    }
+
+    private static long OffY(string xml, int from)
+    {
+        var off = xml.IndexOf("<a:off ", from, StringComparison.Ordinal);
+        var y = xml.IndexOf("y=\"", off, StringComparison.Ordinal) + 3;
+        var end = xml.IndexOf('"', y);
+        return long.Parse(xml.Substring(y, end - y));
     }
 
     private static string ZipNames(byte[] zip)

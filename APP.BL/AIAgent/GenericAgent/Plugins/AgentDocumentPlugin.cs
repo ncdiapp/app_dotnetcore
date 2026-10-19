@@ -17,23 +17,23 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     /// </summary>
     public class AgentDocumentPlugin
     {
-        public Task<string> ExportHtml(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".html", false);
+        public Task<string> ExportHtml(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".html", false, pageGrid, cardsPerPage);
 
-        public Task<string> ExportCsv(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".csv", false);
+        public Task<string> ExportCsv(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".csv", false, pageGrid, cardsPerPage);
 
-        public Task<string> ExportExcel(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".xlsx", false);
+        public Task<string> ExportExcel(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".xlsx", false, pageGrid, cardsPerPage);
 
-        public Task<string> ExportDocx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".docx", true);
+        public Task<string> ExportDocx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".docx", true, pageGrid, cardsPerPage);
 
-        public Task<string> ExportPdf(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pdf", true);
+        public Task<string> ExportPdf(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pdf", true, pageGrid, cardsPerPage);
 
-        public Task<string> ExportPptx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pptx", true);
+        public Task<string> ExportPptx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0, string pageGrid = null, int cardsPerPage = 0)
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pptx", true, pageGrid, cardsPerPage);
 
         public Task<string> ConvertDocxToPdf(AgentToolContext context, CancellationToken ct, string sourcePath, string path)
         {
@@ -147,7 +147,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             int cardRows,
             int rowLimit,
             string extension,
-            bool paged)
+            bool paged,
+            string pageGrid = null,
+            int cardsPerPage = 0)
         {
             try
             {
@@ -158,14 +160,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
 
                 if (mode == "cards")
                 {
-                    var sheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, paged ? cardRows : 0, rowLimit);
+                    var sheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, paged ? cardRows : 0, rowLimit, paged ? pageGrid : null, paged ? cardsPerPage : 0);
                     await CardImageLoader.AttachAsync(sheet, context.CompanyId, ct).ConfigureAwait(false);
                     var cardHtml = HtmlForm.WriteCards(sheet, preview || extension == ".pdf" || extension == ".docx" || extension == ".pptx");
                     if (preview)
                         return PreviewHtml(context, path, HtmlForm.ForPrint(cardHtml), sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages, "playwright");
                     path = WithExtension(path, extension);
-                    var cardBytes = await WriteCardBytes(extension, sheet, cardHtml, ct).ConfigureAwait(false);
-                    return Saved(context, path, cardBytes, sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages, EngineFor(extension));
+                    var cardWritten = await WriteCardBytes(extension, sheet, cardHtml, ct).ConfigureAwait(false);
+                    return Saved(context, path, cardWritten.Bytes, sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages, cardWritten.Engine);
                 }
 
                 var doc = LoadDocument(context, content, sourcePath, datasetName);
@@ -173,8 +175,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (preview)
                     return PreviewHtml(context, path, HtmlForm.ForPrint(html), doc.DataRowCount(), false, null, "playwright");
                 path = WithExtension(path, extension);
-                var bytes = await WriteFormBytes(extension, doc, html, context.CompanyId, ct).ConfigureAwait(false);
-                return Saved(context, path, bytes, doc.DataRowCount(), false, null, EngineFor(extension));
+                var written = await WriteFormBytes(extension, doc, html, context.CompanyId, ct).ConfigureAwait(false);
+                return Saved(context, path, written.Bytes, doc.DataRowCount(), false, null, written.Engine);
             }
             catch (Exception ex)
             {
@@ -190,51 +192,55 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             return message;
         }
 
-        private static string EngineFor(string extension)
-        {
-            if (extension == ".pdf") return "playwright";
-            if (extension == ".docx") return "libreoffice";
-            if (extension == ".pptx") return "shapecrawler";
-            if (extension == ".xlsx") return "openxml";
-            if (extension == ".html") return "html";
-            return "csv";
-        }
-
-        private static async Task<byte[]> WriteFormBytes(string extension, FormDocument doc, string html, int companyId, CancellationToken ct)
+        private static async Task<(byte[] Bytes, string Engine)> WriteFormBytes(string extension, FormDocument doc, string html, int companyId, CancellationToken ct)
         {
             if (extension == ".html")
-                return System.Text.Encoding.UTF8.GetBytes(html);
+                return (System.Text.Encoding.UTF8.GetBytes(html), "html");
             if (extension == ".csv")
-                return CsvForm.Write(doc);
+                return (CsvForm.Write(doc), "csv");
             if (extension == ".xlsx")
             {
                 await CardImageLoader.AttachAsync(doc, companyId, ct).ConfigureAwait(false);
-                return ExcelForm.Write(doc);
+                return (ExcelForm.Write(doc), "openxml");
             }
             if (extension == ".pdf")
-                return await AppReportPdfService.RenderHtmlToPdfAsync(HtmlForm.ForPrint(html)).ConfigureAwait(false);
+                return (await AppReportPdfService.RenderHtmlToPdfAsync(HtmlForm.ForPrint(html)).ConfigureAwait(false), "playwright");
             if (extension == ".docx")
-                return LibreOfficeConvert.Convert(System.Text.Encoding.UTF8.GetBytes(HtmlForm.ForPrint(html)), ".html", "docx");
+                return WriteDocx(System.Text.Encoding.UTF8.GetBytes(HtmlForm.ForPrint(html)), doc, null);
             if (extension == ".pptx")
-                return PptxForm.Write(doc, TemplatePaint.FromHtml(html));
+                return (PptxForm.Write(doc, TemplatePaint.FromHtml(html)), "shapecrawler");
             throw new InvalidOperationException("Unsupported export.");
         }
 
-        private static async Task<byte[]> WriteCardBytes(string extension, CardSheet sheet, string html, CancellationToken ct)
+        private static async Task<(byte[] Bytes, string Engine)> WriteCardBytes(string extension, CardSheet sheet, string html, CancellationToken ct)
         {
             if (extension == ".csv")
-                return CsvForm.Write(sheet.AsFlatTable());
+                return (CsvForm.Write(sheet.AsFlatTable()), "csv");
             if (extension == ".html")
-                return System.Text.Encoding.UTF8.GetBytes(HtmlForm.WriteCards(sheet));
+                return (System.Text.Encoding.UTF8.GetBytes(HtmlForm.WriteCards(sheet)), "html");
             if (extension == ".xlsx")
-                return ExcelForm.WriteCards(sheet);
+                return (ExcelForm.WriteCards(sheet), "openxml");
             if (extension == ".pdf")
-                return await AppReportPdfService.RenderHtmlToPdfAsync(HtmlForm.ForPrint(html)).ConfigureAwait(false);
+                return (await AppReportPdfService.RenderHtmlToPdfAsync(HtmlForm.ForPrint(html)).ConfigureAwait(false), "playwright");
             if (extension == ".docx")
-                return LibreOfficeConvert.Convert(System.Text.Encoding.UTF8.GetBytes(HtmlForm.ForPrint(html)), ".html", "docx");
+                return WriteDocx(System.Text.Encoding.UTF8.GetBytes(HtmlForm.ForPrint(html)), null, sheet);
             if (extension == ".pptx")
-                return PptxForm.WriteCards(sheet, TemplatePaint.FromHtml(html));
+                return (PptxForm.WriteCards(sheet, TemplatePaint.FromHtml(html)), "shapecrawler");
             throw new InvalidOperationException("Unsupported export.");
+        }
+
+        /// <summary>
+        /// Card pages are Open XML so the requested rows stay on one page.
+        /// LibreOffice imports the HTML but drops the second card row onto the next page.
+        /// Forms still use LibreOffice when it is installed.
+        /// </summary>
+        private static (byte[] Bytes, string Engine) WriteDocx(byte[] printHtml, FormDocument doc, CardSheet sheet)
+        {
+            if (sheet != null)
+                return (OpenXmlWordForm.WriteCards(sheet), "openxml");
+            if (LibreOfficeConvert.IsInstalled())
+                return (LibreOfficeConvert.Convert(printHtml, ".html", "docx"), "libreoffice");
+            return (OpenXmlWordForm.Write(doc), "openxml");
         }
 
         private static string Saved(AgentToolContext context, string path, byte[] bytes, int rowCount, bool cacheLimitReached, List<string> missingImages, string engine, string sourcePath = null)
@@ -352,7 +358,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             return TableFromRows(string.IsNullOrEmpty(doc.Title) ? section.Title : doc.Title, expanded);
         }
 
-        private static CardSheet LoadCards(AgentToolContext context, string content, string sourcePath, string datasetName, string records, int cardsPerRow, int cardRows, int rowLimit)
+        private static CardSheet LoadCards(AgentToolContext context, string content, string sourcePath, string datasetName, string records, int cardsPerRow, int cardRows, int rowLimit, string pageGrid = null, int cardsPerPage = 0)
         {
             JArray rows = null;
             var title = "Cards";
@@ -391,6 +397,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 rows = AgentDataAnalyzeCacheBL.TakeFirst(rows, rowLimit);
 
             var sheet = CardSheet.FromRows(title, rows, cardsPerRow, cardRows);
+            sheet.ApplyPageGrid(pageGrid, cardsPerPage);
             sheet.CacheLimitReached = limit;
             return sheet;
         }

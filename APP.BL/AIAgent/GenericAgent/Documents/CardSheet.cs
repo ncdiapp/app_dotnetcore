@@ -38,6 +38,33 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return value;
         }
 
+        /// <summary>
+        /// pageGrid "2x2" is two columns and two rows. cardsPerPage wins over a cardRows value the model set to 1.
+        /// </summary>
+        public void ApplyPageGrid(string pageGrid, int cardsPerPage)
+        {
+            if (TryParseGrid(pageGrid, out var columns, out var rows))
+            {
+                CardsPerRow = ClampPerRow(columns);
+                CardRows = rows > 20 ? 20 : rows;
+                return;
+            }
+            if (cardsPerPage > 0)
+                CardRows = ClampPageRows((int)Math.Ceiling(cardsPerPage / (double)Math.Max(1, CardsPerRow)));
+        }
+
+        public static bool TryParseGrid(string pageGrid, out int columns, out int rows)
+        {
+            columns = 0;
+            rows = 0;
+            if (string.IsNullOrWhiteSpace(pageGrid)) return false;
+            var match = Regex.Match(pageGrid.Trim(), @"(\d+)\s*[xX×*]\s*(\d+)");
+            if (!match.Success) return false;
+            if (!int.TryParse(match.Groups[1].Value, out columns) || !int.TryParse(match.Groups[2].Value, out rows))
+                return false;
+            return columns > 0 && rows > 0;
+        }
+
         public int PageSize => Math.Max(1, CardRows) * Math.Max(1, CardsPerRow);
 
         public static CardSheet FromRows(string title, JArray rows, int cardsPerRow, int cardRows)

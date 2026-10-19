@@ -58,6 +58,19 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             }
         }
 
+        public static bool IsInstalled()
+        {
+            var configured = AppConfig.Get("DocumentExport.SofficePath");
+            if (!string.IsNullOrWhiteSpace(configured) && File.Exists(configured))
+                return true;
+            var windows = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "LibreOffice", "program", "soffice.exe");
+            if (File.Exists(windows))
+                return true;
+            return File.Exists("/usr/bin/soffice");
+        }
+
         public static string ResolveSoffice()
         {
             var configured = AppConfig.Get("DocumentExport.SofficePath");
@@ -70,7 +83,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 return windows;
             if (File.Exists("/usr/bin/soffice"))
                 return "/usr/bin/soffice";
-            throw new InvalidOperationException("LibreOffice was not found. Set DocumentExport:SofficePath.");
+            throw new InvalidOperationException(
+                "LibreOffice is not installed, so the Word file was not written. Install it from https://www.libreoffice.org/download/ and restart the web app. " +
+                "The usual Windows path is C:\\Program Files\\LibreOffice\\program\\soffice.exe. " +
+                "If it is installed somewhere else, set DocumentExport:SofficePath in appsettings.json. " +
+                "Do not call another export tool for this request.");
         }
     }
 }

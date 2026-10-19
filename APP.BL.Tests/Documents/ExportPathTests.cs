@@ -30,6 +30,7 @@ public class ExportPathTests
         var sheet = CardSheet.FromRows("Cards", rows, 1, 2);
         var html = HtmlForm.WriteCards(sheet, true);
         Assert.Contains("page-break-before:always", html);
+        Assert.Contains("height:121mm", html);
         Assert.DoesNotContain("page-break-before:always", HtmlForm.WriteCards(sheet));
     }
 
@@ -71,5 +72,52 @@ public class ExportPathTests
         var paint = TemplatePaint.FromHtml(html);
         Assert.Equal(18, paint.TitlePt);
         Assert.True(paint.TitleBold);
+    }
+
+    [Fact]
+    public void OpenXml_word_cards_keep_a_picture_without_libreoffice()
+    {
+        var png = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==");
+        var sheet = CardSheet.FromRows("Style", new JArray { new JObject { ["Sketch"] = "pic", ["Name"] = "Jacket" } }, 2, 1);
+        sheet.Cards[0][0].ImageBytes = png;
+        var bytes = OpenXmlWordForm.WriteCards(sheet);
+        using var ms = new System.IO.MemoryStream(bytes);
+        using var zip = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Read);
+        Assert.Contains(zip.Entries, e => e.FullName == "word/document.xml");
+        Assert.Contains(zip.Entries, e => e.FullName.Contains("media/"));
+        var four = CardSheet.FromRows("Style", new JArray
+        {
+            new JObject { ["Name"] = "A" },
+            new JObject { ["Name"] = "B" },
+            new JObject { ["Name"] = "C" },
+            new JObject { ["Name"] = "D" }
+        }, 2, 1);
+        var paged = OpenXmlWordForm.WriteCards(four);
+        using var pagedMs = new System.IO.MemoryStream(paged);
+        using var pagedZip = new System.IO.Compression.ZipArchive(pagedMs, System.IO.Compression.ZipArchiveMode.Read);
+        using var reader = new System.IO.StreamReader(pagedZip.GetEntry("word/document.xml")!.Open());
+        var xml = reader.ReadToEnd();
+        Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(xml, "w:type=\"page\"").Count);
+        Assert.Contains("w:hRule=\"exact\"", xml);
+
+        var grid = CardSheet.FromRows("Style", new JArray
+        {
+            new JObject { ["Name"] = "A" },
+            new JObject { ["Name"] = "B" },
+            new JObject { ["Name"] = "C" },
+            new JObject { ["Name"] = "D" }
+        }, 2, 1);
+        grid.ApplyPageGrid("2x2", 0);
+        Assert.Equal(2, grid.CardsPerRow);
+        Assert.Equal(2, grid.CardRows);
+        var packed = OpenXmlWordForm.WriteCards(grid);
+        using var packedMs = new System.IO.MemoryStream(packed);
+        using var packedZip = new System.IO.Compression.ZipArchive(packedMs, System.IO.Compression.ZipArchiveMode.Read);
+        using var packedReader = new System.IO.StreamReader(packedZip.GetEntry("word/document.xml")!.Open());
+        var packedXml = packedReader.ReadToEnd();
+        Assert.Equal(0, System.Text.RegularExpressions.Regex.Matches(packedXml, "w:type=\"page\"").Count);
+        var html = HtmlForm.WriteCards(grid, true);
+        Assert.DoesNotContain("page-break-before:always", html);
+        Assert.Contains("class=\"card-page\"", html);
     }
 }

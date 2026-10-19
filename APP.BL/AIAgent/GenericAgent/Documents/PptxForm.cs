@@ -82,42 +82,68 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                                 var y = top + r * cardH;
                                 var pad = 6;
                                 byte[] image = null;
+                                string imageLabel = "";
+                                var lines = new List<string>();
                                 foreach (var field in sheet.Cards[index])
                                 {
-                                    if (field.ImageBytes != null && field.ImageBytes.Length > 0)
+                                    var picture = field.ImageBytes != null && field.ImageBytes.Length > 0;
+                                    if (picture && image == null)
                                     {
                                         image = field.ImageBytes;
-                                        break;
+                                        imageLabel = field.Label ?? "";
+                                        continue;
                                     }
+                                    if (field.IsImage && image == null)
+                                        continue;
+                                    var value = string.IsNullOrWhiteSpace(field.Value) ? "\u2014" : field.Value;
+                                    lines.Add((field.Label ?? "") + "    " + value);
                                 }
-                                var innerW = slotW - pad * 2;
-                                var innerH = slotH - pad * 2;
-                                var imageW = 0;
-                                if (image != null)
-                                    imageW = Math.Max(48, Math.Min(innerH, (int)(innerW * 0.38)));
-                                var textX = x + pad + (imageW == 0 ? 0 : imageW + pad);
-                                var textW = Math.Max(40, x + slotW - pad - textX);
                                 var bytes = image;
                                 slide.RectangleShape(rect =>
                                 {
-                                    rect.X(x + 2).Y(y + 2).Width(slotW - 4).Height(slotH - 4);
-                                    rect.SolidFill(fill => fill.Color("F4F6F8"));
+                                    rect.X(x + 2).Y(y + 2).Width(Math.Max(8, slotW - 4)).Height(Math.Max(8, slotH - 4));
+                                    rect.SolidFill(fill => fill.Color("FFFFFF"));
                                 });
+                                var cursor = y + pad;
+                                var innerLeft = x + pad;
+                                var innerW = Math.Max(40, slotW - pad * 2);
                                 if (bytes != null)
                                 {
+                                    var label = imageLabel;
+                                    var labelY = cursor;
+                                    slide.Shape(box =>
+                                    {
+                                        box.X(innerLeft).Y(labelY).Width(innerW).Height(14);
+                                        box.TextBox(label);
+                                        box.Font(font => font.Size(10));
+                                    });
+                                    cursor += 16;
+                                    var rowMm = slotH * 25.4 / 72.0;
+                                    var cardMm = slotW * 25.4 / 72.0;
+                                    var fittedSlot = CardPageFit.Measure(rowMm, cardMm, Math.Max(1, lines.Count), true);
+                                    var maxImgH = Math.Max(24, (int)(fittedSlot.ImageMm * 72 / 25.4));
+                                    var fitted = ImagePixels.Fit(bytes, innerW, maxImgH);
+                                    var ix = innerLeft + Math.Max(0, (innerW - fitted.Width) / 2);
+                                    var iy = cursor;
+                                    var iw = fitted.Width;
+                                    var ih = fitted.Height;
+                                    var picBytes = bytes;
                                     slide.Picture(pic =>
                                     {
-                                        pic.X(x + pad).Y(y + pad).Width(imageW).Height(innerH);
-                                        pic.Image(new MemoryStream(bytes));
+                                        pic.X(ix).Y(iy).Width(iw).Height(ih);
+                                        pic.Image(new MemoryStream(picBytes));
                                     });
+                                    cursor += ih + 6;
                                 }
-                                var text = CardText(sheet.Cards[index], bytes != null);
-                                var lines = Math.Max(1, text.Split('\n').Length);
-                                var fontPt = Math.Max(11, Math.Min(18, (innerH - 4) / lines));
+                                var textTop = cursor;
+                                var textH = Math.Max(20, y + slotH - pad - textTop);
+                                var fittedText = CardPageFit.Measure(slotH * 25.4 / 72.0, slotW * 25.4 / 72.0, Math.Max(1, lines.Count), bytes != null);
+                                var fontPt = fittedText.FontPx;
+                                var body = string.Join("\n", lines);
                                 slide.Shape(box =>
                                 {
-                                    box.X(textX).Y(y + pad).Width(textW).Height(innerH);
-                                    box.TextBox(text);
+                                    box.X(innerLeft).Y(textTop).Width(innerW).Height(textH);
+                                    box.TextBox(body);
                                     box.Font(font => font.Size(fontPt));
                                 });
                             }
@@ -130,26 +156,10 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             pres.SlideHeight = 540;
             pres.Save(ms);
             pres.Dispose();
-            return ms.ToArray();
-        }
+        return ms.ToArray();
+    }
 
-        private static string CardText(List<CardField> fields, bool skipImages)
-        {
-            var lines = new List<string>();
-            foreach (var field in fields)
-            {
-                if (field.IsImage || (field.ImageBytes != null && field.ImageBytes.Length > 0))
-                {
-                    if (!skipImages && !string.IsNullOrEmpty(field.Label))
-                        lines.Add(field.Label);
-                    continue;
-                }
-                lines.Add((field.Label ?? "") + ": " + (field.Value ?? ""));
-            }
-            return string.Join("\n", lines);
-        }
-
-        public static FormDocument Read(byte[] bytes)
+    public static FormDocument Read(byte[] bytes)
         {
             using var ms = new MemoryStream(bytes ?? Array.Empty<byte>());
             var pres = new Presentation(ms);

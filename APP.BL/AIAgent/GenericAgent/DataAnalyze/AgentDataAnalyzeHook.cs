@@ -52,7 +52,7 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                                 "Use ui=card and cardsPerRow when the user asked for cards. " +
                                 "When the user asked for the top N, pass limit=N so the panel is N cards, not the whole cache. " +
                                 "Do not copy rows into dataJson — image columns such as Sketch are dropped. " +
-                                "Export that panel with layout=cards, the same cardsPerRow and cardRows, and the same limit. Do not pass content.";
+                                "Export that panel with layout=cards and the same limit. When the user names a page layout, pass pageGrid (2x2 is two columns and two rows, four cards on the page) or cardsPerPage. Do not pass content.";
                             return obj.ToString(Formatting.None);
                         }
                     }

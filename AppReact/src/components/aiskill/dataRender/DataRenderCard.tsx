@@ -10,31 +10,40 @@ interface CardProps {
 }
 
 export const DataRenderCard: React.FC<CardProps> = ({ fields, fieldColumns = 2 }) => {
-    const { theme } = useTheme();
-    const fieldGrid = fieldColumns === 2 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1';
+    const { theme, t } = useTheme();
+    const stacked = fieldColumns === 1;
+    const fieldGrid = stacked ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2';
 
     return (
-        <div className={`min-w-0 overflow-hidden border rounded-[8px] px-3 py-2.5 ${theme.mainContentSection}`}>
+        <div className={`min-w-0 overflow-hidden border rounded-[8px] px-3.5 py-3 ${theme.mainContentSection}`}>
             {fields.length === 0 ? (
-                <div className={`text-sm ${theme.label}`}>No fields.</div>
+                <div className={`text-xs ${t('text_label')}`}>No fields.</div>
             ) : (
-                <dl className={`grid ${fieldGrid} gap-x-4 gap-y-1.5 min-w-0`}>
+                <dl className={`grid ${fieldGrid} gap-x-6 gap-y-2.5 min-w-0`}>
                     {fields.map((f, i) => {
                         const isImage = imageUrlKind(f.value) != null;
                         if (isImage) {
                             return (
-                                <div key={`${f.label}-${i}`} className={`min-w-0 overflow-hidden flex flex-col gap-1 ${fieldColumns === 2 ? 'sm:col-span-2' : ''}`}>
-                                    <dt className={`text-xs break-words ${theme.label}`}>{f.label}</dt>
+                                <div key={`${f.label}-${i}`} className={`min-w-0 overflow-hidden flex flex-col gap-1.5 ${stacked ? '' : 'sm:col-span-2'}`}>
+                                    <dt className={`text-[11px] leading-4 font-normal break-words ${t('text_label')}`}>{f.label}</dt>
                                     <dd className="min-w-0">
-                                        <DataRenderImage url={f.value} alt={f.label} size="card" />
+                                        <DataRenderImage url={f.value} alt={f.label} size={stacked ? 'compact' : 'card'} />
                                     </dd>
                                 </div>
                             );
                         }
+                        if (stacked) {
+                            return (
+                                <div key={`${f.label}-${i}`} className="min-w-0 overflow-hidden flex flex-col gap-0.5">
+                                    <dt className={`text-[11px] leading-4 font-normal break-words ${t('text_label')}`}>{f.label}</dt>
+                                    <dd className={`min-w-0 text-xs leading-4 font-normal break-words ${t('text_default')}`}>{f.value || '—'}</dd>
+                                </div>
+                            );
+                        }
                         return (
-                            <div key={`${f.label}-${i}`} className="min-w-0 overflow-hidden flex items-start gap-3">
-                                <dt className={`w-28 shrink-0 text-xs pt-0.5 break-words ${theme.label}`}>{f.label}</dt>
-                                <dd className={`min-w-0 flex-auto text-sm break-all ${theme.title}`}>{f.value || '—'}</dd>
+                            <div key={`${f.label}-${i}`} className="min-w-0 overflow-hidden flex items-baseline gap-3">
+                                <dt className={`w-28 shrink-0 text-[11px] leading-4 font-normal break-words ${t('text_label')}`}>{f.label}</dt>
+                                <dd className={`min-w-0 w-1 flex-auto text-xs leading-4 font-normal break-words ${t('text_default')}`}>{f.value || '—'}</dd>
                             </div>
                         );
                     })}
@@ -56,10 +65,10 @@ export const DataRenderCardList: React.FC<ListProps> = ({ title, status, cards, 
     const columns = Math.min(6, Math.max(1, cardsPerRow || 1));
 
     return (
-        <div className="min-w-0 flex flex-col gap-2">
+            <div className="min-w-0 flex flex-col gap-3">
             {(title || status) && (
                 <div className="flex items-start justify-between gap-3 min-w-0">
-                    {title && <div className={`min-w-0 text-sm font-semibold break-words ${theme.title}`}>{title}</div>}
+                    {title && <div className={`min-w-0 text-sm font-medium break-words ${theme.title}`}>{title}</div>}
                     {status && (
                         <span className={`shrink-0 text-xs px-2 py-0.5 rounded border ${theme.button_default}`}>
                             {status}

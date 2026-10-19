@@ -42,7 +42,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 var ws = wb.AddNewPart<WorksheetPart>();
                 var data = new SheetData();
                 var merges = new MergeCells();
-                var pictures = new List<(int Column, uint Row, byte[] Bytes)>();
+                var pictures = new List<(int Column, uint Row, byte[] Bytes, long Cx, long Cy)>();
                 var imageColumns = new HashSet<int>();
                 uint row = 1;
 
@@ -100,7 +100,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
                 var ws = wb.AddNewPart<WorksheetPart>();
                 var data = new SheetData();
-                var pictures = new List<(int Column, uint Row, byte[] Bytes)>();
+                var pictures = new List<(int Column, uint Row, byte[] Bytes, long Cx, long Cy)>();
                 uint row = 1;
                 if (!string.IsNullOrEmpty(sheet.Title))
                 {
@@ -133,8 +133,13 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                                 : (string.IsNullOrEmpty(field.Label) ? field.Value : field.Label + ": " + field.Value);
                             xrow.Append(Inline(c + 1, row, text, field.IsImage ? StyleValue : StyleCell));
                             if (hasPicture)
-                                pictures.Add((c + 1, row, field.ImageBytes));
-                            height = Math.Max(height, imageSlot ? 96 : ContentHeight(text, 10, ColumnWidth(c + 1)));
+                            {
+                                var box = ImagePixels.Fit(field.ImageBytes, 110, 98);
+                                pictures.Add((c + 1, row, field.ImageBytes, box.Width * 10000L, box.Height * 10000L));
+                                height = Math.Max(height, box.Height / 1.27d + 6);
+                            }
+                            else
+                                height = Math.Max(height, imageSlot ? 72 : ContentHeight(text, 10, ColumnWidth(c + 1)));
                         }
                         ApplyHeight(xrow, height);
                         data.Append(xrow);
@@ -158,7 +163,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return ms.ToArray();
         }
 
-        private static void AddCardPictures(WorksheetPart worksheetPart, List<(int Column, uint Row, byte[] Bytes)> pictures)
+        private static void AddCardPictures(WorksheetPart worksheetPart, List<(int Column, uint Row, byte[] Bytes, long Cx, long Cy)> pictures)
         {
             var drawings = worksheetPart.AddNewPart<DrawingsPart>();
             var drawing = new Xdr.WorksheetDrawing();
@@ -168,12 +173,14 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 var part = drawings.AddImagePart(PickImagePart(picture.Bytes));
                 using (var stream = new MemoryStream(picture.Bytes))
                     part.FeedData(stream);
+                var cx = picture.Cx > 0 ? picture.Cx : 800000;
+                var cy = picture.Cy > 0 ? picture.Cy : 800000;
                 var marker = new Xdr.FromMarker(
                     new Xdr.ColumnId((picture.Column - 1).ToString(CultureInfo.InvariantCulture)),
-                    new Xdr.ColumnOffset("80000"),
+                    new Xdr.ColumnOffset("60000"),
                     new Xdr.RowId((picture.Row - 1).ToString(CultureInfo.InvariantCulture)),
-                    new Xdr.RowOffset("200000"));
-                var extent = new Xdr.Extent { Cx = 1200000, Cy = 800000 };
+                    new Xdr.RowOffset("40000"));
+                var extent = new Xdr.Extent { Cx = cx, Cy = cy };
                 var blip = new A.Blip { Embed = drawings.GetIdOfPart(part) };
                 var pic = new Xdr.Picture(
                     new Xdr.NonVisualPictureProperties(
@@ -181,7 +188,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                         new Xdr.NonVisualPictureDrawingProperties(new A.PictureLocks { NoChangeAspect = true })),
                     new Xdr.BlipFill(blip, new A.Stretch(new A.FillRectangle())),
                     new Xdr.ShapeProperties(
-                        new A.Transform2D(new A.Offset { X = 0, Y = 0 }, new A.Extents { Cx = extent.Cx, Cy = extent.Cy }),
+                        new A.Transform2D(new A.Offset { X = 0, Y = 0 }, new A.Extents { Cx = cx, Cy = cy }),
                         new A.PresetGeometry(new A.AdjustValueList()) { Preset = A.ShapeTypeValues.Rectangle }));
                 drawing.Append(new Xdr.OneCellAnchor(marker, extent, pic, new Xdr.ClientData()));
                 index++;
@@ -326,7 +333,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return current;
         }
 
-        private static uint WriteSection(SheetData data, MergeCells merges, uint row, int span, FormSection section, List<(int Column, uint Row, byte[] Bytes)> pictures, HashSet<int> imageColumns)
+        private static uint WriteSection(SheetData data, MergeCells merges, uint row, int span, FormSection section, List<(int Column, uint Row, byte[] Bytes, long Cx, long Cy)> pictures, HashSet<int> imageColumns)
         {
             if (!string.IsNullOrEmpty(section.Title))
             {
@@ -385,7 +392,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return row;
         }
 
-        private static void WriteCells(SheetData data, uint row, List<FormCell> cells, uint headerStyle, bool header, List<(int Column, uint Row, byte[] Bytes)> pictures, HashSet<int> imageColumns)
+        private static void WriteCells(SheetData data, uint row, List<FormCell> cells, uint headerStyle, bool header, List<(int Column, uint Row, byte[] Bytes, long Cx, long Cy)> pictures, HashSet<int> imageColumns)
         {
             var xrow = new Row { RowIndex = row };
             double height = 0;
@@ -398,9 +405,10 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 xrow.Append(Inline(i + 1, row, text, style));
                 if (picture)
                 {
-                    pictures.Add((i + 1, row, cell.ImageBytes));
+                    var box = ImagePixels.Fit(cell.ImageBytes, 110, 98);
+                    pictures.Add((i + 1, row, cell.ImageBytes, box.Width * 10000L, box.Height * 10000L));
                     imageColumns.Add(i + 1);
-                    height = Math.Max(height, 78);
+                    height = Math.Max(height, box.Height / 1.27d + 6);
                 }
                 else
                     height = Math.Max(height, ContentHeight(text, FontPt(style), ColumnWidth(i + 1, imageColumns.Contains(i + 1))));

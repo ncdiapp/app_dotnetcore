@@ -271,7 +271,7 @@ namespace App.BL.AIAgent.GenericAgent.ApiProvider
                     $"API returned {rows.Count} rows. Call data_render ONCE with dataset_name='{ds.Name}'. " +
                     "Use ui=card and cardsPerRow when the user asked for cards. When the user asked for the top N, pass limit=N (the panel must not show every row). " +
                     "Do not pass dataJson and do not copy rows — image columns such as Sketch stay on the cached rows. " +
-                    "Export that panel with layout=cards, the same cardsPerRow, cardRows, and limit. Do not pass content. " +
+                    "Export that panel with layout=cards and the same limit. When the user names a page layout, pass pageGrid (2x2 is two columns and two rows, four cards on the page) or cardsPerPage. Do not pass content. " +
                     $"Tell the user the total cached is {rows.Count}."
             }, Formatting.Indented);
             return true;
