@@ -51,5 +51,10 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             "font-family:Arial,Helvetica,sans-serif;font-size:10pt;font-weight:normal;text-align:left;color:#333333;padding:6px 8px;";
 
         public const string BlankCss = "font-size:8pt;line-height:8pt;padding:0;height:8px;";
+
+        public const string PdfPrintCss =
+            "@page{size:A4 portrait;margin:15mm}thead{display:table-header-group}tr{page-break-inside:avoid}";
+
+        public const string BuiltInTemplateName = "built-in";
     }
 }

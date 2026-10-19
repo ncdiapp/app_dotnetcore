@@ -14,6 +14,8 @@ import {
 import GenericAgentFilesPanel from './GenericAgentFilesPanel';
 import { chatModulesFromEnabledTools, chatModulesFromLibraries, type AgentChatUiModule } from './agentUiModules';
 import { DataRenderPanel } from './dataRender';
+import { placeRender, renderKey } from './dataRender/placeRender';
+import { RenderBuilding, RenderChip, TurnToolHeader } from './dataRender/RenderChrome';
 import { AgentMarkdown, FollowupChips, splitFollowups, type AgentFileLink } from './AgentMarkdown';
 
 const SESSION_START = '[session_start]';
@@ -444,6 +446,10 @@ const GenericAgentChat: React.FC<Props> = ({
     const [turnActivities, setTurnActivities] = useState<TurnActivity[]>([]);
     const [currentTurnIndex, setCurrentTurnIndex] = useState(0);
     const [input, setInput] = useState('');
+    const [composerFocus, setComposerFocus] = useState(false);
+    const [openRenderKey, setOpenRenderKey] = useState<string | null>(null);
+    const [openRender, setOpenRender] = useState<DataRenderEvent | null>(null);
+    const autoOpenedRender = useRef<string | null>(null);
     const [isRunning, setIsRunning] = useState(false);
     const [pendingPlan, setPendingPlan] = useState<PlanEvent | null>(null);
     const [pendingAskUser, setPendingAskUser] = useState<AskUserEvent | null>(null);
@@ -454,7 +460,13 @@ const GenericAgentChat: React.FC<Props> = ({
     const [error, setError] = useState<string | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [toolsWidth, setToolsWidth] = useState(288);
+    const [renderWidth, setRenderWidth] = useState(() => {
+        const stored = Number(localStorage.getItem('agentRenderPanelPx'));
+        return stored >= 280 ? stored : 560;
+    });
     const toolsDragRef = useRef(false);
+    const renderDragRef = useRef(false);
+    const composerRef = useRef<HTMLTextAreaElement | null>(null);
     const chatRootRef = useRef<HTMLDivElement | null>(null);
     const [showEarlierTurns, setShowEarlierTurns] = useState(false);
     const [rightTab, setRightTab] = useState<'tools' | 'files'>('tools');
@@ -501,6 +513,30 @@ const GenericAgentChat: React.FC<Props> = ({
     askFreeTextRef.current = askFreeText;
     const chatSessionKeyRef = useRef<string | null>(chatSessionKey ?? null);
     chatSessionKeyRef.current = chatSessionKey ?? null;
+
+    useEffect(() => {
+        setOpenRender(null);
+        setOpenRenderKey(null);
+        autoOpenedRender.current = null;
+    }, [chatSessionKey, skillKey]);
+
+    useEffect(() => {
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const m = messages[i];
+            if (m.role !== 'assistant' || !m.dataRenders?.length) continue;
+            for (let r = 0; r < m.dataRenders.length; r++) {
+                const placed = placeRender(m.dataRenders[r]);
+                if (!placed.panel) continue;
+                const key = renderKey(placed.panel, r);
+                if (autoOpenedRender.current === key) return;
+                autoOpenedRender.current = key;
+                setOpenRenderKey(key);
+                setOpenRender(placed.panel);
+                return;
+            }
+            return;
+        }
+    }, [messages]);
     const onConversationChangedRef = useRef(onConversationChanged);
     onConversationChangedRef.current = onConversationChanged;
 
@@ -1253,6 +1289,41 @@ const GenericAgentChat: React.FC<Props> = ({
 
     const windowCard = `flex flex-col overflow-hidden min-w-0 min-h-0 rounded-[8px] shadow-sm ${theme.mainContentSection}`;
 
+    useEffect(() => {
+        const ta = composerRef.current;
+        if (!ta) return;
+        ta.style.height = 'auto';
+        const next = Math.min(ta.scrollHeight, 200);
+        ta.style.height = next + 'px';
+        ta.style.overflowY = ta.scrollHeight > 200 ? 'auto' : 'hidden';
+    }, [input]);
+
+    const startRenderResize = (e: React.MouseEvent) => {
+        e.preventDefault();
+        renderDragRef.current = true;
+        const startX = e.clientX;
+        let nextW = renderWidth;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        const onMove = (ev: MouseEvent) => {
+            if (!renderDragRef.current) return;
+            const hostW = chatRootRef.current?.clientWidth ?? 900;
+            const max = Math.min(960, Math.max(320, hostW - 360));
+            nextW = Math.min(max, Math.max(280, renderWidth - (ev.clientX - startX)));
+            setRenderWidth(nextW);
+        };
+        const onUp = () => {
+            renderDragRef.current = false;
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            document.removeEventListener('mousemove', onMove);
+            document.removeEventListener('mouseup', onUp);
+            localStorage.setItem('agentRenderPanelPx', String(nextW));
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+    };
+
     const startToolsResize = (e: React.MouseEvent) => {
         e.preventDefault();
         toolsDragRef.current = true;
@@ -1292,9 +1363,12 @@ const GenericAgentChat: React.FC<Props> = ({
                             <i className="fa-solid fa-bars" aria-hidden />
                         </button>
                     )}
-                    <div className="min-w-0">
-                        <div className={`text-base font-semibold truncate leading-tight ${theme.title}`}>{chatTitle || 'New chat'}</div>
-                        <div className={`text-xs truncate mt-0.5 ${theme.label}`}>{skillLabel}</div>
+                    <div className={`min-w-0 flex items-center gap-2 px-2 py-1 rounded-[4px] border ${regionBorder}`}>
+                        <i className="fa-solid fa-comments text-sm" aria-hidden />
+                        <div className="min-w-0">
+                            <div className={`text-base font-semibold truncate leading-tight ${theme.title}`}>{chatTitle || 'New Conversation'}</div>
+                            <div className={`text-xs truncate mt-0.5 ${theme.label}`}>{skillLabel}</div>
+                        </div>
                     </div>
                     <div className="ml-auto flex items-center gap-2 shrink-0">
                         {(messages.length > 0 || pendingAskUser) && (
@@ -1352,16 +1426,21 @@ const GenericAgentChat: React.FC<Props> = ({
                             : { body: m.content, followups: [] as string[] };
                         const showBubble = !!(split.body || m.isStreaming || m.askUserSummary || m.askUserAnswer);
                         const hasRenders = m.role === 'assistant' && (m.dataRenders?.length ?? 0) > 0;
+                        const hasTools = m.role === 'assistant' && ((m.toolSteps?.length ?? 0) > 0 || !!m.isStreaming);
                         const hasFollowups = m.role === 'assistant' && !m.isStreaming && split.followups.length > 0;
-                        if (!showBubble && !hasRenders && !hasFollowups) return null;
+                        const largeOpen = hasRenders && m.dataRenders!.some(dr => placeRender(dr).panel);
+                        if (!showBubble && !hasRenders && !hasFollowups && !hasTools) return null;
                         return (
                         <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                             <div className={m.role === 'user' ? 'max-w-xl' : 'w-full min-w-0 flex flex-col gap-2'}>
+                            {m.role === 'assistant' && (m.toolSteps?.length ?? 0) > 0 && (
+                                <TurnToolHeader steps={m.toolSteps!} running={!!m.isStreaming && !split.body} />
+                            )}
                             {showBubble && (
                                     <div className={
                                         m.role === 'user'
-                                            ? `px-3 py-2 rounded-[8px] border text-[15px] leading-relaxed ${regionBorder}`
-                                            : `w-full px-3 py-2.5 rounded-[8px] border text-[15px] leading-relaxed ${regionBorder}`
+                                            ? `px-3 py-2 rounded-tl-[8px] rounded-tr-[8px] rounded-bl-[8px] rounded-br-none border text-[15px] leading-relaxed ${regionBorder}`
+                                            : `w-full text-[15px] leading-relaxed`
                                     }>
                                         {(m.askUserSummary || m.askUserAnswer) && (
                                             <div className={`text-xs mb-1 ${theme.label}`}>
@@ -1381,20 +1460,37 @@ const GenericAgentChat: React.FC<Props> = ({
                                                 {m.role === 'assistant' ? split.body : m.content}
                                             </div>
                                         )}
-                                        {m.isStreaming && <span className="animate-pulse ml-1">|</span>}
+                                        {m.isStreaming && !largeOpen && <span className="inline-block w-0.5 h-4 ml-0.5 align-middle animate-pulse">|</span>}
                                     </div>
                             )}
                             {hasRenders && (
-                                <div className="w-full flex flex-col gap-3">
-                                    {m.dataRenders!.map(dr => (
-                                        <DataRenderPanel
-                                            key={dr.RenderId || `${i}-${dr.Timestamp}`}
-                                            event={dr}
-                                            disabled={blocked}
-                                            onAction={(actionId, selectionJson) => handleDataRenderAction(dr, actionId, selectionJson)}
-                                        />
-                                    ))}
+                                <div className="w-full flex flex-col gap-2">
+                                    {m.dataRenders!.map((dr, r) => {
+                                        const placed = placeRender(dr);
+                                        const key = renderKey(dr, r);
+                                        return (
+                                            <React.Fragment key={key}>
+                                                {placed.inline && (
+                                                    <DataRenderPanel
+                                                        event={placed.inline}
+                                                        disabled={blocked}
+                                                        onAction={(actionId, selectionJson) => handleDataRenderAction(dr, actionId, selectionJson)}
+                                                    />
+                                                )}
+                                                {placed.panel && (
+                                                    <RenderChip
+                                                        event={placed.panel}
+                                                        open={openRenderKey === key}
+                                                        onOpen={() => { setOpenRenderKey(key); setOpenRender(placed.panel!); }}
+                                                    />
+                                                )}
+                                            </React.Fragment>
+                                        );
+                                    })}
                                 </div>
+                            )}
+                            {m.role === 'assistant' && m.isStreaming && !hasRenders && (m.toolSteps?.some(s => /data_render/i.test(s.toolName)) ?? false) && (
+                                <RenderBuilding />
                             )}
                             {hasFollowups && (
                                 <FollowupChips
@@ -1611,18 +1707,21 @@ const GenericAgentChat: React.FC<Props> = ({
                     </div>
                 </div>
 
-                <div className="px-3 pb-3 pt-1 shrink-0">
-                    <div className={`flex items-center rounded-[8px] border ${theme.inputBox}`}>
+                <div className="px-3 pb-2 pt-1 shrink-0 w-full max-w-3xl mx-auto">
+                    <div className={`relative min-h-[100px] px-3 pt-2 pb-2 rounded-[8px] border ${theme.inputBox}${composerFocus ? ' ring-1' : ''}`}>
                     <textarea
-                        className="w-1 flex-auto min-h-[2.5rem] px-3 py-2 text-[15px] leading-relaxed bg-transparent border-0 rounded-[8px] focus:outline-none resize-none"
+                        ref={composerRef}
+                        className={`w-full px-0 py-1 text-[15px] leading-relaxed bg-transparent border-0 focus:outline-none resize-none ${isRunning || pendingAskUser ? 'pr-20' : 'pr-12'}`}
                         rows={2}
                         value={input}
                         placeholder={`Message ${skillLabel}…`}
                         onChange={e => setInput(e.target.value)}
+                        onFocus={() => setComposerFocus(true)}
+                        onBlur={() => setComposerFocus(false)}
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                         disabled={blocked}
                     />
-                    <div className="flex items-center gap-1 pr-1.5 shrink-0">
+                    <div className="absolute bottom-2 right-2 flex items-center gap-1">
                     {(isRunning || pendingAskUser) && (
                         <button
                             type="button"
@@ -1644,8 +1743,36 @@ const GenericAgentChat: React.FC<Props> = ({
                     </button>
                     </div>
                     </div>
+                    <p className={`hidden md:block text-center text-xs mt-2 ${theme.label}`}>The agent can be wrong about people, places, and facts.</p>
                 </div>
             </div>
+
+            {openRender && (
+                <div
+                    role="separator"
+                    aria-orientation="vertical"
+                    title="Drag to resize result"
+                    className="w-2 shrink-0 cursor-col-resize"
+                    onMouseDown={startRenderResize}
+                />
+            )}
+            {openRender && (
+                <div style={{ width: renderWidth }} className={`shrink-0 border flex flex-col ${regionBorder} ${windowCard}`}>
+                    <div className={`flex items-center gap-2 px-3 py-2 border-b shrink-0 ${regionBorder}`}>
+                        <div className={`text-sm font-semibold truncate w-1 flex-auto ${theme.title}`}>{openRender.Title || 'Result'}</div>
+                        <button type="button" className={`w-8 h-8 rounded-[4px] text-sm ${theme.button_default}`} title="Close" onClick={() => { setOpenRender(null); setOpenRenderKey(null); }}>
+                            <i className="fa-solid fa-xmark" />
+                        </button>
+                    </div>
+                    <div className="w-full h-1 flex-auto overflow-auto p-2">
+                        <DataRenderPanel
+                            event={openRender}
+                            disabled={blocked}
+                            onAction={(actionId, selectionJson) => handleDataRenderAction(openRender, actionId, selectionJson)}
+                        />
+                    </div>
+                </div>
+            )}
 
             {/* ── Right: Tool Activity | Files ── */}
             {sidebarOpen && (

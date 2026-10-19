@@ -13,12 +13,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     public static class PptxForm
     {
         public static byte[] Write(FormDocument doc)
+            => Write(doc, null);
+
+        public static byte[] Write(FormDocument doc, TemplatePaint paint)
         {
             var slides = Plan(doc);
             var pres = new Presentation(draft =>
             {
                 foreach (var spec in slides)
-                    draft.Slide(slide => Fill(slide, spec));
+                    draft.Slide(slide => Fill(slide, spec, paint));
             });
 
             using var ms = new MemoryStream();
@@ -28,6 +31,9 @@ namespace App.BL.AIAgent.GenericAgent.Documents
         }
 
         public static byte[] WriteCards(CardSheet sheet)
+            => WriteCards(sheet, null);
+
+        public static byte[] WriteCards(CardSheet sheet, TemplatePaint paint)
         {
             var perRow = CardSheet.ClampPerRow(sheet.CardsPerRow);
             var pageRows = CardSheet.ClampPageRows(sheet.CardRows);
@@ -43,30 +49,25 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     {
                         var title = string.IsNullOrEmpty(sheet.Title) ? "Cards" : sheet.Title;
                         if (pages > 1) title = title + " (" + (page + 1).ToString() + "/" + pages.ToString() + ")";
+                        const int slideW = 960;
+                        const int slideH = 540;
+                        const int margin = 16;
+                        var titleH = 28;
+                        var top = margin + titleH + 8;
+                        var contentW = slideW - margin * 2;
+                        var contentH = slideH - top - margin;
+                        var cardW = Math.Max(40, contentW / perRow);
+                        var cardH = Math.Max(48, contentH / pageRows);
+                        var extraW = contentW - cardW * perRow;
+                        var extraH = contentH - cardH * pageRows;
                         slide.Shape(box =>
                         {
-                            box.X(36).Y(24).Width(640).Height(36);
+                            box.X(margin).Y(margin).Width(contentW).Height(titleH);
                             box.TextBox(title);
-                            box.Font(font => { font.Size(20); font.Bold(); });
-                        });
-                        slide.TableShape(shape =>
-                        {
-                            shape.X(36).Y(72);
-                            shape.Table(table =>
+                            box.Font(font =>
                             {
-                                table.Columns(perRow);
-                                for (var r = 0; r < pageRows; r++)
-                                {
-                                    table.Row(row =>
-                                    {
-                                        for (var c = 0; c < perRow; c++)
-                                        {
-                                            var index = page * pageSize + r * perRow + c;
-                                            var text = index < sheet.Cards.Count ? CardText(sheet.Cards[index]) : "";
-                                            row.Cell(cell => cell.TextBox(text));
-                                        }
-                                    });
-                                }
+                                font.Size(paint == null ? 20 : paint.TitlePt);
+                                if (paint == null || paint.TitleBold) font.Bold();
                             });
                         });
                         for (var r = 0; r < pageRows; r++)
@@ -75,6 +76,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                             {
                                 var index = page * pageSize + r * perRow + c;
                                 if (index >= sheet.Cards.Count) continue;
+                                var slotW = cardW + (c == perRow - 1 ? extraW : 0);
+                                var slotH = cardH + (r == pageRows - 1 ? extraH : 0);
+                                var x = margin + c * cardW;
+                                var y = top + r * cardH;
+                                var pad = 6;
                                 byte[] image = null;
                                 foreach (var field in sheet.Cards[index])
                                 {
@@ -84,16 +90,35 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                                         break;
                                     }
                                 }
-                                if (image == null) continue;
-                                var cardW = Math.Max(40, 640 / perRow);
-                                var cardH = Math.Max(48, 360 / pageRows);
-                                var px = 40 + c * cardW;
-                                var py = 78 + r * cardH;
+                                var innerW = slotW - pad * 2;
+                                var innerH = slotH - pad * 2;
+                                var imageW = 0;
+                                if (image != null)
+                                    imageW = Math.Max(48, Math.Min(innerH, (int)(innerW * 0.38)));
+                                var textX = x + pad + (imageW == 0 ? 0 : imageW + pad);
+                                var textW = Math.Max(40, x + slotW - pad - textX);
                                 var bytes = image;
-                                slide.Picture(pic =>
+                                slide.RectangleShape(rect =>
                                 {
-                                    pic.X(px).Y(py).Width(120).Height(90);
-                                    pic.Image(new MemoryStream(bytes));
+                                    rect.X(x + 2).Y(y + 2).Width(slotW - 4).Height(slotH - 4);
+                                    rect.SolidFill(fill => fill.Color("F4F6F8"));
+                                });
+                                if (bytes != null)
+                                {
+                                    slide.Picture(pic =>
+                                    {
+                                        pic.X(x + pad).Y(y + pad).Width(imageW).Height(innerH);
+                                        pic.Image(new MemoryStream(bytes));
+                                    });
+                                }
+                                var text = CardText(sheet.Cards[index], bytes != null);
+                                var lines = Math.Max(1, text.Split('\n').Length);
+                                var fontPt = Math.Max(11, Math.Min(18, (innerH - 4) / lines));
+                                slide.Shape(box =>
+                                {
+                                    box.X(textX).Y(y + pad).Width(textW).Height(innerH);
+                                    box.TextBox(text);
+                                    box.Font(font => font.Size(fontPt));
                                 });
                             }
                         }
@@ -101,20 +126,25 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 }
             });
             using var ms = new MemoryStream();
+            pres.SlideWidth = 960;
+            pres.SlideHeight = 540;
             pres.Save(ms);
             pres.Dispose();
             return ms.ToArray();
         }
 
-        private static string CardText(List<CardField> fields)
+        private static string CardText(List<CardField> fields, bool skipImages)
         {
             var lines = new List<string>();
             foreach (var field in fields)
             {
                 if (field.IsImage || (field.ImageBytes != null && field.ImageBytes.Length > 0))
-                    lines.Add(field.Label ?? "");
-                else
-                    lines.Add((field.Label ?? "") + ": " + (field.Value ?? ""));
+                {
+                    if (!skipImages && !string.IsNullOrEmpty(field.Label))
+                        lines.Add(field.Label);
+                    continue;
+                }
+                lines.Add((field.Label ?? "") + ": " + (field.Value ?? ""));
             }
             return string.Join("\n", lines);
         }
@@ -164,7 +194,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return doc;
         }
 
-        private static void Fill(DraftSlide slide, SlideSpec spec)
+        private static void Fill(DraftSlide slide, SlideSpec spec, TemplatePaint paint)
         {
             slide.Shape(box =>
             {
@@ -172,8 +202,11 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 box.TextBox(spec.Title ?? "");
                 box.Font(font =>
                 {
-                    font.Size(spec.Kind == SlideKind.Title ? 28 : 20);
-                    font.Bold();
+                    var titlePt = paint == null
+                        ? (spec.Kind == SlideKind.Title ? 28 : 20)
+                        : (spec.Kind == SlideKind.Title ? paint.TitlePt : Math.Max(10, paint.TitlePt - 4));
+                    font.Size(titlePt);
+                    if (paint == null || paint.TitleBold) font.Bold();
                 });
             });
             if (spec.Table == null || spec.Table.Columns.Count == 0) return;

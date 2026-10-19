@@ -254,7 +254,21 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return grid;
         }
 
+        /// <summary>Same body as email HTML, plus print CSS for preview and Playwright PDF.</summary>
+        public static string ForPrint(string html)
+        {
+            var page = html ?? "";
+            const string tag = "<style>" + DocumentStyles.PdfPrintCss + "</style>";
+            var head = page.IndexOf("<head>", StringComparison.OrdinalIgnoreCase);
+            if (head >= 0)
+                return page.Insert(head + 6, tag);
+            return "<!DOCTYPE html><html><head><meta charset=\"utf-8\">" + tag + "</head><body>" + page + "</body></html>";
+        }
+
         public static string WriteCards(CardSheet sheet)
+            => WriteCards(sheet, false);
+
+        public static string WriteCards(CardSheet sheet, bool forPrint)
         {
             var perRow = CardSheet.ClampPerRow(sheet.CardsPerRow);
             var imageWidth = perRow <= 1 ? 320 : perRow == 2 ? 220 : 160;
@@ -267,7 +281,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 sb.Append("<tr><td colspan=\"");
                 sb.Append(perRow.ToString(CultureInfo.InvariantCulture));
-                sb.Append("\" align=\"center\" style=\"padding:18px 16px 6px 16px;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:26px;font-weight:bold;color:#111827;\">");
+                sb.Append("\" data-role=\"title\" align=\"center\" style=\"padding:18px 16px 6px 16px;font-family:Arial,Helvetica,sans-serif;font-size:20px;line-height:26px;font-weight:bold;color:#111827;\">");
                 sb.Append(WebUtility.HtmlEncode(sheet.Title));
                 sb.Append("</td></tr>");
             }
@@ -275,8 +289,17 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 sb.Append("<tr><td style=\"padding:16px;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#6b7280;\">No records.</td></tr>");
             }
+            var pageRows = CardSheet.ClampPageRows(sheet.CardRows);
+            var visualRow = 0;
             for (var i = 0; i < sheet.Cards.Count; i += perRow)
             {
+                if (forPrint && visualRow > 0 && visualRow % pageRows == 0)
+                {
+                    sb.Append("<tr style=\"page-break-before:always\"><td colspan=\"");
+                    sb.Append(perRow.ToString(CultureInfo.InvariantCulture));
+                    sb.Append("\"></td></tr>");
+                }
+                visualRow++;
                 var slice = new List<List<CardField>>();
                 for (var c = 0; c < perRow; c++)
                     slice.Add(i + c < sheet.Cards.Count ? sheet.Cards[i + c] : null);

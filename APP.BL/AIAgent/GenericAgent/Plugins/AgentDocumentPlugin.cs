@@ -18,22 +18,41 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
     public class AgentDocumentPlugin
     {
         public Task<string> ExportHtml(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".html", false, doc => System.Text.Encoding.UTF8.GetBytes(HtmlForm.Write(doc)), sheet => System.Text.Encoding.UTF8.GetBytes(HtmlForm.WriteCards(sheet)));
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".html", false);
 
         public Task<string> ExportCsv(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".csv", false, CsvForm.Write, null);
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".csv", false);
 
         public Task<string> ExportExcel(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".xlsx", false, ExcelForm.Write, ExcelForm.WriteCards);
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".xlsx", false);
 
         public Task<string> ExportDocx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".docx", true, WordForm.WriteDocx, WordForm.WriteCardDocx);
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".docx", true);
 
         public Task<string> ExportPdf(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pdf", true, WordForm.WritePdf, WordForm.WriteCardPdf);
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pdf", true);
 
         public Task<string> ExportPptx(AgentToolContext context, CancellationToken ct, string path, string content = null, string sourcePath = null, string dataset_name = null, string layout = null, string records = null, bool preview = false, int cardsPerRow = 0, int cardRows = 0, int limit = 0)
-            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pptx", true, PptxForm.Write, PptxForm.WriteCards);
+            => Export(context, ct, path, content, sourcePath, dataset_name, layout, records, preview, cardsPerRow, cardRows, limit, ".pptx", true);
+
+        public Task<string> ConvertDocxToPdf(AgentToolContext context, CancellationToken ct, string sourcePath, string path)
+        {
+            try
+            {
+                RequireSession(context);
+                sourcePath = Normalize(sourcePath);
+                if (!sourcePath.EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException("sourcePath must be a .docx file.");
+                var docx = GenericAgentFileBL.ReadBytes(context.ChatSessionKey, sourcePath, context.CompanyId, context.SkillKey);
+                var pdf = LibreOfficeConvert.Convert(docx, ".docx", "pdf");
+                path = WithExtension(string.IsNullOrWhiteSpace(path) ? Path.GetFileNameWithoutExtension(sourcePath) : path, ".pdf");
+                return Task.FromResult(Saved(context, path, pdf, 0, false, null, "libreoffice", sourcePath));
+            }
+            catch (Exception ex)
+            {
+                return Fail(ex.Message);
+            }
+        }
 
         public Task<string> ReadHtml(AgentToolContext context, CancellationToken ct, string path)
             => Read(context, path, bytes => Documents.HtmlForm.Read(System.Text.Encoding.UTF8.GetString(bytes)));
@@ -61,7 +80,20 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         }
 
         public Task<string> ReadDocx(AgentToolContext context, CancellationToken ct, string path)
-            => Read(context, path, Documents.WordForm.ReadDocx);
+        {
+            try
+            {
+                RequireSession(context);
+                path = Normalize(path);
+                var bytes = GenericAgentFileBL.ReadBytes(context.ChatSessionKey, path, context.CompanyId, context.SkillKey);
+                var html = System.Text.Encoding.UTF8.GetString(LibreOfficeConvert.Convert(bytes, ".docx", "html"));
+                return Task.FromResult(PreviewJson(path, HtmlForm.Read(html)));
+            }
+            catch (Exception ex)
+            {
+                return Fail(ex.Message);
+            }
+        }
 
         public Task<string> ReadPdf(AgentToolContext context, CancellationToken ct, string path)
         {
@@ -70,7 +102,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 RequireSession(context);
                 path = Normalize(path);
                 var bytes = GenericAgentFileBL.ReadBytes(context.ChatSessionKey, path, context.CompanyId, context.SkillKey);
-                var read = Documents.WordForm.ReadPdf(bytes);
+                var read = PdfText.Read(bytes);
                 return Task.FromResult(JsonConvert.SerializeObject(new
                 {
                     ok = true,
@@ -115,9 +147,7 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             int cardRows,
             int rowLimit,
             string extension,
-            bool paged,
-            Func<FormDocument, byte[]> writeForm,
-            Func<CardSheet, byte[]> writeCards)
+            bool paged)
         {
             try
             {
@@ -130,21 +160,21 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 {
                     var sheet = LoadCards(context, content, sourcePath, datasetName, records, cardsPerRow, paged ? cardRows : 0, rowLimit);
                     await CardImageLoader.AttachAsync(sheet, context.CompanyId, ct).ConfigureAwait(false);
+                    var cardHtml = HtmlForm.WriteCards(sheet, preview || extension == ".pdf" || extension == ".docx" || extension == ".pptx");
                     if (preview)
-                        return PreviewHtml(context, path, HtmlForm.WriteCards(sheet), sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages);
+                        return PreviewHtml(context, path, HtmlForm.ForPrint(cardHtml), sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages, "playwright");
                     path = WithExtension(path, extension);
-                    var cardBytes = extension == ".csv"
-                        ? CsvForm.Write(sheet.AsFlatTable())
-                        : writeCards(sheet);
-                    return Saved(context, path, cardBytes, sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages);
+                    var cardBytes = await WriteCardBytes(extension, sheet, cardHtml, ct).ConfigureAwait(false);
+                    return Saved(context, path, cardBytes, sheet.CardCount, sheet.CacheLimitReached, sheet.MissingImages, EngineFor(extension));
                 }
 
                 var doc = LoadDocument(context, content, sourcePath, datasetName);
+                var html = HtmlForm.Write(doc);
                 if (preview)
-                    return PreviewHtml(context, path, HtmlForm.Write(doc), doc.DataRowCount(), false, null);
+                    return PreviewHtml(context, path, HtmlForm.ForPrint(html), doc.DataRowCount(), false, null, "playwright");
                 path = WithExtension(path, extension);
-                var bytes = writeForm(doc);
-                return Saved(context, path, bytes, doc.DataRowCount(), false, null);
+                var bytes = await WriteFormBytes(extension, doc, html, context.CompanyId, ct).ConfigureAwait(false);
+                return Saved(context, path, bytes, doc.DataRowCount(), false, null, EngineFor(extension));
             }
             catch (Exception ex)
             {
@@ -160,7 +190,54 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             return message;
         }
 
-        private static string Saved(AgentToolContext context, string path, byte[] bytes, int rowCount, bool cacheLimitReached, List<string> missingImages)
+        private static string EngineFor(string extension)
+        {
+            if (extension == ".pdf") return "playwright";
+            if (extension == ".docx") return "libreoffice";
+            if (extension == ".pptx") return "shapecrawler";
+            if (extension == ".xlsx") return "openxml";
+            if (extension == ".html") return "html";
+            return "csv";
+        }
+
+        private static async Task<byte[]> WriteFormBytes(string extension, FormDocument doc, string html, int companyId, CancellationToken ct)
+        {
+            if (extension == ".html")
+                return System.Text.Encoding.UTF8.GetBytes(html);
+            if (extension == ".csv")
+                return CsvForm.Write(doc);
+            if (extension == ".xlsx")
+            {
+                await CardImageLoader.AttachAsync(doc, companyId, ct).ConfigureAwait(false);
+                return ExcelForm.Write(doc);
+            }
+            if (extension == ".pdf")
+                return await AppReportPdfService.RenderHtmlToPdfAsync(HtmlForm.ForPrint(html)).ConfigureAwait(false);
+            if (extension == ".docx")
+                return LibreOfficeConvert.Convert(System.Text.Encoding.UTF8.GetBytes(HtmlForm.ForPrint(html)), ".html", "docx");
+            if (extension == ".pptx")
+                return PptxForm.Write(doc, TemplatePaint.FromHtml(html));
+            throw new InvalidOperationException("Unsupported export.");
+        }
+
+        private static async Task<byte[]> WriteCardBytes(string extension, CardSheet sheet, string html, CancellationToken ct)
+        {
+            if (extension == ".csv")
+                return CsvForm.Write(sheet.AsFlatTable());
+            if (extension == ".html")
+                return System.Text.Encoding.UTF8.GetBytes(HtmlForm.WriteCards(sheet));
+            if (extension == ".xlsx")
+                return ExcelForm.WriteCards(sheet);
+            if (extension == ".pdf")
+                return await AppReportPdfService.RenderHtmlToPdfAsync(HtmlForm.ForPrint(html)).ConfigureAwait(false);
+            if (extension == ".docx")
+                return LibreOfficeConvert.Convert(System.Text.Encoding.UTF8.GetBytes(HtmlForm.ForPrint(html)), ".html", "docx");
+            if (extension == ".pptx")
+                return PptxForm.WriteCards(sheet, TemplatePaint.FromHtml(html));
+            throw new InvalidOperationException("Unsupported export.");
+        }
+
+        private static string Saved(AgentToolContext context, string path, byte[] bytes, int rowCount, bool cacheLimitReached, List<string> missingImages, string engine, string sourcePath = null)
         {
             var relative = GenericAgentFileBL.WriteBytes(context.ChatSessionKey, path, bytes, context.CompanyId);
             return JsonConvert.SerializeObject(new
@@ -170,11 +247,14 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 rowCount,
                 bytes = bytes.Length,
                 cacheLimitReached,
-                missingImages = missingImages ?? new List<string>()
+                missingImages = missingImages ?? new List<string>(),
+                engine,
+                template = DocumentStyles.BuiltInTemplateName,
+                sourcePath
             });
         }
 
-        private static string PreviewHtml(AgentToolContext context, string path, string html, int rowCount, bool cacheLimitReached, List<string> missingImages)
+        private static string PreviewHtml(AgentToolContext context, string path, string html, int rowCount, bool cacheLimitReached, List<string> missingImages, string engine)
         {
             if ((html ?? "").Length <= PreviewInlineMax)
             {
@@ -185,6 +265,8 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     rowCount,
                     cacheLimitReached,
                     missingImages = missingImages ?? new List<string>(),
+                    engine,
+                    template = DocumentStyles.BuiltInTemplateName,
                     html
                 });
             }
@@ -198,7 +280,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 rowCount,
                 bytes = bytes.Length,
                 cacheLimitReached,
-                missingImages = missingImages ?? new List<string>()
+                missingImages = missingImages ?? new List<string>(),
+                engine,
+                template = DocumentStyles.BuiltInTemplateName
             });
         }
 
@@ -239,7 +323,33 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 var rows = CacheRows(context, datasetName, out _);
                 return TableFromRows(datasetName.Trim(), rows);
             }
-            return Load(context, content, sourcePath);
+            var loaded = Load(context, content, sourcePath);
+            return ExpandFlatTable(context, loaded);
+        }
+
+        private static FormDocument ExpandFlatTable(AgentToolContext context, FormDocument doc)
+        {
+            if (doc == null || doc.Fields.Count > 0 || !string.IsNullOrEmpty(doc.Notes) || doc.Sections.Count != 1)
+                return doc;
+            var section = doc.Sections[0];
+            if (section.Fields.Count > 0 || section.Sections.Count > 0 || section.Tables.Count != 1)
+                return doc;
+            var table = section.Tables[0];
+            var inline = new JArray();
+            foreach (var row in table.Rows)
+            {
+                var obj = new JObject();
+                for (var i = 0; i < table.Columns.Count; i++)
+                {
+                    var cell = i < row.Count ? row[i] : null;
+                    obj[table.Columns[i]] = cell?.Text ?? "";
+                }
+                inline.Add(obj);
+            }
+            var expanded = CacheRowExpand.Expand(context.ChatSessionKey, inline);
+            if (expanded == null || expanded.Count == inline.Count)
+                return doc;
+            return TableFromRows(string.IsNullOrEmpty(doc.Title) ? section.Title : doc.Title, expanded);
         }
 
         private static CardSheet LoadCards(AgentToolContext context, string content, string sourcePath, string datasetName, string records, int cardsPerRow, int cardRows, int rowLimit)
@@ -247,12 +357,17 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             JArray rows = null;
             var title = "Cards";
             var limit = false;
-            var explicitSlice = !string.IsNullOrWhiteSpace(datasetName) && rowLimit > 0;
-            if (explicitSlice)
+            var fromDataset = false;
+            if (!string.IsNullOrWhiteSpace(datasetName))
             {
-                rows = AgentDataAnalyzeCacheBL.TakeFirst(CacheRows(context, datasetName, out limit), rowLimit);
+                rows = CacheRows(context, datasetName, out limit);
                 title = datasetName.Trim();
+                fromDataset = true;
             }
+            else if (!string.IsNullOrWhiteSpace(records))
+                rows = CardSheet.ReadRecords(records);
+            else if (!string.IsNullOrWhiteSpace(content))
+                rows = CardSheet.ReadRecords(content);
             else if (AgentDataAnalyzeCacheBL.TryGetCardRender(context.ChatSessionKey, out var panel, out var panelTitle)
                 && panel != null
                 && panel.Count > 0)
@@ -261,15 +376,6 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                 if (!string.IsNullOrWhiteSpace(panelTitle))
                     title = panelTitle;
             }
-            else if (!string.IsNullOrWhiteSpace(datasetName))
-            {
-                rows = CacheRows(context, datasetName, out limit);
-                title = datasetName.Trim();
-            }
-            else if (!string.IsNullOrWhiteSpace(records))
-                rows = RestoreCardRows(context, CardSheet.ReadRecords(records), ref title);
-            else if (!string.IsNullOrWhiteSpace(content))
-                rows = RestoreCardRows(context, CardSheet.ReadRecords(content), ref title);
             else if (!string.IsNullOrWhiteSpace(sourcePath))
             {
                 var bytes = GenericAgentFileBL.ReadBytes(context.ChatSessionKey, Normalize(sourcePath), context.CompanyId, context.SkillKey);
@@ -279,7 +385,9 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             else
                 throw new InvalidOperationException("Pass dataset_name, records, content, or sourcePath.");
 
-            if (!explicitSlice && rowLimit > 0)
+            if (!fromDataset)
+                rows = CacheRowExpand.Expand(context.ChatSessionKey, rows);
+            if (rowLimit > 0)
                 rows = AgentDataAnalyzeCacheBL.TakeFirst(rows, rowLimit);
 
             var sheet = CardSheet.FromRows(title, rows, cardsPerRow, cardRows);

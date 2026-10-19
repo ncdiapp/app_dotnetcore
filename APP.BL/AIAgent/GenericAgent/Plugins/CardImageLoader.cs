@@ -16,6 +16,41 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
         private const int MaxBytes = 2_000_000;
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
 
+        public static async Task AttachAsync(FormDocument doc, int companyId, CancellationToken ct)
+        {
+            if (doc == null) return;
+            foreach (var section in doc.Sections)
+                await AttachSectionAsync(section, companyId, ct).ConfigureAwait(false);
+        }
+
+        private static async Task AttachSectionAsync(FormSection section, int companyId, CancellationToken ct)
+        {
+            if (section == null) return;
+            foreach (var table in section.Tables)
+            {
+                foreach (var row in table.Rows)
+                {
+                    foreach (var cell in row)
+                    {
+                        if (cell == null || cell.ImageBytes != null || !CardSheet.IsImageValue(cell.Text)) continue;
+                        byte[] bytes = null;
+                        try
+                        {
+                            bytes = await LoadAsync(cell.Text, companyId, ct).ConfigureAwait(false);
+                        }
+                        catch
+                        {
+                            bytes = null;
+                        }
+                        if (bytes != null && IsRaster(bytes))
+                            cell.ImageBytes = bytes;
+                    }
+                }
+            }
+            foreach (var child in section.Sections)
+                await AttachSectionAsync(child, companyId, ct).ConfigureAwait(false);
+        }
+
         public static async Task AttachAsync(CardSheet sheet, int companyId, CancellationToken ct)
         {
             if (sheet == null) return;

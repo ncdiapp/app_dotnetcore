@@ -42,6 +42,8 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 var ws = wb.AddNewPart<WorksheetPart>();
                 var data = new SheetData();
                 var merges = new MergeCells();
+                var pictures = new List<(int Column, uint Row, byte[] Bytes)>();
+                var imageColumns = new HashSet<int>();
                 uint row = 1;
 
                 if (!string.IsNullOrEmpty(doc.Title))
@@ -53,7 +55,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 }
                 row = WriteFields(data, row, doc.Fields);
                 foreach (var section in doc.Sections)
-                    row = WriteSection(data, merges, row, span, section);
+                    row = WriteSection(data, merges, row, span, section, pictures, imageColumns);
                 if (!string.IsNullOrEmpty(doc.Notes))
                 {
                     WriteBlank(data, row, span);
@@ -62,11 +64,13 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                 }
 
                 var worksheet = new Worksheet();
-                worksheet.Append(BuildColumns(span));
+                worksheet.Append(BuildColumns(span, imageColumns));
                 worksheet.Append(data);
                 if (merges.ChildElements.Count > 0)
                     worksheet.Append(merges);
                 ws.Worksheet = worksheet;
+                if (pictures.Count > 0)
+                    AddCardPictures(ws, pictures);
                 ws.Worksheet.Save();
 
                 var sheets = wb.Workbook.AppendChild(new Sheets());
@@ -322,7 +326,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return current;
         }
 
-        private static uint WriteSection(SheetData data, MergeCells merges, uint row, int span, FormSection section)
+        private static uint WriteSection(SheetData data, MergeCells merges, uint row, int span, FormSection section, List<(int Column, uint Row, byte[] Bytes)> pictures, HashSet<int> imageColumns)
         {
             if (!string.IsNullOrEmpty(section.Title))
             {
@@ -341,16 +345,16 @@ namespace App.BL.AIAgent.GenericAgent.Documents
                     row++;
                 }
                 var header = table.Columns.Select(c => new FormCell { Text = c }).ToList();
-                WriteCells(data, row, header, StyleHeader, true);
+                WriteCells(data, row, header, StyleHeader, true, pictures, imageColumns);
                 row++;
                 foreach (var cells in table.Rows)
                 {
-                    WriteCells(data, row, cells, StyleCell, false);
+                    WriteCells(data, row, cells, StyleCell, false, pictures, imageColumns);
                     row++;
                 }
             }
             foreach (var child in section.Sections)
-                row = WriteSection(data, merges, row, span, child);
+                row = WriteSection(data, merges, row, span, child, pictures, imageColumns);
             return row;
         }
 
@@ -381,7 +385,7 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return row;
         }
 
-        private static void WriteCells(SheetData data, uint row, List<FormCell> cells, uint headerStyle, bool header)
+        private static void WriteCells(SheetData data, uint row, List<FormCell> cells, uint headerStyle, bool header, List<(int Column, uint Row, byte[] Bytes)> pictures, HashSet<int> imageColumns)
         {
             var xrow = new Row { RowIndex = row };
             double height = 0;
@@ -389,8 +393,17 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             {
                 var cell = cells[i] ?? new FormCell();
                 var style = header ? headerStyle : (cell.IsNumber ? StyleNumber : StyleCell);
-                xrow.Append(Inline(i + 1, row, cell.Text, style));
-                height = Math.Max(height, ContentHeight(cell.Text, FontPt(style), ColumnWidth(i + 1)));
+                var picture = !header && cell.ImageBytes != null && cell.ImageBytes.Length > 0;
+                var text = picture ? "" : cell.Text;
+                xrow.Append(Inline(i + 1, row, text, style));
+                if (picture)
+                {
+                    pictures.Add((i + 1, row, cell.ImageBytes));
+                    imageColumns.Add(i + 1);
+                    height = Math.Max(height, 78);
+                }
+                else
+                    height = Math.Max(height, ContentHeight(text, FontPt(style), ColumnWidth(i + 1, imageColumns.Contains(i + 1))));
             }
             ApplyHeight(xrow, height);
             data.Append(xrow);
@@ -478,9 +491,15 @@ namespace App.BL.AIAgent.GenericAgent.Documents
             return 10;
         }
 
+        private static double ColumnWidth(int col, bool image)
+        {
+            if (image) return 18;
+            return col % 2 == 1 ? 22 : 28;
+        }
+
         private static double ColumnWidth(int col)
         {
-            return col % 2 == 1 ? 22 : 28;
+            return ColumnWidth(col, false);
         }
 
         /// <summary>Points. Counts wrapped lines from column width so the row is tall enough for the font.</summary>
@@ -512,14 +531,20 @@ namespace App.BL.AIAgent.GenericAgent.Documents
 
         private static Columns BuildColumns(int span)
         {
+            return BuildColumns(span, null);
+        }
+
+        private static Columns BuildColumns(int span, HashSet<int> imageColumns)
+        {
             var columns = new Columns();
             for (var i = 1; i <= span; i++)
             {
+                var image = imageColumns != null && imageColumns.Contains(i);
                 columns.Append(new Column
                 {
                     Min = (uint)i,
                     Max = (uint)i,
-                    Width = i % 2 == 1 ? 22 : 28,
+                    Width = image ? 18 : (i % 2 == 1 ? 22 : 28),
                     CustomWidth = true
                 });
             }

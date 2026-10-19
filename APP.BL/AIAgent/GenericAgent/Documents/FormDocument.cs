@@ -304,5 +304,6 @@ namespace App.BL.AIAgent.GenericAgent.Documents
     {
         public string Text { get; set; } = "";
         public bool IsNumber { get; set; }
+        public byte[] ImageBytes { get; set; }
     }
 }
