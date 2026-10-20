@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using App.BL.AIAgent.GenericAgent.DataAnalyze;
 using APP.Framework.Plugin;
@@ -9,14 +10,15 @@ using Newtonsoft.Json.Linq;
 namespace App.BL.AIAgent.GenericAgent.Plugins
 {
     /// <summary>
-    /// BuiltIn data_analyze — deterministic aggregations over ChatSession-cached tabular data
-    /// (or inline dataJson). Pair with render_none_interactive for UI; do not dump large tables into FinalResponse.
+    /// BuiltIn data_analyze — gated aggregations over ChatSession-cached tabular data.
+    /// Call only when the user asked to analyze/aggregate/shape metrics — not for show/render/export.
     /// </summary>
     public class AgentDataAnalyzePlugin
     {
         public Task<string> Analyze(
             AgentToolContext context,
             string operation,
+            string user_ask,
             string dataset_name = null,
             string dataJson = null,
             string column = null,
@@ -34,6 +36,10 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
                     error = "ChatSessionKey is required for data_analyze."
                 }));
             }
+
+            var gate = ValidateUserAsk(user_ask);
+            if (gate != null)
+                return Task.FromResult(JsonConvert.SerializeObject(new { ok = false, error = gate, skipped = true }));
 
             if (string.IsNullOrWhiteSpace(operation))
             {
@@ -113,6 +119,52 @@ namespace App.BL.AIAgent.GenericAgent.Plugins
             var json = AgentDataAnalyzeService.Analyze(
                 dataset, operation, column, group_by, filter, filter_column, lim, order_by);
             return Task.FromResult(json);
+        }
+
+        /// <summary>
+        /// Returns an error message when the call is not justified by user intent; null when OK.
+        /// </summary>
+        public static string ValidateUserAsk(string userAsk)
+        {
+            if (string.IsNullOrWhiteSpace(userAsk) || userAsk.Trim().Length < 4)
+            {
+                return "data_analyze is gated. Pass user_ask with the user's words that request analysis/aggregation/KPI/chart shaping. " +
+                       "If the user only asked to search, show, render, or export rows, do not call this tool — use render_* / export_* with limit.";
+            }
+
+            var s = userAsk.Trim().ToLowerInvariant();
+            if (LooksLikeShowOrExportOnly(s))
+            {
+                return "user_ask looks like show/render/export (or top-N display), not analysis. " +
+                       "Use render_none_interactive / export_* with dataset_name and limit. Do not call data_analyze.";
+            }
+
+            return null;
+        }
+
+        private static bool LooksLikeShowOrExportOnly(string s)
+        {
+            if (HasAnalyzeIntent(s))
+                return false;
+
+            if (Regex.IsMatch(s, @"\b(export|render|powerpoint|pptx|docx|pdf|excel|xlsx|html|card view|cards per|per row|per page)\b"))
+                return true;
+
+            // "top 20 results" / "first N" without analyze words = display slice
+            if (Regex.IsMatch(s, @"\b(top|first)\s+\d+\b") || Regex.IsMatch(s, @"\blimit\s*=?\s*\d+\b"))
+                return true;
+
+            if (Regex.IsMatch(s, @"\b(show|display|list|search|grid)\b")
+                && !HasAnalyzeIntent(s))
+                return true;
+
+            return false;
+        }
+
+        private static bool HasAnalyzeIntent(string s)
+        {
+            return Regex.IsMatch(s,
+                @"\b(analy[sz]|aggregat|summar|average|\bavg\b|\bsum\b|total|kpi|dashboard|distribution|breakdown|group\s*by|how many|metric|trend|chart|histogram|percentile|correlate)\b");
         }
     }
 }

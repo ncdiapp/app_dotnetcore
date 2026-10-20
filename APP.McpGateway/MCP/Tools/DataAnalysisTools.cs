@@ -9,16 +9,15 @@ public class DataAnalysisTools
 {
     [McpServerTool(Name = "data_analyze")]
     [Description(
-        "Analyzes a cached dataset from a previous api_execute call that returned a tabular ui_hint " +
-        "(FlexGrid, SelectorGrid, PivotTable, ChartView). " +
-        "Dataset name format: '{app}_{operationId}' (e.g. 'PLM_DataExchange_list_sales_orders'). " +
-        "Use semantic_search_endpoints to find the operationId. " +
-        "If the dataset is not yet cached, call api_execute first — it will auto-cache any tabular response.")]
+        "GATED. Call ONLY when the user explicitly asks to analyze, aggregate, summarize metrics, or shape KPI/chart data. " +
+        "Do NOT call for search, show, render, top-N display, or export. " +
+        "Analyzes a cached dataset from a previous api_execute that returned a tabular ui_hint. " +
+        "Dataset name format: '{app}_{operationId}'. If not cached, call api_execute first.")]
     public static async Task<string> AnalyzeAsync(
         IAnalysisService analysisService,
         [Description("Dataset name in format '{app}_{operationId}'. Underscores replace any non-alphanumeric chars.")]
         string dataset_name,
-        [Description("Analysis operation: summary | count | sum | avg | min | max | distinct | top | distribution")]
+        [Description("Analysis operation: summary | count | sum | avg | min | max | distinct | top | distribution — must match the user ask")]
         string operation,
         [Description("Target column name. Required for: sum, avg, min, max, distinct, top, distribution.")]
         string? column = null,

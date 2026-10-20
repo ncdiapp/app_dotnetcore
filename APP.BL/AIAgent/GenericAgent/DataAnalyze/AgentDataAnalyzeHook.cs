@@ -48,11 +48,10 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                             obj["dataset_cached"] = true;
                             obj["dataset_name"] = ds.Name;
                             obj["next_hint"] =
-                                $"Dataset cached as '{ds.Name}'. If the user asked to show or export rows: call render_none_interactive (or render_interactive) ONCE with dataset_name='{ds.Name}' and limit for top-N — do NOT call data_analyze or execute_sql just to slice top-N. " +
-                                "layout=table|cards (or kpi|chart|dashboard with specJson). Use layout=cards and cardsPerRow when asked for cards. " +
-                                "Do not copy rows into content — image columns such as Sketch are dropped. " +
-                                "Export with layout=cards and the same limit; pass pageGrid or cardsPerPage when the user names columns×rows. Do not pass content. " +
-                                "Call data_analyze only when the user asked to analyze, aggregate, KPI, or shape a chart/dashboard dataset.";
+                                $"Dataset cached as '{ds.Name}'. For show/render/export: call render_none_interactive (or render_interactive) ONCE with dataset_name='{ds.Name}' and limit for top-N. " +
+                                "Do NOT call data_analyze or execute_sql for display slicing. layout=table|cards (kpi|chart|dashboard need user-asked visuals + specJson). " +
+                                "Use layout=cards and cardsPerRow when asked for cards. Do not copy rows into content. " +
+                                "Export with the same limit; pass pageGrid or cardsPerPage when the user names columns×rows.";
                             return obj.ToString(Formatting.None);
                         }
                     }
@@ -71,9 +70,8 @@ namespace App.BL.AIAgent.GenericAgent.DataAnalyze
                     truncated = rows.Count > AgentDataAnalyzeCacheBL.MaxCachedRows,
                     columns = ds.Columns.Select(c => c.Name).ToArray(),
                     next_hint =
-                        $"Dataset cached as '{ds.Name}'. If the user asked to show or export rows: call render_none_interactive ONCE with dataset_name='{ds.Name}' and limit for top-N — do NOT call data_analyze or execute_sql just to slice top-N. " +
-                        "Use layout=cards and cardsPerRow when asked for cards. Do not copy rows into content. Export with the same limit. Do not pass content. " +
-                        "Call data_analyze only when the user asked to analyze, aggregate, KPI, or shape a chart/dashboard dataset."
+                        $"Dataset cached as '{ds.Name}'. For show/render/export: call render_none_interactive ONCE with dataset_name='{ds.Name}' and limit for top-N. " +
+                        "Do NOT call data_analyze or execute_sql for display slicing. Use layout=cards and cardsPerRow when asked for cards. Export with the same limit."
                 }, Formatting.None);
             }
             catch
